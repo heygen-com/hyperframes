@@ -269,6 +269,24 @@ export function planCompositionAssembly<
 
 export type NestedHostSkipReason = "circular composition reference" | "nesting depth exceeded";
 
+/** The one head order for sub-composition assets: host document position, ancestors first. */
+export function hostPositions(root: ParentNode): (host: Element) => number {
+  // Indexed, not compareDocumentPosition: linkedom answers that wrongly across nesting levels.
+  const position = new Map(Array.from(root.querySelectorAll("*"), (el, i) => [el, i] as const));
+  return (host) => position.get(host) ?? -1;
+}
+
+export function sortByHostOrder<T extends { host: Element }>(
+  root: ParentNode,
+  assets: readonly T[],
+): T[] {
+  const at = hostPositions(root);
+  return assets
+    .map((asset, index) => ({ asset, index }))
+    .sort((a, b) => at(a.asset.host) - at(b.asset.host) || a.index - b.index)
+    .map(({ asset }) => asset);
+}
+
 /** One file, however its src is spelled: resolved from the project root, without query or hash. */
 function compositionSourceKey(src: string): string {
   try {

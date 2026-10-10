@@ -13,6 +13,7 @@ import {
   planCompositionAssembly,
   nestedCompositionRefusal,
   extractedCompositionAssets,
+  hostPositions,
 } from "../compiler/compositionAssembly";
 import {
   scopeCssToComposition,
@@ -193,19 +194,17 @@ const headNodeHost = new WeakMap<Element, Element>();
 
 /** Mounts finish in any order; `<head>` keeps their links and styles in host document order. */
 function insertIntoHeadInHostOrder(node: Element, host: Element): void {
+  const at = hostPositions(document);
   const next = Array.from(document.head.children).find((element) => {
     const owner = headNodeHost.get(element);
-    return element !== node && !!owner && isLaterHost(owner, host);
+    return element !== node && !!owner && isLaterHost(owner, host, at);
   });
   headNodeHost.set(node, host);
   document.head.insertBefore(node, next ?? null);
 }
 
-function isLaterHost(owner: Element, host: Element): boolean {
-  return (
-    owner.isConnected &&
-    (host.compareDocumentPosition(owner) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
-  );
+function isLaterHost(owner: Element, host: Element, at = hostPositions(document)): boolean {
+  return owner.isConnected && at(owner) > at(host);
 }
 
 const waitForExternalScriptLoad = (

@@ -595,6 +595,48 @@ describe("mount/compile assembly parity", () => {
     expect(keyframes(document)).toEqual(order);
   });
 
+  const linked = (id: string, inner = "") =>
+    `<html><head><link rel="stylesheet" href="https://cdn.example/${id}.css"><style>.x { --order: ${id}; }</style></head><body><div data-composition-id="${id}">${inner}</div></body></html>`;
+  const external = (id: string) =>
+    `<div data-composition-id="${id}" data-composition-src="compositions/${id}.html"></div>`;
+  it.each([
+    {
+      name: "nested links",
+      body: external("s1") + external("s2"),
+      files: {
+        "compositions/s1.html": linked("s1", external("card")),
+        "compositions/card.html": linked("card"),
+        "compositions/s2.html": linked("s2"),
+      },
+      order: ["link:s1", "style:s1", "link:card", "style:card", "link:s2", "style:s2"],
+    },
+    {
+      name: "each link beside its own styles",
+      body: external("a") + external("b"),
+      files: { "compositions/a.html": linked("a"), "compositions/b.html": linked("b") },
+      order: ["link:a", "style:a", "link:b", "style:b"],
+    },
+  ])("orders head assets for $name by host on all three paths", async ({ body, files, order }) => {
+    const result = await contracts({
+      "index.html": shell(
+        `<main data-composition-id="main" data-width="320" data-height="180">${body}</main>`,
+      ),
+      ...files,
+    });
+    const headOrder = (root: ParentNode) =>
+      [...root.querySelectorAll('link[rel="stylesheet"], style')].flatMap((el) =>
+        el.tagName === "LINK"
+          ? [`link:${(el.getAttribute("href") ?? "").match(/([\w-]+)\.css$/)?.[1]}`]
+          : [...(el.textContent ?? "").matchAll(/--order:\s*([\w-]+)/g)].map(
+              (m) => `style:${m[1]}`,
+            ),
+      );
+    const parsed = (html: string) => new DOMParser().parseFromString(html, "text/html");
+    expect(headOrder(parsed(result.html.preview))).toEqual(order);
+    expect(headOrder(parsed(result.html.render))).toEqual(order);
+    expect(headOrder(document)).toEqual(order);
+  });
+
   it("keeps a fixture set that still covers the shape the mount path used to drop", () => {
     expect(MOUNT_PARITY_FIXTURES.length).toBeGreaterThan(0);
     const siblingShaped = MOUNT_PARITY_FIXTURES.filter((fixture) =>

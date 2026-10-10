@@ -42,7 +42,7 @@ import {
   assignMediaRenderIds,
   buildVariablesByCompScript,
   inlineSubCompositions as inlineSubCompositionsShared,
-  ensureExternalLinkTag,
+  emitHeadAssets,
   ensureExternalScriptTag,
   deferScriptsUntilFonts,
   emitMountedModuleScripts,
@@ -51,6 +51,7 @@ import {
   emitRootCompositionVariableStyles,
   readDeclaredDefaults,
   parseHostVariableValues,
+  adjacentStyleGroups,
   headStyleRuns,
   inlineScriptRuns,
   parsesAsScript,
@@ -861,7 +862,11 @@ function coalesceHeadStylesAndBodyScripts(html: string): string {
 
   const styleEls = head ? Array.from(head.querySelectorAll("style")) : [];
   const importRe = /@import\s+url\([^)]*\)\s*;|@import\s+["'][^"']+["']\s*;/gi;
-  for (const run of styleEls.length > 1 ? headStyleRuns(styleEls) : []) {
+  const runs =
+    styleEls.length > 1
+      ? adjacentStyleGroups(styleEls).flatMap((group) => headStyleRuns(group))
+      : [];
+  for (const run of runs) {
     const imports: string[] = [];
     const cssParts: string[] = [];
     const seenImports = new Set<string>();
@@ -1017,13 +1022,12 @@ function inlineSubCompositions(
     }
   }
 
-  if (head) for (const link of result.externalLinks) ensureExternalLinkTag(document, link);
-
-  // Append collected styles to <head>
   if (head) {
-    for (const style of styleElementsFor(document, result.styles, (css) => css.join("\n\n"))) {
-      head.appendChild(style);
-    }
+    emitHeadAssets(document as unknown as Document, result.headAssets, (_, styles) => {
+      for (const style of styleElementsFor(document, styles, (css) => css.join("\n\n"))) {
+        head.appendChild(style);
+      }
+    });
   }
 
   // CDN and integrity-pinned scripts go first so plugins (e.g. TextPlugin,

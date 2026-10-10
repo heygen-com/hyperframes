@@ -9,6 +9,7 @@ import {
   cssStyleMergeKey,
   deferScriptsUntilFonts,
   UNCONDITIONAL_CSS_KEY,
+  adjacentStyleGroups,
   headStyleRuns,
   INLINED_FILE_ATTR,
   inlineScriptRuns,
@@ -66,7 +67,7 @@ import { validateHyperframeHtmlContract } from "./staticGuard";
 import { getHyperframeRuntimeScript } from "../generated/runtime-inline";
 import { readDeclaredDefaults } from "../runtime/getVariables";
 import {
-  ensureExternalLinkTag,
+  emitHeadAssets,
   inlineSubCompositions,
   refuseSwapsReachedByRootScripts,
 } from "./inlineSubCompositions";
@@ -653,26 +654,26 @@ function joinCssHoistingImports(sheets: string[]): string {
   return [...imports, ...cssParts].join("\n\n").trim();
 }
 
-// A render joins every head style into one sheet at the first one's place, each distinct @import first.
+// A render joins each group of neighbouring head styles into one sheet, each distinct @import first.
 function placeSceneStylesLikeRender(document: Document): void {
-  const styles = [...document.querySelectorAll("head style")];
-  const imports = new Set<string>();
-  for (const el of styles) {
-    el.textContent = (el.textContent || "")
-      .replace(CSS_IMPORT_RE, (match) => (imports.add(match.trim()), ""))
-      .trim();
+  for (const styles of adjacentStyleGroups([...document.querySelectorAll("head style")])) {
+    const imports = new Set<string>();
+    for (const el of styles) {
+      el.textContent = (el.textContent || "")
+        .replace(CSS_IMPORT_RE, (match) => (imports.add(match.trim()), ""))
+        .trim();
+    }
+    if (imports.size === 0) continue;
+    const hoisted = [...imports].join("\n\n");
+    const first = styles[0]!;
+    if (!first.hasAttribute(SCENE_PART_ATTR)) {
+      first.textContent = [hoisted, first.textContent].filter(Boolean).join("\n\n");
+      continue;
+    }
+    const holder = document.createElement("style");
+    holder.textContent = hoisted;
+    first.before(holder);
   }
-  styles.slice(1).reduce((previous, el) => (previous.after(el), el), styles[0]!);
-  if (imports.size === 0) return;
-  const hoisted = [...imports].join("\n\n");
-  const first = styles[0]!;
-  if (!first.hasAttribute(SCENE_PART_ATTR)) {
-    first.textContent = [hoisted, first.textContent].filter(Boolean).join("\n\n");
-    return;
-  }
-  const holder = document.createElement("style");
-  holder.textContent = hoisted;
-  first.before(holder);
 }
 
 function isAlwaysAppliedStyle(el: Element): boolean {
@@ -690,7 +691,11 @@ function pushRun<T>(runs: PartRun<T>[], scene: string | undefined, chunk: T): vo
 function coalesceHeadStylesAndBodyScripts(document: Document): void {
   const allHeadStyles = [...document.querySelectorAll("head style")];
   const isScenePart = (el: Element) => el.hasAttribute(SCENE_PART_ATTR);
-  for (const run of allHeadStyles.length > 1 ? headStyleRuns(allHeadStyles, isScenePart) : []) {
+  const runs =
+    allHeadStyles.length > 1
+      ? adjacentStyleGroups(allHeadStyles).flatMap((group) => headStyleRuns(group, isScenePart))
+      : [];
+  for (const run of runs) {
     const merged = joinCssHoistingImports(run.map((el) => el.textContent || ""));
     if (!merged) continue;
     run[0]!.textContent = merged;
@@ -1063,14 +1068,9 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     },
   });
   refuseSwapsReachedByRootScripts(document, rootScripts);
-  const styleRuns: PartRun<CompositionStyle>[] = [];
-  subCompResult.styles.forEach((style, i) =>
-    pushRun(styleRuns, subCompResult.styleScenes[i], style),
-  );
   const scriptRuns: PartRun<DeferredScriptChunk>[] = [];
   const compStyleChunks: CompositionStyle[] = [];
   const compScriptChunks: DeferredScriptChunk[] = [];
-  const compExternalLinks = [...subCompResult.externalLinks];
   const compVariablesByComp: Record<string, Record<string, unknown>> = {
     ...subCompResult.variablesByComp,
   };
@@ -1248,21 +1248,21 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     el.textContent = js;
   }
 
-  for (const link of compExternalLinks) ensureExternalLinkTag(document, link);
-
-  for (const css of compStyleChunks) pushRun(styleRuns, undefined, css);
-  for (const chunk of compScriptChunks) pushRun(scriptRuns, undefined, chunk);
-  const variablesByCompScript = buildVariablesByCompScript(compVariablesByComp);
-  if (variablesByCompScript) {
-    if (scriptRuns[0] && !scriptRuns[0].scene) scriptRuns[0].chunks.unshift(variablesByCompScript);
-    else scriptRuns.unshift({ chunks: [variablesByCompScript] });
-  }
-  for (const { scene, chunks } of styleRuns) {
+  const appendStyles = (scene: string | undefined, chunks: CompositionStyle[]) => {
     const join = scene ? joinCssHoistingImports : (css: string[]) => css.join("\n\n");
     for (const style of styleElementsFor(document, chunks, join)) {
       if (scene) style.setAttribute(SCENE_PART_ATTR, scene);
       document.head.appendChild(style);
     }
+  };
+  emitHeadAssets(document, subCompResult.headAssets, appendStyles);
+  // Page template hosts stay last: render mounts them at runtime, after its compiled styles.
+  if (compStyleChunks.length) appendStyles(undefined, compStyleChunks);
+  for (const chunk of compScriptChunks) pushRun(scriptRuns, undefined, chunk);
+  const variablesByCompScript = buildVariablesByCompScript(compVariablesByComp);
+  if (variablesByCompScript) {
+    if (scriptRuns[0] && !scriptRuns[0].scene) scriptRuns[0].chunks.unshift(variablesByCompScript);
+    else scriptRuns.unshift({ chunks: [variablesByCompScript] });
   }
   for (const { scene, chunks } of scriptRuns) {
     const texts = chunks.map((chunk) => (typeof chunk === "string" ? chunk : chunk()));

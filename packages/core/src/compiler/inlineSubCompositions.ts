@@ -45,6 +45,7 @@ import {
   enumerateNestedCompositionHosts,
   planCompositionAssembly,
   extractedCompositionAssets,
+  sortByHostOrder,
 } from "./compositionAssembly";
 import { SCENE_NO_SWAP_ATTR, SCENE_PART_ATTR } from "../sceneParts";
 
@@ -265,8 +266,41 @@ export function ensureExternalLinkTag(doc: Document, link: ExternalLink): void {
   if (!hasSameLink(doc, el)) doc.head.appendChild(el);
 }
 
+/** Writes sub-composition head assets in host document order: each host's links, then its styles. */
+export function emitHeadAssets(
+  document: Document,
+  assets: readonly HeadAsset[],
+  writeStyles: (scene: string | undefined, styles: CompositionStyle[]) => void,
+): void {
+  let run: CompositionStyle[] = [];
+  let runScene: string | undefined;
+  const flush = () => {
+    if (run.length) writeStyles(runScene, run);
+    run = [];
+  };
+  for (const asset of sortByHostOrder(document, assets)) {
+    if (asset.link) {
+      flush();
+      ensureExternalLinkTag(document, asset.link);
+      continue;
+    }
+    if (asset.scene !== runScene) flush();
+    runScene = asset.scene;
+    run.push(asset.style);
+  }
+  flush();
+}
+
+/** A sub-composition's hoisted head link or style and the host it belongs to. */
+export type HeadAsset = { host: Element; scene?: string } & (
+  | { link: ExternalLink; style?: never }
+  | { style: CompositionStyle; link?: never }
+);
+
 export interface InlineSubCompositionsResult {
   styles: CompositionStyle[];
+  /** Links and styles with their hosts; emit through `sortByHostOrder`. */
+  headAssets: HeadAsset[];
   /** With `tagScenes`: the scene each entry of `styles` belongs to. */
   styleScenes: string[];
   scripts: string[];
@@ -336,7 +370,7 @@ export function inlineSubCompositions(
 
   const rootStyles = [...document.querySelectorAll("style")];
   const styles: CompositionStyle[] = [];
-  const styleHosts: Element[] = [];
+  const headAssets: HeadAsset[] = [];
   const styleScenes: string[] = [];
   const scripts: string[] = [];
   const externalScriptSrcs: string[] = [];
@@ -489,7 +523,9 @@ export function inlineSubCompositions(
         const title = link.getAttribute("title") ?? undefined;
         const type = link.getAttribute("type") ?? undefined;
         const disabled = link.hasAttribute("disabled") ? true : undefined;
-        externalLinks.push({ href, rel, crossorigin, media, title, type, disabled });
+        const hoisted: ExternalLink = { href, rel, crossorigin, media, title, type, disabled };
+        externalLinks.push(hoisted);
+        headAssets.push({ host: hostEl, scene, link: hoisted });
       }
     }
 
@@ -499,8 +535,9 @@ export function inlineSubCompositions(
     const styleStart = styles.length;
     for (const styleEl of plan.styleSources) {
       if (cssStyleMergeKey(styleEl) === undefined) continue;
-      styles.push(compositionStyle(styleEl, scopeSubStyle(styleEl.textContent || "")));
-      styleHosts.push(hostEl);
+      const style = compositionStyle(styleEl, scopeSubStyle(styleEl.textContent || ""));
+      styles.push(style);
+      headAssets.push({ host: hostEl, scene, style });
       if (scene) styleScenes.push(scene);
       styleEl.remove();
     }
@@ -720,22 +757,10 @@ export function inlineSubCompositions(
     );
   }
 
-  // The queue is breadth-first; styles follow host document order, as the runtime mounts them.
-  // Indexed, not compareDocumentPosition: linkedom's answer is wrong across nesting levels.
-  const hostPosition = new Map(Array.from(document.querySelectorAll("*"), (el, i) => [el, i]));
-  const styleOrder = styles
-    .map((_, index) => index)
-    .sort(
-      (a, b) =>
-        (hostPosition.get(styleHosts[a]!) ?? -1) - (hostPosition.get(styleHosts[b]!) ?? -1) ||
-        a - b,
-    );
   return {
-    styles: styleOrder.map((index) => styles[index]!),
-    styleScenes:
-      styleScenes.length === styles.length
-        ? styleOrder.map((index) => styleScenes[index]!)
-        : styleScenes,
+    styles,
+    styleScenes,
+    headAssets,
     scripts,
     externalScriptSrcs,
     scriptItems,

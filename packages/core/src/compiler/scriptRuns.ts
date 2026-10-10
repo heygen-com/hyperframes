@@ -143,6 +143,16 @@ export function hasSameLink(scope: ParentNode, link: Element): boolean {
   return findSameLink(scope, link) !== undefined;
 }
 
+export function adjacentStyleGroups(styles: readonly Element[]): Element[][] {
+  const groups: Element[][] = [];
+  for (const el of styles) {
+    const last = groups.at(-1);
+    if (last && el.previousElementSibling === last.at(-1)) last.push(el);
+    else groups.push([el]);
+  }
+  return groups;
+}
+
 /** Groups head styles into runs of adjacent styles with one merge key, so merging a run never reorders rules. */
 export function headStyleRuns(
   styles: readonly Element[],
