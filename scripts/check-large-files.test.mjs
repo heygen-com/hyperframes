@@ -24,13 +24,23 @@ function withRepo(run) {
     git("commit", "-q", "-m", "c");
     return git("rev-parse", "HEAD").stdout.trim();
   };
+  // `files` null checks the index as it stands (git add -A would drop a gitlink with no checkout).
+  const staged = (files) => {
+    if (files) {
+      for (const [name, contents] of Object.entries(files))
+        writeFileSync(join(dir, name), contents);
+      git("add", "-A");
+    }
+    const result = spawnSync(SCRIPT, [], { cwd: dir, env, encoding: "utf-8" });
+    return { ok: result.status === 0, stderr: result.stderr ?? "" };
+  };
   const range = (base, head) => {
     const result = spawnSync(SCRIPT, ["--range", base, head], { cwd: dir, env, encoding: "utf-8" });
     return { ok: result.status === 0, stderr: result.stderr ?? "" };
   };
   try {
     git("init", "-q");
-    run({ commit, range, dir, git });
+    run({ commit, staged, range, dir, git });
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -170,6 +180,50 @@ describe("check-large-files", () => {
       chmodSync(object, 0o644);
       truncateSync(object, 64);
       assert.equal(range(base, head).ok, false);
+    });
+  });
+
+  it("staged mode rejects a large binary and passes text", () => {
+    withRepo(({ commit, staged }) => {
+      commit({ "seed.txt": "x" });
+      const { ok, stderr } = staged({ "big.bin": bigBinary, "big.txt": bigText });
+      assert.equal(ok, false);
+      assert.match(stderr, /big\.bin/);
+      assert.doesNotMatch(stderr, /big\.txt/);
+    });
+  });
+
+  it("staged mode sizes a file named like revision syntax, not the file it aliases", () => {
+    withRepo(({ commit, staged }) => {
+      commit({ "clip.bin": "small" });
+      const { ok, stderr } = staged({ "0:clip.bin": bigBinary });
+      assert.equal(ok, false);
+      assert.match(stderr, /0:clip\.bin/);
+    });
+  });
+
+  it("staged mode checks modified and type-changed files", () => {
+    withRepo(({ commit, staged, dir }) => {
+      writeFileSync(join(dir, "target"), "t");
+      symlinkSync("target", join(dir, "link.bin"));
+      commit({ "clip.bin": "small" });
+      rmSync(join(dir, "link.bin"));
+      const { ok, stderr } = staged({ "clip.bin": bigBinary, "link.bin": bigBinary });
+      assert.equal(ok, false);
+      assert.match(stderr, /clip\.bin/);
+      assert.match(stderr, /link\.bin/);
+    });
+  });
+
+  it("skips a submodule whose commit is not in this repository", () => {
+    withRepo(({ commit, staged, range, git }) => {
+      const base = commit({ "seed.txt": "x" });
+      const child = "1234567890abcdef1234567890abcdef12345678";
+      git("update-index", "--add", "--cacheinfo", `160000,${child},sub`);
+      assert.equal(staged(null).ok, true);
+      git("commit", "-q", "-m", "sub");
+      const head = git("rev-parse", "HEAD").stdout.trim();
+      assert.equal(range(base, head).ok, true);
     });
   });
 });

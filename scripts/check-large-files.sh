@@ -20,44 +20,39 @@
 # a file matching an LFS pattern but added without git-lfs installed is caught.
 #
 # We read the staged set ourselves rather than taking lefthook's {staged_files}
-# expansion: that expands to a bare space-separated string, which splits paths
-# containing spaces into separate args. `git diff --cached` + a line-based read
-# keeps whole paths intact (only a literal newline in a filename would break it,
-# which git quotes/escapes anyway).
+# expansion, which splits paths containing spaces into separate args.
 
 set -u
 
 MAX_KB="${HF_MAX_NONLFS_KB:-500}"
 
-# Blob prefix for `git cat-file`: ":" is the index, "<head>:" a commit, empty
-# means read the file on disk.
-BLOB_REV=""
+# staged (default): the index; range: what <head> adds over <base>; files: paths on disk.
+MODE=staged
 RANGE_BASE=""
 RANGE_HEAD=""
 if [ "${1:-}" = "--range" ]; then
   [ "$#" -eq 3 ] || { echo "usage: $0 --range <base> <head>" >&2; exit 2; }
+  MODE=range
   RANGE_BASE="$2"
   RANGE_HEAD="$3"
-  BLOB_REV="$3:"
   shift 3
-elif [ "$#" -eq 0 ]; then
-  BLOB_REV=":"
+elif [ "$#" -gt 0 ]; then
+  MODE=files
 fi
 
-# Emit the paths to check, NUL-separated and unquoted (git quotes non-ASCII,
-# quotes and tabs otherwise). Added/Copied/Modified/Renamed/Type-changed only.
+# Emit a "<raw diff header>" record then a path record per entry, NUL-separated and
+# unquoted. The header carries the new mode and blob id, so blobs are read by id,
+# never by a path git could parse as revision syntax. Renames count as additions.
 list_files() {
-  if [ -n "$RANGE_BASE" ]; then
-    git diff -z --name-only --diff-filter=ACMRT "$RANGE_BASE" "$RANGE_HEAD"
-  elif [ -n "$BLOB_REV" ]; then
-    git diff -z --cached --name-only --diff-filter=ACMRT
-  else
-    printf '%s\0' "$@"
-  fi
+  case "$MODE" in
+    range) git diff -z --raw --no-abbrev --no-renames --diff-filter=ACMT "$RANGE_BASE" "$RANGE_HEAD" ;;
+    staged) git diff -z --raw --no-abbrev --no-renames --diff-filter=ACMT --cached ;;
+    files) for f in "$@"; do printf 'file\0%s\0' "$f"; done ;;
+  esac
 }
 
 read_bytes() {
-  if [ -n "$BLOB_REV" ]; then git cat-file blob "$BLOB_REV$1"; else cat -- "$1"; fi
+  if [ "$MODE" = files ]; then cat -- "$1"; else git cat-file blob "$2"; fi
 }
 
 violations="$(mktemp)"
@@ -68,26 +63,29 @@ trap 'rm -f "$violations" "$errors" "$paths" "$blob"' EXIT INT TERM
 
 # A git error (bad ref, not a repo) must fail the check, not pass an empty list.
 list_files "$@" > "$paths" || { echo "ERROR: could not list the files to check." >&2; exit 2; }
-# Paths are NUL-separated, so a newline byte can only come from a filename; sh cannot
+# Records are NUL-separated, so a newline byte can only come from a filename; sh cannot
 # keep such a name whole, so refuse it rather than check the wrong files.
 if [ "$(tr -cd '\n' < "$paths" | wc -c)" -gt 0 ]; then
   echo "ERROR: a file name contains a newline; rename it." >&2
   exit 2
 fi
 
-tr '\0' '\n' < "$paths" | while IFS= read -r f; do
+tr '\0' '\n' < "$paths" | while IFS= read -r header && IFS= read -r f; do
   [ -n "$f" ] || continue
 
-  if [ -n "$BLOB_REV" ]; then
-    # A submodule is not a blob; a symlink's blob is its short target path.
-    kind="$(git cat-file -t "$BLOB_REV$f")" || { printf '%s\n' "$f" >> "$errors"; continue; }
-    [ "$kind" = "blob" ] || continue
-  else
+  id=""
+  if [ "$MODE" = files ]; then
     # Skip symlinks: `wc -c` would measure the link *target's* bytes, so a symlink
     # to a large LFS-tracked asset could be flagged even though the real blob is a
     # tiny pointer.
     [ -L "$f" ] && continue
     [ -f "$f" ] || continue
+  else
+    # ":<old mode> <new mode> <old id> <new id> <status>"
+    set -- $header
+    # A submodule (160000) records another repository's commit: nothing stored here.
+    [ "$2" = 160000 ] && continue
+    id="$4"
   fi
 
   # registry/ intentionally ships raw binary assets (block backgrounds, avatar
@@ -108,7 +106,7 @@ tr '\0' '\n' < "$paths" | while IFS= read -r f; do
   # git uses to print "Binary files differ". A generated blob of text is still
   # caught by review, not here.
   # Read once into a file so a failed read is an error, never an empty pass.
-  read_bytes "$f" > "$blob" || { printf '%s\n' "$f" >> "$errors"; continue; }
+  read_bytes "$f" "$id" > "$blob" || { printf '%s\n' "$f" >> "$errors"; continue; }
   grep -qI . "$blob" && continue
 
   bytes="$(wc -c < "$blob" | tr -d ' ')"
@@ -124,7 +122,7 @@ tr '\0' '\n' < "$paths" | while IFS= read -r f; do
   filter="$(git check-attr filter -- "$f" | sed 's/.*: //')"
   note=""
   if [ "$filter" = "lfs" ]; then
-    [ -z "$BLOB_REV" ] && continue
+    [ "$MODE" = files ] && continue
     note=" — matches an LFS pattern but was stored raw; run \`git lfs install\` and re-add it"
   fi
 
