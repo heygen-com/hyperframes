@@ -66,7 +66,7 @@ Build order: one at a time, coverage-first (rough is fine). `kinetic-type` porte
 
 ## Prerequisites
 
-macOS Apple Silicon or Linux x64. System tools: `brew install node ffmpeg`. `npx hyperframes doctor` once. macOS GPU render: `export PRODUCER_BROWSER_GPU_MODE=hardware`.
+macOS Apple Silicon or Linux x64. Node.js 22 or newer, FFmpeg, and FFprobe. Follow [the supported binary setup](../hyperframes-cli/references/doctor-browser.md#configure-ffmpeg-without-a-package-manager), including existing binaries on machines without Homebrew. macOS GPU render: `export PRODUCER_BROWSER_GPU_MODE=hardware`.
 
 Optional keys (local fallbacks if unset) — only needed by categories that source/generate assets via media-use:
 
@@ -92,6 +92,8 @@ npx hyperframes init "$PROJECT_DIR" --non-interactive --example=blank --skill=mo
 `init` checks the installed skills against the latest on GitHub and updates the global set if any are out of date.
 
 **Constraints:** never `hyperframes init` in the workspace root; never nest another `hyperframes/` inside `PROJECT_DIR`; every Bash command (master + subagents) is a `(cd "$PROJECT_DIR" && ...)` subshell — never bare `cd`.
+
+After setup (including the fresh `BRIEF.md`) or project resume, run `(cd "$PROJECT_DIR" && npx hyperframes doctor --json)` before Step 1. Follow [the dependency check](../hyperframes-cli/references/doctor-browser.md#check-local-video-dependencies-before-design) for FFmpeg and FFprobe; keep a passing result already obtained in this run.
 
 ### Step 1 — Plan (subagent: Director Part 1)
 

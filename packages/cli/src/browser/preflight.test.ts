@@ -174,7 +174,6 @@ describe("runEnvironmentChecks", () => {
     });
 
     it.each([
-      { platform: "darwin" as const, expectedHint: "brew install ffmpeg" },
       { platform: "sunos" as const, expectedHint: "https://ffmpeg.org/download.html" },
       {
         platform: "win32" as const,
@@ -193,6 +192,25 @@ describe("runEnvironmentChecks", () => {
 
       expect(ffmpeg?.title).toBe("FFmpeg cannot start");
       expect(ffmpeg?.hint).toBe(expectedHint);
+    });
+
+    it("offers configured binaries on macOS when FFmpeg cannot launch", async () => {
+      Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
+      runProcess.mockImplementation((binaryPath: string) => {
+        if (binaryPath !== process.env.HYPERFRAMES_FFMPEG_PATH)
+          return Promise.resolve({ stdout: "ffprobe version 7.1.1\n", stderr: "" });
+        throw Object.assign(new Error("cannot execute binary file"), { status: 126 });
+      });
+
+      const result = await runEnvironmentChecks();
+      const ffmpeg = result.outcomes.find((outcome) => outcome.name === "FFmpeg");
+
+      expect(ffmpeg).toMatchObject({ ok: false, title: "FFmpeg cannot start" });
+      expect(ffmpeg?.hint).toContain("brew install ffmpeg");
+      expect(ffmpeg?.hint).toContain("HYPERFRAMES_FFMPEG_PATH");
+      expect(ffmpeg?.hint).toContain("HYPERFRAMES_FFPROBE_PATH");
+      expect(ffmpeg?.hint).toContain(".hyperframes/bin/");
+      expect(result.ffmpegPath).toBeUndefined();
     });
   });
 

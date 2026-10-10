@@ -6,7 +6,7 @@ Environment diagnosis and bundled-Chrome management. Run these first when a rend
 
 ```bash
 npx hyperframes doctor
-npx hyperframes doctor --json     # CI / agent output (always exit 0; gate on payload `ok`)
+npx hyperframes doctor --json     # CI / agent output (always exit 0; inspect checks in payload)
 ```
 
 Runs independent checks and reports each as ok/warn/fail:
@@ -25,6 +25,14 @@ Run `doctor` first when:
 - `render` fails with a Chrome or FFmpeg error.
 - `preview` opens but the composition fails to load.
 - A fresh machine has never run HyperFrames.
+
+### Check local video dependencies before design
+
+For a workflow that will render a video locally, run `npx hyperframes doctor --json` from the project directory immediately after setup or resume, before planning, sourcing, or design. Fresh setup writes its brief first. Keep this result for the current run; repeat after changing the binary configuration or environment.
+
+Require both **FFmpeg** and **FFprobe** entries with `ok: true`, and inspect their reported paths. Use [the two-tool jq gate](#configure-ffmpeg-without-a-package-manager) when `jq` is available, or inspect the JSON directly. `doctor --json` exits 0 even when dependencies are missing, and its top-level `ok` includes optional tools.
+
+When either binary is missing or cannot run, surface the affected check and use [the supported setup paths](#configure-ffmpeg-without-a-package-manager) before design starts. Verify the two checks again after setup. If installation is unavailable or needs authorization, report the dependency and agree on how to continue before starting design; retain the user's choice of local or cloud rendering. Check Chrome separately before browser validation and rendering. Deck-only and source-port tasks follow their own prerequisites.
 
 Common issues:
 
