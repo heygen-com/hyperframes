@@ -503,6 +503,7 @@ const BUILDERS: Record<string, Builder> = {
   "biquad-lowpass": biquad("lowpass", false),
   "worklet-compressor": workletBuilder("hf-compressor"),
   "worklet-limiter": workletBuilder("hf-limiter"),
+  "worklet-truepeak": workletBuilder("hf-truepeak"),
   "worklet-gate": workletBuilder("hf-gate"),
   "worklet-bitcrush": workletBuilder("hf-bitcrush"),
   "worklet-pitchshift": workletBuilder("hf-pitchshift"),
@@ -609,7 +610,8 @@ function shapeOf(chain: HfAudioFxChain): string {
       // author's own node while the render, which rebuilds, blended out the
       // preset's.
       const run = node.fromPreset ? `%${node.fromPreset}` : "";
-      return `${node.type}${poles}${fixedFreq}${wave}${run}`;
+      const lookahead = node.type === "truepeak" ? `^${p.lookahead}` : "";
+      return `${node.type}${poles}${fixedFreq}${wave}${lookahead}${run}`;
     })
     .join("|");
 }

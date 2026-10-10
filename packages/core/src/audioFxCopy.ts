@@ -166,6 +166,21 @@ export const EFFECT_COPY: Record<string, EffectCopy> = {
       level_out: { label: "Level after" },
     },
   },
+  truepeak: {
+    title: "True-Peak Ceiling",
+    does: "Keeps the loudest moments, including the ones between samples, under a ceiling.",
+    reachFor: "The finished mix must not clip once it is encoded.",
+    primary: "ceiling",
+    primaryEnds: { low: "A lot of headroom", high: "Right up to the edge" },
+    params: {
+      ceiling: {
+        label: "Never exceed",
+        ends: { low: "A lot of headroom", high: "Right up to the edge" },
+      },
+      lookahead: { label: "How far ahead it looks" },
+      release: { label: "How fast it recovers" },
+    },
+  },
   gate: {
     title: "Silence the Gaps",
     does: "Mutes the pauses. Whatever sits underneath stays — this closes the gaps, it does not remove noise.",
@@ -396,6 +411,7 @@ export const SUMMARY: Record<string, (p: P) => string> = {
   compressor: (p) =>
     `Evening out — ${strength(Math.min(1, (n(p.ratio, 3) - 1) / 7), ["gentle", "moderate", "firm"])}`,
   limiter: (p) => `Nothing louder than ${n(p.limit, -1)} dB`,
+  truepeak: (p) => `True peak never above ${n(p.ceiling, -1)} dBTP`,
   gate: (p) => `Closing gaps quieter than ${n(p.threshold, -45)} dB`,
   saturate: (p) =>
     `${strength(Math.min(1, Math.abs(n(p.threshold, -6)) / 30), ["A little", "Some", "Heavy"])} warmth`,

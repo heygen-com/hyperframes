@@ -29,6 +29,7 @@ Web Audio spec leaves it unused for them, so a control would have moved nothing.
 | `gain`       | `gain` −60–12 dB (0) **AUTO**                                                                                                                                                  |
 | `compressor` | `threshold` −60–0 dB (−24) · `ratio` 1–20 (4) · `attack` 0.01–2000 ms (20, log) · `release` 0.01–9000 ms (250, log) · `knee` 1–8 (2.83) · `makeup` 0–36 dB (0) · `mix` 0–1 (1) |
 | `limiter`    | `limit` −24–0 dB (−1) · `attack` 0.1–80 ms (5) · `release` 1–8000 ms (50, log) · `level_out` −24–24 dB (0)                                                                     |
+| `truepeak`   | `ceiling` −24–0 dBTP (−1) · `lookahead` 0.5–10 ms (3) · `release` 10–2000 ms (80, log)                                                                                         |
 | `gate`       | `threshold` −80–0 dB (−35) · `range` −80–0 dB (−24) · `ratio` 1–20 (10) · `attack` 0.01–9000 ms (1, log) · `release` 0.01–9000 ms (100, log) · `knee` 1–8 (2.83)               |
 
 Cuts on `gain` go to −60 dB, boosts stop at +12: it is a level stage for making
@@ -36,6 +37,12 @@ room, and a chain that could add 40 dB would clip long before that was useful.
 `knee` of 1 is a hard corner, higher eases into it. `mix` below 1 blends the dry
 signal back in (parallel compression). `range` is how far down the gate pulls
 when closed — a gate that pulls all the way to silence sounds like a switch.
+
+`limiter` follows the signal's level and has no lookahead, so it does not
+guarantee a peak ceiling. For a delivery ceiling use `truepeak`: it estimates the
+inter-sample (true) peak at 4x, looks `lookahead` ms ahead, and keeps that peak at
+or under `ceiling` dBTP. It delays its output by `lookahead` plus about 0.3 ms;
+the render trims the delay, live preview plays it.
 
 ## Nonlinear — changes the waveform's shape
 
@@ -70,7 +77,7 @@ curves, which is what keeps it sample-accurate and identical between preview and
 render. A parameter can therefore only be automated if an `AudioParam` backs it.
 Three kinds do not:
 
-- **worklet processor options** — `compressor`, `limiter`, `gate` and `bitcrush`
+- **worklet processor options** — `compressor`, `limiter`, `truepeak`, `gate` and `bitcrush`
   are AudioWorklets configured wholesale, so **none of their parameters are
   automatable at all**.
 - **a WaveShaper curve** — `saturate`'s `type`, `threshold` and `oversample`

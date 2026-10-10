@@ -89,6 +89,7 @@ describe("the worklet processors themselves", () => {
       "hf-gate",
       "hf-bitcrush",
       "hf-pitchshift",
+      "hf-truepeak",
     ]);
 
     for (const [name, Cls] of processors) {

@@ -52,7 +52,7 @@ the first two, on an `<hf-audio-group>` bus (see "One bus for many tracks"):
 | `data-fx-carve`   | the carve's own settings, so it can be re-derived         |
 
 The shipped effect families are gain, EQ (highpass, lowpass, peaking, shelves),
-compressor, limiter, gate, saturate, delay, reverb, chorus, phaser, and bitcrush.
+compressor, limiter, truepeak (lookahead true-peak limiter), gate, saturate, delay, reverb, chorus, phaser, and bitcrush.
 
 Exact JSON for each, and the rules a lane must satisfy: `references/attributes.md`.
 Every effect with its parameters, ranges and units: `references/fx-registry.md`.
@@ -195,10 +195,11 @@ want 1–3 kHz, and taking that from the bed costs the bed far less than turning
 the whole thing down costs the mix. A high-pass on a voice is the standard fix
 for rumble; a low-pass darkens or muffles deliberately.
 
-**Dynamics** (`gain`, `compressor`, `limiter`, `gate`) decide how a track's level
+**Dynamics** (`gain`, `compressor`, `limiter`, `truepeak`, `gate`) decide how a track's level
 behaves over time. Compression narrows the distance between loud and quiet so the
 quiet parts can come up. A limiter is a ceiling — it does not shape anything, it
-guarantees nothing gets past. A gate removes what is below a threshold, which is
+guarantees nothing gets past. `limiter` follows the level, so for a hard dBTP
+ceiling use `truepeak`, which looks ahead and measures the inter-sample peak. A gate removes what is below a threshold, which is
 how you silence room tone between phrases. `gain` is a plain level stage, and it
 is what an automation lane rides when a track has to move out of the way.
 
@@ -440,8 +441,8 @@ and the parameter's own units. Targets are `volume` for the track's level, or
 `fx.<nodeId>.<param>` for an effect's knob.
 
 **Only some parameters can be automated, and a lane on the others is silently
-inert.** A knob is automatable when a Web Audio `AudioParam` backs it. The four
-worklet-based effects — `compressor`, `limiter`, `gate`, `bitcrush` — expose
+inert.** A knob is automatable when a Web Audio `AudioParam` backs it. The
+worklet-based effects — `compressor`, `limiter`, `truepeak`, `gate`, `bitcrush` — expose
 none at all, so no lane on any of their parameters will ever move: to make a
 compressor's behaviour change over time, automate a `gain` stage before it
 instead. `references/fx-registry.md` marks every parameter.

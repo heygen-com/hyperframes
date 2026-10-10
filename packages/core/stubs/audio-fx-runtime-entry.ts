@@ -19,7 +19,7 @@ import {
 import { scheduleChainAutomation } from "../src/audio/audioFxAutomation.js";
 import { parseAutomation, resolveAutomation } from "../src/audioAutomation.js";
 import { parseAudioFxChain, type HfAudioFxChain } from "../src/audioFx.js";
-import { chainTailSeconds } from "../src/audio/audioFxTail.js";
+import { chainLatencySamples, chainTailSeconds } from "../src/audio/audioFxTail.js";
 
 declare global {
   interface Window {
@@ -63,11 +63,11 @@ function toBuffer(
   return buffer;
 }
 
-/** Every rendered channel, copied out of the result buffer. */
-function toPlanes(rendered: AudioBuffer): Float32Array[] {
+/** Every rendered channel past `skip` leading samples, copied out of the result buffer. */
+function toPlanes(rendered: AudioBuffer, skip: number): Float32Array[] {
   const out: Float32Array[] = [];
   for (let c = 0; c < rendered.numberOfChannels; c++) {
-    out.push(new Float32Array(rendered.getChannelData(c)));
+    out.push(new Float32Array(rendered.getChannelData(c).subarray(skip)));
   }
   return out;
 }
@@ -90,7 +90,10 @@ async function render(
     ? resolveAutomation(parseAutomation(automationJson), chain)
     : null;
   const tail = Math.ceil(chainTailSeconds(chain, parsedAutomation ?? undefined) * sampleRate);
-  const ctx = new OfflineAudioContext(channels, frames + tail, sampleRate);
+  // A lookahead limiter delays its output; render that much longer and drop the
+  // lead-in so the clip stays sample-aligned with its source.
+  const latency = chainLatencySamples(chain, sampleRate);
+  const ctx = new OfflineAudioContext(channels, frames + tail + latency, sampleRate);
 
   if (chainNeedsWorklets(chain)) await ensureAudioFxWorklets(ctx);
 
@@ -116,7 +119,7 @@ async function render(
   fx.output.connect(ctx.destination);
   source.start();
 
-  return toPlanes(await ctx.startRendering());
+  return toPlanes(await ctx.startRendering(), latency);
 }
 
 window.__HF_AUDIO_FX = { render };

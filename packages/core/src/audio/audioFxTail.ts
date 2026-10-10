@@ -9,7 +9,13 @@
  */
 
 import { fxAutomationTarget, type HfAutomation } from "../audioAutomation.js";
-import { normalizeAudioFxParams, type HfAudioFxChain, type HfAudioFxNode } from "../audioFx.js";
+import {
+  enabledAudioFxNodes,
+  normalizeAudioFxParams,
+  type HfAudioFxChain,
+  type HfAudioFxNode,
+} from "../audioFx.js";
+import { truePeakLatencySamples } from "./audioFxTruePeak.js";
 
 /**
  * Ceiling on the extension, in seconds.
@@ -112,4 +118,19 @@ function nodeTail(node: HfAudioFxNode, automation?: HfAutomation): number {
 export function chainTailSeconds(chain: HfAudioFxChain, automation?: HfAutomation): number {
   const total = chain.nodes.reduce((sum, node) => sum + nodeTail(node, automation), 0);
   return Math.min(MAX_FX_TAIL_SECONDS, total);
+}
+
+/**
+ * Samples the chain delays its output by, which the offline render trims so a
+ * lookahead limiter does not shift a clip against the picture. Only the
+ * true-peak limiter delays by design; the pitch shifter's grain delay is not
+ * compensated.
+ */
+export function chainLatencySamples(chain: HfAudioFxChain, sampleRate: number): number {
+  return enabledAudioFxNodes(chain)
+    .filter((node) => node.type === "truepeak")
+    .reduce((sum, node) => {
+      const { lookahead } = normalizeAudioFxParams(node.type, node.params);
+      return sum + truePeakLatencySamples(Number(lookahead), sampleRate);
+    }, 0);
 }

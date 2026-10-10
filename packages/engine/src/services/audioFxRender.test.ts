@@ -289,6 +289,43 @@ describe.skipIf(!HAS_BROWSER)("browser render", () => {
     expect(freq).toBeLessThan(220 * 2.3);
   }, 180_000);
 
+  it("holds a true peak under the ceiling and trims its own lookahead", async () => {
+    // fs/4 at 45 degrees: samples of +-0.707 whose waveform reaches 1.0. Preceded
+    // by a quiet impulse so the output position proves the latency was trimmed.
+    const input = join(dir, "isp-in.wav");
+    const n = Math.floor(SR * 0.4);
+    const samples = new Float32Array(n);
+    samples[100] = 0.1;
+    for (let i = 4800; i < n; i++) samples[i] = Math.sin((Math.PI / 2) * i + Math.PI / 4);
+    writeWav(input, samples, SR, 1, true);
+    const outPath = join(dir, "isp-out.wav");
+    const ceiling = -6;
+    await applyAudioFxChain(
+      input,
+      {
+        version: 1,
+        nodes: [
+          {
+            type: "truepeak",
+            id: "n1",
+            enabled: true,
+            params: { ceiling, lookahead: 3, release: 80 },
+          },
+        ],
+      },
+      outPath,
+      { trackId: "t" },
+    );
+    const out = readWav(outPath).samples;
+    expect(out.length).toBe(n);
+    expect(out[100]).toBeCloseTo(0.1, 3);
+    // Sample peak of the steady part is 0.707 * gain; the gain that holds the
+    // 1.0 true peak at -6 dBTP leaves it at -9 dBFS.
+    let peak = 0;
+    for (let i = 9600; i < n; i++) peak = Math.max(peak, Math.abs(out[i] ?? 0));
+    expect(db(peak)).toBeCloseTo(-9.03, 0);
+  }, 180_000);
+
   it("sweeps a filter across the clip when a lane automates it", async () => {
     // A 2 kHz tone under a lowpass whose cutoff rises from below it to well
     // above: the start should be attenuated and the end should not. This is

@@ -107,8 +107,8 @@ escaping.
 **A lane on a non-automatable parameter is silently inert.** Automation is
 delivered as native `AudioParam` scheduling, so a knob that no `AudioParam` backs
 cannot move: worklet processor options, a WaveShaper curve and a convolution
-impulse are all set wholesale. `fx-registry.md` marks each parameter; the four
-worklet effects (`compressor`, `limiter`, `gate`, `bitcrush`) have none at all.
+impulse are all set wholesale. `fx-registry.md` marks each parameter; the
+worklet effects (`compressor`, `limiter`, `truepeak`, `gate`, `bitcrush`) have none at all.
 
 ## `data-fx-carve` — the carve's settings
 

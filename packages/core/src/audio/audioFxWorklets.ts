@@ -1,3 +1,5 @@
+import { TRUE_PEAK_WORKLET_SOURCE } from "./audioFxTruePeak.js";
+
 /**
  * AudioWorklet processors for the effects Web Audio has no native node for.
  *
@@ -9,7 +11,8 @@
  * Kept as a source string so it can be registered from a Blob URL without a
  * separate bundled asset, which keeps the studio's build unchanged.
  */
-const AUDIO_FX_WORKLET_SOURCE = `
+const AUDIO_FX_WORKLET_SOURCE =
+  `
 const dbToLin = (db) => Math.pow(10, db / 20);
 
 /**
@@ -345,7 +348,7 @@ class HfPitchshift extends AudioWorkletProcessor {
   }
 }
 registerProcessor("hf-pitchshift", HfPitchshift);
-`;
+` + TRUE_PEAK_WORKLET_SOURCE;
 
 // Registration is per context, not per module: a processor registered on one
 // AudioContext does not exist on another, so caching a single promise made
