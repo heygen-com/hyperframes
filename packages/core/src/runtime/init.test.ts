@@ -5612,6 +5612,69 @@ describe("initSandboxRuntimeModular", () => {
       expect(ctx.mediaElementSources).toBe(0);
     });
 
+    describe("under a composition root with a master chain", () => {
+      const MASTER_CHAIN = '{"version":1,"nodes":[]}';
+      const setRootChain = () =>
+        document.querySelector("[data-root]")?.setAttribute("data-fx-chain", MASTER_CHAIN);
+
+      it("joins the graph for a plain audible video at unity, so the master bus limits it", async () => {
+        const video = mountMedia("video", { "data-has-audio": "true", "data-volume": "1" });
+        setRootChain();
+        const captureSpy = spyCapture();
+
+        await startPlayback();
+
+        expect(captureSpy).toHaveBeenCalledTimes(1);
+        expect(captureSpy.mock.calls[0]?.[0]).toBe(video);
+        expect(captureSpy.mock.calls[0]?.[4]).toBe(1);
+      });
+
+      it("acquires a media element source for it", async () => {
+        mountMedia("video", { "data-has-audio": "true" });
+        setRootChain();
+
+        await startPlayback();
+        await Promise.resolve();
+
+        expect(ctx.mediaElementSources).toBe(1);
+      });
+
+      it("joins a video whose only audio is the composition, and every audio clip beside it", async () => {
+        const video = mountMedia("video", { "data-has-audio": "true" });
+        const audio = mountMedia("audio");
+        setRootChain();
+        const captureSpy = spyCapture();
+
+        await startPlayback();
+
+        expect(captureSpy.mock.calls.map((call) => call[0])).toEqual([video, audio]);
+      });
+
+      it("still keeps a muted or data-has-audio=false video out of the graph", async () => {
+        mountMedia("video", { "data-has-audio": "true", muted: "" });
+        mountMedia("video", { "data-has-audio": "false" });
+        setRootChain();
+        const captureSpy = spyCapture();
+
+        await startPlayback();
+
+        expect(captureSpy).not.toHaveBeenCalled();
+      });
+
+      it("does not count a chain on a sub-composition root", async () => {
+        const video = mountMedia("video", { "data-has-audio": "true" });
+        const inner = document.createElement("div");
+        inner.setAttribute("data-composition-id", "inner");
+        inner.setAttribute("data-fx-chain", MASTER_CHAIN);
+        video.before(inner);
+        const captureSpy = spyCapture();
+
+        await startPlayback();
+
+        expect(captureSpy).not.toHaveBeenCalled();
+      });
+    });
+
     it.each([
       ["data-fx-chain", "[]"],
       ["data-automation", "[]"],

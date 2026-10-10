@@ -204,6 +204,9 @@ only one group, so this is the way to put one effect across everything.
 - The render sums the tracks to a float WAV, runs the chain, and only then
   encodes AAC, so the chain reads unclipped samples. Preview inserts the chain
   between the clips' sum and the monitor.
+- With a master chain on the root, preview plays every audible `<video>` through
+  that bus too, as the render does. Without one, a video at volume 1 with no
+  chain, group or automation of its own stays on native output.
 - An unreadable master chain **fails the whole mix** in render and plays dry in
   preview, like any other chain.
 

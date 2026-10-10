@@ -18,8 +18,11 @@ export function audibleVideoNeedsWebAudio(fields: {
   fxChain?: string | null;
   automation?: string | null;
   audioGroup?: string | null;
+  /** The composition root's `data-fx-chain`: the master bus only exists in the Web Audio graph. */
+  masterChain?: string | null;
 }): boolean {
   return (
-    (fields.volume ?? 1) > 1 || Boolean(fields.fxChain || fields.automation || fields.audioGroup)
+    (fields.volume ?? 1) > 1 ||
+    Boolean(fields.fxChain || fields.automation || fields.audioGroup || fields.masterChain)
   );
 }

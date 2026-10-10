@@ -50,14 +50,19 @@ describe("AUDIBLE_MEDIA_SELECTOR", () => {
 describe("audibleVideoNeedsWebAudio", () => {
   it("keeps a unity, unprocessed video on native output", () => {
     expect(audibleVideoNeedsWebAudio({})).toBe(false);
+    expect(audibleVideoNeedsWebAudio({ volume: 1, masterChain: null })).toBe(false);
+    expect(audibleVideoNeedsWebAudio({ masterChain: "" })).toBe(false);
     expect(audibleVideoNeedsWebAudio({ volume: 1, fxChain: "", automation: null })).toBe(false);
     expect(audibleVideoNeedsWebAudio({ volume: Number.NaN })).toBe(false);
   });
 
-  it.each([{ volume: 1.5 }, { fxChain: "[]" }, { automation: "{}" }, { audioGroup: "music" }])(
-    "routes a video carrying %o",
-    (fields) => {
-      expect(audibleVideoNeedsWebAudio(fields)).toBe(true);
-    },
-  );
+  it.each([
+    { volume: 1.5 },
+    { fxChain: "[]" },
+    { automation: "{}" },
+    { audioGroup: "music" },
+    { volume: 1, masterChain: '{"version":1,"nodes":[]}' },
+  ])("routes a video carrying %o", (fields) => {
+    expect(audibleVideoNeedsWebAudio(fields)).toBe(true);
+  });
 });

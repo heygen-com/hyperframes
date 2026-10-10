@@ -1141,6 +1141,19 @@ describe("WebAudioTransport", () => {
         expect(setup.mock.masterGain.connect).not.toHaveBeenCalledWith(busOut);
       });
 
+      it("limits a plain video at unity played from its media element", async () => {
+        document.body.innerHTML = `<div id="root" data-composition-id="main" data-fx-chain='${GAIN_CHAIN}'><video id="talk" data-has-audio="true"></video></div>`;
+        const setup = setupGroupTransport();
+        const busOut = withBusOut(setup);
+        const video = document.getElementById("talk") as unknown as HTMLMediaElement;
+
+        await setup.transport.scheduleMediaElementPlayback(video, 0, 0, 0, 1, setup.gen, 1);
+
+        expect(setup.mock.gainNodes[0]!.connect).toHaveBeenCalledWith(setup.mock.masterGain);
+        expect(setup.mock.masterGain.disconnect).toHaveBeenCalledWith(busOut);
+        expect(setup.mock.masterGain.connect).not.toHaveBeenCalledWith(busOut);
+      });
+
       it("leaves the sum wired straight through when the root has no chain", async () => {
         document.body.innerHTML = `<div id="root" data-composition-id="main"></div>`;
         const setup = setupGroupTransport();

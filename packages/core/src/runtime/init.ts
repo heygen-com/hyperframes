@@ -113,6 +113,7 @@ import {
   ensureAudioGroupInertStyle,
   HF_AUDIO_GROUP_TAG,
   isMemberGroupHidden,
+  readMasterFxChain,
 } from "../audioGroups";
 import { clampNativeMediaVolume } from "../audioGain";
 import { quantizeTimeToFrame } from "../inline-scripts/parityContract";
@@ -381,7 +382,7 @@ function pageAnimationsForOnePass(): () => Animation[] {
   return () => (list ??= document.getAnimations());
 }
 
-// A `<video>` joins only for a gain `el.volume` cannot express: capture is a one-way door.
+// A `<video>` joins only for a gain `el.volume` cannot express or a root master chain: capture is a one-way door.
 const joinsWebAudio = (el: Element): el is HTMLMediaElement =>
   isAudioElement(el) ||
   (isVideoElement(el) &&
@@ -391,6 +392,7 @@ const joinsWebAudio = (el: Element): el is HTMLMediaElement =>
       fxChain: el.getAttribute("data-fx-chain"),
       automation: el.getAttribute("data-automation"),
       audioGroup: el.getAttribute("data-audio-group"),
+      masterChain: readMasterFxChain(el.ownerDocument),
     }));
 const WEB_AUDIO_MEDIA = "audio[data-start], video[data-start]";
 const webAudioMediaIn = (root: ParentNode): HTMLMediaElement[] =>
