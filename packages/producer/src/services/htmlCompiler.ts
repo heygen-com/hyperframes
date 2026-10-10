@@ -40,10 +40,10 @@ import { gsapCdnDist } from "@hyperframes/core/gsap-cdn";
 import {
   assignBundledRuntimeCompositionIds,
   assignMediaRenderIds,
-  type BundledHostCompositionIdentity,
   buildVariablesByCompScript,
   inlineSubCompositions as inlineSubCompositionsShared,
-  ensureExternalLinkTag,
+  emitHeadAssets,
+  HEAD_HOST_ATTR,
   ensureExternalScriptTag,
   deferScriptsUntilFonts,
   emitMountedModuleScripts,
@@ -52,6 +52,7 @@ import {
   emitRootCompositionVariableStyles,
   readDeclaredDefaults,
   parseHostVariableValues,
+  adjacentStyleGroups,
   headStyleRuns,
   inlineScriptRuns,
   parsesAsScript,
@@ -844,55 +845,6 @@ function promoteCssImportsToLinkTags(html: string): string {
   return document.toString();
 }
 
-class ProducerHostIdentityMap extends Map<Element, BundledHostCompositionIdentity> {
-  readonly #document: Document;
-  readonly #lateInstanceByCompositionId = new Map<string, number>();
-
-  constructor(document: Document, initialHosts: Element[]) {
-    super(assignBundledRuntimeCompositionIds(initialHosts));
-    this.#document = document;
-  }
-
-  override get(host: Element): BundledHostCompositionIdentity | undefined {
-    const existing = super.get(host);
-    if (existing) return existing;
-
-    // The shared inliner discovers nested hosts after the producer's initial
-    // DOM scan. Assign those late hosts on first use so their scope and
-    // variables key are fixed before any content is processed.
-    const authoredCompositionId =
-      (
-        host.getAttribute("data-hf-original-composition-id") ||
-        host.getAttribute("data-composition-id") ||
-        ""
-      ).trim() || null;
-    if (!authoredCompositionId) {
-      const identity = { authoredCompositionId: null, runtimeCompositionId: null };
-      this.set(host, identity);
-      return identity;
-    }
-
-    let instanceIndex = this.#lateInstanceByCompositionId.get(authoredCompositionId) || 0;
-    let runtimeCompositionId: string;
-    do {
-      instanceIndex += 1;
-      runtimeCompositionId = `${authoredCompositionId}__hf${instanceIndex}`;
-    } while (
-      Array.from(this.#document.querySelectorAll("[data-composition-id]")).some(
-        (element) =>
-          element !== host && element.getAttribute("data-composition-id") === runtimeCompositionId,
-      )
-    );
-    this.#lateInstanceByCompositionId.set(authoredCompositionId, instanceIndex);
-
-    host.setAttribute("data-hf-original-composition-id", authoredCompositionId);
-    host.setAttribute("data-composition-id", runtimeCompositionId);
-    const identity = { authoredCompositionId, runtimeCompositionId };
-    this.set(host, identity);
-    return identity;
-  }
-}
-
 /**
  * Merge each run of adjacent same-condition `<head>` `<style>` blocks into one, `@import`
  * rules at its top, and merge each run of adjacent inline `<body>` `<script>` blocks
@@ -911,7 +863,11 @@ function coalesceHeadStylesAndBodyScripts(html: string): string {
 
   const styleEls = head ? Array.from(head.querySelectorAll("style")) : [];
   const importRe = /@import\s+url\([^)]*\)\s*;|@import\s+["'][^"']+["']\s*;/gi;
-  for (const run of styleEls.length > 1 ? headStyleRuns(styleEls) : []) {
+  const runs =
+    styleEls.length > 1
+      ? adjacentStyleGroups(styleEls).flatMap((group) => headStyleRuns(group))
+      : [];
+  for (const run of runs) {
     const imports: string[] = [];
     const cssParts: string[] = [];
     const seenImports = new Set<string>();
@@ -992,8 +948,8 @@ function inlineSubCompositions(
 
   // Assign per-instance runtime composition ids before each host is inlined,
   // mirroring the preview bundler. Initial hosts are assigned as one pre-pass;
-  // hosts discovered by the shared inliner's queue are assigned lazily by the
-  // map above. When the same sub-composition (same authored
+  // hosts discovered by the shared inliner's queue are assigned a level at a time by the
+  // same identity map. When the same sub-composition (same authored
   // data-composition-id) is mounted more than once — the reusable-template
   // pattern from issue #2064 — each host is rewritten to a unique runtime id
   // (`card__hf1`, `card__hf2`). Without this, every instance shares one
@@ -1001,10 +957,7 @@ function inlineSubCompositions(
   // data-variable-values clobbers the earlier ones and all-but-one instance
   // renders blank. #2066 fixed the single-instance case but left this
   // divergence (snapshot/preview correct, render wrong).
-  const hostIdentityByElement = new ProducerHostIdentityMap(
-    document as unknown as Document,
-    hosts as unknown as Element[],
-  );
+  const hostIdentityByElement = assignBundledRuntimeCompositionIds(document as unknown as Document);
 
   const result = inlineSubCompositionsShared(
     document as unknown as Document,
@@ -1070,13 +1023,23 @@ function inlineSubCompositions(
     }
   }
 
-  if (head) for (const link of result.externalLinks) ensureExternalLinkTag(document, link);
-
-  // Append collected styles to <head>
+  // Tagged with the host's runtime id: page template hosts mount at runtime and order around these.
+  const tagHost = (el: Element, host: Element) => {
+    const id = host.getAttribute("data-composition-id");
+    if (id) el.setAttribute(HEAD_HOST_ATTR, id);
+  };
   if (head) {
-    for (const style of styleElementsFor(document, result.styles, (css) => css.join("\n\n"))) {
-      head.appendChild(style);
-    }
+    emitHeadAssets(
+      document as unknown as Document,
+      result.headAssets,
+      (_, styles, host) => {
+        for (const style of styleElementsFor(document, styles, (css) => css.join("\n\n"))) {
+          tagHost(style, host);
+          head.appendChild(style);
+        }
+      },
+      tagHost,
+    );
   }
 
   // CDN and integrity-pinned scripts go first so plugins (e.g. TextPlugin,

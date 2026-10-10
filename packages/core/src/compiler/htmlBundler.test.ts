@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { mkdtempSync, writeFileSync, mkdirSync, symlinkSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, mkdirSync, symlinkSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseHTML } from "linkedom";
@@ -15,6 +15,7 @@ import { resetUnknownEnumWarnings } from "../runtime/getVariables";
 import { sanitizeCssValue } from "../runtime/applyVariableBindings";
 import { getHyperframeRuntimeScript } from "../generated/runtime-inline";
 import { ensureHfIds } from "../parsers/hfIds";
+import { nestedCompositionPathFixture } from "./nestedCompositionPath.testFixture";
 import { AFTER_FONTS_SCRIPT_TYPE, AFTER_FONTS_SCRIPTS } from "./scriptRuns";
 
 function makeTempProject(files: Record<string, string>): string {
@@ -86,6 +87,16 @@ function makeSymlinkProject(
 }
 
 describe("bundleToSingleHtml", () => {
+  it("matches runtime root-relative child paths from a nested composition directory", async () => {
+    const dir = makeTempProject(nestedCompositionPathFixture);
+    try {
+      const { document } = parseHTML(await bundleToSingleHtml(dir));
+      expect(document.querySelector("[data-proof]")?.textContent).toBe("Project-root card");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("re-encodes physical directories when rebasing stylesheet and composition asset URLs", async () => {
     const dir = makeTempProject({
       "index.html":
@@ -104,6 +115,24 @@ describe("bundleToSingleHtml", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it.each(["file", "template"])(
+    "keeps %s mount ownership in compiled output only",
+    async (kind) => {
+      const index = `<html><body><div data-composition-id="main"><div id="host" data-composition-id="card" ${kind === "file" ? 'data-composition-src="card.html"' : ""}></div></div>${kind === "template" ? '<template id="card-template"><div data-composition-id="inner"><p>Card</p></div></template>' : ""}</body></html>`;
+      const dir = makeTempProject({
+        "index.html": index,
+        "card.html": '<html><body><div data-composition-id="inner"><p>Card</p></div></body></html>',
+      });
+      try {
+        const { document } = parseHTML(await bundleToSingleHtml(dir));
+        expect(document.getElementById("host")?.hasAttribute("data-hf-variable-host")).toBe(true);
+        expect(readFileSync(join(dir, "index.html"), "utf8")).toBe(index);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("resolves encoded URL filenames once across asset, stylesheet and script consumers", async () => {
     const dir = makeTempProject({
@@ -3184,8 +3213,9 @@ describe("bundleToSingleHtml sceneParts", () => {
 
   it("tags each top-level scene's host, styles and scripts, with nested scenes in their parent's parts", async () => {
     const doc = parseHTML(await bundleToSingleHtml(film(), { sceneParts: true })).document;
-    // The nested scene is reached after b, so a's parts come in two runs around b's.
-    expect(partsOf(doc, "a").sort()).toEqual(["div", "script", "script", "style", "style"]);
+    // Styles follow host document order, so a's and its nested scene's merge into one run; scripts
+    // keep inlining order, where the nested scene is reached after b, so a's come in two runs.
+    expect(partsOf(doc, "a").sort()).toEqual(["div", "script", "script", "style"]);
     expect(partsOf(doc, "b").sort()).toEqual(["div", "script", "style"]);
     expect(partsOf(doc, "n")).toEqual([]);
     const textOf = (selector: string) =>

@@ -1,8 +1,15 @@
+import { VARIABLE_HOST_ATTR } from "../runtime/variableScope";
+import {
+  assignCompositionHostIds,
+  hostCompositionIdentity,
+  type HostCompositionIdentity,
+} from "../runtime/compositionHostIds";
 import {
   compositionStyle,
   cssStyleMergeKey,
   deferScriptsUntilFonts,
   UNCONDITIONAL_CSS_KEY,
+  adjacentStyleGroups,
   headStyleRuns,
   INLINED_FILE_ATTR,
   inlineScriptRuns,
@@ -61,9 +68,10 @@ import { validateHyperframeHtmlContract } from "./staticGuard";
 import { getHyperframeRuntimeScript } from "../generated/runtime-inline";
 import { readDeclaredDefaults } from "../runtime/getVariables";
 import {
-  ensureExternalLinkTag,
+  emitHeadAssets,
   inlineSubCompositions,
   refuseSwapsReachedByRootScripts,
+  type HeadAsset,
 } from "./inlineSubCompositions";
 import { isSafePath, resolveWithinProject } from "../safePath.js";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
@@ -492,38 +500,15 @@ function rewriteCssUrlsWithInlinedAssets(
 }
 
 /**
- * Selectors built here are serialized inside a `<style>` element, which is a RAW
- * TEXT element: the tokenizer ends it at the first `</style` regardless of CSS
- * context, and the serializer does not escape its content. Backslash and quote
- * escaping keeps the selector's own string grammar valid; it does nothing about
- * element termination, so `<` needs the CSS hex escape too. `\3c ` is legal
- * wherever a string is, and matches the same attribute value, so selectors keep
- * matching. The trailing space terminates the escape.
+ * Selectors land in a raw-text `<style>`, which ends at the first `</style` whatever the CSS context,
+ * so `<` also takes the CSS hex escape `\3c ` (same value; the trailing space ends the escape).
  */
 function cssAttributeSelector(attr: string, value: string): string {
   const escaped = value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/</g, "\\3c ");
   return `[${attr}="${escaped}"]`;
 }
 
-function uniqueCompositionId(baseId: string, index: number): string {
-  return `${baseId}__hf${index}`;
-}
-
-export type BundledHostCompositionIdentity = {
-  authoredCompositionId: string | null;
-  runtimeCompositionId: string | null;
-};
-
-function getBundledHostCompositionIdentity(host: Element): BundledHostCompositionIdentity {
-  const currentCompositionId = (host.getAttribute("data-composition-id") || "").trim() || null;
-  const authoredCompositionId =
-    (host.getAttribute("data-hf-original-composition-id") || currentCompositionId || "").trim() ||
-    null;
-  return {
-    authoredCompositionId,
-    runtimeCompositionId: currentCompositionId,
-  };
-}
+export type BundledHostCompositionIdentity = HostCompositionIdentity;
 
 function getBundledTrackedCompositionHosts(document: Document): Element[] {
   const hosts = Array.from(
@@ -531,74 +516,47 @@ function getBundledTrackedCompositionHosts(document: Document): Element[] {
   );
   return hosts.filter((host) => {
     if (host.hasAttribute("data-composition-src")) return true;
-    const authoredCompositionId = getBundledHostCompositionIdentity(host).authoredCompositionId;
+    const authoredCompositionId = hostCompositionIdentity(host).authoredCompositionId;
     if (!authoredCompositionId) return false;
     return !!document.getElementById(`${authoredCompositionId}-template`);
   });
 }
 
-function shouldAssignBundledRuntimeCompositionId(host: Element, document: Document): boolean {
+function shouldAssignBundledRuntimeCompositionId(host: Element): boolean {
   if (host.hasAttribute("data-composition-src")) return true;
-  const authoredCompositionId = getBundledHostCompositionIdentity(host).authoredCompositionId;
+  const authoredCompositionId = hostCompositionIdentity(host).authoredCompositionId;
   if (!authoredCompositionId) return false;
-  if (!document.getElementById(`${authoredCompositionId}-template`)) return false;
+  if (!host.ownerDocument.getElementById(`${authoredCompositionId}-template`)) return false;
   return host.children.length === 0;
 }
 
-function countBundledAuthoredCompositionIds(hosts: Element[]): Map<string, number> {
-  const counts = new Map<string, number>();
-  for (const host of hosts) {
-    const authoredCompositionId = getBundledHostCompositionIdentity(host).authoredCompositionId;
-    if (!authoredCompositionId) continue;
-    counts.set(authoredCompositionId, (counts.get(authoredCompositionId) || 0) + 1);
+/** A miss assigns every host the map lacks: the inliner's next breadth-first level, as the loader sees it. */
+class BundledHostIdentityMap extends Map<Element, BundledHostCompositionIdentity> {
+  override get(host: Element): BundledHostCompositionIdentity | undefined {
+    if (!this.has(host))
+      assignBundledLevel(getBundledTrackedCompositionHosts(host.ownerDocument), this);
+    if (!this.has(host)) this.set(host, hostCompositionIdentity(host));
+    return super.get(host);
   }
-  return counts;
 }
 
-// fallow-ignore-next-line complexity
+function assignBundledLevel(
+  hosts: readonly Element[],
+  identities: Map<Element, BundledHostCompositionIdentity>,
+): void {
+  const pending = hosts.filter(
+    (host) => !identities.has(host) && shouldAssignBundledRuntimeCompositionId(host),
+  );
+  assignCompositionHostIds(pending, identities);
+  for (const host of hosts)
+    if (!identities.has(host)) identities.set(host, hostCompositionIdentity(host));
+}
+
 export function assignBundledRuntimeCompositionIds(
-  hosts: Element[],
-  counts: Map<string, number> = countBundledAuthoredCompositionIds(hosts),
+  document: Document,
 ): Map<Element, BundledHostCompositionIdentity> {
-  const instanceByCompositionId = new Map<string, number>();
-  const identities = new Map<Element, BundledHostCompositionIdentity>();
-
-  for (const host of hosts) {
-    const { authoredCompositionId, runtimeCompositionId: previousRuntimeCompositionId } =
-      getBundledHostCompositionIdentity(host);
-    const shouldAssign = shouldAssignBundledRuntimeCompositionId(host, host.ownerDocument);
-    if (!authoredCompositionId) {
-      identities.set(host, {
-        authoredCompositionId: null,
-        runtimeCompositionId: previousRuntimeCompositionId,
-      });
-      continue;
-    }
-
-    const duplicateInstance = (counts.get(authoredCompositionId) || 0) > 1;
-    let runtimeCompositionId = previousRuntimeCompositionId || authoredCompositionId;
-    if (shouldAssign) {
-      const instanceIndex = duplicateInstance
-        ? (instanceByCompositionId.get(authoredCompositionId) || 0) + 1
-        : 0;
-      if (duplicateInstance) {
-        instanceByCompositionId.set(authoredCompositionId, instanceIndex);
-        host.setAttribute("data-hf-original-composition-id", authoredCompositionId);
-      } else {
-        host.removeAttribute("data-hf-original-composition-id");
-      }
-
-      runtimeCompositionId = duplicateInstance
-        ? uniqueCompositionId(authoredCompositionId, instanceIndex)
-        : authoredCompositionId;
-      host.setAttribute("data-composition-id", runtimeCompositionId);
-    }
-    identities.set(host, {
-      authoredCompositionId,
-      runtimeCompositionId,
-    });
-  }
-
+  const identities = new BundledHostIdentityMap();
+  assignBundledLevel(getBundledTrackedCompositionHosts(document), identities);
   return identities;
 }
 
@@ -698,26 +656,26 @@ function joinCssHoistingImports(sheets: string[]): string {
   return [...imports, ...cssParts].join("\n\n").trim();
 }
 
-// A render joins every head style into one sheet at the first one's place, each distinct @import first.
+// A render joins each group of neighbouring head styles into one sheet, each distinct @import first.
 function placeSceneStylesLikeRender(document: Document): void {
-  const styles = [...document.querySelectorAll("head style")];
-  const imports = new Set<string>();
-  for (const el of styles) {
-    el.textContent = (el.textContent || "")
-      .replace(CSS_IMPORT_RE, (match) => (imports.add(match.trim()), ""))
-      .trim();
+  for (const styles of adjacentStyleGroups([...document.querySelectorAll("head style")])) {
+    const imports = new Set<string>();
+    for (const el of styles) {
+      el.textContent = (el.textContent || "")
+        .replace(CSS_IMPORT_RE, (match) => (imports.add(match.trim()), ""))
+        .trim();
+    }
+    if (imports.size === 0) continue;
+    const hoisted = [...imports].join("\n\n");
+    const first = styles[0]!;
+    if (!first.hasAttribute(SCENE_PART_ATTR)) {
+      first.textContent = [hoisted, first.textContent].filter(Boolean).join("\n\n");
+      continue;
+    }
+    const holder = document.createElement("style");
+    holder.textContent = hoisted;
+    first.before(holder);
   }
-  styles.slice(1).reduce((previous, el) => (previous.after(el), el), styles[0]!);
-  if (imports.size === 0) return;
-  const hoisted = [...imports].join("\n\n");
-  const first = styles[0]!;
-  if (!first.hasAttribute(SCENE_PART_ATTR)) {
-    first.textContent = [hoisted, first.textContent].filter(Boolean).join("\n\n");
-    return;
-  }
-  const holder = document.createElement("style");
-  holder.textContent = hoisted;
-  first.before(holder);
 }
 
 function isAlwaysAppliedStyle(el: Element): boolean {
@@ -735,7 +693,11 @@ function pushRun<T>(runs: PartRun<T>[], scene: string | undefined, chunk: T): vo
 function coalesceHeadStylesAndBodyScripts(document: Document): void {
   const allHeadStyles = [...document.querySelectorAll("head style")];
   const isScenePart = (el: Element) => el.hasAttribute(SCENE_PART_ATTR);
-  for (const run of allHeadStyles.length > 1 ? headStyleRuns(allHeadStyles, isScenePart) : []) {
+  const runs =
+    allHeadStyles.length > 1
+      ? adjacentStyleGroups(allHeadStyles).flatMap((group) => headStyleRuns(group, isScenePart))
+      : [];
+  for (const run of runs) {
     const merged = joinCssHoistingImports(run.map((el) => el.textContent || ""));
     if (!merged) continue;
     run[0]!.textContent = merged;
@@ -1088,7 +1050,7 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
 
   // Inline sub-compositions (via shared function)
   const trackedCompositionHosts = getBundledTrackedCompositionHosts(document);
-  const hostIdentityByElement = assignBundledRuntimeCompositionIds(trackedCompositionHosts);
+  const hostIdentityByElement = assignBundledRuntimeCompositionIds(document);
   const subCompositionHosts = trackedCompositionHosts.filter((host) =>
     host.hasAttribute("data-composition-src"),
   );
@@ -1123,14 +1085,10 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     },
   });
   refuseSwapsReachedByRootScripts(document, rootScripts);
-  const styleRuns: PartRun<CompositionStyle>[] = [];
-  subCompResult.styles.forEach((style, i) =>
-    pushRun(styleRuns, subCompResult.styleScenes[i], style),
-  );
+  const headAssets: HeadAsset[] = [...subCompResult.headAssets];
   const scriptRuns: PartRun<DeferredScriptChunk>[] = [];
   const compStyleChunks: CompositionStyle[] = [];
   const compScriptChunks: DeferredScriptChunk[] = [];
-  const compExternalLinks = [...subCompResult.externalLinks];
   const compVariablesByComp: Record<string, Record<string, unknown>> = {
     ...subCompResult.variablesByComp,
   };
@@ -1183,6 +1141,8 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     const templateHtml = templateEl.innerHTML || "";
 
     for (const host of hosts) {
+      const firstStyle = compStyleChunks.length;
+      host.setAttribute(VARIABLE_HOST_ATTR, "");
       const hostIdentity = hostIdentityByElement.get(host);
       const runtimeCompId = hostIdentity?.runtimeCompositionId || compId;
       const innerDoc = parseHTMLContent(templateHtml);
@@ -1285,6 +1245,7 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
       }
       for (const el of plan.inertScriptsOutsideRoot)
         host.insertAdjacentHTML("beforeend", el.outerHTML);
+      for (const style of compStyleChunks.splice(firstStyle)) headAssets.push({ host, style });
     }
 
     // Remove the template element from the document
@@ -1307,21 +1268,19 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     el.textContent = js;
   }
 
-  for (const link of compExternalLinks) ensureExternalLinkTag(document, link);
-
-  for (const css of compStyleChunks) pushRun(styleRuns, undefined, css);
-  for (const chunk of compScriptChunks) pushRun(scriptRuns, undefined, chunk);
-  const variablesByCompScript = buildVariablesByCompScript(compVariablesByComp);
-  if (variablesByCompScript) {
-    if (scriptRuns[0] && !scriptRuns[0].scene) scriptRuns[0].chunks.unshift(variablesByCompScript);
-    else scriptRuns.unshift({ chunks: [variablesByCompScript] });
-  }
-  for (const { scene, chunks } of styleRuns) {
+  const appendStyles = (scene: string | undefined, chunks: CompositionStyle[]) => {
     const join = scene ? joinCssHoistingImports : (css: string[]) => css.join("\n\n");
     for (const style of styleElementsFor(document, chunks, join)) {
       if (scene) style.setAttribute(SCENE_PART_ATTR, scene);
       document.head.appendChild(style);
     }
+  };
+  emitHeadAssets(document, headAssets, appendStyles);
+  for (const chunk of compScriptChunks) pushRun(scriptRuns, undefined, chunk);
+  const variablesByCompScript = buildVariablesByCompScript(compVariablesByComp);
+  if (variablesByCompScript) {
+    if (scriptRuns[0] && !scriptRuns[0].scene) scriptRuns[0].chunks.unshift(variablesByCompScript);
+    else scriptRuns.unshift({ chunks: [variablesByCompScript] });
   }
   for (const { scene, chunks } of scriptRuns) {
     const texts = chunks.map((chunk) => (typeof chunk === "string" ? chunk : chunk()));

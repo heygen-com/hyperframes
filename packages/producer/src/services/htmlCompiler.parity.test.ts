@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
@@ -11,8 +11,11 @@ import {
 // Deep import: the mount path is not part of core's published export map (it is
 // bundled into the runtime IIFE, not imported by consumers). Same shape as
 // engine/src/services/videoFrameExtractor.test.ts reaching into core's runtime.
+import { nestedCompositionPathFixture } from "../../../core/src/compiler/nestedCompositionPath.testFixture.js";
 import { loadCompositions } from "../../../core/src/runtime/compositionLoader.js";
+import { VARIABLE_HOST_ATTR } from "../../../core/src/runtime/variableScope.js";
 import { compileForRender } from "./htmlCompiler.js";
+import { createFileServer } from "@hyperframes/engine";
 import { getVerifiedHyperframeRuntimeSource } from "./hyperframeRuntimeLoader.js";
 
 vi.mock("../utils/urlDownloader.js", async (importOriginal) => ({
@@ -76,7 +79,7 @@ type ParityContract = ReturnType<typeof extractCompiledHtmlParityContract>;
 
 /**
  * Mount the project the way the player does — parse `index.html` into the live
- * document, serve its sub-compositions over a stubbed `fetch`, and let the
+ * document, serve its sub-compositions through the capture file server, and let the
  * runtime assemble them — then read the same contract off the resulting DOM.
  *
  * This is the third assembly path. Both compiler arms below run the same code
@@ -84,28 +87,39 @@ type ParityContract = ReturnType<typeof extractCompiledHtmlParityContract>;
  * composition losing every `<style>` authored beside its root) stayed invisible
  * to a green suite.
  */
-async function mountContract(dir: string, indexHtml: string): Promise<ParityContract> {
+async function mountContract(
+  dir: string,
+  indexHtml: string,
+  expectedRefusal?: string,
+): Promise<ParityContract> {
   const parsed = new DOMParser().parseFromString(indexHtml, "text/html");
   document.head.innerHTML = parsed.head.innerHTML;
   document.body.innerHTML = parsed.body.innerHTML;
-  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) =>
-    Promise.resolve(new Response(readFileSync(join(dir, String(input)), "utf8"), { status: 200 })),
-  );
-  await loadCompositions({
-    injectedStyles: [],
-    injectedScripts: [],
-    injectedLinks: [],
-    parseDimensionPx: (value: string | null) => (value ? `${value}px` : null),
-    // A mount that fails is not a parity result. Surface it instead of
-    // comparing the contract of an empty host against a compiled one.
-    onDiagnostic: ({ code, details }) => {
-      throw new Error(`mount diagnostic ${code}: ${JSON.stringify(details)}`);
-    },
-  });
+  const server = await createFileServer({ projectDir: dir });
+  const base = document.createElement("base");
+  base.href = `${server.url}/`;
+  document.head.prepend(base);
+  try {
+    await loadCompositions({
+      injectedStyles: [],
+      injectedScripts: [],
+      injectedLinks: [],
+      parseDimensionPx: (value: string | null) => (value ? `${value}px` : null),
+      // A mount that fails is not a parity result. Surface it instead of
+      // comparing the contract of an empty host against a compiled one.
+      onDiagnostic: ({ code, details }) => {
+        if (expectedRefusal && details?.errorMessage === expectedRefusal) return;
+        throw new Error(`mount diagnostic ${code}: ${JSON.stringify(details)}`);
+      },
+    });
+  } finally {
+    base.remove();
+    server.close();
+  }
   return extractCompiledHtmlParityContract(`<!doctype html>${document.documentElement.outerHTML}`);
 }
 
-async function contracts(files: Record<string, string>) {
+async function contracts(files: Record<string, string>, expectedRefusal?: string) {
   const dir = project(files);
   const preview = await bundleToSingleHtml(dir);
   const render = await compileForRender(dir, join(dir, "index.html"), join(dir, ".downloads"), {
@@ -118,9 +132,11 @@ async function contracts(files: Record<string, string>) {
     true,
   );
   return {
+    dir,
+    html: { preview, render: servedRender },
     preview: extractCompiledHtmlParityContract(preview),
     render: extractCompiledHtmlParityContract(servedRender),
-    mount: await mountContract(dir, files["index.html"]!),
+    mount: await mountContract(dir, files["index.html"]!, expectedRefusal),
   };
 }
 
@@ -452,7 +468,186 @@ function assembledContract(contract: ParityContract) {
   return assembled;
 }
 
+const CARD_HOST =
+  '<div data-composition-id="card" data-composition-src="compositions/cards/card.html"></div>';
+const comp = (id: string, inner = "") =>
+  `<html><body><div data-composition-id="${id}">${inner}</div></body></html>`;
+/** The nested fixture (index > scene > card) with extra index hosts and scene copies. */
+const nested = (extraHosts: string, sceneCopies = 1, extraFiles: Record<string, string> = {}) => ({
+  ...nestedCompositionPathFixture,
+  "index.html": nestedCompositionPathFixture["index.html"]!.replace(
+    '<div data-composition-id="scene"',
+    `${extraHosts}<div data-composition-id="scene"`,
+  ),
+  "compositions/scene.html": comp("scene", CARD_HOST.repeat(sceneCopies)),
+  ...extraFiles,
+});
+
 describe("mount/compile assembly parity", () => {
+  it.each([
+    { name: "a free authored id", files: nested(""), ids: ["card"] },
+    { name: "an authored id collision", files: nested(CARD_HOST), ids: ["card", "card__hf1"] },
+    {
+      name: "a reserved suffix collision",
+      files: nested(CARD_HOST + CARD_HOST.replace('"card"', '"card__hf1"')),
+      ids: ["card", "card__hf1", "card__hf2"],
+    },
+    { name: "two copies inside one scene", files: nested("", 2), ids: ["card__hf1", "card__hf2"] },
+    {
+      name: "one card reused at two depths",
+      files: nested(
+        '<div data-composition-id="outer" data-composition-src="compositions/outer.html"></div>',
+        1,
+        {
+          "compositions/outer.html": comp(
+            "outer",
+            '<div data-composition-id="sub" data-composition-src="compositions/sub.html"></div>',
+          ),
+          "compositions/sub.html": comp("sub", CARD_HOST),
+        },
+      ),
+      ids: ["card__hf1", "card"],
+    },
+    {
+      name: "an anonymous host before a late card",
+      files: nested('<div data-composition-src="compositions/cards/card.html"></div>'),
+      ids: [null, "card__hf1"],
+    },
+    {
+      name: "an inline non-host element using the id",
+      files: nested('<div data-composition-id="card"></div>'),
+      ids: ["card__hf1"],
+    },
+    {
+      name: "a scene that includes itself through a ./ path",
+      files: {
+        ...nested(""),
+        "compositions/scene.html": comp(
+          "scene",
+          CARD_HOST +
+            '<div data-composition-id="scene" data-composition-src="./compositions/scene.html"></div>',
+        ),
+      },
+      ids: ["card"],
+      refusal: "circular composition reference",
+    },
+    {
+      name: "a late card whose id also names a root template",
+      files: nested(
+        '<template id="card-template"><div data-composition-id="card"><p>Template card</p></div></template>',
+        1,
+        {
+          "compositions/cards/card.html": `<html data-composition-variables='[{"id":"title","type":"string","label":"Title","default":"DEF"}]'><body><div data-composition-id="card"><p data-proof>Project-root card</p></div></body></html>`,
+        },
+      ),
+      ids: ["card"],
+      variables: { card: { title: "DEF" } },
+    },
+    {
+      name: "a root template host before a late card",
+      files: nested(
+        '<div data-composition-id="card"></div><template id="card-template"><div data-composition-id="card"><p data-proof>Project-root card</p></div></template>',
+      ),
+      ids: ["card", "card__hf1"],
+    },
+  ])(
+    "mounts nested project-root paths with $name identically on all three paths",
+    async ({ files, ids, refusal, variables }) => {
+      const result = await contracts(files, refusal);
+      expect(result.render).toEqual(result.preview);
+      expect(assembledContract(result.mount)).toEqual(assembledContract(result.preview));
+      const cards = [...document.querySelectorAll("[data-proof]")];
+      expect(cards.map((card) => card.textContent)).toEqual(ids.map(() => "Project-root card"));
+      const hostIds = cards.map((card) =>
+        card.closest(`[${VARIABLE_HOST_ATTR}]`)?.getAttribute("data-composition-id"),
+      );
+      expect(hostIds).toEqual(ids);
+      if (variables) {
+        const byComp = (window as Window & { __hfVariablesByComp?: unknown }).__hfVariablesByComp;
+        expect(byComp).toMatchObject(variables);
+      }
+    },
+  );
+
+  it("orders nested composition styles by host document order on all three paths", async () => {
+    // Same-named @keyframes are page-wide, so the last one in the head wins.
+    const comp = (id: string, inner: string, opacity: string) =>
+      `<html><body><div data-composition-id="${id}"><style>@keyframes pop { to { opacity: ${opacity}; } }</style>${inner}</div></body></html>`;
+    const host = (id: string) =>
+      `<div data-composition-id="${id}" data-composition-src="compositions/${id}.html"></div>`;
+    const result = await contracts({
+      "index.html": shell(
+        `<main data-composition-id="main" data-width="320" data-height="180">${host("s1")}${host("s2")}</main>`,
+      ),
+      "compositions/s1.html": comp("s1", host("card"), "0.1"),
+      "compositions/card.html": comp("card", "", "0.2"),
+      "compositions/s2.html": comp("s2", "", "0.3"),
+    });
+    const keyframes = (root: ParentNode) =>
+      [...root.querySelectorAll("style")].flatMap((style) =>
+        [
+          ...(style.textContent ?? "").matchAll(/@keyframes\s+pop\s*\{[^}]*opacity:\s*([\d.]+)/g),
+        ].map((match) => match[1]),
+      );
+    const parsed = (html: string) => new DOMParser().parseFromString(html, "text/html");
+    const order = ["0.1", "0.2", "0.3"];
+    expect(keyframes(parsed(result.html.preview))).toEqual(order);
+    expect(keyframes(parsed(result.html.render))).toEqual(order);
+    expect(keyframes(document)).toEqual(order);
+  });
+
+  const linked = (id: string, inner = "") =>
+    `<html><head><link rel="stylesheet" href="https://cdn.example/${id}.css"><style>.x { --order: ${id}; }</style></head><body><div data-composition-id="${id}">${inner}</div></body></html>`;
+  const external = (id: string) =>
+    `<div data-composition-id="${id}" data-composition-src="compositions/${id}.html"></div>`;
+  it.each([
+    {
+      name: "nested links",
+      body: external("s1") + external("s2"),
+      files: {
+        "compositions/s1.html": linked("s1", external("card")),
+        "compositions/card.html": linked("card"),
+        "compositions/s2.html": linked("s2"),
+      },
+      order: ["link:s1", "style:s1", "link:card", "style:card", "link:s2", "style:s2"],
+    },
+    {
+      name: "each link beside its own styles",
+      body: external("a") + external("b"),
+      files: { "compositions/a.html": linked("a"), "compositions/b.html": linked("b") },
+      order: ["link:a", "style:a", "link:b", "style:b"],
+    },
+    {
+      name: "a page template host before an external host",
+      body:
+        '<div data-composition-id="tpl"></div><template id="tpl-template"><div data-composition-id="tpl"><style>.x { --order: tpl; }</style></div></template>' +
+        external("ext"),
+      files: { "compositions/ext.html": linked("ext") },
+      order: ["style:tpl", "link:ext", "style:ext"],
+    },
+  ])("orders head assets for $name by host on all three paths", async ({ body, files, order }) => {
+    const result = await contracts({
+      "index.html": shell(
+        `<main data-composition-id="main" data-width="320" data-height="180">${body}</main>`,
+      ),
+      ...files,
+    });
+    const headOrder = (root: ParentNode) =>
+      [...root.querySelectorAll('link[rel="stylesheet"], style')].flatMap((el) =>
+        el.tagName === "LINK"
+          ? [`link:${(el.getAttribute("href") ?? "").match(/([\w-]+)\.css$/)?.[1]}`]
+          : [...(el.textContent ?? "").matchAll(/--order:\s*([\w-]+)/g)].map(
+              (m) => `style:${m[1]}`,
+            ),
+      );
+    const parsed = (html: string) => new DOMParser().parseFromString(html, "text/html");
+    expect(headOrder(parsed(result.html.preview))).toEqual(order);
+    expect(headOrder(document)).toEqual(order);
+    // Render leaves page template hosts to its runtime, so read its head after that runtime ran.
+    await mountContract(result.dir, result.html.render);
+    expect(headOrder(document)).toEqual(order);
+  });
+
   it("keeps a fixture set that still covers the shape the mount path used to drop", () => {
     expect(MOUNT_PARITY_FIXTURES.length).toBeGreaterThan(0);
     const siblingShaped = MOUNT_PARITY_FIXTURES.filter((fixture) =>

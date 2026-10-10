@@ -27,7 +27,7 @@
  * values.
  */
 
-import { readVariablesForElement } from "./variableScope";
+import { readVariablesForElement, variableScopeOf } from "./variableScope";
 import {
   isScalarVariableValue as isScalar,
   isSafeMediaUrl,
@@ -88,7 +88,7 @@ function cssValueFor(value: unknown): string | null {
 type ScopeValuesCache = Map<Element | null, Record<string, unknown>>;
 
 function valuesForElement(el: Element, cache: ScopeValuesCache): Record<string, unknown> {
-  const scope = el.closest("[data-composition-id]");
+  const scope = variableScopeOf(el);
   const cached = cache.get(scope);
   if (cached) return cached;
   const values = readVariablesForElement(el);

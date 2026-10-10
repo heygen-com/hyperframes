@@ -1,4 +1,4 @@
-import { isJavaScriptType } from "./compositionAssembly";
+import { HEAD_HOST_ATTR, isJavaScriptType } from "./compositionAssembly";
 
 export interface InlineScriptRun {
   members: Element[];
@@ -132,11 +132,27 @@ function linkDedupeKey(el: Element): string {
   ]);
 }
 
-export function hasSameLink(scope: ParentNode, link: Element): boolean {
+export function findSameLink(scope: ParentNode, link: Element): Element | undefined {
   const key = linkDedupeKey(link);
-  return [...scope.querySelectorAll("link[href]")].some(
+  return [...scope.querySelectorAll("link[href]")].find(
     (other) => !other.closest("noscript") && linkDedupeKey(other) === key,
   );
+}
+
+export function hasSameLink(scope: ParentNode, link: Element): boolean {
+  return findSameLink(scope, link) !== undefined;
+}
+
+export function adjacentStyleGroups(styles: readonly Element[]): Element[][] {
+  const groups: Element[][] = [];
+  for (const el of styles) {
+    const last = groups.at(-1);
+    const previous = last?.at(-1);
+    const sameHost = previous?.getAttribute(HEAD_HOST_ATTR) === el.getAttribute(HEAD_HOST_ATTR);
+    if (last && el.previousElementSibling === previous && sameHost) last.push(el);
+    else groups.push([el]);
+  }
+  return groups;
 }
 
 /** Groups head styles into runs of adjacent styles with one merge key, so merging a run never reorders rules. */

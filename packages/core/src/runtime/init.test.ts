@@ -1274,14 +1274,12 @@ describe("initSandboxRuntimeModular", () => {
     child.setAttribute("data-duration", "3");
     root.appendChild(child);
 
-    const template = document.createElement("template");
-    template.id = "sub-template";
-    template.innerHTML = `
-      <div data-composition-id="sub" data-width="1920" data-height="1080">
-        <div id="hold-marker">HOLD ME</div>
-      </div>
-    `;
-    document.body.appendChild(template);
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        `<html><body><div data-composition-id="sub" data-width="1920" data-height="1080"><div id="hold-marker">HOLD ME</div></div></body></html>`,
+        { status: 200 },
+      ),
+    );
 
     window.__timelines = {
       main: createMockTimeline(3),

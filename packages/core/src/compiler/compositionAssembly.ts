@@ -269,6 +269,50 @@ export function planCompositionAssembly<
 
 export type NestedHostSkipReason = "circular composition reference" | "nesting depth exceeded";
 
+/** On a compiled head asset: the runtime id of the host it belongs to, so a runtime mount can order around it. */
+export const HEAD_HOST_ATTR = "data-hf-head-host";
+
+/** The one head order for sub-composition assets: host document position, ancestors first. */
+export function hostPositions(root: ParentNode): (host: Element) => number {
+  // Indexed, not compareDocumentPosition: linkedom answers that wrongly across nesting levels.
+  const position = new Map(Array.from(root.querySelectorAll("*"), (el, i) => [el, i] as const));
+  return (host) => position.get(host) ?? -1;
+}
+
+export function sortByHostOrder<T extends { host: Element }>(
+  root: ParentNode,
+  assets: readonly T[],
+): T[] {
+  const at = hostPositions(root);
+  return assets
+    .map((asset, index) => ({ asset, index }))
+    .sort((a, b) => at(a.asset.host) - at(b.asset.host) || a.index - b.index)
+    .map(({ asset }) => asset);
+}
+
+/** One file, however its src is spelled: resolved from the project root, without query or hash. */
+function compositionSourceKey(src: string): string {
+  try {
+    const url = new URL(src, "https://project.invalid/");
+    url.search = "";
+    url.hash = "";
+    return url.href;
+  } catch {
+    return src;
+  }
+}
+
+export function nestedCompositionRefusal(
+  src: string,
+  ancestry: readonly string[],
+): NestedHostSkipReason | null {
+  const key = compositionSourceKey(src);
+  if (ancestry.some((entry) => compositionSourceKey(entry) === key))
+    return "circular composition reference";
+  if (ancestry.length >= MAX_SUB_COMPOSITION_DEPTH) return "nesting depth exceeded";
+  return null;
+}
+
 export interface NestedCompositionHost<TElement> {
   host: TElement;
   src: string;
@@ -296,12 +340,9 @@ export function enumerateNestedCompositionHosts<TElement extends AssemblyAttribu
   for (const nestedHost of assembledHost.querySelectorAll(COMPOSITION_HOST_SELECTOR)) {
     const src = nestedHost.getAttribute(COMPOSITION_SRC_ATTR);
     if (!src) continue;
-    if (ancestry.includes(src)) {
-      skipped.push({ src, reason: "circular composition reference" });
-      continue;
-    }
-    if (ancestry.length >= MAX_SUB_COMPOSITION_DEPTH) {
-      skipped.push({ src, reason: "nesting depth exceeded" });
+    const reason = nestedCompositionRefusal(src, ancestry);
+    if (reason) {
+      skipped.push({ src, reason });
       continue;
     }
     hosts.push({ host: nestedHost, src });

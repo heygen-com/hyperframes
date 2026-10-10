@@ -1,3 +1,4 @@
+import { VARIABLE_HOST_ATTR } from "../runtime/variableScope";
 import { SVG_REFERENCE_ALIASES_ATTR, readSvgReferenceAliases } from "./svgSelectorAliases";
 import { readExternalScriptAttributes, type ExternalScriptAttributes } from "./externalScripts";
 import { parseImportMap, type ImportMap } from "./importMaps";
@@ -44,6 +45,7 @@ import {
   enumerateNestedCompositionHosts,
   planCompositionAssembly,
   extractedCompositionAssets,
+  sortByHostOrder,
 } from "./compositionAssembly";
 import { SCENE_NO_SWAP_ATTR, SCENE_PART_ATTR } from "../sceneParts";
 
@@ -252,7 +254,7 @@ export interface ExternalLink {
 }
 
 /** Appends a hoisted link unless the document already has a live one it would duplicate. */
-export function ensureExternalLinkTag(doc: Document, link: ExternalLink): void {
+export function ensureExternalLinkTag(doc: Document, link: ExternalLink): Element | undefined {
   const el = doc.createElement("link");
   el.setAttribute("rel", link.rel);
   el.setAttribute("href", link.href);
@@ -261,11 +263,51 @@ export function ensureExternalLinkTag(doc: Document, link: ExternalLink): void {
     if (value != null) el.setAttribute(name, value);
   }
   if (link.disabled) el.setAttribute("disabled", "");
-  if (!hasSameLink(doc, el)) doc.head.appendChild(el);
+  if (hasSameLink(doc, el)) return undefined;
+  doc.head.appendChild(el);
+  return el;
 }
+
+/** Writes sub-composition head assets in host document order: each host's links, then its styles. */
+export function emitHeadAssets(
+  document: Document,
+  assets: readonly HeadAsset[],
+  writeStyles: (scene: string | undefined, styles: CompositionStyle[], host: Element) => void,
+  /** Given, each host's styles are written as their own run, and each link is passed here. */
+  onLink?: (link: Element, host: Element) => void,
+): void {
+  let run: CompositionStyle[] = [];
+  let runScene: string | undefined;
+  let runHost: Element | undefined;
+  const flush = () => {
+    if (run.length && runHost) writeStyles(runScene, run, runHost);
+    run = [];
+  };
+  for (const asset of sortByHostOrder(document, assets)) {
+    if (asset.link) {
+      flush();
+      const link = ensureExternalLinkTag(document, asset.link);
+      if (link) onLink?.(link, asset.host);
+      continue;
+    }
+    if (asset.scene !== runScene || (onLink && asset.host !== runHost)) flush();
+    runScene = asset.scene;
+    runHost = asset.host;
+    run.push(asset.style);
+  }
+  flush();
+}
+
+/** A sub-composition's hoisted head link or style and the host it belongs to. */
+export type HeadAsset = { host: Element; scene?: string } & (
+  | { link: ExternalLink; style?: never }
+  | { style: CompositionStyle; link?: never }
+);
 
 export interface InlineSubCompositionsResult {
   styles: CompositionStyle[];
+  /** Links and styles with their hosts; emit through `sortByHostOrder`. */
+  headAssets: HeadAsset[];
   /** With `tagScenes`: the scene each entry of `styles` belongs to. */
   styleScenes: string[];
   scripts: string[];
@@ -335,6 +377,7 @@ export function inlineSubCompositions(
 
   const rootStyles = [...document.querySelectorAll("style")];
   const styles: CompositionStyle[] = [];
+  const headAssets: HeadAsset[] = [];
   const styleScenes: string[] = [];
   const scripts: string[] = [];
   const externalScriptSrcs: string[] = [];
@@ -487,7 +530,9 @@ export function inlineSubCompositions(
         const title = link.getAttribute("title") ?? undefined;
         const type = link.getAttribute("type") ?? undefined;
         const disabled = link.hasAttribute("disabled") ? true : undefined;
-        externalLinks.push({ href, rel, crossorigin, media, title, type, disabled });
+        const hoisted: ExternalLink = { href, rel, crossorigin, media, title, type, disabled };
+        externalLinks.push(hoisted);
+        headAssets.push({ host: hostEl, scene, link: hoisted });
       }
     }
 
@@ -497,7 +542,9 @@ export function inlineSubCompositions(
     const styleStart = styles.length;
     for (const styleEl of plan.styleSources) {
       if (cssStyleMergeKey(styleEl) === undefined) continue;
-      styles.push(compositionStyle(styleEl, scopeSubStyle(styleEl.textContent || "")));
+      const style = compositionStyle(styleEl, scopeSubStyle(styleEl.textContent || ""));
+      styles.push(style);
+      headAssets.push({ host: hostEl, scene, style });
       if (scene) styleScenes.push(scene);
       styleEl.remove();
     }
@@ -644,6 +691,7 @@ export function inlineSubCompositions(
     for (const el of plan.inertScriptsOutsideRoot)
       hostEl.insertAdjacentHTML("beforeend", el.outerHTML);
 
+    hostEl.setAttribute(VARIABLE_HOST_ATTR, "");
     hostEl.setAttribute("data-composition-file", src);
     hostEl.removeAttribute("data-composition-src");
 
@@ -719,6 +767,7 @@ export function inlineSubCompositions(
   return {
     styles,
     styleScenes,
+    headAssets,
     scripts,
     externalScriptSrcs,
     scriptItems,
