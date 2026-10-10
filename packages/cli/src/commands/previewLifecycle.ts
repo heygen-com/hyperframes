@@ -13,6 +13,7 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { stripVTControlCharacters } from "node:util";
 import {
   activeServerOnPort,
   MAX_PORT_SCAN,
@@ -616,7 +617,8 @@ export async function startBackgroundPreview(
 
 function logTail(logPath: string): string {
   try {
-    const lines = readFileSync(logPath, "utf8").trimEnd().split("\n").slice(-5);
+    const text = stripVTControlCharacters(readFileSync(logPath, "utf8"));
+    const lines = text.trimEnd().split("\n").slice(-5);
     return lines.join("").trim() ? `\n${lines.join("\n")}` : "";
   } catch {
     return "";

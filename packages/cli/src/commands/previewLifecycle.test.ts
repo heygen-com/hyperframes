@@ -694,7 +694,7 @@ describe("background preview lifecycle", () => {
         spawn: (_command, _args, options) => {
           writeSync(
             options.stdio[1],
-            "Error: listen EPERM: operation not permitted 127.0.0.1:3002\n",
+            "\u001b[?25hError: listen EPERM: operation not permitted 127.0.0.1:3002\n",
           );
           return { pid: 4321, unref: vi.fn(), once: (_event, listener) => (onExit = listener) };
         },
@@ -702,7 +702,7 @@ describe("background preview lifecycle", () => {
         kill,
         stateHome,
       }),
-    ).rejects.toThrow(/exited \(exit code 1\) before it was ready[\s\S]*listen EPERM/);
+    ).rejects.toThrow(/exited \(exit code 1\) before it was ready[\s\S]*\nError: listen EPERM/);
 
     expect(kill).not.toHaveBeenCalled();
     expect(scan.mock.calls.length).toBeLessThan(5);
