@@ -173,10 +173,11 @@ describe("findFfBinary", () => {
     expect(findFfBinary("ffmpeg")).toBe(projectBinary);
   });
 
-  it("returns undefined when the binary is nowhere, and caches the miss until cleared", async () => {
+  it("finds a binary installed in a common dir after an earlier miss, then caches the hit", async () => {
     delete process.env.HYPERFRAMES_FFMPEG_PATH;
     Object.defineProperty(process, "platform", { value: "linux", configurable: true });
     process.env.PATH = "";
+    let installed = false;
     const execFileSync = vi.fn(() => {
       throw new Error("not found");
     });
@@ -184,7 +185,7 @@ describe("findFfBinary", () => {
     vi.doMock("node:child_process", () => ({ execFileSync, default: { execFileSync } }));
     vi.doMock("node:fs", () => {
       const mocked = {
-        existsSync: () => false,
+        existsSync: (candidate: unknown) => installed && candidate === "/opt/homebrew/bin/ffmpeg",
         accessSync: () => {
           throw new Error("not executable");
         },
@@ -192,14 +193,12 @@ describe("findFfBinary", () => {
       };
       return { ...mocked, default: mocked };
     });
-    const { findFfBinary, clearFfBinaryLookupCache } = await importFresh();
+    const { findFfBinary } = await importFresh();
 
     expect(findFfBinary("ffmpeg")).toBeUndefined();
-    expect(findFfBinary("ffmpeg")).toBeUndefined();
-    expect(execFileSync).toHaveBeenCalledOnce();
-
-    clearFfBinaryLookupCache();
-    expect(findFfBinary("ffmpeg")).toBeUndefined();
+    installed = true;
+    expect(findFfBinary("ffmpeg")).toBe(resolve("/opt/homebrew/bin/ffmpeg"));
+    expect(findFfBinary("ffmpeg")).toBe(resolve("/opt/homebrew/bin/ffmpeg"));
     expect(execFileSync).toHaveBeenCalledTimes(2);
   });
 });

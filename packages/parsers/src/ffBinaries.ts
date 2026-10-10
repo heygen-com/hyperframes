@@ -18,7 +18,7 @@ const ENV_BY_NAME: Record<FfBinaryName, string> = {
   ffprobe: FFPROBE_PATH_ENV,
 };
 
-const pathLookupCache = new Map<FfBinaryName, string | undefined>();
+const pathLookupCache = new Map<FfBinaryName, string>();
 
 function candidateFileName(candidate: string): string {
   return candidate.split(/[\\/]/).at(-1)?.toLowerCase() ?? candidate.toLowerCase();
@@ -102,7 +102,8 @@ function findInProjectLocalBin(name: FfBinaryName): string | undefined {
 }
 
 function lookupOnSystem(name: FfBinaryName): string | undefined {
-  if (pathLookupCache.has(name)) return pathLookupCache.get(name);
+  const cached = pathLookupCache.get(name);
+  if (cached) return cached;
   let found: string | undefined;
   if (process.platform === "win32") {
     // `where.exe` writes bytes in the active console code page, while Node
@@ -125,7 +126,8 @@ function lookupOnSystem(name: FfBinaryName): string | undefined {
   }
   found ??= findInProjectLocalBin(name);
   found ??= findInCommonDirs(name);
-  const resolved = found ? resolve(found) : undefined;
+  if (!found) return undefined;
+  const resolved = resolve(found);
   pathLookupCache.set(name, resolved);
   return resolved;
 }
@@ -144,10 +146,10 @@ export interface FindFfBinaryOptions {
 /**
  * Resolve an FFmpeg-family binary: env override first, then a native
  * current-directory/PATH scan on Windows or `which` plus PATH scan on Unix,
- * then a project-local
- * `.hyperframes/bin`, then well-known Unix install dirs. System lookups are
- * cached per binary for the process lifetime; the env override is re-read on
- * every call.
+ * then a project-local `.hyperframes/bin`, then well-known Unix install dirs.
+ * A found binary is cached for the process lifetime; a miss is not, so a
+ * long-running server sees an install made after it started. The env
+ * override is re-read on every call.
  */
 export function findFfBinary(
   name: FfBinaryName,
