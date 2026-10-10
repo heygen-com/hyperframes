@@ -52,6 +52,7 @@ import type {
   OffPivotRotationSample,
   RotationSample,
   RunAuditGrid,
+  SeekClock,
 } from "./checkTypes.js";
 import type { ProjectDir } from "./project.js";
 
@@ -461,6 +462,7 @@ function createPageDriver(page: Page, setTime: (time: number) => void): CheckAud
     collectLayout: (time, tolerance, layout) => collectLayout(page, time, tolerance, layout),
     collectOverlap: (time) => collectOverlap(page, time),
     collectLayoutGeometry: () => collectLayoutGeometry(page),
+    collectSeekClock: () => collectSeekClock(page),
     collectRotationSample: (time) => collectRotationSample(page, time),
     collectOffPivotRotationSample: (time) => collectOffPivotRotationSample(page, time),
     collectGeometryCandidates: (time, request) => collectGeometryCandidates(page, time, request),
@@ -609,6 +611,58 @@ async function collectLayoutGeometry(page: Page): Promise<string> {
     if (typeof geometry !== "function") return "";
     const result = Reflect.apply(geometry, window, []);
     return typeof result === "string" ? result : "";
+  });
+}
+
+export async function collectSeekClock(page: Page): Promise<SeekClock[]> {
+  // Serialized into the page; each optional GSAP read is one branch of one function.
+  // fallow-ignore-next-line complexity
+  return page.evaluate(() => {
+    const callOrUndefined = (target: unknown, key: string, args: unknown[] = []): unknown => {
+      try {
+        return Reflect.apply(Reflect.get(Object(target), key), target, args);
+      } catch {
+        return undefined;
+      }
+    };
+    const known: { ids: WeakMap<object, number>; next: number } = Reflect.get(
+      window,
+      "__hfSeekClocks",
+    ) ?? {
+      ids: new WeakMap(),
+      next: 0,
+    };
+    Reflect.set(window, "__hfSeekClocks", known);
+    const idOf = (target: object): number => {
+      if (!known.ids.has(target)) known.ids.set(target, ++known.next);
+      return known.ids.get(target) ?? 0;
+    };
+    const clocks: SeekClock[] = [];
+    const timelines: unknown = Reflect.get(window, "__timelines");
+    const registered = typeof timelines === "object" && timelines ? Object.values(timelines) : [];
+    const gsapRoot = Reflect.get(Reflect.get(window, "gsap") ?? {}, "globalTimeline");
+    const children = callOrUndefined(gsapRoot, "getChildren", [false, true, true]);
+    for (const timeline of [...registered, ...(Array.isArray(children) ? children : [])]) {
+      const total = Number(
+        callOrUndefined(timeline, "totalDuration") ?? callOrUndefined(timeline, "duration"),
+      );
+      if (typeof timeline !== "object" || !timeline || !(total > 0)) continue;
+      const time = Number(
+        callOrUndefined(timeline, "totalTime") ?? callOrUndefined(timeline, "time"),
+      );
+      if (!Number.isFinite(time)) continue;
+      const progress = Number(callOrUndefined(timeline, "totalProgress") ?? time / total);
+      const done = callOrUndefined(timeline, "reversed") === true ? progress <= 0 : progress >= 1;
+      clocks.push({ id: idOf(timeline), time, done });
+    }
+    for (const animation of document.getAnimations?.() ?? []) {
+      if (typeof animation.currentTime !== "number") continue;
+      const time = animation.currentTime;
+      const end = Number(animation.effect?.getComputedTiming().endTime ?? Number.POSITIVE_INFINITY);
+      const atEnd = animation.playbackRate < 0 ? time <= 0 : time >= end;
+      clocks.push({ id: idOf(animation), time, done: animation.playState === "finished" || atEnd });
+    }
+    return clocks;
   });
 }
 

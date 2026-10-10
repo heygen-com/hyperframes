@@ -42,6 +42,7 @@ export type {
   CapturePerfSummary,
   CaptureWarning,
   CaptureWarningCode,
+  SubTimelineWaitMemo,
   SubTimelineWaitOutcome,
 } from "./types.js";
 
@@ -87,6 +88,7 @@ export {
   buildChromeArgs,
   compositionRequiresWebGpu,
   assertWebGpuAdapterAvailable,
+  usesSoftwareWebGpu,
   WebGpuUnavailableError,
   ENABLE_BROWSER_POOL,
   BrowserLeasePool,

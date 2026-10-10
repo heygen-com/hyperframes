@@ -109,6 +109,7 @@ RUN timeout 300 bun install --frozen-lockfile \
 # argument list with the production engine helper so a launcher-flag regression
 # invalidates this layer and fails the contract instead of testing a duplicate
 # hard-coded profile.
+COPY packages/parsers/ packages/parsers/
 COPY packages/engine/ packages/engine/
 COPY packages/aws-lambda/scripts/probe-beginframe.ts packages/aws-lambda/scripts/probe-beginframe.ts
 RUN bun -e 'import { buildChromeArgs } from "./packages/engine/src/services/browserManager.ts"; await Bun.write("/tmp/hf-gcp-chrome-args.json", JSON.stringify(buildChromeArgs({ width: 800, height: 600, captureMode: "beginframe", platform: "linux" }, { browserGpuMode: "software" })))' \

@@ -71,6 +71,7 @@ jobs:
               - "packages/producer/**"
               - "packages/engine/**"
               - "Dockerfile*"
+              - ".github/workflows/regression.yml"
       # Bin-pack the shard matrix from recorded per-fixture timings rather than
       # a hand-written list. Fails if any fixture on disk is neither scheduled
       # nor explicitly excluded, so a new fixture cannot silently never run.
@@ -125,6 +126,12 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+        with:
+          # Docker Hub rate-limits anonymous pulls from shared runners; pull through Google's mirror.
+          driver-opts: image=mirror.gcr.io/moby/buildkit:buildx-stable-1
+          buildkitd-config-inline: |
+            [registry."docker.io"]
+              mirrors = ["mirror.gcr.io"]
 
       - name: Build test Docker image (cached)
         # Normal duration is ~3 min; a bun install that errors and hangs

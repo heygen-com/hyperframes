@@ -22,6 +22,7 @@ export default defineConfig({
     subCompositionValidity: "src/subCompositionValidity.ts",
     ffBinaries: "src/ffBinaries.ts",
     assetResolution: "src/assetResolution.ts",
+    htmlAttributeSpans: "src/htmlAttributeSpans.ts",
   },
   format: ["esm"],
   outDir: "dist",

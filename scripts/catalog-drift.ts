@@ -6,6 +6,7 @@ import { join, relative, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { generateCatalog } from "./generate-catalog.ts";
 import { GENERATED_CATALOG_PATHS } from "./catalog-generated-paths.mjs";
+import { VECTORS, vectorsAgree } from "./catalog-vectors.mjs";
 import { runAsCommand } from "./entrypoint.ts";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -25,15 +26,23 @@ export function treeDifferences(generatedRoot: string, committedRoot: string): s
   const missing = [...generated].filter((file) => !committed.has(file));
   const extra = [...committed].filter((file) => !generated.has(file));
   const changed = [...generated].filter(
-    (file) =>
-      committed.has(file) &&
-      !readFileSync(join(generatedRoot, file)).equals(readFileSync(join(committedRoot, file))),
+    (file) => committed.has(file) && !sameContent(generatedRoot, committedRoot, file),
   );
   return [
     ...missing.map((file) => `not committed: ${file}`),
     ...extra.map((file) => `no longer generated: ${file}`),
     ...changed.map((file) => `stale: ${file}`),
   ];
+}
+
+function sameContent(generatedRoot: string, committedRoot: string, file: string): boolean {
+  const generated = readFileSync(join(generatedRoot, file));
+  const committed = readFileSync(join(committedRoot, file));
+  if (generated.equals(committed)) return true;
+  if (!VECTORS.test(file)) return false;
+  const meta = join(generatedRoot, file.replace(/\.bin$/, ".json"));
+  const { dimensions } = JSON.parse(readFileSync(meta, "utf8")) as { dimensions: number };
+  return vectorsAgree(generated, committed, dimensions);
 }
 
 async function main(): Promise<void> {

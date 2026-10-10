@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { terminateProcessTree } from "./processTree.js";
+import { renderSetupFailureFrom, renderSetupResultFrom } from "../renderSetupWorkerLifecycle.js";
 
 export interface CancellableProcessResult {
   stdout: string;
@@ -187,7 +188,13 @@ export function runCancellableProcess(
   });
 }
 
-const SETUP_RESULT_PREFIX = "HYPERFRAMES_RENDER_SETUP_RESULT:";
+function renderSetupError(error: unknown): unknown {
+  if (!(error instanceof CancellableProcessError)) return error;
+  const failure = renderSetupFailureFrom(error.stderr);
+  if (failure?.earlierOutput.trim()) process.stderr.write(`${failure.earlierOutput.trimEnd()}\n`);
+  const reason = failure?.reason ?? error.stderr.trim();
+  return reason ? new Error(reason, { cause: error }) : error;
+}
 
 export async function runRenderSetupWorker<T>(
   mode: "browser" | "lint" | "orphan-cleanup",
@@ -216,16 +223,10 @@ export async function runRenderSetupWorker<T>(
     );
   } catch (error) {
     if (options.signal?.aborted) options.signal.throwIfAborted();
-    if (error instanceof CancellableProcessError && error.stderr.trim()) {
-      throw new Error(error.stderr.trim(), { cause: error });
-    }
-    throw error;
+    throw renderSetupError(error);
   }
   if (result.stderr) process.stderr.write(result.stderr);
-  const encoded = result.stdout
-    .split(/\r?\n/)
-    .find((line) => line.startsWith(SETUP_RESULT_PREFIX))
-    ?.slice(SETUP_RESULT_PREFIX.length);
-  if (!encoded) throw new Error(`${mode} setup process exited without a result`);
-  return JSON.parse(encoded) as T;
+  const value = renderSetupResultFrom(result.stdout);
+  if (value === undefined) throw new Error(`${mode} setup process exited without a result`);
+  return value as T;
 }

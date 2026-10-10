@@ -6,9 +6,10 @@
  * launch args, pooled browser acquisition/release.
  */
 
+import { scanHtmlOpeningTags } from "@hyperframes/parsers/html-attribute-spans";
 import type { Browser, Page, PuppeteerNode } from "puppeteer-core";
 import { execSync } from "child_process";
-import { existsSync, readdirSync } from "fs";
+import { existsSync, readdirSync, statSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 import { chromeMajorCeiling, exceedsChromeCeiling } from "./chromeHostCeiling.js";
@@ -72,6 +73,8 @@ async function getPuppeteer(): Promise<PuppeteerNode> {
   return _puppeteer;
 }
 
+const GPU_PROBE_TIMEOUT_MS = 15_000;
+
 async function probeHardwareWebGlInfo(
   ppt: PuppeteerNode,
   options: {
@@ -89,37 +92,46 @@ async function probeHardwareWebGlInfo(
       defaultViewport: { width: 64, height: 64 },
       executablePath: options.executablePath,
       timeout: options.browserTimeout,
+      waitForInitialPage: false,
     });
-    const page = await probeBrowser.newPage();
-    return await page.evaluate(() => {
-      const unavailable = { hasWebGL: false, vendor: "", renderer: "" };
-      const c = document.createElement("canvas");
-      let gl = c.getContext("webgl") as WebGLRenderingContext | null;
-      if (gl === null) {
-        gl = c.getContext("experimental-webgl") as WebGLRenderingContext | null;
-      }
-      if (gl === null) return unavailable;
-      const ext = gl.getExtension("WEBGL_debug_renderer_info") as {
-        UNMASKED_VENDOR_WEBGL: number;
-        UNMASKED_RENDERER_WEBGL: number;
-      } | null;
-      let vendorParam: number = gl.VENDOR;
-      let rendererParam: number = gl.RENDERER;
-      if (ext !== null) {
-        vendorParam = ext.UNMASKED_VENDOR_WEBGL;
-        rendererParam = ext.UNMASKED_RENDERER_WEBGL;
-      }
-      const vendor = gl.getParameter(vendorParam);
-      const renderer = gl.getParameter(rendererParam);
-      return {
-        hasWebGL: true,
-        vendor: vendor == null ? "" : String(vendor),
-        renderer: renderer == null ? "" : String(renderer),
-      };
-    });
+    return await rejectAfter(
+      readWebGlInfo(probeBrowser),
+      GPU_PROBE_TIMEOUT_MS,
+      `GPU probe page did not answer within ${GPU_PROBE_TIMEOUT_MS}ms`,
+    );
   } finally {
-    await probeBrowser?.close().catch(() => {});
+    if (probeBrowser) await closeBrowserAfterFailedProbe(probeBrowser);
   }
+}
+
+async function readWebGlInfo(browser: Browser): Promise<WebGlProbeInfo> {
+  const page = await browser.newPage();
+  return await page.evaluate(() => {
+    const unavailable = { hasWebGL: false, vendor: "", renderer: "" };
+    const c = document.createElement("canvas");
+    let gl = c.getContext("webgl") as WebGLRenderingContext | null;
+    if (gl === null) {
+      gl = c.getContext("experimental-webgl") as WebGLRenderingContext | null;
+    }
+    if (gl === null) return unavailable;
+    const ext = gl.getExtension("WEBGL_debug_renderer_info") as {
+      UNMASKED_VENDOR_WEBGL: number;
+      UNMASKED_RENDERER_WEBGL: number;
+    } | null;
+    let vendorParam: number = gl.VENDOR;
+    let rendererParam: number = gl.RENDERER;
+    if (ext !== null) {
+      vendorParam = ext.UNMASKED_VENDOR_WEBGL;
+      rendererParam = ext.UNMASKED_RENDERER_WEBGL;
+    }
+    const vendor = gl.getParameter(vendorParam);
+    const renderer = gl.getParameter(rendererParam);
+    return {
+      hasWebGL: true,
+      vendor: vendor == null ? "" : String(vendor),
+      renderer: renderer == null ? "" : String(renderer),
+    };
+  });
 }
 
 export type AcquiredBrowser = BrowserLease;
@@ -168,6 +180,15 @@ function cachedHeadlessShellExecutable(
   return CACHED_HEADLESS_SHELL_EXECUTABLES[`${hostPlatform}/${hostArch}`];
 }
 
+function isNonEmptyFile(path: string): boolean {
+  try {
+    const stat = statSync(path, { throwIfNoEntry: false });
+    return stat?.isFile() === true && stat.size > 0;
+  } catch {
+    return false;
+  }
+}
+
 function findCachedHeadlessShell(baseDir: string): string | undefined {
   if (!existsSync(baseDir)) return undefined;
   const executable = cachedHeadlessShellExecutable();
@@ -178,7 +199,7 @@ function findCachedHeadlessShell(baseDir: string): string | undefined {
     for (const version of versions) {
       if (exceedsChromeCeiling(version, ceiling)) continue;
       const binary = join(baseDir, version, ...executable);
-      if (existsSync(binary)) return binary;
+      if (isNonEmptyFile(binary)) return binary;
     }
   } catch {
     // Ignore unreadable cache directories and continue browser discovery.
@@ -275,15 +296,20 @@ async function awaitBeforeDeadline<T>(
   if (remainingMs <= 0) {
     throw new Error(`beginFrame probe timeout before ${label}`);
   }
+  return rejectAfter(operation, remainingMs, `beginFrame probe timeout during ${label}`);
+}
+
+async function rejectAfter<T>(
+  operation: Promise<T>,
+  timeoutMs: number,
+  message: string,
+): Promise<T> {
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
       operation,
       new Promise<never>((_, reject) => {
-        timeout = setTimeout(
-          () => reject(new Error(`beginFrame probe timeout during ${label}`)),
-          remainingMs,
-        );
+        timeout = setTimeout(() => reject(new Error(message)), timeoutMs);
       }),
     ]);
   } finally {
@@ -1004,9 +1030,9 @@ export function buildChromeArgs(options: BuildChromeArgsOptions, config?: GpuCon
 
 /** Does the composition's root element declare `data-requires-webgpu`? */
 export function compositionRequiresWebGpu(html: string): boolean {
-  // Quoted values are consumed whole, so '<' or '>' inside one stays in the tag; no nested quantifier overlaps.
-  for (const [tag] of html.matchAll(/<(?:[^<>"']|"[^"]*"|'[^']*')*>/g)) {
-    if (/\bdata-composition-id\b/i.test(tag)) return /\bdata-requires-webgpu(?:\s|=|>)/i.test(tag);
+  for (const tag of scanHtmlOpeningTags(html)) {
+    const names = tag.attributes.map((attribute) => attribute.name);
+    if (names.includes("data-composition-id")) return names.includes("data-requires-webgpu");
   }
   return false;
 }

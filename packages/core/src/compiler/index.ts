@@ -36,6 +36,7 @@ export {
   prepareFlattenedInnerRoot,
   FLATTENED_INNER_ROOT_STRIP_ATTRS,
   emitRootCompositionVariableStyles,
+  parsesAsScript,
 } from "./htmlBundler";
 export { readDeclaredDefaults, parseHostVariableValues } from "../runtime/getVariables";
 
@@ -69,11 +70,11 @@ export {
   deferScriptsUntilFonts,
   headStyleRuns,
   inlineScriptRuns,
-  isJavaScriptType,
   styleElementsFor,
   type CompositionStyle,
   type InlineScriptRun,
 } from "./scriptRuns";
+export { isJavaScriptType } from "./compositionAssembly";
 
 // Static guard
 export {

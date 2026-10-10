@@ -89,8 +89,8 @@ interface CollapsedState {
   [key: string]: boolean;
 }
 
-/** Studio state the panel reads; passed by hosts outside Studio's providers. Keep previewIframeRef stable,
- * and bump refreshKey when the preview document is rebuilt without an iframe load. */
+/** Studio state the panel reads; passed by hosts outside Studio's providers. Keep previewIframeRef stable;
+ * a host with its own player calls announcePreviewDocumentLoaded on each new page, or bumps refreshKey. */
 export type LayersPanelHost = Pick<
   StudioShellValue,
   "previewIframeRef" | "activeCompPath" | "showToast"

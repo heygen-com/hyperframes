@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/parsers",
-  "version": "0.8.143",
+  "version": "0.8.144",
   "repository": {
     "type": "git",
     "url": "https://github.com/heygen-com/hyperframes",
@@ -130,6 +130,12 @@
       "import": "./src/assetResolution.ts",
       "types": "./src/assetResolution.ts"
     },
+    "./html-attribute-spans": {
+      "bun": "./src/htmlAttributeSpans.ts",
+      "node": "./dist/htmlAttributeSpans.js",
+      "import": "./src/htmlAttributeSpans.ts",
+      "types": "./src/htmlAttributeSpans.ts"
+    },
     "./composition-duration": {
       "bun": "./src/compositionDuration.ts",
       "node": "./dist/compositionDuration.js",
@@ -216,6 +222,10 @@
       "./asset-resolution": {
         "import": "./dist/assetResolution.js",
         "types": "./dist/assetResolution.d.ts"
+      },
+      "./html-attribute-spans": {
+        "import": "./dist/htmlAttributeSpans.js",
+        "types": "./dist/htmlAttributeSpans.d.ts"
       },
       "./composition-duration": {
         "import": "./dist/compositionDuration.js",

@@ -15,6 +15,14 @@ import type { MotionBlurOptions } from "./services/motionBlur.js";
  */
 export type SubTimelineWaitOutcome = "ready" | "timeout" | "script_failure";
 
+/**
+ * Shared by every capture session of one render: composition ids whose timeline
+ * wait already timed out, so later sessions report the timeout without waiting again.
+ */
+export interface SubTimelineWaitMemo {
+  unregisteredIds?: readonly string[];
+}
+
 export type CaptureWarningCode =
   | "media_readiness_timeout"
   | "media_load_failed"
@@ -187,6 +195,8 @@ export interface CaptureOptions {
    * intrinsic media dimensions.
    */
   skipReadinessVideoIds?: readonly string[];
+  /** Pass one object to every session of a render; see `SubTimelineWaitMemo`. */
+  subTimelineWaitMemo?: SubTimelineWaitMemo;
   /**
    * Render-time variable overrides for the composition. The engine injects
    * these as `window.__hfVariables` via `evaluateOnNewDocument` before any

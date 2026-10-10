@@ -1,0 +1,34 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "aurora",
+  "type": "hyperframes:block",
+  "title": "Aurora",
+  "description": "Green and violet aurora curtains ripple across a night sky. A WebGPU shader from the Shaders library (shaders.com, MIT).",
+  "tags": ["webgpu", "webgpu-shader", "background", "light", "aurora", "sky"],
+  "license": "Apache-2.0 AND MIT",
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 2,
+  "files": [
+    {
+      "path": "aurora.html",
+      "target": "compositions/aurora.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "lib/shaders.iife.js",
+      "target": "compositions/lib/shaders.iife.js",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "lib/shaders.THIRD-PARTY-LICENSES.txt",
+      "target": "compositions/lib/shaders.THIRD-PARTY-LICENSES.txt",
+      "type": "hyperframes:asset"
+    }
+  ],
+  "preview": {
+    "video": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/aurora.mp4"
+  }
+}

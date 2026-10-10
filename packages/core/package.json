@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/core",
-  "version": "0.8.143",
+  "version": "0.8.144",
   "description": "",
   "repository": {
     "type": "git",
@@ -902,6 +902,7 @@
     "@hyperframes/lint": "workspace:*",
     "@hyperframes/parsers": "workspace:*",
     "@hyperframes/studio-server": "workspace:*",
+    "acorn": "^8.17.0",
     "bpm-detective": "^2.0.5",
     "linkedom": "^0.18.12",
     "postcss": "^8.5.8",

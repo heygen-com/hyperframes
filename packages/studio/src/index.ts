@@ -202,6 +202,7 @@ export type { UseClipboardOptions } from "./hooks/useClipboard";
 export { useDomEditSession } from "./hooks/useDomEditSession";
 export type { UseDomEditSessionParams } from "./hooks/useDomEditSession";
 export { useLivePreviewIframe } from "./hooks/useLivePreviewIframe";
+export { announcePreviewDocumentLoaded } from "./player/sceneSwap";
 export type { PreviewPromotion } from "./player/sceneSwap";
 export { usePreviewPersistence } from "./hooks/usePreviewPersistence";
 export type { UsePreviewPersistenceParams } from "./hooks/usePreviewPersistence";

@@ -538,6 +538,7 @@
       "packages/engine/src/services/extractionCache.test.ts",
       "packages/studio-server/src/routes/preview.test.ts",
       "packages/studio-server/src/routes/projects.test.ts",
+      "packages/studio-server/src/helpers/applyFileMutations.test.ts",
       "packages/studio-server/src/helpers/backupJournal.test.ts",
       "packages/studio-server/src/helpers/finiteMutation.test.ts",
       "packages/studio-server/src/helpers/hfIdPersist.test.ts",

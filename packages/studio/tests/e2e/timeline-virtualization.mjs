@@ -20,18 +20,27 @@
  * "on", the product default. The script asserts the configuration it observes
  * rather than trusting the caller: the server is configured by whoever started
  * it, and a mismatch would otherwise pass silently against the wrong build.
+ *
+ * BASE_STUDIO_URL serves the fixture from the base commit. If every timing attempt misses the
+ * budget, head and base alternate on this machine; the head fails only if slower (judgeAgainstBase).
  */
 import { platform, arch } from "node:os";
 import { launchStudioChrome } from "./chrome-executable.mjs";
 import {
   attemptPassed,
+  describeAgainstBase,
   gatePassed,
+  judgeAgainstBase,
   judgeResponsiveness,
   responsivenessLimits,
+  shouldCompareWithBase,
   TIMING_ATTEMPTS,
+  timingPassed,
 } from "./timeline-viewport-verdict.mjs";
 
 const STUDIO_URL = process.env.STUDIO_URL;
+const BASE_STUDIO_URL = process.env.BASE_STUDIO_URL || null;
+const BASE_COMPARISON_ROUNDS = 2;
 const PROFILE = process.env.TIMELINE_PROFILE || "dense-short";
 const ELEMENT_COUNT = Number(process.env.TIMELINE_ELEMENT_COUNT || 50_000);
 const TIER = process.env.TIMELINE_TIER || "primary";
@@ -150,9 +159,11 @@ async function collectRun(page, injectedLongTaskMs = 0) {
       const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve));
       const ratios = [0, 0.25, 0.5, 0.75, 1, 0.5, 0];
       const sampleCount = window.__studioTest.timelineViewportBudgets.scrollSamplesPerRun;
+      // Timed from the frame the jump is made in, so a step is a whole number of frames and
+      // never lands at the budget by where in that frame the callback ran.
+      let started = await nextFrame();
       for (let sampleIndex = 0; sampleIndex < sampleCount; sampleIndex += 1) {
         const ratio = ratios[sampleIndex % ratios.length];
-        const started = performance.now();
         timelineScroller.scrollLeft = Math.round(
           (timelineScroller.scrollWidth - timelineScroller.clientWidth) * ratio,
         );
@@ -163,6 +174,7 @@ async function collectRun(page, injectedLongTaskMs = 0) {
         const secondFrame = await nextFrame();
         interactions.push(secondFrame - started);
         frameIntervals.push(secondFrame - firstFrame);
+        started = secondFrame;
       }
       return { interactions, frameIntervals };
     }
@@ -240,30 +252,7 @@ try {
         "Override TIMELINE_CHROME_MAJOR only when intentionally recording a new baseline.",
     );
   }
-  const page = await browser.newPage();
-  await page.setViewport({
-    width: 1440,
-    height: 900,
-    deviceScaleFactor: TIER === "high-dpr" ? 2 : 1,
-  });
-  const client = await page.createCDPSession();
-  if (TIER === "low-resource") {
-    await client.send("Emulation.setCPUThrottlingRate", { rate: 4 });
-  }
-  await page.goto(STUDIO_URL, { waitUntil: "networkidle0", timeout: 60_000 });
-  await page.waitForFunction(
-    () => typeof window.__studioTest?.loadTimelinePerformanceFixture === "function",
-    { timeout: 30_000 },
-  );
-  await waitForStudioTestHookSettle(page);
-
-  const runtimeMode = await page.evaluate(() => window.__studioTest.runtimeMode);
-  if (TIER === "ci" && runtimeMode !== "production") {
-    throw new Error(
-      `Timeline CI must measure the production React runtime, received ${runtimeMode}. ` +
-        "Start the Studio development server with NODE_ENV=production.",
-    );
-  }
+  const { page, client, runtimeMode } = await openStudio(browser, STUDIO_URL);
 
   await loadFixtureAndWait(page, 1_000, PROFILE);
   await client.send("HeapProfiler.collectGarbage");
@@ -280,27 +269,18 @@ try {
   const summary = await loadFixtureAndWait(page, ELEMENT_COUNT, PROFILE);
   const measuredMaxReliableScrollWidth = await measureMaximumReliableScrollWidth(page);
 
-  // Trust the DOM, not the caller. A virtualized build cannot mount every clip
-  // and an unvirtualized one cannot avoid it, so the mounted count says which
-  // build is really being measured.
-  const observedClipRoots = await page.evaluate(
-    () => window.__studioTest.readTimelinePerformanceDiagnostics().mountedClipRoots,
-  );
-  const observedRowVirtualization = observedClipRoots <= budgets.maxMountedClipRoots ? "on" : "off";
-  if (observedRowVirtualization !== ROW_VIRTUALIZATION) {
-    throw new Error(
-      `Requested TIMELINE_ROW_VIRTUALIZATION=${ROW_VIRTUALIZATION} but the server under test ` +
-        `behaves as ${observedRowVirtualization}: ${observedClipRoots} clip roots mounted for ` +
-        `${ELEMENT_COUNT} elements against a ${budgets.maxMountedClipRoots} budget. ` +
-        "Set VITE_STUDIO_TIMELINE_ROW_VIRTUALIZATION_ENABLED on the Studio dev server to match.",
-    );
-  }
+  const observedClipRoots = await assertRowVirtualization(page, budgets);
 
   const { interactionLimitMs, frameIntervalLimitMs } = responsivenessLimits(
     budgets,
     TIER,
     ROW_VIRTUALIZATION,
   );
+  const limits = {
+    samplesPerRun: budgets.scrollSamplesPerRun,
+    interactionLimitMs,
+    frameIntervalLimitMs,
+  };
   // Latency, long tasks and memory are product promises and hold for both
   // builds. The DOM-size budgets describe what windowing achieves, so they only
   // apply when windowing is on. They are skipped explicitly rather than relaxed,
@@ -308,11 +288,7 @@ try {
   const domBudgetsApply = ROW_VIRTUALIZATION === "on";
   const attempts = [];
   while (attempts.length < TIMING_ATTEMPTS && !attempts.some((attempt) => attempt.passed)) {
-    const runs = [];
-    for (let index = 0; index < budgets.warmupRuns + budgets.measuredRuns; index += 1) {
-      const run = await collectRun(page);
-      if (index >= budgets.warmupRuns) runs.push(run);
-    }
+    const runs = await collectMeasuredRuns(page, budgets.warmupRuns, budgets.measuredRuns);
     for (const run of runs) {
       run.longTaskPassed = run.longestTaskMs <= longTaskLimitMs;
       run.timelineMounted = run.diagnostics.timelineRoots === 1;
@@ -324,11 +300,7 @@ try {
         : null;
       run.passed = run.longTaskPassed && run.timelineMounted && run.domSizePassed !== false;
     }
-    const responsiveness = judgeResponsiveness(runs, {
-      samplesPerRun: budgets.scrollSamplesPerRun,
-      interactionLimitMs,
-      frameIntervalLimitMs,
-    });
+    const responsiveness = judgeResponsiveness(runs, limits);
     const passingRuns = runs.filter((run) => run.passed).length;
     const attempt = {
       attempt: attempts.length + 1,
@@ -336,6 +308,7 @@ try {
       frameIntervalP95Ms: responsiveness.frameIntervalP95Ms,
       responsivenessPassed: responsiveness.passed,
       passingRuns,
+      runChecksPassed: passingRuns >= budgets.requiredPassingRuns,
       passed: attemptPassed({
         responsivenessPassed: responsiveness.passed,
         passingRuns,
@@ -362,6 +335,13 @@ try {
   const returnedHeapBytes = await collectHeapBytes(client);
   const memoryReturned =
     returnedHeapBytes <= baselineHeapBytes * (1 + budgets.memoryReturnToleranceRatio);
+  // Closed first, so the comparison's pages are the only ones the runner renders.
+  await page.close();
+  const againstBase =
+    BASE_STUDIO_URL && shouldCompareWithBase(attempts)
+      ? await measureAgainstBase(budgets, limits)
+      : null;
+
   const maxTimelineContentWidthPx = Math.max(
     0,
     ...attempts.flatMap((attempt) => attempt.runs.map((run) => run.scrollWidth)),
@@ -407,8 +387,9 @@ try {
     },
     directScrollGate,
     attempts,
+    againstBase,
     aggregate: {
-      timingPassed: attempts.some((attempt) => attempt.passed),
+      timingPassed: timingPassed(attempts, againstBase),
       baselineHeapBytes,
       returnedHeapBytes,
       memoryReturned,
@@ -418,6 +399,7 @@ try {
   exitCode = gatePassed({
     directScrollApproved: directScrollGate.decision === "approved",
     attempts,
+    againstBase,
     memoryReturned,
   })
     ? 0
@@ -426,6 +408,92 @@ try {
   await browser.close();
 }
 process.exit(exitCode);
+
+async function collectMeasuredRuns(page, warmupRuns, measuredRuns) {
+  const runs = [];
+  for (let index = 0; index < warmupRuns + measuredRuns; index += 1) {
+    const run = await collectRun(page);
+    if (index >= warmupRuns) runs.push(run);
+  }
+  return runs;
+}
+
+/** Head and base in alternating blocks on this machine, each block alone in a freshly opened Chrome. */
+async function measureAgainstBase(budgets, limits) {
+  const urls = { head: STUDIO_URL, base: BASE_STUDIO_URL };
+  const runs = { head: [], base: [] };
+  for (let round = 0; round < BASE_COMPARISON_ROUNDS; round += 1) {
+    for (const side of round % 2 === 0 ? ["head", "base"] : ["base", "head"]) {
+      runs[side].push(...(await measureFreshStudio(urls[side], budgets)));
+    }
+  }
+  const verdict = judgeAgainstBase(runs.head, runs.base, limits);
+  const summary = describeAgainstBase(verdict);
+  console.error(`timeline gate ${ROW_VIRTUALIZATION} against base: ${summary}`);
+  return { rounds: BASE_COMPARISON_ROUNDS, ...verdict, summary, runs };
+}
+
+async function measureFreshStudio(url, budgets) {
+  const { browser } = await launchStudioChrome();
+  try {
+    const { page } = await openStudio(browser, url);
+    await loadFixtureAndWait(page, ELEMENT_COUNT, PROFILE);
+    await assertRowVirtualization(page, budgets);
+    return await collectMeasuredRuns(page, budgets.warmupRuns, budgets.measuredRuns);
+  } finally {
+    await browser.close();
+  }
+}
+
+async function openStudio(browser, url) {
+  const page = await browser.newPage();
+  await page.setViewport({
+    width: 1440,
+    height: 900,
+    deviceScaleFactor: TIER === "high-dpr" ? 2 : 1,
+  });
+  const client = await page.createCDPSession();
+  if (TIER === "low-resource") {
+    await client.send("Emulation.setCPUThrottlingRate", { rate: 4 });
+  }
+  await page.goto(url, { waitUntil: "networkidle0", timeout: 60_000 });
+  await page.waitForFunction(
+    () => typeof window.__studioTest?.loadTimelinePerformanceFixture === "function",
+    { timeout: 30_000 },
+  );
+  await waitForStudioTestHookSettle(page);
+  return { page, client, runtimeMode: await assertProductionRuntime(page) };
+}
+
+async function assertProductionRuntime(page) {
+  const runtimeMode = await page.evaluate(() => window.__studioTest.runtimeMode);
+  if (TIER === "ci" && runtimeMode !== "production") {
+    throw new Error(
+      `Timeline CI must measure the production React runtime, received ${runtimeMode}. ` +
+        "Start the Studio development server with NODE_ENV=production.",
+    );
+  }
+  return runtimeMode;
+}
+
+async function assertRowVirtualization(page, budgets) {
+  // Trust the DOM, not the caller. A virtualized build cannot mount every clip
+  // and an unvirtualized one cannot avoid it, so the mounted count says which
+  // build is really being measured.
+  const observedClipRoots = await page.evaluate(
+    () => window.__studioTest.readTimelinePerformanceDiagnostics().mountedClipRoots,
+  );
+  const observedRowVirtualization = observedClipRoots <= budgets.maxMountedClipRoots ? "on" : "off";
+  if (observedRowVirtualization !== ROW_VIRTUALIZATION) {
+    throw new Error(
+      `Requested TIMELINE_ROW_VIRTUALIZATION=${ROW_VIRTUALIZATION} but the server under test ` +
+        `behaves as ${observedRowVirtualization}: ${observedClipRoots} clip roots mounted for ` +
+        `${ELEMENT_COUNT} elements against a ${budgets.maxMountedClipRoots} budget. ` +
+        "Set VITE_STUDIO_TIMELINE_ROW_VIRTUALIZATION_ENABLED on the Studio dev server to match.",
+    );
+  }
+  return observedClipRoots;
+}
 
 async function waitForFixtureRender(page, elementCount) {
   const deadline = Date.now() + 60_000;

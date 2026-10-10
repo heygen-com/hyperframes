@@ -242,6 +242,7 @@ describe("runEnvironmentChecks", () => {
       expect(result.outcomes.find((outcome) => outcome.name === "Chrome")).toMatchObject({
         ok: false,
         title: "Chrome not found",
+        detail: "ENOTDIR: not a directory, scandir 'chrome-headless-shell'",
         hint: "Run: npx hyperframes browser ensure",
       });
       expect(result.browser).toBeUndefined();

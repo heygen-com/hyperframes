@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { STUDIO_PREVIEW_ERRORS } from "@hyperframes/core/studio-preview-mark";
+import { onPreviewDocumentLoaded } from "../player/sceneSwap";
 import type { LintFinding } from "../components/LintModal";
 
 /**
@@ -73,9 +74,9 @@ export function useConsoleErrorCapture(previewIframe: HTMLIFrameElement | null) 
     };
 
     attachErrorCapture();
-    previewIframe.addEventListener("load", attachErrorCapture);
+    const stopLoaded = onPreviewDocumentLoaded(previewIframe, attachErrorCapture);
     return () => {
-      previewIframe.removeEventListener("load", attachErrorCapture);
+      stopLoaded();
       detachErrorCapture();
     };
   }, [previewIframe, resetErrors]);

@@ -5,6 +5,8 @@ import { useMountEffect } from "../../hooks/useMountEffect";
 import { applyPreviewVariablesToUrl } from "../../hooks/previewVariablesStore";
 import { HyperframesLoader } from "../../components/ui";
 import { usePlayerStore } from "../store/playerStore";
+import { announcePreviewDocumentLoaded } from "../sceneSwap";
+import type { IframeWindow } from "../lib/playbackTypes";
 // Importing "@hyperframes/player" registers a class extending HTMLElement at
 // module load, which throws under SSR, hence the dynamic import behind a
 // `typeof window` guard. Kicking it here rather than in the mount effect puts
@@ -128,6 +130,9 @@ export function hasUnloadedAssets(iframe: HTMLIFrameElement, lastResult: boolean
   }
 }
 
+const runtimeBootedIn = (iframe: HTMLIFrameElement) =>
+  (iframe.contentWindow as IframeWindow | null)?.__playerReady === true;
+
 /**
  * Renders a composition preview using the <hyperframes-player> web component.
  *
@@ -228,9 +233,11 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           const loading = getShaderTransitionLoading(event);
           if (loading !== null) setShaderTransitionLoading(loading);
         };
+        let loadedDocument: Document | null = null;
         const handleReady = () => {
           setPreviewError(null);
           setCompositionLoading(false);
+          if (iframe.contentDocument && runtimeBootedIn(iframe)) handleLoad();
         };
         const handlePainted = () => {
           setPainted(true);
@@ -243,6 +250,9 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           setCompositionLoading(false);
         };
         const handleLoad = () => {
+          const doc = iframe.contentDocument;
+          if (doc && doc === loadedDocument) return;
+          loadedDocument = doc;
           loadCountRef.current++;
           setLoaded(true);
           setPreviewError(null);
@@ -258,6 +268,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
             container.addEventListener("animationend", onEnd, { once: true });
           }
           onLoadRef.current();
+          announcePreviewDocumentLoaded(iframe);
 
           // Show a loading overlay until every `<video>`/`<audio>` and Lottie
           // asset is ready. Without this users can click play before audio has

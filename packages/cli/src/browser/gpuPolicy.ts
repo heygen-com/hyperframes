@@ -1,3 +1,5 @@
+import { resolveConfig, usesSoftwareWebGpu } from "@hyperframes/engine";
+
 export type BrowserGpuMode = "auto" | "hardware" | "software";
 export type ResolvedBrowserGpuMode = Exclude<BrowserGpuMode, "auto">;
 
@@ -24,3 +26,12 @@ export async function resolveCaptureBrowserGpuMode(
 // buildChromeArgs caller goes through, CLI included. Re-exported here so
 // existing CLI imports don't need to change their module path.
 export { compositionRequiresWebGpu, assertWebGpuAdapterAvailable } from "@hyperframes/engine";
+
+/** The launch config and adapter check for a local capture, honouring PRODUCER_ALLOW_SOFTWARE_WEBGPU as render does. */
+export function resolveLocalWebGpu(
+  browserGpuMode: ResolvedBrowserGpuMode,
+  requiresWebGpu: boolean,
+) {
+  const gpuConfig = { browserGpuMode, allowSoftwareWebGpu: resolveConfig().allowSoftwareWebGpu };
+  return { gpuConfig, softwareWebGpu: usesSoftwareWebGpu(requiresWebGpu, gpuConfig) };
+}
