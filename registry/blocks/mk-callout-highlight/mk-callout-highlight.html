@@ -30,8 +30,20 @@
         overflow: hidden;
         background: transparent; /* overlays footage or mk-background */
       }
-      #mk-ch-box {
+      #mk-ch-center {
+        /* CSS centring. The box is a flex item of this full-frame wrapper, so its
+           place is laid out by the browser rather than measured from a DOM rect
+           taken before web fonts are ready. An explicit CONFIG.x / CONFIG.y turns
+           that axis into an edge offset (see the script). No pointer-events:none
+           here: it inherits to the word spans and the contrast audit skips them. */
         position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      #mk-ch-box {
+        flex: none; /* max-content width, clamped by max-width; never shrunk */
         font-family: var(--mk-font);
         font-weight: 500;
         letter-spacing: -0.015em;
@@ -50,7 +62,9 @@
       data-width="1920"
       data-height="1080"
     >
-      <div id="mk-ch-box" data-layout-allow-occlusion></div>
+      <div id="mk-ch-center">
+        <div id="mk-ch-box"></div>
+      </div>
       <div
         id="mk-ch-drv"
         class="clip"
@@ -107,12 +121,19 @@
           wordEls.push(span);
         });
 
-        /* position (measure after building) */
-        var rect = box.getBoundingClientRect();
-        box.style.left =
-          (CONFIG.x === null ? Math.round((1920 - rect.width) / 2) : CONFIG.x) + "px";
-        box.style.top =
-          (CONFIG.y === null ? Math.round((1080 - rect.height) / 2) : CONFIG.y) + "px";
+        /* position: #mk-ch-center centres the box with flex (no measurement, so the
+           placement does not depend on font timing). A non-null CONFIG.x / CONFIG.y
+           switches that axis to an edge offset: the box keeps its content width
+           (clamped by maxWidth) and is pushed from the frame edge by a margin. */
+        var center = document.getElementById("mk-ch-center");
+        if (CONFIG.x !== null) {
+          center.style.justifyContent = "flex-start";
+          box.style.marginLeft = CONFIG.x + "px";
+        }
+        if (CONFIG.y !== null) {
+          center.style.alignItems = "flex-start";
+          box.style.marginTop = CONFIG.y + "px";
+        }
 
         /* state proxy: GSAP animates st.p, render derives every word color from it */
         var st = { p: 0 };
@@ -127,6 +148,9 @@
 
         var tl = gsap.timeline({ paused: true });
 
+        /* entrance / exit motion stays a GSAP transform on the box itself: the box
+           carries no CSS transform (centring is flex on the parent), so there is
+           nothing for the tween to fight. */
         if (CONFIG.animationIn) {
           gsap.set(box, { opacity: 0, y: 24 });
           tl.to(box, { opacity: 1, y: 0, duration: 0.7, ease: "power3.out" }, 0.3);
@@ -144,7 +168,6 @@
         if (CONFIG.animationOut) {
           tl.to(box, { opacity: 0, y: -16, duration: 0.4, ease: "power2.in" }, DUR - 0.5);
         }
-        tl.set(root, { visibility: "hidden" }, DUR - 0.02);
 
         tl.eventCallback("onUpdate", render);
         render();
