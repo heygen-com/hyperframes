@@ -2,7 +2,13 @@
 import { setPreviewRasterScale } from "./previewRasterHints";
 import { refreshSvgSelectorAliases } from "../compiler/svgSelectorAliases";
 import { RUNTIME_FILLER } from "./protocol";
-import { preloadMedia, releaseMedia, lengthIsAuthored, stopMediaDownload } from "./preloadMedia";
+import {
+  preloadMedia,
+  prepareUpcomingMedia,
+  releaseMedia,
+  lengthIsAuthored,
+  stopMediaDownload,
+} from "./preloadMedia";
 import { installRuntimeControlBridge, postRuntimeMessage, setRuntimeProtocolFps } from "./bridge";
 import { instantTolerance } from "../clipFacts";
 import { isInClipWindow } from "./clipWindow";
@@ -2715,6 +2721,19 @@ export function initSandboxRuntimeModular(): void {
   // cannot fetch in time on a slow link.
   const armedBy = new WeakMap<HTMLMediaElement, HTMLMediaElement>();
   const armedFrom = new WeakSet<HTMLMediaElement>();
+  const approachingMedia = new WeakSet<HTMLMediaElement>();
+  const prepareInWindow = (el: HTMLMediaElement) =>
+    prepareUpcomingMedia(
+      el,
+      () =>
+        !state.tornDown &&
+        mediaNearPlayhead.get(el) === true &&
+        resolveAbsoluteMediaStartSeconds(el) > clock.now(),
+    );
+  const preloadInWindow = (el: HTMLMediaElement) => {
+    preloadMedia(el);
+    prepareInWindow(el);
+  };
   // An untracked clip (NaN) shares a track with nothing, as in the timeline payload.
   const hostOf = (el: Element) => el.parentElement?.closest("[data-composition-id]");
   const armNextOnTrack = (el: HTMLMediaElement) => {
@@ -2738,7 +2757,7 @@ export function initSandboxRuntimeModular(): void {
     armedBy.set(next.el, el);
     if (mediaNearPlayhead.get(next.el) !== true) {
       mediaNearPlayhead.set(next.el, true);
-      preloadMedia(next.el);
+      preloadInWindow(next.el);
     }
   };
   const preloadNearPlayhead = (el: HTMLMediaElement, visible: boolean, upcoming: boolean) => {
@@ -2751,8 +2770,15 @@ export function initSandboxRuntimeModular(): void {
     // An arm lasts while the clip that set it plays on screen, so a jump away drops it.
     const armer = armedBy.get(el);
     const near = visible || upcoming || (armer !== undefined && armedFrom.has(armer));
+    const approaching = near && !visible && resolveAbsoluteMediaStartSeconds(el) > clock.now();
+    const wasApproaching = approachingMedia.has(el);
+    if (approaching) approachingMedia.add(el);
+    else approachingMedia.delete(el);
     const decided = mediaNearPlayhead.get(el);
-    if (decided === near) return;
+    if (decided === near) {
+      if (approaching && !wasApproaching) prepareInWindow(el);
+      return;
+    }
     mediaNearPlayhead.set(el, near);
     if (!near) {
       if (el.preload !== "none") {
@@ -2762,7 +2788,7 @@ export function initSandboxRuntimeModular(): void {
       }
     } else if (!visible || decided === undefined) {
       // Not a clip a jump lands on: the media sync arms that one, and load() would undo its seek.
-      preloadMedia(el);
+      preloadInWindow(el);
     }
   };
   // Held past the look-ahead so a scrub across its edge does not refetch, and while playing when
