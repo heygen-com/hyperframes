@@ -3,6 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, test } from "vitest";
 import {
+  assertDtwTimed,
+  dtwArgs,
   dtwPresetForModel,
   getPreparedWavDurationSeconds,
   initialModelForLanguage,
@@ -360,5 +362,54 @@ describe.skipIf(process.platform === "win32")("prepareWav", () => {
     const err = failWith(`${flood} process.exit(255);`) as { code?: string; cancelled?: boolean };
     expect(err.code).toBe("ENOBUFS");
     expect(err.cancelled).toBeUndefined();
+  });
+});
+
+describe.skipIf(process.platform === "win32")("dtwArgs", () => {
+  function fakeWhisper(helpText: string): { path: string; dir: string } {
+    const dir = mkdtempSync(join(tmpdir(), "hf-whisper-help-"));
+    const path = join(dir, "whisper-cli");
+    writeFileSync(
+      path,
+      `#!${process.execPath}\nprocess.stderr.write(${JSON.stringify(helpText)});\n`,
+    );
+    chmodSync(path, 0o755);
+    return { path, dir };
+  }
+
+  it("turns flash attention off, which whisper.cpp now defaults on and which drops --dtw", () => {
+    const whisper = fakeWhisper("  -fa, --flash-attn [true]\n  -nfa, --no-flash-attn [false]\n");
+    try {
+      expect(dtwArgs(whisper.path, "large-v3")).toEqual(["--dtw", "large.v3", "--no-flash-attn"]);
+    } finally {
+      rmSync(whisper.dir, { recursive: true, force: true });
+    }
+  });
+
+  it("leaves an older whisper-cli, which has flash attention off and no such flag, as it was", () => {
+    const whisper = fakeWhisper("  -fa, --flash-attn [false]\n");
+    try {
+      expect(dtwArgs(whisper.path, "small.en")).toEqual(["--dtw", "small.en"]);
+    } finally {
+      rmSync(whisper.dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("assertDtwTimed", () => {
+  const segment = (...tDtw: (number | undefined)[]) => ({
+    tokens: tDtw.map((t_dtw) => (t_dtw === undefined ? {} : { t_dtw })),
+  });
+
+  it("refuses a transcript whose words were never aligned", () => {
+    expect(() => assertDtwTimed([segment(-1, -1), segment(-1)])).toThrow(
+      /skipped word alignment \(--dtw\), so caption timing would drift/,
+    );
+  });
+
+  it("accepts aligned words, and a whisper-cli too old to report alignment", () => {
+    expect(() => assertDtwTimed([segment(-1, 12), segment(30)])).not.toThrow();
+    expect(() => assertDtwTimed([segment(undefined, undefined)])).not.toThrow();
+    expect(() => assertDtwTimed([])).not.toThrow();
   });
 });

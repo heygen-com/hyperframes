@@ -126,43 +126,66 @@ function interpolateZeroDuration(words: Word[]): void {
   }
 }
 
+const PUNCTUATION_TOKEN = /^[.,!?;:'")\]}>…–—¡¿-]+$/;
+
+/** Where whisper.cpp's DTW puts the token's end (`t_dtw`, 10 ms units); -1 means not aligned. */
+function dtwEnd(token: { t_dtw?: number }): number | undefined {
+  return token.t_dtw !== undefined && token.t_dtw >= 0 ? round3(token.t_dtw / 100) : undefined;
+}
+
+type WhisperToken = { text?: string; offsets?: { from?: number; to?: number }; t_dtw?: number };
+
+function offsetSeconds(ms: number | undefined): number {
+  return round3((ms ?? 0) / 1000);
+}
+
+function isNonSpeech(text: string): boolean {
+  return !text || text.startsWith("[_") || text.startsWith("[BLANK");
+}
+
+/** Whisper marks a word boundary with a leading space in every language. */
+function continuesWord(rawText: string, text: string, isPunctuation: boolean): boolean {
+  return !rawText.startsWith(" ") || isPunctuation || /^'(t|m|s|ve|re|ll|d)$/i.test(text);
+}
+
+/** A punctuation token's DTW time can sit inside the following pause, so it never moves the end. */
+function extendWord(word: Word, token: WhisperToken, text: string, isPunctuation: boolean): void {
+  word.text += text;
+  const dtw = dtwEnd(token);
+  if (dtw === undefined) word.end = offsetSeconds(token.offsets?.to);
+  else if (!isPunctuation) word.end = dtw;
+}
+
+/** Past the first 30 s window an offset start can drift beyond the word's own DTW end. */
+function dtwWordStart(from: number, dtw: number, lastWord: Word | undefined): number {
+  if (!lastWord) return Math.min(from, dtw);
+  return from < dtw ? Math.max(from, lastWord.end) : lastWord.end;
+}
+
+function appendToken(words: Word[], token: WhisperToken): void {
+  const rawText = token.text ?? "";
+  const text = rawText.trim();
+  if (isNonSpeech(text)) return;
+  const lastWord = words[words.length - 1];
+  const isPunctuation = PUNCTUATION_TOKEN.test(text);
+  if (lastWord && continuesWord(rawText, text, isPunctuation)) {
+    extendWord(lastWord, token, text, isPunctuation);
+    return;
+  }
+  const from = offsetSeconds(token.offsets?.from);
+  const dtw = dtwEnd(token);
+  words.push({
+    text,
+    start: dtw === undefined ? from : dtwWordStart(from, dtw, lastWord),
+    end: dtw ?? offsetSeconds(token.offsets?.to),
+  });
+}
+
 function parseWhisperCpp(data: Record<string, unknown>): Word[] {
   const words: Word[] = [];
-  const transcription = data.transcription as Array<{
-    tokens?: Array<{
-      text?: string;
-      offsets?: { from?: number; to?: number };
-    }>;
-  }>;
-
-  for (const seg of transcription ?? []) {
-    for (const token of seg.tokens ?? []) {
-      const rawText = token.text ?? "";
-      const text = rawText.trim();
-      if (!text || text.startsWith("[_") || text.startsWith("[BLANK")) continue;
-
-      const lastWord = words[words.length - 1];
-
-      // Merge into previous word when the token is a sub-word continuation,
-      // trailing punctuation, or a contraction suffix.
-      // Whisper uses leading spaces to mark word boundaries in all languages.
-      const shouldMerge =
-        lastWord &&
-        (!rawText.startsWith(" ") ||
-          /^[.,!?;:'")\]}>…–—¡¿-]+$/.test(text) ||
-          /^'(t|m|s|ve|re|ll|d)$/i.test(text));
-      if (shouldMerge) {
-        lastWord.text += text;
-        lastWord.end = round3((token.offsets?.to ?? 0) / 1000);
-        continue;
-      }
-
-      words.push({
-        text,
-        start: round3((token.offsets?.from ?? 0) / 1000),
-        end: round3((token.offsets?.to ?? 0) / 1000),
-      });
-    }
+  const transcription = (data.transcription ?? []) as Array<{ tokens?: WhisperToken[] }>;
+  for (const seg of transcription) {
+    for (const token of seg.tokens ?? []) appendToken(words, token);
   }
 
   mergeFragments(words);

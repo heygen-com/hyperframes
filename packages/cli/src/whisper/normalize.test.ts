@@ -591,6 +591,93 @@ describe("whisper-cpp fragment merging", () => {
   });
 });
 
+describe("whisper-cpp DTW word timing", () => {
+  // Tokens from whisper-cli --dtw small.en on whisper.cpp's jfk.wav sample, where speech
+  // runs 0.33-2.12, 3.29-3.69, 4.01-4.29 and from 5.41 s.
+  const jfk = {
+    transcription: [
+      {
+        tokens: [
+          { text: "[_BEG_]", offsets: { from: 0, to: 0 }, t_dtw: -1 },
+          { text: " my", offsets: { from: 710, to: 910 }, t_dtw: 120 },
+          { text: " fellow", offsets: { from: 910, to: 1530 }, t_dtw: 158 },
+          { text: " Americans", offsets: { from: 1530, to: 2100 }, t_dtw: 208 },
+          { text: ",", offsets: { from: 2310, to: 3000 }, t_dtw: 348 },
+          { text: " ask", offsets: { from: 3290, to: 3650 }, t_dtw: 368 },
+          { text: " not", offsets: { from: 4010, to: 4290 }, t_dtw: 430 },
+          { text: " what", offsets: { from: 5410, to: 5520 }, t_dtw: 556 },
+        ],
+      },
+    ],
+  };
+
+  it("ends each word at its DTW time and starts it no earlier than the word before ends", () => {
+    const { words } = loadTranscript(tmpFile("jfk.json", JSON.stringify(jfk)));
+    expect(words.map(({ text, start, end }) => [text, start, end])).toEqual([
+      ["my", 0.71, 1.2],
+      ["fellow", 1.2, 1.58],
+      ["Americans,", 1.58, 2.08],
+      ["ask", 3.29, 3.68],
+      ["not", 4.01, 4.3],
+      ["what", 5.41, 5.56],
+    ]);
+  });
+
+  it("starts a word at the previous word's end when its offset start drifted past its DTW end", () => {
+    // From the same clip repeated to 51 s: past the first window, offsets run late.
+    const drifted = {
+      transcription: [
+        {
+          tokens: [
+            { text: " green", offsets: { from: 7880, to: 8300 }, t_dtw: 828 },
+            { text: " forest", offsets: { from: 8800, to: 8970 }, t_dtw: 868 },
+          ],
+        },
+      ],
+    };
+    const { words } = loadTranscript(tmpFile("drifted.json", JSON.stringify(drifted)));
+    expect(words.map(({ start, end }) => [start, end])).toEqual([
+      [7.88, 8.28],
+      [8.28, 8.68],
+    ]);
+  });
+
+  it("never inverts a drifted first word or starts the next one before it", () => {
+    const drifted = {
+      transcription: [
+        {
+          tokens: [
+            { text: " a", offsets: { from: 8800, to: 8970 }, t_dtw: 828 },
+            { text: " b", offsets: { from: 8900, to: 9000 }, t_dtw: 868 },
+          ],
+        },
+      ],
+    };
+    const { words } = loadTranscript(tmpFile("first.json", JSON.stringify(drifted)));
+    for (const word of words) expect(word.start).toBeLessThanOrEqual(word.end);
+    const starts = words.map((word) => word.start);
+    expect(starts).toEqual([...starts].sort((x, y) => x - y));
+  });
+
+  it("keeps offset timing for tokens whisper.cpp did not align", () => {
+    const unaligned = {
+      transcription: [
+        {
+          tokens: [
+            { text: " ask", offsets: { from: 3290, to: 3650 }, t_dtw: -1 },
+            { text: " not", offsets: { from: 4010, to: 4290 }, t_dtw: -1 },
+          ],
+        },
+      ],
+    };
+    const { words } = loadTranscript(tmpFile("unaligned.json", JSON.stringify(unaligned)));
+    expect(words.map(({ start, end }) => [start, end])).toEqual([
+      [3.29, 3.65],
+      [4.01, 4.29],
+    ]);
+  });
+});
+
 describe("whisper-cpp zero-duration interpolation", () => {
   it("interpolates a cluster of zero-duration words", () => {
     const path = tmpFile(

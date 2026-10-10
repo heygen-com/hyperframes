@@ -1,5 +1,5 @@
 // fallow-ignore-file complexity
-import { execFile, execFileSync } from "node:child_process";
+import { execFile, execFileSync, spawnSync } from "node:child_process";
 import { once } from "node:events";
 import { createInterface } from "node:readline";
 import type { Readable } from "node:stream";
@@ -411,6 +411,29 @@ export function dtwPresetForModel(model: string): string {
   return model.replace(/-/g, ".");
 }
 
+const acceptsNoFlashAttnByPath = new Map<string, boolean>();
+
+/** whisper.cpp's flash attention, on by default since it gained `--no-flash-attn`, silently turns `--dtw` off. */
+export function dtwArgs(whisperPath: string, model: string): string[] {
+  let acceptsNoFlashAttn = acceptsNoFlashAttnByPath.get(whisperPath);
+  if (acceptsNoFlashAttn === undefined) {
+    const help = spawnSync(whisperPath, ["--help"], { encoding: "utf-8", timeout: 10_000 });
+    acceptsNoFlashAttn = `${help.stdout}${help.stderr}`.includes("--no-flash-attn");
+    acceptsNoFlashAttnByPath.set(whisperPath, acceptsNoFlashAttn);
+  }
+  return ["--dtw", dtwPresetForModel(model), ...(acceptsNoFlashAttn ? ["--no-flash-attn"] : [])];
+}
+
+export function assertDtwTimed(segments: { tokens?: { t_dtw?: number }[] }[]): void {
+  const tokens = segments.flatMap((segment) => segment.tokens ?? []);
+  const timed = tokens.filter((token) => token.t_dtw !== undefined);
+  if (timed.length === 0 || timed.some((token) => (token.t_dtw ?? -1) > -1)) return;
+  throw new Error(
+    "whisper.cpp skipped word alignment (--dtw), so caption timing would drift. " +
+      "Its flash attention turns alignment off; update whisper-cli to a build that accepts --no-flash-attn.",
+  );
+}
+
 export function initialModelForLanguage(model: string, language?: string): string {
   const baseLanguage = language?.trim().toLowerCase().split(/[-_]/, 1)[0];
   if (baseLanguage && baseLanguage !== "en" && model.endsWith(".en")) {
@@ -493,8 +516,7 @@ export async function transcribe(
     "--output-json-full",
     "--output-file",
     outputBase,
-    "--dtw",
-    dtwPresetForModel(model),
+    ...dtwArgs(whisper.executablePath, model),
     "--suppress-nst",
   ];
   whisperArgs.push("--language", language);
@@ -507,6 +529,7 @@ export async function transcribe(
     overrideMs: options?.timeoutMs,
   });
   let through = 0;
+  let streamedUntil = -1;
   const heard = (words: Word[], at: number) => {
     if (!onEvent || (words.length === 0 && at <= through)) return;
     through = Math.max(through, at);
@@ -520,7 +543,10 @@ export async function transcribe(
         onEvent &&
         ((line) => {
           const segment = segmentWords(line);
-          if (segment) heard(segment.words, segment.end);
+          // With word timing on, whisper.cpp reprints its first window's segments out of order.
+          if (!segment || segment.start < streamedUntil || segment.end <= streamedUntil) return;
+          streamedUntil = segment.end;
+          heard(segment.words, segment.end);
         }),
       onStderr:
         onEvent && wavSeconds
@@ -578,6 +604,13 @@ export async function transcribe(
       // ignore
     }
   }
+  try {
+    assertDtwTimed(segments);
+  } catch (err) {
+    // `init` captions from whatever transcript.json is on disk, even after transcription fails.
+    rmSync(transcriptPath, { force: true });
+    throw err;
+  }
 
   options?.onEvent?.({ type: "progress", phase: "transcription", model, status: "completed" });
   return {
@@ -596,7 +629,7 @@ const toSeconds = (h: string, m: string, s: string) =>
 const toMs = (seconds: number) => Math.round(seconds * 1000) / 1000;
 
 /** A segment line whisper-cli prints as it decodes; word times are spread by length until the JSON's. */
-function segmentWords(line: string): { words: Word[]; end: number } | null {
+function segmentWords(line: string): { words: Word[]; start: number; end: number } | null {
   const m = SEGMENT_LINE.exec(line);
   if (!m) return null;
   const start = toSeconds(m[1]!, m[2]!, m[3]!);
@@ -611,7 +644,7 @@ function segmentWords(line: string): { words: Word[]; end: number } | null {
     at += ((end - start) * text.length) / letters;
     return { text, start: toMs(from), end: toMs(at) };
   });
-  return { words, end };
+  return { words, start, end };
 }
 
 /** Resolves once whisper exits and both its streams are read, so no printed line is lost. */
