@@ -158,16 +158,17 @@ function discoverCallers(): { found: string[]; unclassified: string[]; shell: st
   const shell: string[] = [];
   const classify = (abs: string): void => {
     const src = readFileSync(abs, "utf8");
+    const relPath = relative(REPO_ROOT, abs).replaceAll("\\", "/");
     if (SHELL_EXT.test(abs) && /(?:^|[^\w-])ffprobe\s+-/m.test(src)) {
-      shell.push(relative(REPO_ROOT, abs));
+      shell.push(relPath);
     }
     // Discovery is ARGV-shaped, not call-shaped. Matching on spawn/execFile
     // misses a dependency-injected runner — `runner("ffprobe", [...])` in
     // studio-server's mediaValidation.ts is exactly that, and a call-shaped
     // predicate skipped it silently. Anything that BUILDS a probe argv is a
     // caller, however it is invoked.
-    if (argvTails(src).length > 0) found.push(relative(REPO_ROOT, abs));
-    else if (mentionsProbe(src)) unclassified.push(relative(REPO_ROOT, abs));
+    if (argvTails(src).length > 0) found.push(relPath);
+    else if (mentionsProbe(src)) unclassified.push(relPath);
   };
   const walk = (dir: string): void => {
     for (const entry of readdirSync(dir)) {
