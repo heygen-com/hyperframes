@@ -92,7 +92,7 @@ string.
 | `input.compositionHash` | Content hash of the compiled composition — the same value render telemetry reports. |
 | `input.fonts` | `@font-face` family names baked into the compiled composition. |
 | `input.variables` | Count and sha256 of the render-time variable overrides — the hash proves *which* parametrization produced the output without disclosing values. `null` when no variables were passed. |
-| `output.sha256` / `output.sizeBytes` | Digest and size of the committed artifact. Omitted for `png-sequence` directory outputs. |
+| `output.sha256` / `output.sizeBytes` | Digest and size of the committed artifact. Omitted for `png-sequence` and `hls` directory outputs. |
 | `output.encoder` | Codec, preset, and pixel format used by the encode stage. `null` for `png-sequence` and `gif`. |
 
 The full contract is published as a JSON Schema at

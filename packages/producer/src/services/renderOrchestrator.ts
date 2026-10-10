@@ -5189,7 +5189,7 @@ async function executeRenderPipeline(input: {
     await emitRenderProvenanceSidecar({
       outputPath,
       provenance: job.config.provenance,
-      isFileArtifact: !isPngSequence,
+      isFileArtifact: !isPngSequence && !isHls,
       projectDir,
       entryFile: job.config.entryFile ?? "index.html",
       compiledHtml: compiled.html,

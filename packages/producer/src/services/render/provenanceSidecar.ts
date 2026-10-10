@@ -73,7 +73,7 @@ export interface RenderProvenanceSidecar {
     variables: { count: number; sha256: string } | null;
   };
   output: {
-    /** Output file (or directory, for png-sequence) basename. No host paths. */
+    /** Output file (or directory, for png-sequence and hls) basename. No host paths. */
     file: string;
     format: string;
     fps: { num: number; den: number };
@@ -253,7 +253,7 @@ async function writeRenderProvenanceSidecar(
 export interface EmitRenderProvenanceSidecarInput {
   outputPath: string;
   provenance: ProvenanceSetting;
-  /** False for png-sequence — directory artifacts skip size + sha256. */
+  /** False for png-sequence and hls — directory artifacts skip size + sha256. */
   isFileArtifact: boolean;
   projectDir: string;
   /** Project-relative entry HTML path (`RenderConfig.entryFile` default). */

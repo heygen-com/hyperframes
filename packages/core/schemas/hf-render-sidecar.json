@@ -138,11 +138,11 @@
       "properties": {
         "file": {
           "type": "string",
-          "description": "Output file (or png-sequence directory) basename. No host paths."
+          "description": "Output file (or png-sequence / hls directory) basename. No host paths."
         },
         "format": {
           "type": "string",
-          "enum": ["mp4", "webm", "mov", "gif", "png-sequence"]
+          "enum": ["mp4", "webm", "mov", "gif", "png-sequence", "hls"]
         },
         "fps": {
           "type": "object",
