@@ -299,8 +299,8 @@ export function getMediaTreatmentCapabilityDetail(id: string): unknown {
   if (detail) return detail;
   const families = [...Object.keys(details), ...capabilities.effectFamilies.map((f) => f.id)];
   throw new Error(
-    `Unknown media-treatment capability: ${id}. Available families: ${families.join(", ")}. ` +
-      "Each family's detail lists its controls, effects, presets, and palettes, which are also valid ids.",
+    `Unknown media-treatment capability: ${id}. Available areas: ${families.join(", ")}. ` +
+      "Control, effect, preset and palette ids listed in those areas' details are also valid.",
   );
 }
 
