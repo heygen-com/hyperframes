@@ -1,0 +1,40 @@
+{
+  "_notes": [
+    "Times are seconds on the A-roll, snapped to Whisper word timestamps (words.json). Cuts land on the first frame of the word named in 'cut_on'.",
+    "Each B-roll clip is used once at most. The 3 byte-identical duplicates are never used.",
+    "Where the real speech timing differs from the addendum's approximate seconds, the word decides, e.g. 'SKILL + TASTE' lands at 32-35s, not 35-39s."
+  ],
+  "beats": [
+    {"id": 1,  "start": 0.00,  "end": 3.04,  "line": "Hey guys, so I officially don't make this kind of content,", "type": "graphic on A-roll", "treatment": "Marker hook quote 'I DON'T MAKE THIS KIND OF CONTENT' word by word from 'I' (1.07); dot-globe at 40%."},
+    {"id": 2,  "start": 3.04,  "end": 6.00,  "line": "but something provoked me to make this kind of content and that is this chart.", "type": "A-roll only", "treatment": "Punch-in 1.15 on 'provoked'; caption 'provoked me'; flicker on 'chart' (5.64)."},
+    {"id": 3,  "start": 6.00,  "end": 11.50, "line": "If you can see this chart, in just a few years we have lost over lakhs of jobs", "type": "needs B-roll", "clip": "Downward_trending_line_chart_20260928160944.mp4", "clip_in": 0.3, "score": {"meaning": 5, "mood": 5, "grade": 4, "duration": 4}, "cut_on": "If", "treatment": "Crimson duotone + Ken Burns; red hero 'LAKHS OF JOBS' on 'lost' (8.82) with flash + boom. No numbers added; the clip's made-up stat cards are muted by the grade."},
+    {"id": 4,  "start": 11.50, "end": 14.40, "line": "and people are not aware of this till now.", "type": "needs B-roll", "clip": "Man_scrolling_phone_20260928160318.mp4", "clip_in": 0.5, "score": {"meaning": 5, "mood": 4, "grade": 4, "duration": 5}, "cut_on": "people", "treatment": "B&W vertical panel over blurred fill; captions 'not aware' / 'till now'."},
+    {"id": 5,  "start": 14.40, "end": 16.10, "line": "So hi, I'm Speaker,", "type": "graphic on A-roll", "treatment": "Depth title 'my name is / YOUR NAME' (bigTitleIn) on 'Speaker' (14.97)."},
+    {"id": 6,  "start": 16.10, "end": 17.68, "line": "and I was working with some of the teams", "type": "needs B-roll", "clip": "Man_walking_down_corridor_20260928160256.mp4", "clip_in": 0.0, "score": {"meaning": 4, "mood": 4, "grade": 4, "duration": 5}, "cut_on": "working", "treatment": "B&W panel; caption 'teams'."},
+    {"id": 7,  "start": 17.68, "end": 19.53, "line": "and even with consulting agency", "type": "needs B-roll", "clip": "Man_pacing_on_phone_call_20260928160249.mp4", "clip_in": 0.3, "score": {"meaning": 5, "mood": 4, "grade": 4, "duration": 5}, "cut_on": "even", "treatment": "B&W panel; caption 'consulting agency'."},
+    {"id": 8,  "start": 19.53, "end": 24.90, "line": "and I figured out that people are not aware of the things that they are chasing. In our generation students are chasing", "type": "A-roll only", "treatment": "Captions only, with punch-ins on 'figured' (19.53) and 'In' (23.00) so no framing holds longer than about 3.5s."},
+    {"id": 9,  "start": 24.90, "end": 29.00, "line": "something that is not even going to exist when they are going to reach their destination.", "type": "needs B-roll", "clip": "Glass_pathway_crumbling_into_dust_20260928161057.mp4", "clip_in": 0.9, "score": {"meaning": 5, "mood": 5, "grade": 4, "duration": 4}, "cut_on": "something", "treatment": "Crimson duotone; red hero 'WON'T EXIST' on 'exist' (26.43); static burst on 'destination' (28.27) as it dissolves."},
+    {"id": 10, "start": 29.00, "end": 32.00, "line": "So your skillset is waste right now, that doesn't mean that you are a waste.", "type": "graphic on A-roll", "treatment": "Punch-in; 'skill set is waste' with red slash; on the second 'waste' (31.56) the slash goes and 'YOU' pops large."},
+    {"id": 11, "start": 32.00, "end": 37.00, "line": "If you have a proper skillset with a proper taste, that's what we pay for or other companies pay for.", "type": "needs B-roll", "clip": "Wireframes_transforming_into_cry…_20260928161030.mp4", "clip_in": 1.0, "score": {"meaning": 5, "mood": 5, "grade": 5, "duration": 4}, "cut_on": "If", "treatment": "B&W; red hero 'SKILL + TASTE' on 'taste' (34.00) + boom; caption 'we pay for' on 'pay' (35.08)."},
+    {"id": 12, "start": 37.00, "end": 42.00, "line": "So if you want to grow and if you want to be like that, then you can join our WhatsApp here,", "type": "graphic on A-roll", "treatment": "Clean A-roll after the hero title; punch-in at 'So' (37.00) and 'then' (40.03); caption 'join our WhatsApp' + icon pop/pulse on 'WhatsApp' (41.07)."},
+    {"id": 13, "start": 42.00, "end": 44.00, "line": "here we drop latest workshops,", "type": "needs B-roll", "clip": "Messaging_interface_card_flies_u…_20260928161025.mp4", "clip_in": 2.5, "score": {"meaning": 5, "mood": 4, "grade": 4, "duration": 5}, "cut_on": "here", "treatment": "B&W; callout label WORKSHOPS on 'workshops' (43.36)."},
+    {"id": 14, "start": 44.00, "end": 45.60, "line": "latest newses,", "type": "needs B-roll", "clip": "Glass_panels_slide_open_deck_20260928161044.mp4", "clip_in": 2.4, "score": {"meaning": 5, "mood": 4, "grade": 4, "duration": 5}, "cut_on": "latest", "treatment": "B&W; callout NEWS on 'newses' (44.62)."},
+    {"id": 15, "start": 45.60, "end": 47.34, "line": "and the thing that you go for for your career.", "type": "needs B-roll", "clip": "Cards_uploading_into_glass_conta…_20260928161010.mp4", "clip_in": 0.2, "score": {"meaning": 3, "mood": 4, "grade": 4, "duration": 5}, "cut_on": "thing", "treatment": "B&W; callout CAREER on 'for your' (46.29). Only the first 2s of the clip, before its baked-in 'THANK YOU'."},
+    {"id": 16, "start": 47.34, "end": 52.66, "line": "And here is my WhatsApp link, even if we are not able to hire you right now, at least we're going to give you", "type": "graphic on A-roll", "treatment": "Lower third with WhatsApp link placeholder + pulsing red JOIN; punch-ins on 'even' (49.00) and 'at' (51.12)."},
+    {"id": 17, "start": 52.66, "end": 56.00, "line": "a platform in which you can grow, evolve and earn from there.", "type": "needs B-roll", "clip": "Digital_glass_launchpad_platform…_20260928160937.mp4", "clip_in": 0.5, "score": {"meaning": 5, "mood": 5, "grade": 4, "duration": 5}, "cut_on": "a", "treatment": "B&W; stacked 'grow' (54.01) / 'evolve' (54.37) / 'EARN' in red (54.92)."},
+    {"id": 18, "start": 56.00, "end": 60.60, "line": "So put your demos and practices here in my agency and we gonna figure it out,", "type": "needs B-roll", "clip": "Glass_nodes_forming_agency_network_20260928161001.mp4", "clip_in": 0.5, "score": {"meaning": 5, "mood": 4, "grade": 4, "duration": 4}, "cut_on": "So", "treatment": "B&W; DEMOS folder pops on 'demos' (56.69), PRACTICE on 'practices' (57.31), both fly into AGENCY on 'agency' (58.62)."},
+    {"id": 19, "start": 60.60, "end": 65.51, "line": "till that time guys, love you, take care and be happy.", "type": "A-roll only", "treatment": "Clean A-roll, punch-in on 'till' (61.00); from 63.5 fade to black, red YOUR NAME wordmark + WhatsApp handle placeholder."}
+  ],
+  "gap_beats": [],
+  "gap_summary": "No beat was left without a usable clip, so no reuse, crop-variation or generation fallback was needed. Weakest match: beat 15 ('career' on the upload clip, meaning 3/5), kept because the addendum names that clip for this spot and it reads as 'sending your work somewhere'.",
+  "unused_clips": [
+    "Glass_card_rotates_in_void_20260928161105.mp4 (legible fake brand name, no matching line)",
+    "Man_drawing_flowchart_on_glass_20260928160354.mp4",
+    "Man_typing_on_laptop_keyboard_20260928160357.mp4",
+    "Man_leaning_toward_laptop_20260928160244.mp4",
+    "Man_leaning_back_in_chair_20260928160306.mp4",
+    "Man_closing_laptop_20260928160405.mp4",
+    "Pen_writing_in_notebook_20260928160321.mp4",
+    "3 byte-identical duplicates (…160345, …161406, …160355)"
+  ]
+}
