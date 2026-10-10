@@ -42,7 +42,18 @@ export function createRuntimeStartTimeResolver(params: {
   const durationCache = new WeakMap<Element, number | null>();
   const visiting = new Set<Element>();
 
-  const findReferenceTarget = (refId: string): Element | null => {
+  const compositionScopeOf = (element: Element): Element | null =>
+    (element.hasAttribute("data-composition-id") ? element.parentElement : element)?.closest(
+      "[data-composition-id]",
+    ) ?? null;
+
+  const findReferenceTarget = (refId: string, from: Element): Element | null => {
+    const scope = compositionScopeOf(from);
+    if (scope) {
+      for (const candidate of scope.querySelectorAll("[id]")) {
+        if (candidate.id === refId && compositionScopeOf(candidate) === scope) return candidate;
+      }
+    }
     const byId = doc.getElementById(refId);
     if (byId) return byId;
     return (
@@ -161,7 +172,7 @@ export function createRuntimeStartTimeResolver(params: {
         startCache.set(element, resolved);
         return resolved;
       }
-      const target = findReferenceTarget(expression.refId);
+      const target = findReferenceTarget(expression.refId, element);
       if (!target) {
         startCache.set(element, fallback);
         return fallback;
