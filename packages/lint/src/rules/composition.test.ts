@@ -1,6 +1,7 @@
 // fallow-ignore-file code-duplication
 import { describe, it, expect } from "vitest";
 import { lintHyperframeHtml } from "../hyperframeLinter.js";
+import { parseCompositionVariables } from "@hyperframes/parsers/composition";
 
 describe("composition rules", () => {
   describe("canonical timing contract", () => {
@@ -1222,6 +1223,65 @@ describe("composition rules", () => {
   });
 
   describe("invalid_composition_variables_declaration", () => {
+    const invalidDeclarations = [
+      { id: "setting", type: "string", label: "Setting", default: 3 },
+      { id: "setting", type: "number", label: "Setting", default: "3" },
+      { id: "setting", type: "boolean", label: "Setting", default: "false" },
+      { id: "setting", type: "color", label: "Setting", default: 3 },
+      { id: "setting", type: "font", label: "Setting", default: 3 },
+      { id: "setting", type: "image", label: "Setting", default: 3 },
+      { id: "setting", type: "enum", label: "Setting", default: 3, options: [] },
+      { id: "setting", type: "enum", label: "Setting", default: "light" },
+      { id: "setting", type: "enum", label: "Setting", default: "light", options: "light" },
+    ];
+
+    for (const placement of ["html", "root", "template"]) {
+      it.each(invalidDeclarations)(
+        `reports parser-rejected declaration %j on ${placement}`,
+        async (declaration) => {
+          const attribute = `data-composition-variables='${JSON.stringify([declaration])}'`;
+          const root = `<div data-composition-id="main" data-no-timeline data-width="1920" data-height="1080" data-duration="2" ${placement === "html" ? "" : attribute}></div>`;
+          const html =
+            placement === "template"
+              ? `<template>${root}</template>`
+              : `<html ${placement === "html" ? attribute : ""}><body>${root}</body></html>`;
+          const element = document.createElement("div");
+          element.setAttribute("data-composition-variables", JSON.stringify([declaration]));
+          expect(parseCompositionVariables(element)).toEqual([]);
+          const result = await lintHyperframeHtml(html, {
+            isSubComposition: placement === "template",
+          });
+          const findings = result.findings.filter(
+            (finding) => finding.code === "invalid_composition_variables_declaration",
+          );
+          expect(findings).toHaveLength(1);
+          expect(findings[0]?.message).toMatch(/\[0\]/);
+          expect(findings[0]?.severity).toBe("error");
+        },
+      );
+    }
+
+    it.each([
+      { id: "setting", type: "string", label: "Setting", default: "" },
+      { id: "setting", type: "number", label: "Setting", default: 0 },
+      { id: "setting", type: "boolean", label: "Setting", default: false },
+      { id: "setting", type: "color", label: "Setting", default: "#fff" },
+      { id: "setting", type: "font", label: "Setting", default: "Arial" },
+      { id: "setting", type: "image", label: "Setting", default: "assets/a.png" },
+      { id: "setting", type: "enum", label: "Setting", default: "light", options: [] },
+    ])("preserves parser-admitted declaration %j", async (declaration) => {
+      const element = document.createElement("div");
+      element.setAttribute("data-composition-variables", JSON.stringify([declaration]));
+      expect(parseCompositionVariables(element)).toEqual([declaration]);
+      const html = `<html data-composition-variables='${JSON.stringify([declaration])}'><body><div data-composition-id="main" data-no-timeline data-width="1920" data-height="1080" data-duration="2"></div></body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(
+        result.findings.filter(
+          (finding) => finding.code === "invalid_composition_variables_declaration",
+        ),
+      ).toEqual([]);
+    });
+
     it("checks a declaration on the composition root too", async () => {
       const html = `<html><body><div data-composition-id="x" data-composition-variables='[{"id":12345}]'></div></body></html>`;
       const result = await lintHyperframeHtml(html);
