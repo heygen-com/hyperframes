@@ -30,6 +30,7 @@ import { AsyncLocalStorage } from "async_hooks";
 import { readFileSync, existsSync, statSync } from "fs";
 import { parse as parseJs } from "acorn";
 import { resolve, relative, dirname, isAbsolute, sep } from "path";
+import { extractStandaloneEntryFromIndex } from "./standaloneEntry";
 import {
   decodeCssEscapes,
   decodeWellFormedEscapes,
@@ -1004,13 +1005,28 @@ export function bundleToSingleHtml(projectDir: string, options?: BundleOptions):
   return options?.onRead ? bundleReads.run(options.onRead, bundle) : bundle();
 }
 
+// A <template> scene has no root or GSAP of its own: bundle it inside the index that mounts it, as render does.
+function readMountedSceneShell(
+  projectDir: string,
+  entryFile: string,
+  entryHtml: string,
+): string | null {
+  const projectIndex = resolve(projectDir, "index.html");
+  if (!entryHtml.trimStart().startsWith("<template") || !existsSync(projectIndex)) return null;
+  noteRead(projectIndex);
+  return extractStandaloneEntryFromIndex(readFileSync(projectIndex, "utf-8"), entryFile, entryHtml);
+}
+
 async function bundleProject(projectDir: string, options?: BundleOptions): Promise<string> {
   const entryFile = options?.entryFile ?? "index.html";
   const indexPath = resolveWithinProject(projectDir, entryFile);
   if (!indexPath || !existsSync(indexPath)) {
     throw new Error(`${entryFile} not found in project directory`);
   }
-  const sourceDir = dirname(indexPath);
+  noteRead(indexPath);
+  const entryHtml = readFileSync(indexPath, "utf-8");
+  const mountedShell = readMountedSceneShell(projectDir, entryFile, entryHtml);
+  const sourceDir = mountedShell ? projectDir : dirname(indexPath);
   const resolveEntryPath = (relativePath: string): string | null => {
     const resolved = resolve(sourceDir, relativePath);
     return isSafePath(projectDir, resolved) ? resolved : null;
@@ -1019,8 +1035,7 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
   const resolveEntryUrl = (url: string): string | null => resolveEntryPath(decodedUrlPath(url));
 
   const readSource = options?.stampHfIds ? ensureHfIds : (html: string) => html;
-  noteRead(indexPath);
-  const rawHtml = readSource(readFileSync(indexPath, "utf-8"));
+  const rawHtml = readSource(mountedShell ?? entryHtml);
   const compiled = await compileHtml(rawHtml, sourceDir, options?.probeMediaDuration);
 
   if (options?.staticGuard !== false) {

@@ -192,6 +192,28 @@ describe("bundleToSingleHtml", () => {
     expect(bundled).toContain(".direct-scene { color: rgb(1, 2, 3); }");
   });
 
+  it("bundles a template scene entry inside the index that mounts it", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><head><script src="vendor/gsap.js"></script></head><body>
+        <div data-composition-id="root" data-width="320" data-height="180" data-duration="9">
+          <div data-composition-id="intro" data-composition-src="compositions/intro.html" data-start="0" data-duration="3"></div>
+          <div data-composition-id="scene" data-composition-src="./compositions/scene.html" data-start="3" data-duration="6"></div>
+        </div>
+      </body></html>`,
+      "vendor/gsap.js": "window.ROOT_GSAP_LOADED = true;",
+      "compositions/intro.html": `<template><div data-composition-id="intro">intro scene</div></template>`,
+      "compositions/scene.html": `<template><div data-composition-id="scene" data-duration="6">
+        <h1 id="title">mounted scene</h1></div></template>`,
+    });
+
+    const bundled = await bundleToSingleHtml(dir, { entryFile: "compositions/scene.html" });
+
+    expect(bundled).toContain("window.ROOT_GSAP_LOADED = true;");
+    expect(bundled).toContain('data-composition-id="root"');
+    expect(bundled).toContain("mounted scene");
+    expect(bundled).not.toContain("intro scene");
+  });
+
   it("rebases direct-entry authored asset paths before inlining", async () => {
     const spriteSvg = '<svg xmlns="http://www.w3.org/2000/svg"><circle r="4"/></svg>';
     const bgSvg = '<svg xmlns="http://www.w3.org/2000/svg"><rect width="8" height="8"/></svg>';
