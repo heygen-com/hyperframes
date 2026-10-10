@@ -1,8 +1,16 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdtempSync, rmSync, symlinkSync, truncateSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  truncateSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
 
 const SCRIPT = join(import.meta.dirname, "check-large-files.sh");
@@ -18,8 +26,14 @@ function withRepo(run) {
       env,
       encoding: "utf-8",
     });
+  const write = (files) => {
+    for (const [name, contents] of Object.entries(files)) {
+      mkdirSync(dirname(join(dir, name)), { recursive: true });
+      writeFileSync(join(dir, name), contents);
+    }
+  };
   const commit = (files) => {
-    for (const [name, contents] of Object.entries(files)) writeFileSync(join(dir, name), contents);
+    write(files);
     git("add", "-A");
     git("commit", "-q", "-m", "c");
     return git("rev-parse", "HEAD").stdout.trim();
@@ -27,8 +41,7 @@ function withRepo(run) {
   // `files` null checks the index as it stands (git add -A would drop a gitlink with no checkout).
   const staged = (files) => {
     if (files) {
-      for (const [name, contents] of Object.entries(files))
-        writeFileSync(join(dir, name), contents);
+      write(files);
       git("add", "-A");
     }
     const result = spawnSync(SCRIPT, [], { cwd: dir, env, encoding: "utf-8" });
@@ -67,6 +80,8 @@ function withFiles(files, run) {
 }
 
 const bigBinary = Buffer.alloc(OVER_LIMIT_BYTES);
+/** A NUL-filled (so binary) buffer that differs from bigBinary by its first byte. */
+const binaryVariant = (first) => Buffer.concat([Buffer.from([first]), bigBinary.subarray(1)]);
 const bigText = "the quick brown fox jumps over the lazy dog\n".repeat(50_000);
 
 describe("check-large-files", () => {
@@ -224,6 +239,29 @@ describe("check-large-files", () => {
       git("commit", "-q", "-m", "sub");
       const head = git("rev-parse", "HEAD").stdout.trim();
       assert.equal(range(base, head).ok, true);
+    });
+  });
+
+  it("exempts registry/ binaries and catalog copies of them, but not other catalog files", () => {
+    withRepo(({ commit, range }) => {
+      const base = commit({ "registry/a/bg.png": bigBinary });
+      const head = commit({
+        "registry/b/new.png": binaryVariant(1),
+        "docs/public/catalog/a/bg.png": bigBinary,
+        "docs/public/catalog/c/random.mp4": binaryVariant(2),
+      });
+      const { ok, stderr } = range(base, head);
+      assert.equal(ok, false);
+      assert.match(stderr, /docs\/public\/catalog\/c\/random\.mp4/);
+      assert.doesNotMatch(stderr, /registry\/|catalog\/a\/bg\.png/);
+    });
+  });
+
+  it("prints file names with backslashes intact", () => {
+    withRepo(({ commit, range }) => {
+      const base = commit({ "seed.txt": "x" });
+      const head = commit({ "a\\cb.bin": bigBinary });
+      assert.match(range(base, head).stderr, /a\\cb\.bin/);
     });
   });
 });

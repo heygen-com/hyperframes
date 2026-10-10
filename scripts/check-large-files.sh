@@ -51,6 +51,16 @@ list_files() {
   esac
 }
 
+# Blob ids under registry/ in the tree being checked, listed on first need.
+list_registry_ids() {
+  [ -s "$regids" ] && return
+  if [ "$MODE" = range ]; then
+    git ls-tree -r "$RANGE_HEAD" -- registry | awk '{print $3}'
+  else
+    git ls-files -s -- registry | awk '{print $2}'
+  fi > "$regids"
+}
+
 read_bytes() {
   if [ "$MODE" = files ]; then cat -- "$1"; else git cat-file blob "$2"; fi
 }
@@ -59,7 +69,8 @@ violations="$(mktemp)"
 errors="$(mktemp)"
 paths="$(mktemp)"
 blob="$(mktemp)"
-trap 'rm -f "$violations" "$errors" "$paths" "$blob"' EXIT INT TERM
+regids="$(mktemp)"
+trap 'rm -f "$violations" "$errors" "$paths" "$blob" "$regids"' EXIT INT TERM
 
 # A git error (bad ref, not a repo) must fail the check, not pass an empty list.
 list_files "$@" > "$paths" || { echo "ERROR: could not list the files to check." >&2; exit 2; }
@@ -91,8 +102,13 @@ tr '\0' '\n' < "$paths" | while IFS= read -r header && IFS= read -r f; do
   # registry/ intentionally ships raw binary assets (block backgrounds, avatar
   # PNGs, .glb models, audio) so installed blocks stay portable without an LFS
   # round-trip. Those are the product, not accidental bloat — skip them here.
-  # docs/public/catalog/ mirrors those same assets for the docs site.
-  case "$f" in registry/* | docs/public/catalog/*) continue ;; esac
+  case "$f" in registry/*) continue ;; esac
+  # docs/public/catalog/ mirrors those assets for the docs site: exempt only an exact copy.
+  case "$f" in docs/public/catalog/*)
+    [ -n "$id" ] || id="$(git hash-object -- "$f")"
+    list_registry_ids
+    grep -qxF "$id" "$regids" && continue ;;
+  esac
 
   # Text is exempt, whatever its size, because the cost this hook exists to stop
   # is a binary one. Git delta-compresses text, so a file that grows by a few KB
@@ -142,7 +158,7 @@ if [ -s "$violations" ]; then
   echo "       (limit: ${MAX_KB} KB — override per-commit with HF_MAX_NONLFS_KB)" >&2
   echo >&2
   while IFS='	' read -r kb f; do
-    echo "  • ${f} (${kb} KB)" >&2
+    printf '  • %s (%s KB)\n' "$f" "$kb" >&2
   done < "$violations"
   echo >&2
   echo "Fix: add an LFS pattern for it in .gitattributes, e.g." >&2
