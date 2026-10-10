@@ -130,6 +130,9 @@ export function hasUnloadedAssets(iframe: HTMLIFrameElement, lastResult: boolean
   }
 }
 
+const runtimeBootedIn = (iframe: HTMLIFrameElement) =>
+  (iframe.contentWindow as IframeWindow | null)?.__playerReady === true;
+
 /**
  * Renders a composition preview using the <hyperframes-player> web component.
  *
@@ -138,9 +141,6 @@ export function hasUnloadedAssets(iframe: HTMLIFrameElement, lastResult: boolean
  * forwarded ref so useTimelinePlayer can access it for clip manifest parsing,
  * timeline probing, and DOM inspection.
  */
-const runtimeBootedIn = (iframe: HTMLIFrameElement) =>
-  (iframe.contentWindow as IframeWindow | null)?.__playerReady === true;
-
 export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
   (
     {
