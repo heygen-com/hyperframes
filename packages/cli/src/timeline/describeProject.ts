@@ -26,7 +26,7 @@ import {
 } from "@hyperframes/parsers";
 import {
   compositionOriginSeconds,
-  cutToHostSlot,
+  cutToHostSlots,
   resolveMediaStartSeconds,
   type HostSlot,
 } from "@hyperframes/core/media-timing";
@@ -377,7 +377,7 @@ async function readSubComposition(
 }
 
 function cutRow(row: ClipDraft, slot: HostSlot): ClipDraft[] {
-  const kept = cutToHostSlot({ start: row.absStart, end: row.absEnd }, slot);
+  const kept = cutToHostSlots({ start: row.absStart, end: row.absEnd }, [slot]);
   if (kept.end === kept.start && row.absEnd > row.absStart) return [];
   return [{ ...row, absStart: roundMs(kept.start), absEnd: roundMs(kept.end) }];
 }

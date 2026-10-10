@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { initSandboxRuntimeModular } from "./init";
 import type { RuntimeTimelineLike } from "./types";
 import { STUDIO_MANUAL_EDIT_GESTURE_ATTR } from "../editing/draftMarkers";
+import { sourceTimeAt } from "../speedRamp";
+import { readElementRateSpec } from "./playbackRate";
 import {
   createMockTimeline,
   resetRuntimeFixtureDom,
@@ -253,9 +255,14 @@ describe("runtime sub-composition placement", () => {
           `data-start="${start}" data-duration="${duration}" data-playback-start="${inPoint}"><div>${videos}</div></div>`,
       )
       .join("");
-    document.body.innerHTML = `<div data-composition-id="main" data-root="true" data-duration="12">${hosts}</div>`;
+    mountInRoot(hosts);
+  }
+
+  /** A 12 s root around `markup`; every video's source runs `sourceSeconds` and has not been seeked (-1). */
+  function mountInRoot(markup: string, sourceSeconds = 30) {
+    document.body.innerHTML = `<div data-composition-id="main" data-root="true" data-duration="12">${markup}</div>`;
     for (const video of document.querySelectorAll("video")) {
-      stubDuration(video, 30);
+      stubDuration(video, sourceSeconds);
       Object.defineProperty(video, "currentTime", {
         value: -1,
         writable: true,
@@ -267,6 +274,17 @@ describe("runtime sub-composition placement", () => {
     window.__timelines = { main: createMockTimeline(12) };
     initSandboxRuntimeModular();
   }
+
+  /** The half after a split at 5 s: it starts at 5 with in-point 5, so scene time t plays at t. */
+  function loadSecondHalf(inner: string, sourceSeconds?: number) {
+    mountInRoot(
+      `<div class="clip" data-composition-id="half" data-composition-file="compositions/scene.html" ` +
+        `data-start="5" data-duration="7" data-playback-start="5"><div>${inner}</div></div>`,
+      sourceSeconds,
+    );
+  }
+
+  const video = (id: string) => document.getElementById(id) as HTMLVideoElement;
 
   const sourceTimeOf = (host: string, video: string) =>
     document.querySelector<HTMLVideoElement>(`#${host} .${video}`)!.currentTime;
@@ -284,5 +302,54 @@ describe("runtime sub-composition placement", () => {
     expect(sourceTimeOf("scene-split", "v3")).toBe(2.5);
     window.__player?.renderSeek(10);
     expect(sourceTimeOf("scene-split-split", "v3")).toBe(4);
+  });
+
+  it("keeps a video in a composition nested inside the half silent until the half starts", () => {
+    loadSecondHalf(
+      `<div data-composition-id="inner" data-composition-file="compositions/inner.html" data-start="0" data-duration="12">` +
+        `<video id="deep" data-start="0" data-duration="12"></video></div>`,
+    );
+    window.__player?.renderSeek(1);
+    expect(video("deep").currentTime).toBe(-1);
+    window.__player?.renderSeek(6);
+    expect(video("deep").currentTime).toBe(6);
+  });
+
+  it("loops a straddling clip over its whole file, not from the cut", () => {
+    loadSecondHalf(
+      `<video id="loop" loop data-start="2" data-duration="10" data-media-start="0"></video>`,
+      4,
+    );
+    const at = (t: number) => (window.__player?.renderSeek(t), video("loop").currentTime);
+    expect([at(5), at(6), at(7.5)]).toEqual([3, 0, 1.5]);
+  });
+
+  it("follows a straddling clip's speed ramp from the clip's own start", () => {
+    const ramp = JSON.stringify({
+      version: 1,
+      lanes: [
+        {
+          target: "rate",
+          points: [
+            { t: 0, v: 1 },
+            { t: 8, v: 2 },
+          ],
+        },
+      ],
+    });
+    loadSecondHalf(
+      `<video id="ramp" data-start="2" data-duration="8" data-automation='${ramp}'></video>`,
+    );
+    window.__player?.renderSeek(7);
+    expect(video("ramp").currentTime).toBeCloseTo(
+      sourceTimeAt(readElementRateSpec(video("ramp")), 5),
+      6,
+    );
+  });
+
+  it("times a straddling clip's fade-in from the clip's own start", () => {
+    loadSecondHalf(`<video id="fade" data-start="4" data-duration="4" data-fade-in="2"></video>`);
+    window.__player?.renderSeek(5);
+    expect(video("fade").volume).toBeCloseTo(0.5, 6);
   });
 });

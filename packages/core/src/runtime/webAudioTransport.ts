@@ -69,22 +69,17 @@ function startBoundedSource(
     globalRate: number;
     mediaRate: number;
     clipDuration: number;
+    headCut: number;
   },
 ): boolean {
-  const { elapsed, mediaStart, scheduledAt, globalRate, mediaRate, clipDuration } = opts;
+  const { elapsed, mediaStart, scheduledAt, globalRate, mediaRate, clipDuration, headCut } = opts;
   const hasBound = Number.isFinite(clipDuration) && clipDuration > 0;
-  const clipSourceLen = clipDuration * mediaRate;
-  if (elapsed >= 0) {
-    const sourceElapsed = elapsed * mediaRate;
-    const remaining = clipSourceLen - sourceElapsed;
-    if (hasBound && remaining <= 0) return false;
-    if (hasBound) node.start(0, sourceElapsed + mediaStart, remaining);
-    else node.start(0, sourceElapsed + mediaStart);
-    return true;
-  }
-  const delay = -elapsed / globalRate;
-  if (hasBound) node.start(scheduledAt + delay, mediaStart, clipSourceLen);
-  else node.start(scheduledAt + delay, mediaStart);
+  const from = Math.max(elapsed, headCut, 0);
+  const remaining = (clipDuration - from) * mediaRate;
+  if (hasBound && remaining <= 0) return false;
+  const when = from > elapsed ? scheduledAt + (from - elapsed) / globalRate : 0;
+  if (hasBound) node.start(when, from * mediaRate + mediaStart, remaining);
+  else node.start(when, from * mediaRate + mediaStart);
   return true;
 }
 
@@ -667,6 +662,7 @@ export class WebAudioTransport {
     generation: number,
     rate = 1,
     clipDuration = Number.POSITIVE_INFINITY,
+    windowStart = compositionStart,
   ): Promise<ScheduledSource | null> {
     if (!this._ctx || !this._masterGain) return null;
     if (generation !== this._playGeneration) return null;
@@ -715,6 +711,7 @@ export class WebAudioTransport {
           globalRate: safeRate,
           mediaRate,
           clipDuration,
+          headCut: windowStart - compositionStart,
         })
       ) {
         // Playhead already past the clip end — discard the nodes we built.

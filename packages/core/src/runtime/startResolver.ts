@@ -13,6 +13,7 @@ import { isMediaElement } from "./domRealm";
 import { parseStartExpression } from "./startExpression";
 import {
   compositionOriginSeconds,
+  type HostSlot,
   isRootGlobalMediaStart,
   MEDIA_START_BASIS_ATTR,
   resolveMediaStartSeconds,
@@ -34,6 +35,7 @@ export function createRuntimeStartTimeResolver(params: {
   resolveDurationForElement: (element: Element) => number | null;
   resolveMediaStartForElement: (element: Element) => number;
   resolveHostStartForElement: (element: Element) => number;
+  resolveHostSlotsForElement: (element: Element) => HostSlot[];
   isRootGlobalMediaStartForElement: (element: Element) => boolean;
 } {
   const timelineRegistry = params.timelineRegistry ?? {};
@@ -147,7 +149,9 @@ export function createRuntimeStartTimeResolver(params: {
     if (!target) return fallback;
     const targetStart = resolveStartForElementInternal(target, 0);
     const targetDuration = resolveDurationForElement(target) ?? 0;
-    return Math.max(0, targetStart + targetDuration + expression.offset);
+    // Clamped at local 0, as a numeric start is, once an in-point puts local 0 before 0.
+    const floor = Math.min(0, resolveHostOffsetForElement(element, 0));
+    return Math.max(floor, targetStart + targetDuration + expression.offset);
   };
 
   const resolveStartForElementInternal = (element: Element, fallback: number): number => {
@@ -197,6 +201,21 @@ export function createRuntimeStartTimeResolver(params: {
     });
   };
 
+  const resolveHostSlotsForElement = (element: Element): HostSlot[] => {
+    const slots: HostSlot[] = [];
+    let root = element.closest("[data-composition-id]");
+    for (; root; root = root.parentElement?.closest("[data-composition-id]") ?? null) {
+      const start = resolveStartForElementInternal(root, 0);
+      const duration = resolveDurationForElement(root);
+      slots.push({
+        start,
+        end: duration ? start + duration : Infinity,
+        origin: resolveCompositionOrigin(root, 0),
+      });
+    }
+    return slots;
+  };
+
   const isRootGlobalMediaStartForElement = (element: Element): boolean =>
     isMediaElement(element) && isRootGlobalMediaStart(mediaStartInput(element));
 
@@ -206,6 +225,7 @@ export function createRuntimeStartTimeResolver(params: {
     resolveDurationForElement: (element: Element) => resolveDurationForElement(element),
     resolveMediaStartForElement,
     resolveHostStartForElement: (element: Element) => resolveHostOffsetForElement(element, 0),
+    resolveHostSlotsForElement,
     isRootGlobalMediaStartForElement,
   };
 }

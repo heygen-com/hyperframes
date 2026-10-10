@@ -67,11 +67,13 @@ export interface HostSlot {
   origin: number;
 }
 
-/** An in-point (origin before the host's start) cuts the head; the host's end cuts the tail. */
-export function cutToHostSlot(
+/** Each enclosing host cuts the span: an in-point (origin before its start) the head, its end the tail. */
+export function cutToHostSlots(
   span: { start: number; end: number },
-  host: HostSlot,
+  hosts: readonly HostSlot[],
 ): { start: number; end: number } {
-  const start = host.origin < host.start ? Math.max(span.start, host.start) : span.start;
-  return { start, end: Math.max(start, Math.min(span.end, host.end)) };
+  return hosts.reduce((kept, host) => {
+    const start = host.origin < host.start ? Math.max(kept.start, host.start) : kept.start;
+    return { start, end: Math.max(start, Math.min(kept.end, host.end)) };
+  }, span);
 }

@@ -10,7 +10,7 @@ import { clampAudioGain } from "../audioGain.js";
 import { isMemberGroupHidden } from "../audioGroups.js";
 import { findInjectedRenderFrame } from "./renderFrameSibling.js";
 import { registerSeekCompletion } from "./adapters/seek-dispatch.js";
-import { cutToHostSlot, type HostSlot } from "../mediaTiming.js";
+import { cutToHostSlots, type HostSlot } from "../mediaTiming.js";
 export {
   readElementPlaybackRate,
   readElementRateSpec,
@@ -78,6 +78,8 @@ export function resolveRuntimeMediaClipDuration(params: {
 export type RuntimeMediaClip = {
   el: HTMLVideoElement | HTMLAudioElement;
   start: number;
+  /** The clip's own t=0 when a host's in-point cut its head; source time, lanes and fades run from it. */
+  origin?: number;
   mediaStart: number;
   duration: number;
   end: number;
@@ -102,8 +104,7 @@ export type RuntimeMediaClip = {
 export function refreshRuntimeMediaCache(params?: {
   resolveStartSeconds?: (element: Element) => number;
   resolveDurationSeconds?: (element: HTMLVideoElement | HTMLAudioElement) => number | null;
-  /** The sub-composition slot that cuts the clip; a head cut advances its media offset. */
-  resolveHostSlot?: (element: HTMLVideoElement | HTMLAudioElement) => HostSlot | null;
+  resolveHostSlots?: (element: HTMLVideoElement | HTMLAudioElement) => HostSlot[];
   shouldIncludeElement?: (element: HTMLVideoElement | HTMLAudioElement) => boolean;
   /**
    * Build clips for exactly these elements instead of scanning the document for
@@ -138,7 +139,7 @@ export function refreshRuntimeMediaCache(params?: {
       ? params.resolveStartSeconds(el)
       : Number.parseFloat(el.dataset.start ?? "0");
     if (!Number.isFinite(start)) continue;
-    let mediaStart = readElementPlaybackStart(el);
+    const mediaStart = readElementPlaybackStart(el);
     const playbackRate = readElementPlaybackRate(el);
     const rate = readElementRateSpec(el);
     const loop = el.loop;
@@ -152,10 +153,9 @@ export function refreshRuntimeMediaCache(params?: {
     }
     const hasKnownDuration = Number.isFinite(duration) && duration >= 0;
     let end = hasKnownDuration ? start + duration : Number.POSITIVE_INFINITY;
-    const slot = params?.resolveHostSlot?.(el);
-    const kept = slot ? cutToHostSlot({ start, end }, slot) : { start, end };
+    const origin = start;
+    const kept = cutToHostSlots({ start, end }, params?.resolveHostSlots?.(el) ?? []);
     if (kept.start !== start || kept.end !== end) {
-      mediaStart += sourceTimeAt(rate, kept.start - start);
       ({ start, end } = kept);
       duration = end - start;
     }
@@ -163,6 +163,7 @@ export function refreshRuntimeMediaCache(params?: {
     const clip: RuntimeMediaClip = {
       el,
       start,
+      origin,
       mediaStart,
       duration: Number.isFinite(end) ? duration : Number.POSITIVE_INFINITY,
       end,
@@ -333,6 +334,7 @@ export function syncRuntimeMedia(params: {
     const { el } = clip;
     if (!el.isConnected) continue;
     const clipRate = clip.rate ?? clip.playbackRate;
+    const origin = clip.origin ?? clip.start;
     const isNonLoopVideo = el.tagName === "VIDEO" && !clip.loop;
     const inWindow = isInClipWindow(params.timeSeconds, clip.start, clip.end);
     const dueIn = clip.start - params.timeSeconds;
@@ -355,7 +357,7 @@ export function syncRuntimeMedia(params: {
       (params.timeSeconds >= clip.end || sameInstant(params.timeSeconds, clip.end)) &&
       isClipVisibleAt(params.timeSeconds, clip.start, clip.end, params.getCompositionDuration());
     let relTime =
-      sourceTimeAt(clipRate, Math.max(0, Math.min(params.timeSeconds, clip.end) - clip.start)) +
+      sourceTimeAt(clipRate, Math.max(0, Math.min(params.timeSeconds, clip.end) - origin)) +
       clip.mediaStart;
     const isHeldVideoTail =
       isTerminalVideo ||
@@ -409,7 +411,7 @@ export function syncRuntimeMedia(params: {
       // different position than it renders, or ran it off the end entirely on a
       // trimmed clip. The FX lanes on this same feature use clip-local elapsed;
       // there is one time base, and this is it.
-      const laneGain = elementVolumeLaneGain(el, params.timeSeconds - clip.start);
+      const laneGain = elementVolumeLaneGain(el, params.timeSeconds - origin);
       if (laneGain !== null) {
         authorVolume = clampAudioGain(laneGain);
       } else if (clip.volumeKeyframes && clip.volumeKeyframes.length > 0) {
@@ -420,7 +422,7 @@ export function syncRuntimeMedia(params: {
         // `relTime` is a position inside the media SOURCE — it carries `mediaStart`
         // and the playback rate — so it only coincides with the envelope's time base
         // for an untrimmed clip playing at 1x from t=0.
-        const elapsedInClip = params.timeSeconds - clip.start;
+        const elapsedInClip = params.timeSeconds - origin;
         authorVolume = clampAudioGain(interpolateVolumeGain(clip.volumeKeyframes, elapsedInClip));
       } else if (params.isWebAudioRouted?.(el)) {
         authorVolume = fallbackAuthorVolume;
@@ -454,7 +456,11 @@ export function syncRuntimeMedia(params: {
       // Clip-local fade on top of the resolved level, matching render's afade-after-volume.
       const fades = clip.fades ?? NO_FADES;
       if (fades.fadeIn > 0 || fades.fadeOut > 0) {
-        authorVolume *= fadeGain(params.timeSeconds - clip.start, clip.duration, fades);
+        authorVolume *= fadeGain(
+          params.timeSeconds - origin,
+          clip.duration + clip.start - origin,
+          fades,
+        );
       }
 
       // A data-hidden ancestor is silent in the export (audioMixer.ts drops
@@ -482,7 +488,7 @@ export function syncRuntimeMedia(params: {
       // was overridden after init.ts set it.
       if (el.preload !== "auto") el.preload = "auto";
       // Per-element rate × global transport rate
-      const baseRate = rateAt(clipRate, params.timeSeconds - clip.start) * params.playbackRate;
+      const baseRate = rateAt(clipRate, params.timeSeconds - origin) * params.playbackRate;
       // Drift correction — three tiers:
       //
       // 1. Hard sync (0.5s): first tick, timeline jumps (scrub), catastrophic

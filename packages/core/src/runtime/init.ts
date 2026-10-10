@@ -137,7 +137,7 @@ import {
 } from "./timelineRebindPolicy";
 import { installStudioCustomEase } from "./customEase";
 import { parseStrictFiniteTimingNumber, resolveMediaElementDurationSeconds } from "./playbackRate";
-import { cutToHostSlot, MEDIA_START_BASIS_ATTR, type HostSlot } from "../mediaTiming";
+import { cutToHostSlots, MEDIA_START_BASIS_ATTR } from "../mediaTiming";
 import { settleFirstFrameCompositionReadiness } from "../compositionReadiness";
 import { AUTHORED_DURATION_ATTR, AUTHORED_END_ATTR } from "./authoredTiming";
 import {
@@ -978,15 +978,8 @@ export function initSandboxRuntimeModular(): void {
     return { compositionRoot, inheritedStart, inheritedDuration };
   };
 
-  const resolveMediaHostSlot = (element: Element): HostSlot | null => {
-    const { inheritedStart, inheritedDuration } = resolveMediaCompositionContext(element);
-    if (inheritedStart == null) return null;
-    return {
-      start: inheritedStart,
-      end: inheritedDuration ? inheritedStart + inheritedDuration : Infinity,
-      origin: timingResolverFor(true).resolveHostStartForElement(element),
-    };
-  };
+  const resolveMediaHostSlots = (element: Element) =>
+    timingResolverFor(true).resolveHostSlotsForElement(element);
 
   // Single owner: `createRuntimeStartTimeResolver` (startResolver.ts). The clip
   // manifest resolves media starts through the same method, so what the studio
@@ -2951,7 +2944,7 @@ export function initSandboxRuntimeModular(): void {
           explicitDuration,
         });
       },
-      resolveHostSlot: resolveMediaHostSlot,
+      resolveHostSlots: resolveMediaHostSlots,
     });
 
   const resolveMediaClipIndex = (): MediaClipIndex => {
@@ -4826,21 +4819,20 @@ export function initSandboxRuntimeModular(): void {
     const gen = webAudio.startGeneration();
     for (const rawEl of webAudioMediaIn(document)) {
       if (isSilencedByHidden(rawEl)) continue;
-      const authoredStart = resolveAbsoluteMediaStartSeconds(rawEl);
-      if (!Number.isFinite(authoredStart)) continue;
+      const compStart = resolveAbsoluteMediaStartSeconds(rawEl);
+      if (!Number.isFinite(compStart)) continue;
+      const mediaStart = readElementPlaybackStart(rawEl);
       const volumeAttr = Number.parseFloat(rawEl.dataset.volume ?? "");
       const vol = Number.isFinite(volumeAttr) ? volumeAttr : 1;
       const durationAttr = parseStrictFiniteTimingNumber(rawEl.dataset.duration);
-      const authored = {
-        start: authoredStart,
-        end: authoredStart + (durationAttr != null && durationAttr > 0 ? durationAttr : Infinity),
-      };
-      const slot = resolveMediaHostSlot(rawEl);
-      const { start: compStart, end: clipEnd } = slot ? cutToHostSlot(authored, slot) : authored;
-      const mediaStart =
-        readElementPlaybackStart(rawEl) +
-        sourceTimeAt(readElementRateSpec(rawEl), compStart - authoredStart);
-      const clipDuration = clipEnd - compStart;
+      const kept = cutToHostSlots(
+        {
+          start: compStart,
+          end: compStart + (durationAttr != null && durationAttr > 0 ? durationAttr : Infinity),
+        },
+        resolveMediaHostSlots(rawEl),
+      );
+      const clipDuration = kept.end - compStart;
       // Decided BEFORE the transport is asked, because the two verdicts want
       // two different fallback chains — and only one of them is the chain
       // that existed before (#3458).
@@ -4903,6 +4895,7 @@ export function initSandboxRuntimeModular(): void {
             gen,
             state.playbackRate,
             clipDuration,
+            kept.start,
           );
         });
       });

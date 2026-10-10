@@ -481,4 +481,17 @@ describe("a host's in-point", () => {
     expect(resolver.resolveStartForElement(document.getElementById("inner")!)).toBe(6);
     expect(media("deep")).toBe(6);
   });
+
+  it("places a relative start where the same local time written as a number lands", () => {
+    // A host at 0 with in-point 5 puts local 0 at -5.
+    document.body.innerHTML =
+      `<div data-composition-id="main"><div data-composition-id="half" data-start="0" data-duration="7" data-playback-start="5">` +
+      `<div id="x" data-start="0" data-duration="1"></div>` +
+      `<video id="relative" data-start="x + 3"></video><video id="numeric" data-start="4"></video></div></div>`;
+    const resolver = createRuntimeStartTimeResolver({});
+    const media = (id: string) =>
+      resolver.resolveMediaStartForElement(document.getElementById(id)!);
+
+    expect([media("relative"), media("numeric")]).toEqual([-1, -1]);
+  });
 });

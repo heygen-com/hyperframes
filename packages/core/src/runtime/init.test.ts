@@ -5316,6 +5316,45 @@ describe("initSandboxRuntimeModular", () => {
       expect(decodeSpy).toHaveBeenCalledWith(audio);
     });
 
+    it("holds a decoded clip a split half cut until that half starts, timed from the clip's own start", async () => {
+      const audio = mountAudio("https://cdn.example.com/track.mp3", {
+        "data-start": "2",
+        "data-duration": "4",
+      });
+      // A half at 2 s with in-point 3 puts the clip's own t=0 at 1 s; the half cuts it to 2-5 s.
+      const half = document.createElement("div");
+      for (const [name, value] of Object.entries({
+        "data-composition-id": "half",
+        "data-composition-file": "half.html",
+        "data-start": "2",
+        "data-duration": "4",
+        "data-playback-start": "3",
+      }))
+        half.setAttribute(name, value);
+      audio.replaceWith(half);
+      half.appendChild(audio);
+      vi.spyOn(console, "info").mockImplementation(() => {});
+      const buffer = {} as AudioBuffer;
+      vi.spyOn(WebAudioTransport.prototype, "decodeAudioElement").mockResolvedValue(buffer);
+      const schedule = vi
+        .spyOn(WebAudioTransport.prototype, "schedulePlayback")
+        .mockResolvedValue(null);
+
+      await startPlayback();
+
+      await vi.waitFor(() => expect(schedule).toHaveBeenCalled());
+      const [el, decoded, clipStart, mediaStart, , , , , clipDuration, windowStart] =
+        schedule.mock.calls[0]!;
+      expect([el, decoded, clipStart, mediaStart, clipDuration, windowStart]).toEqual([
+        audio,
+        buffer,
+        1,
+        0,
+        4,
+        2,
+      ]);
+    });
+
     it("leaves the element audible on native output when decode also fails", async () => {
       const audio = mountAudio("https://cdn.example.com/track.mp3");
       vi.spyOn(console, "info").mockImplementation(() => {});
