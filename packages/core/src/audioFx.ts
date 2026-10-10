@@ -339,7 +339,7 @@ export const HF_AUDIO_FX: readonly HfAudioFxDef[] = [
     label: "True-peak limiter",
     group: "dynamics",
     description:
-      "Lookahead limiter that holds the inter-sample peak under a dBTP ceiling. Adds lookahead plus about 0.3 ms of latency.",
+      "Lookahead limiter that holds a 4x estimate of the inter-sample peak at a dBTP ceiling; full-band noise can land up to about 1.7 dB above it. Adds lookahead plus about 0.3 ms of latency.",
     params: [
       {
         kind: "number",
