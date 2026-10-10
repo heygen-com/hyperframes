@@ -32,7 +32,6 @@ export interface StartRenderOptions {
   format?: "mp4" | "webm" | "mov";
   /** `"auto"` (default) renders at the composition's authored dimensions. */
   resolution?: ResolutionPreset | "auto";
-  /** Encode on the GPU, as `hyperframes render --gpu` does. Ignored for WebM and MOV. */
   gpu?: boolean;
   /**
    * Render a specific composition file. Omit it to render the composition the

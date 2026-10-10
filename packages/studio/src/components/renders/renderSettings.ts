@@ -4,7 +4,6 @@ export interface PersistedRenderSettings {
   format: "mp4" | "webm" | "mov";
   quality: "draft" | "standard" | "high";
   fps: 24 | 30 | 60;
-  /** Encode on the GPU, as `hyperframes render --gpu` does. MP4 only. */
   gpu: boolean;
 }
 
