@@ -144,7 +144,7 @@ export function diffGpuParityFrames(
 ): GpuParityDiffResult {
   if (a.width !== b.width || a.height !== b.height) {
     throw new Error(
-      `diffGpuParityFrames: frame size mismatch — A is ${a.width}x${a.height}, ` +
+      `diffGpuParityFrames: frame size mismatch: A is ${a.width}x${a.height}, ` +
         `B is ${b.width}x${b.height}`,
     );
   }
@@ -169,7 +169,7 @@ export function diffGpuParityFrames(
   if (contentSum <= blackSum) {
     throw new Error(
       `diffGpuParityFrames: contentSumThreshold (${contentSum}) must be strictly greater ` +
-        `than blackSumThreshold (${blackSum}) — overlapping thresholds would double-classify ` +
+        `than blackSumThreshold (${blackSum}): overlapping thresholds would double-classify ` +
         `borderline pixels`,
     );
   }
@@ -298,7 +298,7 @@ export function verifyGpuParity(
       reason:
         `hardware-GPU frame has ${diff.blackOnlyInA.pixels} pixel(s) ` +
         `(${(diff.blackOnlyInA.fraction * 100).toFixed(3)}%) that are solid-black ` +
-        `while software-GPU frame has content there${region} — likely shape-dependent ` +
+        `while software-GPU frame has content there${region}, likely a shape-dependent ` +
         `hardware-GPU capture bug`,
       diff,
     };
@@ -311,7 +311,7 @@ export function verifyGpuParity(
       reason:
         `software-GPU frame has ${diff.blackOnlyInB.pixels} pixel(s) ` +
         `(${(diff.blackOnlyInB.fraction * 100).toFixed(3)}%) that are solid-black ` +
-        `while hardware-GPU frame has content there${region} — unexpected inverse ` +
+        `while hardware-GPU frame has content there${region}, an unexpected inverse ` +
         `pattern, worth investigating`,
       diff,
     };

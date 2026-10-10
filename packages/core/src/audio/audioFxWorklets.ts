@@ -18,7 +18,7 @@ const dbToLin = (db) => Math.pow(10, db / 20);
  * Per channel matters: the followers advance once per sample, so a single shared
  * follower stepped once per channel per sample. On stereo that ran a 20 ms attack
  * as 10 ms, and gave the right channel a gain computed from an envelope that had
- * already traversed the left — so the two channels ducked by different amounts
+ * already traversed the left, so the two channels ducked by different amounts
  * from the same input and the image pumped.
  */
 class EnvBank {
@@ -230,7 +230,7 @@ function readTap(ring, write, delaySamples) {
   return ring[i0] * (1 - frac) + ring[i1] * frac;
 }
 
-/** Equal-power-ish crossfade, zero at a tap's reset point — hides the splice. */
+/** Equal-power-ish crossfade, zero at a tap's reset point, which hides the splice. */
 function xfade(phase) {
   return Math.sin(Math.PI * phase);
 }
@@ -242,7 +242,7 @@ function xfade(phase) {
  * out, which hides the splice each tap makes when it wraps.
  *
  * write/phase are block-level state, advanced once per SAMPLE across all
- * channels together (not once per channel) — advancing them inside the
+ * channels together (not once per channel). Advancing them inside the
  * per-channel loop would move the tap 2x/4x too fast on a stereo/quad input.
  */
 class HfPitchshift extends AudioWorkletProcessor {
@@ -255,13 +255,13 @@ class HfPitchshift extends AudioWorkletProcessor {
     this.phase = 0;
     // Samples written so far, capped at one grain. The taps read up to a grain
     // behind the write head, so until this fills they would read the ring's
-    // zeros — the head of every clip came out attenuated or silent.
+    // zeros, so the head of every clip came out attenuated or silent.
     this.filled = 0;
     // How much of the wet (pitch-shifted) path is currently in the output, and
     // where it is heading. Crossing between dry and wet is a ~50 ms jump in the
     // signal, so it is RAMPED rather than switched: a hard swap either way is a
     // click. Ramping in both directions is also what lets a node return to true
-    // bypass at semitones 0 — a one-way latch left preview stuck with the delay
+    // bypass at semitones 0. A one-way latch left preview stuck with the delay
     // that the render, building a fresh node from the attribute, does not have.
     this.wet = 0;
     this.wetTarget = 0;
@@ -289,7 +289,7 @@ class HfPitchshift extends AudioWorkletProcessor {
 
     // Nothing to shift, or mixed fully out. The grain delay is ~grain/2
     // whatever the ratio, so at semitones=0 this degenerated into a pure 50 ms
-    // delay of the signal — while the copy for that exact setting reads
+    // delay of the signal, while the copy for that exact setting reads
     // "Unchanged pitch".
     this.wetTarget = semitones === 0 ? 0 : mix;
 
@@ -368,7 +368,7 @@ export function ensureAudioFxWorklets(ctx: BaseAudioContext): Promise<void> {
     modulePromise = (async () => {
       if (!ctx.audioWorklet) {
         throw new Error(
-          "AudioWorklet is unavailable — the page needs a secure context (https, localhost or file://)",
+          "AudioWorklet is unavailable: the page needs a secure context (https, localhost or file://)",
         );
       }
       // A data: URL rather than a blob:, because a blob inherits the page origin

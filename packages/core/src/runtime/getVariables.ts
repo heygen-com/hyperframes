@@ -267,7 +267,7 @@ export function injectCompositionCssVariables(doc: Document): void {
   }
   for (const group of detectSlugCollisions(allIds)) {
     console.warn(
-      `composition variables ${group.join(", ")} collapse to the same CSS property ${cssVariableName(group[0] ?? "")} — rename one to avoid cross-talk`,
+      `composition variables ${group.join(", ")} collapse to the same CSS property ${cssVariableName(group[0] ?? "")}. Rename one to avoid cross-talk`,
     );
   }
 }

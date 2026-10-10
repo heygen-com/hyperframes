@@ -251,7 +251,7 @@ export function assertVideoFrameCoverage(
   throw new VideoFrameCoverageError(
     `Video "${worst.videoId}" captured ${worst.capturedFrames} of expected ${worst.expectedFrames} frames ` +
       `(coverage ${pct}%, threshold ${thresholdPct}%). ` +
-      `check/snapshot may pass while the encoded MP4 renders this clip blank — aborting render ` +
+      `check/snapshot may pass while the encoded MP4 renders this clip blank, so the render is aborted ` +
       `to prevent shipping a wrong MP4.${suffix} ` +
       `Set HF_VIDEO_COVERAGE_THRESHOLD=0 to disable this gate.`,
     { threshold, worst, failedReports: sorted },

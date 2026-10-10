@@ -229,7 +229,7 @@ export function synthesizeSilentWorkerExitError(
     `worker ${result.workerId} exited without terminal error string ` +
     `(framesCaptured=${result.framesCaptured}, expected=${expectedFrames}, ` +
     `range=[${result.startFrame}, ${result.endFrame})). ` +
-    `Field signal ts=1784042064 — this class of failure has been reported; ` +
+    `Field signal ts=1784042064: this class of failure has been reported; ` +
     `consider re-run with --workers=1 to isolate.`
   );
 }
@@ -783,7 +783,7 @@ async function psnrForDiskSample(
       const detail = err instanceof Error ? err.message : String(err);
       throw new Error(
         `[Parallel] drawElement disk self-verify aborted (worker ${workerId}, frame ${idx}): ` +
-          `ffmpeg or the \`psnr\` filter is unavailable — ${detail}. The preflight in ` +
+          `ffmpeg or the \`psnr\` filter is unavailable (${detail}). The preflight in ` +
           "initDrawElementOrTransparentBackground normally catches this at bootstrap; if you " +
           "hit this after a successful preflight, ffmpeg was replaced mid-render or " +
           "HYPERFRAMES_FFMPEG_PATH now points at a different binary.",

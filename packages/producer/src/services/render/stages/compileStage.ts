@@ -219,7 +219,7 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
     deCompileGate = "3d";
     log.info(
       "[Render] Fast capture: composition uses a CSS 3D rendering context " +
-        "(perspective / preserve-3d / backface-visibility) — disabling drawElementImage " +
+        "(perspective / preserve-3d / backface-visibility), so disabling drawElementImage " +
         "for this render. Capture uses the platform's baseline route.",
     );
   }
@@ -237,7 +237,7 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
     cfg.useDrawElement = false;
     deCompileGate = "mix_blend_mode";
     log.info(
-      "[Render] Fast capture: composition uses mix-blend-mode — disabling drawElementImage " +
+      "[Render] Fast capture: composition uses mix-blend-mode, so disabling drawElementImage " +
         "for this render. Capture uses the platform's baseline route.",
     );
   }
@@ -259,7 +259,7 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
     deCompileGate = "ancestor_background_image";
     log.info(
       "[Render] Fast capture: composition root's ancestors (body/html/wrapper) carry a " +
-        "background-image — disabling drawElementImage for this render. Capture uses the " +
+        "background-image, so disabling drawElementImage for this render. Capture uses the " +
         "platform's baseline route.",
     );
   }
@@ -276,7 +276,7 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
     cfg.useDrawElement = false;
     deCompileGate = "shader_transitions";
     log.info(
-      "[Render] Fast capture: composition uses shader transitions — disabling drawElementImage " +
+      "[Render] Fast capture: composition uses shader transitions, so disabling drawElementImage " +
         "so page-side compositing stays available.",
     );
   }

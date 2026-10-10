@@ -268,7 +268,7 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
       );
       if (!buffer) {
         return c.json(
-          { error: "Thumbnail generation failed — Chrome browser may not be available" },
+          { error: "Thumbnail generation failed. Chrome browser may not be available" },
           500,
         );
       }

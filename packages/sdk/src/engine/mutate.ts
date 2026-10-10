@@ -139,7 +139,7 @@ function validateSetAttribute(name: string, value: string | null): void {
   }
   if (lower.startsWith("on")) {
     throw new Error(
-      `setAttribute: event-handler attributes ("${name}") are not permitted — ` +
+      `setAttribute: event-handler attributes ("${name}") are not permitted: ` +
         `they produce executable HTML that cannot be safely serialized.`,
     );
   }
@@ -329,7 +329,7 @@ function planLinkedTiming(
       const tag = el.tagName.toLowerCase();
       return {
         partners: [],
-        refusal: `Linked ${tag} would start after the new end — unlink or trim the ${tag} first.`,
+        refusal: `Linked ${tag} would start after the new end. Unlink or trim the ${tag} first.`,
       };
     }
     partners.push({ id, timing: partnerEdit });
@@ -1057,7 +1057,7 @@ function fragmentCompositionErr(parsed: ParsedDocument): CanResult | null {
   return canErr(
     "E_FRAGMENT_COMPOSITION",
     "Fragment compositions cannot carry variable declarations.",
-    "The composition has no root element to hold data-composition-variables — add a composition root or convert to a full HTML document.",
+    "The composition has no root element to hold data-composition-variables. Add a composition root or convert to a full HTML document.",
   );
 }
 
@@ -1083,7 +1083,7 @@ function invalidVariableIdErr(id: string): CanResult {
   return canErr(
     "E_INVALID_VARIABLE_ID",
     `Variable id ${JSON.stringify(id)} is not a valid identifier.`,
-    "Ids must match /^[A-Za-z_][A-Za-z0-9_-]*$/ — they become CSS custom-property names (--id), data-var-* attribute values, and CLI --variables keys.",
+    "Ids must match /^[A-Za-z_][A-Za-z0-9_-]*$/ because they become CSS custom-property names (--id), data-var-* attribute values, and CLI --variables keys.",
   );
 }
 
@@ -1711,7 +1711,7 @@ function gsapAnimationMissing(parsed: ParsedDocument, animationId: string): CanR
     : canErr(
         "E_TARGET_NOT_FOUND",
         `No GSAP animation found with id "${animationId}".`,
-        "Animation ids are positional and shift after edits — re-read them from comp before dispatching.",
+        "Animation ids are positional and shift after edits. Re-read them from comp before dispatching.",
       );
 }
 
@@ -1828,7 +1828,7 @@ export function validateOp(parsed: ParsedDocument, op: EditOp): CanResult {
         return canErr(
           "E_INVALID_ARGS",
           `declaration.id ("${op.declaration.id}") must match id ("${op.id}").`,
-          "Variable ids are immutable — rename via removeVariableDeclaration + declareVariable.",
+          "Variable ids are immutable. Rename via removeVariableDeclaration + declareVariable.",
         );
       if (
         findVariableDeclaration(

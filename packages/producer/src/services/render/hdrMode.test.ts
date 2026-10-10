@@ -63,7 +63,7 @@ describe("resolveEffectiveHdrMode", () => {
     expect(result).toEqual({ transfer: "pq" });
     expect(log.warn).toHaveBeenCalledTimes(1);
     expect(log.warn).toHaveBeenCalledWith(
-      '[Render] HDR auto-promotion triggered by "assets/source-hdr.mp4" — output: BT.2020 / HEVC Main10',
+      '[Render] HDR auto-promotion triggered by "assets/source-hdr.mp4", output: BT.2020 / HEVC Main10',
     );
     expect(log.info).not.toHaveBeenCalled();
   });
@@ -78,7 +78,7 @@ describe("resolveEffectiveHdrMode", () => {
       log,
     });
     expect(result).toBeUndefined();
-    expect(log.info).toHaveBeenCalledWith("[Render] No HDR sources detected — rendering SDR");
+    expect(log.info).toHaveBeenCalledWith("[Render] No HDR sources detected, rendering SDR");
   });
 
   it("force-hdr without sources falls back to HLG and warns", () => {
@@ -121,7 +121,7 @@ describe("resolveEffectiveHdrMode", () => {
       });
       expect(result).toBeUndefined();
       expect(log.warn).toHaveBeenCalledWith(
-        expect.stringContaining(`format is "${fmt}" — falling back to SDR`),
+        expect.stringContaining(`format is "${fmt}", so falling back to SDR`),
       );
       expect(log.warn).toHaveBeenCalledWith(
         expect.stringContaining("HDR + alpha is not supported"),
@@ -143,7 +143,7 @@ describe("resolveEffectiveHdrMode", () => {
     });
     expect(result).toBeUndefined();
     expect(log.warn).toHaveBeenCalledWith(
-      expect.stringContaining('format is "hls" — falling back to SDR'),
+      expect.stringContaining('format is "hls", so falling back to SDR'),
     );
     expect(log.warn).toHaveBeenCalledWith(
       expect.stringContaining("HLS output is SDR-only (H.264 in MPEG-TS)"),

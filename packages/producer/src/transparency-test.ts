@@ -192,7 +192,7 @@ async function runWebmCheck(workRoot: string): Promise<void> {
   const decoded = decodePng(readFileSync(framePng));
   assertAlphaPixel(decoded, TRANSPARENT_X, TRANSPARENT_Y, "transparent", "webm");
   assertAlphaPixel(decoded, OPAQUE_X, OPAQUE_Y, "opaque-red", "webm");
-  console.log("[webm] PASS — transparent + opaque-red pixels verified");
+  console.log("[webm] PASS: transparent + opaque-red pixels verified");
 }
 
 async function runRootBackgroundCheck(workRoot: string): Promise<void> {
@@ -216,7 +216,7 @@ async function runRootBackgroundCheck(workRoot: string): Promise<void> {
   const decoded = decodePng(readFileSync(framePng));
   assertAlphaPixel(decoded, ROOT_BG_X, ROOT_BG_Y, "opaque-blue", "root-bg");
   assertAlphaPixel(decoded, OPAQUE_X, OPAQUE_Y, "opaque-red", "root-bg");
-  console.log("[root-bg] PASS — composition root background preserved in alpha output");
+  console.log("[root-bg] PASS: composition root background preserved in alpha output");
 }
 
 async function runGifCheck(workRoot: string): Promise<void> {
@@ -244,7 +244,7 @@ async function runGifCheck(workRoot: string): Promise<void> {
   const decoded = decodePng(readFileSync(framePng));
   assertAlphaPixel(decoded, TRANSPARENT_X, TRANSPARENT_Y, "transparent", "gif");
   assertAlphaPixel(decoded, OPAQUE_X, OPAQUE_Y, "opaque-red", "gif");
-  console.log("[gif] PASS — transparent + opaque-red pixels verified");
+  console.log("[gif] PASS: transparent + opaque-red pixels verified");
 }
 
 async function runGifShaderTransitionCheck(workRoot: string): Promise<void> {
@@ -287,7 +287,7 @@ async function runGifShaderTransitionCheck(workRoot: string): Promise<void> {
     `gif shader transition expected >=20 dB against the golden, got ${transitionPsnr.toFixed(2)} dB`,
   );
   console.log(
-    `[gif-shader] PASS — control ${beforePsnr.toFixed(2)} dB, transition ${transitionPsnr.toFixed(2)} dB`,
+    `[gif-shader] PASS: control ${beforePsnr.toFixed(2)} dB, transition ${transitionPsnr.toFixed(2)} dB`,
   );
 }
 
@@ -331,7 +331,7 @@ async function runPngSequenceCheck(workRoot: string): Promise<void> {
   const decoded = decodePng(readFileSync(join(outDir, firstFrame)));
   assertAlphaPixel(decoded, TRANSPARENT_X, TRANSPARENT_Y, "transparent", "png-sequence");
   assertAlphaPixel(decoded, OPAQUE_X, OPAQUE_Y, "opaque-red", "png-sequence");
-  console.log("[png-sequence] PASS — transparent + opaque-red pixels verified");
+  console.log("[png-sequence] PASS: transparent + opaque-red pixels verified");
 }
 
 async function main(): Promise<void> {

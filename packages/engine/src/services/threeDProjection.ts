@@ -544,7 +544,7 @@ export async function initThreeDProjectionInPage(): Promise<ThreeDProjectionResu
           groups: 0,
           quads: 0,
           reason:
-            "degenerate 3D geometry (zero-size or inline-box quad) — " +
+            "degenerate 3D geometry (zero-size or inline-box quad): " +
             "quad projection cannot reproduce Blink's lenient rendering",
         };
       }
@@ -556,7 +556,7 @@ export async function initThreeDProjectionInPage(): Promise<ThreeDProjectionResu
           groups: 0,
           quads: 0,
           reason:
-            "3D quad contains GSAP-animated descendants — static texture " +
+            "3D quad contains GSAP-animated descendants, a static texture " +
             "would freeze them at init state",
         };
       }

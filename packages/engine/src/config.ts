@@ -1071,7 +1071,7 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
     merged.enableStreamingEncode = false;
     merged.streamingEncodeAutoDisabledOnWin32Compound = true;
     console.error(
-      "[hyperframes] Windows compound-workaround auto-detected — disabling streaming-encode " +
+      "[hyperframes] Windows compound-workaround auto-detected, disabling streaming-encode " +
         "(platform=win32, software-GPU forced, workers=1). Field signal ts=1784131903. " +
         "Override: PRODUCER_ENABLE_STREAMING_ENCODE=true.",
     );

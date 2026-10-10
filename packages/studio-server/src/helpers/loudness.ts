@@ -386,7 +386,7 @@ export function audioNormalizationPlan(
   if (wantedGainDb > MAX_AUDIO_GAIN_DB + 1e-9) {
     throw new Error(
       `Matching #${targetTrack.id} needs ${wantedGainDb.toFixed(1)} dB, beyond the +${MAX_AUDIO_GAIN_DB} dB authoring ceiling. ` +
-        `A gap this large belongs in the source file, not the mixer — mixer gain raises the noise floor with the signal. ` +
+        `A gap this large belongs in the source file, not the mixer: mixer gain raises the noise floor with the signal. ` +
         `Normalize ${targetTrack.id}'s asset offline (e.g. ffmpeg loudnorm), or lower #${referenceTrack.id} instead.`,
     );
   }

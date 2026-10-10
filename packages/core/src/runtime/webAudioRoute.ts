@@ -299,7 +299,7 @@ export function reportWebAudioMediaRoute(el: HTMLMediaElement, route: WebAudioMe
   // same contract mediaProxy.ts's diagnostics use.
   const lostNote =
     lost.length > 0
-      ? ` Native playback cannot reproduce: ${lost.join(", ")} — ${REMEDY_BY_REASON[route.reason]}`
+      ? ` Native playback cannot reproduce: ${lost.join(", ")}. Fix: ${REMEDY_BY_REASON[route.reason]}`
       : "";
   console.info(
     `[hyperframes] ${DIAGNOSTIC_BYPASS_CODE}: "${route.asset}" (${route.reason}): ` +

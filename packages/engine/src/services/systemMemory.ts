@@ -101,8 +101,8 @@ export function getCgroupMemoryLimitMb(): number | null {
     // write their machine-readable payload to stdout. A banner on stdout corrupts that
     // payload for any JSON consumer (it broke the Video Agent's hyperframes check parse).
     console.warn(
-      `[SystemMemory] cgroup memory limit detected: ${_cachedCgroupLimitMb} MiB — ` +
-        `it governs memory-adaptive render behaviour instead of host RAM.`,
+      `[SystemMemory] cgroup memory limit detected: ${_cachedCgroupLimitMb} MiB. ` +
+        `It governs memory-adaptive render behaviour instead of host RAM.`,
     );
   }
   return _cachedCgroupLimitMb;

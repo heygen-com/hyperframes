@@ -4107,7 +4107,7 @@ export function initSandboxRuntimeModular(): void {
         );
         // eslint-disable-next-line no-console -- loud author-facing warning; this render would otherwise freeze at t=0
         console.warn(
-          `[hyperframes] Root timeline not bound — render will freeze at t=0. ` +
+          `[hyperframes] Root timeline not bound, so render will freeze at t=0. ` +
             (rootCompositionId
               ? `Root data-composition-id is "${rootCompositionId}" but window.__timelines has no such key. `
               : `Root composition element has no data-composition-id. `) +

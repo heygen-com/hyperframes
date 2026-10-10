@@ -193,7 +193,7 @@ export function resolveSlideshow(
   for (const seq of manifest.slideSequences ?? []) {
     // Flag duplicate sequence ids rather than silently overwriting the earlier one.
     if (Object.prototype.hasOwnProperty.call(sequences, seq.id)) {
-      errors.push(`duplicate slideSequence id "${seq.id}" — only the last definition is kept`);
+      errors.push(`duplicate slideSequence id "${seq.id}": only the last definition is kept`);
     }
     sequences[seq.id] = {
       id: seq.id,

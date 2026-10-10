@@ -636,7 +636,7 @@ function buildUnverifiedHardwareGpuWarning(
   if (cause === "probe-error") {
     return (
       "[hyperframes] browserGpuMode=hardware was requested, but the GPU probe could not run, " +
-      "so hardware acceleration is UNVERIFIED — if Chrome falls back to software WebGL the " +
+      "so hardware acceleration is UNVERIFIED. If Chrome falls back to software WebGL the " +
       "capture will run at CPU speed. Honouring the explicit request anyway.\n" +
       "  This is a probe failure, not evidence of a missing GPU: see the " +
       "`browserGpuMode probe → software (probe failed ...)` line above for the underlying " +
@@ -655,7 +655,7 @@ function buildUnverifiedHardwareGpuWarning(
         "installed.";
   return (
     "[hyperframes] browserGpuMode=hardware was requested, but the WebGL probe found no " +
-    "hardware GPU — Chrome will silently fall back to software WebGL and the capture will " +
+    "hardware GPU, so Chrome will silently fall back to software WebGL and the capture will " +
     "run at CPU speed. Honouring the explicit request anyway.\n" +
     `  ${remediation}\n` +
     "  Pass --no-browser-gpu to select deterministic SwiftShader instead of waiting on a " +

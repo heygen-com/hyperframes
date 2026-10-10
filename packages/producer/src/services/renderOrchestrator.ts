@@ -1274,7 +1274,7 @@ export async function executeDiskCaptureWithAdaptiveRetry(options: {
       const madeProgress = captureAttemptMadeProgress(frameCount, remainingCount);
       if (!madeProgress) {
         options.log.warn(
-          "[Render] Capture attempt made no forward progress; composition is likely structurally broken — not retrying.",
+          "[Render] Capture attempt made no forward progress; composition is likely structurally broken, not retrying.",
           { attempt, frameCount, remainingCount, workers: currentWorkers },
         );
       }
@@ -1382,7 +1382,7 @@ export async function executeDiskCaptureWithAdaptiveRetry(options: {
 
       if (!madeProgress) {
         options.log.warn(
-          "[Render] Capture attempt made no forward progress; composition is likely structurally broken — not retrying.",
+          "[Render] Capture attempt made no forward progress; composition is likely structurally broken, not retrying.",
           { attempt, frameCount, remainingCount, workers: currentWorkers },
         );
       }
@@ -2795,7 +2795,7 @@ export async function executeRenderJob(
   execution.defer("remove workDir", () => {
     if (job.config.debug) return;
     if (job.status === "complete" && process.env.KEEP_TEMP === "1") {
-      log.info("KEEP_TEMP=1 — leaving workDir on disk for inspection", { workDir });
+      log.info("KEEP_TEMP=1, leaving workDir on disk for inspection", { workDir });
       return;
     }
     rmSync(workDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
@@ -3138,7 +3138,7 @@ async function executeRenderPipeline(input: {
       captureForceScreenshot = true;
       updateCaptureObservability({ forceScreenshot: captureForceScreenshot });
       log.info(
-        "[Render] Low-memory render profile active — " +
+        "[Render] Low-memory render profile active: " +
           "screenshot capture, auto-worker calibration skipped" +
           (job.config.workers === undefined ? ", pinned to 1 worker" : "") +
           ". Override with --no-low-memory-mode or PRODUCER_LOW_MEMORY_MODE=false.",
@@ -4034,7 +4034,7 @@ async function executeRenderPipeline(input: {
       cfg.useDrawElement = false;
       deClampReason = workerCount > 1 ? "parallel" : "disk_path";
       log.info(
-        "[Render] Fast capture: default-on drawElement disabled for this render — " +
+        "[Render] Fast capture: default-on drawElement disabled for this render: " +
           (workerCount > 1 ? "parallel capture" : "the disk capture path") +
           " has no runtime self-verification. Set PRODUCER_EXPERIMENTAL_FAST_CAPTURE=true to override.",
       );
@@ -4185,7 +4185,7 @@ async function executeRenderPipeline(input: {
       });
       updateCaptureObservability({ forceScreenshot: captureForceScreenshot });
       log.info(
-        "[Render] Page-side compositing enabled — bypassing Node-side layered " +
+        "[Render] Page-side compositing enabled, bypassing Node-side layered " +
           `shader-blend path. Engine will capture one ${needsAlpha ? "RGBA PNG" : "opaque RGB"} ` +
           "screenshot per output frame.",
       );
@@ -4828,7 +4828,7 @@ async function executeRenderPipeline(input: {
             cfg.useDrawElement = false;
             deClampReason = deClampReason ?? "disk_path";
             log.info(
-              "[Render] Fast capture: drawElement disabled for the disk fallback — " +
+              "[Render] Fast capture: drawElement disabled for the disk fallback: " +
                 "streaming encoder spawn failed and the disk path has no runtime " +
                 "self-verification.",
             );

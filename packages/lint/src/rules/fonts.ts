@@ -182,7 +182,7 @@ export const fontRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
         severity: "warning",
         message:
           `Font ${aliased.length === 1 ? "family" : "families"} will be substituted at render time: ${aliased.join(", ")}. ` +
-          "In distributed/Lambda rendering system-font capture is disabled — these fonts will fall " +
+          "In distributed/Lambda rendering system-font capture is disabled, so these fonts will fall " +
           "back to OS defaults. Embed explicit @font-face declarations instead.",
       },
     ];
@@ -216,7 +216,7 @@ export const fontRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
         "Add @font-face { font-family: '...'; src: url('capture/assets/fonts/...woff2'); } " +
         "for each font family, pointing to the captured .woff2 files. For an OS-bundled " +
         "system font (e.g. Hiragino Sans, Microsoft YaHei) that has no downloadable file, " +
-        "use src: local('Exact Font Name') instead — the declaration alone satisfies this " +
+        "use src: local('Exact Font Name') instead. The declaration alone satisfies this " +
         "check without needing a font file.",
     });
     return findings;

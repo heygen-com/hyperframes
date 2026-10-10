@@ -461,7 +461,7 @@ function lintMissingLocalAsset(
             "Common cause: captured asset filenames are unreliable (heygen-logo.svg often contains Google, nvidia-logo.svg may contain Autodesk, etc.). " +
             "Open the contact sheets and verify the file actually exists at this path before referencing it."
           : "Add the missing files to the project directory, or update the src attributes to point to existing files. " +
-            "Captured asset filenames are unreliable — verify against capture/contact-sheets/ and capture/extracted/asset-descriptions.md.",
+            "Captured asset filenames are unreliable. Verify against capture/contact-sheets/ and capture/extracted/asset-descriptions.md.",
     });
   }
 
@@ -689,8 +689,8 @@ function lintMissingOrEmptySubComposition(
       message: `data-composition-src references "${srcPath}", but ${problem}.`,
       fixHint: folder
         ? `Point data-composition-src at the HTML file inside the folder, such as "${srcPath}/index.html".`
-        : `Fix this before rendering — the render pre-flight rejects unusable sub-compositions. ` +
-          `Write valid HTML into "${srcPath}" — it needs a <template> or <body> containing an element with ` +
+        : `Fix this before rendering: the render pre-flight rejects unusable sub-compositions. ` +
+          `Write valid HTML into "${srcPath}". It needs a <template> or <body> containing an element with ` +
           `data-composition-id, data-width, and data-height. Preview/studio still tolerates and skips the ` +
           "scene while you author it. If a scene-authoring step is still running, wait for it to finish " +
           "before referencing the file, or re-run the step that generates it.",

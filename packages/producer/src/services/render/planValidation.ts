@@ -91,7 +91,7 @@ export function validateNoGpuEncode(config: ValidateNoGpuEncodeInput): void {
         "config.useGpu === true. " +
         "Distributed retries must be byte-identical, but NVENC/QSV/VAAPI " +
         "produce different output across machines. Set useGpu=false (the " +
-        "default) — software libx264/libx265 is the only supported encoder " +
+        "default): software libx264/libx265 is the only supported encoder " +
         "in distributed mode.",
     );
   }

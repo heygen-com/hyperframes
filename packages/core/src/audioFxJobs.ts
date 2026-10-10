@@ -51,7 +51,7 @@ export const HF_AUDIO_FX_JOBS: readonly HfAudioFxJob[] = [
   {
     id: "tame-boominess",
     label: "Tame Boominess",
-    does: "Too much low-end body — it booms.",
+    does: "Too much low-end body, so it booms.",
     type: "peaking",
     params: { frequency: 200, gain: -4, q: 1.4 },
   },
@@ -72,7 +72,7 @@ export const HF_AUDIO_FX_JOBS: readonly HfAudioFxJob[] = [
   {
     id: "add-clarity",
     label: "Add Clarity",
-    does: "It is hard to make out — it sits back.",
+    does: "It is hard to make out because it sits back.",
     type: "peaking",
     params: { frequency: 3000, gain: 2.5, q: 1 },
   },

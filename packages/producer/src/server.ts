@@ -384,7 +384,7 @@ function validateOutputResolutionOverride(body: Record<string, unknown>): string
     return `Invalid outputResolution "${body.outputResolution}". Must be one of: landscape, portrait, landscape-4k, portrait-4k, square, square-4k (aliases: 1080p, 4k, …).`;
   }
   if (normalized !== undefined && (body.format === "webm" || body.format === "mov")) {
-    return `outputResolution is not supported with format "${body.format}" — the alpha (webm/mov) capture path can't supersample. Use format "mp4", or omit outputResolution to render at the composition's native dimensions.`;
+    return `outputResolution is not supported with format "${body.format}": the alpha (webm/mov) capture path can't supersample. Use format "mp4", or omit outputResolution to render at the composition's native dimensions.`;
   }
   return undefined;
 }

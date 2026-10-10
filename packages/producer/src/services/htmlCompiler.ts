@@ -540,7 +540,7 @@ async function resolveMediaDuration(
           // as `prepare/ffmpeg_failed` with owner "system".
           log?.warn(
             `[compile] Audio "${elementIdentity}" (${src}) is a text document, not a media ` +
-              "file — the element is dropped from the render. Point it at a rendered media file.",
+              "file, so the element is dropped from the render. Point it at a rendered media file.",
           );
         }
         return { duration: null, resolvedPath: filePath };
@@ -669,7 +669,7 @@ async function compileHtmlFile(
       // thread `log` through parseSubCompositions to warn for it too.
       log?.warn(
         `[compile] Audio "${r.id}" (${r.src}) is ${r.maxDuration.toFixed(2)}s but its ` +
-          `data-duration is ${r.duration.toFixed(2)}s — the slot is shortened to the media ` +
+          `data-duration is ${r.duration.toFixed(2)}s, so the slot is shortened to the media ` +
           `length. Set data-duration to ~${r.maxDuration.toFixed(2)}s, trim data-media-start, ` +
           `or use a longer/looping source if that isn't intended.`,
       );
@@ -1273,7 +1273,7 @@ export async function inlineExternalScripts(html: string): Promise<string> {
       // browser support for integrity metadata (including casing) can differ.
       if (download.reason instanceof ScriptIntegrityError) throw download.reason;
       defaultLogger.warn(
-        `[Compiler] WARNING: Failed to download CDN script: ${src} — ${download.reason}. ` +
+        `[Compiler] WARNING: Failed to download CDN script: ${src} (${download.reason}). ` +
           `The render may fail if this script is required (e.g. GSAP). ` +
           `Consider bundling it locally in your project.`,
       );
@@ -1351,7 +1351,7 @@ export function collectExternalAssets(
 
   if (externalAssets.size > 0) {
     defaultLogger.info(
-      `[Compiler] Found ${externalAssets.size} asset(s) outside project directory — will copy to render output`,
+      `[Compiler] Found ${externalAssets.size} asset(s) outside project directory, will copy to render output`,
     );
   }
 
@@ -1409,7 +1409,7 @@ async function downloadAndRewriteUrls(
         urlToLocal.set(url, localPath);
       } catch (err) {
         const identity = safeDownloadUrlIdentity(url);
-        defaultLogger.warn(`[Compiler] ${warnLabel} — using original URL as fallback.`, {
+        defaultLogger.warn(`[Compiler] ${warnLabel}, using original URL as fallback.`, {
           urlFingerprint: identity.urlFingerprint,
           host: identity.host,
           error: err instanceof Error ? err.message : String(err),
@@ -1601,7 +1601,7 @@ async function fetchExternalStylesheetCss(href: string): Promise<string | null> 
       timeoutMs: 15_000,
     });
   } catch (err) {
-    defaultLogger.warn("[Compiler] External stylesheet fetch failed — preserving link tag.", {
+    defaultLogger.warn("[Compiler] External stylesheet fetch failed, preserving link tag.", {
       urlFingerprint: identity.urlFingerprint,
       host: identity.host,
       error: err instanceof Error ? err.message : String(err),

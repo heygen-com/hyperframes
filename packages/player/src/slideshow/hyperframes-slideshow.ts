@@ -144,7 +144,7 @@ function injectKeyframesOnce(): void {
       .hf-hotspot-pill,
       .hf-nav-spinner { animation: none !important; }
     }
-    /* Nav-button hover (replaces inline onmouseover/onmouseout — CSP-safe).
+    /* Nav-button hover (replaces inline onmouseover/onmouseout, CSP-safe).
        !important beats the inline base color set on each button. */
     [data-hf-nav-cluster] button:hover {
       background: rgba(255,255,255,0.12) !important;
@@ -474,7 +474,7 @@ export class HyperframesSlideshow extends HTMLElement {
       const cleaned = dropInvalidSlides(resolved);
       if (cleaned.slides.length === 0 && manifest.slides.length > 0) {
         console.error(
-          "[hyperframes-slideshow] no main-line slides resolved — the scene timeline may not have loaded in time, or sceneIds/timing are invalid:",
+          "[hyperframes-slideshow] no main-line slides resolved. The scene timeline may not have loaded in time, or sceneIds/timing are invalid:",
           errors,
         );
       }

@@ -1387,7 +1387,7 @@ class HyperframesPlayer extends HTMLElement {
     });
     const win = doc.defaultView as (Window & { __renderReady?: boolean }) | null;
     console.warn(
-      `[hyperframes-player] assets-loading timed out after ${ASSETS_READY_TIMEOUT_MS}ms — playing anyway`,
+      `[hyperframes-player] assets-loading timed out after ${ASSETS_READY_TIMEOUT_MS}ms, playing anyway`,
       {
         stuckMedia: pendingMedia.map(
           (el) => el.currentSrc || el.getAttribute("src") || `<${el.tagName.toLowerCase()}>`,
@@ -1550,7 +1550,7 @@ class HyperframesPlayer extends HTMLElement {
     if (applied) this._sendDisplayScale();
     if (!applied && this._ready && !this._rescaleWarned) {
       this._rescaleWarned = true;
-      console.warn("[hyperframes-player] rescale no-op after ready — zero-size player element", {
+      console.warn("[hyperframes-player] rescale no-op after ready: zero-size player element", {
         src: this.getAttribute("src"),
         offsetWidth: this.offsetWidth,
         offsetHeight: this.offsetHeight,

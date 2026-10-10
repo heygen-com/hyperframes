@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, it } from "node:test";
-import { isShippedSource, listDashedText } from "./check-studio-copy-dashes.mjs";
+import {
+  checkStudioCopyDashes,
+  isShippedSource,
+  listDashedText,
+} from "./check-studio-copy-dashes.mjs";
 
 const lines = (source) => listDashedText(source, "x.tsx").map((issue) => issue.split(" ")[0]);
 
@@ -46,6 +53,22 @@ describe("Studio copy dash checker", () => {
     assert.deepEqual(lines(source), []);
   });
 
+  it("exempts only the named strings in the named files", () => {
+    const media = 'const a = "\u2014";\nconst b = "a \u2014 b";';
+    assert.deepEqual(
+      listDashedText(media, "packages/core/src/figma/mediaIndex.ts").map((i) => i.split(" ")[0]),
+      ["packages/core/src/figma/mediaIndex.ts:2"],
+    );
+    assert.equal(listDashedText(media, "packages/core/src/other.ts").length, 2);
+    const scoping = 'const s = `/* Swallow \u2014 the scoped root */`;\nconst t = "a \u2014 b";';
+    assert.deepEqual(
+      listDashedText(scoping, "packages/core/src/compiler/compositionScoping.ts").map(
+        (i) => i.split(" ")[0],
+      ),
+      ["packages/core/src/compiler/compositionScoping.ts:2"],
+    );
+  });
+
   it("checks shipped .ts and .tsx files, not tests or declarations", () => {
     assert.deepEqual(
       ["a.ts", "b.tsx", "c.test.ts", "d.spec.tsx", "e.d.ts", "f.css", "g.js"].filter(
@@ -53,5 +76,30 @@ describe("Studio copy dash checker", () => {
       ),
       ["a.ts", "b.tsx"],
     );
+  });
+
+  it("scans Studio and every package whose text Studio shows, but not the CLI", () => {
+    const shown = [
+      "core",
+      "engine",
+      "lint",
+      "parsers",
+      "player",
+      "producer",
+      "sdk",
+      "shader-transitions",
+      "studio",
+      "studio-server",
+    ];
+    const root = mkdtempSync(join(tmpdir(), "studio-dashes-"));
+    for (const name of [...shown, "cli"]) {
+      const src = join(root, "packages", name, "src");
+      mkdirSync(src, { recursive: true });
+      writeFileSync(join(src, "a.ts"), 'export const a = "x \u2014 y";');
+      writeFileSync(join(src, "a.test.ts"), 'const b = "x \u2014 y";');
+    }
+    const scanned = checkStudioCopyDashes(root).map((issue) => issue.split("/")[1]);
+    rmSync(root, { recursive: true });
+    assert.deepEqual(scanned.sort(), shown);
   });
 });

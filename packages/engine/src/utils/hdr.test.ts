@@ -214,7 +214,7 @@ describe("HDR auto-promotion reporting", () => {
       output: { colorSpace: "BT.2020", codec: "HEVC Main10" },
     });
     expect(formatHdrAutoPromotionWarning(promotion!)).toBe(
-      '[Render] HDR auto-promotion triggered by "assets/hero-hdr.mp4" — output: BT.2020 / HEVC Main10',
+      '[Render] HDR auto-promotion triggered by "assets/hero-hdr.mp4", output: BT.2020 / HEVC Main10',
     );
   });
 

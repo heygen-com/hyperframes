@@ -450,7 +450,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
         } else {
           beginFrameStalled = true;
           log.warn(
-            "[Render] BeginFrame liveness probe timed out — this composition stalls " +
+            "[Render] BeginFrame liveness probe timed out: this composition stalls " +
               "BeginFrame on this host (SwiftShader heavy-layer pattern). Relaunching " +
               "the probe browser in screenshot capture mode; the render will use " +
               "screenshot capture throughout.",
@@ -706,7 +706,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
             video.start = win.visibleStart;
             video.end = win.visibleEnd;
             log.info(
-              `[Probe] Runtime video discovery: ${video.id} visible ${win.visibleStart.toFixed(2)}s–${win.visibleEnd.toFixed(2)}s`,
+              `[Probe] Runtime video discovery: ${video.id} visible ${win.visibleStart.toFixed(2)}s to ${win.visibleEnd.toFixed(2)}s`,
             );
           }
         }
@@ -766,7 +766,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
         });
         if (!timelinesInfo.gsapLoaded) {
           diagnostics.push(
-            "GSAP is not loaded — CDN script may have failed to download. " +
+            "GSAP is not loaded. The CDN script may have failed to download. " +
               "Bundle GSAP locally in your project instead of using a CDN <script src>.",
           );
         } else if (timelinesInfo.timelineKeys.length === 0) {
@@ -786,13 +786,13 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
       log.warn("Failed to gather browser diagnostics for zero-duration composition", {
         error: err instanceof Error ? err.message : String(err),
       });
-      diagnostics.push("(Could not gather browser diagnostics — page may have crashed)");
+      diagnostics.push("(Could not gather browser diagnostics. The page may have crashed.)");
     }
     const hint =
       diagnostics.length > 0
         ? "\n\nDiagnostics:\n  - " + diagnostics.join("\n  - ")
         : "\n\nCheck that GSAP timelines are registered on window.__timelines.";
-    throw new Error("Composition duration is 0 — this would produce a black video." + hint);
+    throw new Error("Composition duration is 0, so this would produce a black video." + hint);
   }
 
   // Surface browser-side asset failures (404s, script errors) as warnings.

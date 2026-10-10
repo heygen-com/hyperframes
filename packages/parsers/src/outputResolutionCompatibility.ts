@@ -106,7 +106,7 @@ function buildAspectMismatch(
     outputResolution,
   );
   const suggestion = suggestedResolution
-    ? ` The composition is ${describeOrientation(compositionWidth, compositionHeight)} — ` +
+    ? ` The composition is ${describeOrientation(compositionWidth, compositionHeight)}, so ` +
       `use --resolution ${suggestedResolution} instead.`
     : ` Pick a preset whose orientation matches, or omit --resolution to render at the composition's native dimensions.`;
   return {

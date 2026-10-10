@@ -43,7 +43,7 @@ describe("a linked trim the SDK refuses", () => {
       thrown = error;
     }
     expect(getStudioSaveErrorMessage(thrown)).toBe(
-      "Linked audio would start after the new end — unlink or trim the audio first.",
+      "Linked audio would start after the new end. Unlink or trim the audio first.",
     );
     expect(deps.writeProjectFile).not.toHaveBeenCalled();
     expect(deps.editHistory.recordEdit).not.toHaveBeenCalled();

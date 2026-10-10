@@ -916,7 +916,7 @@ export function init(config: HyperShaderConfig): GsapTimeline {
 
   const gl = createContext(glCanvas, compWidth, compHeight);
   if (!gl) {
-    console.warn("[HyperShader] WebGL unavailable — shader transitions disabled.");
+    console.warn("[HyperShader] WebGL unavailable, shader transitions disabled.");
     const fallback = config.timeline || gsap.timeline({ paused: true });
     registerTimeline(compId, fallback, config.timeline);
     return fallback;
@@ -1374,7 +1374,7 @@ export function init(config: HyperShaderConfig): GsapTimeline {
     const isCssFallback = !requestedShader || compiledProg === null;
     if (requestedShader && compiledProg === null) {
       console.warn(
-        `[HyperShader] Shader "${t.shader}" failed to compile — falling back to CSS crossfade.`,
+        `[HyperShader] Shader "${t.shader}" failed to compile, falling back to CSS crossfade.`,
       );
     }
     const prog = isCssFallback ? null : compiledProg;

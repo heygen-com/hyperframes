@@ -50,7 +50,7 @@ function formatDowngradeWarning(
       ? "HLS output is SDR-only (H.264 in MPEG-TS)"
       : "HDR + alpha is not supported";
   return (
-    `[Render] ${hdrSourceReason}, but format is "${outputFormat}" — falling back to SDR. ` +
+    `[Render] ${hdrSourceReason}, but format is "${outputFormat}", so falling back to SDR. ` +
     `${formatReason}. Use --format mp4 for HDR10 output.`
   );
 }
@@ -77,14 +77,14 @@ function logHdrResolution(
 ): void {
   if (forcedHdrWithoutSources) {
     input.log.warn(
-      "[Render] HDR forced by --hdr flag, but no HDR sources were detected — defaulting to HLG. SDR-only compositions may look perceptually wrong on HDR displays.",
+      "[Render] HDR forced by --hdr flag, but no HDR sources were detected, defaulting to HLG. SDR-only compositions may look perceptually wrong on HDR displays.",
     );
   }
   if (!effectiveHdr) {
     input.log.info(
       hdrMode === "force-sdr"
         ? "[Render] SDR forced by --sdr flag"
-        : "[Render] No HDR sources detected — rendering SDR",
+        : "[Render] No HDR sources detected, rendering SDR",
     );
     return;
   }
@@ -100,10 +100,10 @@ function logHdrResolution(
     return;
   }
   const reason = forcedHdrWithoutSources
-    ? "forced by --hdr flag (no HDR sources detected — defaulting to HLG)"
+    ? "forced by --hdr flag (no HDR sources detected, defaulting to HLG)"
     : "forced by --hdr flag";
   input.log.info(
-    `[Render] HDR ${reason} — output: ${effectiveHdr.transfer.toUpperCase()} (BT.2020, 10-bit H.265)`,
+    `[Render] HDR ${reason}, output: ${effectiveHdr.transfer.toUpperCase()} (BT.2020, 10-bit H.265)`,
   );
 }
 

@@ -153,7 +153,7 @@ export function resolveRenderWorkerCount(
   const reasonCodes = new Set(compiled.renderModeHints.reasons.map((r) => r.code));
   if (reasonCodes.has("htmlInCanvas")) {
     log.warn(
-      "[Render] html-in-canvas (drawElementImage) detected — pinning to 1 worker (Chrome concurrency limitation).",
+      "[Render] html-in-canvas (drawElementImage) detected, pinning to 1 worker (Chrome concurrency limitation).",
       { requestedWorkers },
     );
     return 1;
@@ -166,7 +166,7 @@ export function resolveRenderWorkerCount(
   // every path into capture.
   if (cfg.lowMemoryMode && requestedWorkers === undefined) {
     log.info(
-      "[Render] Low-memory profile — pinning to 1 capture worker (auto-worker calibration skipped).",
+      "[Render] Low-memory profile, pinning to 1 capture worker (auto-worker calibration skipped).",
     );
     return 1;
   }

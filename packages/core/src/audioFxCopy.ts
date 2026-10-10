@@ -63,7 +63,7 @@ export const EFFECT_COPY: Record<string, EffectCopy> = {
   },
   highpass: {
     title: "Remove Rumble",
-    does: "Cuts the very bottom — traffic, footsteps, air conditioning, hands on the mic.",
+    does: "Cuts the very bottom: traffic, footsteps, air conditioning, hands on the mic.",
     reachFor: "There's a low hum or thump under everything.",
     primary: "frequency",
     primaryEnds: { low: "Only the deepest", high: "Thins it out" },
@@ -94,7 +94,7 @@ export const EFFECT_COPY: Record<string, EffectCopy> = {
   peaking: {
     title: "Shape One Range",
     does: "Lifts or lowers one part of the sound and leaves the rest alone.",
-    reachFor: "One quality is wrong — boomy, boxy, harsh — but the rest is fine.",
+    reachFor: "One quality is wrong (boomy, boxy, harsh) but the rest is fine.",
     primary: "gain",
     primaryEnds: { low: "Take it out", high: "Bring it forward" },
     band: [20, 20000],
@@ -168,7 +168,7 @@ export const EFFECT_COPY: Record<string, EffectCopy> = {
   },
   gate: {
     title: "Silence the Gaps",
-    does: "Mutes the pauses. Whatever sits underneath stays — this closes the gaps, it does not remove noise.",
+    does: "Mutes the pauses. Whatever sits underneath stays: this closes the gaps, it does not remove noise.",
     reachFor: "You can hear the room in the gaps.",
     primary: "strength",
     primaryEnds: { low: "Only true silence", high: "Cuts quiet parts too" },
@@ -176,7 +176,7 @@ export const EFFECT_COPY: Record<string, EffectCopy> = {
       threshold: { label: "Quieter than this is a gap" },
       range: {
         label: "How far to duck the gaps",
-        hint: "Not all the way down, usually — total silence sounds broken.",
+        hint: "Not all the way down, usually. Total silence sounds broken.",
       },
       ratio: { label: "How hard" },
       attack: { label: "How fast it opens" },
@@ -394,7 +394,7 @@ export const SUMMARY: Record<string, (p: P) => string> = {
       ? "Doing nothing yet"
       : `${n(p.gain) > 0 ? "More" : "Less"} sparkle above ${hz(p.frequency)}`,
   compressor: (p) =>
-    `Evening out — ${strength(Math.min(1, (n(p.ratio, 3) - 1) / 7), ["gentle", "moderate", "firm"])}`,
+    `Evening out, ${strength(Math.min(1, (n(p.ratio, 3) - 1) / 7), ["gentle", "moderate", "firm"])}`,
   limiter: (p) => `Nothing louder than ${n(p.limit, -1)} dB`,
   gate: (p) => `Closing gaps quieter than ${n(p.threshold, -45)} dB`,
   saturate: (p) =>

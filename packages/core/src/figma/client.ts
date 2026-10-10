@@ -200,12 +200,12 @@ export function createFigmaClient(options: FigmaClientOptions): FigmaClient {
       [
         "FIGMA_TOKEN is missing. One-time setup:",
         "  1. figma.com/settings → Security → Personal access tokens → Generate new token",
-        "  2. Scopes (read-only is all this integration ever needs — it never writes to figma):",
+        "  2. Scopes (read-only is all this integration ever needs: it never writes to figma):",
         "       File content: Read-only   ·   File metadata: Read-only",
         "       Library content: Read-only  (needed for the `tokens` published-styles fallback)",
-        "       Variables: Read-only      (optional — brand variables, requires figma Enterprise;",
+        "       Variables: Read-only      (optional: brand variables, requires figma Enterprise;",
         "                                  without it `tokens` falls back to published styles)",
-        '  3. export FIGMA_TOKEN="figd_…"  — add it to your shell profile or the project .env',
+        '  3. export FIGMA_TOKEN="figd_…", then add it to your shell profile or the project .env',
         "     so future sessions skip this step",
         "Then re-run this command.",
       ].join("\n"),
@@ -237,26 +237,26 @@ export function createFigmaClient(options: FigmaClientOptions): FigmaClient {
     if (body && /invalid token/i.test(body))
       return new FigmaClientError(
         "BAD_TOKEN",
-        "figma rejected the token (403 Invalid token) — it is invalid, expired, or revoked. Re-mint at figma.com/settings → Security, then update FIGMA_TOKEN.",
+        "figma rejected the token (403 Invalid token): it is invalid, expired, or revoked. Re-mint at figma.com/settings → Security, then update FIGMA_TOKEN.",
         403,
         opts.endpoint,
       );
     if (opts.enterpriseGated)
       return new FigmaClientError(
         "REQUIRES_ENTERPRISE",
-        "figma variables require an Enterprise plan (403) — fall back to styles",
+        "figma variables require an Enterprise plan (403), so fall back to styles",
         403,
         opts.endpoint,
       );
     if (body && /scope/i.test(body))
       return new FigmaClientError(
         "FORBIDDEN",
-        `figma denied access (403): ${body} — add the named scope at figma.com/settings → Security → Personal access tokens.`,
+        `figma denied access (403): ${body}. Add the named scope at figma.com/settings → Security → Personal access tokens.`,
         403,
         opts.endpoint,
       );
     const scopeLine = opts.scopeHint
-      ? `This endpoint needs the "${opts.scopeHint}" scope — add it at figma.com/settings → Security → Personal access tokens.`
+      ? `This endpoint needs the "${opts.scopeHint}" scope. Add it at figma.com/settings → Security → Personal access tokens.`
       : "The token is missing a read scope, or your account can't view this file. Check File content: Read-only + File metadata: Read-only at figma.com/settings → Security.";
     return new FigmaClientError(
       "FORBIDDEN",
@@ -272,7 +272,7 @@ export function createFigmaClient(options: FigmaClientOptions): FigmaClient {
     if (res.status === 401)
       throw new FigmaClientError(
         "BAD_TOKEN",
-        "figma rejected the token (401) — it is expired or revoked. Re-mint at figma.com/settings → Security, then update FIGMA_TOKEN.",
+        "figma rejected the token (401): it is expired or revoked. Re-mint at figma.com/settings → Security, then update FIGMA_TOKEN.",
         401,
         opts.endpoint,
       );
@@ -280,7 +280,7 @@ export function createFigmaClient(options: FigmaClientOptions): FigmaClient {
     if (res.status === 429)
       throw new FigmaClientError(
         "RATE_LIMITED",
-        `figma rate limit hit (429) and still limited after ${maxRetries} retries — wait a minute and re-run, or import fewer nodes per call.`,
+        `figma rate limit hit (429) and still limited after ${maxRetries} retries. Wait a minute and re-run, or import fewer nodes per call.`,
         429,
         opts.endpoint,
       );

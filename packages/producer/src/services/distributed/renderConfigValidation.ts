@@ -251,10 +251,10 @@ export function validateJsonSafeValue(value: unknown, field: string): void {
 /** Per-typeof rejection messages for JSON-unsafe leaves. */
 const LEAF_REJECTIONS: Partial<Record<string, string>> = {
   undefined:
-    "undefined leaves are silently dropped by JSON.stringify — use null if you mean an absent value",
+    "undefined leaves are silently dropped by JSON.stringify. Use null if you mean an absent value",
   function: "functions are not JSON-serializable",
   symbol: "Symbols are not JSON-serializable",
-  bigint: "BigInt values throw at JSON.stringify — encode as a string if you need 64-bit integers",
+  bigint: "BigInt values throw at JSON.stringify. Encode as a string if you need 64-bit integers",
 };
 
 // fallow-ignore-next-line complexity
@@ -279,7 +279,7 @@ function walkVariables(value: unknown, path: string, seen: WeakSet<object>): voi
   if (seen.has(value as object)) {
     throw new InvalidConfigError(
       path,
-      "circular reference detected — JSON.stringify cannot serialize cycles",
+      "circular reference detected: JSON.stringify cannot serialize cycles",
     );
   }
   seen.add(value as object);

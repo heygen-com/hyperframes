@@ -242,7 +242,7 @@ export function removeLevelling(chain: HfAudioFxChain): {
 /** What the module says when it is closed. */
 export function levellingSummary(points: readonly HfAutomationPoint[]): string {
   const moves = points.filter((p) => p.v !== 0);
-  if (moves.length === 0) return "Already even — nothing to do";
+  if (moves.length === 0) return "Already even: nothing to do";
   const lift = Math.max(...moves.map((p) => p.v));
   const cut = Math.min(...moves.map((p) => p.v));
   const parts: string[] = [];

@@ -238,7 +238,7 @@ function collectPlanAssetShas(planDir: string): {
   if (compositionHtml === null) {
     throw new Error(
       `[freezePlan] compiled HTML missing at ${COMPILED_INDEX_RELATIVE_PATH} ` +
-        `— upstream compile stage did not materialize the expected file.`,
+        `(upstream compile stage did not materialize the expected file).`,
     );
   }
   return { compositionHtml, assets };

@@ -450,7 +450,7 @@ it("surfaces the runtime's web-audio-bypass console.info line as its own info fi
     "info",
     '[hyperframes] runtime_web_audio_bypass: "https://cdn.example.com/track.mp3" ' +
       "(cross_origin_no_cors): Web Audio capture withheld; the track plays through native " +
-      "HTMLMediaElement output. Native playback cannot reproduce: fx-chain — proxy or download " +
+      "HTMLMediaElement output. Native playback cannot reproduce: fx-chain. Fix: proxy or download " +
       "the asset to a same-origin URL to keep it.",
   );
   const authorInfo = fakeConsoleMessage("info", "debug runtime_web_audio_bypass lookalike");

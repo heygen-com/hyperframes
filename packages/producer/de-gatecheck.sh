@@ -31,13 +31,13 @@ worker(){
   if grep -q "drawElement canvas injected" "$log" 2>/dev/null; then
     echo "$pre drawelement" > "$OUT/$pre.txt"
   else
-    local reason; reason=$(grep -oE "falling back to (screenshot|beginframe) capture — [^(]*" "$log" | head -1 | sed -E 's/.*— //' || true)
+    local reason; reason=$(grep -oE "falls back to (screenshot|beginframe) capture: [^(]*" "$log" | head -1 | sed -E 's/.*capture: //' || true)
     # Compile-time gates (3D / mix-blend-mode) log a different shape than the
     # engine's init-time gates — "Fast capture: composition uses X — disabling".
     if [ -z "$reason" ]; then
       reason=$(grep -oE "Fast capture: composition uses [a-z0-9 -]*" "$log" | head -1 | sed -E 's/.*uses /compile:/' || true)
     fi
-    # Compat-hint routing (raw rAF etc.): "fast capture: falling back to screenshot — render-mode ..."
+    # Compat-hint routing (raw rAF etc.): "fast capture falls back to screenshot: render-mode ..."
     if [ -z "$reason" ] && grep -q "render-mode compatibility hint" "$log" 2>/dev/null; then
       reason="render-mode compat hint (raw rAF/alpha)"
     fi

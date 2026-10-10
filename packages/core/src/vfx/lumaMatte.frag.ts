@@ -58,7 +58,7 @@ uniform sampler2D u_src;
 uniform sampler2D u_src2;
 uniform float u_mode;
 
-// The matte texel is premultiplied, so its rgb is already "over black" — the
+// The matte texel is premultiplied, so its rgb is already "over black": the
 // composite After Effects reads a luma matte through.
 float hfCoverage(vec4 matte, float mode) {
   if (mode < 1.5) return matte.a;

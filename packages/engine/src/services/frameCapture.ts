@@ -942,7 +942,7 @@ async function initDrawElementOrTransparentBackground(
     session.deGateReason = "render_mode_hint";
     session.deFallbackTrigger = "render_mode_hint";
     console.log(
-      "[engine] fast capture: falling back to screenshot — render-mode compatibility " +
+      "[engine] fast capture falls back to screenshot: render-mode compatibility " +
         "hint forced screenshot capture (e.g. raw requestAnimationFrame composition).",
     );
   }
@@ -994,7 +994,7 @@ async function initDrawElementOrTransparentBackground(
       session.deGateReason = "unsupported_chrome";
       session.deFallbackTrigger = "unsupported_chrome";
       console.log(
-        `[engine] fast capture: falling back to ${session.launchCaptureMode} capture — ` +
+        `[engine] fast capture falls back to ${session.launchCaptureMode} capture: ` +
           "this Chrome build does not implement canvas.drawElementImage (Dev/Canary-only " +
           "feature); run `hyperframes browser ensure --force` to fetch a supported " +
           "build, or set HYPERFRAMES_BROWSER_PATH to one.",
@@ -1015,7 +1015,7 @@ async function initDrawElementOrTransparentBackground(
       session.deGateReason = "ffmpeg_no_psnr_filter";
       session.deFallbackTrigger = "ffmpeg_no_psnr_filter";
       console.warn(
-        `[engine] fast capture: falling back to ${session.launchCaptureMode} capture — ` +
+        `[engine] fast capture falls back to ${session.launchCaptureMode} capture: ` +
           "host ffmpeg is missing or was built without the `psnr` filter " +
           "(libpostproc), so drawElement self-verification cannot run. Install " +
           "an ffmpeg build that includes libpostproc (or set HYPERFRAMES_FFMPEG_PATH " +
@@ -1046,8 +1046,8 @@ async function initDrawElementOrTransparentBackground(
       // Page.captureScreenshot hangs for the full protocol timeout, while
       // beginFrameCapture is the platform's normal baseline path.
       console.log(
-        `[engine] fast capture: falling back to ${session.launchCaptureMode} capture — ` +
-          "SwiftShader (software rasterizer — no GPU egress to skip, drawElement is " +
+        `[engine] fast capture falls back to ${session.launchCaptureMode} capture: ` +
+          "SwiftShader (software rasterizer, no GPU egress to skip, drawElement is " +
           "parity-or-slower; see fast-capture-limitations.md)",
       );
       await routeToFallback();
@@ -1067,7 +1067,7 @@ async function initDrawElementOrTransparentBackground(
           // the fine-grained value for the diagnostic profile emission.
           session.deFallbackTrigger = cssFx;
           console.log(
-            `[engine] fast capture: falling back to ${session.launchCaptureMode} capture — ` +
+            `[engine] fast capture falls back to ${session.launchCaptureMode} capture: ` +
               `${cssFx} detected (drawElementImage cannot reproduce it; see fast-capture-limitations.md)`,
           );
           await routeToFallback();
@@ -1102,7 +1102,7 @@ async function initDrawElementOrTransparentBackground(
           session.deGateReason = "at_risk_timeline";
           session.deFallbackTrigger = "at_risk_timeline";
           console.log(
-            `[engine] fast capture: falling back to ${session.launchCaptureMode} capture — ` +
+            `[engine] fast capture falls back to ${session.launchCaptureMode} capture: ` +
               `${atRisk.size}/${totalFrames} frames animate a compositor-incompatible prop ` +
               `(blend/3D/clip/mask); drawElementImage drops these mid-animation ` +
               `(deterministic timeline gate; see fast-capture-limitations.md Lim 7)`,
@@ -1120,7 +1120,7 @@ async function initDrawElementOrTransparentBackground(
         session.deGateReason = "3d_init_failed";
         session.deFallbackTrigger = "3d_init_failed";
         console.log(
-          `[engine] fast capture: falling back to ${session.launchCaptureMode} capture — ` +
+          `[engine] fast capture falls back to ${session.launchCaptureMode} capture: ` +
             `3D projection init failed (${threeD.reason ?? "unknown"})`,
         );
         await routeToFallback();
@@ -1265,7 +1265,7 @@ export async function createCaptureSession(
     (config?.enablePageSideCompositing ?? DEFAULT_CONFIG.enablePageSideCompositing)
   ) {
     console.warn(
-      "[engine] useDrawElement is incompatible with page-side shader compositing — " +
+      "[engine] useDrawElement is incompatible with page-side shader compositing, " +
         "ignoring enablePageSideCompositing for this render. Prefer resolveConfig, " +
         "which disables page-side compositing automatically for fast-capture renders.",
     );
@@ -1454,7 +1454,7 @@ async function constructCaptureSession(
   // of silently ignoring the old escape hatch.
   if (process.env.HF_FAST_CAPTURE_AUTOALPHA !== undefined) {
     console.warn(
-      "[engine] HF_FAST_CAPTURE_AUTOALPHA is retired and ignored — the requestPaint " +
+      "[engine] HF_FAST_CAPTURE_AUTOALPHA is retired and ignored: the requestPaint " +
         "paint contract captures animated opacity natively (see drawElementService.ts).",
     );
   }
@@ -1627,7 +1627,7 @@ export const HF_READY_DIAGNOSTIC_EXPR = `(async function() {
     await new Promise(function(r) { setTimeout(r, 0); });
   }
   // A thenable resolving via its own setTimeout(0) can still misreport as
-  // pending here (macrotask registration order, not resolution order) — a
+  // pending here (macrotask registration order, not resolution order), a
   // narrow case that self-corrects on the next ~1s diagnostic tick.
   var pendingBuildReadyKeys = keys.filter(function(key) { return !settled[key]; });
   var rejectedBuildReadyKeys = keys.filter(function(key) { return settled[key] === "rejected"; });
@@ -1662,24 +1662,24 @@ export function buildZeroDurationDiagnostic(diag: HfDiagnostic): string {
   if (diag.pendingBuildReadyKeys.length > 0) {
     hints.push(
       `window.__hf.buildReady never resolved for: ${diag.pendingBuildReadyKeys.join(", ")}. ` +
-        "The runtime holds render-ready until every registered buildReady promise settles — " +
-        "find where the composition registers that key and confirm it actually resolves.",
+        "The runtime holds render-ready until every registered buildReady promise settles. " +
+        "Find where the composition registers that key and confirm it actually resolves.",
     );
   }
   if (diag.rejectedBuildReadyKeys.length > 0) {
     hints.push(
       `window.__hf.buildReady rejected for: ${diag.rejectedBuildReadyKeys.join(", ")}. ` +
-        "That key's build promise failed rather than hanging — find why it rejects.",
+        "That key's build promise failed rather than hanging. Find why it rejects.",
     );
   }
   if (!diag.hasPlayer) {
-    hints.push("window.__player was never set — the HyperFrames runtime did not initialize.");
+    hints.push("window.__player was never set: the HyperFrames runtime did not initialize.");
   }
   if (!diag.hasTimeline) {
     hints.push(
       "No GSAP timeline registered (window.__timelines is empty). " +
         "CSS/WAAPI/Lottie animations are usually auto-detected (the runtime infers " +
-        "duration from the longest running animation) — this composition's duration " +
+        "duration from the longest running animation), but this composition's duration " +
         "could not be inferred, which usually means an infinite/unbounded animation " +
         "(e.g. animation-iteration-count: infinite, repeat: -1 WAAPI, or a looping Lottie " +
         "clip) or a Three.js scene with no discoverable AnimationClip.",
@@ -1691,7 +1691,7 @@ export function buildZeroDurationDiagnostic(diag: HfDiagnostic): string {
     );
   }
   if (diag.hasSeek && diag.duration === 0 && diag.renderReady) {
-    hints.push("The runtime finished initializing but reported zero duration — this is permanent.");
+    hints.push("The runtime finished initializing but reported zero duration. This is permanent.");
   }
   return (
     `[FrameCapture] Composition has zero duration.\n` +
@@ -1867,7 +1867,7 @@ export async function pollSubCompositionTimelines(
       scriptFailureBail = true;
       console.warn(
         `[FrameCapture] Sub-composition timeline wait cut short after ${now - start}ms: ` +
-          `script resource(s) failed to load (${failures.join(", ")}) — ` +
+          `script resource(s) failed to load (${failures.join(", ")}), so ` +
           `the timeline registration they carry can never arrive. ` +
           `Fix the script reference; the render proceeds without those animations.`,
       );
@@ -2134,7 +2134,7 @@ export function buildLiveMapWarning(libraries: readonly string[]): CaptureWarnin
     message:
       `Live map viewport(s) detected in the composition (${libraries.join(", ")}). ` +
       `Map tiles load over the network at render time, which the deterministic-render ` +
-      `contract forbids — frames captured before tiles arrive ship a blank or partial map ` +
+      `contract forbids: frames captured before tiles arrive ship a blank or partial map ` +
       `with no error. Bake the map to a video first (see the motion-graphics maps skill / ` +
       `bake-basemap.mjs) and use the baked file as the imagery layer.`,
     details: { sources: [...libraries] },
@@ -2496,7 +2496,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
           });
           console.warn(
             `[FrameCapture] Some image elements did not load within ${pageReadyTimeout}ms: ${failedImages}. ` +
-              `Continuing render — affected images may appear blank/missing in early frames.`,
+              `Continuing render. Affected images may appear blank/missing in early frames.`,
           );
         }
         await decodeAllImages(page);
@@ -2518,7 +2518,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
       }, skipVideoIds);
       console.warn(
         `[FrameCapture] Some video elements did not decode within ${pageReadyTimeout}ms: ${failedVideos}. ` +
-          `Continuing render — affected videos will appear as blank/black frames.`,
+          `Continuing render. Affected videos will appear as blank/black frames.`,
       );
     }
     recordCaptureWarnings(
@@ -2652,7 +2652,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
           });
           console.warn(
             `[FrameCapture] Some image elements did not load within ${pageReadyTimeout}ms: ${failedImages}. ` +
-              `Continuing render — affected images may appear blank/missing in early frames.`,
+              `Continuing render. Affected images may appear blank/missing in early frames.`,
           );
         }
         await decodeAllImages(page);
@@ -2674,7 +2674,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
       }, bfSkipVideoIds);
       console.warn(
         `[FrameCapture] Some video elements did not decode within ${pageReadyTimeout}ms: ${failedVideos}. ` +
-          `Continuing render — affected videos will appear as blank/black frames.`,
+          `Continuing render. Affected videos will appear as blank/black frames.`,
       );
     }
     recordCaptureWarnings(
@@ -4385,7 +4385,7 @@ export async function captureFrameToBuffer(
             // deadline rejects from outside it, so that catch never runs.
             session.deFrameTimeouts = (session.deFrameTimeouts ?? 0) + 1;
             console.log(
-              `[engine] fast capture: frame ${frameIndex} — capture exceeded ` +
+              `[engine] fast capture frame ${frameIndex}: capture exceeded ` +
                 `${DE_FRAME_TIMEOUT_MS}ms; renderer stalled after drawElementImage ` +
                 `(PRINFRA-488). Failing the drawElement attempt so the whole render ` +
                 `retries via screenshot.`,

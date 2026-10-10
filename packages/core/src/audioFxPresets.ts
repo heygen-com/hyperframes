@@ -111,7 +111,7 @@ export const HF_AUDIO_FX_PRESETS: readonly HfAudioFxPreset[] = [
     "voice-broadcast",
     "voice",
     "Broadcast",
-    "Denser and more forward — a radio-presenter sound.",
+    "Denser and more forward: a radio-presenter sound.",
     [
       { type: "highpass", label: "Remove Rumble", params: { frequency: 90, q: 0.707, poles: "2" } },
       { type: "peaking", label: "Reduce Boxiness", params: { frequency: 400, gain: -3, q: 1.4 } },
@@ -159,7 +159,7 @@ export const HF_AUDIO_FX_PRESETS: readonly HfAudioFxPreset[] = [
     "room-gate",
     "repair",
     "Quiet Between Phrases",
-    "Silences the gaps between words. Room tone under speech stays — this closes the pauses, it does not remove noise.",
+    "Silences the gaps between words. Room tone under speech stays: this closes the pauses, it does not remove noise.",
     [
       {
         type: "gate",
@@ -184,23 +184,17 @@ export const HF_AUDIO_FX_PRESETS: readonly HfAudioFxPreset[] = [
   ),
 
   // ------------------------------------------------------------ character --
-  preset(
-    "telephone",
-    "character",
-    "Telephone",
-    "Down the line — the narrow band of a phone call.",
-    [
-      ...steep("highpass", 300, "Strip the Bass"),
-      ...steep("lowpass", 3400, "Strip the Treble"),
-      { type: "peaking", label: "Phone Honk", params: { frequency: 1200, gain: 6, q: 1.2 } },
-      { type: "peaking", label: "De-mud", params: { frequency: 550, gain: -4, q: 1 } },
-      {
-        type: "saturate",
-        label: "Circuit Grit",
-        params: { type: "tanh", threshold: -9, output: -2 },
-      },
-    ],
-  ),
+  preset("telephone", "character", "Telephone", "Down the line: the narrow band of a phone call.", [
+    ...steep("highpass", 300, "Strip the Bass"),
+    ...steep("lowpass", 3400, "Strip the Treble"),
+    { type: "peaking", label: "Phone Honk", params: { frequency: 1200, gain: 6, q: 1.2 } },
+    { type: "peaking", label: "De-mud", params: { frequency: 550, gain: -4, q: 1 } },
+    {
+      type: "saturate",
+      label: "Circuit Grit",
+      params: { type: "tanh", threshold: -9, output: -2 },
+    },
+  ]),
   preset("radio-am", "character", "AM Radio", "Narrow, gritty and a little crushed.", [
     // Narrower than the megaphone at BOTH ends, which is most of the difference
     // between them: an AM channel is a few kHz wide and the receiver rolls off
@@ -324,7 +318,7 @@ export const HF_AUDIO_FX_PRESETS: readonly HfAudioFxPreset[] = [
     "doofus-worble",
     "character",
     "Doofus Worble",
-    "Seasick and wobbling — no straight signal left.",
+    "Seasick and wobbling, no straight signal left.",
     [
       {
         type: "chorus",
@@ -357,7 +351,7 @@ export const HF_AUDIO_FX_PRESETS: readonly HfAudioFxPreset[] = [
   ]),
 
   // ---------------------------------------------------------------- space --
-  preset("room-tight", "space", "Tight Room", "A small hard room — presence without wash.", [
+  preset("room-tight", "space", "Tight Room", "A small hard room: presence without wash.", [
     {
       type: "reverb",
       label: "Tight Room",
@@ -380,7 +374,7 @@ export const HF_AUDIO_FX_PRESETS: readonly HfAudioFxPreset[] = [
   preset("hall", "space", "Hall", "Long and open, for something that should sit far back.", [
     { type: "reverb", label: "Hall", params: { size: 0.9, damping: 0.3, wet: 0.4, dry: 0.75 } },
   ]),
-  preset("slap-echo", "space", "Slap Echo", "One quick repeat — rockabilly vocal, not a wash.", [
+  preset("slap-echo", "space", "Slap Echo", "One quick repeat: rockabilly vocal, not a wash.", [
     { type: "delay", label: "Slap Echo", params: { time: 110, feedback: 0.12, mix: 0.22 } },
   ]),
   preset("dub-throw", "space", "Dub Throw", "Repeats that trail off well behind the beat.", [

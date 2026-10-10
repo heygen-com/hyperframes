@@ -36,7 +36,7 @@ export function emitTimelineScript(spec: TimelineSpec): string {
     : 'typeof gsap === "undefined"';
   const libs = needsCustomEase ? "gsap + CustomEase" : "gsap";
   lines.push(
-    `if (${missing}) { console.warn(${lit(`figma timeline ${spec.timelineId}: ${libs} not loaded — add the CDN <script> tags before this one`)}); return; }`,
+    `if (${missing}) { console.warn(${lit(`figma timeline ${spec.timelineId}: ${libs} not loaded. Add the CDN <script> tags before this one`)}); return; }`,
   );
   for (const ce of spec.customEases) {
     const [x1, y1, x2, y2] = ce.bezier;

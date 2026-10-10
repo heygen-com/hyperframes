@@ -260,7 +260,7 @@ export function blitHdrVideoLayer(
       if (matrix && !isTranslationOnly) {
         if (clipped && log) {
           log.debug(
-            `HDR clip rect on affine-transformed element ${el.id} — clip not applied (affine scissor not yet supported)`,
+            `HDR clip rect on affine-transformed element ${el.id}: clip not applied (affine scissor not yet supported)`,
           );
         }
         blitRgb48leAffine(
@@ -349,7 +349,7 @@ export function blitHdrImageLayer(
     return;
   }
   if (el.clipRect && log) {
-    log.debug(`HDR clip rect on image element ${el.id} — clip not yet supported for images`);
+    log.debug(`HDR clip rect on image element ${el.id}: clip not yet supported for images`);
   }
 
   try {

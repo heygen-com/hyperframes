@@ -949,7 +949,7 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
         message:
           "Composition starts with a bare element instead of a proper HTML document. " +
           "An index.html that contains data-composition-id but no <!DOCTYPE html>, <html>, or <body> " +
-          "is a fragment — browsers quirks-mode it, the preview server cannot load it, and " +
+          "is a fragment: browsers quirks-mode it, the preview server cannot load it, and " +
           "the bundler will fail to inject runtime scripts.",
         fixHint:
           'Wrap the composition in <!DOCTYPE html><html><head><meta charset="UTF-8"></head><body>...</body></html>.',
@@ -1126,7 +1126,7 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
         findings.push({
           code: "unknown_variable_binding",
           severity: "warning",
-          message: `<${tag.name}> binds ${attr}="${id}" but no variable "${id}" is declared in data-composition-variables — the binding will silently keep the authored fallback.`,
+          message: `<${tag.name}> binds ${attr}="${id}" but no variable "${id}" is declared in data-composition-variables, so the binding will silently keep the authored fallback.`,
           fixHint: `Declare the variable on the composition root (<html>, or the [data-composition-id] root element for a template/fragment comp): data-composition-variables='[{"id":"${id}","type":"${attr === "data-var-src" ? "image" : "string"}","label":"${id}","default":"..."}]', or fix the binding id.`,
           elementId: readAttr(tag.raw, "id") || undefined,
           snippet: truncateSnippet(tag.raw),
@@ -1172,8 +1172,8 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
       {
         code: "html_dir_attribute_breaks_render",
         severity: "error",
-        message: `<html dir="${dir}"> renders correctly in preview/snapshot but produces a fully blank/black video from render — a confirmed, silent failure.`,
-        fixHint: `Remove dir="${dir}" from <html>. Keep lang, and scope ${scopedDirection} to individual text-containing elements instead — text still shapes correctly via the browser's own bidi algorithm.`,
+        message: `<html dir="${dir}"> renders correctly in preview/snapshot but produces a fully blank/black video from render. This is a confirmed, silent failure.`,
+        fixHint: `Remove dir="${dir}" from <html>. Keep lang, and scope ${scopedDirection} to individual text-containing elements instead. Text still shapes correctly via the browser's own bidi algorithm.`,
         snippet: truncateSnippet(htmlTag.raw),
       },
     ];
@@ -1232,7 +1232,7 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
       findings.push({
         code: "subcomposition_blanks_before_host",
         severity: "warning",
-        message: `<${t.tag.name}${elementId ? ` id="${elementId}"` : ""}> sub-composition ends at ${round3(t.end)}s but the composition runs to ${round3(rootDuration)}s — its slot will be blank for ~${gap}s.`,
+        message: `<${t.tag.name}${elementId ? ` id="${elementId}"` : ""}> sub-composition ends at ${round3(t.end)}s but the composition runs to ${round3(rootDuration)}s, so its slot will be blank for ~${gap}s.`,
         elementId,
         fixHint: `data-duration is the slot's visible window. Set this sub-composition's data-duration to ${round3(rootDuration - t.start)} to fill the host window, or add another clip to cover the remaining ~${gap}s.`,
         snippet: truncateSnippet(t.tag.raw),
@@ -1278,7 +1278,7 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
           `At render, every sub-composition rule is scoped to [data-composition-id="${rootCompositionId}"] <selector>, so a selector whose leftmost part is the ROOT's own class becomes a descendant selector that cannot match the scoped element itself. ` +
           `Since #1886 the producer preserves the authored root as an inner wrapper, so this no longer renders the scene unstyled, but #root is the shape the scoper special-cases and the registry blocks model. Use it so preview, render, and Studio agree.`,
         selector: example,
-        fixHint: `Give the root id="root" and style it with \`#root { ... }\` plus plain descendant selectors (\`.kicker\`, \`#hero\`) — the runtime already scopes each sub-composition by data-composition-id, so a class namespace on the root is redundant.`,
+        fixHint: `Give the root id="root" and style it with \`#root { ... }\` plus plain descendant selectors (\`.kicker\`, \`#hero\`). The runtime already scopes each sub-composition by data-composition-id, so a class namespace on the root is redundant.`,
         snippet: truncateSnippet(rootTag.raw),
       },
     ];
@@ -1404,7 +1404,7 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
           severity: "error",
           message:
             "Root composition uses Three.js with no data-duration. The runtime cannot discover a " +
-            "Three.js scene's duration automatically (no AnimationClip/AnimationMixer inspection) — " +
+            "Three.js scene's duration automatically (no AnimationClip/AnimationMixer inspection), so " +
             'render will fail with "Composition has zero duration".',
           fixHint: 'Add data-duration="<seconds>" to the root element.',
           snippet: truncateSnippet(rootTag.raw),
@@ -1514,7 +1514,7 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
         message:
           `This composition has ${heavyCount} elements carrying "heavy overlay" CSS ` +
           `(filter:blur, radial-gradient, or clip-path). Field signal: a composition with ` +
-          `~40 such elements — including opacity:0 / visibility:hidden ones — captures ` +
+          `~40 such elements (including opacity:0 / visibility:hidden ones) captures ` +
           `solid-black for the first ~half of the render, recovering near the end. Reproduces ` +
           `identically via drawElement, forced screenshot capture, and snapshot, so the capture ` +
           `layer itself is the offender (not encoder/mux). Independent of duration. Presence ` +
@@ -1522,7 +1522,7 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
         fixHint:
           `${splitTarget} and concat the pieces (FFmpeg or the runtime's slideshow) so each ` +
           `capture only sees a small subset of heavy overlays at once. Even hidden overlays ` +
-          `(opacity:0 / visibility:hidden) contribute — either remove truly unused ones from ` +
+          `(opacity:0 / visibility:hidden) contribute: either remove truly unused ones from ` +
           `the source or scope them into their own per-transition sub-composition. If an ` +
           `overlay is genuinely inert for the whole clip, use display:none so it never enters ` +
           `the render tree. Field ref ts=1784040753 (#hyperframes-cli-feedback).`,
@@ -1577,10 +1577,10 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
           `\`zoom: ${hit.value}\` on ${hit.where} rescales the painted composition inside a frame that does not rescale with it. ` +
           `The capture frame is sized from the root's data-width/data-height in LAYOUT pixels, and \`zoom\` changes only what is painted inside it, so ` +
           (enlarging
-            ? `content past the frame's edge renders zero pixels — it is inside the declared composition and absent from the output, with nothing else reporting it.`
+            ? `content past the frame's edge renders zero pixels. It is inside the declared composition and absent from the output, with nothing else reporting it.`
             : `the composition paints into part of the frame and the remainder of every output frame is dead space.`),
         fixHint:
-          `Author the composition at its real size — set data-width/data-height (and the root's width/height) to the dimensions you want — and drop the canvas-level \`zoom\`. ` +
+          `Author the composition at its real size: set data-width/data-height (and the root's width/height) to the dimensions you want, and drop the canvas-level \`zoom\`. ` +
           `To scale the OUTPUT without changing layout, pass \`--output-resolution\` to render, which supersamples. ` +
           `\`zoom\` on descendants is fine and is not flagged: it is honoured exactly as specified.`,
         snippet: hit.snippet,
@@ -1629,12 +1629,12 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
         severity: "warning",
         message:
           `${over.join(" and ")} exceeds the ${INSPECTION_VIEWPORT_CAP}px viewport cap that check, validate, snapshot, compare and layout clamp to. ` +
-          `render is unaffected and produces the full size, so the video is correct — but every inspection command captures a ${INSPECTION_VIEWPORT_CAP}px-wide frame, ` +
+          `render is unaffected and produces the full size, so the video is correct, but every inspection command captures a ${INSPECTION_VIEWPORT_CAP}px-wide frame, ` +
           `and anything beyond that is missing from what they report. Measured at 0.8.71: a 5000x400 composition renders 5000x400 with all content, ` +
           `while snapshot returns 4096x400 with the element at left:4500 absent.`,
         fixHint:
-          `Keep the authored size if the output needs it, and verify the region past ${INSPECTION_VIEWPORT_CAP}px from a render rather than from check/snapshot/compare — ` +
-          `a clean inspection result does not cover it. If the large canvas is only there to gain resolution, author at the layout size and pass ` +
+          `Keep the authored size if the output needs it, and verify the region past ${INSPECTION_VIEWPORT_CAP}px from a render rather than from check/snapshot/compare. ` +
+          `A clean inspection result does not cover it. If the large canvas is only there to gain resolution, author at the layout size and pass ` +
           `\`--output-resolution\` to render instead, which supersamples without changing layout.`,
         snippet: truncateSnippet(rootTag.raw),
       },

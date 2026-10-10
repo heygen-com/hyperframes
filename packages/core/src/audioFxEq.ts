@@ -183,7 +183,7 @@ export function removeAudioEq(chain: HfAudioFxChain, eqId: string): HfAudioFxCha
  */
 export function audioEqSummary(bands: readonly HfAudioEqBand[]): string {
   const moved = bands.filter((b) => Math.abs(b.gain) >= 0.1);
-  if (moved.length === 0) return "Flat — nothing changed yet";
+  if (moved.length === 0) return "Flat: nothing changed yet";
   return moved
     .map((b) => `${b.name} ${b.gain > 0 ? "+" : "−"}${Math.abs(Number(b.gain.toFixed(1)))}`)
     .join(", ");

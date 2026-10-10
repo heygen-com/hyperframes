@@ -170,7 +170,7 @@ export function computeAudioResidualRmsDb(
         4,
       )}s, snapshot=${snapshotDur.seconds.toFixed(4)}s (Δ=${delta.toFixed(
         4,
-      )}s > ${TOLERANCE_SECONDS}s) — amix=duration=shortest would hide the trailing difference`,
+      )}s > ${TOLERANCE_SECONDS}s): amix=duration=shortest would hide the trailing difference`,
     };
   }
 

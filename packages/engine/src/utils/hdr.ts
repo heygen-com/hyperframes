@@ -138,7 +138,7 @@ export function findHdrAutoPromotion(
 }
 
 export function formatHdrAutoPromotionWarning(promotion: HdrAutoPromotion): string {
-  return `[Render] HDR auto-promotion triggered by "${promotion.triggeringAsset}" — output: ${promotion.output.colorSpace} / ${promotion.output.codec}`;
+  return `[Render] HDR auto-promotion triggered by "${promotion.triggeringAsset}", output: ${promotion.output.colorSpace} / ${promotion.output.codec}`;
 }
 
 /**

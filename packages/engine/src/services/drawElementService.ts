@@ -682,7 +682,7 @@ export async function initDrawElementWorkerEncode(page: Page): Promise<void> {
     // frame's id so the node-side promise rejects instead of hanging.
     const workerSrc = `
       // Reuse one OffscreenCanvas across frames (dimensions are constant for a
-      // render) — a fresh canvas per frame churns ~w*h*4 bytes of backing store
+      // render): a fresh canvas per frame churns ~w*h*4 bytes of backing store
       // every frame and pressures GC on the encode hot path.
       let oc = null, c = null;
       self.onmessage = async (e) => {

@@ -100,7 +100,7 @@ export const NOISE_FRAG = `#version 300 es
 precision highp float;
 // NOT decoration: a fragment shader's default integer precision is mediump,
 // and a mediump uint is only guaranteed 16 bits (ESSL 3.00 §4.5.2). Every step
-// below — the Jenkins mix, both LCG rounds — is defined by 32-bit wraparound,
+// below (the Jenkins mix, both LCG rounds) is defined by 32-bit wraparound,
 // so without this the hash is a different function on any implementation that
 // honours the minimum. ANGLE and SwiftShader both use 32-bit ints, which is
 // exactly why no test on this machine would catch it.

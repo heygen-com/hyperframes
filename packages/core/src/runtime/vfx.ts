@@ -496,7 +496,7 @@ function resolveCaptureSource(
     reportVfxError(
       `${label}: a capturing chain needs ` +
         `<canvas layoutsubtree class="hf-vfx-src"><div class="hf-vfx-in">…</div></canvas> in ` +
-        `source — inside the element for its own pixels, or beside it with ` +
+        `source: inside the element for its own pixels, or beside it with ` +
         `data-vfx-for="${owner.id}" for the layers below it.`,
     );
     return undefined;
@@ -978,7 +978,7 @@ function captureSource(
       reportVfxFrameError(
         `${describeHost(entry.host)}: the .hf-vfx-in wrapper measures 0×0, so its capture ` +
           `would be empty. Inside a layoutsubtree canvas an inset or percentage box has no ` +
-          `size — the wrapper must state an explicit width and height in px.`,
+          `size, so the wrapper must state an explicit width and height in px.`,
       );
     }
     return captureEmpty(entry, src, size, mode);

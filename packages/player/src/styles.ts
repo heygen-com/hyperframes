@@ -24,7 +24,7 @@ export const PLAYER_STYLES = /* css */ `
   }
 
   /* Opt-in: an interactive composition (e.g. a live slideshow/app with playable
-     media or controls) — let pointer events reach the iframe content. */
+     media or controls): let pointer events reach the iframe content. */
   :host([interactive]) .hfp-container,
   :host([interactive]) .hfp-iframe {
     pointer-events: auto;

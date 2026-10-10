@@ -103,7 +103,7 @@ const freq = (
   automatable: true,
 });
 
-const qParam = (def = 0.707, hint = "Bandwidth — higher is narrower."): HfAudioFxNumberParam => ({
+const qParam = (def = 0.707, hint = "Bandwidth: higher is narrower."): HfAudioFxNumberParam => ({
   kind: "number",
   key: "q",
   label: "Q",
@@ -187,7 +187,7 @@ export const HF_AUDIO_FX: readonly HfAudioFxDef[] = [
     id: "highpass",
     label: "High-pass",
     group: "filter",
-    description: "Remove low frequencies — the usual fix for rumble on a voice.",
+    description: "Remove low frequencies: the usual fix for rumble on a voice.",
     params: [freq("frequency", "Cutoff", 300, 20, 20000), qParam(0.707), poles],
     web: "biquad-highpass",
   },
@@ -195,7 +195,7 @@ export const HF_AUDIO_FX: readonly HfAudioFxDef[] = [
     id: "lowpass",
     label: "Low-pass",
     group: "filter",
-    description: "Remove high frequencies — darkens or muffles a track.",
+    description: "Remove high frequencies, which darkens or muffles a track.",
     params: [freq("frequency", "Cutoff", 8000, 100, 20000), qParam(0.707), poles],
     web: "biquad-lowpass",
   },
@@ -288,7 +288,7 @@ export const HF_AUDIO_FX: readonly HfAudioFxDef[] = [
     id: "limiter",
     label: "Limiter",
     group: "dynamics",
-    description: "Hard ceiling — nothing gets past the limit.",
+    description: "Hard ceiling: nothing gets past the limit.",
     params: [
       {
         kind: "number",
@@ -490,7 +490,7 @@ export const HF_AUDIO_FX: readonly HfAudioFxDef[] = [
         max: 250,
         step: 1,
         default: 1,
-        hint: "Repeats each sample N times — a crude downsample.",
+        hint: "Repeats each sample N times, a crude downsample.",
       },
       {
         kind: "number",
