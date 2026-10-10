@@ -19,6 +19,9 @@ const ENV_BY_NAME: Record<FfBinaryName, string> = {
 };
 
 const pathLookupCache = new Map<FfBinaryName, string>();
+// A miss is trusted briefly: callers probe per media file, and an install still shows up within seconds.
+const MISS_TTL_MS = 5_000;
+const lastMissAt = new Map<FfBinaryName, number>();
 
 function candidateFileName(candidate: string): string {
   return candidate.split(/[\\/]/).at(-1)?.toLowerCase() ?? candidate.toLowerCase();
@@ -101,9 +104,7 @@ function findInProjectLocalBin(name: FfBinaryName): string | undefined {
   return existsSync(candidate) ? candidate : undefined;
 }
 
-function lookupOnSystem(name: FfBinaryName): string | undefined {
-  const cached = pathLookupCache.get(name);
-  if (cached) return cached;
+function searchSystem(name: FfBinaryName): string | undefined {
   let found: string | undefined;
   if (process.platform === "win32") {
     // `where.exe` writes bytes in the active console code page, while Node
@@ -126,7 +127,18 @@ function lookupOnSystem(name: FfBinaryName): string | undefined {
   }
   found ??= findInProjectLocalBin(name);
   found ??= findInCommonDirs(name);
-  if (!found) return undefined;
+  return found;
+}
+
+function lookupOnSystem(name: FfBinaryName): string | undefined {
+  const cached = pathLookupCache.get(name);
+  if (cached) return cached;
+  if (Date.now() - (lastMissAt.get(name) ?? -Infinity) < MISS_TTL_MS) return undefined;
+  const found = searchSystem(name);
+  if (!found) {
+    lastMissAt.set(name, Date.now());
+    return undefined;
+  }
   const resolved = resolve(found);
   pathLookupCache.set(name, resolved);
   return resolved;
@@ -147,8 +159,8 @@ export interface FindFfBinaryOptions {
  * Resolve an FFmpeg-family binary: env override first, then a native
  * current-directory/PATH scan on Windows or `which` plus PATH scan on Unix,
  * then a project-local `.hyperframes/bin`, then well-known Unix install dirs.
- * A found binary is cached for the process lifetime; a miss is not, so a
- * long-running server sees an install made after it started. The env
+ * A found binary is cached for the process lifetime; a miss only for a few
+ * seconds, so a long-running server sees an install made after it started. The env
  * override is re-read on every call.
  */
 export function findFfBinary(
@@ -166,4 +178,5 @@ export function findFfBinary(
 /** Test hook: drop cached system lookups so resolution can be re-exercised. */
 export function clearFfBinaryLookupCache(): void {
   pathLookupCache.clear();
+  lastMissAt.clear();
 }

@@ -1,7 +1,7 @@
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
 type FfBinariesModule = typeof import("./ffBinaries.js");
 
@@ -173,7 +173,11 @@ describe("findFfBinary", () => {
     expect(findFfBinary("ffmpeg")).toBe(projectBinary);
   });
 
-  it("finds a binary installed in a common dir after an earlier miss, then caches the hit", async () => {
+  it("finds a binary installed in a common dir shortly after an earlier miss, then caches the hit", async () => {
+    vi.useFakeTimers();
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
     delete process.env.HYPERFRAMES_FFMPEG_PATH;
     Object.defineProperty(process, "platform", { value: "linux", configurable: true });
     process.env.PATH = "";
@@ -197,6 +201,9 @@ describe("findFfBinary", () => {
 
     expect(findFfBinary("ffmpeg")).toBeUndefined();
     installed = true;
+    expect(findFfBinary("ffmpeg")).toBeUndefined();
+    expect(execFileSync).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(5_000);
     expect(findFfBinary("ffmpeg")).toBe(resolve("/opt/homebrew/bin/ffmpeg"));
     expect(findFfBinary("ffmpeg")).toBe(resolve("/opt/homebrew/bin/ffmpeg"));
     expect(execFileSync).toHaveBeenCalledTimes(2);
