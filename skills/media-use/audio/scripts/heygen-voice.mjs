@@ -5,9 +5,10 @@
 
 import { readFileSync } from "node:fs";
 import { extname } from "node:path";
-import { fileURLToPath } from "node:url";
+
 import { parseArgs } from "node:util";
 import { heygenAuthHeaders, heygenJSON, heygenMessage, loadEnvFromDir } from "./lib/heygen.mjs";
+import { isMainModule } from "./lib/main-module.mjs";
 
 const MEDIA_TYPES = { ".mp3": "audio/mpeg", ".wav": "audio/wav" };
 const POLL_MS = 2_000;
@@ -92,7 +93,7 @@ export async function main(
   }
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (isMainModule(import.meta.url)) {
   loadEnvFromDir(process.cwd());
   process.exitCode = await main(process.argv.slice(2));
 }

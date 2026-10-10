@@ -7,11 +7,9 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
-  realpathSync,
   writeFileSync,
 } from "node:fs";
 import { basename, join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
 
 export function field(block, name) {
   const match = block.match(new RegExp(`^-\\s+${name}:\\s*(.+)$`, "im"));
@@ -160,17 +158,7 @@ export function flag(argv, name, fallback) {
   return index >= 0 && argv[index + 1] ? argv[index + 1] : fallback;
 }
 
-// realpath both sides: on macOS /tmp → /private/tmp, and node resolves the main
-// module's symlinks in import.meta.url while argv[1] keeps the invoked spelling —
-// a raw compare silently skips main() when invoked through any symlinked path.
-export function isMainModule(importMetaUrl) {
-  if (!process.argv[1]) return false;
-  try {
-    return pathToFileURL(realpathSync(process.argv[1])).href === importMetaUrl;
-  } catch {
-    return false;
-  }
-}
+export { isMainModule } from "./main-module.mjs";
 
 export function runCli({ buildFramePackets: build, buildRolePayload: buildRole }) {
   const argv = process.argv.slice(2);

@@ -2,8 +2,8 @@
 
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { realpathSync } from "node:fs";
-import { pathToFileURL } from "node:url";
+
+import { isMainModule } from "./lib/main-module.mjs";
 
 function safeSegment(value) {
   const normalized = value
@@ -77,16 +77,4 @@ function main() {
   }
 }
 
-// realpath both sides: on macOS /tmp → /private/tmp, and node resolves the main
-// module's symlinks in import.meta.url while argv[1] keeps the invoked spelling —
-// a raw compare silently skips main() when invoked through any symlinked path.
-function isMainModule() {
-  if (!process.argv[1]) return false;
-  try {
-    return pathToFileURL(realpathSync(process.argv[1])).href === import.meta.url;
-  } catch {
-    return false;
-  }
-}
-
-if (isMainModule()) main();
+if (isMainModule(import.meta.url)) main();
