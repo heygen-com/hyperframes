@@ -647,6 +647,37 @@ describe("attachElementFxChain", () => {
       }
     });
 
+    it("clears a limiter's state when a persistent chain is re-anchored for a new pass", async () => {
+      const messages: unknown[] = [];
+      class RecordingWorkletStub extends WorkletNodeStub {
+        override port = { postMessage: (...sent: unknown[]) => void messages.push(...sent) };
+      }
+      const original = (globalThis as { AudioWorkletNode?: unknown }).AudioWorkletNode;
+      (globalThis as { AudioWorkletNode?: unknown }).AudioWorkletNode = RecordingWorkletStub;
+      try {
+        const node = document.createElement("audio");
+        node.setAttribute(
+          "data-fx-chain",
+          JSON.stringify({ version: 1, nodes: [{ type: "truepeak", id: "n1", params: {} }] }),
+        );
+        document.body.append(node);
+        const timing = { scheduledAt: 0, elapsed: 0, rate: 1 };
+        const fx = attachElementFxChain(
+          new WorkletCtx() as unknown as BaseAudioContext,
+          node,
+          new Node() as never,
+          new Node() as never,
+          timing,
+        );
+        await settle();
+        expect(messages).not.toContainEqual({ __hfReset: true });
+        fx?.reanchor(timing);
+        expect(messages).toContainEqual({ __hfReset: true });
+      } finally {
+        (globalThis as { AudioWorkletNode?: unknown }).AudioWorkletNode = original;
+      }
+    });
+
     it("keeps the carve alive when a compressor is added to a playing track", async () => {
       // The reported case, and the worse of the two paths: adding a worklet effect
       // to an already-attached chain rebuilt it, the build threw because nothing

@@ -220,8 +220,10 @@ lookahead, and can let a sample peak or an inter-sample peak through. `truepeak`
 is the one to use for a delivery ceiling. It estimates the true peak on a 4x
 oversampled signal, reads `lookahead` ms ahead so the gain is already down when
 the peak arrives, and holds that estimate at `ceiling`. Channels share one
-gain. It delays its output by `lookahead` plus about 0.3 ms: the offline render
-trims that delay, live preview plays it. Changing `lookahead` rebuilds the node.
+gain. It delays its output by `lookahead` plus about 0.3 ms (3.3 to 10.3 ms across
+the range): the offline render trims that delay, live preview plays it, so the
+sound is that much behind the picture. A seek clears the limiter's delay line and
+held gain on a group bus. Changing `lookahead` rebuilds the node.
 
 The ceiling is held against that 4x estimate, not against the waveform itself. A
 4x interpolator cannot see the peaks of content close to Nyquist, so the true peak

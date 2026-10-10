@@ -1,42 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { ensureAudioFxWorklets } from "./audioFxWorklets.js";
+import { loadProcessors, type Processor } from "./audioFxProcessors.test-helpers.js";
 import { truePeakLatencySamples } from "./audioFxTruePeak.js";
 
 const SR = 48000;
 const BLOCK = 128;
 
-interface Processor {
-  port: { postMessage(data: unknown): void };
-  process(inputs: Float32Array[][], outputs: Float32Array[][]): boolean;
-}
-type ProcessorClass = new (o: unknown) => Processor;
-
-/** The registered processors, evaluated from the module `addModule` is handed. */
-async function loadProcessors(): Promise<Map<string, ProcessorClass>> {
-  let moduleSource = "";
-  await ensureAudioFxWorklets({
-    audioWorklet: {
-      addModule: async (url: string) => {
-        moduleSource = atob(url.replace("data:text/javascript;base64,", ""));
-      },
-    },
-  } as unknown as BaseAudioContext);
-  const made = new Map<string, ProcessorClass>();
-  class Base {
-    port = {
-      onmessage: null as ((e: { data: unknown }) => void) | null,
-      postMessage: (data: unknown) => this.port.onmessage?.({ data }),
-    };
-  }
-  new Function("AudioWorkletProcessor", "registerProcessor", "sampleRate", moduleSource)(
-    Base,
-    (name: string, cls: ProcessorClass) => made.set(name, cls),
-    SR,
-  );
-  return made;
-}
-
-const processors = await loadProcessors();
+const processors = await loadProcessors(SR);
 
 function makeProcessor(name: string, options: Record<string, number>): Processor {
   const Cls = processors.get(name);
@@ -62,17 +31,18 @@ function run(p: Processor, planes: Float32Array[]): Float32Array[] {
   return out;
 }
 
+const sampleOf = (plane: Float32Array | undefined, i: number): number => plane?.[i] ?? 0;
 const dbToLin = (db: number): number => Math.pow(10, db / 20);
 const linToDb = (lin: number): number => 20 * Math.log10(Math.max(lin, 1e-12));
 
 /** In-place radix-2 FFT; the inverse leaves the 1/n scale to the caller. */
 function fft(re: Float64Array, im: Float64Array, inverse: boolean): void {
   const n = re.length;
-  for (let i = 1, j = 0; i < n; i++) {
-    let bit = n >> 1;
-    for (; j & bit; bit >>= 1) j ^= bit;
-    j ^= bit;
-    if (i < j) {
+  const bits = Math.log2(n);
+  for (let i = 0; i < n; i++) {
+    let j = 0;
+    for (let b = 0; b < bits; b++) j |= ((i >> b) & 1) << (bits - 1 - b);
+    if (j > i) {
       [re[i], re[j]] = [re[j] as number, re[i] as number];
       [im[i], im[j]] = [im[j] as number, im[i] as number];
     }
@@ -107,12 +77,8 @@ const METER_EDGE = 512;
 const METER_OVERSAMPLE = 16;
 
 /**
- * True peak in dBFS of the band-limited waveform the samples describe, from an
- * ideal 16x interpolation (zero-padded FFT). Deliberately not the limiter's 4x
- * detector, and not a windowed-sinc FIR either: a finite FIR rolls off near
- * Nyquist and reads full-band noise about 0.5 dB low, which is how an earlier
- * version of this helper reported a 0.3 dB overshoot where the waveform is 1.4 dB
- * over. It agrees with a 16x soxr resample to within 0.1 dB.
+ * True peak in dBFS from an ideal 16x interpolation (zero-padded FFT), not the
+ * limiter's 4x detector: a finite FIR meter reads full-band noise about 0.5 dB low.
  */
 function truePeakDb(x: Float32Array): number {
   let n = 1;
@@ -151,20 +117,11 @@ const sine = (freq: number, amp: number, seconds: number, phase = 0): Float32Arr
   return out;
 };
 
-/**
- * Tolerances are what the ideal-interpolation meter reads on each fixed signal,
- * rounded up, not a margin for the limiter's own 4x estimate. Tones land on the
- * ceiling (measured within 0.001 dB).
- */
+/** What the ideal-interpolation meter reads on tones, rounded up: they land on the ceiling. */
 const TOLERANCE_DB = 0.01;
 /** A dense program of tones and low-passed noise bursts reads 0.445 dB over. */
 const BROADBAND_TOLERANCE_DB = 0.5;
-/**
- * This 2 s hot Gaussian noise reads 1.09, 1.12 and 1.31 dB over at -1, -6 and -14
- * dBTP. Across 28 other runs of 10 to 30 s the worst was 1.67 dB, the figure the
- * docs quote: the 4x detector cannot see the peaks of content near Nyquist, so
- * the ceiling is an estimate.
- */
+/** This 2 s hot Gaussian noise reads 1.09 to 1.31 dB over; across 28 longer runs the worst was 1.67. */
 const FULL_BAND_NOISE_TOLERANCE_DB = 1.35;
 
 describe("hf-truepeak", () => {
@@ -345,18 +302,40 @@ describe("hf-truepeak", () => {
       quiet,
     ]);
     // The quiet channel is far under the ceiling on its own, yet it ducks with the loud one.
-    let compared = 0;
+    const gains: [number, number][] = [];
     for (let k = Math.round(0.2 * SR); k < Math.round(0.25 * SR); k++) {
-      const inL = loud[k] ?? 0;
-      const inR = quiet[k] ?? 0;
-      if (Math.abs(inL) < 0.3 || Math.abs(inR) < 0.02) continue;
-      const gainL = (l?.[k + latency] ?? 0) / inL;
-      const gainR = (r?.[k + latency] ?? 0) / inR;
+      const inL = sampleOf(loud, k);
+      const inR = sampleOf(quiet, k);
+      if (Math.abs(inL) >= 0.3 && Math.abs(inR) >= 0.02) {
+        gains.push([sampleOf(l, k + latency) / inL, sampleOf(r, k + latency) / inR]);
+      }
+    }
+    expect(gains.length).toBeGreaterThan(100);
+    for (const [gainL, gainR] of gains) {
       expect(gainL).toBeLessThan(0.9);
       expect(gainR).toBeCloseTo(gainL, 3);
-      compared++;
     }
-    expect(compared).toBeGreaterThan(100);
+  });
+
+  it("forgets its delay line and held gain when told the signal jumped", () => {
+    const loud = sine(SR / 4, 1, 0.1, Math.PI / 4);
+    const quiet = sine(440, 0.05, 0.1);
+    const p = makeProcessor("hf-truepeak", { ceiling: -6, lookahead: 3, release: 2000 });
+    run(p, [loud]);
+    p.port.postMessage({ __hfReset: true });
+    const [out] = run(p, [quiet]);
+    const latency = truePeakLatencySamples(3, SR);
+    expect(Math.max(...(out as Float32Array).subarray(0, latency).map(Math.abs))).toBe(0);
+    for (let i = latency; i < quiet.length; i++) {
+      expect(out?.[i]).toBeCloseTo(quiet[i - latency] ?? 0, 6);
+    }
+    const kept = makeProcessor("hf-truepeak", { ceiling: -6, lookahead: 3, release: 2000 });
+    run(kept, [loud]);
+    const [carried] = run(kept, [quiet]);
+    expect(
+      Math.max(...(carried as Float32Array).subarray(0, latency).map(Math.abs)),
+    ).toBeGreaterThan(0);
+    expect(Math.abs((carried?.[latency + 200] ?? 0) / (quiet[200] ?? 1))).toBeLessThan(0.9);
   });
 
   it("takes ceiling and release live but keeps the lookahead it was built with", () => {

@@ -292,6 +292,7 @@ export function attachElementFxChain(
       const at = timingNow();
       if (at) cancelParamLane(automated, at.scheduledAt);
       frame = { ...next };
+      handle?.reset();
       scheduleFor(readChain(el).chain, frame);
     },
     setRate: (rate: number) => {

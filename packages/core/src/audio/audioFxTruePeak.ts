@@ -1,26 +1,17 @@
 /**
- * The `hf-truepeak` AudioWorklet: a lookahead limiter that holds a 4x estimate
- * of the inter-sample (true) peak at a ceiling in dBTP. The estimate reads low for
- * content near Nyquist, so full-band noise ends up to 1.7 dB over the ceiling.
- *
- * A 4x polyphase interpolator estimates the true peak per sample; the excess
- * becomes a required gain. Its minimum over the lookahead window, smoothed by a
- * boxcar of the same length, stays at or below the required gain at every sample,
- * so the ramp is done before the peak leaves the delay line. Release recovers
- * exponentially and only ever lowers the gain further. One gain serves all
- * channels. Latency is lookahead plus the interpolator's group delay: the offline
- * render trims it (`chainLatencySamples`), live preview plays it.
+ * The `hf-truepeak` worklet: a lookahead limiter that holds a 4x estimate of the
+ * true peak at a ceiling in dBTP; full-band noise can end up to 1.7 dB over.
  */
 
-export const TRUE_PEAK_OVERSAMPLE = 4;
+const TRUE_PEAK_OVERSAMPLE = 4;
 /** Group delay of the interpolator, in input samples. */
-export const TRUE_PEAK_DETECTOR_DELAY = 16;
+const TRUE_PEAK_DETECTOR_DELAY = 16;
 
 const KERNEL_HALF = TRUE_PEAK_OVERSAMPLE * TRUE_PEAK_DETECTOR_DELAY;
 /** Taps per polyphase branch: the longest branch of a 2 * KERNEL_HALF + 1 kernel. */
 const BRANCH_TAPS = 2 * TRUE_PEAK_DETECTOR_DELAY + 1;
 
-export function truePeakLookaheadSamples(lookaheadMs: number, sampleRate: number): number {
+function truePeakLookaheadSamples(lookaheadMs: number, sampleRate: number): number {
   return Math.max(1, Math.round((lookaheadMs * sampleRate) / 1000));
 }
 
@@ -76,6 +67,16 @@ class HfTruePeak extends AudioWorkletProcessor {
     this.delayLen = this.look + TP_DELAY;
     this.branches = tpBranches();
     this.setLevels();
+    this.clear();
+    this.port.onmessage = (e) => {
+      if (e.data && e.data.__hfDispose) { this.dead = true; return; }
+      if (e.data && e.data.__hfReset) { this.clear(); return; }
+      this.p = { ...this.p, ...e.data };
+      this.setLevels();
+    };
+  }
+  /** Back to the state of a fresh processor: no audio in the delay line, no gain reduction. */
+  clear() {
     this.ch = [];
     this.rel = 1;
     this.dqIdx = new Int32Array(this.look + 2);
@@ -86,11 +87,6 @@ class HfTruePeak extends AudioWorkletProcessor {
     this.avgRing = new Float64Array(this.look + 1).fill(1);
     this.avgPos = 0;
     this.avgSum = this.look + 1;
-    this.port.onmessage = (e) => {
-      if (e.data && e.data.__hfDispose) { this.dead = true; return; }
-      this.p = { ...this.p, ...e.data };
-      this.setLevels();
-    };
   }
   setLevels() {
     this.ceiling = Math.pow(10, (this.p.ceiling ?? -1) / 20);

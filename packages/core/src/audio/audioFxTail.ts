@@ -120,12 +120,7 @@ export function chainTailSeconds(chain: HfAudioFxChain, automation?: HfAutomatio
   return Math.min(MAX_FX_TAIL_SECONDS, total);
 }
 
-/**
- * Samples the chain delays its output by, which the offline render trims so a
- * lookahead limiter does not shift a clip against the picture. Only the
- * true-peak limiter delays by design; the pitch shifter's grain delay is not
- * compensated.
- */
+/** Samples the offline render trims so a lookahead limiter does not shift a clip. */
 export function chainLatencySamples(chain: HfAudioFxChain, sampleRate: number): number {
   return enabledAudioFxNodes(chain)
     .filter((node) => node.type === "truepeak")
