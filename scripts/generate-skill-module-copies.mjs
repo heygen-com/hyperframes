@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -19,9 +19,12 @@ export const skillModuleCopies = [
   ],
   [
     "skills/hyperframes/scripts/lib/main-module.mjs",
-    [...workflows, "general-video", "hyperframes-audio", "media-use/audio"].map(
-      (skill) => `skills/${skill}/scripts/lib/main-module.mjs`,
-    ),
+    [
+      ...[...workflows, "general-video", "hyperframes-audio", "media-use/audio"].map(
+        (skill) => `skills/${skill}/scripts/lib/main-module.mjs`,
+      ),
+      "packages/cli/src/media-use/lib/main-module.mjs",
+    ],
   ],
   [
     "skills/hyperframes/scripts/lib/frame-packets-core.mjs",
@@ -46,7 +49,7 @@ export function generateSkillModuleCopies({ check = false } = {}) {
   });
 }
 
-if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
+if (process.argv[1] && pathToFileURL(realpathSync(process.argv[1])).href === import.meta.url) {
   const drifted = generateSkillModuleCopies({ check: process.argv.includes("--check") });
   if (drifted.length) throw new Error("Regenerate skill module copies: " + drifted.join(", "));
   console.log("Skill module copies are in sync");

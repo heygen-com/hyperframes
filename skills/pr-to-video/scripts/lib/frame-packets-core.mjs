@@ -2,13 +2,7 @@
 // Workflow wrappers supply resource paths and workflow-specific sections.
 // The role combines the shared worker contract with the workflow delta.
 
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  readdirSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 
 export function field(block, name) {

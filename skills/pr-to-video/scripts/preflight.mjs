@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-
 import { isMainModule } from "./lib/main-module.mjs";
 
 export function hasCliCommand(helpText, command) {

@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 const SKILLS = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+const CLI_MEDIA_USE = resolve(SKILLS, "../packages/cli/src/media-use");
 
 // Agents install skills by symlinking the skills dir, so each script must still run its CLI.
 test("skill CLIs run when invoked through a symlinked skills dir", () => {
@@ -39,12 +40,12 @@ function skillScripts(dir) {
 }
 
 test("skill scripts detect their CLI entry through lib/main-module.mjs only", () => {
-  const handRolled = skillScripts(SKILLS).filter(
+  const handRolled = [...skillScripts(SKILLS), ...skillScripts(CLI_MEDIA_USE)].filter(
     (path) =>
-      !path.endsWith("main-module.mjs") &&
-      /process\.argv\[1\][^\n]*import\.meta\.url|import\.meta\.url[^\n]*process\.argv\[1\]/.test(
-        readFileSync(path, "utf8"),
-      ),
+      !path.endsWith("main-module.mjs") && readFileSync(path, "utf8").includes("process.argv[1]"),
   );
-  assert.deepEqual(handRolled.map((path) => relative(SKILLS, path)), []);
+  assert.deepEqual(
+    handRolled.map((path) => relative(SKILLS, path)),
+    [],
+  );
 });

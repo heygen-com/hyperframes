@@ -2,7 +2,6 @@
 
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-
 import { isMainModule } from "./lib/main-module.mjs";
 
 function safeSegment(value) {

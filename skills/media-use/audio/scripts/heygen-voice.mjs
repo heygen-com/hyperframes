@@ -5,7 +5,6 @@
 
 import { readFileSync } from "node:fs";
 import { extname } from "node:path";
-
 import { parseArgs } from "node:util";
 import { heygenAuthHeaders, heygenJSON, heygenMessage, loadEnvFromDir } from "./lib/heygen.mjs";
 import { isMainModule } from "./lib/main-module.mjs";

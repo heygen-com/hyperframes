@@ -35,7 +35,6 @@ import { stageCapturedFonts } from "./lib/captured-fonts.mjs";
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-
 import { parseStoryboard } from "./lib/storyboard.mjs";
 import { captionBand, parseFormat } from "./lib/dimensions.mjs";
 import { parseColors, parseFonts, semanticColors } from "./lib/tokens.mjs";
