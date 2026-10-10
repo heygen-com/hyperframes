@@ -41,7 +41,8 @@ describe("runtime start-up failure", () => {
     }));
 
     await expect(evaluateRuntime()).rejects.toThrow("boom");
-    expect(window.__hfStartupError).toBe("HyperFrames runtime failed: TypeError: boom");
+    expect(window.__hfStartupError).toContain("HyperFrames runtime failed: TypeError: boom");
+    expect(window.__hfStartupError).toContain("Fix the composition script or window.__timelines entry");
   });
 
   it("is not marked render-ready when posting the timeline throws", async () => {
@@ -57,7 +58,7 @@ describe("runtime start-up failure", () => {
 
     await expect(evaluateRuntime()).rejects.toThrow("clip tree");
     expect(window.__renderReady).not.toBe(true);
-    expect(window.__hfStartupError).toBe("HyperFrames runtime failed: Error: clip tree");
+    expect(window.__hfStartupError).toContain("HyperFrames runtime failed: Error: clip tree");
   });
 
   it("names the error when a timeline post after start-up throws", async () => {
@@ -85,9 +86,7 @@ describe("runtime start-up failure", () => {
 
     expect(() => vi.advanceTimersByTime(1)).toThrow("late timeline post");
     expect(window.__renderReady).not.toBe(true);
-    expect(window.__hfStartupError).toBe(
-      "HyperFrames runtime failed: Error: late timeline post",
-    );
+    expect(window.__hfStartupError).toContain("HyperFrames runtime failed: Error: late timeline post");
   });
 
   it("keeps a start-up error after a later timeline post succeeds", async () => {
@@ -113,6 +112,6 @@ describe("runtime start-up failure", () => {
     vi.advanceTimersByTime(1);
 
     expect(posts).toBeGreaterThan(2);
-    expect(window.__hfStartupError).toBe("HyperFrames runtime failed: Error: end of start-up");
+    expect(window.__hfStartupError).toContain("HyperFrames runtime failed: Error: end of start-up");
   });
 });

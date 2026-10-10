@@ -3699,7 +3699,7 @@ async function armStaticDedup(
  * compositor-incompatible properties (blend-mode, 3D transforms, clip-path, mask).
  * drawElement cannot reproduce these effects mid-tween → capture those frames via
  * screenshot instead. opacity/filter fades were dropped from the set once Chrome 151
- * fixed crbug 521861819. See docs/fast-capture-limitations.md Lim 7.
+ * fixed crbug 521861819.
  *
  * Returns the union of at-risk frame indices (±1 margin around each tween interval)
  * and totalFrames (for fraction computation by the caller).

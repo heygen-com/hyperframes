@@ -33,7 +33,7 @@ import { getDebugSurface } from "./globals.js";
 export function recordStartupError(error: unknown): void {
   const detail = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
   (window as Window & { __hfStartupError?: string }).__hfStartupError =
-    `HyperFrames runtime failed: ${detail}`;
+    `HyperFrames runtime failed: ${detail}. Fix the composition script or window.__timelines entry that threw.`;
 }
 
 export function swallow(label: string, error?: unknown): void {
