@@ -437,8 +437,9 @@ export function collectRuntimeTimelinePayload(params: {
         ? startResolver.resolveMediaStartForElement(node)
         : startResolver.resolveStartForElement(node, compositionContext.inheritedStart ?? 0);
     const nodeCompositionId = node.getAttribute("data-composition-id");
+    const isNestedHost = !!nodeCompositionId && nodeCompositionId !== rootCompositionId;
     let duration = parseElementDurationAttr(node);
-    if (duration == null && nodeCompositionId && nodeCompositionId !== rootCompositionId) {
+    if (duration == null && isNestedHost) {
       duration = resolveTimelineDurationSeconds(nodeCompositionId);
     }
     if (duration == null && isMediaElement(node)) {
@@ -461,7 +462,8 @@ export function collectRuntimeTimelinePayload(params: {
     const slots = startResolver.resolveHostSlotsForElement(node);
     if (slots.length > 0) {
       const played = cutToHostSlots({ start, end: start + duration }, slots);
-      if (played.end <= played.start) continue;
+      // A cut-away host stays as a zero-length row so Studio keeps nesting what it holds.
+      if (played.end <= played.start && !isNestedHost) continue;
       start = played.start;
       duration = played.end - played.start;
     }
