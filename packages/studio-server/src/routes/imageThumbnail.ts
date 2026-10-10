@@ -11,7 +11,7 @@ const MAX_SOURCE_BYTES = 64 * 1024 * 1024;
 const MAX_CACHE_BYTES = 8 * 1024 * 1024;
 
 let sharpLoad: Promise<typeof import("sharp").default> | undefined;
-function loadSharp() {
+export function loadSharp() {
   sharpLoad ??= import("sharp").then(
     (module) => module.default,
     (error: unknown) => {

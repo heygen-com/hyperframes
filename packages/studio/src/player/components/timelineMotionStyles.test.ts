@@ -38,6 +38,18 @@ function themeTokenValue(token: string): string {
 }
 
 describe("timeline motion styles", () => {
+  it("lets a composition clip's picture fill the clip, its name shadowed on the frame instead of a band", () => {
+    expect(
+      expectDeclaration(
+        expectRule(studioCss, ".timeline-clip.is-composition .timeline-clip__content"),
+        "top",
+      ),
+    ).toBe("0");
+    const label = expectRule(studioCss, ".timeline-clip.is-composition .timeline-clip__label");
+    expect(expectDeclaration(label, "background")).toBe("none");
+    expect(expectDeclaration(label, "text-shadow")).toBe("var(--timeline-thumbnail-label-shadow)");
+  });
+
   it.each([
     ["--timeline-track-label", "var(--color-text-muted)"],
     ["--timeline-tick-text", "var(--color-text-2)"],

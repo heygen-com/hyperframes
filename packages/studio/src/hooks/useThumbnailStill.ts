@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { compositionThumbnailRequest } from "../player/components/CompositionThumbnail";
-import type { ThumbnailPriority } from "../player/lib/thumbnailScheduler";
+import { readyImage, type ThumbnailPriority } from "../player/lib/thumbnailScheduler";
 import { useThumbnailLease } from "./useThumbnailLease";
 
 export interface UseThumbnailStillOptions {
@@ -27,8 +27,7 @@ export function useThumbnailStill(
     [priority, projectId, sessionEpoch, url],
   );
   const snapshot = useThumbnailLease(request);
-  const ready =
-    snapshot.status === "ready" && snapshot.value.kind === "image" ? snapshot.value.url : null;
+  const ready = readyImage(snapshot)?.url ?? null;
   return useMemo(
     () =>
       ready ? { status: "ready", url: ready } : snapshot.status === "error" ? FAILED : LOADING,

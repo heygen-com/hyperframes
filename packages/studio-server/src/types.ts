@@ -97,6 +97,20 @@ export interface StudioSelectionResponse {
   updatedAt: string | null;
 }
 
+export interface ThumbnailRenderOptions {
+  project: ResolvedProject;
+  compPath: string;
+  width: number;
+  height: number;
+  outputWidth: number;
+  outputHeight: number;
+  previewUrl: string;
+  selector?: string;
+  format?: "jpeg" | "png";
+  selectorIndex?: number;
+  signal: AbortSignal;
+}
+
 /**
  * Adapter interface — injected by each consumer to handle host-specific behavior.
  * The shared API module calls these methods; each host (vite dev, CLI embedded)
@@ -216,20 +230,14 @@ export interface StudioApiAdapter {
   }) => MediaProcessingJobState;
 
   /** Optional: generate a thumbnail at the route's explicit output dimensions. */
-  generateThumbnail?: (opts: {
-    project: ResolvedProject;
-    compPath: string;
-    seekTime: number;
-    width: number;
-    height: number;
-    outputWidth: number;
-    outputHeight: number;
-    previewUrl: string;
-    selector?: string;
-    format?: "jpeg" | "png";
-    selectorIndex?: number;
-    signal: AbortSignal;
-  }) => Promise<Buffer | null>;
+  generateThumbnail?: (
+    opts: ThumbnailRenderOptions & { seekTime: number },
+  ) => Promise<Buffer | null>;
+
+  /** Optional: one frame per time, ascending, from a single page load; null if any frame fails. */
+  generateThumbnailFrames?: (
+    opts: ThumbnailRenderOptions & { seekTimes: readonly number[] },
+  ) => Promise<Buffer[] | null>;
 
   /** Optional: resolve session ID to project (multi-project mode). */
   resolveSession?: (sessionId: string) => Promise<{ projectId: string; title: string } | null>;

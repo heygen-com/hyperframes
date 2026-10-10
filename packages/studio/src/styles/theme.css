@@ -145,7 +145,8 @@
     rgba(0, 0, 0, 0.4) 60%,
     transparent 100%
   );
-  --timeline-thumbnail-label-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+  --timeline-thumbnail-label-shadow:
+    0 0 1px rgba(0, 0, 0, 0.95), 0 0 3px rgba(0, 0, 0, 0.75), 0 1px 2px rgba(0, 0, 0, 0.9);
   /* A text clip's strip behind its live words: dark for light text, light for dark text. */
   --timeline-text-clip-dark-bg: #1c2028;
   --timeline-text-clip-light-bg: #e9e6df;

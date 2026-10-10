@@ -2,6 +2,7 @@ import { buildProjectApiPath } from "../../utils/projectRouting";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useThumbnailLease } from "../../hooks/useThumbnailLease";
 import {
+  readyImage,
   thumbnailScheduler,
   type ThumbnailRequest,
   type ThumbnailSnapshot,
@@ -133,12 +134,9 @@ export function syncIframePlayback(iframe: HTMLIFrameElement | null, shouldPlay:
   }
 }
 
-const imageUrlOf = (snapshot: ThumbnailSnapshot) =>
-  snapshot.status === "ready" && snapshot.value.kind === "image" ? snapshot.value.url : null;
-
 // A layout effect takes the old frame's lease before the passive cleanup drops the first one.
 function useLastFrame(request: ThumbnailRequest | null, snapshot: ThumbnailSnapshot) {
-  const current = imageUrlOf(snapshot);
+  const current = readyImage(snapshot)?.url ?? null;
   const [kept, setKept] = useState<{ request: ThumbnailRequest; url: string } | null>(null);
   if (request && current && kept?.request !== request) setKept({ request, url: current });
   useLayoutEffect(() => {

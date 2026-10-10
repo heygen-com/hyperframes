@@ -10,6 +10,15 @@ interface ThumbnailTilesProps {
   children: (index: number) => ReactNode;
 }
 
+export function visibleTileRange(
+  strip: StripSize,
+  frameW: number,
+  frameCount: number,
+): readonly [first: number, end: number] {
+  const end = Math.min(frameCount, Math.ceil(strip.inViewEnd / frameW));
+  return [Math.min(end, Math.floor(strip.inViewStart / frameW)), end];
+}
+
 /** A clip's tile row, mounting only the tiles in the strip's on-screen span, each at its own place. */
 export function ThumbnailTiles({
   strip,
@@ -19,8 +28,7 @@ export function ThumbnailTiles({
   style,
   children,
 }: ThumbnailTilesProps) {
-  const end = Math.min(frameCount, Math.ceil(strip.inViewEnd / frameW));
-  const first = Math.min(end, Math.floor(strip.inViewStart / frameW));
+  const [first, end] = visibleTileRange(strip, frameW, frameCount);
   return (
     <div className="absolute inset-0 flex" style={{ ...style, paddingLeft: first * frameW }}>
       <div

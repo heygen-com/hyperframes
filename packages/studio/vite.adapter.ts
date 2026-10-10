@@ -28,7 +28,7 @@ import type { RegistryItem } from "@hyperframes/core/registry";
 import type { BundleOptions } from "@hyperframes/core/compiler";
 import { createRetryingModuleLoader, ensureProducerDist } from "./vite.producer";
 import { createStudioDevRenderBodyScripts } from "./vite.studioMotion";
-import { generateThumbnail, findSystemChrome } from "./vite.browser";
+import { generateThumbnail, generateThumbnailFrames, findSystemChrome } from "./vite.browser";
 
 function isPathWithin(parentDir: string, childPath: string): boolean {
   const childRelativePath = relative(resolve(parentDir), resolve(childPath));
@@ -409,6 +409,10 @@ export function createViteAdapter(
         const render = mod.render as BackgroundRemovalRender;
         return render(renderOpts);
       });
+    },
+
+    async generateThumbnailFrames(opts) {
+      return generateThumbnailFrames(opts);
     },
 
     async generateThumbnail(opts) {

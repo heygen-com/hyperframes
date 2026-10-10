@@ -13,7 +13,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { pruneThumbnailCache, registerThumbnailRoutes } from "./thumbnail";
+import sharp from "sharp";
+import { parseStripTimes, pruneThumbnailCache, registerThumbnailRoutes } from "./thumbnail";
 import { PREVIEW_CAPTURE_PARAM } from "./preview";
 import type { StudioApiAdapter } from "../types";
 import { createProjectSignature } from "../helpers/projectSignature.js";
@@ -66,7 +67,116 @@ async function writeComposition(
   );
 }
 
+const COLOURS = [
+  { r: 220, g: 40, b: 40 },
+  { r: 40, g: 200, b: 60 },
+  { r: 50, g: 70, b: 230 },
+];
+const solidJpeg = (colour: { r: number; g: number; b: number }) =>
+  sharp({ create: { width: 24, height: 12, channels: 3, background: colour } })
+    .jpeg()
+    .toBuffer();
+
+describe("parseStripTimes", () => {
+  it("reads up to 8 non-negative times, ascending and unique", () => {
+    expect(parseStripTimes("3,1,2,1")).toEqual([1, 2, 3]);
+    expect(parseStripTimes("")).toBeNull();
+    expect(parseStripTimes("1,,2")).toBeNull();
+    expect(parseStripTimes("1,-1")).toBeNull();
+    expect(parseStripTimes("1,x")).toBeNull();
+    expect(parseStripTimes("0,1,2,3,4,5,6,7,8")).toBeNull();
+  });
+});
+
+const requestStrip = (adapter: StudioApiAdapter) => {
+  const app = new Hono();
+  registerThumbnailRoutes(app, adapter);
+  return app.request("http://localhost/projects/demo/thumbnail/index.html?times=3,1,2");
+};
+
 describe("registerThumbnailRoutes", () => {
+  it("asks an adapter that can for all of a strip's frames from one page load", async () => {
+    const adapter = createAdapter();
+    const frames = await Promise.all(COLOURS.map(solidJpeg));
+    adapter.generateThumbnail = vi.fn(async () => null);
+    adapter.generateThumbnailFrames = vi.fn(async ({ seekTimes }) =>
+      seekTimes.map((time) => frames[time - 1]!),
+    );
+
+    const response = await requestStrip(adapter);
+
+    expect(response.status).toBe(200);
+    expect(
+      vi.mocked(adapter.generateThumbnailFrames!).mock.calls.map(([o]) => o.seekTimes),
+    ).toEqual([[1, 2, 3]]);
+    expect(adapter.generateThumbnail).not.toHaveBeenCalled();
+  });
+
+  it("renders a strip's times in order on one page and returns them side by side", async () => {
+    const adapter = createAdapter();
+    const frames = await Promise.all(COLOURS.map(solidJpeg));
+    adapter.generateThumbnail = vi.fn(async ({ seekTime }) => frames[seekTime - 1]!);
+
+    const response = await requestStrip(adapter);
+
+    expect(response.status).toBe(200);
+    expect(vi.mocked(adapter.generateThumbnail!).mock.calls.map(([o]) => o.seekTime)).toEqual([
+      1, 2, 3,
+    ]);
+    const { data, info } = await sharp(Buffer.from(await response.arrayBuffer()))
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    expect([info.width, info.height]).toEqual([72, 12]);
+    COLOURS.forEach((colour, cell) => {
+      const at = (6 * info.width + cell * 24 + 12) * info.channels;
+      expect(Math.abs(data[at]! - colour.r)).toBeLessThan(24);
+      expect(Math.abs(data[at + 1]! - colour.g)).toBeLessThan(24);
+      expect(Math.abs(data[at + 2]! - colour.b)).toBeLessThan(24);
+    });
+  });
+
+  it.each(["", "1,,2", "x", "0,1,2,3,4,5,6,7,8", "1,2&format=png", "1,2&output=source"])(
+    "refuses a malformed strip (times=%s) instead of rendering a single frame",
+    async (times) => {
+      const adapter = createAdapter();
+      const app = new Hono();
+      registerThumbnailRoutes(app, adapter);
+
+      const response = await app.request(
+        `http://localhost/projects/demo/thumbnail/index.html?times=${times}`,
+      );
+
+      expect(response.status).toBe(400);
+      expect(adapter.generateThumbnail).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ["an 8-frame strip", `times=${Array.from({ length: 8 }, (_, i) => 1000.125 + i).join(",")}`],
+    ["a single frame", "t=1000.125"],
+  ])("caches %s of a deeply nested composition under a short file name", async (_, query) => {
+    const adapter = createAdapter();
+    const project = await adapter.resolveProject("demo");
+    if (!project) throw new Error("missing project");
+    const folder = "compositions/a-long-scene-folder-name/another-long-folder-name";
+    const nested = `${folder}/the-introduction-scene-with-a-long-name.html`;
+    mkdirSync(join(project.dir, folder), { recursive: true });
+    writeFileSync(join(project.dir, nested), `<div data-width="1920" data-height="1080"></div>`);
+    const frame = await solidJpeg(COLOURS[0]!);
+    adapter.generateThumbnail = vi.fn(async () => frame);
+    const app = new Hono();
+    registerThumbnailRoutes(app, adapter);
+
+    const response = await app.request(
+      `http://localhost/projects/demo/thumbnail/${nested}?${query}&selector=.card&selectorIndex=3`,
+    );
+
+    expect(response.status).toBe(200);
+    const cached = readdirSync(join(project.dir, ".thumbnails"));
+    expect(cached).toHaveLength(1);
+    expect(cached[0]!.length).toBeLessThan(64);
+  });
+
   it("screenshots the capture variant of the preview document", async () => {
     const adapter = createAdapter();
     await writeComposition(adapter, 1920, 1080);

@@ -2,10 +2,14 @@
   "studio-open": {
     "browser": "154",
     "counts": {
-      "thumbnailRenders": 14,
+      "thumbnailRenders": 24,
       "total.frameNavigations": 7,
       "total.requests.document": 2,
-      "total.requests.thumbnail": 15
+      "total.requests.thumbnail": 25
+    },
+    "raised": {
+      "thumbnailRenders": "timeline composition clips show their own frames: one strip per clip; the sidebar cards keep their posters, which the timeline no longer shares",
+      "total.requests.thumbnail": "timeline composition clips show their own frames: one strip per clip; the sidebar cards keep their posters, which the timeline no longer shares"
     }
   }
 }

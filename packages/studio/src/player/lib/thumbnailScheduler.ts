@@ -1,5 +1,6 @@
 import { TIMELINE_VIEWPORT_BUDGETS, type TimelineViewportBudgets } from "./timelineViewportBudgets";
 
+export const MOTION_SETTLE_MS = 150;
 export type ThumbnailPriority = "overscan" | "visible" | "interaction";
 export type ThumbnailJobKind = "video" | "image" | "composition" | "waveform";
 
@@ -21,7 +22,7 @@ export interface ThumbnailRequest {
   sessionEpoch: number;
   kind: ThumbnailJobKind;
   priority: ThumbnailPriority;
-  /** Rich work is paused while the timeline is fast-scrolling. */
+  /** Rich work is paused while the timeline zooms. */
   rich?: boolean;
   /** For work whose result nobody reads: it is dropped, not cached, once its last lease ends. */
   discardWhenReleased?: boolean;
@@ -32,6 +33,9 @@ export type ThumbnailSnapshot =
   | { status: "idle" | "queued" | "loading" }
   | { status: "ready"; value: ThumbnailValue }
   | { status: "error"; error: Error };
+
+export const readyImage = (snapshot: ThumbnailSnapshot) =>
+  snapshot.status === "ready" && snapshot.value.kind === "image" ? snapshot.value : null;
 
 export interface ThumbnailLease {
   updatePriority(priority: ThumbnailPriority): void;
@@ -97,16 +101,25 @@ export function createThumbnailKey(parts: Readonly<Record<string, string | numbe
     .join("&");
 }
 
-export function createThumbnailRequestIdentity(
-  request: Pick<ThumbnailRequest, "key" | "projectId" | "sessionEpoch" | "kind" | "rich">,
-) {
-  return createThumbnailKey({
-    project: request.projectId,
-    session: request.sessionEpoch,
-    request: request.key,
-    kind: request.kind,
-    rich: request.rich ? 1 : 0,
-  });
+type RequestIdentityFields = Pick<
+  ThumbnailRequest,
+  "key" | "projectId" | "sessionEpoch" | "kind" | "rich"
+>;
+const identityOfRequestObject = new WeakMap<RequestIdentityFields, string>();
+
+export function createThumbnailRequestIdentity(request: RequestIdentityFields) {
+  let identity = identityOfRequestObject.get(request);
+  if (identity === undefined) {
+    identity = createThumbnailKey({
+      project: request.projectId,
+      session: request.sessionEpoch,
+      request: request.key,
+      kind: request.kind,
+      rich: request.rich ? 1 : 0,
+    });
+    identityOfRequestObject.set(request, identity);
+  }
+  return identity;
 }
 
 /** Sole client owner for thumbnail work, cached resources, and cleanup. */
@@ -116,6 +129,7 @@ export class ThumbnailScheduler {
   private nextLeaseId = 1;
   private nextSequence = 1;
   private scrolling = false;
+  private motionSettle: ReturnType<typeof setTimeout> | null = null;
   private previewReloading = false;
   private pageHidden = false;
   private cacheBytes = 0;
@@ -145,7 +159,7 @@ export class ThumbnailScheduler {
       entry.failedAt !== undefined &&
       this.now() - entry.failedAt >= this.budgets.metadataFailureTtlMs
     ) {
-      this.deleteEntry(scopedKey, entry);
+      this.retryInPlace(entry);
       entry = this.entries.get(scopedKey);
     }
     if (!entry) {
@@ -170,7 +184,7 @@ export class ThumbnailScheduler {
     entry.leases.set(leaseId, request.priority);
     entry.listeners.set(leaseId, listener);
     entry.lastAccess = this.nextSequence++;
-    this.pump();
+    if (entry.state === "queued") this.pump();
 
     let released = false;
     return {
@@ -198,17 +212,23 @@ export class ThumbnailScheduler {
             this.deleteEntry(scopedKey, current);
           }
         }
-        this.evict();
       },
     };
   }
 
-  getSnapshot(
-    request: Pick<ThumbnailRequest, "key" | "projectId" | "sessionEpoch" | "kind" | "rich">,
-  ): ThumbnailSnapshot {
+  getSnapshot(request: RequestIdentityFields): ThumbnailSnapshot {
     const entry = this.entries.get(createThumbnailRequestIdentity(request));
     if (!entry) return EMPTY_SNAPSHOT;
     return entry.snapshot;
+  }
+
+  noteMotion(): void {
+    this.setScrolling(true);
+    if (this.motionSettle) clearTimeout(this.motionSettle);
+    this.motionSettle = setTimeout(() => {
+      this.motionSettle = null;
+      this.setScrolling(false);
+    }, MOTION_SETTLE_MS);
   }
 
   setScrolling(scrolling: boolean): void {
@@ -500,6 +520,14 @@ export class ThumbnailScheduler {
         },
       );
     });
+  }
+
+  private retryInPlace(entry: ThumbnailEntry): void {
+    entry.state = "queued";
+    entry.error = undefined;
+    entry.failedAt = undefined;
+    entry.snapshot = Object.freeze({ status: "queued" });
+    this.notify(entry);
   }
 
   private deleteEntry(key: string, entry: ThumbnailEntry): void {

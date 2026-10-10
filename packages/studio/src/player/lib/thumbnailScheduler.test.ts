@@ -3,6 +3,7 @@ import { resolveTimelineViewportBudgets } from "./timelineViewportBudgets";
 import {
   createThumbnailKey,
   createThumbnailRequestIdentity,
+  MOTION_SETTLE_MS,
   ThumbnailScheduler,
   type ThumbnailLoadedResult,
   type ThumbnailPriority,
@@ -153,6 +154,26 @@ describe("ThumbnailScheduler", () => {
     expect(richLoad).toHaveBeenCalledTimes(1);
   });
 
+  it("holds rich work while the timeline keeps moving and starts it once it has held still", async () => {
+    vi.useFakeTimers();
+    try {
+      const scheduler = new ThumbnailScheduler();
+      const richLoad = vi.fn(async () => result("rich"));
+      scheduler.noteMotion();
+      scheduler.acquire(request("rich", richLoad, "visible", { rich: true }), vi.fn());
+
+      await vi.advanceTimersByTimeAsync(MOTION_SETTLE_MS - 1);
+      scheduler.noteMotion();
+      await vi.advanceTimersByTimeAsync(MOTION_SETTLE_MS - 1);
+      expect(richLoad).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(richLoad).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("holds composition renders while the preview reloads and re-runs the ones it preempted", async () => {
     const scheduler = new ThumbnailScheduler();
     const signals: AbortSignal[] = [];
@@ -272,7 +293,7 @@ describe("ThumbnailScheduler", () => {
     });
   });
 
-  it("preserves a synchronous re-acquire when an expired failure is replaced", async () => {
+  it("preserves a synchronous re-acquire when an expired failure is retried", async () => {
     vi.useFakeTimers();
     const scheduler = new ThumbnailScheduler(
       resolveTimelineViewportBudgets({ metadataFailureTtlMs: 10 }),
@@ -301,11 +322,68 @@ describe("ThumbnailScheduler", () => {
       status: "ready",
       value: { url: "recovered" },
     });
-    expect(scheduler.getDiagnostics().leases).toBe(2);
+    expect(scheduler.getDiagnostics().leases).toBe(3);
     firstLease.release();
     nestedLease?.release();
     outerLease.release();
     vi.useRealTimers();
+  });
+
+  it("still loads for the new lease when the old one lets go during the retry notice", async () => {
+    vi.useFakeTimers();
+    const scheduler = new ThumbnailScheduler(
+      resolveTimelineViewportBudgets({ metadataFailureTtlMs: 10 }),
+    );
+    const load = vi
+      .fn<ThumbnailRequest["load"]>()
+      .mockRejectedValueOnce(new Error("temporary"))
+      .mockResolvedValue(result("recovered"));
+    const failed = request("retry", load);
+    let releaseOnNotify = false;
+    const firstLease = scheduler.acquire(failed, () => {
+      if (releaseOnNotify) firstLease.release();
+    });
+    await flush();
+    vi.advanceTimersByTime(11);
+    releaseOnNotify = true;
+
+    const outerLease = scheduler.acquire(failed, vi.fn());
+    await flush();
+
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(scheduler.getSnapshot(failed)).toMatchObject({ status: "ready" });
+    outerLease.release();
+    vi.useRealTimers();
+  });
+
+  it("lets every lease on an expired failure see its retry's result", async () => {
+    vi.useFakeTimers();
+    try {
+      const scheduler = new ThumbnailScheduler(
+        resolveTimelineViewportBudgets({ metadataFailureTtlMs: 10 }),
+      );
+      const load = vi
+        .fn<ThumbnailRequest["load"]>()
+        .mockRejectedValueOnce(new Error("temporary"))
+        .mockResolvedValue(result("recovered"));
+      const failed = request("retry", load);
+      const seenByFirst: string[] = [];
+      const first = scheduler.acquire(failed, () =>
+        seenByFirst.push(scheduler.getSnapshot(failed).status),
+      );
+      await flush();
+      vi.advanceTimersByTime(11);
+
+      const second = scheduler.acquire(failed, vi.fn());
+      await flush();
+
+      expect(seenByFirst.at(-1)).toBe("ready");
+      expect(scheduler.getDiagnostics().leases).toBe(2);
+      first.release();
+      second.release();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("times out a hung loader, frees its bucket, and disposes a late result", async () => {
