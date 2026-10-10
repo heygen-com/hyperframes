@@ -825,6 +825,14 @@ describe("a double-quoted src that contains an apostrophe", () => {
     expect(codes).toContain("duplicate_audio_track");
   });
 
+  it("still reports a missing file whose name starts with a quote character", async () => {
+    const codes = await lintCodes(
+      `<audio id="a1" class="clip" data-start="0" data-duration="3" data-track-index="10" src="'90s theme.mp3"></audio>`,
+      [],
+    );
+    expect(codes).toContain("audio_src_not_found");
+  });
+
   it("does not read a src out of another attribute's text", async () => {
     const codes = await lintCodes(`<img id="i1" alt="x src='ghost.png'" />`, []);
     expect(codes).not.toContain("missing_local_asset");
