@@ -273,7 +273,7 @@ export const AnimationCard = memo(function AnimationCard({
                   setTimeout(() => setCopied(false), 1500);
                 }}
                 className="shrink-0 rounded-sm px-1.5 py-0.5 text-[9px] font-medium text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-300"
-                title="Copy description to clipboard to paste into agent prompts"
+                title="Copy description for agent prompts"
               >
                 {copied ? "Copied" : "Copy"}
               </button>

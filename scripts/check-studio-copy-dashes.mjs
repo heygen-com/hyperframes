@@ -6,7 +6,8 @@ import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
 const ROOT = join(import.meta.dirname, "..");
-const DASH = /[–—]/;
+// JSX keeps HTML entities raw in the AST, and React renders them as dashes.
+const DASH = /[\u2013\u2014]|&[mn]dash;|&#821[12];|&#x201[34];/i;
 const TEXT_KINDS = new Set([
   ts.SyntaxKind.StringLiteral,
   ts.SyntaxKind.NoSubstitutionTemplateLiteral,
@@ -31,7 +32,7 @@ export function listDashedText(source, filename = "source.tsx") {
   return issues;
 }
 
-const isShippedSource = (path) =>
+export const isShippedSource = (path) =>
   /\.tsx?$/.test(path) && !/\.d\.ts$|\.(test|spec)\.tsx?$/.test(path);
 
 export function checkStudioCopyDashes(root = ROOT) {

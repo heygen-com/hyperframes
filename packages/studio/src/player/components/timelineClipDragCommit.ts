@@ -131,7 +131,7 @@ export function persistMoveEdits(
     console.warn(
       onMoveElement
         ? `[Timeline] persistMoveEdits: only single-clip onMoveElement wired, so this ${edits.length}-clip move degrades to a per-clip persist race (no atomic single-undo)`
-        : `[Timeline] persistMoveEdits: no move persist handler wired: ${edits.length} edit(s) applied to the store only, not saved`,
+        : `[Timeline] persistMoveEdits: no move persist handler wired, so ${edits.length} edit(s) applied to the store only, not saved`,
     );
   }
   const prev = edits.map((e) => ({

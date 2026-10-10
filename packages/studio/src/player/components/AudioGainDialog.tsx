@@ -186,7 +186,7 @@ export function AudioGainDialog({
         />
         <div className="mt-3 text-neutral-400" data-testid="audio-gain-peak">
           Peak Amplitude:{" "}
-          {peaks === null ? "measuring…" : peakDb === null ? "None" : dbText(peakDb)}
+          {peaks === null ? "measuring…" : peakDb === null ? "Unavailable" : dbText(peakDb)}
         </div>
         {outOfRange && <div className="mt-1 text-red-400">Peak targets must be 0 dB or lower.</div>}
         <div className="mt-4 flex justify-end gap-2">
