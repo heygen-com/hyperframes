@@ -36,7 +36,6 @@ export interface CheckCommandDependencies {
   resolveProject(dir: string | undefined): ProjectDir;
   runPipeline(project: ProjectDir, options: CheckOptions): Promise<CheckReport>;
   withMeta(value: object): object;
-  /** Golden baseline gate; defaults to a lazy import so sharp only loads when requested. */
   runGolden?(project: ProjectDir, options: GoldenGateOptions): Promise<GoldenSummary>;
 }
 
@@ -49,8 +48,6 @@ const DEFAULT_COMMAND_DEPENDENCIES: CheckCommandDependencies = {
 const CHECK_COMMAND_ARGS = {
   dir: { type: "positional", description: "Project directory", required: false },
   json: { type: "boolean", description: "Output agent-readable JSON", default: false },
-  // The sampling args below intentionally mirror the deprecated `layout`
-  // command's grammar (check superseded it) — an inherited clone, not new code.
   // fallow-ignore-next-line code-duplication
   samples: {
     type: "string",
@@ -248,11 +245,6 @@ function parseCheckOptions(args: Record<string, unknown>): CheckOptions {
   };
 }
 
-/**
- * `--golden` / `--update-golden` / `--golden-threshold` → gate options, or
- * undefined when the golden gate was not requested. The threshold flag alone
- * does not enable the gate — it only tunes an explicitly requested run.
- */
 export function parseGoldenGateArgs(
   args: Record<string, unknown>,
   options: Pick<CheckOptions, "timeout" | "autoProxy" | "browserGpuMode">,
