@@ -148,7 +148,7 @@ function clampRanges(ranges, duration) {
 
 function mergeRanges(ranges) {
   const sorted = ranges
-    .map((range) => ({ start: round3(range.start), end: round3(range.end) }))
+    .map((range) => ({ start: round6(range.start), end: round6(range.end) }))
     .sort((a, b) => a.start - b.start || a.end - b.end);
   const merged = [];
   for (const range of sorted) {
@@ -173,10 +173,17 @@ function invertRanges(removals, duration) {
   return kept;
 }
 
+// Range bounds are rounded only to shed float noise, never to the millisecond:
+// these values become ffmpeg's -ss/-to, where a millisecond is wide enough to
+// step a boundary onto the next frame at 29.97/30/60 fps.
 function finalizeKept(ranges) {
   return mergeRanges(ranges)
-    .map((range) => ({ start: round3(range.start), end: round3(range.end) }))
+    .map((range) => ({ start: round6(range.start), end: round6(range.end) }))
     .filter((range) => round3(range.end - range.start) >= MIN_SEGMENT_SECONDS);
+}
+
+function round6(n) {
+  return Math.round(Number(n) * 1e6) / 1e6;
 }
 
 function round3(n) {

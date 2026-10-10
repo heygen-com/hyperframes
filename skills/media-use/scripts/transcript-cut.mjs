@@ -183,11 +183,11 @@ function cutSegment(inputPath, segment, outPath, copy, fade) {
     "-y",
     "-nostdin",
     "-ss",
-    fmt(segment.start),
+    seekTime(segment.start),
     "-i",
     inputPath,
     "-to",
-    fmt(segment.end - segment.start),
+    seekTime(segment.end - segment.start),
   ];
   if (copy) {
     argv.push("-c", "copy", "-avoid_negative_ts", "make_zero");
@@ -263,6 +263,15 @@ function fmt(n) {
   return round3(n)
     .toFixed(3)
     .replace(/\.?0+$/, "");
+}
+
+// -ss/-to name frames, and ffmpeg's accurate seek drops everything before the
+// time it is given: at 30 fps, frame 386 sits at 12.866666 s, and a 3-decimal
+// -ss of 12.867 starts that segment on frame 387 instead, leaving the cut a
+// frame short from the join on. So the values ffmpeg gets keep frame precision,
+// while fmt() above stays at 3 decimals for the times that are only printed.
+function seekTime(n) {
+  return Number(n).toFixed(6);
 }
 
 function round3(n) {

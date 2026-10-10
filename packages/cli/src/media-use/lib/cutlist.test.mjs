@@ -113,6 +113,18 @@ test("--keep is inverse mode and coalesces direct kept ranges", () => {
   ]);
 });
 
+test("kept ranges keep frame precision instead of rounding to the millisecond", () => {
+  const transcript = [word("w0", "start", 0, 1), word("w1", "end", 14, 15)];
+
+  // Frame 386 at 30 fps is 12.866666 s. These bounds become ffmpeg's -ss/-to, so
+  // rounding them to 12.867 hands ffmpeg a time just past the frame and the
+  // segment starts one frame late.
+  assert.deepEqual(compileCutList(transcript, { keep: "0-1,12.866666666666667-14" }), [
+    { start: 0, end: 1 },
+    { start: 12.866667, end: 14 },
+  ]);
+});
+
 test("--plan on a fixture transcript prints the exact segment JSON", () => {
   const dir = mkdtempSync(join(tmpdir(), "media-use-cutlist-"));
   try {
