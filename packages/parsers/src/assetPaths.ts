@@ -9,12 +9,12 @@ import { isAbsolute, relative, resolve } from "node:path";
 
 /**
  * Regex matching CSS `url(...)` references — captures the quote style and the
- * raw URL. The URL group is anchored to non-whitespace at both ends so the
- * surrounding `\s*` can never overlap it (avoids polynomial-ReDoS backtracking);
- * the captured value is whitespace-bounded already, matching the old behavior
- * after callers `.trim()` it.
+ * raw URL. A quoted body stops only at its own delimiter; the unquoted branch
+ * retains its whitespace-bounded endpoints so adjacent \s* cannot overlap.
+ * Both branches expose exactly the quote and URL captures to replace callbacks.
  */
-export const CSS_URL_RE = /\burl\(\s*(["']?)([^)"'\s](?:[^)"']*[^)"'\s])?)\1\s*\)/g;
+export const CSS_URL_RE =
+  /\burl\(\s*(["']?)((?<=["'])(?!\s)(?:\\(?:\r\n|[\s\S])|(?!\1)[^\\\r\n])+(?<!\s)|(?<!["'])[^)"'\s](?:[^)"']*[^)"'\s])?)\1\s*\)/g;
 
 /** Attributes that may contain relative asset paths. */
 export const PATH_ATTRS = ["src", "href"] as const;
