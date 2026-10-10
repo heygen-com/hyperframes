@@ -17,6 +17,8 @@ const WORDS_08 =
   '<h1 style="position:absolute;left:120px;top:200px;width:900px;margin:0;font:700 140px/0.8 Arial"><span style="display:inline-block;margin-right:.25em">Launch</span><span style="display:inline-block;margin-right:.25em">faster</span><span style="display:inline-block;margin-right:.25em">ship</span><span style="display:inline-block;margin-right:.25em">sooner</span></h1>';
 const WORDS_04 =
   '<h1 style="position:absolute;left:120px;top:200px;width:900px;margin:0;font:700 140px/0.4 Arial"><span style="display:inline-block;margin-right:.25em">Launch</span><span style="display:inline-block;margin-right:.25em">faster</span><span style="display:inline-block;margin-right:.25em">ship</span><span style="display:inline-block;margin-right:.25em">sooner</span></h1>';
+const OPAQUE_IMAGE =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP48uULAAW8At0b1v2OAAAAAElFTkSuQmCC";
 
 describe.runIf(executablePath)("layout audit in Chromium", () => {
   let browser: Browser;
@@ -66,6 +68,41 @@ describe.runIf(executablePath)("layout audit in Chromium", () => {
     { name: "inline child", content: "<span>Gradient text</span>", layered: false },
     { name: "nested child", content: "<div><span>Gradient text</span></div>", layered: false },
     {
+      name: "inline-block child",
+      content: '<span style="display:inline-block">Gradient text</span>',
+      layered: false,
+    },
+    {
+      name: "flex child",
+      content: '<div style="display:flex">Gradient text</div>',
+      layered: false,
+    },
+    {
+      name: "clipped child",
+      content: '<div style="overflow:hidden">Gradient text</div>',
+      layered: false,
+    },
+    {
+      name: "scroll hint",
+      content: '<div style="will-change:scroll-position">Gradient text</div>',
+      layered: false,
+    },
+    {
+      name: "inline transform",
+      content: '<span style="transform:translateY(0)">Gradient text</span>',
+      layered: false,
+    },
+    {
+      name: "inline transform hint",
+      content: '<span style="will-change:transform">Gradient text</span>',
+      layered: false,
+    },
+    {
+      name: "inline containment",
+      content: '<span style="contain:paint">Gradient text</span>',
+      layered: false,
+    },
+    {
       name: "transformed child",
       content: '<div style="transform:translateY(0)">Gradient text</div>',
       layered: true,
@@ -86,6 +123,31 @@ describe.runIf(executablePath)("layout audit in Chromium", () => {
       layered: true,
     },
     { name: "faded child", content: '<div style="opacity:.9">Gradient text</div>', layered: true },
+    {
+      name: "layered wrapper",
+      content: '<div style="transform:translateY(0)"><span>Gradient text</span></div>',
+      layered: true,
+    },
+    {
+      name: "isolated child",
+      content: '<div style="isolation:isolate">Gradient text</div>',
+      layered: true,
+    },
+    {
+      name: "paint-contained child",
+      content: '<div style="contain:paint">Gradient text</div>',
+      layered: true,
+    },
+    {
+      name: "transform hint",
+      content: '<div style="will-change:transform">Gradient text</div>',
+      layered: true,
+    },
+    {
+      name: "separately painted flex item",
+      content: '<div style="display:flex"><div style="z-index:1">Gradient text</div></div>',
+      layered: true,
+    },
   ])("recognizes ancestor gradient paint for a $name", async ({ content, layered }) => {
     const direct = await gradientFrame(gradientHeading("Gradient text"));
     const descendant = await gradientFrame(gradientHeading(content));
@@ -95,10 +157,71 @@ describe.runIf(executablePath)("layout audit in Chromium", () => {
       expect(descendant.image).toEqual(direct.image);
       expect(descendant.codes).not.toContain("text_not_painted");
     } else {
-      if (layered) expect(descendant.image).not.toEqual(direct.image);
-      else expect(descendant.image).toEqual(direct.image);
-      expect(descendant.codes).toContain("text_not_painted");
+      if (layered) {
+        expect(descendant.image).not.toEqual(direct.image);
+        expect(descendant.codes).toContain("text_not_painted");
+      } else {
+        expect(descendant.image).toEqual(direct.image);
+        expect(descendant.codes).not.toContain("text_not_painted");
+      }
     }
+  });
+
+  it.each([
+    { name: "inline child", content: "<span>Gradient text</span>", layered: false },
+    { name: "nested child", content: "<div><span>Gradient text</span></div>", layered: false },
+    {
+      name: "transformed child",
+      content: '<div style="transform:translateY(0)">Gradient text</div>',
+      layered: true,
+    },
+    {
+      name: "image on a second clipped layer",
+      content: "<span>Gradient text</span>",
+      backgroundStyle: "background-clip:border-box,text;background-image:none,",
+      layered: false,
+    },
+  ])(
+    "recognizes ancestor image paint for a $name",
+    async ({ content, backgroundStyle, layered }) => {
+      const background = backgroundStyle
+        ? `${backgroundStyle}url('${OPAQUE_IMAGE}')`
+        : `background-image:url('${OPAQUE_IMAGE}')`;
+      const direct = await gradientFrame(gradientHeading("Gradient text", background));
+      const descendant = await gradientFrame(gradientHeading(content, background));
+      const empty = await gradientFrame(gradientHeading("", background));
+      expect(direct.image).not.toEqual(empty.image);
+      expect(direct.codes).not.toContain("text_not_painted");
+      const version = await browser.version();
+      const chromiumVersion = Number(version.split("/")[1]?.split(".")[0]);
+      const dropsChild = chromiumVersion < 150 && layered;
+      expect(descendant.image).toEqual(dropsChild ? empty.image : direct.image);
+      expect(descendant.codes.includes("text_not_painted")).toBe(dropsChild);
+    },
+  );
+
+  it.each([
+    { name: "unclipped image", backgroundStyle: "background-clip:border-box" },
+    {
+      name: "image on a different background layer",
+      backgroundStyle: "background-image:url('IMAGE'),none;background-clip:border-box,text",
+    },
+  ])("reports invisible glyphs beneath an $name", async ({ backgroundStyle }) => {
+    const background = `background-image:url('${OPAQUE_IMAGE}');${backgroundStyle.replace("IMAGE", OPAQUE_IMAGE)}`;
+    expect(await auditCodes(gradientHeading("<span>Gradient text</span>", background))).toContain(
+      "text_not_painted",
+    );
+  });
+
+  it("reports text positioned outside an ancestor image background", async () => {
+    expect(
+      await auditCodes(
+        gradientHeading(
+          '<span style="position:relative;top:150px">Gradient text</span>',
+          `background-image:url('${OPAQUE_IMAGE}')`,
+        ),
+      ),
+    ).toContain("text_not_painted");
   });
 
   it.each([
