@@ -81,6 +81,28 @@ describe("createClipTree", () => {
     );
   });
 
+  it.each([
+    ["a number", { duration: 4, seek() {} }],
+    [
+      "a method that throws",
+      {
+        duration() {
+          throw new Error("boom");
+        },
+        seek() {},
+      },
+    ],
+  ])("keeps a sub-composition whose registered duration is %s on the root window", (_, tl) => {
+    document.body.innerHTML = `
+      <div data-composition-id="root" data-duration="10" data-start="0" id="root">
+        <div data-composition-id="extra" data-start="0" id="extra"></div>
+      </div>`;
+    const registry = { extra: tl } as unknown as typeof params.timelineRegistry;
+    expect(
+      createClipTree({ ...params, timelineRegistry: registry }).roots.map((n) => n.id),
+    ).toContain("extra");
+  });
+
   it.each([10, 11])(
     "does not replace a known zero media span with root duration (start=%s)",
     (start) => {

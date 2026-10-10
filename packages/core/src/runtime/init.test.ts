@@ -5214,6 +5214,37 @@ describe("initSandboxRuntimeModular", () => {
         player?.renderSeek(2);
       }).not.toThrow();
     });
+
+    const throwingDurationGetter = Object.defineProperty({ seek() {} }, "duration", {
+      get() {
+        throw new Error("getter");
+      },
+    });
+    it.each([
+      ["a number", { duration: 4, seek() {} }],
+      [
+        "a method that throws",
+        {
+          duration() {
+            throw new Error("boom");
+          },
+          seek() {},
+        },
+      ],
+      ["a getter that throws", throwingDurationGetter],
+    ])("starts and seeks when a sub-composition's registered duration is %s", (_, extra) => {
+      document.body.innerHTML = `
+        <div data-composition-id="main" data-root="true" data-start="0" data-duration="10" data-width="1920" data-height="1080">
+          <div data-composition-id="extra" data-start="0"></div>
+        </div>`;
+      window.__timelines = {
+        main: createMockTimeline(10),
+        extra: extra as unknown as RuntimeTimelineLike,
+      };
+
+      expect(() => initSandboxRuntimeModular()).not.toThrow();
+      expect(() => window.__player?.renderSeek(1)).not.toThrow();
+    });
   });
 
   // jsdom has no AudioContext; without one `WebAudioTransport.init()` fails, Web Audio scheduling

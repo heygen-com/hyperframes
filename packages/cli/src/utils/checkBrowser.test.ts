@@ -14,6 +14,7 @@ import {
   keepBrokenImageAborts,
   preResolveHostileMediaProxies,
   runBrowserCheck,
+  collectSeekClock,
 } from "./checkBrowser.js";
 import type { ProjectDir } from "./project.js";
 
@@ -526,6 +527,28 @@ it("elevates and deduplicates WebGPU validation warnings while preserving ordina
       message: ordinaryWarning.text(),
     }),
   );
+});
+
+describe("collectSeekClock", () => {
+  afterEach(() => {
+    Reflect.deleteProperty(window, "__timelines");
+    Reflect.deleteProperty(window, "__hfSeekClocks");
+  });
+
+  const seekPage = { evaluate: async (fn: () => unknown) => fn() } as unknown as Parameters<
+    typeof collectSeekClock
+  >[0];
+
+  it("skips a custom clock whose time() returns null instead of reading it as 0", async () => {
+    Reflect.set(window, "__timelines", {
+      root: { duration: () => 9, seek() {}, time: () => null },
+      card: { duration: () => 9, seek() {}, time: () => 3 },
+    });
+
+    const clocks = await collectSeekClock(seekPage);
+
+    expect(clocks.map((clock) => clock.time)).toEqual([3]);
+  });
 });
 
 describe("keepBrokenImageAborts", () => {

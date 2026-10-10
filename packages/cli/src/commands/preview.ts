@@ -1542,7 +1542,7 @@ export async function runLocalStudioMode(
  * If an existing HyperFrames server for the same project is detected,
  * reuses it instead of starting a new one (unless --force-new is set).
  */
-async function runEmbeddedMode(
+export async function runEmbeddedMode(
   dir: string,
   startPort: number,
   options?: EmbeddedStudioOptions,
@@ -1601,6 +1601,7 @@ async function runEmbeddedMode(
     );
   } catch (err: unknown) {
     watcher.close();
+    if (!options?.json) s.stop(c.error("Could not start studio"));
     reportPreviewFailure(
       Boolean(options?.json),
       "start",

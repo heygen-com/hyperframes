@@ -4,6 +4,7 @@ import { COMPOSITION_SOURCE_URL } from "@hyperframes/core";
 import type { CaptureSession } from "./frameCapture.js";
 import {
   buildZeroDurationDiagnostic,
+  pollHfReady,
   captureFramesBatchPipelined,
   captureFrameToBufferPipelined,
   classifyConsoleScriptError,
@@ -556,6 +557,18 @@ describe("DrawElementVerificationError details", () => {
       { kind: "psnr", frameIndex: 5, failedDb: 12.1, verifyThresholdDb: 32 },
     );
     expect(getDrawElementVerificationDetails(adversarial)?.kind).toBe("psnr");
+  });
+});
+
+describe("pollHfReady", () => {
+  it("fails at once with the runtime's start-up error instead of waiting out the timeout", async () => {
+    const startupError = "HyperFrames runtime failed: TypeError: boom";
+    const page = {
+      evaluate: async (expr: unknown) =>
+        String(expr).includes("__hfStartupError") ? startupError : false,
+    } as unknown as Parameters<typeof pollHfReady>[0];
+
+    await expect(pollHfReady(page, 60_000)).rejects.toThrow(startupError);
   });
 });
 

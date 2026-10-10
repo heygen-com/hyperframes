@@ -52,9 +52,9 @@ afterEach(() => {
 
 describe("waitForRuntimeReady", () => {
   it("waits for the runtime's render-ready flag and reports a timeout as not ready", async () => {
-    const { waitForFunction } = fakeSeekPage();
+    const { waitForFunction, evaluate } = fakeSeekPage();
 
-    await expect(waitForRuntimeReady({ waitForFunction }, 123)).resolves.toBe(true);
+    await expect(waitForRuntimeReady({ waitForFunction, evaluate }, 123)).resolves.toBe(true);
     expect(waitForFunction).toHaveBeenCalledWith(expect.any(Function), { timeout: 123 });
     const ready = waitForFunction.mock.calls[0]![0];
     vi.stubGlobal("window", { __timelines: {} });
@@ -63,7 +63,23 @@ describe("waitForRuntimeReady", () => {
     expect(ready()).toBe(true);
 
     waitForFunction.mockRejectedValueOnce(new Error("Waiting failed: 1ms exceeded"));
-    await expect(waitForRuntimeReady({ waitForFunction }, 1)).resolves.toBe(false);
+    await expect(waitForRuntimeReady({ waitForFunction, evaluate }, 1)).resolves.toBe(false);
+  });
+
+  it("fails with the runtime's start-up error instead of reporting the page ready", async () => {
+    const { waitForFunction, evaluate } = fakeSeekPage();
+    const startupError = "HyperFrames runtime failed: TypeError: boom";
+    evaluate.mockResolvedValue(startupError);
+
+    const ready = waitForFunction.mock.calls.length;
+    await expect(waitForRuntimeReady({ waitForFunction, evaluate }, 123)).rejects.toThrow(
+      startupError,
+    );
+    const predicate = waitForFunction.mock.calls[ready]![0];
+    vi.stubGlobal("window", { __hfStartupError: startupError });
+    expect(predicate()).toBe(true);
+    vi.stubGlobal("window", { __hfStartupError: { message: "not a string" } });
+    expect(predicate()).toBe(false);
   });
 
   it("is what layout, motion-shot and validate wait on before they sample the page", () => {

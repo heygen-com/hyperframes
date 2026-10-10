@@ -13,6 +13,7 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { stripVTControlCharacters } from "node:util";
 import {
   activeServerOnPort,
   MAX_PORT_SCAN,
@@ -46,7 +47,11 @@ export interface PreviewSession {
   logPath: string;
 }
 
-type SpawnResult = { pid?: number; unref(): void };
+type SpawnResult = {
+  pid?: number;
+  unref(): void;
+  once?(event: "exit", listener: (code: number | null, signal: string | null) => void): unknown;
+};
 type SpawnPreview = (
   command: string,
   args: string[],
@@ -226,7 +231,12 @@ function spawnDetachedPreview(
   projectDir: string,
   stateHome: string,
   dependencies: LifecycleDependencies,
-): { pid: number; wrapperIdentity: string | undefined; logPath: string } {
+): {
+  pid: number;
+  wrapperIdentity: string | undefined;
+  logPath: string;
+  exitedWith: () => string | null;
+} {
   const logPath = previewLogPath(projectDir, stateHome);
   mkdirSync(dirname(logPath), { recursive: true });
   const logFd = openSync(logPath, "a", 0o600);
@@ -246,11 +256,16 @@ function spawnDetachedPreview(
     closeSync(logFd);
   }
   if (!child.pid) throw new Error("background preview child did not report a PID");
+  let exit: string | null = null;
+  child.once?.("exit", (code, signal) => {
+    exit = signal ? `signal ${signal}` : `exit code ${code}`;
+  });
   child.unref();
   return {
     pid: child.pid,
     wrapperIdentity: (dependencies.identity ?? processIdentity)(child.pid) ?? undefined,
     logPath,
+    exitedWith: () => exit,
   };
 }
 
@@ -547,15 +562,28 @@ export async function startBackgroundPreview(
   // server, never a pre-existing unmanaged sibling.
   const preLaunchPorts = sameProjectPorts(await scan(startPort), projectDir);
 
-  const { pid, wrapperIdentity, logPath } = spawnDetachedPreview(
+  const { pid, wrapperIdentity, logPath, exitedWith } = spawnDetachedPreview(
     projectDir,
     stateHome,
     dependencies,
   );
 
   const kill = dependencies.kill ?? stopProcess;
-  const server = await awaitStartedServer(projectDir, startPort, preLaunchPorts, pid, dependencies);
+  const server = await awaitStartedServer(
+    projectDir,
+    startPort,
+    preLaunchPorts,
+    pid,
+    exitedWith,
+    dependencies,
+  );
   if (!server) {
+    const exit = exitedWith();
+    if (exit) {
+      throw new Error(
+        `background preview exited (${exit}) before it was ready; see ${logPath}${logTail(logPath)}`,
+      );
+    }
     await kill(pid);
     throw new Error(`background preview did not become ready; see ${logPath}`);
   }
@@ -587,16 +615,27 @@ export async function startBackgroundPreview(
   };
 }
 
+function logTail(logPath: string): string {
+  try {
+    const text = stripVTControlCharacters(readFileSync(logPath, "utf8"));
+    const lines = text.trimEnd().split("\n").slice(-5);
+    return lines.join("").trim() ? `\n${lines.join("\n")}` : "";
+  } catch {
+    return "";
+  }
+}
+
 async function awaitStartedServer(
   projectDir: string,
   startPort: number,
   preLaunchPorts: Set<number>,
   launchedPid: number,
+  exitedWith: () => string | null,
   dependencies: LifecycleDependencies,
 ): Promise<ActiveServer | null> {
   const scan = dependencies.scan ?? scanActiveServers;
   const sleep = dependencies.sleep ?? delay;
-  for (let attempt = 0; attempt < 50; attempt++) {
+  for (let attempt = 0; attempt < 50 && !exitedWith(); attempt++) {
     const server = startedServer(
       await scan(startPort),
       projectDir,

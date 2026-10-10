@@ -97,7 +97,10 @@ export function resolveCliChromeGpuMode(
 }
 
 function compositionRuntimeReadyInBrowser(): boolean {
-  return Boolean(Reflect.get(window, "__renderReady"));
+  return (
+    Boolean(Reflect.get(window, "__renderReady")) ||
+    typeof Reflect.get(window, "__hfStartupError") === "string"
+  );
 }
 
 function shaderTransitionsReadyInBrowser(): boolean {
@@ -126,14 +129,19 @@ function shaderTransitionsReadyInBrowser(): boolean {
   return shaderTransitionRegistryReady() ?? shaderLoadingOverlayReady();
 }
 
-export function waitForRuntimeReady(
-  page: Required<Pick<CompositionSeekPage, "waitForFunction">>,
+export async function waitForRuntimeReady(
+  page: Required<Pick<CompositionSeekPage, "waitForFunction" | "evaluate">>,
   timeoutMs: number,
 ): Promise<boolean> {
-  return page
+  const settled = await page
     .waitForFunction(compositionRuntimeReadyInBrowser, { timeout: timeoutMs })
     .then(() => true)
     .catch(() => false);
+  const startupError = await page
+    .evaluate(() => Reflect.get(window, "__hfStartupError"))
+    .catch(() => undefined);
+  if (typeof startupError === "string") throw new Error(startupError);
+  return settled;
 }
 
 async function waitForCompositionSettle(
