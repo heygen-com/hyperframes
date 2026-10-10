@@ -885,7 +885,8 @@
               "developers/cli",
               "packages/cli",
               "developers/catalog-search",
-              "packages/lint"
+              "packages/lint",
+              "guides/visual-regression"
             ]
           },
           {
@@ -934,7 +935,8 @@
               "reference/html-schema",
               "reference/color-grading",
               "reference/audio-effects",
-              "reference/speed-ramps"
+              "reference/speed-ramps",
+              "reference/cli-golden"
             ]
           },
           {
