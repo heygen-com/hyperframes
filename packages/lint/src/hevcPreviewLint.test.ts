@@ -40,6 +40,16 @@ describe("collectLocalVideoCandidates", () => {
     expect([...candidates.keys()]).toEqual([join(dir, "design/styleframes/clip.mp4")]);
   });
 
+  it("finds a double-quoted src whose name contains an apostrophe", () => {
+    const dir = makeProject(["assets/Ann's clip.mp4"]);
+
+    const candidates = collectLocalVideoCandidates(dir, [
+      { html: `<video src="assets/Ann's clip.mp4"></video>` },
+    ]);
+
+    expect([...candidates.keys()]).toEqual([join(dir, "assets/Ann's clip.mp4")]);
+  });
+
   it("still resolves project-root refs that have no sibling", () => {
     const dir = makeProject(["assets/clip.mp4"]);
 

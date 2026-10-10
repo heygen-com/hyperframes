@@ -370,8 +370,9 @@ function lintAudioSrcNotFound(
 
   const missingByFile = new Map<string, Set<string>>();
   for (const { html, compSrcPath } of htmlSources) {
+    const scannable = maskNonScannableRanges(html);
     let match: RegExpExecArray | null;
-    while ((match = audioSrcRe.exec(html)) !== null) {
+    while ((match = audioSrcRe.exec(scannable)) !== null) {
       const src = mediaSrcOf(match);
       if (/^(https?:|data:|blob:)/i.test(src)) continue;
       if (isUnresolvedAssetPlaceholder(src)) continue;

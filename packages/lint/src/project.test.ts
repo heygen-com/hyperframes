@@ -833,6 +833,14 @@ describe("a double-quoted src that contains an apostrophe", () => {
     expect(codes).toContain("audio_src_not_found");
   });
 
+  it("does not read an audio tag that an inline script builds as a string", async () => {
+    const codes = await lintCodes(
+      `<script>var s = '<audio src="' + u + '">'; var t = "<audio src='" + u + "'>";</script>`,
+      [],
+    );
+    expect(codes).not.toContain("audio_src_not_found");
+  });
+
   it("does not read a src out of another attribute's text", async () => {
     const codes = await lintCodes(`<img id="i1" alt="x src='ghost.png'" />`, []);
     expect(codes).not.toContain("missing_local_asset");
