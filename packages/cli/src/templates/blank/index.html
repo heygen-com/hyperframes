@@ -47,7 +47,9 @@
     </div>
     <script>
       const tl = gsap.timeline({ paused: true });
-      // Example: tl.fromTo("#title", { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.6 }, 0);
+      // An empty timeline makes `hyperframes check` fail its own scaffold with
+      // sweep_static, so the example tween below ships live and is yours to edit.
+      tl.fromTo("#title", { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.6 }, 0);
       window.__timelines["main"] = tl;
       tl.seek(0);
     </script>

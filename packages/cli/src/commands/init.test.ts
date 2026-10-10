@@ -86,6 +86,25 @@ describe("hyperframes init flag rename", () => {
     }
   });
 
+  it("scaffolds a blank timeline that actually advances under seek", () => {
+    // The template registers a paused GSAP timeline, so a scaffold with no tween on it
+    // trips the sweep_static layout guard and `hyperframes check` fails on a fresh project.
+    const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
+    const target = join(dir, "proj");
+    try {
+      const res = runInit([target, "--non-interactive"]);
+      expect(res.status).toBe(0);
+      const html = readFileSync(join(target, "index.html"), "utf-8");
+      const timelineScript = html.match(/<script>([\s\S]*?)<\/script>\s*<\/body>/)?.[1];
+      expect(timelineScript).toBeDefined();
+      // Drop comments first: a commented-out example tween must not satisfy this.
+      const executable = timelineScript!.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, "");
+      expect(executable).toMatch(/\btl\.(fromTo|from|to)\(/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("rejects a following flag when --example has no value", () => {
     const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
     const target = join(dir, "proj");
