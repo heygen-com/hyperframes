@@ -85,6 +85,10 @@ jobs:
       - name: Reject accidental file deletions
         if: github.event_name == 'pull_request'
         run: node scripts/check-no-main-deletions.mjs --base origin/main
+      # HEAD^1 is the base tip of the pull request merge commit; sizes the blobs git stores.
+      - name: Reject large binaries outside LFS
+        if: github.event_name == 'pull_request'
+        run: sh scripts/check-large-files.sh --range HEAD^1 HEAD
       # HEAD is the PR merge ref; its first parent is the current base tip, unlike the payload's
       # base.sha, which goes stale and would count the base's newer commits as the PR's changes.
       - name: Find the pull request's current base

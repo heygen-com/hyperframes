@@ -29,7 +29,6 @@ const sharedOpts = {
   target: "node22",
   format: "esm",
   minify: false,
-  sourcemap: true,
   external: [
     "@aws-sdk/client-s3",
     "@aws-sdk/client-sfn",

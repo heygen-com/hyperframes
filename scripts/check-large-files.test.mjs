@@ -8,6 +8,34 @@ import { describe, it } from "node:test";
 const SCRIPT = join(import.meta.dirname, "check-large-files.sh");
 const OVER_LIMIT_BYTES = 2 * 1024 * 1024;
 
+/** Commit files into a throwaway repo with no global or system git config (so no LFS filter). */
+function withRepo(run) {
+  const dir = mkdtempSync(join(tmpdir(), "hf-largefiles-repo-"));
+  const env = { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" };
+  const git = (...args) =>
+    spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], {
+      cwd: dir,
+      env,
+      encoding: "utf-8",
+    });
+  const commit = (files) => {
+    for (const [name, contents] of Object.entries(files)) writeFileSync(join(dir, name), contents);
+    git("add", "-A");
+    git("commit", "-q", "-m", "c");
+    return git("rev-parse", "HEAD").stdout.trim();
+  };
+  const range = (base, head) => {
+    const result = spawnSync(SCRIPT, ["--range", base, head], { cwd: dir, env, encoding: "utf-8" });
+    return { ok: result.status === 0, stderr: result.stderr ?? "" };
+  };
+  try {
+    git("init", "-q");
+    run({ commit, range });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 /** Run the checker over explicit paths. Exit 0 means "nothing to complain about". */
 function check(...paths) {
   const result = spawnSync(SCRIPT, paths, { encoding: "utf-8" });
@@ -63,6 +91,27 @@ describe("check-large-files", () => {
       assert.equal(ok, false);
       assert.match(stderr, /a\.bin/);
       assert.match(stderr, /b\.bin/);
+    });
+  });
+
+  it("--range rejects a binary the range adds, and ignores text and untouched files", () => {
+    withRepo(({ commit, range }) => {
+      const base = commit({ "old.bin": bigBinary });
+      const head = commit({ "big.bin": bigBinary, "big.txt": bigText });
+      const { ok, stderr } = range(base, head);
+      assert.equal(ok, false);
+      assert.match(stderr, /big\.bin/);
+      assert.doesNotMatch(stderr, /big\.txt|old\.bin/);
+    });
+  });
+
+  it("--range rejects a raw blob even when .gitattributes routes it through LFS", () => {
+    withRepo(({ commit, range }) => {
+      const base = commit({ ".gitattributes": "*.mp4 filter=lfs diff=lfs merge=lfs -text\n" });
+      const head = commit({ "clip.mp4": bigBinary });
+      const { ok, stderr } = range(base, head);
+      assert.equal(ok, false);
+      assert.match(stderr, /clip\.mp4 .*stored raw/);
     });
   });
 });

@@ -36,8 +36,9 @@ pre-commit:
       # Reject large binaries committed straight into the git pack instead of
       # LFS. The script reads the staged set itself (via `git diff --cached`)
       # rather than taking lefthook's `{staged_files}` expansion, which would
-      # split paths containing spaces. It skips files under the limit, anything
-      # routed through LFS, and registry/ assets. Tune via HF_MAX_NONLFS_KB.
+      # split paths containing spaces. It sizes the staged blob, so an LFS
+      # pointer passes and a raw file under an LFS pattern does not; registry/
+      # assets are skipped. Tune via HF_MAX_NONLFS_KB. CI runs it with --range.
       run: ./scripts/check-large-files.sh
     tracked-artifacts:
       # Keep ignored dependency trees and platform metadata out of commits.

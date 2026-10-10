@@ -1,0 +1,15 @@
+{
+  "@hyperframes/aws-lambda": { "packed": 63198, "unpacked": 230499 },
+  "@hyperframes/cli": { "packed": 7517641, "unpacked": 22401400 },
+  "@hyperframes/core": { "packed": 1636442, "unpacked": 3903211 },
+  "@hyperframes/engine": { "packed": 428347, "unpacked": 1436293 },
+  "@hyperframes/gcp-cloud-run": { "packed": 49412, "unpacked": 192672 },
+  "@hyperframes/lint": { "packed": 168745, "unpacked": 654607 },
+  "@hyperframes/parsers": { "packed": 190591, "unpacked": 831243 },
+  "@hyperframes/player": { "packed": 157145, "unpacked": 541601 },
+  "@hyperframes/producer": { "packed": 22387338, "unpacked": 77966096 },
+  "@hyperframes/sdk": { "packed": 90662, "unpacked": 325069 },
+  "@hyperframes/shader-transitions": { "packed": 212864, "unpacked": 825937 },
+  "@hyperframes/studio": { "packed": 5973698, "unpacked": 23915921 },
+  "@hyperframes/studio-server": { "packed": 134964, "unpacked": 528620 }
+}

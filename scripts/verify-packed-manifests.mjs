@@ -11,6 +11,7 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { extname, join, posix } from "node:path";
@@ -22,6 +23,11 @@ const PACKAGES_DIR = join(ROOT, "packages");
 const DEP_FIELDS = ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"];
 const RUNTIME_IMPORT_EXTENSIONS = new Set([".js", ".mjs", ".cjs", ".json", ".wasm", ".node"]);
 const PACKED_JAVASCRIPT_FILE_PATTERN = /\.(?:js|mjs|cjs)$/;
+const SIZE_BUDGETS_FILE = "scripts/package-size-budgets.json";
+// A budget sits 5% above the measured size; a package that shrinks 15% below
+// its budget fails until the budget follows it down, so budgets only ratchet down.
+const SIZE_BUDGET_HEADROOM = 1.05;
+const SIZE_BUDGET_RATCHET = 0.85;
 
 function listWorkspacePackageDirs() {
   return readdirSync(PACKAGES_DIR)
@@ -467,6 +473,44 @@ function verifyPackedConsumer(packDir, packedWorkspaces) {
   );
 }
 
+function measurePackedSize(filename) {
+  return {
+    packed: statSync(filename).size,
+    unpacked: execFileSync("tar", ["-xOf", filename], { cwd: ROOT, maxBuffer: 1 << 30 }).length,
+  };
+}
+
+export function listPackageSizeIssues(name, sizes, budget) {
+  const suggest = (bytes) => Math.ceil(bytes * SIZE_BUDGET_HEADROOM);
+  if (!budget) {
+    return [
+      `${name} has no size budget: add "${name}": { "packed": ${suggest(sizes.packed)}, "unpacked": ${suggest(sizes.unpacked)} } to ${SIZE_BUDGETS_FILE}`,
+    ];
+  }
+  return ["packed", "unpacked"].flatMap((kind) => {
+    if (sizes[kind] > budget[kind]) {
+      return [
+        `${name} ${kind} size ${sizes[kind]} bytes is over its budget of ${budget[kind]}. Keep source maps, tests and unused assets out of the tarball; raise the budget in ${SIZE_BUDGETS_FILE} only with the reason in the PR.`,
+      ];
+    }
+    if (sizes[kind] < budget[kind] * SIZE_BUDGET_RATCHET) {
+      return [
+        `${name} ${kind} size ${sizes[kind]} bytes is well under its budget of ${budget[kind]}: lower it to ${suggest(sizes[kind])} in ${SIZE_BUDGETS_FILE} so the saving stays.`,
+      ];
+    }
+    return [];
+  });
+}
+
+function verifyPackageSizes(packedWorkspaces) {
+  const budgets = JSON.parse(readFileSync(join(ROOT, SIZE_BUDGETS_FILE), "utf8"));
+  const issues = packedWorkspaces.flatMap(({ filename, packedPackage }) =>
+    listPackageSizeIssues(packedPackage.name, measurePackedSize(filename), budgets[packedPackage.name]),
+  );
+  if (issues.length > 0) throw new Error(`Package size budgets:\n${issues.join("\n")}`);
+  console.log(`Verified ${packedWorkspaces.length} packages are within their size budgets.`);
+}
+
 function packAndVerifyWorkspace(workspace, packDir) {
   const sourcePackageJson = readWorkspacePackage(workspace);
   if (sourcePackageJson.private) return null;
@@ -485,6 +529,7 @@ function main() {
     const packedWorkspaces = listWorkspacePackageDirs()
       .map((workspace) => packAndVerifyWorkspace(workspace, packDir))
       .filter(Boolean);
+    verifyPackageSizes(packedWorkspaces);
     verifyPackedConsumer(packDir, packedWorkspaces);
   } finally {
     rmSync(packDir, { force: true, recursive: true });

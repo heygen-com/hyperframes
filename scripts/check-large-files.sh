@@ -14,6 +14,10 @@
 # Usage:
 #   check-large-files.sh                 # default: check the staged file set
 #   check-large-files.sh <file> [<file>] # explicit files (handy for testing)
+#   check-large-files.sh --range <base> <head>  # files a commit range adds or changes (CI)
+#
+# The staged and range modes size the blob git stores, not the file on disk, so
+# a file matching an LFS pattern but added without git-lfs installed is caught.
 #
 # We read the staged set ourselves rather than taking lefthook's {staged_files}
 # expansion: that expands to a bare space-separated string, which splits paths
@@ -25,14 +29,33 @@ set -u
 
 MAX_KB="${HF_MAX_NONLFS_KB:-500}"
 
+# Blob prefix for `git cat-file`: ":" is the index, "<head>:" a commit, empty
+# means read the file on disk.
+BLOB_REV=""
+RANGE_BASE=""
+if [ "${1:-}" = "--range" ]; then
+  [ "$#" -eq 3 ] || { echo "usage: $0 --range <base> <head>" >&2; exit 2; }
+  RANGE_BASE="$2"
+  BLOB_REV="$3:"
+  shift 3
+elif [ "$#" -eq 0 ]; then
+  BLOB_REV=":"
+fi
+
 # Emit the list of paths to check, one per line.
+# Added/Copied/Modified/Renamed only (skip Deleted — nothing to size).
 list_files() {
-  if [ "$#" -gt 0 ]; then
-    printf '%s\n' "$@"
-  else
-    # Added/Copied/Modified/Renamed staged paths (skip Deleted — nothing to size).
+  if [ -n "$RANGE_BASE" ]; then
+    git diff --name-only --diff-filter=ACMR "$RANGE_BASE" "${BLOB_REV%:}"
+  elif [ -n "$BLOB_REV" ]; then
     git diff --cached --name-only --diff-filter=ACMR
+  else
+    printf '%s\n' "$@"
   fi
+}
+
+read_bytes() {
+  if [ -n "$BLOB_REV" ]; then git cat-file blob "$BLOB_REV$1"; else cat -- "$1"; fi
 }
 
 violations="$(mktemp)"
@@ -41,11 +64,17 @@ trap 'rm -f "$violations"' EXIT INT TERM
 list_files "$@" | while IFS= read -r f; do
   [ -n "$f" ] || continue
 
-  # Skip symlinks: `wc -c` would measure the link *target's* bytes, so a symlink
-  # to a large LFS-tracked asset could be flagged even though the real blob is a
-  # tiny pointer. Symlinks themselves are never the bloat we're hunting.
-  [ -L "$f" ] && continue
-  [ -f "$f" ] || continue
+  if [ -n "$BLOB_REV" ]; then
+    # A symlink's blob is its target path and a submodule is not a blob; neither
+    # is the bloat we're hunting.
+    [ "$(git cat-file -t "$BLOB_REV$f" 2>/dev/null)" = "blob" ] || continue
+  else
+    # Skip symlinks: `wc -c` would measure the link *target's* bytes, so a symlink
+    # to a large LFS-tracked asset could be flagged even though the real blob is a
+    # tiny pointer.
+    [ -L "$f" ] && continue
+    [ -f "$f" ] || continue
+  fi
 
   # registry/ intentionally ships raw binary assets (block backgrounds, avatar
   # PNGs, .glb models, audio) so installed blocks stay portable without an LFS
@@ -63,20 +92,26 @@ list_files "$@" | while IFS= read -r f; do
   # `grep -I` treats a file containing NUL bytes as binary, the same heuristic
   # git uses to print "Binary files differ". A generated blob of text is still
   # caught by review, not here.
-  grep -qI . "$f" 2>/dev/null && continue
+  read_bytes "$f" 2>/dev/null | grep -qI . && continue
 
-  bytes="$(wc -c < "$f" | tr -d ' ')"
+  bytes="$(read_bytes "$f" | wc -c | tr -d ' ')"
   # Ceiling division: a sub-1024-byte file must report >=1 KB, never 0, so it
   # can't slip past a strict threshold (e.g. HF_MAX_NONLFS_KB=0). Plain
   # `bytes / 1024` would round a 512-byte binary down to 0 and pass it.
   kb=$(( (bytes + 1023) / 1024 ))
   [ "$kb" -le "$MAX_KB" ] && continue
 
-  # Is this path routed through LFS? `git check-attr` reads .gitattributes.
+  # A stored blob over the limit is raw bytes even when .gitattributes routes
+  # the path through LFS (git-lfs was not installed). A file on disk under an
+  # LFS pattern is the smudged copy of a pointer, so it passes.
   filter="$(git check-attr filter -- "$f" | sed 's/.*: //')"
-  [ "$filter" = "lfs" ] && continue
+  note=""
+  if [ "$filter" = "lfs" ]; then
+    [ -z "$BLOB_REV" ] && continue
+    note=" — matches an LFS pattern but was stored raw; run \`git lfs install\` and re-add it"
+  fi
 
-  printf '%s\t%s\n' "$kb" "$f" >> "$violations"
+  printf '%s\t%s\n' "$kb" "$f$note" >> "$violations"
 done
 
 # `while` ran in a pipeline subshell, so it couldn't set a parent-shell flag —
