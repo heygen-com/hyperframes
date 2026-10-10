@@ -51,7 +51,6 @@ export {
   type RenderObservationStatus,
 } from "./services/render/observability.js";
 // ── Render provenance sidecar ───────────────────────────────────────────────
-// Public receipt written next to committed render artifacts (default on).
 export {
   RENDER_SIDECAR_SCHEMA_URL,
   RENDER_SIDECAR_SCHEMA_VERSION,

@@ -106,11 +106,6 @@ export interface RenderCommandArgs {
   "low-memory-mode"?: boolean;
   "experimental-fast-capture"?: boolean;
   "frames-cache-dir"?: string;
-  /**
-   * String when `--provenance <value>` was passed; boolean when the parser
-   * negated it (`--no-provenance` → false) or it was passed bare
-   * (`--provenance` → true).
-   */
   provenance?: string | boolean;
 }
 
@@ -168,10 +163,7 @@ export interface RenderPlan {
   variablesArg?: string;
   variablesFileArg?: string;
   strictVariables: boolean;
-  /**
-   * Provenance sidecar setting: `undefined` = default sidecar next to the
-   * output, `false` = disabled, string = resolved custom sidecar path.
-   */
+  /** undefined writes the sidecar next to the output, false disables it, a string relocates it. */
   provenance?: string | false;
   environment: Readonly<Record<string, string>>;
   /** Names of HF_-/HYPERFRAMES_-prefixed env vars present at plan time (never values), capped at 20. */
@@ -232,20 +224,8 @@ function resolveHfEnvOverrides(): readonly string[] {
     .slice(0, MAX_REPORTED_ENV_OVERRIDES);
 }
 
-/**
- * Aliases that disable the provenance sidecar when passed as the flag VALUE
- * (`--provenance false`). `--no-provenance` arrives as boolean `false` from
- * the arg parser's standard negation and is handled separately.
- */
 const PROVENANCE_DISABLE_ALIASES = new Set(["false", "off", "0", "none"]);
 
-/**
- * Normalize the raw `--provenance` flag into the plan's tri-state setting:
- * `undefined` = default on (sidecar next to the output), `false` = disabled,
- * string = resolved custom sidecar path. A bare `--provenance` (boolean
- * `true`) and an empty value both mean "default on" — the flag exists to
- * relocate or disable the sidecar, not to enable an already-on default.
- */
 export function parseProvenanceArg(raw: string | boolean | undefined): string | false | undefined {
   if (raw === undefined || raw === true) return undefined;
   if (raw === false) return false;
@@ -544,8 +524,6 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
 
   const provenance = parseProvenanceArg(args.provenance);
   if (typeof provenance === "string" && batchPath) {
-    // One fixed sidecar path cannot serve N row outputs; rows always write
-    // `<row output>.hf-render.json`. Disabling still applies batch-wide.
     errorBox(
       "Invalid provenance",
       "--provenance with a custom path cannot be combined with --batch. " +
@@ -554,8 +532,6 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
     failUsage();
   }
   if (typeof provenance === "string" && useDocker) {
-    // The containerized CLI writes the sidecar inside the mounted output
-    // directory; an arbitrary host path is not visible from the container.
     errorBox(
       "Invalid provenance",
       "--provenance with a custom path is not supported with --docker. " +

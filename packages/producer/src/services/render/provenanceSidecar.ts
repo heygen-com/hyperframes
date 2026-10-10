@@ -1,30 +1,6 @@
-/**
- * provenanceSidecar — build and write the public render-provenance sidecar
- * (`<output>.hf-render.json`) next to a committed render artifact.
- *
- * The sidecar is a portable receipt for agents and CI: which tool versions
- * produced the file, what input (entry hash, compiled-composition hash,
- * variables hash, fonts) went in, what came out (format, fps, resolution,
- * duration, encoder, output sha256), and how the render ran (stage timings,
- * workers, warning codes). It complements the in-container metadata tags
- * written by the engine's `renderProvenance` utility — those survive file
- * moves but hold only renderer name + version; the sidecar carries the full
- * receipt but travels as a separate file.
- *
- * Deliberately NOT included: raw variable values (hashed instead — callers
- * pass API keys and user text through variables), environment variables,
- * absolute host paths, usernames, or machine names. Once a receipt is
- * shared, metadata leaks are hard to walk back.
- *
- * Like the engine's container tags, this is an unauthenticated hint, not an
- * authenticity boundary: any tool can write or edit a JSON file. Good for
- * diagnostics, reproducibility checks and CI bookkeeping; never a basis for
- * trust decisions.
- *
- * JSON Schema: `packages/core/schemas/hf-render-sidecar.json` (published at
- * the `$schema` URL below). Keep the interface, the schema, and
- * `docs/reference/render-provenance.mdx` in sync.
- */
+// The public `<output>.hf-render.json` receipt. Raw variable values, env vars, host paths and
+// usernames stay out, and like the engine's container tags it is a hint, not an authenticity
+// boundary. Keep in sync with core/schemas/hf-render-sidecar.json and the render-provenance doc.
 
 import { execFile as execFileCallback } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -40,13 +16,7 @@ import { canonicalJsonStringify, sha256Hex } from "./stages/planHash.js";
 
 const execFile = promisify(execFileCallback);
 
-/**
- * Build-time producer version injected by bundlers (the CLI's tsup config
- * defines it). `readProducerVersion` walks the filesystem for the producer's
- * own package.json, which cannot succeed when this source is bundled into
- * ANOTHER package's dist (the CLI inlines the producer via `noExternal`),
- * so the define wins when present and the walker is the unbundled fallback.
- */
+// The CLI bundles the producer into its own dist, where the package.json walk cannot find it.
 declare const __PRODUCER_VERSION__: string | undefined;
 
 function resolveProducerVersion(): string {
@@ -61,14 +31,7 @@ export const RENDER_SIDECAR_SUFFIX = ".hf-render.json";
 export const RENDER_SIDECAR_SCHEMA_URL =
   "https://hyperframes.heygen.com/schema/hf-render-sidecar.json";
 
-/**
- * Caller-facing provenance setting, threaded from the CLI flag through
- * `RenderConfig.provenance`:
- *
- * - `undefined` — default ON; sidecar at `<output>.hf-render.json`.
- * - `false` — disabled (`--no-provenance`).
- * - string — custom sidecar path (`--provenance <path>`).
- */
+/** undefined writes `<output>.hf-render.json`, false disables it, a string relocates it. */
 export type ProvenanceSetting = string | false | undefined;
 
 export interface RenderProvenanceSidecar {
@@ -130,10 +93,6 @@ export interface RenderProvenanceSidecar {
   host: { platform: string; arch: string };
 }
 
-/**
- * Resolve where the sidecar should be written, or `null` when disabled.
- * The default sits beside the artifact so the receipt travels with it.
- */
 export function resolveProvenanceSidecarPath(
   outputPath: string,
   provenance: ProvenanceSetting,
@@ -142,17 +101,11 @@ export function resolveProvenanceSidecarPath(
   if (typeof provenance === "string" && provenance.trim() !== "") {
     return resolve(provenance);
   }
-  // `resolve` also strips a trailing separator from png-sequence directory
-  // outputs so the sidecar lands NEXT TO the directory, not inside it.
+  // `resolve` strips a directory output's trailing separator, so the sidecar lands beside it.
   return `${resolve(outputPath)}${RENDER_SIDECAR_SUFFIX}`;
 }
 
-/**
- * Extract the `@font-face` family names from the compiled composition HTML.
- * The producer's deterministic-font injector writes these blocks with plain
- * `font-family: '<name>'` declarations, so a bounded scan is reliable for
- * framework-compiled output. Returns sorted, de-duplicated names.
- */
+// The deterministic-font injector writes plain `font-family: '<name>'` declarations.
 export function collectFontFamilies(compiledHtml: string): string[] {
   const families = new Set<string>();
   const fontFace = /@font-face\s*\{[^}]*?font-family\s*:\s*(['"]?)([^'";}]+)\1/g;
@@ -163,19 +116,12 @@ export function collectFontFamilies(compiledHtml: string): string[] {
   return [...families].sort();
 }
 
-/**
- * Hash render-time variables into `{ count, sha256 }` — the receipt proves
- * WHICH parametrization produced the output without disclosing the values
- * (variables routinely carry user text or tokens). Canonical JSON (sorted
- * keys) keeps the hash stable across property order.
- */
+// Hashed, never raw: variables routinely carry user text or tokens.
 export function hashVariables(
   variables: Record<string, unknown> | undefined,
 ): { count: number; sha256: string } | null {
   if (!variables || Object.keys(variables).length === 0) return null;
-  // JSON round-trip drops `undefined`-valued keys and non-JSON values the
-  // same way the render request boundary does, so direct RenderConfig
-  // callers hash identically to CLI callers.
+  // Same normalization as the render request boundary, so direct RenderConfig callers match.
   const normalized: unknown = JSON.parse(JSON.stringify(variables));
   return {
     count: Object.keys(variables).length,
@@ -183,7 +129,6 @@ export function hashVariables(
   };
 }
 
-/** Streaming sha256 of a file — output artifacts can be large. */
 async function sha256File(path: string): Promise<string> {
   const hash = createHash("sha256");
   const stream = createReadStream(path);
@@ -191,12 +136,7 @@ async function sha256File(path: string): Promise<string> {
   return hash.digest("hex");
 }
 
-/**
- * Cached first line of `ffmpeg -version`, probed via the engine's binary
- * resolution (honors `HYPERFRAMES_FFMPEG_PATH`). Returns `undefined` when
- * the probe fails — a missing version line must never fail a render that
- * already committed its artifact.
- */
+// A failed probe yields undefined: it must never fail a render that already committed.
 let cachedFfmpegVersionLine: string | undefined | null = null;
 async function readFfmpegVersionLine(): Promise<string | undefined> {
   if (cachedFfmpegVersionLine !== null) return cachedFfmpegVersionLine;
@@ -289,16 +229,7 @@ export function buildRenderProvenanceSidecar(
   };
 }
 
-/**
- * Serialize + write the sidecar. Pretty-printed with a trailing newline so
- * the receipt is diff-friendly in CI artifacts and shell-readable via `jq`.
- *
- * Written atomically: the JSON goes to a sibling `.tmp` file in the SAME
- * directory as the destination (never a shared, world-writable os.tmpdir()),
- * is flushed, then renamed over the final path — readers can only ever
- * observe a complete receipt, and no cross-device or symlink-swap window
- * exists between write and publish.
- */
+// The temp file sits beside the destination, not in os.tmpdir(), so the rename is atomic.
 async function writeRenderProvenanceSidecar(
   sidecarPath: string,
   sidecar: RenderProvenanceSidecar,
@@ -319,11 +250,6 @@ async function writeRenderProvenanceSidecar(
   }
 }
 
-/**
- * Orchestrator-facing fields for {@link emitRenderProvenanceSidecar} —
- * everything the pipeline already holds at artifact-commit time, minus the
- * facts the emitter derives itself (fonts, hashes, versions, output size).
- */
 export interface EmitRenderProvenanceSidecarInput {
   outputPath: string;
   provenance: ProvenanceSetting;
