@@ -61,7 +61,7 @@
     "package:codex-plugin": "node scripts/package-codex-plugin.mjs",
     "upload:docs-images": "bash scripts/upload-docs-images.sh",
     "host:registry-assets": "bun run scripts/host-registry-assets.ts",
-    "prepare": "test -d .git && lefthook install || true",
+    "prepare": "test -e .git && lefthook install || true",
     "lint:registry-items": "node scripts/lint-registry-items.mjs"
   },
   "devDependencies": {
