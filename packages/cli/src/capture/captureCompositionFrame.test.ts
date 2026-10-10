@@ -78,6 +78,8 @@ describe("waitForRuntimeReady", () => {
     const predicate = waitForFunction.mock.calls[ready]![0];
     vi.stubGlobal("window", { __hfStartupError: startupError });
     expect(predicate()).toBe(true);
+    vi.stubGlobal("window", { __hfStartupError: { message: "not a string" } });
+    expect(predicate()).toBe(false);
   });
 
   it("is what layout, motion-shot and validate wait on before they sample the page", () => {

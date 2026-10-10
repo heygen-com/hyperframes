@@ -450,75 +450,78 @@ async function validateInBrowser(
       args: buildChromeArgs({ ...viewport, captureMode: "screenshot", requiresWebGpu }, gpuConfig),
     });
 
-    const page = await chromeBrowser.newPage();
-    await installPageFunctionGuard(page);
-    await page.setViewport(viewport);
-
-    page.on("console", (msg) => {
-      const type = msg.type();
-      const loc = msg.location();
-      const text = msg.text();
-      if (type === "error") {
-        if (text.startsWith("Failed to load resource")) return;
-        errors.push({ level: "error", text, url: loc.url, line: loc.lineNumber });
-      } else if (type === "warn") {
-        warnings.push({ level: "warning", text, url: loc.url, line: loc.lineNumber });
-      }
-    });
-
-    page.on("pageerror", (err) => {
-      const text = normalizeErrorMessage(err);
-      // CDN scripts (e.g. GSAP from jsdelivr) returning HTML error pages
-      // instead of JS produce "Unexpected token '<'" SyntaxErrors. These
-      // are network failures, not composition authoring errors.
-      if (text.includes("Unexpected token '<'") || text.includes("Unexpected token '&lt;'")) return;
-      errors.push({ level: "error", text });
-    });
-
-    page.on("requestfailed", (req) => {
-      const url = req.url();
-      if (url.includes("favicon") || url.startsWith("data:")) return;
-      const failureText = req.failure()?.errorText;
-      if (shouldIgnoreRequestFailure(url, failureText, req.resourceType())) return;
-      const path = projectPathOfUrl(url);
-      errors.push({
-        level: "error",
-        text: `Failed to load ${path}: ${failureText ?? "net::ERR_FAILED"}`,
-        url,
-      });
-    });
-
-    page.on("response", (res) => {
-      if (res.status() >= 400) {
-        const url = res.url();
-        if (url.includes("favicon")) return;
-        if (shouldIgnoreHttpError(url, res.status())) return;
-        const path = projectPathOfUrl(url);
-        errors.push({ level: "error", text: `${res.status()} loading ${path}`, url });
-      }
-    });
-
-    const navTimeoutMs = resolveNavigationTimeoutMs(opts.timeout);
     try {
-      await page.goto(server.url, { waitUntil: "domcontentloaded", timeout: navTimeoutMs });
-    } catch (err) {
-      const hinted = navigationTimeoutHint(err, navTimeoutMs);
-      if (hinted) throw hinted;
-      throw err;
-    }
-    await assertWebGpuAdapterAvailable(page, requiresWebGpu, softwareWebGpu);
-    await waitForRuntimeReady(page, opts.timeout ?? 3000);
-    await new Promise((r) => setTimeout(r, opts.timeout ?? 3000));
+      const page = await chromeBrowser.newPage();
+      await installPageFunctionGuard(page);
+      await page.setViewport(viewport);
 
-    for (const w of await auditClipDurations(page, analyzeClipMediaFit, opts.timeout ?? 3000)) {
-      warnings.push(w);
-    }
+      page.on("console", (msg) => {
+        const type = msg.type();
+        const loc = msg.location();
+        const text = msg.text();
+        if (type === "error") {
+          if (text.startsWith("Failed to load resource")) return;
+          errors.push({ level: "error", text, url: loc.url, line: loc.lineNumber });
+        } else if (type === "warn") {
+          warnings.push({ level: "warning", text, url: loc.url, line: loc.lineNumber });
+        }
+      });
 
-    if (opts.contrast) {
-      contrast = await runContrastAudit(page);
-    }
+      page.on("pageerror", (err) => {
+        const text = normalizeErrorMessage(err);
+        // CDN scripts (e.g. GSAP from jsdelivr) returning HTML error pages
+        // instead of JS produce "Unexpected token '<'" SyntaxErrors. These
+        // are network failures, not composition authoring errors.
+        if (text.includes("Unexpected token '<'") || text.includes("Unexpected token '&lt;'"))
+          return;
+        errors.push({ level: "error", text });
+      });
 
-    await chromeBrowser.close();
+      page.on("requestfailed", (req) => {
+        const url = req.url();
+        if (url.includes("favicon") || url.startsWith("data:")) return;
+        const failureText = req.failure()?.errorText;
+        if (shouldIgnoreRequestFailure(url, failureText, req.resourceType())) return;
+        const path = projectPathOfUrl(url);
+        errors.push({
+          level: "error",
+          text: `Failed to load ${path}: ${failureText ?? "net::ERR_FAILED"}`,
+          url,
+        });
+      });
+
+      page.on("response", (res) => {
+        if (res.status() >= 400) {
+          const url = res.url();
+          if (url.includes("favicon")) return;
+          if (shouldIgnoreHttpError(url, res.status())) return;
+          const path = projectPathOfUrl(url);
+          errors.push({ level: "error", text: `${res.status()} loading ${path}`, url });
+        }
+      });
+
+      const navTimeoutMs = resolveNavigationTimeoutMs(opts.timeout);
+      try {
+        await page.goto(server.url, { waitUntil: "domcontentloaded", timeout: navTimeoutMs });
+      } catch (err) {
+        const hinted = navigationTimeoutHint(err, navTimeoutMs);
+        if (hinted) throw hinted;
+        throw err;
+      }
+      await assertWebGpuAdapterAvailable(page, requiresWebGpu, softwareWebGpu);
+      await waitForRuntimeReady(page, opts.timeout ?? 3000);
+      await new Promise((r) => setTimeout(r, opts.timeout ?? 3000));
+
+      for (const w of await auditClipDurations(page, analyzeClipMediaFit, opts.timeout ?? 3000)) {
+        warnings.push(w);
+      }
+
+      if (opts.contrast) {
+        contrast = await runContrastAudit(page);
+      }
+    } finally {
+      await chromeBrowser.close().catch(() => {});
+    }
   } finally {
     await server.close();
     localized.cleanup();

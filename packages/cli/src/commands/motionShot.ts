@@ -410,20 +410,25 @@ async function openCompositionPage(
     executablePath,
     args: buildChromeArgs({ ...size, captureMode: "screenshot", requiresWebGpu }, gpuConfig),
   });
-  const page = await browser.newPage();
-  const navigationTimeout = resolveDiagnosticNavigationTimeoutMs();
-  await page.setViewport(size);
-  await page.goto(url, { waitUntil: "domcontentloaded", timeout: navigationTimeout });
-  await assertWebGpuAdapterAvailable(page, requiresWebGpu, softwareWebGpu);
-  await waitForRuntimeReady(page, 10000);
-  await page
-    .evaluate(async () => {
-      const d = document as unknown as { fonts?: { ready?: Promise<unknown> } };
-      if (d.fonts?.ready) await d.fonts.ready;
-    })
-    .catch(() => {});
-  await installSeekHelper(page);
-  return { browser, page, size };
+  try {
+    const page = await browser.newPage();
+    const navigationTimeout = resolveDiagnosticNavigationTimeoutMs();
+    await page.setViewport(size);
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: navigationTimeout });
+    await assertWebGpuAdapterAvailable(page, requiresWebGpu, softwareWebGpu);
+    await waitForRuntimeReady(page, 10000);
+    await page
+      .evaluate(async () => {
+        const d = document as unknown as { fonts?: { ready?: Promise<unknown> } };
+        if (d.fonts?.ready) await d.fonts.ready;
+      })
+      .catch(() => {});
+    await installSeekHelper(page);
+    return { browser, page, size };
+  } catch (err) {
+    await browser.close().catch(() => {});
+    throw err;
+  }
 }
 
 // Longest seekable duration (seconds) across registered timelines, player/root

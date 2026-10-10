@@ -97,7 +97,10 @@ export function resolveCliChromeGpuMode(
 }
 
 function compositionRuntimeReadyInBrowser(): boolean {
-  return Boolean(Reflect.get(window, "__renderReady") || Reflect.get(window, "__hfStartupError"));
+  return (
+    Boolean(Reflect.get(window, "__renderReady")) ||
+    typeof Reflect.get(window, "__hfStartupError") === "string"
+  );
 }
 
 function shaderTransitionsReadyInBrowser(): boolean {
