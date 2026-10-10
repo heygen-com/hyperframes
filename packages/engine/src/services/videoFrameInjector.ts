@@ -187,6 +187,7 @@ export function createVideoFrameInjector(
   const bytesLimit = bytesLimitMb * 1024 * 1024;
   const frameCache = createFrameSourceCache(entryLimit, bytesLimit, config?.frameSrcResolver);
   const lastInjectedFrameByVideo = new Map<string, number>();
+  const lastInjectedSourceByVideo = new Map<string, { framePath: string; dataUri: string }>();
   const lastCacheTouchByDir = new Map<string, number>();
 
   /**
@@ -221,7 +222,14 @@ export function createVideoFrameInjector(
       for (const [videoId, payload] of activePayloads) {
         activeIds.add(videoId);
         const lastFrameIndex = lastInjectedFrameByVideo.get(videoId);
-        if (lastFrameIndex === payload.frameIndex) continue;
+        const lastSource = lastInjectedSourceByVideo.get(videoId);
+        if (lastFrameIndex === payload.frameIndex && lastSource?.framePath === payload.framePath) {
+          // The decoded frame is unchanged, but the native video can still
+          // have animated styles. Reapply the replacement image's visual
+          // properties on every active frame without rereading the image.
+          updates.push({ videoId, dataUri: lastSource.dataUri, frameIndex: payload.frameIndex });
+          continue;
+        }
         pendingReads.push(
           frameCache
             .get(payload.framePath)
@@ -234,6 +242,7 @@ export function createVideoFrameInjector(
     for (const videoId of Array.from(lastInjectedFrameByVideo.keys())) {
       if (!activeIds.has(videoId)) {
         lastInjectedFrameByVideo.delete(videoId);
+        lastInjectedSourceByVideo.delete(videoId);
       }
     }
 
@@ -254,6 +263,10 @@ export function createVideoFrameInjector(
       for (const update of updates) {
         if (injectedIds.has(update.videoId)) {
           lastInjectedFrameByVideo.set(update.videoId, update.frameIndex);
+          lastInjectedSourceByVideo.set(update.videoId, {
+            framePath: activePayloads.get(update.videoId)?.framePath ?? "",
+            dataUri: update.dataUri,
+          });
         }
       }
       if (injectedIds.size > 0) {
