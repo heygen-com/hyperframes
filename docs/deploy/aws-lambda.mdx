@@ -210,6 +210,22 @@ Most often a Lambda cold-start chain on a many-chunk render. The Map state's res
 
 If progress doesn't advance for >10 minutes, check the Step Functions execution in the AWS console — failed Lambda invocations include the typed error name (`FONT_FETCH_FAILED`, `FFMPEG_VERSION_MISMATCH`, etc.) which short-circuits the state machine.
 
+### Long-video planning times out
+
+A failure with `VIDEO_EXTRACTION_FAILED` and `ffmpeg_timeout` means an FFmpeg process exceeded its deadline. Check the failed invocation's CloudWatch logs to distinguish Plan from RenderChunk. Plan v2 leaves eligible constant-frame-rate SDR video extraction to the chunk workers after a short timing probe. Variable-frame-rate sources and required HDR color conversions still run during Plan; the deprecated v1 path also extracts videos during Plan.
+
+Constant-frame-rate extraction uses segments of up to two minutes, with the default 300,000 ms timeout applied to each segment. Variable-frame-rate extraction is not segmented, so a long range can exceed that deadline even when shorter ranges succeed.
+
+For a variable-frame-rate source whose extraction fits within the Lambda invocation budget, increase `FFMPEG_PROCESS_TIMEOUT_MS` on the deployed render function. Setting it only in the terminal running `lambda render` does not configure the remote function. CDK users can add the environment variable before deploying their stack:
+
+```ts
+render.renderFunction.addEnvironment("FFMPEG_PROCESS_TIMEOUT_MS", "600000");
+```
+
+This gives each FFmpeg process ten minutes. Plan, RenderChunk, and Assemble each have to finish within the function's configured timeout, at most 15 minutes, including downloads, processing, and uploads, and fit its `/tmp` storage. Measure the failing phase's time and storage use in CloudWatch. Smaller chunks or a higher `maxParallelChunks` can reduce each chunk's work; they do not divide video extraction that still happens during Plan.
+
+If planning cannot fit, split the composition into shorter, frame-aligned projects, render each as a separate job, and combine the results. Choose part lengths from measured planning times. There is no fixed maximum video length: resolution, frame rate, codec, and Lambda resources affect extraction time.
+
 ### Tearing down doesn't reclaim S3 storage
 
 The render bucket is created with CloudFormation `Retain` on delete — `hyperframes lambda destroy` (or `sam delete`) tears the function + state machine down but the bucket survives. This is intentional: it protects final-rendered MP4s from being lost when you re-deploy. To fully reclaim storage, empty + delete the bucket via the AWS console / `aws s3 rb`.
@@ -223,15 +239,17 @@ The render bucket is created with CloudFormation `Retain` on delete — `hyperfr
 - Each `--region` is an independent stack. Cross-region failover is not built
   in.
 - The distributed AWS path is SDR-only.
-- Each render chunk extracts only the video frames it shows, so the plan step
-  no longer grows with video length. On a 10,240 MB function, a 26-minute
-  576×1024 24 fps H.264 clip plans in about 20 seconds. Each chunk downloads
-  the whole source file of every video it shows. Variable-frame-rate and HDR
-  sources are the exception: the plan step still extracts every frame of those,
-  inside Lambda's 15-minute limit, in 2-minute segments, so
-  `FFMPEG_PROCESS_TIMEOUT_MS` applies to each segment, not to the whole clip.
-- A chunk must also finish inside 15 minutes. For long renders, raise
-  `--max-parallel-chunks` (`maxParallelChunks` in the SDK) so each chunk covers
+- Plan v2 leaves eligible constant-frame-rate SDR video extraction to each
+  render chunk, which extracts only the frames it shows. On a 10,240 MB
+  function, a 26-minute 576×1024 24 fps H.264 clip plans in about 20 seconds. Each chunk downloads
+  the whole source file of every video it shows. Variable-frame-rate sources
+  and required HDR color conversions still need extraction during Plan.
+  Constant-frame-rate extraction uses two-minute segments; variable-frame-rate
+  extraction remains unsegmented. See [long-video planning timeouts](#long-video-planning-times-out)
+  for timeout configuration and splitting jobs that cannot fit.
+- Plan, each RenderChunk, and Assemble must finish within their own configured
+  Lambda timeout, at most 15 minutes, and fit the function's `/tmp` storage.
+  For long renders, raise `--max-parallel-chunks` (`maxParallelChunks` in the SDK) so each chunk covers
   fewer frames.
 
 ## Related topics
