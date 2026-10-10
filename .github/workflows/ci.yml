@@ -69,6 +69,7 @@ jobs:
       code: ${{ (github.event_name == 'workflow_dispatch' && inputs.catalog_publish) && 'true' || steps.filter.outputs.code }}
       docs_catalog: ${{ steps.filter.outputs.docs_catalog }}
       cli: ${{ steps.filter.outputs.cli }}
+      cli_bundle: ${{ steps.filter.outputs.cli_bundle }}
       skills: ${{ steps.filter.outputs.skills }}
       catalog_index: ${{ steps.filter.outputs.catalog_index }}
       codex_plugin: ${{ steps.filter.outputs.codex_plugin }}
@@ -124,11 +125,6 @@ jobs:
             code:
               - "registry/**"
               - "packages/**"
-              # Skills packages/cli/scripts/build-copy.mjs bundles into the CLI tarball.
-              - "skills/hyperframes/**"
-              - "skills/hyperframes-cli/**"
-              - "skills/gsap/**"
-              - "skills/media-use/**"
               - "scripts/**"
               - "package.json"
               - "bun.lock"
@@ -141,6 +137,12 @@ jobs:
               - "package.json"
               - "bun.lock"
               - ".github/workflows/ci.yml"
+            # Skills packages/cli/scripts/build-copy.mjs bundles into the CLI tarball (size budget).
+            cli_bundle:
+              - "skills/hyperframes/**"
+              - "skills/hyperframes-cli/**"
+              - "skills/gsap/**"
+              - "skills/media-use/**"
             skills:
               - "scripts/generate-captured-font-copies.mjs"
               - "packages/cli/src/media-use/**"
@@ -253,7 +255,7 @@ jobs:
     name: Build
     needs: changes
     # A skipped required check passes, so a broken change detection must fail it instead.
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.code == 'true') }}
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.code == 'true' || needs.changes.outputs.cli_bundle == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
