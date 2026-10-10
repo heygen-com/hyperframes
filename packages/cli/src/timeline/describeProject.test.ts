@@ -4,6 +4,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -299,6 +300,73 @@ describe("describeProject", () => {
     expect(row!.end).toBeCloseTo(0.72, 1);
     expect(text).toContain("duration=media");
   });
+
+  it.each([
+    ["assets/beat%20track.mp3", "assets/beat track.mp3"],
+    ["assets/beat track.mp3?cache=1#listen", "assets/beat track.mp3"],
+    ["assets/100%20beat%.mp3?cache=1", "assets/100 beat%.mp3"],
+    ["assets/beat%23one.mp3?cache=1", "assets/beat#one.mp3"],
+    ["assets/beat%2520track.mp3", "assets/beat%20track.mp3"],
+  ])("measures the local source behind URL %s", async (src, filename) => {
+    const probed: string[] = [];
+    const { rows, text } = await rowsOf(
+      `<div data-composition-id="m"><audio id="sting" src="${src}" data-start="0"></audio></div>`,
+      false,
+      (root) => {
+        mkdirSync(join(root, "assets"));
+        copyFileSync(REAL_AUDIO, join(root, filename));
+      },
+      async (file, tag) => {
+        probed.push(`${tag}:${file}`);
+        return POP_SECONDS();
+      },
+    );
+    expect(probed).toEqual([`audio:${realpathSync(join(dir, filename))}`]);
+    expect(rows[0]).toMatchObject({ durationSource: "media", pendingReason: null, src });
+    expect(rows[0]?.duration).toBeCloseTo(0.72);
+    expect(text).toContain("duration=media");
+  });
+
+  it("retains a literal escaped filename when no decoded file exists", async () => {
+    const probed: string[] = [];
+    const { rows } = await rowsOf(
+      '<div data-composition-id="m"><audio id="sting" src="beat%20track.mp3" data-start="0"></audio></div>',
+      false,
+      (root) => copyFileSync(REAL_AUDIO, join(root, "beat%20track.mp3")),
+      async (file) => {
+        probed.push(basename(file));
+        return POP_SECONDS();
+      },
+    );
+    expect(probed).toEqual(["beat%20track.mp3"]);
+    expect(rows[0]).toMatchObject({ durationSource: "media", pendingReason: null });
+  });
+
+  it.each(["../outside.mp3?cache=1", "%2e%2e%2foutside.mp3", "link%20out.mp3?cache=1"])(
+    "keeps URL %s from probing outside the project",
+    async (src) => {
+      const probed: string[] = [];
+      const { rows } = await rowsOf(
+        `<div data-composition-id="m"><audio id="sting" src="${src}" data-start="0"></audio></div>`,
+        false,
+        (root) => {
+          const outside = join(dirname(root), "outside.mp3");
+          copyFileSync(REAL_AUDIO, outside);
+          symlinkSync(outside, join(root, "link out.mp3"));
+        },
+        async (file) => {
+          probed.push(file);
+          return POP_SECONDS();
+        },
+      );
+      expect(probed).toEqual([]);
+      expect(rows[0]).toMatchObject({
+        duration: 0,
+        durationSource: "pending",
+        pendingReason: "source file not found",
+      });
+    },
+  );
 
   it.skipIf(!hasFfprobe)("measures a real audio file with ffprobe by default", async () => {
     const {

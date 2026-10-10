@@ -19,11 +19,13 @@ import {
   type MediaTag,
 } from "@hyperframes/parsers/media-duration";
 import {
+  decodeUrlPathVariants,
   topLevelElements,
   trackKindOf,
   type StructureNode,
   type TrackKind,
 } from "@hyperframes/parsers";
+import { cleanAssetUrl } from "@hyperframes/parsers/asset-resolution";
 import { resolveMediaStartSeconds } from "@hyperframes/core/media-timing";
 import {
   extractAudioMetadata,
@@ -180,7 +182,9 @@ async function probeSource(scope: DocScope, el: Element, tag: MediaTag): Promise
   const src = el.getAttribute("src");
   if (!src) return { ok: false, reason: "no src attribute" };
   if (/^https?:\/\//i.test(src)) return { ok: false, reason: "remote source not probed" };
-  const file = realFileInside(scope.projectDir, resolve(scope.dir, src));
+  const file = decodeUrlPathVariants(cleanAssetUrl(src))
+    .map((path) => realFileInside(scope.projectDir, resolve(scope.dir, path)))
+    .find((path) => path !== null);
   if (!file) return { ok: false, reason: "source file not found" };
   return scope.withProbeSlot(async () => {
     try {
