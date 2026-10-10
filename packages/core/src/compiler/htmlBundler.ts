@@ -1039,7 +1039,7 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
   const rawHtml = readSource(mountedShell ?? entryHtml);
   const compiled = await compileHtml(rawHtml, sourceDir, options?.probeMediaDuration);
 
-  if (options?.staticGuard !== false) {
+  if (options?.staticGuard !== false && !mountedShell) {
     const staticGuard = await validateHyperframeHtmlContract(compiled);
     if (!staticGuard.isValid) {
       console.warn(

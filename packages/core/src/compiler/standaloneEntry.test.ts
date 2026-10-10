@@ -27,6 +27,22 @@ describe("extractStandaloneEntryFromIndex", () => {
     expect(extracted).toContain("<style>body { background: #111; }</style>");
   });
 
+  it("keeps the index's body library scripts ahead of the scene and drops its inline scripts", () => {
+    const indexHtml = `<!DOCTYPE html><html><head></head><body>
+  <div id="main" data-composition-id="root" data-width="1920" data-height="1080">
+    <div id="scene" data-composition-id="scene" data-composition-src="compositions/scene.html"></div>
+  </div>
+  <script src="https://cdn.example/gsap.min.js"></script>
+  <script>window.__timelines = { root: gsap.timeline() };</script>
+</body></html>`;
+
+    const extracted = extractStandaloneEntryFromIndex(indexHtml, "compositions/scene.html") ?? "";
+
+    expect(extracted).toContain('<script src="https://cdn.example/gsap.min.js"></script>');
+    expect(extracted.indexOf("gsap.min.js")).toBeLessThan(extracted.indexOf('id="scene"'));
+    expect(extracted).not.toContain("window.__timelines = { root");
+  });
+
   it("matches normalized data-composition-src paths", () => {
     const indexHtml = `<!DOCTYPE html>
 <html>

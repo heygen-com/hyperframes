@@ -206,8 +206,12 @@ describe("bundleToSingleHtml", () => {
         <h1 id="title">mounted scene</h1></div></template>`,
     });
 
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const bundled = await bundleToSingleHtml(dir, { entryFile: "compositions/scene.html" });
+    const guardWarnings = warn.mock.calls.filter(([m]) => String(m).includes("[StaticGuard]"));
+    warn.mockRestore();
 
+    expect(guardWarnings).toEqual([]);
     expect(bundled).toContain("window.ROOT_GSAP_LOADED = true;");
     expect(bundled).toContain('data-composition-id="root"');
     expect(bundled).toContain("mounted scene");

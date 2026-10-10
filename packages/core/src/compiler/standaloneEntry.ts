@@ -40,10 +40,15 @@ function createStandaloneEntryRenderClone(
   return rootClone;
 }
 
+// Library scripts (GSAP and the like) may live in <body>; they stay, ahead of the scene that needs them.
 function replaceBodyWithRenderClone(body: HTMLElement, renderClone: Element): void {
+  const libraries = (Array.from(body.children) as Element[]).filter(
+    (child) => child.tagName === "SCRIPT" && child.hasAttribute("src"),
+  );
   while (body.firstChild) {
     body.removeChild(body.firstChild);
   }
+  for (const library of libraries) body.appendChild(library);
   body.appendChild(renderClone);
 }
 
