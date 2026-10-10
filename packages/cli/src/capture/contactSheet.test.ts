@@ -13,6 +13,7 @@ import sharp from "sharp";
 import { describe, expect, it } from "vitest";
 import {
   createContactSheet,
+  createAssetContactSheet,
   createScrollContactSheet,
   createSvgContactSheet,
 } from "./contactSheet.js";
@@ -21,7 +22,102 @@ function tempDir(): string {
   return mkdtempSync(join(tmpdir(), "hf-contact-sheet-test-"));
 }
 
+const QUADRANT_COLORS = [
+  [240, 20, 20],
+  [20, 240, 20],
+  [20, 20, 240],
+  [240, 240, 20],
+];
+
+async function quadrantJpeg(orientation: number): Promise<Buffer> {
+  const width = 40;
+  const height = 20;
+  const data = Buffer.alloc(width * height * 3);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const color = QUADRANT_COLORS[(y >= height / 2 ? 2 : 0) + (x >= width / 2 ? 1 : 0)];
+      if (color) data.set(color, (y * width + x) * 3);
+    }
+  }
+  return sharp(data, { raw: { width, height, channels: 3 } })
+    .withMetadata({ orientation })
+    .jpeg({ quality: 100, chromaSubsampling: "4:4:4" })
+    .toBuffer();
+}
+
+async function expectQuadrants(
+  path: string,
+  cell: { x: number; y: number; width: number; height: number },
+  order: readonly number[],
+): Promise<void> {
+  const { data, info } = await sharp(path).raw().toBuffer({ resolveWithObject: true });
+  for (const [index, colorIndex] of order.entries()) {
+    const x = cell.x + Math.floor((cell.width * (index % 2 === 0 ? 1 : 3)) / 4);
+    const y = cell.y + Math.floor((cell.height * (index < 2 ? 1 : 3)) / 4);
+    const offset = (y * info.width + x) * info.channels;
+    const expected = QUADRANT_COLORS[colorIndex];
+    expect(expected).toBeDefined();
+    if (!expected) throw new Error("Missing expected quadrant color");
+    for (const [channel, value] of expected.entries()) {
+      expect(Math.abs((data[offset + channel] ?? 0) - value)).toBeLessThanOrEqual(25);
+    }
+  }
+}
+
 describe("createContactSheet", () => {
+  it.each([
+    { orientation: 1, order: [0, 1, 2, 3], height: 20 },
+    { orientation: 2, order: [1, 0, 3, 2], height: 20 },
+    { orientation: 3, order: [3, 2, 1, 0], height: 20 },
+    { orientation: 4, order: [2, 3, 0, 1], height: 20 },
+    { orientation: 5, order: [0, 2, 1, 3], height: 80 },
+    { orientation: 6, order: [2, 0, 3, 1], height: 80 },
+    { orientation: 7, order: [3, 1, 2, 0], height: 80 },
+    { orientation: 8, order: [1, 3, 0, 2], height: 80 },
+  ])(
+    "displays JPEG orientation $orientation in an upright cell",
+    async ({ orientation, order, height }) => {
+      const dir = tempDir();
+      try {
+        const input = join(dir, "portrait.jpg");
+        const out = join(dir, "sheet.png");
+        const original = await quadrantJpeg(orientation);
+        writeFileSync(input, original);
+
+        await createContactSheet([input], out, { cols: 1, cellWidth: 40 });
+
+        await expect(sharp(out).metadata()).resolves.toMatchObject({
+          width: 48,
+          height: height + 34,
+        });
+        await expectQuadrants(out, { x: 4, y: 30, width: 40, height }, order);
+        expect(readFileSync(input)).toEqual(original);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("orients every downloaded asset even when the first cell is unrotated", async () => {
+    const dir = tempDir();
+    try {
+      const first = join(dir, "a.jpg");
+      const second = join(dir, "b.jpg");
+      writeFileSync(first, await quadrantJpeg(1));
+      const original = await quadrantJpeg(6);
+      writeFileSync(second, original);
+      const out = join(dir, "contact-sheet.png");
+
+      await expect(createAssetContactSheet(dir, out)).resolves.toEqual([out]);
+
+      await expect(sharp(out).metadata()).resolves.toMatchObject({ width: 1940, height: 274 });
+      await expectQuadrants(out, { x: 668, y: 30, width: 120, height: 240 }, [2, 0, 3, 1]);
+      expect(readFileSync(second)).toEqual(original);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("writes PNG output when the output path uses a .png extension", async () => {
     const dir = tempDir();
     try {
