@@ -1,21 +1,6 @@
-/**
- * Offline asset ledger — a static, agent-readable inventory of every asset a
- * composition references: scripts, stylesheets, fonts, images, audio, video,
- * iframes, and text tracks, each classified as `remote`, `local`, `data`, or
- * `missing`.
- *
- * The ledger is what `hyperframes ledger` prints and what `hyperframes vendor`
- * uses to find remote URLs worth localizing. It is built by scanning HTML
- * text — no browser, no network — so it can run in CI preflight and unit
- * tests. Only DECLARED URLs are inventoried (tag attributes, inline styles,
- * `<style>` blocks); URLs constructed at runtime inside scripts are out of
- * scope, as are assets nested inside remote stylesheets (e.g. font binaries
- * referenced by a Google Fonts CSS response).
- *
- * Node-only (uses `node:fs` for project scanning) — import via the
- * `@hyperframes/core/asset-ledger` subpath so the main entry stays
- * browser-safe.
- */
+// Scans HTML text only, so it runs without a browser or network. URLs built at runtime and
+// assets nested inside remote stylesheets are out of scope. Node-only: import it via
+// `@hyperframes/core/asset-ledger` so the main entry stays browser-safe.
 
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";

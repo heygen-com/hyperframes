@@ -1,7 +1,3 @@
-/**
- * Shared fixtures/helpers for the ledger + vendor command tests. Underscore
- * prefix (like _examples.ts) keeps it out of vitest's *.test.ts glob.
- */
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
