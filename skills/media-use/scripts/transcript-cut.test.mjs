@@ -115,3 +115,77 @@ test(
     );
   },
 );
+
+// Frame 32 at 30 fps sits at 1.0666666 s. A -ss rounded to 1.067 lands just past
+// it, so ffmpeg's accurate seek starts that segment on frame 33 and the cut comes
+// out a frame short from the join on.
+const THIRTY_FPS_FRAME_32 = 32 / 30;
+
+test("a kept range starting on a 30 fps frame keeps that frame", { skip: !HAS_FFMPEG }, (t) => {
+  const { dir, cleanup } = fixture();
+  t.after(cleanup);
+
+  const source = join(dir, "src.mp4");
+  execFileSync("ffmpeg", [
+    "-y",
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-f",
+    "lavfi",
+    "-i",
+    "testsrc2=size=320x180:rate=30",
+    "-f",
+    "lavfi",
+    "-i",
+    `sine=frequency=440:sample_rate=${SAMPLE_RATE}`,
+    "-t",
+    "4",
+    "-c:v",
+    "libx264",
+    "-pix_fmt",
+    "yuv420p",
+    "-c:a",
+    "aac",
+    source,
+  ]);
+
+  const transcriptPath = join(dir, "transcript.json");
+  writeFileSync(transcriptPath, JSON.stringify([{ text: "a", start: 0.1, end: 3.9 }]));
+
+  const output = join(dir, "out.mp4");
+  const result = run([
+    "--input",
+    source,
+    "--transcript",
+    transcriptPath,
+    "--keep",
+    `0-1,${THIRTY_FPS_FRAME_32}-3`,
+    "--out",
+    output,
+    "--json",
+  ]);
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+
+  // Frames 0-29 for 0-1s, then frames 32-89 for the second segment. Rounding
+  // -ss to the millisecond drops frame 32 and yields 87.
+  const frames = Number(
+    execFileSync(
+      "ffprobe",
+      [
+        "-v",
+        "error",
+        "-select_streams",
+        "v",
+        "-count_packets",
+        "-show_entries",
+        "stream=nb_read_packets",
+        "-of",
+        "csv=p=0",
+        output,
+      ],
+      { encoding: "utf8" },
+    ).trim(),
+  );
+  assert.equal(frames, 88, `expected 88 frames, got ${frames}`);
+});
