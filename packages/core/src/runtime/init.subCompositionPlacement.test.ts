@@ -321,6 +321,16 @@ describe("runtime sub-composition placement", () => {
     expect([at(1), at(5), at(8)]).toEqual([1, 5, 8]);
   });
 
+  it("keeps a scene trimmed to 3 s driving its 6 s file past the trim, as before in-points", () => {
+    mountInRoot(
+      `<div id="scene" class="clip" data-composition-id="scene" data-composition-file="compositions/scene.html" ` +
+        `data-start="2" data-duration="3" data-playback-start="0">` +
+        `<div data-composition-id="scene" data-duration="6"><video id="body" data-start="0"></video></div></div>`,
+    );
+    window.__player?.renderSeek(6);
+    expect(video("body").currentTime).toBe(4);
+  });
+
   it("keeps a video in a composition nested inside the half silent until the half starts", () => {
     loadSecondHalf(
       `<div data-composition-id="inner" data-composition-file="compositions/inner.html" data-start="0" data-duration="12">` +

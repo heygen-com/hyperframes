@@ -13,6 +13,7 @@ import { isMediaElement } from "./domRealm";
 import { parseStartExpression } from "./startExpression";
 import {
   compositionOriginSeconds,
+  hostInPointSeconds,
   type HostSlot,
   isRootGlobalMediaStart,
   MEDIA_START_BASIS_ATTR,
@@ -100,17 +101,18 @@ export function createRuntimeStartTimeResolver(params: {
     return resolved;
   };
 
+  const isCompositionHost = (element: Element): boolean =>
+    element.hasAttribute("data-composition-src") ||
+    element.hasAttribute("data-composition-id") ||
+    element.hasAttribute("data-composition-file");
+
   // A mounted composition root without its own `data-start` takes its timing from the host it was
   // loaded into: the host may use a different id than the file, or none (an anonymous host).
   const inheritedTimingHost = (element: Element): Element | null => {
     const parent = element.parentElement;
     if (!parent || !element.hasAttribute("data-composition-id")) return null;
     if (parseStartExpression(element.getAttribute("data-start"))) return null;
-    return parent.hasAttribute("data-composition-src") ||
-      parent.hasAttribute("data-composition-id") ||
-      parent.hasAttribute("data-composition-file")
-      ? parent
-      : null;
+    return isCompositionHost(parent) ? parent : null;
   };
 
   const resolveCompositionOrigin = (compositionRoot: Element, fallback: number): number =>
@@ -192,18 +194,15 @@ export function createRuntimeStartTimeResolver(params: {
     });
   };
 
-  // Only an authored length cuts, as in the render; a GSAP length would cut what still plays.
+  // Hosts with an in-point, found by their composition attributes so an anonymous one counts too.
   const resolveHostSlotsForElement = (element: Element): HostSlot[] => {
     const slots: HostSlot[] = [];
-    let root = element.closest("[data-composition-id]");
-    for (; root; root = root.parentElement?.closest("[data-composition-id]") ?? null) {
-      const start = resolveStartForElementInternal(root, 0);
-      const duration = resolveAuthoredDuration(root);
-      slots.push({
-        start,
-        end: duration ? start + duration : Infinity,
-        origin: resolveCompositionOrigin(root, 0),
-      });
+    for (let node = element.parentElement; node; node = node.parentElement) {
+      if (!isCompositionHost(node) || inheritedTimingHost(node)) continue;
+      if (hostInPointSeconds(node) <= 0) continue;
+      const start = resolveStartForElementInternal(node, 0);
+      const duration = resolveAuthoredDuration(node);
+      slots.push({ start, end: duration ? start + duration : Infinity });
     }
     return slots;
   };

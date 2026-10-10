@@ -27,6 +27,7 @@ import {
 import {
   compositionOriginSeconds,
   cutToHostSlots,
+  hostInPointSeconds,
   resolveMediaStartSeconds,
   type HostSlot,
 } from "@hyperframes/core/media-timing";
@@ -282,15 +283,11 @@ async function resolveRowTiming(scope: DocScope, node: DomNode, depth: number): 
   const authored = resolveReferencedDuration(scope.doc, el, scope.startCache, new Set());
   const host = el.getAttribute("data-composition-src");
   const absStart = mainTimelineStart(scope, el, start);
-  // Untrimmed hosts keep their children's authored extent so an overlap past the end stays visible.
-  const trimmed = el.hasAttribute("data-playback-start") || el.hasAttribute("data-media-start");
+  const slots: HostSlot[] =
+    hostInPointSeconds(el) > 0 ? [{ start: absStart, end: absStart + (authored ?? Infinity) }] : [];
   const children =
     host && depth === 0
-      ? await readSubComposition(host, scope, {
-          start: absStart,
-          end: trimmed ? absStart + (authored ?? Infinity) : Infinity,
-          origin: compositionOriginSeconds(absStart, el),
-        })
+      ? await readSubComposition(host, scope, compositionOriginSeconds(absStart, el), slots)
       : [];
   const kind = el.tagName.toLowerCase();
   const duration = MEDIA_TAG.test(kind)
@@ -347,7 +344,8 @@ async function describeRow(scope: DocScope, node: DomNode, depth: number): Promi
 async function readSubComposition(
   src: string,
   parent: DocScope,
-  slot: HostSlot,
+  origin: number,
+  slots: readonly HostSlot[],
 ): Promise<ClipDraft[]> {
   const authored = resolve(parent.dir, src);
   const file = realFileInside(parent.projectDir, authored);
@@ -363,7 +361,7 @@ async function readSubComposition(
     dir: dirname(file),
     startCache: new Map(),
     projectDir: parent.projectDir,
-    origin: slot.origin,
+    origin,
     file: relative(parent.projectDir, authored).split(sep).join("/"),
     withProbeSlot: parent.withProbeSlot,
     measure: parent.measure,
@@ -373,11 +371,11 @@ async function readSubComposition(
   const rows = await Promise.all(
     topLevelElements(toNode(root)).map((node) => describeRow(scope, node, 1)),
   );
-  return rows.flatMap((row) => cutRow(row, slot)).sort(byStart);
+  return rows.flatMap((row) => cutRow(row, slots)).sort(byStart);
 }
 
-function cutRow(row: ClipDraft, slot: HostSlot): ClipDraft[] {
-  const kept = cutToHostSlots({ start: row.absStart, end: row.absEnd }, [slot]);
+function cutRow(row: ClipDraft, slots: readonly HostSlot[]): ClipDraft[] {
+  const kept = cutToHostSlots({ start: row.absStart, end: row.absEnd }, slots);
   if (kept.end === kept.start && row.absEnd > row.absStart) return [];
   return [{ ...row, absStart: roundMs(kept.start), absEnd: roundMs(kept.end) }];
 }

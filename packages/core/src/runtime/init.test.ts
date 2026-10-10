@@ -5355,6 +5355,30 @@ describe("initSandboxRuntimeModular", () => {
       ]);
     });
 
+    it("stops a decoded clip at the end of a scene whose length comes from its animation", async () => {
+      const audio = mountAudio("https://cdn.example.com/track.mp3", { "data-start": "1" });
+      audio.removeAttribute("data-duration");
+      const scene = document.createElement("div");
+      scene.setAttribute("data-composition-id", "scene");
+      scene.setAttribute("data-composition-file", "scene.html");
+      scene.setAttribute("data-start", "0");
+      audio.replaceWith(scene);
+      scene.appendChild(audio);
+      window.__timelines = { main: createMockTimeline(10), scene: createMockTimeline(3) };
+      vi.spyOn(console, "info").mockImplementation(() => {});
+      vi.spyOn(WebAudioTransport.prototype, "decodeAudioElement").mockResolvedValue(
+        {} as AudioBuffer,
+      );
+      const schedule = vi
+        .spyOn(WebAudioTransport.prototype, "schedulePlayback")
+        .mockResolvedValue(null);
+
+      await startPlayback();
+
+      await vi.waitFor(() => expect(schedule).toHaveBeenCalled());
+      expect(schedule.mock.calls[0]![8]).toBe(2);
+    });
+
     it("leaves the element audible on native output when decode also fails", async () => {
       const audio = mountAudio("https://cdn.example.com/track.mp3");
       vi.spyOn(console, "info").mockImplementation(() => {});

@@ -53,27 +53,31 @@ function hasLiteralNestedStart(
   return !input.hasAutoStart && input.authoredStart != null && input.hostStart !== 0;
 }
 
+/** A composition host's in-point; only a host with one shifts or cuts what it holds. */
+export function hostInPointSeconds(host: Pick<Element, "getAttribute">): number {
+  return readMediaOffsetSeconds((name) => host.getAttribute(name));
+}
+
 /** Main-timeline time of a sub-composition's local t=0: its host's start minus its in-point. */
 export function compositionOriginSeconds(
   hostStart: number,
   host: Pick<Element, "getAttribute">,
 ): number {
-  return hostStart - readMediaOffsetSeconds((name) => host.getAttribute(name));
+  return hostStart - hostInPointSeconds(host);
 }
 
 export interface HostSlot {
   start: number;
   end: number;
-  origin: number;
 }
 
-/** Each enclosing host cuts the span: an in-point (origin before its start) the head, its end the tail. */
+/** Each in-point host cuts the span to its own window. */
 export function cutToHostSlots(
   span: { start: number; end: number },
   hosts: readonly HostSlot[],
 ): { start: number; end: number } {
   return hosts.reduce((kept, host) => {
-    const start = host.origin < host.start ? Math.max(kept.start, host.start) : kept.start;
+    const start = Math.max(kept.start, host.start);
     return { start, end: Math.max(start, Math.min(kept.end, host.end)) };
   }, span);
 }

@@ -4825,14 +4825,21 @@ export function initSandboxRuntimeModular(): void {
       const volumeAttr = Number.parseFloat(rawEl.dataset.volume ?? "");
       const vol = Number.isFinite(volumeAttr) ? volumeAttr : 1;
       const durationAttr = parseStrictFiniteTimingNumber(rawEl.dataset.duration);
-      const kept = cutToHostSlots(
-        {
-          start: compStart,
-          end: compStart + (durationAttr != null && durationAttr > 0 ? durationAttr : Infinity),
-        },
-        resolveMediaHostSlots(rawEl),
-      );
-      const clipDuration = kept.end - compStart;
+      let clipDuration =
+        durationAttr != null && durationAttr > 0 ? durationAttr : Number.POSITIVE_INFINITY;
+      const { inheritedStart, inheritedDuration } = resolveMediaCompositionContext(rawEl);
+      if (inheritedStart != null && inheritedDuration != null && inheritedDuration > 0) {
+        clipDuration = Math.min(
+          clipDuration,
+          Math.max(0, inheritedStart + inheritedDuration - compStart),
+        );
+      }
+      const slots = resolveMediaHostSlots(rawEl);
+      const kept = cutToHostSlots({ start: compStart, end: compStart + clipDuration }, slots);
+      if (slots.length > 0) {
+        if (kept.end <= kept.start) continue;
+        clipDuration = kept.end - compStart;
+      }
       // Decided BEFORE the transport is asked, because the two verdicts want
       // two different fallback chains — and only one of them is the chain
       // that existed before (#3458).
