@@ -110,15 +110,15 @@ interface FinishedContrast {
  * hostile-asset check (e.g. a fresh CI checkout) would race the timeout
  * instead of paying a bounded one-time transcode cost
  * (docs/plans/2026-07-14-002-feat-transparent-media-proxies-plan.md, unit U4).
- * Best-effort: a probe or transcode failure does not fail `check`; one summary
- * line records the pre-resolve outcome before the runtime attempts playback.
+ * A transcode failure is a warning, not an error: render decodes the original with
+ * ffmpeg. Each failed asset comes back as a draft naming the file and reason.
  */
 export async function preResolveHostileMediaProxies(
   projectDir: string,
   html: string,
   autoProxyOverride?: boolean,
-): Promise<void> {
-  if (!resolveAutoProxy(projectDir, autoProxyOverride)) return;
+): Promise<RuntimeDraft[]> {
+  if (!resolveAutoProxy(projectDir, autoProxyOverride)) return [];
   let codecMap: Awaited<ReturnType<typeof scanProjectMediaCodecMap>>;
   try {
     codecMap = await scanProjectMediaCodecMap(projectDir, [{ html }]);
@@ -126,27 +126,39 @@ export async function preResolveHostileMediaProxies(
     console.error(
       `[hyperframes] media proxy pre-resolve: scan failed (${normalizeErrorMessage(err)})`,
     );
-    return;
+    return [];
   }
   const hostileEntries = Object.entries(codecMap).filter(
     ([, facts]) => decideMediaProxyEligibility(facts).eligible,
   );
-  if (hostileEntries.length === 0) return;
+  if (hostileEntries.length === 0) return [];
 
   const startedAt = Date.now();
-  const results = await Promise.allSettled(
-    hostileEntries.map(([pathname, facts]) =>
-      resolveProxy(
-        projectDir,
-        resolve(projectDir, pathname.replace(/^\/+/, "")),
-        proxyVariantFor(facts),
-      ),
-    ),
-  );
-  const failed = results.filter((result) => result.status === "rejected").length;
+  const failures = (
+    await Promise.all(
+      hostileEntries.map(async ([pathname, facts]): Promise<RuntimeDraft[]> => {
+        const file = pathname.replace(/^\/+/, "");
+        try {
+          await resolveProxy(projectDir, resolve(projectDir, file), proxyVariantFor(facts));
+          return [];
+        } catch (err) {
+          return [
+            {
+              code: "media_proxy_failed",
+              severity: "warning",
+              message: `Could not make a browser-playable copy of ${file}: ${normalizeErrorMessage(err)}. Render reads the original file and is not affected, but publish stops on it (unless run with --no-proxy) and a browser that cannot decode it will not play it in preview.`,
+              time: 0,
+            },
+          ];
+        }
+      }),
+    )
+  ).flat();
+  const total = hostileEntries.length;
   console.error(
-    `[hyperframes] media proxy pre-resolve: ${results.length - failed}/${results.length} ready, ${failed} failed (${Date.now() - startedAt}ms)`,
+    `[hyperframes] media proxy pre-resolve: ${total - failures.length}/${total} ready, ${failures.length} failed (${Date.now() - startedAt}ms)`,
   );
+  return failures;
 }
 
 export async function runBrowserCheck(
@@ -157,7 +169,7 @@ export async function runBrowserCheck(
 ): Promise<CheckBrowserResult> {
   const { bundleWithLocalizedFonts } = await import("./bundleWithLocalizedFonts.js");
   const html = await bundleWithLocalizedFonts(project.dir);
-  await preResolveHostileMediaProxies(project.dir, html, options.autoProxy);
+  const drafts = await preResolveHostileMediaProxies(project.dir, html, options.autoProxy);
   const server = await serveStaticProjectHtml(
     project.dir,
     html,
@@ -165,7 +177,6 @@ export async function runBrowserCheck(
     [],
     options.autoProxy,
   );
-  const drafts: RuntimeDraft[] = [];
   let currentTime = 0;
   let chromeBrowser: import("puppeteer-core").Browser | undefined;
 

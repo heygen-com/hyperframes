@@ -360,6 +360,40 @@ it("carries validate's clip-duration audit into the runtime findings", async () 
   ]);
 });
 
+it("reports each video whose browser-playable copy could not be made as a warning finding", async () => {
+  mountCanvasFixture();
+  mocks.scanProjectMediaCodecMap.mockResolvedValue({
+    "/media/hlg.mp4": {
+      codecName: "hevc",
+      browserHostile: true,
+      representativeMime: null,
+      hasAlpha: false,
+    },
+  });
+  mocks.resolveProxy.mockRejectedValue(
+    new Error("HDR proxying requires ffmpeg zscale/tonemap filters (libzimg)"),
+  );
+  vi.spyOn(console, "error").mockImplementation(() => undefined);
+  installSessionMock(fakePage());
+
+  const result = await runBrowserCheck(
+    PROJECT,
+    { ...DEFAULT_CHECK_OPTIONS, samples: 1, contrast: false },
+    { kind: "none" },
+    runAuditGrid,
+  );
+
+  expect(result.runtimeFindings).toContainEqual(
+    expect.objectContaining({
+      code: "media_proxy_failed",
+      severity: "warning",
+      message: expect.stringContaining(
+        "media/hlg.mp4: HDR proxying requires ffmpeg zscale/tonemap filters (libzimg)",
+      ),
+    }),
+  );
+});
+
 it("surfaces the runtime's media-proxy-fallback console.info line as an info finding, ignoring unrelated info logs", async () => {
   vi.spyOn(Date, "now").mockReturnValue(100);
   mountCanvasFixture();
@@ -685,7 +719,7 @@ describe("preResolveHostileMediaProxies", () => {
     expect(mocks.resolveProxy).not.toHaveBeenCalled();
   });
 
-  it("swallows a resolveProxy rejection instead of throwing", async () => {
+  it("returns a resolveProxy rejection as a warning instead of throwing", async () => {
     const projectDir = mkProjectDir();
     mocks.scanProjectMediaCodecMap.mockResolvedValue({
       "/clip.mp4": {
@@ -698,9 +732,13 @@ describe("preResolveHostileMediaProxies", () => {
     mocks.resolveProxy.mockRejectedValue(new Error("ffmpeg exited with code 1"));
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
-    await expect(
-      preResolveHostileMediaProxies(projectDir, "<html></html>"),
-    ).resolves.toBeUndefined();
+    await expect(preResolveHostileMediaProxies(projectDir, "<html></html>")).resolves.toEqual([
+      expect.objectContaining({
+        code: "media_proxy_failed",
+        severity: "warning",
+        message: expect.stringContaining("clip.mp4: ffmpeg exited with code 1"),
+      }),
+    ]);
     expect(errorSpy).toHaveBeenCalledWith(
       expect.stringContaining("media proxy pre-resolve: 0/1 ready, 1 failed"),
     );
@@ -743,9 +781,7 @@ describe("preResolveHostileMediaProxies", () => {
     const infoSpy = vi.spyOn(console, "info").mockImplementation(() => undefined);
     const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
 
-    await expect(
-      preResolveHostileMediaProxies(projectDir, "<html></html>"),
-    ).resolves.toBeUndefined();
+    await expect(preResolveHostileMediaProxies(projectDir, "<html></html>")).resolves.toEqual([]);
 
     expect(errorSpy).toHaveBeenCalledWith(
       "[hyperframes] media proxy pre-resolve: scan failed (ffprobe not found)",
