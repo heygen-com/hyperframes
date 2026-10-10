@@ -338,13 +338,18 @@ interface ApplyMediaTreatmentOptions {
   clear?: boolean;
 }
 
-interface ApplyMediaTreatmentResult {
-  html: string;
-  changed: boolean;
+interface MediaTreatmentTargetResult {
+  selectorIndex: number;
   tag: "img" | "video";
+  changed: boolean;
   value: string | null;
   before: unknown;
   after: unknown;
+}
+
+interface ApplyMediaTreatmentResult extends Omit<MediaTreatmentTargetResult, "selectorIndex"> {
+  html: string;
+  targets: MediaTreatmentTargetResult[];
 }
 
 function parseSourceDocument(source: string): Document {
@@ -432,11 +437,13 @@ function queryIncludingTemplates(root: Document | Element, selector: string): El
   return [];
 }
 
-function selectMediaElement(
+type MediaTarget = { element: Element; selectorIndex: number; tag: "img" | "video" };
+
+function selectMediaElements(
   source: string,
   selector: string,
   selectorIndex?: number,
-): { element: Element; selectorIndex: number; tag: "img" | "video" } {
+): MediaTarget[] {
   const document = parseSourceDocument(source);
   let matches: Element[];
   try {
@@ -445,46 +452,64 @@ function selectMediaElement(
     throw new Error(`Invalid selector: ${selector}`);
   }
   if (matches.length === 0) throw new Error(`Selector did not match: ${selector}`);
-  if (selectorIndex === undefined && matches.length > 1) {
+  if (selectorIndex !== undefined && !matches[selectorIndex]) {
+    throw new Error(`--selector-index ${selectorIndex} is outside ${matches.length} matches`);
+  }
+  const indexes = selectorIndex === undefined ? matches.keys() : [selectorIndex];
+  return Array.from(indexes, (index) => {
+    const element = matches[index]!;
+    const tag = element.tagName.toLowerCase();
+    if (tag !== "img" && tag !== "video") {
+      throw new Error(`Color grading requires an <img> or <video>; selector matched <${tag}>`);
+    }
+    return { element, selectorIndex: index, tag };
+  });
+}
+
+function selectMediaElement(source: string, selector: string, selectorIndex?: number): MediaTarget {
+  const targets = selectMediaElements(source, selector, selectorIndex);
+  if (targets.length > 1) {
     throw new Error(
-      `Selector matched ${matches.length} elements; use a unique selector or --selector-index`,
+      `Selector matched ${targets.length} elements; use a unique selector or --selector-index`,
     );
   }
-
-  const resolvedIndex = selectorIndex ?? 0;
-  const element = matches[resolvedIndex];
-  if (!element) {
-    throw new Error(`--selector-index ${resolvedIndex} is outside ${matches.length} matches`);
-  }
-  const tag = element.tagName.toLowerCase();
-  if (tag !== "img" && tag !== "video") {
-    throw new Error(`Color grading requires an <img> or <video>; selector matched <${tag}>`);
-  }
-  return { element, selectorIndex: resolvedIndex, tag };
+  return targets[0]!;
 }
 
 export function applyMediaTreatmentToHtml(
   source: string,
   options: ApplyMediaTreatmentOptions,
 ): ApplyMediaTreatmentResult {
-  const { element, selectorIndex, tag } = selectMediaElement(
-    source,
-    options.selector,
-    options.selectorIndex,
+  const targets = selectMediaElements(source, options.selector, options.selectorIndex).map(
+    ({ element, selectorIndex, tag }) => {
+      const before = parseStoredGrading(element.getAttribute(HF_COLOR_GRADING_ATTR));
+      const value = options.clear ? null : serializeGradingPatch(before, options.grading);
+      const changed = element.getAttribute(HF_COLOR_GRADING_ATTR) !== value;
+      return { selectorIndex, tag, changed, value, before, after: parseStoredGrading(value) };
+    },
   );
-  const before = parseStoredGrading(element.getAttribute(HF_COLOR_GRADING_ATTR));
-
-  const value = options.clear ? null : serializeGradingPatch(before, options.grading);
-
-  const changed = element.getAttribute(HF_COLOR_GRADING_ATTR) !== value;
-  const after = parseStoredGrading(value);
-  if (!changed) return { html: source, changed: false, tag, value, before, after };
-
-  const patched = patchElementInHtml(source, { selector: options.selector, selectorIndex }, [
-    { type: "attribute", property: HF_COLOR_GRADING_ATTR, value },
-  ]);
-  if (!patched.matched) throw new Error(`Could not persist selector: ${options.selector}`);
-  return { html: patched.html, changed: true, tag, value, before, after };
+  let html = source;
+  const lastMatchFirstSoEarlierIndexesStay = [...targets].reverse();
+  for (const target of lastMatchFirstSoEarlierIndexesStay) {
+    if (!target.changed) continue;
+    const patched = patchElementInHtml(
+      html,
+      { selector: options.selector, selectorIndex: target.selectorIndex },
+      [{ type: "attribute", property: HF_COLOR_GRADING_ATTR, value: target.value }],
+    );
+    if (!patched.matched) throw new Error(`Could not persist selector: ${options.selector}`);
+    html = patched.html;
+  }
+  const first = targets[0]!;
+  return {
+    html,
+    changed: targets.some(({ changed }) => changed),
+    tag: first.tag,
+    value: first.value,
+    before: first.before,
+    after: first.after,
+    targets,
+  };
 }
 
 function parseSelectorIndex(raw: string | undefined): number | undefined {
@@ -667,14 +692,19 @@ async function prepareMutation(args: MediaTreatmentCommandArgs) {
       action,
       file: relative(project.dir, filePath) || "index.html",
       selector,
-      selectorIndex: selectorIndex ?? 0,
-      tag: result.tag,
+      count: result.targets.length,
+      ...(result.targets.length === 1
+        ? {
+            selectorIndex: result.targets[0]!.selectorIndex,
+            tag: result.tag,
+            before: result.before,
+            after: result.after,
+            value: result.value,
+          }
+        : { targets: result.targets }),
       changed: result.changed,
       dryRun,
-      before: result.before,
-      after: result.after,
       attribute: HF_COLOR_GRADING_ATTR,
-      value: result.value,
       lint,
     },
   };
@@ -705,7 +735,8 @@ async function printMutation(args: MediaTreatmentCommandArgs): Promise<void> {
     return;
   }
   const verb = mutationVerb(action, result.changed, payload.dryRun);
-  console.log(`${c.success("◇")}  ${verb} media treatment on ${c.accent(selector)}`);
+  const count = result.targets.length > 1 ? ` (${result.targets.length} elements)` : "";
+  console.log(`${c.success("◇")}  ${verb} media treatment on ${c.accent(selector)}${count}`);
 }
 
 function printFailure(error: unknown, json: boolean): void {
@@ -742,11 +773,11 @@ export const mediaTreatmentCommand = defineCommand({
     },
     selector: {
       type: "string",
-      description: "Unique CSS selector for one <img> or <video>",
+      description: "CSS selector; every matched <img> or <video> gets the same treatment",
     },
     "selector-index": {
       type: "string",
-      description: "Zero-based match index when the selector is not unique",
+      description: "Zero-based match index to treat only one of several matches",
     },
     grading: { type: "string", description: "Canonical color-grading JSON patch" },
     apply: {
