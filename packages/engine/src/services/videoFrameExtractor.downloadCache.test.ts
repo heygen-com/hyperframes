@@ -166,4 +166,25 @@ describe.skipIf(process.platform === "win32")("extractAllVideoFrames downloaded 
     expect(first.phaseBreakdown.cacheHits + second.phaseBreakdown.cacheHits).toBe(0);
     expect(hashing.paths).toEqual([]);
   });
+
+  it("does not hash when the cache is off", async () => {
+    source.clip = red;
+    hashing.paths = [];
+    const compiledDir = join(dir, "cache-off", "compiled");
+    mkdirSync(join(compiledDir, "_remote_media"), { recursive: true });
+    copyFileSync(source.clip, join(compiledDir, "_remote_media", "clip.mp4"));
+    const result = await extractAllVideoFrames(
+      [clipElement("_remote_media/clip.mp4")],
+      join(dir, "project"),
+      {
+        ...{ fps: 30, outputDir: join(compiledDir, "frames") },
+        contentKeyedDirs: [join(compiledDir, "_remote_media")],
+      },
+      undefined,
+      {},
+      compiledDir,
+    );
+    expect(result.errors).toEqual([]);
+    expect(hashing.paths).toEqual([]);
+  });
 });
