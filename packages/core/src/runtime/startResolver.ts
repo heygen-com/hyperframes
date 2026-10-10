@@ -53,60 +53,51 @@ export function createRuntimeStartTimeResolver(params: {
     );
   };
 
+  const authoredAttr = (element: Element, name: string) =>
+    includeAuthoredTimingAttrs ? element.getAttribute(name) : null;
+
+  const resolveAuthoredDuration = (element: Element): number | null =>
+    resolveAuthoredTimingWindow({
+      start: 0,
+      duration: element.getAttribute("data-duration"),
+      authoredDuration: authoredAttr(element, "data-hf-authored-duration"),
+    })?.duration ??
+    resolveAuthoredTimingWindow({
+      start: resolveStartForElementInternal(element, 0),
+      end: element.getAttribute("data-end"),
+      authoredEnd: authoredAttr(element, "data-hf-authored-end"),
+    })?.duration ??
+    null;
+
+  const positive = (value: number | null | undefined): number | null =>
+    value != null && Number.isFinite(value) && value > 0 ? value : null;
+
+  const resolveRegisteredTimelineDuration = (element: Element): number | null => {
+    const timeline = timelineRegistry[element.getAttribute("data-composition-id") ?? ""];
+    if (!timeline || typeof timeline.duration !== "function") return null;
+    try {
+      return positive(Number(timeline.duration()));
+    } catch (err) {
+      // ignore broken timeline impls
+      swallow("runtime.startResolver.site1", err);
+      return null;
+    }
+  };
+
   const resolveDurationForElement = (element: Element): number | null => {
     const cached = durationCache.get(element);
     if (cached !== undefined) return cached;
-    let resolved: number | null = null;
-    const durationTiming = resolveAuthoredTimingWindow({
-      start: 0,
-      duration: element.getAttribute("data-duration"),
-      authoredDuration: includeAuthoredTimingAttrs
-        ? element.getAttribute("data-hf-authored-duration")
-        : null,
-    });
-    if (durationTiming?.duration != null && durationTiming.duration > 0) {
-      resolved = durationTiming.duration;
-    }
-    if (resolved == null || resolved <= 0) {
-      const start = resolveStartForElementInternal(element, 0);
-      const endTiming = resolveAuthoredTimingWindow({
-        start,
-        end: element.getAttribute("data-end"),
-        authoredEnd: includeAuthoredTimingAttrs
-          ? element.getAttribute("data-hf-authored-end")
+    const resolved =
+      resolveAuthoredDuration(element) ??
+      positive(
+        isMediaElement(element)
+          ? resolveNaturalMediaTimelineDuration(element, element.duration)
           : null,
-      });
-      if (endTiming?.duration != null && endTiming.duration > 0) {
-        resolved = endTiming.duration;
-      }
-    }
-    if ((resolved == null || resolved <= 0) && isMediaElement(element)) {
-      resolved = resolveNaturalMediaTimelineDuration(element, element.duration);
-    }
-    if (resolved == null || resolved <= 0) resolved = resolveTimedImageDurationSeconds(element);
-    if (resolved == null || resolved <= 0) {
-      const compositionId = element.getAttribute("data-composition-id");
-      if (compositionId) {
-        const timeline = timelineRegistry[compositionId] ?? null;
-        if (timeline && typeof timeline.duration === "function") {
-          try {
-            const timelineDuration = Number(timeline.duration());
-            if (Number.isFinite(timelineDuration) && timelineDuration > 0) {
-              resolved = timelineDuration;
-            }
-          } catch (err) {
-            // ignore broken timeline impls
-            swallow("runtime.startResolver.site1", err);
-          }
-        }
-      }
-    }
-    if (resolved != null && Number.isFinite(resolved) && resolved > 0) {
-      durationCache.set(element, resolved);
-      return resolved;
-    }
-    durationCache.set(element, null);
-    return null;
+      ) ??
+      positive(resolveTimedImageDurationSeconds(element)) ??
+      resolveRegisteredTimelineDuration(element);
+    durationCache.set(element, resolved);
+    return resolved;
   };
 
   // A mounted composition root without its own `data-start` takes its timing from the host it was
@@ -201,12 +192,13 @@ export function createRuntimeStartTimeResolver(params: {
     });
   };
 
+  // Only an authored length cuts, as in the render; a GSAP length would cut what still plays.
   const resolveHostSlotsForElement = (element: Element): HostSlot[] => {
     const slots: HostSlot[] = [];
     let root = element.closest("[data-composition-id]");
     for (; root; root = root.parentElement?.closest("[data-composition-id]") ?? null) {
       const start = resolveStartForElementInternal(root, 0);
-      const duration = resolveDurationForElement(root);
+      const duration = resolveAuthoredDuration(root);
       slots.push({
         start,
         end: duration ? start + duration : Infinity,

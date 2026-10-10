@@ -304,6 +304,23 @@ describe("runtime sub-composition placement", () => {
     expect(sourceTimeOf("scene-split-split", "v3")).toBe(4);
   });
 
+  it("lets a scene's video play past a shorter root animation when the root authors no length", () => {
+    document.body.innerHTML =
+      `<div data-composition-id="main" data-root="true">` +
+      `<div class="clip" data-composition-id="scene" data-composition-file="compositions/scene.html" data-start="0" data-duration="10">` +
+      `<video id="long" data-start="0" data-duration="10"></video></div></div>`;
+    stubDuration(video("long"), 10);
+    Object.defineProperty(video("long"), "currentTime", { value: -1, writable: true });
+    video("long").play = vi.fn(() => Promise.resolve());
+    video("long").pause = vi.fn();
+    // The root's own timeline is a 2 s title fade.
+    window.__timelines = { main: createMockTimeline(2) };
+    initSandboxRuntimeModular();
+
+    const at = (t: number) => (window.__player?.renderSeek(t), video("long").currentTime);
+    expect([at(1), at(5), at(8)]).toEqual([1, 5, 8]);
+  });
+
   it("keeps a video in a composition nested inside the half silent until the half starts", () => {
     loadSecondHalf(
       `<div data-composition-id="inner" data-composition-file="compositions/inner.html" data-start="0" data-duration="12">` +
