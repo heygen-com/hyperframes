@@ -2310,6 +2310,29 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
     expect(result).toMatchObject({ success: true, extracted: [], errors: [] });
   });
 
+  it("still extracts a natural-length clip whose end is unset", async () => {
+    const outputDir = join(FIXTURE_DIR, "out-natural-length");
+    mkdirSync(outputDir, { recursive: true });
+    const video: VideoElement = {
+      id: "natural-length",
+      src: VFR_FIXTURE,
+      start: 0,
+      end: 0,
+      mediaStart: 0,
+      loop: false,
+      hasAudio: false,
+    };
+
+    const result = await extractAllVideoFrames([video], FIXTURE_DIR, {
+      fps: 1,
+      outputDir,
+      timelineEnd: 2,
+    });
+
+    expect(result.errors).toEqual([]);
+    expect(result.extracted.map((entry) => entry.videoId)).toEqual(["natural-length"]);
+  }, 30_000);
+
   it("preserves loop phase when negative preroll crosses the source boundary", async () => {
     const outputDir = join(FIXTURE_DIR, "out-negative-loop");
     mkdirSync(outputDir, { recursive: true });

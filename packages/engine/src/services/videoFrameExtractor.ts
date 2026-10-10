@@ -1361,6 +1361,14 @@ export function rebaseVideoToWindow(video: VideoElement, window: TimelineExtract
   video.mediaStart = window.mediaStart;
 }
 
+export function isVideoOutsideTimeline(
+  video: Pick<VideoElement, "start" | "end">,
+  timelineEnd: number,
+): boolean {
+  const hasAuthoredEnd = video.end > video.start;
+  return video.start >= timelineEnd || (hasAuthoredEnd && video.end <= 0);
+}
+
 /**
  * Intersect an authored slot with the render timeline, then select the
  * smallest playable source range that preserves timeline lookup semantics.
@@ -1371,13 +1379,6 @@ export function rebaseVideoToWindow(video: VideoElement, window: TimelineExtract
  * timeline origin separate from the extracted range is what makes both
  * behaviours survive the source-duration cap.
  */
-export function isVideoOutsideTimeline(
-  video: Pick<VideoElement, "start" | "end">,
-  timelineEnd: number,
-): boolean {
-  return video.start >= timelineEnd || video.end <= 0;
-}
-
 export function resolveTimelineExtractionWindow(
   video: TimelineWindowVideo,
   resolvedDuration: number,
