@@ -134,7 +134,9 @@ export async function waitForRuntimeReady(
     .waitForFunction(compositionRuntimeReadyInBrowser, { timeout: timeoutMs })
     .then(() => true)
     .catch(() => false);
-  const startupError = await page.evaluate(() => Reflect.get(window, "__hfStartupError"));
+  const startupError = await page
+    .evaluate(() => Reflect.get(window, "__hfStartupError"))
+    .catch(() => undefined);
   if (typeof startupError === "string") throw new Error(startupError);
   return settled;
 }

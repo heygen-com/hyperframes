@@ -127,7 +127,7 @@ import type {
   SceneAnimation,
 } from "./types";
 import type { PlayerAPI } from "../core.types";
-import { swallow } from "./diagnostics";
+import { recordStartupError, swallow } from "./diagnostics";
 import { readTimelineDurationSeconds } from "./timelineDuration";
 import {
   CHANGE_DRIVEN_SERVICE_MIN_INTERVAL_MS,
@@ -4125,8 +4125,10 @@ export function initSandboxRuntimeModular(): void {
       postTimeline();
     } catch (err) {
       window.__renderReady = false;
+      recordStartupError(err);
       throw err;
     }
+    delete window.__hfStartupError;
     postState(true);
   };
 

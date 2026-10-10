@@ -564,7 +564,8 @@ describe("pollHfReady", () => {
   it("fails at once with the runtime's start-up error instead of waiting out the timeout", async () => {
     const startupError = "HyperFrames runtime failed to start: TypeError: boom";
     const page = {
-      evaluate: async (expr: unknown) => (expr === "window.__hfStartupError" ? startupError : false),
+      evaluate: async (expr: unknown) =>
+        String(expr).includes("__hfStartupError") ? startupError : false,
     } as unknown as Parameters<typeof pollHfReady>[0];
 
     await expect(pollHfReady(page, 60_000)).rejects.toThrow(startupError);

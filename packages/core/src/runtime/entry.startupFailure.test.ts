@@ -22,10 +22,13 @@ describe("runtime start-up failure", () => {
     vi.unstubAllGlobals();
     vi.doUnmock("./init");
     vi.doUnmock("./clipTree");
+    vi.doUnmock("./timeline");
     document.body.innerHTML = "";
     window.__timelines = {};
     delete window.__renderReady;
     delete window.__hfStartupError;
+    delete window.__hfTimelinesBuilding;
+    window.__hfRuntimeTeardown?.();
     delete (window as { __hyperframeRuntimeBootstrapped?: boolean }).__hyperframeRuntimeBootstrapped;
   });
 
@@ -55,5 +58,35 @@ describe("runtime start-up failure", () => {
     await expect(evaluateRuntime()).rejects.toThrow("clip tree");
     expect(window.__renderReady).not.toBe(true);
     expect(window.__hfStartupError).toBe("HyperFrames runtime failed to start: Error: clip tree");
+  });
+
+  it("names the error when a timeline post after start-up throws", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("CSS", { escape: (value: string) => value });
+    mountRoot();
+    let failPosts = false;
+    vi.doMock("./timeline", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("./timeline")>();
+      return {
+        ...actual,
+        collectRuntimeTimelinePayload: (
+          ...args: Parameters<typeof actual.collectRuntimeTimelinePayload>
+        ) => {
+          if (failPosts) throw new Error("late timeline post");
+          return actual.collectRuntimeTimelinePayload(...args);
+        },
+      };
+    });
+
+    await evaluateRuntime();
+    expect(window.__renderReady).toBe(true);
+    expect(window.__hfStartupError).toBeUndefined();
+    failPosts = true;
+
+    expect(() => vi.advanceTimersByTime(1)).toThrow("late timeline post");
+    expect(window.__renderReady).not.toBe(true);
+    expect(window.__hfStartupError).toBe(
+      "HyperFrames runtime failed to start: Error: late timeline post",
+    );
   });
 });

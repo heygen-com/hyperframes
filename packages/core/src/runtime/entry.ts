@@ -1,4 +1,5 @@
 import { refreshSvgSelectorAliases } from "../compiler/svgSelectorAliases";
+import { recordStartupError } from "./diagnostics";
 import {
   initSandboxRuntimeModular,
   installAuthoredMediaCapture,
@@ -71,7 +72,7 @@ function bootstrapHyperframeRuntime(): void {
   try {
     initSandboxRuntimeModular();
   } catch (err) {
-    window.__hfStartupError = `HyperFrames runtime failed to start: ${err instanceof Error ? `${err.name}: ${err.message}` : String(err)}`;
+    recordStartupError(err);
     throw err;
   }
 }

@@ -1717,10 +1717,11 @@ export async function pollHfReady(page: Page, timeoutMs: number, intervalMs: num
   let lastDiagnosticAt = 0;
 
   while (Date.now() < deadline) {
-    const startupError = await page.evaluate("window.__hfStartupError");
-    if (typeof startupError === "string") throw new Error(startupError);
-    const ready = Boolean(await page.evaluate(readyExpr));
-    if (ready) return;
+    const state = await page.evaluate(
+      `typeof window.__hfStartupError === "string" ? window.__hfStartupError : ${readyExpr}`,
+    );
+    if (typeof state === "string") throw new Error(state);
+    if (state) return;
 
     const elapsed = timeoutMs - (deadline - Date.now());
     if (elapsed >= FAST_FAIL_AFTER_MS) {
