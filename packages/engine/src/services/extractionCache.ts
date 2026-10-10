@@ -89,8 +89,7 @@ export interface CacheKeyInput {
   format: CacheFrameFormat;
   /** Optional source transform applied during extraction. */
   transform?: string;
-  /** SHA-256 of the source bytes. Replaces path and mtime in the key for a source whose path and
-   *  mtime are new on every render (downloaded media). */
+  /** SHA-256 of the source bytes, in place of path and mtime (downloaded media gets new ones each render). */
   contentSha256?: string;
 }
 
@@ -114,7 +113,6 @@ export interface CachePublishResult {
   published: boolean;
 }
 
-/** SHA-256 of a file's bytes, read as a stream, or `null` when it cannot be read (skip the cache). */
 export async function readContentSha256(
   path: string,
   signal?: AbortSignal,
