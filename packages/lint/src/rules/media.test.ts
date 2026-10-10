@@ -1175,14 +1175,100 @@ describe("media_src_kind_mismatch", () => {
     expect(result.findings.find((f) => f.code === "media_src_kind_mismatch")).toBeUndefined();
   });
 
-  it("does not flag .ogg or .m4a, whose containers can carry video too", async () => {
+  it("errors when <img> src is an .m4a audio file", async () => {
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <img id="logo" src="voice.m4a" data-start="0" data-duration="5" />
+  </div>
+  <script>window.__timelines = {};</script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "media_src_kind_mismatch");
+    expect(finding?.severity).toBe("error");
+    expect(finding?.elementId).toBe("logo");
+    expect(finding?.message).toContain("an audio file");
+  });
+
+  it("errors when <video> src is an .m4a audio file", async () => {
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <video id="bg" src="voice.m4a" data-start="0" data-duration="5" muted></video>
+  </div>
+  <script>window.__timelines = {};</script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "media_src_kind_mismatch");
+    expect(finding?.severity).toBe("error");
+    expect(finding?.elementId).toBe("bg");
+    expect(finding?.message).toContain("an audio file");
+  });
+
+  it("errors when <video> src is an .avif image", async () => {
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <video id="bg" src="photo.avif" data-start="0" data-duration="5" muted></video>
+  </div>
+  <script>window.__timelines = {};</script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "media_src_kind_mismatch");
+    expect(finding?.severity).toBe("error");
+    expect(finding?.elementId).toBe("bg");
+    expect(finding?.message).toContain("an image");
+  });
+
+  it("does not flag matching .avif and .m4a src kinds", async () => {
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <img id="i1" src="photo.avif">
+    <audio id="a1" src="voice.m4a" data-start="0" data-duration="5"></audio>
+    <video id="v1" src="clip.m4v" data-start="0" data-duration="5" muted></video>
+  </div>
+  <script>window.__timelines = {};</script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.find((f) => f.code === "media_src_kind_mismatch")).toBeUndefined();
+  });
+
+  it("reads .avif and .m4a extensions case-insensitively and past query/hash suffixes", async () => {
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <video id="v1" src="photo.AVIF?v=2" data-start="0" data-duration="5" muted></video>
+    <img id="i1" src="voice.M4A#t=5" data-start="0" data-duration="5" />
+  </div>
+  <script>window.__timelines = {};</script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const findings = result.findings.filter((f) => f.code === "media_src_kind_mismatch");
+    expect(findings.map((f) => f.elementId)).toEqual(["v1", "i1"]);
+    expect(findings[0]?.message).toContain("an image");
+    expect(findings[1]?.message).toContain("an audio file");
+  });
+
+  it("does not flag .ogg, whose container can carry video too", async () => {
     const html = `
 <html><body>
   <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
     <video id="v1" src="clip.ogg" data-start="0" data-duration="5" muted></video>
-    <video id="v2" src="clip.m4a" data-start="0" data-duration="5" muted></video>
     <img id="i1" src="clip.ogg" data-start="0" data-duration="5" />
-    <img id="i2" src="clip.m4a" data-start="0" data-duration="5" />
+  </div>
+  <script>window.__timelines = {};</script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.find((f) => f.code === "media_src_kind_mismatch")).toBeUndefined();
+  });
+
+  it("does not flag unknown extensions, whose kind cannot be inferred", async () => {
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <video id="v1" src="clip.xyz" data-start="0" data-duration="5" muted></video>
+    <img id="i1" src="still.xyz" data-start="0" data-duration="5" />
   </div>
   <script>window.__timelines = {};</script>
 </body></html>`;

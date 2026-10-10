@@ -61,6 +61,7 @@ const IMAGE_SRC_EXT = new Set([
   "heif",
   "tiff",
   "ico",
+  "avif",
 ]);
 const VIDEO_SRC_EXT = new Set([
   "mp4",
@@ -75,7 +76,7 @@ const VIDEO_SRC_EXT = new Set([
   "mpeg",
 ]);
 
-const AUDIO_SRC_EXT = new Set(["mp3", "wav", "aac", "flac", "opus", "aiff", "wma"]);
+const AUDIO_SRC_EXT = new Set(["mp3", "wav", "aac", "flac", "opus", "aiff", "wma", "m4a"]);
 
 type SrcKind = "image" | "video" | "audio";
 
