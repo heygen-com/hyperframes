@@ -164,9 +164,16 @@ function moveMutation(context: MutationContext, args: Record<string, unknown>): 
       fix: `choose a start at or before the latest valid start ${context.duration - context.row.duration}`,
     };
   }
-  const patched = patchElementInHtml(context.before, context.resolved.target, [
+  const operations: PatchOperation[] = [
     { type: "html-attribute", property: "data-start", value: String(time.seconds) },
-  ]);
+  ];
+  if (context.row.durationAuthored) {
+    operations.push(
+      { type: "html-attribute", property: "data-duration", value: String(context.row.duration) },
+      { type: "html-attribute", property: "data-end", value: null },
+    );
+  }
+  const patched = patchElementInHtml(context.before, context.resolved.target, operations);
   if (!patched.matched) {
     return { ok: false, reason: `${context.ref} was not found`, fix: "choose an existing clip" };
   }
