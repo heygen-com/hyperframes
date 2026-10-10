@@ -6,6 +6,7 @@ import { applyPreviewVariablesToUrl } from "../../hooks/previewVariablesStore";
 import { HyperframesLoader } from "../../components/ui";
 import { usePlayerStore } from "../store/playerStore";
 import { announcePreviewDocumentLoaded } from "../sceneSwap";
+import type { IframeWindow } from "../lib/playbackTypes";
 // Importing "@hyperframes/player" registers a class extending HTMLElement at
 // module load, which throws under SSR, hence the dynamic import behind a
 // `typeof window` guard. Kicking it here rather than in the mount effect puts
@@ -137,6 +138,9 @@ export function hasUnloadedAssets(iframe: HTMLIFrameElement, lastResult: boolean
  * forwarded ref so useTimelinePlayer can access it for clip manifest parsing,
  * timeline probing, and DOM inspection.
  */
+const runtimeBootedIn = (iframe: HTMLIFrameElement) =>
+  (iframe.contentWindow as IframeWindow | null)?.__playerReady === true;
+
 export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
   (
     {
@@ -233,7 +237,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         const handleReady = () => {
           setPreviewError(null);
           setCompositionLoading(false);
-          if (iframe.contentDocument) handleLoad();
+          if (iframe.contentDocument && runtimeBootedIn(iframe)) handleLoad();
         };
         const handlePainted = () => {
           setPainted(true);

@@ -203,6 +203,7 @@ describe("callbacks after the player is already mounted", () => {
     const iframe = (player as TestHyperframesPlayer).iframeElement;
     let page = {};
     Object.defineProperty(iframe, "contentDocument", { get: () => page });
+    Object.defineProperty(iframe, "contentWindow", { get: () => ({ __playerReady: true }) });
     const announced = vi.fn();
     onPreviewDocumentLoaded(iframe, announced);
 
@@ -217,6 +218,26 @@ describe("callbacks after the player is already mounted", () => {
     act(() => void player.dispatchEvent(new Event("ready")));
     expect(onLoad).toHaveBeenCalledTimes(2);
     expect(announced).toHaveBeenCalledTimes(2);
+  });
+
+  it("leaves a ready that arrives before the page's runtime boots to the page's own load", async () => {
+    const onLoad = vi.fn();
+    const { player } = await mountPlayer({ onLoad });
+    const iframe = (player as TestHyperframesPlayer).iframeElement;
+    const page = {};
+    let runtime: { __playerReady?: boolean } = {};
+    Object.defineProperty(iframe, "contentDocument", { get: () => page });
+    Object.defineProperty(iframe, "contentWindow", { get: () => runtime });
+
+    act(() => void player.dispatchEvent(new Event("ready")));
+    expect(onLoad).not.toHaveBeenCalled();
+
+    act(() => void iframe.dispatchEvent(new Event("load")));
+    expect(onLoad).toHaveBeenCalledTimes(1);
+
+    runtime = { __playerReady: true };
+    act(() => void player.dispatchEvent(new Event("ready")));
+    expect(onLoad).toHaveBeenCalledTimes(1);
   });
 
   it("reports the preview error cause", async () => {
