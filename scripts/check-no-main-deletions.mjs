@@ -42,6 +42,9 @@ const STORYBOARD_VIEW_REASON =
 const SIMULATED_CURSOR_REASON =
   "owner-directed removal of simulated-cursor; the Cursors section's new pointer animations replace it";
 
+const CATALOG_FONT_REASON =
+  "superseded catalog font: the regenerated block payloads load their fonts from newly hashed files, nothing references this one";
+
 const DESIGN_NOTES_REASON =
   "plan and contract notes are working notes kept out of the repo; docs/contracts/ and docs/plans/ are gitignored";
 
@@ -1112,6 +1115,20 @@ export const ALLOWED_DELETIONS = new Map([
   ["registry/components/simulated-cursor/demo.html", SIMULATED_CURSOR_REASON],
   ["registry/components/simulated-cursor/registry-item.json", SIMULATED_CURSOR_REASON],
   ["registry/components/simulated-cursor/simulated-cursor.html", SIMULATED_CURSOR_REASON],
+  ["docs/catalog/components/simulated-cursor.mdx", SIMULATED_CURSOR_REASON],
+  ["docs/public/catalog/components/simulated-cursor.json", SIMULATED_CURSOR_REASON],
+  ["docs/public/catalog/assets/2427868cae6e8cf3.woff2", CATALOG_FONT_REASON],
+  ["docs/public/catalog/assets/36535127950d69fb.woff2", CATALOG_FONT_REASON],
+  ["docs/public/catalog/assets/42e5ad0b3cee71d5.woff2", CATALOG_FONT_REASON],
+  ["docs/public/catalog/assets/5905d90fd449470d.woff2", CATALOG_FONT_REASON],
+  ["docs/public/catalog/assets/728492d30bf60f21.woff2", CATALOG_FONT_REASON],
+  ["docs/public/catalog/assets/788a403350b85d98.woff2", CATALOG_FONT_REASON],
+  ["docs/public/catalog/assets/95061b23401efc9b.woff2", CATALOG_FONT_REASON],
+  ["docs/public/catalog/assets/ae40a5f8f9f604f4.woff2", CATALOG_FONT_REASON],
+  ["docs/public/catalog/assets/b13fa08305318ea6.woff2", CATALOG_FONT_REASON],
+  ["docs/public/catalog/assets/c356c27cca02fa3b.woff2", CATALOG_FONT_REASON],
+  ["docs/public/catalog/assets/e3c9ceb1da81254f.woff2", CATALOG_FONT_REASON],
+  ["docs/public/catalog/assets/e59d60b150022666.woff2", CATALOG_FONT_REASON],
   [
     "packages/studio-server/src/helpers/previewWatchIgnore.ts",
     "preview.watchIgnore is replaced by reloading only when a file the preview loaded changes",
