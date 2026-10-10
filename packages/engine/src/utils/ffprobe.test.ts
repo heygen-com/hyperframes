@@ -552,6 +552,9 @@ type SpawnOutcome =
       stdoutChunks?: Buffer[];
     };
 
+const NO_DECODED_FRAMES: SpawnOutcome = { kind: "exit", code: 0, stdout: "" };
+const metadataProbes = (calls: SpawnCall[]) => calls.filter((c) => c.args.includes("-show_format"));
+
 function createSpawnSpy(outcomes: SpawnOutcome[]): {
   spawn: (command: string, args: readonly string[]) => FakeProc;
   calls: SpawnCall[];
@@ -656,6 +659,8 @@ describe("media metadata cache invalidation", () => {
           format: { duration: "1" },
         }),
       },
+      NO_DECODED_FRAMES,
+      NO_DECODED_FRAMES,
       {
         kind: "exit",
         code: 0,
@@ -666,6 +671,7 @@ describe("media metadata cache invalidation", () => {
           format: { duration: "2" },
         }),
       },
+      NO_DECODED_FRAMES,
     ]);
     vi.resetModules();
     vi.doMock("child_process", () => ({ spawn }));
@@ -680,7 +686,7 @@ describe("media metadata cache invalidation", () => {
       const refreshed = await extractAudioMetadata(file);
       expect(refreshed).toMatchObject({ durationSeconds: 2, sampleRate: 44100, channels: 2 });
       expect(await extractAudioMetadata(file)).toBe(refreshed);
-      expect(calls).toHaveLength(2);
+      expect(metadataProbes(calls)).toHaveLength(2);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -753,6 +759,8 @@ describe("media metadata cache invalidation", () => {
           format: { duration: "1" },
         }),
       },
+      NO_DECODED_FRAMES,
+      NO_DECODED_FRAMES,
       {
         kind: "exit",
         code: 0,
@@ -761,6 +769,7 @@ describe("media metadata cache invalidation", () => {
           format: { duration: "2" },
         }),
       },
+      NO_DECODED_FRAMES,
     ]);
     vi.resetModules();
     vi.doMock("child_process", () => ({ spawn }));
@@ -768,7 +777,7 @@ describe("media metadata cache invalidation", () => {
     try {
       expect(await extractAudioMetadata(file)).toMatchObject({ durationSeconds: 1 });
       expect(await extractAudioMetadata(file)).toMatchObject({ durationSeconds: 2 });
-      expect(calls).toHaveLength(2);
+      expect(metadataProbes(calls)).toHaveLength(2);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -905,98 +914,135 @@ describe("ffprobe missing-binary fallback", () => {
     }
   });
 
-  // `profile` matters now: the packet refinement is an allowlist on AAC-LC,
-  // because the 1024-sample formula is wrong for LD/ELD/HE and unverified for
-  // the rest. An unprofiled "aac" stream deliberately keeps its container
-  // duration rather than being refined on an assumption.
+  // The container always reports 1.25s; each case varies what the decode probe finds.
+  // `spawns` says whether the probe ran (no-frames also runs the full-scan fallback).
   it.each([
     {
-      name: "non-AAC metadata",
-      codec: "mp3",
-      profile: undefined,
-      packets: undefined,
-      expected: 1.25,
-      calls: 1,
+      name: "non-AAC codec, decoded duration well beyond the container summary",
+      codec: "flac",
+      sampleRate: "48000",
+      lastFrame: { best_effort_timestamp_time: "3.9", nb_samples: 4800 },
+      expected: 4.0, // 3.9 + 4800/48000
+      spawns: 2,
     },
     {
-      name: "unprofiled AAC",
+      name: "decoded duration within probe-precision margin of the summary — kept as-is",
       codec: "aac",
-      profile: undefined,
-      packets: "783",
+      sampleRate: "48000",
+      // 1.2 + 3840/48000 = 1.28, only 0.03s over the 1.25s summary — under
+      // the margin, so the summary (edit-list-corrected) duration wins.
+      lastFrame: { best_effort_timestamp_time: "1.2", nb_samples: 3840 },
       expected: 1.25,
-      calls: 1,
+      spawns: 2,
     },
     {
-      name: "valid AAC-LC packet count",
-      codec: "aac",
-      profile: "LC",
-      packets: "783",
-      expected: 16.704,
-      calls: 2,
+      name: "no decodable frames — keeps the container duration",
+      codec: "opus",
+      sampleRate: "48000",
+      lastFrame: undefined,
+      expected: 1.25,
+      // An empty tail read falls back to a full scan, which also finds
+      // nothing (the mock's last outcome — the empty stdout — repeats).
+      spawns: 3,
     },
     {
-      name: "missing AAC packet count",
+      name: "zero sample rate — skips the decode probe entirely",
       codec: "aac",
-      profile: "LC",
-      packets: undefined,
+      sampleRate: "0",
+      // Would have won on any other row; the probe is never spawned to see it.
+      lastFrame: { best_effort_timestamp_time: "10", nb_samples: 999_999 },
       expected: 1.25,
-      calls: 2,
-    },
-    {
-      name: "zero AAC packet count",
-      codec: "aac",
-      profile: "LC",
-      packets: "0",
-      expected: 1.25,
-      calls: 2,
-    },
-    {
-      name: "invalid AAC packet count",
-      codec: "aac",
-      profile: "LC",
-      packets: "invalid",
-      expected: 1.25,
-      calls: 2,
+      spawns: 1,
     },
   ])(
     "derives audio duration for $name",
-    async ({ codec, profile, packets, expected, calls: expectedCalls }) => {
-      const outcomes: SpawnOutcome[] = [
+    async ({ codec, sampleRate, lastFrame, expected, spawns }) => {
+      const { spawn, calls } = createSpawnSpy([
         {
           kind: "exit",
           code: 0,
           stdout: JSON.stringify({
             streams: [
-              {
-                codec_type: "audio",
-                codec_name: codec,
-                sample_rate: "48000",
-                channels: 2,
-                profile,
-              },
+              { codec_type: "audio", codec_name: codec, sample_rate: sampleRate, channels: 2 },
             ],
             format: { duration: "1.25", bit_rate: "128000" },
           }),
         },
-      ];
-      if (codec === "aac" && profile === "LC") {
-        outcomes.push({
+        {
           kind: "exit",
           code: 0,
-          stdout: JSON.stringify({ streams: [{ nb_read_packets: packets }], format: {} }),
-        });
-      }
-      const { spawn, calls } = createSpawnSpy(outcomes);
+          stdout: lastFrame
+            ? `${lastFrame.best_effort_timestamp_time},${lastFrame.nb_samples}\n`
+            : "",
+        },
+      ]);
       vi.resetModules();
       vi.doMock("child_process", () => ({ spawn }));
 
       const { extractAudioMetadata } = await import("./ffprobe.js");
-      const meta = await extractAudioMetadata(`/tmp/${codec}-${packets ?? "none"}.audio`);
+      const meta = await extractAudioMetadata(`/tmp/${codec}-${sampleRate}.audio`);
 
       expect(meta.durationSeconds).toBeCloseTo(expected, 6);
-      expect(calls).toHaveLength(expectedCalls);
+      expect(calls).toHaveLength(spawns);
     },
   );
+
+  // A bad seek index can make the tail read find nothing past a real final frame.
+  it("falls back to a full decode when the tail-seeked read finds no frames", async () => {
+    const { spawn, calls } = createSpawnSpy([
+      {
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({
+          streams: [{ codec_type: "audio", codec_name: "opus", sample_rate: "48000", channels: 2 }],
+          format: { duration: "1.25" },
+        }),
+      },
+      { kind: "exit", code: 0, stdout: "" }, // tail-seeked read: nothing found
+      { kind: "exit", code: 0, stdout: "1.4,4800\n" }, // full-scan fallback: real frame
+    ]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { extractAudioMetadata } = await import("./ffprobe.js");
+    const meta = await extractAudioMetadata("/tmp/tail-seek-miss.opus");
+
+    expect(meta.durationSeconds).toBeCloseTo(1.5, 6); // 1.4 + 4800/48000, well past the margin
+    expect(calls).toHaveLength(3);
+    expect(calls[1]?.args).toContain("-read_intervals");
+    expect(calls[2]?.args).not.toContain("-read_intervals");
+  });
+
+  // An abort is the caller's own intent, so the decode probe must surface it
+  // rather than swallow it the way it swallows a genuine probe failure. The
+  // signal is aborted only once the decode probe has spawned — aborting up
+  // front trips the container probe instead, leaving this path untested.
+  it("propagates an abort raised during the decode probe", async () => {
+    const controller = new AbortController();
+    const { spawn: baseSpawn, calls } = createSpawnSpy([
+      {
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({
+          streams: [{ codec_type: "audio", codec_name: "opus", sample_rate: "48000", channels: 2 }],
+          format: { duration: "1.25" },
+        }),
+      },
+      { kind: "exit", code: 0, stdout: "9,960\n" },
+    ]);
+    const spawn = (command: string, args: readonly string[]) => {
+      if (calls.length === 1) controller.abort();
+      return baseSpawn(command, args);
+    };
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { extractAudioMetadata } = await import("./ffprobe.js");
+    await expect(
+      extractAudioMetadata("/tmp/aborted.audio", { signal: controller.signal }),
+    ).rejects.toThrow();
+    expect(calls).toHaveLength(2);
+  });
 
   it("extractMediaMetadata falls back to PNG cICP metadata when ffprobe is missing", async () => {
     const { spawn, calls } = createSpawnSpy([{ kind: "missing" }]);
@@ -1427,9 +1473,6 @@ describe("ffprobe option separator", () => {
             {
               codec_type: "audio",
               codec_name: "aac",
-              // LC, so the packet-count refinement actually runs and its
-              // argv is covered here too.
-              profile: "LC",
               sample_rate: "48000",
               channels: 2,
             },
@@ -1437,14 +1480,9 @@ describe("ffprobe option separator", () => {
           format: { duration: "1.25" },
         }),
       },
-      {
-        kind: "exit",
-        code: 0,
-        stdout: JSON.stringify({
-          streams: [{ nb_read_packets: "783" }],
-          format: {},
-        }),
-      },
+      // The decode-based duration probe also runs, so its argv (including its
+      // own `--`) is covered here too.
+      { kind: "exit", code: 0, stdout: "1.2,3840\n" },
       { kind: "exit", code: 0, stdout: "0.000\n1.000\n" },
     ]);
     vi.resetModules();
@@ -1688,7 +1726,7 @@ describe("pix_fmt alpha detection", () => {
   it.each(OPAQUE)("reports %s as opaque", (fmt) => expect(pixelFormatHasAlpha(fmt)).toBe(false));
 });
 
-describe("AAC duration refinement must never fail or distort the call", () => {
+describe("audio duration decode probe never fails the call and needs no profile allowlist", () => {
   afterEach(() => {
     vi.resetModules();
     vi.doUnmock("child_process");
@@ -1710,90 +1748,141 @@ describe("AAC duration refinement must never fail or distort the call", () => {
     return { meta: await extractAudioMetadata(file), calls };
   }
 
-  // Regression: the refinement had no try/catch, so its failure rejected a
+  // Regression: the old refinement had no try/catch, so its failure rejected a
   // call whose duration was already correct. htmlCompiler catches that as
   // "no audio stream", returns 0, and the render ships silent.
-  it("keeps the container duration when the packet probe fails", async () => {
-    const { meta } = await probe(
+  it("keeps the container duration when the decode probe fails", async () => {
+    const { meta, calls } = await probe(
       [
-        { kind: "exit", code: 0, stdout: aacStream("LC") },
+        { kind: "exit", code: 0, stdout: aacStream() },
         { kind: "exit", code: 1, stdout: "", stderr: "ffprobe exploded" },
       ],
-      "/tmp/aac-packet-probe-fails.m4a",
+      "/tmp/decode-probe-fails.m4a",
     );
     expect(meta.durationSeconds).toBe(600);
+    // The tail-seeked attempt fails, so the full-scan fallback also runs (and
+    // also fails, via the mock's repeated last outcome) before giving up.
+    expect(calls).toHaveLength(3);
   });
 
-  it("keeps the container duration when the packet probe returns junk", async () => {
-    const { meta } = await probe(
+  it("keeps the container duration when the decode probe returns junk", async () => {
+    const { meta, calls } = await probe(
       [
-        { kind: "exit", code: 0, stdout: aacStream("LC") },
+        { kind: "exit", code: 0, stdout: aacStream() },
         { kind: "exit", code: 0, stdout: "not json at all" },
       ],
-      "/tmp/aac-packet-probe-junk.m4a",
+      "/tmp/decode-probe-junk.m4a",
     );
     expect(meta.durationSeconds).toBe(600);
+    expect(calls).toHaveLength(3);
   });
 
-  // Regression: codec_name is "aac" for HE-AAC too, but its packets carry
-  // 2048 output samples — assuming 1024 halved a 10:00 podcast to 5:00.
+  // The old refinement needed a profile allowlist because it guessed a fixed
+  // samples-per-frame value (right for AAC-LC, wrong for HE-AAC/LD/ELD/etc).
+  // Decoding the real last frame's own sample count has no such assumption,
+  // so every profile goes through the same path with no special-casing.
+  it.each(["LC", "HE-AAC", "HE-AACv2", "LD", "ELD", "Main", "", "SomethingNew"])(
+    "corrects duration for AAC profile %s, with no allowlist",
+    async (profile) => {
+      const { meta, calls } = await probe(
+        [
+          { kind: "exit", code: 0, stdout: aacStream(profile) },
+          { kind: "exit", code: 0, stdout: "603.9,4410\n" },
+        ],
+        `/tmp/aac-${profile || "none"}.m4a`,
+      );
+      expect(meta.durationSeconds).toBeCloseTo(604, 5); // 603.9 + 4410/44100
+      expect(calls).toHaveLength(2);
+    },
+  );
+
+  const audioProbe = (stream: object, format: object) =>
+    JSON.stringify({
+      streams: [{ codec_type: "audio", codec_name: "aac", sample_rate: "44100", ...stream }],
+      format: { duration: "600", ...format },
+    });
+  const readInterval = (calls: SpawnCall[]) =>
+    calls[1]?.args[calls[1].args.indexOf("-read_intervals") + 1];
+
   it.each([
-    "HE-AAC",
-    "HE-AACv2",
-    "he-aac",
-    // 512- and 480-sample framing: the 1024 multiplier overstates these by
-    // 2x and ~2.13x, overwriting an already-correct container duration.
-    "LD",
-    "ELD",
-    // Not verified for this maths, so not allowlisted.
-    "Main",
-    "SSR",
-    "LTP",
-    "xHE-AAC",
-    // Missing or unrecognised profile must NOT fall through to the formula —
-    // that is how an unknown HE spelling kept the truncation bug.
-    "",
-    "SomethingNew",
-  ])("does not apply the LC packet maths to profile %s", async (profile) => {
+    ["the stream", { start_time: "1.4" }, {}],
+    ["the format, when the stream has none", {}, { start_time: "1.4" }],
+  ])("measures the decoded end from the start time of %s", async (_, stream, format) => {
     const { meta, calls } = await probe(
-      [{ kind: "exit", code: 0, stdout: aacStream(profile) }],
-      `/tmp/heaac-${profile}.m4a`,
+      [
+        { kind: "exit", code: 0, stdout: audioProbe(stream, format) },
+        { kind: "exit", code: 0, stdout: "601.3,4410\n" },
+      ],
+      `/tmp/start-offset-${Object.keys(format).length}.ts`,
     );
-    expect(meta.durationSeconds).toBe(600);
-    // The second probe is not even attempted.
-    expect(calls).toHaveLength(1);
+    expect(meta.durationSeconds).toBe(600); // 601.3 + 0.1 - 1.4 is within the margin
+    expect(readInterval(calls)).toBe("600.4%");
   });
 
-  it.each(["LC", " lc "])("still refines AAC profile %s", async (profile) => {
+  it.each([
+    ["trusts a shorter decode for raw ADTS", "aac", 10],
+    ["keeps the container for an MP4, whose edit list may trim", "mov,mp4,m4a,3gp,3g2,mj2", 600],
+  ])("%s", async (_, formatName, expected) => {
     const { meta } = await probe(
       [
-        { kind: "exit", code: 0, stdout: aacStream(profile) },
-        {
-          kind: "exit",
-          code: 0,
-          stdout: JSON.stringify({ streams: [{ nb_read_packets: "861" }], format: {} }),
-        },
+        { kind: "exit", code: 0, stdout: audioProbe({}, { format_name: formatName }) },
+        { kind: "exit", code: 0, stdout: "9.9,4410\n" },
       ],
-      `/tmp/aac-lc-${profile.trim()}.m4a`,
+      `/tmp/shorter-decode-${formatName.length}.aac`,
     );
-    expect(meta.durationSeconds).toBeCloseTo((861 * 1024) / 44100, 5);
+    expect(meta.durationSeconds).toBeCloseTo(expected, 5);
   });
 
-  it("still refines a plain AAC-LC stream", async () => {
+  it("reads the last frame of a decode listing longer than the stdout cap", async () => {
+    const rows = Array.from({ length: 10000 }, (_, i) => `${(i / 100).toFixed(2)},4410`);
     const { meta } = await probe(
       [
-        { kind: "exit", code: 0, stdout: aacStream("LC") },
-        {
-          kind: "exit",
-          code: 0,
-          stdout: JSON.stringify({ streams: [{ nb_read_packets: "861" }], format: {} }),
-        },
+        { kind: "exit", code: 0, stdout: aacStream() },
+        { kind: "exit", code: 0, stdout: `${rows.join("\n")}\n603.9,4410\n` },
       ],
-      "/tmp/aac-lc-refined.m4a",
+      "/tmp/long-decode-listing.m4a",
     );
-    expect(meta.durationSeconds).toBeCloseTo((861 * 1024) / 44100, 5);
+    expect(meta.durationSeconds).toBeCloseTo(604, 5);
   });
 });
+
+// honest.mp4 is FLAC-in-MP4; lying.mp4 is the same bytes with the mvhd/tkhd/mdhd
+// durations halved, every audio frame intact.
+const HAS_FFPROBE = spawnSync("ffprobe", ["-version"]).status === 0;
+
+describe.skipIf(!HAS_FFPROBE)(
+  "extractAudioMetadata recovers a real lying container's true duration",
+  () => {
+    const honestPath = resolve(__dirname, "__fixtures__/lying-container/honest.mp4");
+    const lyingPath = resolve(__dirname, "__fixtures__/lying-container/lying.mp4");
+
+    it("recovers the true duration from a FLAC-in-MP4 file whose container atoms were patched to lie", async () => {
+      const { extractAudioMetadata } = await import("./ffprobe.js");
+      const trueMeta = await extractAudioMetadata(honestPath);
+      expect(trueMeta.audioCodec).toBe("flac");
+      expect(trueMeta.durationSeconds).toBeGreaterThan(3.9);
+
+      const lyingMeta = await extractAudioMetadata(lyingPath);
+
+      // Recovers the real duration — not the halved container summary.
+      expect(lyingMeta.durationSeconds).toBeCloseTo(trueMeta.durationSeconds, 1);
+    });
+
+    // 2 s of AAC in MPEG-TS starting at 1.4 s: last frame 3.448 + 1024/16000 - 1.4.
+    it("does not add an MPEG-TS start time to the duration", async () => {
+      const { extractAudioMetadata } = await import("./ffprobe.js");
+      const path = resolve(__dirname, "__fixtures__/lying-container/start-offset.mpegts");
+      expect((await extractAudioMetadata(path)).durationSeconds).toBeCloseTo(2.112, 3);
+    });
+
+    // 2 s silence + 1 s noise as raw ADTS; ffprobe 8.1 estimates about 9.1 s from the quiet opening.
+    it("corrects a raw ADTS duration that the container overclaims", async () => {
+      const { extractAudioMetadata } = await import("./ffprobe.js");
+      const path = resolve(__dirname, "__fixtures__/lying-container/overclaim.aac");
+      expect((await extractAudioMetadata(path)).durationSeconds).toBeCloseTo(3.072, 3);
+    });
+  },
+);
 
 describe("final video frame timestamp probes", () => {
   afterEach(() => {

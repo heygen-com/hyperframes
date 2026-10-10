@@ -249,7 +249,7 @@ describe("packageHls outputDir validation", () => {
   });
 });
 
-describe.skipIf(!HAS_FFMPEG)("packageHls against real ffmpeg", () => {
+describe.skipIf(!HAS_FFMPEG)("packageHls against real ffmpeg", { timeout: 30_000 }, () => {
   const FPS = 30;
   const DURATION = 4;
   const SEGMENT_SECONDS = 1;

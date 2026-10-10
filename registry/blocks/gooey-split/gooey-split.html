@@ -280,13 +280,9 @@
           var copies = samples + 1;
           var alpha = String(1 / samples);
 
-          // A copy is styled by nothing that selected the original: dropping the id also
-          // drops every `#id` rule that gave it size, colour and font. So each copy carries
-          // its own resolved style inline. Chrome returns "" for a computed style's cssText,
-          // so the declarations are enumerated rather than taken wholesale.
-          // Visibility is not frozen into a copy: its root takes the element's current one from
-          // the group each frame, and a descendant keeps its own only where it differs from its
-          // parent's. A target hidden at attach (autoAlpha) would otherwise never smear.
+          // A copy loses the `#id` rules that styled the original, so it carries its resolved style inline
+          // (enumerated: Chrome returns "" for a computed cssText). Visibility is not frozen: the root
+          // follows the group each frame, so a target hidden at attach still smears.
           function resolvedStyles(source, out, parentVisibility) {
             var cs = getComputedStyle(source);
             var text = "";

@@ -220,6 +220,12 @@ jobs:
         with:
           lfs: true
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+        with:
+          # Docker Hub rate-limits anonymous pulls from shared runners; pull through Google's mirror.
+          driver-opts: image=mirror.gcr.io/moby/buildkit:buildx-stable-1
+          buildkitd-config-inline: |
+            [registry."docker.io"]
+              mirrors = ["mirror.gcr.io"]
       - name: Build BeginFrame contract image
         # A hung bun install (Dockerfile.test, run 35468046055) would
         # otherwise eat the whole job timeout instead of failing at this step.
@@ -864,6 +870,20 @@ jobs:
             packages/studio/data/projects/inline-text-caret
           cp -R packages/studio/tests/e2e/fixtures/undo-socket-pool \
             packages/studio/data/projects/undo-socket-pool
+      - name: Build the base the viewport gate compares against
+        # The first parent of the checked-out commit, as in base-file.sh. Measured only when the head misses a budget.
+        run: |
+          set -euo pipefail
+          base="$(git cat-file -p HEAD | awk '/^parent /{print $2; exit}')"
+          git fetch --no-tags --depth=1 origin "$base"
+          GIT_LFS_SKIP_SMUDGE=1 git worktree add --detach /tmp/studio-base "$base"
+          cd /tmp/studio-base
+          bash scripts/ci/install-workspace-dependencies.sh
+          bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
+          bun run --cwd packages/core build
+          bun run --cwd packages/core build:hyperframes-runtime
+          # The same projects as the head's server, so neither side serves more than the other.
+          cp -R "$GITHUB_WORKSPACE/packages/studio/data" packages/studio/data
       - name: Read the base branch's work-count ceilings
         # A ceiling may not disappear, or rise without a new reason, against the branch this PR merges into.
         if: github.event_name == 'pull_request'
@@ -872,13 +892,13 @@ jobs:
         run: |
           set -euo pipefail
 
-          SERVER_PID=""
-          stop_server() {
-            if [[ -n "$SERVER_PID" ]]; then
-              kill "$SERVER_PID" 2>/dev/null || true
-              wait "$SERVER_PID" 2>/dev/null || true
-              SERVER_PID=""
-            fi
+          SERVER_PIDS=()
+          stop_servers() {
+            for pid in "${SERVER_PIDS[@]}"; do
+              kill "$pid" 2>/dev/null || true
+              wait "$pid" 2>/dev/null || true
+            done
+            SERVER_PIDS=()
           }
           wait_for_server() {
             local port="$1"
@@ -889,46 +909,39 @@ jobs:
             echo "FAIL: studio dev server did not start on port ${port}"
             return 1
           }
-          trap stop_server EXIT
+          trap stop_servers EXIT
 
-          # Run one server at a time so the measured browser never competes with
-          # a second Vite module graph on the shared runner. The development
-          # server supplies the fixture API; production React matches shipped
-          # rendering behavior, and the gate asserts that runtime before timing.
-          NODE_ENV=production \
-            bun run --cwd packages/studio dev -- --port 5313 --strictPort &
-          SERVER_PID=$!
+          # One arm at a time, so no other arm's Vite module graph competes with the measured browser.
+          # The base page loads only if the head misses a budget; production React matches shipped
+          # rendering, and the gate asserts that runtime before timing.
+          run_arm() {
+            local arm="$1" port="$2" virtualization="$3" count="$4" enabled="$5"
+            NODE_ENV=production VITE_STUDIO_TIMELINE_ROW_VIRTUALIZATION_ENABLED="$enabled" \
+              bun run --cwd /tmp/studio-base/packages/studio dev -- --port "$((port + 10))" --strictPort &
+            SERVER_PIDS+=($!)
+            NODE_ENV=production VITE_STUDIO_TIMELINE_ROW_VIRTUALIZATION_ENABLED="$enabled" \
+              bun run --cwd packages/studio dev -- --port "$port" --strictPort &
+            SERVER_PIDS+=($!)
+            local status=0
+            if wait_for_server "$((port + 10))" && wait_for_server "$port"; then
+              STUDIO_URL="http://localhost:${port}/#project/timeline-virtualization" \
+                BASE_STUDIO_URL="http://localhost:$((port + 10))/#project/timeline-virtualization" \
+                TIMELINE_ROW_VIRTUALIZATION="$virtualization" \
+                TIMELINE_ELEMENT_COUNT="$count" \
+                TIMELINE_TIER=ci \
+                node packages/studio/tests/e2e/timeline-virtualization.mjs \
+                | tee "/tmp/timeline-gate-${arm}.json" \
+                || status=$?
+            else
+              status=1
+            fi
+            stop_servers
+            return "$status"
+          }
           DEFAULT_STATUS=0
-          if wait_for_server 5313; then
-            STUDIO_URL="http://localhost:5313/#project/timeline-virtualization" \
-              TIMELINE_ROW_VIRTUALIZATION=on \
-              TIMELINE_ELEMENT_COUNT=50000 \
-              TIMELINE_TIER=ci \
-              node packages/studio/tests/e2e/timeline-virtualization.mjs \
-              | tee /tmp/timeline-gate-default.json \
-              || DEFAULT_STATUS=$?
-          else
-            DEFAULT_STATUS=1
-          fi
-          stop_server
-
-          NODE_ENV=production \
-            VITE_STUDIO_TIMELINE_ROW_VIRTUALIZATION_ENABLED=0 \
-            bun run --cwd packages/studio dev -- --port 5314 --strictPort &
-          SERVER_PID=$!
+          run_arm default 5313 on 50000 1 || DEFAULT_STATUS=$?
           DISABLED_STATUS=0
-          if wait_for_server 5314; then
-            STUDIO_URL="http://localhost:5314/#project/timeline-virtualization" \
-              TIMELINE_ROW_VIRTUALIZATION=off \
-              TIMELINE_ELEMENT_COUNT=1000 \
-              TIMELINE_TIER=ci \
-              node packages/studio/tests/e2e/timeline-virtualization.mjs \
-              | tee /tmp/timeline-gate-disabled.json \
-              || DISABLED_STATUS=$?
-          else
-            DISABLED_STATUS=1
-          fi
-          stop_server
+          run_arm disabled 5314 off 1000 0 || DISABLED_STATUS=$?
 
           {
             echo "### Timeline viewport gate"
@@ -940,6 +953,9 @@ jobs:
                 const b = e.environment.appliedBudgets;
                 for (const a of e.attempts)
                   console.log(`- ${process.argv[2]} attempt ${a.attempt}: interaction p95 ${a.interactionP95Ms.toFixed(1)}/${b.interactionP95Ms} ms, frame p95 ${a.frameIntervalP95Ms.toFixed(1)}/${b.frameIntervalP95Ms} ms, ${a.passingRuns}/${a.runs.length} runs, ${a.passed ? "pass" : "fail"}`);
+                const c = e.againstBase;
+                if (c)
+                  console.log(`- ${process.argv[2]} against base on this runner: ${c.summary}`);
               ' "/tmp/timeline-gate-${arm}.json" "$arm" || echo "- ${arm}: no evidence"
             done
           } >> "$GITHUB_STEP_SUMMARY"

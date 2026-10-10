@@ -4,12 +4,13 @@ import { once } from "node:events";
 import { createInterface } from "node:readline";
 import type { Readable } from "node:stream";
 import { existsSync, readFileSync, mkdirSync, rmSync, statSync, unlinkSync } from "node:fs";
-import { join, extname } from "node:path";
+import { basename, join, extname } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
 import { stoppedByCancelSignal } from "../utils/renderCancellation.js";
 import { ensureWhisper, ensureModel, hasFFmpeg, DEFAULT_MODEL } from "./manager.js";
+import { TRANSCRIPT_FILE } from "./transcriptFile.js";
 import { findWavChunk } from "./wav.js";
 import type { Word } from "./normalize.js";
 import { emitWords } from "./progress.js";
@@ -483,7 +484,7 @@ export async function transcribe(
     status: "started",
     durationSeconds: wavSeconds,
   });
-  const outputBase = join(outputDir, "transcript");
+  const outputBase = join(outputDir, basename(TRANSCRIPT_FILE, ".json"));
   mkdirSync(outputDir, { recursive: true });
 
   const whisperArgs = [
