@@ -9,7 +9,6 @@ import { build } from "esbuild";
 import { mkdirSync, rmSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
-import { sourceAliases } from "../../scripts/package-subpaths.mjs";
 
 rmSync("dist", { recursive: true, force: true });
 mkdirSync("dist", { recursive: true });
@@ -30,30 +29,15 @@ const __filename = __cjsFileURLToPath(import.meta.url);
 const __dirname = __cjsDirname(__filename);`,
 };
 
-const workspaceAliases = {
-  ...sourceAliases(resolve(scriptDir, "../engine"), [".", "./alpha-blit", "./shader-transitions"]),
-  ...sourceAliases(resolve(scriptDir, "../core"), [".", "./lint"]),
-};
-
-const workspaceAliasPlugin = {
-  name: "workspace-alias",
-  setup(build) {
-    build.onResolve({ filter: /^@hyperframes\/(?:engine|core)(?:\/.*)?$/ }, (args) => {
-      const path = workspaceAliases[args.path];
-      return path ? { path } : undefined;
-    });
-  },
-};
-
 const sharedOpts = {
   bundle: true,
   platform: "node",
   target: "node22",
   format: "esm",
-  external: ["puppeteer", "esbuild", "postcss"],
-  plugins: [workspaceAliasPlugin],
+  // Dependencies install from package.json like any other package's, so the
+  // tarball carries only producer's own code (as aws-lambda and gcp-cloud-run do).
+  packages: "external",
   minify: false,
-  sourcemap: true,
   banner: cjsBanner,
 };
 
@@ -91,7 +75,7 @@ try {
 
 // Generate .d.ts declarations (esbuild doesn't emit them)
 import { execSync } from "child_process";
-execSync("tsc --emitDeclarationOnly --declaration --declarationMap", {
+execSync("tsc --emitDeclarationOnly --declaration --declarationMap false", {
   stdio: "inherit",
 });
 
