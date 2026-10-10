@@ -144,8 +144,13 @@ describe("computeCacheKey", () => {
   it("keys a path-keyed source exactly as before content keys existed", () => {
     const input = base(sourceFile);
     const legacyBlob = JSON.stringify({
-      ...{ p: input.videoPath, m: input.mtimeMs, s: input.size },
-      ...{ ms: 0, d: 3, f: "30", fmt: "jpg" },
+      p: input.videoPath,
+      m: input.mtimeMs,
+      s: input.size,
+      ms: 0,
+      d: 3,
+      f: "30",
+      fmt: "jpg",
     });
     expect(computeCacheKey(input)).toBe(createHash("sha256").update(legacyBlob).digest("hex"));
   });
@@ -158,9 +163,10 @@ describe("computeCacheKey", () => {
     expect(computeCacheKey({ ...base(sourceFile), contentSha256: "b2" })).not.toBe(original);
   });
 
-  it("hashes a file's bytes for its content key", async () => {
+  it("hashes a file's bytes for its content key, or skips the cache when unreadable", async () => {
     const expected = createHash("sha256").update("fake-video-bytes").digest("hex");
     expect(await readContentSha256(sourceFile)).toBe(expected);
+    expect(await readContentSha256(join(tmpRoot, "missing.mp4"))).toBeNull();
   });
 
   it("changes when path changes (moved files re-extract)", () => {

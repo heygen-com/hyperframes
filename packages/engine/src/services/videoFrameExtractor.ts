@@ -12,6 +12,7 @@ import { join } from "path";
 import { cpus } from "os";
 import { createConcurrencyLimit } from "../utils/concurrencyLimit.js";
 import { parseHTML } from "linkedom";
+import { isPathInside } from "@hyperframes/parsers/asset-paths";
 import { resolveProjectRelativeSrc } from "@hyperframes/parsers/asset-resolution";
 import {
   MEDIA_RENDER_ID_ATTR,
@@ -1926,6 +1927,8 @@ export async function extractAllVideoFrames(
   // HDR preflight. Without this, every render would write a new
   // normalized file with a fresh mtime → fresh cache key → perpetual misses.
   // Phase 3 updates mediaStart after trimming any invisible negative preroll.
+  // Downloads and compiled copies are rewritten by every render, so only their content is stable.
+  const renderOwnedDirs = [options.outputDir, compiledDir].filter((dir) => dir !== undefined);
   const cacheKeyInputs = await Promise.all(
     resolvedVideos.map(async ({ video, videoPath }) => {
       const stat = readKeyStat(videoPath);
@@ -1934,16 +1937,17 @@ export async function extractAllVideoFrames(
       // avoid polluting the cache with a `(mtimeMs: 0, size: 0)` tuple that two
       // unrelated missing paths would otherwise share.
       if (!stat) return null;
+      const contentSha256 =
+        config?.extractCacheDir && renderOwnedDirs.some((dir) => isPathInside(videoPath, dir))
+          ? await readContentSha256(videoPath)
+          : undefined;
+      if (contentSha256 === null) return null;
       return {
         videoPath,
         mtimeMs: stat.mtimeMs,
         size: stat.size,
         mediaStart: video.mediaStart,
-        // A download lands in this render's work dir, so only its content is stable across renders.
-        contentSha256:
-          config?.extractCacheDir && isHttpUrl(video.src)
-            ? await readContentSha256(videoPath)
-            : undefined,
+        contentSha256,
       };
     }),
   );

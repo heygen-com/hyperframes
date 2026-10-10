@@ -114,11 +114,15 @@ export interface CachePublishResult {
   published: boolean;
 }
 
-/** SHA-256 of a file's bytes, read as a stream. */
-export async function readContentSha256(path: string): Promise<string> {
-  const hash = createHash("sha256");
-  for await (const chunk of createReadStream(path)) hash.update(chunk);
-  return hash.digest("hex");
+/** SHA-256 of a file's bytes, read as a stream, or `null` when it cannot be read (skip the cache). */
+export async function readContentSha256(path: string): Promise<string | null> {
+  try {
+    const hash = createHash("sha256");
+    for await (const chunk of createReadStream(path)) hash.update(chunk);
+    return hash.digest("hex");
+  } catch {
+    return null;
+  }
 }
 
 /**
