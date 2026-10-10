@@ -781,6 +781,36 @@ describe("audio_src_not_found with templating tokens", () => {
   });
 });
 
+describe("a double-quoted src that contains an apostrophe", () => {
+  const name = "Narrator's voice take 1.mp3";
+
+  it("finds the existing audio file instead of cutting the src at the apostrophe", async () => {
+    const project = makeProject(`<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="10"></div>
+  <audio id="a1" class="clip" data-start="0" data-duration="3" data-track-index="10" src="assets/${name}"></audio>
+</body></html>`);
+    mkdirSync(join(project, "assets"), { recursive: true });
+    writeFileSync(join(project, "assets", name), "");
+    const { results } = await lintProject(project);
+    const codes = results.flatMap((entry) => entry.result.findings).map((f) => f.code);
+    expect(codes).not.toContain("audio_src_not_found");
+  });
+
+  it("finds the existing image through the shared src pattern too", async () => {
+    const image = "Ann's photo.png";
+    const project = makeProject(`<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="10">
+    <img id="i1" class="clip" data-start="0" data-duration="3" data-track-index="0" src="assets/${image}">
+  </div>
+</body></html>`);
+    mkdirSync(join(project, "assets"), { recursive: true });
+    writeFileSync(join(project, "assets", image), "");
+    const { results } = await lintProject(project);
+    const codes = results.flatMap((entry) => entry.result.findings).map((f) => f.code);
+    expect(codes).not.toContain("missing_local_asset");
+  });
+});
+
 describe("templating tokens are checked on the raw src, before cleanAssetUrl", () => {
   // cleanAssetUrl splits on ?/#, which also chops inside a ${...} expression
   // (e.g. `${asset?.url}` -> `${asset`). The token skip must run on the RAW value or
