@@ -9,6 +9,7 @@ interface PathModuleLike {
   resolve: (...segments: string[]) => string;
   relative: (from: string, to: string) => string;
   isAbsolute: (path: string) => boolean;
+  sep: string;
 }
 
 /**
@@ -92,12 +93,14 @@ export function cleanAssetUrl(url: string): string {
 export function isWithinProjectRoot(
   projectDir: string,
   candidate: string,
-  pathModule: PathModuleLike = { resolve, relative, isAbsolute },
+  pathModule: PathModuleLike = { resolve, relative, isAbsolute, sep },
 ): boolean {
   const projectRoot = pathModule.resolve(projectDir);
   const relativePath = pathModule.relative(projectRoot, candidate);
   return (
-    relativePath === "" || (!relativePath.startsWith("..") && !pathModule.isAbsolute(relativePath))
+    relativePath !== ".." &&
+    !relativePath.startsWith(`..${pathModule.sep}`) &&
+    !pathModule.isAbsolute(relativePath)
   );
 }
 
@@ -120,7 +123,7 @@ export function resolveLocalAssetCandidates(projectDir: string, url: string): st
 
     const normalized = posix.normalize(projectRelative.replace(/\\/g, "/"));
     const clamped = normalized.replace(/^(\.\.\/)+/, "");
-    if (clamped && !clamped.startsWith("..")) {
+    if (clamped && clamped !== "..") {
       addCandidate(candidates, resolve(projectRoot, clamped));
     }
   }
@@ -145,7 +148,7 @@ function reanchoredCandidates(variant: string, baseDir: string, compiledDir?: st
   if (joinedAbs === baseAbs || joinedAbs.startsWith(baseAbs + sep)) return [];
   // Normalize before stripping, or `assets/../../assets/foo` becomes `assets/assets/foo`.
   const stripped = posix.normalize(variant.replace(/\\/g, "/")).replace(/^(\.\.\/)+/, "");
-  if (!stripped || stripped === variant || stripped.startsWith("..")) return [];
+  if (!stripped || stripped === variant || stripped === "..") return [];
   return compiledDir
     ? [join(compiledDir, stripped), join(baseDir, stripped)]
     : [join(baseDir, stripped)];
