@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
+import { StringDecoder } from "node:string_decoder";
 import { fileURLToPath } from "node:url";
 import { terminateProcessTree } from "./processTree.js";
 import { renderSetupFailureFrom, renderSetupResultFrom } from "../renderSetupWorkerLifecycle.js";
@@ -75,6 +76,9 @@ export function runCancellableProcess(
     if (child.pid) options.onSpawn?.(child.pid);
     let stdout = "";
     let stderr = "";
+    const stdoutDecoder = new StringDecoder("utf8");
+    const stderrDecoder = new StringDecoder("utf8");
+    let outputBytes = 0;
     let settled = false;
     let terminationReason: unknown;
     let terminationSignal: NodeJS.Signals | undefined;
@@ -115,14 +119,16 @@ export function runCancellableProcess(
     const onAbort = (): void => terminate(signal?.reason ?? new Error("Operation aborted"));
 
     child.stdout?.on("data", (chunk: Buffer | string) => {
-      stdout += chunk.toString();
-      if (Buffer.byteLength(stdout) + Buffer.byteLength(stderr) > maxBufferBytes) {
+      stdout += typeof chunk === "string" ? chunk : stdoutDecoder.write(chunk);
+      outputBytes += typeof chunk === "string" ? Buffer.byteLength(chunk) : chunk.length;
+      if (outputBytes > maxBufferBytes) {
         terminate(new Error(`Process output exceeded ${maxBufferBytes} bytes`), "ENOBUFS");
       }
     });
     child.stderr?.on("data", (chunk: Buffer | string) => {
-      stderr += chunk.toString();
-      if (Buffer.byteLength(stdout) + Buffer.byteLength(stderr) > maxBufferBytes) {
+      stderr += typeof chunk === "string" ? chunk : stderrDecoder.write(chunk);
+      outputBytes += typeof chunk === "string" ? Buffer.byteLength(chunk) : chunk.length;
+      if (outputBytes > maxBufferBytes) {
         terminate(new Error(`Process output exceeded ${maxBufferBytes} bytes`), "ENOBUFS");
       }
     });
@@ -130,6 +136,8 @@ export function runCancellableProcess(
     // fallow-ignore-next-line complexity
     child.once("close", async (status, closeSignal) => {
       if (settled) return;
+      stdout += stdoutDecoder.end();
+      stderr += stderrDecoder.end();
       if (terminationTask) {
         try {
           terminationSignal = await terminationTask;
