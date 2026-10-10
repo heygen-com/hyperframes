@@ -18,11 +18,11 @@
       "files": 5
     },
     "hyperframes": {
-      "hash": "a1bdcf644fd7e37b",
+      "hash": "589ae40d15628917",
       "files": 29
     },
     "hyperframes-animation": {
-      "hash": "3bd80388da91c689",
+      "hash": "9370b856259f4586",
       "files": 122
     },
     "hyperframes-audio": {
@@ -30,7 +30,7 @@
       "files": 7
     },
     "hyperframes-cli": {
-      "hash": "c08b5ad085db691e",
+      "hash": "5076477812cf2c37",
       "files": 11
     },
     "hyperframes-core": {
@@ -58,7 +58,7 @@
       "files": 109
     },
     "motion-graphics": {
-      "hash": "987e638de9385815",
+      "hash": "6db77031ad839f6a",
       "files": 23
     },
     "music-to-video": {
