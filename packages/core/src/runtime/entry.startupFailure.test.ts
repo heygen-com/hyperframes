@@ -41,7 +41,7 @@ describe("runtime start-up failure", () => {
     }));
 
     await expect(evaluateRuntime()).rejects.toThrow("boom");
-    expect(window.__hfStartupError).toBe("HyperFrames runtime failed to start: TypeError: boom");
+    expect(window.__hfStartupError).toBe("HyperFrames runtime failed: TypeError: boom");
   });
 
   it("is not marked render-ready when posting the timeline throws", async () => {
@@ -57,7 +57,7 @@ describe("runtime start-up failure", () => {
 
     await expect(evaluateRuntime()).rejects.toThrow("clip tree");
     expect(window.__renderReady).not.toBe(true);
-    expect(window.__hfStartupError).toBe("HyperFrames runtime failed to start: Error: clip tree");
+    expect(window.__hfStartupError).toBe("HyperFrames runtime failed: Error: clip tree");
   });
 
   it("names the error when a timeline post after start-up throws", async () => {
@@ -86,7 +86,33 @@ describe("runtime start-up failure", () => {
     expect(() => vi.advanceTimersByTime(1)).toThrow("late timeline post");
     expect(window.__renderReady).not.toBe(true);
     expect(window.__hfStartupError).toBe(
-      "HyperFrames runtime failed to start: Error: late timeline post",
+      "HyperFrames runtime failed: Error: late timeline post",
     );
+  });
+
+  it("keeps a start-up error after a later timeline post succeeds", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("CSS", { escape: (value: string) => value });
+    mountRoot();
+    let posts = 0;
+    vi.doMock("./timeline", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("./timeline")>();
+      return {
+        ...actual,
+        collectRuntimeTimelinePayload: (
+          ...args: Parameters<typeof actual.collectRuntimeTimelinePayload>
+        ) => {
+          posts += 1;
+          if (posts === 2) throw new Error("end of start-up");
+          return actual.collectRuntimeTimelinePayload(...args);
+        },
+      };
+    });
+
+    await expect(evaluateRuntime()).rejects.toThrow("end of start-up");
+    vi.advanceTimersByTime(1);
+
+    expect(posts).toBeGreaterThan(2);
+    expect(window.__hfStartupError).toBe("HyperFrames runtime failed: Error: end of start-up");
   });
 });

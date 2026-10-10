@@ -29,11 +29,11 @@
  */
 import { getDebugSurface } from "./globals.js";
 
-/** The named error readiness waits fail with when start-up or a timeline post throws. */
+/** The named error readiness waits fail with once start-up or a timeline post throws; it stays set. */
 export function recordStartupError(error: unknown): void {
   const detail = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
   (window as Window & { __hfStartupError?: string }).__hfStartupError =
-    `HyperFrames runtime failed to start: ${detail}`;
+    `HyperFrames runtime failed: ${detail}`;
 }
 
 export function swallow(label: string, error?: unknown): void {

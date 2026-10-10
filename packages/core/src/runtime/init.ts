@@ -4128,7 +4128,6 @@ export function initSandboxRuntimeModular(): void {
       recordStartupError(err);
       throw err;
     }
-    delete window.__hfStartupError;
     postState(true);
   };
 

@@ -562,7 +562,7 @@ describe("DrawElementVerificationError details", () => {
 
 describe("pollHfReady", () => {
   it("fails at once with the runtime's start-up error instead of waiting out the timeout", async () => {
-    const startupError = "HyperFrames runtime failed to start: TypeError: boom";
+    const startupError = "HyperFrames runtime failed: TypeError: boom";
     const page = {
       evaluate: async (expr: unknown) =>
         String(expr).includes("__hfStartupError") ? startupError : false,

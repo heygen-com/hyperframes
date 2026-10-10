@@ -68,7 +68,7 @@ describe("waitForRuntimeReady", () => {
 
   it("fails with the runtime's start-up error instead of reporting the page ready", async () => {
     const { waitForFunction, evaluate } = fakeSeekPage();
-    const startupError = "HyperFrames runtime failed to start: TypeError: boom";
+    const startupError = "HyperFrames runtime failed: TypeError: boom";
     evaluate.mockResolvedValue(startupError);
 
     const ready = waitForFunction.mock.calls.length;
