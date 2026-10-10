@@ -12,6 +12,7 @@ import {
 import { isMediaElement } from "./domRealm";
 import { parseStartExpression } from "./startExpression";
 import {
+  compositionOriginSeconds,
   isRootGlobalMediaStart,
   MEDIA_START_BASIS_ATTR,
   resolveMediaStartSeconds,
@@ -106,15 +107,47 @@ export function createRuntimeStartTimeResolver(params: {
     return null;
   };
 
+  // A mounted composition root without its own `data-start` takes its timing from the host it was
+  // loaded into: the host may use a different id than the file, or none (an anonymous host).
+  const inheritedTimingHost = (element: Element): Element | null => {
+    const parent = element.parentElement;
+    if (!parent || !element.hasAttribute("data-composition-id")) return null;
+    if (parseStartExpression(element.getAttribute("data-start"))) return null;
+    return parent.hasAttribute("data-composition-src") ||
+      parent.hasAttribute("data-composition-id") ||
+      parent.hasAttribute("data-composition-file")
+      ? parent
+      : null;
+  };
+
+  const resolveCompositionOrigin = (compositionRoot: Element, fallback: number): number =>
+    compositionOriginSeconds(
+      resolveStartForElementInternal(compositionRoot, fallback),
+      inheritedTimingHost(compositionRoot) ?? compositionRoot,
+    );
+
   const resolveHostOffsetForElement = (element: Element, fallback: number): number => {
-    if (element.hasAttribute("data-composition-id")) {
-      const parentComposition = element.parentElement?.closest("[data-composition-id]");
-      if (!parentComposition) return 0;
-      return resolveStartForElementInternal(parentComposition, fallback);
+    const compositionRoot = element.hasAttribute("data-composition-id")
+      ? element.parentElement?.closest("[data-composition-id]")
+      : element.closest("[data-composition-id]");
+    return compositionRoot ? resolveCompositionOrigin(compositionRoot, fallback) : 0;
+  };
+
+  const computeStart = (element: Element, fallback: number): number => {
+    const expression = parseStartExpression(element.getAttribute("data-start"));
+    if (!expression) {
+      const host = inheritedTimingHost(element);
+      return host ? resolveStartForElementInternal(host, fallback) : fallback;
     }
-    const compositionRoot = element.closest("[data-composition-id]");
-    if (!compositionRoot) return 0;
-    return resolveStartForElementInternal(compositionRoot, fallback);
+    if (expression.kind === "absolute") {
+      // Negative when a host's in-point is past its start; the host's slot cuts that part.
+      return resolveHostOffsetForElement(element, fallback) + Math.max(0, expression.value);
+    }
+    const target = findReferenceTarget(expression.refId);
+    if (!target) return fallback;
+    const targetStart = resolveStartForElementInternal(target, 0);
+    const targetDuration = resolveDurationForElement(target) ?? 0;
+    return Math.max(0, targetStart + targetDuration + expression.offset);
   };
 
   const resolveStartForElementInternal = (element: Element, fallback: number): number => {
@@ -127,53 +160,7 @@ export function createRuntimeStartTimeResolver(params: {
     }
     visiting.add(element);
     try {
-      const expression = parseStartExpression(element.getAttribute("data-start"));
-      if (!expression) {
-        // If this element is a loaded composition inner root (has data-composition-id
-        // but no data-start), walk up to the host parent which carries the actual
-        // timing. This happens when the host uses a different data-composition-id
-        // than the loaded file — e.g. host="montage" but file has "scene-10", or
-        // when the host itself has no data-composition-id at all (an "anonymous"
-        // host) and the composition's own id was restored onto the inlined wrapper.
-        // Check data-composition-src (runtime, not yet inlined), data-composition-id
-        // (bundled/compiled host with its own id), and data-composition-file (the
-        // marker every inlined host gets, compiled or bundled, once
-        // data-composition-src is stripped — covers the anonymous-host case).
-        if (element.hasAttribute("data-composition-id")) {
-          const parent = element.parentElement;
-          if (
-            parent &&
-            (parent.hasAttribute("data-composition-src") ||
-              parent.hasAttribute("data-composition-id") ||
-              parent.hasAttribute("data-composition-file"))
-          ) {
-            const parentStart = resolveStartForElementInternal(parent, fallback);
-            startCache.set(element, parentStart);
-            return parentStart;
-          }
-        }
-        startCache.set(element, fallback);
-        return fallback;
-      }
-      if (expression.kind === "absolute") {
-        const absolute = Math.max(0, expression.value);
-        const resolved = Math.max(0, resolveHostOffsetForElement(element, fallback) + absolute);
-        startCache.set(element, resolved);
-        return resolved;
-      }
-      const target = findReferenceTarget(expression.refId);
-      if (!target) {
-        startCache.set(element, fallback);
-        return fallback;
-      }
-      const targetStart = resolveStartForElementInternal(target, 0);
-      const targetDuration = resolveDurationForElement(target);
-      if (targetDuration == null || targetDuration <= 0) {
-        const unresolved = Math.max(0, targetStart + expression.offset);
-        startCache.set(element, unresolved);
-        return unresolved;
-      }
-      const resolved = Math.max(0, targetStart + targetDuration + expression.offset);
+      const resolved = computeStart(element, fallback);
       startCache.set(element, resolved);
       return resolved;
     } finally {
@@ -196,7 +183,7 @@ export function createRuntimeStartTimeResolver(params: {
     const compositionRoot = element.closest("[data-composition-id]");
     return {
       authoredStart: parseStrictFiniteTimingNumber(element.getAttribute("data-start")),
-      hostStart: compositionRoot ? resolveStartForElementInternal(compositionRoot, 0) : 0,
+      hostStart: compositionRoot ? resolveCompositionOrigin(compositionRoot, 0) : 0,
       hasAutoStart: element.hasAttribute("data-hf-auto-start"),
       basis: element.getAttribute(MEDIA_START_BASIS_ATTR),
     };

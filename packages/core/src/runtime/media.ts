@@ -10,6 +10,7 @@ import { clampAudioGain } from "../audioGain.js";
 import { isMemberGroupHidden } from "../audioGroups.js";
 import { findInjectedRenderFrame } from "./renderFrameSibling.js";
 import { registerSeekCompletion } from "./adapters/seek-dispatch.js";
+import { cutToHostSlot, type HostSlot } from "../mediaTiming.js";
 export {
   readElementPlaybackRate,
   readElementRateSpec,
@@ -101,6 +102,8 @@ export type RuntimeMediaClip = {
 export function refreshRuntimeMediaCache(params?: {
   resolveStartSeconds?: (element: Element) => number;
   resolveDurationSeconds?: (element: HTMLVideoElement | HTMLAudioElement) => number | null;
+  /** The sub-composition slot that cuts the clip; a head cut advances its media offset. */
+  resolveHostSlot?: (element: HTMLVideoElement | HTMLAudioElement) => HostSlot | null;
   shouldIncludeElement?: (element: HTMLVideoElement | HTMLAudioElement) => boolean;
   /**
    * Build clips for exactly these elements instead of scanning the document for
@@ -131,11 +134,11 @@ export function refreshRuntimeMediaCache(params?: {
   const videoClips: RuntimeMediaClip[] = [];
   let maxMediaEnd = 0;
   for (const el of timedMediaEls) {
-    const start = params?.resolveStartSeconds
+    let start = params?.resolveStartSeconds
       ? params.resolveStartSeconds(el)
       : Number.parseFloat(el.dataset.start ?? "0");
     if (!Number.isFinite(start)) continue;
-    const mediaStart = readElementPlaybackStart(el);
+    let mediaStart = readElementPlaybackStart(el);
     const playbackRate = readElementPlaybackRate(el);
     const rate = readElementRateSpec(el);
     const loop = el.loop;
@@ -148,13 +151,20 @@ export function refreshRuntimeMediaCache(params?: {
       duration = Math.max(0, timeAtSourceTime(rate, sourceDuration - mediaStart));
     }
     const hasKnownDuration = Number.isFinite(duration) && duration >= 0;
-    const end = hasKnownDuration ? start + duration : Number.POSITIVE_INFINITY;
+    let end = hasKnownDuration ? start + duration : Number.POSITIVE_INFINITY;
+    const slot = params?.resolveHostSlot?.(el);
+    const kept = slot ? cutToHostSlot({ start, end }, slot) : { start, end };
+    if (kept.start !== start || kept.end !== end) {
+      mediaStart += sourceTimeAt(rate, kept.start - start);
+      ({ start, end } = kept);
+      duration = end - start;
+    }
     const volumeRaw = Number.parseFloat(el.dataset.volume ?? "");
     const clip: RuntimeMediaClip = {
       el,
       start,
       mediaStart,
-      duration: hasKnownDuration ? duration : Number.POSITIVE_INFINITY,
+      duration: Number.isFinite(end) ? duration : Number.POSITIVE_INFINITY,
       end,
       volume: Number.isFinite(volumeRaw) ? volumeRaw : null,
       playbackRate,

@@ -3,7 +3,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { initSandboxRuntimeModular } from "./init";
 import type { RuntimeTimelineLike } from "./types";
 import { STUDIO_MANUAL_EDIT_GESTURE_ATTR } from "../editing/draftMarkers";
-import { resetRuntimeFixtureDom } from "./runtimeSeekFixture.test-helpers";
+import {
+  createMockTimeline,
+  resetRuntimeFixtureDom,
+  stubDuration,
+} from "./runtimeSeekFixture.test-helpers";
 
 // Pins where a running runtime places a sub-composition's timeline, against what a fresh load does.
 describe("runtime sub-composition placement", () => {
@@ -224,5 +228,61 @@ describe("runtime sub-composition placement", () => {
     window.__hfForceTimelineRebind?.();
 
     expect(remove).not.toHaveBeenCalledWith(scene);
+  });
+
+  /** What Studio's split writes for a 12 s scene cut at 5 s and 9 s, each half mounting its own copy. */
+  function loadSplitScene() {
+    const videos = [
+      ["v1", 0, 1],
+      ["v2", 4, 5],
+      ["v3", 8, 2],
+    ]
+      .map(
+        ([name, start, mediaStart]) =>
+          `<video class="${name}" data-start="${start}" data-duration="4" data-media-start="${mediaStart}"></video>`,
+      )
+      .join("");
+    const hosts = [
+      ["scene", 0, 5, 0],
+      ["scene-split", 5, 4, 5],
+      ["scene-split-split", 9, 3, 9],
+    ]
+      .map(
+        ([id, start, duration, inPoint]) =>
+          `<div id="${id}" class="clip" data-composition-id="${id}" data-composition-file="compositions/scene.html" ` +
+          `data-start="${start}" data-duration="${duration}" data-playback-start="${inPoint}"><div>${videos}</div></div>`,
+      )
+      .join("");
+    document.body.innerHTML = `<div data-composition-id="main" data-root="true" data-duration="12">${hosts}</div>`;
+    for (const video of document.querySelectorAll("video")) {
+      stubDuration(video, 30);
+      Object.defineProperty(video, "currentTime", {
+        value: -1,
+        writable: true,
+        configurable: true,
+      });
+      video.play = vi.fn(() => Promise.resolve());
+      video.pause = vi.fn();
+    }
+    window.__timelines = { main: createMockTimeline(12) };
+    initSandboxRuntimeModular();
+  }
+
+  const sourceTimeOf = (host: string, video: string) =>
+    document.querySelector<HTMLVideoElement>(`#${host} .${video}`)!.currentTime;
+
+  it("shifts a split scene's videos by each half's in-point and cuts them to that half", () => {
+    loadSplitScene();
+    window.__player?.renderSeek(4.5);
+    expect(sourceTimeOf("scene", "v2")).toBe(5.5);
+    // The second half's v2 lands at 4-8 but is cut until that half starts at 5.
+    expect(sourceTimeOf("scene-split", "v2")).toBe(-1);
+
+    window.__player?.renderSeek(5);
+    expect(sourceTimeOf("scene-split", "v2")).toBe(6);
+    window.__player?.renderSeek(8.5);
+    expect(sourceTimeOf("scene-split", "v3")).toBe(2.5);
+    window.__player?.renderSeek(10);
+    expect(sourceTimeOf("scene-split-split", "v3")).toBe(4);
   });
 });

@@ -1,3 +1,5 @@
+import { readMediaOffsetSeconds } from "@hyperframes/parsers/media-duration";
+
 export const MEDIA_START_BASIS_ATTR = "data-hf-media-start-basis";
 
 export type MediaStartBasis = "local" | "global";
@@ -20,8 +22,8 @@ export function resolveAbsoluteMediaStartSeconds(input: {
 }
 
 /** The one rule for a media element's root-timeline start; the runtime and the CLI both call it.
- * With no literal start, an auto-injected start, or a host at t<=0 there is nothing for the basis
- * to disambiguate, so the ordinary start resolution applies. */
+ * `hostStart` is the composition's origin. With no literal start, an auto-injected start, or an
+ * origin at 0 there is nothing for the basis to disambiguate, so ordinary resolution applies. */
 export function resolveMediaStartSeconds(
   input: MediaStartInput & { ordinaryStart: () => number },
 ): number {
@@ -48,5 +50,28 @@ export interface MediaStartInput {
 function hasLiteralNestedStart(
   input: MediaStartInput,
 ): input is MediaStartInput & { authoredStart: number } {
-  return !input.hasAutoStart && input.authoredStart != null && input.hostStart > 0;
+  return !input.hasAutoStart && input.authoredStart != null && input.hostStart !== 0;
+}
+
+/** Main-timeline time of a sub-composition's local t=0: its host's start minus its in-point. */
+export function compositionOriginSeconds(
+  hostStart: number,
+  host: Pick<Element, "getAttribute">,
+): number {
+  return hostStart - readMediaOffsetSeconds((name) => host.getAttribute(name));
+}
+
+export interface HostSlot {
+  start: number;
+  end: number;
+  origin: number;
+}
+
+/** An in-point (origin before the host's start) cuts the head; the host's end cuts the tail. */
+export function cutToHostSlot(
+  span: { start: number; end: number },
+  host: HostSlot,
+): { start: number; end: number } {
+  const start = host.origin < host.start ? Math.max(span.start, host.start) : span.start;
+  return { start, end: Math.max(start, Math.min(span.end, host.end)) };
 }
