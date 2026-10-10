@@ -387,6 +387,12 @@ describe("runtime sub-composition placement", () => {
     );
   });
 
+  it("times a straddling clip's fade-out from the clip's own end", () => {
+    loadSecondHalf(`<video id="fade" data-start="4" data-duration="4" data-fade-out="2"></video>`);
+    window.__player?.renderSeek(7);
+    expect(video("fade").volume).toBeCloseTo(0.5, 6);
+  });
+
   it("times a straddling clip's fade-in from the clip's own start", () => {
     loadSecondHalf(`<video id="fade" data-start="4" data-duration="4" data-fade-in="2"></video>`);
     window.__player?.renderSeek(5);

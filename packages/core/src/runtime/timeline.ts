@@ -28,6 +28,7 @@ import { COMPOSITION_CONTRACT_VERSION } from "../compositionContract.js";
 import { runtimeProtocolMetadata } from "./protocol.js";
 import { isElementNode, isMediaElement } from "./domRealm";
 import { LOOP_INFLATED_TIMELINE_SECONDS } from "./compositionLength";
+import { cutToHostSlots } from "../mediaTiming";
 
 export function isRuntimeElementVisibleAt(
   rawNode: HTMLElement,
@@ -431,7 +432,7 @@ export function collectRuntimeTimelinePayload(params: {
       continue;
     const compositionContext = resolveNearestCompositionContext(node, root);
     const tag = node.tagName.toLowerCase();
-    const start =
+    let start =
       tag === "video" || tag === "audio"
         ? startResolver.resolveMediaStartForElement(node)
         : startResolver.resolveStartForElement(node, compositionContext.inheritedStart ?? 0);
@@ -457,6 +458,13 @@ export function collectRuntimeTimelinePayload(params: {
     if (duration == null || duration <= 0) continue;
     duration = clampDurationToRootWindow(start, duration);
     if (duration <= 0) continue;
+    const slots = startResolver.resolveHostSlotsForElement(node);
+    if (slots.length > 0) {
+      const played = cutToHostSlots({ start, end: start + duration }, slots);
+      if (played.end <= played.start) continue;
+      start = played.start;
+      duration = played.end - played.start;
+    }
     const end = start + duration;
     maxEnd = Math.max(maxEnd, end);
     const kind: RuntimeTimelineClip["kind"] =

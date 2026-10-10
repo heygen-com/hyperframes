@@ -342,7 +342,7 @@ export function syncRuntimeMedia(params: {
       el.tagName === "AUDIO" &&
       !inWindow &&
       dueIn > 0 &&
-      dueIn * Math.max(1, rateAt(clipRate, 0)) <=
+      dueIn * Math.max(1, rateAt(clipRate, clip.start - origin)) <=
         Math.max(
           params.cueAheadSeconds ?? 0,
           startedEarly.has(el) ? MEDIA_SYNC_TOLERANCE_SECONDS : 0,

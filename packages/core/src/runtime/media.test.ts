@@ -911,6 +911,26 @@ describe("syncRuntimeMedia", () => {
       expect(clip.el.play).not.toHaveBeenCalled();
     });
 
+    it("judges a head-cut clip's cue-ahead by its rate at the cut, not at its own start", () => {
+      // The clip's own t=0 is 2 and an in-point cuts it to start at 5, where the ramp has reached 3x.
+      const rate: HfAutomationLane = {
+        target: "rate",
+        points: [
+          { t: 0, v: 1 },
+          { t: 3, v: 3 },
+        ],
+      };
+      const clip = createMockClip({ start: 5, origin: 2, end: 6, rate }, "audio");
+      syncRuntimeMedia({
+        clips: [clip],
+        timeSeconds: 4.98,
+        playing: true,
+        playbackRate: 1,
+        cueAheadSeconds: 0.034,
+      });
+      expect(clip.el.play).not.toHaveBeenCalled();
+    });
+
     it("keeps a clip it started early playing when the next tick is shorter", () => {
       const clip = createMockClip({ start: 5, end: 6 }, "audio");
       syncRuntimeMedia({

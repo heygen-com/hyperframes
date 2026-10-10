@@ -981,6 +981,13 @@ export function initSandboxRuntimeModular(): void {
   const resolveMediaHostSlots = (element: Element) =>
     timingResolverFor(true).resolveHostSlotsForElement(element);
 
+  /** A clip's own window from `start` and `data-duration`, cut by its in-point hosts. */
+  const playedMediaWindow = (element: HTMLMediaElement, start: number) => {
+    const duration = parseStrictFiniteTimingNumber(element.dataset.duration);
+    const end = duration != null && duration > 0 ? start + duration : Infinity;
+    return cutToHostSlots({ start, end }, resolveMediaHostSlots(element));
+  };
+
   // Single owner: `createRuntimeStartTimeResolver` (startResolver.ts). The clip
   // manifest resolves media starts through the same method, so what the studio
   // draws and what the transport plays cannot drift apart.
@@ -4577,9 +4584,9 @@ export function initSandboxRuntimeModular(): void {
       if (isSilencedByHidden(el) || isUnplayable(el) || (el.ended && !el.loop)) continue;
       if (!el.hasAttribute("src") && !el.querySelector("source[src]")) continue;
       const start = resolveAbsoluteMediaStartSeconds(el);
-      const durAttr = parseStrictFiniteTimingNumber(el.dataset.duration);
-      const end = durAttr != null && durAttr > 0 ? start + durAttr : Infinity;
-      if (!Number.isFinite(start) || !isInClipWindow(state.currentTime, start, end)) continue;
+      const kept = playedMediaWindow(el, start);
+      if (!Number.isFinite(start) || !isInClipWindow(state.currentTime, kept.start, kept.end))
+        continue;
       if (el === followed) return { el, start };
       const runsUntil = start + (resolveMediaElementDurationSeconds(el) ?? Infinity);
       if (!longest || runsUntil > longest.runsUntil) longest = { el, start, runsUntil };
@@ -4793,9 +4800,8 @@ export function initSandboxRuntimeModular(): void {
       if (!el.hasAttribute("data-start")) continue;
       const start = resolveAbsoluteMediaStartSeconds(el);
       if (!Number.isFinite(start)) continue;
-      const durAttr = parseStrictFiniteTimingNumber(el.dataset.duration);
-      const end = durAttr != null && durAttr > 0 ? start + durAttr : Infinity;
-      if (!isInClipWindow(timeSeconds, start, end)) continue;
+      const kept = playedMediaWindow(el, start);
+      if (!isInClipWindow(timeSeconds, kept.start, kept.end)) continue;
       const mediaStart = readElementPlaybackStart(el);
       const relTime = timeSeconds - start + mediaStart;
       if (relTime >= 0) {

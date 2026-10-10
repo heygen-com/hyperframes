@@ -53,7 +53,8 @@ export interface TimelineRow extends ClipFact {
   pendingReason: string | null;
   /** Why `data-automation` / `data-fx-chain` could not be read; `null` when fine or absent. */
   laneError: string | null;
-  /** Start and end on the main timeline, in seconds. `start`/`end` are local to the owning file's composition. */
+  /** Main-timeline window in seconds: the played part under an in-point host, while `duration` stays
+   * the authored length. `start`/`end` are local to the owning file's composition. */
   absStart: number;
   absEnd: number;
   /** Project-relative path of the file that declares this clip. */
