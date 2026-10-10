@@ -462,8 +462,8 @@ export function collectRuntimeTimelinePayload(params: {
     const slots = startResolver.resolveHostSlotsForElement(node);
     if (slots.length > 0) {
       const played = cutToHostSlots({ start, end: start + duration }, slots);
-      // A cut-away host stays as a zero-length row so Studio keeps nesting what it holds.
-      if (played.end <= played.start && !isNestedHost) continue;
+      const keepZeroLengthSoStudioNestsChildren = isNestedHost;
+      if (played.end <= played.start && !keepZeroLengthSoStudioNestsChildren) continue;
       start = played.start;
       duration = played.end - played.start;
     }
