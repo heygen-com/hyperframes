@@ -331,6 +331,19 @@ describe("runtime sub-composition placement", () => {
     expect(video("body").currentTime).toBe(4);
   });
 
+  it("cuts a split half that has no id at its own end, not its file's", () => {
+    // Studio's split of a host without an id: the half is found by its composition attributes.
+    mountInRoot(
+      `<div class="clip" data-composition-file="compositions/scene.html" data-start="5" data-duration="4" ` +
+        `data-playback-start="5"><div data-composition-id="scene" data-duration="12">` +
+        `<video id="late" data-start="8" data-duration="4"></video></div></div>`,
+    );
+    window.__player?.renderSeek(8.5);
+    expect(video("late").currentTime).toBe(0.5);
+    window.__player?.renderSeek(10);
+    expect(video("late").currentTime).toBe(0.5);
+  });
+
   it("keeps a video in a composition nested inside the half silent until the half starts", () => {
     loadSecondHalf(
       `<div data-composition-id="inner" data-composition-file="compositions/inner.html" data-start="0" data-duration="12">` +
