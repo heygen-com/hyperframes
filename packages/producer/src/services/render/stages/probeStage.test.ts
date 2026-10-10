@@ -684,6 +684,45 @@ describe("runProbeStage — forceScreenshot threading", () => {
     expect(mediaPreflightComposition).toBe(input.composition);
   });
 
+  it("probes a video source write after an inner binding shadows its variable", async () => {
+    resetRetryMocks();
+    capturedCfgs.length = 0;
+    const { runProbeStage } = await import("./probeStage.js");
+    const input = makeProbeInput({});
+    input.composition.duration = 5;
+    input.composition.videos.push({
+      id: "clip",
+      src: "a.mp4",
+      start: 0,
+      end: 5,
+      mediaStart: 0,
+      loop: false,
+      hasAudio: false,
+    });
+    input.compiled.html = `<video id="clip" src="a.mp4"></video><img id="poster" src="a.png">
+      <script>const target = document.getElementById("clip");
+      { const target = document.getElementById("poster"); target.src = "b.png"; }
+      target.src = "b.mp4";</script>`;
+    browserMediaResults = [
+      {
+        id: "clip",
+        tagName: "video",
+        src: "b.mp4",
+        start: 0,
+        end: 5,
+        duration: 5,
+        mediaStart: 0,
+        loop: false,
+        hasAudio: false,
+        volume: 1,
+        muted: true,
+      },
+    ];
+    await runProbeStage(input);
+    expect(capturedCfgs.length).toBeGreaterThan(0);
+    expect(input.composition.videos[0]?.src).toBe("b.mp4");
+  });
+
   it("does not probe for img or script src mutations", async () => {
     resetRetryMocks();
     capturedCfgs.length = 0;
