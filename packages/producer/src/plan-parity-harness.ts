@@ -155,8 +155,8 @@ export function parsePlanParityArgs(argv: string[]): PlanParityCliOptions {
   const fixtureDir = resolve(args.get("fixture") ?? "fixtures/plan-parity-visual-audio");
   const artifactsDir = resolve(args.get("artifacts-dir") ?? ".debug/plan-protocol-parity");
   const fps = parsePositiveInteger("fps", args.get("fps")) ?? 30;
-  if (fps !== 24 && fps !== 30 && fps !== 60) {
-    throw new Error("plan parity: --fps must be 24, 30, or 60");
+  if (fps !== 24 && fps !== 25 && fps !== 30 && fps !== 60) {
+    throw new Error("plan parity: --fps must be 24, 25, 30, or 60");
   }
 
   return {

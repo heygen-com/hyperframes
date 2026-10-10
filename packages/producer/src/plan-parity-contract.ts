@@ -9,7 +9,7 @@
 export type PlanParityProtocol = "v1" | "v2";
 
 export interface PlanParityRenderConfig {
-  fps: 24 | 30 | 60;
+  fps: 24 | 25 | 30 | 60;
   width: number;
   height: number;
   format: "mp4";

@@ -61,7 +61,7 @@ export interface RenderBatchArgs {
    */
   siteId?: string;
   /** Composition config — fps/width/height/format required, rest optional. */
-  fps: 24 | 30 | 60;
+  fps: 24 | 25 | 30 | 60;
   width: number;
   height: number;
   /** See {@link RenderArgs.outputResolution}. */

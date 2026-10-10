@@ -36,7 +36,7 @@ export function readCompositionFps(html: string): string | null {
 
 /**
  * Cloud render backends (Lambda, Cloud Run) accept only an integer fps
- * from a small fixed allowed set (currently {24, 30, 60}) — unlike local
+ * from a small fixed allowed set (currently {24, 25, 30, 60}) — unlike local
  * `render`, they can't take an arbitrary/fractional data-fps. Reads
  * `<projectDir>/index.html` and returns its declared data-fps as a number
  * ONLY when it parses to an integer AND is a member of `allowed`;

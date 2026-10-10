@@ -173,7 +173,7 @@ describe("renderToLambda", () => {
         projectDir,
         bucketName: "test-bucket",
         stateMachineArn: "arn:aws:states:us-east-1:1234:stateMachine:hf",
-        config: { ...baseConfig, fps: 25 as 24 | 30 | 60 },
+        config: { ...baseConfig, fps: 50 as 24 | 25 | 30 | 60 },
         sfn: asSFNClient(sfn),
         s3: asS3Client(s3),
       });

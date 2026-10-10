@@ -102,7 +102,7 @@ import {
  */
 export interface DistributedRenderConfig {
   /** Integer frame rate. Distributed renders only accept integer fps; the in-process renderer's `Fps` rational handles NTSC. */
-  fps: 24 | 30 | 60;
+  fps: 24 | 25 | 30 | 60;
   width: number;
   height: number;
   /**
@@ -270,7 +270,7 @@ export interface LocalExecutionPlan {
   executionPlanHash: string;
   chunkCount: number;
   totalFrames: number;
-  fps: 24 | 30 | 60;
+  fps: 24 | 25 | 30 | 60;
   width: number;
   height: number;
   format: DistributedFormat;
@@ -306,7 +306,7 @@ export interface PlanResult {
   planHash: string;
   chunkCount: number;
   totalFrames: number;
-  fps: 24 | 30 | 60;
+  fps: 24 | 25 | 30 | 60;
   width: number;
   height: number;
   format: DistributedFormat;

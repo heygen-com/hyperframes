@@ -178,7 +178,7 @@ interface PlanResultBodyBase {
   PlanHash: string;
   ChunkCount: number;
   TotalFrames: number;
-  Fps: 24 | 30 | 60;
+  Fps: 24 | 25 | 30 | 60;
   Width: number;
   Height: number;
   Format: DistributedFormat;

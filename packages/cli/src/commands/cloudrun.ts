@@ -167,7 +167,7 @@ export default defineCommand({
     "site-id": { type: "string", description: "Explicit site id (overrides content hash)" },
     width: { type: "string", description: "Render width in pixels" },
     height: { type: "string", description: "Render height in pixels" },
-    fps: { type: "string", description: "Render fps (24 | 30 | 60)" },
+    fps: { type: "string", description: "Render fps (24 | 25 | 30 | 60)" },
     format: { type: "string", description: "mp4 | mov | png-sequence | webm (default: mp4)" },
     codec: { type: "string", description: "h264 | h265 (mp4 only)" },
     quality: { type: "string", description: "draft | standard | high" },
@@ -529,11 +529,11 @@ function resolveCloudRunFps(
   args: Record<string, unknown>,
   projectDir: string,
   command: "render" | "render-batch",
-): 24 | 30 | 60 {
+): 24 | 25 | 30 | 60 {
   const fps =
-    parseIntFlag(args.fps) ?? readAllowedCompositionFpsFromDir(projectDir, [24, 30, 60]) ?? 30;
-  if (fps === 24 || fps === 30 || fps === 60) return fps;
-  console.error(`[cloudrun ${command}] --fps must be 24, 30, or 60; got ${fps}.`);
+    parseIntFlag(args.fps) ?? readAllowedCompositionFpsFromDir(projectDir, [24, 25, 30, 60]) ?? 30;
+  if (fps === 24 || fps === 25 || fps === 30 || fps === 60) return fps;
+  console.error(`[cloudrun ${command}] --fps must be 24, 25, 30, or 60; got ${fps}.`);
   failCommand();
 }
 

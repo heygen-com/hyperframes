@@ -20,6 +20,11 @@ describe("validateDistributedRenderConfig", () => {
     expect(validateDistributedRenderConfig(VALID)).toBe(VALID);
   });
 
+  it("accepts 25 fps", () => {
+    const cfg: SerializableDistributedRenderConfig = { ...VALID, fps: 25 };
+    expect(validateDistributedRenderConfig(cfg)).toBe(cfg);
+  });
+
   it("accepts optional fields when valid", () => {
     const cfg: SerializableDistributedRenderConfig = {
       ...VALID,
@@ -39,7 +44,7 @@ describe("validateDistributedRenderConfig", () => {
     ["null config", null as unknown as SerializableDistributedRenderConfig, "config"],
     [
       "wrong fps",
-      { ...VALID, fps: 25 as 24 | 30 | 60 } satisfies SerializableDistributedRenderConfig,
+      { ...VALID, fps: 50 as 24 | 25 | 30 | 60 } satisfies SerializableDistributedRenderConfig,
       "config.fps",
     ],
     [

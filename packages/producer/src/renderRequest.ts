@@ -262,8 +262,9 @@ export function renderConfigFromRequest(
   };
 }
 
-function distributedFps(fps: Fps): 24 | 30 | 60 {
-  if (fps.den === 1 && (fps.num === 24 || fps.num === 30 || fps.num === 60)) return fps.num;
+function distributedFps(fps: Fps): 24 | 25 | 30 | 60 {
+  if (fps.den === 1 && (fps.num === 24 || fps.num === 25 || fps.num === 30 || fps.num === 60))
+    return fps.num;
   throw new Error(`Distributed render does not support fps ${fps.num}/${fps.den}`);
 }
 
