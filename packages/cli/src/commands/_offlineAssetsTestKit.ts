@@ -2,14 +2,13 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { vi } from "vitest";
-import type { CommandDef } from "citty";
 
 export const GSAP_URL = "https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js";
 
 /** Invoke a citty command's run() with a context whose `args` we control. */
-export function makeRunner(
-  command: CommandDef,
-): (args: Record<string, unknown>) => Promise<unknown> {
+export function makeRunner(command: {
+  run?: unknown;
+}): (args: Record<string, unknown>) => Promise<unknown> {
   return (args) =>
     (command.run as (ctx: { args: Record<string, unknown> }) => Promise<unknown>)({ args });
 }
