@@ -515,7 +515,7 @@ async function extractVideoFrameToBuffer(videoPath: string): Promise<Buffer | nu
   }
 }
 
-async function loadReferenceFrame(framePath: string): Promise<ReferenceFrame> {
+export async function loadReferenceFrame(framePath: string): Promise<ReferenceFrame> {
   if (!existsSync(framePath)) {
     throw new Error(`Reference frame not found: ${framePath}`);
   }
@@ -527,15 +527,15 @@ async function loadReferenceFrame(framePath: string): Promise<ReferenceFrame> {
     throw new Error(`Could not extract a frame from video: ${framePath}`);
   }
 
-  const metadata = await sharp(buffer).metadata();
-  if (!metadata.width || !metadata.height) {
+  const { width, height } = (await sharp(buffer).metadata()).autoOrient;
+  if (!width || !height) {
     throw new Error(`Could not read reference frame dimensions: ${framePath}`);
   }
 
   return {
     buffer,
-    width: metadata.width,
-    height: metadata.height,
+    width,
+    height,
     stagedName: isVideoPath(framePath) ? "frame.png" : frameFileNameForPath(framePath),
   };
 }
