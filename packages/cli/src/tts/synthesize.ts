@@ -202,6 +202,7 @@ export async function synthesize(
         encoding: "utf-8",
         timeout: 300_000,
         stdio: ["pipe", "pipe", "pipe"],
+        env: { ...process.env, ORT_DISABLE_TELEMETRY: "1" },
       },
     );
 
