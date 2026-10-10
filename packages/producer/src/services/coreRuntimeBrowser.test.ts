@@ -180,6 +180,98 @@ describe("core runtime browser contract", () => {
     });
   });
 
+  it.each([
+    { name: "running after 80 ms", elapsed: 80 },
+    { name: "running after 250 ms", elapsed: 250 },
+    { name: "positive delay", elapsed: 80, delay: 500 },
+    { name: "negative delay", elapsed: 80, delay: -500 },
+    { name: "reverse keyframes", elapsed: 80, reverse: true },
+    { name: "finished before discovery", elapsed: 200, duration: 200 },
+    { name: "paused authored offset", elapsed: 80, paused: true, offset: 500 },
+    { name: "paused at zero", elapsed: 80, paused: true, offset: 0 },
+    { name: "running currentTime is not a baseline offset", elapsed: 80, offset: 500 },
+  ])(
+    "seeks initial WAAPI in composition time: $name",
+    async ({
+      elapsed,
+      delay = 0,
+      duration = 4000,
+      reverse = false,
+      paused = false,
+      offset = 0,
+    }) => {
+      const animationPage = await browser.newPage();
+      try {
+        await animationPage.setContent(`<!doctype html>
+          <div data-composition-id="root" data-root="true" data-no-timeline
+            data-start="0" data-duration="4" data-width="320" data-height="180">
+            <div id="waapi-box" class="clip" data-start="0" data-duration="4"></div>
+          </div>`);
+        await animationPage.evaluate(
+          ({ delay, duration, reverse, paused, offset }) => {
+            const box = document.getElementById("waapi-box");
+            if (!box) throw new Error("waapi-box missing");
+            const animation = box.animate(
+              [{ transform: "translateX(0px)" }, { transform: "translateX(100px)" }],
+              { duration, delay, direction: reverse ? "reverse" : "normal", fill: "both" },
+            );
+            if (paused) animation.pause();
+            if (offset || paused) animation.currentTime = offset;
+          },
+          { delay, duration, reverse, paused, offset },
+        );
+        if (!paused) {
+          // Wait for actual browser progress, not a guessed sleep duration.
+          await animationPage.waitForFunction(
+            (minimumTime) =>
+              Number(document.getElementById("waapi-box")?.getAnimations()[0]?.currentTime) >=
+              minimumTime,
+            {},
+            elapsed + offset,
+          );
+        }
+        await animationPage.addScriptTag({ content: readFileSync(RUNTIME_PATH, "utf8") });
+        await animationPage.waitForFunction(
+          () =>
+            (window as unknown as { __playerReady?: boolean }).__playerReady === true &&
+            (window as unknown as { __renderReady?: boolean }).__renderReady === true,
+        );
+        const times = duration === 200 ? [0, 0.1, 1 / 6, 0.1] : [0, 2, 3, 2];
+        const samples = await animationPage.evaluate(async (times) => {
+          // The runtime is injected as a built script, outside this test's module graph.
+          const player = (
+            window as unknown as {
+              __player: { seek: (time: number) => void; renderSeek: (time: number) => void };
+            }
+          ).__player;
+          const box = document.getElementById("waapi-box");
+          if (!box || !player) throw new Error("WAAPI fixture did not initialize");
+          const samples = [];
+          for (const method of ["seek", "renderSeek"] as const) {
+            for (const time of times) {
+              await player[method](time);
+              samples.push({
+                time,
+                x: new DOMMatrixReadOnly(getComputedStyle(box).transform).m41,
+                playState: box.getAnimations()[0]?.playState,
+              });
+            }
+          }
+          return samples;
+        }, times);
+        for (const sample of samples) {
+          const localTime = sample.time * 1000 + (paused ? offset : 0) - delay;
+          const progress = Math.max(0, Math.min(1, localTime / duration));
+          expect(sample.x).toBeCloseTo((reverse ? 1 - progress : progress) * 100, 3);
+          expect(sample.playState).toBe("paused");
+        }
+      } finally {
+        await animationPage.close();
+      }
+    },
+    30_000,
+  );
+
   it.each([24, 30, 60, 30_000 / 1_001])(
     "keeps the real public player running across a seek at %s fps",
     async (fps) => {

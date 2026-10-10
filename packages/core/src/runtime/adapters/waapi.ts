@@ -54,11 +54,22 @@ export function createWaapiAdapter(): RuntimeDeterministicAdapter {
       return existing;
     }
 
+    const anchorAtOrigin =
+      !didDiscover &&
+      compositionTimeMs === 0 &&
+      (animation.playState === "running" || animation.playState === "finished") &&
+      animation.playbackRate === 1 &&
+      !!document.timeline &&
+      animation.timeline === document.timeline &&
+      !(typeof CSSAnimation !== "undefined" && animation instanceof CSSAnimation) &&
+      !(typeof CSSTransition !== "undefined" && animation instanceof CSSTransition);
     const baseline = {
       compositionTimeMs,
-      animationTimeMs: didDiscover
-        ? normalizeInitialAnimationTimeMs(readAnimationTimeMs(animation), compositionTimeMs)
-        : readAnimationTimeMs(animation),
+      animationTimeMs: anchorAtOrigin
+        ? 0
+        : didDiscover
+          ? normalizeInitialAnimationTimeMs(readAnimationTimeMs(animation), compositionTimeMs)
+          : readAnimationTimeMs(animation),
     };
     baselines.set(animation, baseline);
     return baseline;
@@ -142,9 +153,9 @@ export function createWaapiAdapter(): RuntimeDeterministicAdapter {
   return {
     name: "waapi",
     discover: () => {
-      didDiscover = true;
       installAnimateHook();
       trackAnimations(snapshotAnimations(), lastSeekTimeMs);
+      didDiscover = true;
     },
     seek: (ctx) => {
       const timeMs = Math.max(0, (Number(ctx.time) || 0) * 1000);
