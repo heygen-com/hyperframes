@@ -267,7 +267,7 @@ const OUT_BOX = "position:absolute;inset:0;width:100%;height:100%;pointer-events
 
 /** The output canvas the exporter may already have emitted, else a new one. */
 function findOrCreateOut(host: HTMLElement): HTMLCanvasElement {
-  const existing = host.querySelector("canvas.hf-vfx-out");
+  const existing = host.querySelector(":scope > canvas.hf-vfx-out");
   if (isCanvasElement(existing)) {
     // The exporter emits the canvas bare — `<canvas class="hf-vfx-out"></canvas>`
     // — "for layout stability". Adopted untouched it keeps the default
@@ -391,7 +391,6 @@ function resolveRefSource(
   if (cached) return { kind: "source", source: cached };
   const source = resolveCaptureSource(target, gl, `${describeHost(host)}: "${param.key}" source`);
   if (!source) return { kind: "error" };
-  source.visible = source.canvas.hasAttribute(VFX_REF_VISIBLE_ATTR);
   cache.set(target, source);
   return { kind: "source", source };
 }
@@ -490,7 +489,7 @@ function resolveCaptureSource(
   label: string,
 ): VfxCaptureSource | undefined {
   const backdrop = findBackdropWrapper(owner);
-  const canvas = backdrop ?? owner.querySelector("canvas.hf-vfx-src");
+  const canvas = backdrop ?? owner.querySelector(":scope > canvas.hf-vfx-src");
   const inner = isCanvasElement(canvas) ? canvas.querySelector(":scope > .hf-vfx-in") : null;
   if (!isCanvasElement(canvas) || !isHtmlElement(inner)) {
     reportVfxError(
@@ -498,6 +497,17 @@ function resolveCaptureSource(
         `<canvas layoutsubtree class="hf-vfx-src"><div class="hf-vfx-in">…</div></canvas> in ` +
         `source — inside the element for its own pixels, or beside it with ` +
         `data-vfx-for="${owner.id}" for the layers below it.`,
+    );
+    return undefined;
+  }
+  if (
+    canvas.querySelector("canvas.hf-vfx-src") ||
+    canvas.parentElement?.closest("canvas.hf-vfx-src")
+  ) {
+    reportVfxError(
+      `${label}: a capture canvas nested inside another capture canvas blocks ` +
+        `the renderer's main thread in drawElementImage, so this chain is not ` +
+        `registered. Keep each .hf-vfx-src out of every other .hf-vfx-src subtree.`,
     );
     return undefined;
   }
@@ -515,8 +525,9 @@ function resolveCaptureSource(
     ctx,
     texture: createCaptureTexture(gl),
     backdrop: backdrop !== null,
-    // Only a `ref` source may be visible; `resolveRefSource` sets it.
-    visible: false,
+    // Read here, not by the caller: a canvas reached as a host's own source
+    // and as a ref would otherwise get two objects with opposite `keepBitmap`.
+    visible: canvas.hasAttribute(VFX_REF_VISIBLE_ATTR),
     emptyBoxReported: false,
     laidOutEmpty: deviceSize(inner) === null,
   };
