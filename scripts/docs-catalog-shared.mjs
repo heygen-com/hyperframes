@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import assert from "node:assert/strict";
 
 export function resolveDocsRoot(argv2) {
   const root = fileURLToPath(new URL("..", import.meta.url));
@@ -9,6 +10,24 @@ export function resolveDocsRoot(argv2) {
 
 export function readJson(p) {
   return JSON.parse(fs.readFileSync(p, "utf8"));
+}
+
+export function assertDetailPreview(page, payload, source) {
+  const opening = page.match(/<CatalogDetail\b([\s\S]*?)\n>/)?.[1];
+  assert.ok(opening !== undefined, `${source}: missing CatalogDetail opening`);
+  const previewSrc = opening.match(/\bpreviewSrc="([^"]*)"/)?.[1];
+  const playable = typeof payload.html === "string" && payload.html.length > 0;
+  assert.equal(
+    previewSrc,
+    playable ? source : undefined,
+    `${source}: detail previewSrc must match its playable payload`,
+  );
+  if (playable && /\n\s+video=/.test(opening)) {
+    assert.ok(
+      usesWebgpu(payload.html) && /\n\s+webgpu(?:\s|$)/.test(opening),
+      `${source}: recorded video hides the live payload without a WebGPU fallback`,
+    );
+  }
 }
 
 export function readCatalogGalleryData(docs) {

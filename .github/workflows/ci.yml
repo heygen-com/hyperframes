@@ -330,6 +330,8 @@ jobs:
       - name: Keep catalog source PRs source-only
         if: github.event_name == 'pull_request'
         run: node scripts/check-catalog-source-pr.mjs origin/main
+      - name: Check published catalog preview wiring
+        run: node scripts/check-catalog-detail-previews.mjs
       - name: Generate and validate catalog
         env:
           PUBLISH_PR: ${{ (github.head_ref || github.ref_name) == 'bot/catalog-publish' }}

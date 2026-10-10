@@ -8,15 +8,14 @@ import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
 <CatalogDetail
+  previewSrc="/public/catalog/blocks/lottie-character-walk.json"
   compositionId="lottie-character-walk"
   compositionSrc="compositions/lottie-character-walk/lottie-character-walk.html"
   title="Lottie Character Walk"
   description="A jointed flat character walks in on planted feet, stops and points at a card; the body acting is a Lottie file and the stage is GSAP."
-  variables={[]}
-  meta={{"duration":7.5,"width":1920,"height":1080,"category":"Blocks","badge":"Stable","codeLines":137}}
+  variables={[{"id":"title","type":"string","label":"Card title","default":"Meet your guide","maxLength":28},{"id":"body","type":"string","label":"Card text","default":"Walks in on planted feet, then points the way.","maxLength":90}]}
+  meta={{"duration":7.5,"width":1920,"height":1080,"category":"Blocks","badge":"Stable","codeLines":142}}
   attribution={{"path":"registry/blocks/lottie-character-walk","tags":["character","character-animation","mascot","walk-cycle","gesture","pointing","puppet","lottie","explainer"]}}
-  video="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/lottie-character-walk.mp4"
-  poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/lottie-character-walk.png"
   hasCode
   rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/lottie-character-walk/lottie-character-walk.html"
 >
@@ -126,6 +125,11 @@ import { InstallCommand } from "/snippets/install-command.jsx";
         if (vars.title) document.getElementById("lcw-title").textContent = vars.title;
         if (vars.body) document.getElementById("lcw-body").textContent = vars.body;
 
+        // Beside this file when mounted; a runtime without assetUrl keeps the plain path.
+        const assetUrl = (path) =>
+          typeof __hyperframes !== "undefined" && __hyperframes.assetUrl
+            ? __hyperframes.assetUrl(path)
+            : path;
         // The character's body acting (walk, stop, point, idle) lives in the Lottie file.
         // The runtime seeks every player on window.__hfLottie to composition time.
         var mascot = lottie.loadAnimation({
@@ -133,7 +137,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
           renderer: "svg",
           loop: false,
           autoplay: false,
-          path: "assets/mascot.json",
+          path: assetUrl("assets/mascot.json"),
         });
         window.__hfLottie = window.__hfLottie || [];
         window.__hfLottie.push(mascot);
