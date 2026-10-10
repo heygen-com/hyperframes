@@ -182,6 +182,24 @@ function rewriteSubCompositionAssetPaths(root: ParentNode, compositionUrl: URL |
   }
 }
 
+/**
+ * A hoisted `<link>`'s URL, by the compiler's rule (`rewriteAssetPath` with its `assetExists` probe): a plain relative
+ * href is the file beside the composition when one is there, else the project root's (`assets/theme.css`). `../`
+ * hrefs are already absolute from `rewriteSubCompositionAssetPaths`.
+ */
+async function hoistedLinkHref(rawHref: string, compositionUrl: URL | null): Promise<string> {
+  if (!compositionUrl) return rawHref;
+  if (isNonRelativeRuntimeUrl(rawHref)) return new URL(rawHref, compositionUrl).href;
+  const sibling = new URL(rawHref, compositionUrl).href;
+  const root = new URL(rawHref, document.baseURI).href;
+  if (sibling === root) return root;
+  try {
+    return (await fetch(sibling, { method: "HEAD" })).ok ? sibling : root;
+  } catch {
+    return root;
+  }
+}
+
 function uniqueCompositionId(baseId: string, index: number): string {
   return `${baseId}__hf${index}`;
 }
@@ -487,7 +505,7 @@ async function mountCompositionContent(params: {
   for (const link of plan.linkSources) {
     const rawHref = (link.getAttribute("href") || "").trim();
     if (!rawHref) continue;
-    const href = params.compositionUrl ? new URL(rawHref, params.compositionUrl).href : rawHref;
+    const href = await hoistedLinkHref(rawHref, params.compositionUrl);
     if (params.compositionUrl && isSameDocumentUrl(href, params.compositionUrl)) continue;
     const clonedLink = link.cloneNode(true);
     if (!isLinkElement(clonedLink)) continue;
