@@ -859,12 +859,7 @@ export function truncateSnippet(value: string, maxLength = 220): string | undefi
 /**
  * Matches a media tag carrying a real `src` attribute, capturing the tag name in
  * group 1 and the quoted src in group 2; {@link mediaSrcOf} reads its value.
- *
- * The leading whitespace before `src` is load-bearing: `\bsrc\s*=` also matches
- * the tail of `data-var-src="bg"` (a hyphen/`s` boundary is a word boundary), and
- * since `[^>]*` is greedy it wins over a real `src` earlier in the same tag. Every
- * element using a variable binding was therefore reported as referencing a missing
- * file named after the variable id.
+ * `src` must follow whitespace so the tail of `data-var-src="bg"` is not read as one.
  */
 export function mediaSrcTagRe(tagAlternation: string): RegExp {
   return new RegExp(`<(${tagAlternation})\\b[^>]*\\ssrc\\s*=\\s*("[^"]*"|'[^']*')[^>]*>`, "gi");
