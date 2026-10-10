@@ -39,6 +39,10 @@ if [ "${1:-}" = "--range" ]; then
 elif [ "$#" -gt 0 ]; then
   MODE=files
 fi
+# Git modes name paths from the repository root; files mode keeps the caller's paths.
+if [ "$MODE" != files ]; then
+  cd "$(git rev-parse --show-toplevel)" || { echo "ERROR: not inside a git repository." >&2; exit 2; }
+fi
 
 # Emit a "<raw diff header>" record then a path record per entry, NUL-separated and
 # unquoted. The header carries the new mode and blob id, so blobs are read by id,

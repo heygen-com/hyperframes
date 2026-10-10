@@ -7,7 +7,7 @@
   "@hyperframes/lint": { "packed": 168745, "unpacked": 654607 },
   "@hyperframes/parsers": { "packed": 190591, "unpacked": 831243 },
   "@hyperframes/player": { "packed": 157145, "unpacked": 541601 },
-  "@hyperframes/producer": { "packed": 22387338, "unpacked": 77966096 },
+  "@hyperframes/producer": { "packed": 729380, "unpacked": 2672493 },
   "@hyperframes/sdk": { "packed": 90662, "unpacked": 325069 },
   "@hyperframes/shader-transitions": { "packed": 212864, "unpacked": 825937 },
   "@hyperframes/studio": { "packed": 5973698, "unpacked": 23915921 },

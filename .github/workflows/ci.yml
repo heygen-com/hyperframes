@@ -262,7 +262,7 @@ jobs:
       - name: Require change detection
         if: needs.changes.result != 'success'
         run: |
-          echo "::error::Change detection did not succeed, so this required check cannot pass."
+          echo "::error::Detect changes did not succeed (it also rejects large binaries outside LFS); see its log. This required check cannot pass."
           exit 1
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -449,7 +449,7 @@ jobs:
       - name: Require change detection
         if: needs.changes.result != 'success'
         run: |
-          echo "::error::Change detection did not succeed, so this required check cannot pass."
+          echo "::error::Detect changes did not succeed (it also rejects large binaries outside LFS); see its log. This required check cannot pass."
           exit 1
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -555,7 +555,7 @@ jobs:
       - name: Require change detection
         if: needs.changes.result != 'success'
         run: |
-          echo "::error::Change detection did not succeed, so this required check cannot pass."
+          echo "::error::Detect changes did not succeed (it also rejects large binaries outside LFS); see its log. This required check cannot pass."
           exit 1
       - name: Require producer source tests
         if: needs.changes.outputs.code == 'true' && needs.producer-source-tests.result != 'success'
@@ -784,7 +784,7 @@ jobs:
       - name: Require change detection
         if: needs.changes.result != 'success'
         run: |
-          echo "::error::Change detection did not succeed, so this required check cannot pass."
+          echo "::error::Detect changes did not succeed (it also rejects large binaries outside LFS); see its log. This required check cannot pass."
           exit 1
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
