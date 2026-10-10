@@ -73,7 +73,7 @@ npx hyperframes render -c ./my-composition.html -o output.mp4
 
 A render stops when the process that started it exits. To keep one running after
 its launcher exits, set `HYPERFRAMES_RENDER_DETACHED=1` and start it in its own
-process group, e.g. `bash -c 'set -m; HYPERFRAMES_RENDER_DETACHED=1 npx hyperframes render -o out.mp4 > render.log 2>&1 &'`.
+process group, e.g. `bash -c 'set -m; HYPERFRAMES_RENDER_DETACHED=1 npx hyperframes render -o out.mp4 < /dev/null > render.log 2>&1 &'`.
 
 ### `publish`
 
