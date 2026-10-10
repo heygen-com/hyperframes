@@ -434,6 +434,71 @@ describe("template shell style sources", () => {
   });
 });
 
+describe("sub-composition stylesheet links", () => {
+  function projectWithSharedFonts(compDir: string, href: string): string {
+    const project = makeProject(validHtml());
+    mkdirSync(join(project, "assets", "fonts"), { recursive: true });
+    writeFileSync(join(project, "assets", "fonts", "repro.woff2"), "font");
+    writeFileSync(
+      join(project, "assets", "fonts.css"),
+      "@font-face{font-family:'Repro';src:url('fonts/repro.woff2') format('woff2')}",
+    );
+    mkdirSync(join(project, compDir), { recursive: true });
+    writeFileSync(
+      join(project, compDir, "scene.html"),
+      `<template>
+  <link rel="stylesheet" href="${href}">
+  <style>#scene-title{font-family:'Repro'}</style>
+  <div id="root" data-composition-id="scene" data-width="1920" data-height="1080" data-duration="1">
+    <h1 id="scene-title">Hello</h1>
+  </div>
+  <script>window.__timelines["scene"] = gsap.timeline({ paused: true });</script>
+</template>`,
+    );
+    return project;
+  }
+
+  async function fontFaceFindings(project: string): Promise<HyperframeLintFinding[]> {
+    const { results } = await lintProject(project);
+    return results
+      .flatMap((entry) => entry.result.findings)
+      .filter((finding) => finding.code === "font_family_without_font_face");
+  }
+
+  it("reads a stylesheet from the project root when none sits next to the sub-composition", async () => {
+    expect(
+      await fontFaceFindings(projectWithSharedFonts("compositions/frames", "assets/fonts.css")),
+    ).toEqual([]);
+    expect(
+      await fontFaceFindings(projectWithSharedFonts("compositions", "assets/fonts.css")),
+    ).toEqual([]);
+  });
+
+  it("reads the stylesheet next to the sub-composition when both exist", async () => {
+    const project = projectWithSharedFonts("compositions/frames", "fonts.css");
+    writeFileSync(join(project, "fonts.css"), "@font-face{font-family:'Other';src:local('Other')}");
+    writeFileSync(
+      join(project, "compositions", "frames", "fonts.css"),
+      "@font-face{font-family:'Repro';src:local('Repro')}",
+    );
+    expect(await fontFaceFindings(project)).toEqual([]);
+  });
+
+  it("does not read a root-anchored or parent href from the project root", async () => {
+    for (const href of ["/assets/fonts.css", "../assets/fonts.css", "./../assets/fonts.css"]) {
+      expect(
+        await fontFaceFindings(projectWithSharedFonts("compositions/frames", href)),
+      ).toHaveLength(1);
+    }
+  });
+
+  it("skips a folder that has the stylesheet's name", async () => {
+    const project = projectWithSharedFonts("compositions/frames", "shared.css");
+    mkdirSync(join(project, "shared.css"));
+    expect(await fontFaceFindings(project)).toHaveLength(1);
+  });
+});
+
 describe("hevc_preview_codec", () => {
   interface ProbeStream {
     codec_name: string;
