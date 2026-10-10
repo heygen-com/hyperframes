@@ -3617,3 +3617,113 @@ describe("SVG draw-on rules", () => {
     });
   });
 });
+
+describe("audio_reactive_single_tween_per_group", () => {
+  it("warns when an audio-reactive caption uses a single peak tween per group", async () => {
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+  <style>.caption, .caption-group, .caption-line, .cg-1 { color: white; }</style>
+</head>
+<body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div class="caption">Test</div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    window.__timelines["c1"] = tl;
+
+    const AUDIO = getAudioData();
+    captions.forEach(group => {
+      // Missing inner loop, only tweens once at group.start
+      gsap.to(group.element, { scale: peakBass, duration: 0.1 }, group.start);
+    });
+  </script>
+</body>
+</html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "audio_reactive_single_tween_per_group");
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe("warning");
+  });
+
+  it("does not warn when the group contains an inner sampling loop", async () => {
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+  <style>.caption, .caption-group, .caption-line, .cg-1 { color: white; }</style>
+</head>
+<body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div class="caption">Test</div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    window.__timelines["c1"] = tl;
+
+    const AUDIO = getAudioData();
+    captions.forEach(group => {
+      // Inner sampling loop prevents the warning
+      for (var at = group.start; at < group.end; at += 0.1) {
+        gsap.to(group.element, { scale: peakBass, duration: 0.1 }, at);
+      }
+    });
+  </script>
+</body>
+</html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.some((f) => f.code === "audio_reactive_single_tween_per_group")).toBe(
+      false,
+    );
+  });
+});
+
+describe("gsap_group_selector_keyframes", () => {
+  it("warns when a tween uses a group selector and keyframes", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"></div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    // Selector has a comma, and config has keyframes
+    tl.to(".box1, .box2", { keyframes: [{ x: 100 }, { x: 200 }] });
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_group_selector_keyframes");
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe("warning");
+    expect(finding?.message).toContain("shared keyframes");
+  });
+
+  it("does not warn when a tween uses a single selector with keyframes", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"></div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    // No comma in selector
+    tl.to(".box1", { keyframes: [{ x: 100 }, { x: 200 }] });
+    tl.to(".box2", { keyframes: [{ x: 100 }, { x: 200 }] });
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.some((f) => f.code === "gsap_group_selector_keyframes")).toBe(false);
+  });
+
+  it("does not warn when a tween uses a group selector without keyframes", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"></div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    // Group selector, but standard properties instead of keyframes
+    tl.to(".box1, .box2", { x: 100, y: 100 });
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.some((f) => f.code === "gsap_group_selector_keyframes")).toBe(false);
+  });
+});
