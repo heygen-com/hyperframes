@@ -295,7 +295,7 @@ describe("checkOptionalPackage", () => {
     });
   });
 
-  it("reports the installed version read from the cached package", () => {
+  function checkCachedManifest(manifest: string) {
     const cacheDir = mkdtempSync(join(tmpdir(), "hf-doctor-optional-"));
     dirs.push(cacheDir);
     const pkgDir = join(
@@ -303,13 +303,27 @@ describe("checkOptionalPackage", () => {
       "node_modules/@google/genai",
     );
     mkdirSync(pkgDir, { recursive: true });
-    writeFileSync(join(pkgDir, "package.json"), JSON.stringify({ version: "1.52.0" }));
+    writeFileSync(join(pkgDir, "package.json"), manifest);
     const cliUrl = pathToFileURL(join(cacheDir, "cli.js")).href;
-    expect(checkOptionalPackage("@google/genai", cacheDir, cliUrl)).toEqual({
+    return checkOptionalPackage("@google/genai", cacheDir, cliUrl);
+  }
+
+  it("reports the installed version read from the cached package", () => {
+    expect(checkCachedManifest('{"version":"1.52.0"}')).toEqual({
       ok: true,
       detail: "1.52.0 installed",
     });
   });
+
+  it.each(['{"version":', "null", '{"version":123}'])(
+    "finishes the dependency check with an invalid cached manifest: %s",
+    (manifest) => {
+      expect(checkCachedManifest(manifest)).toEqual({
+        ok: true,
+        detail: "Not installed (installs on first use)",
+      });
+    },
+  );
 });
 
 describe("checkSettingsLock", () => {

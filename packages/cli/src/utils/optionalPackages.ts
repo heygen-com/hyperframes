@@ -62,9 +62,14 @@ export function installedOptionalPackageVersion(
 ): string | null {
   if (pinnedPackageBesideCli(name, cliUrl)?.resolution === "entry") return OPTIONAL_PACKAGES[name];
   const dir = optionalPackageDir(name, cacheDir);
-  if (!isInstalled(dir, name)) return null;
-  return (JSON.parse(readFileSync(manifestPath(dir, name), "utf-8")) as { version: string })
-    .version;
+  try {
+    const manifest: unknown = JSON.parse(readFileSync(manifestPath(dir, name), "utf-8"));
+    if (typeof manifest !== "object" || manifest === null || !("version" in manifest)) return null;
+    const version = manifest.version;
+    return typeof version === "string" && version.length > 0 ? version : null;
+  } catch {
+    return null;
+  }
 }
 
 export function loadInstalledOptionalPackage<N extends OptionalPackage>(
