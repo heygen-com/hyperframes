@@ -720,60 +720,79 @@ describe("createColorGradingRuntime", () => {
     expect(lastUniform1f).toHaveBeenCalledWith("u_kuwahara", 1);
   });
 
-  it("grades a CORS copy of a picture in an opaque document, whose own no-cors load WebGL can't read", () => {
-    vi.stubGlobal("origin", "null");
-    const created: HTMLImageElement[] = [];
-    const createElement = document.createElement.bind(document);
-    vi.spyOn(document, "createElement").mockImplementation(
-      (tag: string, options?: ElementCreationOptions) => {
-        const element = createElement(tag, options);
-        if (element instanceof HTMLImageElement) {
-          Object.defineProperty(element, "complete", { value: false, configurable: true });
-          created.push(element);
-        }
-        return element;
-      },
-    );
-    const image = makeDrawableImage();
-    Object.defineProperty(image, "currentSrc", { value: "http://127.0.0.1/p/cutout.png" });
-    document.body.appendChild(image);
-    runtime = createColorGradingRuntime();
+  describe("a picture served by URL", () => {
     const uploads = () => texImage2DCalls.map((call) => call[5]);
 
-    const copy = created.find((element) => element.crossOrigin === "anonymous");
-    if (!copy) throw new Error("Expected a CORS copy of the picture");
-    expect(copy.src).toBe("http://127.0.0.1/p/cutout.png");
-    expect(uploads()).not.toContain(image);
-    Object.defineProperty(copy, "complete", { value: true });
-    Object.defineProperty(copy, "naturalWidth", { value: 640 });
-    copy.dispatchEvent(new Event("load"));
-    expect(uploads().at(-1)).toBe(copy);
-    expect(uploads()).not.toContain(image);
-  });
+    /** The graded picture, and the pictures the runtime creates afterwards, still loading. */
+    function servedPicture(): { image: HTMLImageElement; created: HTMLImageElement[] } {
+      const image = makeDrawableImage();
+      Object.defineProperty(image, "currentSrc", { value: "http://127.0.0.1/p/cutout.png" });
+      document.body.appendChild(image);
+      const created: HTMLImageElement[] = [];
+      const createElement = document.createElement.bind(document);
+      vi.spyOn(document, "createElement").mockImplementation(
+        (tag: string, options?: ElementCreationOptions) => {
+          const element = createElement(tag, options);
+          if (element instanceof HTMLImageElement) {
+            Object.defineProperty(element, "complete", { value: false, configurable: true });
+            created.push(element);
+          }
+          return element;
+        },
+      );
+      return { image, created };
+    }
 
-  it("grades the picture itself when an opaque document's CORS copy is refused, as before", () => {
-    vi.stubGlobal("origin", "null");
-    const image = makeDrawableImage();
-    Object.defineProperty(image, "currentSrc", { value: "http://127.0.0.1/p/cutout.png" });
-    document.body.appendChild(image);
-    const createElement = document.createElement.bind(document);
-    let copy: HTMLImageElement | null = null;
-    vi.spyOn(document, "createElement").mockImplementation(
-      (tag: string, options?: ElementCreationOptions) => {
-        const element = createElement(tag, options);
-        if (element instanceof HTMLImageElement) {
-          Object.defineProperty(element, "complete", { value: false, configurable: true });
-          copy = element;
-        }
-        return element;
-      },
-    );
-    runtime = createColorGradingRuntime();
-    if (!copy) throw new Error("Expected a CORS copy of the picture");
-    const refused: HTMLImageElement = copy;
-    Object.defineProperty(refused, "complete", { value: true });
-    refused.dispatchEvent(new Event("error"));
-    expect(texImage2DCalls.at(-1)?.[5]).toBe(image);
+    function settle(copy: HTMLImageElement | undefined, naturalWidth: number): void {
+      if (!copy) throw new Error("Expected a CORS copy of the picture");
+      Object.defineProperty(copy, "complete", { value: true });
+      Object.defineProperty(copy, "naturalWidth", { value: naturalWidth });
+      copy.dispatchEvent(new Event(naturalWidth > 0 ? "load" : "error"));
+    }
+
+    it("grades the picture itself in a document with an origin", () => {
+      const { image, created } = servedPicture();
+      runtime = createColorGradingRuntime();
+
+      expect(created).toEqual([]);
+      expect(uploads().at(-1)).toBe(image);
+    });
+
+    it("grades a CORS copy in an opaque document, whose own no-cors load WebGL can't read", () => {
+      vi.stubGlobal("origin", "null");
+      const { image, created } = servedPicture();
+      runtime = createColorGradingRuntime();
+
+      const [copy] = created;
+      expect([copy?.src, copy?.crossOrigin]).toEqual([
+        "http://127.0.0.1/p/cutout.png",
+        "anonymous",
+      ]);
+      expect(uploads()).not.toContain(image);
+      settle(copy, 640);
+      expect(uploads().at(-1)).toBe(copy);
+      expect(uploads()).not.toContain(image);
+    });
+
+    it("redraws a grading started while another's copy was loading", () => {
+      vi.stubGlobal("origin", "null");
+      const { created } = servedPicture();
+      createColorGradingRuntime().destroy();
+      runtime = createColorGradingRuntime();
+
+      expect(created).toHaveLength(1);
+      settle(created[0], 640);
+      expect(uploads().at(-1)).toBe(created[0]);
+    });
+
+    it("grades the picture itself when an opaque document's CORS copy is refused, as before", () => {
+      vi.stubGlobal("origin", "null");
+      const { image, created } = servedPicture();
+      runtime = createColorGradingRuntime();
+
+      settle(created[0], 0);
+      expect(uploads().at(-1)).toBe(image);
+    });
   });
 
   it("redraws animated still images from the transport tick", () => {

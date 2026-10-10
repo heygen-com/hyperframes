@@ -2495,25 +2495,31 @@ function keepCanvasAboveSource(entry: ColorGradingEntry, source: HTMLImageElemen
   }
 }
 
-const corsCopies = new WeakMap<HTMLImageElement, HTMLImageElement>();
+const corsCopiesForOpaqueDocuments = new WeakMap<
+  HTMLImageElement,
+  { image: HTMLImageElement; waiting: (() => void)[] }
+>();
 
-// An opaque (sandboxed) document loads its own <img> no-cors, so WebGL cannot read it: upload a copy requested with
-// CORS. Null while the copy loads; a refused copy leaves the element, which fails as it always did.
 function readablePixels(source: TexImageSource, redraw: () => void): TexImageSource | null {
   if (!isImageElement(source) || window.origin !== "null" || source.crossOrigin !== null)
     return source;
   if (!/^https?:/i.test(source.currentSrc)) return source;
-  let copy = corsCopies.get(source);
-  if (copy?.src !== source.currentSrc) {
-    copy = source.ownerDocument.createElement("img");
-    copy.crossOrigin = "anonymous";
-    copy.addEventListener("load", redraw, { once: true });
-    copy.addEventListener("error", redraw, { once: true });
-    copy.src = source.currentSrc;
-    corsCopies.set(source, copy);
+  let copy = corsCopiesForOpaqueDocuments.get(source);
+  if (copy?.image.src !== source.currentSrc) {
+    const next = {
+      image: source.ownerDocument.createElement("img"),
+      waiting: [] as (() => void)[],
+    };
+    const settle = () => next.waiting.splice(0).forEach((waiter) => waiter());
+    next.image.crossOrigin = "anonymous";
+    next.image.addEventListener("load", settle, { once: true });
+    next.image.addEventListener("error", settle, { once: true });
+    next.image.src = source.currentSrc;
+    corsCopiesForOpaqueDocuments.set(source, (copy = next));
   }
-  if (!copy.complete) return null;
-  return copy.naturalWidth > 0 ? copy : source;
+  if (copy.image.complete) return copy.image.naturalWidth > 0 ? copy.image : source;
+  copy.waiting.push(redraw);
+  return null;
 }
 
 function getDrawableSource(element: ColorGradingMediaElement): TexImageSource | null {
