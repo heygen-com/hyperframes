@@ -96,6 +96,10 @@ import { buildDockerRunArgs, resolveDockerPlatform } from "../utils/dockerRunArg
 import { createStderrTail, DockerRenderExitError } from "../utils/dockerStderrTail.js";
 import type { BrowserInstallFacts } from "../browser/installFacts.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
+import {
+  DOCKER_BUILD_TIMEOUT_MINUTES,
+  describeDockerBuildFailure,
+} from "../utils/dockerBuildFailure.js";
 import { runEnvironmentChecks } from "../browser/preflight.js";
 import {
   detectH264EncoderModeForRender,
@@ -705,11 +709,11 @@ function ensureDockerImage(version: string, platform: string, quiet: boolean): s
         tag,
         tmpDir,
       ],
-      { stdio: quiet ? "pipe" : "inherit", timeout: 600_000 },
+      { stdio: quiet ? "pipe" : "inherit", timeout: DOCKER_BUILD_TIMEOUT_MINUTES * 60_000 },
     );
   } catch (error: unknown) {
     const message = normalizeErrorMessage(error);
-    throw new Error(`Failed to build Docker image: ${message}`);
+    throw new Error(`Failed to build Docker image: ${message}`, { cause: error });
   } finally {
     rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -781,15 +785,8 @@ async function renderDocker(
   try {
     imageTag = ensureDockerImage(dockerVersion, platform, options.quiet);
   } catch (error: unknown) {
-    const message = normalizeErrorMessage(error);
-    const isDockerMissing = /connect|not found|ENOENT/i.test(message);
-    errorBox(
-      isDockerMissing ? "Docker not available" : "Docker image build failed",
-      message,
-      isDockerMissing
-        ? "Install Docker: https://docs.docker.com/get-docker/"
-        : "Check Docker is running: docker info",
-    );
+    const failure = describeDockerBuildFailure(error);
+    errorBox(failure.title, failure.message, failure.hint);
     failCommand();
   }
 
