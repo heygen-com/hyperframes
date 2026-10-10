@@ -256,6 +256,9 @@ export const MEDIA_HARD_SYNC_SECONDS = 0.5;
 /** Drift a playing audio element may carry before sync pulls it back onto the playhead. */
 export const MEDIA_SYNC_TOLERANCE_SECONDS = 0.04;
 
+// Chromium refuses a slower playbackRate (NotSupportedError).
+const MIN_NATIVE_PLAYBACK_RATE = 1 / 16;
+
 // A playing video is steered back by rate, not seeked (a seek resets its decoder).
 // Its rate is written only when steering starts or stops: every write costs a frame.
 const VIDEO_STEER = 0.03;
@@ -473,6 +476,8 @@ export function syncRuntimeMedia(params: {
       if (el.preload !== "auto") el.preload = "auto";
       // Per-element rate × global transport rate
       const baseRate = rateAt(clipRate, params.timeSeconds - clip.start) * params.playbackRate;
+      // Too slow for the browser to play: kept paused and stepped onto the playhead by seeks.
+      const playing = params.playing && baseRate >= MIN_NATIVE_PLAYBACK_RATE;
       // Drift correction — three tiers:
       //
       // 1. Hard sync (0.5s): first tick, timeline jumps (scrub), catastrophic
@@ -518,7 +523,7 @@ export function syncRuntimeMedia(params: {
       // seek→freeze→drift→seek stutter. So a playing video skips strict and force sync; only hard
       // sync (>0.5s) warrants the decoder-reset cost. A paused transport pauses this video below,
       // so a seek that pauses mid-playback still lands it.
-      const isPlayingVideo = el.tagName === "VIDEO" && !el.paused && params.playing;
+      const isPlayingVideo = el.tagName === "VIDEO" && !el.paused && playing;
       // Only apply strict sync when offset has stabilized (not growing).
       // During initial buffering, offset grows ~16ms/tick as the timeline
       // advances while media stays at 0. Accumulated drift from pause/play
@@ -545,8 +550,10 @@ export function syncRuntimeMedia(params: {
       try {
         // A hard sync lands the video on the playhead, so its pre-seek offset says nothing.
         if (!isPlayingVideo || hardSync) videoSteering.delete(el);
-        const rate =
-          isPlayingVideo && !hardSync ? steeredVideoRate(el, offset, baseRate) : baseRate;
+        const rate = Math.max(
+          MIN_NATIVE_PLAYBACK_RATE,
+          isPlayingVideo && !hardSync ? steeredVideoRate(el, offset, baseRate) : baseRate,
+        );
         // Some engines read a rate back at lower precision; an equal-enough rate is not rewritten.
         if (Math.abs(el.playbackRate - rate) > 1e-6) el.playbackRate = rate;
       } catch (err) {
@@ -584,12 +591,12 @@ export function syncRuntimeMedia(params: {
           holdSeekBarrierUntilVideoLands(el);
         }
         playRequested.delete(el);
-      } else if (!params.playing) {
+      } else if (!playing) {
         holdSeekBarrierUntilVideoLands(el);
       }
       if (isHeldVideoTail) {
         if (!el.paused) el.pause();
-      } else if (params.playing && el.paused && !playRequested.has(el) && !isUnplayable(el)) {
+      } else if (playing && el.paused && !playRequested.has(el) && !isUnplayable(el)) {
         // `HTMLMediaElement.play()` is spec'd to queue playback and resolve
         // once enough data is buffered, so we can unconditionally call it —
         // no need to gate on `readyState` or defer to a `canplay` listener.
@@ -617,7 +624,7 @@ export function syncRuntimeMedia(params: {
               : "";
           if (name === "NotAllowedError") params.onAutoplayBlocked?.();
         });
-      } else if (!params.playing && !el.paused) {
+      } else if (!playing && !el.paused) {
         el.pause();
       }
       continue;
