@@ -1082,8 +1082,7 @@ export interface KeyframeAnalysis {
 
 const keyframeCache = new Map<string, Promise<KeyframeAnalysis>>();
 
-/** Intervals beyond this cause seeking issues in the headless renderer and
- *  audio/video desync — the sole threshold for `isProblematic` below. */
+/** Advisory threshold for seeking cost; GOP length alone does not establish incorrect output. */
 const PROBLEMATIC_KEYFRAME_INTERVAL_SECONDS = 2;
 
 /**
