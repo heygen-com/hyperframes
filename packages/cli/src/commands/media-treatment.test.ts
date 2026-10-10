@@ -136,6 +136,20 @@ describe("applyMediaTreatmentToHtml", () => {
     );
   });
 
+  it("lists the family ids the lookup accepts when a capability is unknown", () => {
+    let message = "";
+    try {
+      getMediaTreatmentCapabilityDetail("adjust");
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+    const listed = /Available families: ([^.]+)\./.exec(message)?.[1].split(", ") ?? [];
+    const entryPoints = getMediaTreatmentCapabilityOverview().families.map(({ id }) => id);
+
+    expect(listed).toEqual(expect.arrayContaining(entryPoints));
+    for (const id of listed) expect(() => getMediaTreatmentCapabilityDetail(id)).not.toThrow();
+  });
+
   it("exposes enough canonical metadata to assemble a custom treatment", () => {
     const capabilities = getHfColorGradingCapabilities();
 
