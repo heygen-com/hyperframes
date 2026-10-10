@@ -56,6 +56,7 @@ function project() {
   historyDeps.historyRoot = tempDir("hf-history-cli-root-");
   historyDeps.findServer = async () => null;
   historyDeps.turnIdleMs = 60_000;
+  historyDeps.ownerWaitMs = undefined;
   clock.at = Date.now() + 86_400_000;
   historyDeps.now = () => clock.at;
   const write = (path: string, text: string) => {
@@ -524,15 +525,63 @@ describe("hyperframes history, refusals", () => {
     expect(readdirSync(historyDeps.historyRoot)).toEqual([]);
   });
 
-  it("exits 2 with the holder's pid when another process keeps the history past the wait", async () => {
-    const { dir, hf } = project();
-    await openProjectHistory({ projectDir: dir, historyRoot: historyDeps.historyRoot }).then(
-      (held) => onTestFinished(() => held.close()),
-    );
-    const busy = await hf();
-    expect([busy.code, busy.err]).toEqual([
+  it("reads the history while another app keeps it open, and refuses to change it there", async () => {
+    const { dir, read, hf, turn } = project();
+    await hf();
+    const first = await turn("claude", "Retitle", "index.html", "A2");
+    await turn("claude", "Again", "index.html", "A3");
+    await hf("begin", "--who", "codex", "--label", "Open turn");
+    const marker = () => readFileSync(join(dir, ".hyperframes", "history-turn.json"), "utf-8");
+    const before = marker();
+    const held = await openProjectHistory({
+      projectDir: dir,
+      historyRoot: historyDeps.historyRoot,
+    });
+    onTestFinished(() => held.close());
+    historyDeps.ownerWaitMs = 0;
+
+    const listed = await hf("--json", "--limit", "2");
+    expect(listed.code).toBe(0);
+    const labels = JSON.parse(listed.out).entries.map((entry: { label: string }) => entry.label);
+    expect(labels).toEqual(["Again", "Retitle"]);
+    expect((await hf("show", first.id)).out).toContain("M index.html");
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    await hf("peek", first.id, "index.html");
+    expect(String(stdout.mock.calls[0]?.[0])).toBe("A2");
+    stdout.mockRestore();
+    expect(marker()).toBe(before);
+
+    const refused = await hf("undo", first.id);
+    expect([refused.code, refused.err]).toEqual([
       2,
-      `This project's history is open in another process (pid ${process.pid}).`,
+      `This project is open in another app (pid ${process.pid}), which keeps its history: undo, restore or pin there.`,
     ]);
-  }, 15_000);
+    expect(read("index.html")).toBe("A3");
+  });
+
+  it("still refuses a history id it cannot read, instead of reading the history as empty", async () => {
+    const { dir, hf } = project();
+    mkdirSync(join(dir, ".hyperframes"), { recursive: true });
+    writeFileSync(join(dir, ".hyperframes", "history-id"), "garbage\n");
+    const refused = await hf();
+    expect(refused.code).toBe(2);
+    expect(refused.err).toContain("holds no history id this version can read");
+  });
+
+  it("peek refuses cleanly when another app pruned the point's file after its log was read", async () => {
+    const { dir, hf, turn } = project();
+    await hf();
+    const first = await turn("claude", "Retitle", "index.html", "A2");
+    const held = await openProjectHistory({
+      projectDir: dir,
+      historyRoot: historyDeps.historyRoot,
+    });
+    onTestFinished(() => held.close());
+    historyDeps.ownerWaitMs = 0;
+    const hash = held.peek(first.id)!["index.html"]!;
+    rmSync(join(historyDeps.historyRoot, held.projectId, "blobs", hash.slice(0, 2), hash));
+
+    const refused = await hf("peek", first.id, "index.html");
+    expect([refused.code, refused.err]).toEqual([2, "That point is no longer kept"]);
+  });
 });
