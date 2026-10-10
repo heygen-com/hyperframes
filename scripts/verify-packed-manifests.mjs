@@ -488,6 +488,9 @@ export function listPackageSizeIssues(name, sizes, budget) {
     ];
   }
   return ["packed", "unpacked"].flatMap((kind) => {
+    if (!Number.isFinite(budget[kind]) || budget[kind] <= 0) {
+      return [`${name} has an invalid ${kind} budget in ${SIZE_BUDGETS_FILE}: use a byte count.`];
+    }
     if (sizes[kind] > budget[kind]) {
       return [
         `${name} ${kind} size ${sizes[kind]} bytes is over its budget of ${budget[kind]}. Keep source maps, tests and unused assets out of the tarball; raise the budget in ${SIZE_BUDGETS_FILE} only with the reason in the PR.`,

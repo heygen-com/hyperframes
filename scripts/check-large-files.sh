@@ -45,12 +45,12 @@ elif [ "$#" -eq 0 ]; then
 fi
 
 # Emit the paths to check, NUL-separated and unquoted (git quotes non-ASCII,
-# quotes and tabs otherwise). Added/Copied/Modified/Renamed only.
+# quotes and tabs otherwise). Added/Copied/Modified/Renamed/Type-changed only.
 list_files() {
   if [ -n "$RANGE_BASE" ]; then
-    git diff -z --name-only --diff-filter=ACMR "$RANGE_BASE" "$RANGE_HEAD"
+    git diff -z --name-only --diff-filter=ACMRT "$RANGE_BASE" "$RANGE_HEAD"
   elif [ -n "$BLOB_REV" ]; then
-    git diff -z --cached --name-only --diff-filter=ACMR
+    git diff -z --cached --name-only --diff-filter=ACMRT
   else
     printf '%s\0' "$@"
   fi
@@ -63,10 +63,17 @@ read_bytes() {
 violations="$(mktemp)"
 errors="$(mktemp)"
 paths="$(mktemp)"
-trap 'rm -f "$violations" "$errors" "$paths"' EXIT INT TERM
+blob="$(mktemp)"
+trap 'rm -f "$violations" "$errors" "$paths" "$blob"' EXIT INT TERM
 
 # A git error (bad ref, not a repo) must fail the check, not pass an empty list.
 list_files "$@" > "$paths" || { echo "ERROR: could not list the files to check." >&2; exit 2; }
+# Paths are NUL-separated, so a newline byte can only come from a filename; sh cannot
+# keep such a name whole, so refuse it rather than check the wrong files.
+if [ "$(tr -cd '\n' < "$paths" | wc -c)" -gt 0 ]; then
+  echo "ERROR: a file name contains a newline; rename it." >&2
+  exit 2
+fi
 
 tr '\0' '\n' < "$paths" | while IFS= read -r f; do
   [ -n "$f" ] || continue
@@ -100,9 +107,11 @@ tr '\0' '\n' < "$paths" | while IFS= read -r f; do
   # `grep -I` treats a file containing NUL bytes as binary, the same heuristic
   # git uses to print "Binary files differ". A generated blob of text is still
   # caught by review, not here.
-  read_bytes "$f" 2>/dev/null | grep -qI . && continue
+  # Read once into a file so a failed read is an error, never an empty pass.
+  read_bytes "$f" > "$blob" || { printf '%s\n' "$f" >> "$errors"; continue; }
+  grep -qI . "$blob" && continue
 
-  bytes="$(read_bytes "$f" | wc -c | tr -d ' ')"
+  bytes="$(wc -c < "$blob" | tr -d ' ')"
   # Ceiling division: a sub-1024-byte file must report >=1 KB, never 0, so it
   # can't slip past a strict threshold (e.g. HF_MAX_NONLFS_KB=0). Plain
   # `bytes / 1024` would round a 512-byte binary down to 0 and pass it.

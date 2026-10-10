@@ -39,6 +39,13 @@ describe("packed manifest verifier", () => {
     assert.match(issues[0], /lower it to 525/);
   });
 
+  it("fails a malformed budget instead of skipping the metric", () => {
+    const sizes = { packed: 100, unpacked: 400 };
+    for (const budget of [{}, { paked: 100, unpacked: 400 }, { packed: "NaN", unpacked: 400 }]) {
+      assert.match(listPackageSizeIssues("pkg", sizes, budget).join("\n"), /invalid packed budget/);
+    }
+  });
+
   it("asks for a budget for a new published package", () => {
     assert.match(
       listPackageSizeIssues("pkg", { packed: 100, unpacked: 400 }, undefined)[0],

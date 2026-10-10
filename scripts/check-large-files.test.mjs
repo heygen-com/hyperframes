@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, rmSync, symlinkSync, truncateSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
@@ -30,7 +30,7 @@ function withRepo(run) {
   };
   try {
     git("init", "-q");
-    run({ commit, range });
+    run({ commit, range, dir, git });
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -135,6 +135,41 @@ describe("check-large-files", () => {
     withRepo(({ commit, range }) => {
       const head = commit({ "seed.txt": "x" });
       assert.equal(range("no-such-ref", head).ok, false);
+    });
+  });
+
+  it("--range refuses a file name with a newline instead of checking the wrong files", () => {
+    withRepo(({ commit, range }) => {
+      const base = commit({ left: "l", right: "r" });
+      const head = commit({ "left\nright": bigBinary });
+      const { ok, stderr } = range(base, head);
+      assert.equal(ok, false);
+      assert.match(stderr, /newline/);
+    });
+  });
+
+  it("--range rejects a symlink replaced by a large binary", () => {
+    withRepo(({ commit, range, dir }) => {
+      writeFileSync(join(dir, "target"), "t");
+      symlinkSync("target", join(dir, "clip.bin"));
+      const base = commit({});
+      rmSync(join(dir, "clip.bin"));
+      const head = commit({ "clip.bin": bigBinary });
+      const { ok, stderr } = range(base, head);
+      assert.equal(ok, false);
+      assert.match(stderr, /clip\.bin/);
+    });
+  });
+
+  it("--range fails when a blob cannot be read", () => {
+    withRepo(({ commit, range, dir, git }) => {
+      const base = commit({ "seed.txt": "x" });
+      const head = commit({ "big.bin": bigBinary });
+      const id = git("rev-parse", `${head}:big.bin`).stdout.trim();
+      const object = join(dir, ".git", "objects", id.slice(0, 2), id.slice(2));
+      chmodSync(object, 0o644);
+      truncateSync(object, 64);
+      assert.equal(range(base, head).ok, false);
     });
   });
 });
