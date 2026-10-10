@@ -838,9 +838,10 @@ describe("createColorGradingRuntime", () => {
     expect(canvas.style.display).toBe("block");
     expect(frame.style.borderStyle).toBe("none");
 
+    video.style.border = "16px dashed rgb(255, 0, 0)";
     video.removeAttribute(HF_COLOR_GRADING_ATTR);
     runtime.refresh();
-    expect(frame.style.borderStyle).toBe("solid");
+    expect(frame.style.borderStyle).toBe("dashed");
   });
 
   it("keeps a staged scene copy's canvas on its own render frame (#3994)", async () => {

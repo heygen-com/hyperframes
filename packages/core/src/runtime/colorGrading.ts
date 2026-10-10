@@ -210,7 +210,7 @@ interface ColorGradingEntry extends ColorGradingRenderer {
   touchedParent: HTMLElement | null;
   parentInlinePosition: string | null;
   sourceHidden: boolean;
-  borderlessFrame: { frame: HTMLElement; style: string; priority: string } | null;
+  borderlessFrame: HTMLElement | null;
   sourceInlineOpacity: string | null;
   sourceInlineOpacityPriority: string;
   sourceOpacityForCanvas: string;
@@ -1949,24 +1949,16 @@ function replaceProgramResources(entry: ColorGradingEntry): boolean {
 }
 
 function hideFrameBorder(entry: ColorGradingEntry, frame: HTMLElement): void {
-  if (entry.borderlessFrame?.frame !== frame) {
-    restoreFrameBorder(entry);
-    const style = frame.style.getPropertyValue("border-style");
-    entry.borderlessFrame = {
-      frame,
-      style,
-      priority: frame.style.getPropertyPriority("border-style"),
-    };
-  }
+  if (entry.borderlessFrame !== frame) restoreFrameBorder(entry);
+  entry.borderlessFrame = frame;
   frame.style.borderStyle = "none";
 }
 
 function restoreFrameBorder(entry: ColorGradingEntry): void {
-  const saved = entry.borderlessFrame;
-  if (!saved) return;
+  const frame = entry.borderlessFrame;
+  if (!frame) return;
   entry.borderlessFrame = null;
-  if (saved.style) saved.frame.style.setProperty("border-style", saved.style, saved.priority);
-  else saved.frame.style.removeProperty("border-style");
+  frame.style.borderStyle = window.getComputedStyle(entry.element).borderStyle;
 }
 
 function restoreSourceElement(entry: ColorGradingEntry): void {
