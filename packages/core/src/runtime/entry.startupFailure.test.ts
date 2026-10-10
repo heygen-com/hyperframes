@@ -12,7 +12,13 @@ function mountRoot(): void {
     data-width="1920" data-height="1080"></div>`;
   const duration = () => 10;
   window.__timelines = {
-    main: { play() {}, pause() {}, seek() {}, time: () => 0, duration } as unknown as RuntimeTimelineLike,
+    main: {
+      play() {},
+      pause() {},
+      seek() {},
+      time: () => 0,
+      duration,
+    } as unknown as RuntimeTimelineLike,
   };
 }
 
@@ -29,7 +35,8 @@ describe("runtime start-up failure", () => {
     delete window.__hfStartupError;
     delete window.__hfTimelinesBuilding;
     window.__hfRuntimeTeardown?.();
-    delete (window as { __hyperframeRuntimeBootstrapped?: boolean }).__hyperframeRuntimeBootstrapped;
+    delete (window as { __hyperframeRuntimeBootstrapped?: boolean })
+      .__hyperframeRuntimeBootstrapped;
   });
 
   it("records a named start-up error when runtime start-up throws", async () => {
@@ -42,7 +49,9 @@ describe("runtime start-up failure", () => {
 
     await expect(evaluateRuntime()).rejects.toThrow("boom");
     expect(window.__hfStartupError).toContain("HyperFrames runtime failed: TypeError: boom");
-    expect(window.__hfStartupError).toContain("Check the composition's scripts and window.__timelines");
+    expect(window.__hfStartupError).toContain(
+      "Check the composition's scripts and window.__timelines",
+    );
   });
 
   it("still records the failure when the thrown value cannot be printed", async () => {
@@ -99,7 +108,9 @@ describe("runtime start-up failure", () => {
 
     expect(() => vi.advanceTimersByTime(1)).toThrow("late timeline post");
     expect(window.__renderReady).not.toBe(true);
-    expect(window.__hfStartupError).toContain("HyperFrames runtime failed: Error: late timeline post");
+    expect(window.__hfStartupError).toContain(
+      "HyperFrames runtime failed: Error: late timeline post",
+    );
   });
 
   it("keeps a start-up error after a later timeline post succeeds", async () => {

@@ -29,7 +29,7 @@
  */
 import { getDebugSurface } from "./globals.js";
 
-/** The named error readiness waits fail with once start-up or a timeline post throws; it stays set. */
+/** The named error readiness waits fail with once start-up or the render-ready publish throws; it stays set. */
 export function recordStartupError(error: unknown): void {
   let detail = "unknown error";
   try {

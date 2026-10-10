@@ -92,7 +92,7 @@ declare global {
     };
     __playerReady?: boolean;
     __renderReady?: boolean;
-    /** Set when start-up or a timeline post threw; readiness waits fail with it, not seek a half-built page. */
+    /** Set when start-up or the render-ready publish threw; readiness waits fail with it instead of seeking. */
     __hfStartupError?: string;
     __hfRuntimeTeardown?: (() => void) | null;
     /** What each composition's scripts started on gsap's global timeline, by composition id. */
