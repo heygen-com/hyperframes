@@ -1,6 +1,7 @@
 /**
- * The `hf-truepeak` AudioWorklet: a lookahead limiter that holds the
- * inter-sample (true) peak under a ceiling in dBTP.
+ * The `hf-truepeak` AudioWorklet: a lookahead limiter that holds a 4x estimate
+ * of the inter-sample (true) peak at a ceiling in dBTP. The estimate reads low for
+ * content near Nyquist, so full-band noise ends up to 1.7 dB over the ceiling.
  *
  * A 4x polyphase interpolator estimates the true peak per sample; the excess
  * becomes a required gain. Its minimum over the lookahead window, smoothed by a

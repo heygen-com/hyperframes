@@ -219,9 +219,19 @@ room, and a chain that could add 40 dB would clip long before that was useful.
 lookahead, and can let a sample peak or an inter-sample peak through. `truepeak`
 is the one to use for a delivery ceiling. It estimates the true peak on a 4x
 oversampled signal, reads `lookahead` ms ahead so the gain is already down when
-the peak arrives, and holds that peak at or under `ceiling`. Channels share one
+the peak arrives, and holds that estimate at `ceiling`. Channels share one
 gain. It delays its output by `lookahead` plus about 0.3 ms: the offline render
 trims that delay, live preview plays it. Changing `lookahead` rebuilds the node.
+
+The ceiling is held against that 4x estimate, not against the waveform itself. A
+4x interpolator cannot see the peaks of content close to Nyquist, so the true peak
+can end above `ceiling`. Measured against an ideal 16x interpolation, tones, pink
+noise and a dense mix ended at most 0.6 dB over. Full-band white noise driven 8 dB
+or more into the limiter ended 1.2 to 1.7 dB over (median 1.4 dB, 28 runs of 10
+to 30 s). A meter that also reads at 4x, such as ffmpeg's `ebur128=peak=true`,
+reports that same noise about 0.1 dB over, so it will not show the miss. Under a
+hard delivery limit set `ceiling` at least 2 dB below it: −3 dBTP for a −1 dBTP
+limit.
 
 ### Nonlinear — changes the waveform's shape
 

@@ -40,9 +40,16 @@ when closed — a gate that pulls all the way to silence sounds like a switch.
 
 `limiter` follows the signal's level and has no lookahead, so it does not
 guarantee a peak ceiling. For a delivery ceiling use `truepeak`: it estimates the
-inter-sample (true) peak at 4x, looks `lookahead` ms ahead, and keeps that peak at
-or under `ceiling` dBTP. It delays its output by `lookahead` plus about 0.3 ms;
-the render trims the delay, live preview plays it.
+inter-sample (true) peak at 4x, looks `lookahead` ms ahead, and holds that estimate
+at `ceiling` dBTP. It delays its output by `lookahead` plus about 0.3 ms; the
+render trims the delay, live preview plays it.
+
+The ceiling is a 4x estimate, so the real true peak can end above it. Against an
+ideal 16x interpolation, tones, pink noise and a dense mix ended at most 0.6 dB
+over; full-band white noise driven 8 dB or more into the limiter ended 1.2 to 1.7
+dB over (median 1.4). A 4x meter such as ffmpeg `ebur128=peak=true` reads that
+noise about 0.1 dB over and will not show it. Under a hard delivery limit set
+`ceiling` at least 2 dB below it (−3 dBTP for a −1 dBTP limit).
 
 ## Nonlinear — changes the waveform's shape
 
