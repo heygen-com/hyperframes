@@ -586,9 +586,9 @@ describe("processCompositionAudio", () => {
   });
 
   it.each([
-    ["the master pass", { masterFxChain: gainChain }],
-    ["a group bus", { groupId: "bus", groupFxChain: gainChain }],
-  ])("removes its work directory when %s throws a fatal FX error", async (_label, extra) => {
+    ["the master pass", {}, { masterFxChain: gainChain }],
+    ["a group bus", { groupId: "bus", groupFxChain: gainChain }, {}],
+  ])("removes its work directory when %s fails fatally", async (_label, extra, config) => {
     const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-base-"));
     const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
     tempDirs.push(baseDir, workDir);
@@ -614,6 +614,8 @@ describe("processCompositionAudio", () => {
         workDir,
         join(baseDir, "out.m4a"),
         2,
+        undefined,
+        config,
       ),
     ).rejects.toThrow(AudioFxRenderError);
     expect(existsSync(workDir)).toBe(false);

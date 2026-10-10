@@ -555,6 +555,15 @@ export function volumeLaneKeyframes(
   return out;
 }
 
+/**
+ * The top-level root's `data-fx-chain`. It belongs to the composition, not to a clip,
+ * so `processCompositionAudio` takes it beside the tracks: a track the render adds
+ * itself has no parsed element to carry it.
+ */
+export function parseMasterFxChain(html: string): string | undefined {
+  return readMasterFxChain(parseHTML(unwrapTemplate(html)).document);
+}
+
 export function parseAudioElements(html: string): AudioElement[] {
   const elements: AudioElement[] = [];
   const { document } = parseHTML(unwrapTemplate(html));
@@ -587,7 +596,6 @@ export function parseAudioElements(html: string): AudioElement[] {
     resolveAudioGroups(document).map((group) => [group.id, group] as const),
   );
   const memberGroupHidden = (el: AudioMediaElement): boolean => isMemberGroupHidden(groupsById, el);
-  const masterFxChain = readMasterFxChain(document);
 
   // <audio> and <video data-has-audio> tracks differ only in the emitted id
 
@@ -619,7 +627,6 @@ export function parseAudioElements(html: string): AudioElement[] {
       ...(fades.fadeOut > 0 ? { fadeOut: fades.fadeOut } : {}),
       ...(fxChain ? { fxChain } : {}),
       ...(automation ? { automation } : {}),
-      ...(masterFxChain ? { masterFxChain } : {}),
       ...(group
         ? {
             groupId: group.id,
@@ -1170,7 +1177,10 @@ export async function processCompositionAudio(
   outputPath: string,
   totalDuration: number,
   signal?: AbortSignal,
-  config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout" | "audioGain">>,
+  config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout" | "audioGain">> & {
+    /** Serialised master bus chain, from `parseMasterFxChain`. */
+    masterFxChain?: string;
+  },
   compiledDir?: string,
 ): Promise<MixResult> {
   const startMs = Date.now();
@@ -1517,7 +1527,7 @@ export async function processCompositionAudio(
   // Parsed before any group is mixed, so a malformed master chain fails fast and
   // as a failure, the way an unreadable group chain does.
   let masterChain: HfAudioFxChain | undefined;
-  const masterFxJson = elements.find((element) => element.masterFxChain)?.masterFxChain;
+  const masterFxJson = config?.masterFxChain;
   if (masterFxJson) {
     try {
       masterChain = parseAudioFxChain(masterFxJson);

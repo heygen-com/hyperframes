@@ -3356,6 +3356,7 @@ async function executeRenderPipeline(input: {
           ffmpegProcessTimeout: cfg.ffmpegProcessTimeout,
           audioGain: cfg.audioGain,
           audios: composition.audios,
+          masterFxChain: composition.masterFxChain,
           abortSignal: executionSignal,
           assertNotAborted,
           log,

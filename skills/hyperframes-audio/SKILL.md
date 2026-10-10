@@ -197,9 +197,9 @@ for rumble; a low-pass darkens or muffles deliberately.
 
 **Dynamics** (`gain`, `compressor`, `limiter`, `truepeak`, `gate`) decide how a track's level
 behaves over time. Compression narrows the distance between loud and quiet so the
-quiet parts can come up. A limiter is a ceiling — it does not shape anything, it
-guarantees nothing gets past. `limiter` follows the level, so for a delivery
-ceiling use `truepeak`, which looks ahead and measures the inter-sample peak. It
+quiet parts can come up. A limiter pulls peaks down toward a ceiling and does not
+shape anything else. `limiter` follows the level and has no lookahead, so a fast
+or inter-sample peak can pass its ceiling; for a delivery ceiling use `truepeak`, which looks ahead and measures the inter-sample peak. It
 holds a 4x estimate at the ceiling, not the waveform itself, so full-band noise can
 end up to 1.7 dB over: under a hard delivery limit set the ceiling at least 2 dB
 below it. A gate removes what is below a threshold, which is

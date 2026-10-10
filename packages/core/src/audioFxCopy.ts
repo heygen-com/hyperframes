@@ -152,13 +152,13 @@ export const EFFECT_COPY: Record<string, EffectCopy> = {
   },
   limiter: {
     title: "Peak Ceiling",
-    does: "Nothing gets louder than this, ever. A safety net at the end of the chain.",
-    reachFor: "You want to be sure it never clips or spikes.",
+    does: "Pulls the loudest moments down toward this ceiling. It reacts to what it hears, so a fast peak can still get past, and Level after is applied on top of it.",
+    reachFor: "You want peaks held down and can accept a small overshoot.",
     primary: "limit",
     primaryEnds: { low: "A lot of headroom", high: "Right up to the edge" },
     params: {
       limit: {
-        label: "Never exceed",
+        label: "Ceiling",
         ends: { low: "A lot of headroom", high: "Right up to the edge" },
       },
       attack: { label: "How fast it catches" },
@@ -411,7 +411,7 @@ export const SUMMARY: Record<string, (p: P) => string> = {
       : `${n(p.gain) > 0 ? "More" : "Less"} sparkle above ${hz(p.frequency)}`,
   compressor: (p) =>
     `Evening out — ${strength(Math.min(1, (n(p.ratio, 3) - 1) / 7), ["gentle", "moderate", "firm"])}`,
-  limiter: (p) => `Nothing louder than ${n(p.limit, -1)} dB`,
+  limiter: (p) => `Peaks pulled down toward ${n(p.limit, -1)} dB`,
   truepeak: (p) => `Peaks pulled down toward ${n(p.ceiling, -1)} dBTP`,
   gate: (p) => `Closing gaps quieter than ${n(p.threshold, -45)} dB`,
   saturate: (p) =>

@@ -1130,6 +1130,7 @@ export async function buildLocalExecutionPlan(
     ffmpegProcessTimeout: cfg.ffmpegProcessTimeout,
     audioGain: cfg.audioGain,
     audios: composition.audios,
+    masterFxChain: composition.masterFxChain,
     abortSignal,
     assertNotAborted,
   });

@@ -35,7 +35,6 @@ export interface AudioElement {
   groupFxChain?: string;
   groupAutomation?: string;
   groupVolume?: number;
-  masterFxChain?: string;
   type: "audio" | "video";
 }
 
