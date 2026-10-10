@@ -26,6 +26,9 @@ vi.mock("../browser/ffmpeg.js", () => ({
   findFFprobe: () => "/fake/bin/ffprobe",
   getFFmpegInstallHint: () => "install ffmpeg",
 }));
+vi.mock("../utils/cancellableProcess.js", () => ({
+  runCancellableProcess: async () => ({ stdout: JSON.stringify({ streams: [{}] }), stderr: "" }),
+}));
 vi.mock("./inference.js", () => ({
   createSession: async () => ({
     provider: "test",
