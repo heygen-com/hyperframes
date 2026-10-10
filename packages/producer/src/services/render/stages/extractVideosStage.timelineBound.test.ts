@@ -169,12 +169,13 @@ describe.each([
     const videos = await runStage(2, materializeSymlinks, {
       extraVideos: [
         outside("after-end", 2, 4),
+        outside("just-before-end", 1.99, 0),
         outside("natural-length", 0, 0),
         outside("negative-natural-length", -1, 0),
       ],
     });
 
-    const kept = ["root-video", "natural-length", "negative-natural-length"];
+    const kept = ["root-video", "just-before-end", "natural-length", "negative-natural-length"];
     expect(requestedVideoIds).toEqual([kept]);
     expect(videos.map((v) => v.id)).toEqual(kept);
   });
