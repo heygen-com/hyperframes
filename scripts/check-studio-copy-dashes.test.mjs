@@ -16,6 +16,9 @@ describe("Studio copy dash checker", () => {
       "const g = () => <p>Range 1\u20132</p>;",
       "const h = () => <p>One &mdash; two</p>;",
       'const i = () => <p title="One &#8211; two" />;',
+      "const j = () => <p>One &ndash; two</p>;",
+      "const l = () => <p>One &#8212; two</p>;",
+      'const k = () => <p title="One &#X2014; two" />;',
     ].join("\n");
     assert.deepEqual(lines(source), [
       "x.tsx:1",
@@ -27,6 +30,9 @@ describe("Studio copy dash checker", () => {
       "x.tsx:7",
       "x.tsx:8",
       "x.tsx:9",
+      "x.tsx:10",
+      "x.tsx:11",
+      "x.tsx:12",
     ]);
   });
 
