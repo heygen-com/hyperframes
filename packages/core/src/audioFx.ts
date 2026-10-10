@@ -350,7 +350,7 @@ export const HF_AUDIO_FX: readonly HfAudioFxDef[] = [
         max: 0,
         step: 0.1,
         default: -1,
-        hint: "Highest true peak allowed, measured on a 4x oversampled signal.",
+        hint: "Target true peak, measured on a 4x oversampled signal. Dense full-band sound can end up to about 1.7 dB above it.",
       },
       {
         kind: "number",

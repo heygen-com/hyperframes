@@ -174,3 +174,25 @@ describe("no copy assumes the track is a voice", () => {
     expect(voiced.some(([, text]) => SPEECH.test(text))).toBe(true);
   });
 });
+
+describe("the true-peak copy does not promise a hard ceiling", () => {
+  const copy = EFFECT_COPY.truepeak;
+  const hint = copy?.params.ceiling?.hint ?? "";
+  const shown = [
+    copy?.does ?? "",
+    copy?.reachFor ?? "",
+    copy?.params.ceiling?.label ?? "",
+    hint,
+    SUMMARY.truepeak?.({}) ?? "",
+  ].join("\n");
+
+  it("never says never or must-not-clip", () => {
+    expect(shown).not.toMatch(/never exceed|must not clip|never above|guarantee/i);
+  });
+
+  it("tells the author about the 4x estimate and the headroom to leave", () => {
+    expect(hint).toMatch(/4x/);
+    expect(hint).toMatch(/1\.7 dB/);
+    expect(hint).toMatch(/headroom/);
+  });
+});
