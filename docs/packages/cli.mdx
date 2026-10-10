@@ -20,16 +20,17 @@ npm install -g hyperframes
 
 ## Find your command
 
-| You want to              | Use                                                                                                                                                                                            |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Start a project          | [`init`](#init), [`add`](#add), [`catalog`](#catalog)                                                                                                                                          |
+| You want to              | Use                                                                                                                                                                                                           |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Start a project          | [`init`](#init), [`add`](#add), [`catalog`](#catalog)                                                                                                                                                         |
 | Bring in source material | [`capture`](#capture), [`transcribe`](#transcribe), [`tts`](#tts), [`remove-background`](#remove-background), [`media-treatment`](#media-treatment), [`beats`](#beats), [`normalize-audio`](#normalize-audio) |
-| Look at it, or share it  | [`preview`](#preview), [`present`](#present-and-play), [`play`](#present-and-play), [`publish`](#publish)                                                                                       |
-| Find problems            | [`lint`](#lint), [`check`](#check), [`snapshot`](#snapshot), [`keyframes`](#keyframes), [`compare`](#compare-and-grade-compare), [`grade-compare`](#compare-and-grade-compare)                  |
-| Make a file              | [`render`](#render), [`benchmark`](#benchmark)                                                                                                                                                  |
-| Render somewhere else    | [`cloud`](#hyperframes-cloud), [`lambda`](#hyperframes-lambda), [`cloudrun`](#hyperframes-cloudrun)                                                                                             |
-| Fix your setup           | [`doctor`](#doctor), [`browser`](#browser), [`upgrade`](#upgrade), [`docs`](#docs), [`info`](#info-and-compositions), [`compositions`](#info-and-compositions)                                  |
-| Connect other tools      | [`auth`](#hyperframes-auth), [`skills`](#skills), [`figma`](#figma-and-events), [`telemetry`](#telemetry), [`feedback`](#feedback)                                                              |
+| Look at it, or share it  | [`preview`](#preview), [`present`](#present-and-play), [`play`](#present-and-play), [`publish`](#publish), [`open`](#open-and-catch-up), [`catch-up`](#open-and-catch-up)                                     |
+| Find problems            | [`lint`](#lint), [`check`](#check), [`snapshot`](#snapshot), [`keyframes`](#keyframes), [`compare`](#compare-and-grade-compare), [`grade-compare`](#compare-and-grade-compare)                                |
+| Edit from the terminal   | [`timeline`](#timeline), [`history`](#history)                                                                                                                                                                |
+| Make a file              | [`render`](#render), [`benchmark`](#benchmark)                                                                                                                                                                |
+| Render somewhere else    | [`cloud`](#hyperframes-cloud), [`lambda`](#hyperframes-lambda), [`cloudrun`](#hyperframes-cloudrun)                                                                                                           |
+| Fix your setup           | [`doctor`](#doctor), [`browser`](#browser), [`upgrade`](#upgrade), [`docs`](#docs), [`info`](#info-and-compositions), [`compositions`](#info-and-compositions)                                                |
+| Connect other tools      | [`auth`](#hyperframes-auth), [`skills`](#skills), [`figma`](#figma-and-events), [`telemetry`](#telemetry), [`feedback`](#feedback)                                                                            |
 
 `validate`, `inspect`, and `layout` still work but are
 [deprecated](#deprecated-validate-inspect-and-layout). Use `check` instead.
@@ -40,8 +41,8 @@ Read this once and skip the repetition below.
 
 **The project directory.** Most commands take it as the first argument and
 default to the current directory: `npx hyperframes check ./my-video`. A few
-take it as a flag instead — `add`, `transcribe`, `feedback`, and `skills` use
-`--dir`.
+take it as a flag instead — `add`, `transcribe`, `feedback`, `skills`, `history`, and
+the `timeline` edit commands use `--dir`.
 
 **`--json` for agents and scripts.** Almost every command accepts it. The
 payload is wrapped with a `_meta` field so a script can spot an outdated CLI
@@ -635,6 +636,46 @@ Sign in with `npx hyperframes auth login` first when you want an owned, stable
 link you can publish to again. `--update` and `--space` both need that
 ownership.
 
+### `open` and `catch-up`
+
+`open` opens a project in the HyperFrames desktop app and adds it to Home.
+
+```bash
+npx hyperframes open            # the project in the current directory
+npx hyperframes open ./my-video
+npx hyperframes open --json     # for agents
+```
+
+| Flag     | Description                          |
+| -------- | ------------------------------------ |
+| `[dir]`  | Project directory (default: current) |
+| `--json` | Machine-readable result              |
+
+When it runs under Claude Code, Codex, or Grok, the app's chat picks up that
+conversation. When it cannot open the app, for example because the app is not
+installed, `open` exits 1 and prints a download link. With `--json`, the result
+names the `reason` and the `downloadUrl`.
+
+`catch-up` is the other half of that hand-off. Run it when the person is back
+from the desktop app, before you change anything: it lists what they asked and
+what changed in the app since you last looked, and the files changed since
+then.
+
+```bash
+npx hyperframes catch-up
+npx hyperframes catch-up ./my-video
+npx hyperframes catch-up --json
+```
+
+| Flag     | Description                          |
+| -------- | ------------------------------------ |
+| `[dir]`  | Project directory (default: current) |
+| `--json` | Machine-readable result              |
+
+Each run marks what it showed as seen, so the next run lists only what is new.
+A project that was never handed to the app from here has nothing to catch up
+on.
+
 ## Check your work
 
 ### `lint`
@@ -896,6 +937,111 @@ motion-sidecar pass. [`check`](#check) does everything they did, in one browser
 session, and it is where new work should go. Their flags are unchanged — run
 `npx hyperframes inspect --help` if you are maintaining automation that still
 calls them.
+
+## Edit from the command line
+
+### `timeline`
+
+Print the project's tracks and clips, or edit one clip.
+
+```bash
+npx hyperframes timeline [dir]
+npx hyperframes timeline --json
+```
+
+```
+timeline 10s
+
+graphics (3)
+  |████████████████████████████████████████| #title title 0-10s
+  |████████████                            | #intro intro 0-3s
+  |                    ████████████        | #outro outro 5-8s
+```
+
+| Flag     | Description                                                   |
+| -------- | ------------------------------------------------------------- |
+| `[dir]`  | Project directory (default: current)                          |
+| `--json` | Every track and clip with its start, duration, file and track |
+
+The edit commands take a clip ref, such as `#outro`, and write the change to the
+file that holds the clip:
+
+```bash
+npx hyperframes timeline move '#outro' +1 --plan   # show the result and diff, write nothing
+npx hyperframes timeline move '#outro' after:#intro
+npx hyperframes timeline trim '#intro' --duration 2
+npx hyperframes timeline split '#outro' 6.5
+npx hyperframes timeline set '#music' volume=0.5
+npx hyperframes timeline duplicate '#intro' --at 3
+npx hyperframes timeline delete '#outro' --json
+```
+
+| Command                     | What it does                                                                                                                              |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `move <ref> <time>`         | Start the clip at `<time>`, keeping its length                                                                                            |
+| `trim <ref>`                | Change the clip's `--start`, `--end`, or `--duration` (at least one)                                                                      |
+| `split <ref> <time>`        | Cut the clip in two at `<time>`                                                                                                           |
+| `delete <ref>`              | Remove the clip                                                                                                                           |
+| `set <ref> <field>=<value>` | Set `volume`, `rate` (playback rate) or `track` (a whole number)                                                                          |
+| `duplicate <ref>`           | Copy the clip to `--at <time>` (default: right after the clip)                                                                            |
+| `apply <file>`              | Apply a JSON array of edits, such as `[{"verb": "move", "ref": "#intro", "time": "+1"}]`, all or nothing. Pass `-` to read it from stdin. |
+| `undo <receipt>`            | Restore the files an edit changed, from its receipt (the JSON or its file)                                                                |
+| `ids`                       | Stamp stable ids on the timeline's clips                                                                                                  |
+
+A time is seconds (`4.5`), an offset from the clip's start (`+1`, `-0.5`),
+frames (`30f`), `end`, or an anchor on another clip: `after:#intro`,
+`before:#intro`, `start-of:#intro` or `end-of:#intro`.
+
+| Flag          | Applies to                                                     | Description                                                   |
+| ------------- | -------------------------------------------------------------- | ------------------------------------------------------------- |
+| `--plan`      | `move`, `trim`, `split`, `delete`, `set`, `duplicate`, `apply` | Print the result and the diff without writing                 |
+| `--overwrite` | `move`, `trim`                                                 | Allow the clip to overlap a neighbour on its track            |
+| `--snap`      | `move`, `trim`, `split`, `duplicate`                           | Round times to whole frames. Needs `data-fps` on the project. |
+| `--at`        | `duplicate`                                                    | Where the copy starts                                         |
+| `--dir`       | all edit commands                                              | Project directory (default: current)                          |
+| `--json`      | all edit commands                                              | Machine-readable result, with the receipt `undo` takes        |
+
+A refused edit, such as a move that would overlap a neighbour, writes nothing,
+exits 2 and says how to fix it.
+
+### `history`
+
+List, undo and restore the project's recorded changes. Each change is an entry
+with who made it, a label and the files it touched.
+
+```bash
+npx hyperframes history                              # newest 20 entries
+npx hyperframes history --since mine --who claude    # what changed since your last entry
+npx hyperframes history begin --who claude --label "Bigger title"
+npx hyperframes history end
+npx hyperframes history undo --who claude            # undo your newest turn
+```
+
+| Flag      | Description                                       |
+| --------- | ------------------------------------------------- |
+| `--dir`   | Project directory (default: current)              |
+| `--json`  | Machine-readable result                           |
+| `--since` | Only entries after an entry id, a time, or `mine` |
+| `--who`   | Your name, for `--since mine`                     |
+| `--limit` | Newest entries to show (default 20)               |
+
+| Command                 | What it does                                                                                           |
+| ----------------------- | ------------------------------------------------------------------------------------------------------ |
+| `show <ref> [--diff]`   | One entry's files, before and after. `--diff` prints a text diff (needs `git`).                        |
+| `undo [ref]`            | Undo an entry, or with `--who <name>` and no ref, that name's newest turn still in effect              |
+| `restore <ref> [--who]` | Make the files what they were right after an entry, a time, or `start`                                 |
+| `peek <ref> [path]`     | List the files at an entry, a time, or `start` without changing anything; with a path, print that file |
+| `pin <ref> [--off]`     | Keep an entry, and what it needs, when old history is trimmed. `--off` unpins it.                      |
+| `begin --who --label`   | Start a turn: your writes until `end` become one entry under your name                                 |
+| `end`                   | End your turn and print its entry                                                                      |
+
+Every command also takes `--dir` and `--json`. A ref is an entry id or a unique
+prefix of one; a time is a local date or date-time such as `2026-09-24T14:30`.
+
+When a file in the entry has changed since, `undo` writes nothing, exits 2 and
+lists the newer entries. Run it again with `--just-this` to put back only that
+entry's files over the newer edits, or `--back-to-before` to go back to before
+it, undoing the newer entries too.
 
 ## Render to a file
 
