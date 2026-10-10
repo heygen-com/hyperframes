@@ -1,4 +1,4 @@
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -30,7 +30,7 @@ vi.mock("./extractionCache.js", async (importOriginal) => {
 
 const { extractAllVideoFrames } = await import("./videoFrameExtractor.js");
 
-describe.skipIf(process.platform === "win32")("extractAllVideoFrames render-owned sources", () => {
+describe.skipIf(process.platform === "win32")("extractAllVideoFrames downloaded sources", () => {
   const dir = mkdtempSync(join(tmpdir(), "hf-extract-render-owned-"));
   const cacheDir = join(dir, "cache");
   let red = "";
@@ -51,24 +51,34 @@ describe.skipIf(process.platform === "win32")("extractAllVideoFrames render-owne
     return { id, src, start: 0, end, mediaStart: 0, loop: false, hasAudio: false };
   }
 
-  // The producer downloads a remote src at compile time into the render's compiled dir.
+  // The producer downloads a remote src at compile time into the render's compiled dir;
+  // a distributed plan also copies the whole project there (`subdir: "."`).
   function renderCompiledCopy(
     name: string,
     videos = [clipElement("_remote_media/clip.mp4")],
-    deferRangeExtraction = false,
+    { deferRangeExtraction = false, subdir = "_remote_media" } = {},
   ) {
     const compiledDir = join(dir, name, "compiled");
-    mkdirSync(join(compiledDir, "_remote_media"), { recursive: true });
-    copyFileSync(source.clip, join(compiledDir, "_remote_media", "clip.mp4"));
+    mkdirSync(join(compiledDir, subdir), { recursive: true });
+    copyFileSync(source.clip, join(compiledDir, subdir, "clip.mp4"));
     const outputDir = join(compiledDir, "frames");
     return extractAllVideoFrames(
       videos,
       join(dir, "project"),
-      { fps: 30, outputDir, deferRangeExtraction },
+      {
+        ...{ fps: 30, outputDir, deferRangeExtraction },
+        contentKeyedDirs: [join(compiledDir, "_remote_media")],
+      },
       undefined,
       { extractCacheDir: cacheDir },
       compiledDir,
     );
+  }
+
+  function firstFrameBytes(result: Awaited<ReturnType<typeof extractAllVideoFrames>>): Buffer {
+    const frame = result.extracted[0]?.framePaths.get(0);
+    if (!frame) throw new Error("missing first frame");
+    return readFileSync(frame);
   }
 
   function renderRemoteSrc(name: string) {
@@ -101,6 +111,8 @@ describe.skipIf(process.platform === "win32")("extractAllVideoFrames render-owne
     expect(second.errors).toEqual([]);
     expect(second.phaseBreakdown.cacheHits).toBe(1);
     expect(second.phaseBreakdown.cacheMisses).toBe(0);
+    expect(second.extracted[0]?.totalFrames).toBe(first.extracted[0]?.totalFrames);
+    expect(firstFrameBytes(second).equals(firstFrameBytes(first))).toBe(true);
   });
 
   it("a re-render reuses the frames of a video the extractor downloaded itself", async () => {
@@ -138,10 +150,20 @@ describe.skipIf(process.platform === "win32")("extractAllVideoFrames render-owne
     const result = await renderCompiledCopy(
       "deferred",
       [clipElement("_remote_media/clip.mp4", "clip", 3)],
-      true,
+      { deferRangeExtraction: true },
     );
     expect(result.errors).toEqual([]);
     expect(result.extracted[0]?.deferredRange).toBeDefined();
+    expect(hashing.paths).toEqual([]);
+  });
+
+  it("keeps a project copy outside the download dirs on its path key", async () => {
+    source.clip = red;
+    hashing.paths = [];
+    const first = await renderCompiledCopy("copy-1", [clipElement("clip.mp4")], { subdir: "." });
+    const second = await renderCompiledCopy("copy-2", [clipElement("clip.mp4")], { subdir: "." });
+    expect(second.errors).toEqual([]);
+    expect(first.phaseBreakdown.cacheHits + second.phaseBreakdown.cacheHits).toBe(0);
     expect(hashing.paths).toEqual([]);
   });
 });

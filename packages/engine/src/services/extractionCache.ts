@@ -89,8 +89,8 @@ export interface CacheKeyInput {
   format: CacheFrameFormat;
   /** Optional source transform applied during extraction. */
   transform?: string;
-  /** SHA-256 of the source bytes. Replaces path and mtime in the key for a source downloaded
-   *  into the render's work dir, whose path and mtime are new on every render. */
+  /** SHA-256 of the source bytes. Replaces path and mtime in the key for a source whose path and
+   *  mtime are new on every render (downloaded media). */
   contentSha256?: string;
 }
 
@@ -115,10 +115,13 @@ export interface CachePublishResult {
 }
 
 /** SHA-256 of a file's bytes, read as a stream, or `null` when it cannot be read (skip the cache). */
-export async function readContentSha256(path: string): Promise<string | null> {
+export async function readContentSha256(
+  path: string,
+  signal?: AbortSignal,
+): Promise<string | null> {
   try {
     const hash = createHash("sha256");
-    for await (const chunk of createReadStream(path)) hash.update(chunk);
+    for await (const chunk of createReadStream(path, { signal })) hash.update(chunk);
     return hash.digest("hex");
   } catch {
     return null;

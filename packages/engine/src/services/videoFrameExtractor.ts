@@ -245,7 +245,11 @@ export interface ExtractionOptions {
    * `totalFrames` so another process can extract just the frames it needs with `frameRanges`.
    */
   deferRangeExtraction?: boolean;
+  /** Directories the caller rewrites on every render (downloaded media); their sources are cached by content. */
+  contentKeyedDirs?: readonly string[];
 }
+
+const DOWNLOAD_SUBDIR = "_downloads";
 
 export const EXTRACT_CACHE_MIN_AGE_MS = 60 * 60 * 1000;
 const GC_STALENESS_MS = 24 * 60 * 60 * 1000;
@@ -1872,7 +1876,7 @@ export async function extractAllVideoFrames(
       }
 
       if (isHttpUrl(videoPath)) {
-        const downloadDir = join(options.outputDir, "_downloads");
+        const downloadDir = join(options.outputDir, DOWNLOAD_SUBDIR);
         mkdirSync(downloadDir, { recursive: true });
         videoPath = await downloadToTemp(
           videoPath,
@@ -1927,8 +1931,11 @@ export async function extractAllVideoFrames(
   // HDR preflight. Without this, every render would write a new
   // normalized file with a fresh mtime → fresh cache key → perpetual misses.
   // Phase 3 updates mediaStart after trimming any invisible negative preroll.
-  // Downloads and compiled copies are rewritten by every render, so they are keyed by content.
-  const renderOwnedDirs = [options.outputDir, compiledDir].filter((dir) => dir !== undefined);
+  // Downloads land at a new path and mtime every render, so they are keyed by content instead.
+  const contentKeyedDirs = [
+    join(options.outputDir, DOWNLOAD_SUBDIR),
+    ...(options.contentKeyedDirs ?? []),
+  ];
   const cacheKeyInputs = resolvedVideos.map(({ video, videoPath }) => {
     const stat = readKeyStat(videoPath);
     // Missing files return null — skip the cache path for that entry. The
@@ -1941,7 +1948,7 @@ export async function extractAllVideoFrames(
       mtimeMs: stat.mtimeMs,
       size: stat.size,
       mediaStart: video.mediaStart,
-      renderOwned: renderOwnedDirs.some((dir) => isPathInside(videoPath, dir)),
+      contentKeyed: contentKeyedDirs.some((dir) => isPathInside(videoPath, dir)),
     };
   });
 
@@ -2147,15 +2154,17 @@ export async function extractAllVideoFrames(
 
   // Hashed only for works that reach a lookup (deferred ranges never do), once per file.
   const contentSha256ByPath = new Map<string, string | null>();
-  async function hashRenderOwnedSources(works: PreparedExtraction[]): Promise<void> {
+  async function hashContentKeyedSources(works: PreparedExtraction[]): Promise<void> {
     if (!cacheRootDir) return;
     const paths = new Set<string>();
     for (const work of works) {
       const keyInput = cacheKeyInputs[work.index];
-      if (keyInput?.renderOwned) paths.add(keyInput.videoPath);
+      if (keyInput?.contentKeyed) paths.add(keyInput.videoPath);
     }
     await Promise.all(
-      [...paths].map(async (path) => contentSha256ByPath.set(path, await readContentSha256(path))),
+      [...paths].map(async (path) =>
+        contentSha256ByPath.set(path, await readContentSha256(path, signal)),
+      ),
     );
   }
 
@@ -2163,8 +2172,8 @@ export async function extractAllVideoFrames(
     if (!cacheRootDir) return { work };
     const keyInput = cacheKeyInputs[work.index];
     if (!keyInput) return { work };
-    const contentSha256 = keyInput.renderOwned
-      ? contentSha256ByPath.get(keyInput.videoPath)
+    const contentSha256 = keyInput.contentKeyed
+      ? (contentSha256ByPath.get(keyInput.videoPath) ?? null)
       : undefined;
     if (contentSha256 === null) return { work };
     const transformParts = [
@@ -2500,7 +2509,7 @@ export async function extractAllVideoFrames(
   const worksToLookUp = [...uniqueWorks.values()].filter(
     (work) => !uniqueOutcomes.has(work.dedupeKey),
   );
-  await hashRenderOwnedSources(worksToLookUp);
+  await hashContentKeyedSources(worksToLookUp);
   for (const work of worksToLookUp) {
     const lookup = lookupCacheFor(work);
     if ("work" in lookup) {

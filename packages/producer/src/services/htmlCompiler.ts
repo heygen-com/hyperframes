@@ -1361,7 +1361,7 @@ export function collectExternalAssets(
   };
 }
 
-const REMOTE_MEDIA_SUBDIR = "_remote_media";
+export const REMOTE_MEDIA_SUBDIR = "_remote_media";
 // Match opening tags of <video> or <audio> elements that carry an HTTP(S) src.
 // Uses [^>]* to span attributes — safe for composition elements that won't
 // have `>` inside quoted attribute values (data-title etc.).
