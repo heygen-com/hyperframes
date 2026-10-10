@@ -42,7 +42,20 @@ describe("runtime start-up failure", () => {
 
     await expect(evaluateRuntime()).rejects.toThrow("boom");
     expect(window.__hfStartupError).toContain("HyperFrames runtime failed: TypeError: boom");
-    expect(window.__hfStartupError).toContain("Fix the composition script or window.__timelines entry");
+    expect(window.__hfStartupError).toContain("Check the composition's scripts and window.__timelines");
+  });
+
+  it("still records the failure when the thrown value cannot be printed", async () => {
+    const thrown: unknown = Object.create(null);
+    vi.doMock("./init", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("./init")>()),
+      initSandboxRuntimeModular: () => {
+        throw thrown;
+      },
+    }));
+
+    await expect(evaluateRuntime()).rejects.toBe(thrown);
+    expect(window.__hfStartupError).toContain("HyperFrames runtime failed: unknown error.");
   });
 
   it("is not marked render-ready when posting the timeline throws", async () => {

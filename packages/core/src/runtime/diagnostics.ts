@@ -31,9 +31,15 @@ import { getDebugSurface } from "./globals.js";
 
 /** The named error readiness waits fail with once start-up or a timeline post throws; it stays set. */
 export function recordStartupError(error: unknown): void {
-  const detail = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+  let detail = "unknown error";
+  try {
+    detail = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+  } catch (err) {
+    swallow("runtime.startupError", err);
+  }
   (window as Window & { __hfStartupError?: string }).__hfStartupError =
-    `HyperFrames runtime failed: ${detail}. Fix the composition script or window.__timelines entry that threw.`;
+    `HyperFrames runtime failed: ${detail}. Check the composition's scripts and window.__timelines ` +
+    `entries; if they look right, report this as a HyperFrames bug.`;
 }
 
 export function swallow(label: string, error?: unknown): void {
