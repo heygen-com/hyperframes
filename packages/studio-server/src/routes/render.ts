@@ -163,7 +163,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
       outputResolution,
       composition,
       variables,
-      useGpu: body.gpu === true,
+      useGpu: body.gpu === true && format === "mp4",
       distinctId:
         typeof body.telemetryDistinctId === "string" ? body.telemetryDistinctId : undefined,
       telemetryOptOut: body.telemetryOptOut === true,

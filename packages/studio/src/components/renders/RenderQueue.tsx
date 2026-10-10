@@ -24,7 +24,7 @@ export type StartRenderHandler = (
   quality: "draft" | "standard" | "high",
   resolution: ResolutionPreset | "auto",
   fps: 24 | 30 | 60,
-  gpu: boolean,
+  gpu?: boolean,
 ) => void | Promise<void>;
 
 export interface RenderQueueProps {

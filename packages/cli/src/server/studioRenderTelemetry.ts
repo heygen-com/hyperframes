@@ -128,6 +128,7 @@ export function emitStudioRenderError(
     fps: fpsToNumber(opts.fps),
     quality: opts.quality,
     docker: false,
+    gpu: opts.useGpu === true,
     source: "studio",
     failedStage,
     errorMessage: err instanceof Error ? err.message : String(err),
