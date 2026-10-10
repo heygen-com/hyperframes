@@ -67,8 +67,14 @@ function durationFromTimeline(
 ): number | null {
   const compId = el.getAttribute("data-composition-id");
   if (!compId) return null;
-  const d = Number(registry[compId]?.duration?.());
-  return Number.isFinite(d) && d > 0 ? d : null;
+  const timeline = registry[compId];
+  if (typeof timeline?.duration !== "function") return null;
+  try {
+    const d = Number(timeline.duration());
+    return Number.isFinite(d) && d > 0 ? d : null;
+  } catch {
+    return null;
+  }
 }
 
 function durationFromMedia(el: Element): number | null {
