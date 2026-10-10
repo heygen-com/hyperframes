@@ -12,7 +12,7 @@ import {
   cpSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, resolve, join } from "node:path";
+import { dirname, resolve, join, extname } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import process from "node:process";
@@ -763,6 +763,10 @@ function saveFailureDetails(
 ): void {
   const failuresDir = join(suite.dir, "failures");
   mkdirSync(failuresDir, { recursive: true });
+
+  if (result.visual && existsSync(renderedVideoPath) && statSync(renderedVideoPath).isFile()) {
+    copyFileSync(renderedVideoPath, join(failuresDir, `actual${extname(renderedVideoPath)}`));
+  }
 
   // Save compilation failures
   if (result.compilation && !result.compilation.passed) {

@@ -16,6 +16,7 @@ import { type BeforeCaptureHook } from "./frameCapture.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import {
   HF_COLOR_GRADING_CANVAS_ID_PREFIX,
+  MEDIA_RENDER_ID_ATTR,
   RENDER_FRAME_ID_PREFIX,
   RENDER_FRAME_ID_SUFFIX,
   renderFrameIdForRenderId,
@@ -458,9 +459,15 @@ export async function queryElementStacking(
   const hdrIds = Array.from(nativeHdrIds);
   return page.evaluate(
     // fallow-ignore-next-line complexity
-    (hdrIdList: string[], prefix: string, suffix: string): ElementStackingInfo[] => {
+    (
+      hdrIdList: string[],
+      prefix: string,
+      suffix: string,
+      renderIdAttr: string,
+      colorGradingPrefix: string,
+    ): ElementStackingInfo[] => {
       const hdrSet = new Set(hdrIdList);
-      const elements = document.querySelectorAll("[data-start]");
+      const elements = document.querySelectorAll("[data-start], [data-composition-id] *");
       const results: ElementStackingInfo[] = [];
 
       // Walk up the DOM to find the effective z-index from the nearest
@@ -700,11 +707,26 @@ export async function queryElementStacking(
 
       for (const el of elements) {
         // Report the render id so callers can match these back to the media list.
-        // `||`, not `??`: `__hfMediaId` yields "" for an element with neither id.
-        const id = window.__hfMediaId?.(el) || el.id;
-        if (!id) continue;
-        const rect = el.getBoundingClientRect();
+        if (["SCRIPT", "STYLE", "TEMPLATE", "LINK", "META"].includes(el.tagName)) continue;
+        let id = window.__hfMediaId?.(el) || el.getAttribute(renderIdAttr) || el.id;
+        if (id.startsWith(prefix) && id.endsWith(suffix)) continue;
+        if (id.startsWith(colorGradingPrefix)) continue;
         const style = window.getComputedStyle(el);
+        const isTimed = el.hasAttribute("data-start");
+        const isCompositionChild = el.parentElement?.hasAttribute("data-composition-id");
+        const hasStackingOrder = style.position !== "static" && style.zIndex !== "auto";
+        if (!isTimed && !hdrSet.has(id) && !isCompositionChild && !hasStackingOrder) continue;
+        if (!id) {
+          let index = 0;
+          do {
+            id = `hf-hdr-dom-${index++}`;
+          } while (
+            document.getElementById(id) ||
+            document.querySelector(`[${renderIdAttr}="${id}"]`)
+          );
+          el.setAttribute(renderIdAttr, id);
+        }
+        const rect = el.getBoundingClientRect();
         const zIndex = getEffectiveZIndex(el);
         const isHdrEl = hdrSet.has(id);
         // The frame injector now uses `visibility: hidden` (without `opacity: 0`)
@@ -751,5 +773,7 @@ export async function queryElementStacking(
     hdrIds,
     RENDER_FRAME_ID_PREFIX,
     RENDER_FRAME_ID_SUFFIX,
+    MEDIA_RENDER_ID_ATTR,
+    HF_COLOR_GRADING_CANVAS_ID_PREFIX,
   );
 }
