@@ -38,7 +38,7 @@
     "compare-versions": "^6.1.1",
     "css-tree": "^3.2.1",
     "debug": "^4.4.0",
-    "esbuild": "^0.25.12",
+    "esbuild": "^0.28.2",
     "fontkit": "^2.0.4",
     "giget": "^3.2.0",
     "hono": "^4.0.0",

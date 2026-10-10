@@ -84,7 +84,7 @@
     "@types/tar": "^6.1.13",
     "aws-cdk-lib": "^2.130.0",
     "constructs": "^10.3.0",
-    "esbuild": "^0.25.12",
+    "esbuild": "^0.28.2",
     "tsx": "^4.21.0",
     "typescript": "^5.7.2",
     "yaml": "^2.9.0"
