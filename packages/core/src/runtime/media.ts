@@ -528,7 +528,9 @@ export function syncRuntimeMedia(params: {
       // During initial buffering, offset grows ~16ms/tick as the timeline
       // advances while media stays at 0. Accumulated drift from pause/play
       // toggling shows up as a stable, non-zero offset (delta near 0).
-      const offsetStabilized = prevOffset !== undefined && Math.abs(offset - prevOffset) < 0.004;
+      const heldBelowFloor = params.playing && !playing;
+      const offsetStabilized =
+        heldBelowFloor || (prevOffset !== undefined && Math.abs(offset - prevOffset) < 0.004);
       let strictSync = false;
       if (
         !isPlayingVideo &&
