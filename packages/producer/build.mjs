@@ -9,25 +9,12 @@ import { build } from "esbuild";
 import { mkdirSync, rmSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
+import { BUNDLES, WORKERS } from "./buildEntries.mjs";
 
 rmSync("dist", { recursive: true, force: true });
 mkdirSync("dist", { recursive: true });
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
-
-// The banner provides a real `require` (via createRequire) plus the CJS-only
-// `__filename`/`__dirname` globals so esbuild's CJS interop works in ESM output.
-// Without `require`, bundled CJS deps (recast, yauzl, etc.) that call
-// require("fs") throw "Dynamic require of 'fs' is not supported"; without the
-// dirname shims, deps like wawoff2 throw "__dirname is not defined in ES module".
-const cjsBanner = {
-  js: `import { createRequire as __cjsRequire } from 'module';
-import { fileURLToPath as __cjsFileURLToPath } from 'url';
-import { dirname as __cjsDirname } from 'path';
-const require = __cjsRequire(import.meta.url);
-const __filename = __cjsFileURLToPath(import.meta.url);
-const __dirname = __cjsDirname(__filename);`,
-};
 
 const sharedOpts = {
   bundle: true,
@@ -38,24 +25,13 @@ const sharedOpts = {
   // tarball carries only producer's own code (as aws-lambda and gcp-cloud-run do).
   packages: "external",
   minify: false,
-  banner: cjsBanner,
 };
 
-await Promise.all([
-  build({ ...sharedOpts, entryPoints: ["src/index.ts"], outfile: "dist/index.js" }),
-  build({ ...sharedOpts, entryPoints: ["src/server.ts"], outfile: "dist/public-server.js" }),
-  build({
-    ...sharedOpts,
-    entryPoints: ["src/services/shaderTransitionWorker.ts"],
-    outfile: "dist/services/shaderTransitionWorker.js",
-  }),
-  build({
-    ...sharedOpts,
-    entryPoints: ["src/services/healthWorkerThread.ts"],
-    outfile: "dist/services/healthWorkerThread.js",
-  }),
-  build({ ...sharedOpts, entryPoints: ["src/distributed.ts"], outfile: "dist/distributed.js" }),
-]);
+await Promise.all(
+  [...BUNDLES, ...WORKERS].map(({ entry, outfile }) =>
+    build({ ...sharedOpts, entryPoints: [entry], outfile }),
+  ),
+);
 
 // Copy core runtime artifacts so the producer can find them at dist/
 import { copyFileSync, existsSync, readFileSync } from "fs";
