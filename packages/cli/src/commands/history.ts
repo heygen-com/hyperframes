@@ -56,7 +56,6 @@ const withOwner = <T>(
     return task(owner, turn, projectDir);
   });
 
-/** withOwner for a read, which still answers while another app keeps the history. */
 const withReader = <T>(
   action: string,
   dir: string | undefined,

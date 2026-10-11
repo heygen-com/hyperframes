@@ -25,7 +25,6 @@ function blobPath(dir: string, hash: string): string {
   return join(dir, hash.slice(0, 2), hash);
 }
 
-/** One blob's bytes, without opening the store (which creates and scans it). */
 export const readBlob = (dir: string, hash: string) => readFile(blobPath(dir, hash));
 
 async function hashFile(path: string): Promise<string> {

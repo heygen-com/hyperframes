@@ -1321,7 +1321,6 @@ export function readProjectHistory(
 ): ProjectHistoryView {
   const dir = resolve(options.projectDir);
   const id = readId(dir);
-  // No id, or one recorded for another folder: this folder has no history yet.
   const home =
     id && isRecordedFolder(join(options.historyRoot, id), statSync(dir))
       ? join(options.historyRoot, id)

@@ -45,7 +45,6 @@ export interface Owner {
   close(): Promise<void>;
 }
 
-/** What a read needs of the history. */
 export type Reader = Pick<Owner, "via" | "list" | "peek" | "blob">;
 
 /** Swapped by tests. */
@@ -54,7 +53,6 @@ export const historyDeps = {
   findServer: (projectDir: string) => findPreviewServerForProject(projectDir),
   /** A turn with no write for this long has ended, through a preview or not. */
   turnIdleMs: MAX_WINDOW_IDLE_MS,
-  /** How long opening waits for another process to let go; undefined is the engine's default. */
   ownerWaitMs: undefined as number | undefined,
   now: () => Date.now(),
 };
@@ -235,7 +233,6 @@ export async function withOwner<T>(
   }
 }
 
-/** Runs a read with the owner; while another process owns the history, with its log as written so far instead. */
 export async function withReader<T>(
   dir: string | undefined,
   task: (reader: Reader) => Promise<T>,
