@@ -1348,6 +1348,10 @@ function canHoldFinalFramePastEof(video: TimelineWindowVideo): boolean {
 // one frame, while FFmpeg seeks to the separately probed real frame timestamp.
 const FINAL_FRAME_LOGICAL_DURATION_SECONDS = 1e-6;
 
+export function isVideoPastTimelineEnd(video: Pick<VideoElement, "start">, timelineEnd: number) {
+  return video.start >= timelineEnd;
+}
+
 /** Move a clip to its extraction window; a rate lane is shifted so it keeps integrating from the new origin. */
 export function rebaseVideoToWindow(video: VideoElement, window: TimelineExtractionWindow): void {
   if (window.preserveTimelinePhase) return;
@@ -1868,7 +1872,9 @@ export async function extractAllVideoFrames(
   const warnedSrcs = new Set<string>();
   for (const video of videos) {
     if (signal?.aborted) break;
-    if (options.timelineEnd !== undefined && video.start >= options.timelineEnd) continue;
+    if (options.timelineEnd !== undefined && isVideoPastTimelineEnd(video, options.timelineEnd)) {
+      continue;
+    }
     try {
       let videoPath = video.src;
       if (!isHttpUrl(videoPath)) {
