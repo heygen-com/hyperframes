@@ -92,6 +92,8 @@ declare global {
     };
     __playerReady?: boolean;
     __renderReady?: boolean;
+    /** Set when start-up or the render-ready publish threw; readiness waits fail with it instead of seeking. */
+    __hfStartupError?: string;
     __hfRuntimeTeardown?: (() => void) | null;
     /** What each composition's scripts started on gsap's global timeline, by composition id. */
     __hfSceneAnimations?: Record<string, SceneAnimation[]> | null;

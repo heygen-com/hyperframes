@@ -1,4 +1,5 @@
 import { refreshSvgSelectorAliases } from "../compiler/svgSelectorAliases";
+import { recordStartupError } from "./diagnostics";
 import {
   initSandboxRuntimeModular,
   installAuthoredMediaCapture,
@@ -68,7 +69,12 @@ function bootstrapHyperframeRuntime(): void {
     return;
   }
   win.__hyperframeRuntimeBootstrapped = true;
-  initSandboxRuntimeModular();
+  try {
+    initSandboxRuntimeModular();
+  } catch (err) {
+    recordStartupError(err);
+    throw err;
+  }
 }
 
 // Compiled composition scripts wait for web fonts, so what they measure matches every run.
