@@ -57,6 +57,7 @@ function createV1Plan(
     audio?: boolean;
     video?: boolean;
     omitVideoMetadata?: boolean;
+    fpsNum?: number;
     fpsDen?: number;
     videoColorSpace?: unknown;
     videoCodec?: string;
@@ -73,6 +74,7 @@ function createV1Plan(
     audio = false,
     video = false,
     omitVideoMetadata = false,
+    fpsNum = 30,
     fpsDen = 1,
     videoColorSpace = null,
     videoCodec = "h264",
@@ -172,7 +174,7 @@ function createV1Plan(
       producerVersion: "0.0.0-test",
       fontSnapshotSha: "font-snapshot-fixture",
       dimensions: {
-        fpsNum: 30,
+        fpsNum,
         fpsDen,
         width: 16,
         height: 16,
@@ -684,6 +686,21 @@ describe("Plan v2 manifest", () => {
     const root = tempPath("hf-plan-v2-fps-den-");
     const v1 = createV1Plan(root, { fpsDen: 1001 });
     expect(() => createPlanV2FromV1(v1, join(root, "v2"))).toThrow("dimensions.fpsDen must be 1");
+  });
+
+  it("carries 25 fps through the manifest it writes and reads back", () => {
+    const root = tempPath("hf-plan-v2-fps-25-");
+    const v1 = createV1Plan(root, { fpsNum: 25 });
+    const manifest = readPlanV2Manifest(createPlanV2FromV1(v1, join(root, "v2")).planDir);
+    expect(manifest.fps).toBe(25);
+  });
+
+  it("rejects an fps outside the distributed set", () => {
+    const root = tempPath("hf-plan-v2-fps-50-");
+    const v1 = createV1Plan(root, { fpsNum: 50 });
+    expect(() => createPlanV2FromV1(v1, join(root, "v2"))).toThrow(
+      "dimensions.fpsNum must be 24, 25, 30, or 60",
+    );
   });
 
   it("materializes and revalidates strict chunk and assembler subsets", () => {

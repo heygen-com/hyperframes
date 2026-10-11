@@ -18,7 +18,7 @@ export interface RunLambdaLocalInput {
   projectDir: string;
   tempRoot: string;
   renderedOutputPath: string;
-  fps: 24 | 30 | 60;
+  fps: 24 | 25 | 30 | 60;
   /**
    * Width/height from the fixture's renderConfig. Forwarded directly to
    * the Lambda event so this mode catches drift if the handler ever

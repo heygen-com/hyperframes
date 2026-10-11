@@ -159,7 +159,7 @@ describe("shard planner fixture discovery", () => {
     expect(hdr.supported).toBe(false);
     const ntsc = checkDistributedSupport({ fps: { num: 30000, den: 1001 } });
     expect(ntsc.supported).toBe(false);
-    const odd = checkDistributedSupport({ fps: { num: 25, den: 1 } });
+    const odd = checkDistributedSupport({ fps: { num: 50, den: 1 } });
     expect(odd.supported).toBe(false);
   });
 

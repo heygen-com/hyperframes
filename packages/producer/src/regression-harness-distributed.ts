@@ -92,10 +92,10 @@ export function checkDistributedSupport(renderConfig: {
     };
   }
   const fpsNum = renderConfig.fps.num;
-  if (fpsNum !== 24 && fpsNum !== 30 && fpsNum !== 60) {
+  if (fpsNum !== 24 && fpsNum !== 25 && fpsNum !== 30 && fpsNum !== 60) {
     return {
       supported: false,
-      reason: `fps ${fpsNum} not in {24, 30, 60} (DistributedRenderConfig.fps is a closed set)`,
+      reason: `fps ${fpsNum} not in {24, 25, 30, 60} (DistributedRenderConfig.fps is a closed set)`,
     };
   }
   if (renderConfig.hdr === true) {
@@ -120,7 +120,7 @@ export interface RunDistributedSimulatedInput {
   /** Where to write the assembled final mp4 / mov / png-sequence directory. */
   renderedOutputPath: string;
   /** From the fixture's renderConfig — must pass `checkDistributedSupport`. */
-  fps: 24 | 30 | 60;
+  fps: 24 | 25 | 30 | 60;
   format: DistributedFormat;
   /**
    * Codec for `format: "mp4"`. Defaults to `"h264"`; pass `"h265"` to

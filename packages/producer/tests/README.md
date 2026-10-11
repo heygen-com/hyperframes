@@ -92,7 +92,7 @@ of these gates are **skipped** with a clear log line (and counted as
 passing in the summary):
 
 - `fps.den !== 1` — distributed mode is integer-fps only (no NTSC).
-- `fps.num ∉ {24, 30, 60}` — closed set per `DistributedRenderConfig`.
+- `fps.num ∉ {24, 25, 30, 60}` — closed set per `DistributedRenderConfig`.
 - `format === "webm"` — `plan()` refuses webm.
 - `hdr === true` — distributed mode is SDR-only at v1.
 

@@ -1117,7 +1117,7 @@ async function runTestSuite(
       // `checkDistributedSupport` already narrowed fps to {24,30,60}; the
       // cast surfaces that guarantee to TS. webm is now distributed-
       // supported via closed-GOP concat-copy, so the format passes through.
-      const fpsNum = suite.meta.renderConfig.fps.num as 24 | 30 | 60;
+      const fpsNum = suite.meta.renderConfig.fps.num as 24 | 25 | 30 | 60;
       const distributedInput = {
         projectDir: tempSrcDir,
         tempRoot,
