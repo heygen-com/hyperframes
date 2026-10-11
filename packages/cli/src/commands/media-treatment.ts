@@ -19,7 +19,10 @@ import {
   resolveExistingLocalAsset,
 } from "@hyperframes/parsers/asset-resolution";
 import { rewriteAssetPath } from "@hyperframes/parsers/asset-paths";
-import { parseSourceDocument as parseMutableSource } from "@hyperframes/studio-server/source-mutation";
+import {
+  isHTMLElement,
+  parseSourceDocument as parseMutableSource,
+} from "@hyperframes/studio-server/source-mutation";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { defineCommand } from "citty";
 import { lintHyperframeHtml } from "@hyperframes/lint";
@@ -462,6 +465,9 @@ function selectMediaElements(
     if (tag !== "img" && tag !== "video") {
       throw new Error(`Color grading requires an <img> or <video>; selector matched <${tag}>`);
     }
+    if (!isHTMLElement(element)) {
+      throw new Error(`Color grading requires an HTML <${tag}>; selector matched one inside <svg>`);
+    }
     return { element, selectorIndex: index, tag };
   });
 }
@@ -737,7 +743,7 @@ async function printMutation(args: MediaTreatmentCommandArgs): Promise<void> {
   const changedCount = result.targets.filter(({ changed }) => changed).length;
   const count =
     result.targets.length > 1
-      ? ` (${changedCount} of ${result.targets.length} elements changed)`
+      ? ` (${changedCount} of ${result.targets.length} elements ${payload.dryRun ? "would change" : "changed"})`
       : "";
   console.log(`${c.success("◇")}  ${verb} media treatment on ${c.accent(selector)}${count}`);
 }
@@ -780,7 +786,7 @@ export const mediaTreatmentCommand = defineCommand({
     },
     "selector-index": {
       type: "string",
-      description: "Zero-based match index to treat only one of several matches",
+      description: "Zero-based match index to patch only one of several matches",
     },
     grading: { type: "string", description: "Canonical color-grading JSON patch" },
     apply: {

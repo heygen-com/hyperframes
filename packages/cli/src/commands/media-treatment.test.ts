@@ -191,6 +191,7 @@ describe("applyMediaTreatmentToHtml", () => {
 
     const [first, second] = gradingsOf(result.html);
     expect(result.targets).toHaveLength(2);
+    expect(result.html).toContain("data-hf-id=");
     expect(first).toContain('"preset":"warm-daylight"');
     expect(second).toBe(first);
   });
@@ -251,6 +252,14 @@ describe("applyMediaTreatmentToHtml", () => {
       true,
       false,
     ]);
+  });
+
+  it("refuses a video inside svg instead of writing a tag that swallows what follows it", () => {
+    const html = `<svg><foreignObject><video src="a.mp4"></video><p>caption</p></foreignObject></svg>`;
+
+    expect(() =>
+      applyMediaTreatmentToHtml(html, { selector: "video", grading: { preset: "warm-daylight" } }),
+    ).toThrow("inside <svg>");
   });
 
   it("patches the matched element when ids in the file are duplicated", () => {

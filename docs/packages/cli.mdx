@@ -463,7 +463,7 @@ npx hyperframes media-treatment --selector '#hero' --clear
 | `--dry-run`            | Validate and report without writing                                   |
 | `--json`               | Agent-readable JSON                                                   |
 
-`--dry-run` accepts `--grading` without `--apply` and writes nothing. JSON includes `count`, `attribute`, the exact normalized `value` that apply would write (or `null` to remove it), and `lint`, the color-grading lint verdict and findings for the proposed HTML. When the selector matches several elements, each gets the patch merged into its own current grading, and JSON lists them under `targets` (each with its own `value`) instead of a single `value`; run `--clear` first for an identical look.
+`--dry-run` accepts `--grading` without `--apply` and writes nothing. JSON includes `count`, `attribute`, the exact normalized `value` that apply would write (or `null` to remove it), and `lint`, the color-grading lint verdict and findings for the proposed HTML. When the selector matches several elements, each gets the patch merged into its own current grading, and JSON lists them under `targets` (each with its own `value`) instead of a single `value`; run `--clear` first for an identical look. Matches come from the main document or, when it has none, from the first `<template>` that has any, the same scope rule as Studio's source edits.
 
 The command writes `data-color-grading` — the same contract Studio, preview, and
 render all read, so the two can never disagree. It does not recognise subjects
