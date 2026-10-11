@@ -429,7 +429,7 @@ where `u2net_human_seg` falls down, and free alternatives.
 
 ### `media-treatment`
 
-Read or edit the colour and effect treatment stored on one image or video.
+Read or edit the colour and effect treatment stored on images and videos.
 
 ```bash
 # Find out what exists, then look at one family or effect
@@ -454,8 +454,8 @@ npx hyperframes media-treatment --selector '#hero' --clear
 | `--all`                | Print the exhaustive capability catalog                               |
 | `--project <dir>`      | Project directory (default: current directory)                        |
 | `--file <path>`        | Composition file (default `index.html`)                               |
-| `--selector <css>`     | CSS selector for one `<img>` or `<video>`                             |
-| `--selector-index <n>` | Zero-based match index when the selector is not unique                |
+| `--selector <css>`     | CSS selector; every matched `<img>` or `<video>` gets the patch       |
+| `--selector-index <n>` | Zero-based match index to patch only one of several matches           |
 | `--grading <json>`     | Validated colour-grading patch                                        |
 | `--apply`              | Apply the patch                                                       |
 | `--analyze`            | Measure the selected local media and suggest a bounded correction     |
@@ -463,7 +463,7 @@ npx hyperframes media-treatment --selector '#hero' --clear
 | `--dry-run`            | Validate and report without writing                                   |
 | `--json`               | Agent-readable JSON                                                   |
 
-`--dry-run` accepts `--grading` without `--apply` and writes nothing. JSON includes `attribute`, the exact normalized `value` that apply would write (or `null` to remove it), and `lint`, the color-grading lint verdict and findings for the proposed HTML.
+`--dry-run` accepts `--grading` without `--apply` and writes nothing. JSON includes `count`, `attribute`, the exact normalized `value` that apply would write (or `null` to remove it), and `lint`, the color-grading lint verdict and findings for the proposed HTML. When the selector matches several elements, each gets the patch merged into its own current grading, and JSON lists them under `targets` (each with its own `value`) instead of a single `value`; run `--clear` first for an identical look. Matches come from the main document or, when it has none, from the first `<template>` that has any, the same scope rule as Studio's source edits.
 
 The command writes `data-color-grading` — the same contract Studio, preview, and
 render all read, so the two can never disagree. It does not recognise subjects

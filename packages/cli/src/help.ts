@@ -46,7 +46,7 @@ const GROUPS: Group[] = [
       ["snapshot", "Capture key frames as PNG screenshots for visual verification"],
       [
         "media-treatment",
-        "Discover, apply, or clear deterministic media treatments on one media element",
+        "Discover, apply, or clear deterministic media treatments on media elements",
       ],
       [
         "normalize-audio",
