@@ -21,8 +21,10 @@ import {
   historyDeps,
   lastTurnParts,
   withOwner as withHistoryOwner,
+  withReader as withHistoryReader,
   writeTurn,
   type Owner,
+  type Reader,
   type Turn,
   type UndoMode,
 } from "../utils/historyOwner.js";
@@ -52,6 +54,16 @@ const withOwner = <T>(
   withHistoryOwner(dir, (owner, turn, projectDir) => {
     trackHistoryAction({ action, via: owner.via });
     return task(owner, turn, projectDir);
+  });
+
+const withReader = <T>(
+  action: string,
+  dir: string | undefined,
+  task: (reader: Reader) => Promise<T>,
+) =>
+  withHistoryReader(dir, (reader) => {
+    trackHistoryAction({ action, via: reader.via });
+    return task(reader);
   });
 
 /** An agent names itself with --who; without it the caller is the person, even during an agent's turn. */
@@ -138,13 +150,13 @@ function print(json: boolean, data: object, text: string): void {
   console.log(json ? JSON.stringify(withMeta(data), null, 2) : text);
 }
 
-async function textDiff(owner: Owner, entry: HistoryEntry): Promise<string> {
+async function textDiff(reader: Reader, entry: HistoryEntry): Promise<string> {
   const work = mkdtempSync(join(tmpdir(), "hf-history-diff-"));
   try {
     const out: string[] = [];
     for (const file of entry.files) {
       const sides = await Promise.all(
-        [file.before, file.after].map((hash) => (hash ? owner.blob(hash) : Buffer.alloc(0))),
+        [file.before, file.after].map((hash) => (hash ? reader.blob(hash) : Buffer.alloc(0))),
       );
       if (sides.some((bytes) => bytes.subarray(0, 8000).includes(0))) {
         out.push(`Binary ${file.path} changed`);
@@ -283,7 +295,10 @@ function guarded<A>(run: (args: A) => Promise<void>) {
         error instanceof HistoryIdError;
       if (!refused) throw error;
       setCommandExitCode(2);
-      const { message } = error as Error;
+      const message =
+        error instanceof HistoryBusyError
+          ? `This project is open in another app (pid ${error.pid}), which keeps its history: undo, restore or pin there.`
+          : (error as Error).message;
       if ((args as { json?: boolean }).json) print(true, { ok: false, error: message }, message);
       else console.error(message);
     }
@@ -316,8 +331,8 @@ const listEntries = async (args: {
   json: boolean;
 }) => {
   if (args._?.[0]) return;
-  await withOwner("list", args.dir, async (owner) => {
-    const all = await owner.list();
+  await withReader("list", args.dir, async (reader) => {
+    const all = await reader.list();
     const picked = args.since ? since(all, args.since, whoOf(args.who)) : all;
     const limit = Number(args.limit ?? 20);
     if (!Number.isInteger(limit) || limit < 1)
@@ -348,13 +363,13 @@ export default defineCommand({
         "One entry's files, before and after",
         { ref: { type: "positional", required: true }, diff: { type: "boolean", default: false } },
         (args) =>
-          withOwner("show", args.dir, async (owner) => {
-            const entry = entryOf(await owner.list(), args.ref);
+          withReader("show", args.dir, async (reader) => {
+            const entry = entryOf(await reader.list(), args.ref);
             const changes = entry.files.map((file) => ({
               path: file.path,
               change: changeOf(file),
             }));
-            const diff = args.diff ? await textDiff(owner, entry) : undefined;
+            const diff = args.diff ? await textDiff(reader, entry) : undefined;
             const marks = changes.map((file) => `  ${file.change[0]!.toUpperCase()} ${file.path}`);
             print(
               args.json,
@@ -402,13 +417,13 @@ export default defineCommand({
           path: { type: "positional", required: false },
         },
         (args) =>
-          withOwner("peek", args.dir, async (owner) => {
-            const files = await owner.peek(pointOf(await owner.list(), args.ref));
+          withReader("peek", args.dir, async (reader) => {
+            const files = await reader.peek(pointOf(await reader.list(), args.ref));
             if (!files) throw new Refusal("That point is no longer kept");
             if (!args.path) return print(args.json, { files }, Object.keys(files).join("\n"));
             const hash = files[args.path];
             if (!hash) throw new Refusal(`${args.path} did not exist then`);
-            process.stdout.write(await owner.blob(hash));
+            process.stdout.write(await reader.blob(hash));
           }),
       ),
     pin: () =>

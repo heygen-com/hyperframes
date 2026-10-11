@@ -1,6 +1,7 @@
 // @vitest-environment node
 // fallow-ignore-file code-duplication
 import {
+  appendFileSync,
   cpSync,
   existsSync,
   mkdirSync,
@@ -21,7 +22,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { fileContentVersion, hashOfVersion, recordFileWriteReceipt } from "../helpers/fileVersion";
 import { HistoryBusyError } from "./ownerLock";
 import { HistoryIdError } from "./historyId";
-import { HistoryClosedError, openProjectHistory, type ProjectHistory } from "./projectHistory";
+import {
+  HistoryClosedError,
+  openProjectHistory,
+  readProjectHistory,
+  type ProjectHistory,
+} from "./projectHistory";
 import { START, type HistoryWho } from "./historyLog";
 
 // A test can hold a media copy, and run work after its blob is stored but before history records it.
@@ -1232,6 +1238,43 @@ describe("openProjectHistory", () => {
     const waiting = open(projectDir, historyRoot, { ownerWaitMs: 5000 });
     await history.close();
     expect((await waiting).projectId).toBe(history.projectId);
+  });
+
+  it("reads a history another process owns without its lock, past a half-appended last line", async () => {
+    const { history, write, projectDir, historyRoot } = await project({ "index.html": "v1" });
+    const second = await change(history, you, "Second", () => write("index.html", "v2"));
+    const home = join(historyRoot, history.projectId);
+    appendFileSync(join(home, "log.jsonl"), '{"type":"entry","entry":{"id":"torn"');
+    const files = () =>
+      readdirSync(home).map((name) =>
+        statSync(join(home, name)).isFile() ? [name, inside(home, name)] : [name],
+      );
+    const before = files();
+
+    const view = readProjectHistory({ projectDir, historyRoot });
+    expect(view.list()).toEqual(history.list());
+    expect(view.list().map((entry) => entry.label)).toEqual(["Second"]);
+    expect(view.peek(START)).toEqual(history.peek(START));
+    expect((await view.readBlob(view.peek(second.id)!["index.html"]!)).toString()).toBe("v2");
+    expect(files()).toEqual(before);
+  });
+
+  it("reads a copied folder as having no history, and leaves hidden paths out as the owner does", async () => {
+    const { history, write, projectDir, historyRoot } = await project({ "index.html": "v1" });
+    await change(history, you, "Second", () => write("index.html", "v2"));
+    const copy = tempDir("hf-history-copy-");
+    cpSync(projectDir, copy, { recursive: true });
+    expect(readProjectHistory({ projectDir: copy, historyRoot }).list()).toEqual([]);
+
+    const [entry] = history.list();
+    const hidden = { path: ".hidden/x", before: null, after: entry!.files[0]!.after };
+    const older = { ...entry!, id: "older", files: [...entry!.files, hidden] };
+    const logFile = join(historyRoot, history.projectId, "log.jsonl");
+    appendFileSync(logFile, `${JSON.stringify({ type: "entry", entry: older })}\n`);
+    const paths = readProjectHistory({ projectDir, historyRoot })
+      .list()
+      .map((item) => item.files.map((file) => file.path));
+    expect(paths).toEqual([["index.html"], ["index.html"]]);
   });
 
   it("files what changed while closed to a window begun on an earlier open, under its id", async () => {

@@ -3,8 +3,10 @@ import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node
 import { dirname, join } from "node:path";
 import {
   DEFAULT_HISTORY_ROOT,
+  HistoryBusyError,
   MAX_WINDOW_IDLE_MS,
   openProjectHistory,
+  readProjectHistory,
   type HistoryEntry,
   type HistoryListItem,
   type HistoryResult,
@@ -43,12 +45,15 @@ export interface Owner {
   close(): Promise<void>;
 }
 
+export type Reader = Pick<Owner, "via" | "list" | "peek" | "blob">;
+
 /** Swapped by tests. */
 export const historyDeps = {
   historyRoot: DEFAULT_HISTORY_ROOT,
   findServer: (projectDir: string) => findPreviewServerForProject(projectDir),
   /** A turn with no write for this long has ended, through a preview or not. */
   turnIdleMs: MAX_WINDOW_IDLE_MS,
+  ownerWaitMs: undefined as number | undefined,
   now: () => Date.now(),
 };
 
@@ -158,6 +163,7 @@ async function directOwner(projectDir: string, turn: Turn | null): Promise<Owner
     historyRoot: historyDeps.historyRoot,
     now: () => historyDeps.now(),
     pruneGoneProjectsBudgetMs: 1000,
+    ownerWaitMs: historyDeps.ownerWaitMs,
     // A turn begun through a preview that has since stopped is still the agent's, until its idle limit.
     ...(turn && {
       closedWindow: {
@@ -225,4 +231,30 @@ export async function withOwner<T>(
       writeTurn(projectDir, { ...turn, via: "direct", id: randomUUID(), lastWriteAt, parts });
     }
   }
+}
+
+export async function withReader<T>(
+  dir: string | undefined,
+  task: (reader: Reader) => Promise<T>,
+): Promise<T> {
+  try {
+    return await withOwner(dir, (owner) => task(owner));
+  } catch (error) {
+    if (!(error instanceof HistoryBusyError)) throw error;
+  }
+  // Busy is only thrown on opening, so the task has not run; an open turn's marker is left as it is.
+  const view = readProjectHistory({
+    projectDir: resolveProject(dir).dir,
+    historyRoot: historyDeps.historyRoot,
+  });
+  return task({
+    via: "direct",
+    list: async () => view.list(),
+    peek: async (point) => view.peek(point),
+    // The owner may have pruned a blob since its log was read.
+    blob: (hash) =>
+      view.readBlob(hash).catch((error: NodeJS.ErrnoException) => {
+        throw error.code === "ENOENT" ? new Refusal("That point is no longer kept") : error;
+      }),
+  });
 }

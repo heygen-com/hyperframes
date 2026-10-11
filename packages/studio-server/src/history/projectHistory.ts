@@ -29,7 +29,7 @@ import {
   affectsProjectSignature,
   listProjectFiles,
 } from "../helpers/projectSignature.js";
-import { openBlobStore, type BlobStore } from "./blobStore.js";
+import { openBlobStore, readBlob, type BlobStore } from "./blobStore.js";
 import { pruneGoneProjectHistoriesDaily } from "./pruneHistories.js";
 import {
   ID_PATH,
@@ -213,6 +213,22 @@ function isHistoryPath(path: string): boolean {
   return !path.split("/").some((segment) => segment.startsWith("."));
 }
 
+const logFileIn = (home: string) => join(home, "log.jsonl");
+
+function listOf(log: HistoryLog): HistoryListItem[] {
+  const undone = undoneIds(log.entries);
+  return log.entries.map((entry) => ({
+    ...entry,
+    pinned: log.pins.has(entry.id),
+    undone: undone.has(entry.id),
+  }));
+}
+
+function peekOf(log: HistoryLog, point: string): Record<string, string> | null {
+  const files = manifestAt(log, point);
+  return files && Object.fromEntries(files);
+}
+
 function withoutHiddenPaths(log: HistoryLog): HistoryLog {
   for (const path of log.baseline.keys()) if (!isHistoryPath(path)) log.baseline.delete(path);
   for (const entry of log.entries)
@@ -356,7 +372,7 @@ class Engine {
   }
 
   get logFile() {
-    return join(this.home, "log.jsonl");
+    return logFileIn(this.home);
   }
 
   now(): number {
@@ -1170,12 +1186,7 @@ class Engine {
       },
       list: () => {
         this.assertOpen();
-        const undone = undoneIds(this.log.entries);
-        return this.log.entries.map((entry) => ({
-          ...entry,
-          pinned: this.log.pins.has(entry.id),
-          undone: undone.has(entry.id),
-        }));
+        return listOf(this.log);
       },
       step: (direction, who, { writeToken } = {}) =>
         this.operation(writeToken, async () => {
@@ -1190,8 +1201,7 @@ class Engine {
         ),
       peek: (point) => {
         this.assertOpen();
-        const files = manifestAt(this.log, point);
-        return files && Object.fromEntries(files);
+        return peekOf(this.log, point);
       },
       checkout: (entryId, side, emptyDir) =>
         this.queue(async () => {
@@ -1296,4 +1306,33 @@ export async function openProjectHistory(options: ProjectHistoryOptions): Promis
     release();
     throw error;
   }
+}
+
+/** A project's history as its log stands now, read without the owner lock: it reads while another process owns it. */
+export interface ProjectHistoryView {
+  list(): HistoryListItem[];
+  peek(point: string): Record<string, string> | null;
+  readBlob(hash: string): Promise<Buffer>;
+}
+
+/** Reads only: takes no lock and files, prunes or writes nothing; an owner's half-appended last line is skipped. */
+export function readProjectHistory(
+  options: Pick<ProjectHistoryOptions, "projectDir" | "historyRoot">,
+): ProjectHistoryView {
+  const dir = resolve(options.projectDir);
+  const id = readId(dir);
+  const home =
+    id && isRecordedFolder(join(options.historyRoot, id), statSync(dir))
+      ? join(options.historyRoot, id)
+      : null;
+  const read = home && readLog(logFileIn(home), () => {});
+  const log = withoutHiddenPaths(read || { baseline: new Map(), entries: [], pins: new Set() });
+  return {
+    list: () => listOf(log),
+    peek: (point) => peekOf(log, point),
+    readBlob: async (hash) => {
+      if (!home) throw new Error("That is not a history blob.");
+      return readBlob(join(home, "blobs"), hash);
+    },
+  };
 }
