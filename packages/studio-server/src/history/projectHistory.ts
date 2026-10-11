@@ -1308,7 +1308,7 @@ export async function openProjectHistory(options: ProjectHistoryOptions): Promis
   }
 }
 
-/** A project's history as its log stands now, read without the owner lock, so it reads while another process owns it. */
+/** A project's history as its log stands now, read without the owner lock: it reads while another process owns it. */
 export interface ProjectHistoryView {
   list(): HistoryListItem[];
   peek(point: string): Record<string, string> | null;
