@@ -3,7 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { initSandboxRuntimeModular } from "./init";
 import type { RuntimeTimelineLike } from "./types";
 import { STUDIO_MANUAL_EDIT_GESTURE_ATTR } from "../editing/draftMarkers";
-import { resetRuntimeFixtureDom } from "./runtimeSeekFixture.test-helpers";
+import { sourceTimeAt } from "../speedRamp";
+import { readElementRateSpec } from "./playbackRate";
+import {
+  createMockTimeline,
+  resetRuntimeFixtureDom,
+  stubDuration,
+} from "./runtimeSeekFixture.test-helpers";
 
 // Pins where a running runtime places a sub-composition's timeline, against what a fresh load does.
 describe("runtime sub-composition placement", () => {
@@ -224,5 +230,172 @@ describe("runtime sub-composition placement", () => {
     window.__hfForceTimelineRebind?.();
 
     expect(remove).not.toHaveBeenCalledWith(scene);
+  });
+
+  /** What Studio's split writes for a 12 s scene cut at 5 s and 9 s, each half mounting its own copy. */
+  function loadSplitScene() {
+    const videos = [
+      ["v1", 0, 1],
+      ["v2", 4, 5],
+      ["v3", 8, 2],
+    ]
+      .map(
+        ([name, start, mediaStart]) =>
+          `<video class="${name}" data-start="${start}" data-duration="4" data-media-start="${mediaStart}"></video>`,
+      )
+      .join("");
+    const hosts = [
+      ["scene", 0, 5, 0],
+      ["scene-split", 5, 4, 5],
+      ["scene-split-split", 9, 3, 9],
+    ]
+      .map(
+        ([id, start, duration, inPoint]) =>
+          `<div id="${id}" class="clip" data-composition-id="${id}" data-composition-file="compositions/scene.html" ` +
+          `data-start="${start}" data-duration="${duration}" data-playback-start="${inPoint}"><div>${videos}</div></div>`,
+      )
+      .join("");
+    mountInRoot(hosts);
+  }
+
+  /** A 12 s root around `markup`; every video's source runs `sourceSeconds` and has not been seeked (-1). */
+  function mountInRoot(markup: string, sourceSeconds = 30) {
+    document.body.innerHTML = `<div data-composition-id="main" data-root="true" data-duration="12">${markup}</div>`;
+    for (const video of document.querySelectorAll("video")) {
+      stubDuration(video, sourceSeconds);
+      Object.defineProperty(video, "currentTime", {
+        value: -1,
+        writable: true,
+        configurable: true,
+      });
+      video.play = vi.fn(() => Promise.resolve());
+      video.pause = vi.fn();
+    }
+    window.__timelines = { main: createMockTimeline(12) };
+    initSandboxRuntimeModular();
+  }
+
+  /** The half after a split at 5 s: it starts at 5 with in-point 5, so scene time t plays at t. */
+  function loadSecondHalf(inner: string, sourceSeconds?: number) {
+    mountInRoot(
+      `<div class="clip" data-composition-id="half" data-composition-file="compositions/scene.html" ` +
+        `data-start="5" data-duration="7" data-playback-start="5"><div>${inner}</div></div>`,
+      sourceSeconds,
+    );
+  }
+
+  const video = (id: string) => document.getElementById(id) as HTMLVideoElement;
+
+  const sourceTimeOf = (host: string, video: string) =>
+    document.querySelector<HTMLVideoElement>(`#${host} .${video}`)!.currentTime;
+
+  it("shifts a split scene's videos by each half's in-point and cuts them to that half", () => {
+    loadSplitScene();
+    window.__player?.renderSeek(4.5);
+    expect(sourceTimeOf("scene", "v2")).toBe(5.5);
+    // The second half's v2 lands at 4-8 but is cut until that half starts at 5.
+    expect(sourceTimeOf("scene-split", "v2")).toBe(-1);
+
+    window.__player?.renderSeek(5);
+    expect(sourceTimeOf("scene-split", "v2")).toBe(6);
+    window.__player?.renderSeek(8.5);
+    expect(sourceTimeOf("scene-split", "v3")).toBe(2.5);
+    window.__player?.renderSeek(10);
+    expect(sourceTimeOf("scene-split-split", "v3")).toBe(4);
+  });
+
+  it("lets a scene's video play past a shorter root animation when the root authors no length", () => {
+    document.body.innerHTML =
+      `<div data-composition-id="main" data-root="true">` +
+      `<div class="clip" data-composition-id="scene" data-composition-file="compositions/scene.html" data-start="0" data-duration="10">` +
+      `<video id="long" data-start="0" data-duration="10"></video></div></div>`;
+    stubDuration(video("long"), 10);
+    Object.defineProperty(video("long"), "currentTime", { value: -1, writable: true });
+    video("long").play = vi.fn(() => Promise.resolve());
+    video("long").pause = vi.fn();
+    // The root's own timeline is a 2 s title fade.
+    window.__timelines = { main: createMockTimeline(2) };
+    initSandboxRuntimeModular();
+
+    const at = (t: number) => (window.__player?.renderSeek(t), video("long").currentTime);
+    expect([at(1), at(5), at(8)]).toEqual([1, 5, 8]);
+  });
+
+  it("keeps a scene trimmed to 3 s driving its 6 s file past the trim, as before in-points", () => {
+    mountInRoot(
+      `<div id="scene" class="clip" data-composition-id="scene" data-composition-file="compositions/scene.html" ` +
+        `data-start="2" data-duration="3" data-playback-start="0">` +
+        `<div data-composition-id="scene" data-duration="6"><video id="body" data-start="0"></video></div></div>`,
+    );
+    window.__player?.renderSeek(6);
+    expect(video("body").currentTime).toBe(4);
+  });
+
+  it("cuts a split half that has no id at its own end, not its file's", () => {
+    // Studio's split of a host without an id: the half is found by its composition attributes.
+    mountInRoot(
+      `<div class="clip" data-composition-file="compositions/scene.html" data-start="5" data-duration="4" ` +
+        `data-playback-start="5"><div data-composition-id="scene" data-duration="12">` +
+        `<video id="late" data-start="8" data-duration="4"></video></div></div>`,
+    );
+    window.__player?.renderSeek(8.5);
+    expect(video("late").currentTime).toBe(0.5);
+    window.__player?.renderSeek(10);
+    expect(video("late").currentTime).toBe(0.5);
+  });
+
+  it("keeps a video in a composition nested inside the half silent until the half starts", () => {
+    loadSecondHalf(
+      `<div data-composition-id="inner" data-composition-file="compositions/inner.html" data-start="0" data-duration="12">` +
+        `<video id="deep" data-start="0" data-duration="12"></video></div>`,
+    );
+    window.__player?.renderSeek(1);
+    expect(video("deep").currentTime).toBe(-1);
+    window.__player?.renderSeek(6);
+    expect(video("deep").currentTime).toBe(6);
+  });
+
+  it("loops a straddling clip over its whole file, not from the cut", () => {
+    loadSecondHalf(
+      `<video id="loop" loop data-start="2" data-duration="10" data-media-start="0"></video>`,
+      4,
+    );
+    const at = (t: number) => (window.__player?.renderSeek(t), video("loop").currentTime);
+    expect([at(5), at(6), at(7.5)]).toEqual([3, 0, 1.5]);
+  });
+
+  it("follows a straddling clip's speed ramp from the clip's own start", () => {
+    const ramp = JSON.stringify({
+      version: 1,
+      lanes: [
+        {
+          target: "rate",
+          points: [
+            { t: 0, v: 1 },
+            { t: 8, v: 2 },
+          ],
+        },
+      ],
+    });
+    loadSecondHalf(
+      `<video id="ramp" data-start="2" data-duration="8" data-automation='${ramp}'></video>`,
+    );
+    window.__player?.renderSeek(7);
+    expect(video("ramp").currentTime).toBeCloseTo(
+      sourceTimeAt(readElementRateSpec(video("ramp")), 5),
+      6,
+    );
+  });
+
+  it("times a straddling clip's fade-out from the clip's own end", () => {
+    loadSecondHalf(`<video id="fade" data-start="4" data-duration="4" data-fade-out="2"></video>`);
+    window.__player?.renderSeek(7);
+    expect(video("fade").volume).toBeCloseTo(0.5, 6);
+  });
+
+  it("times a straddling clip's fade-in from the clip's own start", () => {
+    loadSecondHalf(`<video id="fade" data-start="4" data-duration="4" data-fade-in="2"></video>`);
+    window.__player?.renderSeek(5);
+    expect(video("fade").volume).toBeCloseTo(0.5, 6);
   });
 });

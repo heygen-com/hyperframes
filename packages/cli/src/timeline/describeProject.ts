@@ -24,7 +24,13 @@ import {
   type StructureNode,
   type TrackKind,
 } from "@hyperframes/parsers";
-import { resolveMediaStartSeconds } from "@hyperframes/core/media-timing";
+import {
+  compositionOriginSeconds,
+  cutToHostSlots,
+  hostInPointSeconds,
+  resolveMediaStartSeconds,
+  type HostSlot,
+} from "@hyperframes/core/media-timing";
 import {
   extractAudioMetadata,
   extractMediaMetadata,
@@ -47,7 +53,8 @@ export interface TimelineRow extends ClipFact {
   pendingReason: string | null;
   /** Why `data-automation` / `data-fx-chain` could not be read; `null` when fine or absent. */
   laneError: string | null;
-  /** Start and end on the main timeline, in seconds. `start`/`end` are local to the owning file's composition. */
+  /** Main-timeline window in seconds: the played part under an in-point host, while `duration` stays
+   * the authored length. `start`/`end` are local to the owning file's composition. */
   absStart: number;
   absEnd: number;
   /** Project-relative path of the file that declares this clip. */
@@ -133,7 +140,7 @@ interface DocScope {
   startCache: Map<Element, number>;
   /** Sub-composition files must stay inside the project. */
   projectDir: string;
-  /** Main-timeline start of this document's root: 0 for index.html, the host's start for a sub-composition. */
+  /** Main-timeline time of this document's local t=0: 0 for index.html, see `compositionOriginSeconds`. */
   origin: number;
   /** Project-relative path of this document, with `/` separators. */
   file: string;
@@ -277,7 +284,12 @@ async function resolveRowTiming(scope: DocScope, node: DomNode, depth: number): 
   const authored = resolveReferencedDuration(scope.doc, el, scope.startCache, new Set());
   const host = el.getAttribute("data-composition-src");
   const absStart = mainTimelineStart(scope, el, start);
-  const children = host && depth === 0 ? await readSubComposition(host, scope, absStart) : [];
+  const slots: HostSlot[] =
+    hostInPointSeconds(el) > 0 ? [{ start: absStart, end: absStart + (authored ?? Infinity) }] : [];
+  const children =
+    host && depth === 0
+      ? await readSubComposition(host, scope, compositionOriginSeconds(absStart, el), slots)
+      : [];
   const kind = el.tagName.toLowerCase();
   const duration = MEDIA_TAG.test(kind)
     ? await resolveMediaRowDuration(scope, el, kind as MediaTag, authored)
@@ -334,6 +346,7 @@ async function readSubComposition(
   src: string,
   parent: DocScope,
   origin: number,
+  slots: readonly HostSlot[],
 ): Promise<ClipDraft[]> {
   const authored = resolve(parent.dir, src);
   const file = realFileInside(parent.projectDir, authored);
@@ -359,7 +372,13 @@ async function readSubComposition(
   const rows = await Promise.all(
     topLevelElements(toNode(root)).map((node) => describeRow(scope, node, 1)),
   );
-  return rows.sort(byStart);
+  return rows.flatMap((row) => cutRow(row, slots)).sort(byStart);
+}
+
+function cutRow(row: ClipDraft, slots: readonly HostSlot[]): ClipDraft[] {
+  const kept = cutToHostSlots({ start: row.absStart, end: row.absEnd }, slots);
+  if (kept.end === kept.start && row.absEnd > row.absStart) return [];
+  return [{ ...row, absStart: roundMs(kept.start), absEnd: roundMs(kept.end) }];
 }
 
 /** The file's real path when it is a regular file inside the project (symlinks resolved), else null. */

@@ -10,6 +10,7 @@ import { clampAudioGain } from "../audioGain.js";
 import { isMemberGroupHidden } from "../audioGroups.js";
 import { findInjectedRenderFrame } from "./renderFrameSibling.js";
 import { registerSeekCompletion } from "./adapters/seek-dispatch.js";
+import { cutToHostSlots, type HostSlot } from "../mediaTiming.js";
 export {
   readElementPlaybackRate,
   readElementRateSpec,
@@ -77,6 +78,8 @@ export function resolveRuntimeMediaClipDuration(params: {
 export type RuntimeMediaClip = {
   el: HTMLVideoElement | HTMLAudioElement;
   start: number;
+  /** The clip's own t=0 when a host's in-point cut its head; source time, lanes and fades run from it. */
+  origin?: number;
   mediaStart: number;
   duration: number;
   end: number;
@@ -101,6 +104,7 @@ export type RuntimeMediaClip = {
 export function refreshRuntimeMediaCache(params?: {
   resolveStartSeconds?: (element: Element) => number;
   resolveDurationSeconds?: (element: HTMLVideoElement | HTMLAudioElement) => number | null;
+  resolveHostSlots?: (element: HTMLVideoElement | HTMLAudioElement) => HostSlot[];
   shouldIncludeElement?: (element: HTMLVideoElement | HTMLAudioElement) => boolean;
   /**
    * Build clips for exactly these elements instead of scanning the document for
@@ -131,7 +135,7 @@ export function refreshRuntimeMediaCache(params?: {
   const videoClips: RuntimeMediaClip[] = [];
   let maxMediaEnd = 0;
   for (const el of timedMediaEls) {
-    const start = params?.resolveStartSeconds
+    let start = params?.resolveStartSeconds
       ? params.resolveStartSeconds(el)
       : Number.parseFloat(el.dataset.start ?? "0");
     if (!Number.isFinite(start)) continue;
@@ -148,13 +152,20 @@ export function refreshRuntimeMediaCache(params?: {
       duration = Math.max(0, timeAtSourceTime(rate, sourceDuration - mediaStart));
     }
     const hasKnownDuration = Number.isFinite(duration) && duration >= 0;
-    const end = hasKnownDuration ? start + duration : Number.POSITIVE_INFINITY;
+    let end = hasKnownDuration ? start + duration : Number.POSITIVE_INFINITY;
+    const origin = start;
+    const kept = cutToHostSlots({ start, end }, params?.resolveHostSlots?.(el) ?? []);
+    if (kept.start !== start || kept.end !== end) {
+      ({ start, end } = kept);
+      duration = end - start;
+    }
     const volumeRaw = Number.parseFloat(el.dataset.volume ?? "");
     const clip: RuntimeMediaClip = {
       el,
       start,
+      origin,
       mediaStart,
-      duration: hasKnownDuration ? duration : Number.POSITIVE_INFINITY,
+      duration: Number.isFinite(end) ? duration : Number.POSITIVE_INFINITY,
       end,
       volume: Number.isFinite(volumeRaw) ? volumeRaw : null,
       playbackRate,
@@ -326,6 +337,7 @@ export function syncRuntimeMedia(params: {
     const { el } = clip;
     if (!el.isConnected) continue;
     const clipRate = clip.rate ?? clip.playbackRate;
+    const origin = clip.origin ?? clip.start;
     const isNonLoopVideo = el.tagName === "VIDEO" && !clip.loop;
     const inWindow = isInClipWindow(params.timeSeconds, clip.start, clip.end);
     const dueIn = clip.start - params.timeSeconds;
@@ -333,7 +345,7 @@ export function syncRuntimeMedia(params: {
       el.tagName === "AUDIO" &&
       !inWindow &&
       dueIn > 0 &&
-      dueIn * Math.max(1, rateAt(clipRate, 0)) <=
+      dueIn * Math.max(1, rateAt(clipRate, clip.start - origin)) <=
         Math.max(
           params.cueAheadSeconds ?? 0,
           startedEarly.has(el) ? MEDIA_SYNC_TOLERANCE_SECONDS : 0,
@@ -348,7 +360,7 @@ export function syncRuntimeMedia(params: {
       (params.timeSeconds >= clip.end || sameInstant(params.timeSeconds, clip.end)) &&
       isClipVisibleAt(params.timeSeconds, clip.start, clip.end, params.getCompositionDuration());
     let relTime =
-      sourceTimeAt(clipRate, Math.max(0, Math.min(params.timeSeconds, clip.end) - clip.start)) +
+      sourceTimeAt(clipRate, Math.max(0, Math.min(params.timeSeconds, clip.end) - origin)) +
       clip.mediaStart;
     const isHeldVideoTail =
       isTerminalVideo ||
@@ -402,7 +414,7 @@ export function syncRuntimeMedia(params: {
       // different position than it renders, or ran it off the end entirely on a
       // trimmed clip. The FX lanes on this same feature use clip-local elapsed;
       // there is one time base, and this is it.
-      const laneGain = elementVolumeLaneGain(el, params.timeSeconds - clip.start);
+      const laneGain = elementVolumeLaneGain(el, params.timeSeconds - origin);
       if (laneGain !== null) {
         authorVolume = clampAudioGain(laneGain);
       } else if (clip.volumeKeyframes && clip.volumeKeyframes.length > 0) {
@@ -413,7 +425,7 @@ export function syncRuntimeMedia(params: {
         // `relTime` is a position inside the media SOURCE — it carries `mediaStart`
         // and the playback rate — so it only coincides with the envelope's time base
         // for an untrimmed clip playing at 1x from t=0.
-        const elapsedInClip = params.timeSeconds - clip.start;
+        const elapsedInClip = params.timeSeconds - origin;
         authorVolume = clampAudioGain(interpolateVolumeGain(clip.volumeKeyframes, elapsedInClip));
       } else if (params.isWebAudioRouted?.(el)) {
         authorVolume = fallbackAuthorVolume;
@@ -447,7 +459,11 @@ export function syncRuntimeMedia(params: {
       // Clip-local fade on top of the resolved level, matching render's afade-after-volume.
       const fades = clip.fades ?? NO_FADES;
       if (fades.fadeIn > 0 || fades.fadeOut > 0) {
-        authorVolume *= fadeGain(params.timeSeconds - clip.start, clip.duration, fades);
+        authorVolume *= fadeGain(
+          params.timeSeconds - origin,
+          clip.duration + clip.start - origin,
+          fades,
+        );
       }
 
       // A data-hidden ancestor is silent in the export (audioMixer.ts drops
@@ -475,7 +491,7 @@ export function syncRuntimeMedia(params: {
       // was overridden after init.ts set it.
       if (el.preload !== "auto") el.preload = "auto";
       // Per-element rate × global transport rate
-      const baseRate = rateAt(clipRate, params.timeSeconds - clip.start) * params.playbackRate;
+      const baseRate = rateAt(clipRate, params.timeSeconds - origin) * params.playbackRate;
       // Too slow for the browser to play: kept paused and stepped onto the playhead by seeks.
       const playing = params.playing && baseRate >= MIN_NATIVE_PLAYBACK_RATE;
       // Drift correction — three tiers:

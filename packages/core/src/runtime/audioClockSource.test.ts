@@ -141,6 +141,22 @@ afterEach(() => {
 });
 
 describe("the audio the playhead follows", () => {
+  it("does not hold the playhead on a clip an in-point host has not started yet", async () => {
+    mount(
+      `<div id="half" class="clip" data-composition-id="half" data-composition-file="compositions/scene.html"` +
+        ` data-start="5" data-duration="5" data-playback-start="5">` +
+        `<div><audio id="a" data-start="2" data-duration="8" src="/assets/a.mp3"></audio></div></div>`,
+    );
+    const audio = document.getElementById("a") as HTMLAudioElement;
+    Object.defineProperty(audio, "readyState", { value: 0, writable: true, configurable: true });
+    initSandboxRuntimeModular();
+    await flush();
+    window.__player?.play();
+    await flush();
+    stepFrames(240);
+    expect(window.__player!.getTime()).toBeGreaterThan(3.5);
+  });
+
   it("keeps following a playing voice when a clip earlier in the page starts late", async () => {
     mount(
       `<audio id="sfx" data-start="1" data-duration="2" src="/assets/sfx.mp3"></audio>` +

@@ -500,6 +500,16 @@ describe("WebAudioTransport", () => {
       expect(mock.startFn).toHaveBeenCalledWith(108, 1.5, 4);
     });
 
+    it("holds a clip whose head an in-point cut until its window opens, at that point's source", async () => {
+      const { transport, mock, gen } = setupTransport(100);
+      // The clip's own t=0 is 1, its window opens at 2 and ends at 5: from comp time 0, wait 2 s, then
+      // play source 1 to 4; from comp time 1.5, the same.
+      await transport.schedulePlayback(mockEl, mockBuffer, 1, 0, () => 0, 1, gen, 1, 4, 2);
+      expect(mock.startFn).toHaveBeenLastCalledWith(102, 1, 3);
+      await transport.schedulePlayback(mockEl, mockBuffer, 1, 0, () => 1.5, 1, gen, 1, 4, 2);
+      expect(mock.startFn).toHaveBeenLastCalledWith(100.5, 1, 3);
+    });
+
     it("does not schedule a clip whose window has already elapsed", async () => {
       const { transport, mock, gen } = setupTransport(100);
       // elapsed=15 > clipDuration=10 → nothing to play

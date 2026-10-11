@@ -452,3 +452,46 @@ describe("documentRef", () => {
     expect(resolver.resolveStartForElement(dependent)).toBe(2);
   });
 });
+
+describe("a host's in-point", () => {
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  it("shifts what a host holds by the host's in-point, through nested hosts", () => {
+    document.body.innerHTML =
+      `<div data-composition-id="main">` +
+      `<div id="half" data-composition-id="scene" data-start="5" data-duration="4" data-playback-start="5">` +
+      `<video id="v2" data-start="4"></video><video id="v3" data-start="8"></video></div>` +
+      `<div data-composition-id="early" data-start="2" data-duration="4" data-playback-start="5">` +
+      `<video id="legacy" data-start="3" data-hf-media-start-basis="global"></video></div>` +
+      `<div data-composition-id="outer" data-start="5" data-duration="10" data-playback-start="1">` +
+      `<div id="inner" data-composition-id="inner" data-start="2" data-duration="5">` +
+      `<video id="deep" data-start="0"></video></div></div></div>`;
+    const resolver = createRuntimeStartTimeResolver({});
+    const media = (id: string) =>
+      resolver.resolveMediaStartForElement(document.getElementById(id)!);
+
+    // The half starts at 5 with in-point 5: local t plays at 5 + t - 5.
+    expect([media("v2"), media("v3")]).toEqual([4, 8]);
+    expect(resolver.resolveHostStartForElement(document.getElementById("v2")!)).toBe(0);
+    // Root-time media keeps its authored time, even where the in-point puts local 0 before 0.
+    expect(media("legacy")).toBe(3);
+    // Outer at 5 with in-point 1 puts the inner host at 5 - 1 + 2 = 6.
+    expect(resolver.resolveStartForElement(document.getElementById("inner")!)).toBe(6);
+    expect(media("deep")).toBe(6);
+  });
+
+  it("places a relative start where the same local time written as a number lands", () => {
+    // A host at 0 with in-point 5 puts local 0 at -5.
+    document.body.innerHTML =
+      `<div data-composition-id="main"><div data-composition-id="half" data-start="0" data-duration="7" data-playback-start="5">` +
+      `<div id="x" data-start="0" data-duration="1"></div>` +
+      `<video id="relative" data-start="x + 3"></video><video id="numeric" data-start="4"></video></div></div>`;
+    const resolver = createRuntimeStartTimeResolver({});
+    const media = (id: string) =>
+      resolver.resolveMediaStartForElement(document.getElementById(id)!);
+
+    expect([media("relative"), media("numeric")]).toEqual([-1, -1]);
+  });
+});
