@@ -19,7 +19,7 @@ import {
   resolveExistingLocalAsset,
 } from "@hyperframes/parsers/asset-resolution";
 import { rewriteAssetPath } from "@hyperframes/parsers/asset-paths";
-import { patchElementInHtml } from "@hyperframes/studio-server/source-mutation";
+import { parseSourceDocument as parseMutableSource } from "@hyperframes/studio-server/source-mutation";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { defineCommand } from "citty";
 import { lintHyperframeHtml } from "@hyperframes/lint";
@@ -441,11 +441,10 @@ function queryIncludingTemplates(root: Document | Element, selector: string): El
 type MediaTarget = { element: Element; selectorIndex: number; tag: "img" | "video" };
 
 function selectMediaElements(
-  source: string,
+  document: Document,
   selector: string,
   selectorIndex?: number,
 ): MediaTarget[] {
-  const document = parseSourceDocument(source);
   let matches: Element[];
   try {
     matches = queryIncludingTemplates(document, selector);
@@ -468,7 +467,7 @@ function selectMediaElements(
 }
 
 function selectMediaElement(source: string, selector: string, selectorIndex?: number): MediaTarget {
-  const targets = selectMediaElements(source, selector, selectorIndex);
+  const targets = selectMediaElements(parseSourceDocument(source), selector, selectorIndex);
   if (targets.length > 1) {
     throw new Error(
       `Selector matched ${targets.length} elements; use a unique selector or --selector-index`,
@@ -481,37 +480,27 @@ export function applyMediaTreatmentToHtml(
   source: string,
   options: ApplyMediaTreatmentOptions,
 ): ApplyMediaTreatmentResult {
-  const targets = selectMediaElements(source, options.selector, options.selectorIndex).map(
+  const { document, wrappedFragment } = parseMutableSource(source);
+  const targets = selectMediaElements(document, options.selector, options.selectorIndex).map(
     ({ element, selectorIndex, tag }) => {
-      const before = parseStoredGrading(element.getAttribute(HF_COLOR_GRADING_ATTR));
+      const current = element.getAttribute(HF_COLOR_GRADING_ATTR);
+      const before = parseStoredGrading(current);
       const value = options.clear ? null : serializeGradingPatch(before, options.grading);
-      const changed = element.getAttribute(HF_COLOR_GRADING_ATTR) !== value;
+      const changed = current !== value;
+      if (changed) {
+        if (value === null) element.removeAttribute(HF_COLOR_GRADING_ATTR);
+        else element.setAttribute(HF_COLOR_GRADING_ATTR, value);
+      }
       return { selectorIndex, tag, changed, value, before, after: parseStoredGrading(value) };
     },
   );
-  let html = source;
-  if (targets.some(({ changed }) => changed)) {
-    html = ensureHfIds(source);
-    const hfIds = selectMediaElements(html, options.selector, options.selectorIndex).map(
-      ({ element }) => element.getAttribute("data-hf-id"),
-    );
-    const lastMatchFirstForTheIndexFallback = [...targets.entries()].reverse();
-    for (const [index, target] of lastMatchFirstForTheIndexFallback) {
-      if (!target.changed) continue;
-      const hfId = (hfIds.length === targets.length && hfIds[index]) || undefined;
-      const patched = patchElementInHtml(
-        html,
-        { hfId, selector: options.selector, selectorIndex: target.selectorIndex },
-        [{ type: "attribute", property: HF_COLOR_GRADING_ATTR, value: target.value }],
-      );
-      if (!patched.matched) throw new Error(`Could not persist selector: ${options.selector}`);
-      html = patched.html;
-    }
-  }
+  const changed = targets.some((target) => target.changed);
+  const serialized = wrappedFragment ? document.body.innerHTML || "" : document.toString();
+  const html = changed ? ensureHfIds(serialized) : source;
   const first = targets[0]!;
   return {
     html,
-    changed: targets.some(({ changed }) => changed),
+    changed,
     tag: first.tag,
     value: first.value,
     before: first.before,

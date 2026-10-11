@@ -253,6 +253,38 @@ describe("applyMediaTreatmentToHtml", () => {
     ]);
   });
 
+  it("patches the matched element when ids in the file are duplicated", () => {
+    const html = `<img data-hf-id="hf-x1" src="a.png"><video data-hf-id="hf-x1" src="b.mp4"></video>`;
+
+    const result = applyMediaTreatmentToHtml(html, {
+      selector: "video",
+      grading: { preset: "warm-daylight" },
+    });
+
+    const { document } = parseHTML(`<!doctype html><html><body>${result.html}</body></html>`);
+    expect(document.querySelector("img")?.getAttribute("data-color-grading")).toBeNull();
+    expect(document.querySelector("video")?.getAttribute("data-color-grading")).toContain(
+      "warm-daylight",
+    );
+  });
+
+  it("clears exactly the matches inside a template when a write changes the match set", () => {
+    const videos = '<video src="a.mp4"></video>'.repeat(4);
+    const graded = applyMediaTreatmentToHtml(`<template>${videos}</template>`, {
+      selector: "video",
+      grading: { preset: "warm-daylight" },
+    }).html;
+
+    const result = applyMediaTreatmentToHtml(graded, {
+      selector: "video:has(+ video[data-color-grading])",
+      clear: true,
+    });
+
+    const cleared = (result.html.match(/<video(?![^>]*data-color-grading)/g) ?? []).length;
+    expect(result.targets).toHaveLength(3);
+    expect(cleared).toBe(3);
+  });
+
   it("writes a later match's change when the first match is already graded", () => {
     const firstGraded = applyMediaTreatmentToHtml(SEGMENTS, {
       selector: "video",
