@@ -639,11 +639,8 @@ export async function resolveProxy(
   return joinJob(entry.promise, entry.job, options.signal);
 }
 
-/**
- * Resolves every proxy a whole project needs (check's pre-resolve, publish's bake). Keeps at most
- * MAX_CONCURRENT_TRANSCODES of its own requests in flight, so its own requests never overflow the
- * queue; other callers can still fill it. Each request waits at most TRANSCODE_TIMEOUT_MS.
- */
+/** Batch resolve for check and publish: at most MAX_CONCURRENT_TRANSCODES of its own requests in
+ * flight (other callers can still fill the queue); each waits at most TRANSCODE_TIMEOUT_MS. */
 export async function resolveProxies(
   projectDir: string,
   sources: ReadonlyArray<{ sourcePath: string; variant: ProxyVariant }>,
