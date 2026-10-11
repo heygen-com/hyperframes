@@ -19,7 +19,10 @@ const ENV_BY_NAME: Record<FfBinaryName, string> = {
   ffprobe: FFPROBE_PATH_ENV,
 };
 
-const pathLookupCache = new Map<FfBinaryName, string | undefined>();
+const pathLookupCache = new Map<FfBinaryName, string>();
+// A miss is trusted briefly: callers probe per media file, and an install still shows up within seconds.
+const MISS_TTL_MS = 5_000;
+const lastMissAt = new Map<FfBinaryName, number>();
 
 function candidateFileName(candidate: string): string {
   return candidate.split(/[\\/]/).at(-1)?.toLowerCase() ?? candidate.toLowerCase();
@@ -126,8 +129,7 @@ function findInInstallerPackage(name: FfBinaryName): string | undefined {
   return candidate && isExecutablePathCandidate(candidate) ? candidate : undefined;
 }
 
-function lookupOnSystem(name: FfBinaryName): string | undefined {
-  if (pathLookupCache.has(name)) return pathLookupCache.get(name);
+function searchSystem(name: FfBinaryName): string | undefined {
   let found: string | undefined;
   if (process.platform === "win32") {
     // `where.exe` writes bytes in the active console code page, while Node
@@ -150,7 +152,19 @@ function lookupOnSystem(name: FfBinaryName): string | undefined {
   }
   found ??= findInProjectLocalBin(name);
   found ??= findInCommonDirsOrInstallerPackage(name);
-  const resolved = found ? resolve(found) : undefined;
+  return found;
+}
+
+function lookupOnSystem(name: FfBinaryName): string | undefined {
+  const cached = pathLookupCache.get(name);
+  if (cached) return cached;
+  if (Date.now() - (lastMissAt.get(name) ?? -Infinity) < MISS_TTL_MS) return undefined;
+  const found = searchSystem(name);
+  if (!found) {
+    lastMissAt.set(name, Date.now());
+    return undefined;
+  }
+  const resolved = resolve(found);
   pathLookupCache.set(name, resolved);
   return resolved;
 }
@@ -170,9 +184,10 @@ export interface FindFfBinaryOptions {
  * Resolve an FFmpeg-family binary: env override first, then a native
  * current-directory/PATH scan on Windows or `which` plus PATH scan on Unix,
  * then a project-local `.hyperframes/bin`, then well-known Unix install dirs, then an
- * `@ffmpeg-installer`/`@ffprobe-installer` package reachable from the current folder. System lookups are
- * cached per binary for the process lifetime; the env override is re-read on
- * every call.
+ * `@ffmpeg-installer`/`@ffprobe-installer` package reachable from the current folder.
+ * A found binary is cached for the process lifetime; a miss only for a few
+ * seconds, so a long-running server sees an install made after it started. The env
+ * override is re-read on every call.
  */
 export function findFfBinary(
   name: FfBinaryName,
@@ -189,4 +204,5 @@ export function findFfBinary(
 /** Test hook: drop cached system lookups so resolution can be re-exercised. */
 export function clearFfBinaryLookupCache(): void {
   pathLookupCache.clear();
+  lastMissAt.clear();
 }
