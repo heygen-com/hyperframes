@@ -29,7 +29,10 @@ import {
   proxyVariantFor,
   scanProjectMediaCodecMap,
 } from "@hyperframes/studio-server/media-codec-map";
-import { resolveProxy } from "@hyperframes/studio-server/proxy-transcoder";
+import {
+  FfmpegUnavailableError,
+  resolveProxies,
+} from "@hyperframes/studio-server/proxy-transcoder";
 import { rectToBbox } from "./checkTypes.js";
 import type {
   AnchoredLayoutIssue,
@@ -110,15 +113,16 @@ interface FinishedContrast {
  * hostile-asset check (e.g. a fresh CI checkout) would race the timeout
  * instead of paying a bounded one-time transcode cost
  * (docs/plans/2026-07-14-002-feat-transparent-media-proxies-plan.md, unit U4).
- * Best-effort: a probe or transcode failure does not fail `check`; one summary
- * line records the pre-resolve outcome before the runtime attempts playback.
+ * A failed copy is a warning, not an error: a default render decodes the original with
+ * ffmpeg. One warning per failed file, or one for all of them when ffmpeg itself is unusable.
  */
 export async function preResolveHostileMediaProxies(
   projectDir: string,
   html: string,
   autoProxyOverride?: boolean,
-): Promise<void> {
-  if (!resolveAutoProxy(projectDir, autoProxyOverride)) return;
+): Promise<ProxyPreResolution> {
+  const none: ProxyPreResolution = { findings: [], failedPaths: new Set() };
+  if (!resolveAutoProxy(projectDir, autoProxyOverride)) return none;
   let codecMap: Awaited<ReturnType<typeof scanProjectMediaCodecMap>>;
   try {
     codecMap = await scanProjectMediaCodecMap(projectDir, [{ html }]);
@@ -126,27 +130,58 @@ export async function preResolveHostileMediaProxies(
     console.error(
       `[hyperframes] media proxy pre-resolve: scan failed (${normalizeErrorMessage(err)})`,
     );
-    return;
+    return none;
   }
   const hostileEntries = Object.entries(codecMap).filter(
     ([, facts]) => decideMediaProxyEligibility(facts).eligible,
   );
-  if (hostileEntries.length === 0) return;
+  if (hostileEntries.length === 0) return none;
 
   const startedAt = Date.now();
-  const results = await Promise.allSettled(
-    hostileEntries.map(([pathname, facts]) =>
-      resolveProxy(
-        projectDir,
-        resolve(projectDir, pathname.replace(/^\/+/, "")),
-        proxyVariantFor(facts),
-      ),
-    ),
-  );
-  const failed = results.filter((result) => result.status === "rejected").length;
+  const sources = hostileEntries.map(([pathname, facts]) => {
+    const file = pathname.replace(/^\/+/, "");
+    return {
+      pathname,
+      file,
+      sourcePath: resolve(projectDir, file),
+      variant: proxyVariantFor(facts),
+    };
+  });
+  const results = await resolveProxies(projectDir, sources);
+  const failures = sources.flatMap((source, index) => {
+    const result = results[index]!;
+    return result.status === "rejected" ? [{ ...source, reason: result.reason }] : [];
+  });
+  const total = hostileEntries.length;
   console.error(
-    `[hyperframes] media proxy pre-resolve: ${results.length - failed}/${results.length} ready, ${failed} failed (${Date.now() - startedAt}ms)`,
+    `[hyperframes] media proxy pre-resolve: ${total - failures.length}/${total} ready, ${failures.length} failed (${Date.now() - startedAt}ms)`,
   );
+  const unusableFfmpeg = failures.filter(({ reason }) => reason instanceof FfmpegUnavailableError);
+  const findings = failures
+    .filter(({ reason }) => !(reason instanceof FfmpegUnavailableError))
+    .map(({ file, reason }) =>
+      proxyFailedDraft(
+        `Could not make a browser-playable copy of ${file}: ${normalizeErrorMessage(reason)}. A default render decodes the original with ffmpeg and does not need it, but publish stops on it (unless run with --no-proxy) and a browser that cannot decode the original will not play it in preview.`,
+      ),
+    );
+  if (unusableFfmpeg[0]) {
+    findings.unshift(
+      proxyFailedDraft(
+        `Could not make browser-playable copies of ${unusableFfmpeg.map(({ file }) => file).join(", ")}: ${normalizeErrorMessage(unusableFfmpeg[0].reason)}. Publish stops on them (unless run with --no-proxy) and a browser that cannot decode them will not play them in preview.`,
+      ),
+    );
+  }
+  return { findings, failedPaths: new Set(failures.map(({ pathname }) => pathname)) };
+}
+
+interface ProxyPreResolution {
+  findings: RuntimeDraft[];
+  /** Root-relative paths of the videos whose copy failed. */
+  failedPaths: Set<string>;
+}
+
+function proxyFailedDraft(message: string): RuntimeDraft {
+  return { code: "media_proxy_failed", severity: "warning", message, time: 0 };
 }
 
 export async function runBrowserCheck(
@@ -157,7 +192,11 @@ export async function runBrowserCheck(
 ): Promise<CheckBrowserResult> {
   const { bundleWithLocalizedFonts } = await import("./bundleWithLocalizedFonts.js");
   const html = await bundleWithLocalizedFonts(project.dir);
-  await preResolveHostileMediaProxies(project.dir, html, options.autoProxy);
+  const { findings: drafts, failedPaths } = await preResolveHostileMediaProxies(
+    project.dir,
+    html,
+    options.autoProxy,
+  );
   const server = await serveStaticProjectHtml(
     project.dir,
     html,
@@ -165,7 +204,6 @@ export async function runBrowserCheck(
     [],
     options.autoProxy,
   );
-  const drafts: RuntimeDraft[] = [];
   let currentTime = 0;
   let chromeBrowser: import("puppeteer-core").Browser | undefined;
 
@@ -201,9 +239,10 @@ export async function runBrowserCheck(
     return {
       ...result,
       timings: { ...result.timings, launchSettleMs },
-      runtimeFindings: keepBrokenImageAborts(drafts, broken).map((draft) =>
-        runtimeFinding(draft, rootAnchor),
-      ),
+      runtimeFindings: dropFailedProxyEchoes(
+        keepBrokenImageAborts(drafts, broken),
+        failedPaths,
+      ).map((draft) => runtimeFinding(draft, rootAnchor)),
     };
   } finally {
     await chromeBrowser?.close().catch(() => undefined);
@@ -375,6 +414,44 @@ function wireRuntimeListeners(page: Page, drafts: RuntimeDraft[], currentTime: (
 /** Check's scrubs cancel image loads: an aborted image failed only if an `<img>` shows it and its decode fails. */
 export function keepBrokenImageAborts(drafts: RuntimeDraft[], broken: Set<string>): RuntimeDraft[] {
   return drafts.filter((draft) => !draft.abortedImage || broken.has(draft.url ?? ""));
+}
+
+/** One finding per failed proxy: the preview's own 502s and swap notes for that file repeat `media_proxy_failed`. */
+export function dropFailedProxyEchoes(
+  drafts: RuntimeDraft[],
+  failedPaths: ReadonlySet<string>,
+): RuntimeDraft[] {
+  if (failedPaths.size === 0) return drafts;
+  return drafts.filter((draft) => !failedPaths.has(proxyEchoPath(draft) ?? ""));
+}
+
+function proxyEchoPath(draft: RuntimeDraft): string | undefined {
+  if (draft.code === "http_error" || draft.code === "request_failed") {
+    const url = parseUrl(draft.url);
+    return url?.searchParams.has("hf-proxy") ? decodedPath(url) : undefined;
+  }
+  if (draft.code === "media_proxy_fallback" || draft.code === "media_proxy_unavailable") {
+    return decodedPath(parseUrl(/"([^"]+)"/.exec(draft.message)?.[1]));
+  }
+  return undefined;
+}
+
+function parseUrl(target: string | undefined): URL | undefined {
+  if (!target) return undefined;
+  try {
+    return new URL(target, "http://check.invalid/");
+  } catch {
+    return undefined;
+  }
+}
+
+function decodedPath(url: URL | undefined): string | undefined {
+  if (!url) return undefined;
+  try {
+    return decodeURIComponent(url.pathname);
+  } catch {
+    return undefined;
+  }
 }
 
 const IMAGE_DECODE_CAP_MS = 5000;

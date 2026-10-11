@@ -90,6 +90,28 @@ async function flush(times = 6): Promise<void> {
   for (let i = 0; i < times; i++) await Promise.resolve();
 }
 
+/** One more source than the queue can hold, to prove a batch never overflows it. */
+function batchSources(projectDir: string): Array<{ sourcePath: string; variant: "h264" }> {
+  return Array.from({ length: MAX_CONCURRENT + MAX_QUEUED + 1 }, (_, i) => {
+    const sourcePath = join(projectDir, `batch-${i}.mov`);
+    writeFileSync(sourcePath, `source-${i}`);
+    return { sourcePath, variant: "h264" };
+  });
+}
+
+/** Answers every ffmpeg spawn until no new one starts. A finished copy reaches the
+ * next spawn through several promise hops, hence the deep flush. */
+async function answerUntilIdle(
+  calls: SpawnCall[],
+  answer: (call: SpawnCall) => void,
+): Promise<void> {
+  for (let done = 0; ; done = calls.length) {
+    await flush(50);
+    if (calls.length === done) return;
+    calls.slice(done).forEach(answer);
+  }
+}
+
 const tempDirs: string[] = [];
 
 function tmpProject(): string {
@@ -550,6 +572,34 @@ describe("resolveProxy", () => {
     await expect(retry).resolves.toBeTruthy();
   });
 
+  it("resolves a whole project's batch past the queue cap by waiting for room, not refusing", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    const { resolveProxies } = await loadModule(spawn, FFMPEG_PATH);
+    const projectDir = tmpProject();
+    const sources = batchSources(projectDir);
+
+    const batch = resolveProxies(projectDir, sources);
+    await answerUntilIdle(calls, (call) => succeed(call));
+
+    const results = await batch;
+    expect(results.map((result) => result.status)).toEqual(sources.map(() => "fulfilled"));
+  });
+
+  it("settles each request of a batch on its own when one of them fails", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    const { resolveProxies } = await loadModule(spawn, FFMPEG_PATH);
+    const projectDir = tmpProject();
+    const sources = batchSources(projectDir);
+    const failing = (call: SpawnCall) => call.args.some((arg) => arg.endsWith("batch-3.mov"));
+
+    const batch = resolveProxies(projectDir, sources);
+    await answerUntilIdle(calls, (call) => (failing(call) ? fail(call) : succeed(call)));
+
+    const statuses = (await batch).map((result) => result.status);
+    expect(statuses.filter((status) => status === "fulfilled")).toHaveLength(sources.length - 1);
+    expect(statuses[3]).toBe("rejected");
+  });
+
   describe("queue order and callers that leave", () => {
     function clipOf(call: SpawnCall): string {
       return basename(call.args[call.args.indexOf("-i") + 1]!, ".mov");
@@ -857,10 +907,21 @@ describe("resolveProxy", () => {
     const resultPromise = resolveProxy(projectDir, sourcePath);
     await flush();
     expect(calls).toHaveLength(1);
-    fail(calls[0]!, 1, "ffmpeg: unsupported codec");
+    fail(
+      calls[0]!,
+      1,
+      [
+        "Input #0, mov, from 'video.mov': unsupported codec",
+        "[hevc] Error while decoding stream #0:0: Invalid data found when processing input",
+        "Error submitting a packet to the muxer: No space left on device.",
+        "Conversion failed!",
+      ].join("\n"),
+    );
 
     await expect(resultPromise).rejects.toBeInstanceOf(ProxyTranscodeError);
     await expect(resultPromise).rejects.toMatchObject({
+      message:
+        "ffmpeg exited with code 1: Error submitting a packet to the muxer: No space left on device",
       exitCode: 1,
       stderrTail: expect.stringContaining("unsupported codec"),
     });
@@ -1090,5 +1151,19 @@ describe("resolveProxy", () => {
 
     await expect(resolveProxy(projectDir, sourcePath)).rejects.toBeInstanceOf(ProxyTranscodeError);
     expect(calls).toHaveLength(0);
+  });
+
+  it("treats an ffmpeg that cannot start as an unusable environment, not a bad source", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    const { resolveProxy, FfmpegUnavailableError } = await loadModule(spawn, FFMPEG_PATH);
+    const projectDir = tmpProject();
+    const sourcePath = join(projectDir, "video.mov");
+    writeFileSync(sourcePath, "source-bytes");
+
+    const result = resolveProxy(projectDir, sourcePath);
+    await flush();
+    calls[0]!.proc.emit("error", new Error("EACCES"));
+
+    await expect(result).rejects.toBeInstanceOf(FfmpegUnavailableError);
   });
 });
