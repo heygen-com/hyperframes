@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   serverClose: vi.fn(async () => undefined),
   resolveProxy:
     vi.fn<(projectDir: string, absoluteSourcePath: string, variant?: string) => Promise<string>>(),
+  FfmpegUnavailableError: class FfmpegUnavailableError extends Error {},
   scanProjectMediaCodecMap: vi.fn<
     (...args: unknown[]) => Promise<
       Record<
@@ -76,6 +77,7 @@ vi.mock("@hyperframes/studio-server/media-codec-map", async (importOriginal) => 
   proxyVariantFor: (facts: { hasAlpha?: boolean }) => (facts.hasAlpha ? "vp8" : "h264"),
 }));
 vi.mock("@hyperframes/studio-server/proxy-transcoder", () => ({
+  FfmpegUnavailableError: mocks.FfmpegUnavailableError,
   resolveProxies: (projectDir: string, sources: Array<{ sourcePath: string; variant: string }>) =>
     Promise.allSettled(
       sources.map(({ sourcePath, variant }) => mocks.resolveProxy(projectDir, sourcePath, variant)),
@@ -660,7 +662,7 @@ describe("dropFailedProxyEchoes", () => {
   it("keeps one finding for a failed proxy and drops the preview's repeats of it", () => {
     const at = (code: string, message: string, url?: string) =>
       ({ code, severity: "info", message, time: 0, url }) as const;
-    const failed = at("media_proxy_failed", "Could not make a copy of media/a.mov", "/media/a.mov");
+    const failed = at("media_proxy_failed", "Could not make a copy of media/a.mov");
     const unrelated502 = at(
       "http_error",
       "502 loading media/b.mov",
@@ -672,24 +674,32 @@ describe("dropFailedProxyEchoes", () => {
       "http://127.0.0.1:3000/media/a.mov",
     );
 
-    const kept = dropFailedProxyEchoes([
-      failed,
-      at(
-        "http_error",
-        "502 loading media/a.mov",
-        "http://127.0.0.1:3000/media/a.mov?hf-proxy=h264",
-      ),
-      at(
-        "media_proxy_fallback",
-        '[hyperframes] runtime_media_proxy_fallback: "media/a.mov" uses a codec (prores)',
-      ),
-      at(
-        "media_proxy_unavailable",
-        '[hyperframes] runtime_media_proxy_unavailable: "http://127.0.0.1:3000/media/a.mov" (proxy_playback_failed): x',
-      ),
-      unrelated502,
-      originalMissing,
-    ]);
+    const kept = dropFailedProxyEchoes(
+      [
+        failed,
+        at(
+          "http_error",
+          "502 loading media/my clip.mov",
+          "http://127.0.0.1:3000/media/my%20clip.mov?hf-proxy=h264",
+        ),
+        at(
+          "http_error",
+          "502 loading media/a.mov",
+          "http://127.0.0.1:3000/media/a.mov?hf-proxy=h264",
+        ),
+        at(
+          "media_proxy_fallback",
+          '[hyperframes] runtime_media_proxy_fallback: "media/a.mov" uses a codec (prores)',
+        ),
+        at(
+          "media_proxy_unavailable",
+          '[hyperframes] runtime_media_proxy_unavailable: "http://127.0.0.1:3000/media/a.mov" (proxy_playback_failed): x',
+        ),
+        unrelated502,
+        originalMissing,
+      ],
+      new Set(["/media/a.mov", "/media/my clip.mov"]),
+    );
 
     expect(kept).toEqual([failed, unrelated502, originalMissing]);
   });
@@ -776,16 +786,40 @@ describe("preResolveHostileMediaProxies", () => {
     mocks.resolveProxy.mockRejectedValue(new Error("ffmpeg exited with code 1"));
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
-    await expect(preResolveHostileMediaProxies(projectDir, "<html></html>")).resolves.toEqual([
-      expect.objectContaining({
-        code: "media_proxy_failed",
-        severity: "warning",
-        message: expect.stringContaining("clip.mp4: ffmpeg exited with code 1"),
-      }),
-    ]);
+    await expect(preResolveHostileMediaProxies(projectDir, "<html></html>")).resolves.toEqual({
+      findings: [
+        expect.objectContaining({
+          code: "media_proxy_failed",
+          severity: "warning",
+          message: expect.stringContaining("clip.mp4: ffmpeg exited with code 1"),
+        }),
+      ],
+      failedPaths: new Set(["/clip.mp4"]),
+    });
     expect(errorSpy).toHaveBeenCalledWith(
       expect.stringContaining("media proxy pre-resolve: 0/1 ready, 1 failed"),
     );
+  });
+
+  it("reports an unusable ffmpeg once for every video, without promising a working render", async () => {
+    const projectDir = mkProjectDir();
+    const hevc = {
+      codecName: "hevc",
+      browserHostile: true,
+      representativeMime: null,
+      hasAlpha: false,
+    };
+    mocks.scanProjectMediaCodecMap.mockResolvedValue({ "/a.mp4": hevc, "/b.mp4": hevc });
+    mocks.resolveProxy.mockRejectedValue(
+      new mocks.FfmpegUnavailableError("ffmpeg binary not found"),
+    );
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const { findings } = await preResolveHostileMediaProxies(projectDir, "<html></html>");
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.message).toContain("copies of a.mp4, b.mp4: ffmpeg binary not found");
+    expect(findings[0]?.message).not.toContain("render");
   });
 
   // `check --json` stdout must stay pure JSON, so these lines belong on stderr.
@@ -825,7 +859,10 @@ describe("preResolveHostileMediaProxies", () => {
     const infoSpy = vi.spyOn(console, "info").mockImplementation(() => undefined);
     const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
 
-    await expect(preResolveHostileMediaProxies(projectDir, "<html></html>")).resolves.toEqual([]);
+    await expect(preResolveHostileMediaProxies(projectDir, "<html></html>")).resolves.toEqual({
+      findings: [],
+      failedPaths: new Set(),
+    });
 
     expect(errorSpy).toHaveBeenCalledWith(
       "[hyperframes] media proxy pre-resolve: scan failed (ffprobe not found)",

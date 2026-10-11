@@ -61,12 +61,13 @@ export class ProxyTranscodeError extends Error {
   }
 }
 
-/** "ffmpeg isn't installed" — an environment condition, not a per-source
+/** ffmpeg is missing or cannot start — an environment condition, not a per-source
  * failure, so the negative cache below keeps it only briefly
  * (installing ffmpeg mid-session must recover without a server restart). */
-class FfmpegUnavailableError extends ProxyTranscodeError {
-  constructor() {
-    super("ffmpeg binary not found", null, "");
+export class FfmpegUnavailableError extends ProxyTranscodeError {
+  constructor(message = "ffmpeg binary not found", stderrTail = "") {
+    super(message, null, stderrTail);
+    this.name = "FfmpegUnavailableError";
   }
 }
 
@@ -394,6 +395,19 @@ function proxyScaleFilter(box?: PreviewProxyBox): string {
   return `scale=${side("iw")}:${side("ih")}`;
 }
 
+const STDERR_ERROR_LINE = /error|invalid|denied|no space|not found|unknown/i;
+
+/** ffmpeg ends most failures with "Conversion failed!"; the cause is the last error-looking line above it. */
+function stderrReason(stderrTail: string): string {
+  const lines = stderrTail
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const errorLines = lines.filter((line) => STDERR_ERROR_LINE.test(line));
+  const line = errorLines.at(-1) ?? lines.at(-1);
+  return line ? `: ${line.replace(/[.!]+$/, "")}` : "";
+}
+
 async function runFfmpeg(
   sourcePath: string,
   outputPath: string,
@@ -490,7 +504,7 @@ async function runFfmpeg(
       stderrTail = (stderrTail + chunk.toString()).slice(-STDERR_TAIL_MAX_CHARS);
     });
     proc.on("error", (err) => {
-      reject(new ProxyTranscodeError(`failed to spawn ffmpeg: ${err.message}`, null, stderrTail));
+      reject(new FfmpegUnavailableError(`failed to spawn ffmpeg: ${err.message}`, stderrTail));
     });
     proc.on("close", (code, signal) => {
       if (code === 0) {
@@ -504,10 +518,12 @@ async function runFfmpeg(
           ),
         );
       } else {
-        const lastLine = stderrTail.trim().split("\n").at(-1)?.trim();
-        const detail = lastLine ? `: ${lastLine}` : "";
         reject(
-          new ProxyTranscodeError(`ffmpeg exited with code ${code}${detail}`, code, stderrTail),
+          new ProxyTranscodeError(
+            `ffmpeg exited with code ${code}${stderrReason(stderrTail)}`,
+            code,
+            stderrTail,
+          ),
         );
       }
     });
@@ -625,8 +641,8 @@ export async function resolveProxy(
 
 /**
  * Resolves every proxy a whole project needs (check's pre-resolve, publish's bake). Keeps at most
- * MAX_CONCURRENT_TRANSCODES of its own asks in flight, so a long batch waits for room instead of
- * being refused with ProxyCapacityError past the queue cap. Each ask waits at most TRANSCODE_TIMEOUT_MS.
+ * MAX_CONCURRENT_TRANSCODES of its own requests in flight, so its own requests never overflow the
+ * queue; other callers can still fill it. Each request waits at most TRANSCODE_TIMEOUT_MS.
  */
 export async function resolveProxies(
   projectDir: string,
