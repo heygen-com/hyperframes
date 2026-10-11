@@ -20,6 +20,7 @@ import {
 } from "@hyperframes/parsers/asset-resolution";
 import { rewriteAssetPath } from "@hyperframes/parsers/asset-paths";
 import { patchElementInHtml } from "@hyperframes/studio-server/source-mutation";
+import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { defineCommand } from "citty";
 import { lintHyperframeHtml } from "@hyperframes/lint";
 import { parseHTML } from "linkedom";
@@ -489,16 +490,23 @@ export function applyMediaTreatmentToHtml(
     },
   );
   let html = source;
-  const lastMatchFirstSoEarlierIndexesStay = [...targets].reverse();
-  for (const target of lastMatchFirstSoEarlierIndexesStay) {
-    if (!target.changed) continue;
-    const patched = patchElementInHtml(
-      html,
-      { selector: options.selector, selectorIndex: target.selectorIndex },
-      [{ type: "attribute", property: HF_COLOR_GRADING_ATTR, value: target.value }],
+  if (targets.some(({ changed }) => changed)) {
+    html = ensureHfIds(source);
+    const hfIds = selectMediaElements(html, options.selector, options.selectorIndex).map(
+      ({ element }) => element.getAttribute("data-hf-id"),
     );
-    if (!patched.matched) throw new Error(`Could not persist selector: ${options.selector}`);
-    html = patched.html;
+    const lastMatchFirstForTheIndexFallback = [...targets.entries()].reverse();
+    for (const [index, target] of lastMatchFirstForTheIndexFallback) {
+      if (!target.changed) continue;
+      const hfId = (hfIds.length === targets.length && hfIds[index]) || undefined;
+      const patched = patchElementInHtml(
+        html,
+        { hfId, selector: options.selector, selectorIndex: target.selectorIndex },
+        [{ type: "attribute", property: HF_COLOR_GRADING_ATTR, value: target.value }],
+      );
+      if (!patched.matched) throw new Error(`Could not persist selector: ${options.selector}`);
+      html = patched.html;
+    }
   }
   const first = targets[0]!;
   return {
@@ -737,7 +745,11 @@ async function printMutation(args: MediaTreatmentCommandArgs): Promise<void> {
     return;
   }
   const verb = mutationVerb(action, result.changed, payload.dryRun);
-  const count = result.targets.length > 1 ? ` (${result.targets.length} elements)` : "";
+  const changedCount = result.targets.filter(({ changed }) => changed).length;
+  const count =
+    result.targets.length > 1
+      ? ` (${changedCount} of ${result.targets.length} elements changed)`
+      : "";
   console.log(`${c.success("◇")}  ${verb} media treatment on ${c.accent(selector)}${count}`);
 }
 

@@ -229,6 +229,47 @@ describe("applyMediaTreatmentToHtml", () => {
     expect(gradingsOf(result.html)).toEqual([null, null]);
   });
 
+  it("patches the matched element even when a write changes which elements a selector matches", () => {
+    const four = SEGMENTS.replace(
+      "</body>",
+      '<video src="c.mp4"></video><video src="d.mp4"></video></body>',
+    );
+    const graded = applyMediaTreatmentToHtml(four, {
+      selector: "video",
+      grading: { preset: "warm-daylight" },
+    }).html;
+
+    const result = applyMediaTreatmentToHtml(graded, {
+      selector: "video:has(+ video[data-color-grading])",
+      clear: true,
+    });
+
+    expect(result.targets).toHaveLength(3);
+    expect(gradingsOf(result.html).map((value) => value === null)).toEqual([
+      true,
+      true,
+      true,
+      false,
+    ]);
+  });
+
+  it("writes a later match's change when the first match is already graded", () => {
+    const firstGraded = applyMediaTreatmentToHtml(SEGMENTS, {
+      selector: "video",
+      selectorIndex: 0,
+      grading: { preset: "warm-daylight" },
+    }).html;
+
+    const result = applyMediaTreatmentToHtml(firstGraded, {
+      selector: "video",
+      grading: { preset: "warm-daylight" },
+    });
+
+    expect(result.targets.map(({ changed }) => changed)).toEqual([false, true]);
+    expect(result.changed).toBe(true);
+    expect(gradingsOf(result.html)[1]).toContain("warm-daylight");
+  });
+
   it("treats only the --selector-index match when one is given", () => {
     const result = applyMediaTreatmentToHtml(SEGMENTS, {
       selector: "video",
