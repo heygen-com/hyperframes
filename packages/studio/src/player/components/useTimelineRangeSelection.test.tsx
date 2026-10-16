@@ -103,18 +103,29 @@ function renderHarness(sessionEpoch = 1) {
 
 function dragMarquee(
   view: ReturnType<typeof renderHarness>,
-  options: { secondPointer?: boolean; release?: boolean } = {},
+  options: {
+    secondPointer?: boolean;
+    release?: boolean;
+    down?: Partial<React.PointerEvent>;
+    move?: Partial<React.PointerEvent>;
+  } = {},
 ): void {
   act(() => {
-    view.api.handlePointerDown(pointer(view.scroll, 7, 0, FIRST_ROW_Y));
+    view.api.handlePointerDown(pointer(view.scroll, 7, 0, FIRST_ROW_Y, options.down));
     if (options.secondPointer) {
       view.api.handlePointerDown(pointer(view.scroll, 8, 500, FIRST_ROW_Y));
     }
-    view.api.handlePointerMove(pointer(view.scroll, 7, 400, OFFSCREEN_ROW_Y));
+    view.api.handlePointerMove(pointer(view.scroll, 7, 400, OFFSCREEN_ROW_Y, options.move));
     if (options.release) {
-      view.api.handlePointerUp(pointer(view.scroll, 7, 400, OFFSCREEN_ROW_Y));
+      view.api.handlePointerUp(pointer(view.scroll, 7, 400, OFFSCREEN_ROW_Y, options.move));
     }
   });
+}
+
+function selectIds(primary: string, ...others: string[]): void {
+  const store = usePlayerStore.getState();
+  store.setSelectedElementId(primary);
+  store.setSelectedElementIds(new Set([primary, ...others]));
 }
 
 function expectSelectedIds(...ids: string[]): void {
@@ -187,6 +198,76 @@ describe("useTimelineRangeSelection", () => {
 
     act(() => view.api.handlePointerCancel(pointer(view.scroll, 7, 300, 80)));
     expect(view.api.rangeSelection).toEqual(finalized);
+    unmountHarness(view);
+  });
+
+  it("replaces the selection with the covered clips when no modifier is held", () => {
+    selectIds("base");
+    const view = renderHarness();
+    dragMarquee(view, { release: true });
+
+    expectSelectedIds("first", "offscreen");
+    expect(view.api.marqueeRect).toBeNull();
+    unmountHarness(view);
+  });
+
+  it("adds the covered clips to the selection while Shift is held", () => {
+    selectIds("base");
+    const view = renderHarness();
+    dragMarquee(view, { move: { shiftKey: true } });
+
+    expect(view.api.marqueeRect?.mode).toBe("add");
+    expectSelectedIds("base", "first", "offscreen");
+    unmountHarness(view);
+  });
+
+  it("removes the covered clips from the selection while Alt is held", () => {
+    selectIds("first", "offscreen", "base");
+    const view = renderHarness();
+    dragMarquee(view, { down: { altKey: true }, move: { altKey: true }, release: true });
+
+    expectSelectedIds("base");
+    expect(usePlayerStore.getState().selectedElementId).toBe("base");
+    unmountHarness(view);
+  });
+
+  it("re-anchors on a survivor when Alt removes the primary", () => {
+    selectIds("first", "base");
+    const view = renderHarness();
+    dragMarquee(view, { move: { altKey: true } });
+
+    expect(view.api.marqueeRect?.mode).toBe("subtract");
+    expectSelectedIds("base");
+    expect(usePlayerStore.getState().selectedElementId).toBe("base");
+    unmountHarness(view);
+  });
+
+  it("Alt pressed mid-drag flips a Shift add into a subtract", () => {
+    selectIds("first", "base");
+    const view = renderHarness();
+    dragMarquee(view, { move: { shiftKey: true } });
+    expectSelectedIds("first", "base", "offscreen");
+
+    act(() => {
+      view.api.handlePointerMove(
+        pointer(view.scroll, 7, 400, OFFSCREEN_ROW_Y, { shiftKey: true, altKey: true }),
+      );
+    });
+
+    expect(view.api.marqueeRect?.mode).toBe("subtract");
+    expectSelectedIds("base");
+    unmountHarness(view);
+  });
+
+  it("restores the pre-drag selection when an Alt marquee is cancelled", () => {
+    selectIds("first", "base");
+    const view = renderHarness();
+    dragMarquee(view, { move: { altKey: true } });
+    expectSelectedIds("base");
+
+    act(() => view.api.handlePointerCancel(pointer(view.scroll, 7, 400, OFFSCREEN_ROW_Y)));
+    expectSelectedIds("first", "base");
+    expect(usePlayerStore.getState().selectedElementId).toBe("first");
     unmountHarness(view);
   });
 

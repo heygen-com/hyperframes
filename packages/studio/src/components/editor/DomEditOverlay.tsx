@@ -5,6 +5,7 @@ import { type DomEditSelection } from "./domEditing";
 import type { PreviewMouseDownOptions } from "../../hooks/usePreviewInteraction";
 import { useMarqueeGestures } from "./marqueeCommit";
 import { MarqueeOverlay } from "./MarqueeOverlay";
+import type { MarqueeSelectionMode } from "../../utils/marqueeGeometry";
 import { resolveDomEditGroupOverlayRect } from "./domEditOverlayGeometry";
 import { useZOrderCrossedFlash, ZOrderCrossedFlash } from "./useZOrderCrossedFlash";
 import { useCanvasContextMenuState } from "./useCanvasContextMenuState";
@@ -103,7 +104,7 @@ export interface DomEditOverlayProps {
   onToggleRecording?: () => void;
   onMarqueeSelect?: (
     selections: DomEditSelection[],
-    additive: boolean,
+    mode: MarqueeSelectionMode,
   ) => DomSelectionResult | void;
   /**
    * Delete the selected canvas element.
