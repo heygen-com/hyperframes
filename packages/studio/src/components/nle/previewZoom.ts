@@ -33,7 +33,6 @@ export function clampPreviewZoomPercent(percent: number): number {
   return Math.min(MAX_PREVIEW_ZOOM_PERCENT, Math.max(MIN_PREVIEW_ZOOM_PERCENT, percent));
 }
 
-/** Reads what someone typed into the zoom readout, e.g. `250` or `250%`; null keeps the current zoom. */
 export function parsePreviewZoomInput(text: string): number | null {
   const match = /^\s*(\d+(?:\.\d*)?|\.\d+)\s*%?\s*$/.exec(text);
   if (!match) return null;
@@ -156,7 +155,6 @@ export function resolvePreviewWheelZoom(input: {
   };
 }
 
-/** Zooms about the viewport centre, so the point in the middle of the view stays put. */
 export function resolvePreviewTypedZoom(input: {
   state: PreviewZoomState;
   zoomPercent: number;
@@ -210,11 +208,9 @@ export interface PreviewPixelGridBox {
   top: number;
   width: number;
   height: number;
-  /** One composition pixel, in screen pixels. */
-  cell: number;
+  cellPx: number;
 }
 
-/** Where the scaled stage sits in the viewport, which centres it and then pans it; null below the grid threshold. */
 export function resolvePreviewPixelGrid(input: {
   state: PreviewZoomState;
   rect: { width: number; height: number };
@@ -233,7 +229,7 @@ export function resolvePreviewPixelGrid(input: {
     top: toDomPrecision((input.rect.height - height) / 2 + input.state.panY),
     width: toDomPrecision(width),
     height: toDomPrecision(height),
-    cell: toDomPrecision(width / input.width),
+    cellPx: toDomPrecision(width / input.width),
   };
 }
 

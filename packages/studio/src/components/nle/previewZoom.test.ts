@@ -97,7 +97,7 @@ describe("resolvePreviewPixelGrid", () => {
       top: (600 - 5400) / 2 - 20,
       width: 9600,
       height: 5400,
-      cell: 5,
+      cellPx: 5,
     });
   });
 

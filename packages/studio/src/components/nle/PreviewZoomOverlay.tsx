@@ -97,11 +97,6 @@ function ZoomPercentInput({
   );
 }
 
-/**
- * Positions the pixel grid over the stage in screen pixels. Inside the scaled stage a one-pixel line
- * would be a fraction of a stage pixel and blur away when the stage is rasterised. The grid is
- * studio DOM, never the composition's, so renders and snapshots never include it.
- */
 function usePreviewPixelGrid(
   viewportRef: RefObject<HTMLDivElement | null>,
   stageSize: { width: number; height: number },
@@ -124,7 +119,7 @@ function usePreviewPixelGrid(
       grid.style.top = `${box.top}px`;
       grid.style.width = `${box.width}px`;
       grid.style.height = `${box.height}px`;
-      grid.style.backgroundSize = `${box.cell}px ${box.cell}px`;
+      grid.style.backgroundSize = `${box.cellPx}px ${box.cellPx}px`;
     },
     [viewportRef],
   );
@@ -141,7 +136,6 @@ function usePreviewPixelGrid(
 
 export type PreviewZoomOverlayControls = ReturnType<typeof usePreviewZoomOverlay>;
 
-/** The navigator and pixel grid as one `draw`, so the preview's transform write keeps both in step. */
 export function usePreviewZoomOverlay(
   viewportRef: RefObject<HTMLDivElement | null>,
   stageSize: { width: number; height: number },
