@@ -29,6 +29,7 @@ afterEach(() => {
   usePlayerStore.setState({
     autoKeyframeEnabled: true,
     thumbnailMode: "adaptive",
+    timelineTrackDensity: "comfortable",
     zoomMode: "fit",
   });
 });
@@ -92,6 +93,29 @@ describe("TimelineToolbar — adaptive thumbnails", () => {
     expect(button.getAttribute("aria-label")).toBe(
       "Show thumbnails: posters stay visible; richer previews appear on interaction",
     );
+    act(() => root.unmount());
+  });
+});
+
+describe("TimelineToolbar — track density", () => {
+  it("switches to compact tracks and remembers the choice", () => {
+    const { host, root } = renderToolbar();
+    const button = host.querySelector<HTMLButtonElement>(
+      'button[aria-label="Compact track height"]',
+    );
+    if (!button) throw new Error("track density toggle not rendered");
+    expect(button.getAttribute("aria-pressed")).toBe("false");
+
+    act(() => button.click());
+
+    expect(usePlayerStore.getState().timelineTrackDensity).toBe("compact");
+    expect(readStudioUiPreferences().timelineTrackDensity).toBe("compact");
+    expect(button.getAttribute("aria-pressed")).toBe("true");
+
+    act(() => button.click());
+
+    expect(usePlayerStore.getState().timelineTrackDensity).toBe("comfortable");
+    expect(readStudioUiPreferences().timelineTrackDensity).toBe("comfortable");
     act(() => root.unmount());
   });
 });
