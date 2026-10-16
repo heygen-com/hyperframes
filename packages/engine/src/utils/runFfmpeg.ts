@@ -9,6 +9,7 @@
 import { spawn, type ChildProcess } from "child_process";
 import { getFfmpegBinary } from "./ffmpegBinaries.js";
 import { trackChildProcess } from "./processTracker.js";
+import { retrySpawnWhileLocked } from "./spawnLockRetry.js";
 import {
   ManagedChildProcess,
   type ManagedChildProcessOutcome,
@@ -200,22 +201,24 @@ const ABORTED_BEFORE_START: RunFfmpegResult = {
 };
 
 export async function runFfmpeg(args: string[], opts?: RunFfmpegOptions): Promise<RunFfmpegResult> {
-  if (opts?.signal?.aborted) return { ...ABORTED_BEFORE_START };
-  let framesWritten = 0;
-  let secondsWritten = 0;
-  const readStats = ffmpegStatsReader(({ frames = 0, seconds = 0 }) => {
-    if (frames <= framesWritten && seconds <= secondsWritten) return;
-    framesWritten = Math.max(frames, framesWritten);
-    secondsWritten = Math.max(seconds, secondsWritten);
-    managed.markActivity();
+  return retrySpawnWhileLocked(getFfmpegBinary(), async () => {
+    if (opts?.signal?.aborted) return { ...ABORTED_BEFORE_START };
+    let framesWritten = 0;
+    let secondsWritten = 0;
+    const readStats = ffmpegStatsReader(({ frames = 0, seconds = 0 }) => {
+      if (frames <= framesWritten && seconds <= secondsWritten) return;
+      framesWritten = Math.max(frames, framesWritten);
+      secondsWritten = Math.max(seconds, secondsWritten);
+      managed.markActivity();
+    });
+    const managed = new ManagedChildProcess(spawnFfmpeg(args), {
+      signal: opts?.signal,
+      inactivityTimeoutMs: opts?.timeout ?? DEFAULT_TIMEOUT,
+      onStderr: (chunk) => {
+        readStats(chunk);
+        opts?.onStderr?.(chunk);
+      },
+    });
+    return toResult(await managed.wait());
   });
-  const managed = new ManagedChildProcess(spawnFfmpeg(args), {
-    signal: opts?.signal,
-    inactivityTimeoutMs: opts?.timeout ?? DEFAULT_TIMEOUT,
-    onStderr: (chunk) => {
-      readStats(chunk);
-      opts?.onStderr?.(chunk);
-    },
-  });
-  return toResult(await managed.wait());
 }

@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { getFfmpegBinary } from "./ffmpegBinaries.js";
+import { retrySpawnWhileLocked } from "./spawnLockRetry.js";
 
 /**
  * Preflight for the ffmpeg `psnr` filter used by drawElement self-verify
@@ -60,11 +61,13 @@ async function listFfmpeg(flag: "-filters" | "-hwaccels"): Promise<string | null
   // call time instead, and the try/catch below reports no filters at all.
   const execFileP = promisify(execFile);
   try {
-    const { stdout } = await execFileP(getFfmpegBinary(), ["-hide_banner", flag], {
-      maxBuffer: 4 * 1024 * 1024,
-      timeout: 5_000,
-      windowsHide: true,
-    });
+    const { stdout } = await retrySpawnWhileLocked(getFfmpegBinary(), () =>
+      execFileP(getFfmpegBinary(), ["-hide_banner", flag], {
+        maxBuffer: 4 * 1024 * 1024,
+        timeout: 5_000,
+        windowsHide: true,
+      }),
+    );
     return stdout;
   } catch {
     return null;

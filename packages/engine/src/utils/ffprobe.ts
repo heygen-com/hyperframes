@@ -17,6 +17,7 @@ import { runFfmpeg } from "./runFfmpeg.js";
 import { FFPROBE_PATH_ENV, getFfprobeBinary } from "./ffmpegBinaries.js";
 import { ManagedChildProcess } from "./managedChildProcess.js";
 import { trackChildProcess } from "./processTracker.js";
+import { retrySpawnWhileLocked } from "./spawnLockRetry.js";
 
 const FFPROBE_STDERR_MAX_BYTES = 8 * 1024;
 /** Bound on collected stdout. Generous — real -show_streams JSON is well
@@ -57,7 +58,18 @@ function sanitizeFfprobeDiagnostic(stderr: string, filePath: string): string {
 }
 
 /** Spawn ffprobe with given args, return stdout. Throws on non-zero exit or missing binary. */
-export async function runFfprobe(
+export function runFfprobe(
+  filePath: string,
+  argsWithoutInput: string[],
+  signal?: AbortSignal,
+  stdoutOptions?: { retainTail?: boolean; maxChars?: number },
+): Promise<string> {
+  return retrySpawnWhileLocked(getFfprobeBinary(), () =>
+    runFfprobeOnce(filePath, argsWithoutInput, signal, stdoutOptions),
+  );
+}
+
+async function runFfprobeOnce(
   filePath: string,
   argsWithoutInput: string[],
   signal?: AbortSignal,
