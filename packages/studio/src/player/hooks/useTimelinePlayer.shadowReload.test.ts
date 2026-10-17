@@ -378,6 +378,41 @@ describe("shadow reload readiness and failure", () => {
     unmount(root);
   });
 
+  it("promotes a shadow whose runtime reports ready after 5s, inside the reload budget", () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const onPreviewReloadFailed = vi.fn();
+    const { getApi, gen, root } = beginReload({ onPreviewReloadFailed });
+    const booting: Record<string, unknown> = {
+      postMessage: () => {},
+      scrollTo: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    };
+    const shadow = makeFakeIframe(booting);
+    act(() => {
+      getApi().setShadowIframeNode(shadow);
+      getApi().onShadowIframeLoad(gen);
+      getApi().onShadowReadyChange(gen, true);
+    });
+
+    act(() => void vi.advanceTimersByTime(6000));
+    booting.__player = makeAdapterWindow().adapter;
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          source: booting as unknown as Window,
+          data: { source: "hf-preview", type: "state" },
+        }),
+      );
+      vi.advanceTimersByTime(100);
+    });
+
+    expect(getApi().iframeRef.current).toBe(shadow);
+    expect(onPreviewReloadFailed).not.toHaveBeenCalled();
+    unmount(root);
+  });
+
   it("keeps a slow shadow pending past 5s and fails it only once all budgets are spent", () => {
     vi.useFakeTimers();
     vi.spyOn(console, "error").mockImplementation(() => {});

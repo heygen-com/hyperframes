@@ -60,6 +60,8 @@ export interface UseTimelineSyncCallbacksParams {
   isCurrent?: (context?: number) => boolean;
   /** Fires when no adapter appeared within the wait window. */
   onLoadGiveUp?: (context?: number) => void;
+  /** The caller's own budget ends the wait through cancelPendingLoad; a 5 s silence does not. */
+  waitsUntilCancelled?: boolean;
 }
 
 /**
@@ -163,6 +165,7 @@ export function useTimelineSyncCallbacks({
   onAdapterReady = revealAndCommit,
   isCurrent,
   onLoadGiveUp,
+  waitsUntilCancelled = false,
 }: UseTimelineSyncCallbacksParams) {
   // Convert a runtime timeline message (from iframe postMessage) into TimelineElements
   const processTimelineMessage = useCallback(
@@ -341,12 +344,23 @@ export function useTimelineSyncCallbacks({
         if (!settled) {
           trySettle();
         }
+        if (waitsUntilCancelled) {
+          cancelAnimationFrame(retryFrame);
+          return;
+        }
         stopWaiting();
         if (!settled) onLoadGiveUp?.(context);
         revealIframe(iframeRef.current);
       }, 5000) as unknown as ReturnType<typeof setInterval>;
     },
-    [initializeAdapter, iframeRef, probeIntervalRef, applyPreviewAudioState, onLoadGiveUp],
+    [
+      initializeAdapter,
+      iframeRef,
+      probeIntervalRef,
+      applyPreviewAudioState,
+      onLoadGiveUp,
+      waitsUntilCancelled,
+    ],
   );
 
   const cancelPendingLoad = useCallback(() => {

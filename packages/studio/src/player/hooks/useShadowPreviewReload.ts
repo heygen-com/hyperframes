@@ -49,7 +49,12 @@ function isDocumentHidden(): boolean {
 
 type UseShadowPreviewReloadParams = Omit<
   UseTimelineSyncCallbacksParams,
-  "probeIntervalRef" | "onAdapterReady" | "getAdapter" | "isCurrent" | "onLoadGiveUp"
+  | "probeIntervalRef"
+  | "onAdapterReady"
+  | "getAdapter"
+  | "isCurrent"
+  | "onLoadGiveUp"
+  | "waitsUntilCancelled"
 > & {
   getAdapter: (overrideIframe?: HTMLIFrameElement | null) => PlaybackAdapter | null;
   /** Runs right after a shadow becomes the live iframe (iframeRef already points at it). */
@@ -249,6 +254,7 @@ export function useShadowPreviewReload({
     applyPreviewAudioState: () => {},
     onAdapterReady: markAdapterReady,
     isCurrent: isCurrentShadow,
+    waitsUntilCancelled: true,
   });
   cancelPendingLoadRef.current = cancelPendingLoad;
 
