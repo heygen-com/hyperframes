@@ -236,6 +236,7 @@ export interface CaptureSession {
   beginFrameIntervalMs: number;
   beginFrameHasDamageCount: number;
   beginFrameNoDamageCount: number;
+  beginFrameSeekPresented?: boolean;
   /** Optional producer config — when set, overrides module-level env var constants. */
   config?: Partial<EngineConfig>;
   /** True if running on SwiftShader (detected at init). Undefined before init. */
@@ -3995,6 +3996,17 @@ async function captureFrameSurface(
 
   if (session.captureMode === "beginframe") {
     const frameTimeTicks = session.beginFrameTimeTicks + frameIndex * session.beginFrameIntervalMs;
+    if (!session.beginFrameSeekPresented) {
+      // A session's first capture can return the frame composited during init instead of
+      // this seek, so display the seek once at a tick between the probe and this capture.
+      const client = await getCdpSession(page);
+      await client.send("HeadlessExperimental.beginFrame", {
+        frameTimeTicks: frameTimeTicks - session.beginFrameIntervalMs / 2,
+        interval: session.beginFrameIntervalMs,
+        noDisplayUpdates: false,
+      });
+      session.beginFrameSeekPresented = true;
+    }
     const result = await beginFrameCapture(
       page,
       options,
