@@ -98,6 +98,29 @@ describe("loadCompositions external hosts", () => {
     expect(moduleScript?.textContent).toContain('"https://example.com/blocks/blk/blk.html"');
   });
 
+  it("mounts import maps with blocked entries and rebases only usable addresses", async () => {
+    appendExternalHost("https://example.com/blocks/blk/blk.html", "blk");
+    const compositionHtml =
+      '<div data-composition-id="blk"><script type="importmap">' +
+      '{"imports":{"ok":"./ok.js","blocked":null,"number":17},"scopes":{"./lib/":{"ok":"./scoped.js","blocked":null}}}' +
+      "</scr" +
+      'ipt><script type="module">import "ok";</scr' +
+      "ipt></div>";
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
+    const { injectedScripts } = await loadFixture();
+    const map = injectedScripts.find((script) => script.type === "importmap");
+    expect(JSON.parse(map?.textContent || "null")).toEqual({
+      imports: { ok: "https://example.com/blocks/blk/ok.js", blocked: null, number: null },
+      scopes: {
+        "https://example.com/blocks/blk/lib/": {
+          ok: "https://example.com/blocks/blk/scoped.js",
+          blocked: null,
+        },
+      },
+    });
+    expect(injectedScripts.some((script) => script.type === "module")).toBe(true);
+  });
+
   it("fetches and mounts external composition HTML", async () => {
     const host = appendExternalHost("https://example.com/comp.html", "scene-1");
 

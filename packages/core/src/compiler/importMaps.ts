@@ -1,15 +1,30 @@
+type SpecifierMap = Record<string, string | null>;
+
 /** The subset of an import map a composition can declare. */
 export interface ImportMap {
-  imports?: Record<string, string>;
-  scopes?: Record<string, Record<string, string>>;
+  imports?: SpecifierMap;
+  scopes?: Record<string, SpecifierMap>;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isScopeMap(value: unknown): value is Record<string, Record<string, unknown>> {
+  return isRecord(value) && Object.values(value).every(isRecord);
 }
 
 const rebaseEntries = (
-  entries: Record<string, string> | undefined,
+  entries: Record<string, unknown> | undefined,
   rebase: (url: string) => string,
-): Record<string, string> | undefined =>
+): SpecifierMap | undefined =>
   entries &&
-  Object.fromEntries(Object.entries(entries).map(([specifier, url]) => [specifier, rebase(url)]));
+  Object.fromEntries(
+    Object.entries(entries).map(([specifier, url]) => [
+      specifier,
+      typeof url === "string" ? rebase(url) : null,
+    ]),
+  );
 
 /**
  * Parses a mounted composition's import map, rebasing each address the way its `src`/`href`
@@ -22,8 +37,10 @@ export function parseImportMap(json: string, rebase: (url: string) => string): I
   } catch {
     return null;
   }
-  if (!parsed || typeof parsed !== "object") return null;
-  const { imports, scopes } = parsed as ImportMap;
+  if (!isRecord(parsed)) return null;
+  const { imports, scopes } = parsed;
+  if (imports !== undefined && !isRecord(imports)) return null;
+  if (scopes !== undefined && !isScopeMap(scopes)) return null;
   return {
     imports: rebaseEntries(imports, rebase),
     scopes:
@@ -37,14 +54,16 @@ export function parseImportMap(json: string, rebase: (url: string) => string): I
   };
 }
 
-function mergeEntries(
-  into: Record<string, string>,
-  from: Record<string, string> | undefined,
-  where: string,
-): void {
+function mergeEntries(into: SpecifierMap, from: SpecifierMap | undefined, where: string): void {
   for (const [specifier, url] of Object.entries(from ?? {})) {
-    if (!(specifier in into)) into[specifier] = url;
-    else if (into[specifier] !== url) {
+    if (!Object.hasOwn(into, specifier)) {
+      Object.defineProperty(into, specifier, {
+        value: url,
+        enumerable: true,
+        configurable: true,
+        writable: true,
+      });
+    } else if (into[specifier] !== url) {
       console.warn(
         `[HyperFrames] import map conflict for "${specifier}"${where}: keeping ${into[specifier]}, ignoring ${url}.`,
       );
@@ -71,7 +90,9 @@ export function mergeImportMapsIntoDocument(doc: Document, maps: ImportMap[]): v
   for (const map of maps) {
     mergeEntries(imports, map.imports, "");
     for (const [prefix, entries] of Object.entries(map.scopes ?? {})) {
-      mergeEntries((scopes[prefix] ??= {}), entries, ` in scope ${prefix}`);
+      const scope = (Object.hasOwn(scopes, prefix) ? scopes[prefix] : undefined) ?? {};
+      Object.defineProperty(scopes, prefix, { value: scope, enumerable: true });
+      mergeEntries(scope, entries, ` in scope ${prefix}`);
     }
   }
   if (!el) {
