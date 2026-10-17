@@ -57,11 +57,18 @@ npx skills add heygen-com/hyperframes
 >
 > `skills add` resolves the skills.sh registry blob, which can lag `main` by hours. `npx hyperframes skills update` installs from the current `main`, so reach for it when you need the newest copy of a skill.
 
+For Neotask, install the skills from [Neotask Construct](https://construct.neotask.ai/u/heygen). The `hyperframes` and `hyperframes-*` skills keep their names; the others take a `heygen-` prefix:
+
+```bash
+neotask construct install hyperframes
+neotask construct install heygen-product-launch-video
+```
+
 Try a prompt like:
 
 > Using `/hyperframes`, create a 10-second product intro with a fade-in title, a background video, and subtle background music.
 
-The skills teach agents the HyperFrames production loop: plan the video, write valid HTML, wire seekable animations, add media, lint, preview, and render. They work with Claude Code, Codex, Cursor, Gemini CLI, IBM Bob, and other coding agents that support skills.
+The skills teach agents the HyperFrames production loop: plan the video, write valid HTML, wire seekable animations, add media, lint, preview, and render. They work with Claude Code, Codex, Cursor, Gemini CLI, IBM Bob, Neotask, and other coding agents that support skills.
 
 ## Skills
 
