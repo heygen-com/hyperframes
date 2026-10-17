@@ -1,6 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
@@ -16,46 +23,82 @@ test("frame worker documents the approved video-hoist contract", () => {
   assert.match(instructions, /Audio remains orchestrator-owned/i);
 });
 
-test("assemble hoists an approved timed frame video to the host root", () => {
-  const project = mkdtempSync(join(tmpdir(), "hf-frame-video-"));
-  mkdirSync(join(project, "compositions"));
-  const framePath = join(project, "compositions", "frame-1.html");
-  writeFileSync(
-    join(project, "STORYBOARD.md"),
-    "---\nformat: 16:9\n---\n\n## Frame 1 — Demo\n- status: built\n- duration: 2s\n- src: compositions/frame-1.html\n",
-  );
-  writeFileSync(
-    framePath,
-    `<html><body><div id="root" data-composition-id="frame-1" data-width="1920" data-height="1080"><video data-frame-video="approved" data-frame-video-x="0" data-frame-video-y="0" data-frame-video-width="1920" data-frame-video-height="1080" src="https://cdn.example/clip.mp4" poster="poster.png" preload="auto" muted playsinline loop style="background:url(https://evil.example/x)" nonce="unsafe" onerror="alert(1)" srcdoc="<script>alert(2)</script>" data-start="0.25" data-duration="1.5" data-media-start="12.75" data-track-index="7"></video></div><script>window.__timelines = {}; window.__timelines["frame-1"] = gsap.timeline();</script></body></html>`,
-  );
+for (const missingDimensions of [false, true]) {
+  test(`assemble preserves approved video across retries (missing dimensions: ${missingDimensions})`, () => {
+    const project = mkdtempSync(join(tmpdir(), "hf-frame-video-"));
+    mkdirSync(join(project, "compositions"));
+    const framePath = join(project, "compositions", "frame-1.html");
+    writeFileSync(
+      join(project, "STORYBOARD.md"),
+      "---\nformat: 16:9\n---\n\n## Frame 1 — Demo\n- status: built\n- duration: 2s\n- src: compositions/frame-1.html\n",
+    );
+    writeFileSync(
+      framePath,
+      `<html><body><div id="root" data-composition-id="frame-1" data-width="1920" data-height="1080"><video data-frame-video="approved" data-frame-video-x="0" data-frame-video-y="0" data-frame-video-width="1920" data-frame-video-height="1080" src="https://cdn.example/clip.mp4" poster="poster.png" preload="auto" muted playsinline loop style="background:url(https://evil.example/x)" nonce="unsafe" onerror="alert(1)" srcdoc="<script>alert(2)</script>" data-start="0.25" data-duration="1.5" data-media-start="12.75" data-track-index="7"></video></div><script>window.__timelines = {}; window.__timelines["frame-1"] = gsap.timeline();</script></body></html>`,
+    );
 
-  const result = spawnSync(
-    process.execPath,
-    [join(skillDir, "scripts", "assemble-index.mjs"), "--hyperframes", project],
-    { encoding: "utf8" },
-  );
-  assert.equal(result.status, 0, result.stderr);
-  const index = readFileSync(join(project, "index.html"), "utf8");
-  const frame = readFileSync(framePath, "utf8");
-  assert.match(index, /data-start="0\.25"/);
-  assert.match(index, /data-duration="1\.5"/);
-  assert.match(index, /data-media-start="12\.75"/);
-  assert.match(index, /data-track-index="1007"/);
-  assert.match(index, /src="https:\/\/cdn\.example\/clip\.mp4"/);
-  assert.match(index, /poster="poster\.png"/);
-  assert.match(index, /preload="auto"/);
-  assert.match(index, /\smuted(?:\s|>)/);
-  assert.match(index, /\splaysinline(?:\s|>)/);
-  assert.match(index, /\sloop(?:\s|>)/);
-  assert.doesNotMatch(index, /onerror=/i);
-  assert.doesNotMatch(index, /srcdoc=/i);
-  assert.doesNotMatch(index, /nonce=/i);
-  assert.match(
-    index,
-    /style="position:absolute;left:0px;top:0px;width:1920px;height:1080px;object-fit:cover"/,
-  );
-  assert.doesNotMatch(frame, /<video\b/i);
-});
+    const originalFrame = readFileSync(framePath, "utf8");
+    if (missingDimensions) {
+      writeFileSync(framePath, originalFrame.replace(' data-width="1920" data-height="1080"', ""));
+    }
+    writeFileSync(join(project, "audio_meta.json"), JSON.stringify({ bgm_pending: true }));
+    const pending = spawnSync(
+      process.execPath,
+      [join(skillDir, "scripts", "assemble-index.mjs"), "--hyperframes", project],
+      { encoding: "utf8" },
+    );
+    assert.notEqual(pending.status, 0);
+    assert.match(pending.stderr, /bgm_pending/);
+    assert.equal(readFileSync(framePath, "utf8"), originalFrame);
+    unlinkSync(join(project, "audio_meta.json"));
+    const result = spawnSync(
+      process.execPath,
+      [join(skillDir, "scripts", "assemble-index.mjs"), "--hyperframes", project],
+      { encoding: "utf8" },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    const index = readFileSync(join(project, "index.html"), "utf8");
+    const frame = readFileSync(framePath, "utf8");
+    assert.match(index, /data-start="0\.25"/);
+    assert.match(index, /data-duration="1\.5"/);
+    assert.match(index, /data-media-start="12\.75"/);
+    assert.match(index, /data-track-index="1007"/);
+    assert.match(index, /src="https:\/\/cdn\.example\/clip\.mp4"/);
+    assert.match(index, /poster="poster\.png"/);
+    assert.match(index, /preload="auto"/);
+    assert.match(index, /\smuted(?:\s|>)/);
+    assert.match(index, /\splaysinline(?:\s|>)/);
+    assert.match(index, /\sloop(?:\s|>)/);
+    assert.doesNotMatch(index, /onerror=/i);
+    assert.doesNotMatch(index, /srcdoc=/i);
+    assert.doesNotMatch(index, /nonce=/i);
+    assert.match(
+      index,
+      /style="position:absolute;left:0px;top:0px;width:1920px;height:1080px;object-fit:cover"/,
+    );
+    assert.equal(frame, originalFrame);
+    const assemblySrc = index.match(/data-composition-src="([^"]+)"/)[1];
+    assert.notEqual(assemblySrc, "compositions/frame-1.html");
+    assert.doesNotMatch(readFileSync(join(project, assemblySrc), "utf8"), /<video\b/i);
+    const repeat = spawnSync(
+      process.execPath,
+      [join(skillDir, "scripts", "assemble-index.mjs"), "--hyperframes", project],
+      { encoding: "utf8" },
+    );
+    assert.equal(repeat.status, 0, repeat.stderr);
+    assert.equal(readFileSync(join(project, "index.html"), "utf8"), index);
+    assert.equal(readFileSync(framePath, "utf8"), originalFrame);
+
+    writeFileSync(framePath, originalFrame.replace("clip.mp4", "edited.mp4"));
+    const edited = spawnSync(
+      process.execPath,
+      [join(skillDir, "scripts", "assemble-index.mjs"), "--hyperframes", project],
+      { encoding: "utf8" },
+    );
+    assert.equal(edited.status, 0, edited.stderr);
+    assert.match(readFileSync(join(project, "index.html"), "utf8"), /edited\.mp4/);
+  });
+}
 
 test("assemble preserves approved-video geometry through sanitized host CSS", () => {
   const project = mkdtempSync(join(tmpdir(), "hf-frame-video-layout-"));
@@ -87,7 +130,9 @@ test("assemble preserves approved-video geometry through sanitized host CSS", ()
   assert.doesNotMatch(index, /position:fixed/);
   assert.doesNotMatch(index, /data-frame-video-(?:x|y|width|height|fit)=/);
   assert.doesNotMatch(index, /onerror=|srcdoc=|nonce=/i);
-  assert.doesNotMatch(readFileSync(framePath, "utf8"), /<video\b/i);
+  assert.match(readFileSync(framePath, "utf8"), /<video\b/i);
+  const assemblySrc = index.match(/data-composition-src="([^"]+)"/)[1];
+  assert.doesNotMatch(readFileSync(join(project, assemblySrc), "utf8"), /<video\b/i);
 });
 
 test("rejects partial or unsafe approved-video layout geometry", () => {

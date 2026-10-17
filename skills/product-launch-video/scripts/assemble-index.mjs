@@ -11,16 +11,6 @@
 // document order. Transitions are NOT written here — the transitions injector
 // mutates this file afterward (data-start/duration/track-index + GSAP).
 //
-// Track lanes. Same-track time-overlap is this workflow's own assembly convention,
-// not a framework rule: the render never reads data-track-index, and no lint rule
-// checks overlap (timeline_track_too_dense counts elements per lane for readability).
-// The convention exists because the frame injector below ping-pongs 0/1 for overlaps:
-//   1      frame sub-comp clips (sequential; the injector 0/1-ping-pongs for overlaps)
-//   2      captions sub-comp clip (full-duration overlay, on top of frames)
-//   10     per-frame voice <audio>
-//   11     BGM <audio>
-//   20+i   SFX <audio> (one lane each)
-//
 // audio_meta.json contract (produced by audio.mjs; OPTIONAL — absent ⇒ silent
 // video, frames only). Durations come from STORYBOARD (audio sync-durations
 // writes them), NOT from here; this file carries only media PATHS, keyed by
@@ -34,7 +24,7 @@
 //         [--audio-meta audio_meta.json]. On disk: each built frame's src html,
 //         capture/{assets,assets/videos,screenshots}/<basename> for staging, compositions/captions.html.
 // Writes: <project>/index.html  +  stages assets/<basename>  +  (guard ① below)
-//         repairs a frame file in place when its root is missing data-width/height.
+//         repairs missing root dimensions and writes video-free <src>.assembled.html siblings.
 //
 // Pre-assembly frame guards (run in the same pass that reads each frame, so common
 // `lint` failures surface HERE instead of after assembly + a wasted render):
@@ -52,7 +42,7 @@
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { basename, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { parseStoryboard } from "./lib/storyboard.mjs";
 import { parseFormat } from "./lib/dimensions.mjs";
 import { stageAssets } from "./lib/assets.mjs";
@@ -283,10 +273,24 @@ function hoistApprovedVideos(html, label) {
   return { html: repaired, videos, errors };
 }
 
-// Returns { errors: string[], repairedHtml: string|null, repairNote: string|null }.
+// Only dimension repairs are persisted; the video-free HTML is an assembly output.
 function guardFrame(html, label) {
   const errors = [];
-  const originalHtml = html;
+  let repairedHtml = null;
+  let repairNote = null;
+  const root = findRootTag(html);
+  if (root) {
+    const needW = !attrPresent(root.attrs, "data-width");
+    const needH = !attrPresent(root.attrs, "data-height");
+    if (needW || needH) {
+      const inject =
+        (needW ? ` data-width="${WIDTH}"` : "") + (needH ? ` data-height="${HEIGHT}"` : "");
+      const newTag = root.full.replace(/(\/?>)$/, `${inject}$1`);
+      repairedHtml = html.slice(0, root.start) + newTag + html.slice(root.end);
+      html = repairedHtml;
+      repairNote = `${label}: injected${needW ? " data-width" : ""}${needH ? " data-height" : ""} (${WIDTH}×${HEIGHT}) on the root — was missing (would lint root_missing_dimensions)`;
+    }
+  }
   const approved = hoistApprovedVideos(html, label);
   html = approved.html;
   errors.push(...approved.errors);
@@ -349,23 +353,7 @@ function guardFrame(html, label) {
     }
   }
 
-  // ① auto-repair: ensure the root carries data-width / data-height.
-  let repairedHtml = approved.html !== originalHtml ? approved.html : null;
-  let repairNote = null;
-  const root = findRootTag(html);
-  if (root) {
-    const needW = !attrPresent(root.attrs, "data-width");
-    const needH = !attrPresent(root.attrs, "data-height");
-    if (needW || needH) {
-      const inject =
-        (needW ? ` data-width="${WIDTH}"` : "") + (needH ? ` data-height="${HEIGHT}"` : "");
-      const newTag = root.full.replace(/(\/?>)$/, `${inject}$1`);
-      repairedHtml = html.slice(0, root.start) + newTag + html.slice(root.end);
-      repairNote = `${label}: injected${needW ? " data-width" : ""}${needH ? " data-height" : ""} (${WIDTH}×${HEIGHT}) on the root — was missing (would lint root_missing_dimensions)`;
-    }
-  }
-
-  return { errors, repairedHtml, repairNote, hoistedVideos: approved.videos };
+  return { errors, repairedHtml, repairNote, assembledHtml: html, hoistedVideos: approved.videos };
 }
 
 // ---------- resolve mountable frames in document order ----------
@@ -430,6 +418,10 @@ for (const f of manifest.frames) {
     compId,
     durationSeconds: r3(f.durationSeconds),
     hoistedVideos: guard.hoistedVideos,
+    assembledHtml: guard.assembledHtml,
+    assemblySrc: guard.hoistedVideos.length
+      ? join(dirname(f.src), `${basename(f.src)}.assembled.html`)
+      : f.src,
   });
 }
 if (frameErrors.length) {
@@ -449,6 +441,22 @@ for (const m of mounted) {
   acc += m.durationSeconds;
 }
 const TOTAL = r3(acc);
+
+// Sibling outputs preserve relative asset URLs without removing videos from editable sources.
+const assemblyMarker =
+  "<!-- Generated by assemble-index.mjs; edit the storyboard frame source. -->\n";
+for (const m of mounted) {
+  if (m.assemblySrc === m.frame.src) continue;
+  const assemblyPath = join(hyperframesDir, m.assemblySrc);
+  try {
+    if (!readFileSync(assemblyPath, "utf8").startsWith(assemblyMarker)) {
+      die(`refusing to overwrite non-generated frame ${m.assemblySrc}`);
+    }
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  writeFileSync(assemblyPath, assemblyMarker + m.assembledHtml);
+}
 
 // ---------- duration expectation (advisory) ----------
 // Frontmatter `duration:` carries the brief's rough length expectation
@@ -510,7 +518,7 @@ for (const m of mounted) {
     `        id="el-${m.compId}"`,
     `        class="scene"`,
     `        data-composition-id="${m.compId}"`,
-    `        data-composition-src="${m.frame.src}"`,
+    `        data-composition-src="${m.assemblySrc}"`,
     `        data-start="${m.start}"`,
     `        data-duration="${m.durationSeconds}"`,
     `        data-track-index="1"`,
