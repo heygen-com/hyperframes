@@ -51,7 +51,9 @@ export async function loadAllItems(
   const baseUrl = options.baseUrl ?? DEFAULT_REGISTRY_URL;
   const warn = options.onWarn ?? defaultWarn;
   const results = await Promise.allSettled(
-    entries.map((e) => fetchItemManifest(e.name, e.type, baseUrl)),
+    entries.map((e) =>
+      fetchItemManifest(e.name, e.type, baseUrl, { skipCache: options.skipCache }),
+    ),
   );
   const items: RegistryItem[] = [];
   results.forEach((r, i) => {
@@ -164,7 +166,9 @@ export async function resolveItemWithDependencies(
       );
     }
 
-    const pending = fetchItemManifest(registryEntry.name, registryEntry.type, options.baseUrl);
+    const pending = fetchItemManifest(registryEntry.name, registryEntry.type, options.baseUrl, {
+      skipCache: options.skipCache,
+    });
     itemCache.set(itemName, pending);
     return pending;
   };
