@@ -49,8 +49,8 @@ export async function createContactSheet(
 
   // Read first image to determine aspect ratio
   const firstMeta = await sharp(files[0]!).metadata();
-  const srcW = firstMeta.width || 1920;
-  const srcH = firstMeta.height || 1080;
+  const srcW = firstMeta.autoOrient.width || 1920;
+  const srcH = firstMeta.autoOrient.height || 1080;
 
   // Scale to target cell width, maintain aspect ratio
   const scale = cellWidth / srcW;
@@ -72,6 +72,7 @@ export async function createContactSheet(
 
     // Resize image to cell size — contain keeps full image visible (no cropping)
     const resized = await sharp(files[i]!)
+      .autoOrient()
       .resize(cellW, cellH, { fit: "contain", background: { r: 26, g: 26, b: 26 } })
       .toBuffer();
 
