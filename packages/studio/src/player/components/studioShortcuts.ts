@@ -5,6 +5,7 @@ export const STUDIO_PLAIN_KEYS = {
   record: "r",
   addKeyframe: "k",
   audioGain: "g",
+  zoomToSelection: "z",
 } as const;
 
 export interface ShortcutHint {
@@ -58,6 +59,7 @@ export const DEFAULT_SHORTCUT_SECTIONS: readonly ShortcutSection[] = [
       { key: "⇧Click", label: "Razor tool: split all tracks" },
       { key: "[", label: "Select clips starting before the playhead" },
       { key: "]", label: "Select clips running at or after the playhead" },
+      { key: hintKey(STUDIO_PLAIN_KEYS.zoomToSelection), label: "Zoom to selected clips" },
       { key: "⌘G", label: "Group elements" },
       { key: "⌘⇧G", label: "Ungroup" },
       { key: "Del", label: "Delete selected element (no keyframe selected)" },

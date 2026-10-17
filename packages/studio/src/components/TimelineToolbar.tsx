@@ -34,6 +34,7 @@ import type { DomEditSelection } from "./editor/domEditingTypes";
 import { canSplitElement } from "../utils/timelineElementSplit";
 import { useAudioMetersVisible } from "../utils/audioMeterVisibility";
 import { LinkedSelectionToggle } from "./LinkedSelectionToggle";
+import { ZoomToSelectionButton } from "./ZoomToSelectionButton";
 import { useProjectHasAudio } from "../utils/audioMeterMath";
 import { canAddBeatAt, addBeatAtCompositionTime } from "../utils/beatEditActions";
 import { isTypingTarget } from "../utils/typingTarget";
@@ -502,6 +503,7 @@ export const TimelineToolbar = memo(function TimelineToolbar({
               <ArrowsOutLineHorizontal size={16} aria-hidden="true" />
             </button>
           </Tooltip>
+          <ZoomToSelectionButton />
           <Tooltip label="Zoom out">
             <button
               type="button"
