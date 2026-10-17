@@ -38,6 +38,7 @@ import {
   resolveProxies,
 } from "@hyperframes/studio-server/proxy-transcoder";
 import { rectToBbox } from "./checkTypes.js";
+import { registerWebglCanvases } from "./webglCanvasRegistry.js";
 import type {
   AnchoredLayoutIssue,
   CheckAnchor,
@@ -225,6 +226,7 @@ export async function runBrowserCheck(
       onBrowserReady: deadline?.start,
       beforeNavigate: async (page) => {
         wireRuntimeListeners(page, drafts, () => currentTime);
+        await page.evaluateOnNewDocument(registerWebglCanvases);
         await deadline?.preparePage(page);
       },
     });
@@ -1453,6 +1455,7 @@ const LAYOUT_ISSUE_CODES: readonly LayoutIssueCode[] = [
   "visibility_escapes_segment",
   "text_occluded",
   "video_alpha_unread",
+  "webgl_colour_at_zero_alpha",
   "text_not_painted",
   "caption_zone_collision",
   "frame_out_of_frame",

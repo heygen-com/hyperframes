@@ -1546,6 +1546,41 @@
     return issues;
   }
 
+  // A transparent premultiplied WebGL canvas cannot hold colour at alpha 0; GPUs disagree on it.
+  function zeroAlphaColourIssues(time) {
+    const issues = [];
+    for (const [canvas, gl] of window.__hfWebglCanvases || []) {
+      const attributes = gl.getContextAttributes();
+      if (!canvas.isConnected || !attributes?.alpha || !attributes.premultipliedAlpha) continue;
+      if (!isVisibleElement(canvas, 0.05) || gl.isContextLost()) continue;
+      const { drawingBufferWidth: width, drawingBufferHeight: height } = gl;
+      if (!width || !height) continue;
+      const pixels = new Uint8Array(width * height * 4);
+      gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+      let coloured = 0;
+      for (let at = 0; at < pixels.length; at += 4) {
+        if (pixels[at + 3] === 0 && Math.max(pixels[at], pixels[at + 1], pixels[at + 2]) > 3)
+          coloured++;
+      }
+      const share = coloured / (width * height);
+      if (coloured < 64 || share < 0.001) continue;
+      issues.push({
+        code: "webgl_colour_at_zero_alpha",
+        severity: "warning",
+        time,
+        selector: uniqueSelectorFor(canvas),
+        message:
+          `${percent(share)} of this transparent WebGL canvas holds colour with alpha 0, such as an additive glow. ` +
+          "Some GPUs show it and others drop it, so it can vanish from a preview while the export shows it.",
+        fixHint:
+          "Draw the glow on an opaque canvas (alpha: false), or write alpha along with the colour " +
+          "(for example blendSrcAlpha One instead of Zero).",
+        rect: toRect(canvas.getBoundingClientRect()),
+      });
+    }
+    return issues;
+  }
+
   // pointer-events:none hides elements from elementFromPoint — both probed text AND occluders.
   function restoreHitTesting(root) {
     const restores = [];
@@ -2373,6 +2408,7 @@
     }
     markLostSiblingWords(matteResults);
     issues.push(...unreadVideoIssues(time));
+    issues.push(...zeroAlphaColourIssues(time));
 
     issues.push(...containerOverflowIssues(root, time, tolerance));
     issues.push(...contentOverlapIssues(root, time));

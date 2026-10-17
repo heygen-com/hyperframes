@@ -891,6 +891,14 @@ transparent. A fully transparent frame is treated as unread on purpose, since a
 failed draw looks the same; mark text that sits under a cutout before its subject
 enters with `data-layout-allow-occlusion`.
 
+A transparent WebGL canvas (`alpha: true`, `premultipliedAlpha: true`, the
+three.js default with a transparent clear colour) cannot hold colour where its
+alpha is 0, such as an additive glow drawn with `blendSrcAlpha` Zero. GPUs
+disagree on those pixels: some show them, others drop them, so the glow can
+vanish from a preview while the export shows it. The audit reads each such canvas
+and adds a `webgl_colour_at_zero_alpha` warning when it holds them. Draw the glow
+on an opaque canvas (`alpha: false`), or write alpha along with the colour.
+
 Contrast failures are errors, and each one reports the sampled foreground and
 background colours, the measured ratio against the required one, and a
 compliant colour you could use instead.

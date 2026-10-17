@@ -19,6 +19,7 @@ export type LayoutIssueCode =
   | "visibility_escapes_segment"
   | "text_occluded"
   | "video_alpha_unread"
+  | "webgl_colour_at_zero_alpha"
   | "text_not_painted"
   | "caption_zone_collision"
   | "frame_out_of_frame"

@@ -994,6 +994,7 @@ function fakeConsoleMessage(type: string, text: string) {
 function fakePage() {
   return Object.assign(Object.create(null), {
     on: vi.fn(),
+    evaluateOnNewDocument: vi.fn(),
     addScriptTag: vi.fn(async ({ content }: { content: string }) => {
       window.eval(content);
     }),
