@@ -264,7 +264,12 @@ export { useMarqueeGestures } from "./components/editor/marqueeCommit";
 export type { MarqueeGestures, MarqueeGesturesDeps } from "./components/editor/marqueeCommit";
 export { MarqueeOverlay } from "./components/editor/MarqueeOverlay";
 export type { MarqueeOverlayProps } from "./components/editor/MarqueeOverlay";
-export type { Rect as MarqueeRect } from "./utils/marqueeGeometry";
+export type {
+  Rect as MarqueeRect,
+  MarqueeBand,
+  MarqueeSelectionMode,
+} from "./utils/marqueeGeometry";
+export { resolveMarqueeMode } from "./utils/marqueeGeometry";
 
 export { buildStudioTools } from "./webmcp/useStudioAgentTools";
 export type { StudioAgentToolsDeps } from "./webmcp/useStudioAgentTools";

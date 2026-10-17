@@ -13,3 +13,23 @@ export function rectsOverlap(a: Rect, b: Rect): boolean {
     a.top + a.height > b.top
   );
 }
+
+export type MarqueeSelectionMode = "replace" | "add" | "subtract";
+
+export interface MarqueeBand extends Rect {
+  mode: MarqueeSelectionMode;
+}
+
+export interface MarqueeModifiers {
+  shiftKey: boolean;
+  altKey: boolean;
+}
+
+export function resolveMarqueeMode(
+  modifiers: MarqueeModifiers,
+  base: MarqueeSelectionMode = "replace",
+): MarqueeSelectionMode {
+  if (modifiers.altKey) return "subtract";
+  if (modifiers.shiftKey) return "add";
+  return base;
+}

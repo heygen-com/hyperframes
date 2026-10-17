@@ -226,18 +226,26 @@ export const TimelineCanvas = memo(function TimelineCanvas() {
       />
 
       {/* Marquee (rubber-band) multi-select rectangle — mirrors the canvas
-          MarqueeOverlay look: semi-transparent accent fill + dashed border. */}
+          MarqueeOverlay look: dashed accent border, danger-coloured while subtracting. */}
       {props.marqueeRect && (
         <div
           aria-hidden="true"
+          data-marquee-mode={props.marqueeRect.mode}
           className="absolute pointer-events-none"
           style={{
             left: props.marqueeRect.left,
             top: props.marqueeRect.top,
             width: props.marqueeRect.width,
             height: props.marqueeRect.height,
-            background: "var(--timeline-accent-fill)",
-            border: "1px dashed var(--timeline-accent-border)",
+            ...(props.marqueeRect.mode === "subtract"
+              ? {
+                  background: "var(--timeline-danger-fill)",
+                  border: "1px dashed var(--timeline-danger)",
+                }
+              : {
+                  background: "var(--timeline-accent-fill)",
+                  border: "1px dashed var(--timeline-accent-border)",
+                }),
             borderRadius: 2,
             zIndex: 70,
           }}

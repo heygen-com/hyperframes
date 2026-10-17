@@ -16,7 +16,7 @@ import type { TimelineEmptyState } from "./TimelineEmptyState";
 import type { TimelineProps } from "./TimelineTypes";
 import type { TimelineRangeSelection } from "./timelineEditing";
 import type { TimelineDropPlacement } from "./timelineCallbacks";
-import type { Rect } from "../../utils/marqueeGeometry";
+import type { MarqueeBand } from "../../utils/marqueeGeometry";
 import type { ResizingClipState } from "./useTimelineClipDrag";
 import type { TimelineLaneBaseProps } from "./timelineLaneProps";
 import type { TimelineLaneGapStrips } from "./useTimelineGapHighlights";
@@ -49,7 +49,7 @@ export type TimelineCanvasState = Omit<
   effectiveDuration: number;
   majorTickInterval: number;
   rangeSelection: TimelineRangeSelection | null;
-  marqueeRect: Rect | null;
+  marqueeRect: MarqueeBand | null;
   resizingClip: ResizingClipState | null;
   isScrubbing: boolean;
   playheadRef: React.RefObject<HTMLDivElement | null>;

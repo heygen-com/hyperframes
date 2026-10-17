@@ -137,7 +137,7 @@ describe("useDomSelection marquee", () => {
   it("announces every marquee'd element to the timeline, anchored on the primary", () => {
     const { harness, card, chip } = renderCardAndChip();
 
-    act(() => harness.current().applyMarqueeSelection([card, chip], false));
+    act(() => harness.current().applyMarqueeSelection([card, chip], "replace"));
 
     expect(harness.current().domEditGroupSelections).toHaveLength(2);
     expect(harness.timeline.setTimelineSelectionSet).toHaveBeenCalledWith(
@@ -165,7 +165,7 @@ describe("useDomSelection marquee", () => {
         .current()
         .applyMarqueeSelection(
           [makeSelection("Canvas only", canvasOnly), makeSelection("Card", card)],
-          false,
+          "replace",
         ),
     );
 
@@ -207,11 +207,11 @@ describe("useDomSelection additive", () => {
   ] as const)("publishes the smaller set when %s", (_, shrink) => {
     const { harness, card, chip } = renderCardAndChip();
 
-    act(() => harness.current().applyMarqueeSelection([card, chip], false));
+    act(() => harness.current().applyMarqueeSelection([card, chip], "replace"));
     act(() =>
       shrink === "toggle"
         ? harness.current().applyDomSelection(chip, { additive: true })
-        : harness.current().applyMarqueeSelection([card], false),
+        : harness.current().applyMarqueeSelection([card], "replace"),
     );
 
     expect(harness.current().domEditGroupSelections).toHaveLength(1);
@@ -225,7 +225,7 @@ describe("useDomSelection additive", () => {
   it("keeps the live set when a single member is re-announced", () => {
     const { harness, card, chip } = renderCardAndChip();
 
-    act(() => harness.current().applyMarqueeSelection([card, chip], false));
+    act(() => harness.current().applyMarqueeSelection([card, chip], "replace"));
     act(() => harness.current().applyDomSelection(chip));
 
     expect(harness.timeline.setTimelineSelectionSet).toHaveBeenLastCalledWith(
@@ -387,22 +387,103 @@ it("reports unchanged marquee membership and one new additive member", () => {
     act(() => harness.current().applyDomSelection(card));
     let receipt!: ReturnType<ReturnType<typeof useDomSelection>["applyMarqueeSelection"]>;
     act(() => {
-      receipt = harness.current().applyMarqueeSelection([chip], true);
+      receipt = harness.current().applyMarqueeSelection([chip], "add");
     });
     expect(receipt).toEqual({ changed: true, count: 2 });
     act(() => {
-      receipt = harness.current().applyMarqueeSelection([card, chip], true);
+      receipt = harness.current().applyMarqueeSelection([card, chip], "add");
     });
     expect(receipt).toEqual({ changed: false, count: 2 });
     act(() => {
-      receipt = harness.current().applyMarqueeSelection([], true);
+      receipt = harness.current().applyMarqueeSelection([], "add");
     });
     expect(receipt).toEqual({ changed: false, count: 2 });
     act(() => {
-      receipt = harness.current().applyMarqueeSelection([], false);
+      receipt = harness.current().applyMarqueeSelection([], "replace");
     });
     expect(receipt).toEqual({ changed: true, count: 0 });
   } finally {
     harness.cleanup();
   }
+});
+
+describe("useDomSelection subtract", () => {
+  it("drops the covered members and announces the smaller set", () => {
+    const { harness, card, chip } = renderCardAndChip();
+    try {
+      act(() => harness.current().applyMarqueeSelection([card, chip], "replace"));
+      let receipt!: ReturnType<ReturnType<typeof useDomSelection>["applyMarqueeSelection"]>;
+      act(() => {
+        receipt = harness.current().applyMarqueeSelection([chip], "subtract");
+      });
+
+      expect(receipt).toEqual({ changed: true, count: 1 });
+      expect(harness.current().domEditGroupSelections).toHaveLength(1);
+      expect(harness.current().domEditSelection?.element).toBe(card.element);
+      expect(harness.timeline.setTimelineSelectionSet).toHaveBeenLastCalledWith(new Set(["card"]));
+      expect(harness.timeline.setSelectedTimelineElementId).toHaveBeenLastCalledWith("card", {
+        preserveSet: true,
+      });
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it("re-anchors on a survivor when the primary is subtracted", () => {
+    const { harness, card, chip } = renderCardAndChip();
+    try {
+      act(() => harness.current().applyMarqueeSelection([card, chip], "replace"));
+      expect(harness.current().domEditSelection?.element).toBe(card.element);
+
+      act(() => harness.current().applyMarqueeSelection([card], "subtract"));
+
+      expect(harness.current().domEditSelection?.element).toBe(chip.element);
+      expect(harness.current().domEditGroupSelections).toHaveLength(1);
+      expect(harness.timeline.setSelectedTimelineElementId).toHaveBeenLastCalledWith("chip", {
+        preserveSet: true,
+      });
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it("clears the selection when every member is subtracted", () => {
+    const { harness, card, chip } = renderCardAndChip();
+    try {
+      act(() => harness.current().applyMarqueeSelection([card, chip], "replace"));
+      let receipt!: ReturnType<ReturnType<typeof useDomSelection>["applyMarqueeSelection"]>;
+      act(() => {
+        receipt = harness.current().applyMarqueeSelection([chip, card], "subtract");
+      });
+
+      expect(receipt).toEqual({ changed: true, count: 0 });
+      expect(harness.current().domEditSelection).toBeNull();
+      expect(harness.current().domEditGroupSelections).toHaveLength(0);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it("leaves the selection alone when the band covers nothing or only outsiders", () => {
+    const { harness, card, chip } = renderCardAndChip();
+    const other = makeSelection(
+      "Other",
+      Object.assign(document.createElement("div"), { id: "other" }),
+    );
+    try {
+      act(() => harness.current().applyMarqueeSelection([card], "replace"));
+      let receipt!: ReturnType<ReturnType<typeof useDomSelection>["applyMarqueeSelection"]>;
+      act(() => {
+        receipt = harness.current().applyMarqueeSelection([], "subtract");
+      });
+      expect(receipt).toEqual({ changed: false, count: 1 });
+      act(() => {
+        receipt = harness.current().applyMarqueeSelection([chip, other], "subtract");
+      });
+      expect(receipt).toEqual({ changed: false, count: 1 });
+      expect(harness.current().domEditSelection?.element).toBe(card.element);
+    } finally {
+      harness.cleanup();
+    }
+  });
 });

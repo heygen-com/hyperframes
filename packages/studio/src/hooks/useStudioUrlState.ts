@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePlayerStore } from "../player";
 import { findElementForSelection, type DomEditSelection } from "../components/editor/domEditing";
+import type { MarqueeSelectionMode } from "../utils/marqueeGeometry";
 import { clampNumber, type RightPanelTab } from "../utils/studioHelpers";
 import { parseProjectIdFromHash } from "../utils/projectRouting";
 import {
@@ -24,7 +25,7 @@ interface UseStudioUrlStateParams {
   activeCompPathHydrated: boolean;
   domEditSelection: DomEditSelection | null;
   domEditGroupSelections: DomEditSelection[];
-  applyMarqueeSelection: (selections: DomEditSelection[], additive: boolean) => void;
+  applyMarqueeSelection: (selections: DomEditSelection[], mode: MarqueeSelectionMode) => void;
   buildDomSelectionFromTarget: (
     target: HTMLElement,
     options?: { preferClipAncestor?: boolean; skipSourceProbe?: boolean },
@@ -252,7 +253,7 @@ export function useStudioUrlState({
         if (!primary) return applyDomSelection(null, { revealPanel: false });
         if (group.length === 0) return applyDomSelection(primary, { revealPanel: false });
         // Missing group members are dropped without failing the rest.
-        applyMarqueeSelection(members, false);
+        applyMarqueeSelection(members, "replace");
       });
       return true;
     },
