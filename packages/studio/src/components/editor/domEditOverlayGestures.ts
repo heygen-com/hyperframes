@@ -1,3 +1,4 @@
+import type { GestureReadoutState } from "./domEditGestureReadoutState";
 import type { RefObject } from "react";
 import type { DomEditSelection } from "./domEditing";
 import type {
@@ -47,6 +48,7 @@ const ROTATION_SNAP_DEGREES = 15;
 export const ROTATED_SNAP_BYPASS_DEGREES = 0.5;
 
 export interface GestureState {
+  readout?: GestureReadoutState;
   kind: GestureKind;
   mode: "path-offset" | "box-size" | "rotation";
   selection: DomEditSelection;
@@ -311,3 +313,13 @@ export type UseDomEditOverlayGesturesOptions = {
   onCanvasMouseDown: (e: React.MouseEvent<HTMLDivElement>, o?: PreviewMouseDownOptions) => void;
   snapGuidesRef: RefObject<SnapGuidesState | null>;
 };
+
+export function isDomEditGestureTap(
+  g: { startX: number; startY: number; travelled?: boolean },
+  e: React.PointerEvent,
+) {
+  return (
+    !g.travelled &&
+    Math.hypot(e.clientX - g.startX, e.clientY - g.startY) < BLOCKED_MOVE_THRESHOLD_PX
+  );
+}

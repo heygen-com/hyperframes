@@ -1,3 +1,4 @@
+import { createGestureReadout } from "./domEditGestureReadoutState";
 /**
  * Gesture-begin functions: startGroupDrag and startGesture.
  * These are pure "start a new gesture" operations — no draft rect updates.
@@ -278,6 +279,7 @@ export function startGesture(
     opts.rafPausedRef.current = true;
     opts.gestureRef.current = {
       kind,
+      readout: createGestureReadout(overlayEl, iframe, rect),
       mode,
       selection: sel,
       pointerId: e.pointerId,
