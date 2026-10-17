@@ -3441,6 +3441,36 @@ ${["b", "h"].map((id, i) => `    <div data-composition-id="${id}" data-compositi
     ]);
   });
 
+  it("lets a scene wait when its script only marks a node in its own root or reads an attribute off <html>", async () => {
+    const scene = (id: string, script: string) =>
+      `<template id="${id}-template"><div data-composition-id="${id}" id="r-${id}"><p>${id}</p>
+  <script>${script}</script></div></template>`;
+    const claim = (id: string) =>
+      `const root = (function(){var a=document.querySelectorAll('[id="r-${id}"]');for(var i=0;i<a.length;i++){if(!a[i].__hfClaimed){a[i].__hfClaimed=1;return a[i];}}return document.getElementById('r-${id}');})();`;
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><head></head><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-duration="8">
+${["g", "h", "i", "j"].map((id, i) => `    <div data-composition-id="${id}" data-composition-src="compositions/${id}.html" data-start="${i * 2}" data-duration="2"></div>`).join("\n")}
+  </div></body></html>`,
+      "compositions/g.html": scene("g", claim("g")),
+      "compositions/h.html": scene(
+        "h",
+        'JSON.parse(document.documentElement.getAttribute("data-composition-variables") || "[]");',
+      ),
+      "compositions/i.html": scene("i", "document.documentElement.classList.add('dark');"),
+      "compositions/j.html": scene("j", "window.__hfClaimed = true;"),
+    });
+    const doc = parseHTML(await bundleToSingleHtml(dir, { sceneParts: true })).document;
+    const eager = (id: string) =>
+      doc.querySelector(`div[data-hf-scene="${id}"]`)?.getAttribute("data-hf-scene-eager");
+    expect(["g", "h", "i", "j"].map(eager)).toEqual([
+      null,
+      null,
+      "its script uses documentElement",
+      "its script uses window.__hfClaimed",
+    ]);
+  });
+
   it("marks a scene whose own script leaves work running as not swappable, and only that scene", async () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html><html><head>

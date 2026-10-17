@@ -70,10 +70,10 @@ function sceneScriptSwapRefusal(script: string): string | null {
   return match ? `its script uses ${match[0].trim()}` : null;
 }
 
-// What ties a scene script to boot order: reaching outside its root, or leaving state on window for
-// other scripts (the timeline registry aside).
+// What ties a scene script to boot order: reaching outside its root (reading <html>'s attributes and
+// marking nodes its scoped `document` found stay inside), or leaving state on window for others.
 const REACHES_OUTSIDE_RE =
-  /\b(documentElement|getElementsBy\w+|__hf[A-Z]\w*)\b|document\s*\.\s*(head|body)\b|querySelector(All)?\(\s*["'](head|body)["']|defineProperty\s*\(\s*(window|globalThis|self|document)\b|\b(window|globalThis|self)\s*(\.\s*(?!__timelines\b)[A-Za-z_$][\w$]*|\[[^\]]*\])\s*=(?!=)/;
+  /\bgetElementsBy\w+\b|\bdocumentElement\b(?!\s*\.\s*(?:get|has)Attribute\s*\()|(?<!\.\s*)\b__hf[A-Z]\w*\b|\b(?:window|globalThis|self)\s*\.\s*__hf[A-Z]\w*|document\s*\.\s*(head|body)\b|querySelector(All)?\(\s*["'](head|body)["']|defineProperty\s*\(\s*(window|globalThis|self|document)\b|\b(window|globalThis|self)\s*(\.\s*(?!__timelines\b)[A-Za-z_$][\w$]*|\[[^\]]*\])\s*=(?!=)/;
 
 /** Why an authored scene script must run at boot rather than when the playhead nears, or null. */
 function sceneScriptEagerReason(script: string): string | null {
