@@ -251,7 +251,7 @@ export async function createAssetContactSheet(
 ): Promise<string[]> {
   if (!existsSync(assetsDir)) return [];
 
-  const imageExts = new Set([".png", ".jpg", ".jpeg", ".webp"]);
+  const imageExts = new Set([".png", ".jpg", ".jpeg", ".webp", ".avif", ".gif", ".heic", ".tiff"]);
   const assetFiles = readdirSync(assetsDir)
     .filter((f) => imageExts.has(extname(f).toLowerCase()) && !f.includes("contact-sheet"))
     .sort();
