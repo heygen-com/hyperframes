@@ -55,6 +55,8 @@ async function prepareOnDeviceTier(opts: {
   assumedYes: boolean;
   artifactRevision?: string;
   canPrompt: boolean;
+  /** Only an explicit --on-device installs the runtime; a plain search never waits on it. */
+  installRuntime: boolean;
   registry: string;
   registryNames: ReadonlySet<string>;
   status: LocalModelStatus;
@@ -117,6 +119,12 @@ async function prepareOnDeviceTier(opts: {
     return warnings;
   }
 
+  if (!opts.installRuntime && !hasLocalRuntime()) {
+    warn(
+      "on-device search is off until its runtime is installed: run `hyperframes catalog --on-device` once.",
+    );
+    return warnings;
+  }
   // Before the model download: fetching 32 MB and then finding the runtime missing wastes it.
   const runtime = await ensureLocalRuntime();
   if (!runtime.ok) {
@@ -261,6 +269,7 @@ export default defineCommand({
         assumedYes: args.yes === true,
         artifactRevision,
         canPrompt: isAttendedTerminal() && !json,
+        installRuntime: args["on-device"] === true,
         registry: config.registry,
         registryNames,
         status: searchContext.status,
@@ -613,7 +622,7 @@ async function applySearch<
   const warnings: string[] = [];
   // On-device meaning search, when the user opted into the model. Free and
   // offline, and it answers phrasings word matching cannot reach.
-  if (status.status === "ready") {
+  if (status.status === "ready" && hasLocalRuntime()) {
     try {
       const ranking = await localSemanticRanking(query);
       if (ranking) {
@@ -757,7 +766,7 @@ async function offerLocalModel(
   console.log(
     c.dim(
       vectors
-        ? "  Run the search again to download the model and rank by meaning."
+        ? "  Run `hyperframes catalog --on-device` once to download the model and rank by meaning."
         : "  Could not fetch the catalog vectors; offline ranking stays off until they are available.",
     ),
   );
