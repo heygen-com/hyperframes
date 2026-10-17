@@ -105,6 +105,34 @@ describe("appendAutoDetectedVideoAudio", () => {
     });
   });
 
+  it.each([
+    1.5,
+    {
+      target: "rate",
+      points: [
+        { t: 0, v: 1 },
+        { t: 3, v: 2 },
+      ],
+    },
+  ] satisfies NonNullable<VideoElement["playbackRate"]>[])(
+    "keeps the video's rate and trim in its detected audio (%j)",
+    (playbackRate) => {
+      const composition: Parameters<typeof appendAutoDetectedVideoAudio>[0] = {
+        videos: [makeVideo({ start: 2, end: 5, mediaStart: 0.5, playbackRate })],
+        audios: [],
+      };
+
+      appendAutoDetectedVideoAudio(composition, [makeExtracted("v1", true)]);
+
+      expect(composition.audios[0]).toMatchObject({
+        start: 2,
+        end: 5,
+        mediaStart: 0.5,
+        playbackRate,
+      });
+    },
+  );
+
   it("skips a muted video even when the source file has audio", () => {
     const composition = {
       videos: [makeVideo({ hasAudio: false })],
