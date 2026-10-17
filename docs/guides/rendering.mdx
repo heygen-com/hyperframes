@@ -176,6 +176,42 @@ Use a higher frame rate only when the source or destination needs it. It creates
 
 The CLI uses the composition’s `data-fps` when present and otherwise defaults to 30 fps.
 
+## 4:4:4 masters
+
+MP4 output stores colour at half resolution in each direction (4:2:0). Thin
+coloured text, UI strokes and saturated edges can come out soft or fringed. For
+a master file that is mostly text and UI, render with full-resolution colour:
+
+```bash
+npx hyperframes render --chroma-subsampling 444 --output master.mp4
+```
+
+This encodes H.264 High 4:4:4 Predictive (yuv444p) and captures every frame as
+a lossless PNG, because Chrome's JPEG capture is already 4:2:0 on Linux and on
+screenshot capture. Expect a slower capture than the default render.
+
+Measured at the same CRF against lossless masters, chroma PSNR rose by about
+16 dB for coloured text and 13 dB for a UI screen recording, while camera
+footage and gradients showed no meaningful change. Keep the default for
+footage-heavy videos.
+
+`444` supports SDR MP4 with the software encoder only. It is rejected with
+`--gpu`, `--hdr`, other formats, and distributed, Lambda or Cloud Run renders.
+
+Many players cannot decode 4:4:4, so use it for masters and editing handoff,
+not for files you publish directly:
+
+| Player | 4:4:4 MP4 |
+| ------ | --------- |
+| Chrome (Windows) | _pending_ |
+| Edge (Windows) | _pending_ |
+| Firefox (Windows) | _pending_ |
+| VLC (Windows) | _pending_ |
+| Windows Media Player | _pending_ |
+| Safari (iOS) | _pending_ |
+| Safari (macOS) | _pending_ |
+| QuickTime (macOS) | _pending_ |
+
 ## Local or Docker
 
 Local rendering is the normal choice:
