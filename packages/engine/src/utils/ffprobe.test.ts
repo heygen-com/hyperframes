@@ -544,7 +544,8 @@ type SpawnOutcome =
   | { kind: "error"; message: string; code?: string }
   | {
       kind: "exit";
-      code: number;
+      code: number | null;
+      signal?: NodeJS.Signals;
       stdout?: string;
       stderr?: string;
       /** Emit stdout as these exact byte chunks, to exercise a multi-byte
@@ -588,7 +589,7 @@ function createSpawnSpy(outcomes: SpawnOutcome[]): {
         for (const chunk of outcome.stdoutChunks) proc.stdout.emit("data", chunk);
       } else if (outcome.stdout) proc.stdout.emit("data", Buffer.from(outcome.stdout));
       if (outcome.stderr) proc.stderr.emit("data", Buffer.from(outcome.stderr));
-      proc.emit("close", outcome.code);
+      proc.emit("close", outcome.code, outcome.signal);
     });
 
     return proc;
@@ -1185,6 +1186,18 @@ describe("ffprobe missing-binary fallback", () => {
     const { extractMediaMetadata: extractMediaMetadataMocked } = await import("./ffprobe.js");
 
     await expect(extractMediaMetadataMocked("/tmp/no-such-video.mp4")).rejects.toThrow(/ffprobe/);
+  });
+
+  it("names the signal when ffprobe crashes instead of exiting", async () => {
+    const { spawn } = createSpawnSpy([{ kind: "exit", code: null, signal: "SIGSEGV" }]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { extractMediaMetadata: extractMediaMetadataMocked } = await import("./ffprobe.js");
+
+    await expect(extractMediaMetadataMocked("/tmp/crashes-ffprobe.ts")).rejects.toThrow(
+      "ffprobe exit with signal SIGSEGV",
+    );
   });
 
   it("surfaces bounded ffprobe stderr for invalid media", async () => {

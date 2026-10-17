@@ -58,6 +58,18 @@ describe("producer test classification", () => {
   });
 });
 
+it("runs the ffmpeg-backed HDR extraction and plan v2 tests where ffmpeg is installed", () => {
+  const files = [
+    "src/services/distributed/planV2.test.ts",
+    "src/services/render/stages/captureHdrResources.test.ts",
+  ];
+  const selected = discoverProducerTests().filter((entry) => files.includes(entry.file));
+  assert.deepEqual(
+    selected.map(({ file, lane }) => ({ file, lane })),
+    files.map((file) => ({ file, lane: "integration" })),
+  );
+});
+
 it("selects the distributed smoke and playback parity tests as integration tests", () => {
   const files = [
     "tests/distributed/_smoke/webm-concat-copy.test.ts",

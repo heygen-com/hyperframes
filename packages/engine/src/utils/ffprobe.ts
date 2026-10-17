@@ -126,7 +126,7 @@ async function runFfprobe(
   if (outcome.reason !== "exit" || outcome.exitCode !== 0) {
     const diagnostic = sanitizeFfprobeDiagnostic(outcome.stderr, filePath);
     throw new Error(
-      `[FFmpeg] ffprobe ${outcome.reason} with code ${outcome.exitCode}: ${diagnostic}`,
+      `[FFmpeg] ffprobe ${outcome.reason} with ${outcome.signal ? `signal ${outcome.signal}` : `code ${outcome.exitCode}`}: ${diagnostic}`,
     );
   }
   return stdout;
