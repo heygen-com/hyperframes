@@ -112,7 +112,9 @@
     "cn": "0.2.4",
     "dockview-react": "8.3.1",
     "gsap": "^3.13.0",
-    "mediabunny": "^1.45.3"
+    "i18next": "^26.4.4",
+    "mediabunny": "^1.45.3",
+    "react-i18next": "^17.0.16"
   },
   "devDependencies": {
     "@hyperframes/producer": "workspace:*",

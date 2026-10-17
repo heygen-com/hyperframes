@@ -272,3 +272,8 @@ export { collectStudioLookScene } from "./webmcp/tools/lookTools";
 export type { StudioLookSnapshot } from "./webmcp/tools/lookTools";
 export type { ModelContextTool } from "./webmcp/types";
 export type { ToolResult } from "./webmcp/toolResult";
+
+export { createStudioI18n } from "./i18n/createStudioI18n";
+export { StudioI18nProvider } from "./i18n/StudioI18nProvider";
+export type { StudioI18nProviderProps } from "./i18n/StudioI18nProvider";
+export type { StudioLanguage } from "./i18n/studioLanguage";

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useStudioShellContext } from "../contexts/StudioContext";
 import { studioApiFetch } from "../utils/studioApiFetch";
 import { trackStudioEvent } from "../utils/studioTelemetry";
+import { useStudioTranslation } from "../i18n/StudioI18nProvider";
 import { FrameyGlyph } from "./FrameyGlyph";
 import { Button, buttonBase, buttonSizes, buttonVariants, cn, Popover } from "./ui";
 
@@ -65,6 +66,7 @@ function useGaze(
 }
 
 export function OpenInDesktopButton() {
+  const { t } = useStudioTranslation();
   const { showToast } = useStudioShellContext();
   const route = useDesktopRoute();
   const [opening, setOpening] = useState(false);
@@ -88,11 +90,11 @@ export function OpenInDesktopButton() {
       const res = await studioApiFetch(ROUTE, { method: "POST" });
       const result = (await res.json()) as OpenResult;
       if (result.opened) {
-        showToast("Framey is opening this project in the HyperFrames desktop app", "info");
+        showToast(t("desktop.opened"), "info");
         await new Promise((done) => setTimeout(done, OPENING_MS));
       } else setDownloadUrl(result.downloadUrl);
     } catch {
-      showToast("Couldn't reach the preview server to open the app", "error");
+      showToast(t("desktop.unreachable"), "error");
     } finally {
       setOpening(false);
     }
@@ -110,7 +112,7 @@ export function OpenInDesktopButton() {
       side="bottom"
       align="end"
       arrow
-      aria-label="Meet Framey"
+      aria-label={t("desktop.meet")}
       className="w-72"
       trigger={
         <Button
@@ -118,14 +120,14 @@ export function OpenInDesktopButton() {
           variant="ghost"
           data-testid="header-open-in-desktop"
           data-opening={opening || undefined}
-          title="Open this project in the HyperFrames desktop app and edit it with Framey"
+          title={t("desktop.openTooltip")}
           className="hf-framey-trigger gap-1.5 border border-accent/40 bg-accent/10 pl-1 font-semibold text-text-0 enabled:hover:bg-accent/20"
           icon={<FrameyGlyph size={24} className="hf-framey" eyeRef={eye} />}
         >
-          {opening ? "Opening in the app…" : "Edit with Framey"}
+          {opening ? t("desktop.opening") : t("desktop.edit")}
           {!opening && (
             <span className="rounded-full bg-accent px-1.5 text-[10px] leading-4 font-bold text-on-accent">
-              New
+              {t("desktop.new")}
             </span>
           )}
         </Button>
@@ -133,17 +135,17 @@ export function OpenInDesktopButton() {
     >
       <div className="flex items-center gap-2.5">
         <FrameyGlyph size={36} />
-        <p className="text-step-12 font-medium text-text-0">Meet Framey</p>
+        <p className="text-step-12 font-medium text-text-0">{t("desktop.meet")}</p>
       </div>
-      <p className="mt-2 text-balance text-text-3">I live in the free HyperFrames desktop app:</p>
+      <p className="mt-2 text-balance text-text-3">{t("desktop.intro")}</p>
       <ul className="mt-1.5 grid gap-1 text-text-1">
-        <li>Chat to change anything in the video</li>
-        <li>Draw on a frame to point at it</li>
-        <li>Watch me act out each edit</li>
+        <li>{t("desktop.chat")}</li>
+        <li>{t("desktop.draw")}</li>
+        <li>{t("desktop.watch")}</li>
       </ul>
       <div className="mt-3 flex items-center justify-end gap-2 whitespace-nowrap">
         <Button variant="ghost" onClick={() => setDownloadUrl(null)}>
-          Not now
+          {t("desktop.notNow")}
         </Button>
         <a
           href={downloadUrl ?? undefined}
@@ -152,7 +154,7 @@ export function OpenInDesktopButton() {
           className={cn(buttonBase, buttonVariants.primary, buttonSizes.md)}
           onClick={() => trackStudioEvent("toolbar_action", { action: "get_desktop_app" })}
         >
-          Get the desktop app
+          {t("desktop.getApp")}
         </a>
       </div>
     </Popover>

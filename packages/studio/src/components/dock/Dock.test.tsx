@@ -8,6 +8,8 @@ import * as dockLayout from "./dockLayout";
 import { Dock } from "./Dock";
 import { parseDockLayout } from "./dockLayoutSchema";
 import { useDockLayoutStore } from "./dockLayoutStore";
+import { StudioI18nProvider } from "../../i18n/StudioI18nProvider";
+import { createStudioI18n } from "../../i18n/createStudioI18n";
 import { PANEL_IDS } from "./panelRegistry";
 import { readStudioUiPreferences } from "../../utils/studioUiPreferences";
 
@@ -346,4 +348,52 @@ describe("parseDockLayout", () => {
     expect(parseDockLayout(placed(["preview"], ["preview", "design"]))).toBeNull();
     expect(parseDockLayout(placed(["preview", "design"], ["preview", "design"]))).not.toBeNull();
   });
+});
+
+it("updates restored dock titles, menus and reopened panels without remounting content", async () => {
+  const instance = createStudioI18n();
+  const host = mount("p1");
+  act(() => {
+    vi.advanceTimersByTime(400);
+  });
+  act(() => root?.unmount());
+  const content = document.createElement("div");
+  host.append(content);
+  root = createRoot(content);
+  await act(async () =>
+    root?.render(
+      <StudioI18nProvider instance={instance}>
+        <Dock.Root projectId="p1">
+          <Dock.WindowMenu />
+          {PANEL_IDS.map((id) => (
+            <Dock.Panel key={id} id={id}>
+              <div data-testid={`content-${id}`}>{id}</div>
+            </Dock.Panel>
+          ))}
+        </Dock.Root>
+      </StudioI18nProvider>,
+    ),
+  );
+  const preview = content.querySelector('[data-testid="content-preview"]');
+  act(() => useDockLayoutStore.getState().closePanel("assets"));
+  await act(async () => {
+    await instance.changeLanguage("zh-CN");
+  });
+  expect(dockApi?.getPanel("compositions")?.api.title).toBe("合成");
+  expect(content.querySelector('[aria-label="关闭合成"]')).not.toBeNull();
+  expect(content.querySelector('[data-testid="content-preview"]')).toBe(preview);
+  act(() =>
+    [...content.querySelectorAll("button")]
+      .find((button) => button.textContent === "窗口")
+      ?.click(),
+  );
+  expect(content.querySelector('[role="menu"]')?.textContent).toContain("素材");
+  expect(content.querySelector('[role="menu"]')?.textContent).toContain("重置布局");
+  act(() => useDockLayoutStore.getState().activatePanel("assets"));
+  expect(dockApi?.getPanel("assets")?.api.title).toBe("素材");
+  await act(async () => {
+    await instance.changeLanguage("en");
+  });
+  expect(dockApi?.getPanel("assets")?.api.title).toBe("Assets");
+  expect(content.querySelector('[data-testid="content-preview"]')).toBe(preview);
 });

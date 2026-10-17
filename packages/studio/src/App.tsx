@@ -63,17 +63,16 @@ import { useTimelineAddAtPlayhead } from "./hooks/useTimelineAddAtPlayhead";
 import { readStudioUrlStateFromWindow, resolveMasterCompositionPath } from "./utils/studioUrlState";
 import { useActiveComposition } from "./hooks/useActiveComposition";
 import { requestPreviewReload } from "./player/previewReloading";
+import { StudioI18nBoundary } from "./i18n/StudioI18nProvider";
 const getTimelineSelectionSet = () => usePlayerStore.getState().selectedElementIds;
-
 export interface StudioAppProps {
   /** Clicks still select and report; the preview cannot move, edit or delete anything. */
   readOnlyPreview?: boolean;
   /** Short text shown on disabled hand-edit controls while `readOnlyPreview` is set. */
   readOnlyPreviewReason?: string;
 }
-
 // fallow-ignore-next-line complexity
-export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: StudioAppProps = {}) {
+function StudioAppContent({ readOnlyPreview = false, readOnlyPreviewReason }: StudioAppProps = {}) {
   const { projectId, resolving, waitingForServer } = useServerConnection();
   const initialUrlStateRef = useRef(readStudioUrlStateFromWindow());
   useStudioSessionStart(projectId, resolving, waitingForServer);
@@ -225,7 +224,6 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
     () => ({ ...panelLayout, setRightPanelTab }),
     [panelLayout, setRightPanelTab],
   );
-
   const clearDomSelectionRef = useRef<() => void>(() => {});
   const domEditSelectionBridgeRef = useRef<DomEditSelection | null>(null);
   type DomEditDelete = (s: DomEditSelection, o?: { expandGroup?: boolean }) => Promise<void>;
@@ -590,5 +588,12 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
         </PanelLayoutProvider>
       </StudioPlaybackProvider>
     </StudioShellProvider>
+  );
+}
+export function StudioApp(props: StudioAppProps = {}) {
+  return (
+    <StudioI18nBoundary>
+      <StudioAppContent {...props} />
+    </StudioI18nBoundary>
   );
 }

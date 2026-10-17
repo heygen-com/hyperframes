@@ -8,6 +8,8 @@ import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { buttonSizes, buttonVariants } from "./ui";
+import { StudioI18nProvider } from "../i18n/StudioI18nProvider";
+import { createStudioI18n } from "../i18n/createStudioI18n";
 import { isTypingTarget } from "../utils/typingTarget";
 import { shouldIgnorePlaybackShortcutTarget } from "../player/lib/playbackShortcuts";
 
@@ -202,4 +204,36 @@ it("shows no theme toggle and leaves the host's data-theme alone when embedded",
 
 it("shows the theme toggle in Studio's own app", () => {
   expect(mount({ themeToggle: true }).querySelector('[aria-label^="Switch to"]')).not.toBeNull();
+});
+
+it("changes toolbar labels and busy states live while preserving the capture link", async () => {
+  const instance = createStudioI18n();
+  const host = mount();
+  const renderHeader = (capturing = false) => (
+    <StudioI18nProvider instance={instance}>
+      <StudioHeader
+        captureFrameHref="blob:frame"
+        captureFrameFilename="frame.png"
+        handleCaptureFrameClick={vi.fn()}
+        refreshCaptureFrameTime={vi.fn()}
+        inspectorButtonActive={false}
+        inspectorPanelActive={false}
+        capturing={capturing}
+      />
+    </StudioI18nProvider>
+  );
+  await act(async () => mounted?.root.render(renderHeader()));
+  const capture = query(host, '[aria-label="Capture current frame"]');
+  await act(async () => {
+    await instance.changeLanguage("zh-CN");
+  });
+  expect(query(host, '[aria-label="截取当前帧"]')).toBe(capture);
+  expect(capture.getAttribute("download")).toBe("frame.png");
+  expect(query(host, '[aria-label="检查器"]')).toBeDefined();
+  expect(query(host, '[data-testid="header-export"]').textContent).toBe("导出");
+  renderQueue.isRendering = true;
+  await act(async () => mounted?.root.render(renderHeader(true)));
+  expect(query(host, '[aria-label="正在截取当前帧"]').getAttribute("aria-disabled")).toBe("true");
+  expect(query(host, '[data-testid="header-export"]').textContent).toBe("渲染中…");
+  expect(query(host, '[data-testid="header-export"]').hasAttribute("disabled")).toBe(true);
 });

@@ -1,3 +1,4 @@
+import { useStudioTranslation } from "../i18n/StudioI18nProvider";
 import { createContext } from "react";
 import { setStudioTheme, useShownStudioTheme } from "../utils/studioTheme";
 import { IconButton, Tooltip } from "./ui";
@@ -52,8 +53,9 @@ const iconProps = {
 } as const;
 
 export function ThemeToggle() {
+  const { t } = useStudioTranslation();
   const isDark = useShownStudioTheme() === "dark";
-  const label = `Switch to ${isDark ? "light" : "dark"} theme`;
+  const label = t(isDark ? "toolbar.lightTheme" : "toolbar.darkTheme");
 
   function toggle(e: React.MouseEvent<HTMLButtonElement>) {
     const apply = () => setStudioTheme(isDark ? "light" : "dark");

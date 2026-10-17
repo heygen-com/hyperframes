@@ -1,4 +1,4 @@
-import { StrictMode } from "react";
+import { StrictMode, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { IconContext } from "@phosphor-icons/react";
 import { StudioApp } from "./App";
@@ -8,6 +8,7 @@ import { readIconTokens } from "./styles/iconTokens";
 import { trackStudioEvent } from "./utils/studioTelemetry";
 import { prefetchPreviewForHash } from "./utils/previewPrefetch";
 import { bindThumbnailPageLifecycle } from "./player/lib/thumbnailPageLifecycle";
+import { StudioI18nProvider, useStudioTranslation } from "./i18n/StudioI18nProvider";
 import "./styles/studio.css";
 
 const unbindThumbnailPageLifecycle = bindThumbnailPageLifecycle(window, document);
@@ -127,6 +128,14 @@ window.addEventListener("unhandledrejection", (event) => {
   trackStudioEvent("unhandled_promise_rejection", props);
 });
 
+function StandaloneStudio() {
+  const { language } = useStudioTranslation();
+  useEffect(() => {
+    document.documentElement.lang = language;
+  }, [language]);
+  return <StudioApp />;
+}
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     {/* One icon size and weight for the whole app, taken from the theme file.
@@ -134,7 +143,9 @@ createRoot(document.getElementById("root")!).render(
     <IconContext.Provider value={readIconTokens()}>
       <StudioErrorBoundary>
         <ShowThemeToggle.Provider value>
-          <StudioApp />
+          <StudioI18nProvider detectBrowserLanguage persistLanguage showLanguageSwitcher>
+            <StandaloneStudio />
+          </StudioI18nProvider>
         </ShowThemeToggle.Provider>
       </StudioErrorBoundary>
     </IconContext.Provider>

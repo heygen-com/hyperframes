@@ -10,6 +10,9 @@ import { OpenInDesktopButton } from "./OpenInDesktopButton";
 import { HyperframesLogo } from "./ui/HyperframesLogo";
 import { ShowThemeToggle, ThemeToggle } from "./ThemeToggle";
 
+import { useStudioTranslation } from "../i18n/StudioI18nProvider";
+import { LanguageSwitcher } from "./LanguageSwitcher";
+
 interface StudioHeaderProps {
   captureFrameHref: string;
   captureFrameFilename: string;
@@ -46,6 +49,7 @@ export const StudioHeader = memo(function StudioHeader({
   inspectorPanelActive,
   onExport,
 }: StudioHeaderProps) {
+  const { t } = useStudioTranslation();
   const showThemeToggle = useContext(ShowThemeToggle);
   const { projectId, renderQueue } = useStudioShellContext();
   const { rightCollapsed, setRightCollapsed, setRightPanelTab } = usePanelLayoutContext();
@@ -65,7 +69,10 @@ export const StudioHeader = memo(function StudioHeader({
       {/* Right: toolbar buttons */}
       <div className="flex items-center gap-3">
         <div className="flex h-ctl items-center divide-x divide-border-strong overflow-hidden rounded-md border border-border-strong bg-bg-2">
-          <Tooltip label={capturing ? "Capturing frame…" : "Capture current frame"} side="bottom">
+          <Tooltip
+            label={capturing ? t("toolbar.capturingFrameTooltip") : t("toolbar.captureFrame")}
+            side="bottom"
+          >
             {/* A real download link, so it wears Button's recipe rather than being
               one: `download` on an <a> is what saves the frame, and no <button>
               can do that. `enabled:` never matches a link, so the ghost
@@ -93,7 +100,7 @@ export const StudioHeader = memo(function StudioHeader({
                   ? "text-text-4 cursor-default"
                   : "hover:bg-hover hover:text-text-0 active:scale-[0.98]",
               )}
-              aria-label={capturing ? "Capturing frame" : "Capture current frame"}
+              aria-label={capturing ? t("toolbar.capturingFrame") : t("toolbar.captureFrame")}
             >
               {capturing ? (
                 <svg
@@ -119,13 +126,15 @@ export const StudioHeader = memo(function StudioHeader({
               ) : (
                 <Camera size={14} />
               )}
-              <span className="max-[1000px]:hidden">{capturing ? "Capturing…" : "Capture"}</span>
+              <span className="max-[1000px]:hidden">
+                {capturing ? t("toolbar.capturing") : t("toolbar.capture")}
+              </span>
             </a>
           </Tooltip>
-          <Tooltip label="Inspector" side="bottom">
+          <Tooltip label={t("toolbar.inspector")} side="bottom">
             <Button
               variant="ghost"
-              aria-label="Inspector"
+              aria-label={t("toolbar.inspector")}
               aria-pressed={inspectorButtonActive}
               className={cn(
                 "h-full rounded-none",
@@ -146,20 +155,21 @@ export const StudioHeader = memo(function StudioHeader({
                 setRightCollapsed(true);
               }}
             >
-              Inspector
+              {t("toolbar.inspector")}
             </Button>
           </Tooltip>
         </div>
+        <LanguageSwitcher />
         {showThemeToggle && <ThemeToggle />}
         <Dock.WindowMenu />
         <OpenInDesktopButton />
         <Tooltip
           label={
             ffmpegMissing
-              ? "FFmpeg is not installed. Opens the Renders panel with the install command."
+              ? t("toolbar.ffmpegMissing")
               : isRendering
-                ? "A render is already in progress"
-                : "Render and export this composition"
+                ? t("toolbar.renderInProgress")
+                : t("toolbar.exportComposition")
           }
           side="bottom"
         >
@@ -180,7 +190,7 @@ export const StudioHeader = memo(function StudioHeader({
               onExport?.();
             }}
           >
-            {isRendering ? "Rendering…" : "Export"}
+            {isRendering ? t("toolbar.rendering") : t("toolbar.export")}
           </Button>
         </Tooltip>
       </div>

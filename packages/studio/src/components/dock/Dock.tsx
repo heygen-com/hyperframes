@@ -33,6 +33,8 @@ import {
 import "./dock.css";
 import { menuClasses } from "../ui/menuStyle";
 
+import { useStudioTranslation } from "../../i18n/StudioI18nProvider";
+
 const PERSIST_DEBOUNCE_MS = 250;
 
 type Slots = Partial<Record<PanelId, HTMLElement>>;
@@ -247,11 +249,12 @@ function Root({
 }
 
 function Panel({ id, title, children }: { id: PanelId; title?: string; children: ReactNode }) {
+  const { t } = useStudioTranslation();
   const element = useSlots().slots[id];
   const visible = useDockLayoutStore((state) => state.visiblePanels.has(id));
   const controller = useDockLayoutStore((state) => state.controller);
   const open = useDockLayoutStore((state) => state.openPanels.has(id));
-  const label = title ?? PANEL_DEFINITIONS[id].title;
+  const label = title ?? t(`panels.${id}`);
   useEffect(() => {
     if (open) controller?.setTitle(id, label);
   }, [controller, id, label, open]);
@@ -261,6 +264,7 @@ function Panel({ id, title, children }: { id: PanelId; title?: string; children:
 }
 
 function WindowMenu() {
+  const { t } = useStudioTranslation();
   const openPanels = useDockLayoutStore((state) => state.openPanels);
   const panels = useDockLayoutStore((state) => state.panels);
   const togglePanel = useDockLayoutStore((state) => state.togglePanel);
@@ -286,7 +290,7 @@ function WindowMenu() {
         onClick={() => setOpen((value) => !value)}
         className="h-7 px-2.5 rounded-md text-[11px] font-medium text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 transition-colors"
       >
-        Window
+        {t("navigation.window")}
       </button>
       {open && (
         <div role="menu" className={`${menuClasses.panel} absolute right-0 top-8 z-50 w-44`}>
@@ -300,7 +304,7 @@ function WindowMenu() {
               className={`${menuClasses.row} ${menuClasses.rowEnabled} flex items-center gap-2`}
             >
               <span className="w-3 text-accent-ink">{openPanels.has(id) ? "✓" : ""}</span>
-              {PANEL_DEFINITIONS[id].title}
+              {t(`panels.${id}`)}
             </button>
           ))}
           <div className={menuClasses.divider} />
@@ -313,7 +317,7 @@ function WindowMenu() {
             }}
             className={`${menuClasses.row} ${menuClasses.rowEnabled}`}
           >
-            Reset layout
+            {t("navigation.resetLayout")}
           </button>
         </div>
       )}

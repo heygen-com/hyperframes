@@ -123,3 +123,47 @@ export default {
     Query and edit compositions without Studio.
   </Card>
 </CardGroup>
+
+## Interface language
+
+The standalone Studio application supports English and Simplified Chinese for the
+header toolbar and dock navigation (panel tabs, Window menu, panel controls, and
+sidebar lint button). Panel contents, timeline editing controls, and diagnostics
+remain in English in this first batch. The interface language does not change
+composition text, captions, or audio.
+
+Use the language menu in the header to switch immediately. Studio restores
+an explicit choice from `hf-studio-language` in local storage, otherwise uses the
+first supported browser language and falls back to English. Traditional Chinese
+locales do not select Simplified Chinese automatically. Storage is optional;
+switching still works when it is unavailable.
+
+Embedded Studio defaults to English, shows no language menu, and does not read
+browser preferences, write local storage, or change the host document language. Wrap it in
+`StudioI18nProvider` to select a language or supply an isolated instance:
+
+```tsx
+import { StudioApp, StudioI18nProvider } from "@hyperframes/studio";
+
+export function Editor() {
+  return (
+    <StudioI18nProvider language="zh-CN">
+      <StudioApp />
+    </StudioI18nProvider>
+  );
+}
+```
+
+`language` is controlled by the host, so the menu stays hidden while it is set.
+Pass `showLanguageSwitcher` to let users pick a language inside embedded Studio.
+For host-driven runtime switching, create an instance with
+`createStudioI18n("zh-CN")`, pass it as `instance`, and call its `changeLanguage`
+method. Each provider owns an independent instance by default. Browser detection
+and persistence can be enabled explicitly with `detectBrowserLanguage` and
+`persistLanguage`. Keep the same instance across renders.
+
+To extend coverage, add a semantic key to both files in
+`packages/studio/src/i18n/locales/` and use `useStudioTranslation` in the rendered
+component. Translate at render time so switching updates existing components.
+Keep project paths, panel IDs, telemetry values, and saved content independent of
+translated labels. Translation tests check key and interpolation parity.

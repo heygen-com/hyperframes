@@ -5,6 +5,8 @@ import { IconButton, Menu, MenuCheckboxItem, MenuItem, MenuSeparator } from "../
 import { useDockLayoutStore } from "./dockLayoutStore";
 import { PANEL_DEFINITIONS, isPanelId, panelsInZone } from "./panelRegistry";
 
+import { useStudioTranslation } from "../../i18n/StudioI18nProvider";
+
 /** Panel menu, maximise and close group, drawn on the active group's strip only. */
 export function DockStripActions({
   api,
@@ -12,6 +14,7 @@ export function DockStripActions({
   panels,
   isGroupActive,
 }: IDockviewHeaderActionsProps) {
+  const { t } = useStudioTranslation();
   const subscribe = useCallback(
     (onChange: () => void) => {
       const subscription = containerApi.onDidMaximizedGroupChange(onChange);
@@ -31,8 +34,14 @@ export function DockStripActions({
     <div className="hf-dock-strip-actions">
       <Menu
         align="end"
-        aria-label="Panel menu"
-        trigger={<IconButton size="sm" aria-label="Panel menu" icon={<DotsThree size={16} />} />}
+        aria-label={t("navigation.panelMenu")}
+        trigger={
+          <IconButton
+            size="sm"
+            aria-label={t("navigation.panelMenu")}
+            icon={<DotsThree size={16} />}
+          />
+        }
       >
         {menuPanels.map((id) => (
           <MenuCheckboxItem
@@ -40,21 +49,21 @@ export function DockStripActions({
             checked={openPanels.has(id)}
             onCheckedChange={() => togglePanel(id)}
           >
-            {PANEL_DEFINITIONS[id].title}
+            {t(`panels.${id}`)}
           </MenuCheckboxItem>
         ))}
         <MenuSeparator />
-        <MenuItem onClick={resetLayout}>Reset layout</MenuItem>
+        <MenuItem onClick={resetLayout}>{t("navigation.resetLayout")}</MenuItem>
       </Menu>
       <IconButton
         size="sm"
-        aria-label={maximized ? "Restore panel" : "Maximize panel"}
+        aria-label={maximized ? t("navigation.restorePanel") : t("navigation.maximizePanel")}
         icon={maximized ? <CornersIn size={16} /> : <CornersOut size={16} />}
         onClick={() => (maximized ? api.exitMaximized() : api.maximize())}
       />
       <IconButton
         size="sm"
-        aria-label="Close group"
+        aria-label={t("navigation.closeGroup")}
         icon={<X size={16} />}
         onClick={() => api.close()}
       />

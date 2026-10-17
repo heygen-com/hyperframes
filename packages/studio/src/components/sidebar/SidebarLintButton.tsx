@@ -1,3 +1,5 @@
+import { useStudioTranslation } from "../../i18n/StudioI18nProvider";
+
 const ERROR_PULSES_BEFORE_IDLE = 3;
 
 export function SidebarLintButton({
@@ -11,6 +13,7 @@ export function SidebarLintButton({
   findingCount?: number;
   hasError?: boolean;
 }) {
+  const { t } = useStudioTranslation();
   return (
     <div className="border-t border-neutral-800 p-2 shrink-0">
       <button
@@ -30,7 +33,7 @@ export function SidebarLintButton({
           <path d="M9 11l3 3L22 4" />
           <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
         </svg>
-        {linting ? "Linting…" : "Lint"}
+        {linting ? t("sidebar.linting") : t("sidebar.lint")}
         {!linting && findingCount != null && findingCount > 0 && (
           <span
             key={findingCount}
@@ -42,9 +45,11 @@ export function SidebarLintButton({
                 : "ml-1 min-w-[16px] rounded-full bg-amber-500/20 px-1 text-[9px] font-bold text-warning-ink"
             }
           >
-            {findingCount}
+            <span aria-hidden="true">{findingCount}</span>
             <span className="sr-only">
-              {hasError ? " lint findings, including errors" : " lint findings, warnings only"}
+              {t(hasError ? "sidebar.findingsWithErrors" : "sidebar.findingsWarningsOnly", {
+                count: findingCount,
+              })}
             </span>
           </span>
         )}

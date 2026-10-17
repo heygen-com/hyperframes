@@ -17,6 +17,8 @@ import {
 import type { IDockviewPanelHeaderProps } from "dockview-react";
 import { isPanelId, type PanelId } from "./panelRegistry";
 
+import { useStudioTranslation } from "../../i18n/StudioI18nProvider";
+
 const TAB_ICONS: Record<PanelId, Icon> = {
   preview: Monitor,
   timeline: ChartBarHorizontal,
@@ -36,6 +38,7 @@ const TAB_ICONS: Record<PanelId, Icon> = {
  * dockview's own tab class, so they swap in the frame the tab changes rather than a render later.
  */
 export function DockTab({ api }: IDockviewPanelHeaderProps) {
+  const { t } = useStudioTranslation();
   const subscribe = useCallback(
     (onChange: () => void) => {
       const subscription = api.onDidTitleChange(onChange);
@@ -53,7 +56,7 @@ export function DockTab({ api }: IDockviewPanelHeaderProps) {
       <div
         role="button"
         tabIndex={-1}
-        aria-label={`Close ${title}`}
+        aria-label={t("navigation.closePanel", { title })}
         className="hf-dock-tab-close"
         onPointerDown={(event) => event.stopPropagation()}
         onClick={(event) => {

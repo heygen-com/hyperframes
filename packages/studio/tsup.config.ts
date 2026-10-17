@@ -29,6 +29,8 @@ export default defineConfig({
     "@lezer/highlight",
     "@phosphor-icons/react",
     "mediabunny",
+    "i18next",
+    "react-i18next",
     "react",
     "react-dom",
     "react/jsx-runtime",
