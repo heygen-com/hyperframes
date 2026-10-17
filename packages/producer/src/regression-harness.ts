@@ -973,7 +973,7 @@ export function createRegressionTempRoot(suiteId: string, parent: string = tmpdi
   return mkdtempSync(join(parent, `hyperframes-test-${suiteId}-`));
 }
 
-async function runTestSuite(
+export async function runTestSuite(
   suite: TestSuite,
   options: {
     update: boolean;
@@ -1372,7 +1372,16 @@ async function runTestSuite(
       const renderedAudio = extractMonoPcm16(renderedOutputPath);
       const snapshotAudio = extractMonoPcm16(snapshotVideoPath);
 
-      if (renderedAudio.length > 0 && snapshotAudio.length > 0) {
+      const renderedHasAudio = renderedAudio.length > 0;
+      const snapshotHasAudio = snapshotAudio.length > 0;
+      if (renderedHasAudio !== snapshotHasAudio) {
+        audioPassed = false;
+        audioCorrelation = -1;
+        logPretty(
+          `Audio stream mismatch: rendered=${renderedHasAudio ? "present" : "missing"}, snapshot=${snapshotHasAudio ? "present" : "missing"}`,
+          "✗",
+        );
+      } else if (renderedHasAudio && snapshotHasAudio) {
         const renderedEnvelope = buildRmsEnvelope(renderedAudio);
         const snapshotEnvelope = buildRmsEnvelope(snapshotAudio);
         const audio = compareAudioEnvelopes(

@@ -12,6 +12,7 @@ const INTEGRATION_TEST_FILES = new Set([
   "tests/distributed/_smoke/webm-concat-copy.test.ts",
   "tests/playback-rate-av-parity/playback-rate-av-parity.test.ts",
   "src/regression-harness-psnr.test.ts",
+  "src/regression-harness-audio.test.ts",
   "src/services/bundleScriptPolicy.test.ts",
   "src/services/coreRuntimeBrowser.test.ts",
   "src/services/vfxDeterminism.test.ts",
