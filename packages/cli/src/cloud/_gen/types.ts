@@ -175,6 +175,12 @@ export interface CreateHyperframesRenderRequest {
    */
   format?: "mp4" | "webm" | "mov";
   /**
+   * Overrides the quality preset's constant rate factor (lower is higher quality
+   * and a larger file). Integer 0-51 for mp4, 0-63 for webm; ignored for mov.
+   * Omit to use the preset's CRF.
+   */
+  crf?: number | null;
+  /**
    * Output resolution tier. Defaults to '1080p'. Pass '4k' for 4K renders
    * (billed at 1.5x).
    */
@@ -339,6 +345,11 @@ export interface StandardAPIError {
    * errors by node).
    */
   errors?: Array<StandardAPIErrorDetail>;
+  /**
+   * Request identifier, also returned in the X-HeyGen-Request-Id response
+   * header. Include it when contacting support.
+   */
+  request_id?: string;
 }
 
 export interface StandardAPIErrorDetail {
