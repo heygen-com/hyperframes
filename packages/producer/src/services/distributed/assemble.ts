@@ -52,6 +52,7 @@ import {
 import { encoderFailureError } from "../render/encoderInterruption.js";
 import type { ChunkSliceJson, LockedRenderConfig } from "../render/stages/freezePlan.js";
 import { DISTRIBUTED_RENDER_CAPABILITIES, readPlanProtocolV1 } from "./planProtocol.js";
+import { writeStitchedMp4 } from "./mp4Stitch.js";
 import { validatePlanV2MaterializedTarget } from "./planV2.js";
 import type { DistributedFormat } from "./shared.js";
 
@@ -141,6 +142,16 @@ export async function assemble(
     return mergePngFrameDirs(chunkPaths, outputPath, plan.totalFrames, audioPath, start);
   }
 
+  if (chunksAreStitchedMp4(planDir, cfr)) {
+    await writeStitchedMp4(chunkPaths, outputPath);
+    return {
+      outputPath,
+      durationMs: Date.now() - start,
+      framesEncoded: plan.totalFrames,
+      fileSize: statSync(outputPath).size,
+    };
+  }
+
   // ── 2b. mp4 / mov / webm: join + audio mux + faststart in one pass ─────
   const format = plan.dimensions.format;
   const cfrEncoder = cfr ? readCfrEncoder(planDir, format) : null;
@@ -155,9 +166,6 @@ export async function assemble(
     format,
     fps,
     fpsArg: fpsToFfmpegArg(fps),
-    chunkSeconds: chunksCarryAudio(planDir)
-      ? plan.chunks.map((chunk) => ((chunk.endFrame - chunk.startFrame) * fps.den) / fps.num)
-      : null,
     signal: options?.abortSignal,
     timeout: resolveConfig().ffmpegProcessTimeout,
     log,
@@ -200,10 +208,7 @@ export async function assemble(
   };
 }
 
-function readAssemblePlan(
-  planDir: string,
-  chunkPaths: readonly string[],
-): PlanJsonForAssemble & { chunks: ChunkSliceJson[] } {
+function readAssemblePlan(planDir: string, chunkPaths: readonly string[]): PlanJsonForAssemble {
   // ── 1. Validate planDir manifest matches chunkPaths shape ──────────────
   const planJsonPath = join(planDir, "plan.json");
   const chunksJsonPath = join(planDir, "meta", "chunks.json");
@@ -230,7 +235,7 @@ function readAssemblePlan(
     }
   }
 
-  return { ...plan, chunks };
+  return plan;
 }
 
 interface JoinContext {
@@ -242,7 +247,6 @@ interface JoinContext {
   timeout: number;
   log: ProducerLogger;
   timed: <T>(stage: string, run: () => Promise<T>) => Promise<T>;
-  chunkSeconds: number[] | null;
 }
 
 // A one-entry concat list ignores the input-side `-r` (observed `359/12` in the
@@ -250,7 +254,7 @@ interface JoinContext {
 function videoInputArgs(ctx: JoinContext, videoSources: readonly string[]): string[] {
   return videoSources.length === 1
     ? ["-i", videoSources[0]!]
-    : concatDemuxerInput(videoSources, ctx.workDir, ctx.fpsArg, ctx.chunkSeconds);
+    : concatDemuxerInput(videoSources, ctx.workDir, ctx.fpsArg);
 }
 
 // ── 2c. Optional exact-CFR re-encode ──────────────────────────────────
@@ -347,18 +351,11 @@ function concatDemuxerInput(
   chunkPaths: readonly string[],
   workDir: string,
   fpsArg: string,
-  chunkSeconds: readonly number[] | null,
 ): string[] {
   // ffmpeg's concat list escapes a single quote as `'\''`.
   const listPath = join(workDir, "concat-list.txt");
-  // Chunks that carry audio: read only their video (track 1), and end each chunk at its last frame
-  // rather than after its audio, which starts with the AAC priming and can run one packet longer.
-  const head = chunkSeconds ? ["stream", "exact_stream_id 1"] : [];
-  const body = chunkPaths.map((path, i) => {
-    const line = `file '${path.replace(/'/g, "'\\''")}'`;
-    return chunkSeconds ? `${line}\nduration ${chunkSeconds[i]!.toFixed(6)}` : line;
-  });
-  writeFileSync(listPath, `${[...head, ...body].join("\n")}\n`, "utf-8");
+  const body = chunkPaths.map((path) => `file '${path.replace(/'/g, "'\\''")}'`).join("\n");
+  writeFileSync(listPath, `${body}\n`, "utf-8");
   return ["-r", fpsArg, "-f", "concat", "-safe", "0", "-i", listPath];
 }
 
@@ -391,6 +388,15 @@ async function runAssembleFfmpeg(
       failureReason: result.failureReason,
     });
   }
+}
+
+/** Chunks that carry their audio are stitched under one index, the same bytes as the S3 stitch. */
+function chunksAreStitchedMp4(planDir: string, cfr: boolean): boolean {
+  if (!chunksCarryAudio(planDir)) return false;
+  if (cfr) {
+    throw new Error("[assemble] cfr=true cannot re-encode a plan whose mp4 chunks carry audio");
+  }
+  return true;
 }
 
 function chunksCarryAudio(planDir: string): boolean {

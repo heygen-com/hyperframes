@@ -271,7 +271,7 @@ function artifactTargets(
   chunksCarryAudio: boolean,
 ): Pick<PlanV2Artifact, "chunks" | "assembler"> {
   if (isPlanAudioArtifactPath(path)) {
-    return { chunks: chunksCarryAudio ? "all" : [], assembler: true };
+    return chunksCarryAudio ? { chunks: "all", assembler: false } : { chunks: [], assembler: true };
   }
   if (path === "plan.json" || path === "meta/chunks.json" || path === "meta/encoder.json") {
     return { chunks: "all", assembler: true };

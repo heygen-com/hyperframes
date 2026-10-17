@@ -421,7 +421,7 @@ describe("Plan v2 manifest", () => {
     expect(assembler.some((artifact) => artifact.path === "compiled/index.html")).toBe(false);
   });
 
-  it("also sends audio to every chunk when mp4 chunks carry their audio", () => {
+  it("sends audio to every chunk and not the assembler when mp4 chunks carry their audio", () => {
     const root = tempPath("hf-plan-v2-chunk-audio-targets-");
     const v1 = createV1Plan(root, { audio: true, chunksCarryAudio: true });
     const manifest = readPlanV2Manifest(createPlanV2FromV1(v1, join(root, "v2")).planDir);
@@ -430,7 +430,7 @@ describe("Plan v2 manifest", () => {
       expect(chunk.some((artifact) => artifact.path === "audio.m4a")).toBe(true);
     }
     const assembler = listPlanV2ArtifactsForTarget(manifest, { role: "assembler" });
-    expect(assembler.some((artifact) => artifact.path === "audio.m4a")).toBe(true);
+    expect(assembler.some((artifact) => artifact.path === "audio.m4a")).toBe(false);
   });
 
   it("uses the runtime frame lookup to select exact video frames per chunk", () => {

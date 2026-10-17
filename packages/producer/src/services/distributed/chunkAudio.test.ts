@@ -79,7 +79,7 @@ describe.skipIf(!hasFfmpeg)("chunks that carry their audio", () => {
     ["three", [0, 47, 90, 91]],
     ["one", [0, 91]],
   ] as const)(
-    "%s chunk(s) join through today's assemble like video-only chunks",
+    "%s chunk(s) assemble into the frames and audio of today's video-only join",
     async (name, edges) => {
       const CHUNKS = edges.slice(1).map((end, index) => ({
         index,
