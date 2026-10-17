@@ -155,7 +155,11 @@ export function setCompositionDurationToContent(
   return patchRootCompositionDuration(source, String(next));
 }
 
-export function insertTimelineAssetIntoSource(source: string, assetHtml: string): string {
+export function insertTimelineAssetIntoSource(
+  source: string,
+  assetHtml: string,
+  options: { preserveWhitespace?: boolean } = {},
+): string {
   const match = COMPOSITION_ROOT_OPEN_TAG_RE.exec(source);
   if (!match || match.index == null) {
     throw new Error("No composition root found in target source");
@@ -164,9 +168,11 @@ export function insertTimelineAssetIntoSource(source: string, assetHtml: string)
   const lineStart = source.lastIndexOf("\n", match.index);
   const leadingWhitespace = source.slice(lineStart + 1, match.index).match(/^(\s*)/)?.[1] ?? "";
   const childIndent = leadingWhitespace + "  ";
-  const indented = assetHtml
-    .split("\n")
-    .map((line, i) => (i === 0 ? line : childIndent + line))
-    .join("\n");
+  const indented = options.preserveWhitespace
+    ? assetHtml
+    : assetHtml
+        .split("\n")
+        .map((line, i) => (i === 0 ? line : childIndent + line))
+        .join("\n");
   return `${source.slice(0, insertAt)}\n${childIndent}${indented}${source.slice(insertAt)}`;
 }

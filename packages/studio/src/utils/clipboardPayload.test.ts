@@ -1,4 +1,4 @@
-// @vitest-environment node
+// @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import {
   deduplicateIds,
@@ -99,4 +99,22 @@ describe("serializeClipboardPayload / deserializeClipboardPayload", () => {
     });
     expect(deserializeClipboardPayload(json)).toBeNull();
   });
+});
+
+it("rebinds embedded selector tokens and local references without rewriting literals, remote resources or scripts", () => {
+  const html = `<div id="clip"><style>@media all{#clip :is(#shape){fill:url('#paint');color:#abc;content:"url(#paint) #shape"}[title="#shape"]{color:blue}}</style><svg><symbol id="shape"></symbol><linearGradient id="paint"></linearGradient><use href="#shape"/><use xlink:href="#shape"/><image href="https://example.com/a.svg#shape"/><image href="data:image/png;base64,YQ=="/><path fill="url(#paint)" style="stroke:url(&quot;#paint&quot;);color:#abc"/></svg><script>const selector = '#shape';</script><p title="url(#paint)">#shape</p></div>`;
+  const result = deduplicateIds(html, ["clip", "shape", "paint"]);
+  expect(result).toContain("#clip-2 :is(#shape-2)");
+  expect(result).toContain("fill:url('#paint-2')");
+  expect(result).toContain('content:"url(#paint) #shape"');
+  expect(result).toContain('[title="#shape"]');
+  expect(result).toContain('href="#shape-2"');
+  expect(result).toContain('xlink:href="#shape-2"');
+  expect(result).toContain('href="https://example.com/a.svg#shape"');
+  expect(result).toContain('href="data:image/png;base64,YQ=="');
+  expect(result).toContain('fill="url(#paint-2)"');
+  expect(result).toContain("stroke:url(&quot;#paint-2&quot;)");
+  expect(result).toContain("const selector = '#shape';");
+  expect(result).toContain('<p title="url(#paint)">#shape</p>');
+  expect(result).toContain("color:#abc");
 });

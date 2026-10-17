@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  parseAttributeSelectorPresence,
   decodeCssIdentifierAt,
   escapeCssAttributeValue,
   escapeCssIdentifier,
@@ -109,4 +110,23 @@ it("keeps escaped closing brackets inside unquoted attribute tokens", () => {
 it("keeps commented brackets bounded when the closing bracket is missing", () => {
   const selector = "[" + "/*x*/".repeat(2000);
   expect(replaceSelectorAttributeTokens(selector, () => "changed")).toBe(selector);
+});
+
+describe("parseAttributeSelectorPresence", () => {
+  it("reuses qualified names and accepts only an unflagged presence ending", () => {
+    expect(parseAttributeSelectorPresence("[*|href]")).toMatchObject({
+      name: "href",
+      namespace: { kind: "any" },
+    });
+    expect(parseAttributeSelectorPresence("[xlink|href /* gap */]")).toMatchObject({
+      name: "href",
+      namespace: { kind: "named", prefix: "xlink" },
+    });
+    expect(parseAttributeSelectorPresence("[|href]")).toMatchObject({
+      name: "href",
+      namespace: { kind: "none" },
+    });
+    for (const invalid of ["[href i]", '[href="x"]', "[href]junk", "[*|]"])
+      expect(parseAttributeSelectorPresence(invalid)).toBeNull();
+  });
 });

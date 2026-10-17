@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { encodeElementClipboard } from "@hyperframes/core/element-clipboard";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useClipboard } from "./useClipboard";
@@ -545,4 +546,52 @@ describe("with no DOM edit session", () => {
     expect(await clipboard().handleDuplicate()).toBe(false);
     expect(deleted).toEqual([]);
   });
+});
+
+describe("internal and system clipboard arbitration", () => {
+  it("keeps an internal copy until the OS element clipboard changes", async () => {
+    selectTitle();
+    const view = mountClipboard();
+    const external = (text: string) =>
+      encodeElementClipboard({
+        html: `<div>${text}</div>`,
+        css: "",
+        width: 100,
+        height: 50,
+        warnings: [],
+      });
+    let text = external("Old external");
+    vi.stubGlobal("navigator", { clipboard: { readText: async () => text } });
+    expect(view.clipboard().handleCopy()).toBe(true);
+    await view.clipboard().handlePaste();
+    expect(view.writes[0]).toContain(">Title</h1>");
+    expect(view.writes[0]).not.toContain("Old external");
+    text = external("New external");
+    await view.clipboard().handlePaste();
+    expect(view.writes[1]).toContain("New external");
+  });
+});
+
+it("keeps the internal payload from paste invocation while an OS read overlaps a later copy", async () => {
+  selectTitle();
+  const view = mountClipboard();
+  let finishRead: (text: string) => void = () => {};
+  const pendingRead = new Promise<string>((resolve) => {
+    finishRead = resolve;
+  });
+  const readText = vi
+    .fn()
+    .mockResolvedValue("ordinary text")
+    .mockResolvedValueOnce("ordinary text")
+    .mockImplementationOnce(() => pendingRead);
+  vi.stubGlobal("navigator", { clipboard: { readText } });
+  expect(view.clipboard().handleCopy()).toBe(true);
+  const earlierPaste = view.clipboard().handlePaste();
+  copySubNext(view);
+  finishRead("ordinary text");
+  await earlierPaste;
+  expect(view.writes[0]?.match(/>Title<\/h1>/g)).toHaveLength(2);
+  expect(view.writes[0]).not.toContain(">Sub</h2>");
+  await view.clipboard().handlePaste();
+  expect(view.writes[1]).toContain(">Sub</h2>");
 });

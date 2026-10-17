@@ -547,6 +547,18 @@
       "runtime": "./dist/timelineAssetId.js",
       "types": "./dist/timelineAssetId.d.ts",
       "environments": ["browser", "bun", "node"]
+    },
+    "./element-clipboard": {
+      "source": "./src/elementClipboard.ts",
+      "runtime": "./dist/elementClipboard.js",
+      "types": "./dist/elementClipboard.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./selector-id-tokens": {
+      "source": "./src/compiler/selectorIdTokens.ts",
+      "runtime": "./dist/compiler/selectorIdTokens.js",
+      "types": "./dist/compiler/selectorIdTokens.d.ts",
+      "environments": ["browser", "bun", "node"]
     }
   }
 }

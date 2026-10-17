@@ -1,11 +1,24 @@
 import { copyAnimationsInScript } from "@hyperframes/parsers/gsap-writer-acorn";
+import { scanHtmlOpeningTags } from "@hyperframes/parsers/html-attribute-spans";
+import { clipboardAttributeRewrites, rebindClipboardUrls } from "./clipboardReferences";
+import { rebindClipboardSelector, type ClipboardAttributeRewrite } from "./clipboardSelectors";
 import { ID_ATTR_RE } from "./clipboardPayload";
 import { escapeRegex } from "./sourcePatcher";
+
+import { unownedElementCss } from "./elementClipboardStyleBlocks";
 
 const ID_ATTRS = new RegExp(ID_ATTR_RE.source, "g");
 // One pass over both, so a `<style>` written inside a script's text is left as script.
 const BLOCKS =
   /(<script\b(?![^>]*\bsrc=)[^>]*>)([\s\S]*?)(<\/script>)|(<style\b[^>]*>)([\s\S]*?)(<\/style>)/gi;
+
+function ownedStyle(opening: string): boolean {
+  return (
+    scanHtmlOpeningTags(opening)[0]?.attributes.some(
+      (attr) => attr.name === "data-hf-element-style",
+    ) ?? false
+  );
+}
 
 /** Each id a paste renamed (`goodbye` to `goodbye-2`), from the same markup before and after the rename. */
 export function renamedIds(before: string, after: string): Map<string, string> {
@@ -27,40 +40,69 @@ export function carryLook(
   delta: number,
 ): string {
   let result = html;
+  const attributes = clipboardAttributeRewrites(html, renames);
   for (const [from, to] of renames) {
     result = result.replace(
       BLOCKS,
       (block, scriptOpen, script, scriptClose, styleOpen, css, styleClose) =>
         scriptOpen !== undefined
           ? scriptOpen + copyAnimationsInScript(script, `#${from}`, `#${to}`, delta) + scriptClose
-          : styleOpen !== undefined
-            ? styleOpen + withCopiedRules(css, from, to) + styleClose
+          : styleOpen !== undefined && !ownedStyle(styleOpen)
+            ? styleOpen + withCopiedRules(css, from, renames, attributes) + styleClose
             : block,
     );
   }
   return result;
 }
 
-// Top-level rules only: a rule inside @media or @supports is not copied.
-function withCopiedRules(css: string, from: string, to: string): string {
+function withCopiedRules(
+  css: string,
+  from: string,
+  renames: ReadonlyMap<string, string>,
+  attributes: readonly ClipboardAttributeRewrite[],
+): string {
   const sheet = new CSSStyleSheet();
-  sheet.replaceSync(css);
+  sheet.replaceSync(unownedElementCss(css));
+  const indent = css.match(/\n([ \t]*)\S/)?.[1] ?? "";
+  const copies = copiedCssRules(sheet.cssRules, from, indent, renames, attributes);
+  if (copies.length === 0) return css;
+  const body = css.trimEnd();
+  return body + copies.join("") + css.slice(body.length);
+}
+
+function supportedCssGroup(rule: CSSRule): rule is CSSMediaRule | CSSSupportsRule {
+  return rule.type === CSSRule.MEDIA_RULE || rule.type === CSSRule.SUPPORTS_RULE;
+}
+
+function copiedCssRules(
+  rules: CSSRuleList,
+  from: string,
+  indent: string,
+  renames: ReadonlyMap<string, string>,
+  attributes: readonly ClipboardAttributeRewrite[],
+): string[] {
   const id = new RegExp(`#${escapeRegex(from)}(?![\\w-])`, "g");
   const excluded = new RegExp(`:not\\([^)]*#${escapeRegex(from)}(?![\\w-])`);
-  const indent = css.match(/\n([ \t]*)\S/)?.[1] ?? "";
-  const copies = Array.from(sheet.cssRules).flatMap((rule) => {
+  return Array.from(rules).flatMap((rule) => {
+    // Keep the same conditions when copying rules nested in a supported group.
+    if (supportedCssGroup(rule)) {
+      const copies = copiedCssRules(rule.cssRules, from, indent + "  ", renames, attributes);
+      const header = rule.cssText.slice(0, rule.cssText.indexOf("{"));
+      return copies.length ? [`\n${indent}${header}{${copies.join("")}\n${indent}}`] : [];
+    }
     if (!(rule instanceof CSSStyleRule)) return [];
     // Only the selectors naming the original, so the copy restyles nothing else.
     const selectors = selectorList(rule.selectorText).filter(
       (selector) => selector.match(id) && !excluded.test(selector),
     );
     if (selectors.length === 0) return [];
-    const copied = selectors.map((selector) => selector.replace(id, `#${to}`)).join(", ");
-    return [`\n${indent}${copied}${rule.cssText.slice(rule.selectorText.length)}`];
+    const copied = selectors
+      .map((selector) => rebindClipboardSelector(selector, renames, attributes))
+      .join(", ");
+    return [
+      `\n${indent}${copied}${rebindClipboardUrls(rule.cssText.slice(rule.selectorText.length), renames)}`,
+    ];
   });
-  if (copies.length === 0) return css;
-  const body = css.trimEnd();
-  return body + copies.join("") + css.slice(body.length);
 }
 
 /** A selector list's own entries: its commas outside brackets and parentheses. */

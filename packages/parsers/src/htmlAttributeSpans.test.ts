@@ -41,3 +41,12 @@ describe("HTML source attribute spans", () => {
     expect(decodeAuthoredAttribute("a&amp;quot;&#39;&#92;&#x20;b")).toBe("a&quot;'\\ b");
   });
 });
+it("reports real closing offsets while skipping quoted attributes, comments and raw text", () => {
+  const html =
+    '<head title="</head>"><!-- </head> --><script>const text="</head>"</script><style>.x{content:"</head>"}</style></HeAd ><body></body>';
+  const closes: number[] = [];
+  scanHtmlOpeningTags(html, (name, start) => {
+    if (name === "head") closes.push(start);
+  });
+  expect(closes).toEqual([html.indexOf("</HeAd >")]);
+});

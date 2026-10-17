@@ -319,6 +319,14 @@ function readAttributeEnding(predicate: string, start: number) {
   return { flag: token?.value };
 }
 
+export function parseAttributeSelectorPresence(predicate: string) {
+  const name = readAttributeName(predicate);
+  if (!name) return null;
+  const ending = readAttributeEnding(predicate, name.end);
+  if (!ending || ending.flag) return null;
+  return { name: name.name, rawName: name.rawName, namespace: name.namespace };
+}
+
 export function parseAttributeSelector(predicate: string) {
   const name = readAttributeName(predicate);
   if (!name) return null;
