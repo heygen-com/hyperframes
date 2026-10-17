@@ -742,6 +742,12 @@ describe("syncRuntimeMedia", () => {
       expect(await barrierSettled(barrier)).toBe(true);
     });
 
+    it("does not hold a geometry read for a seeking video's frame", async () => {
+      seekColdVideo();
+      expect(await barrierSettled(waitForSeekCompletion({ videoFrames: false }))).toBe(true);
+      expect(await barrierSettled(waitForSeekCompletion())).toBe(false);
+    });
+
     function seekLoadingVideo(): RuntimeMediaClip {
       const clip = createMockClip({ start: 7.1, end: 18.24 });
       Object.defineProperty(clip.el, "readyState", { value: 0, configurable: true });

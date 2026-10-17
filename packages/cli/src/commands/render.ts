@@ -118,6 +118,7 @@ import {
 import { chromeLaunchRemediation } from "../browser/linuxDeps.js";
 import { macosOldChromeCrashRemediation } from "../browser/macosOldChromeCrash.js";
 import { windowsChromeCrashRemediation } from "../browser/windowsCrash.js";
+import { sandboxDeniedRemediation } from "../browser/sandboxDenied.js";
 import { killOrphanedProcessesForRender } from "../utils/orphanCleanup.js";
 import { createRenderCancellationScope } from "../utils/renderCancellation.js";
 import {
@@ -1759,6 +1760,11 @@ function handleRenderError(
   // failure on Linux/WSL is an environment problem, not a composition bug.
   // Replace the generic "Try --docker" hint with the exact per-distro
   // remediation and a pointer at `doctor`.
+  const sandboxRemediation = sandboxDeniedRemediation(message);
+  if (sandboxRemediation) {
+    errorBox("Render failed — Chrome could not launch", message, sandboxRemediation);
+    failCommand();
+  }
   const remediation = chromeLaunchRemediation(message);
   if (remediation) {
     errorBox("Render failed — Chrome could not launch", message, remediation);

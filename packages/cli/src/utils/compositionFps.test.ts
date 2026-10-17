@@ -1,8 +1,8 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
-import { readAllowedCompositionFpsFromDir, readCompositionFps } from "./compositionFps.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { defaultCloudFps, readCompositionFps } from "./compositionFps.js";
 
 const wrap = (body: string) => `<!DOCTYPE html><html><body>${body}</body></html>`;
 
@@ -41,11 +41,11 @@ describe("readCompositionFps", () => {
   });
 });
 
-describe("readAllowedCompositionFpsFromDir", () => {
+describe("defaultCloudFps", () => {
   const projectDirs: string[] = [];
-  const allowedCloudFps = [24, 30, 60] as const;
 
   afterEach(() => {
+    vi.restoreAllMocks();
     for (const dir of projectDirs.splice(0)) {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -58,50 +58,38 @@ describe("readAllowedCompositionFpsFromDir", () => {
     return dir;
   }
 
-  it("uses cloud-allowed data-fps=60 as the default", () => {
-    const dir = makeProject(
-      '<div data-composition-id="root" data-root="true" data-fps="60">x</div>',
+  function root(fps: string): string {
+    return makeProject(
+      `<div data-composition-id="root" data-root="true" data-fps="${fps}">x</div>`,
     );
+  }
 
-    expect(readAllowedCompositionFpsFromDir(dir, allowedCloudFps)).toBe(60);
+  it.each([24, 25, 30, 60])("uses a supported data-fps=%i without warning", (fps) => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(defaultCloudFps(root(String(fps)))).toBe(fps);
+    expect(warn).not.toHaveBeenCalled();
   });
 
-  it("uses cloud-allowed data-fps=24 as the default", () => {
-    const dir = makeProject(
-      '<div data-composition-id="root" data-root="true" data-fps="24">x</div>',
-    );
-
-    expect(readAllowedCompositionFpsFromDir(dir, allowedCloudFps)).toBe(24);
+  it.each(["48", "50", "30000/1001"])("falls back to 30 and warns for data-fps=%s", (fps) => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(defaultCloudFps(root(fps))).toBe(30);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0]?.[0])).toContain(`data-fps="${fps}"`);
   });
 
-  it("returns null for data-fps=48 so cloud callers keep their ?? 30 fallback", () => {
-    const dir = makeProject(
-      '<div data-composition-id="root" data-root="true" data-fps="48">x</div>',
-    );
-
-    const declared = readAllowedCompositionFpsFromDir(dir, allowedCloudFps);
-    expect(declared).toBeNull();
-    expect(declared ?? 30).toBe(30);
+  it("uses 30 without warning when index.html has no data-fps", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(
+      defaultCloudFps(makeProject('<div data-composition-id="root" data-root="true">x</div>')),
+    ).toBe(30);
+    expect(warn).not.toHaveBeenCalled();
   });
 
-  it("returns null for fractional data-fps because cloud fps must be an integer", () => {
-    const dir = makeProject(
-      '<div data-composition-id="root" data-root="true" data-fps="30000/1001">x</div>',
-    );
-
-    expect(readAllowedCompositionFpsFromDir(dir, allowedCloudFps)).toBeNull();
-  });
-
-  it("returns null when index.html has no data-fps", () => {
-    const dir = makeProject('<div data-composition-id="root" data-root="true">x</div>');
-
-    expect(readAllowedCompositionFpsFromDir(dir, allowedCloudFps)).toBeNull();
-  });
-
-  it("returns null when index.html cannot be read", () => {
+  it("uses 30 without warning when index.html cannot be read", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const dir = mkdtempSync(join(tmpdir(), "hyperframes-composition-fps-missing-"));
     projectDirs.push(dir);
-
-    expect(readAllowedCompositionFpsFromDir(dir, allowedCloudFps)).toBeNull();
+    expect(defaultCloudFps(dir)).toBe(30);
+    expect(warn).not.toHaveBeenCalled();
   });
 });

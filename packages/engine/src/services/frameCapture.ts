@@ -907,18 +907,18 @@ async function waitForCloseWithTimeout(promise: Promise<unknown>): Promise<boole
  * screenshots carry a real alpha channel (Chrome resets the override on every
  * navigation, so this must run after page load).
  *
- * drawElement is also skipped when supersampling (deviceScaleFactor > 1):
+ * drawElement is also skipped when scaling (deviceScaleFactor other than 1):
  * `drawElementImage` reads the canvas at CSS pixels and has no equivalent of
  * `Page.captureScreenshot`'s clip+scale, so it would silently capture at 1x and
  * drop the requested supersample. Such renders fall through to the screenshot
- * path (preMode already forces "screenshot" for DPR > 1).
+ * path (preMode already forces "screenshot" for DPR other than 1).
  */
 async function initDrawElementOrTransparentBackground(
   session: CaptureSession,
   page: Page,
   logInitPhase: (phase: string) => void,
 ): Promise<void> {
-  const supersampling = (session.options.deviceScaleFactor ?? 1) > 1;
+  const supersampling = (session.options.deviceScaleFactor ?? 1) !== 1;
   // forceScreenshot is an explicit routing decision made upstream (render-mode
   // compat hints like raw requestAnimationFrame, alpha formats, low-memory) —
   // drawElement must not override it. Concretely: an rAF-compat comp on
@@ -948,7 +948,7 @@ async function initDrawElementOrTransparentBackground(
     session.deFallbackTrigger = "supersampling";
     console.log(
       "[engine] --experimental-fast-capture disabled for this render: drawElementImage " +
-        "ignores deviceScaleFactor, so supersampled (DPR > 1) output uses screenshot capture.",
+        "ignores deviceScaleFactor, so scaled (DPR other than 1) output uses screenshot capture.",
     );
   }
   if ((session.config?.useDrawElement ?? false) && !supersampling && forceScreenshot) {
@@ -1286,8 +1286,8 @@ export async function createCaptureSession(
   // (the captured surface is sized by the OS window in CSS pixels regardless
   // of `Emulation.setDeviceMetricsOverride`'s DPR). When supersampling we
   // need explicit clip+scale on `Page.captureScreenshot`, so fall back to
-  // the screenshot path for any DPR > 1.
-  const supersampling = (options.deviceScaleFactor ?? 1) > 1;
+  // the screenshot path for any DPR other than 1.
+  const supersampling = (options.deviceScaleFactor ?? 1) !== 1;
   const requestedGpuMode = config?.browserGpuMode ?? DEFAULT_CONFIG.browserGpuMode;
   const resolvedGpuMode = await resolveBrowserGpuMode(requestedGpuMode, {
     chromePath: headlessShell ?? undefined,
@@ -2217,7 +2217,34 @@ async function decodeAllImages(page: Page): Promise<void> {
   });
 }
 
-async function applyVideoMetadataHints(
+/** Out-of-band videos a poster now sizes, so dropping their media cannot move layout. */
+export function releasableVideoIds(options: CaptureOptions): string[] {
+  const hinted = new Set((options.videoMetadataHints ?? []).map((hint) => hint.id));
+  return (options.skipReadinessVideoIds ?? []).filter((id) => hinted.has(id));
+}
+
+/** FFmpeg supplies these videos' frames, so their own players would only hold decoders and buffers in every worker. */
+export async function releaseInjectedVideoMedia(
+  page: Page,
+  videoIds: readonly string[],
+): Promise<void> {
+  if (videoIds.length === 0) return;
+  await page.evaluate(
+    (ids: string[]) => {
+      for (const id of ids) {
+        const video = window.__hfMediaEl?.(id) ?? document.getElementById(id);
+        if (!(video instanceof HTMLVideoElement)) continue;
+        video.pause();
+        for (const source of video.querySelectorAll("source")) source.remove();
+        video.removeAttribute("src");
+        video.load();
+      }
+    },
+    [...videoIds],
+  );
+}
+
+export async function applyVideoMetadataHints(
   page: Page,
   hints: readonly CaptureVideoMetadataHint[] | undefined,
 ): Promise<void> {
@@ -2225,7 +2252,8 @@ async function applyVideoMetadataHints(
 
   // fallow-ignore-next-line complexity
   await page.evaluate(
-    (metadataHints: CaptureVideoMetadataHint[]) => {
+    async (metadataHints: CaptureVideoMetadataHint[]) => {
+      const posters = new Set<string>();
       for (const hint of metadataHints) {
         if (
           !hint.id ||
@@ -2239,19 +2267,20 @@ async function applyVideoMetadataHints(
 
         const video = (window.__hfMediaEl?.(hint.id) ??
           document.getElementById(hint.id)) as HTMLVideoElement | null;
-        if (!video) continue;
+        if (!video || video.hasAttribute("poster")) continue;
 
-        if (!video.hasAttribute("width")) video.setAttribute("width", String(hint.width));
-        if (!video.hasAttribute("height")) video.setAttribute("height", String(hint.height));
-
-        const computed = window.getComputedStyle(video);
-        if (
-          !video.style.aspectRatio &&
-          (!computed.aspectRatio || computed.aspectRatio === "auto")
-        ) {
-          video.style.aspectRatio = `${hint.width} / ${hint.height}`;
-        }
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${hint.width}" height="${hint.height}"/>`;
+        const intrinsicSizePoster = `data:image/svg+xml,${encodeURIComponent(svg)}`;
+        video.poster = intrinsicSizePoster;
+        posters.add(intrinsicSizePoster);
       }
+      await Promise.all(
+        [...posters].map((src) => {
+          const image = new Image();
+          image.src = src;
+          return image.decode();
+        }),
+      );
     },
     [...hints],
   );
@@ -2503,6 +2532,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     recordSubTimelineWarning(session, pageReadyTimeout);
 
     await applyVideoMetadataHints(page, session.options.videoMetadataHints);
+    await releaseInjectedVideoMedia(page, releasableVideoIds(session.options));
     logInitPhase("applyVideoMetadataHints complete");
 
     // Run independent readiness checks in parallel — videos, images, fonts,
@@ -2659,6 +2689,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     recordSubTimelineWarning(session, pageReadyTimeout);
 
     await applyVideoMetadataHints(page, session.options.videoMetadataHints);
+    await releaseInjectedVideoMedia(page, releasableVideoIds(session.options));
     logInitPhase("applyVideoMetadataHints complete");
 
     // Run independent readiness checks in parallel — videos, images, fonts,
@@ -3453,6 +3484,7 @@ export async function createStaticVerificationPage(session: CaptureSession): Pro
       knownUnregisteredIds: session.subTimelineWaitMemo.unregisteredIds,
     });
     await applyVideoMetadataHints(page, session.options.videoMetadataHints);
+    await releaseInjectedVideoMedia(page, releasableVideoIds(session.options));
 
     const skipVideoIds = session.options.skipReadinessVideoIds ?? [];
     await Promise.all([

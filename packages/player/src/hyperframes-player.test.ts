@@ -4185,19 +4185,26 @@ describe("HyperframesPlayer asset-ready gate", () => {
     const player = await createConnectedPlayer();
     const doc = player.iframe.contentDocument!;
     const showSpy = vi.spyOn(player.shaderLoader, "showAssetsLoading");
+    // The overlay delay runs on fake time; the iframe's own frames stay real, however slow.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      player._waitForAssetsReady(doc);
+      expect(player.assetsReady).toBe(false);
 
-    player._waitForAssetsReady(doc);
-    expect(player.assetsReady).toBe(false);
+      // Only paint-and-idle is pending on this blank iframe doc (no runtime, no media).
+      const win = doc.defaultView!;
+      for (let frame = 0; frame < 600 && !player.assetsReady; frame++) {
+        await new Promise<void>((resolve) => win.requestAnimationFrame(() => resolve()));
+      }
+      expect(player.assetsReady).toBe(true);
 
-    // Only paint-and-idle is pending on this blank iframe doc (no runtime,
-    // no media) — it settles well under ASSETS_LOADING_SHOW_DELAY_MS.
-    await awaitPaintAndIdle(doc.defaultView!);
-
-    expect(player.assetsReady).toBe(true);
-    expect(player.hasAttribute("assets-loading")).toBe(false);
-    expect(showSpy).not.toHaveBeenCalled();
-
-    player.remove();
+      vi.advanceTimersByTime(1_000);
+      expect(player.hasAttribute("assets-loading")).toBe(false);
+      expect(showSpy).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+      player.remove();
+    }
   });
 
   it("fires painted only after the raised loader has faded out, not at assetsready", async () => {

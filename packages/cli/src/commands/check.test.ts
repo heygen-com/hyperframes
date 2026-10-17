@@ -163,6 +163,7 @@ function fakeDriver(overrides: Partial<CheckAuditDriver> = {}): CheckAuditDriver
     getDuration: vi.fn(async () => 9),
     hasNoTimelineDeclaration: vi.fn(async () => false),
     getTransitionBoundaries: vi.fn(async () => []),
+    getClipEdges: vi.fn(async () => []),
     getCanvas: vi.fn(async () => ({ width: 1920, height: 1080 })),
     findAmbiguousSelectors: vi.fn(async (_selectors: string[]) => []),
     seek: vi.fn(async (_time: number) => undefined),
@@ -2310,6 +2311,58 @@ describe("dense motion-overlap re-sampling", () => {
     });
     const { report } = await runScenario(driver);
     expect(driver.collectOverlap).toHaveBeenCalled();
+    expect(report.layout.findings.some((f) => f.code === "content_overlap")).toBe(true);
+  });
+
+  it("keeps a long film's dense pass to a fixed number of seeks", async () => {
+    const clipEdges = Array.from({ length: 433 }, (_, i) => [i * 1.2, i * 1.2 + 1.1]).flat();
+    const driver = fakeDriver({
+      getDuration: vi.fn(async () => 540),
+      getClipEdges: async () => clipEdges,
+    });
+    await runScenario(driver);
+    expect(vi.mocked(driver.seekGeometry).mock.calls.length).toBeLessThanOrEqual(240);
+  });
+
+  it("still promotes an overlap held on a long film", async () => {
+    const held = (time: number): boolean => time >= 200 && time <= 260;
+    const driver = fakeDriver({
+      getDuration: vi.fn(async () => 540),
+      collectLayout: vi.fn(async (_time: number) => []),
+      collectOverlap: vi.fn(async (time: number) =>
+        held(time) ? [layoutIssue("warning", { time, code: "content_overlap" })] : [],
+      ),
+    });
+    const { report } = await runScenario(driver);
+    expect(report.layout.findings).toContainEqual(
+      expect.objectContaining({ code: "content_overlap", severity: "error" }),
+    );
+    expect(vi.mocked(driver.seekGeometry).mock.calls.length).toBeLessThanOrEqual(240);
+  });
+
+  it("spends one hold probe on an overlap that stays the whole film", async () => {
+    const driver = fakeDriver({
+      getDuration: vi.fn(async () => 540),
+      collectLayout: vi.fn(async (_time: number) => []),
+      collectOverlap: vi.fn(async (time: number) => [
+        layoutIssue("warning", { time, code: "content_overlap" }),
+      ]),
+    });
+    await runScenario(driver);
+    expect(vi.mocked(driver.seekGeometry).mock.calls.length).toBeLessThanOrEqual(181);
+  });
+
+  it("samples a short clip the uniform grid steps over", async () => {
+    const inShortClip = (time: number): boolean => time > 101 && time < 101.8;
+    const driver = fakeDriver({
+      getDuration: vi.fn(async () => 540),
+      getClipEdges: async () => [101, 101.8],
+      collectLayout: vi.fn(async (_time: number) => []),
+      collectOverlap: vi.fn(async (time: number) =>
+        inShortClip(time) ? [layoutIssue("warning", { time, code: "content_overlap" })] : [],
+      ),
+    });
+    const { report } = await runScenario(driver);
     expect(report.layout.findings.some((f) => f.code === "content_overlap")).toBe(true);
   });
 });

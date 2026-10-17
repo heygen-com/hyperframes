@@ -6,10 +6,12 @@
  * expected to match even when they render identical output.
  */
 
+import type { DistributedFps } from "@hyperframes/core";
+
 export type PlanParityProtocol = "v1" | "v2";
 
 export interface PlanParityRenderConfig {
-  fps: 24 | 30 | 60;
+  fps: DistributedFps;
   width: number;
   height: number;
   format: "mp4";

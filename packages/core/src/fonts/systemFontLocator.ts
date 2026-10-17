@@ -4,7 +4,6 @@ import { homedir, platform } from "node:os";
 import { join, resolve } from "node:path";
 
 export const SYSTEM_FONT_SIZE_LIMIT = 5 * 1024 * 1024;
-const PROFILER_TIMEOUT_MS = 5000;
 const FC_MATCH_TIMEOUT_MS = 3000;
 
 export type FontFileFormat = "ttf" | "otf" | "woff2" | "woff" | "ttc";
@@ -221,70 +220,6 @@ function pickBestCandidate(candidates: FontCandidate[]): LocatedFont | null {
   return { path: best.path, format: best.format };
 }
 
-type SystemProfilerEntry = {
-  family: string;
-  path: string;
-  format: FontFileFormat;
-  isRegular: boolean;
-};
-
-let profilerCache: Map<string, SystemProfilerEntry[]> | null = null;
-
-// fallow-ignore-next-line complexity
-function getSystemProfilerIndex(): Map<string, SystemProfilerEntry[]> {
-  if (profilerCache) return profilerCache;
-  profilerCache = new Map();
-  if (platform() !== "darwin") return profilerCache;
-
-  try {
-    const raw = execFileSync("system_profiler", ["SPFontsDataType", "-json"], {
-      encoding: "utf8",
-      maxBuffer: 12 * 1024 * 1024,
-      timeout: PROFILER_TIMEOUT_MS,
-    });
-    const parsed = JSON.parse(raw);
-    if (!parsed?.SPFontsDataType || !Array.isArray(parsed.SPFontsDataType)) return profilerCache;
-
-    for (const fontEntry of parsed.SPFontsDataType) {
-      if (!fontEntry?.typefaces || !Array.isArray(fontEntry.typefaces)) continue;
-      for (const typeface of fontEntry.typefaces) {
-        if (!typeface) continue;
-        const family = typeface.family ?? typeface.fullname ?? typeface._name;
-        if (typeof family !== "string") continue;
-        const filePath = typeface.path;
-        if (typeof filePath !== "string" || !FONT_EXT_RE.test(filePath)) continue;
-        const normalized = normalizeName(family);
-        const ext = filePath.match(FONT_EXT_RE)?.[1] ?? "ttf";
-        const entry: SystemProfilerEntry = {
-          family: normalized,
-          path: filePath,
-          format: extensionToFormat(ext),
-          isRegular: isRegularWeight(filePath),
-        };
-        const list = profilerCache.get(normalized) ?? [];
-        list.push(entry);
-        profilerCache.set(normalized, list);
-      }
-    }
-  } catch {
-    // system_profiler unavailable
-  }
-
-  return profilerCache;
-}
-
-function locateViaSystemProfiler(targetFamily: string): LocatedFont | null {
-  const index = getSystemProfilerIndex();
-  const entries = index.get(targetFamily);
-  if (!entries || entries.length === 0) return null;
-
-  const candidates: FontCandidate[] = entries
-    .filter((e) => isRegularFile(e.path) && isPathBounded(e.path))
-    .map((e) => ({ path: e.path, format: e.format, isRegular: e.isRegular }));
-
-  return pickBestCandidate(candidates);
-}
-
 // fallow-ignore-next-line complexity
 function locateViaFcMatch(targetFamily: string): LocatedFont | null {
   if (platform() !== "linux") return null;
@@ -311,13 +246,7 @@ export function locateSystemFont(family: string): LocatedFont | null {
   const cached = cache.get(normalized);
   if (cached !== undefined) return cached;
 
-  let result: LocatedFont | null = null;
-
-  result = locateViaSystemProfiler(normalized);
-
-  if (!result) {
-    result = locateViaFcMatch(normalized);
-  }
+  let result = locateViaFcMatch(normalized);
 
   if (!result) {
     const allCandidates: FontCandidate[] = [];
@@ -373,18 +302,6 @@ export function locateSystemFontVariants(family: string): LocatedFontVariant[] {
   if (!normalized) return [];
 
   const variants: LocatedFontVariant[] = [];
-
-  const profilerIndex = getSystemProfilerIndex();
-  const profilerEntries = profilerIndex.get(normalized);
-  if (profilerEntries && profilerEntries.length > 0) {
-    for (const e of profilerEntries) {
-      if (!isRegularFile(e.path) || !isPathBounded(e.path)) continue;
-      const { weight, style } = inferWeightAndStyle(e.path);
-      variants.push({ path: e.path, format: e.format, weight, style });
-    }
-    if (variants.length > 0) return dedupeVariants(variants);
-  }
-
   const allCandidates: FontCandidate[] = [];
   for (const dir of fontDirectories()) {
     allCandidates.push(...collectCandidatesFromDir(dir, normalized));
@@ -405,13 +322,7 @@ function dedupeVariants(variants: LocatedFontVariant[]): LocatedFontVariant[] {
   return Array.from(seen.values());
 }
 
-export function getSystemProfilerFamilies(): string[] {
-  const index = getSystemProfilerIndex();
-  return Array.from(index.keys());
-}
-
 export function clearSystemFontCache(): void {
   cache.clear();
-  profilerCache = null;
   allowedDirsCache = null;
 }

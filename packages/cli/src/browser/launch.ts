@@ -7,6 +7,13 @@ import {
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { requestCliExit } from "../utils/commandResult.js";
 import { processIsAlive } from "../utils/processTree.js";
+import {
+  inAgentSandbox,
+  isOneProcessOverPipe,
+  machServiceDenied,
+  oneProcessOverPipe,
+  sandboxDeniedRemediation,
+} from "./sandboxDenied.js";
 
 export class BrowserCleanupError extends AggregateError {}
 
@@ -55,9 +62,7 @@ export async function resolveManagedGpuMode(
       context.signal?.throwIfAborted();
       const browser = await launchManagedBrowser(puppeteer, {
         ...options,
-        ...(context.noListen
-          ? { pipe: true, args: [...(options.args ?? []), "--single-process"] }
-          : {}),
+        ...(context.noListen ? oneProcessOverPipe(options) : {}),
         signal: context.signal,
       });
       try {
@@ -73,6 +78,29 @@ export async function resolveManagedGpuMode(
 
 /** One owner for every CLI browser, including a launch cancelled before its connection is ready. */
 export async function launchManagedBrowser(
+  puppeteer: PuppeteerNode,
+  options: LaunchOptions,
+): Promise<Browser> {
+  const sandboxed = isOneProcessOverPipe(options) || inAgentSandbox();
+  try {
+    return await launchOwnedBrowser(puppeteer, sandboxed ? oneProcessOverPipe(options) : options);
+  } catch (error) {
+    const unnamedSeatbelt = !sandboxed && machServiceDenied(normalizeErrorMessage(error));
+    if (!unnamedSeatbelt) throw withRemediation(error);
+    return launchOwnedBrowser(puppeteer, oneProcessOverPipe(options)).catch(
+      (retryError: unknown) => {
+        throw withRemediation(retryError);
+      },
+    );
+  }
+}
+
+function withRemediation(error: unknown): unknown {
+  const remediation = sandboxDeniedRemediation(normalizeErrorMessage(error));
+  return remediation ? new Error(remediation, { cause: error }) : error;
+}
+
+async function launchOwnedBrowser(
   puppeteer: PuppeteerNode,
   options: LaunchOptions,
 ): Promise<Browser> {

@@ -219,7 +219,14 @@ function fontFaceKey(atRule: AtRule): string {
 
 /** Drops repeats of an identical `@font-face` across the given style texts, keeping the last copy:
  * the last matching rule is the one the browser uses, so a rule in between never gains precedence. */
-export function dedupeFontFaceRules(styleTexts: string[]): string[] {
+export const dedupeFontFaceRules = (styleTexts: string[]): string[] => dropFontFaces(styleTexts);
+
+export function hoistFontFaceRules(styleTexts: string[]): { styles: string[]; faces: string[] } {
+  const faces: string[] = [];
+  return { styles: dropFontFaces(styleTexts, faces), faces };
+}
+
+function dropFontFaces(styleTexts: string[], hoisted?: string[]): string[] {
   const seen = new Set<string>();
   return [...styleTexts]
     .reverse()
@@ -235,12 +242,13 @@ export function dedupeFontFaceRules(styleTexts: string[]): string[] {
       for (const node of [...(root.nodes ?? [])].reverse()) {
         if (!isFontFaceAtRule(node)) continue;
         const key = fontFaceKey(node);
-        if (seen.has(key)) {
-          node.remove();
-          changed = true;
-        } else {
+        if (!seen.has(key)) {
           seen.add(key);
+          if (!hoisted) continue;
+          hoisted.unshift(node.toString());
         }
+        node.remove();
+        changed = true;
       }
       return changed ? root.toResult({ map: false }).css : css;
     })
@@ -415,10 +423,8 @@ export function wrapScopedCompositionScript(
           if (prop !== __hfCompId) {
             return Reflect.get(target, prop, target);
           }
-          var authoredValue = Reflect.get(target, prop, target);
-          return authoredValue === undefined
-            ? Reflect.get(target, __hfTimelineCompId, target)
-            : authoredValue;
+          var runtimeValue = Reflect.get(target, __hfTimelineCompId, target);
+          return runtimeValue === undefined ? Reflect.get(target, prop, target) : runtimeValue;
         },
         set: function(target, prop, value, receiver) {
           if (prop !== __hfCompId) {
@@ -426,11 +432,15 @@ export function wrapScopedCompositionScript(
           }
           // The authored node remains in the compiled DOM when its local id
           // differs from the runtime mount id, so readiness legitimately sees
-          // both compositions. Publish the same timeline under both identities
-          // instead of replacing one with the other.
-          var authoredSet = Reflect.set(target, __hfCompId, value, target);
+          // both compositions. Publish the same timeline under both identities,
+          // unless another mount of the same file already owns the authored one.
+          var authoredValue = Reflect.get(target, __hfCompId, target);
+          var ownsAuthored =
+            authoredValue === undefined ||
+            authoredValue === Reflect.get(target, __hfTimelineCompId, target);
           var runtimeSet = Reflect.set(target, __hfTimelineCompId, value, target);
-          return authoredSet && runtimeSet;
+          if (!ownsAuthored) return runtimeSet;
+          return Reflect.set(target, __hfCompId, value, target) && runtimeSet;
         },
       });
     }

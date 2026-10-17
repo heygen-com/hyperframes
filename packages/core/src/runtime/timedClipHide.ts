@@ -19,6 +19,14 @@ export const CLIP_HIDDEN_ATTR = "data-hf-clip-hidden";
 const CONTENTS_ATTR = "data-hf-hidden-clip-contents";
 const HIDE_HIDDEN_CLIP_CONTENTS = `[${CLIP_HIDDEN_ATTR}][style*="visibility: hidden"] * { visibility: hidden !important; }`;
 
+export function showHiddenClips(): () => void {
+  const hidden = Array.from(document.querySelectorAll<HTMLElement>(`[${CLIP_HIDDEN_ATTR}]`));
+  for (const el of hidden) el.style.visibility = "visible";
+  return () => {
+    for (const el of hidden) el.style.visibility = "hidden";
+  };
+}
+
 type FirstPassWindow = Window & {
   __hfFirstPassHidden?: boolean;
   __hyperframeRuntimeBootstrapped?: boolean;

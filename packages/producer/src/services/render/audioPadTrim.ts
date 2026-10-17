@@ -77,8 +77,8 @@ export interface PadTrimAudioInput {
   /** Deadline for each ffmpeg process; defaults to the engine's `ffmpegProcessTimeout`. */
   timeoutMs?: number;
   /**
-   * Optional injectables for unit tests. Production callers omit them and
-   * get the real `ffprobe`/`ffmpeg`-backed implementations.
+   * Optional injectables. Tests stub them; the distributed assembler supplies
+   * the frame probe because its video is still separate chunks.
    */
   probeVideoFrameInfo?: (videoPath: string) => Promise<ProbeVideoFrameInfo>;
   probeAudioInfo?: (audioPath: string, signal?: AbortSignal) => Promise<AudioProbeInfo>;
@@ -537,7 +537,7 @@ interface FfprobeOutput {
   streams?: FfprobeStreamInfo[];
 }
 
-async function defaultProbeVideoFrameInfo(
+export async function defaultProbeVideoFrameInfo(
   videoPath: string,
   signal?: AbortSignal,
 ): Promise<ProbeVideoFrameInfo> {
@@ -656,7 +656,7 @@ async function defaultRunFfmpeg(
 
 // ── ffprobe JSON runner (shared between fast/slow video probe paths) ─────
 
-async function runFfprobeJson<T>(args: string[], signal?: AbortSignal): Promise<T> {
+export async function runFfprobeJson<T>(args: string[], signal?: AbortSignal): Promise<T> {
   // Callers bake the input path into `args` (terminated with "--"), so this
   // helper cannot add the terminator itself — assert they did rather than
   // let a dash-prefixed path silently reach ffprobe as an option.

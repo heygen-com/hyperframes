@@ -58,9 +58,10 @@ export async function withRemainingBudget<T>(
   work: Promise<T>,
   remainingMs: number,
   label: string,
+  timeoutError: () => Error = () => new StageBudgetTimeoutError(label, Math.max(0, remainingMs)),
 ): Promise<T> {
   if (!(remainingMs > 0)) {
-    throw new StageBudgetTimeoutError(label, Math.max(0, remainingMs));
+    throw timeoutError();
   }
 
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -69,7 +70,7 @@ export async function withRemainingBudget<T>(
       work,
       new Promise<never>((_resolve, reject) => {
         timer = setTimeout(() => {
-          reject(new StageBudgetTimeoutError(label, remainingMs));
+          reject(timeoutError());
         }, remainingMs);
       }),
     ]);

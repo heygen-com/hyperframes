@@ -244,6 +244,30 @@ describe("__hfSwapScenes", () => {
     expect(JSON.parse(meta).scenes.a).toBe("ha2");
   });
 
+  it("adds only the fonts a swapped scene brings, leaving the loaded ones' style as it was", async () => {
+    const faceA = '@font-face{font-family:"A";src:url(a.woff2)}';
+    const faceB = '@font-face{font-family:"B";src:url(b.woff2)}';
+    boot(
+      [A1, B],
+      trackingRoot().root,
+      (head) => `<style data-hf-scene-fonts>${faceA}</style>${head}`,
+    );
+    await tick();
+    const loaded = document.querySelector("style[data-hf-scene-fonts]")!;
+
+    const next = preview([A2, B]).html.replace(
+      "<head>",
+      `<head><style data-hf-scene-fonts>${faceA}\n${faceB}</style>`,
+    );
+    await window.__hfSwapScenes!(next);
+
+    expect(sceneHost("a").textContent).toBe("A two");
+    const holders = [...document.querySelectorAll("style[data-hf-scene-fonts]")];
+    expect(holders[0]).toBe(loaded);
+    expect(loaded.textContent).toBe(faceA);
+    expect(holders.map((el) => el.textContent)).toEqual([faceA, faceB]);
+  });
+
   it("runs the swapped scene's script only once web fonts are ready", async () => {
     const { root } = trackingRoot();
     boot([A1, B], root);

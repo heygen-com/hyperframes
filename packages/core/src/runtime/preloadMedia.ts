@@ -1,4 +1,5 @@
 import { parseStrictFiniteTimingNumber } from "./playbackRate";
+import { createRuntimeStartTimeResolver } from "./startResolver";
 import { skipsHiddenImages } from "./timedClipHide";
 
 type PreloadableMedia = Pick<
@@ -40,18 +41,19 @@ export function deferMediaUntilDue(): void {
   win.__hfMediaDeferral?.disconnect();
   win.__hfMediaDeferral = undefined;
   if (!skipsHiddenImages()) return;
-  const defer = (el: Element) => {
+  const defer = (el: Element, startInFilm: (el: Element) => number) => {
     const start = parseStrictFiniteTimingNumber(el.getAttribute("data-start"));
-    if (start != null && start > 0 && lengthIsAuthored(el))
+    if (start != null && lengthIsAuthored(el) && startInFilm(el) > 0)
       (el as HTMLMediaElement).preload = "none";
   };
   win.__hfMediaDeferral = new MutationObserver((records) => {
+    const startInFilm = createRuntimeStartTimeResolver({}).resolveMediaStartForElement;
     for (const record of records)
       for (const node of record.addedNodes) {
         if (node.nodeType !== 1) continue;
         const el = node as Element;
-        if (el.matches("video, audio")) defer(el);
-        for (const media of el.querySelectorAll("video, audio")) defer(media);
+        if (el.matches("video, audio")) defer(el, startInFilm);
+        for (const media of el.querySelectorAll("video, audio")) defer(media, startInFilm);
       }
   });
   win.__hfMediaDeferral.observe(document.documentElement, { childList: true, subtree: true });

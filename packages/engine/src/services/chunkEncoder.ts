@@ -102,6 +102,8 @@ export interface MuxVideoWithAudioOptions extends Partial<
    * depend on the file extension alone.
    */
   audioCodec?: "aac";
+  /** Replaces `-i <videoPath>` (which is then unused), e.g. with a concat-demuxer input. */
+  videoInputArgs?: readonly string[];
   /**
    * @deprecated No longer used. `-avoid_negative_ts` is never passed for
    * mp4/mov muxing (ffmpeg's `auto` default already resolves to `disabled`
@@ -110,7 +112,6 @@ export interface MuxVideoWithAudioOptions extends Partial<
    * source compatibility; it will be removed in a future major.
    */
   preserveAudioPrimingEditList?: boolean;
-  /** Hard cap copied audio to the already-encoded video's exact duration. */
 }
 
 async function shouldCopyAacSidecar(
@@ -785,7 +786,7 @@ export async function muxVideoWithAudio(
   const isWebm = outputPath.endsWith(".webm");
   const isMov = outputPath.endsWith(".mov");
   const shouldCopyAudio = isWebm ? false : await shouldCopyAacSidecar(audioPath, config);
-  const args = ["-i", videoPath, "-i", audioPath, "-c:v", "copy"];
+  const args = [...(config?.videoInputArgs ?? ["-i", videoPath]), "-i", audioPath, "-c:v", "copy"];
 
   if (isWebm) {
     args.push("-c:a", "libopus", "-b:a", "128k");

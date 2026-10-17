@@ -9,6 +9,7 @@
  * type-check pass.
  */
 
+import type { DistributedFps } from "@hyperframes/core";
 import type { DistributedFormat } from "./services/distributed/shared.js";
 
 /** Inputs for {@link runLambdaLocalRender}. Same contract as `runDistributedSimulatedRender`. */
@@ -18,7 +19,7 @@ export interface RunLambdaLocalInput {
   projectDir: string;
   tempRoot: string;
   renderedOutputPath: string;
-  fps: 24 | 30 | 60;
+  fps: DistributedFps;
   /**
    * Width/height from the fixture's renderConfig. Forwarded directly to
    * the Lambda event so this mode catches drift if the handler ever

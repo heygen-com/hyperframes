@@ -513,6 +513,25 @@ describe("initSandboxRuntimeModular", () => {
       }
     });
 
+    it.each(["seek", "renderSeek"] as const)(
+      "shows a clip's child again after a %s skipped past the GSAP set that hides it at the clip's end",
+      (seek) => {
+        document.body.innerHTML =
+          `<div data-composition-id="main" data-root="true" data-start="0" data-duration="10" data-width="1920" data-height="1080">` +
+          `<div id="line" style="position: absolute" data-start="2" data-duration="2"><div id="words"></div></div>` +
+          `</div>`;
+        const tl = gsap.timeline({ paused: true });
+        tl.set("#words", { visibility: "hidden" }, 3.9);
+        window.__timelines = { main: tl as unknown as RuntimeTimelineLike };
+        initSandboxRuntimeModular();
+        const words = document.getElementById("words")!;
+        // The set first renders on this jump, while its clip is off screen.
+        window.__player?.[seek](6);
+        window.__player?.[seek](3);
+        expect(getComputedStyle(words).visibility).toBe("visible");
+      },
+    );
+
     it("keeps a hidden scene's contents hidden when a rewound GSAP set marks one visible inline", () => {
       hideTimedClipsUntilFirstPass();
       try {
@@ -5345,6 +5364,47 @@ describe("initSandboxRuntimeModular", () => {
         }) as CSSStyleDeclaration;
       }) as typeof window.getComputedStyle);
     };
+
+    it("lays a clip out again only once its layout inputs change", async () => {
+      const raf = createManualRaf();
+      vi.spyOn(performance, "now").mockImplementation(() => raf.now());
+      window.requestAnimationFrame =
+        raf.requestAnimationFrame as typeof window.requestAnimationFrame;
+      window.cancelAnimationFrame = raf.cancelAnimationFrame as typeof window.cancelAnimationFrame;
+      const root = makeRoot();
+      const clip = document.createElement("div");
+      clip.setAttribute("data-start", "0");
+      root.appendChild(clip);
+      const reads = vi.spyOn(window, "getComputedStyle");
+      const readsOfClip = () => reads.mock.calls.filter(([el]) => el === clip).length;
+      const frames = async (n: number) => {
+        for (let i = 0; i < n; i++) {
+          raf.step(1000 / 60);
+          await Promise.resolve();
+        }
+      };
+      const posts = vi.spyOn(window.parent, "postMessage");
+      const timelinePosts = () =>
+        posts.mock.calls.filter(([m]) => (m as { type?: string })?.type === "stage-size").length;
+
+      window.__timelines = { main: createMockTimeline(10) };
+      initSandboxRuntimeModular();
+      await frames(5);
+      const settled = readsOfClip();
+      const postedBefore = timelinePosts();
+      expect(settled).toBeGreaterThan(0);
+
+      // A timing edit posts the timeline again; the clip's layout inputs did not move.
+      clip.setAttribute("data-duration", "5");
+      await frames(60);
+      expect(timelinePosts()).toBeGreaterThan(postedBefore);
+      expect(readsOfClip()).toBe(settled);
+
+      clip.setAttribute("data-width", "640");
+      await frames(60);
+      expect(readsOfClip()).toBeGreaterThan(settled);
+      expect(clip.style.width).toBe("640px");
+    });
 
     it("force-absolutizes an authored data-start clip and leaves its position to CSS", () => {
       const root = makeRoot();

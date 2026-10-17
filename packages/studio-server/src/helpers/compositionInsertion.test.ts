@@ -97,7 +97,31 @@ describe("insertCompositionIntoSource", () => {
     );
 
     expect(result.hostId).toBe("headline_2");
-    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids).toEqual(["main", "headline", "headline"]);
+  });
+
+  it("mounts a project whose root shares the parent root's id under its own host id", () => {
+    const dir = project();
+    const cliRoot = (title: string) => `<!doctype html><html><body>
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080" data-duration="6">${title}</div>
+    </body></html>`;
+    writeFileSync(join(dir, "index.html"), cliRoot("Host"));
+    writeFileSync(join(dir, "scene.html"), cliRoot("Scene"));
+
+    const result = insertCompositionIntoSource({
+      projectDir: dir,
+      targetPath: "index.html",
+      sourcePath: "scene.html",
+      parentSource: cliRoot("Host"),
+      start: 0,
+      desiredTrack: 0,
+    });
+    const host = parseHTML(result.html).document.querySelector("[data-composition-src]");
+
+    expect(result.hostId).not.toBe("main");
+    expect(result.hostId).not.toBe("root");
+    expect(host?.id).toBe(result.hostId);
+    expect(host?.getAttribute("data-composition-id")).toBe("main");
   });
 
   it("ignores nested composition internals when resolving a parent track collision", () => {

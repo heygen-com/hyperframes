@@ -249,6 +249,7 @@ function buildTimelineClipLabel(node: Element, kind: RuntimeTimelineClip["kind"]
 export function collectRuntimeTimelinePayload(params: {
   canonicalFps: number;
 }): RuntimeTimelineMessage {
+  const stackingByParent = new Map<Element | null, string>();
   const runtimeWindow = window as Window & {
     __timelines?: Record<string, RuntimeTimelineLike | undefined>;
   };
@@ -477,7 +478,7 @@ export function collectRuntimeTimelinePayload(params: {
       duration,
       track: parseAuthoredTrack(node, i),
       zIndex: readInlineZIndex(node),
-      stackingContextId: resolveCssStackingContextId(node),
+      stackingContextId: resolveCssStackingContextId(node, stackingByParent),
       kind,
       tagName: tag,
       compositionId: node.getAttribute("data-composition-id"),
@@ -588,7 +589,7 @@ export function collectRuntimeTimelinePayload(params: {
             duration: clampedDuration,
             track: parseAuthoredTrack(el, gsapTrack),
             zIndex: readInlineZIndex(el),
-            stackingContextId: resolveCssStackingContextId(el),
+            stackingContextId: resolveCssStackingContextId(el, stackingByParent),
             kind: "element",
             tagName: el.tagName.toLowerCase(),
             compositionId: el.getAttribute("data-composition-id"),
@@ -645,7 +646,7 @@ export function collectRuntimeTimelinePayload(params: {
         duration: clampedDuration,
         track: parseAuthoredTrack(el, overlayTrack),
         zIndex: readInlineZIndex(el),
-        stackingContextId: resolveCssStackingContextId(el),
+        stackingContextId: resolveCssStackingContextId(el, stackingByParent),
         kind: "element",
         tagName: tag,
         compositionId: el.getAttribute("data-composition-id"),

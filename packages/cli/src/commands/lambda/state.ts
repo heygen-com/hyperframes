@@ -23,6 +23,7 @@ export interface StackOutputs {
   functionName: string;
   /** Lambda memory MB used during deploy; carried so cost math doesn't have to re-derive it. */
   lambdaMemoryMb: number;
+  reservedConcurrency?: number;
   deployedAt: string;
 }
 

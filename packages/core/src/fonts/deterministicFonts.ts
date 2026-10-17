@@ -246,6 +246,7 @@ export type FontFamilyDeclaration = {
 };
 
 function collectCssCustomProperties(css: string, customProperties: Map<string, string>): void {
+  if (!css.includes("--")) return;
   const root = parseCssRoot(css);
   if (!root) return;
   root.walkDecls((decl) => {
@@ -272,6 +273,7 @@ function* iterateCssRootFontFamilyDeclarations(
 }
 
 function* iterateCssFontFamilyDeclarations(css: string): Generator<FontFamilyDeclaration> {
+  if (!/font-family/i.test(css)) return;
   const root = parseCssRoot(css);
   if (!root) return;
   yield* iterateCssRootFontFamilyDeclarations(root);

@@ -640,6 +640,87 @@ describe("hyperframes skills", () => {
     expect(await commandExitCode()).toBe(1);
   });
 
+  // GH #5695: the router runs `skills update <workflow>` before every workflow, so a
+  // team that pins its skills and sets HYPERFRAMES_SKIP_SKILLS=1 (like `init`
+  // honours) must not have that pin replaced by the latest upstream skills.
+  describe("with HYPERFRAMES_SKIP_SKILLS=1", () => {
+    beforeEach(() => {
+      vi.stubEnv("HYPERFRAMES_SKIP_SKILLS", "1");
+      invalidateSkillsCache.mockClear();
+    });
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it("named `skills update` leaves a pinned install alone and exits 0", async () => {
+      setPlatform("linux");
+      const logSpy = vi.spyOn(console, "log");
+      const { checkSkills } = await import("../utils/skillsManifest.js");
+
+      await runSkillsUpdateWith(["product-launch-video"]);
+
+      expect(state.spawnCalls).toHaveLength(0);
+      expect(vi.mocked(checkSkills)).not.toHaveBeenCalled();
+      expect(invalidateSkillsCache).not.toHaveBeenCalled();
+      expect(await commandExitCode()).toBe(0);
+      expect(String(logSpy.mock.calls.at(-1)?.[0] ?? "")).toMatch(/managed externally/);
+    });
+
+    it("bare `skills update` neither installs nor prunes", async () => {
+      setPlatform("linux");
+      const { checkSkills } = await import("../utils/skillsManifest.js");
+      vi.mocked(checkSkills).mockImplementation(
+        async () =>
+          ({
+            ...DEFAULT_CHECK,
+            skills: [...DEFAULT_CHECK.skills, { name: "graphic-overlays", status: "removed" }],
+          }) as never,
+      );
+
+      await runSkillsUpdate();
+
+      expect(state.spawnCalls).toHaveLength(0);
+      expect(vi.mocked(checkSkills)).not.toHaveBeenCalled();
+      expect(await commandExitCode()).toBe(0);
+    });
+
+    it("bare `skills` does not install the full set", async () => {
+      setPlatform("linux");
+
+      const { default: skillsCmd } = await import("./skills.js");
+      await skillsCmd.run?.({ args: {}, rawArgs: [], cmd: skillsCmd } as never);
+
+      expect(state.spawnCalls).toHaveLength(0);
+      expect(invalidateSkillsCache).not.toHaveBeenCalled();
+      expect(await commandExitCode()).toBe(0);
+    });
+
+    it("--json reports the skip as parseable JSON", async () => {
+      setPlatform("linux");
+      const logSpy = vi.spyOn(console, "log");
+
+      await runSkillsUpdateWith(["pr-to-video"], { json: true });
+
+      expect(await commandExitCode()).toBe(0);
+      const parsed = JSON.parse(String(logSpy.mock.calls.at(-1)?.[0] ?? "")) as {
+        skipped?: boolean;
+        requested?: string[];
+      };
+      expect(parsed.skipped).toBe(true);
+      expect(parsed.requested).toEqual(["pr-to-video"]);
+    });
+
+    it("still rejects flag-like skill names", async () => {
+      setPlatform("linux");
+
+      await runSkillsUpdateWith(["--all"]);
+
+      expect(state.spawnCalls).toHaveLength(0);
+      expect(await commandExitCode()).toBe(1);
+    });
+  });
+
   // The stale-24h-cache regression: the skills commands are excluded from the
   // background nudge pipeline (cli.ts), so unless they drop the cached verdict
   // themselves, a successful install keeps the pre-install "N out of date or

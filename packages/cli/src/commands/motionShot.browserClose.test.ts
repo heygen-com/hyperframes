@@ -2,10 +2,12 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
+import { fakeCdpSession } from "./deprecationTestHarness.js";
 
 const browser = vi.hoisted(() => ({
   close: vi.fn(async () => undefined),
   newPage: vi.fn(async () => ({
+    createCDPSession: fakeCdpSession,
     setViewport: async () => undefined,
     goto: async () => undefined,
     evaluate: async () => undefined,

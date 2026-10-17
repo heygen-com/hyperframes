@@ -22,8 +22,9 @@ import {
   isVideoFrameFormat,
   validateEngineConfigSnapshot,
 } from "@hyperframes/engine";
+import { DISTRIBUTED_FPS, isDistributedFps } from "@hyperframes/core";
 import { type DistributedFormat } from "./shared.js";
-import { type DistributedRenderConfig } from "./plan.js";
+import { type DistributedRenderConfig, MAX_PARALLEL_CHUNKS_CEILING } from "./plan.js";
 
 /**
  * `DistributedRenderConfig` minus the runtime-only fields (`logger`,
@@ -48,7 +49,6 @@ export class InvalidConfigError extends Error {
   }
 }
 
-const ALLOWED_FPS = [24, 30, 60] as const;
 const ALLOWED_FORMATS = [
   "mp4",
   "mov",
@@ -63,7 +63,6 @@ const ALLOWED_HDR_MODES = ["auto", "force-sdr"] as const;
 const MAX_DIMENSION = 7680;
 const MIN_DIMENSION = 16;
 const MAX_CHUNK_SIZE = 3600;
-const MAX_PARALLEL_CHUNKS_CEILING = 256;
 
 /**
  * Throw an `InvalidConfigError` if `config` is not a valid
@@ -80,10 +79,10 @@ export function validateDistributedRenderConfig(
     throw new InvalidConfigError("config", "must be an object");
   }
 
-  if (!ALLOWED_FPS.includes(config.fps as 24 | 30 | 60)) {
+  if (!isDistributedFps(config.fps)) {
     throw new InvalidConfigError(
       "config.fps",
-      `must be one of ${ALLOWED_FPS.join(", ")}; got ${String(config.fps)}`,
+      `must be one of ${DISTRIBUTED_FPS.join(", ")}; got ${String(config.fps)}`,
     );
   }
 
@@ -184,6 +183,13 @@ export function validateDistributedRenderConfig(
         "config.targetChunkFrames",
         `must be <= ${MAX_CHUNK_SIZE}; got ${config.targetChunkFrames}`,
       );
+    }
+  }
+
+  for (const field of ["workerTimeoutSeconds", "workerConcurrency"] as const) {
+    const value = config[field];
+    if (value !== undefined && (!Number.isInteger(value) || value < 1)) {
+      throw new InvalidConfigError(`config.${field}`, `must be a positive integer; got ${value}`);
     }
   }
 

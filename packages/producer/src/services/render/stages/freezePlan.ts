@@ -20,7 +20,8 @@ import {
   computePlanHash,
   type PlanAssetHash,
   type PlanDimensions,
-  sha256Hex,
+  sha256File,
+  sha256FileAsync,
 } from "./planHash.js";
 
 /**
@@ -93,6 +94,8 @@ export interface LockedRenderConfig {
    * before this field existed.
    */
   variables?: Record<string, unknown>;
+
+  chunksCarryAudio?: true;
 }
 
 export interface CompositionMetadataJson {
@@ -134,6 +137,7 @@ export interface FreezePlanInput {
   totalFrames: number;
   /** Whether the plan's mixed-audio artifact was produced. */
   hasAudio: boolean;
+  digests?: PlanFileDigests;
 }
 
 export interface FreezePlanResult {
@@ -159,9 +163,29 @@ const HASH_EXCLUDED_PLAN_FILES = new Set<string>([
   COMPILED_INDEX_RELATIVE_PATH,
 ]);
 
+/** sha256 by absolute path. A staged plan file never changes, so one plan hashes it once. */
+export type PlanFileDigests = Map<string, string>;
+
+export function planFileSha256(absolutePath: string, digests?: PlanFileDigests): string {
+  let sha256 = digests?.get(absolutePath);
+  if (sha256 === undefined) {
+    sha256 = sha256File(absolutePath);
+    digests?.set(absolutePath, sha256);
+  }
+  return sha256;
+}
+
+/** Hash every file under `dir` into `digests` without blocking the event loop. */
+export async function prehashPlanFiles(dir: string, digests: PlanFileDigests): Promise<void> {
+  if (!existsSync(dir)) return;
+  for (const { absolutePath } of listPlanFiles(dir)) {
+    if (!digests.has(absolutePath)) digests.set(absolutePath, await sha256FileAsync(absolutePath));
+  }
+}
+
 /**
  * Recursively drop keys whose value is `undefined`. Preserves arrays and
- * primitive leaves. Used to sanitize the `LockedRenderConfig` before
+ * primitive leaves. Sanitizes the `LockedRenderConfig` before
  * canonical-JSON serialization so optional fields collapse to "absent"
  * rather than tripping `canonicalJsonStringify`'s undefined-rejection.
  */
@@ -219,7 +243,10 @@ function listPlanFiles(planDir: string): Array<{ planRelativePath: string; absol
  * the compiled HTML bytes (mixed verbatim into `planHash`) and the
  * sorted-by-path asset hashes.
  */
-function collectPlanAssetShas(planDir: string): {
+function collectPlanAssetShas(
+  planDir: string,
+  digests?: PlanFileDigests,
+): {
   compositionHtml: Uint8Array;
   assets: PlanAssetHash[];
 } {
@@ -232,8 +259,10 @@ function collectPlanAssetShas(planDir: string): {
       continue;
     }
     if (HASH_EXCLUDED_PLAN_FILES.has(file.planRelativePath)) continue;
-    const bytes = readFileSync(file.absolutePath);
-    assets.push({ path: file.planRelativePath, sha256: sha256Hex(bytes) });
+    assets.push({
+      path: file.planRelativePath,
+      sha256: planFileSha256(file.absolutePath, digests),
+    });
   }
   if (compositionHtml === null) {
     throw new Error(
@@ -260,7 +289,7 @@ function collectPlanAssetShas(planDir: string): {
  * callers should catch those as `MISSING_PLAN_ARTIFACT` rather than
  * lumping them with hash drift.
  */
-export function recomputePlanHashFromPlanDir(planDir: string): string {
+export function recomputePlanHashFromPlanDir(planDir: string, digests?: PlanFileDigests): string {
   const planJsonPath = join(planDir, "plan.json");
   const encoderJsonPath = join(planDir, "meta", "encoder.json");
   if (!existsSync(planJsonPath)) {
@@ -283,7 +312,7 @@ export function recomputePlanHashFromPlanDir(planDir: string): string {
   // normalization differences, and Node version skew on number printing.
   const encoderConfigCanonicalJson = readFileSync(encoderJsonPath, "utf-8");
 
-  const { compositionHtml, assets } = collectPlanAssetShas(planDir);
+  const { compositionHtml, assets } = collectPlanAssetShas(planDir, digests);
 
   return computePlanHash({
     compositionHtml,
@@ -316,6 +345,7 @@ export async function freezePlan(input: FreezePlanInput): Promise<FreezePlanResu
     durationSeconds,
     totalFrames,
     hasAudio,
+    digests,
   } = input;
 
   if (!existsSync(planDir)) {
@@ -343,7 +373,7 @@ export async function freezePlan(input: FreezePlanInput): Promise<FreezePlanResu
 
   writeFileSync(join(metaDir, "chunks.json"), `${JSON.stringify(chunks, null, 2)}\n`, "utf-8");
 
-  const { compositionHtml, assets } = collectPlanAssetShas(planDir);
+  const { compositionHtml, assets } = collectPlanAssetShas(planDir, digests);
 
   const planHash = computePlanHash({
     compositionHtml,

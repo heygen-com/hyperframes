@@ -120,6 +120,12 @@ describe("RenderRequest", () => {
     expect(renderConfigFromRequest(value).producerConfig?.forceScreenshot).toBe(true);
   });
 
+  it("accepts 25 fps for a distributed render", () => {
+    const value = request();
+    value.options.fps = { num: 25, den: 1 };
+    expect(distributedConfigFromRequest(value).fps).toBe(25);
+  });
+
   it("rejects unsupported distributed fps before an adapter launch", () => {
     const value = request();
     value.options.fps = { num: 30_000, den: 1_001 };

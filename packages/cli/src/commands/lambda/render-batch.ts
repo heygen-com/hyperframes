@@ -29,7 +29,7 @@ import type {
   SerializableDistributedRenderConfig,
   SiteHandle,
 } from "@hyperframes/aws-lambda/sdk";
-import type { CanvasResolution } from "@hyperframes/core";
+import type { CanvasResolution, DistributedFps } from "@hyperframes/core";
 import { c } from "../../ui/colors.js";
 import { errorBox } from "../../ui/format.js";
 import {
@@ -61,7 +61,7 @@ export interface RenderBatchArgs {
    */
   siteId?: string;
   /** Composition config — fps/width/height/format required, rest optional. */
-  fps: 24 | 30 | 60;
+  fps: DistributedFps;
   width: number;
   height: number;
   /** See {@link RenderArgs.outputResolution}. */
@@ -217,7 +217,10 @@ export async function runRenderBatch(args: RenderBatchArgs): Promise<void> {
     failCommand();
   }
 
-  const config: SerializableDistributedRenderConfig = buildLambdaBatchRenderConfig(args);
+  const config: SerializableDistributedRenderConfig = buildLambdaBatchRenderConfig(
+    args,
+    stack.reservedConcurrency,
+  );
 
   // Deploy the site once and reuse it across every entry. --site-id and
   // --dry-run both skip the deploy via a synthesised handle.
@@ -354,6 +357,7 @@ function makePlaceholderSiteHandle(siteId: string, bucketName: string): SiteHand
  */
 export function buildLambdaBatchRenderConfig(
   args: RenderBatchArgs,
+  workerConcurrency?: number,
 ): SerializableDistributedRenderConfig {
   const config: SerializableDistributedRenderConfig = {
     fps: args.fps,
@@ -366,6 +370,7 @@ export function buildLambdaBatchRenderConfig(
     chunkSize: args.chunkSize,
     maxParallelChunks: args.maxParallelChunks,
     targetChunkFrames: args.targetChunkFrames,
+    workerConcurrency,
     runtimeCap: "lambda",
   };
   if (args.outputResolutionAspectAgnostic) {

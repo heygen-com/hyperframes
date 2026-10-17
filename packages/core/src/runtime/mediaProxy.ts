@@ -347,7 +347,10 @@ export function swapToProxy(
     });
   });
   // A frame capture holds for the copy as it held for a loading video before, up to the same cap.
-  registerSeekCompletion(Promise.race([swap, new Promise((cap) => setTimeout(cap, HOLD_CAP_MS))]));
+  registerSeekCompletion(
+    Promise.race([swap, new Promise((cap) => setTimeout(cap, HOLD_CAP_MS))]),
+    "video-frame",
+  );
   const codecName = entry?.codecName ?? null;
   const details: Record<string, RuntimeJson> = {
     asset: originalSrc,

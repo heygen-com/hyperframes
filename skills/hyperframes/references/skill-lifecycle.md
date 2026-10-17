@@ -15,6 +15,8 @@ HyperFrames installs the core set eagerly and workflow skills lazily.
 
 The `--skip-skills` CLI flag is temporarily ignored. CI and tests may opt out with `HYPERFRAMES_SKIP_SKILLS=1`.
 
+`HYPERFRAMES_SKIP_SKILLS=1` also makes `skills update` (bare or named) and bare `skills` exit 0 without installing or pruning, so an install pinned to one commit stays pinned.
+
 ## Diagnose and update
 
 ```bash

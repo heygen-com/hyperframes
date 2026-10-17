@@ -1648,6 +1648,10 @@ adds it. `check` and `update` both accept `--json`, plus `--dir` and `--source`
 to point removed-detection at a different skills directory or source — those two
 scope the prune, not the install.
 
+Set `HYPERFRAMES_SKIP_SKILLS=1` when something else manages the skills (CI, tests,
+or an install pinned to one commit). `skills update` and bare `skills` then exit 0
+with a one-line notice and leave the installed skills unchanged.
+
 The CLI installs from the current HyperFrames GitHub source and links the global
 bundles into whichever compatible agents it finds. After scaffolding, `init`
 also refreshes the core set plus any HyperFrames skills you already have.
@@ -1933,13 +1937,13 @@ And these drive `render` and `render-batch`:
 | ----------------------- | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | `--width`, `--height`   | required                            | Render dimensions in pixels                                                                                       |
 | `--site-id`             | content hash                        | Reuse an uploaded site instead of uploading again                                                                  |
-| `--fps`                 | `30`                                | `24`, `30`, or `60`                                                                                               |
+| `--fps`                 | `30`                                | `24`, `25`, `30`, or `60`                                                                                         |
 | `--format`              | `mp4`                               | `mp4`, `mov`, `webm`, or `png-sequence`                                                                           |
 | `--codec`               | `h264`                              | `h264` or `h265`, MP4 only                                                                                        |
 | `--quality`             | `standard`                          | `draft`, `standard`, or `high`                                                                                    |
 | `--output-resolution`   | —                                   | Supersample via Chrome `deviceScaleFactor` to a preset (`1080p`, `4k`, `uhd`, `hd`, `landscape-4k`, …) without changing layout |
-| `--chunk-size`          | `240`                               | Frames per chunk                                                                                                  |
-| `--max-parallel-chunks` | `16`                                | Concurrent chunks per render                                                                                      |
+| `--chunk-size`          | auto                                | Frames per chunk. By default each chunk is sized to finish inside the Lambda timeout                              |
+| `--max-parallel-chunks` | auto                                | Chunks per render. By default one wave across the deploy's `--concurrency` (16 if unknown), widened when a chunk would outrun the Lambda timeout |
 | `--target-chunk-frames` | —                                   | Ceiling on frames per chunk. The planner adds chunks — up to `--max-parallel-chunks` — to stay under it, and short videos still collapse to fewer. Ignored when `--chunk-size` is set. |
 | `--variables`           | —                                   | JSON object reaching every chunk worker as `window.__hfVariables`                                                  |
 | `--variables-file`      | —                                   | Read those from a JSON file                                                                                       |

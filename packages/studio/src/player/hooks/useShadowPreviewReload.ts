@@ -35,6 +35,14 @@ function restoreSeekPainted(iframe: HTMLIFrameElement | null): Promise<void> | u
   return win?.__hfWaitForSeekCompletion?.().catch(() => {});
 }
 
+function shadowPlayerReachable(iframe: HTMLIFrameElement | null): boolean {
+  try {
+    return Boolean((iframe?.contentWindow as IframeWindow | null | undefined)?.__player);
+  } catch {
+    return false;
+  }
+}
+
 function isDocumentHidden(): boolean {
   return typeof document !== "undefined" && document.visibilityState === "hidden";
 }
@@ -104,6 +112,11 @@ export function useShadowPreviewReload({
   const failShadow = useCallback(
     (gen: number, cause: string) => {
       if (gen !== shadowGenRef.current) return;
+      const waitingFor = !shadowPlayerReachable(shadowIframeRef.current)
+        ? "the page and its runtime to load"
+        : pendingCommitRef.current?.gen !== gen
+          ? "its timeline to be ready"
+          : "its loaders to clear";
       shadowGenRef.current += 1;
       stopPendingShadow();
       shadowIframeRef.current = null;
@@ -111,8 +124,8 @@ export function useShadowPreviewReload({
       pendingSeekRef.current = null;
       setPreviewSlots(planShadowDiscard);
       setPreviewReloading(false);
-      const message = `The preview did not reload (${cause}). The previous preview is still showing.`;
-      logReload("shadow-failed", { cause });
+      const message = `The preview did not reload (${cause}). It was still waiting for ${waitingFor}. The previous preview is still showing.`;
+      logReload("shadow-failed", { cause, waitingFor });
       console.error(`[studio] ${message}`);
       onReloadFailedRef.current?.(message);
     },

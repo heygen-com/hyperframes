@@ -5,7 +5,13 @@ import {
   type EngineConfig,
   type VideoFrameFormat,
 } from "@hyperframes/engine";
-import { VALID_CANVAS_RESOLUTIONS, type CanvasResolution, type Fps } from "@hyperframes/core";
+import {
+  VALID_CANVAS_RESOLUTIONS,
+  type CanvasResolution,
+  type DistributedFps,
+  type Fps,
+  isDistributedFps,
+} from "@hyperframes/core";
 import type { ProducerLogger } from "./logger.js";
 import type { RenderConfig } from "./services/renderOrchestrator.js";
 import type { DistributedRenderConfig } from "./services/distributed/plan.js";
@@ -262,8 +268,8 @@ export function renderConfigFromRequest(
   };
 }
 
-function distributedFps(fps: Fps): 24 | 30 | 60 {
-  if (fps.den === 1 && (fps.num === 24 || fps.num === 30 || fps.num === 60)) return fps.num;
+function distributedFps(fps: Fps): DistributedFps {
+  if (fps.den === 1 && isDistributedFps(fps.num)) return fps.num;
   throw new Error(`Distributed render does not support fps ${fps.num}/${fps.den}`);
 }
 

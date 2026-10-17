@@ -167,4 +167,8 @@ describe("buildLambdaBatchRenderConfig — aspect-agnostic wire threading", () =
     expect(config.outputResolution).toBe("portrait-4k");
     expect(config.outputResolutionAspectAgnostic).toBeUndefined();
   });
+
+  it("hands the deploy's reserved concurrency to the planner", () => {
+    expect(buildLambdaBatchRenderConfig(baseArgs, 64).workerConcurrency).toBe(64);
+  });
 });

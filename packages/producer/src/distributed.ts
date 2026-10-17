@@ -48,6 +48,8 @@ export {
   PLAN_DIR_SIZE_LIMIT_BYTES,
   PLAN_PROJECT_DIR_SKIP_SEGMENTS,
   // Error codes + classes
+  CHUNK_EXCEEDS_WORKER_TIMEOUT,
+  ChunkExceedsWorkerTimeoutError,
   FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED,
   FormatNotSupportedInDistributedError,
   PLAN_TOO_LARGE,

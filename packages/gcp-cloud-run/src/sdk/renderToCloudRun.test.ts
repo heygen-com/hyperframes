@@ -136,7 +136,7 @@ describe("renderToCloudRun", () => {
   it("validates the config before any GCP call", async () => {
     const fake = new FakeExecutions();
     await expect(
-      renderToCloudRun({ ...opts(fake), config: { ...config, fps: 25 } as never }),
+      renderToCloudRun({ ...opts(fake), config: { ...config, fps: 50 } as never }),
     ).rejects.toThrow(/config\.fps/);
     expect(fake.lastArgument).toBeNull();
   });

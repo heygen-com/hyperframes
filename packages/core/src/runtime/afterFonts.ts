@@ -82,6 +82,24 @@ function runInPlace(el: Element): HTMLScriptElement | undefined {
   return script;
 }
 
+export const PREVIEW_SCRIPT_SLICE_MS = 50;
+
+/** A render's virtual clock holds every timer until it advances, so only a preview gives the page turns. */
+const givesTurns = () => !(window as { __HF_VIRTUAL_TIME__?: unknown }).__HF_VIRTUAL_TIME__;
+
+function nextUnclampedTask(): Promise<void> {
+  const scheduler = (globalThis as { scheduler?: { yield?: () => Promise<void> } }).scheduler;
+  if (typeof scheduler?.yield === "function") return scheduler.yield();
+  return new Promise((resolve) => {
+    const channel = new MessageChannel();
+    channel.port1.onmessage = () => {
+      channel.port1.close();
+      resolve();
+    };
+    channel.port2.postMessage(null);
+  });
+}
+
 const loaded = (script: HTMLScriptElement) =>
   new Promise((resolve) => {
     script.addEventListener("load", resolve);
@@ -113,7 +131,13 @@ export async function runScriptsAfterFonts(
   const isLate = (el: Element) => typeAfterFonts(el) === "module" || el.matches(DEFERRED_FILE);
   const held: HeldListener[] = [];
   const release = [document, window].map((target) => holdPassedLoadEvents(target, held));
+  const turns = givesTurns();
+  let slice = performance.now();
   for (const el of [...scripts.filter((el) => !isLate(el)), ...scripts.filter(isLate)]) {
+    if (turns && performance.now() - slice > PREVIEW_SCRIPT_SLICE_MS) {
+      await nextUnclampedTask();
+      slice = performance.now();
+    }
     const script = runInPlace(el);
     if (script?.hasAttribute("src") && !script.async && !script.noModule) await loaded(script);
     else if (typeAfterFonts(el) === "module") await afterQueuedModules();

@@ -1,9 +1,10 @@
 import { spawnSync } from "node:child_process";
 import { createServer } from "node:http";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import puppeteer, { type Browser, type Page } from "puppeteer-core";
+import type { Browser, Page } from "puppeteer-core";
 import { resolveHeadlessShellPath } from "./browserManager.js";
 import { injectVideoFramesBatch } from "./screenshotService.js";
+import { listenOnLoopback, launchTestChrome } from "./__fixtures__/loopback.js";
 
 const chromePath = resolveHeadlessShellPath();
 const hasBrowser = chromePath !== undefined && spawnSync(chromePath, ["--version"]).status === 0;
@@ -30,15 +31,8 @@ describe.skipIf(!hasBrowser)("video frame transport in Chrome", () => {
   });
 
   beforeAll(async () => {
-    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-    const address = server.address();
-    if (!address || typeof address === "string") throw new Error("No test server address");
-    origin = `http://127.0.0.1:${address.port}`;
-    browser = await puppeteer.launch({
-      executablePath: chromePath,
-      headless: true,
-      args: ["--no-sandbox", "--disable-dev-shm-usage"],
-    });
+    origin = await listenOnLoopback(server);
+    browser = await launchTestChrome(chromePath);
   });
   beforeEach(async () => {
     if (page) await page.close();

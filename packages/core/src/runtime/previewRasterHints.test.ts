@@ -175,4 +175,20 @@ describe("setPreviewRasterScale", () => {
     sheet.remove();
     link.remove();
   });
+
+  it("checks each element once for a batch of attribute changes inside one subtree", async () => {
+    const group = layer(POSITIONED);
+    const words = Array.from({ length: 20 }, () => layer("position: absolute", group));
+    setPreviewRasterScale(0.275);
+    const reads = vi.spyOn(window, "getComputedStyle");
+    group.setAttribute("data-state", "a");
+    for (const word of words) word.setAttribute("data-state", "a");
+    group.setAttribute("data-state", "b");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const ownReads = reads.mock.calls.filter(([el, pseudo]) => el === words[0] && !pseudo);
+    // Its own check, the group's look at its descendants, and its holders: once each, not per record.
+    expect(ownReads.length).toBeLessThanOrEqual(3);
+    expect(marked(group)).toBe(true);
+    reads.mockRestore();
+  });
 });

@@ -3,6 +3,7 @@ import {
   launchManagedBrowser,
   resolveManagedGpuMode,
 } from "../browser/launch.js";
+import { oneProcessOverPipe } from "../browser/sandboxDenied.js";
 import { spawn } from "node:child_process";
 import type { Browser, Page } from "puppeteer-core";
 import type { InProcessRequest, InProcessResponse } from "../utils/staticProjectServer.js";
@@ -18,6 +19,7 @@ import { windowsChromeCrashRemediation } from "../browser/windowsCrash.js";
 import { resolveCompositionViewportFromHtml } from "../utils/compositionViewport.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { resolveDiagnosticNavigationTimeoutMs } from "../utils/renderArgs.js";
+import { gotoWhenSent } from "./navigateForCapture.js";
 
 const SHADER_TRANSITIONS_TIMEOUT_MS = 90_000;
 const CAPTURE_SETTLE_MS = 1500;
@@ -39,6 +41,7 @@ export const DENSE_GEOMETRY_SEEK_OPTIONS = {
   animationFrameSettle: "none",
   waitForFontsMs: 0,
   settleMs: 0,
+  waitForVideoFrames: false,
 } as const;
 
 export interface SeekCompositionTimelineOptions {
@@ -48,18 +51,22 @@ export interface SeekCompositionTimelineOptions {
   animationFrameSettle?: "race" | "double" | "none";
   waitForFontsMs?: number;
   settleMs?: number;
+  waitForVideoFrames?: boolean;
 }
+
+type SeekBarrierOptions = { videoFrames: boolean };
 
 type CompositionPageFunction =
   | string
   | (() => unknown)
   | ((value: number) => unknown)
+  | ((barrier: SeekBarrierOptions) => unknown)
   | ((value: number, fallbackToBridgeAndTimelines: boolean, exactTime: boolean) => unknown);
 
 export interface CompositionEvaluationPage {
   evaluate(
     pageFunction: CompositionPageFunction,
-    value?: number,
+    value?: number | SeekBarrierOptions,
     fallbackToBridgeAndTimelines?: boolean,
     exactTime?: boolean,
   ): Promise<unknown>;
@@ -224,7 +231,7 @@ export async function openSettledCompositionPage(
       headless: true,
       signal: options.signal,
       executablePath,
-      ...(answer ? { pipe: true, args: [...args, "--single-process"] } : { args }),
+      ...(answer ? oneProcessOverPipe({ args }) : { args }),
     });
   };
 
@@ -265,10 +272,11 @@ export async function openSettledCompositionPage(
     await page.setViewport(viewport);
     if (answer) await answerPageInProcess(page, url, answer);
     await options.beforeNavigate?.(page);
-    await page.goto(url, {
-      waitUntil: "domcontentloaded",
-      timeout: resolveDiagnosticNavigationTimeoutMs(process.env, options.navigationTimeoutMs),
-    });
+    await gotoWhenSent(
+      page,
+      url,
+      resolveDiagnosticNavigationTimeoutMs(process.env, options.navigationTimeoutMs),
+    );
     await assertWebGpuAdapterAvailable(page, requiresWebGpu, softwareWebGpu);
     const renderReadyTimedOut = !(await waitForCompositionSettle(page, options));
     return { browser: chromeBrowser, page, renderReadyTimedOut };
@@ -339,12 +347,15 @@ export async function seekCompositionTimeline(
     options.exactTime === true,
   );
 
-  await page.evaluate(async () => {
-    const waitForCompletion = Reflect.get(window, "__hfWaitForSeekCompletion");
-    if (typeof waitForCompletion === "function") {
-      await Reflect.apply(waitForCompletion, window, []);
-    }
-  });
+  await page.evaluate(
+    async (barrier: SeekBarrierOptions) => {
+      const waitForCompletion = Reflect.get(window, "__hfWaitForSeekCompletion");
+      if (typeof waitForCompletion === "function") {
+        await Reflect.apply(waitForCompletion, window, [barrier]);
+      }
+    },
+    { videoFrames: options.waitForVideoFrames !== false },
+  );
 
   const animationFrameSettle = options.animationFrameSettle ?? "race";
   if (animationFrameSettle === "race") {

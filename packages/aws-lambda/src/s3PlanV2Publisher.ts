@@ -83,6 +83,7 @@ export class S3PlanV2ArtifactPublisher implements PlanV2ArtifactPublisher {
   async putBlob(blob: Readonly<PlanV2PublishBlob>): Promise<void> {
     this.#assertOpen("publish a blob");
     const digest = assertSha256(blob.sha256, "S3 published blob sha256");
+    if (this.#publishedDigests.has(digest)) return;
     const sourceSize = statSync(blob.sourcePath).size;
     if (sourceSize !== blob.sizeBytes) {
       throw new PlanV2IntegrityError(

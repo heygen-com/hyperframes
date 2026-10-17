@@ -1149,11 +1149,12 @@ export function buildChromeArgs(options: BuildChromeArgsOptions, config?: GpuCon
   return chromeArgs;
 }
 
-/** Does the composition's root element declare `data-requires-webgpu`? */
+/** Does the root, or a mounted root (data-hf-inner-root once bundled), declare `data-requires-webgpu`? */
 export function compositionRequiresWebGpu(html: string): boolean {
   for (const tag of scanHtmlOpeningTags(html)) {
     const names = tag.attributes.map((attribute) => attribute.name);
-    if (names.includes("data-composition-id")) return names.includes("data-requires-webgpu");
+    const isRoot = names.includes("data-composition-id") || names.includes("data-hf-inner-root");
+    if (isRoot && names.includes("data-requires-webgpu")) return true;
   }
   return false;
 }

@@ -3,7 +3,6 @@ import type { Hono } from "hono";
 import {
   collectFontFileEntries,
   fontDirectories,
-  getSystemProfilerFamilies,
   locateSystemFont,
   SYSTEM_FONT_SIZE_LIMIT,
 } from "@hyperframes/core/fonts/system-locator";
@@ -48,11 +47,6 @@ function collectFontsFromDir(dir: string): string[] {
 function listInstalledFontFamilies(): string[] {
   if (cachedFonts) return cachedFonts;
   const families = new Set<string>();
-
-  for (const family of getSystemProfilerFamilies()) {
-    families.add(family);
-    if (families.size >= MAX_FONT_RESULTS) break;
-  }
 
   for (const dir of fontDirectories()) {
     for (const family of collectFontsFromDir(dir)) {

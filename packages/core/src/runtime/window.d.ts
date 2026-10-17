@@ -132,9 +132,9 @@ declare global {
     __hfReseekGpu?: (time: number) => void;
     /**
      * Await GPU work registered synchronously by `hf-seek` listeners through
-     * `event.detail.waitUntil(...)`.
+     * `event.detail.waitUntil(...)`; `videoFrames: false` skips the video-frame holds.
      */
-    __hfWaitForSeekCompletion?: () => Promise<void>;
+    __hfWaitForSeekCompletion?: (options?: { videoFrames?: boolean }) => Promise<void>;
     /**
      * Canonical root-timeline start for a media element. Snapshot capture uses
      * this runtime-owned resolver so reference expressions, authored timing

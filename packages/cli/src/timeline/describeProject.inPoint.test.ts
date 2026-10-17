@@ -18,12 +18,12 @@ const SCENE = `<template id="scene-template"><div data-composition-id="scene" da
 beforeAll(ensureDOMParser);
 
 /** The video rows of a project made of `index` and `compositions/scene.html`. */
-async function videoRows(index: string, prefix: string) {
+async function videoRows(index: string, prefix: string, scene = SCENE) {
   const dir = mkdtempSync(join(tmpdir(), prefix));
   onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
   mkdirSync(join(dir, "compositions"));
   writeFileSync(join(dir, "index.html"), index);
-  writeFileSync(join(dir, "compositions", "scene.html"), SCENE);
+  writeFileSync(join(dir, "compositions", "scene.html"), scene);
   const timeline = await describeProject(join(dir, "index.html"));
   return timeline.tracks.find((t) => t.kind === "video")!.rows;
 }
@@ -41,6 +41,17 @@ describe("a sub-composition's in-point", () => {
       ["scene-split", "v3", 8, 9],
       ["scene-split-split", "v3", 9, 12],
     ]);
+  });
+
+  it("cuts a clip nested in a timed wrapper like the wrapper's own clips", async () => {
+    const videos = await videoRows(
+      `<div data-composition-id="main" data-duration="9"><div data-playback-start="5" id="half" data-composition-src="compositions/scene.html" data-start="5" data-duration="4"></div></div>`,
+      "hf-timeline-inpoint-nested-",
+      `<div data-composition-id="scene" data-duration="12"><div id="w" data-start="0" data-duration="12">
+<video id="n" src="../sample.mp4" muted data-start="4" data-duration="4" data-media-start="5"></video></div></div>`,
+    );
+
+    expect(videos.map((r) => [r.id, r.absStart, r.absEnd, r.mediaStart])).toEqual([["n", 5, 8, 6]]);
   });
 
   it("moves each cut clip's media in-point by the part the cut skips", async () => {

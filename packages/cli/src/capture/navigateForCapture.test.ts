@@ -1,6 +1,8 @@
-import { describe, expect, it, vi } from "vitest";
-import { TimeoutError } from "puppeteer-core";
+import { EventEmitter } from "node:events";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { TimeoutError, type Page } from "puppeteer-core";
 import {
+  gotoWhenSent,
   isNavigationTimeoutError,
   navigateForCapture,
   networkIdleAttemptTimeoutMs,
@@ -115,5 +117,83 @@ describe("navigateForCapture", () => {
       waitUntil: "networkidle2",
       timeout: 10_000,
     });
+  });
+});
+
+/** A page whose goto keeps Puppeteer's contract: a non-zero timeout rejects the navigation. */
+function fakeChromePage() {
+  const session = Object.assign(new EventEmitter(), {
+    send: async () => undefined,
+    detach: vi.fn(async () => undefined),
+  });
+  let load: (response: unknown) => void = () => undefined;
+  const page = {
+    createCDPSession: async () => session,
+    goto: (_url: string, { timeout }: { timeout: number }) =>
+      new Promise((resolve, reject) => {
+        load = resolve;
+        if (timeout > 0) {
+          setTimeout(
+            () => reject(new TimeoutError(`Navigation timeout of ${timeout} ms exceeded`)),
+            timeout,
+          );
+        }
+      }),
+  } as unknown as Page;
+  return {
+    page,
+    session,
+    navigate: () =>
+      session.emit("Network.requestWillBeSent", { requestId: "doc", type: "Document" }),
+    send: () => session.emit("Network.requestWillBeSentExtraInfo", { requestId: "doc" }),
+    load: (response: unknown) => load(response),
+  };
+}
+
+describe("gotoWhenSent", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("gives the page its whole budget after a cold Chrome is slow to send the request", async () => {
+    vi.useFakeTimers();
+    const chrome = fakeChromePage();
+    const response = { status: () => 200 };
+    const opened = gotoWhenSent(chrome.page, "http://127.0.0.1:1/", 10_000);
+    await vi.advanceTimersByTimeAsync(0);
+    chrome.navigate();
+    await vi.advanceTimersByTimeAsync(25_000);
+    chrome.send();
+    await vi.advanceTimersByTimeAsync(9_000);
+    chrome.load(response);
+    await expect(opened).resolves.toBe(response);
+    expect(chrome.session.detach).toHaveBeenCalledOnce();
+  });
+
+  it("fails as a navigation timeout when Chrome never sends the request", async () => {
+    vi.useFakeTimers();
+    const chrome = fakeChromePage();
+    const opened = gotoWhenSent(chrome.page, "http://127.0.0.1:1/", 10_000);
+    const failed = expect(opened).rejects.toSatisfy(
+      (error: unknown) =>
+        isNavigationTimeoutError(error) &&
+        String(error).includes("did not send the page request within 30000 ms"),
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    chrome.navigate();
+    await vi.advanceTimersByTimeAsync(30_000);
+    await failed;
+  });
+
+  it("fails when the page does not load within its budget after the request is sent", async () => {
+    vi.useFakeTimers();
+    const chrome = fakeChromePage();
+    const opened = gotoWhenSent(chrome.page, "http://127.0.0.1:1/", 10_000);
+    const failed = expect(opened).rejects.toThrow("Navigation timeout of 10000 ms exceeded");
+    await vi.advanceTimersByTimeAsync(0);
+    chrome.send();
+    chrome.navigate();
+    await vi.advanceTimersByTimeAsync(10_000);
+    await failed;
   });
 });

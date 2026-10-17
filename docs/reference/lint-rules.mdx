@@ -20,7 +20,8 @@ Severities:
 
 Source: `packages/lint/src/rules/structure.ts`.
 
-The four codes marked **Warning or error** are warnings when the CLI lints a project, and errors when Studio lints the file it is editing.
+The five codes marked **Warning or error** are warnings when the CLI lints a project, and errors when Studio
+lints the file it is editing.
 
 ### `nested_structure_needs_subcomposition`
 
@@ -51,6 +52,15 @@ The four codes marked **Warning or error** are warnings when the CLI lints a pro
 **Warning.** A clip runs past the root composition's `data-duration`, so it is cut off in previews, posters and renders.
 
 **Fix:** Extend the root `data-duration`, or make the clip end at or before it.
+
+### `nested_clip_never_visible`
+
+**Warning or error.** A timed clip sits inside another timed element, and its time window never overlaps that
+element's, so it never appears. A nested clip's `data-start` counts from the composition's start, not from the
+element around it. Runs in sub-composition files too.
+
+**Fix:** Give the clip a `data-start` inside its parent's window, in composition time, or move it out of the
+parent.
 
 ## Composition contract
 
@@ -97,12 +107,6 @@ Source: `packages/lint/src/rules/composition.ts`.
 **Error.** The same `data-composition-id` appears on several elements in one file — often a `<meta>` tag carrying the same id as the root `<div>`.
 
 **Fix:** Keep `data-composition-id` on exactly one element: the composition root. Remove it from metadata or duplicate hosts.
-
-### `html_dir_attribute_breaks_render`
-
-**Error.** `<html dir="rtl">` or `<html dir="auto">` renders correctly in preview and snapshot but produces a fully blank or black video from render — a confirmed, silent failure. `dir="ltr"` is not flagged.
-
-**Fix:** Remove `dir` from `<html>`, keep `lang`, and scope the direction to individual text-containing elements instead — `direction: rtl` in CSS, or `dir="auto"` on the element.
 
 ### `invalid_parent_traversal_in_asset_path`
 

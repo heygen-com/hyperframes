@@ -1028,4 +1028,27 @@ describe("HF_EARLY_STUB + HF_BRIDGE_SCRIPT integration", () => {
 
     expect(sandbox.window.__hf?.duration).toBe(13);
   });
+
+  it("stands in for the GSAP timeline itself when the GSAP bundle sets window.gsap twice", () => {
+    class FakeTimeline {
+      parent: FakeTimeline | null = null;
+      add(child: FakeTimeline) {
+        child.parent = this;
+        return this;
+      }
+    }
+    const gsap = { timeline: () => new FakeTimeline() };
+    const win: Record<string, unknown> = {
+      __HF_VIRTUAL_TIME__: { originalRequestAnimationFrame: () => 0, originalSetTimeout: () => {} },
+    };
+    new Function("window", HF_EARLY_STUB)(win);
+    win.gsap = gsap;
+    win.gsap = gsap;
+    const parent = gsap.timeline() as unknown as { __hfReal: unknown; add: (c: unknown) => void };
+    const child = gsap.timeline() as unknown as { __hfReal: FakeTimeline };
+    parent.add(child);
+    (win.__hfFlushSync as () => void)();
+    expect(child.__hfReal).toBeInstanceOf(FakeTimeline);
+    expect(child.__hfReal.parent).toBe(parent.__hfReal);
+  });
 });

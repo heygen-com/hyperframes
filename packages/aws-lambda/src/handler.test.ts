@@ -15,7 +15,7 @@
  * the glue's contract.
  */
 
-import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -247,6 +247,43 @@ describe("handler dispatch", () => {
     ).toBe(true);
   });
 
+  it("plans against the function's own timeout unless the config pins one", async () => {
+    const seen: Array<number | undefined> = [];
+    for (const pinned of [undefined, 300]) {
+      const tmpRoot = makeTmpRoot();
+      const s3 = new FakeS3Client();
+      s3.objects.set("s3://bucket/project.tar.gz", await makeMinimalProjectTar());
+      await handler(
+        {
+          Action: "plan",
+          PlanProtocol: "v1",
+          ProjectS3Uri: "s3://bucket/project.tar.gz",
+          PlanOutputS3Prefix: "s3://bucket/renders/timeout/",
+          Config: { fps: 30, width: 640, height: 360, format: "mp4", workerTimeoutSeconds: pinned },
+        },
+        {
+          s3: s3 as unknown as import("@aws-sdk/client-s3").S3Client,
+          primitives: {
+            plan: mock(async (_dir: string, config: { workerTimeoutSeconds?: number }) => {
+              seen.push(config.workerTimeoutSeconds);
+              throw new Error("stop after config");
+            }) as unknown as typeof import("@hyperframes/producer/distributed").plan,
+            renderChunk: mock(async () => {
+              throw new Error("unused");
+            }) as unknown as typeof import("@hyperframes/producer/distributed").renderChunk,
+            assemble: mock(async () => {
+              throw new Error("unused");
+            }) as unknown as typeof import("@hyperframes/producer/distributed").assemble,
+          },
+          tmpRoot,
+          skipChromeResolution: true,
+          getRemainingTimeInMillis: () => 899_987,
+        },
+      ).catch(() => undefined);
+    }
+    expect(seen).toEqual([900, 300]);
+  });
+
   it("normalizes producer workflow codes to Step Functions error names", async () => {
     for (const code of [
       "PLAN_TOO_LARGE",
@@ -257,6 +294,8 @@ describe("handler dispatch", () => {
       "VIDEO_SOURCE_UNRENDERABLE",
       "VIDEO_EXTRACTION_FAILED",
       "INVALID_VIDEO_METADATA",
+      "FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED",
+      "CHUNK_EXCEEDS_WORKER_TIMEOUT",
     ] as const) {
       const tmpRoot = makeTmpRoot();
       const s3 = new FakeS3Client();
@@ -619,6 +658,10 @@ describe("handler dispatch", () => {
       skipChromeResolution: true,
     };
 
+    const logged: string[] = [];
+    const logSpy = spyOn(console, "log").mockImplementation((line: string) => {
+      logged.push(line);
+    });
     const planned = await handler(
       {
         Action: "plan",
@@ -627,7 +670,12 @@ describe("handler dispatch", () => {
         Config: { fps: 30, width: 640, height: 360, format: "mp4" },
       },
       deps,
-    );
+    ).finally(() => logSpy.mockRestore());
+    const stageLines = logged
+      .filter((line) => line.includes('"plan_stage"'))
+      .map((line) => JSON.parse(line) as { stage?: string; ms?: unknown });
+    expect(stageLines.map((line) => line.stage)).toEqual(["download", "untar"]);
+    expect(stageLines.every((line) => typeof line.ms === "number")).toBe(true);
     expect(planned).toMatchObject({
       PlanProtocol: "v2",
       PlanV2ManifestS3Uri: "s3://bucket/renders/v2/v2/manifest.json",

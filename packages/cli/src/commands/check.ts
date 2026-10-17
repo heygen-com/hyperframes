@@ -55,11 +55,12 @@ export interface CheckCommandDependencies {
 const DEFAULT_COMMAND_DEPENDENCIES: CheckCommandDependencies = {
   resolveProject,
   async runPipeline(project, options) {
-    const capture = await captureArtifactRevision(project.dir).catch(warnNotRecorded);
+    const capturing = captureArtifactRevision(project.dir).catch(warnNotRecorded);
     const report = await runCheckPipeline(project, options);
     const images = (files: readonly string[]) => files.map((file) => resolve(project.dir, file));
     reportArtifacts("check", "frame", images(report.snapshots.files));
     reportArtifacts("check", "finding", images(report.snapshots.findingFiles));
+    const capture = await capturing;
     if (!capture) return report;
     try {
       return { ...report, saved: await saveCheckReport(project, options, report, capture) };

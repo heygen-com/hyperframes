@@ -71,7 +71,7 @@ it("only warns when the report cannot be recorded; the exit status is the check'
   }
 });
 
-it("still reports the check when another process holds history", async () => {
+it("still reports the check when another process holds history, without waiting for it", async () => {
   const project = mkdtempSync(join(tmpdir(), "hf-check-history-held-"));
   const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
   const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
@@ -80,7 +80,8 @@ it("still reports the check when another process holds history", async () => {
     "<html><body>Missing composition metadata</body></html>",
   );
   const previousWait = historyDeps.ownerWaitMs;
-  historyDeps.ownerWaitMs = 0;
+  // A wait for the holder outlasts the test: recording the report must not take it.
+  historyDeps.ownerWaitMs = 60_000;
   const held = await openProjectHistory({
     projectDir: project,
     historyRoot: historyDeps.historyRoot,

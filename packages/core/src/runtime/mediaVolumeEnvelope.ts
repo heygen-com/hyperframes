@@ -216,6 +216,7 @@ export interface VolumeProbeOptions {
    * Preview callers omit this option and retain live automation discovery.
    */
   allowLiveTimelineSeek?: boolean;
+  movers?: () => VolumeMovers;
 }
 
 function namesKey(vars: unknown, matches: (key: string) => boolean, depth = 0): boolean {
@@ -238,25 +239,35 @@ function hasSetter(target: unknown, key: string): boolean {
   return false;
 }
 
-/**
- * Whether seeking `timeline` can move `el.volume`: a tween on the element that names `volume`, or a tween
- * on a non-DOM object whose tweened property is a setter (a gain proxy). Spacers, calls and counters skip.
- */
-function timelineCanMoveVolume(timeline: RuntimeTimelineRef, el: HTMLMediaElement): boolean {
-  if (typeof timeline.getChildren !== "function") return true;
+export interface VolumeMovers {
+  elements: Set<unknown>;
+  anySetter: boolean;
+  unknown: boolean;
+}
+
+export function volumeMoversOf(timeline: RuntimeTimelineRef): VolumeMovers {
+  const unknown: VolumeMovers = { elements: new Set(), anySetter: false, unknown: true };
+  if (typeof timeline.getChildren !== "function") return unknown;
   try {
-    return timeline.getChildren(true, true, false).some((tween) => {
+    const movers: VolumeMovers = { elements: new Set(), anySetter: false, unknown: false };
+    for (const tween of timeline.getChildren(true, true, false)) {
       const targets: unknown[] = tween.targets?.() ?? [];
-      return targets.some((target) =>
-        isDomNode(target)
-          ? target === el && namesKey(tween.vars, (key) => key === "volume")
-          : namesKey(tween.vars, (key) => hasSetter(target, key)),
-      );
-    });
+      for (const target of targets) {
+        if (isDomNode(target)) {
+          if (namesKey(tween.vars, (key) => key === "volume")) movers.elements.add(target);
+        } else if (!movers.anySetter && namesKey(tween.vars, (key) => hasSetter(target, key))) {
+          movers.anySetter = true;
+        }
+      }
+    }
+    return movers;
   } catch {
-    return true;
+    return unknown;
   }
 }
+
+const canMoveVolume = (movers: VolumeMovers, el: HTMLMediaElement): boolean =>
+  movers.unknown || movers.anySetter || movers.elements.has(el);
 
 /**
  * Probe a media element and, if volume automation is detected, store a
@@ -281,7 +292,7 @@ export function probeAndCacheElementVolume(
   if (!isMediaElement(mediaEl)) return;
   if (compositionDuration <= 0) return;
   // Sampling is ~60 whole-timeline seeks per second of clip, paid again on every rebind.
-  if (!timelineCanMoveVolume(timeline, mediaEl)) return;
+  if (!canMoveVolume(options.movers?.() ?? volumeMoversOf(timeline), mediaEl)) return;
 
   const seekFn = (t: number) => {
     try {

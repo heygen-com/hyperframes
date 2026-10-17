@@ -21,6 +21,7 @@ import { swallow } from "../diagnostics";
 let _lastDispatchedTime = -1;
 type SeekCompletionResult = { status: "fulfilled" } | { status: "rejected"; reason: unknown };
 let _pendingCompletions = new Set<Promise<SeekCompletionResult>>();
+let _videoFrameCompletions = new WeakSet<Promise<SeekCompletionResult>>();
 let _pendingFailure: { reason: unknown } | undefined;
 let _activeCompletionBarriers = 0;
 
@@ -62,11 +63,12 @@ function dispatch(time: number): void {
  * its preview-side capture here, so the CLI seek paths that already await this
  * barrier wait for a `self` chain's paint instead of racing it.
  */
-export function registerSeekCompletion(promise: Promise<unknown>): void {
+export function registerSeekCompletion(promise: Promise<unknown>, kind?: "video-frame"): void {
   const completion = promise
     .then<SeekCompletionResult>(() => ({ status: "fulfilled" }))
     .catch<SeekCompletionResult>((reason: unknown) => ({ status: "rejected", reason }));
   _pendingCompletions.add(completion);
+  if (kind === "video-frame") _videoFrameCompletions.add(completion);
   void completion.then((result) => {
     if (!_pendingCompletions.delete(completion)) return;
     if (result.status === "rejected" && _pendingFailure === undefined) {
@@ -100,15 +102,20 @@ export function isSeekCompletionBarrierActive(): boolean {
   return _activeCompletionBarriers > 0;
 }
 
-export async function waitForSeekCompletion(): Promise<void> {
+/** `videoFrames: false` skips only the video-frame holds: a geometry read needs every other completion. */
+export async function waitForSeekCompletion(options?: { videoFrames?: boolean }): Promise<void> {
+  const awaited = () =>
+    [..._pendingCompletions].filter(
+      (completion) => options?.videoFrames !== false || !_videoFrameCompletions.has(completion),
+    );
   _activeCompletionBarriers += 1;
   let failed = _pendingFailure;
   try {
     // Let concurrently started barriers snapshot the same retained failure
     // before either one consumes it.
     await Promise.resolve();
-    while (_pendingCompletions.size > 0) {
-      const results = await Promise.all([..._pendingCompletions]);
+    for (let pending = awaited(); pending.length > 0; pending = awaited()) {
+      const results = await Promise.all(pending);
       const rejected = results.find((result) => result.status === "rejected");
       if (failed === undefined && rejected?.status === "rejected") {
         failed = { reason: rejected.reason };
@@ -131,6 +138,7 @@ export async function waitForSeekCompletion(): Promise<void> {
 export function resetSeekDispatchState(): void {
   _lastDispatchedTime = -1;
   _pendingCompletions = new Set();
+  _videoFrameCompletions = new WeakSet();
   _pendingFailure = undefined;
   _activeCompletionBarriers = 0;
 }

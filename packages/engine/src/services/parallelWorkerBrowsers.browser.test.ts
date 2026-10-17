@@ -3,6 +3,7 @@ import { createServer, type ServerResponse } from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { acquireBrowser, drainBrowserPool, resolveHeadlessShellPath } from "./browserManager.js";
 import { shouldDisableBrowserPoolForParallelWorker } from "./parallelCoordinator.js";
+import { listenOnLoopback } from "./__fixtures__/loopback.js";
 
 const chromePath = resolveHeadlessShellPath();
 const hasBrowser = chromePath !== undefined && spawnSync(chromePath, ["--version"]).status === 0;
@@ -35,10 +36,7 @@ describe.skipIf(!hasBrowser)("parallel worker browsers", () => {
   });
 
   beforeAll(async () => {
-    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-    const address = server.address();
-    if (!address || typeof address === "string") throw new Error("No test server address");
-    origin = `http://127.0.0.1:${address.port}`;
+    origin = await listenOnLoopback(server);
   });
 
   afterAll(async () => {

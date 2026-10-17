@@ -91,6 +91,11 @@ export interface HandlerDeps {
   tmpRoot?: string;
   /** Skip Chrome resolution (used by handler dispatch tests that mock renderChunk). */
   skipChromeResolution?: boolean;
+  /**
+   * The Lambda runtime's `Context` arrives as this second argument and supplies it. Plan
+   * and chunk share one function, so its remaining time at plan start is the chunk limit.
+   */
+  getRemainingTimeInMillis?: () => number;
 }
 
 /**
@@ -162,7 +167,9 @@ function normalizeTerminalErrorName(error: unknown): void {
     candidate.code === "NOT_MEDIA_PAYLOAD" ||
     candidate.code === "VIDEO_SOURCE_UNRENDERABLE" ||
     candidate.code === "VIDEO_EXTRACTION_FAILED" ||
-    candidate.code === "INVALID_VIDEO_METADATA"
+    candidate.code === "INVALID_VIDEO_METADATA" ||
+    candidate.code === "FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED" ||
+    candidate.code === "CHUNK_EXCEEDS_WORKER_TIMEOUT"
   ) {
     candidate.name = candidate.code;
   }
@@ -316,6 +323,14 @@ function primeRuntimeEnv(): void {
 
 // ── Plan ────────────────────────────────────────────────────────────────────
 
+function planConfig(event: PlanEvent, deps?: HandlerDeps): DistributedRenderConfig {
+  const remainingMs = deps?.getRemainingTimeInMillis?.();
+  if (event.Config.workerTimeoutSeconds !== undefined || remainingMs === undefined) {
+    return { ...event.Config };
+  }
+  return { ...event.Config, workerTimeoutSeconds: Math.ceil(remainingMs / 1000) };
+}
+
 // The v1 handler owns one transactional download, plan, archive, upload, and cleanup lifecycle.
 // fallow-ignore-next-line complexity
 async function handlePlan(event: PlanEvent, deps?: HandlerDeps): Promise<PlanLambdaResult> {
@@ -323,6 +338,7 @@ async function handlePlan(event: PlanEvent, deps?: HandlerDeps): Promise<PlanLam
     return handlePlanV2(event, deps);
   }
   const started = Date.now();
+  const config = planConfig(event, deps);
   const s3 = deps?.s3 ?? getS3Client();
   const primitive = deps?.primitives?.plan ?? plan;
 
@@ -349,9 +365,6 @@ async function handlePlan(event: PlanEvent, deps?: HandlerDeps): Promise<PlanLam
     await downloadS3ObjectToFile(s3, event.ProjectS3Uri, projectArchive);
     await untarDirectory(projectArchive, projectDir);
 
-    const config: DistributedRenderConfig = {
-      ...event.Config,
-    };
     const result: PlanResult = await primitive(projectDir, config, planDir);
 
     // Upload the planDir as a single tarball. Step Functions cannot pass
@@ -403,6 +416,7 @@ async function handlePlanV2(
   deps?: HandlerDeps,
 ): Promise<Extract<PlanLambdaResult, { PlanProtocol: "v2" }>> {
   const started = Date.now();
+  const config = planConfig(event, deps);
   const s3 = deps?.s3 ?? getS3Client();
   const primitive = deps?.primitives?.planV2WithPublisher ?? planV2WithPublisher;
   if (!deps?.skipChromeResolution && !process.env.PRODUCER_HEADLESS_SHELL_PATH) {
@@ -413,14 +427,18 @@ async function handlePlanV2(
   const projectArchive = join(work, "project.tar.gz");
   const projectDir = join(work, "project");
   try {
+    let stageStarted = Date.now();
     await downloadS3ObjectToFile(s3, event.ProjectS3Uri, projectArchive);
+    logEvent({ event: "plan_stage", stage: "download", ms: Date.now() - stageStarted });
+    stageStarted = Date.now();
     await untarDirectory(projectArchive, projectDir);
+    logEvent({ event: "plan_stage", stage: "untar", ms: Date.now() - stageStarted });
     const publisher = new S3PlanV2ArtifactPublisher({
       s3,
       planOutputS3Prefix: event.PlanOutputS3Prefix,
       temporaryRoot: work,
     });
-    const manifest: PlanV2Manifest = await primitive(projectDir, { ...event.Config }, publisher, {
+    const manifest: PlanV2Manifest = await primitive(projectDir, config, publisher, {
       stagingParentDir: work,
     });
 
@@ -663,7 +681,9 @@ async function handleAssembleV2(
     // `downloadAndMaterializePlanV2` materializes atomically. Audio is
     // assembler-only and lives at the familiar v1-compatible location.
     const audioPath = resolvePlanAudioPath(planDir);
+    const chunksStarted = Date.now();
     const chunkPaths = await downloadChunkObjects(s3, event.ChunkS3Uris, work, event.Format);
+    const chunksMs = Date.now() - chunksStarted;
     const finalOutput =
       event.Format === "png-sequence"
         ? join(work, "output-frames")
@@ -671,6 +691,7 @@ async function handleAssembleV2(
     const result = await primitive(planDir, chunkPaths, audioPath, finalOutput, {
       cfr: event.Cfr === true,
     });
+    const uploadStarted = Date.now();
     if (event.Format === "png-sequence") {
       const tarball = `${finalOutput}.tar.gz`;
       await tarDirectory(finalOutput, tarball);
@@ -678,6 +699,13 @@ async function handleAssembleV2(
     } else {
       await uploadFileToS3(s3, finalOutput, event.OutputS3Uri);
     }
+    logEvent({
+      event: "assemble_stages",
+      planMs: chunksStarted - started,
+      chunksMs,
+      assembleMs: result.durationMs,
+      uploadMs: Date.now() - uploadStarted,
+    });
     return {
       Action: "assemble",
       OutputS3Uri: event.OutputS3Uri,

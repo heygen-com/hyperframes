@@ -63,7 +63,7 @@ describe("system font capture — allowSystemFontCapture option", () => {
       // allowSystemFontCapture intentionally omitted
     });
     expect(result.includes("data-hyperframes-deterministic-fonts")).toBe(false);
-  }, 15_000); // The system font locator runs system_profiler on macOS which can take >5s.
+  });
 });
 
 describe("system font capture — integration (macOS only)", () => {

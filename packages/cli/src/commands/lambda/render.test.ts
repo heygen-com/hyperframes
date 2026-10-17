@@ -10,6 +10,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import lambdaCommand from "../lambda.js";
 import { buildLambdaRenderConfig, type RenderArgs } from "./render.js";
 
 const BASE_ARGS: RenderArgs = {
@@ -53,5 +54,20 @@ describe("buildLambdaRenderConfig — aspect-agnostic wire threading", () => {
   it("carries variables verbatim through the wire config", () => {
     const config = buildLambdaRenderConfig(BASE_ARGS, { alice: "hello" });
     expect(config.variables).toEqual({ alice: "hello" });
+  });
+});
+
+describe("lambda render chunk sizing", () => {
+  it("hands the deploy's reserved concurrency to the planner", () => {
+    expect(buildLambdaRenderConfig(BASE_ARGS, undefined, 64).workerConcurrency).toBe(64);
+    expect(buildLambdaRenderConfig(BASE_ARGS, undefined).workerConcurrency).toBeUndefined();
+  });
+
+  it("help no longer claims --chunk-size defaults to 240", () => {
+    const chunkSizeArg = lambdaCommand.args
+      ? Reflect.get(lambdaCommand.args, "chunk-size")
+      : undefined;
+    expect(chunkSizeArg?.description).not.toContain("240");
+    expect(chunkSizeArg?.description).toContain("timeout");
   });
 });

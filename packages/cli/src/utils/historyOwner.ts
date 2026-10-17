@@ -172,14 +172,17 @@ function previewOwner(route: (path: string) => string): Owner {
   };
 }
 
-async function directOwner(projectDir: string): Promise<{ owner: Owner; turn: Turn | null }> {
+async function directOwner(
+  projectDir: string,
+  ownerWaitMs = historyDeps.ownerWaitMs,
+): Promise<{ owner: Owner; turn: Turn | null }> {
   let turn: Turn | null = null;
   const history = await openProjectHistory({
     projectDir,
     historyRoot: historyDeps.historyRoot,
     now: () => historyDeps.now(),
     pruneGoneProjectsBudgetMs: 1000,
-    ownerWaitMs: historyDeps.ownerWaitMs,
+    ownerWaitMs,
     closedWindowAfterOwnership: () => {
       turn = readTurn(projectDir);
       return turn
@@ -214,7 +217,10 @@ async function directOwner(projectDir: string): Promise<{ owner: Owner; turn: Tu
 }
 
 /** One owner: a preview that keeps this project's history, else the engine, which refuses a second opener. */
-async function connect(projectDir: string): Promise<{ owner: Owner; turn: Turn | null }> {
+async function connect(
+  projectDir: string,
+  ownerWaitMs?: number,
+): Promise<{ owner: Owner; turn: Turn | null }> {
   const server = await historyDeps.findServer(projectDir);
   if (server) {
     const route = (path: string) => studioApiUrl(server, `history${path}`);
@@ -225,16 +231,17 @@ async function connect(projectDir: string): Promise<{ owner: Owner; turn: Turn |
     );
     if (status !== 404) return { owner: previewOwner(route), turn: readTurn(projectDir) };
   }
-  return directOwner(projectDir);
+  return directOwner(projectDir, ownerWaitMs);
 }
 
 /** Runs `task` with the project's history. ponytail: with no preview, a command mid-turn splits the turn in two. */
 export async function withOwner<T>(
   dir: string | undefined,
   task: (owner: Owner, turn: Turn | null, projectDir: string) => Promise<T>,
+  { ownerWaitMs }: { ownerWaitMs?: number } = {},
 ): Promise<T> {
   const { dir: projectDir } = resolveProject(dir);
-  const { owner, turn } = await connect(projectDir);
+  const { owner, turn } = await connect(projectDir, ownerWaitMs);
   try {
     return await task(owner, turn, projectDir);
   } finally {
