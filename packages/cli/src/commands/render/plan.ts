@@ -106,6 +106,7 @@ export interface RenderCommandArgs {
   "low-memory-mode"?: boolean;
   "experimental-fast-capture"?: boolean;
   "frames-cache-dir"?: string;
+  provenance?: string | boolean;
 }
 
 export interface RenderPlan {
@@ -162,6 +163,8 @@ export interface RenderPlan {
   variablesArg?: string;
   variablesFileArg?: string;
   strictVariables: boolean;
+  /** undefined writes the sidecar next to the output, false disables it, a string relocates it. */
+  provenance?: string | false;
   environment: Readonly<Record<string, string>>;
   /** Names of HF_-/HYPERFRAMES_-prefixed env vars present at plan time (never values), capped at 20. */
   hfEnvOverrides: readonly string[];
@@ -219,6 +222,17 @@ function resolveHfEnvOverrides(): readonly string[] {
     .filter((name) => HF_ENV_OVERRIDE_RE.test(name) && !CLI_INTERNAL_HF_ENV_KEYS.has(name))
     .sort()
     .slice(0, MAX_REPORTED_ENV_OVERRIDES);
+}
+
+const PROVENANCE_DISABLE_ALIASES = new Set(["false", "off", "0", "none"]);
+
+export function parseProvenanceArg(raw: string | boolean | undefined): string | false | undefined {
+  if (raw === undefined || raw === true) return undefined;
+  if (raw === false) return false;
+  const trimmed = raw.trim();
+  if (trimmed === "") return undefined;
+  if (PROVENANCE_DISABLE_ALIASES.has(trimmed.toLowerCase())) return false;
+  return resolve(trimmed);
 }
 
 /** Parse and validate command input into an immutable execution plan. */
@@ -508,6 +522,25 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
     failUsage();
   }
 
+  const provenance = parseProvenanceArg(args.provenance);
+  if (typeof provenance === "string" && batchPath) {
+    errorBox(
+      "Invalid provenance",
+      "--provenance with a custom path cannot be combined with --batch. " +
+        "Each batch row writes its own <output>.hf-render.json; use --no-provenance to disable.",
+    );
+    failUsage();
+  }
+  if (typeof provenance === "string" && useDocker) {
+    errorBox(
+      "Invalid provenance",
+      "--provenance with a custom path is not supported with --docker. " +
+        "The sidecar is written next to the output inside the mounted output directory; " +
+        "use the default location or --no-provenance.",
+    );
+    failUsage();
+  }
+
   const quiet = args.quiet ?? false;
   const batchJson = args.json ?? false;
   return Object.freeze({
@@ -559,6 +592,7 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
     variablesArg: args.variables,
     variablesFileArg: args["variables-file"],
     strictVariables: args["strict-variables"] ?? false,
+    provenance,
     environment: Object.freeze(environment),
     hfEnvOverrides,
   });
