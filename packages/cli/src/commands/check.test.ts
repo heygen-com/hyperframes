@@ -519,7 +519,7 @@ it("distinguishes unavailable HDR inspection from no promotion", async () => {
   expect(report.hdr).toEqual({ autoPromotion: null, inspection: "unavailable" });
 });
 
-it("threads --no-proxy into the browser check options", async () => {
+it("still accepts --no-proxy from older scripts, and passes nothing on", async () => {
   const { report } = await runScenario(fakeDriver());
   const runPipeline = vi.fn(async (_project: ProjectDir, _options: CheckOptions) => report);
   vi.spyOn(console, "log").mockImplementation(() => undefined);
@@ -531,7 +531,8 @@ it("threads --no-proxy into the browser check options", async () => {
 
   await runCommand(command, { rawArgs: ["--json", "--no-proxy"] });
 
-  expect(runPipeline).toHaveBeenCalledWith(PROJECT, expect.objectContaining({ autoProxy: false }));
+  expect(runPipeline).toHaveBeenCalledOnce();
+  expect(runPipeline.mock.calls[0]?.[1]).not.toHaveProperty("autoProxy");
 });
 
 it("waits for the project lock declared in HF_TOOL_CONTEXT before running the pipeline", async () => {

@@ -930,13 +930,15 @@ describe("snapshot composite recapture", () => {
 
   it("places recapture after frame injection and visibility sync, before final capture", () => {
     const source = readFileSync(new URL("./snapshot.ts", import.meta.url), "utf8");
-    const injection = source.indexOf("await injectVideoFramesBatch(page, updates)");
-    const visibility = source.indexOf("await syncVideoFrameVisibility(", injection);
-    const recapture = source.indexOf("await recaptureSnapshotComposite(page)", visibility);
+    const injection = source.indexOf("await engine.injectVideoFramesBatch(page, updates)");
+    const visibility = source.indexOf("await engine.syncVideoFrameVisibility(", injection);
+    const stills = source.indexOf("await stills.injectAt(time)");
+    const recapture = source.indexOf("await recaptureSnapshotComposite(page)", stills);
     const finalCapture = source.indexOf('page.screenshot({ type: "png"', recapture);
     expect(injection).toBeGreaterThan(-1);
     expect(visibility).toBeGreaterThan(injection);
-    expect(recapture).toBeGreaterThan(visibility);
+    expect(stills).toBeGreaterThan(-1);
+    expect(recapture).toBeGreaterThan(stills);
     expect(finalCapture).toBeGreaterThan(recapture);
   });
 });

@@ -1,9 +1,7 @@
 // @vitest-environment happy-dom
 // fallow-ignore-file code-duplication
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import {
   openSettledCompositionPage,
   type OpenSettledCompositionPageOptions,
@@ -13,14 +11,19 @@ import {
   matchComponentFindings,
   captureOverviewShot,
   keepBrokenImageAborts,
-  preResolveHostileMediaProxies,
-  dropFailedProxyEchoes,
   runBrowserCheck,
   collectSeekClock,
 } from "./checkBrowser.js";
 import type { ProjectDir } from "./project.js";
+import { serveStaticProjectHtml } from "./staticProjectServer.js";
 
 const mocks = vi.hoisted(() => ({
+  injectAt: vi.fn<
+    (
+      time: number,
+      only?: (file: string) => boolean,
+    ) => Promise<{ active: number; missed: Array<{ file: string; reason: string }> }>
+  >(async () => ({ active: 1, missed: [] })),
   bundleWithLocalizedFonts: vi.fn(async () => "<html></html>"),
   serverClose: vi.fn(async () => undefined),
   resolveProxy:
@@ -39,6 +42,10 @@ const mocks = vi.hoisted(() => ({
       >
     >
   >(async () => ({})),
+}));
+
+vi.mock("../commands/snapshot.js", () => ({
+  createVideoStillInjector: vi.fn(async () => ({ injectAt: mocks.injectAt })),
 }));
 
 vi.mock("./bundleWithLocalizedFonts.js", () => ({
@@ -72,7 +79,7 @@ vi.mock("./staticProjectServer.js", () => ({
   })),
 }));
 
-// `preResolveHostileMediaProxies` reaches these two studio-server helpers via
+// check's codec scan and the transcoder it must never call.
 vi.mock("@hyperframes/studio-server/media-codec-map", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hyperframes/studio-server/media-codec-map")>()),
   scanProjectMediaCodecMap: mocks.scanProjectMediaCodecMap,
@@ -372,40 +379,6 @@ it("carries validate's clip-duration audit into the runtime findings", async () 
   ]);
 });
 
-it("reports each video whose browser-playable copy could not be made as a warning finding", async () => {
-  mountCanvasFixture();
-  mocks.scanProjectMediaCodecMap.mockResolvedValue({
-    "/media/hlg.mp4": {
-      codecName: "hevc",
-      browserHostile: true,
-      representativeMime: null,
-      hasAlpha: false,
-    },
-  });
-  mocks.resolveProxy.mockRejectedValue(
-    new Error("HDR proxying requires ffmpeg zscale/tonemap filters (libzimg)"),
-  );
-  vi.spyOn(console, "error").mockImplementation(() => undefined);
-  installSessionMock(fakePage());
-
-  const result = await runBrowserCheck(
-    PROJECT,
-    { ...DEFAULT_CHECK_OPTIONS, samples: 1, contrast: false },
-    { kind: "none" },
-    runAuditGrid,
-  );
-
-  expect(result.runtimeFindings).toContainEqual(
-    expect.objectContaining({
-      code: "media_proxy_failed",
-      severity: "warning",
-      message: expect.stringContaining(
-        "media/hlg.mp4: HDR proxying requires ffmpeg zscale/tonemap filters (libzimg)",
-      ),
-    }),
-  );
-});
-
 it("surfaces the runtime's media-proxy-fallback console.info line as an info finding, ignoring unrelated info logs", async () => {
   vi.spyOn(Date, "now").mockReturnValue(100);
   mountCanvasFixture();
@@ -685,255 +658,66 @@ describe("keepBrokenImageAborts", () => {
   });
 });
 
-describe("dropFailedProxyEchoes", () => {
-  it("keeps one finding for a failed proxy and drops the preview's repeats of it", () => {
-    const at = (code: string, message: string, url?: string) =>
-      ({ code, severity: "info", message, time: 0, url }) as const;
-    const failed = at("media_proxy_failed", "Could not make a copy of media/a.mov");
-    const unrelated502 = at(
-      "http_error",
-      "502 loading media/b.mov",
-      "http://127.0.0.1:3000/media/b.mov?hf-proxy=h264",
-    );
-    const originalMissing = at(
-      "http_error",
-      "404 loading media/a.mov",
-      "http://127.0.0.1:3000/media/a.mov",
-    );
-
-    const kept = dropFailedProxyEchoes(
-      [
-        failed,
-        at(
-          "http_error",
-          "502 loading media/my clip.mov",
-          "http://127.0.0.1:3000/media/my%20clip.mov?hf-proxy=h264",
-        ),
-        at(
-          "http_error",
-          "502 loading media/a.mov",
-          "http://127.0.0.1:3000/media/a.mov?hf-proxy=h264",
-        ),
-        at(
-          "media_proxy_fallback",
-          '[hyperframes] runtime_media_proxy_fallback: "media/a.mov" uses a codec (prores)',
-        ),
-        at(
-          "media_proxy_unavailable",
-          '[hyperframes] runtime_media_proxy_unavailable: "http://127.0.0.1:3000/media/a.mov" (proxy_playback_failed): x',
-        ),
-        unrelated502,
-        originalMissing,
-      ],
-      new Set(["/media/a.mov", "/media/my clip.mov"]),
-    );
-
-    expect(kept).toEqual([failed, unrelated502, originalMissing]);
-  });
-});
-
-describe("preResolveHostileMediaProxies", () => {
-  const dirs: string[] = [];
-  const mkProjectDir = (): string => {
-    const d = mkdtempSync(join(tmpdir(), "hf-check-preresolve-"));
-    dirs.push(d);
-    return d;
+describe("videos the browser cannot decode", () => {
+  const hostileClip = () => {
+    mocks.scanProjectMediaCodecMap.mockResolvedValue({
+      "/clip.mp4": {
+        codecName: "hevc",
+        browserHostile: true,
+        representativeMime: null,
+        hasAlpha: false,
+      },
+      "/plain.mp4": {
+        codecName: "h264",
+        browserHostile: false,
+        representativeMime: null,
+        hasAlpha: false,
+      },
+    });
+    mountCanvasFixture();
+    installSessionMock(fakePage());
   };
-  afterEach(() => {
-    for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
-  });
-
-  it("awaits resolveProxy for every browser-hostile entry before returning", async () => {
-    const projectDir = mkProjectDir();
-    mocks.scanProjectMediaCodecMap.mockResolvedValue({
-      "/clip.mp4": {
-        codecName: "hevc",
-        browserHostile: true,
-        representativeMime: null,
-        hasAlpha: false,
-      },
-      "/plain.mp4": {
-        codecName: "h264",
-        browserHostile: false,
-        representativeMime: null,
-        hasAlpha: false,
-      },
-    });
-    let resolveTranscode: (() => void) | undefined;
-    mocks.resolveProxy.mockImplementation(
-      () =>
-        new Promise<string>((resolveIt) => {
-          resolveTranscode = () => resolveIt("/cache/clip.mp4");
-        }),
+  const check = () =>
+    runBrowserCheck(
+      PROJECT,
+      { ...DEFAULT_CHECK_OPTIONS, samples: 1, contrast: false, frameCheck: {} },
+      { kind: "none" },
+      runAuditGrid,
     );
 
-    let settled = false;
-    const pending = preResolveHostileMediaProxies(projectDir, "<html></html>").then(() => {
-      settled = true;
-    });
-
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(mocks.resolveProxy).toHaveBeenCalledTimes(1);
-    expect(mocks.resolveProxy).toHaveBeenCalledWith(
-      projectDir,
-      join(projectDir, "clip.mp4"),
-      "h264",
-    );
-    expect(settled).toBe(false); // still waiting on the hostile entry's transcode
-
-    resolveTranscode?.();
-    await pending;
-    expect(settled).toBe(true);
-  });
-
-  it("does nothing (no scan, no resolveProxy) when autoProxy is off in hyperframes.json", async () => {
-    const projectDir = mkProjectDir();
-    writeFileSync(
-      join(projectDir, "hyperframes.json"),
-      JSON.stringify({ media: { autoProxy: false } }),
-    );
-
-    await preResolveHostileMediaProxies(projectDir, "<html></html>");
-
-    expect(mocks.scanProjectMediaCodecMap).not.toHaveBeenCalled();
+  it("finishes without waiting for a preview copy, on a page that asks for none", async () => {
+    hostileClip();
+    mocks.resolveProxy.mockImplementationOnce(() => new Promise<string>(() => {}));
+    await check();
     expect(mocks.resolveProxy).not.toHaveBeenCalled();
+    expect(vi.mocked(serveStaticProjectHtml).mock.calls[0]?.[4]).toBe(false);
   });
 
-  it("returns a resolveProxy rejection as a warning instead of throwing", async () => {
-    const projectDir = mkProjectDir();
-    mocks.scanProjectMediaCodecMap.mockResolvedValue({
-      "/clip.mp4": {
-        codecName: "hevc",
-        browserHostile: true,
-        representativeMime: null,
-        hasAlpha: false,
-      },
-    });
-    mocks.resolveProxy.mockRejectedValue(new Error("ffmpeg exited with code 1"));
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+  it("judges each sampled frame with a still of the original, for that video only", async () => {
+    hostileClip();
+    await check();
+    expect(mocks.injectAt).toHaveBeenCalledWith(5, expect.any(Function));
+    const only = mocks.injectAt.mock.calls[0]![1]!;
+    expect(only(resolve(PROJECT.dir, "clip.mp4"))).toBe(true);
+    expect(only(resolve(PROJECT.dir, "plain.mp4"))).toBe(false);
+  });
 
-    await expect(preResolveHostileMediaProxies(projectDir, "<html></html>")).resolves.toEqual({
-      findings: [
-        expect.objectContaining({
-          code: "media_proxy_failed",
-          severity: "warning",
-          message: expect.stringContaining("clip.mp4: ffmpeg exited with code 1"),
-        }),
+  it("names a frame it could not paint instead of passing it", async () => {
+    hostileClip();
+    mocks.injectAt.mockResolvedValueOnce({
+      active: 1,
+      missed: [
+        { file: join(PROJECT.dir, "clip.mp4"), reason: "FFmpeg could not extract a frame there" },
       ],
-      failedPaths: new Set(["/clip.mp4"]),
     });
-    expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("media proxy pre-resolve: 0/1 ready, 1 failed"),
+    const { runtimeFindings } = await check();
+    expect(runtimeFindings).toContainEqual(
+      expect.objectContaining({
+        code: "media_frame_unchecked",
+        severity: "warning",
+        message: expect.stringContaining("clip.mp4 could not be decoded at 5.00s"),
+      }),
     );
-  });
-
-  it("reports an unusable ffmpeg once for every video, without promising a working render", async () => {
-    const projectDir = mkProjectDir();
-    const hevc = {
-      codecName: "hevc",
-      browserHostile: true,
-      representativeMime: null,
-      hasAlpha: false,
-    };
-    mocks.scanProjectMediaCodecMap.mockResolvedValue({ "/a.mp4": hevc, "/b.mp4": hevc });
-    mocks.resolveProxy.mockRejectedValue(
-      new mocks.FfmpegUnavailableError("ffmpeg binary not found"),
-    );
-    vi.spyOn(console, "error").mockImplementation(() => undefined);
-
-    const { findings } = await preResolveHostileMediaProxies(projectDir, "<html></html>");
-
-    expect(findings).toHaveLength(1);
-    expect(findings[0]?.message).toContain("copies of a.mp4, b.mp4: ffmpeg binary not found");
-    expect(findings[0]?.message).not.toContain("render");
-  });
-
-  // `check --json` stdout must stay pure JSON, so these lines belong on stderr.
-  it("writes the pre-resolve summary to stderr and leaves stdout untouched", async () => {
-    const projectDir = mkProjectDir();
-    mocks.scanProjectMediaCodecMap.mockResolvedValue({
-      "/clip.mp4": {
-        codecName: "hevc",
-        browserHostile: true,
-        representativeMime: null,
-        hasAlpha: false,
-      },
-    });
-    mocks.resolveProxy.mockResolvedValue("/cache/clip.mp4");
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => undefined);
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
-    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
-
-    await preResolveHostileMediaProxies(projectDir, "<html></html>");
-
-    expect(errorSpy).toHaveBeenCalledTimes(1);
-    expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringMatching(
-        /^\[hyperframes\] media proxy pre-resolve: 1\/1 ready, 0 failed \(\d+ms\)$/,
-      ),
-    );
-    expect(infoSpy).not.toHaveBeenCalled();
-    expect(logSpy).not.toHaveBeenCalled();
-    expect(stdoutSpy).not.toHaveBeenCalled();
-  });
-
-  it("writes a scan failure to stderr and leaves stdout untouched", async () => {
-    const projectDir = mkProjectDir();
-    mocks.scanProjectMediaCodecMap.mockRejectedValue(new Error("ffprobe not found"));
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => undefined);
-    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
-
-    await expect(preResolveHostileMediaProxies(projectDir, "<html></html>")).resolves.toEqual({
-      findings: [],
-      failedPaths: new Set(),
-    });
-
-    expect(errorSpy).toHaveBeenCalledWith(
-      "[hyperframes] media proxy pre-resolve: scan failed (ffprobe not found)",
-    );
-    expect(infoSpy).not.toHaveBeenCalled();
-    expect(stdoutSpy).not.toHaveBeenCalled();
-    expect(mocks.resolveProxy).not.toHaveBeenCalled();
-  });
-
-  it("pre-resolves an alpha VP9 asset through the Chromium-compatible VP8 proxy", async () => {
-    const projectDir = mkProjectDir();
-    mocks.scanProjectMediaCodecMap.mockResolvedValue({
-      "/alpha.webm": {
-        codecName: "vp9",
-        browserHostile: true,
-        representativeMime: 'video/webm; codecs="vp09.00.10.08"',
-        hasAlpha: true,
-      },
-    });
-
-    await preResolveHostileMediaProxies(projectDir, "<html></html>");
-
-    expect(mocks.resolveProxy).toHaveBeenCalledTimes(1);
-    expect(mocks.resolveProxy).toHaveBeenCalledWith(
-      projectDir,
-      join(projectDir, "alpha.webm"),
-      "vp8",
-    );
-  });
-
-  it("is a no-op when the codec map has no hostile entries", async () => {
-    const projectDir = mkProjectDir();
-    mocks.scanProjectMediaCodecMap.mockResolvedValue({
-      "/plain.mp4": {
-        codecName: "h264",
-        browserHostile: false,
-        representativeMime: null,
-        hasAlpha: false,
-      },
-    });
-
-    await preResolveHostileMediaProxies(projectDir, "<html></html>");
-
-    expect(mocks.resolveProxy).not.toHaveBeenCalled();
   });
 });
 

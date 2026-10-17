@@ -25,8 +25,6 @@ export interface CheckOptions {
   frameCheck?: FrameCheckOptions;
   /** Opt-in layout-audit knobs (`--layout "proseCoverageFloor=0.05"`). Defaults stay in the browser audit. */
   layout?: LayoutOptions;
-  /** Explicit --proxy/--no-proxy override; undefined preserves project config. */
-  autoProxy?: boolean;
   browserGpuMode?: BrowserGpuMode;
 }
 

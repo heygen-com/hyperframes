@@ -20,6 +20,7 @@ import { pngDimensions } from "../utils/pngDimensions.js";
 import { failCommand } from "../utils/commandResult.js";
 // fallow-ignore-file complexity
 import { defineCommand } from "citty";
+import type { Page } from "puppeteer-core";
 import { existsSync, mkdtempSync, readFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve, join, relative, isAbsolute, basename, posix } from "node:path";
@@ -463,6 +464,177 @@ export function computeSnapshotTimes(
   return { times: times.map(round), appendedTail: false };
 }
 
+export interface VideoStillInjector {
+  /** Paints a still of each visible video's original at `time`; `only` limits it to those local files. */
+  injectAt(
+    time: number,
+    only?: (file: string) => boolean,
+  ): Promise<{
+    active: number;
+    missed: Array<{ file: string; reason: string }>;
+    injectError?: unknown;
+  }>;
+}
+
+// Chrome-headless ignores programmatic <video>.currentTime writes, so frames come from FFmpeg as <img> overlays.
+// null when the engine that paints them cannot load.
+export async function createVideoStillInjector(
+  page: Page,
+  projectDir: string,
+  compositionDuration: number,
+): Promise<VideoStillInjector | null> {
+  type InjectFn = (
+    page: unknown,
+    updates: Array<{ videoId: string; dataUri: string }>,
+  ) => Promise<string[]>;
+  type SyncVisibilityFn = (page: unknown, activeVideoIds: string[]) => Promise<void>;
+  type ExtractMediaMetadataFn = (
+    filePath: string,
+  ) => Promise<{ videoCodec: string; hasAlpha: boolean }>;
+  let engine: {
+    injectVideoFramesBatch: InjectFn;
+    syncVideoFrameVisibility: SyncVisibilityFn;
+    extractMediaMetadata: ExtractMediaMetadataFn;
+  };
+  try {
+    engine = (await import("@hyperframes/engine")) as typeof engine;
+  } catch {
+    return null;
+  }
+  const alphaDecoderCache = new Map<string, Promise<boolean>>();
+  const shouldUseVp9AlphaDecoder = (filePath: string): Promise<boolean> => {
+    const cached = alphaDecoderCache.get(filePath);
+    if (cached) return cached;
+    const pending = engine
+      .extractMediaMetadata(filePath)
+      .then((meta) => meta.hasAlpha && meta.videoCodec === "vp9")
+      .catch(() => false);
+    alphaDecoderCache.set(filePath, pending);
+    return pending;
+  };
+  // A project file first; a remote http(s) clip feeds FFmpeg its URL; blob: and data: sources cannot be read.
+  const ffmpegInputFor = (src: string): { input: string; local: boolean } | null => {
+    try {
+      const url = new URL(src);
+      const candidate = resolve(projectDir, decodeURIComponent(url.pathname).replace(/^\//, ""));
+      const rel = relative(projectDir, candidate);
+      if (!rel.startsWith("..") && !isAbsolute(rel) && existsSync(candidate))
+        return { input: candidate, local: true };
+      if (url.protocol === "http:" || url.protocol === "https:")
+        return { input: url.href, local: false };
+    } catch {
+      /* unresolvable src */
+    }
+    return null;
+  };
+  return {
+    async injectAt(time, only) {
+      const candidates = await page.evaluate(() => {
+        const runtimeWindow = window as Window & {
+          __hfResolveMediaStartSeconds?: (element: Element) => number;
+        };
+        return Array.from(document.querySelectorAll("video")).map((el) => {
+          const v = el as HTMLVideoElement;
+          const authoredStart = parseFloat(v.dataset.start ?? "0") || 0;
+          const runtimeResolvedStart = runtimeWindow.__hfResolveMediaStartSeconds?.(v);
+          const mediaStart =
+            parseFloat(v.dataset.playbackStart ?? v.dataset.mediaStart ?? "0") || 0;
+          const rawDuration = parseFloat(v.dataset.duration ?? "");
+          const srcDur = Number.isFinite(v.duration) && v.duration > 0 ? v.duration : 0;
+          return {
+            id: v.id,
+            src: v.currentSrc || v.src,
+            authoredStart,
+            authoredRate: v.dataset.playbackRate,
+            authoredAutomation: v.dataset.automation,
+            defaultRate: v.defaultPlaybackRate,
+            runtimeResolvedStart:
+              runtimeResolvedStart !== undefined && Number.isFinite(runtimeResolvedStart)
+                ? runtimeResolvedStart
+                : null,
+            authoredDuration: Number.isFinite(rawDuration) && rawDuration > 0 ? rawDuration : null,
+            srcDuration: srcDur,
+            mediaStart,
+            loop: v.loop,
+          };
+        });
+      });
+      const active = candidates.flatMap((candidate) => {
+        const start = resolveSnapshotVideoClipStart(candidate);
+        const playbackRate = resolveSnapshotVideoRateSpec(candidate);
+        const duration =
+          candidate.authoredDuration ??
+          (candidate.srcDuration > 0
+            ? Math.max(
+                0,
+                timeAtSourceTime(playbackRate, candidate.srcDuration - candidate.mediaStart),
+              )
+            : Number.POSITIVE_INFINITY);
+        let relTime = sourceTimeAt(playbackRate, time - start) + candidate.mediaStart;
+        if (
+          candidate.loop &&
+          candidate.srcDuration > candidate.mediaStart &&
+          relTime >= candidate.srcDuration
+        ) {
+          relTime =
+            candidate.mediaStart +
+            ((relTime - candidate.mediaStart) % (candidate.srcDuration - candidate.mediaStart));
+        }
+        if (!candidate.id || !candidate.src) return [];
+        const frameTime = resolveSnapshotVideoFrameTime({
+          globalTime: time,
+          clipStart: start,
+          clipDuration: duration,
+          relativeTime: relTime,
+          sourceDuration: candidate.srcDuration,
+          compositionDuration,
+        });
+        return frameTime === null
+          ? []
+          : [{ ...candidate, start, playbackRate, duration, relTime: frameTime }];
+      });
+      const painted = active.flatMap((v) => {
+        const input = ffmpegInputFor(v.src);
+        return only && !(input?.local && only(input.input)) ? [] : [{ ...v, input }];
+      });
+      const updates: Array<{ videoId: string; dataUri: string }> = [];
+      const missed: Array<{ file: string; reason: string }> = [];
+      for (const v of painted) {
+        if (!v.input) {
+          missed.push({ file: v.src, reason: "its source is not a file FFmpeg can read" });
+          continue;
+        }
+        // A remote clip skips the unbounded ffprobe alpha check so a stalled host cannot wedge the extract.
+        const useVp9AlphaDecoder = v.input.local
+          ? await shouldUseVp9AlphaDecoder(v.input.input)
+          : false;
+        const png = await extractVideoFrameToBuffer(
+          v.input.input,
+          Math.max(0, v.relTime),
+          useVp9AlphaDecoder,
+          v.srcDuration > 0 && v.relTime >= v.srcDuration - 1,
+        );
+        if (!png) {
+          missed.push({ file: v.input.input, reason: "FFmpeg could not extract a frame there" });
+          continue;
+        }
+        updates.push({ videoId: v.id, dataUri: `data:image/png;base64,${png.toString("base64")}` });
+      }
+      // Sync visibility even when empty: it clears stale overlays from prior seeks.
+      try {
+        if (updates.length > 0) await engine.injectVideoFramesBatch(page, updates);
+        await engine.syncVideoFrameVisibility(
+          page,
+          painted.map((v) => v.id),
+        );
+      } catch (injectError) {
+        return { active: painted.length, missed, injectError };
+      }
+      return { active: painted.length, missed };
+    },
+  };
+}
+
 /**
  * Render key frames from a composition as PNG screenshots.
  * The agent can Read these to verify its output visually.
@@ -635,56 +807,14 @@ async function captureSnapshots(
         /* best-effort — proceed even if cleanup fails */
       }
 
-      // Chrome-headless ignores programmatic <video>.currentTime writes, so
-      // we extract frames via FFmpeg and overlay them as <img> elements.
-      //
-      // The engine's injectVideoFramesBatch returns the subset of videoIds it
-      // actually painted (skipped ancestor-hidden videos are excluded).
-      // Snapshot doesn't use the return value, but the local type must match
-      // the real export — a `Promise<void>` shape rejects the `as` cast on
-      // the dynamic import.
-      type InjectFn = (
-        page: unknown,
-        updates: Array<{ videoId: string; dataUri: string }>,
-      ) => Promise<string[]>;
-      type SyncVisibilityFn = (page: unknown, activeVideoIds: string[]) => Promise<void>;
-      type ExtractMediaMetadataFn = (
-        filePath: string,
-      ) => Promise<{ videoCodec: string; hasAlpha: boolean }>;
-      let injectVideoFramesBatch: InjectFn | null = null;
-      let syncVideoFrameVisibility: SyncVisibilityFn | null = null;
-      let extractMediaMetadata: ExtractMediaMetadataFn | null = null;
-      try {
-        const engine = (await import("@hyperframes/engine")) as {
-          injectVideoFramesBatch: InjectFn;
-          syncVideoFrameVisibility: SyncVisibilityFn;
-          extractMediaMetadata: ExtractMediaMetadataFn;
-        };
-        injectVideoFramesBatch = engine.injectVideoFramesBatch;
-        syncVideoFrameVisibility = engine.syncVideoFrameVisibility;
-        extractMediaMetadata = engine.extractMediaMetadata;
-      } catch {
-        // Engine unavailable in this install — snapshot still runs, but any
-        // <video data-start> will screenshot black (chrome-headless ignores
-        // programmatic currentTime writes). Say so instead of silently
-        // shipping black frames (two wild Windows reports).
+      const stills = await createVideoStillInjector(page, projectDir, duration);
+      if (!stills) {
+        // Say so instead of silently shipping black frames (two wild Windows reports).
         warnings.push("Video frame extraction engine unavailable");
         console.warn(
           `   ${c.warn("⚠")} @hyperframes/engine unavailable — <video> elements will appear black in snapshots. Verify media via a draft render's extracted frames instead.`,
         );
       }
-      const alphaDecoderCache = new Map<string, Promise<boolean>>();
-      const shouldUseVp9AlphaDecoder = (filePath: string): Promise<boolean> => {
-        if (!extractMediaMetadata) return Promise.resolve(false);
-        const cached = alphaDecoderCache.get(filePath);
-        if (cached) return cached;
-        const pending = extractMediaMetadata(filePath)
-          .then((meta) => meta.hasAlpha && meta.videoCodec === "vp9")
-          .catch(() => false);
-        alphaDecoderCache.set(filePath, pending);
-        return pending;
-      };
-
       const hasPlayer = await page.evaluate(() => !!(window as any).__player);
       if (!hasPlayer) {
         console.warn(`   ${c.warn("⚠")} No player API — seeks will be skipped`);
@@ -697,138 +827,15 @@ async function captureSnapshots(
 
         if (cameraExpr) await page.evaluate(cameraExpr);
 
-        if (injectVideoFramesBatch && syncVideoFrameVisibility) {
-          const candidates = await page.evaluate(() => {
-            const runtimeWindow = window as Window & {
-              __hfResolveMediaStartSeconds?: (element: Element) => number;
-            };
-            return Array.from(document.querySelectorAll("video")).map((el) => {
-              const v = el as HTMLVideoElement;
-              const authoredStart = parseFloat(v.dataset.start ?? "0") || 0;
-              const runtimeResolvedStart = runtimeWindow.__hfResolveMediaStartSeconds?.(v);
-              const mediaStart =
-                parseFloat(v.dataset.playbackStart ?? v.dataset.mediaStart ?? "0") || 0;
-              const rawDuration = parseFloat(v.dataset.duration ?? "");
-              const srcDur = Number.isFinite(v.duration) && v.duration > 0 ? v.duration : 0;
-              return {
-                id: v.id,
-                src: v.currentSrc || v.src,
-                authoredStart,
-                authoredRate: v.dataset.playbackRate,
-                authoredAutomation: v.dataset.automation,
-                defaultRate: v.defaultPlaybackRate,
-                runtimeResolvedStart:
-                  runtimeResolvedStart !== undefined && Number.isFinite(runtimeResolvedStart)
-                    ? runtimeResolvedStart
-                    : null,
-                authoredDuration:
-                  Number.isFinite(rawDuration) && rawDuration > 0 ? rawDuration : null,
-                srcDuration: srcDur,
-                mediaStart,
-                loop: v.loop,
-              };
-            });
-          });
-          const compositionDuration = duration;
-          const active = candidates.flatMap((candidate) => {
-            const start = resolveSnapshotVideoClipStart(candidate);
-            const playbackRate = resolveSnapshotVideoRateSpec(candidate);
-            const duration =
-              candidate.authoredDuration ??
-              (candidate.srcDuration > 0
-                ? Math.max(
-                    0,
-                    timeAtSourceTime(playbackRate, candidate.srcDuration - candidate.mediaStart),
-                  )
-                : Number.POSITIVE_INFINITY);
-            let relTime = sourceTimeAt(playbackRate, time - start) + candidate.mediaStart;
-            if (
-              candidate.loop &&
-              candidate.srcDuration > candidate.mediaStart &&
-              relTime >= candidate.srcDuration
-            ) {
-              relTime =
-                candidate.mediaStart +
-                ((relTime - candidate.mediaStart) % (candidate.srcDuration - candidate.mediaStart));
-            }
-            if (!candidate.id || !candidate.src) return [];
-            const frameTime = resolveSnapshotVideoFrameTime({
-              globalTime: time,
-              clipStart: start,
-              clipDuration: duration,
-              relativeTime: relTime,
-              sourceDuration: candidate.srcDuration,
-              compositionDuration,
-            });
-            return frameTime === null
-              ? []
-              : [{ ...candidate, start, playbackRate, duration, relTime: frameTime }];
-          });
-
-          const updates: Array<{ videoId: string; dataUri: string }> = [];
-          for (const v of active) {
-            // Resolve the <video> src to an FFmpeg input. Prefer a project-local
-            // file (fast, sandboxed); fall back to the absolute http(s) URL for
-            // remote assets (e.g. an S3-hosted clip embedded by an upstream agent)
-            // — FFmpeg reads http(s) input directly, and Chrome-headless can't seek
-            // it either, so without this those videos render blank in snapshots.
-            let ffmpegInput: string | null = null;
-            let inputIsLocal = false;
-            try {
-              const url = new URL(v.src);
-              const decodedPath = decodeURIComponent(url.pathname).replace(/^\//, "");
-              const candidate = resolve(projectDir, decodedPath);
-              const rel = relative(projectDir, candidate);
-              if (!rel.startsWith("..") && !isAbsolute(rel) && existsSync(candidate)) {
-                ffmpegInput = candidate;
-                inputIsLocal = true;
-              } else if (url.protocol === "http:" || url.protocol === "https:") {
-                ffmpegInput = url.href;
-              }
-            } catch {
-              /* unresolvable src (e.g. blob:, data:) — skip */
-            }
-            if (!ffmpegInput) continue;
-            // VP9-alpha detection shells out to ffprobe, which has no timeout.
-            // Only probe local files (filesystem-bounded); for remote URLs skip it
-            // (pass false) so a stalled host can't wedge snapshot in ffprobe before
-            // the bounded extractVideoFrameToBuffer below ever runs. Remote
-            // VP9-alpha overlays aren't a current path — revisit with a bounded
-            // ffprobe if one appears.
-            const useVp9AlphaDecoder = inputIsLocal
-              ? await shouldUseVp9AlphaDecoder(ffmpegInput)
-              : false;
-            const png = await extractVideoFrameToBuffer(
-              ffmpegInput,
-              Math.max(0, v.relTime),
-              useVp9AlphaDecoder,
-              v.srcDuration > 0 && v.relTime >= v.srcDuration - 1,
-            );
-            if (!png) continue;
-            updates.push({
-              videoId: v.id,
-              dataUri: `data:image/png;base64,${png.toString("base64")}`,
-            });
-          }
-
-          if (active.length > 0 && updates.length < active.length) {
-            const missed = active.length - updates.length;
-            warnings.push(`${missed} video frames missing at ${time}s`);
+        if (stills) {
+          const { active, missed, injectError } = await stills.injectAt(time);
+          if (missed.length > 0) {
+            warnings.push(`${missed.length} video frames missing at ${time}s`);
             console.warn(
-              `   ${c.warn("⚠")} ${missed}/${active.length} active <video> frame(s) could not be extracted at ${time.toFixed(1)}s — those videos will appear black/stale in this snapshot`,
+              `   ${c.warn("⚠")} ${missed.length}/${active} active <video> frame(s) could not be extracted at ${time.toFixed(1)}s — those videos will appear black/stale in this snapshot`,
             );
           }
-
-          // Sync visibility even when empty — clears stale overlays from prior seeks
-          try {
-            if (updates.length > 0) {
-              await injectVideoFramesBatch(page, updates);
-            }
-            await syncVideoFrameVisibility(
-              page,
-              active.map((a) => a.id),
-            );
-          } catch {
+          if (injectError !== undefined) {
             warnings.push(`Video injection failed at ${time}s`);
             console.warn(
               `   ${c.warn("⚠")} video frame injection failed at ${time.toFixed(1)}s — <video> elements will appear black/stale in this snapshot`,

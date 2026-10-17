@@ -17,7 +17,7 @@ export class CheckDeadlineError extends Error {
   }
 }
 
-/** One Node clock starts at the composition browser and spans readiness, sampling and crops. */
+/** One Node clock for the whole check: lint, the browser's readiness, sampling and crops. */
 export class CheckDeadline {
   private readonly abort = new AbortController();
   private readonly operations = new Set<Promise<unknown>>();

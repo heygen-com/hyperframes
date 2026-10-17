@@ -1293,15 +1293,18 @@ export async function runCheckPipeline(
   dependencies: CheckDependencies = DEFAULT_DEPENDENCIES,
 ): Promise<CheckReport> {
   beginCheckSnapshots(project.dir);
+  const deadline = new CheckDeadline();
+  deadline.start();
   try {
     let lintResult: ProjectLintResult;
     const lintStartedAt = Date.now();
     try {
-      lintResult = await dependencies.lintProject(project.dir);
+      lintResult = await deadline.run(() => dependencies.lintProject(project.dir));
     } catch (error) {
       // The linter itself crashed (unreadable file, internal error) — distinct
       // from lint findings; a runtime-failure code would send the agent hunting
       // for a script problem that doesn't exist.
+      await deadline.close();
       return failureReport(options, runtimeFailure(error, "check_lint_failure"));
     }
     trackLintRun(project.dir, lintResult, {
@@ -1314,13 +1317,14 @@ export async function runCheckPipeline(
     let hdrPromotion: CheckReport["hdr"]["autoPromotion"] = null;
     let hdrInspection: CheckReport["hdr"]["inspection"] = "available";
     try {
-      hdrPromotion = await (dependencies.inspectHdrAutoPromotion ?? inspectHdrAutoPromotion)(
-        project,
+      hdrPromotion = await deadline.run(() =>
+        (dependencies.inspectHdrAutoPromotion ?? inspectHdrAutoPromotion)(project),
       );
     } catch {
       hdrInspection = "unavailable";
     }
     if (shouldBlockRender(true, false, lintResult.totalErrors, lintResult.totalWarnings)) {
+      await deadline.close();
       return buildReport(
         options,
         lint,
@@ -1346,7 +1350,6 @@ export async function runCheckPipeline(
           ]
         : [];
 
-    const deadline = new CheckDeadline();
     let outcome: { kind: "report"; report: CheckReport } | { kind: "failed"; error: unknown };
     try {
       let browser: CheckBrowserResult;

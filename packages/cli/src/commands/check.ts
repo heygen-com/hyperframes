@@ -213,7 +213,7 @@ const CHECK_COMMAND_ARGS = {
   proxy: {
     type: "boolean",
     description:
-      "Auto-transcode browser-hostile video codecs (default: hyperframes.json media.autoProxy, which defaults on)",
+      "Accepted for older scripts and ignored: check judges videos the browser cannot decode from stills of the original",
     default: undefined,
   },
   "browser-gpu": {
@@ -312,7 +312,6 @@ function parseCheckOptions(args: Record<string, unknown>): CheckOptions {
     captionZone: parseCaptionZone(args["caption-zone"]),
     frameCheck: parseFrameCheck(args["frame-check"]),
     layout: parseLayout(args.layout),
-    autoProxy: args.proxy as boolean | undefined,
     browserGpuMode: resolveLocalBrowserGpuMode(args["browser-gpu"] as boolean | undefined),
   };
 }

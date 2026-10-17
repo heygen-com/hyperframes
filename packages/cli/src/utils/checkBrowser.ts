@@ -2,7 +2,7 @@ import type { CheckDeadline } from "./checkDeadline.js";
 import { BrowserCleanupError, closeManagedBrowser } from "../browser/launch.js";
 import { checkSnapshotDirectory } from "./checkSnapshotDirectory.js";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import type { Browser, Page } from "puppeteer-core";
 import {
   AUDIT_SEEK_OPTIONS,
@@ -27,16 +27,11 @@ import { ambiguousIssue, type MotionFrame } from "./motionAudit.js";
 import type { LayoutIssue, LayoutIssueCode, LayoutRect } from "./layoutAudit.js";
 import { serveStaticProjectHtml } from "./staticProjectServer.js";
 import { collectTweenRecords, findTweenTails, tweenTailMessage } from "./gsapTweenTails.js";
-import { resolveAutoProxy } from "./projectConfig.js";
 import {
   decideMediaProxyEligibility,
-  proxyVariantFor,
   scanProjectMediaCodecMap,
 } from "@hyperframes/studio-server/media-codec-map";
-import {
-  FfmpegUnavailableError,
-  resolveProxies,
-} from "@hyperframes/studio-server/proxy-transcoder";
+import { createVideoStillInjector, type VideoStillInjector } from "../commands/snapshot.js";
 import { rectToBbox } from "./checkTypes.js";
 import type {
   AnchoredLayoutIssue,
@@ -108,84 +103,57 @@ interface FinishedContrast {
   bg: string;
 }
 
-/**
- * Awaits the H.264 authoring proxy for every browser-hostile local video
- * asset in `html` BEFORE the timed render-ready wait starts. `check`'s
- * render-ready wait defaults to 3000ms (`DEFAULT_CHECK_OPTIONS.timeout`,
- * passed through as `renderReadyTimeoutMs`), and a cold `.transcode-cache`
- * cannot fit inside that window — without this, a project's first
- * hostile-asset check (e.g. a fresh CI checkout) would race the timeout
- * instead of paying a bounded one-time transcode cost
- * (docs/plans/2026-07-14-002-feat-transparent-media-proxies-plan.md, unit U4).
- * A failed copy is a warning, not an error: a default render decodes the original with
- * ffmpeg. One warning per failed file, or one for all of them when ffmpeg itself is unusable.
- */
-export async function preResolveHostileMediaProxies(
+/** Local videos the browser cannot decode. Check judges them from stills of the original, as render decodes them, and
+ * never waits for the preview's copies. A failed scan is a warning: those frames may go unchecked. */
+async function scanHostileVideoFiles(
   projectDir: string,
   html: string,
-  autoProxyOverride?: boolean,
-): Promise<ProxyPreResolution> {
-  const none: ProxyPreResolution = { findings: [], failedPaths: new Set() };
-  if (!resolveAutoProxy(projectDir, autoProxyOverride)) return none;
-  let codecMap: Awaited<ReturnType<typeof scanProjectMediaCodecMap>>;
+): Promise<{ files: Set<string>; findings: RuntimeDraft[] }> {
   try {
-    codecMap = await scanProjectMediaCodecMap(projectDir, [{ html }]);
-  } catch (err) {
-    console.error(
-      `[hyperframes] media proxy pre-resolve: scan failed (${normalizeErrorMessage(err)})`,
+    const codecMap = await scanProjectMediaCodecMap(projectDir, [{ html }]);
+    const hostile = Object.entries(codecMap).filter(
+      ([, facts]) => decideMediaProxyEligibility(facts).eligible,
     );
-    return none;
-  }
-  const hostileEntries = Object.entries(codecMap).filter(
-    ([, facts]) => decideMediaProxyEligibility(facts).eligible,
-  );
-  if (hostileEntries.length === 0) return none;
-
-  const startedAt = Date.now();
-  const sources = hostileEntries.map(([pathname, facts]) => {
-    const file = pathname.replace(/^\/+/, "");
     return {
-      pathname,
-      file,
-      sourcePath: resolve(projectDir, file),
-      variant: proxyVariantFor(facts),
+      files: new Set(
+        hostile.map(([pathname]) => resolve(projectDir, pathname.replace(/^\/+/, ""))),
+      ),
+      findings: [],
     };
-  });
-  const results = await resolveProxies(projectDir, sources);
-  const failures = sources.flatMap((source, index) => {
-    const result = results[index]!;
-    return result.status === "rejected" ? [{ ...source, reason: result.reason }] : [];
-  });
-  const total = hostileEntries.length;
-  console.error(
-    `[hyperframes] media proxy pre-resolve: ${total - failures.length}/${total} ready, ${failures.length} failed (${Date.now() - startedAt}ms)`,
-  );
-  const unusableFfmpeg = failures.filter(({ reason }) => reason instanceof FfmpegUnavailableError);
-  const findings = failures
-    .filter(({ reason }) => !(reason instanceof FfmpegUnavailableError))
-    .map(({ file, reason }) =>
-      proxyFailedDraft(
-        `Could not make a browser-playable copy of ${file}: ${normalizeErrorMessage(reason)}. A default render decodes the original with ffmpeg and does not need it, but publish stops on it (unless run with --no-proxy) and a browser that cannot decode the original will not play it in preview.`,
-      ),
-    );
-  if (unusableFfmpeg[0]) {
-    findings.unshift(
-      proxyFailedDraft(
-        `Could not make browser-playable copies of ${unusableFfmpeg.map(({ file }) => file).join(", ")}: ${normalizeErrorMessage(unusableFfmpeg[0].reason)}. Publish stops on them (unless run with --no-proxy) and a browser that cannot decode them will not play them in preview.`,
-      ),
-    );
+  } catch (err) {
+    const message = `Could not read which videos the browser cannot decode (${normalizeErrorMessage(err)}); frames showing them may not have been checked.`;
+    return {
+      files: new Set(),
+      findings: [{ code: "media_frame_unchecked", severity: "warning", message, time: 0 }],
+    };
   }
-  return { findings, failedPaths: new Set(failures.map(({ pathname }) => pathname)) };
 }
 
-interface ProxyPreResolution {
-  findings: RuntimeDraft[];
-  /** Root-relative paths of the videos whose copy failed. */
-  failedPaths: Set<string>;
-}
-
-function proxyFailedDraft(message: string): RuntimeDraft {
-  return { code: "media_proxy_failed", severity: "warning", message, time: 0 };
+/** Paints stills of the originals over hostile videos at `time`; a frame it cannot paint is named, never passed. */
+async function paintHostileStills(
+  stills: VideoStillInjector | null,
+  hostile: ReadonlySet<string>,
+  projectDir: string,
+  time: number,
+  drafts: RuntimeDraft[],
+): Promise<void> {
+  if (hostile.size === 0) return;
+  const unchecked = (file: string, reason: string) =>
+    drafts.push({
+      code: "media_frame_unchecked",
+      severity: "warning",
+      message: `${relative(projectDir, file) || file} could not be decoded at ${time.toFixed(2)}s for check (${reason}); what it shows there was not checked.`,
+      time,
+    });
+  if (!stills) {
+    for (const file of hostile) unchecked(file, "the video frame engine is unavailable");
+    return;
+  }
+  const { missed, injectError } = await stills.injectAt(time, (file) => hostile.has(file));
+  for (const { file, reason } of missed) unchecked(file, reason);
+  if (injectError !== undefined)
+    for (const file of hostile)
+      unchecked(file, `painting its still failed: ${normalizeErrorMessage(injectError)}`);
 }
 
 export async function runBrowserCheck(
@@ -197,17 +165,14 @@ export async function runBrowserCheck(
 ): Promise<CheckBrowserResult> {
   const { bundleWithLocalizedFonts } = await import("./bundleWithLocalizedFonts.js");
   const html = await bundleWithLocalizedFonts(project.dir);
-  const { findings: drafts, failedPaths } = await preResolveHostileMediaProxies(
-    project.dir,
-    html,
-    options.autoProxy,
-  );
+  const { files: hostile, findings: drafts } = await scanHostileVideoFiles(project.dir, html);
+  // No preview copies: with them on, the page would ask this server to transcode while check waits.
   const server = await serveStaticProjectHtml(
     project.dir,
     html,
     "Failed to bind check server",
     [],
-    options.autoProxy,
+    false,
   );
   let currentTime = 0;
   let failure: { kind: "none" } | { kind: "failed"; error: unknown } = { kind: "none" };
@@ -247,18 +212,25 @@ export async function runBrowserCheck(
       const message = tweenTailMessage(tail);
       drafts.push({ code: "gsap_tween_tail", severity: "warning", message, time: tail.later.end });
     }
-    const driver = createPageDriver(page, (time) => {
-      currentTime = time;
-    });
+    const stills =
+      hostile.size > 0
+        ? await createVideoStillInjector(page, project.dir, await getCompositionDuration(page))
+        : null;
+    const driver = createPageDriver(
+      page,
+      (time) => {
+        currentTime = time;
+      },
+      (time) => paintHostileStills(stills, hostile, project.dir, time, drafts),
+    );
     const result = await runGrid(driver, options, motion);
     const broken = await abortedImagesStillBroken(page, drafts);
     return {
       ...result,
       timings: { ...result.timings, launchSettleMs },
-      runtimeFindings: dropFailedProxyEchoes(
-        keepBrokenImageAborts(drafts, broken),
-        failedPaths,
-      ).map((draft) => runtimeFinding(draft, rootAnchor)),
+      runtimeFindings: keepBrokenImageAborts(drafts, broken).map((draft) =>
+        runtimeFinding(draft, rootAnchor),
+      ),
     };
   } catch (error) {
     failure = { kind: "failed", error };
@@ -283,12 +255,13 @@ export async function captureFindingCrops(
   if (requests.length === 0) return [];
   const { bundleWithLocalizedFonts } = await import("./bundleWithLocalizedFonts.js");
   const html = await bundleWithLocalizedFonts(project.dir);
+  const { files: hostile } = await scanHostileVideoFiles(project.dir, html);
   const server = await serveStaticProjectHtml(
     project.dir,
     html,
     "Failed to bind check server",
     [],
-    options.autoProxy,
+    false,
   );
   let chromeBrowser: import("puppeteer-core").Browser | undefined;
   const written: string[] = [];
@@ -307,11 +280,17 @@ export async function captureFindingCrops(
     chromeBrowser = session.browser;
     const page = session.page;
     await waitForPreferredSeekTarget(page);
+    const stills =
+      hostile.size > 0
+        ? await createVideoStillInjector(page, project.dir, await getCompositionDuration(page))
+        : null;
 
     const snapshotDir = checkSnapshotDirectory(project.dir);
     mkdirSync(snapshotDir, { recursive: true });
     for (const request of requests) {
       await seekCompositionTimeline(page, request.time, AUDIT_SEEK_OPTIONS);
+      // A crop is evidence for a finding already reported: a frame it cannot paint adds nothing new.
+      await paintHostileStills(stills, hostile, project.dir, request.time, []);
       const canvas = await page.evaluate(() => ({
         width: window.innerWidth,
         height: window.innerHeight,
@@ -459,44 +438,6 @@ export function keepBrokenImageAborts(drafts: RuntimeDraft[], broken: Set<string
   return drafts.filter((draft) => !draft.abortedImage || broken.has(draft.url ?? ""));
 }
 
-/** One finding per failed proxy: the preview's own 502s and swap notes for that file repeat `media_proxy_failed`. */
-export function dropFailedProxyEchoes(
-  drafts: RuntimeDraft[],
-  failedPaths: ReadonlySet<string>,
-): RuntimeDraft[] {
-  if (failedPaths.size === 0) return drafts;
-  return drafts.filter((draft) => !failedPaths.has(proxyEchoPath(draft) ?? ""));
-}
-
-function proxyEchoPath(draft: RuntimeDraft): string | undefined {
-  if (draft.code === "http_error" || draft.code === "request_failed") {
-    const url = parseUrl(draft.url);
-    return url?.searchParams.has("hf-proxy") ? decodedPath(url) : undefined;
-  }
-  if (draft.code === "media_proxy_fallback" || draft.code === "media_proxy_unavailable") {
-    return decodedPath(parseUrl(/"([^"]+)"/.exec(draft.message)?.[1]));
-  }
-  return undefined;
-}
-
-function parseUrl(target: string | undefined): URL | undefined {
-  if (!target) return undefined;
-  try {
-    return new URL(target, "http://check.invalid/");
-  } catch {
-    return undefined;
-  }
-}
-
-function decodedPath(url: URL | undefined): string | undefined {
-  if (!url) return undefined;
-  try {
-    return decodeURIComponent(url.pathname);
-  } catch {
-    return undefined;
-  }
-}
-
 const IMAGE_DECODE_CAP_MS = 5000;
 
 async function abortedImagesStillBroken(page: Page, drafts: RuntimeDraft[]): Promise<Set<string>> {
@@ -562,7 +503,11 @@ function wireNetworkListeners(page: Page, drafts: RuntimeDraft[], currentTime: (
   });
 }
 
-function createPageDriver(page: Page, setTime: (time: number) => void): CheckAuditDriver {
+function createPageDriver(
+  page: Page,
+  setTime: (time: number) => void,
+  paintStills: (time: number) => Promise<void>,
+): CheckAuditDriver {
   return {
     initialize: (contrast) => injectAuditScripts(page, contrast),
     matchComponents: (components, findings) =>
@@ -577,6 +522,7 @@ function createPageDriver(page: Page, setTime: (time: number) => void): CheckAud
     seek: async (time) => {
       setTime(time);
       await seekCompositionTimeline(page, time, AUDIT_SEEK_OPTIONS);
+      await paintStills(time);
     },
     seekGeometry: async (time) => {
       setTime(time);
