@@ -5,7 +5,7 @@ import {
 } from "@hyperframes/studio-server";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { describeProject, type ProjectTimeline, type TimelineRow } from "./describeProject.js";
 import { resolveRef } from "./resolveRef.js";
 import { parseTimeExpression } from "./timeExpr.js";
@@ -297,8 +297,25 @@ function readUndoInput(input: string): UndoInput {
   return { ok: true, receipts: values, batch: Array.isArray(value) };
 }
 
+function refuseUndoError(error: unknown, projectDir: string, json: boolean): void {
+  if (isRecord(error) && error.code === "ENOENT" && typeof error.path === "string")
+    return refuse(
+      "timeline undo",
+      {
+        reason: `undo file is missing: ${relative(projectDir, error.path).split("\\").join("/")}`,
+        fix: "restore the missing target or backup file before retrying undo",
+      },
+      json,
+    );
+  if (isFileChanged(error))
+    return refusal(error.message, "read the latest timeline before retrying undo", json);
+  throw error;
+}
+
 export async function runUndo(args: Record<string, unknown>): Promise<void> {
-  const project = resolveProject(typeof args.dir === "string" ? args.dir : undefined);
+  const project = resolveProject(typeof args.dir === "string" ? args.dir : undefined, {
+    requireIndex: false,
+  });
   const json = args.json === true;
   const input = typeof args.receipt === "string" ? args.receipt : positional(args)[1];
   if (!input)
@@ -309,23 +326,21 @@ export async function runUndo(args: Record<string, unknown>): Promise<void> {
     );
   const undo = readUndoInput(input);
   if (!undo.ok) return refuse("timeline undo", undo, json);
-  const inputs = undo.receipts.map((receipt) => {
-    const target = join(project.dir, receipt.file);
-    return {
-      sourceFile: receipt.file,
-      absPath: target,
-      before: readFileSync(target, "utf-8"),
-      after: readFileSync(join(project.dir, receipt.backupPath), "utf-8"),
-      expectedVersion: receipt.version,
-    };
-  });
   let receipts: AppliedFileMutation[];
   try {
+    const inputs = undo.receipts.map((receipt) => {
+      const target = join(project.dir, receipt.file);
+      return {
+        sourceFile: receipt.file,
+        absPath: target,
+        before: readFileSync(target, "utf-8"),
+        after: readFileSync(join(project.dir, receipt.backupPath), "utf-8"),
+        expectedVersion: receipt.version,
+      };
+    });
     receipts = applyFileMutations(project.dir, inputs);
   } catch (error) {
-    if (isFileChanged(error))
-      return refusal(error.message, "read the latest timeline before retrying undo", json);
-    throw error;
+    return refuseUndoError(error, project.dir, json);
   }
   const result = {
     ok: true,
