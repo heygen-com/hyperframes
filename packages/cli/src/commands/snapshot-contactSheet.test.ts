@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { runCommand } from "citty";
 import {
   existsSync,
@@ -47,6 +48,7 @@ vi.mock("@hyperframes/engine", () => ({
 }));
 
 import snapshotCommand from "./snapshot.js";
+import { findFFmpeg, findFFprobe } from "../browser/ffmpeg.js";
 import { historyDeps } from "../utils/historyOwner.js";
 import { openProjectHistory } from "@hyperframes/studio-server/history";
 
@@ -150,6 +152,86 @@ describe("snapshot contact sheet failures", () => {
     expect(console.log).toHaveBeenCalledWith(expect.stringContaining("contact-sheet.jpg"));
     expect(console.warn).not.toHaveBeenCalled();
     expect(console.error).not.toHaveBeenCalled();
+  });
+
+  describe("--against when the pair sheet cannot be made", () => {
+    const ffmpeg = findFFmpeg();
+    const noFfmpeg = !ffmpeg || !findFFprobe();
+    const sharpBlocked = [
+      'Could not load the "sharp" module using the win32-x64 runtime',
+      "ERR_DLOPEN_FAILED: An Application Control policy has blocked this file.",
+      "Possible solutions:",
+    ].join("\n");
+
+    function againstArgs(reference: string) {
+      return {
+        rawArgs: [
+          project,
+          ...["--at", "0.5,1", "--no-end", "--describe", "false"],
+          ...["--against", reference, "--output", join(project, "snapshots")],
+        ],
+      };
+    }
+
+    function makeReference(): string {
+      const reference = join(project, "reference.mp4");
+      execFileSync(ffmpeg!, [
+        ...["-hide_banner", "-loglevel", "error", "-f", "lavfi"],
+        ...["-i", "testsrc=d=2:r=24:s=160x90", "-pix_fmt", "yuv420p", reference],
+      ]);
+      return reference;
+    }
+
+    it.skipIf(noFfmpeg)(
+      "warns once when sharp cannot load and keeps every frame and reference",
+      async () => {
+        const reference = makeReference();
+        const pairSheet = vi.fn(async () => {
+          throw new Error(sharpBlocked);
+        });
+        vi.doMock("../capture/contactSheet.js", () => ({
+          createContactSheet: pairSheet,
+          createSnapshotContactSheet: vi.fn(async () => {
+            throw new Error(sharpBlocked);
+          }),
+        }));
+
+        await expect(runCommand(snapshotCommand, againstArgs(reference))).resolves.toBeDefined();
+
+        const out = join(project, "snapshots");
+        for (const slot of ["00-at-0.5s", "01-at-1s"]) {
+          expect(readFileSync(join(out, `frame-${slot}.png`))).toEqual(Buffer.from("captured PNG"));
+          expect(existsSync(join(out, `ref-${slot}.png`))).toBe(true);
+        }
+        expect(readdirSync(out).filter((name) => name.startsWith("pair-"))).toEqual([]);
+        expect(pairSheet).toHaveBeenCalledOnce();
+        expect(console.error).toHaveBeenCalledOnce();
+        expect(console.error).toHaveBeenCalledWith(
+          expect.stringContaining("Reference pair sheets skipped: Windows App Control"),
+        );
+        const logged = vi.mocked(console.log).mock.calls.map((call) => String(call[0]));
+        expect(logged.some((line) => line.includes("ref-*.png"))).toBe(true);
+        expect(logged.some((line) => line.includes("pair-*.jpg"))).toBe(false);
+      },
+    );
+
+    it.skipIf(noFfmpeg)("still fails the snapshot for any other pair sheet error", async () => {
+      const reference = makeReference();
+      vi.doMock("../capture/contactSheet.js", () => ({
+        createContactSheet: vi.fn(async () => {
+          throw new Error("Unable to decode image for pair sheet");
+        }),
+      }));
+
+      await expect(runCommand(snapshotCommand, againstArgs(reference))).rejects.toThrow(
+        "Command failed",
+      );
+      expect(console.error).toHaveBeenCalledWith(
+        expect.stringContaining("Snapshot failed: Unable to decode image for pair sheet"),
+      );
+      expect(capture.closeBrowser).toHaveBeenCalledOnce();
+      expect(capture.closeServer).toHaveBeenCalledOnce();
+    });
   });
 
   it("keeps the captured frames when another process holds history", async () => {
