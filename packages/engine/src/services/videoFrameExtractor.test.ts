@@ -872,6 +872,21 @@ describe("parseVideoElements", () => {
     expect(videos.find((v) => v.id === "main")?.start).toBe(9);
   });
 
+  it("resolves a reference inside its own composition when another composition reuses the id", () => {
+    const videos = parseVideoElements(
+      '<div data-composition-id="main">' +
+        '<div data-composition-id="scene-a" data-start="0" data-duration="4">' +
+        '<div id="intro" data-start="0" data-duration="2"></div>' +
+        "</div>" +
+        '<div data-composition-id="scene-b" data-start="4" data-duration="4">' +
+        '<div id="intro" data-start="0" data-duration="3"></div>' +
+        '<video id="clip" src="b.mp4" data-start="intro" data-duration="1"></video>' +
+        "</div>" +
+        "</div>",
+    );
+    expect(videos.find((v) => v.id === "clip")?.start).toBe(3);
+  });
+
   it("falls back to 0 (never NaN) for an unknown reference target", () => {
     const videos = parseVideoElements(
       '<video id="orphan" src="a.mp4" data-start="does-not-exist" data-duration="5"></video>',

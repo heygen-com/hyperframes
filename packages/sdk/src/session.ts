@@ -381,9 +381,9 @@ class CompositionImpl implements Composition {
       this._gsapLabelCache = scripts.length ? { scripts: [...scripts], labels: allLabels } : null;
     }
 
-    // refId remains a bare global id, matching runtime resolution. The shared
-    // contract owns parsing, canonical duration preference, clamping, and
-    // legacy data-end compatibility; this adapter only supplies document lookup.
+    // refId resolves as a bare hf-id (top level first), unlike the runtime's
+    // composition-scoped `id` lookup. The shared contract owns parsing, canonical
+    // duration preference, clamping, and legacy data-end; this adapter only supplies lookup.
     const timingCache = new Map<Element, ClipTiming>();
     const visiting = new Set<Element>();
     const resolveTiming = (el: Element): ClipTiming => {

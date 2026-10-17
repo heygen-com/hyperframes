@@ -17,6 +17,9 @@ import { parseNumeric, parseStartExpression } from "@hyperframes/core";
 /** Minimal structural DOM shape the reference resolver needs. */
 export interface RefResolverEl {
   getAttribute(name: string): string | null;
+  readonly parentElement?: RefResolverEl | null;
+  closest?(selector: string): RefResolverEl | null;
+  querySelectorAll?(selector: string): Iterable<RefResolverEl>;
 }
 export interface RefResolverDoc {
   getElementById(id: string): RefResolverEl | null;
@@ -24,13 +27,34 @@ export interface RefResolverDoc {
 }
 
 /**
- * Find the element a relative `data-start` reference points at — by `id`
- * first, then by `data-composition-id` (a sub-composition can be referenced).
+ * Find the element a relative `data-start` reference points at — by `id` inside
+ * the referencing clip's own composition, then document-wide by `id`, then by
+ * `data-composition-id` (a sub-composition can be referenced).
  * The reference-id grammar (see parseStartExpression) is restricted to
  * `[A-Za-z0-9_.:-]`, none of which need escaping inside a quoted attribute
  * selector, so no CSS.escape (absent in linkedom) is required.
  */
-function findReferenceTargetEl(doc: RefResolverDoc, refId: string): RefResolverEl | null {
+function compositionScopeOf(el: RefResolverEl): RefResolverEl | null {
+  return (
+    (el.getAttribute("data-composition-id") !== null ? el.parentElement : el)?.closest?.(
+      "[data-composition-id]",
+    ) ?? null
+  );
+}
+
+function findReferenceTargetEl(
+  doc: RefResolverDoc,
+  refId: string,
+  from: RefResolverEl,
+): RefResolverEl | null {
+  const scope = compositionScopeOf(from);
+  if (scope) {
+    for (const candidate of scope.querySelectorAll?.("[id]") ?? []) {
+      if (candidate.getAttribute("id") === refId && compositionScopeOf(candidate) === scope) {
+        return candidate;
+      }
+    }
+  }
   return doc.getElementById(refId) ?? doc.querySelector(`[data-composition-id="${refId}"]`);
 }
 
@@ -65,7 +89,7 @@ export function resolveReferencedStart(
       startCache.set(el, value);
       return value;
     }
-    const target = findReferenceTargetEl(doc, expression.refId);
+    const target = findReferenceTargetEl(doc, expression.refId, el);
     if (!target) {
       startCache.set(el, 0);
       return 0;
