@@ -2,10 +2,10 @@
  * `getRenderProgress` — read-only progress + cost snapshot for a single
  * render started by {@link renderToLambda}.
  *
- * Pulls one `DescribeExecution` + one `GetExecutionHistory` per call. The
- * history is paginated server-side; the helper loops until exhausted so a
- * 1,000-event Step Functions execution still produces a single
- * `RenderProgress` snapshot.
+ * Pulls one `DescribeExecution` + one `GetExecutionHistory` per call. While
+ * the chunk Distributed Map runs, one `DescribeMapRun` adds its item counts;
+ * once it exits, chunk frames and cost come from the Map's output. Failed
+ * chunks' histories are read only when the counts show a failure.
  *
  * Progress math:
  *   - 0  before Plan completes (no frame count is known yet)
@@ -22,9 +22,12 @@
 
 import {
   DescribeExecutionCommand,
+  DescribeMapRunCommand,
   GetExecutionHistoryCommand,
   type HistoryEvent,
+  ListExecutionsCommand,
   SFNClient,
+  type SFNClientConfig,
 } from "@aws-sdk/client-sfn";
 import {
   type BilledLambdaInvocation,
@@ -87,12 +90,17 @@ export interface RenderProgress {
 
 const DEFAULT_MEMORY_MB = 10240;
 
+/** Rides out `ThrottlingException` with the SDK's backoff instead of throwing after the default 3 tries. */
+export function createProgressSfnClient(config: SFNClientConfig = {}): SFNClient {
+  return new SFNClient({ maxAttempts: 8, ...config });
+}
+
 /** Pull a current progress snapshot for one render. */
 export async function getRenderProgress(opts: GetRenderProgressOptions): Promise<RenderProgress> {
   if (!opts.executionArn) {
     throw new Error("[getRenderProgress] executionArn is required");
   }
-  const sfn = opts.sfn ?? new SFNClient({ region: opts.region });
+  const sfn = opts.sfn ?? createProgressSfnClient({ region: opts.region });
   const memoryMb = opts.defaultMemorySizeMb ?? DEFAULT_MEMORY_MB;
 
   const describe = await sfn.send(
@@ -104,6 +112,9 @@ export async function getRenderProgress(opts: GetRenderProgressOptions): Promise
 
   const history = await loadFullHistory(sfn, opts.executionArn);
   const summary = summarizeHistory(history, memoryMb);
+  const mapRun = findChunkMapRun(history);
+  if (mapRun?.exited) addChunkResults(summary, mapRun.output, memoryMb);
+  else if (mapRun) await addRunningMapRun(sfn, mapRun.arn, summary, memoryMb);
 
   const costs = computeRenderCost(summary.lambdaInvocations, summary.stateTransitions);
   const overallProgress = computeOverallProgress({
@@ -145,6 +156,84 @@ async function loadFullHistory(sfn: SFNClient, executionArn: string): Promise<Hi
     if (!nextToken) break;
   }
   return events;
+}
+
+const FAILED_CHUNK_HISTORIES_READ = 5;
+
+interface ChunkMapRun {
+  arn: string;
+  exited: boolean;
+  output: string | undefined;
+}
+
+/** The chunk Distributed Map's run; `null` for an inline Map, whose chunk events are in the parent history. */
+function findChunkMapRun(events: HistoryEvent[]): ChunkMapRun | null {
+  let run: ChunkMapRun | null = null;
+  for (const ev of events) {
+    const arn = ev.mapRunStartedEventDetails?.mapRunArn;
+    if (arn) run = { arn, exited: false, output: undefined };
+    const exit = ev.stateExitedEventDetails;
+    if (run && ev.type === "MapStateExited" && isRenderChunksMapState(exit?.name)) {
+      run = { ...run, exited: true, output: exit?.output };
+    }
+  }
+  return run;
+}
+
+/** Exact chunk frames and cost from the chunk results the Map's output carries. */
+function addChunkResults(summary: HistorySummary, mapOutput: string | undefined, memoryMb: number) {
+  const chunks = (parseJson(mapOutput) as { Chunks?: unknown } | null)?.Chunks;
+  for (const chunk of Array.isArray(chunks) ? chunks : []) {
+    summary.lambdasInvoked++;
+    summary.stateTransitions++;
+    const billedDurationMs = inferBilledMs(chunk);
+    summary.lambdaInvocations.push({
+      billedDurationMs,
+      memorySizeMb: memoryMb,
+      estimated: billedDurationMs === 0,
+    });
+    applyPayloadFrameCounts(chunk, "RenderChunk", (delta) => {
+      summary.framesRendered += delta;
+    });
+  }
+}
+
+// Open Map Run: frames estimated from the succeeded share; chunk Lambda cost waits for the Map's exit.
+async function addRunningMapRun(
+  sfn: SFNClient,
+  mapRunArn: string,
+  summary: HistorySummary,
+  memoryMb: number,
+): Promise<void> {
+  const res = await sfn.send(new DescribeMapRunCommand({ mapRunArn }));
+  const { total = 0, pending = 0, succeeded = 0, failed = 0 } = res.itemCounts ?? {};
+  summary.lambdasInvoked += total - pending;
+  summary.stateTransitions += total - pending;
+  if (summary.totalFrames !== null && total > 0) {
+    summary.framesRendered += Math.floor((summary.totalFrames * succeeded) / total);
+  }
+  if (failed > 0) summary.errors.push(...(await failedChunkErrors(sfn, mapRunArn, memoryMb)));
+}
+
+async function failedChunkErrors(
+  sfn: SFNClient,
+  mapRunArn: string,
+  memoryMb: number,
+): Promise<RenderError[]> {
+  const failed = await sfn.send(
+    new ListExecutionsCommand({
+      mapRunArn,
+      statusFilter: "FAILED",
+      maxResults: FAILED_CHUNK_HISTORIES_READ,
+    }),
+  );
+  const errors: RenderError[] = [];
+  for (const child of failed.executions ?? []) {
+    if (!child.executionArn) continue;
+    const childHistory = await loadFullHistory(sfn, child.executionArn);
+    errors.push(...summarizeHistory(childHistory, memoryMb).errors);
+  }
+  return errors;
 }
 
 interface HistorySummary {
@@ -358,6 +447,10 @@ function applyPayloadFrameCounts(
 
 function isRenderChunkState(name: string | null | undefined): boolean {
   return name === "RenderChunk" || name === "RenderChunkV2";
+}
+
+function isRenderChunksMapState(name: string | null | undefined): boolean {
+  return name === "RenderChunks" || name === "RenderChunksV2";
 }
 
 function isAssembleState(name: string | null | undefined): boolean {

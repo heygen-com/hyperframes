@@ -126,7 +126,7 @@ export class HyperframesRenderStack extends Construct {
       removalPolicy: RemovalPolicy.DESTROY,
     });
 
-    const definition = this.buildStateMachineDefinition();
+    const definition = this.buildStateMachineDefinition(props.reservedConcurrency);
 
     this.stateMachine = new sfn.StateMachine(this, "RenderStateMachine", {
       stateMachineName: `${projectName}-render`,
@@ -189,7 +189,7 @@ export class HyperframesRenderStack extends Construct {
    * template and this construct can be diffed shape-for-shape during
    * the snapshot test.
    */
-  private buildStateMachineDefinition(): sfn.IChainable {
+  private buildStateMachineDefinition(reservedConcurrency: number | undefined): sfn.IChainable {
     // `ChromeBinaryUnavailableError` is non-retryable: a wedged warm
     // instance keeps returning the same falsy executablePath until the
     // env recycles, so retries just burn the 4× 15-min budget.
@@ -211,6 +211,7 @@ export class HyperframesRenderStack extends Construct {
       "PlanV2IntegrityError",
       "PLAN_ARTIFACT_DIGEST_MISMATCH",
       "FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED",
+      "CHUNK_EXCEEDS_WORKER_TIMEOUT",
       "ChromeBinaryUnavailableError",
     ];
     const NON_RETRYABLE_CHUNK = [
@@ -243,6 +244,15 @@ export class HyperframesRenderStack extends Construct {
       "ChromeBinaryUnavailableError",
     ];
 
+    const THROTTLED_RETRY: sfn.RetryProps = {
+      errors: ["Lambda.TooManyRequestsException"],
+      interval: Duration.seconds(5),
+      maxAttempts: 10,
+      backoffRate: 2,
+      maxDelay: Duration.seconds(60),
+      jitterStrategy: sfn.JitterType.FULL,
+    };
+
     const plan = new tasks.LambdaInvoke(this, "Plan", {
       lambdaFunction: this.renderFunction,
       payload: sfn.TaskInput.fromObject({
@@ -267,6 +277,7 @@ export class HyperframesRenderStack extends Construct {
       errors: NON_RETRYABLE_PLAN,
       maxAttempts: 0,
     });
+    plan.addRetry(THROTTLED_RETRY);
     plan.addRetry({
       errors: ["States.ALL"],
       interval: Duration.seconds(2),
@@ -296,6 +307,7 @@ export class HyperframesRenderStack extends Construct {
       resultPath: "$.Plan",
     });
     planV2.addRetry({ errors: NON_RETRYABLE_PLAN, maxAttempts: 0 });
+    planV2.addRetry(THROTTLED_RETRY);
     planV2.addRetry({
       errors: ["States.ALL"],
       interval: Duration.seconds(2),
@@ -307,6 +319,8 @@ export class HyperframesRenderStack extends Construct {
     const buildChunkList = new sfn.Pass(this, "BuildChunkList", {
       parameters: {
         "ChunkIndexes.$": "States.ArrayRange(0, States.MathAdd($.Plan.ChunkCount, -1), 1)",
+        // Queue chunks past reserved concurrency instead of letting Lambda throttle them; 0 = no cap.
+        MaxChunkConcurrency: reservedConcurrency ?? 0,
       },
       resultPath: "$.Iterator",
     });
@@ -331,12 +345,15 @@ export class HyperframesRenderStack extends Construct {
         "ChunkS3Uri.$": "$.Payload.ChunkS3Uri",
         "ChunkIndex.$": "$.Payload.ChunkIndex",
         "Sha256.$": "$.Payload.Sha256",
+        "FramesEncoded.$": "$.Payload.FramesEncoded",
+        "DurationMs.$": "$.Payload.DurationMs",
       },
     });
     renderChunkTask.addRetry({
       errors: NON_RETRYABLE_CHUNK,
       maxAttempts: 0,
     });
+    renderChunkTask.addRetry(THROTTLED_RETRY);
     renderChunkTask.addRetry({
       errors: ["States.ALL"],
       interval: Duration.seconds(2),
@@ -345,7 +362,10 @@ export class HyperframesRenderStack extends Construct {
       maxDelay: Duration.seconds(60),
     });
 
-    const renderChunks = new sfn.Map(this, "RenderChunks", {
+    const renderChunks = new sfn.DistributedMap(this, "RenderChunks", {
+      label: "RenderChunks",
+      // Standard-type children: express ones stop at 5 minutes and a chunk may run the Lambda's full 15.
+      mapExecutionType: sfn.StateMachineType.STANDARD,
       itemsPath: "$.Iterator.ChunkIndexes",
       itemSelector: {
         "ChunkIndex.$": "$$.Map.Item.Value",
@@ -354,7 +374,7 @@ export class HyperframesRenderStack extends Construct {
         "ChunkOutputS3Prefix.$": "$.PlanOutputS3Prefix",
         "Format.$": "$.Plan.Format",
       },
-      maxConcurrencyPath: "$.Plan.ChunkCount",
+      maxConcurrencyPath: "$.Iterator.MaxChunkConcurrency",
       resultPath: "$.Chunks",
     });
     renderChunks.itemProcessor(renderChunkTask);
@@ -381,6 +401,7 @@ export class HyperframesRenderStack extends Construct {
       errors: NON_RETRYABLE_ASSEMBLE,
       maxAttempts: 0,
     });
+    assemble.addRetry(THROTTLED_RETRY);
     assemble.addRetry({
       errors: ["States.ALL"],
       interval: Duration.seconds(2),
@@ -405,9 +426,12 @@ export class HyperframesRenderStack extends Construct {
         "ChunkS3Uri.$": "$.Payload.ChunkS3Uri",
         "ChunkIndex.$": "$.Payload.ChunkIndex",
         "Sha256.$": "$.Payload.Sha256",
+        "FramesEncoded.$": "$.Payload.FramesEncoded",
+        "DurationMs.$": "$.Payload.DurationMs",
       },
     });
     renderChunkV2Task.addRetry({ errors: NON_RETRYABLE_CHUNK, maxAttempts: 0 });
+    renderChunkV2Task.addRetry(THROTTLED_RETRY);
     renderChunkV2Task.addRetry({
       errors: ["States.ALL"],
       interval: Duration.seconds(2),
@@ -416,7 +440,9 @@ export class HyperframesRenderStack extends Construct {
       maxDelay: Duration.seconds(60),
     });
 
-    const renderChunksV2 = new sfn.Map(this, "RenderChunksV2", {
+    const renderChunksV2 = new sfn.DistributedMap(this, "RenderChunksV2", {
+      label: "RenderChunksV2",
+      mapExecutionType: sfn.StateMachineType.STANDARD,
       itemsPath: "$.Iterator.ChunkIndexes",
       itemSelector: {
         "ChunkIndex.$": "$$.Map.Item.Value",
@@ -426,7 +452,7 @@ export class HyperframesRenderStack extends Construct {
         "ChunkOutputS3Prefix.$": "$.PlanOutputS3Prefix",
         "Format.$": "$.Plan.Format",
       },
-      maxConcurrencyPath: "$.Plan.ChunkCount",
+      maxConcurrencyPath: "$.Iterator.MaxChunkConcurrency",
       resultPath: "$.Chunks",
     });
     renderChunksV2.itemProcessor(renderChunkV2Task);
@@ -452,6 +478,7 @@ export class HyperframesRenderStack extends Construct {
       resultPath: "$.Output",
     });
     assembleV2.addRetry({ errors: NON_RETRYABLE_ASSEMBLE, maxAttempts: 0 });
+    assembleV2.addRetry(THROTTLED_RETRY);
     assembleV2.addRetry({
       errors: ["States.ALL"],
       interval: Duration.seconds(2),

@@ -144,6 +144,7 @@ const REQUIRED_ACTIONS = {
     "states:CreateStateMachine",
     "states:DeleteStateMachine",
     "states:DescribeExecution",
+    "states:DescribeMapRun",
     "states:DescribeStateMachine",
     "states:GetExecutionHistory",
     "states:ListExecutions",
