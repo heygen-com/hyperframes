@@ -297,7 +297,11 @@ export {
   quantizeTimeToFrame,
   type MediaVisualStyleProperty,
 } from "./inline-scripts/parityContract";
-export { redactKnownPaths, redactTelemetryString } from "./telemetryRedaction";
+export {
+  redactKnownPaths,
+  redactTelemetryString,
+  redactUrlQueryStrings,
+} from "./telemetryRedaction";
 export {
   folderGone,
   isProjectRootMissing,

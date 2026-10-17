@@ -29,6 +29,7 @@ import {
   resolvePlanAudioPath,
   planV2WithPublisher,
   type PlanResult,
+  isPlanV2DeferredSourceArtifact,
   type PlanV2Artifact,
   type PlanV2Manifest,
   type PlanV2MaterializationTarget,
@@ -55,6 +56,7 @@ import {
   downloadS3ObjectToFile,
   downloadS3ObjectToFileVerified,
   parseS3Uri,
+  presignVerifiedS3GetUrl,
   tarDirectory,
   untarDirectory,
   uploadFileToS3,
@@ -708,15 +710,52 @@ async function downloadAndMaterializePlanV2(
     throwPlanHashMismatch(event.PlanHash, manifest.planHash);
   }
   const artifacts = listPlanV2ArtifactsForTarget(manifest, target);
+  const remoteSources = await presignDeferredSources(s3, event.PlanV2ArtifactS3Prefix, artifacts);
   const uniqueArtifacts = [
-    ...new Map(artifacts.map((artifact) => [artifact.sha256, artifact])).values(),
+    ...new Map(
+      artifacts
+        .filter((artifact) => !Object.hasOwn(remoteSources, artifact.path))
+        .map((artifact) => [artifact.sha256, artifact]),
+    ).values(),
   ];
   await mapConcurrent(uniqueArtifacts, 16, async (artifact) => {
     await downloadPlanV2Artifact(s3, event.PlanV2ArtifactS3Prefix, transportDir, artifact);
   });
   const planDir = join(work, "plan");
-  materializePlanV2Target(transportDir, target, planDir);
+  materializePlanV2Target(transportDir, target, planDir, { remoteSources });
   return planDir;
+}
+
+/** Outlives the longest chunk (Lambda caps an invocation at 900 s) with margin. */
+const DEFERRED_SOURCE_URL_TTL_SECONDS = 3600;
+
+/**
+ * A chunk's ffmpeg reads a deferred video by byte range from a pre-signed URL
+ * instead of downloading it whole. The key is the content hash, written once.
+ */
+async function presignDeferredSources(
+  s3: S3Client,
+  artifactPrefix: string,
+  artifacts: readonly Readonly<PlanV2Artifact>[],
+): Promise<Record<string, string>> {
+  const entries = await Promise.all(
+    artifacts
+      .filter(isPlanV2DeferredSourceArtifact)
+      .map(
+        async (artifact) =>
+          [
+            artifact.path,
+            await presignVerifiedS3GetUrl(
+              s3,
+              planV2BlobUri(artifactPrefix, artifact.sha256),
+              artifact.sha256,
+              artifact.sizeBytes,
+              DEFERRED_SOURCE_URL_TTL_SECONDS,
+            ),
+          ] as const,
+      ),
+  );
+  return Object.fromEntries(entries);
 }
 
 async function downloadPlanV2Artifact(

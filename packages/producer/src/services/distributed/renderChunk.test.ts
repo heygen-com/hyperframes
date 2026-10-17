@@ -23,13 +23,18 @@ import { spawnSync } from "node:child_process";
 import {
   copyFileSync,
   cpSync,
+  createReadStream,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type CaptureOptions, extractVideoFramesRange } from "@hyperframes/engine";
@@ -63,6 +68,30 @@ const FIXTURE_HTML = `<!doctype html>
   </div>
 </body>
 </html>`;
+
+/** Serves one file with Range support and counts the bytes it sent. */
+async function serveFileByRange(path: string) {
+  const size = statSync(path).size;
+  const served = { bytes: 0, requests: 0 };
+  const server = createServer((req, res) => {
+    served.requests++;
+    const match = /bytes=(\d+)-(\d*)/.exec(req.headers.range ?? "");
+    const start = match ? Number(match[1]) : 0;
+    const end = match?.[2] ? Number(match[2]) : size - 1;
+    res.writeHead(match ? 206 : 200, {
+      "Accept-Ranges": "bytes",
+      "Content-Length": end - start + 1,
+      ...(match ? { "Content-Range": `bytes ${start}-${end}/${size}` } : {}),
+    });
+    const body = createReadStream(path, { start, end, highWaterMark: 16 * 1024 });
+    body.on("data", (chunk) => (served.bytes += chunk.length));
+    body.pipe(res);
+    res.on("close", () => body.destroy());
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/video.mp4`;
+  return { url, size, served, close: () => server.close() };
+}
 
 let runRoot: string;
 let projectDir: string;
@@ -630,7 +659,22 @@ describe("renderChunk() — a video the chunk does not show", () => {
     // Only the unshown video is skipped; the shown one keeps today's readiness wait.
     expect(new Set(skipped.map(String))).toEqual(new Set(["short"]));
     expect(a.sha256).toBe(b.sha256);
-  }, 90_000);
+
+    // The shown video read by URL instead of from the plan renders the same chunk.
+    const server = await serveFileByRange(join(videoDir, "long.mp4"));
+    const viaUrl = join(runRoot, "chunk1-long-by-url");
+    try {
+      materializePlanV2Target(v2Dir, { role: "chunk", chunkIndex: 1 }, viaUrl, {
+        remoteSources: { "compiled/long.mp4": server.url },
+      });
+      expect(existsSync(join(viaUrl, "compiled", "long.mp4"))).toBe(false);
+      const byUrl = await renderChunk(viaUrl, 1, join(runRoot, "chunk1-out-by-url"));
+      expect(server.served.requests).toBeGreaterThan(0);
+      expect(byUrl.sha256).toBe(a.sha256);
+    } finally {
+      server.close();
+    }
+  }, 120_000);
 });
 
 describe("resolvePresetForLockedEncoder", () => {
@@ -770,6 +814,100 @@ describe("extractDeferredVideoFramesForChunk", () => {
     for (const [index, path] of chunk!.framePaths) {
       expect(readFileSync(path).equals(readFileSync(full.framePaths.get(index)!))).toBe(true);
     }
+  });
+
+  // Lossless keeps the file large next to what one seek reads.
+  const big = join(root, "big.mp4");
+  const synthBig = () => {
+    if (existsSync(big)) return;
+    const synth = spawnSync("ffmpeg", [
+      ...["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=640x360:r=30:d=120"],
+      ...["-c:v", "libx264", "-preset", "ultrafast", "-qp", "0", "-g", "30", big],
+    ]);
+    if (synth.status !== 0) throw new Error(synth.stderr.toString());
+  };
+  const bigVideos = () => {
+    const videos = planVideos(false);
+    const bigRange = {
+      ...range,
+      sourcePath: "compiled/big.mp4",
+      startTime: 0,
+      durationSeconds: 120,
+    };
+    videos.videos[0] = { ...videos.videos[0]!, end: 120, mediaStart: 0 };
+    videos.extracted[0] = { ...videos.extracted[0]!, totalFrames: 3600, deferredRange: bigRange };
+    return videos;
+  };
+  const extract = (outputRoot: string, remoteSources?: Record<string, string>) =>
+    extractDeferredVideoFramesForChunk({
+      planDir: root,
+      planVideos: bigVideos(),
+      slice: { index: 5, startFrame: 1800, endFrame: 1815 },
+      fps: { num: 30, den: 1 },
+      outputRoot,
+      cfg: {},
+      remoteSources,
+    });
+
+  it("reads a source by URL in byte ranges and extracts the same frames", async () => {
+    synthBig();
+    mkdirSync(join(root, "compiled"), { recursive: true });
+    copyFileSync(big, join(root, "compiled", "big.mp4"));
+    const server = await serveFileByRange(big);
+    try {
+      const [local] = await extract(join(root, "big-local"));
+      rmSync(join(root, "compiled", "big.mp4"));
+      const [remote] = await extract(join(root, "big-remote"), { "compiled/big.mp4": server.url });
+      expect([...remote!.framePaths.keys()]).toEqual([...local!.framePaths.keys()]);
+      for (const [index, path] of remote!.framePaths) {
+        expect(readFileSync(path).equals(readFileSync(local!.framePaths.get(index)!))).toBe(true);
+      }
+      // What it sends past the seek is socket buffering (a few MB), not the file.
+      expect(server.served.bytes).toBeLessThan(server.size / 3);
+    } finally {
+      server.close();
+    }
+  }, 60_000);
+
+  it("never surfaces a signed URL's query when ffmpeg fails", async () => {
+    synthBig();
+    // ffmpeg echoes its arguments, the signed URL among them, the way a real read failure does.
+    const failingFfmpeg = join(root, "failing-ffmpeg");
+    writeFileSync(failingFfmpeg, '#!/bin/sh\necho "cannot read: $*" >&2\nexit 1\n', {
+      mode: 0o755,
+    });
+    const server = await serveFileByRange(big);
+    const originalFfmpeg = process.env.HYPERFRAMES_FFMPEG_PATH;
+    process.env.HYPERFRAMES_FFMPEG_PATH = failingFfmpeg;
+    try {
+      const url = `${server.url}?X-Amz-Signature=supersecret`;
+      const error = await extract(join(root, "big-failed"), { "compiled/big.mp4": url }).catch(
+        (caught: unknown) => caught,
+      );
+      expect(error).toBeInstanceOf(Error);
+      const { message, stack } = error as Error;
+      const text = JSON.stringify({ ...(error as object), message, stack });
+      expect(text).toContain("/video.mp4?…");
+      expect(text).not.toContain("supersecret");
+    } finally {
+      if (originalFfmpeg === undefined) delete process.env.HYPERFRAMES_FFMPEG_PATH;
+      else process.env.HYPERFRAMES_FFMPEG_PATH = originalFfmpeg;
+      server.close();
+    }
+  }, 60_000);
+
+  it("refuses a URL for a file no deferred video reads", async () => {
+    await expect(
+      extractDeferredVideoFramesForChunk({
+        planDir,
+        planVideos: planVideos(false),
+        slice: { index: 0, startFrame: 0, endFrame: 5 },
+        fps: { num: 30, den: 1 },
+        outputRoot: join(root, "chunk-stray-url"),
+        cfg: {},
+        remoteSources: { "compiled/other.mp4": "http://127.0.0.1:1/other.mp4" },
+      }),
+    ).rejects.toMatchObject({ code: MISSING_PLAN_ARTIFACT });
   });
 
   it("extracts nothing for a chunk past the clip, and holds no frames", async () => {

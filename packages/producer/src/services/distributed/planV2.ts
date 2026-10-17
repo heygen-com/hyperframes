@@ -155,6 +155,13 @@ export interface PlanV2MaterializationResult {
   readonly audioPath: string | null;
 }
 
+export type PlanV2RemoteSources = Readonly<Record<string, string>>;
+
+export interface PlanV2MaterializeOptions {
+  /** Deferred video sources the chunk reads by URL; the caller vouches for their bytes. */
+  readonly remoteSources?: PlanV2RemoteSources;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -310,6 +317,11 @@ function artifactTargets(
   // Unknown future execution files go to both roles. Over-including is safe;
   // silently omitting a new execution dependency is not.
   return { chunks: "all", assembler: true };
+}
+
+/** A chunk-scoped compiled/ file is a deferred video source (see `artifactTargets`). */
+export function isPlanV2DeferredSourceArtifact(artifact: Readonly<PlanV2Artifact>): boolean {
+  return artifact.path.startsWith("compiled/") && artifact.chunks !== "all";
 }
 
 function listVideoFramePaths(executionPlanDir: string, videos: PlanVideosJson): ExtractedFrames[] {
@@ -942,17 +954,22 @@ export function materializePlanV2Target(
   planV2Dir: string,
   target: PlanV2MaterializationTarget,
   destinationDir: string,
+  options: Readonly<PlanV2MaterializeOptions> = {},
 ): PlanV2MaterializationResult {
   if (existsSync(destinationDir)) {
     throw new PlanV2IntegrityError(`materialization destination already exists: ${destinationDir}`);
   }
   const manifest = readPlanV2Manifest(planV2Dir);
   const artifacts = listPlanV2ArtifactsForTarget(manifest, target);
+  const remoteSources = options.remoteSources ?? {};
+  assertRemoteSources(remoteSources, artifacts);
   const audioArtifact = artifacts.find((artifact) => isPlanAudioArtifactPath(artifact.path));
-  const verified = artifacts.map((artifact) => ({
-    artifact,
-    sourcePath: verifyBlob(planV2Dir, artifact),
-  }));
+  const verified = artifacts
+    .filter((artifact) => !Object.hasOwn(remoteSources, artifact.path))
+    .map((artifact) => ({
+      artifact,
+      sourcePath: verifyBlob(planV2Dir, artifact),
+    }));
   mkdirSync(dirname(destinationDir), { recursive: true });
   const tempDir = mkdtempSync(join(dirname(destinationDir), ".plan-v2-materialize-"));
   try {
@@ -969,7 +986,11 @@ export function materializePlanV2Target(
     if (target.role === "chunk") materializeExtractedVideoDirectories(tempDir);
     writeFileSync(
       join(tempDir, PLAN_V2_MATERIALIZATION_MARKER),
-      canonicalJsonStringify({ manifest, target }),
+      canonicalJsonStringify({
+        manifest,
+        target,
+        ...(Object.keys(remoteSources).length > 0 ? { remoteSources } : {}),
+      }),
       "utf-8",
     );
     renameSync(tempDir, destinationDir);
@@ -996,11 +1017,34 @@ export function materializePlanV2Target(
   };
 }
 
+function assertRemoteSources(
+  remoteSources: unknown,
+  artifacts: readonly Readonly<PlanV2Artifact>[],
+): asserts remoteSources is PlanV2RemoteSources {
+  if (!isRecord(remoteSources)) throw new PlanV2IntegrityError("remoteSources must be an object");
+  for (const [path, url] of Object.entries(remoteSources)) {
+    const artifact = artifacts.find((candidate) => candidate.path === path);
+    if (!artifact || !isPlanV2DeferredSourceArtifact(artifact)) {
+      throw new PlanV2IntegrityError(`remote source is not a selected deferred video: ${path}`);
+    }
+    if (typeof url !== "string" || !/^https?:\/\//.test(url)) {
+      throw new PlanV2IntegrityError(`remote source for ${path} must be an http(s) URL`);
+    }
+  }
+}
+
 /** Revalidate a materialized subset immediately before execution. */
 export function validatePlanV2MaterializedTarget(
   planDir: string,
   expectedTarget: PlanV2MaterializationTarget,
 ): Readonly<PlanV2Manifest> | null {
+  return readValidatedPlanV2Materialization(planDir, expectedTarget)?.manifest ?? null;
+}
+
+export function readValidatedPlanV2Materialization(
+  planDir: string,
+  expectedTarget: PlanV2MaterializationTarget,
+): { manifest: Readonly<PlanV2Manifest>; remoteSources: PlanV2RemoteSources } | null {
   const markerPath = join(planDir, PLAN_V2_MATERIALIZATION_MARKER);
   if (!existsSync(markerPath)) return null;
   const marker = readJsonFile(markerPath, "materialization marker");
@@ -1018,7 +1062,10 @@ export function validatePlanV2MaterializedTarget(
   }
   const manifest = parsePlanV2Manifest(marker.manifest);
   const required = listPlanV2ArtifactsForTarget(manifest, expectedTarget);
+  const remoteSources = marker.remoteSources ?? {};
+  assertRemoteSources(remoteSources, required);
   for (const artifact of required) {
+    if (Object.hasOwn(remoteSources, artifact.path)) continue;
     const path = join(planDir, ...artifact.path.split("/"));
     if (!existsSync(path) || statSync(path).size !== artifact.sizeBytes) {
       throw new PlanV2IntegrityError(
@@ -1029,5 +1076,5 @@ export function validatePlanV2MaterializedTarget(
       throw new PlanV2IntegrityError(`materialized artifact hash mismatch: ${artifact.path}`);
     }
   }
-  return manifest;
+  return { manifest, remoteSources };
 }

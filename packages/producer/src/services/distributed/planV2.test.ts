@@ -27,8 +27,10 @@ import {
   publishPlanV2FromV1,
   publishPlanV2FromExecutionPlan,
   readPlanV2Manifest,
+  readValidatedPlanV2Materialization,
   validatePlanV2MaterializedTarget,
 } from "./planV2.js";
+import { planV2BlobPath } from "./planV2Layout.js";
 import { LocalPlanV2ArtifactPublisher, type PlanV2ArtifactPublisher } from "./planV2Publisher.js";
 import { buildPlanVideosJson, type PlanVideosJson } from "./shared.js";
 
@@ -487,6 +489,23 @@ describe("Plan v2 manifest", () => {
     expect(validatePlanV2MaterializedTarget(chunk0Dir, { role: "chunk", chunkIndex: 0 })).not.toBe(
       null,
     );
+
+    // A source read by URL is neither verified locally nor copied, and is recorded for the chunk.
+    const longDigest = manifest.artifacts.find((a) => a.path === "compiled/long.mp4")!.sha256;
+    rmSync(planV2BlobPath(join(root, "v2"), longDigest));
+    const remoteSources = { "compiled/long.mp4": "https://example.test/long.mp4" };
+    const byUrlDir = join(root, "chunk-0-by-url");
+    const chunk0 = { role: "chunk", chunkIndex: 0 } as const;
+    materializePlanV2Target(join(root, "v2"), chunk0, byUrlDir, { remoteSources });
+    expect(existsSync(join(byUrlDir, "compiled", "long.mp4"))).toBe(false);
+    expect(readValidatedPlanV2Materialization(byUrlDir, chunk0)?.remoteSources).toEqual(
+      remoteSources,
+    );
+    expect(() =>
+      materializePlanV2Target(join(root, "v2"), chunk0, join(root, "chunk-0-stray"), {
+        remoteSources: { "compiled/index.html": "https://example.test/index.html" },
+      }),
+    ).toThrow(/not a selected deferred video/);
   });
 
   it("rejects a deferred video source outside the plan directory", () => {

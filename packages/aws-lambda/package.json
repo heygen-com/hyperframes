@@ -71,6 +71,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1146.0",
     "@aws-sdk/client-sfn": "^3.1146.0",
+    "@aws-sdk/s3-request-presigner": "3.1146.0",
     "@hyperframes/producer": "workspace:^",
     "@sparticuz/chromium": "148.0.0",
     "ffmpeg-static": "^5.2.0",

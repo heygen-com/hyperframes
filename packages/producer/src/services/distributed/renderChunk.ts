@@ -65,7 +65,7 @@ import {
   resolveConfig,
 } from "@hyperframes/engine";
 import { defaultLogger } from "../../logger.js";
-import { applyRenderWarningPolicy } from "../renderOrchestrator.js";
+import { applyRenderWarningPolicy, collectVideoMetadataHints } from "../renderOrchestrator.js";
 import { runEncodeStage } from "../render/stages/encodeStage.js";
 import { runCaptureStage } from "../render/stages/captureStage.js";
 import { resolveVideoCaptureBeyondViewport } from "../render/captureBeyondViewport.js";
@@ -95,7 +95,7 @@ import {
   readFfmpegVersion,
 } from "./shared.js";
 import { DISTRIBUTED_RENDER_CAPABILITIES, readPlanProtocolV1 } from "./planProtocol.js";
-import { validatePlanV2MaterializedTarget } from "./planV2.js";
+import { type PlanV2RemoteSources, readValidatedPlanV2Materialization } from "./planV2.js";
 
 /**
  * Non-retryable error codes raised when the planDir is structurally
@@ -435,8 +435,18 @@ export async function extractDeferredVideoFramesForChunk(input: {
   fps: { num: number; den: number };
   outputRoot: string;
   cfg: Pick<EngineConfig, "ffmpegProcessTimeout">;
+  remoteSources?: PlanV2RemoteSources;
 }): Promise<ExtractedFrames[]> {
   const deferred = input.planVideos.extracted.filter((video) => video.deferredRange);
+  const remoteSources = input.remoteSources ?? {};
+  for (const path of Object.keys(remoteSources)) {
+    if (!deferred.some((video) => video.deferredRange!.sourcePath === path)) {
+      throw new RenderChunkValidationError(
+        MISSING_PLAN_ARTIFACT,
+        `[renderChunk] ${path} is read by URL but no deferred video uses it`,
+      );
+    }
+  }
   if (deferred.length === 0) return [];
   const table = createFrameLookupTable(
     input.planVideos.videos,
@@ -464,8 +474,9 @@ export async function extractDeferredVideoFramesForChunk(input: {
         return { ...video, outputDir, framePaths: new Map<number, string>(), ownedByLookup: false };
       }
       const range = video.deferredRange!;
-      const sourcePath = join(input.planDir, ...range.sourcePath.split("/"));
-      if (!existsSync(sourcePath)) {
+      const remoteUrl = remoteSources[range.sourcePath];
+      const sourcePath = remoteUrl ?? join(input.planDir, ...range.sourcePath.split("/"));
+      if (remoteUrl === undefined && !existsSync(sourcePath)) {
         throw new RenderChunkValidationError(
           MISSING_PLAN_ARTIFACT,
           `[renderChunk] planDir is missing the source for video ${JSON.stringify(video.videoId)}: ${range.sourcePath}`,
@@ -615,10 +626,12 @@ export async function renderChunk(
   const plan = JSON.parse(readFileSync(planJsonPath, "utf-8")) as PlanJson;
   readPlanProtocolV1(plan, DISTRIBUTED_RENDER_CAPABILITIES.roles.chunk);
   const planHashStarted = Date.now();
-  const v2Manifest = validatePlanV2MaterializedTarget(planDir, {
+  const v2Materialization = readValidatedPlanV2Materialization(planDir, {
     role: "chunk",
     chunkIndex,
   });
+  const v2Manifest = v2Materialization?.manifest ?? null;
+  const remoteSources = v2Materialization?.remoteSources ?? {};
   for (const required of [encoderJsonPath, chunksJsonPath]) {
     if (!existsSync(required)) {
       throw new RenderChunkValidationError(
@@ -782,8 +795,19 @@ export async function renderChunk(
           fps: { num: plan.dimensions.fpsNum, den: plan.dimensions.fpsDen },
           outputRoot: videoFramesDir,
           cfg,
+          remoteSources,
         })
       : [];
+    // The browser cannot load a source read by URL; size its <video> from the plan instead.
+    const remoteVideoIds = new Set(
+      planVideos?.extracted
+        .filter(
+          (video) =>
+            video.deferredRange && Object.hasOwn(remoteSources, video.deferredRange.sourcePath),
+        )
+        .map((video) => video.videoId),
+    );
+    const remoteVideos = deferredVideoFrames.filter((video) => remoteVideoIds.has(video.videoId));
     const videoFrameLookup =
       planVideos && planVideos.extracted.length > 0
         ? createFrameLookupTable(
@@ -837,8 +861,9 @@ export async function renderChunk(
       subTimelineWaitMemo: {},
       // The plan ships a deferred source only to chunks that show it; don't wait on the rest.
       skipReadinessVideoIds: deferredVideoFrames
-        .filter((video) => video.framePaths.size === 0)
+        .filter((video) => video.framePaths.size === 0 || remoteVideoIds.has(video.videoId))
         .map((video) => video.videoId),
+      videoMetadataHints: collectVideoMetadataHints(remoteVideos),
       ...(videoCaptureBeyondViewport !== undefined
         ? { captureBeyondViewport: videoCaptureBeyondViewport }
         : {}),

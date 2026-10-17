@@ -5,7 +5,7 @@ function truncateTelemetryString(value: string, maxLength: number): string {
   return `${value.slice(0, maxLength - 1)}…`;
 }
 
-function redactUrlQueryStrings(value: string): string {
+export function redactUrlQueryStrings(value: string): string {
   return value.replace(/\b(https?:\/\/[^\s?]+)\?[^\s]*/g, "$1?…");
 }
 

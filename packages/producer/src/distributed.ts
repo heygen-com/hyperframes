@@ -59,6 +59,7 @@ export {
   createPlanV2FromExecutionPlan,
   createPlanV2FromV1,
   getPlanV2ExecutionPlanHash,
+  isPlanV2DeferredSourceArtifact,
   listPlanV2ArtifactsForTarget,
   materializePlanV2Target,
   planV2,
@@ -73,8 +74,10 @@ export {
   type PlanV2Artifact,
   type PlanV2Limitations,
   type PlanV2Manifest,
+  type PlanV2MaterializeOptions,
   type PlanV2MaterializationResult,
   type PlanV2MaterializationTarget,
+  type PlanV2RemoteSources,
   type PlanV2Result,
   type PlanV2WithPublisherOptions,
 } from "./services/distributed/planV2.js";
