@@ -24,6 +24,7 @@ vi.mock("./bridge", () => ({
 }));
 
 import { postRuntimeMessage } from "./bridge";
+import { collectRuntimeTimelinePayload } from "./timeline";
 import { resetSeekDispatchState, waitForSeekCompletion } from "./adapters/seek-dispatch";
 
 const postRuntimeMessageMock = vi.mocked(postRuntimeMessage);
@@ -814,6 +815,27 @@ describe("when a served copy replaces what the element plays", () => {
     el.dispatchEvent(new Event("loadeddata"));
     await vi.advanceTimersByTimeAsync(0);
     expect(jumped).toBe(true);
+  });
+});
+
+describe("the authored source outside the preview", () => {
+  it("keeps the original src in the clip list after a copy swaps in", async () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-duration", "10");
+    document.body.appendChild(root);
+    const el = createVideo("/video.mp4");
+    el.id = "clip";
+    el.setAttribute("data-start", "0");
+    el.setAttribute("data-duration", "5");
+    root.appendChild(el);
+
+    swapToProxy(el, HEVC_ENTRY, "proactive");
+    await settle();
+    expect(proxyVariant(el)).toBe("h264");
+
+    const { clips } = collectRuntimeTimelinePayload({ canonicalFps: 30 });
+    expect(clips[0]?.assetUrl).toBe(new URL("/video.mp4", document.baseURI).href);
   });
 });
 

@@ -21,6 +21,7 @@ import {
   resolveCarveSourceIds,
 } from "@hyperframes/core/audio-groups";
 import { isAudibleVideoNode } from "../../player/lib/timelineElementHelpers";
+import { authoredSrc } from "../../utils/authoredSrc";
 
 export function isCarveVoiceElement(el: Element | null): el is Element {
   return el !== null && (el.tagName === "AUDIO" || isAudibleVideoNode(el));
@@ -154,7 +155,7 @@ export function collectCarveCandidates(
         described.push({
           id: a.id,
           label: a.id,
-          kind: classifyAudioName(a.id, a.getAttribute("src")),
+          kind: classifyAudioName(a.id, authoredSrc(a)),
         });
       }
       continue;
@@ -172,10 +173,7 @@ export function collectCarveCandidates(
     described.push({
       id: group.id,
       label: `${group.label} (${members.length})`,
-      kind: classifyAudioName(
-        group.label,
-        ...members.flatMap((m) => [m.id, m.getAttribute("src")]),
-      ),
+      kind: classifyAudioName(group.label, ...members.flatMap((m) => [m.id, authoredSrc(m)])),
     });
   }
   return described;
@@ -225,7 +223,7 @@ export function carveBedRoles(
   if (node?.tagName?.toLowerCase() === HF_AUDIO_GROUP_TAG) {
     return { couldBeBed: false, autoBed: false };
   }
-  const parts = [id, node?.getAttribute("src"), node?.getAttribute("data-label")];
+  const parts = [id, authoredSrc(node), node?.getAttribute("data-label")];
   return { couldBeBed: couldBeCarveBed(...parts), autoBed: isNamedCarveBed(...parts) };
 }
 

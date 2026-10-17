@@ -26,6 +26,7 @@ import type { CommitDomAttributeBatch } from "../../hooks/domEditCommitTypes";
 import { useLinkedSpeedCommit, withLinkedPlaybackRate } from "./linkedSpeedEdits";
 import { commitCutout, commitHasAudioToggle, commitMutedToggle } from "./mediaAudioEdits";
 import { authoredSrcPath } from "../../player/components/thumbnailUtils";
+import { authoredSrc } from "../../utils/authoredSrc";
 
 // fallow-ignore-next-line complexity
 export function MediaSection({
@@ -91,7 +92,7 @@ export function MediaSection({
     0;
   const mediaStartMax = Math.max(30, Math.ceil(sourceDuration || mediaStart + 10));
 
-  const srcAttr = el.getAttribute("src") ?? "";
+  const srcAttr = authoredSrc(el) ?? "";
   const [copied, setCopied] = useState(false);
   const [removeBusy, setRemoveBusy] = useState(false);
   const [removeProgress, setRemoveProgress] = useState<BackgroundRemovalProgress | null>(null);

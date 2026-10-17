@@ -67,7 +67,6 @@ import {
   decideMediaProxyEligibility,
   isProxyVariantRequest,
   probeAssetCodec,
-  recordProxyRequest,
   resolveProxyVariantRequest,
   PROXY_VARIANT_CONFIG,
   type ProxyVariant,
@@ -756,9 +755,6 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
         const message = err instanceof ProxyTranscodeError ? err.message : "proxy transcode failed";
         return c.text(message, 502);
       }
-      // After the wait, not at the eligibility gate: one count per served proxy shares
-      // a unit with `prewarmsRequested`; a 304, a 202 or a failure serves none.
-      recordProxyRequest();
       servedContentType = PROXY_VARIANT_CONFIG[proxyVariant].contentType;
     }
 

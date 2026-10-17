@@ -34,6 +34,7 @@ vi.mock("./media", async (importOriginal) => {
 });
 
 const { initSandboxRuntimeModular } = await import("./init");
+const { swapToProxy } = await import("./mediaProxy");
 
 /**
  * `count` back-to-back one-second clips, so the transport crosses exactly one
@@ -222,6 +223,33 @@ describe("per-seek media clip index", () => {
     const indexed = seekOntoFloatSumStart(false);
     expect(indexed).toEqual(seekOntoFloatSumStart(true));
     expect(indexed[0]).toMatchObject({ currentTime: 3 });
+  });
+
+  it("keeps the index through a preview copy's own src swap, and puts the copy on the playhead", async () => {
+    mountClips(16);
+    const clip = document.querySelector<HTMLVideoElement>("#clip3")!;
+    clip.setAttribute("src", "/clip3.mp4");
+    // A real load starts the new file at 0.
+    clip.load = vi.fn(() => {
+      clip.currentTime = 0;
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("x", { status: 206 })),
+    );
+    initSandboxRuntimeModular();
+    window.__player!.seek(3.5);
+    const placed = vi.spyOn(clip, "currentTime", "set");
+    mediaSpy.visits = [];
+
+    swapToProxy(clip, null, "reactive");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(clip.getAttribute("src")).toContain("hf-proxy=auto");
+    expect(mediaSpy.visits.length).toBeGreaterThan(0);
+    expect(Math.max(...mediaSpy.visits)).toBeLessThan(16);
+    expect(placed).toHaveBeenLastCalledWith(0.5);
+    vi.unstubAllGlobals();
   });
 
   it("re-derives the index when a clip is moved on the timeline", () => {

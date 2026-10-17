@@ -73,6 +73,8 @@ declare global {
        *  runtime's paused-side enforcement leaves it alone. Always release. */
       leasePausedMedia?: (el: HTMLMediaElement) => void;
       releasePausedMedia?: (el: HTMLMediaElement) => void;
+      /** An element's authored src, never the preview copy the runtime plays in its place. */
+      unproxiedSrc?: (el: Element) => string | null;
       /** Where Studio's loop wraps to while it plays, or null: the clips due there stay loaded. */
       setLoopStart?: (seconds: number | null) => void;
       /** Read-only level taps for the Studio meters: nothing exists until

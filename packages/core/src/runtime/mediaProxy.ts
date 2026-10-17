@@ -165,6 +165,13 @@ function keepSized(el: HTMLMediaElement, scale: number): void {
   });
 }
 
+let ownMediaWrite = (_el: Element, write: () => void): void => write();
+
+/** The runtime's writer for a src it swaps itself, so the swap is not read as an authored edit. */
+export function setOwnMediaWrite(writer: (el: Element, write: () => void) => void): void {
+  ownMediaWrite = writer;
+}
+
 function loadProxy(
   el: HTMLMediaElement,
   href: string,
@@ -176,8 +183,10 @@ function loadProxy(
   else boxedElements.delete(el);
   // Sync state measured on the previous file would read the new file's buffering as drift.
   evictMediaSyncState(el);
-  el.src = href;
-  el.load();
+  ownMediaWrite(el, () => {
+    el.src = href;
+    el.load();
+  });
 }
 
 /**

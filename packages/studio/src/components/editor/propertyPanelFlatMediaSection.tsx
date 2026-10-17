@@ -37,6 +37,7 @@ import { parseGainInput, parseRateInput, parseSecondsInput } from "./audioInspec
 import type { CommitDomAttributeBatch } from "../../hooks/domEditCommitTypes";
 import { commitCutout, commitHasAudioToggle, commitMutedToggle } from "./mediaAudioEdits";
 import { authoredSrcPath } from "../../player/components/thumbnailUtils";
+import { authoredSrc } from "../../utils/authoredSrc";
 
 // fallow-ignore-next-line complexity
 export function FlatMediaSection({
@@ -119,7 +120,7 @@ export function FlatMediaSection({
   const objectFit = styles["object-fit"] || "contain";
   const objectPosition = styles["object-position"] || "center";
 
-  const srcAttr = el.getAttribute("src") ?? "";
+  const srcAttr = authoredSrc(el) ?? "";
   const [copied, setCopied] = useState(false);
   const [removeBusy, setRemoveBusy] = useState(false);
   const [removeProgress, setRemoveProgress] = useState<BackgroundRemovalProgress | null>(null);

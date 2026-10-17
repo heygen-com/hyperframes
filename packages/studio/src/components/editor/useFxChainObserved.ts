@@ -12,6 +12,7 @@ import { classifyAudioName, type HfCarveSettings } from "@hyperframes/core/audio
 import type { HfAutomation } from "@hyperframes/core/audio-automation";
 import { trackChainObserved } from "./audioFxTelemetry.js";
 import type { DomEditSelection } from "./domEditingTypes";
+import { authoredSrc } from "../../utils/authoredSrc";
 
 /**
  * This is the only way agent-applied effects become visible. An agent asked to
@@ -70,7 +71,7 @@ export function useFxChainObserved(
         hasAutomation: automation.lanes.length > 0,
       },
       {
-        trackKind: classifyAudioName(element.id, element.element?.getAttribute("src")) ?? undefined,
+        trackKind: classifyAudioName(element.id, authoredSrc(element.element)) ?? undefined,
       },
     );
     // Each observation is measured against the edits made SINCE the last one, so

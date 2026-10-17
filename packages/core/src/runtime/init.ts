@@ -69,6 +69,7 @@ import {
   handleMetadataForProxy,
   maybeProxyProactively,
   noteSeekCopyPlayback,
+  setOwnMediaWrite,
   startSeekCopies,
   setProxyDisplayScale,
 } from "./mediaProxy";
@@ -1388,6 +1389,13 @@ export function initSandboxRuntimeModular(): void {
     if (pending.length > 0 || ours.some((record) => record.target !== el))
       invalidateCompositionTimingCaches();
   };
+
+  // A copy swap moves no clip; the forced sync lands the new file on the playhead even while paused.
+  setOwnMediaWrite((el, write) => {
+    withoutOwnTimingRecords(el, write);
+    state.mediaForceSyncNextTick = true;
+    syncMediaForCurrentState();
+  });
 
   const watchCompositionTimingInputs = () => {
     if (compositionTimingObserver || typeof MutationObserver === "undefined") return;
@@ -3250,6 +3258,7 @@ export function initSandboxRuntimeModular(): void {
     wakeTransport();
   };
   window.__hf.leasePausedMedia = leasePausedMedia;
+  window.__hf.unproxiedSrc = unproxiedSrc;
   window.__hf.releasePausedMedia = releasePausedMedia;
   window.__hf.setLoopStart = (seconds) => {
     loopStartSeconds = seconds != null && Number.isFinite(seconds) && seconds >= 0 ? seconds : null;

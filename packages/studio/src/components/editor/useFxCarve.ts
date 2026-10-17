@@ -37,6 +37,7 @@ import { carveLanes, measureCarve, mintCarveNodes } from "./useFxCarveNodes.js";
 import { readClipClock } from "./clipAudioClock.js";
 import { spanOf } from "./propertyPanelAudioFxGroupUtils.js";
 import type { AudioTrackOption } from "./propertyPanelFxCarveModule.js";
+import { authoredSrc } from "../../utils/authoredSrc";
 
 /**
  * Which carve setting actually moved, by comparing the two snapshots.
@@ -305,7 +306,7 @@ export function useFxCarve(
     setAnalysing(true);
     try {
       const measured = await measureCarve(doc, voices, active.strength, {
-        src: element.element?.getAttribute("src"),
+        src: authoredSrc(element.element),
         start: element.dataAttributes?.["start"],
         clock: readClipClock((name) => element.dataAttributes?.[name.slice(5)]),
       });

@@ -12,5 +12,5 @@
   "@hyperframes/sdk": { "packed": 90662, "unpacked": 325069 },
   "@hyperframes/shader-transitions": { "packed": 212864, "unpacked": 825937 },
   "@hyperframes/studio": { "packed": 5998328, "unpacked": 24360208 },
-  "@hyperframes/studio-server": { "packed": 149157, "unpacked": 559199 }
+  "@hyperframes/studio-server": { "packed": 141718, "unpacked": 559199 }
 }

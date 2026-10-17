@@ -1,17 +1,13 @@
-import { resolve } from "node:path";
 import { insertBeforeCloseTag } from "@hyperframes/core/compiler/html-document";
 import type { StudioApiAdapter } from "../types.js";
 import {
   createMediaCodecProbeCache,
-  proxyVariantFor,
-  recordProxyPrewarm,
   scanProjectMediaCodecMap,
-  shouldPrewarmProxy,
   type HtmlSourceLike,
   type MediaCodecMap,
   type MediaCodecProbeCache,
 } from "./mediaCodecMap.js";
-import { resolveProxy, PROXY_PARAMS_VERSION } from "./proxyTranscoder.js";
+import { PROXY_PARAMS_VERSION } from "./proxyTranscoder.js";
 
 /**
  * Transparent-media-proxy wiring shared by `routes/preview.ts`
@@ -69,16 +65,8 @@ export function proxyEtagSalt(raw: string | undefined, servedCopy?: string): str
 
 /**
  * Injects `window.__HF_MEDIA_CODEC_MAP__` (the U1 codec-facts scan) into
- * served composition HTML, and fire-and-forget pre-warms `resolveProxy` for
- * every entry whose codec no browser decodes, so an element's proactive swap
- * usually hits a warm cache (KTD: protects the per-origin connection budget
- * under held responses). Conditionally hostile codecs are injected but NOT
- * pre-warmed: the requesting browser usually plays them, and the transcode
- * runs concurrently with its first layout. No second concurrency limiter here
- * — the transcoder's own global bound throttles both pre-warm and
- * element-triggered calls. Pre-warm failures are swallowed; an actual
- * `?hf-proxy=` request surfaces them as a 502 and transcodes lazily.
- * Alpha-bearing entries pre-warm their VP8/WebM variant.
+ * served composition HTML. It starts no copy: only the page's own `?hf-proxy=`
+ * request does, after its `canPlayType` says it needs one.
  *
  * The single shared implementation for every auto-proxy surface — the studio
  * preview route (via `injectMediaCodecMap` below) and the CLI's composition /
@@ -91,7 +79,6 @@ export async function injectMediaCodecMapIntoHtml(
   projectDir: string,
   htmlSources: HtmlSourceLike[],
   probeCache?: MediaCodecProbeCache,
-  prewarm = true,
   seekCopies = false,
 ): Promise<string> {
   let map: MediaCodecMap;
@@ -110,18 +97,6 @@ export async function injectMediaCodecMapIntoHtml(
     map = Object.fromEntries(Object.entries(map).filter(([, facts]) => facts.browserHostile));
   }
   if (Object.keys(map).length === 0) return html;
-  for (const [rootRelativePathname, facts] of Object.entries(map)) {
-    if (!prewarm || !shouldPrewarmProxy(facts)) continue;
-    recordProxyPrewarm();
-    resolveProxy(
-      projectDir,
-      resolve(projectDir, rootRelativePathname.replace(/^\/+/, "")),
-      proxyVariantFor(facts),
-    ).catch(() => {
-      // Swallowed: the pre-warm is best-effort. A real `?hf-proxy=` request
-      // for this asset hears the remembered failure (502) or re-attempts it.
-    });
-  }
   // <-escape prevents a src path containing "</script>" from breaking out of
   // the injected tag, mirroring injectPreviewVariables in helpers/previewVariables.ts.
   const json = JSON.stringify(map)
@@ -144,12 +119,5 @@ export async function injectMediaCodecMap(
   probeCache: MediaCodecProbeCache,
 ): Promise<string> {
   if (!isAutoProxyEnabled(adapter)) return html;
-  return injectMediaCodecMapIntoHtml(
-    html,
-    projectDir,
-    [{ html, compSrcPath }],
-    probeCache,
-    false,
-    true,
-  );
+  return injectMediaCodecMapIntoHtml(html, projectDir, [{ html, compSrcPath }], probeCache, true);
 }

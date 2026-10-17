@@ -1,3 +1,4 @@
+// fallow-ignore-file code-duplication
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -35,10 +36,8 @@ const mocks = vi.hoisted(() => {
   }
   return {
     resolveProxy: vi.fn<(projectDir: string, absoluteSourcePath: string) => Promise<string>>(
-      // Benign default so `injectMediaCodecMap`'s fire-and-forget pre-warm
-      // (called for every hostile map entry) always gets a promise to
-      // `.catch()`, even in tests that don't care about the proxy path.
-      async () => "/unused-prewarm-proxy-path",
+      // Benign default for tests that don't care about the proxy path.
+      async () => "/unused-proxy-path",
     ),
     scanProjectMediaCodecMap: vi.fn<
       (
@@ -76,7 +75,6 @@ vi.mock("@hyperframes/studio-server/media-codec-map", () => ({
   decideMediaProxyEligibility: mocks.decideMediaProxyEligibility,
   isProxyVariant: (value: string) => value === "h264" || value === "vp8",
   isProxyVariantRequest: (value: string) => value === "auto" || value === "h264" || value === "vp8",
-  recordProxyRequest: () => {},
   proxyVariantFor: (facts: { hasAlpha?: boolean }) => (facts.hasAlpha ? "vp8" : "h264"),
   resolveProxyVariantRequest: (request: "auto" | "h264" | "vp8", facts: { hasAlpha?: boolean }) => {
     const expected = facts.hasAlpha ? "vp8" : "h264";
@@ -114,7 +112,7 @@ afterEach(async () => {
   if (dir) rmSync(dir, { recursive: true, force: true });
   dir = undefined;
   mocks.resolveProxy.mockReset();
-  mocks.resolveProxy.mockResolvedValue("/unused-prewarm-proxy-path");
+  mocks.resolveProxy.mockResolvedValue("/unused-proxy-path");
   mocks.scanProjectMediaCodecMap.mockReset();
   mocks.scanProjectMediaCodecMap.mockResolvedValue({});
   mocks.probeAssetCodec.mockClear();

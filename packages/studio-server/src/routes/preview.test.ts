@@ -1360,9 +1360,9 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       PROXY_PARAMS_VERSION: "v1",
       getProxyCachePath: () => "",
     }));
-    // Spread the real module first so the pre-warm gate (`shouldPrewarmProxy`
-    // and its codec table) is the production one — a hand-written copy of that
-    // rule would let the table and this suite drift apart. The explicit keys
+    // Spread the real module first so the codec table and eligibility gate are
+    // the production ones — a hand-written copy of either would let the table
+    // and this suite drift apart. The explicit keys
     // below still replace everything that would touch ffprobe or ffmpeg.
     vi.doMock("../helpers/mediaCodecMap.js", async () => ({
       ...(await vi.importActual<typeof import("../helpers/mediaCodecMap.js")>(
@@ -1608,37 +1608,6 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       expect(fresh.headers.get("ETag")).toBeNull();
     });
 
-    it("counts one proxy request per resolved proxy, not per HTTP request", async () => {
-      const projectDir = createProjectDir();
-      writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
-      pastSettleWindow();
-      const resolveProxyMock = vi.fn(async () => {
-        const proxyPath = join(projectDir, "proxy.mp4");
-        writeFileSync(proxyPath, "0123456789proxybytes");
-        return proxyPath;
-      });
-      const { registerPreviewRoutes: register } = await loadPreviewModule({
-        resolveProxyImpl: resolveProxyMock,
-      });
-      const { mediaProxyDemand } = await import("../helpers/mediaCodecMap.js");
-      const before = mediaProxyDemand().proxyRequests;
-
-      const app = new Hono();
-      register(app, createAdapter(projectDir));
-
-      const first = await app.request(
-        "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264",
-      );
-      const etag = first.headers.get("ETag");
-      // A 304 revalidation is the same asset already served; counting it would
-      // put this on a different scale from `prewarmsRequested`.
-      await app.request("http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264", {
-        headers: { "If-None-Match": etag! },
-      });
-
-      expect(mediaProxyDemand().proxyRequests - before).toBe(1);
-    });
-
     it("returns 404 without transcoding when the asset is missing", async () => {
       const projectDir = createProjectDir();
       const resolveProxyMock = vi.fn(async () => "should-not-be-called");
@@ -1869,8 +1838,6 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       const { registerPreviewRoutes: register } = await loadPreviewModule({
         resolveProxyImpl: () => transcode,
       });
-      const { mediaProxyDemand } = await import("../helpers/mediaCodecMap.js");
-      const before = mediaProxyDemand().proxyRequests;
       const app = new Hono();
       register(app, createAdapter(projectDir));
       const url = "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264";
@@ -1884,13 +1851,11 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       expect(cold.status).toBe(202);
       expect(cold.headers.get("Retry-After")).toBe("2");
       expect(cold.headers.get("Cache-Control")).toBe("no-store");
-      expect(mediaProxyDemand().proxyRequests - before).toBe(0);
 
       landCopy();
       const ready = await app.request(url);
       expect(ready.status).toBe(200);
       expect(await ready.text()).toBe("proxy-bytes");
-      expect(mediaProxyDemand().proxyRequests - before).toBe(1);
     });
 
     it("rejects a path-traversal attempt through the proxied path (404, no transcode)", async () => {

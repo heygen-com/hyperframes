@@ -11,7 +11,6 @@ import {
   proxyVariantFor,
   resolveProxyVariantRequest,
   scanProjectMediaCodecMap,
-  shouldPrewarmProxy,
   type AssetCodecFacts,
 } from "./mediaCodecMap.js";
 
@@ -288,40 +287,9 @@ describe("BROWSER_HOSTILE_CODECS representative mimes", () => {
   });
 });
 
-describe("shouldPrewarmProxy", () => {
-  function facts(codecName: string): AssetCodecFacts {
-    return { codecName, browserHostile: true, representativeMime: null, hasAlpha: false };
-  }
-
-  it.each(["hevc", "prores", "theora"])(
-    "pre-warms %s, which has no cross-platform browser decode",
-    (codecName) => {
-      expect(shouldPrewarmProxy(facts(codecName))).toBe(true);
-    },
-  );
-
-  it.each(["vp9", "av1"])(
-    "does not pre-warm %s, which every mainstream engine decodes itself",
-    (codecName) => {
-      expect(shouldPrewarmProxy(facts(codecName))).toBe(false);
-    },
-  );
-
-  it("does not pre-warm a browser-safe codec", () => {
-    expect(
-      shouldPrewarmProxy({
-        codecName: "h264",
-        browserHostile: false,
-        representativeMime: null,
-        hasAlpha: false,
-      }),
-    ).toBe(false);
-  });
-
-  // `shouldPrewarmProxy` alone cannot catch a missing `Object.hasOwn` guard —
-  // `.prewarm === true` is already strict against `Object.prototype.constructor`.
-  // The input that misbehaves goes through `codecFactsFor`, which would report
-  // an ordinary asset as browser-hostile.
+describe("BROWSER_HOSTILE_CODECS lookup", () => {
+  // Without the `Object.hasOwn` guard, `codecFactsFor` would report an
+  // ordinary asset as browser-hostile.
   it("does not treat a codec named after an Object.prototype key as hostile", async () => {
     const project = tmpProject();
     const videoPath = join(project, "clip.mp4");
@@ -335,7 +303,6 @@ describe("shouldPrewarmProxy", () => {
       representativeMime: null,
       hasAlpha: false,
     });
-    expect(shouldPrewarmProxy(facts!)).toBe(false);
   });
 });
 

@@ -27,6 +27,7 @@ import type { DomEditSelection } from "./domEditingTypes";
 import { clipSourceWindow, readClipClock } from "./clipAudioClock.js";
 import { useAuditionTransport } from "./useAuditionTransport.js";
 import { studioApiFetch } from "../../utils/studioApiFetch";
+import { authoredSrc } from "../../utils/authoredSrc";
 
 /**
  * Rate the track is decoded at. Analysis is self-consistent because it reads
@@ -54,7 +55,7 @@ export function useFxLevelling(
 
   const decodeTrack = async (): Promise<{ samples: Float32Array; sampleRate: number } | null> => {
     const el = element.element;
-    const src = el?.getAttribute("src");
+    const src = authoredSrc(el);
     const doc = el?.ownerDocument;
     if (!src || !doc) return null;
     const cached = decoded.current;

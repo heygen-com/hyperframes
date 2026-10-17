@@ -31,6 +31,7 @@ import {
 } from "./useColorGradingPreviews";
 import { studioApiFetch } from "../../utils/studioApiFetch";
 import { authoredSrcPath } from "../../player/components/thumbnailUtils";
+import { authoredSrc } from "../../utils/authoredSrc";
 
 export type { ColorGradingPresetPreviews, ColorGradingPreviewOptions };
 
@@ -114,7 +115,7 @@ function resolveProjectAssetPath(
 function selectedMediaAssetPath(element: DomEditSelection, projectId: string): string | null {
   if (element.tagName !== "video" && element.tagName !== "img") return null;
   const media = element.element as HTMLImageElement | HTMLVideoElement;
-  const src = media.getAttribute("src") || media.currentSrc || "";
+  const src = authoredSrc(media) || media.currentSrc || "";
   return resolveProjectAssetPath(element.sourceFile || "index.html", src, projectId);
 }
 
