@@ -30,6 +30,12 @@ Run the interactive installer:
 npx skills add heygen-com/hyperframes
 ```
 
+Run this command from your video project's directory. If you cloned HyperFrames
+to contribute, use `npx hyperframes skills update` for a global install from that
+checkout, or run the project installer in a separate video project. Project-local
+installer targets can overlap the checkout's tracked `skills/` source and
+overwrite uncommitted edits.
+
 Select **Core Skills**. The `/hyperframes` router installs a specialized creation workflow when the request needs one, so you do not need the full catalog up front.
 
 Start a fresh agent chat after installation, then ask it to use `/hyperframes`.
