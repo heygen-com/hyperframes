@@ -73,12 +73,17 @@ export interface MediaMetadata {
   color: MediaColorMetadata;
   /** Video audio stream, when probed. Absent means the drop path stays muted. */
   hasAudio?: boolean;
+  /** Coded size of the video stream, when probed. */
+  width?: number;
+  height?: number;
   probeError?: string;
 }
 
 interface FfprobeStream {
   codec_type?: string;
   codec_name?: string;
+  width?: number;
+  height?: number;
   profile?: string;
   pix_fmt?: string;
   color_space?: string;
@@ -198,6 +203,43 @@ export async function probeFirstFrameColour(
   return result.status === 0 ? parseFirstFrameColour(String(result.stderr)) : {};
 }
 
+/** Longest stretch in seconds without a keyframe in the first 30 s, read from packet flags
+ * without decoding. Null when unread. */
+export async function probeKeyframeGap(
+  filePath: string,
+  runner: FfprobeRunner = execFileRunner,
+): Promise<number | null> {
+  const ffprobePath =
+    findFfBinary("ffprobe", { configuredMustExist: true }) ??
+    (runner === execFileRunner ? undefined : "ffprobe");
+  if (!ffprobePath) return null;
+  const result = await runner(
+    ffprobePath,
+    [
+      ...["-v", "error", "-select_streams", "v:0", "-read_intervals", "%+30"],
+      ...["-show_entries", "packet=pts_time,flags", "-of", "csv=p=0", "--", filePath],
+    ],
+    { timeout: 15_000, maxBuffer: 8 * 1024 * 1024 },
+  );
+  if (result.status !== 0) return null;
+  const keyframes: number[] = [];
+  let end = 0;
+  for (const line of String(result.stdout).split("\n")) {
+    const [pts, flags] = line.split(",");
+    const time = Number(pts);
+    if (!pts || !Number.isFinite(time)) continue;
+    end = Math.max(end, time);
+    if (flags?.startsWith("K")) keyframes.push(time);
+  }
+  if (keyframes.length === 0) return null;
+  keyframes.sort((a, b) => a - b);
+  let gap = end - keyframes.at(-1)!;
+  for (let i = 1; i < keyframes.length; i++) {
+    gap = Math.max(gap, keyframes[i]! - keyframes[i - 1]!);
+  }
+  return gap;
+}
+
 export async function probeMediaMetadata(
   filePath: string,
   runner: FfprobeRunner = execFileRunner,
@@ -222,7 +264,7 @@ export async function probeMediaMetadata(
       "-v",
       "error",
       "-show_entries",
-      "stream=codec_type,codec_name,profile,pix_fmt,color_space,color_transfer,color_primaries,bits_per_raw_sample:stream_disposition=attached_pic",
+      "stream=codec_type,codec_name,width,height,profile,pix_fmt,color_space,color_transfer,color_primaries,bits_per_raw_sample:stream_disposition=attached_pic",
       "-of",
       "json",
       "--",
@@ -247,6 +289,10 @@ export async function probeMediaMetadata(
     const metadata: MediaMetadata = { kind, color: classifyMediaColor(stream) };
     if (kind === "video") {
       metadata.hasAudio = (parsed.streams ?? []).some((item) => item.codec_type === "audio");
+      if (stream?.width && stream.height) {
+        metadata.width = stream.width;
+        metadata.height = stream.height;
+      }
     }
     return metadata;
   } catch {

@@ -93,6 +93,7 @@ export async function injectMediaCodecMapIntoHtml(
   htmlSources: HtmlSourceLike[],
   probeCache?: MediaCodecProbeCache,
   prewarm = true,
+  seekCopies = false,
 ): Promise<string> {
   let map: MediaCodecMap;
   try {
@@ -104,6 +105,10 @@ export async function injectMediaCodecMapIntoHtml(
   } catch {
     // Best-effort: a scan failure must never block serving the page.
     return html;
+  }
+  // Only Studio's preview route makes seek copies; elsewhere a seek-only entry would ask in vain.
+  if (!seekCopies) {
+    map = Object.fromEntries(Object.entries(map).filter(([, facts]) => facts.browserHostile));
   }
   if (Object.keys(map).length === 0) return html;
   for (const [rootRelativePathname, facts] of Object.entries(map)) {
@@ -140,5 +145,12 @@ export async function injectMediaCodecMap(
   probeCache: MediaCodecProbeCache,
 ): Promise<string> {
   if (!isAutoProxyEnabled(adapter)) return html;
-  return injectMediaCodecMapIntoHtml(html, projectDir, [{ html, compSrcPath }], probeCache, false);
+  return injectMediaCodecMapIntoHtml(
+    html,
+    projectDir,
+    [{ html, compSrcPath }],
+    probeCache,
+    false,
+    true,
+  );
 }

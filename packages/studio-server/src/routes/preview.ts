@@ -48,6 +48,7 @@ import {
 import { isVariablesPayload, VARIABLES_PAYLOAD_ERROR } from "../helpers/variablesPayload.js";
 import { injectPreviewVariables } from "../helpers/previewVariables.js";
 import {
+  notePreviewPlaying,
   resolveProxy,
   waitForProxy,
   ProxyCapacityError,
@@ -416,6 +417,10 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     "Cache-Control": "private, no-cache",
     ETag: etag,
   });
+  const notModifiedPreview = (ifNoneMatch: string | undefined, etag: string) =>
+    ifNoneMatch === etag
+      ? new Response(null, { status: 304, headers: previewCacheHeaders(etag) })
+      : null;
 
   // One probe cache per server instance (this function runs once per
   // registered API), reused across every preview request so the mtime-cache
@@ -530,13 +535,8 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     const capture = c.req.query(PREVIEW_CAPTURE_PARAM) !== undefined;
 
     const etag = `"preview:${signature}${variablesEtagSalt(vars.raw)}${capture ? ":capture" : ""}"`;
-    const ifNoneMatch = c.req.header("If-None-Match");
-    if (ifNoneMatch === etag) {
-      return new Response(null, {
-        status: 304,
-        headers: previewCacheHeaders(etag),
-      });
-    }
+    const notModified = notModifiedPreview(c.req.header("If-None-Match"), etag);
+    if (notModified) return notModified;
     const builtKey = `${project.id}\n${etag}`;
     const cached = builtPreviews.get(builtKey) ?? adapter.previewDocuments?.read(builtKey);
     if (cached) {
@@ -592,13 +592,8 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     const compPathHash = createHash("sha1").update(compPath).digest("hex");
     const capture = c.req.query(PREVIEW_CAPTURE_PARAM) !== undefined;
     const etag = `"comp:v2:${compPathHash}:${signature}${variablesEtagSalt(vars.raw)}${capture ? ":capture" : ""}"`;
-    const ifNoneMatch = c.req.header("If-None-Match");
-    if (ifNoneMatch === etag) {
-      return new Response(null, {
-        status: 304,
-        headers: previewCacheHeaders(etag),
-      });
-    }
+    const notModified = notModifiedPreview(c.req.header("If-None-Match"), etag);
+    if (notModified) return notModified;
 
     const stamped = pinSubCompHfIds(compFile, compPath);
     if (stamped === null) return c.text("not found", 404); // file removed between stat and read
@@ -618,6 +613,14 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     if (previewVariables) html = injectPreviewVariables(html, previewVariables);
     html = await injectMediaCodecMap(html, adapter, project.dir, compPath, mediaCodecProbeCache);
     return c.html(html, 200, previewCacheHeaders(etag));
+  });
+
+  api.post("/projects/:id/preview/playback", async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const playing = (body as { playing?: unknown } | null)?.playing;
+    if (typeof playing !== "boolean") return c.json({ error: "playing must be a boolean" }, 400);
+    notePreviewPlaying(playing);
+    return c.body(null, 204);
   });
 
   // Static asset serving (with range request support for audio/video seeking)
@@ -655,6 +658,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
       return c.text("not found", 404);
     }
     let proxyVariant: ProxyVariant | undefined;
+    let seekCopy = false;
     if (proxyParam !== undefined) {
       if (
         !isProxyVariantRequest(proxyParam) ||
@@ -664,11 +668,12 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
         return c.text("not found", 404);
       }
       const facts = await probeAssetCodec(file, undefined, mediaCodecProbeCache);
-      const eligibility = decideMediaProxyEligibility(facts);
+      const eligibility = decideMediaProxyEligibility(facts, proxyBox);
       if (!eligibility.eligible) {
         return c.text(`media proxy unavailable: ${eligibility.reason}`, 422);
       }
       if (!facts) return c.text("media proxy unavailable: unknown_codec", 422);
+      seekCopy = facts.seekHostile === true && !facts.browserHostile;
       proxyVariant = resolveProxyVariantRequest(proxyParam, facts) ?? undefined;
       if (!proxyVariant) {
         return c.text("media proxy variant does not match asset", 422);
@@ -697,7 +702,10 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
       try {
         // A cached copy settles before any timer; a transcode never holds one of
         // the browser's few connections to this host. 202 until the copy lands.
-        servedPath = await waitForProxy(resolveProxy(project.dir, file, proxyVariant, proxyBox), 0);
+        const copy = seekCopy
+          ? resolveProxy(project.dir, file, proxyVariant, proxyBox, { background: true })
+          : resolveProxy(project.dir, file, proxyVariant, proxyBox);
+        servedPath = await waitForProxy(copy, 0);
       } catch (err) {
         if (err instanceof ProxyWaitTimeoutError) {
           return c.text("media proxy is being made", 202, {

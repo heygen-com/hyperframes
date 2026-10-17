@@ -14,6 +14,7 @@ import {
 import { projectDirMissing } from "../helpers/projectDirMissing.js";
 import { isVariablesPayload, VARIABLES_PAYLOAD_ERROR } from "../helpers/variablesPayload.js";
 import { parseEncoderOptions, type EncoderOptionsBody } from "../helpers/encoderOptions.js";
+import { holdBackgroundCopiesDuring } from "../helpers/proxyTranscoder.js";
 
 const VALID_RESOLUTIONS = new Set<string>(VALID_CANVAS_RESOLUTIONS);
 const RENDER_MIME: Record<string, string> = {
@@ -175,6 +176,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     });
     (jobState as RenderJobState & { createdAt: number }).createdAt = Date.now();
     renderJobs.set(jobId, jobState as RenderJobState & { createdAt: number });
+    holdBackgroundCopiesDuring(jobState);
 
     ensureCleanupTimer();
 

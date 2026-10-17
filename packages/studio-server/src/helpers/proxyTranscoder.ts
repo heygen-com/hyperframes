@@ -1,6 +1,7 @@
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, renameSync, statSync, unlinkSync, utimesSync } from "node:fs";
+import { constants as osConstants, setPriority } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
   formatPreviewProxyBox,
@@ -24,7 +25,7 @@ import { mkdirWithinProject, realpath, realProjectRoot } from "./safePath.js";
  * caller, and drops the copy while it is still queued with no caller left.
  */
 
-export const PROXY_PARAMS_VERSION = "v5";
+export const PROXY_PARAMS_VERSION = "v6";
 
 export const CACHE_DIR_NAME = ".transcode-cache";
 
@@ -227,6 +228,7 @@ export function getProxyCachePath(
 interface ProxyJob {
   cachePath: string;
   priority: boolean;
+  background: boolean;
   /** Callers still waiting; one without a signal never leaves, so its copy is always made. */
   callers: number;
   /** Set while the job waits for a slot. */
@@ -297,6 +299,61 @@ function prioritize(job: ProxyJob): void {
 function leave(job: ProxyJob): void {
   job.callers--;
   if (job.callers === 0) job.queued?.drop();
+}
+
+// --- background copies yield ------------------------------------------------
+// ponytail: SIGSTOP/SIGCONT, rechecked each second; Windows has none (Node would kill the child).
+
+const PREVIEW_PLAYING_LEASE_MS = 15_000;
+let previewPlayingUntil = 0;
+const runningExports = new Set<{ status: string }>();
+const backgroundCopies = new Map<ChildProcess, boolean>();
+let holdTimer: NodeJS.Timeout | undefined;
+
+function backgroundCopiesHeld(): boolean {
+  for (const job of runningExports) if (job.status !== "rendering") runningExports.delete(job);
+  return runningExports.size > 0 || Date.now() < previewPlayingUntil;
+}
+
+function applyHold(): void {
+  if (process.platform === "win32") return;
+  const held = backgroundCopiesHeld();
+  for (const [proc, stopped] of backgroundCopies) {
+    if (stopped !== held && proc.kill(held ? "SIGSTOP" : "SIGCONT"))
+      backgroundCopies.set(proc, held);
+  }
+}
+
+function holdWhileBusy(proc: ChildProcess): void {
+  backgroundCopies.set(proc, false);
+  applyHold();
+  holdTimer ??= setInterval(applyHold, 1000).unref();
+  proc.once("close", () => {
+    backgroundCopies.delete(proc);
+    if (backgroundCopies.size > 0) return;
+    clearInterval(holdTimer);
+    holdTimer = undefined;
+  });
+}
+
+/** Below-normal priority; a background copy pauses while the preview plays or an export runs. */
+function superviseEncoder(proc: ChildProcess, job?: ProxyJob): void {
+  try {
+    if (proc.pid) setPriority(proc.pid, osConstants.priority.PRIORITY_BELOW_NORMAL);
+  } catch {}
+  if (job?.background) holdWhileBusy(proc);
+}
+
+/** The preview says it is playing (repeated while it plays) or paused. */
+export function notePreviewPlaying(playing: boolean): void {
+  previewPlayingUntil = playing ? Date.now() + PREVIEW_PLAYING_LEASE_MS : 0;
+  applyHold();
+}
+
+/** Background copies stop until this export's status leaves "rendering". */
+export function holdBackgroundCopiesDuring(job: { status: string }): void {
+  runningExports.add(job);
+  applyHold();
 }
 
 // --- per-key in-flight dedupe ----------------------------------------------
@@ -413,6 +470,7 @@ async function runFfmpeg(
   outputPath: string,
   variant: ProxyVariant,
   box: PreviewProxyBox | undefined,
+  job?: ProxyJob,
 ): Promise<void> {
   const metadata = await probeMediaMetadata(sourcePath);
   const ffmpegPath = findFfBinary("ffmpeg", { configuredMustExist: true });
@@ -438,6 +496,8 @@ async function runFfmpeg(
   return new Promise((resolvePromise, reject) => {
     const commonArgs = ["-y", "-i", sourcePath, "-vf", videoFilter];
     const h264Args = [
+      "-force_key_frames",
+      "expr:gte(t,n_forced*1)",
       "-c:v",
       "libx264",
       "-profile:v",
@@ -499,6 +559,7 @@ async function runFfmpeg(
       killSignal: "SIGKILL",
       windowsHide: true,
     });
+    superviseEncoder(proc, job);
     let stderrTail = "";
     proc.stderr?.on("data", (chunk: Buffer) => {
       stderrTail = (stderrTail + chunk.toString()).slice(-STDERR_TAIL_MAX_CHARS);
@@ -547,7 +608,7 @@ async function transcodeToCache(
     mkdirWithinProject(projectDir, cacheDir);
     const tempPath = join(cacheDir, `.tmp-${randomUUID()}-${basename(cachePath)}`);
     try {
-      await runFfmpeg(absoluteSourcePath, tempPath, variant, box);
+      await runFfmpeg(absoluteSourcePath, tempPath, variant, box, job);
       renameSync(tempPath, cachePath);
       maintainProxyCache(cacheDir);
       return cachePath;
@@ -614,6 +675,7 @@ export async function resolveProxy(
     const job: ProxyJob = {
       cachePath,
       priority: options.priority === true,
+      background: options.background === true,
       callers: 0,
     };
     const promise = transcodeToCache(
@@ -666,6 +728,8 @@ export async function resolveProxies(
 
 export interface ResolveProxyOptions {
   priority?: boolean;
+  /** A copy nobody waits on: it stops while a preview plays or an export runs. */
+  background?: boolean;
   signal?: AbortSignal;
 }
 

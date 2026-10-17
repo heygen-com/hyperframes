@@ -1,3 +1,4 @@
+// fallow-ignore-file code-duplication
 import { execFileSync, spawnSync } from "node:child_process";
 import { EventEmitter } from "node:events";
 import {
@@ -125,9 +126,17 @@ afterEach(() => {
   vi.resetModules();
   vi.doUnmock("node:child_process");
   vi.doUnmock("@hyperframes/parsers/ff-binaries");
+  vi.doUnmock("node:os");
   delete process.env.HYPERFRAMES_PROXY_MAX_CONCURRENCY;
   delete process.env.HYPERFRAMES_PROXY_MAX_QUEUE;
 });
+
+function mockSetPriority(setPriority: (pid: number, priority: number) => void): void {
+  vi.doMock("node:os", async (importOriginal) => {
+    const mocked = { ...(await importOriginal<typeof import("node:os")>()), setPriority };
+    return { ...mocked, default: mocked };
+  });
+}
 
 async function loadModule(
   spawn: SpawnImpl,
@@ -214,6 +223,136 @@ describe("resolveProxy", () => {
     expect(cacheDirEntries).toEqual([expectedCachePath.split("/").at(-1)]);
   });
 
+  it("makes a keyframe every second, at below-normal OS priority", async () => {
+    const setPriority = vi.fn();
+    mockSetPriority(setPriority);
+    const { spawn, calls } = createSpawnSpy();
+    const { resolveProxy } = await loadModule(
+      (...args) => Object.assign(spawn(...args), { pid: 4242 }),
+      FFMPEG_PATH,
+    );
+    const projectDir = tmpProject();
+    const sourcePath = join(projectDir, "sparse.mp4");
+    writeFileSync(sourcePath, "source-bytes");
+
+    const resultPromise = resolveProxy(projectDir, sourcePath, "h264", {
+      width: 1024,
+      height: 724,
+    });
+    await flush();
+    const args = calls[0]!.args;
+    expect(args[args.indexOf("-force_key_frames") + 1]).toBe("expr:gte(t,n_forced*1)");
+    expect(setPriority).toHaveBeenCalledWith(4242, 10);
+
+    succeed(calls[0]!);
+    await expect(resultPromise).resolves.toContain(".transcode-cache");
+  });
+
+  it("still makes the copy when the OS refuses to lower its priority", async () => {
+    mockSetPriority(() => {
+      throw new Error("EACCES");
+    });
+    const { spawn, calls } = createSpawnSpy();
+    const { resolveProxy } = await loadModule(
+      (...args) => Object.assign(spawn(...args), { pid: 4242 }),
+      FFMPEG_PATH,
+    );
+    const projectDir = tmpProject();
+    const sourcePath = join(projectDir, "sparse.mp4");
+    writeFileSync(sourcePath, "source-bytes");
+
+    const resultPromise = resolveProxy(projectDir, sourcePath);
+    await flush();
+    succeed(calls[0]!);
+
+    await expect(resultPromise).resolves.toContain(".transcode-cache");
+  });
+
+  describe("background copies yield to playback and exports", () => {
+    const box = { width: 1024, height: 724 };
+    type Killable = SpawnCall & { proc: FakeProc & { kill: ReturnType<typeof vi.fn> } };
+
+    async function startCopies() {
+      const { spawn, calls } = createSpawnSpy();
+      const transcoder = await loadModule(
+        (...args) => Object.assign(spawn(...args), { pid: 4242, kill: vi.fn(() => true) }),
+        FFMPEG_PATH,
+      );
+      const projectDir = tmpProject();
+      const [seek, waited] = ["sparse.mp4", "hevc.mov"].map((name) => {
+        const sourcePath = join(projectDir, name);
+        writeFileSync(sourcePath, name);
+        return sourcePath;
+      });
+      const copies = [
+        transcoder.resolveProxy(projectDir, seek!, "h264", box, { background: true }),
+        transcoder.resolveProxy(projectDir, waited!, "h264", box),
+      ];
+      await flush();
+      const callFor = (name: string) =>
+        (calls as Killable[]).find((call) => call.args.includes(join(projectDir, name)))!;
+      const signals = (name: string) => callFor(name).proc.kill.mock.calls.map(([sig]) => sig);
+      const finish = async () => {
+        calls.forEach((call) => succeed(call));
+        await Promise.all(copies);
+      };
+      return { transcoder, signals, finish };
+    }
+
+    afterEach(() => vi.useRealTimers());
+
+    it("stops a background copy while the preview plays and resumes it on pause", async () => {
+      const { transcoder, signals, finish } = await startCopies();
+
+      transcoder.notePreviewPlaying(true);
+      expect(signals("sparse.mp4")).toEqual(["SIGSTOP"]);
+      expect(signals("hevc.mov")).toEqual([]);
+
+      transcoder.notePreviewPlaying(false);
+      expect(signals("sparse.mp4")).toEqual(["SIGSTOP", "SIGCONT"]);
+      await finish();
+    });
+
+    it("resumes once a preview that said it plays goes quiet past its lease", async () => {
+      vi.useFakeTimers();
+      const { transcoder, signals, finish } = await startCopies();
+
+      transcoder.notePreviewPlaying(true);
+      await vi.advanceTimersByTimeAsync(14_000);
+      expect(signals("sparse.mp4")).toEqual(["SIGSTOP"]);
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(signals("sparse.mp4")).toEqual(["SIGSTOP", "SIGCONT"]);
+      await finish();
+    });
+
+    it("stops a background copy while an export renders", async () => {
+      vi.useFakeTimers();
+      const { transcoder, signals, finish } = await startCopies();
+      const job = { status: "rendering" };
+
+      transcoder.holdBackgroundCopiesDuring(job);
+      expect(signals("sparse.mp4")).toEqual(["SIGSTOP"]);
+      job.status = "complete";
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(signals("sparse.mp4")).toEqual(["SIGSTOP", "SIGCONT"]);
+      expect(signals("hevc.mov")).toEqual([]);
+      await finish();
+    });
+
+    it("never signals on Windows, where Node would kill the copy instead", async () => {
+      const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+      Object.defineProperty(process, "platform", { ...platform, value: "win32" });
+      try {
+        const { transcoder, signals, finish } = await startCopies();
+        transcoder.notePreviewPlaying(true);
+        expect(signals("sparse.mp4")).toEqual([]);
+        await finish();
+      } finally {
+        Object.defineProperty(process, "platform", platform);
+      }
+    });
+  });
+
   it("names the boxed preview copy resolveProxy writes when given the same box", async () => {
     const { spawn, calls } = createSpawnSpy();
     const { resolveProxy, getProxyCachePath } = await loadModule(spawn, FFMPEG_PATH);
@@ -249,6 +388,7 @@ describe("resolveProxy", () => {
     const args = calls[0]!.args;
     expect(args).toContain("libvpx");
     expect(args).not.toContain("libvpx-vp9");
+    expect(args).not.toContain("-force_key_frames");
     expect(args).toContain("yuva420p");
     expect(args).toContain("libopus");
     expect(args[args.indexOf("-b:v") + 1]).toBe("0");

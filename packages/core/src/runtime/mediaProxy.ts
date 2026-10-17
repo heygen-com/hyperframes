@@ -29,6 +29,11 @@ export type MediaCodecMapEntry = {
   /** Source carries an alpha channel and therefore needs a VP8/WebM proxy.
    * Optional so pre-alpha-aware maps stay assignable; absent means "no alpha detected". */
   hasAlpha?: boolean;
+  /** Browser-safe, but keyframes are more than 2 s apart, so each jump decodes far. */
+  seekHostile?: boolean;
+  /** Source size, sent with seek-hostile entries so a copy is sized before the video loads. */
+  width?: number;
+  height?: number;
 };
 
 declare global {
@@ -98,6 +103,28 @@ function shownBox(el: HTMLMediaElement, scale: number): PreviewProxyBox | null {
   );
 }
 
+const HAVE_CURRENT_DATA = 2;
+
+function showsFrames(el: HTMLMediaElement): boolean {
+  return isVideoElement(el) && el.videoWidth > 0 && el.readyState >= HAVE_CURRENT_DATA;
+}
+
+/** The one rule for when a served copy replaces what an element plays: at once when it is paused
+ * or shows nothing, else at its next pause, so a playing picture never blanks mid-play. */
+function swapWhenSafe(el: HTMLMediaElement, swap: () => void): void {
+  if (el.paused || !showsFrames(el)) swap();
+  else el.addEventListener("pause", swap, { once: true });
+}
+
+/** Settles once the element shows its own frames, after which a jump needs no copy. */
+function framesShown(el: HTMLMediaElement): Promise<void> {
+  return new Promise((shown) => {
+    const check = () =>
+      showsFrames(el) ? shown() : el.addEventListener("loadeddata", check, { once: true });
+    check();
+  });
+}
+
 /** The host reports how large it shows this document; copies too small for it are replaced. */
 export function setProxyDisplayScale(scale: number): void {
   if (!(scale > 0) || !Number.isFinite(scale)) return;
@@ -125,9 +152,15 @@ function keepSized(el: HTMLMediaElement, scale: number): void {
   pendingUpgrades.set(el, href);
   const wanted = () =>
     pendingUpgrades.get(el) === href && el.isConnected && el.getAttribute("src") === copy.href;
-  void waitForServedProxy(href, wanted).then((served) => {
-    if (served && wanted()) loadProxy(el, href, copy.originalSrc, copy.variant, box);
+  const settle = () => {
     if (pendingUpgrades.get(el) === href) pendingUpgrades.delete(el);
+  };
+  void waitForServedProxy(href, wanted).then((served) => {
+    if (!served || !wanted()) return settle();
+    swapWhenSafe(el, () => {
+      if (wanted()) loadProxy(el, href, copy.originalSrc, copy.variant, box);
+      settle();
+    });
   });
 }
 
@@ -337,18 +370,22 @@ export function swapToProxy(
       emitUnavailableDiagnostic(el, "proxy_playback_failed", originalSrc);
       return;
     }
-    swappedElements.set(el, originalAttr);
-    loadProxy(el, proxiedSrc, originalSrc, variant, box);
-    // The shown size may have grown while this copy was being made.
-    if (displayScale !== null) keepSized(el, displayScale);
     return new Promise((landed) => {
-      el.addEventListener("loadeddata", landed, { once: true });
-      el.addEventListener("error", landed, { once: true });
+      swapWhenSafe(el, () => {
+        if (!live()) return landed(undefined);
+        swappedElements.set(el, originalAttr);
+        loadProxy(el, proxiedSrc, originalSrc, variant, box);
+        // The shown size may have grown while this copy was being made.
+        if (displayScale !== null) keepSized(el, displayScale);
+        el.addEventListener("loadeddata", landed, { once: true });
+        el.addEventListener("error", landed, { once: true });
+      });
     });
   });
-  // A frame capture holds for the copy as it held for a loading video before, up to the same cap.
+  // A frame capture holds for the copy as it held for a loading video, up to the same cap, and
+  // no longer once the original shows its own frames.
   registerSeekCompletion(
-    Promise.race([swap, new Promise((cap) => setTimeout(cap, HOLD_CAP_MS))]),
+    Promise.race([swap, framesShown(el), new Promise((cap) => setTimeout(cap, HOLD_CAP_MS))]),
     "video-frame",
   );
   const codecName = entry?.codecName ?? null;
@@ -411,7 +448,14 @@ export function maybeProxyProactively(el: HTMLMediaElement): void {
 export function handleMetadataForProxy(el: HTMLMediaElement): void {
   if (isRenderMode(el)) return;
   if (!isVideoElement(el)) return;
-  if (el.videoWidth !== 0) return;
+  if (el.videoWidth !== 0) {
+    void runSeekCopies();
+    return;
+  }
+  swapOrDiagnose(el, "reactive");
+}
+
+function swapOrDiagnose(el: HTMLMediaElement, trigger: ProxyTrigger): void {
   const src = currentSrcValue(el);
   if (swappedElements.has(el)) {
     emitUnavailableDiagnostic(el, "proxy_playback_failed", src);
@@ -429,7 +473,136 @@ export function handleMetadataForProxy(el: HTMLMediaElement): void {
     emitUnavailableDiagnostic(el, "browser_safe_codec", src);
     return;
   }
-  swapToProxy(el, entry, "reactive");
+  swapToProxy(el, entry, trigger);
+}
+
+/** What seek copies read from the transport. */
+export type SeekCopyHost = {
+  playhead: () => number;
+  playing: () => boolean;
+  clips: () => ReadonlyArray<{ el: HTMLMediaElement; start: number; end: number }>;
+};
+
+// The server stops background copies for 15 s per "playing"; this keeps that true while it plays.
+const PLAYBACK_BEAT_MS = 5000;
+let seekCopyHost: SeekCopyHost | null = null;
+let seekCopiesRunning = false;
+let previewPlaying = false;
+let playingBeat: ReturnType<typeof setInterval> | undefined;
+
+function isSeekCopyEntry(entry: MediaCodecMapEntry | null | undefined): boolean {
+  return !!entry?.seekHostile && !entry.browserHostile;
+}
+
+function pendingSeekCopy(el: HTMLMediaElement): MediaCodecMapEntry | null {
+  const map = window.__HF_MEDIA_CODEC_MAP__;
+  if (!map || !isVideoElement(el) || !el.isConnected || isRenderMode(el)) return null;
+  if (swappedElements.has(el) || proxyRequested.get(el) === el.getAttribute("src")) return null;
+  const key = deriveCodecMapKey(el);
+  const entry = key === null ? null : lookupCodecMapEntry(key, map);
+  return isSeekCopyEntry(entry) ? entry : null;
+}
+
+function distanceFromPlayhead(clip: { start: number; end: number }, time: number): number {
+  const end = Number.isFinite(clip.end) ? clip.end : clip.start;
+  return time < clip.start ? clip.start - time : Math.max(0, time - end);
+}
+
+/** min(source, shown) on each side, on the size ladder; the source size when the host never says. */
+function seekCopyBox(
+  el: HTMLMediaElement,
+  entry: MediaCodecMapEntry,
+  scale: number | null,
+): PreviewProxyBox | null {
+  const width = entry.width || (el as HTMLVideoElement).videoWidth;
+  const height = entry.height || (el as HTMLVideoElement).videoHeight;
+  if (!width || !height) return null;
+  const shown = (scale !== null && shownBox(el, scale)) || { width, height };
+  return quantizePreviewProxyBox(Math.min(width, shown.width), Math.min(height, shown.height));
+}
+
+async function askForSeekCopy(
+  el: HTMLMediaElement,
+  entry: MediaCodecMapEntry,
+  host: SeekCopyHost,
+): Promise<void> {
+  const originalAttr = el.getAttribute("src");
+  const originalSrc = currentSrcValue(el);
+  proxyRequested.set(el, originalAttr);
+  const box = seekCopyBox(el, entry, await shownScale());
+  if (!box) return;
+  if (host.playing()) {
+    proxyRequested.delete(el);
+    return;
+  }
+  const href = appendProxyParam(originalSrc, "h264", box);
+  const live = () => el.isConnected && el.getAttribute("src") === originalAttr;
+  if (!(await waitForServedProxy(href, live))) return;
+  const swap = () => {
+    if (!live()) return;
+    swappedElements.set(el, originalAttr);
+    loadProxy(el, href, originalSrc, "h264", box);
+  };
+  swapWhenSafe(el, swap);
+}
+
+function nearestPendingSeekCopy(
+  host: SeekCopyHost,
+): { el: HTMLMediaElement; entry: MediaCodecMapEntry; distance: number } | null {
+  const time = host.playhead();
+  let next: { el: HTMLMediaElement; entry: MediaCodecMapEntry; distance: number } | null = null;
+  for (const clip of host.clips()) {
+    const entry = pendingSeekCopy(clip.el);
+    const distance = distanceFromPlayhead(clip, time);
+    if (entry && (!next || distance < next.distance)) next = { el: clip.el, entry, distance };
+  }
+  return next;
+}
+
+/** One copy at a time, the clip nearest the playhead first (re-picked after each, so a jump
+ * re-orders the rest); none starts while playing. Jumps never wait on a copy. */
+async function runSeekCopies(): Promise<void> {
+  const host = seekCopyHost;
+  if (!host || seekCopiesRunning) return;
+  seekCopiesRunning = true;
+  try {
+    while (!host.playing()) {
+      const next = nearestPendingSeekCopy(host);
+      if (!next) return;
+      await askForSeekCopy(next.el, next.entry, host);
+    }
+  } catch (err) {
+    swallow("runtime.mediaProxy.seekCopy", err);
+  } finally {
+    seekCopiesRunning = false;
+  }
+}
+
+/** After the preview's first frame: copy every seek-hostile video, at min(source, shown size). */
+export function startSeekCopies(host: SeekCopyHost): void {
+  if (window.__HF_EXPORT_RENDER_SEEK_CONFIG) return;
+  if (!Object.values(window.__HF_MEDIA_CODEC_MAP__ ?? {}).some(isSeekCopyEntry)) return;
+  seekCopyHost = host;
+  void runSeekCopies();
+}
+
+function postPlayback(playing: boolean): void {
+  void fetch(new URL("playback", document.baseURI), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ playing }),
+  }).catch(() => {});
+}
+
+/** Every transport change passes here: the server hears play and pause, and copies resume on pause. */
+export function noteSeekCopyPlayback(playing: boolean): void {
+  if (!seekCopyHost || playing === previewPlaying) return;
+  previewPlaying = playing;
+  clearInterval(playingBeat);
+  playingBeat = undefined;
+  postPlayback(playing);
+  if (playing) playingBeat = setInterval(() => postPlayback(true), PLAYBACK_BEAT_MS);
+  else void runSeekCopies();
 }
 
 /**
@@ -443,22 +616,5 @@ export function handleMetadataForProxy(el: HTMLMediaElement): void {
 export function handleErrorForProxy(el: HTMLMediaElement): void {
   if (isRenderMode(el)) return;
   if (!isVideoElement(el)) return;
-  const src = currentSrcValue(el);
-  if (swappedElements.has(el)) {
-    emitUnavailableDiagnostic(el, "proxy_playback_failed", src);
-    return;
-  }
-  const map = window.__HF_MEDIA_CODEC_MAP__;
-  if (!map) return;
-  const key = deriveCodecMapKey(el);
-  if (key === null) {
-    emitUnavailableDiagnostic(el, "cross_origin", src);
-    return;
-  }
-  const entry = lookupCodecMapEntry(key, map);
-  if (entry && !entry.browserHostile) {
-    emitUnavailableDiagnostic(el, "browser_safe_codec", src);
-    return;
-  }
-  swapToProxy(el, entry, "tertiary");
+  swapOrDiagnose(el, "tertiary");
 }

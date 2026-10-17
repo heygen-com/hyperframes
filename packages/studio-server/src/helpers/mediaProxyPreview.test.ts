@@ -129,3 +129,37 @@ describe("injectMediaCodecMapIntoHtml placement", () => {
     expect(html.indexOf("data-hf-media-codec-map")).toBeGreaterThan(html.indexOf(vendor));
   });
 });
+
+describe("seek-only entries", () => {
+  const seekOnly: AssetCodecFacts = {
+    codecName: "h264",
+    browserHostile: false,
+    representativeMime: null,
+    hasAlpha: false,
+    seekHostile: true,
+    width: 1920,
+    height: 1080,
+  };
+
+  it("reach only Studio's preview, the one surface that makes seek copies", async () => {
+    const projectDir = tmpProject();
+    const map = { "/videos/sparse.mp4": seekOnly, "/videos/broll.mov": hostile("hevc", null) };
+    const { injectMediaCodecMapIntoHtml } = await loadHelper(map);
+    const { injectMediaCodecMap } = await import("./mediaProxyPreview.js");
+    const page = "<html><head></head></html>";
+
+    const elsewhere = await injectMediaCodecMapIntoHtml(page, projectDir, [{ html: page }]);
+    const studio = await injectMediaCodecMap(
+      page,
+      {} as never,
+      projectDir,
+      "index.html",
+      new Map(),
+    );
+
+    expect(elsewhere).toContain("/videos/broll.mov");
+    expect(elsewhere).not.toContain("/videos/sparse.mp4");
+    expect(studio).toContain('"/videos/sparse.mp4":{"codecName":"h264"');
+    expect(studio).toContain('"width":1920,"height":1080');
+  });
+});

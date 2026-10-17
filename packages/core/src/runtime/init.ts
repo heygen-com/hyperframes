@@ -68,6 +68,8 @@ import {
   handleErrorForProxy,
   handleMetadataForProxy,
   maybeProxyProactively,
+  noteSeekCopyPlayback,
+  startSeekCopies,
   setProxyDisplayScale,
 } from "./mediaProxy";
 import {
@@ -3420,6 +3422,7 @@ export function initSandboxRuntimeModular(): void {
     // wake call bolted onto each mutator (and forgotten on the next one).
     if (force) wakeTransport();
     if (force && timelinePostHeld && !clock.isPlaying()) postTimeline();
+    noteSeekCopyPlayback(state.isPlaying);
     const frame = Math.max(0, Math.round((state.currentTime || 0) * state.canonicalFps));
     const now = Date.now();
     const shouldPost =
@@ -3530,6 +3533,11 @@ export function initSandboxRuntimeModular(): void {
         if (state.tornDown) return;
         assetsSettled = true;
         postRuntimeMessage({ source: "hf-preview", type: "assets-ready", timedOut });
+        startSeekCopies({
+          playhead: () => state.currentTime,
+          playing: () => state.isPlaying,
+          clips: () => resolveMediaClipIndex().clips,
+        });
       });
     }
     scheduleRootStageLayoutDiagnostics();

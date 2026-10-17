@@ -41,6 +41,18 @@ function makeRunner(
   };
 }
 
+/** Answers the codec probe with `codecName` and the keyframe probe with packets keyed at `keyframes`. */
+function keyframedRunner(codecName: string, keyframes: number[], end: number): FfprobeRunner {
+  return (_command, args) => {
+    if (!args.includes("packet=pts_time,flags")) {
+      const streams = [{ codec_type: "video", codec_name: codecName, width: 1920, height: 1080 }];
+      return { status: 0, stdout: JSON.stringify({ streams }), stderr: "" };
+    }
+    const lines = [...keyframes.map((t) => `${t.toFixed(6)},K__`), `${end.toFixed(6)},___`];
+    return { status: 0, stdout: lines.join("\n"), stderr: "" };
+  };
+}
+
 function countingRunner(runner: FfprobeRunner): {
   runner: FfprobeRunner;
   calls: () => number;
@@ -184,6 +196,80 @@ describe("probeAssetCodec", () => {
     const facts = await probeAssetCodec(videoPath, makeRunner({ [videoPath]: "hevc" }), cache);
 
     expect(facts?.codecName).toBe("hevc");
+  });
+});
+
+describe("seek-hostile video", () => {
+  it("flags a browser-safe video whose keyframes are more than 2 s apart, and maps it", async () => {
+    const project = tmpProject();
+    writeFileSync(join(project, "sparse.mp4"), "fake video bytes");
+    writeFileSync(join(project, "dense.mp4"), "other fake video bytes");
+    const runner: FfprobeRunner = (command, args, options) =>
+      (args.at(-1)!.endsWith("sparse.mp4")
+        ? keyframedRunner("h264", [0, 8, 16], 19.97)
+        : keyframedRunner("h264", [0, 1, 2], 2.97))(command, args, options);
+
+    const map = await scanProjectMediaCodecMap(
+      project,
+      [{ html: videoHtml("sparse.mp4", "dense.mp4") }],
+      { runner },
+    );
+
+    expect(Object.keys(map)).toEqual(["/sparse.mp4"]);
+    expect(map["/sparse.mp4"]).toMatchObject({
+      browserHostile: false,
+      seekHostile: true,
+      width: 1920,
+      height: 1080,
+    });
+  });
+
+  it("counts a long last stretch, with one keyframe and nothing after it for 20 s", async () => {
+    const project = tmpProject();
+    const videoPath = join(project, "clip.mp4");
+    writeFileSync(videoPath, "fake video bytes");
+
+    const facts = await probeAssetCodec(videoPath, keyframedRunner("h264", [0], 19.97));
+
+    expect(facts?.seekHostile).toBe(true);
+  });
+
+  it("never flags an alpha source, whose VP8 copy cannot carry a keyframe every second", async () => {
+    const project = tmpProject();
+    const videoPath = join(project, "clip.webm");
+    writeFileSync(videoPath, "fake video bytes");
+    const sparse = keyframedRunner("vp8", [0], 19.97);
+    const runner: FfprobeRunner = (command, args, options) =>
+      args.includes("packet=pts_time,flags")
+        ? sparse(command, args, options)
+        : makeRunner({ [videoPath]: { codecName: "vp8", pixFmt: "yuva420p" } })(
+            command,
+            args,
+            options,
+          );
+
+    const facts = await probeAssetCodec(videoPath, runner);
+
+    expect(facts).toMatchObject({ hasAlpha: true });
+    expect(facts?.seekHostile).toBeUndefined();
+  });
+
+  it("allows a seek-hostile copy only at a preview size, never at source size", () => {
+    const facts: AssetCodecFacts = {
+      codecName: "h264",
+      browserHostile: false,
+      representativeMime: null,
+      hasAlpha: false,
+      seekHostile: true,
+    };
+
+    expect(decideMediaProxyEligibility(facts, { width: 1024, height: 724 })).toEqual({
+      eligible: true,
+    });
+    expect(decideMediaProxyEligibility(facts)).toEqual({
+      eligible: false,
+      reason: "browser_safe_codec",
+    });
   });
 });
 
