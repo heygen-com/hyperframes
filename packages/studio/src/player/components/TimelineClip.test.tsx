@@ -30,12 +30,14 @@ function renderClip({
   isSelected = false,
   hasCustomContent = true,
   theme = defaultTimelineTheme,
+  isComposition = false,
 }: {
   element: TimelineElement;
   pps?: number;
   isSelected?: boolean;
   hasCustomContent?: boolean;
   theme?: TimelineTheme;
+  isComposition?: boolean;
 }) {
   const host = document.createElement("div");
   document.body.append(host);
@@ -53,7 +55,7 @@ function renderClip({
         hasCustomContent={hasCustomContent}
         capabilities={capabilities}
         theme={theme}
-        isComposition={false}
+        isComposition={isComposition}
         onHoverStart={vi.fn()}
         onHoverEnd={vi.fn()}
         onClick={onClick}
@@ -120,6 +122,22 @@ describe("TimelineClip", () => {
     expect(colorOf({ id: "a", tag: "audio", link: "lk-3", ...base })).toBe(video);
     expect(colorOf({ id: "b", tag: "audio", link: "lk-4", ...base })).not.toBe(video);
     expect(colorOf({ id: "c", tag: "audio", ...base })).toBeNull();
+  });
+
+  it("marks only composition clips, whose picture takes the name band's place", () => {
+    const element = { id: "scene", label: "Scene", tag: "div", start: 0, duration: 2, track: 0 };
+    const composition = renderClip({ element, isComposition: true });
+    const plain = renderClip({ element });
+
+    expect(
+      composition.host.querySelector(".timeline-clip")?.classList.contains("is-composition"),
+    ).toBe(true);
+    expect(plain.host.querySelector(".timeline-clip")?.classList.contains("is-composition")).toBe(
+      false,
+    );
+
+    act(() => composition.root.unmount());
+    act(() => plain.root.unmount());
   });
 
   it("renders the clip label above custom content without showing default timecode", () => {

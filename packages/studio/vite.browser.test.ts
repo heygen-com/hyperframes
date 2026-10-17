@@ -19,7 +19,12 @@ const browserMocks = vi.hoisted(() => {
 
 vi.mock("puppeteer-core", () => ({ default: { launch: browserMocks.launch } }));
 
-import { findSystemChrome, generateThumbnail, type GenerateThumbnailOptions } from "./vite.browser";
+import {
+  findSystemChrome,
+  generateThumbnail,
+  generateThumbnailFrames,
+  type GenerateThumbnailOptions,
+} from "./vite.browser";
 
 const originalBrowserPath = process.env["HYPERFRAMES_BROWSER_PATH"];
 
@@ -84,6 +89,22 @@ describe("generateThumbnail", () => {
     browserMocks.newPage.mockClear();
     await Promise.all([generateThumbnail(options()), generateThumbnail(options())]);
     expect(browserMocks.newPage).toHaveBeenCalledTimes(2);
+  });
+
+  it("renders every time of a strip from one page load", async () => {
+    const shots = ["a", "b", "c"].map((shot) => Buffer.from(shot));
+    for (const shot of shots) browserMocks.page.screenshot.mockResolvedValueOnce(shot);
+    const { seekTime: _seekTime, ...strip } = options();
+
+    await expect(generateThumbnailFrames({ ...strip, seekTimes: [1, 2, 3] })).resolves.toEqual(
+      shots,
+    );
+    expect(browserMocks.newPage).toHaveBeenCalledTimes(1);
+    expect(browserMocks.page.goto).toHaveBeenCalledTimes(1);
+    const seeks = browserMocks.page.evaluate.mock.calls
+      .map((call: unknown[]) => call[1])
+      .filter((time) => typeof time === "number");
+    expect(seeks).toEqual([1, 2, 3]);
   });
 
   it("contains a canceled screenshot without crashing the dev server", async () => {

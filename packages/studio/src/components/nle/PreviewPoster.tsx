@@ -99,7 +99,7 @@ export function usePreviewPoster(
 
 /** Renders frame 0 under the thumbnail cap; the lease ends once the render settles. */
 export function renderPosterForNextOpen(projectId: string): void {
-  const url = previewPosterUrl(projectId, false);
+  const url = `${previewPosterUrl(projectId, false)}&background=1`;
   const request: ThumbnailRequest = {
     key: createThumbnailKey({ kind: "poster-render", url }),
     projectId,

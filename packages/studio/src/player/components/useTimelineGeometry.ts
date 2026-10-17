@@ -7,6 +7,7 @@ import {
   getTimelineFitPps,
 } from "./timelineLayout";
 import type { DraggedClipState, ResizingClipState } from "./useTimelineClipDrag";
+import { thumbnailScheduler } from "../lib/thumbnailScheduler";
 
 interface UseTimelineGeometryInput {
   viewportWidth: number;
@@ -46,6 +47,12 @@ export function useTimelineGeometry({
   const fitPps = getTimelineFitPps(viewportWidth, effectiveDuration, contentOrigin);
   const pps = getTimelinePixelsPerSecond(fitPps, zoomMode, manualZoomPercent);
   ppsRef.current = pps;
+  const heldPps = useRef(pps);
+  useLayoutEffect(() => {
+    if (heldPps.current === pps) return;
+    heldPps.current = pps;
+    thumbnailScheduler.noteMotion();
+  }, [pps]);
   // Drag-to-extend: while a clip is dragged, keep the rendered extent a margin
   // past the ghost's end. Holding the pointer in the right edge zone then keeps
   // auto-scroll stepping (scrollWidth grows with the ghost), so the timeline
