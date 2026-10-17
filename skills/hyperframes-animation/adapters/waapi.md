@@ -69,6 +69,7 @@ document.querySelectorAll(".token").forEach((token, index) => {
 - Lightweight DOM motion where CSS keyframes are too rigid and GSAP is unnecessary.
 - Generated animations from structured data.
 - Simple timelines that can be represented as keyframes, delays, and offsets.
+- A physical spring settle as the `easing` string: bake the closed-form spring into `linear()` with `bakeSpring()` (`gsap-easing-and-stagger.md` → Spring Eases → bakeSpring); pass the helper's duration.
 
 ## Composition Duration
 

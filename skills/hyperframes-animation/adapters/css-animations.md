@@ -100,6 +100,7 @@ Use CSS custom properties to avoid duplicating keyframes:
 - Decorative loops with a known repeat count.
 - Mask, glow, shimmer, grain, and subtle parallax layers.
 - Simple one-element entrances where a full JS timeline would be excessive.
+- A physical spring settle without GSAP: bake the closed-form spring into a `linear()` timing function with `bakeSpring()` (`gsap-easing-and-stagger.md` → Spring Eases → bakeSpring); the duration is still the helper's.
 
 ## Avoid
 
