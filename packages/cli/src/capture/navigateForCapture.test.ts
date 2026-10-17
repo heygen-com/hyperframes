@@ -144,7 +144,14 @@ function fakeChromePage() {
     page,
     session,
     navigate: () =>
-      session.emit("Network.requestWillBeSent", { requestId: "doc", type: "Document" }),
+      session.emit("Network.requestWillBeSent", {
+        requestId: "doc",
+        type: "Document",
+        request: { url: "http://127.0.0.1:1/" },
+      }),
+    request: (requestId: string, type: string, url: string) =>
+      session.emit("Network.requestWillBeSent", { requestId, type, request: { url } }),
+    finish: (requestId: string) => session.emit("Network.loadingFinished", { requestId }),
     send: () => session.emit("Network.requestWillBeSentExtraInfo", { requestId: "doc" }),
     load: (response: unknown) => load(response),
   };
@@ -193,6 +200,56 @@ describe("gotoWhenSent", () => {
     await vi.advanceTimersByTimeAsync(0);
     chrome.send();
     chrome.navigate();
+    await vi.advanceTimersByTimeAsync(10_000);
+    await failed;
+  });
+
+  it.each([
+    [
+      "names the other server's script it is still waiting on",
+      "https://cdn.example/gsap.min.js",
+      "https://cdn.example/gsap.min.js",
+      true,
+    ],
+    [
+      "names a stalled script of its own without advising to move it",
+      "http://127.0.0.1:1/app.js",
+      "http://127.0.0.1:1/app.js",
+      false,
+    ],
+    [
+      "keeps a signed URL's secrets out of the message for another server's script",
+      "https://user:SECRET@cdn.example/gsap.min.js?sig=SECRET#SECRET",
+      "https://cdn.example/gsap.min.js?…",
+      true,
+    ],
+    [
+      "keeps a signed URL's secrets out of the message for a script of its own",
+      "http://127.0.0.1:1/app.js?token=SECRET",
+      "http://127.0.0.1:1/app.js?…",
+      false,
+    ],
+  ])("%s", async (_name, script, shown, advises) => {
+    vi.useFakeTimers();
+    const chrome = fakeChromePage();
+    const opened = gotoWhenSent(chrome.page, "http://127.0.0.1:1/", 10_000);
+    const failed = expect(opened).rejects.toSatisfy((error: unknown) => {
+      const message = String(error);
+      return (
+        isNavigationTimeoutError(error) &&
+        message.includes(`while the page was still loading ${shown}.`) &&
+        !message.includes("SECRET") &&
+        !message.includes("styles.css") &&
+        message.includes("from another server") === advises
+      );
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    chrome.navigate();
+    chrome.send();
+    chrome.request("css", "Stylesheet", "http://127.0.0.1:1/styles.css");
+    chrome.request("js", "Script", script);
+    chrome.finish("doc");
+    chrome.finish("css");
     await vi.advanceTimersByTimeAsync(10_000);
     await failed;
   });

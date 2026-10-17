@@ -64,6 +64,8 @@ export async function navigateForCapture<TResponse>(
 }
 
 const PUPPETEER_LAUNCH_DEFAULT_TIMEOUT_MS = 30_000;
+const PAGE_LOAD_BLOCKING_TYPES = new Set(["Document", "Script", "Stylesheet"]);
+const NAMED_BLOCKING_REQUESTS = 3;
 const SENT_OR_ANSWERED_WITHOUT_NETWORK = [
   "Network.requestWillBeSentExtraInfo",
   "Network.responseReceived",
@@ -79,6 +81,7 @@ export async function gotoWhenSent(
   try {
     await cdp.send("Network.enable");
     const sent = documentRequestSent(cdp);
+    const unfinished = unfinishedPageLoadRequests(cdp);
     const navigation = page.goto(url, { waitUntil: "domcontentloaded", timeout: 0 });
     const navigationAwaitedBelow = navigation.catch(() => undefined);
     await withRemainingBudget(
@@ -94,7 +97,7 @@ export async function gotoWhenSent(
       navigation,
       timeoutMs,
       "loading the page",
-      () => new TimeoutError(`Navigation timeout of ${timeoutMs} ms exceeded`),
+      () => new TimeoutError(pageLoadTimeoutMessage(timeoutMs, url, unfinished())),
     );
   } finally {
     await cdp.detach().catch(() => undefined);
@@ -119,4 +122,47 @@ export function documentRequestSent(cdp: CDPSession): Promise<void> {
       });
     }
   });
+}
+
+export function unfinishedPageLoadRequests(cdp: CDPSession): () => string[] {
+  const unfinished = new Map<string, string>();
+  cdp.on("Network.requestWillBeSent", ({ requestId, request, type }) => {
+    if (type && PAGE_LOAD_BLOCKING_TYPES.has(type)) unfinished.set(requestId, request.url);
+  });
+  for (const event of ["Network.loadingFinished", "Network.loadingFailed"] as const) {
+    cdp.on(event, ({ requestId }) => unfinished.delete(requestId));
+  }
+  return () => [...unfinished.values()];
+}
+
+function urlWithoutSecrets(raw: string): string {
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return `${url.protocol}…`;
+    return `${url.origin}${url.pathname}${url.search ? "?…" : ""}`;
+  } catch {
+    return "(unreadable URL)";
+  }
+}
+
+function originOf(raw: string): string | null {
+  try {
+    return new URL(raw).origin;
+  } catch {
+    return null;
+  }
+}
+
+function pageLoadTimeoutMessage(timeoutMs: number, pageUrl: string, waitingOn: string[]): string {
+  const exceeded = `Navigation timeout of ${timeoutMs} ms exceeded`;
+  if (waitingOn.length === 0) return exceeded;
+  const named = waitingOn.slice(0, NAMED_BLOCKING_REQUESTS).map(urlWithoutSecrets).join(", ");
+  const unnamed = waitingOn.length - NAMED_BLOCKING_REQUESTS;
+  const more = unnamed > 0 ? ` and ${unnamed} more` : "";
+  const pageOrigin = new URL(pageUrl).origin;
+  const fromAnotherServer = waitingOn.some((request) => originOf(request) !== pageOrigin);
+  const advice = fromAnotherServer
+    ? " A <script> or stylesheet from another server holds the page until it arrives; serve it from the project instead."
+    : "";
+  return `${exceeded} while the page was still loading ${named}${more}.${advice}`;
 }
