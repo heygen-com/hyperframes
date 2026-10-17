@@ -265,6 +265,7 @@ describe("seek-hostile video", () => {
 
     expect(decideMediaProxyEligibility(facts, { width: 1024, height: 724 })).toEqual({
       eligible: true,
+      mayStartCopy: true,
     });
     expect(decideMediaProxyEligibility(facts)).toEqual({
       eligible: false,
@@ -347,7 +348,7 @@ describe("decideMediaProxyEligibility", () => {
         representativeMime: null,
         hasAlpha: false,
       }),
-    ).toEqual({ eligible: true });
+    ).toEqual({ eligible: true, mayStartCopy: true });
     expect(
       decideMediaProxyEligibility({
         codecName: "prores",
@@ -355,7 +356,7 @@ describe("decideMediaProxyEligibility", () => {
         representativeMime: null,
         hasAlpha: true,
       }),
-    ).toEqual({ eligible: true });
+    ).toEqual({ eligible: true, mayStartCopy: true });
   });
 
   it("rejects browser-safe sources even when they carry alpha", () => {
@@ -381,6 +382,25 @@ describe("decideMediaProxyEligibility", () => {
     });
   });
 
+  it("lets a capture use a finished copy but never start one", () => {
+    const hevc = {
+      codecName: "hevc",
+      browserHostile: true,
+      representativeMime: null,
+      hasAlpha: false,
+    };
+    const farKeyframes = { ...hevc, codecName: "h264", browserHostile: false, seekHostile: true };
+    const box = { width: 256, height: 256 };
+    expect(decideMediaProxyEligibility(hevc, box, true)).toEqual({
+      eligible: true,
+      mayStartCopy: false,
+    });
+    expect(decideMediaProxyEligibility(farKeyframes, box, true)).toEqual({
+      eligible: true,
+      mayStartCopy: false,
+    });
+  });
+
   it("proxies an alpha VP9 source to the Chromium-compatible VP8 variant", () => {
     expect(
       decideMediaProxyEligibility({
@@ -389,7 +409,7 @@ describe("decideMediaProxyEligibility", () => {
         representativeMime: 'video/webm; codecs="vp09.00.10.08"',
         hasAlpha: true,
       }),
-    ).toEqual({ eligible: true });
+    ).toEqual({ eligible: true, mayStartCopy: true });
   });
 });
 

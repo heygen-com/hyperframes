@@ -187,7 +187,7 @@ export function resolveProxyVariantRequest(
 export type MediaProxyIneligibilityReason = "browser_safe_codec" | "unknown_codec";
 
 export type MediaProxyEligibility =
-  | { eligible: true }
+  | { eligible: true; mayStartCopy: boolean }
   | { eligible: false; reason: MediaProxyIneligibilityReason };
 
 /** Single policy gate shared by proactive scans and on-demand proxy routes. A seek-hostile
@@ -195,12 +195,13 @@ export type MediaProxyEligibility =
 export function decideMediaProxyEligibility(
   facts: AssetCodecFacts | null,
   box?: PreviewProxyBox,
+  capture = false,
 ): MediaProxyEligibility {
   if (!facts) return { eligible: false, reason: "unknown_codec" };
   if (!facts.browserHostile && !(facts.seekHostile && box)) {
     return { eligible: false, reason: "browser_safe_codec" };
   }
-  return { eligible: true };
+  return { eligible: true, mayStartCopy: !capture };
 }
 
 function codecFactsFor(codecName: string, hasAlpha: boolean): AssetCodecFacts {

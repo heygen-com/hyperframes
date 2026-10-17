@@ -1,5 +1,4 @@
 import { resolve } from "node:path";
-import { formatPreviewProxyBox, type PreviewProxyBox } from "@hyperframes/core";
 import { insertBeforeCloseTag } from "@hyperframes/core/compiler/html-document";
 import type { StudioApiAdapter } from "../types.js";
 import {
@@ -63,9 +62,9 @@ export function resolvePreviewMediaCodecProbeCache(
  * or a different proxy variant invalidates cached 304s without needing to
  * touch the proxy file itself.
  */
-export function proxyEtagSalt(raw: string | undefined, box?: PreviewProxyBox): string {
+export function proxyEtagSalt(raw: string | undefined, servedCopy?: string): string {
   if (raw === undefined) return "";
-  return `:proxy:${raw}:${PROXY_PARAMS_VERSION}${box ? `:${formatPreviewProxyBox(box)}` : ""}`;
+  return `:proxy:${raw}:${PROXY_PARAMS_VERSION}${servedCopy ? `:${servedCopy}` : ""}`;
 }
 
 /**

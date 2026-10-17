@@ -533,6 +533,24 @@ describe("swapToProxy", () => {
     expect(url.searchParams.get("hf-proxy")).toBe("h264");
   });
 
+  it("marks a capture page's copy request, and only a capture page's", async () => {
+    const page = createVideo("/page.mp4");
+    swapToProxy(page, HEVC_ENTRY, "proactive");
+    await settle();
+    const path = window.location.pathname;
+    window.history.replaceState(null, "", `${path}?hf-capture=1`);
+    try {
+      const capture = createVideo("/capture.mp4");
+      swapToProxy(capture, HEVC_ENTRY, "proactive");
+      await settle();
+      expect(new URL(capture.src).searchParams.get("hf-capture")).toBe("1");
+      expect(new URL(page.src).searchParams.has("hf-capture")).toBe(false);
+      expect(isProxied(page)).toBe(true);
+    } finally {
+      window.history.replaceState(null, "", path);
+    }
+  });
+
   it("emits the diagnostic and a single console.info line exactly once per element", async () => {
     const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
     const el = createVideo("/video.mp4");

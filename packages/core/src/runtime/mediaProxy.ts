@@ -9,6 +9,7 @@ import { waitForServedProxy } from "./proxyWait";
 import { registerSeekCompletion } from "./adapters/seek-dispatch";
 import {
   formatPreviewProxyBox,
+  PREVIEW_CAPTURE_PARAM,
   PREVIEW_PROXY_BOX_PARAM,
   quantizePreviewProxyBox,
   type PreviewProxyBox,
@@ -290,6 +291,10 @@ function appendProxyParam(src: string, variant: string, box: PreviewProxyBox | n
   const url = new URL(src, document.baseURI);
   url.searchParams.set(PROXY_QUERY_PARAM, variant);
   if (box) url.searchParams.set(PREVIEW_PROXY_BOX_PARAM, formatPreviewProxyBox(box));
+  // The server lends a capture a finished copy and never starts one for it.
+  if (new URL(document.URL).searchParams.has(PREVIEW_CAPTURE_PARAM)) {
+    url.searchParams.set(PREVIEW_CAPTURE_PARAM, "1");
+  }
   return url.href;
 }
 

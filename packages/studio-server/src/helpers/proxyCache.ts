@@ -8,8 +8,8 @@ const DEFAULT_MIN_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
 const PROXY_EXTENSIONS: ReadonlySet<string> = new Set(
   Object.values(PROXY_VARIANT_CONFIG).map(({ extension }) => extension),
 );
-const TRANSCODER_PROXY_NAME = /^[0-9a-f]{64}\.\w+$/;
-const TRANSCODER_TEMP_NAME = /^\.tmp-[0-9a-f-]{36}-[0-9a-f]{64}\.\w+$/;
+const TRANSCODER_PROXY_NAME = /^[0-9a-f]{64}(?:-\d+x\d+)?\.\w+$/;
+const TRANSCODER_TEMP_NAME = /^\.tmp-[0-9a-f-]{36}-[0-9a-f]{64}(?:-\d+x\d+)?\.\w+$/;
 
 export interface ProxyCacheCleanupOptions {
   maxBytes?: number;

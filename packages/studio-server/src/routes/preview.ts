@@ -2,7 +2,7 @@ import type { Hono } from "hono";
 import { parseHTML } from "linkedom";
 import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import { Readable } from "node:stream";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import {
   AFTER_FONTS_SCRIPT_TYPE,
@@ -17,7 +17,12 @@ import {
   STUDIO_PREVIEW_MARK_META,
   STUDIO_PREVIEW_ERRORS,
 } from "@hyperframes/core/studio-preview-mark";
-import { PREVIEW_PROXY_BOX_PARAM, parsePreviewProxyBox } from "@hyperframes/core";
+import {
+  PREVIEW_CAPTURE_PARAM,
+  PREVIEW_PROXY_BOX_PARAM,
+  parsePreviewProxyBox,
+  type PreviewProxyBox,
+} from "@hyperframes/core";
 import { gsapCdnDist, motionPathPluginUrl } from "@hyperframes/core/gsap-cdn";
 import { findStartTags, injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document";
 import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
@@ -48,8 +53,10 @@ import {
 import { isVariablesPayload, VARIABLES_PAYLOAD_ERROR } from "../helpers/variablesPayload.js";
 import { injectPreviewVariables } from "../helpers/previewVariables.js";
 import {
+  finishedProxyPath,
   notePreviewPlaying,
   resolveProxy,
+  servedProxyName,
   waitForProxy,
   ProxyCapacityError,
   ProxyTranscodeError,
@@ -322,7 +329,7 @@ function previewVariablesFromRequest(rawVariables: string | undefined):
 }
 
 /** Captures screenshot right after a seek, so they get every image eager and no preview mark. */
-export const PREVIEW_CAPTURE_PARAM = "hf-capture";
+export { PREVIEW_CAPTURE_PARAM };
 
 // Studio's console capture attaches at the iframe's load; this keeps what was raised before it.
 const EARLY_ERRORS_SCRIPT = `<script>(function(){var seen=window.${STUDIO_PREVIEW_ERRORS}=[];
@@ -411,6 +418,20 @@ const withPreviewBase = (html: string, projectId: string) =>
   hasBaseElement(html)
     ? html
     : injectTagsAtHeadStart(html, `<base href="${previewBaseHref(projectId)}">`);
+
+/** A source the transcoder refuses fails again in `resolveProxy`, which answers for it. */
+function servedCopyName(
+  projectDir: string,
+  file: string,
+  variant: ProxyVariant,
+  box: PreviewProxyBox | undefined,
+): string | undefined {
+  try {
+    return servedProxyName(projectDir, file, variant, box);
+  } catch {
+    return undefined;
+  }
+}
 
 export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): void {
   const previewCacheHeaders = (etag: string) => ({
@@ -659,6 +680,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     }
     let proxyVariant: ProxyVariant | undefined;
     let seekCopy = false;
+    let lentCopy: string | null = null;
     if (proxyParam !== undefined) {
       if (
         !isProxyVariantRequest(proxyParam) ||
@@ -668,7 +690,8 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
         return c.text("not found", 404);
       }
       const facts = await probeAssetCodec(file, undefined, mediaCodecProbeCache);
-      const eligibility = decideMediaProxyEligibility(facts, proxyBox);
+      const capture = c.req.query(PREVIEW_CAPTURE_PARAM) !== undefined;
+      const eligibility = decideMediaProxyEligibility(facts, proxyBox, capture);
       if (!eligibility.eligible) {
         return c.text(`media proxy unavailable: ${eligibility.reason}`, 422);
       }
@@ -678,10 +701,19 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
       if (!proxyVariant) {
         return c.text("media proxy variant does not match asset", 422);
       }
+      // Lent the largest finished copy, as none may start; without one, the original under its own tag.
+      if (!eligibility.mayStartCopy) {
+        lentCopy = finishedProxyPath(project.dir, file, proxyVariant);
+        if (!lentCopy) proxyVariant = undefined;
+      }
     }
 
     const tag = settledFileTag(stat);
-    const etag = tag && `"${tag}${proxyEtagSalt(proxyVariant, proxyBox)}"`;
+    // Salted by the file served, since a smaller box is served its source's larger copy.
+    const servedCopy =
+      proxyVariant &&
+      (lentCopy ? basename(lentCopy) : servedCopyName(project.dir, file, proxyVariant, proxyBox));
+    const etag = tag && `"${tag}${proxyEtagSalt(proxyVariant, servedCopy)}"`;
     const cacheHeaders: Record<string, string> = isText
       ? { "Cache-Control": "no-store" }
       : { "Cache-Control": "private, no-cache", ...(etag && { ETag: etag }) };
@@ -702,10 +734,14 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
       try {
         // A cached copy settles before any timer; a transcode never holds one of
         // the browser's few connections to this host. 202 until the copy lands.
-        const copy = seekCopy
-          ? resolveProxy(project.dir, file, proxyVariant, proxyBox, { background: true })
-          : resolveProxy(project.dir, file, proxyVariant, proxyBox);
-        servedPath = await waitForProxy(copy, 0);
+        servedPath =
+          lentCopy ??
+          (await waitForProxy(
+            seekCopy
+              ? resolveProxy(project.dir, file, proxyVariant, proxyBox, { background: true })
+              : resolveProxy(project.dir, file, proxyVariant, proxyBox),
+            0,
+          ));
       } catch (err) {
         if (err instanceof ProxyWaitTimeoutError) {
           return c.text("media proxy is being made", 202, {

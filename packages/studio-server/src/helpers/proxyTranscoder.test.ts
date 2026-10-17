@@ -3,6 +3,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { EventEmitter } from "node:events";
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   realpathSync,
@@ -353,6 +354,151 @@ describe("resolveProxy", () => {
     });
   });
 
+  describe("one copy per source, at the largest size it is shown", () => {
+    const small = { width: 724, height: 362 };
+    const large = { width: 1448, height: 724 };
+
+    async function source() {
+      const { spawn, calls } = createSpawnSpy();
+      const transcoder = await loadModule(
+        (...args) => Object.assign(spawn(...args), { pid: 4242, kill: vi.fn(() => true) }),
+        FFMPEG_PATH,
+      );
+      const projectDir = tmpProject();
+      const sourcePath = join(projectDir, "clip.mp4");
+      writeFileSync(sourcePath, "source-bytes");
+      const copyAt = (box: { width: number; height: number }) =>
+        transcoder.resolveProxy(projectDir, sourcePath, "h264", box);
+      const pathAt = (box: { width: number; height: number }) =>
+        transcoder.getProxyCachePath(projectDir, sourcePath, "h264", box);
+      return {
+        transcoder,
+        calls: calls as Array<SpawnCall & { proc: { kill: ReturnType<typeof vi.fn> } }>,
+        copyAt,
+        pathAt,
+      };
+    }
+
+    afterEach(() => vi.useRealTimers());
+
+    it("serves a smaller box from the larger copy still being made", async () => {
+      const { calls, copyAt, pathAt } = await source();
+      const larger = copyAt(large);
+      await flush();
+      const smaller = copyAt(small);
+      await flush();
+
+      expect(calls).toHaveLength(1);
+      succeed(calls[0]!);
+      await expect(smaller).resolves.toBe(pathAt(large));
+      await expect(larger).resolves.toBe(pathAt(large));
+    });
+
+    it("stops a smaller copy being made when a larger box is asked, and makes one at the larger box", async () => {
+      const { calls, copyAt, pathAt } = await source();
+      const smaller = copyAt(small);
+      await flush();
+      const temp = calls[0]!.args.at(-1)!;
+      writeFileSync(temp, "partial");
+
+      const larger = copyAt(large);
+      expect(calls[0]!.proc.kill).toHaveBeenCalledWith("SIGKILL");
+      calls[0]!.proc.emit("close", null, "SIGKILL");
+      await expect(smaller).rejects.toThrow();
+      await flush();
+      expect(existsSync(temp)).toBe(false);
+      expect(calls).toHaveLength(2);
+
+      const again = copyAt(small);
+      await flush();
+      expect(calls).toHaveLength(2);
+      succeed(calls[1]!);
+      await expect(larger).resolves.toBe(pathAt(large));
+      await expect(again).resolves.toBe(pathAt(large));
+    });
+
+    it("stops a smaller copy replaced before its encoder started, as soon as it starts", async () => {
+      const { calls, copyAt } = await source();
+      void copyAt(small).catch(() => {});
+      void copyAt(large).catch(() => {});
+      await flush();
+
+      const smallCall = calls.find((call) => call.args.at(-1)!.includes("724x362"))!;
+      expect(smallCall.proc.kill).toHaveBeenCalledWith("SIGKILL");
+    });
+
+    it("makes the smaller copy afresh if the larger one fails, not failing for the stopped one", async () => {
+      const { calls, copyAt } = await source();
+      void copyAt(small).catch(() => {});
+      await flush();
+      const larger = copyAt(large);
+      calls[0]!.proc.emit("close", null, "SIGKILL");
+      await flush();
+      fail(calls[1]!);
+      await expect(larger).rejects.toThrow();
+
+      void copyAt(small).catch(() => {});
+      await flush();
+      expect(calls).toHaveLength(3);
+    });
+
+    it("serves a smaller box from a finished larger copy without a new encode", async () => {
+      const { calls, copyAt, pathAt } = await source();
+      const larger = copyAt(large);
+      await flush();
+      succeed(calls[0]!);
+      await larger;
+
+      await expect(copyAt(small)).resolves.toBe(pathAt(large));
+      expect(calls).toHaveLength(1);
+    });
+
+    it("drops the smaller copy once a larger one is made and nothing reads the smaller", async () => {
+      vi.useFakeTimers();
+      const { calls, copyAt, pathAt } = await source();
+      const first = copyAt(small);
+      await flush();
+      succeed(calls[0]!);
+      await first;
+      await copyAt(small);
+
+      const larger = copyAt(large);
+      await flush();
+      succeed(calls[1]!);
+      await larger;
+      expect(existsSync(pathAt(small))).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(existsSync(pathAt(small))).toBe(false);
+      expect(existsSync(pathAt(large))).toBe(true);
+    });
+  });
+
+  it("kills every running encoder and removes its temp file when the server exits", async () => {
+    const before = new Set(process.listeners("exit"));
+    const { spawn, calls } = createSpawnSpy();
+    const { resolveProxy } = await loadModule(
+      (...args) => Object.assign(spawn(...args), { pid: 4242, kill: vi.fn(() => true) }),
+      FFMPEG_PATH,
+    );
+    const projectDir = tmpProject();
+    const sourcePath = join(projectDir, "clip.mov");
+    writeFileSync(sourcePath, "source-bytes");
+    void resolveProxy(projectDir, sourcePath).catch(() => {});
+    await flush();
+    const temp = calls[0]!.args.at(-1)!;
+    writeFileSync(temp, "partial");
+
+    const onExit = process.listeners("exit").find((listener) => !before.has(listener))!;
+    process.removeListener("exit", onExit);
+    onExit.call(process, 0);
+
+    expect(
+      (calls[0]!.proc as unknown as { kill: ReturnType<typeof vi.fn> }).kill,
+    ).toHaveBeenCalledWith("SIGKILL");
+    expect(existsSync(temp)).toBe(false);
+  });
+
   it("names the boxed preview copy resolveProxy writes when given the same box", async () => {
     const { spawn, calls } = createSpawnSpy();
     const { resolveProxy, getProxyCachePath } = await loadModule(spawn, FFMPEG_PATH);
@@ -368,6 +514,26 @@ describe("resolveProxy", () => {
 
     expect(await resultPromise).toBe(boxedPath);
     expect(boxedPath).not.toBe(getProxyCachePath(projectDir, sourcePath, "h264"));
+  });
+
+  it("lends a capture this source's largest finished copy, even one smaller than it shows", async () => {
+    const { finishedProxyPath, getProxyCachePath } = await import("./proxyTranscoder.js");
+    const projectDir = tmpProject();
+    const sourcePath = join(projectDir, "clip.mov");
+    writeFileSync(sourcePath, "source-bytes");
+    const copy = (width: number, height: number) => {
+      const path = getProxyCachePath(projectDir, sourcePath, "h264", { width, height });
+      writeFileSync(path, "copy-bytes");
+      return path;
+    };
+
+    expect(finishedProxyPath(projectDir, sourcePath, "h264")).toBeNull();
+    mkdirSync(join(projectDir, ".transcode-cache"));
+    const pageCopy = copy(256, 512);
+    expect(finishedProxyPath(projectDir, sourcePath, "h264")).toBe(pageCopy);
+    copy(256, 256);
+    const larger = copy(724, 1024);
+    expect(finishedProxyPath(projectDir, sourcePath, "h264")).toBe(larger);
   });
 
   it("uses Chromium-compatible VP8 alpha args and a distinct WebM cache path", async () => {
