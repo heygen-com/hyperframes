@@ -52,13 +52,14 @@ const GET_RESPONSES = new Map([
   // interesting assertion is that the shell mounts clean, not that a blocking
   // notice renders. The notice has its own tests.
   ["/api/environment/ffmpeg", json({ ok: true })],
-  // The header's Edit with Framey asks this on load; shown, so the shell mounts with it.
+  // The header's Edit with Framey asks this on load; shown, so the shell mounts with it and its card.
   [
     "/api/open-in-desktop",
     json({
       available: true,
       handoff: false,
       downloadUrl: "https://hyperframes.dev/studio/download",
+      installed: false,
     }),
   ],
 ]);

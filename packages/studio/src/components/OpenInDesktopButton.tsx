@@ -1,41 +1,68 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useStudioShellContext } from "../contexts/StudioContext";
 import { studioApiFetch } from "../utils/studioApiFetch";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import { FrameyGlyph } from "./FrameyGlyph";
 import { Button, buttonBase, buttonSizes, buttonVariants, cn, Popover } from "./ui";
 
-// "Edit with Framey": the preview server (`/api/open-in-desktop`) says whether to show it and whether the app can
-// take the project yet (its gate is the CLI's HANDOFF_READY); until then a press introduces Framey with the download.
+// "Edit with Framey": the preview server (`/api/open-in-desktop`) says whether to show it, whether the app can take the
+// project yet (its gate is the CLI's HANDOFF_READY) and whether it is installed. Every Studio open shows a card under
+// the button with one action that ends in the app: open the project there, or download the app and open the project
+// as soon as it is installed.
 const ROUTE = "/api/open-in-desktop";
 /** How far the pupils travel towards the pointer, in the glyph's own units. */
 const GAZE = 2.2;
 /** Long enough for the flight to finish before the label comes back. */
 const OPENING_MS = 1600;
+/** While someone installs the app, how often Studio asks whether it is in, and for how long. */
+const INSTALL_POLL_MS = 3000;
+const INSTALL_WAIT_MS = 15 * 60_000;
 
 type OpenResult = { opened: true } | { opened: false; reason: string; downloadUrl: string };
 
-type DesktopRoute = { handoff: boolean; downloadUrl: string | null };
+type DesktopRoute = { handoff: boolean; downloadUrl: string | null; installed: boolean };
+
+/** What the card can do here: open the project, download then open it, or only download (the app takes no project). */
+type CardState = "open" | "install" | "download";
+
+type Trigger = "auto" | "header" | "card" | "after_install";
 
 /** Null hides the button: no route (the app's own Studio), or nothing here to open or download. */
-function useDesktopRoute(): DesktopRoute | null {
-  const [route, setRoute] = useState<DesktopRoute | null>(null);
-  useEffect(() => {
-    let live = true;
-    studioApiFetch(ROUTE)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((body: { available?: unknown; handoff?: unknown; downloadUrl?: unknown } | null) => {
-        if (!live || body?.available !== true) return;
-        const handoff = body.handoff === true;
-        const downloadUrl = typeof body.downloadUrl === "string" ? body.downloadUrl : null;
-        if (handoff || downloadUrl) setRoute({ handoff, downloadUrl });
-      })
-      .catch(() => {});
-    return () => {
-      live = false;
-    };
-  }, []);
-  return route;
+async function readRoute(): Promise<DesktopRoute | null> {
+  try {
+    const res = await studioApiFetch(ROUTE);
+    if (!res.ok) return null;
+    const body = (await res.json()) as {
+      available?: unknown;
+      handoff?: unknown;
+      downloadUrl?: unknown;
+      installed?: unknown;
+    } | null;
+    if (body?.available !== true) return null;
+    const handoff = body.handoff === true;
+    const downloadUrl = typeof body.downloadUrl === "string" ? body.downloadUrl : null;
+    return handoff || downloadUrl
+      ? { handoff, downloadUrl, installed: body.installed === true }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function cardState(route: DesktopRoute): CardState {
+  if (route.handoff && route.installed) return "open";
+  return route.handoff ? "install" : "download";
+}
+
+/** The download, tagged so a download that started in Studio can be told apart. */
+function studioDownload(url: string): string {
+  try {
+    const tagged = new URL(url);
+    tagged.searchParams.set("ref", "studio");
+    return tagged.toString();
+  } catch {
+    return url;
+  }
 }
 
 /** Framey looks at the pointer: one listener, one write per frame, no re-render. */
@@ -64,33 +91,152 @@ function useGaze(
   }, [anchor, eye]);
 }
 
+/** While `installing`, asks the preview server every few seconds and hands over the route once the app is in. */
+function useOpenOnceInstalled(
+  installing: boolean,
+  onInstalled: (route: DesktopRoute) => void,
+  onGiveUp: () => void,
+) {
+  const latest = useRef({ onInstalled, onGiveUp });
+  latest.current = { onInstalled, onGiveUp };
+  useEffect(() => {
+    if (!installing) return;
+    const started = Date.now();
+    let live = true;
+    const timer = setInterval(() => {
+      if (Date.now() - started > INSTALL_WAIT_MS) {
+        clearInterval(timer);
+        latest.current.onGiveUp();
+        return;
+      }
+      void readRoute().then((found) => {
+        if (!live || !found?.installed || !found.handoff) return;
+        clearInterval(timer);
+        latest.current.onInstalled(found);
+      });
+    }, INSTALL_POLL_MS);
+    return () => {
+      live = false;
+      clearInterval(timer);
+    };
+  }, [installing]);
+}
+
+/** The card's one action: open the project in the app, or download the app (then open the project, where it can). */
+function CardAction({
+  state,
+  downloadUrl,
+  opening,
+  onOpen,
+  onDownload,
+}: {
+  state: CardState;
+  downloadUrl: string | null;
+  opening: boolean;
+  onOpen: () => void;
+  onDownload: () => void;
+}) {
+  if (state === "open")
+    return (
+      <Button variant="primary" disabled={opening} onClick={onOpen}>
+        Open in HyperFrames
+      </Button>
+    );
+  if (!downloadUrl) return null;
+  return (
+    <a
+      href={studioDownload(downloadUrl)}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={cn(buttonBase, buttonVariants.primary, buttonSizes.md)}
+      onClick={onDownload}
+    >
+      {state === "install" ? "Open in HyperFrames" : "Download HyperFrames"}
+    </a>
+  );
+}
+
+function CardBody({
+  state,
+  installing,
+  action,
+}: {
+  state: CardState;
+  installing: boolean;
+  action: ReactNode;
+}) {
+  if (installing)
+    return (
+      <div data-testid="desktop-card-installing">
+        <p className="mt-2 text-balance text-text-1">
+          Open the download and drag HyperFrames into Applications. This project opens there as soon
+          as the app is installed.
+        </p>
+        <p className="mt-2 text-text-3">Waiting for the app…</p>
+      </div>
+    );
+  return (
+    <>
+      <p className="mt-2 text-balance text-text-3">
+        {state === "download"
+          ? "Framey lives in the free HyperFrames desktop app:"
+          : "This project opens in the free HyperFrames desktop app, where Framey keeps going with you:"}
+      </p>
+      <ul className="mt-1.5 grid gap-1 text-text-1">
+        <li>Chat to change anything in the video</li>
+        <li>Draw on a frame to point at it</li>
+        <li>Watch me act out each edit</li>
+      </ul>
+      {action && <div className="mt-3 flex justify-end">{action}</div>}
+    </>
+  );
+}
+
 export function OpenInDesktopButton() {
   const { showToast } = useStudioShellContext();
-  const route = useDesktopRoute();
+  const [route, setRoute] = useState<DesktopRoute | null>(null);
+  const [cardOpen, setCardOpen] = useState(false);
+  // Opened by Studio itself rather than by a press: it must not take the keyboard from the player.
+  const [autoShown, setAutoShown] = useState(false);
+  const [installing, setInstalling] = useState(false);
   const [opening, setOpening] = useState(false);
-  // The card under the button, introducing Framey with the app's download.
-  const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const eye = useRef<SVGGElement>(null);
   useGaze(trigger, eye);
-  if (!route) return null;
 
-  const open = async () => {
-    if (!route.handoff) {
-      trackStudioEvent("toolbar_action", { action: "open_in_desktop" });
-      setDownloadUrl(route.downloadUrl);
-      return;
-    }
+  useEffect(() => {
+    let live = true;
+    void readRoute().then((found) => {
+      if (!live || !found) return;
+      setRoute(found);
+      setAutoShown(true);
+      setCardOpen(true);
+      trackStudioEvent("desktop_card_shown", { trigger: "auto", state: cardState(found) });
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  const openInApp = async (from: Trigger) => {
     if (opening) return;
     setOpening(true);
-    trackStudioEvent("toolbar_action", { action: "open_in_desktop" });
     try {
       const res = await studioApiFetch(ROUTE, { method: "POST" });
       const result = (await res.json()) as OpenResult;
+      trackStudioEvent("desktop_open_result", {
+        trigger: from,
+        result: result.opened ? "opened" : result.reason,
+      });
       if (result.opened) {
+        setCardOpen(false);
         showToast("Framey is opening this project in the HyperFrames desktop app", "info");
         await new Promise((done) => setTimeout(done, OPENING_MS));
-      } else setDownloadUrl(result.downloadUrl);
+      } else {
+        // The app went missing since Studio last asked: offer it again.
+        setRoute((known) => (known ? { ...known, installed: false } : known));
+        setCardOpen(true);
+      }
     } catch {
       showToast("Couldn't reach the preview server to open the app", "error");
     } finally {
@@ -98,20 +244,62 @@ export function OpenInDesktopButton() {
     }
   };
 
+  // Someone is installing the app from the card: open the project the moment it is in.
+  useOpenOnceInstalled(
+    installing,
+    (found) => {
+      setInstalling(false);
+      setRoute(found);
+      void openInApp("after_install");
+    },
+    () => setInstalling(false),
+  );
+
+  if (!route) return null;
+  const state = cardState(route);
+
+  const pressHeader = () => {
+    trackStudioEvent("toolbar_action", { action: "open_in_desktop", source: "header" });
+    if (state === "open") {
+      void openInApp("header");
+      return;
+    }
+    setAutoShown(false);
+    setCardOpen(true);
+    trackStudioEvent("desktop_card_shown", { trigger: "header", state });
+  };
+
+  const action = (
+    <CardAction
+      state={state}
+      downloadUrl={route.downloadUrl}
+      opening={opening}
+      onOpen={() => {
+        trackStudioEvent("toolbar_action", { action: "open_in_desktop", source: "card" });
+        void openInApp("card");
+      }}
+      onDownload={() => {
+        trackStudioEvent("toolbar_action", { action: "get_desktop_app", source: "card", state });
+        if (state === "install") setInstalling(true);
+        else setCardOpen(false);
+      }}
+    />
+  );
+
   return (
     <Popover
-      open={downloadUrl !== null}
-      // The popover owns the trigger's press: a press runs the hand-off, and the card shows only when there is
-      // something to say (the download). A second handler on the button raced this one.
-      onOpenChange={(next) => {
-        if (next) void open();
-        else setDownloadUrl(null);
+      open={cardOpen}
+      // The popover owns the trigger's press, also while Studio's own card is up (else a press only closes it).
+      onOpenChange={(next, details) => {
+        if (next || details.reason === "trigger-press") pressHeader();
+        else setCardOpen(false);
       }}
       side="bottom"
       align="end"
       arrow
-      aria-label="Meet Framey"
+      aria-label="Keep editing with Framey"
       className="w-72"
+      initialFocus={autoShown ? false : undefined}
       trigger={
         <Button
           ref={trigger}
@@ -133,28 +321,9 @@ export function OpenInDesktopButton() {
     >
       <div className="flex items-center gap-2.5">
         <FrameyGlyph size={36} />
-        <p className="text-step-12 font-medium text-text-0">Meet Framey</p>
+        <p className="text-step-12 font-medium text-text-0">Keep editing with Framey</p>
       </div>
-      <p className="mt-2 text-balance text-text-3">I live in the free HyperFrames desktop app:</p>
-      <ul className="mt-1.5 grid gap-1 text-text-1">
-        <li>Chat to change anything in the video</li>
-        <li>Draw on a frame to point at it</li>
-        <li>Watch me act out each edit</li>
-      </ul>
-      <div className="mt-3 flex items-center justify-end gap-2 whitespace-nowrap">
-        <Button variant="ghost" onClick={() => setDownloadUrl(null)}>
-          Not now
-        </Button>
-        <a
-          href={downloadUrl ?? undefined}
-          target="_blank"
-          rel="noopener noreferrer"
-          className={cn(buttonBase, buttonVariants.primary, buttonSizes.md)}
-          onClick={() => trackStudioEvent("toolbar_action", { action: "get_desktop_app" })}
-        >
-          Get the desktop app
-        </a>
-      </div>
+      <CardBody state={state} installing={installing} action={action} />
     </Popover>
   );
 }
