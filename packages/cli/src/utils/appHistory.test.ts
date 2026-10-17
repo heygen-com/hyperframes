@@ -23,6 +23,22 @@ import {
 } from "./appHistory.js";
 import { readRecord, writeRecord } from "./projectRecords.js";
 
+const { afterDirectoryRead } = vi.hoisted(() => ({
+  afterDirectoryRead: vi.fn<(path: unknown) => void>(),
+}));
+
+vi.mock("node:fs", async (importOriginal) => {
+  const original = await importOriginal<typeof import("node:fs")>();
+  return {
+    ...original,
+    readdirSync: vi.fn(original.readdirSync).mockImplementation((path, options) => {
+      const entries = original.readdirSync(path, options);
+      afterDirectoryRead(path);
+      return entries;
+    }),
+  };
+});
+
 const history = (dir: string) => join(dir, ".hyperframes", APP_HISTORY);
 
 function project(lines: string[] = []): string {
@@ -126,6 +142,33 @@ describe("app history", () => {
       writeFileSync(join(dir, file), "x");
     utimesSync(join(dir, "index.html"), new Date(1000), new Date(1000));
     expect(filesChangedSince(dir, 5000)).toEqual(["compositions/a.html"]);
+  });
+
+  it("keeps listing changed files when one disappears after the directory read", () => {
+    const dir = project();
+    const removed = join(dir, "removed.html");
+    writeFileSync(removed, "removed");
+    writeFileSync(join(dir, "index.html"), "kept");
+    mkdirSync(join(dir, "compositions"));
+    writeFileSync(join(dir, "compositions", "scene.html"), "kept");
+    afterDirectoryRead.mockImplementationOnce(() => {
+      rmSync(removed);
+    });
+
+    expect(filesChangedSince(dir, 0)).toEqual(["compositions/scene.html", "index.html"]);
+  });
+
+  it("skips a file replaced by a directory after the directory read", () => {
+    const dir = project();
+    const replaced = join(dir, "replaced.html");
+    writeFileSync(replaced, "replaced");
+    writeFileSync(join(dir, "index.html"), "kept");
+    afterDirectoryRead.mockImplementationOnce(() => {
+      rmSync(replaced);
+      mkdirSync(replaced);
+    });
+
+    expect(filesChangedSince(dir, 0)).toEqual(["index.html"]);
   });
 
   it("names unseen turns at the end of a command run in the project or on it", () => {
