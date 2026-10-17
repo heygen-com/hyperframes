@@ -3,13 +3,14 @@ pre-commit:
   commands:
     lint:
       glob: "*.{js,jsx,ts,tsx}"
-      run: bunx oxlint --no-error-on-unmatched-pattern {staged_files}
+      run: test -d node_modules/oxlint || { echo "oxlint is not installed in this checkout, run bun install" >&2; exit 1; }; bun run oxlint --no-error-on-unmatched-pattern {staged_files}
     format:
       glob: "*.{js,jsx,ts,tsx,json,md,yaml,yml}"
       # Auto-format and re-stage so the committed snapshot is always formatted.
       # Replaces --check which only reports — that left unformatted files in
       # commits when the hook ran after the amend snapshot was taken.
-      run: bunx oxfmt --no-error-on-unmatched-pattern {staged_files} && git add -f {staged_files}
+      # bunx would fetch an unpinned oxfmt when node_modules is missing and format unlike CI.
+      run: test -d node_modules/oxfmt || { echo "oxfmt is not installed in this checkout, run bun install" >&2; exit 1; }; bun run oxfmt --no-error-on-unmatched-pattern {staged_files} && git add -f {staged_files}
     skills-manifest:
       glob: "skills/**"
       # Regenerate the freshness fingerprint when a skill changes, then re-stage
