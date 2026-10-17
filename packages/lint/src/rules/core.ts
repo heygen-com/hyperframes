@@ -726,6 +726,11 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
           code: "css_parse_error",
           severity: "error",
           message: `CSS parse error: ${error instanceof Error ? error.message : "unknown"}`,
+          fixHint:
+            "Fix the block at the position PostCSS reports: the usual causes are a declaration " +
+            "missing its trailing semicolon, a property missing its colon, and an unclosed brace " +
+            "or quote. Everything after the reported line is dropped, so a stray `}` or `;` early " +
+            "in the block will point the error at a line that looks fine.",
         });
         continue;
       }
