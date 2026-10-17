@@ -332,16 +332,24 @@ export async function runCoreExtraction(input: CoreExtractionInput): Promise<Cor
       maxScreenshots,
       files: screenshots,
     });
-    if (capture.interruption || screenshots.length === 0) {
+    const failed = capture.failures.map(
+      ({ file, scrollY, message }) =>
+        `could not capture ${file}${scrollY === null ? "" : ` (scrolled to ${scrollY}px)`}: ${message}`,
+    );
+    if (capture.interruption || failed.length > 0 || screenshots.length === 0) {
       recordBudget("screenshots");
       const { reason, message: detail }: ScreenshotInterruption = capture.interruption ?? {
         reason: "internal-error",
-        message: "screenshot capture produced no files",
+        message: failed.length > 0 ? "" : "screenshot capture produced no files",
       };
-      const cause =
+      const cause = [
         reason === "budget-exhausted"
           ? `--capture-budget exhausted during ${exhaustedPhase}`
-          : detail;
+          : detail,
+        ...failed,
+      ]
+        .filter(Boolean)
+        .join("; ");
       const message = `${screenshots.length}/${maxScreenshots} requested screenshot files captured: ${cause}`;
       screenshotOutcome = {
         kind: screenshots.length === 0 ? "failed" : "partial",

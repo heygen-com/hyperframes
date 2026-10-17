@@ -8,7 +8,7 @@
 import { DEFAULT_MAX_SCREENSHOTS } from "./types.js";
 import { CaptureDirRefusedError } from "./captureErrors.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
-import type { Page } from "puppeteer-core";
+import { ConnectionClosedError, type Page } from "puppeteer-core";
 import { isDegradableEvaluateTimeoutError } from "./captureTimeout.js";
 import { join } from "node:path";
 import { ensureCaptureDirSync, writeCaptureFileSync } from "./captureFile.js";
@@ -40,9 +40,29 @@ export interface ScreenshotInterruption {
   message: string;
 }
 
+/** A shot Chrome would not take; the capture goes on to the next one. */
+export interface ScreenshotFailure {
+  file: string;
+  /** Where the page was scrolled to; null for the full-page plate. */
+  scrollY: number | null;
+  message: string;
+}
+
 export interface ScreenshotCaptureResult {
   files: string[];
   interruption: ScreenshotInterruption | null;
+  failures: ScreenshotFailure[];
+}
+
+/** Notes one shot that failed. A timeout, a closed page or a refused output folder still ends the whole capture. */
+function shotFailure(err: unknown, file: string, scrollY: number | null): ScreenshotFailure {
+  const message = normalizeErrorMessage(err);
+  // puppeteer-core 25 exports no class for a closed page or session, only these messages.
+  const closed =
+    err instanceof ConnectionClosedError || /\b(target|session) closed\b/i.test(message);
+  if (closed || err instanceof CaptureDirRefusedError || isDegradableEvaluateTimeoutError(err))
+    throw err;
+  return { file, scrollY, message };
 }
 
 /**
@@ -149,7 +169,7 @@ export async function captureScrollScreenshots(
   filePaths.length = 0;
   const filenames = new Set<string>();
 
-  const result: ScreenshotCaptureResult = { files: filePaths, interruption: null };
+  const result: ScreenshotCaptureResult = { files: filePaths, interruption: null, failures: [] };
   const budgetSpent = (): boolean => {
     if ((budget.remainingMs?.() ?? 1) > 0) return false;
     result.interruption = {
@@ -270,7 +290,13 @@ export async function captureScrollScreenshots(
       filenames.add(filename);
       const filePath = join(screenshotsDir, filename);
       if (budgetSpent()) break;
-      const buffer = await page.screenshot({ type: "png" });
+      let buffer: Uint8Array;
+      try {
+        buffer = await page.screenshot({ type: "png" });
+      } catch (err) {
+        result.failures.push(shotFailure(err, `screenshots/${filename}`, finalPositions[i]!));
+        continue;
+      }
       writeCaptureFileSync(filePath, buffer);
       filePaths.push(`screenshots/${filename}`);
     }
@@ -288,8 +314,11 @@ export async function captureScrollScreenshots(
       const plate = await captureFullPagePlate(page, screenshotsDir, {
         ...budget,
         files: filePaths,
+      }).catch((err: unknown) => {
+        result.failures.push(shotFailure(err, "screenshots/full-page.png", null));
+        return null;
       });
-      if (plate.kind === "omitted" && plate.reason === "budget-exhausted") budgetSpent();
+      if (plate?.kind === "omitted" && plate.reason === "budget-exhausted") budgetSpent();
     }
   } catch (err) {
     if (err instanceof CaptureDirRefusedError) throw err;
