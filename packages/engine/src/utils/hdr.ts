@@ -106,6 +106,11 @@ export function getHdrEncoderColorParams(
   };
 }
 
+export function hdrFrameTagsFilter(transfer: HdrTransfer): string {
+  const { colorPrimaries, colorTrc, colorspace } = getHdrEncoderColorParams(transfer);
+  return `setparams=color_primaries=${colorPrimaries}:color_trc=${colorTrc}:colorspace=${colorspace}:range=tv`;
+}
+
 export interface CompositionHdrInfo {
   hasHdr: boolean;
   dominantTransfer: HdrTransfer | null;

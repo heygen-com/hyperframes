@@ -1226,7 +1226,9 @@ describe("buildEncoderArgs color space", () => {
       "out.mp4",
       "nvenc",
     );
-    expect(args[args.indexOf("-vf") + 1]).toBe("pad=ceil(iw/2)*2:ceil(ih/2)*2");
+    expect(args[args.indexOf("-vf") + 1]).toBe(
+      "setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc:range=tv,pad=ceil(iw/2)*2:ceil(ih/2)*2",
+    );
   });
 
   it("converts alpha ProRes to BT.709 without an even-dim pad", () => {
@@ -1896,6 +1898,53 @@ describe.skipIf(!HAS_FFMPEG)("buildEncoderArgs SDR colour", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   }, 30_000);
+
+  // VideoToolbox, like a libx264/libx265 given no colour options, writes only the colour its frames carry.
+  const streamTagsThrough = (args: string[], encoder: string[]): string => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-frame-tags-"));
+    try {
+      const out = join(dir, "out.mp4");
+      const vfAt = args.indexOf("-vf");
+      const vf = vfAt === -1 ? [] : ["-vf", args[vfAt + 1]!];
+      const source = ["-f", "lavfi", "-i", "color=c=0x808080:s=64x16:d=0.1"];
+      const encode = spawnSync(ffmpeg, ["-y", "-v", "error", ...source, ...vf, ...encoder, out]);
+      expect(encode.status).toBe(0);
+      const entries = "stream=color_space,color_transfer,color_primaries";
+      const probe = ["-v", "error", "-show_entries", entries, "-of", "csv=p=0", "--", out];
+      return spawnSync(getFfprobeBinary(), probe).stdout.toString().trim();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+  const tinyFrame = { fps: { num: 30, den: 1 }, width: 64, height: 16, preset: "ultrafast" };
+
+  it("tags BT.709 on the frames, so an encoder that reads only them tags the stream", () => {
+    const args = buildEncoderArgs(
+      { ...tinyFrame, codec: "h264", quality: 23 },
+      ["-i", "in"],
+      "o.mp4",
+    );
+
+    expect(streamTagsThrough(args, ["-c:v", "libx264", "-preset", "ultrafast"])).toBe(
+      "bt709,bt709,bt709",
+    );
+  });
+
+  it.each([
+    ["pq", "smpte2084", null],
+    ["hlg", "arib-std-b67", null],
+    ["pq", "smpte2084", "videotoolbox"],
+  ] as const)("tags HDR %s (%s) on the frames for encoder %s", (transfer, trc, gpu) => {
+    const args = buildEncoderArgs(
+      { ...tinyFrame, codec: "h265", quality: 23, hdr: { transfer }, useGpu: gpu !== null },
+      ["-i", "in"],
+      "o.mp4",
+      gpu,
+    );
+    const x265 = ["-c:v", "libx265", "-pix_fmt", "yuv420p10le", "-x265-params", "log-level=error"];
+
+    expect(streamTagsThrough(args, x265)).toBe(`bt2020nc,${trc},bt2020`);
+  });
 
   it("keeps the rightmost 8 columns of a 1080-wide (16n + 8) mp4", () => {
     const dir = mkdtempSync(join(tmpdir(), "hf-sdr-right-edge-"));
