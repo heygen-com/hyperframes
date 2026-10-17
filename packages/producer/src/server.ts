@@ -102,6 +102,7 @@ interface RenderInput {
   keyframeIntervalSeconds?: number;
   maxBitrate?: string;
   bufferSize?: string;
+  chromaSubsampling?: RenderConfig["chromaSubsampling"];
   useGpu: boolean;
   debug: boolean;
   forceScreenshot?: true;
@@ -235,8 +236,15 @@ export function parseRenderOptions(body: Record<string, unknown>): Omit<RenderIn
     parseServerOutputDynamicRange(body.outputDynamicRange) ??
     fromRenderHdrMode(parseLegacyServerHdrMode(body.hdrMode));
   const encoder = parseEncoderOptions(body, format ?? "mp4");
-  const { crf, videoBitrate, videoFrameFormat, keyframeIntervalSeconds, maxBitrate, bufferSize } =
-    encoder.ok ? encoder.options : {};
+  const {
+    crf,
+    videoBitrate,
+    videoFrameFormat,
+    keyframeIntervalSeconds,
+    maxBitrate,
+    bufferSize,
+    chromaSubsampling,
+  } = encoder.ok ? encoder.options : {};
 
   const { variables, outputResolution, outputResolutionAspectAgnostic } =
     parseRenderOverrides(body);
@@ -252,6 +260,7 @@ export function parseRenderOptions(body: Record<string, unknown>): Omit<RenderIn
     keyframeIntervalSeconds,
     maxBitrate,
     bufferSize,
+    chromaSubsampling,
     useGpu,
     debug,
     forceScreenshot,
@@ -319,6 +328,7 @@ function buildRenderJobConfig(input: RenderInput, outputPath: string, log: Produ
       keyframeIntervalSeconds: input.keyframeIntervalSeconds,
       maxBitrate: input.maxBitrate,
       bufferSize: input.bufferSize,
+      chromaSubsampling: input.chromaSubsampling,
       useGpu: input.useGpu,
       debug: input.debug,
       strictness: input.strictness,
@@ -420,6 +430,11 @@ function validateRenderOverrides(body: Record<string, unknown>): string | undefi
     outputDynamicRange !== fromRenderHdrMode(legacyHdrMode)
   ) {
     return "outputDynamicRange and legacy hdrMode must describe the same output policy";
+  }
+  // parseEncoderOptions only sees the legacy hdrMode; HDR requested through
+  // outputDynamicRange would otherwise pass and fail later in the render.
+  if (body.chromaSubsampling === "444" && outputDynamicRange === "hdr") {
+    return 'chromaSubsampling "444" is SDR only, not outputDynamicRange "hdr"';
   }
   return validateOutputResolutionOverride(body);
 }
