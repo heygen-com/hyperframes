@@ -86,13 +86,25 @@ export async function synthesizeGemini(
     return { ok: true, words: null };
   } catch (error) {
     // Error responses must never echo the credential into logs or metadata.
-    const message = String(error?.message ?? error);
+    const message = withCause(error);
     return {
       ok: false,
       words: null,
       error: secret ? message.split(secret).join("[redacted]") : message,
     };
   }
+}
+
+// undici reports "fetch failed" and keeps the real reason (e.g. UND_ERR_SOCKET,
+// "other side closed") in `error.cause`.
+function withCause(error) {
+  const message = String(error?.message ?? error);
+  const cause = error?.cause;
+  if (!cause) return message;
+  const detail = [cause.code, cause.message ?? (typeof cause === "string" ? cause : "")]
+    .filter(Boolean)
+    .join(": ");
+  return detail ? `${message} (${detail})` : message;
 }
 
 function pcmToWav(pcm, mime) {
