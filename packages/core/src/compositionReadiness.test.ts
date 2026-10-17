@@ -8,7 +8,7 @@ import {
   settleFirstFrameCompositionReadiness,
 } from "./compositionReadiness.js";
 import { createRuntimeStartTimeResolver } from "./runtime/startResolver.js";
-import { STUDIO_PREVIEW_MARK_META } from "./studioPreviewMark.js";
+import { STUDIO_PREVIEW_MARK, STUDIO_PREVIEW_MARK_META } from "./studioPreviewMark.js";
 import { isRuntimeElementVisibleAt } from "./runtime/timeline.js";
 
 function docWith(bodyHtml: string): Document {
@@ -180,7 +180,7 @@ describe("mediaReadinessInput", () => {
     await expect(pending).resolves.toBeUndefined();
   });
 
-  it("waits on a later clip in Studio's preview only once the runtime has set it to buffer", () => {
+  it("waits on a later clip in Studio's preview or a capture only once the runtime has set it to buffer", () => {
     const html =
       '<video id="deferred" data-start="30" data-duration="5" preload="none" src="a.mp4"></video>' +
       '<video id="untrimmed" data-start="30" preload="metadata" src="b.mp4"></video>' +
@@ -189,11 +189,16 @@ describe("mediaReadinessInput", () => {
     preview.head
       .appendChild(preview.createElement("meta"))
       .setAttribute("name", STUDIO_PREVIEW_MARK_META);
+    const capture = docWith(html);
+    const captureMark = capture.head.appendChild(capture.createElement("meta"));
+    captureMark.setAttribute("name", STUDIO_PREVIEW_MARK_META);
+    captureMark.setAttribute("content", STUDIO_PREVIEW_MARK.capture);
     const plain = docWith(html);
     const ids = (doc: Document) =>
       scanPendingCompositionAssets(doc, { scope: "all" }).pendingMedia.map((el) => el.id);
 
     expect(ids(preview)).toEqual(["due"]);
+    expect(ids(capture)).toEqual(["due"]);
     expect(ids(plain)).toEqual(["deferred", "untrimmed", "due"]);
   });
 

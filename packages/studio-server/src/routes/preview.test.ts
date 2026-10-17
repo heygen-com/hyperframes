@@ -23,6 +23,7 @@ import { join, parse } from "node:path";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import {
   STUDIO_PREVIEW_ERRORS,
+  STUDIO_PREVIEW_MARK,
   STUDIO_PREVIEW_MARK_META,
 } from "@hyperframes/core/studio-preview-mark";
 import { AFTER_FONTS_SCRIPT_TYPE } from "@hyperframes/core/compiler";
@@ -217,7 +218,7 @@ describe("registerPreviewRoutes", () => {
     const app = new Hono();
     registerPreviewRoutes(app, createAdapter(projectDir));
     const html = await (await app.request("http://localhost/projects/demo/preview")).text();
-    const mark = html.indexOf(`<meta name="${STUDIO_PREVIEW_MARK_META}">`);
+    const mark = html.indexOf(`<meta name="${STUDIO_PREVIEW_MARK_META}" content="preview">`);
     expect(mark).toBeGreaterThan(-1);
     expect(mark).toBeLessThan(html.indexOf("/api/runtime.js"));
     expect(html).toContain("<script data-hf-gsap-fallback>");
@@ -281,7 +282,7 @@ describe("registerPreviewRoutes", () => {
     expect(previewWindow[STUDIO_PREVIEW_ERRORS]).toEqual(["Uncaught Error: GSAP could not load"]);
   });
 
-  it("serves a later scene's image lazy, and captures every image eager with no mark", async () => {
+  it("serves a later scene's image lazy, and captures every image eager with the capture mark", async () => {
     const projectDir = createProjectDir();
     const later =
       '<!DOCTYPE html><html><head></head><body><div data-start="5"><img src="b.png"></div></body></html>';
@@ -294,9 +295,12 @@ describe("registerPreviewRoutes", () => {
       const preview = await (await app.request(url)).text();
       const capture = await (await app.request(`${url}?${PREVIEW_CAPTURE_PARAM}=1`)).text();
       expect(preview, path).toMatch(/<img loading="lazy" [^>]*src="b.png">/);
-      expect(preview, path).toContain(STUDIO_PREVIEW_MARK_META);
+      const mark = (content: string) =>
+        `<meta name="${STUDIO_PREVIEW_MARK_META}" content="${content}">`;
+      expect(preview, path).toContain(mark(STUDIO_PREVIEW_MARK.preview));
       expect(capture, path).not.toContain("loading=");
-      expect(capture, path).not.toContain(STUDIO_PREVIEW_MARK_META);
+      expect(capture, path).toContain(mark(STUDIO_PREVIEW_MARK.capture));
+      expect(capture, path).not.toContain(mark(STUDIO_PREVIEW_MARK.preview));
       expect(capture, path).toContain("<script data-hf-gsap-fallback>");
     }
   });
