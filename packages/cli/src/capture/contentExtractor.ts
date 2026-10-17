@@ -98,6 +98,88 @@ async function runBoundedVisionRequest<T>(
   }
 }
 
+interface OpenAiCompatibleEndpoint {
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+}
+
+export type CustomVisionEndpointConfig =
+  | { kind: "unset" }
+  | { kind: "incomplete"; missing: string[] }
+  | { kind: "ready"; endpoint: OpenAiCompatibleEndpoint };
+
+/**
+ * Reads the user's own OpenAI-compatible vision endpoint from
+ * HYPERFRAMES_VISION_BASE_URL, HYPERFRAMES_VISION_API_KEY and HYPERFRAMES_VISION_MODEL.
+ * Setting only some of them is reported as incomplete, so a half-configured endpoint is
+ * never silently replaced by another provider the user may be configuring their way around.
+ */
+export function resolveCustomVisionEndpoint(): CustomVisionEndpointConfig {
+  const baseUrl = process.env.HYPERFRAMES_VISION_BASE_URL;
+  const apiKey = process.env.HYPERFRAMES_VISION_API_KEY;
+  const model = process.env.HYPERFRAMES_VISION_MODEL;
+  if (baseUrl && apiKey && model) return { kind: "ready", endpoint: { baseUrl, apiKey, model } };
+  const vars: Array<[string, string | undefined]> = [
+    ["HYPERFRAMES_VISION_BASE_URL", baseUrl],
+    ["HYPERFRAMES_VISION_API_KEY", apiKey],
+    ["HYPERFRAMES_VISION_MODEL", model],
+  ];
+  const missing = vars.filter(([, value]) => !value).map(([name]) => name);
+  return missing.length === vars.length ? { kind: "unset" } : { kind: "incomplete", missing };
+}
+
+type CaptionOne = (args: {
+  mimeType: string;
+  base64: string;
+  prompt: string;
+  maxTokens: number;
+  timeoutMs: number;
+}) => Promise<string>;
+
+function openAiCompatibleCaptionOne(
+  providerName: string,
+  endpoint: OpenAiCompatibleEndpoint,
+): CaptionOne {
+  const url = `${endpoint.baseUrl.replace(/\/+$/, "")}/chat/completions`;
+  return async ({ mimeType, base64, prompt, maxTokens, timeoutMs }) => {
+    return runBoundedVisionRequest(async (signal) => {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${endpoint.apiKey}`,
+          "Content-Type": "application/json",
+        },
+        signal,
+        body: JSON.stringify({
+          model: endpoint.model,
+          messages: [
+            {
+              role: "user",
+              content: [
+                { type: "text", text: prompt },
+                {
+                  type: "image_url",
+                  image_url: { url: `data:${mimeType};base64,${base64}` },
+                },
+              ],
+            },
+          ],
+          max_tokens: maxTokens,
+        }),
+      });
+      if (!res.ok) {
+        await res.text();
+        throw new Error(`${providerName} request failed with HTTP ${res.status}`);
+      }
+      const data = (await res.json()) as {
+        choices?: Array<{ message?: { content?: string } }>;
+      };
+      return data.choices?.[0]?.message?.content?.trim() || "";
+    }, timeoutMs);
+  };
+}
+
 /**
  * Detect JS libraries via window globals, DOM fingerprints, script URLs,
  * and WebGL shader analysis.
@@ -241,9 +323,10 @@ export async function extractVisibleText(page: Page): Promise<string> {
 /**
  * Caption downloaded images using a vision model.
  *
- * Provider is chosen by which API key is present: OPENROUTER_API_KEY → OpenRouter
- * (any vision model via its OpenAI-style API), else GEMINI_API_KEY/GOOGLE_API_KEY
- * → Google Gemini, else no captioning. OpenRouter wins if both are set.
+ * Provider is chosen by which credentials are present: HYPERFRAMES_VISION_BASE_URL,
+ * HYPERFRAMES_VISION_API_KEY and HYPERFRAMES_VISION_MODEL → that OpenAI-compatible
+ * endpoint, else OPENROUTER_API_KEY → OpenRouter (any vision model via its OpenAI-style
+ * API), else Vertex, else GEMINI_API_KEY/GOOGLE_API_KEY → Google Gemini, else no captioning.
  *
  * Batches requests to stay under free-tier rate limits.
  * Returns a map of filename -> caption string.
@@ -273,6 +356,16 @@ export async function captionImagesWithGemini(
     reportOutcome();
     return geminiCaptions;
   }
+  const customVision = resolveCustomVisionEndpoint();
+  if (customVision.kind === "incomplete") {
+    warnings.push(
+      `Skipped vision captioning: HYPERFRAMES_VISION_BASE_URL, HYPERFRAMES_VISION_API_KEY and HYPERFRAMES_VISION_MODEL must be set together; missing ${customVision.missing.join(", ")}.`,
+    );
+    internalError = true;
+    reportOutcome();
+    return geminiCaptions;
+  }
+  const customEndpoint = customVision.kind === "ready" ? customVision.endpoint : undefined;
   const openRouterKey = process.env.OPENROUTER_API_KEY;
   const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   // Vertex authenticates with a service account and a project instead of an API key. Server
@@ -282,27 +375,33 @@ export async function captionImagesWithGemini(
   const vertexProject = process.env.HYPERFRAMES_VERTEX_PROJECT_ID;
   const vertexServiceAccount = process.env.HYPERFRAMES_VERTEX_SERVICE_ACCOUNT;
   const useVertex = Boolean(vertexProject && vertexServiceAccount);
-  if (!openRouterKey && !useVertex && !geminiKey) {
+  if (!customEndpoint && !openRouterKey && !useVertex && !geminiKey) {
     reportOutcome();
     return geminiCaptions;
   }
 
-  // OpenRouter takes priority — it's the explicit opt-in for users without Google access.
-  // Vertex outranks the bare API key because it is the credential a deployment actually
-  // holds. All three satisfy the same single-image → one-line-caption contract
-  // (`captionOne`), so the batching and SVG-rasterization loops stay provider-agnostic.
-  const provider: "openrouter" | "vertex" | "gemini" = openRouterKey
-    ? "openrouter"
-    : useVertex
-      ? "vertex"
-      : "gemini";
-  const providerName = { openrouter: "OpenRouter", vertex: "Vertex AI", gemini: "Gemini" }[
-    provider
-  ];
+  // A custom endpoint and OpenRouter are explicit opt-ins for users without Google access,
+  // so they come first. Vertex outranks the bare API key because it is the credential a
+  // deployment actually holds. All of them satisfy the same single-image → one-line-caption
+  // contract (`captionOne`), so the batching and SVG-rasterization loops stay provider-agnostic.
+  const provider: "custom" | "openrouter" | "vertex" | "gemini" = customEndpoint
+    ? "custom"
+    : openRouterKey
+      ? "openrouter"
+      : useVertex
+        ? "vertex"
+        : "gemini";
+  const providerName = {
+    custom: "OpenAI-compatible endpoint",
+    openrouter: "OpenRouter",
+    vertex: "Vertex AI",
+    gemini: "Gemini",
+  }[provider];
   // Override per provider via HYPERFRAMES_OPENROUTER_MODEL / HYPERFRAMES_VERTEX_MODEL /
   // HYPERFRAMES_GEMINI_MODEL. Vertex publishes a different model set than the Gemini API —
   // the API's flash-lite preview id is not resolvable there — so it carries its own default.
   const model = {
+    custom: customEndpoint?.model ?? "",
     openrouter: process.env.HYPERFRAMES_OPENROUTER_MODEL || "google/gemini-3.1-flash-lite",
     vertex: process.env.HYPERFRAMES_VERTEX_MODEL || "gemini-2.5-flash",
     gemini: process.env.HYPERFRAMES_GEMINI_MODEL || "gemini-3.1-flash-lite-preview",
@@ -313,52 +412,15 @@ export async function captionImagesWithGemini(
   try {
     // One image → one short caption. Each provider implements this contract;
     // everything below is provider-agnostic.
-    type CaptionOne = (args: {
-      mimeType: string;
-      base64: string;
-      prompt: string;
-      maxTokens: number;
-      timeoutMs: number;
-    }) => Promise<string>;
+    const openAiCompatibleEndpoint =
+      customEndpoint ??
+      (openRouterKey
+        ? { baseUrl: "https://openrouter.ai/api/v1", apiKey: openRouterKey, model }
+        : undefined);
 
     let captionOne: CaptionOne;
-    if (provider === "openrouter") {
-      captionOne = async ({ mimeType, base64, prompt, maxTokens, timeoutMs }) => {
-        return runBoundedVisionRequest(async (signal) => {
-          const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${openRouterKey}`,
-              "Content-Type": "application/json",
-            },
-            signal,
-            body: JSON.stringify({
-              model,
-              messages: [
-                {
-                  role: "user",
-                  content: [
-                    { type: "text", text: prompt },
-                    {
-                      type: "image_url",
-                      image_url: { url: `data:${mimeType};base64,${base64}` },
-                    },
-                  ],
-                },
-              ],
-              max_tokens: maxTokens,
-            }),
-          });
-          if (!res.ok) {
-            await res.text();
-            throw new Error(`OpenRouter request failed with HTTP ${res.status}`);
-          }
-          const data = (await res.json()) as {
-            choices?: Array<{ message?: { content?: string } }>;
-          };
-          return data.choices?.[0]?.message?.content?.trim() || "";
-        }, timeoutMs);
-      };
+    if (openAiCompatibleEndpoint) {
+      captionOne = openAiCompatibleCaptionOne(providerName, openAiCompatibleEndpoint);
     } else {
       let GoogleGenAI: OptionalPackageModules["@google/genai"]["GoogleGenAI"];
       try {

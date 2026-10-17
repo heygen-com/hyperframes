@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   captionImagesWithGemini,
+  resolveCustomVisionEndpoint,
   resolveVisionPhaseCompletion,
   type VisionCaptionOutcome,
 } from "./contentExtractor.js";
@@ -407,6 +408,174 @@ describe("captionImagesWithGemini — OpenRouter provider", () => {
 
     expect(captions).toEqual({});
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("captionImagesWithGemini — custom OpenAI-compatible endpoint", () => {
+  const dirs: string[] = [];
+  afterEach(() => {
+    generateContentMock.mockReset();
+    clientOptions.length = 0;
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+    for (const d of dirs) rmSync(d, { recursive: true, force: true });
+    dirs.length = 0;
+  });
+
+  function captionResponse(content: string): Response {
+    return new Response(JSON.stringify({ choices: [{ message: { content } }] }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }
+
+  it("captions through the configured endpoint, model and key", async () => {
+    const dir = makeProjectWithImages();
+    dirs.push(dir);
+    vi.stubEnv("HYPERFRAMES_VISION_BASE_URL", "https://vision.example.com/v2/");
+    vi.stubEnv("HYPERFRAMES_VISION_API_KEY", "custom-test-key");
+    vi.stubEnv("HYPERFRAMES_VISION_MODEL", "example-vl-model");
+
+    let capturedUrl: string | undefined;
+    let capturedInit: RequestInit | undefined;
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      capturedUrl = url;
+      capturedInit = init;
+      return captionResponse("A white pricing table with green buttons.");
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const warnings: string[] = [];
+    const captions = await captionImagesWithGemini(dir, () => {}, warnings);
+
+    expect(captions).toEqual({ "hero.png": "A white pricing table with green buttons." });
+    expect(warnings).toEqual([]);
+    expect(capturedUrl).toBe("https://vision.example.com/v2/chat/completions");
+    expect(new Headers(capturedInit?.headers).get("authorization")).toBe("Bearer custom-test-key");
+    const body = JSON.parse(typeof capturedInit?.body === "string" ? capturedInit.body : "{}");
+    expect(body.model).toBe("example-vl-model");
+    expect(body.max_tokens).toBe(500);
+    const image = body.messages[0].content.find((p: { type: string }) => p.type === "image_url");
+    expect(image?.image_url?.url).toMatch(/^data:image\/png;base64,/);
+  });
+
+  it("takes priority over OpenRouter and Gemini when both are also configured", async () => {
+    const dir = makeProjectWithImages();
+    dirs.push(dir);
+    vi.stubEnv("HYPERFRAMES_VISION_BASE_URL", "https://vision.example.com/v2");
+    vi.stubEnv("HYPERFRAMES_VISION_API_KEY", "custom-test-key");
+    vi.stubEnv("HYPERFRAMES_VISION_MODEL", "example-vl-model");
+    vi.stubEnv("OPENROUTER_API_KEY", "or-test-key");
+    vi.stubEnv("GEMINI_API_KEY", "gemini-test-key");
+
+    const urls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        urls.push(url);
+        return captionResponse("A caption.");
+      }),
+    );
+
+    await captionImagesWithGemini(dir, () => {}, []);
+
+    expect(urls).toEqual(["https://vision.example.com/v2/chat/completions"]);
+    expect(generateContentMock).not.toHaveBeenCalled();
+  });
+
+  it("counts a rejected request as a provider failure", async () => {
+    const dir = makeProjectWithImages();
+    dirs.push(dir);
+    vi.stubEnv("HYPERFRAMES_VISION_BASE_URL", "https://vision.example.com/v2");
+    vi.stubEnv("HYPERFRAMES_VISION_API_KEY", "custom-test-key");
+    vi.stubEnv("HYPERFRAMES_VISION_MODEL", "example-vl-model");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("bad request", { status: 400 })),
+    );
+
+    let outcome: VisionCaptionOutcome | undefined;
+    const captions = await captionImagesWithGemini(dir, () => {}, [], {
+      onOutcome: (value) => {
+        outcome = value;
+      },
+    });
+
+    expect(captions).toEqual({});
+    expect(outcome?.failedRequests).toBe(1);
+  });
+
+  it("refuses a half-configured endpoint instead of falling back to Gemini", async () => {
+    const dir = makeProjectWithImages();
+    dirs.push(dir);
+    vi.stubEnv("HYPERFRAMES_VISION_BASE_URL", "");
+    vi.stubEnv("HYPERFRAMES_VISION_API_KEY", "custom-secret-key");
+    vi.stubEnv("HYPERFRAMES_VISION_MODEL", "example-vl-model");
+    vi.stubEnv("OPENROUTER_API_KEY", "");
+    vi.stubEnv("GEMINI_API_KEY", "gemini-test-key");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const warnings: string[] = [];
+    let outcome: VisionCaptionOutcome | undefined;
+    const captions = await captionImagesWithGemini(dir, () => {}, warnings, {
+      onOutcome: (value) => {
+        outcome = value;
+      },
+    });
+
+    expect(captions).toEqual({});
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(generateContentMock).not.toHaveBeenCalled();
+    expect(clientOptions).toHaveLength(0);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("missing HYPERFRAMES_VISION_BASE_URL.");
+    expect(warnings[0]).not.toContain("custom-secret-key");
+    if (!outcome) throw new Error("Expected vision caption outcome");
+    expect(resolveVisionPhaseCompletion(outcome, 10_000)).toEqual({
+      status: "degraded",
+      reason: "internal-error",
+    });
+  });
+
+  it("names every variable a base URL alone still needs", async () => {
+    const dir = makeProjectWithImages();
+    dirs.push(dir);
+    vi.stubEnv("HYPERFRAMES_VISION_BASE_URL", "http://localhost:11434/v1");
+    vi.stubEnv("HYPERFRAMES_VISION_API_KEY", "");
+    vi.stubEnv("HYPERFRAMES_VISION_MODEL", "");
+    vi.stubEnv("OPENROUTER_API_KEY", "or-test-key");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const warnings: string[] = [];
+    await captionImagesWithGemini(dir, () => {}, warnings);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(warnings[0]).toContain("missing HYPERFRAMES_VISION_API_KEY, HYPERFRAMES_VISION_MODEL.");
+  });
+});
+
+describe("resolveCustomVisionEndpoint", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("is unset when none of the three variables is set", () => {
+    vi.stubEnv("HYPERFRAMES_VISION_BASE_URL", "");
+    vi.stubEnv("HYPERFRAMES_VISION_API_KEY", "");
+    vi.stubEnv("HYPERFRAMES_VISION_MODEL", "");
+    expect(resolveCustomVisionEndpoint()).toEqual({ kind: "unset" });
+  });
+
+  it("lists exactly the variables that are missing", () => {
+    vi.stubEnv("HYPERFRAMES_VISION_BASE_URL", "");
+    vi.stubEnv("HYPERFRAMES_VISION_API_KEY", "");
+    vi.stubEnv("HYPERFRAMES_VISION_MODEL", "example-vl-model");
+    expect(resolveCustomVisionEndpoint()).toEqual({
+      kind: "incomplete",
+      missing: ["HYPERFRAMES_VISION_BASE_URL", "HYPERFRAMES_VISION_API_KEY"],
+    });
   });
 });
 
