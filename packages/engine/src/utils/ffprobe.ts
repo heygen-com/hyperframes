@@ -4,7 +4,7 @@ import { createReadStream, readFileSync, statSync } from "fs";
 import { chunkCrc32 } from "./crc32.js";
 import { StringDecoder } from "node:string_decoder";
 import { basename } from "path";
-import { redactTelemetryString } from "@hyperframes/core";
+import { MEDIA_DURATION_CLAMP_EPSILON_SECONDS, redactTelemetryString } from "@hyperframes/core";
 import { FFPROBE_PATH_ENV, getFfprobeBinary } from "./ffmpegBinaries.js";
 import { ManagedChildProcess } from "./managedChildProcess.js";
 import { trackChildProcess } from "./processTracker.js";
@@ -45,6 +45,136 @@ function sanitizeFfprobeDiagnostic(stderr: string, filePath: string): string {
   const redacted = redactTelemetryString(stderrWithoutInput, FFPROBE_STDERR_MAX_BYTES);
   if (redacted.length <= FFPROBE_ERROR_MAX_CHARS) return redacted;
   return `…${redacted.slice(-(FFPROBE_ERROR_MAX_CHARS - 1))}`;
+}
+
+/** ffprobe gives a stream it saw no packet of in its probe window the container's start and duration,
+ * so a video 20 s late in TS, NUT or WebM looks aligned; its packets say where it starts and ends.
+ * Indexed MP4/MOV never fill, and their packet times include AAC priming, so they are left alone. */
+async function withMeasuredFilledStreams(
+  filePath: string,
+  output: FFProbeOutput,
+  signal?: AbortSignal,
+): Promise<FFProbeOutput> {
+  const { format } = output;
+  const audioVideo = output.streams.filter(isAudioOrVideoStream);
+  if (audioVideo.length < 2 || /\bmov\b/.test(format.format_name ?? "")) return output;
+  const suspects = output.streams.flatMap((stream, index) =>
+    audioVideo.includes(stream) && sawNoPacket(stream, format, audioVideo) ? [index] : [],
+  );
+  if (suspects.length === 0) return output;
+  const identity = mediaFileIdentity(filePath);
+  const cached = readMetadataCache(measuredStreamTimings, filePath, identity);
+  if (cached) return { ...output, streams: await cached };
+  const measured = measureSuspects(filePath, output, suspects, signal);
+  // An aborted measure must not reach other callers, so a signal-bound one is shared only once done.
+  if (!signal) writeMetadataCache(measuredStreamTimings, filePath, identity, measured);
+  const streams = await measured;
+  if (signal) writeMetadataCache(measuredStreamTimings, filePath, identity, measured);
+  if (measuredStreamTimings.size > MEASURED_STREAM_TIMINGS_MAX_ENTRIES) {
+    measuredStreamTimings.delete(measuredStreamTimings.keys().next().value!);
+  }
+  return { ...output, streams };
+}
+
+/** Measured timings outlive the probe-output LRU, so video and audio metadata never read two generations. */
+const measuredStreamTimings = new Map<string, MediaProbeCacheEntry<FFProbeStream[]>>();
+// One small entry per skewed file; the cap only bounds a pathological process.
+const MEASURED_STREAM_TIMINGS_MAX_ENTRIES = 4096;
+
+async function measureSuspects(
+  filePath: string,
+  output: FFProbeOutput,
+  suspects: number[],
+  signal?: AbortSignal,
+): Promise<FFProbeStream[]> {
+  const containerStart = parseFloat(output.format.start_time ?? "");
+  const containerEnd = containerStart + parseFloat(output.format.duration ?? "");
+  const streams = [...output.streams];
+  for (const index of suspects) {
+    const stream = output.streams[index]!;
+    try {
+      const span = await measureLateStreamSpan(
+        filePath,
+        index,
+        containerStart,
+        containerEnd,
+        signal,
+      );
+      if (span) {
+        streams[index] = {
+          ...stream,
+          start_time: String(span.start),
+          duration: String(span.end - span.start),
+        };
+      }
+    } catch (error) {
+      if (signal?.aborted) throw signal.reason ?? error;
+      // Cached like a success, so every consumer in the process sees the same timing.
+      const reason = error instanceof Error ? error.message : String(error);
+      console.warn(
+        `[ffprobe] ${basename(filePath)}: stream ${index} kept the container's timing (${reason.slice(0, 200)})`,
+      );
+    }
+  }
+  return streams;
+}
+
+/** The container's start and duration copied onto the stream, or no start where another stream has one. */
+function sawNoPacket(
+  stream: FFProbeStream,
+  format: FFProbeFormat,
+  audioVideo: FFProbeStream[],
+): boolean {
+  if (stream.start_time === undefined) return audioVideo.some((s) => s.start_time !== undefined);
+  const same = (a?: string, b?: string) =>
+    a !== undefined && b !== undefined && Math.abs(parseFloat(a) - parseFloat(b)) < 1e-3;
+  return same(stream.start_time, format.start_time) && same(stream.duration, format.duration);
+}
+
+/**
+ * A suspect stream's span when its first packet shows it really starts late; otherwise ffprobe's
+ * own values stand (an aligned AVI's declared duration includes trailing empty frame slots).
+ */
+async function measureLateStreamSpan(
+  filePath: string,
+  streamIndex: number,
+  containerStart: number,
+  containerEnd: number,
+  signal?: AbortSignal,
+): Promise<{ start: number; end: number } | undefined> {
+  const maxChars = 64 * 1024;
+  const packets = async (readIntervals: string[]) => {
+    const stdout = await runFfprobe(
+      filePath,
+      [
+        ...["-select_streams", String(streamIndex), "-show_entries"],
+        ...["packet=pts_time,duration_time", ...readIntervals, "-of", "csv=p=0"],
+      ],
+      signal,
+      { retainTail: true, maxChars },
+    );
+    const lines = stdout.split("\n");
+    // A cut tail starts mid-line: "7.008333,0.0083" can survive as "8333,0.0083".
+    if (stdout.length >= maxChars) lines.shift();
+    return lines
+      .map((line) => line.split(",").map(parseFloat) as [number, number])
+      .filter(([pts]) => Number.isFinite(pts))
+      .map(([pts, duration]) => ({
+        start: pts,
+        end: pts + (Number.isFinite(duration) ? duration : 0),
+      }));
+  };
+  // A capture cut mid-GOP may start before its first keyframe; encoder output starts on one.
+  const [first] = await packets(["-read_intervals", "%+#1"]);
+  // A probe window ffprobe misses is seconds long; within the compiler's media tolerance, it saw the stream.
+  if (!first || first.start - containerStart <= MEDIA_DURATION_CLAMP_EPSILON_SECONDS)
+    return undefined;
+  const tailFrom = Math.max(first.start, containerEnd - 30);
+  const tail = Number.isFinite(tailFrom)
+    ? await packets(["-read_intervals", `${tailFrom}%${FFPROBE_READ_INTERVAL_EXPLICIT_FAR_END}`])
+    : [];
+  const last = tail.length > 0 ? tail : await packets([]);
+  return { start: first.start, end: Math.max(first.end, ...last.map((packet) => packet.end)) };
 }
 
 /** Spawn ffprobe with given args, return stdout. Throws on non-zero exit or missing binary. */
@@ -392,19 +522,16 @@ async function probeMediaOutput(filePath: string, signal?: AbortSignal): Promise
     filePath,
     ["-print_format", "json", "-show_format", "-show_streams"],
     signal,
-  ).then(parseProbeJson);
+  )
+    .then(parseProbeJson)
+    .then((output) => withMeasuredFilledStreams(filePath, output, signal));
   if (identity !== null) {
-    cache.set(filePath, { identity, promise });
+    writeMetadataCache(cache, filePath, identity, promise);
     if (!signal && cache.size > MEDIA_PROBE_OUTPUT_CACHE_MAX_ENTRIES) {
       const oldestPath = cache.keys().next().value;
       if (oldestPath !== undefined) cache.delete(oldestPath);
     }
   }
-  promise.catch(() => {
-    if (cache.get(filePath)?.promise === promise) {
-      cache.delete(filePath);
-    }
-  });
   return promise;
 }
 
@@ -806,25 +933,29 @@ export async function extractMediaMetadata(filePath: string): Promise<VideoMetad
     // (format.duration) includes the longest stream — often a longer audio
     // track in stock/looping clips. Cross-check with nb_frames to bound the
     // video-specific extent and avoid inflating the expected frame count.
+    const videoStreamLeadSeconds = streamLeadSeconds(output, videoStream);
+    const containerStreamSpan = Math.max(0, containerDuration - videoStreamLeadSeconds);
     let effectiveStreamDuration: number;
     if (streamDuration > 0) {
       effectiveStreamDuration = streamDuration;
-    } else if (frames !== undefined && fps > 0 && containerDuration > 0) {
+    } else if (frames !== undefined && fps > 0 && containerStreamSpan > 0) {
       const frameDerivedDuration = frames / fps;
       // Only override when the frame-derived duration is meaningfully shorter
       // (>10% gap). Within 10% the container value is close enough and may
       // account for a trailing hold frame that nb_frames does not include.
       effectiveStreamDuration =
-        frameDerivedDuration < containerDuration * 0.9 ? frameDerivedDuration : containerDuration;
+        frameDerivedDuration < containerStreamSpan * 0.9
+          ? frameDerivedDuration
+          : containerStreamSpan;
     } else {
-      effectiveStreamDuration = containerDuration;
+      effectiveStreamDuration = containerStreamSpan;
     }
 
     return {
       durationSeconds: containerDuration,
       videoStreamDurationSeconds: effectiveStreamDuration,
       videoStreamStartSeconds: streamStart,
-      videoStreamLeadSeconds: streamLeadSeconds(output, videoStream),
+      videoStreamLeadSeconds,
       width: videoStream.width || stillImage()?.width || 0,
       height: videoStream.height || stillImage()?.height || 0,
       fps,
@@ -1006,12 +1137,16 @@ export async function extractAudioMetadata(
 /** Chrome's media time 0 is the earliest of these; a stream starting later plays that much in. */
 function audioVideoStreamStarts(output: FFProbeOutput | null): number[] {
   return (output?.streams ?? [])
-    .filter(
-      (s) =>
-        (s.codec_type === "audio" || s.codec_type === "video") && s.disposition?.attached_pic !== 1,
-    )
+    .filter(isAudioOrVideoStream)
     .map((s) => parseFloat(s.start_time ?? ""))
     .filter(Number.isFinite);
+}
+
+function isAudioOrVideoStream(stream: FFProbeStream): boolean {
+  return (
+    (stream.codec_type === "audio" || stream.codec_type === "video") &&
+    stream.disposition?.attached_pic !== 1
+  );
 }
 
 function streamLeadSeconds(output: FFProbeOutput | null, stream: FFProbeStream): number {
