@@ -1,7 +1,10 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { runCommand } from "citty";
+import beatsCommand from "./beats.js";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { encodeWav } from "../audio/analysis/providers/shared.js";
 
@@ -52,9 +55,10 @@ async function runBeats(dir: string): Promise<{ exitCode: number; out: string }>
   return { exitCode, out: lines.join("\n") };
 }
 
-const ffmpeg = findFfBinary("ffmpeg") && findFfBinary("ffprobe");
+const ffmpeg = findFfBinary("ffmpeg");
+const canDecode = ffmpeg && findFfBinary("ffprobe");
 
-describe.skipIf(!ffmpeg)("hyperframes beats", () => {
+describe.skipIf(!canDecode)("hyperframes beats", () => {
   it("writes beats/<audio>.json in the beat-file format the Studio reads", async () => {
     const dir = project("steady", 120);
     const { exitCode, out } = await runBeats(dir);
@@ -82,5 +86,141 @@ describe.skipIf(!ffmpeg)("hyperframes beats", () => {
     expect(exitCode).toBe(1);
     expect(out).toMatch(/No beats detected in assets\/song\.wav/);
     expect(existsSync(join(dir, "beats"))).toBe(false);
+  });
+});
+
+describe.skipIf(!canDecode)("beats source discovery", () => {
+  let dir: string;
+  let fixtureNumber = 0;
+
+  beforeEach(() => {
+    dir = project(`source-${++fixtureNumber}`, 120);
+    const audio = readFileSync(join(dir, "assets", "song.wav"));
+    writeFileSync(join(dir, "bed.wav"), audio);
+    if (!ffmpeg) throw new Error("FFmpeg is required for the video fixture");
+    execFileSync(ffmpeg, [
+      "-y",
+      "-v",
+      "error",
+      "-i",
+      join(dir, "assets", "song.wav"),
+      "-c:a",
+      "aac",
+      join(dir, "clip.mp4"),
+    ]);
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  function expectMusicFile(src: string) {
+    const file = JSON.parse(readFileSync(join(dir, "beats", `${src}.json`), "utf8"));
+    expect(file).toMatchObject({ version: 1, audio: src });
+    expect(file.beats.length).toBeGreaterThan(18);
+  }
+
+  async function analyze(html: string) {
+    writeFileSync(join(dir, "index.html"), `<html><body>${html}</body></html>`);
+    await runCommand(beatsCommand, { rawArgs: [dir, "--json"] });
+  }
+
+  it.each([
+    ['<audio id="music"><source src="bed.wav" type="audio/wav"></audio>', "bed.wav"],
+    ['<video id="soundtrack" data-has-audio="true"><source src="clip.mp4"></video>', "clip.mp4"],
+  ])("analyzes and persists the music supplied by %s", async (html, src) => {
+    await analyze(html);
+
+    expectMusicFile(src);
+    expect(readFileSync(join(dir, "index.html"), "utf-8")).toContain(html);
+  });
+
+  it("keeps a child-source music track ahead of a later parent-source track", async () => {
+    await analyze(
+      '<audio id="music"><source src="bed.wav"></audio><audio id="bgm" src="clip.mp4"></audio>',
+    );
+    expectMusicFile("bed.wav");
+  });
+
+  it("prefers the parent src over child alternatives", async () => {
+    await analyze('<audio id="music" src="bed.wav"><source src="clip.mp4"></audio>');
+    expectMusicFile("bed.wav");
+  });
+
+  it("prefers a local child source over a remote alternative, like the renderer", async () => {
+    await analyze(
+      '<audio id="music"><source src="https://cdn.example.com/clip.mp4"><source src="bed.wav"></audio>',
+    );
+    expectMusicFile("bed.wav");
+  });
+
+  it("does not take sources from muted videos or explicit non-music tracks", async () => {
+    await analyze(
+      '<video id="music" data-has-audio="true" muted><source src="clip.mp4"></video>' +
+        '<audio id="bgm" data-timeline-role="voiceover"><source src="clip.mp4"></audio>' +
+        '<audio id="soundtrack"><source src="bed.wav"></audio>',
+    );
+    expectMusicFile("bed.wav");
+  });
+
+  it("does not borrow a source outside a source-less music element", async () => {
+    await analyze('<audio id="music"></audio><audio id="bgm" src="bed.wav"></audio>');
+    expectMusicFile("bed.wav");
+  });
+
+  it("reads uppercase source attributes", async () => {
+    await analyze("<AUDIO ID=music><SOURCE SRC=bed.wav TYPE=audio/wav></AUDIO>");
+    expectMusicFile("bed.wav");
+  });
+
+  it("keeps an uppercase parent src ahead of child alternatives", async () => {
+    await analyze('<AUDIO ID=music SRC=bed.wav><source src="clip.mp4"></AUDIO>');
+    expectMusicFile("bed.wav");
+  });
+
+  it("finds music inside an authored composition template", async () => {
+    await analyze(
+      '<template data-composition-id="main"><audio id="music"><source src="bed.wav"></audio></template>',
+    );
+    expectMusicFile("bed.wav");
+  });
+
+  it("decodes child source attributes and escaped URL paths", async () => {
+    writeFileSync(join(dir, "bed & pulse.wav"), readFileSync(join(dir, "bed.wav")));
+    await analyze(
+      '<audio id="music"><source src="bed%20&amp;%20pulse.wav?version=1#track"></audio>',
+    );
+    expectMusicFile("bed & pulse.wav");
+    expect(JSON.parse(readFileSync(join(dir, "beats", "bed & pulse.wav.json"), "utf-8"))).toEqual(
+      expect.objectContaining({ audio: "bed & pulse.wav" }),
+    );
+  });
+
+  it("keeps markup in comments and scripts out of source discovery", async () => {
+    await analyze(
+      '<!-- <audio id="music"><source src="clip.mp4"></audio> -->' +
+        '<script>const sample = \'<audio id="bgm"><source src="clip.mp4"></audio>\';</script>' +
+        '<audio id="music"><source src="bed.wav"></audio>',
+    );
+    expectMusicFile("bed.wav");
+  });
+
+  it("keeps the first duplicate id and src attributes", async () => {
+    await analyze(
+      '<audio id="speech" id="music"><source src="clip.mp4"></audio>' +
+        '<audio id="bgm"><source src="bed.wav" src="clip.mp4"></audio>',
+    );
+    expectMusicFile("bed.wav");
+  });
+
+  it("does not read media-like text inside quoted attributes", async () => {
+    await analyze(
+      '<audio title="<source src=\'clip.mp4\'>" data-id="music" src="clip.mp4"></audio>' +
+        '<audio data-timeline-role="mus&#105;c"><source src="bed.wav"></audio>',
+    );
+    expectMusicFile("bed.wav");
   });
 });
