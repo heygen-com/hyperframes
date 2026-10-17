@@ -69,9 +69,7 @@ export function VideoFrameThumbnail({
   }
 
   if (!frame) {
-    return (
-      <div className="w-full h-full bg-neutral-800 animate-pulse motion-reduce:animate-none" />
-    );
+    return <div data-thumbnail-loading className="w-full h-full bg-panel-surface" />;
   }
 
   return <img src={frame} alt="" draggable={false} className="w-full h-full object-contain" />;
