@@ -23,6 +23,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Duration, RemovalPolicy, Size } from "aws-cdk-lib";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
+import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as s3 from "aws-cdk-lib/aws-s3";
@@ -111,6 +112,7 @@ export class HyperframesRenderStack extends Construct {
         TMPDIR: "/tmp",
         HYPERFRAMES_LAMBDA_CHROME_SOURCE: chromeSource,
         HYPERFRAMES_RENDER_BUCKET: this.bucket.bucketName,
+        HYPERFRAMES_LAMBDA_RESERVED_CONCURRENCY: String(props.reservedConcurrency ?? -1),
       },
     });
 
@@ -119,6 +121,9 @@ export class HyperframesRenderStack extends Construct {
     // SAM's AWSLambdaBasicExecutionRole equivalent is included by the
     // default `new lambda.Function` execution role.
     this.bucket.grantReadWrite(this.renderFunction);
+    this.renderFunction.addToRolePolicy(
+      new iam.PolicyStatement({ actions: ["lambda:GetAccountSettings"], resources: ["*"] }),
+    );
 
     const stateMachineLogGroup = new logs.LogGroup(this, "RenderStateMachineLogGroup", {
       logGroupName: `/aws/states/${projectName}-render`,
@@ -126,7 +131,7 @@ export class HyperframesRenderStack extends Construct {
       removalPolicy: RemovalPolicy.DESTROY,
     });
 
-    const definition = this.buildStateMachineDefinition(props.reservedConcurrency);
+    const definition = this.buildStateMachineDefinition();
 
     this.stateMachine = new sfn.StateMachine(this, "RenderStateMachine", {
       stateMachineName: `${projectName}-render`,
@@ -189,7 +194,7 @@ export class HyperframesRenderStack extends Construct {
    * template and this construct can be diffed shape-for-shape during
    * the snapshot test.
    */
-  private buildStateMachineDefinition(reservedConcurrency: number | undefined): sfn.IChainable {
+  private buildStateMachineDefinition(): sfn.IChainable {
     // `ChromeBinaryUnavailableError` is non-retryable: a wedged warm
     // instance keeps returning the same falsy executablePath until the
     // env recycles, so retries just burn the 4× 15-min budget.
@@ -267,6 +272,7 @@ export class HyperframesRenderStack extends Construct {
         "PlanS3Uri.$": "$.Payload.PlanS3Uri",
         "PlanHash.$": "$.Payload.PlanHash",
         "ChunkCount.$": "$.Payload.ChunkCount",
+        "MaxChunkConcurrency.$": "$.Payload.MaxChunkConcurrency",
         "Format.$": "$.Payload.Format",
         "HasAudio.$": "$.Payload.HasAudio",
         "AudioS3Uri.$": "$.Payload.AudioS3Uri",
@@ -301,6 +307,7 @@ export class HyperframesRenderStack extends Construct {
         "PlanV2ArtifactS3Prefix.$": "$.Payload.PlanV2ArtifactS3Prefix",
         "PlanHash.$": "$.Payload.PlanHash",
         "ChunkCount.$": "$.Payload.ChunkCount",
+        "MaxChunkConcurrency.$": "$.Payload.MaxChunkConcurrency",
         "Format.$": "$.Payload.Format",
         "HasAudio.$": "$.Payload.HasAudio",
       },
@@ -319,8 +326,6 @@ export class HyperframesRenderStack extends Construct {
     const buildChunkList = new sfn.Pass(this, "BuildChunkList", {
       parameters: {
         "ChunkIndexes.$": "States.ArrayRange(0, States.MathAdd($.Plan.ChunkCount, -1), 1)",
-        // Queue chunks past reserved concurrency instead of letting Lambda throttle them; 0 = no cap.
-        MaxChunkConcurrency: reservedConcurrency ?? 0,
       },
       resultPath: "$.Iterator",
     });
@@ -374,7 +379,8 @@ export class HyperframesRenderStack extends Construct {
         "ChunkOutputS3Prefix.$": "$.PlanOutputS3Prefix",
         "Format.$": "$.Plan.Format",
       },
-      maxConcurrencyPath: "$.Iterator.MaxChunkConcurrency",
+      // Chunks past the plan's concurrency queue here instead of being throttled by Lambda.
+      maxConcurrencyPath: "$.Plan.MaxChunkConcurrency",
       resultPath: "$.Chunks",
     });
     renderChunks.itemProcessor(renderChunkTask);
@@ -452,7 +458,7 @@ export class HyperframesRenderStack extends Construct {
         "ChunkOutputS3Prefix.$": "$.PlanOutputS3Prefix",
         "Format.$": "$.Plan.Format",
       },
-      maxConcurrencyPath: "$.Iterator.MaxChunkConcurrency",
+      maxConcurrencyPath: "$.Plan.MaxChunkConcurrency",
       resultPath: "$.Chunks",
     });
     renderChunksV2.itemProcessor(renderChunkV2Task);

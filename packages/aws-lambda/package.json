@@ -69,6 +69,7 @@
     "verify:zip-size": "tsx scripts/verify-zip-size.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-lambda": "^3.1146.0",
     "@aws-sdk/client-s3": "^3.1146.0",
     "@aws-sdk/client-sfn": "^3.1146.0",
     "@hyperframes/producer": "workspace:^",

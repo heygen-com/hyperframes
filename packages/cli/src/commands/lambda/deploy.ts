@@ -19,7 +19,8 @@ export interface DeployArgs {
   stackName: string;
   region: string;
   awsProfile?: string;
-  reservedConcurrency: number;
+  /** Omitted = unreserved: each render sizes itself to the account's concurrency. */
+  reservedConcurrency?: number;
   chromeSource: "sparticuz" | "chrome-headless-shell";
   lambdaMemoryMb: number;
   /** Override the handler-ZIP rebuild step. Useful for CI runs that already built it. */
@@ -28,17 +29,13 @@ export interface DeployArgs {
 
 const DEFAULT_REGION = "us-east-1";
 const DEFAULT_MEMORY_MB = 10240;
-// Low default reserved-concurrency so a first-time user doesn't get
-// surprise-billed by a runaway Map state. Adopters with their own quota
-// raise this explicitly via `--concurrency`.
-const DEFAULT_CONCURRENCY = 8;
 
 export async function runDeploy(args: Partial<DeployArgs> = {}): Promise<void> {
   const resolved: DeployArgs = {
     stackName: args.stackName ?? DEFAULT_STACK_NAME,
     region: args.region ?? process.env.AWS_REGION ?? DEFAULT_REGION,
     awsProfile: args.awsProfile ?? process.env.AWS_PROFILE,
-    reservedConcurrency: args.reservedConcurrency ?? DEFAULT_CONCURRENCY,
+    reservedConcurrency: args.reservedConcurrency,
     chromeSource: args.chromeSource ?? "sparticuz",
     lambdaMemoryMb: args.lambdaMemoryMb ?? DEFAULT_MEMORY_MB,
     skipBuild: args.skipBuild ?? false,

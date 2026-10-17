@@ -43,7 +43,8 @@ Parameters:
     Description: >-
       Lambda reserved concurrency cap. Set to a positive integer to bound
       simultaneous chunk renders (e.g. 50 to limit cost). -1 means
-      unreserved (account default).
+      unreserved: each render runs up to 90% of the account's unreserved
+      concurrency.
 
   ChromeSource:
     Type: String
@@ -159,9 +160,15 @@ Resources:
           # clarity + so users can override during local SAM invoke.
           TMPDIR: /tmp
           HYPERFRAMES_RENDER_BUCKET: !Ref RenderBucket
+          HYPERFRAMES_LAMBDA_RESERVED_CONCURRENCY: !Ref ReservedConcurrency
       Policies:
         - S3CrudPolicy:
             BucketName: !Ref RenderBucket
+        # Plan sizes an unreserved render to the account's concurrency.
+        - Statement:
+            - Effect: Allow
+              Action: lambda:GetAccountSettings
+              Resource: "*"
       # CloudWatch Logs perms are covered by SAM's default
       # AWSLambdaBasicExecutionRole — explicit `CloudWatchLogsFullAccess`
       # would be overscope (`logs:*` on `*`, including DeleteLogGroup +
@@ -245,6 +252,7 @@ Resources:
               PlanS3Uri.$: "$.Payload.PlanS3Uri"
               PlanHash.$: "$.Payload.PlanHash"
               ChunkCount.$: "$.Payload.ChunkCount"
+              MaxChunkConcurrency.$: "$.Payload.MaxChunkConcurrency"
               Format.$: "$.Payload.Format"
               HasAudio.$: "$.Payload.HasAudio"
               AudioS3Uri.$: "$.Payload.AudioS3Uri"
@@ -303,6 +311,7 @@ Resources:
               PlanV2ArtifactS3Prefix.$: "$.Payload.PlanV2ArtifactS3Prefix"
               PlanHash.$: "$.Payload.PlanHash"
               ChunkCount.$: "$.Payload.ChunkCount"
+              MaxChunkConcurrency.$: "$.Payload.MaxChunkConcurrency"
               Format.$: "$.Payload.Format"
               HasAudio.$: "$.Payload.HasAudio"
             ResultPath: $.Plan
@@ -349,12 +358,6 @@ Resources:
             Type: Pass
             Parameters:
               ChunkIndexes.$: "States.ArrayRange(0, States.MathAdd($.Plan.ChunkCount, -1), 1)"
-              # Chunks past ReservedConcurrency would be throttled and burn their retries;
-              # the Map queues them instead. 0 = no cap. StringToJson because SAM quotes
-              # intrinsics inside a Definition, and MaxConcurrencyPath needs a number.
-              MaxChunkConcurrency.$: !Sub
-                - "States.StringToJson('${Cap}')"
-                - Cap: !If [HasReservedConcurrency, !Ref ReservedConcurrency, "0"]
             ResultPath: $.Iterator
             Next: AssertChunkCount
 
@@ -394,7 +397,8 @@ Resources:
               PlanHash.$: "$.Plan.PlanHash"
               ChunkOutputS3Prefix.$: "$.PlanOutputS3Prefix"
               Format.$: "$.Plan.Format"
-            MaxConcurrencyPath: $.Iterator.MaxChunkConcurrency
+            # Chunks past the plan's concurrency queue here instead of being throttled by Lambda.
+            MaxConcurrencyPath: $.Plan.MaxChunkConcurrency
             ResultPath: $.Chunks
             ItemProcessor:
               ProcessorConfig:
@@ -507,7 +511,8 @@ Resources:
               PlanHash.$: "$.Plan.PlanHash"
               ChunkOutputS3Prefix.$: "$.PlanOutputS3Prefix"
               Format.$: "$.Plan.Format"
-            MaxConcurrencyPath: $.Iterator.MaxChunkConcurrency
+            # Chunks past the plan's concurrency queue here instead of being throttled by Lambda.
+            MaxConcurrencyPath: $.Plan.MaxChunkConcurrency
             ResultPath: $.Chunks
             ItemProcessor:
               ProcessorConfig:

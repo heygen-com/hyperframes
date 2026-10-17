@@ -109,7 +109,11 @@ export default defineCommand({
     profile: { type: "string", description: "AWS profile name (default: AWS_PROFILE env)" },
 
     // deploy
-    concurrency: { type: "string", description: "Lambda reserved concurrency (default: 8)" },
+    concurrency: {
+      type: "string",
+      description:
+        "Lambda reserved concurrency (default: none; each render runs up to 90% of the account's unreserved concurrency)",
+    },
     "chrome-source": {
       type: "string",
       description: "sparticuz | chrome-headless-shell (default: sparticuz)",

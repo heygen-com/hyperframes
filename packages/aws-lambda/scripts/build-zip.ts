@@ -228,6 +228,7 @@ async function bundleHandler(stagingDir: string): Promise<void> {
       "puppeteer",
       // AWS SDK v3 is pre-installed in the Lambda Node 22 runtime; mark
       // external so we don't double-bundle 3+ MiB of SDK.
+      "@aws-sdk/client-lambda",
       "@aws-sdk/client-s3",
     ],
     plugins: [workspaceAliasPlugin],

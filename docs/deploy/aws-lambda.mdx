@@ -60,14 +60,14 @@ The CLI is a thin wrapper around the SAM template + the `@hyperframes/aws-lambda
 hyperframes lambda deploy \
   --stack-name=hyperframes-prod \
   --region=us-east-1 \
-  --concurrency=8 \
   --memory=10240
 ```
 
-The default `--concurrency=8` is deliberately conservative for first-time
-users. It limits how many Lambda workers the deployed stack can run at once.
-Raise it only after you have measured a typical render and checked the account's
-limits and budget.
+By default the stack reserves no concurrency. Each render reads the account's
+unreserved Lambda concurrency when it plans, and runs up to 90% of it at once
+(at most 256 chunks), leaving the rest for other functions in the account. The
+plan logs the number it chose. Pass `--concurrency=N` to reserve `N` executions
+for the function instead; every render then runs at most `N` chunks at once.
 
 After `deploy`, render anything with:
 
@@ -117,7 +117,7 @@ The template emits three CloudFormation outputs you'll need to invoke renders:
 - `RenderFunctionArn` — the single Lambda function the state machine dispatches against.
 
 <Warning>
-The SAM template's own default for `ReservedConcurrency` is `-1` (unreserved, account-default). The Path 1 CLI overrides it to `8` to keep first-time spend bounded; if you drop `ReservedConcurrency` from `--parameter-overrides` here, you get the unreserved default. Set it explicitly unless you've already sized your typical render's fan-out.
+The SAM template's default for `ReservedConcurrency` is `-1` (unreserved), the same as the Path 1 CLI: each render runs up to 90% of the account's unreserved concurrency. Set it to bound how many chunks run at once.
 </Warning>
 
 ### Path 3 — CDK construct

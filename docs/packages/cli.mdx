@@ -1926,7 +1926,7 @@ deploy:
 | `--stack-name`    | `hyperframes-default`                | CloudFormation stack name                                |
 | `--region`        | `AWS_REGION`, else `us-east-1`       | AWS region                                               |
 | `--profile`       | `AWS_PROFILE`                        | AWS profile name                                         |
-| `--concurrency`   | `8`                                  | Lambda reserved concurrency                              |
+| `--concurrency`   | none                                 | Lambda reserved concurrency. Without it, each render runs up to 90% of the account's unreserved concurrency |
 | `--memory`        | `10240`                              | Lambda memory in MB                                      |
 | `--chrome-source` | `sparticuz`                          | `sparticuz` or `chrome-headless-shell`                   |
 | `--skip-build`    | off                                  | Reuse the existing `handler.zip`                         |
@@ -1943,7 +1943,7 @@ And these drive `render` and `render-batch`:
 | `--quality`             | `standard`                          | `draft`, `standard`, or `high`                                                                                    |
 | `--output-resolution`   | —                                   | Supersample via Chrome `deviceScaleFactor` to a preset (`1080p`, `4k`, `uhd`, `hd`, `landscape-4k`, …) without changing layout |
 | `--chunk-size`          | auto                                | Frames per chunk. By default each chunk is sized to finish inside the Lambda timeout                              |
-| `--max-parallel-chunks` | auto                                | Chunks per render. By default one wave across the deploy's `--concurrency` (16 if unknown), widened when a chunk would outrun the Lambda timeout |
+| `--max-parallel-chunks` | auto                                | Chunks per render. By default one wave across the deploy's `--concurrency` (or 90% of the account's unreserved concurrency), widened when a chunk would outrun the Lambda timeout |
 | `--target-chunk-frames` | —                                   | Ceiling on frames per chunk. The planner adds chunks — up to `--max-parallel-chunks` — to stay under it, and short videos still collapse to fewer. Ignored when `--chunk-size` is set. |
 | `--variables`           | —                                   | JSON object reaching every chunk worker as `window.__hfVariables`                                                  |
 | `--variables-file`      | —                                   | Read those from a JSON file                                                                                       |
@@ -2049,7 +2049,8 @@ batch does not try to spawn 10,000 executions and trip your account limits. It
 is orchestrator-side only, and cannot enforce your account's Lambda concurrency
 quota — pick a value from that quota and the reserved concurrency you set at
 `lambda deploy --concurrency=<N>`. It is not `--max-parallel-chunks`, which caps
-chunks inside one render.
+chunks inside one render. Without a reserved concurrency every render in the
+batch sizes itself to the whole account, so reserve one before a large batch.
 
 ### `lambda progress <renderId | executionArn>`
 

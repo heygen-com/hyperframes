@@ -25,11 +25,13 @@ import {
   PlanVideosMetadataError,
   type AssembleResult,
   type ChunkResult,
+  type DistributedRenderConfig,
   type PlanResult,
   type PlanV2ArtifactPublisher,
   type PlanV2Manifest,
   publishPlanV2FromExecutionPlan,
 } from "@hyperframes/producer/distributed";
+import { resolveMaxParallelChunks } from "../../producer/src/services/distributed/plan.js";
 import { recomputePlanHashFromPlanDir } from "../../producer/src/services/render/stages/freezePlan.js";
 import type { AssembleEvent, LambdaEvent, PlanEvent, RenderChunkEvent } from "./events.js";
 import { handler, unwrapEvent } from "./handler.js";
@@ -282,6 +284,131 @@ describe("handler dispatch", () => {
       ).catch(() => undefined);
     }
     expect(seen).toEqual([900, 300]);
+  });
+
+  describe("chunk concurrency when the render does not set one", () => {
+    const THIRTY_MIN_FRAMES = 54_000;
+    const MP_1080P = (1920 * 1080) / 1_000_000;
+
+    function fakeLambda(reply: () => Promise<unknown>) {
+      const send = mock(reply);
+      return { send, client: { send } as unknown as import("@aws-sdk/client-lambda").LambdaClient };
+    }
+
+    async function planThirtyMinutes(lambda: { client: unknown }, workerConcurrency?: number) {
+      const tmpRoot = makeTmpRoot();
+      const s3 = new FakeS3Client();
+      s3.objects.set("s3://bucket/project.tar.gz", await makeMinimalProjectTar());
+      const warnings: string[] = [];
+      const log = { warn: (m: string) => warnings.push(m), error() {}, info() {}, debug() {} };
+      let planned: DistributedRenderConfig | undefined;
+      const result = await handler(
+        {
+          Action: "plan",
+          PlanProtocol: "v1",
+          ProjectS3Uri: "s3://bucket/project.tar.gz",
+          PlanOutputS3Prefix: "s3://bucket/renders/conc/",
+          Config: { fps: 30, width: 1920, height: 1080, format: "mp4", workerConcurrency },
+        },
+        {
+          s3: s3 as unknown as import("@aws-sdk/client-s3").S3Client,
+          lambda: lambda.client as import("@aws-sdk/client-lambda").LambdaClient,
+          primitives: {
+            plan: mock(async (_dir: string, config: DistributedRenderConfig, planDir: string) => {
+              planned = config;
+              mkdirSync(planDir, { recursive: true });
+              writeFileSync(join(planDir, "plan.json"), "{}");
+              return {
+                planDir,
+                planProtocol: CURRENT_PLAN_PROTOCOL,
+                planHash: "h",
+                // The real sizing rule, so the cap and the chunk count are tested together.
+                chunkCount: resolveMaxParallelChunks(config, THIRTY_MIN_FRAMES, MP_1080P, log),
+                totalFrames: THIRTY_MIN_FRAMES,
+                fps: 30 as const,
+                width: 1920,
+                height: 1080,
+                format: "mp4" as const,
+                ffmpegVersion: "6.0",
+                producerVersion: "0.0.0-test",
+              };
+            }) as unknown as typeof import("@hyperframes/producer/distributed").plan,
+            renderChunk: mock(async () => {
+              throw new Error("unused");
+            }) as unknown as typeof import("@hyperframes/producer/distributed").renderChunk,
+            assemble: mock(async () => {
+              throw new Error("unused");
+            }) as unknown as typeof import("@hyperframes/producer/distributed").assemble,
+          },
+          tmpRoot,
+          skipChromeResolution: true,
+          getRemainingTimeInMillis: () => 900_000,
+        },
+      );
+      if (result.Action !== "plan") throw new Error("unreachable");
+      return { result, planned, warnings };
+    }
+
+    it("runs every chunk at once when the account has room", async () => {
+      const lambda = fakeLambda(async () => ({
+        AccountLimit: { UnreservedConcurrentExecutions: 1000 },
+      }));
+      const { result, planned, warnings } = await planThirtyMinutes(lambda);
+      expect(planned?.workerConcurrency).toBe(900);
+      expect(result.ChunkCount).toBe(204);
+      expect(result.MaxChunkConcurrency).toBe(result.ChunkCount);
+      expect(warnings).toEqual([]);
+    });
+
+    it("caps at 90% of a small account and says the render runs in waves", async () => {
+      const lambda = fakeLambda(async () => ({
+        AccountLimit: { UnreservedConcurrentExecutions: 10 },
+      }));
+      const { result, warnings } = await planThirtyMinutes(lambda);
+      expect(result.MaxChunkConcurrency).toBe(9);
+      expect(result.ChunkCount).toBe(21);
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toContain("in 3 waves");
+      expect(warnings[0]).toContain("--concurrency 21");
+    });
+
+    it("falls back to 16 at once and logs why when the account cannot be read", async () => {
+      const lambda = fakeLambda(async () => {
+        const denied = new Error("not authorized to perform: lambda:GetAccountSettings");
+        denied.name = "AccessDeniedException";
+        throw denied;
+      });
+      const logged = spyOn(console, "log").mockImplementation(() => undefined);
+      try {
+        const { result, planned } = await planThirtyMinutes(lambda);
+        expect(planned?.workerConcurrency).toBe(16);
+        expect(result.MaxChunkConcurrency).toBe(16);
+        const lines = logged.mock.calls.map((call) => String(call[0]));
+        const fallback = lines.find((line) => line.includes('"source":"fallback"'));
+        expect(fallback).toContain('"level":"WARN"');
+        expect(fallback).toContain("AccessDeniedException");
+        expect(fallback).toContain("planning for 16 chunks at once");
+      } finally {
+        logged.mockRestore();
+      }
+    });
+
+    it("keeps an explicit concurrency, then the reserved one, without asking the account", async () => {
+      const lambda = fakeLambda(async () => ({
+        AccountLimit: { UnreservedConcurrentExecutions: 1000 },
+      }));
+      const explicit = await planThirtyMinutes(lambda, 64);
+      expect(explicit.planned?.workerConcurrency).toBe(64);
+      expect(explicit.result.MaxChunkConcurrency).toBe(64);
+      process.env.HYPERFRAMES_LAMBDA_RESERVED_CONCURRENCY = "32";
+      try {
+        const reserved = await planThirtyMinutes(lambda);
+        expect(reserved.result.MaxChunkConcurrency).toBe(32);
+      } finally {
+        delete process.env.HYPERFRAMES_LAMBDA_RESERVED_CONCURRENCY;
+      }
+      expect(lambda.send).not.toHaveBeenCalled();
+    });
   });
 
   it("normalizes producer workflow codes to Step Functions error names", async () => {

@@ -486,7 +486,7 @@ export function resolveMaxParallelChunks(
       `[plan] ${needed} chunks are needed to keep each under the ${workerTimeoutSeconds} s ` +
         `worker time limit, but the plan assumes ${wave} workers at once, so the render runs ` +
         `in ${Math.ceil(needed / wave)} waves. Raise --concurrency to ${needed} to render in one ` +
-        `wave (Lambda: hyperframes lambda deploy --concurrency ${needed}).`,
+        `wave (Lambda: hyperframes lambda deploy --concurrency ${needed}, or a higher account concurrency quota).`,
       { needed, workerConcurrency: wave, workerTimeoutSeconds },
     );
   }

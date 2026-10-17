@@ -309,27 +309,53 @@ describe("HyperframesRenderStack — snapshot", () => {
           config: { Mode: "DISTRIBUTED", ExecutionType: "STANDARD" },
         });
         expect(map.Label).toBe(name);
-        expect(map.MaxConcurrencyPath).toBe("$.Iterator.MaxChunkConcurrency");
+        expect(map.MaxConcurrencyPath).toBe("$.Plan.MaxChunkConcurrency");
         // Any failed chunk must still fail the render.
         expect(Object.keys(map).filter((key) => key.startsWith("ToleratedFailure"))).toEqual([]);
       }
     }
   });
 
-  it("caps chunk fan-out at the Lambda's reserved concurrency, unbounded when unreserved", () => {
-    const chunkListParams = (definition: { States: Record<string, unknown> }) =>
-      requireRecordProperty(
-        requireRecord(definition.States.BuildChunkList, "BuildChunkList state"),
-        "Parameters",
-        "BuildChunkList parameters",
-      );
-    expect(chunkListParams(SYNTHED.definition).MaxChunkConcurrency).toBe(0);
-    expect(chunkListParams(doSynth(300).definition).MaxChunkConcurrency).toBe(300);
-    // The YAML parser drops the !Sub / !If / !Ref tags and keeps their arguments.
-    expect(chunkListParams(readSamDefinition())["MaxChunkConcurrency.$"]).toEqual([
-      "States.StringToJson('${Cap}')",
-      { Cap: ["HasReservedConcurrency", "ReservedConcurrency", "0"] },
-    ]);
+  it("caps chunk fan-out at the concurrency the plan returns, in CDK and SAM", () => {
+    for (const definition of [SYNTHED.definition, readSamDefinition()]) {
+      for (const name of ["Plan", "PlanV2"]) {
+        const selector = requireRecordProperty(
+          requireRecord(definition.States[name], `${name} state`),
+          "ResultSelector",
+          `${name} result selector`,
+        );
+        expect(selector["MaxChunkConcurrency.$"]).toBe("$.Payload.MaxChunkConcurrency");
+      }
+    }
+  });
+
+  it("tells the plan the reserved concurrency and lets it read the account's, in CDK and SAM", () => {
+    const cdkFunction = (synthed: ReturnType<typeof doSynth>) =>
+      Object.values(synthed.template.findResources("AWS::Lambda::Function"))[0] as {
+        Properties: { Environment: { Variables: Record<string, unknown> } };
+      };
+    const reservedEnv = (synthed: ReturnType<typeof doSynth>) =>
+      cdkFunction(synthed).Properties.Environment.Variables.HYPERFRAMES_LAMBDA_RESERVED_CONCURRENCY;
+    expect(reservedEnv(SYNTHED)).toBe("-1");
+    expect(reservedEnv(doSynth(300))).toBe("300");
+    const cdkActions = Object.values(SYNTHED.template.findResources("AWS::IAM::Policy"))
+      .flatMap(policyStatements)
+      .flatMap((statement) => statement.Action);
+    expect(cdkActions).toContain("lambda:GetAccountSettings");
+
+    const samFunction = requireRecordProperty(
+      requireRecordProperty(readSamResources(), "RenderFunction", "SAM RenderFunction"),
+      "Properties",
+      "SAM function properties",
+    ) as { Environment: { Variables: Record<string, unknown> }; Policies: unknown[] };
+    // The YAML parser drops the !Ref tag and keeps its argument.
+    expect(samFunction.Environment.Variables.HYPERFRAMES_LAMBDA_RESERVED_CONCURRENCY).toBe(
+      "ReservedConcurrency",
+    );
+    const samActions = samFunction.Policies.flatMap((policy) =>
+      ((policy as { Statement?: Record<string, unknown>[] }).Statement ?? []).map((s) => s.Action),
+    );
+    expect(samActions).toContain("lambda:GetAccountSettings");
   }, 30000);
 
   it("fails at once when a chunk cannot fit the worker timeout, in CDK and SAM", () => {

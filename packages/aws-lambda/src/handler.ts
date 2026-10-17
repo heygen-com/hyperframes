@@ -14,6 +14,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
+import { GetAccountSettingsCommand, LambdaClient } from "@aws-sdk/client-lambda";
 import { S3Client } from "@aws-sdk/client-s3";
 import {
   assemble,
@@ -21,6 +22,7 @@ import {
   type ChunkRenderer,
   type ChunkResult,
   type DistributedRenderConfig,
+  DEFAULT_MAX_PARALLEL_CHUNKS,
   listPlanV2ArtifactsForTarget,
   materializePlanV2Target,
   plan,
@@ -81,6 +83,8 @@ function getS3Client(): S3Client {
  */
 export interface HandlerDeps {
   s3?: S3Client;
+  /** Reads the account's concurrency when the render does not set one. */
+  lambda?: LambdaClient;
   primitives?: {
     plan: typeof plan;
     planV2WithPublisher?: typeof planV2WithPublisher;
@@ -323,12 +327,54 @@ function primeRuntimeEnv(): void {
 
 // ── Plan ────────────────────────────────────────────────────────────────────
 
-function planConfig(event: PlanEvent, deps?: HandlerDeps): DistributedRenderConfig {
-  const remainingMs = deps?.getRemainingTimeInMillis?.();
-  if (event.Config.workerTimeoutSeconds !== undefined || remainingMs === undefined) {
-    return { ...event.Config };
+// Share of the account's unreserved concurrency a render plans for. The rest stays free for other
+// functions; at the default 1000 quota that is the 100 AWS keeps unreserved anyway.
+const ACCOUNT_CONCURRENCY_SHARE = 0.9;
+
+async function resolveWorkerConcurrency(event: PlanEvent, deps?: HandlerDeps): Promise<number> {
+  if (event.Config.workerConcurrency !== undefined) return event.Config.workerConcurrency;
+  try {
+    return await functionConcurrency(deps?.lambda);
+  } catch (err) {
+    logEvent({
+      event: "worker_concurrency",
+      level: "WARN",
+      source: "fallback",
+      concurrency: DEFAULT_MAX_PARALLEL_CHUNKS,
+      message:
+        `Could not read the account's Lambda concurrency (${String(err)}); ` +
+        `planning for ${DEFAULT_MAX_PARALLEL_CHUNKS} chunks at once. Allow lambda:GetAccountSettings ` +
+        "on the function role, or set the concurrency explicitly.",
+    });
+    return DEFAULT_MAX_PARALLEL_CHUNKS;
   }
-  return { ...event.Config, workerTimeoutSeconds: Math.ceil(remainingMs / 1000) };
+}
+
+/** The function's reserved concurrency, else its share of the account's unreserved pool. */
+async function functionConcurrency(lambda = new LambdaClient({})): Promise<number> {
+  const reserved = Number(process.env.HYPERFRAMES_LAMBDA_RESERVED_CONCURRENCY);
+  if (reserved > 0) return reserved;
+  const { AccountLimit } = await lambda.send(new GetAccountSettingsCommand({}));
+  const unreserved = AccountLimit?.UnreservedConcurrentExecutions;
+  if (unreserved === undefined) throw new Error("no UnreservedConcurrentExecutions in the reply");
+  const concurrency = Math.max(1, Math.floor(unreserved * ACCOUNT_CONCURRENCY_SHARE));
+  logEvent({ event: "worker_concurrency", source: "account", unreserved, concurrency });
+  return concurrency;
+}
+
+async function planConfig(
+  event: PlanEvent,
+  deps?: HandlerDeps,
+): Promise<DistributedRenderConfig & { workerConcurrency: number }> {
+  const config = {
+    ...event.Config,
+    workerConcurrency: await resolveWorkerConcurrency(event, deps),
+  };
+  const remainingMs = deps?.getRemainingTimeInMillis?.();
+  if (config.workerTimeoutSeconds === undefined && remainingMs !== undefined) {
+    config.workerTimeoutSeconds = Math.ceil(remainingMs / 1000);
+  }
+  return config;
 }
 
 // The v1 handler owns one transactional download, plan, archive, upload, and cleanup lifecycle.
@@ -338,7 +384,7 @@ async function handlePlan(event: PlanEvent, deps?: HandlerDeps): Promise<PlanLam
     return handlePlanV2(event, deps);
   }
   const started = Date.now();
-  const config = planConfig(event, deps);
+  const config = await planConfig(event, deps);
   const s3 = deps?.s3 ?? getS3Client();
   const primitive = deps?.primitives?.plan ?? plan;
 
@@ -392,6 +438,7 @@ async function handlePlan(event: PlanEvent, deps?: HandlerDeps): Promise<PlanLam
       PlanS3Uri: planTarUri,
       PlanHash: result.planHash,
       ChunkCount: result.chunkCount,
+      MaxChunkConcurrency: Math.min(config.workerConcurrency, result.chunkCount),
       TotalFrames: result.totalFrames,
       Fps: result.fps,
       Width: result.width,
@@ -416,7 +463,7 @@ async function handlePlanV2(
   deps?: HandlerDeps,
 ): Promise<Extract<PlanLambdaResult, { PlanProtocol: "v2" }>> {
   const started = Date.now();
-  const config = planConfig(event, deps);
+  const config = await planConfig(event, deps);
   const s3 = deps?.s3 ?? getS3Client();
   const primitive = deps?.primitives?.planV2WithPublisher ?? planV2WithPublisher;
   if (!deps?.skipChromeResolution && !process.env.PRODUCER_HEADLESS_SHELL_PATH) {
@@ -449,6 +496,7 @@ async function handlePlanV2(
       PlanV2ArtifactS3Prefix: publisher.artifactPrefix,
       PlanHash: manifest.planHash,
       ChunkCount: manifest.chunkCount,
+      MaxChunkConcurrency: Math.min(config.workerConcurrency, manifest.chunkCount),
       TotalFrames: manifest.totalFrames,
       Fps: manifest.fps,
       Width: manifest.width,
