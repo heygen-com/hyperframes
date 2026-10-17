@@ -6,6 +6,7 @@ import {
   isNavigationTimeoutError,
   navigateForCapture,
   networkIdleAttemptTimeoutMs,
+  waitForPageReady,
   NETWORK_IDLE_ATTEMPT_MS,
 } from "./navigateForCapture.js";
 
@@ -117,6 +118,167 @@ describe("navigateForCapture", () => {
       waitUntil: "networkidle2",
       timeout: 10_000,
     });
+  });
+});
+
+describe("waitForPageReady", () => {
+  it("pays one idle wait when the document is already parsed", async () => {
+    const waitForNetworkIdle = vi.fn(async () => undefined);
+    const evaluate = vi.fn(async () => false);
+
+    await waitForPageReady({ waitForNetworkIdle, evaluate });
+
+    // concurrency: 2 — the networkidle2 semantic navigation already uses, so
+    // a single held-open request cannot block the wait until timeout.
+    expect(waitForNetworkIdle).toHaveBeenCalledTimes(1);
+    expect(waitForNetworkIdle).toHaveBeenCalledWith(expect.objectContaining({ concurrency: 2 }));
+  });
+
+  it("re-waits for idle once a still-parsing document finishes loading", async () => {
+    const waitForNetworkIdle = vi.fn(async () => undefined);
+    let loading = true;
+    const evaluate = vi.fn(async () => {
+      const was = loading;
+      loading = false;
+      return was;
+    });
+
+    await waitForPageReady({ waitForNetworkIdle, evaluate });
+
+    expect(evaluate).toHaveBeenCalledTimes(2);
+    expect(waitForNetworkIdle).toHaveBeenCalledTimes(2);
+  });
+
+  it("treats a destroyed execution context as mid-navigation and keeps polling", async () => {
+    const waitForNetworkIdle = vi.fn(async () => undefined);
+    const evaluate = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Execution context was destroyed"))
+      .mockResolvedValue(false);
+
+    await waitForPageReady({ waitForNetworkIdle, evaluate });
+
+    expect(evaluate).toHaveBeenCalledTimes(2);
+    expect(waitForNetworkIdle).toHaveBeenCalledTimes(2);
+  });
+
+  it("rethrows degradable evaluate timeouts instead of polling through them", async () => {
+    const waitForNetworkIdle = vi.fn(async () => undefined);
+    const evaluate = vi.fn(async () => {
+      throw new TimeoutError(
+        "Runtime.evaluate timed out. Increase the 'protocolTimeout' setting in launch/connect calls for a higher timeout if needed.",
+      );
+    });
+
+    await expect(waitForPageReady({ waitForNetworkIdle, evaluate })).rejects.toBeInstanceOf(
+      TimeoutError,
+    );
+    // The stage degrades on the first timeout — it is not retried as
+    // "still loading" for the full deadline.
+    expect(evaluate).toHaveBeenCalledTimes(1);
+  });
+
+  it("stays bounded by wall clock when the document never reports a parsed state", async () => {
+    vi.useFakeTimers();
+    try {
+      const waitForNetworkIdle = vi.fn(async () => undefined);
+      const evaluate = vi.fn(async () => true);
+
+      const start = Date.now();
+      const done = waitForPageReady({ waitForNetworkIdle, evaluate }, { timeoutMs: 15_000 });
+      await vi.runAllTimersAsync();
+      await done;
+
+      expect(Date.now() - start).toBeLessThanOrEqual(15_000);
+      // ~500ms polls over the deadline — not unbounded.
+      expect(evaluate.mock.calls.length).toBeLessThanOrEqual(31);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("bounds a hung evaluate to the shared deadline, not per-iteration latency", async () => {
+    vi.useFakeTimers();
+    try {
+      // Each probe hangs for a protocol-timeout-scale 30s; the settle must
+      // still finish at the deadline rather than paying 30s per poll.
+      const evaluate = vi.fn(
+        () =>
+          new Promise<unknown>((resolve) => {
+            setTimeout(() => resolve(true), 30_000);
+          }),
+      );
+      const waitForNetworkIdle = vi.fn(async () => undefined);
+
+      const start = Date.now();
+      const done = waitForPageReady({ waitForNetworkIdle, evaluate }, { timeoutMs: 15_000 });
+      await vi.advanceTimersByTimeAsync(15_000);
+      await done;
+
+      expect(Date.now() - start).toBeLessThanOrEqual(15_000);
+      expect(evaluate).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("skips the leading idle wait in after-load mode on a parsed document", async () => {
+    const waitForNetworkIdle = vi.fn(async () => undefined);
+    const evaluate = vi.fn(async () => false);
+
+    await waitForPageReady({ waitForNetworkIdle, evaluate }, { networkIdle: "after-load" });
+
+    expect(waitForNetworkIdle).not.toHaveBeenCalled();
+  });
+
+  it("still idles in after-load mode once a loading document finishes", async () => {
+    const waitForNetworkIdle = vi.fn(async () => undefined);
+    let loading = true;
+    const evaluate = vi.fn(async () => {
+      const was = loading;
+      loading = false;
+      return was;
+    });
+
+    await waitForPageReady({ waitForNetworkIdle, evaluate }, { networkIdle: "after-load" });
+
+    expect(waitForNetworkIdle).toHaveBeenCalledTimes(1);
+  });
+
+  it("is a no-op when the deadline has already passed", async () => {
+    const waitForNetworkIdle = vi.fn(async () => undefined);
+    const evaluate = vi.fn(async () => false);
+
+    await waitForPageReady({ waitForNetworkIdle, evaluate }, { timeoutMs: 0 });
+
+    expect(evaluate).not.toHaveBeenCalled();
+    expect(waitForNetworkIdle).not.toHaveBeenCalled();
+  });
+
+  it("settles without waitForNetworkIdle on the page object", async () => {
+    const evaluate = vi.fn(async () => false);
+
+    await expect(waitForPageReady({ evaluate })).resolves.toBeUndefined();
+    expect(evaluate).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops polling when readyState does not evaluate to a boolean", async () => {
+    vi.useFakeTimers();
+    try {
+      const waitForNetworkIdle = vi.fn(async () => undefined);
+      const evaluate = vi.fn(async () => []);
+
+      const start = Date.now();
+      const done = waitForPageReady({ waitForNetworkIdle, evaluate }, { timeoutMs: 15_000 });
+      await vi.runAllTimersAsync();
+      await done;
+
+      expect(evaluate).toHaveBeenCalledTimes(1);
+      expect(Date.now() - start).toBeLessThan(15_000);
+      expect(waitForNetworkIdle).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
