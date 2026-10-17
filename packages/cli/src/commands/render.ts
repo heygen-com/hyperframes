@@ -295,6 +295,14 @@ export default defineCommand({
       description:
         "libvpx-vp9 -cpu-used value for WebM encodes (-8 to 8). Higher is faster with a larger quality/size tradeoff. Env: PRODUCER_VP9_CPU_USED.",
     },
+    "chroma-subsampling": {
+      type: "string",
+      description:
+        "MP4 chroma: 420 (default) or 444. 444 keeps full-resolution colour for thin coloured " +
+        "text and UI (yuv444p, lossless PNG capture, slower). Software encoder and SDR MP4 only; " +
+        "many players cannot decode 4:4:4.",
+      default: "420",
+    },
     gpu: { type: "boolean", description: "Use GPU encoding", default: false },
     "browser-gpu": {
       type: "boolean",
@@ -563,6 +571,8 @@ export interface RenderOptions {
   maxBitrate?: string;
   bufferSize?: string;
   videoFrameFormat?: VideoFrameFormat;
+  /** "444" opts an SDR MP4 render into full-resolution chroma. Absent means 4:2:0. */
+  chromaSubsampling?: "420" | "444";
   pageMotionBlur?: "off";
   quiet: boolean;
   debug?: boolean;
@@ -899,6 +909,7 @@ async function renderDocker(
       maxBitrate: options.maxBitrate,
       bufferSize: options.bufferSize,
       videoFrameFormat: options.videoFrameFormat,
+      chromaSubsampling: options.chromaSubsampling,
       pageMotionBlur: options.pageMotionBlur,
       quiet: options.quiet,
       variables: options.variables,
@@ -1189,6 +1200,7 @@ async function executeLocalRender(
       maxBitrate: options.maxBitrate,
       bufferSize: options.bufferSize,
       videoFrameFormat: options.videoFrameFormat,
+      chromaSubsampling: options.chromaSubsampling,
       pageMotionBlur: options.pageMotionBlur,
       variables: options.variables,
       entryFile: options.entryFile,

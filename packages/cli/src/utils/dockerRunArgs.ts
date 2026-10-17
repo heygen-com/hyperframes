@@ -56,6 +56,8 @@ export interface DockerRenderOptions {
   maxBitrate?: string;
   bufferSize?: string;
   videoFrameFormat?: "auto" | "jpg" | "png";
+  /** Forwarded as `--chroma-subsampling 444`; the 4:2:0 default adds no flag. */
+  chromaSubsampling?: "420" | "444";
   pageMotionBlur?: "off";
   quiet: boolean;
   debug?: boolean;
@@ -164,6 +166,7 @@ export function buildDockerRunArgs(input: DockerRunArgsInput): string[] {
     ...(options.videoFrameFormat && options.videoFrameFormat !== "auto"
       ? ["--video-frame-format", options.videoFrameFormat]
       : []),
+    ...(options.chromaSubsampling === "444" ? ["--chroma-subsampling", "444"] : []),
     ...(options.pageMotionBlur !== undefined ? ["--page-motion-blur", options.pageMotionBlur] : []),
     ...(options.quiet ? ["--quiet"] : []),
     ...(options.debug ? ["--debug"] : []),

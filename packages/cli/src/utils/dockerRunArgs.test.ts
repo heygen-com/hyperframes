@@ -76,6 +76,16 @@ describe("buildDockerRunArgs", () => {
     expect(flags(undefined)).toEqual(["run", "--rm", "--platform", "linux/amd64"]);
   });
 
+  it("forwards --chroma-subsampling only for 4:4:4, keeping the default argv unchanged", () => {
+    const args = (chromaSubsampling?: "420" | "444") =>
+      buildDockerRunArgs({ ...FIXED_INPUT, options: { ...BASE, chromaSubsampling } });
+    const at = args("444").indexOf("--chroma-subsampling");
+    expect(at).toBeGreaterThan(-1);
+    expect(args("444")[at + 1]).toBe("444");
+    expect(args("420")).toEqual(args(undefined));
+    expect(args("420")).not.toContain("--chroma-subsampling");
+  });
+
   it("omits --workers when auto sizing should happen inside the container", () => {
     const args = buildDockerRunArgs({ ...FIXED_INPUT, options: BASE });
     expect(args).not.toContain("--workers");
