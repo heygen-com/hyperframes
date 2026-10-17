@@ -280,6 +280,7 @@ export function freezeRecipe({ projectDir, name, workflow, blocks }) {
     const userDir = join(userRecipesDir(), slug);
     mkdirSync(userDir, { recursive: true });
     cpSync(dir, userDir, { recursive: true, force: true });
+    if (!briefSkeleton) rmSync(join(userDir, "brief-skeleton.md"), { force: true });
   } catch {
     // The project-tier freeze already landed.
   }
