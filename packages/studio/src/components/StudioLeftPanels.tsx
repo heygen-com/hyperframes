@@ -11,7 +11,6 @@ import { useDockLayoutStore } from "./dock/dockLayoutStore";
 import { isMediaFile } from "../utils/mediaTypes";
 import { useStudioShellContext } from "../contexts/StudioContext";
 import { useFileManagerContext } from "../contexts/FileManagerContext";
-import { getPersistedRenderSettings } from "./renders/renderSettings";
 
 interface StudioLeftPanelsProps {
   onSelectComposition: (comp: string) => void;
@@ -75,8 +74,7 @@ export const StudioLeftPanels = memo(function StudioLeftPanels({
         return;
       }
       await waitForPendingDomEditSaves();
-      const { format, quality, fps, gpu } = getPersistedRenderSettings();
-      await renderQueue.startRender({ composition: comp, format, quality, fps, gpu });
+      await renderQueue.startRender({ composition: comp });
     },
     [renderQueue, waitForPendingDomEditSaves],
   );
