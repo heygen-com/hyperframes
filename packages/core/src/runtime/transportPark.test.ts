@@ -734,7 +734,7 @@ describe("parked transport loop", () => {
     expect(posted.filter((m) => m["type"] === "timeline").length - before).toBe(0);
   });
 
-  it("posts a playing clip's new track, label and z-index on the next poll", async () => {
+  it("posts a playing clip's new track, label and z-index once playback stops", async () => {
     mount(
       '<div id="clip" data-start="0" data-duration="5" data-track-index="0" data-timeline-label="Before" style="z-index: 1"></div>',
     );
@@ -747,7 +747,11 @@ describe("parked transport loop", () => {
     clip.setAttribute("data-timeline-label", "After");
     clip.style.zIndex = "9";
     await flushObservers();
+    posted.length = 0;
     for (let i = 0; i < 130; i += 1) frame120Hz();
+    expect(posted.filter((m) => m["type"] === "timeline")).toHaveLength(0);
+    window.__player!.pause();
+    for (let i = 0; i < 10; i += 1) frame120Hz();
     const clips = (posted.filter((m) => m["type"] === "timeline").at(-1)?.["clips"] ?? []) as Array<
       Record<string, unknown>
     >;

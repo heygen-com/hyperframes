@@ -31,20 +31,16 @@ import { isElementNode, isMediaElement } from "./domRealm";
 import { LOOP_INFLATED_TIMELINE_SECONDS } from "./compositionLength";
 import { cutToHostSlots } from "../mediaTiming";
 
-export function isRuntimeElementVisibleAt(
+export function runtimeElementWindow(
   rawNode: Element,
   options: {
-    currentTime: number;
-    compositionDuration: number;
-    canonicalFps: number;
-    exportRenderSeek: boolean;
     timelineRegistry: Record<string, RuntimeTimelineLike | undefined>;
     resolver: ReturnType<typeof createRuntimeStartTimeResolver>;
   },
-): boolean {
+): { start: number; end: number } | null {
   const tag = rawNode.tagName.toLowerCase();
   if (tag === "script" || tag === "style" || tag === "link" || tag === "meta") {
-    return false;
+    return null;
   }
 
   const isMedia = tag === "video" || tag === "audio";
@@ -70,12 +66,29 @@ export function isRuntimeElementVisibleAt(
       duration = liveDuration;
     }
   }
-  const computedEnd =
-    duration != null && duration > 0 ? start + duration : Number.POSITIVE_INFINITY;
+  return {
+    start,
+    end: duration != null && duration > 0 ? start + duration : Number.POSITIVE_INFINITY,
+  };
+}
+
+export function isRuntimeElementVisibleAt(
+  rawNode: Element,
+  options: {
+    currentTime: number;
+    compositionDuration: number;
+    canonicalFps: number;
+    exportRenderSeek: boolean;
+    timelineRegistry: Record<string, RuntimeTimelineLike | undefined>;
+    resolver: ReturnType<typeof createRuntimeStartTimeResolver>;
+  },
+): boolean {
+  const span = runtimeElementWindow(rawNode, options);
+  if (!span) return false;
   // Export seeks snap to frame boundaries; interactive visibility uses authored seconds.
   const clipWindow = options.exportRenderSeek
-    ? exportClipWindow(start, computedEnd, options.canonicalFps)
-    : { start, end: computedEnd };
+    ? exportClipWindow(span.start, span.end, options.canonicalFps)
+    : span;
   return isClipVisibleAt(
     options.currentTime,
     clipWindow.start,

@@ -1,5 +1,6 @@
-import { PREVIEW_RASTER_ATTR } from "../studioPreviewMark";
+import { PREVIEW_ONLY_ATTRS, PREVIEW_RASTER_ATTR } from "../studioPreviewMark";
 import { isElementNode } from "./domRealm";
+import { CLIP_HIDDEN_ATTR } from "./timedClipHide";
 
 // Chromium rasters a `will-change: transform` layer at no less than device scale, so a preview shown
 // small rasters each one at full size. Below 1x the hint is dropped wherever nothing depends on the
@@ -7,6 +8,8 @@ import { isElementNode } from "./domRealm";
 const TRANSFORM_HINTS = new Set(["transform", "translate", "rotate", "scale"]);
 const MARKED = `[${PREVIEW_RASTER_ATTR}]`;
 const DROP_HINTS = `${MARKED} { will-change: auto !important; }`;
+// Toggled by the runtime as clips come and go; its own rules on them only hide, never restack.
+const RUNTIME_PLAYBACK_ATTRS = new Set<string>([...PREVIEW_ONLY_ATTRS, CLIP_HIDDEN_ATTR]);
 
 let sheet: HTMLStyleElement | null = null;
 let observer: MutationObserver | null = null;
@@ -58,11 +61,14 @@ function fits(element: Element, readOwnHints: boolean): boolean {
   return drop;
 }
 
-function check(element: Element, readOwnHints: boolean): void {
-  const drop = fits(element, readOwnHints);
+function writeMark(element: Element, drop: boolean): void {
   if (drop !== element.hasAttribute(PREVIEW_RASTER_ATTR)) {
     element.toggleAttribute(PREVIEW_RASTER_ATTR, drop);
   }
+}
+
+function check(element: Element, readOwnHints: boolean): void {
+  writeMark(element, fits(element, readOwnHints));
 }
 
 function unmarkHolders(element: Element): void {
@@ -76,12 +82,17 @@ function unmarkHolders(element: Element): void {
 }
 
 function followTree(root: Element, batch: FollowBatch): void {
+  const decidedBeforeAnyWrite: Array<[Element, boolean]> = [];
   for (const element of [root, ...root.querySelectorAll("*")]) {
     if (batch.checked.has(element)) continue;
     batch.checked.add(element);
-    check(element, element === root || batch.changed.has(element));
-    unmarkHolders(element);
+    decidedBeforeAnyWrite.push([
+      element,
+      fits(element, element === root || batch.changed.has(element)),
+    ]);
   }
+  for (const [element, drop] of decidedBeforeAnyWrite) writeMark(element, drop);
+  for (const [element] of decidedBeforeAnyWrite) unmarkHolders(element);
 }
 
 type FollowBatch = { changed: Set<Element>; checked: Set<Element> };
@@ -111,7 +122,8 @@ function markLayers(): void {
 }
 
 function followAttribute(record: MutationRecord, batch: FollowBatch): void {
-  if (!isElementNode(record.target) || record.attributeName === PREVIEW_RASTER_ATTR) return;
+  if (!isElementNode(record.target) || RUNTIME_PLAYBACK_ATTRS.has(record.attributeName ?? ""))
+    return;
   // Any attribute can match a selector; inline style is the per-frame case, so it is cheaper.
   if (record.attributeName === "style") followStyle(record.target);
   else followTree(record.target, batch);
@@ -129,7 +141,7 @@ function ownAttributeChanges(records: MutationRecord[]): Set<Element> {
   const changed = new Set<Element>();
   for (const record of records) {
     const name = record.attributeName;
-    if (name === null || name === "style" || name === PREVIEW_RASTER_ATTR) continue;
+    if (name === null || name === "style" || RUNTIME_PLAYBACK_ATTRS.has(name)) continue;
     if (isElementNode(record.target)) changed.add(record.target);
   }
   return changed;
