@@ -4,7 +4,8 @@
  */
 
 import type { AudioSignal } from "./audioAnalysis";
-import { resample } from "./audioResample";
+import { resampleSteps } from "./audioResample";
+import { finish, type Steps } from "./audioSteps";
 import { fft } from "./fft";
 
 export interface Beats {
@@ -99,7 +100,7 @@ function addFramePower(
 }
 
 /** Per-band log power of every frame, averaged over channels so a polarity-flipped channel cannot cancel. */
-function bandPower(channels: Float32Array[]): Float64Array[] {
+function* bandPower(channels: Float32Array[]): Steps<Float64Array[]> {
   const window = hann(FRAME_SIZE);
   const edges = bandEdges();
   const hop = ANALYSIS_RATE / FRAMES_PER_SECOND;
@@ -109,6 +110,7 @@ function bandPower(channels: Float32Array[]): Float64Array[] {
     for (const channel of channels)
       addFramePower(channel, Math.round(f * hop), window, edges, power);
     bands.push(power.map((p) => Math.log1p((1e9 * p) / channels.length)));
+    yield;
   }
   return bands;
 }
@@ -120,7 +122,7 @@ const PITCH_CLASS = Array.from({ length: CHROMA_SIZE / 2 }, (_, bin) => {
   return (((Math.round(12 * Math.log2(hz / 440)) + 9) % 12) + 12) % 12;
 });
 
-function chromaFrames(channels: Float32Array[]): Float64Array[] {
+function* chromaFrames(channels: Float32Array[]): Steps<Float64Array[]> {
   const window = hann(CHROMA_SIZE);
   const hop = ANALYSIS_RATE / CHROMA_FPS;
   const re = new Float64Array(CHROMA_SIZE);
@@ -141,16 +143,19 @@ function chromaFrames(channels: Float32Array[]): Float64Array[] {
       });
     }
     frames.push(chroma);
+    yield;
   }
   return frames;
 }
 
-function bandFrames(signal: AudioSignal): BandFrames {
-  const channels = signal.channels.map((c) => resample(c, signal.sampleRate, ANALYSIS_RATE));
+function* bandFrames(signal: AudioSignal): Steps<BandFrames> {
+  const channels: Float32Array[] = [];
+  for (const c of signal.channels)
+    channels.push(yield* resampleSteps(c, signal.sampleRate, ANALYSIS_RATE));
   return {
     fps: FRAMES_PER_SECOND,
-    bands: bandPower(channels),
-    chroma: chromaFrames(channels),
+    bands: yield* bandPower(channels),
+    chroma: yield* chromaFrames(channels),
     chromaFps: CHROMA_FPS,
   };
 }
@@ -263,7 +268,7 @@ function smoothed(curve: Float64Array, period: number): Float64Array {
 }
 
 /** Ellis's recursion: each frame's best score from a predecessor about one period back, penalized by log deviation. */
-function cumulativeScore(local: Float64Array, periodAt: (frame: number) => number) {
+function* cumulativeScore(local: Float64Array, periodAt: (frame: number) => number) {
   const score = new Float64Array(local.length);
   const back = new Int32Array(local.length).fill(-1);
   for (let i = 0; i < local.length; i++) {
@@ -276,6 +281,7 @@ function cumulativeScore(local: Float64Array, periodAt: (frame: number) => numbe
     }
     score[i] = local[i]! + Math.max(0, best);
     back[i] = best > 0 ? from : -1;
+    yield;
   }
   return { score, back };
 }
@@ -305,7 +311,11 @@ function trimmed(beats: number[], local: Float64Array): number[] {
 const LOCAL_WINDOW_SECONDS = 8;
 
 /** The period through the piece: eight-second windows a second apart, held within 10% of the global period, median-smoothed. */
-function localPeriods(curve: Float64Array, fps: number, period: number): (frame: number) => number {
+function* localPeriods(
+  curve: Float64Array,
+  fps: number,
+  period: number,
+): Steps<(frame: number) => number> {
   const window = Math.round(LOCAL_WINDOW_SECONDS * fps);
   const hop = Math.round(fps);
   const range = {
@@ -318,6 +328,7 @@ function localPeriods(curve: Float64Array, fps: number, period: number): (frame:
     const end = Math.min(curve.length, start + window);
     periods.push(beatPeriod(curve.subarray(start, end), fps, range).period);
     centres.push((start + end) / 2);
+    yield;
   }
   const median = periods.map((_, i) => {
     const near = periods.slice(Math.max(0, i - 2), i + 3).sort((a, b) => a - b);
@@ -336,9 +347,10 @@ function interpolate(xs: number[], ys: number[], x: number): number {
   return ys[ys.length - 1]!;
 }
 
-function beatFrames(curve: Float64Array, fps: number, period: number) {
+function* beatFrames(curve: Float64Array, fps: number, period: number) {
   const local = smoothed(curve, period);
-  const { score, back } = cumulativeScore(local, localPeriods(curve, fps, period));
+  const periodAt = yield* localPeriods(curve, fps, period);
+  const { score, back } = yield* cumulativeScore(local, periodAt);
   const beats: number[] = [];
   for (let i = lastBeat(score); i >= 0; i = back[i]!) beats.push(i);
   return { frames: trimmed(beats.reverse(), local), local };
@@ -450,13 +462,15 @@ const beatConfidence = (clarity: number, lift: number) =>
   round(Math.max(0, Math.min(1, clarity)) * Math.max(0, Math.min(1, lift / 3)));
 
 /** Beats and downbeats of `frames`, a signal's band energies and chroma. */
-function rhythmOf(frames: BandFrames): Rhythm {
+function* rhythmOf(frames: BandFrames): Steps<Rhythm> {
   const curves = onsetCurves(frames);
+  yield;
   const { period, clarity } = beatPeriod(curves.broad, curves.fps);
+  yield;
   if (curves.broad.length < SHORTEST_SECONDS * curves.fps)
     return noRhythm(0, "too short for a steady beat");
   if (!curves.broad.some((v) => v > 0) || curves.broad.length < 2 * period) return noRhythm(0);
-  const { frames: beatList, local } = beatFrames(curves.broad, curves.fps, period);
+  const { frames: beatList, local } = yield* beatFrames(curves.broad, curves.fps, period);
   const confidence = beatConfidence(clarity, onsetLift(beatList, local));
   if (beatList.length < 4 || confidence < STEADY_BEAT_CONFIDENCE) return noRhythm(confidence);
   const times = beatList.map((f) => round(f / curves.fps + ONSET_LAG_SECONDS));
@@ -491,15 +505,24 @@ export function tempoOf(times: readonly number[]): Tempo {
 
 const measured = new WeakMap<AudioSignal, { frames: BandFrames; rhythm?: Rhythm }>();
 
+function* measuredSteps(signal: AudioSignal) {
+  let entry = measured.get(signal);
+  if (!entry) measured.set(signal, (entry = { frames: yield* bandFrames(signal) }));
+  return entry;
+}
+
 /** Band energies of `signal`, computed once per signal for every capability that reads them. */
 export function bandFramesOf(signal: AudioSignal): BandFrames {
-  let entry = measured.get(signal);
-  if (!entry) measured.set(signal, (entry = { frames: bandFrames(signal) }));
-  return entry.frames;
+  return finish(measuredSteps(signal)).frames;
 }
 
 export function rhythm(signal: AudioSignal): Rhythm {
-  const frames = bandFramesOf(signal);
-  const entry = measured.get(signal)!;
-  return (entry.rhythm ??= rhythmOf(frames));
+  return finish(rhythmSteps(signal));
+}
+
+/** `rhythm`, yielding between short pieces of work. */
+export function* rhythmSteps(signal: AudioSignal): Steps<Rhythm> {
+  const entry = yield* measuredSteps(signal);
+  entry.rhythm ??= yield* rhythmOf(entry.frames);
+  return entry.rhythm;
 }

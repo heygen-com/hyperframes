@@ -1,5 +1,6 @@
-import { energyMix, type AudioSignal } from "../audioAnalysis";
-import { bandFramesOf, rhythm, tempoOf } from "../audioRhythm";
+import { energyMixSteps, type AudioSignal } from "../audioAnalysis";
+import { rhythmSteps, tempoOf } from "../audioRhythm";
+import { finish, type Steps } from "../audioSteps";
 
 export interface MusicBeatAnalysis {
   beatTimes: number[];
@@ -54,17 +55,30 @@ export interface MusicAnalysisOptions {
   pause?: () => Promise<void>;
 }
 
+/** Longest stretch the analysis runs before awaiting `pause`. */
+const SLICE_MS = 8;
+
+async function sliced<T>(steps: Steps<T>, pause: (() => Promise<void>) | undefined): Promise<T> {
+  if (!pause) return finish(steps);
+  let start = performance.now();
+  for (;;) {
+    const next = steps.next();
+    if (next.done) return next.value;
+    if (performance.now() - start >= SLICE_MS) {
+      await pause();
+      start = performance.now();
+    }
+  }
+}
+
 /** Beats, tempo and per-beat strength of decoded audio; no beats and a null bpm when it has no steady beat. */
 export async function analyzeMusicFromSignal(
   signal: AudioSignal,
   { pause }: MusicAnalysisOptions = {},
 ): Promise<MusicBeatAnalysis> {
   await pause?.();
-  bandFramesOf(signal);
-  await pause?.();
-  const { beats } = rhythm(signal);
-  await pause?.();
-  const channelData = energyMix(signal);
+  const { beats } = await sliced(rhythmSteps(signal), pause);
+  const channelData = await sliced(energyMixSteps(signal), pause);
   const confidence = beats.confidence ?? 0;
   const times = beats.times;
   const { strengths, peak } = beatStrengths(times, channelData, signal.sampleRate);
@@ -94,6 +108,7 @@ export async function analyzeMusicFromUrl(
   url: string,
   options: MusicAnalysisOptions = {},
 ): Promise<MusicBeatAnalysis> {
+  await options.pause?.();
   const audioContext = new AudioContext();
   try {
     const response = await fetch(url);
