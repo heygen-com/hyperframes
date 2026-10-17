@@ -1080,6 +1080,30 @@ describe("bundleToSingleHtml", () => {
     expect(bundled).toContain('var __hfTimelineCompId = "scene__hf2"');
   });
 
+  it("gives a mount that shares the page root's id its own runtime id", async () => {
+    const cliRoot = (title: string) =>
+      `<div id="root" data-composition-id="main" data-width="1920" data-height="1080"><h1>${title}</h1>`;
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><head></head><body>
+  ${cliRoot("Host")}
+    <div id="main_2" data-composition-id="main" data-composition-src="compositions/scene.html"></div>
+  </div>
+  <script>window.__timelines={};</script>
+</body></html>`,
+      "compositions/scene.html": `<!doctype html><html><body>${cliRoot("Scene")}</div>
+  <script>window.__timelines["main"] = "scene";</script>
+</body></html>`,
+    });
+
+    const bundled = await bundleToSingleHtml(dir);
+    const host = parseHTML(bundled).document.querySelector("#main_2");
+
+    expect(host?.getAttribute("data-composition-id")).toBe("main__hf1");
+    expect(host?.getAttribute("data-hf-original-composition-id")).toBe("main");
+    expect(bundled).toContain('var __hfTimelineCompId = "main__hf1"');
+  });
+
   it("uniquifies duplicate sub-compositions across inline-template and external hosts", async () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html>

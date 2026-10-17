@@ -43,6 +43,45 @@ describe("composition scoping", () => {
     }
   });
 
+  it("never replaces another mount's timeline under the scene's own id", () => {
+    const { document } = parseHTML("<main></main>");
+    const fakeWindow = { document, __timelines: {} as Record<string, unknown>, readBack: "" };
+    const run = (runtimeId: string, timeline: string) =>
+      new Function(
+        "window",
+        wrapScopedCompositionScript(
+          `window.__timelines.scene = ${JSON.stringify(timeline)};
+           window.readBack = window.__timelines.scene;`,
+          "scene",
+          undefined,
+          undefined,
+          runtimeId,
+        ),
+      )(fakeWindow);
+
+    run("scene", "first half");
+    run("scene-split", "second half");
+    expect(fakeWindow.__timelines).toEqual({ scene: "first half", "scene-split": "second half" });
+    expect(fakeWindow.readBack).toBe("second half");
+
+    // A mount that owns the scene's id keeps it when its script runs again.
+    const lone = { document, __timelines: {} as Record<string, unknown> };
+    const runLone = (timeline: string) =>
+      new Function(
+        "window",
+        wrapScopedCompositionScript(
+          `window.__timelines.scene = ${JSON.stringify(timeline)};`,
+          "scene",
+          undefined,
+          undefined,
+          "intro",
+        ),
+      )(lone);
+    runLone("v1");
+    runLone("v2");
+    expect(lone.__timelines).toEqual({ scene: "v2", intro: "v2" });
+  });
+
   it("scopes regular selectors while preserving global at-rules", () => {
     const scoped = scopeCssToComposition(
       `

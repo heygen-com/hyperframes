@@ -11,11 +11,11 @@ import { failCommand } from "../utils/commandResult.js";
 
 import { defineCommand } from "citty";
 import type { DistributedFormat } from "@hyperframes/aws-lambda/sdk";
-import { type CanvasResolution } from "@hyperframes/core";
+import { type CanvasResolution, DISTRIBUTED_FPS, isDistributedFps } from "@hyperframes/core";
 import { parseOutputResolutionFlag } from "../utils/parseOutputResolution.js";
 import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
-import { readAllowedCompositionFpsFromDir } from "../utils/compositionFps.js";
+import { defaultCloudFps } from "../utils/compositionFps.js";
 
 export const examples: Example[] = [
   ["Deploy the Lambda render stack to AWS", "hyperframes lambda deploy"],
@@ -126,12 +126,20 @@ export default defineCommand({
       description:
         "Output resolution preset that engages Chrome deviceScaleFactor supersampling. Accepts canonical names (landscape, landscape-4k, portrait, portrait-4k, square, square-4k) and aliases (1080p, 4k, uhd, hd). When set, the composition's authored data-width/data-height is supersampled to the target preset without changing the layout.",
     },
-    fps: { type: "string", description: "Render fps (24 | 30 | 60)" },
+    fps: { type: "string", description: `Render fps (${DISTRIBUTED_FPS.join(" | ")})` },
     format: { type: "string", description: "mp4 | mov | png-sequence | webm (default: mp4)" },
     codec: { type: "string", description: "h264 | h265 (mp4 only)" },
     quality: { type: "string", description: "draft | standard | high" },
-    "chunk-size": { type: "string", description: "Frames per chunk (default: 240)" },
-    "max-parallel-chunks": { type: "string", description: "Max concurrent chunks (default: 16)" },
+    "chunk-size": {
+      type: "string",
+      description:
+        "Frames per chunk (default: sized so each chunk fits the Lambda timeout, one wave across --concurrency)",
+    },
+    "max-parallel-chunks": {
+      type: "string",
+      description:
+        "Max chunks per render (default: one wave across the deploy's --concurrency, widened to fit the Lambda timeout)",
+    },
     "target-chunk-frames": {
       type: "string",
       description:
@@ -296,12 +304,11 @@ export default defineCommand({
           console.error("[lambda render] --width and --height are required.");
           failCommand();
         }
-        const fpsRaw =
-          parseIntFlag(args.fps) ??
-          readAllowedCompositionFpsFromDir(projectDir, [24, 30, 60]) ??
-          30;
-        if (fpsRaw !== 24 && fpsRaw !== 30 && fpsRaw !== 60) {
-          console.error(`[lambda render] --fps must be 24, 30, or 60; got ${fpsRaw}.`);
+        const fpsRaw = parseIntFlag(args.fps) ?? defaultCloudFps(projectDir);
+        if (!isDistributedFps(fpsRaw)) {
+          console.error(
+            `[lambda render] --fps must be one of ${DISTRIBUTED_FPS.join(", ")}; got ${fpsRaw}.`,
+          );
           failCommand();
         }
         const { runRender } = await import("./lambda/render.js");
@@ -353,12 +360,11 @@ export default defineCommand({
           console.error("[lambda render-batch] --width and --height are required.");
           failCommand();
         }
-        const fpsRaw =
-          parseIntFlag(args.fps) ??
-          readAllowedCompositionFpsFromDir(projectDir, [24, 30, 60]) ??
-          30;
-        if (fpsRaw !== 24 && fpsRaw !== 30 && fpsRaw !== 60) {
-          console.error(`[lambda render-batch] --fps must be 24, 30, or 60; got ${fpsRaw}.`);
+        const fpsRaw = parseIntFlag(args.fps) ?? defaultCloudFps(projectDir);
+        if (!isDistributedFps(fpsRaw)) {
+          console.error(
+            `[lambda render-batch] --fps must be one of ${DISTRIBUTED_FPS.join(", ")}; got ${fpsRaw}.`,
+          );
           failCommand();
         }
         const { runRenderBatch } = await import("./lambda/render-batch.js");

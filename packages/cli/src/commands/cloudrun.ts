@@ -29,7 +29,8 @@ import {
   validateVariablesAgainstProject,
 } from "../utils/variables.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
-import { readAllowedCompositionFpsFromDir } from "../utils/compositionFps.js";
+import { defaultCloudFps } from "../utils/compositionFps.js";
+import { DISTRIBUTED_FPS, type DistributedFps, isDistributedFps } from "@hyperframes/core";
 
 export const examples: Example[] = [
   ["Deploy the Cloud Run render stack", "hyperframes cloudrun deploy --project my-gcp-project"],
@@ -167,7 +168,7 @@ export default defineCommand({
     "site-id": { type: "string", description: "Explicit site id (overrides content hash)" },
     width: { type: "string", description: "Render width in pixels" },
     height: { type: "string", description: "Render height in pixels" },
-    fps: { type: "string", description: "Render fps (24 | 30 | 60)" },
+    fps: { type: "string", description: `Render fps (${DISTRIBUTED_FPS.join(" | ")})` },
     format: { type: "string", description: "mp4 | mov | png-sequence | webm (default: mp4)" },
     codec: { type: "string", description: "h264 | h265 (mp4 only)" },
     quality: { type: "string", description: "draft | standard | high" },
@@ -529,11 +530,12 @@ function resolveCloudRunFps(
   args: Record<string, unknown>,
   projectDir: string,
   command: "render" | "render-batch",
-): 24 | 30 | 60 {
-  const fps =
-    parseIntFlag(args.fps) ?? readAllowedCompositionFpsFromDir(projectDir, [24, 30, 60]) ?? 30;
-  if (fps === 24 || fps === 30 || fps === 60) return fps;
-  console.error(`[cloudrun ${command}] --fps must be 24, 30, or 60; got ${fps}.`);
+): DistributedFps {
+  const fps = parseIntFlag(args.fps) ?? defaultCloudFps(projectDir);
+  if (isDistributedFps(fps)) return fps;
+  console.error(
+    `[cloudrun ${command}] --fps must be one of ${DISTRIBUTED_FPS.join(", ")}; got ${fps}.`,
+  );
   failCommand();
 }
 

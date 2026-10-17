@@ -248,6 +248,27 @@ describe("timeline edit command", () => {
   };
   const endOf = (html: string, id: string) =>
     Number(clip(html, id).start) + Number(clip(html, id).duration);
+
+  it.each([
+    ["moves a hidden clip into its wrapper's window", ["move", "#lost", "8"], "lost", "8"],
+    ["moves a wrapper without colliding with its own clips", ["move", "#shot2", "4"], "shot2", "4"],
+    ["duplicates a clip inside its wrapper", ["duplicate", "#seen"], "seen", "6"],
+  ])("%s", (_name, args, id, start) => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-timeline-nested-"));
+    writeFileSync(
+      join(dir, "index.html"),
+      `<div data-composition-id="main" data-duration="12"><div id="shot2" data-hf-id="shot2" data-start="5" data-duration="5" data-track-index="0"><div id="seen" data-hf-id="seen" data-start="6" data-duration="2">In</div><div id="lost" data-hf-id="lost" data-start="0" data-duration="2">Out</div></div></div>`,
+    );
+    try {
+      const result = run(dir, ...args);
+      expect(result.stderr).not.toContain("overlap");
+      expect(result.status).toBe(0);
+      expect(clip(readFileSync(join(dir, "index.html"), "utf8"), id).start).toBe(start);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   const visibleAt = (html: string, time: number, ids: string[]) =>
     ids.filter((id) => isClipVisibleAt(time, Number(clip(html, id).start), endOf(html, id), 40));
 

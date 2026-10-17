@@ -10,6 +10,7 @@ const STRUCTURE_CODES = new Set([
   "caption_track_kind_missing",
   "multiple_caption_tracks",
   "clip_ends_past_root_duration",
+  "nested_clip_never_visible",
 ]);
 
 function htmlFiles(dir: string): string[] {

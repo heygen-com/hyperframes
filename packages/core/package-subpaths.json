@@ -32,6 +32,12 @@
       "types": "./dist/telemetryRedaction.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./distributed-fps": {
+      "source": "./src/distributedFps.ts",
+      "runtime": "./dist/distributedFps.js",
+      "types": "./dist/distributedFps.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./beats": {
       "source": "./src/beats/index.ts",
       "runtime": "./dist/beats/index.js",

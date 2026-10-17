@@ -105,18 +105,16 @@ export function projectBrowserEndToCompositionTimeline(
  * `deviceScaleFactor`. The composition's intrinsic dimensions stay the
  * page-layout viewport; the screenshot lands at output dims via DPR.
  *
- * The scale must be a positive integer ≥ 1 — fractional DPRs introduce
+ * Upsampling must be by a whole number — fractional DPRs above 1 introduce
  * visible aliasing and we'd rather fail loudly than produce a blurry
- * 4K render. Downsampling (output < composition) is rejected because
- * the user is unlikely to have intended it; if the use case appears
- * we can plumb a separate flag.
+ * 4K render. A smaller preset (720p, 480p) takes a DPR under 1, so Chrome
+ * rasterizes straight at the smaller size.
  *
  * Throws on:
  *   - HDR + outputResolution (HDR compositor processes raw pixel buffers
  *     at composition dimensions and would need parallel scaling).
  *   - Aspect-ratio mismatch (e.g. landscape composition → portrait-4k).
- *   - Non-integer scale ratio.
- *   - Downsampling (output dimensions smaller than composition).
+ *   - Non-integer upsampling ratio.
  */
 export function resolveDeviceScaleFactor(input: {
   compositionWidth: number;
@@ -140,8 +138,9 @@ export function resolveDeviceScaleFactor(input: {
   if (!compat.ok) throw new Error(compat.message);
 
   const target = CANVAS_DIMENSIONS[input.outputResolution];
-  // Aspect ratios match → widthRatio === heightRatio. Compute once.
-  return target.width / input.compositionWidth;
+  // The two ratios match, except a smaller preset's long side rounded to an even pixel (854×480): the long side's, so
+  // Chrome draws all 854 and the short side's 480.375 rounds to 480.
+  return Math.max(target.width / input.compositionWidth, target.height / input.compositionHeight);
 }
 
 /**

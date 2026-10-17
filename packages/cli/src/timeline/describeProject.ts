@@ -19,6 +19,7 @@ import {
   type MediaTag,
 } from "@hyperframes/parsers/media-duration";
 import {
+  isSubCompositionHost,
   topLevelElements,
   trackKindOf,
   type StructureNode,
@@ -67,8 +68,10 @@ export interface TimelineRow extends ClipFact {
   host: string | null;
   /** Where that host row is (its kind's `rows[index]`), for hosts whose id is missing or repeated. */
   hostRow: RowPointer | null;
-  /** Where this row's sub-composition clips are (one level only); each is a full row in its kind's `rows`. */
+  /** Rows directly inside this one: its sub-composition's clips, or timed elements nested in it. */
   children: RowPointer[];
+  /** The timed row in the same file that contains this clip; `null` at a file's top level. */
+  parentRow: RowPointer | null;
   /** Signed frames from its `data-sync-origin` partner (+ = late); `null` unpaired or rates differ. */
   syncOffsetFrames: number | null;
   mediaStart: number | null;
@@ -80,10 +83,14 @@ export interface RowPointer {
 }
 
 /** A row before flattening: children are still row objects and refs are not assigned. */
-type ClipDraft = Omit<TimelineRow, "index" | "nested" | "host" | "hostRow" | "children"> & {
+type ClipDraft = Omit<
+  TimelineRow,
+  "index" | "nested" | "host" | "hostRow" | "children" | "parentRow"
+> & {
   elementId: string | null;
   hfId: string | null;
   children: ClipDraft[];
+  inside: ClipDraft[];
 };
 
 export interface TimelineTrack {
@@ -276,6 +283,7 @@ interface RowTiming {
   authored: number | null;
   absStart: number;
   children: ClipDraft[];
+  inside: ClipDraft[];
   duration: DurationResolution;
 }
 
@@ -291,11 +299,14 @@ async function resolveRowTiming(scope: DocScope, node: DomNode, depth: number): 
     host && depth === 0
       ? await readSubComposition(host, scope, compositionOriginSeconds(absStart, el), slots)
       : [];
+  const inside = isSubCompositionHost(node)
+    ? []
+    : await Promise.all(topLevelElements(node).map((inner) => describeRow(scope, inner, depth)));
   const kind = el.tagName.toLowerCase();
   const duration = MEDIA_TAG.test(kind)
     ? await resolveMediaRowDuration(scope, el, kind as MediaTag, authored)
     : resolveContainerDuration(authored, children);
-  return { start, authored, absStart, children, duration };
+  return { start, authored, absStart, children, inside, duration };
 }
 
 function describeRowFields(scope: DocScope, node: DomNode, timing: RowTiming): ClipDraft {
@@ -326,6 +337,7 @@ function describeRowFields(scope: DocScope, node: DomNode, timing: RowTiming): C
     durationSource: timing.duration.durationSource,
     pendingReason: timing.duration.pendingReason,
     children: timing.children,
+    inside: timing.inside,
     ref: "",
     warnings: [],
     elementId: el.id || null,
@@ -384,7 +396,8 @@ function cutRow(row: ClipDraft, slots: readonly HostSlot[]): ClipDraft[] {
   if (kept.end === kept.start && row.absEnd > row.absStart) return [];
   const skipped = (kept.start - row.absStart) * (row.playbackRate ?? 1);
   const mediaStart = row.mediaStart === null ? null : roundMs(row.mediaStart + skipped);
-  return [{ ...row, absStart: roundMs(kept.start), absEnd: roundMs(kept.end), mediaStart }];
+  const inside = row.inside.flatMap((inner) => cutRow(inner, slots));
+  return [{ ...row, absStart: roundMs(kept.start), absEnd: roundMs(kept.end), mediaStart, inside }];
 }
 
 /** The file's real path when it is a regular file inside the project (symlinks resolved), else null. */
@@ -401,10 +414,14 @@ function realFileInside(projectDir: string, path: string): string | null {
 
 /** One flat, `absStart`-ordered list per kind holding every clip once; `children` become refs into those lists. */
 function flatten(top: ClipDraft[]): TimelineTrack[] {
-  const entries = [
-    ...top.map((clip) => ({ clip, host: null })),
-    ...top.flatMap((host) => host.children.map((clip) => ({ clip, host }))),
-  ];
+  type Entry = { clip: ClipDraft; host: ClipDraft | null; parent: ClipDraft | null };
+  const entries: Entry[] = [];
+  const add = (clip: ClipDraft, host: ClipDraft | null, parent: ClipDraft | null) => {
+    entries.push({ clip, host, parent });
+    for (const inner of clip.inside) add(inner, host, clip);
+    for (const child of clip.children) add(child, clip, null);
+  };
+  for (const clip of top) add(clip, null, null);
   const byKind = TRACK_ORDER.map((kind) => ({
     kind,
     entries: entries
@@ -426,19 +443,21 @@ function flatten(top: ClipDraft[]): TimelineTrack[] {
   }
   return byKind.map(({ kind, entries: kindEntries }) => ({
     kind,
-    rows: kindEntries.map(({ clip, host }, index) => {
+    rows: kindEntries.map(({ clip, host, parent }, index) => {
       const uniqueId = clip.elementId && fileIds.get(clip.file)?.get(clip.elementId) === 1;
       const ref = uniqueId
         ? `#${clip.elementId}`
         : clip.hfId
           ? `hf:${clip.hfId}`
           : `${kind}/${index}`;
-      const warnings =
-        uniqueId || clip.hfId
+      const warnings = [
+        ...(uniqueId || clip.hfId
           ? []
           : [
               'row has no stable name; add id="<name>" to the element in this file, then retry with #<name>',
-            ];
+            ]),
+        ...neverVisibleWarning(clip, parent),
+      ];
       return {
         ...clip,
         index,
@@ -447,10 +466,24 @@ function flatten(top: ClipDraft[]): TimelineTrack[] {
         nested: host !== null,
         host: host && host.id,
         hostRow: host && at(host),
-        children: clip.children.map(at),
+        children: [...clip.children, ...clip.inside].map(at),
+        parentRow: parent && at(parent),
       };
     }),
   }));
+}
+
+/** The runtime shows a nested clip only inside its parent's window, and its data-start counts from the composition. */
+export const NEVER_VISIBLE = "never visible";
+
+function neverVisibleWarning(clip: ClipDraft, parent: ClipDraft | null): string[] {
+  if (!parent || clip.kind === "audio") return [];
+  if (clip.absEnd <= clip.absStart || parent.absEnd <= parent.absStart) return [];
+  if (clip.absEnd > parent.absStart && clip.absStart < parent.absEnd) return [];
+  const name = parent.elementId ? `#${parent.elementId}` : `its parent <${parent.kind}>`;
+  return [
+    `${NEVER_VISIBLE}: plays ${clip.absStart}-${clip.absEnd}s, but ${name} only shows ${parent.absStart}-${parent.absEnd}s; a nested data-start counts from the composition, not from ${name}`,
+  ];
 }
 
 function projectFps(source: string): number {

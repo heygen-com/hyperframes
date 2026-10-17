@@ -2,6 +2,7 @@
 import gsap from "gsap";
 import { describe, expect, it } from "vitest";
 import { createGsapAdapter, rerenderGsapTimelineAt, seekGsapTimeline } from "./gsap";
+import type { GsapStructureKey } from "./gsap";
 import type { RuntimeTimelineLike } from "../types";
 
 // Every 0.1 s: hide all three frames, then show one, as frame-by-frame films do.
@@ -577,5 +578,186 @@ describe("seekGsapTimeline", () => {
     seekGsapTimeline(film.timeline, 0, false);
     seekGsapTimeline(film.timeline, 0.1, false);
     expect(film.calls()).toBe(1);
+  });
+
+  const structures = new WeakMap<object, GsapStructureKey>();
+  const structureOf = (timeline: object) => {
+    if (!structures.has(timeline)) structures.set(timeline, { owner: timeline, version: "1" });
+    return structures.get(timeline)!;
+  };
+  // What init's root seek does: the shared seek, then its own redraw unless the seek already redrew.
+  const rootSeek = (timeline: RuntimeTimelineLike, t: number) => {
+    if (!seekGsapTimeline(timeline, t, false, structureOf(timeline)))
+      rerenderGsapTimelineAt(timeline as never, t, structureOf(timeline));
+  };
+  const sceneSeek = (timeline: RuntimeTimelineLike, t: number) =>
+    seekGsapTimeline(timeline, t, false, structureOf(timeline));
+
+  // A scene that reveals its content with steps at 0, as scenes built from template clones do.
+  function revealedAtZero() {
+    const field = document.body.appendChild(document.createElement("div"));
+    const timeline = gsap.timeline({ paused: true });
+    timeline.set(field, { visibility: "hidden" }, 0);
+    timeline.set(field, { visibility: "visible" }, 0);
+    timeline.to(field, { x: 100, duration: 2 }, 0);
+    timeline.set(field, { visibility: "hidden" }, 1.5);
+    return { field, timeline: timeline as unknown as RuntimeTimelineLike };
+  }
+
+  it("shows a scene's steps at 0 after the playhead comes back to 0 from later", () => {
+    const scene = revealedAtZero();
+    sceneSeek(scene.timeline, 1);
+    sceneSeek(scene.timeline, 0);
+    expect(scene.field.style.visibility).toBe("visible");
+    sceneSeek(scene.timeline, 0.5);
+    expect(scene.field.style.visibility).toBe("visible");
+  });
+
+  it("shows a nested scene's steps at 0 after its parent parks it there from later", () => {
+    const scene = revealedAtZero();
+    const root = gsap
+      .timeline({ paused: true })
+      .add(scene.timeline as unknown as gsap.core.Timeline, 6);
+    root.set({}, {}, 12);
+    // What a runtime seek does: the root, then the scene at its own time, held at 0 before it starts.
+    const seekBoth = (t: number) => {
+      root.totalTime(t);
+      sceneSeek(scene.timeline, Math.max(0, t - 6));
+    };
+    seekBoth(8);
+    seekBoth(5.9);
+    seekBoth(6.5);
+    expect(scene.field.style.visibility).toBe("visible");
+  });
+
+  it("shows two steps on one later time in authored order after the playhead comes back onto it", () => {
+    const word = document.body.appendChild(document.createElement("span"));
+    const timeline = gsap.timeline({ paused: true });
+    timeline.set(word, { visibility: "hidden" }, 1).set(word, { visibility: "visible" }, 1);
+    timeline.to({}, { duration: 3 }, 0);
+    const scene = timeline as unknown as RuntimeTimelineLike;
+    sceneSeek(scene, 2);
+    sceneSeek(scene, 1);
+    expect(word.style.visibility).toBe("visible");
+    sceneSeek(scene, 1.2);
+    expect(word.style.visibility).toBe("visible");
+  });
+
+  it("keeps a scene's steps at 0 through the root's redraw at 0 on every seek", () => {
+    const scene = revealedAtZero();
+    rootSeek(scene.timeline, 1);
+    rootSeek(scene.timeline, 0);
+    rootSeek(scene.timeline, 0);
+    expect(scene.field.style.visibility).toBe("visible");
+  });
+
+  const keyframeForms: Record<string, gsap.TweenVars> = {
+    "a keyframes array": { keyframes: [{ x: 10 }, { x: 100 }] },
+    "percent keyframes": { keyframes: { "0%": { x: 5 }, "100%": { x: 60 } } },
+  };
+  const keyframedAtZero = (form: string) => {
+    const o = { x: 0 };
+    const timeline = gsap.timeline({ paused: true });
+    timeline.to(o, { ...keyframeForms[form], duration: 1 }, 0).to({}, { duration: 3 }, 0);
+    return { o, timeline: timeline as unknown as RuntimeTimelineLike };
+  };
+  const landings: [string, number[]][] = [
+    ["root", [2, 0]],
+    ["root", [0.5, 0]],
+    ["root", [0.5, 0, 0, 0]],
+    ["scene", [0.5, 0, 0, 1 / 30]],
+    ["scene", [1, 0]],
+  ];
+
+  it.each(
+    Object.keys(keyframeForms).flatMap((form) =>
+      landings.map(([path, times]) => ({ form, path, times })),
+    ),
+  )("draws $form starting at 0 as plain GSAP does when the $path seeks $times", (landing) => {
+    const ours = keyframedAtZero(landing.form);
+    const plain = keyframedAtZero(landing.form);
+    for (const t of landing.times) {
+      (landing.path === "root" ? rootSeek : sceneSeek)(ours.timeline, t);
+      plain.timeline.totalTime!(t, false);
+      expect(ours.o.x).toBeCloseTo(plain.o.x, 6);
+    }
+  });
+
+  it("fires a call on the landing time as often as plain GSAP across back-and-forth seeks", () => {
+    const fires = (ours: boolean) => {
+      let calls = 0;
+      const word = document.body.appendChild(document.createElement("span"));
+      const timeline = gsap.timeline({ paused: true }).to({}, { duration: 3 }, 0);
+      timeline.set(word, { visibility: "hidden" }, 1).call(() => void calls++, [], 1);
+      timeline.set(word, { visibility: "visible" }, 1);
+      const scene = timeline as unknown as RuntimeTimelineLike;
+      for (const t of [2, 1, 1.5, 1, 0.5, 1, 2, 1, 1]) {
+        if (ours) sceneSeek(scene, t);
+        else timeline.totalTime(t, false);
+      }
+      return calls;
+    };
+    expect(fires(true)).toBe(fires(false));
+  });
+
+  it("never redraws a whole scene for a backward landing, on steps or between them", () => {
+    const scene = revealedAtZero();
+    sceneSeek(scene.timeline, 2);
+    expect(sceneSeek(scene.timeline, 1.5)).toBe(false);
+    expect(scene.field.style.visibility).toBe("hidden");
+    sceneSeek(scene.timeline, 2);
+    expect(sceneSeek(scene.timeline, 0.37)).toBe(false);
+  });
+});
+
+describe("rerenderGsapTimelineAt with a structure key", () => {
+  // Steps at the root and inside a nested part that starts at 1 s, the shape of a caption track.
+  function film() {
+    const frames = [0, 1, 2].map(() => document.body.appendChild(document.createElement("div")));
+    let calls = 0;
+    const timeline = gsap.timeline({ paused: true });
+    for (let k = 0; k < 20; k++) timeline.set(frames[k % 3]!, { opacity: k % 2 }, k * 0.1);
+    const part = gsap.timeline();
+    for (let k = 0; k < 20; k++) part.set(frames[(k + 1) % 3]!, { x: k }, k * 0.05);
+    part.call(() => void calls++, [], 0.5);
+    timeline.add(part, 1);
+    const state = () => ({
+      dom: frames.map((frame) => frame.getAttribute("style")),
+      calls,
+      marks: (timeline.getChildren(true, true, true) as unknown as GsapMarks[]).map((child) => [
+        child.ratio,
+        child._zTime,
+        child._act,
+      ]),
+    });
+    return { timeline, state };
+  }
+  type GsapMarks = { ratio: number; _zTime?: number; _act?: number };
+
+  it("leaves the film exactly as a re-render that walks every child", () => {
+    const plain = film();
+    const keyed = film();
+    const key = { owner: keyed.timeline, version: "1" };
+    for (let frame = 0; frame <= 150; frame++) {
+      const t = frame / 60;
+      for (const [one, structure] of [
+        [plain, undefined],
+        [keyed, key],
+      ] as const) {
+        one.timeline.totalTime(t, false);
+        rerenderGsapTimelineAt(
+          {
+            totalTime: one.timeline.totalTime.bind(one.timeline),
+            totalDuration: one.timeline.totalDuration.bind(one.timeline),
+            getChildren: one.timeline.getChildren.bind(
+              one.timeline,
+            ) as RuntimeTimelineLike["getChildren"],
+          },
+          t,
+          structure,
+        );
+      }
+      expect(keyed.state()).toEqual(plain.state());
+    }
   });
 });

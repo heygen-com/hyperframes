@@ -1072,8 +1072,8 @@ export async function renderChunk(
         outputPath: outputChunkPath,
         framesDir,
         videoOnlyPath,
-        width: plan.dimensions.width * encoder.deviceScaleFactor,
-        height: plan.dimensions.height * encoder.deviceScaleFactor,
+        width: Math.round(plan.dimensions.width * encoder.deviceScaleFactor),
+        height: Math.round(plan.dimensions.height * encoder.deviceScaleFactor),
         needsAlpha: plan.dimensions.format !== "mp4",
         captureImageFormat: captureOptions.format ?? "jpeg",
         // Each chunk produces video only — audio is muxed once at assemble

@@ -81,6 +81,8 @@ export {
   getDefaultStageZoom,
 } from "./core.types";
 
+export { DISTRIBUTED_FPS, type DistributedFps, isDistributedFps } from "./distributedFps";
+
 // Templates
 export { generateBaseHtml, getStageStyles } from "./templates/base";
 export {

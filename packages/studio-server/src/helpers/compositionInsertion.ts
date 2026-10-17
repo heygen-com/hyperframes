@@ -153,8 +153,8 @@ function resolveTrack(
 
 function uniqueHostId(root: Element, base: string): string {
   const ids = new Set([
-    ...descendants(root, "[id]").map((element) => element.id),
-    ...descendants(root, "[data-composition-id]").flatMap((element) => {
+    ...[root, ...descendants(root, "[id]")].map((element) => element.id),
+    ...[root, ...descendants(root, "[data-composition-id]")].flatMap((element) => {
       const id = element.getAttribute("data-composition-id");
       return id ? [id] : [];
     }),
@@ -192,8 +192,9 @@ export function insertCompositionIntoSource(input: {
   const height = positiveAttribute(sourceComposition, "data-height");
   const { document, root } = compositionRoot(input.parentSource);
   const parentDuration = positiveAttribute(root, "data-duration", "data-composition-duration");
+  const sourceCompositionId = sourceComposition.getAttribute("data-composition-id") ?? "";
   const base =
-    (sourceComposition.getAttribute("data-composition-id") ?? "composition")
+    (sourceCompositionId || "composition")
       .replace(/[^a-zA-Z0-9_-]+/g, "-")
       .replace(/^-+|-+$/g, "") || "composition";
   const hostId = uniqueHostId(root, base);
@@ -216,7 +217,8 @@ export function insertCompositionIntoSource(input: {
   host.id = hostId;
   host.className = "clip";
   host.setAttribute("data-hf-id", `hf-${randomUUID()}`);
-  host.setAttribute("data-composition-id", hostId);
+  const mountedRootId = sourceCompositionId || hostId;
+  host.setAttribute("data-composition-id", mountedRootId);
   host.setAttribute("data-composition-src", relativeSourcePath(targetAbs, sourceAbs));
   host.setAttribute("data-start", String(Math.round(input.start * 100) / 100));
   host.setAttribute("data-duration", String(duration));

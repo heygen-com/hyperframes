@@ -131,11 +131,9 @@ export async function uploadFileToS3(
 }
 
 /**
- * Upload one content-addressed plan-v2 artifact exactly once.
- *
- * Existing objects are reused only when their immutable digest metadata and
- * byte length agree. A conflicting object is never overwritten: doing so
- * could change a plan already being consumed by another chunk invocation.
+ * Upload one content-addressed plan-v2 artifact exactly once; S3 verifies the bytes against
+ * `ChecksumSHA256`. An existing object is reused only when its digest metadata and length agree,
+ * and a conflicting one is never overwritten, since a chunk may already be reading that plan.
  */
 export async function uploadContentAddressedFileToS3(
   client: S3Client,
@@ -148,15 +146,6 @@ export async function uploadContentAddressedFileToS3(
   if (!existsSync(localPath)) {
     throw new Error(`[s3Transport] upload source missing: ${localPath}`);
   }
-  const actualSha256 = await sha256File(localPath);
-  if (actualSha256 !== expectedSha256) {
-    const error = new Error(
-      `[s3Transport] PLAN_ARTIFACT_DIGEST_MISMATCH: local artifact ${localPath} expected ${expectedSha256}, got ${actualSha256}`,
-    );
-    error.name = "PLAN_ARTIFACT_DIGEST_MISMATCH";
-    throw error;
-  }
-
   const { bucket, key } = parseS3Uri(uri);
   const size = statSync(localPath).size;
   const existing = await inspectContentAddressedObject(client, bucket, key, size, expectedSha256);

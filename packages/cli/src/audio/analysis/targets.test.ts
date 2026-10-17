@@ -20,6 +20,7 @@ function row(
     host: null,
     hostRow: null,
     children: [],
+    parentRow: null,
     trackIndex: 0,
     src: "audio/a.wav",
     sourceFile: null,

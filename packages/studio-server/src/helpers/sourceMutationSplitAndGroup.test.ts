@@ -87,7 +87,7 @@ describe("splitElementInHtml", () => {
     expect(result.html).toMatch(/id="box-split"[^>]*class="clip"/);
   });
 
-  it("gives a split composition host a unique composition id", () => {
+  it("keeps every half of a split composition mount on the root it mounts", () => {
     const composition = source.replace(
       'id="box" class="clip"',
       'id="box" class="clip" data-composition-id="headline" data-composition-src="headline.html"',
@@ -97,13 +97,28 @@ describe("splitElementInHtml", () => {
     const second = splitElementInHtml(first.html, { id: "box-split" }, 4, "box-split-2");
 
     const { document } = parseHTML(second.html);
-    const compositionIds = Array.from(
-      document.querySelectorAll("[data-composition-id]"),
-      (element) => element.getAttribute("data-composition-id"),
+    const mounts = Array.from(document.querySelectorAll("[data-composition-src]"));
+    expect(mounts.map((element) => element.getAttribute("data-composition-id"))).toEqual([
+      "headline",
+      "headline",
+      "headline",
+    ]);
+    expect(new Set(mounts.map((element) => element.id)).size).toBe(3);
+  });
+
+  it("keeps a split inline-template mount on its template", () => {
+    const composition = source
+      .replace('id="box" class="clip"', 'id="box" class="clip" data-composition-id="headline"')
+      .replace(
+        "</body>",
+        '<template id="headline-template"><div data-composition-id="headline"></div></template></body>',
+      );
+
+    const result = splitElementInHtml(composition, { id: "box" }, 3, "box-split");
+
+    expect(result.html).toMatch(
+      /id="box-split"[^>]*data-composition-id="headline"|data-composition-id="headline"[^>]*id="box-split"/,
     );
-    expect(compositionIds).toHaveLength(4);
-    expect(new Set(compositionIds)).toHaveLength(4);
-    expect(compositionIds).toEqual(expect.arrayContaining(["root", "headline", "headline-split"]));
   });
 
   it("returns matched false for out-of-range split time", () => {

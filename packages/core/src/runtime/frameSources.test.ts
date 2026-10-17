@@ -42,6 +42,19 @@ afterEach(() => {
 });
 
 describe("frame sources", () => {
+  it("holds a geometry read that skips video frames until its asynchronous draw lands", async () => {
+    const frame = deferred();
+    disposers.push(registerFrameSource({ element: mount(), render: () => frame.promise }));
+    adapter().seek({ time: 2 });
+    let captured = false;
+    const capture = waitForSeekCompletion({ videoFrames: false }).then(() => (captured = true));
+    await Promise.resolve();
+    expect(captured).toBe(false);
+    frame.resolve();
+    await capture;
+    expect(captured).toBe(true);
+  });
+
   it("holds capture through setup and asynchronous drawing", async () => {
     const setup = deferred();
     const frame = deferred();

@@ -86,6 +86,7 @@ export async function runDeploy(args: Partial<DeployArgs> = {}): Promise<void> {
     stateMachineArn: outputs.stateMachineArn,
     functionName: outputs.functionName,
     lambdaMemoryMb: resolved.lambdaMemoryMb,
+    reservedConcurrency: resolved.reservedConcurrency,
     deployedAt: new Date().toISOString(),
   });
 

@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/core",
-  "version": "0.8.164",
+  "version": "0.8.168",
   "description": "",
   "repository": {
     "type": "git",
@@ -43,6 +43,12 @@
       "node": "./dist/telemetryRedaction.js",
       "import": "./src/telemetryRedaction.ts",
       "types": "./src/telemetryRedaction.ts"
+    },
+    "./distributed-fps": {
+      "bun": "./src/distributedFps.ts",
+      "node": "./dist/distributedFps.js",
+      "import": "./src/distributedFps.ts",
+      "types": "./src/distributedFps.ts"
     },
     "./beats": {
       "bun": "./src/beats/index.ts",
@@ -559,6 +565,10 @@
       "./telemetry-redaction": {
         "import": "./dist/telemetryRedaction.js",
         "types": "./dist/telemetryRedaction.d.ts"
+      },
+      "./distributed-fps": {
+        "import": "./dist/distributedFps.js",
+        "types": "./dist/distributedFps.d.ts"
       },
       "./beats": {
         "import": "./dist/beats/index.js",

@@ -9,6 +9,98 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.168"
+  description="Released - 2026-10-17"
+  tags={["Release", "Core", "Engine", "Producer"]}
+>
+Scrubbing back across a scene in the preview now shows its content instead of an empty frame. Cloud renders size their chunks to the worker limit and assemble in one pass, so long videos finish faster.
+
+## Features
+
+- **Producer:** Distributed renders accept 25 fps ([cc9e1bb33a4](https://github.com/heygen-com/hyperframes/commit/cc9e1bb33a430b878af6dcb257ce5c9a70f9f180), [#5423](https://github.com/heygen-com/hyperframes/pull/5423)).
+- **Producer:** Render at 720p and 480p from a larger composition ([09c0307c3fd](https://github.com/heygen-com/hyperframes/commit/09c0307c3fd0318a7ea77e6b41df4e5d30a1902b), [#5724](https://github.com/heygen-com/hyperframes/pull/5724)).
+
+## Fixes
+
+- **Core:** Scrubbing back across a scene no longer leaves its content hidden ([4cf0e3a0e59](https://github.com/heygen-com/hyperframes/commit/4cf0e3a0e599c73a9a96efcee8f62099323a08cf), [#5766](https://github.com/heygen-com/hyperframes/pull/5766)).
+- **Engine:** Local renders lay out width-only videos like the browser ([fc41fa277a5](https://github.com/heygen-com/hyperframes/commit/fc41fa277a5649eb4879b524192dd6bee39d7465), [#5771](https://github.com/heygen-com/hyperframes/pull/5771)).
+- **CLI:** A browser a sandbox refuses says to rerun the command with escalation ([fa936691562](https://github.com/heygen-com/hyperframes/commit/fa9366915620ea9baa1d03b0eb44caaca013dc21), [#5734](https://github.com/heygen-com/hyperframes/pull/5734)).
+- **CLI:** Check's dense overlap pass takes at most 240 samples, at clip windows first ([caea3863b07](https://github.com/heygen-com/hyperframes/commit/caea3863b075f5f79d1c77dd084d05ea05aa0529), [#5764](https://github.com/heygen-com/hyperframes/pull/5764)).
+- **Lint:** Stop flagging dir on \<html\>; a render test now guards RTL export ([e6ce7337962](https://github.com/heygen-com/hyperframes/commit/e6ce73379620fb2abf73e0ab681e85fd7f938725), [#5744](https://github.com/heygen-com/hyperframes/pull/5744)).
+- **Skills:** Regenerate manifest after HyperFrames guidance update ([40c64255e8c](https://github.com/heygen-com/hyperframes/commit/40c64255e8c0a3d11a0d6e8229b7a88877c84401), [#5747](https://github.com/heygen-com/hyperframes/pull/5747)).
+- **CLI:** Honour HYPERFRAMES_SKIP_SKILLS in skills update and bare skills ([6dba67a0c3a](https://github.com/heygen-com/hyperframes/commit/6dba67a0c3a0a51247ab85bbc245f1cf3effa0dc), [#5743](https://github.com/heygen-com/hyperframes/pull/5743)).
+- **CLI:** Timeline lists clips nested in a timed element and lint flags ones that never show ([eab6ca15b1a](https://github.com/heygen-com/hyperframes/commit/eab6ca15b1af7ec7bca0bbeb4cd0330e677467a5), [#5732](https://github.com/heygen-com/hyperframes/pull/5732)).
+- **Engine:** A WebGPU block mounted as a sub-composition gets WebGPU like a root one ([4e6ee6d2300](https://github.com/heygen-com/hyperframes/commit/4e6ee6d2300290b638042ec88ef5afb7a0c27408), [#5735](https://github.com/heygen-com/hyperframes/pull/5735)).
+- **Core:** A composition mounted twice keeps each mount's own timeline ([c38e9f350b4](https://github.com/heygen-com/hyperframes/commit/c38e9f350b4dbe6b09a6a35d5db0d437b9464220), [#5729](https://github.com/heygen-com/hyperframes/pull/5729)).
+
+## Performance
+
+- **Producer:** Assemble in one pass and keep its disk use under one output copy ([a498cf2032c](https://github.com/heygen-com/hyperframes/commit/a498cf2032c6b22492dedb475ad6196a8d6c6797), [#5768](https://github.com/heygen-com/hyperframes/pull/5768)).
+- **Producer:** Size distributed chunks to the worker limit and concurrency ([c69fd2c6eca](https://github.com/heygen-com/hyperframes/commit/c69fd2c6ecadedff88cdc09d37854a658bffb733), [#5765](https://github.com/heygen-com/hyperframes/pull/5765)).
+
+## Internal
+
+- **Core:** One owner for the distributed fps set ([d5162beb50a](https://github.com/heygen-com/hyperframes/commit/d5162beb50a402a69423df106647347bd0f8763e), [#5756](https://github.com/heygen-com/hyperframes/pull/5756)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.167...v0.8.168).
+</Update>
+
+<Update
+  label="HyperFrames v0.8.167"
+  description="Released - 2026-10-16"
+  tags={["Release", "Core", "CLI", "Lint"]}
+>
+Long projects preview more smoothly: the preview's work now follows what is playing, not the total clip count. Bundling a project also stops freezing the app that runs it.
+
+## Fixes
+
+- **Core:** Bundling a project no longer blocks the host's thread on esbuild ([b1cf6e3c517](https://github.com/heygen-com/hyperframes/commit/b1cf6e3c517e227d1dca1b212e7637c19e502a64), [#5714](https://github.com/heygen-com/hyperframes/pull/5714)).
+- **CLI:** Page loads stop timing out while a busy machine's Chrome warms up ([41486b9725a](https://github.com/heygen-com/hyperframes/commit/41486b9725ab2aae4f457d75dcd625931d103bb3), [#5705](https://github.com/heygen-com/hyperframes/pull/5705)).
+
+## Performance
+
+- **Core:** Hold a clip at 0 inside a later scene until it is due ([13ea8349597](https://github.com/heygen-com/hyperframes/commit/13ea8349597bbcb874402d1771aea65766fd7ffc), [#5716](https://github.com/heygen-com/hyperframes/pull/5716)).
+- **Core:** A preview's composition scripts give the page a turn every 50 ms, not one long task ([12d8df37f4d](https://github.com/heygen-com/hyperframes/commit/12d8df37f4db8ccf019da32c97cc1352f8db9652), [#5713](https://github.com/heygen-com/hyperframes/pull/5713)).
+- **Lint:** Strip stylesheet comments once per canvas zoom scan ([0bff8342c38](https://github.com/heygen-com/hyperframes/commit/0bff8342c389c1841d3b8d858168700f13627e48), [#5712](https://github.com/heygen-com/hyperframes/pull/5712)).
+- **Core:** Preview runtime scales with what plays, not with the film's clip count ([d05bc4215d5](https://github.com/heygen-com/hyperframes/commit/d05bc4215d5757da86956217f4a8a4b2ab11b1fd), [#5674](https://github.com/heygen-com/hyperframes/pull/5674)).
+
+## Internal
+
+- **CLI:** Caption image test checks the close itself, not a reusable file number ([eace3d28b6c](https://github.com/heygen-com/hyperframes/commit/eace3d28b6cb721ec1f9a96d7d2ea76bf215551a), [#5707](https://github.com/heygen-com/hyperframes/pull/5707)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.166...v0.8.167).
+</Update>
+
+<Update
+  label="HyperFrames v0.8.166"
+  description="Released - 2026-10-16"
+  tags={["Release", "Core"]}
+>
+Scenes no longer reset during playback when the root composition has no animation of its own. Name cards and other scene content now play through.
+
+## Fixes
+
+- **Core:** Scenes stop resetting during playback when the root has no animation of its own ([19a8d44b480](https://github.com/heygen-com/hyperframes/commit/19a8d44b480d0b602c7fa06abca656cd2b13d803), [#5693](https://github.com/heygen-com/hyperframes/pull/5693)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.165...v0.8.166).
+</Update>
+
+<Update
+  label="HyperFrames v0.8.165"
+  description="Released - 2026-10-16"
+  tags={["Release", "Core"]}
+>
+Caption lines come back after you drag the playhead backward past them. Exported scenes keep cards that fly in, instead of showing one frame of each.
+
+## Fixes
+
+- **Core:** Exported scenes keep cards that fly in, instead of one frame of each ([fff3636fe72](https://github.com/heygen-com/hyperframes/commit/fff3636fe727512af54c876982c73050ca2c8fa5), [#5692](https://github.com/heygen-com/hyperframes/pull/5692)).
+- **Core:** A caption line shows again after the playhead jumps back over it ([4e6fcdb3a9f](https://github.com/heygen-com/hyperframes/commit/4e6fcdb3a9f310a9c483622d6a4ca5354a63fb22), [#5690](https://github.com/heygen-com/hyperframes/pull/5690)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.164...v0.8.165).
+</Update>
+
+<Update
   label="HyperFrames v0.8.164"
   description="Released - 2026-10-16"
   tags={["Release", "Producer", "Engine"]}

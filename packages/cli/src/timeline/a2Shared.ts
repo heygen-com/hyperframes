@@ -137,6 +137,19 @@ export function diff(before: string, after: string): string {
   return output.length <= 8_000 ? output : `${output.slice(0, 7_997)}...`;
 }
 
+function isAncestorOf(ancestor: TimelineRow, row: TimelineRow, timeline: ProjectTimeline): boolean {
+  for (let pointer = row.parentRow; pointer; ) {
+    const parent = rowAt(timeline, pointer);
+    if (parent === ancestor) return true;
+    pointer = parent.parentRow;
+  }
+  return false;
+}
+
+function sameLineage(a: TimelineRow, b: TimelineRow, timeline: ProjectTimeline): boolean {
+  return isAncestorOf(a, b, timeline) || isAncestorOf(b, a, timeline);
+}
+
 function overlap(
   row: TimelineRow,
   timeline: ProjectTimeline,
@@ -146,6 +159,7 @@ function overlap(
   return allRows(timeline).find(
     (candidate) =>
       candidate !== row &&
+      !sameLineage(candidate, row, timeline) &&
       candidate.file === row.file &&
       candidate.trackIndex === row.trackIndex &&
       spansShareTime(start, end, candidate.start, candidate.end),
@@ -429,6 +443,7 @@ export function mutationConflict(
   if (verb === "duplicate") {
     const conflict = allRows(timeline).find(
       (candidate) =>
+        !sameLineage(candidate, row, timeline) &&
         candidate.file === row.file &&
         candidate.trackIndex === row.trackIndex &&
         isInsideSpan(nextStart, candidate.start, candidate.end),

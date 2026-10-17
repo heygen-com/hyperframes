@@ -57,6 +57,11 @@ function fakeBrowser() {
     evaluateOnNewDocument: vi.fn(async () => undefined),
     setViewport: vi.fn(async () => undefined),
     goto: vi.fn(async () => undefined),
+    createCDPSession: async () => ({
+      send: async () => undefined,
+      on: () => undefined,
+      detach: async () => undefined,
+    }),
     waitForFunction: vi.fn(async () => undefined),
     evaluate: vi.fn(async () => undefined),
     setRequestInterception: vi.fn(async (_on: boolean) => undefined),

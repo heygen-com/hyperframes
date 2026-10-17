@@ -40,8 +40,8 @@ describe("parseHarnessModeFlag()", () => {
 });
 
 describe("checkDistributedSupport()", () => {
-  it("accepts mp4 SDR at 24 / 30 / 60 fps", () => {
-    for (const fpsNum of [24, 30, 60]) {
+  it("accepts mp4 SDR at 24 / 25 / 30 / 60 fps", () => {
+    for (const fpsNum of [24, 25, 30, 60]) {
       const result = checkDistributedSupport({ fps: { num: fpsNum, den: 1 } });
       expect(result.supported).toBe(true);
     }
@@ -60,12 +60,12 @@ describe("checkDistributedSupport()", () => {
     }
   });
 
-  it("rejects fps outside the {24,30,60} set", () => {
-    for (const fpsNum of [12, 25, 48, 50, 120]) {
+  it("rejects fps outside the {24,25,30,60} set", () => {
+    for (const fpsNum of [12, 48, 50, 120]) {
       const result = checkDistributedSupport({ fps: { num: fpsNum, den: 1 } });
       expect(result.supported).toBe(false);
       if (!result.supported) {
-        expect(result.reason).toMatch(/not in \{24, 30, 60\}/);
+        expect(result.reason).toMatch(/not in \{24, 25, 30, 60\}/);
       }
     }
   });

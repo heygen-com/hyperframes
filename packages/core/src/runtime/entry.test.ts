@@ -680,6 +680,21 @@ describe("runtime entry", () => {
       expect([first.preload, later.preload, untrimmed.preload]).toEqual(["", "none", ""]);
     });
 
+    it("defers a clip at 0 inside a later scene, by its start in the film", async () => {
+      servePreview();
+      const root = mountRoot();
+      const opening = timed(root, "div", "0");
+      const later = timed(root, "div", "5");
+      for (const scene of [opening, later]) {
+        scene.setAttribute("data-composition-id", "scene");
+        timed(scene, "div", "0");
+      }
+      await evaluateRuntime();
+      const [now, due] = [timed(opening, "video", "0"), timed(later, "video", "0")];
+      await Promise.resolve();
+      expect([now.preload, due.preload]).toEqual(["", "none"]);
+    });
+
     it("keeps a render loading every media element at bind", async () => {
       spyLoad();
       const [now, soon, later] = videos(mountRoot(), "0", "1.5", "5");

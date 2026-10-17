@@ -127,7 +127,7 @@ describe("shard planner fixture discovery", () => {
 
   it("only assigns distributed mode to fixtures the harness can actually run that way", () => {
     // The blocking gap: `checkDistributedSupport` refuses HDR, non-integer fps,
-    // and fps outside {24,30,60}, and the harness records a refusal as
+    // and fps outside DISTRIBUTED_FPS, and the harness records a refusal as
     // `passed: true` with `skipped`. Skipping was safe while in-process also
     // ran the fixture. It is not safe now — these fixtures run in distributed
     // mode and nowhere else, so a later `hdr: true` or fps edit would turn
@@ -159,7 +159,7 @@ describe("shard planner fixture discovery", () => {
     expect(hdr.supported).toBe(false);
     const ntsc = checkDistributedSupport({ fps: { num: 30000, den: 1001 } });
     expect(ntsc.supported).toBe(false);
-    const odd = checkDistributedSupport({ fps: { num: 25, den: 1 } });
+    const odd = checkDistributedSupport({ fps: { num: 50, den: 1 } });
     expect(odd.supported).toBe(false);
   });
 

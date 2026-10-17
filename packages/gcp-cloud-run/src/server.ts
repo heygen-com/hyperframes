@@ -194,7 +194,8 @@ function normalizeTerminalErrorName(error: unknown): void {
     candidate.code === "FONT_FETCH_UNAVAILABLE" ||
     candidate.code === "VIDEO_SOURCE_UNRENDERABLE" ||
     candidate.code === "VIDEO_EXTRACTION_FAILED" ||
-    candidate.code === "INVALID_VIDEO_METADATA"
+    candidate.code === "INVALID_VIDEO_METADATA" ||
+    candidate.code === "CHUNK_EXCEEDS_WORKER_TIMEOUT"
   ) {
     candidate.name = candidate.code;
   }
@@ -913,6 +914,7 @@ const NON_RETRYABLE_ERROR_NAMES = new Set([
   "PLAN_V2_INTEGRITY_UNRECOVERABLE",
   "VIDEO_SOURCE_UNRENDERABLE",
   "INVALID_VIDEO_METADATA",
+  "CHUNK_EXCEEDS_WORKER_TIMEOUT",
   "NOT_MEDIA_PAYLOAD",
   // Producer error class names (`.name`) + their string code aliases — the
   // class sets `.name` to the class name but wraps a `code`; cover both so a

@@ -263,7 +263,21 @@ describe("compositionRequiresWebGpu", () => {
     ).toBe(false);
   });
 
-  it("reads only the composition root tag and stays linear on repeated '<'", () => {
+  it("detects the marker on a mounted sub-composition's root in bundled HTML", () => {
+    expect(
+      compositionRequiresWebGpu(
+        '<div id="root" data-composition-id="main"><div id="aurora-host" data-composition-id="aurora">' +
+          '<div data-hf-inner-root="true" data-requires-webgpu=""><canvas data-shader="Aurora"></canvas></div></div></div>',
+      ),
+    ).toBe(true);
+    expect(
+      compositionRequiresWebGpu(
+        '<div data-composition-id="main"><div data-composition-id="scene"><div data-hf-inner-root="true"></div></div></div>',
+      ),
+    ).toBe(false);
+  });
+
+  it("reads only composition root tags and stays linear on repeated '<'", () => {
     expect(
       compositionRequiresWebGpu('<p data-requires-webgpu></p><div data-composition-id="a"></div>'),
     ).toBe(false);

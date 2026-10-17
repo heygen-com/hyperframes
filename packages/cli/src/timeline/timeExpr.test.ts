@@ -20,6 +20,7 @@ const row: TimelineRow = {
   host: null,
   hostRow: null,
   children: [],
+  parentRow: null,
   trackIndex: 0,
   src: null,
   sourceFile: null,

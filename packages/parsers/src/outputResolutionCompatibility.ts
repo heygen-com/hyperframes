@@ -28,7 +28,6 @@ import { CANVAS_DIMENSIONS, VALID_CANVAS_RESOLUTIONS, type CanvasResolution } fr
 export type OutputResolutionIssueKind =
   | "hdr-incompatible"
   | "aspect-mismatch"
-  | "downsampling"
   | "non-integer-scale";
 
 export interface OutputResolutionCompatibility {
@@ -69,22 +68,31 @@ export function suggestMatchingPreset(
   compositionHeight: number,
   chosen: CanvasResolution,
 ): CanvasResolution | undefined {
-  const aspectMatches: CanvasResolution[] = VALID_CANVAS_RESOLUTIONS.filter((preset) => {
-    const { width, height } = CANVAS_DIMENSIONS[preset];
-    // Integer-safe aspect compare (cross-multiplication), matching the
-    // producer's mismatch check exactly.
-    return width * compositionHeight === height * compositionWidth;
-  });
+  const aspectMatches: CanvasResolution[] = VALID_CANVAS_RESOLUTIONS.filter((preset) =>
+    fitsAspect(CANVAS_DIMENSIONS[preset], compositionWidth, compositionHeight),
+  );
   if (aspectMatches.length === 0) return undefined;
 
-  // Prefer the aspect-matching preset in the same resolution tier as the chosen
-  // one so we don't silently downgrade 4K → HD (or vice versa). Tier is keyed
-  // off the `-4k` suffix rather than long-side pixels: a 4K *square* (2160×2160)
-  // has a shorter long side than 4K landscape (3840), so a pixel-based compare
-  // would fail to recognise `square-4k` as the 4K peer and downgrade to `square`.
-  const chosenIs4k = chosen.endsWith("-4k");
-  const sameTier = aspectMatches.find((preset) => preset.endsWith("-4k") === chosenIs4k);
-  return sameTier ?? aspectMatches[0];
+  // Only the aspect-matching preset in the chosen tier, never another tier: callers apply this
+  // automatically, and a 4K request must not become HD or 480p. Tier is keyed off the suffix
+  // (`-4k`, `-720p`, …) rather than long-side pixels: a 4K *square* (2160×2160) has a shorter long
+  // side than 4K landscape (3840), so a pixel-based compare would miss `square-4k` as the 4K peer.
+  return aspectMatches.find((preset) => tierOf(preset) === tierOf(chosen));
+}
+
+/** `landscape-4k` → `-4k`, `portrait` → `` (1080p). */
+const tierOf = (preset: CanvasResolution) =>
+  preset.includes("-") ? preset.slice(preset.indexOf("-")) : "";
+
+/** Integer-safe aspect compare. A smaller preset may be under a pixel off on its long side (854×480 at 16:9). */
+function fitsAspect(
+  target: { width: number; height: number },
+  compositionWidth: number,
+  compositionHeight: number,
+): boolean {
+  const drift = Math.abs(target.width * compositionHeight - target.height * compositionWidth);
+  if (drift === 0) return true;
+  return target.width < compositionWidth && drift < Math.min(compositionWidth, compositionHeight);
 }
 
 function describeOrientation(width: number, height: number): string {
@@ -154,26 +162,14 @@ export function checkOutputResolutionCompatibility(input: {
   }
 
   const target = CANVAS_DIMENSIONS[outputResolution];
-  // Aspect-ratio compare via cross-multiplication so the equality is integer-
-  // safe. Float division (`target.width / compositionWidth`) loses precision
-  // for non-power-of-2 ratios (e.g. cinema 4K 4096×2160 = 1.8963…) and a
-  // future preset could trip a false-mismatch on otherwise valid input.
-  if (target.width * compositionHeight !== target.height * compositionWidth) {
+  if (!fitsAspect(target, compositionWidth, compositionHeight)) {
     return buildAspectMismatch(compositionWidth, compositionHeight, outputResolution, target);
   }
 
-  // Aspect ratios match → widthRatio === heightRatio. Compute once.
+  // A smaller preset renders at a device scale factor under 1: Chrome lays the
+  // page out at composition size and rasterizes it straight at the preset's.
   const widthRatio = target.width / compositionWidth;
-  if (widthRatio < 1) {
-    return {
-      ok: false,
-      kind: "downsampling",
-      message:
-        `outputResolution ${outputResolution} (${target.width}×${target.height}) ` +
-        `is smaller than the composition (${compositionWidth}×${compositionHeight}). ` +
-        `Downsampling via --resolution is not supported.`,
-    };
-  }
+  if (widthRatio < 1) return OK;
 
   if (!Number.isInteger(widthRatio)) {
     return {

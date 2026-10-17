@@ -697,6 +697,30 @@ describe("loadCompositions external hosts", () => {
     expect(hostB.querySelector('[data-hf-authored-id="scene-root"]')).toBeTruthy();
   });
 
+  it("gives a mount that shares the page root's id its own runtime id", async () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    document.body.appendChild(root);
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-src", "https://example.com/scene.html");
+    host.setAttribute("data-composition-id", "main");
+    root.appendChild(host);
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      async () =>
+        new Response(
+          `<html><body><div data-composition-id="main" data-width="1920" data-height="1080"><h1>Scene</h1></div></body></html>`,
+          { status: 200 },
+        ),
+    );
+
+    await loadFixture();
+
+    expect(root.getAttribute("data-composition-id")).toBe("main");
+    expect(host.getAttribute("data-composition-id")).toBe("main__hf1");
+    expect(host.getAttribute("data-hf-original-composition-id")).toBe("main");
+    expect(host.querySelector("h1")?.textContent).toBe("Scene");
+  });
+
   it("normalizes a runtime composition id back to the authored id when only one host remains", async () => {
     const hostA = document.createElement("div");
     hostA.setAttribute("data-composition-src", "https://example.com/scene.html");

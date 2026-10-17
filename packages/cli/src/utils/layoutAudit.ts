@@ -189,7 +189,7 @@ export function dedupeLayoutIssues(issues: LayoutIssue[]): LayoutIssue[] {
 }
 
 // Persistence-tier thresholds (#U10): occurrences>=2 alone can't imply the 500ms floor under dense 8fps sampling, so content_overlap promotion requires a literal firstSeen..lastSeen span >= 500ms — stricter for sparse callers too.
-const CONTENT_OVERLAP_HELD_ERROR_MS = 500;
+export const CONTENT_OVERLAP_HELD_ERROR_MS = 500;
 const HELD_ACROSS_SAMPLES_MIN_OCCURRENCES = 2;
 
 // Tiering only applies to layout-audit.browser.js's own per-sample seek-grid

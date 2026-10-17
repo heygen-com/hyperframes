@@ -11,6 +11,7 @@ import {
   type CompositionStyle,
 } from "./scriptRuns";
 import {
+  countPageRoot,
   executableScripts,
   isJavaScriptType,
   planCompositionAssembly,
@@ -40,7 +41,7 @@ import {
   splitUrlSuffix,
 } from "@hyperframes/parsers/asset-paths";
 import { CSS_URL_RE, isNonRelativeUrl } from "./assetPaths.js";
-import { transformSync } from "esbuild";
+import { transform } from "esbuild";
 import { compileHtml, type MediaDurationProber } from "./htmlCompiler";
 import {
   RUNTIME_BOOTSTRAP_ATTR,
@@ -553,6 +554,7 @@ function countBundledAuthoredCompositionIds(hosts: Element[]): Map<string, numbe
     if (!authoredCompositionId) continue;
     counts.set(authoredCompositionId, (counts.get(authoredCompositionId) || 0) + 1);
   }
+  countPageRoot(counts, hosts);
   return counts;
 }
 
@@ -733,10 +735,10 @@ function pushRun<T>(runs: PartRun<T>[], scene: string | undefined, chunk: T): vo
   else runs.push({ scene, chunks: [chunk] });
 }
 
-function coalesceHeadStylesAndBodyScripts(
+async function coalesceHeadStylesAndBodyScripts(
   document: Document,
   provenance?: BundleOptions["scriptProvenance"],
-): void {
+): Promise<void> {
   const allHeadStyles = [...document.querySelectorAll("head style")];
   const isScenePart = (el: Element) => el.hasAttribute(SCENE_PART_ATTR);
   for (const run of allHeadStyles.length > 1 ? headStyleRuns(allHeadStyles, isScenePart) : []) {
@@ -756,13 +758,13 @@ function coalesceHeadStylesAndBodyScripts(
     const mergedJs = joinJsChunks(members.map((el) => el.textContent || ""));
     if (mergedJs && !parsesAsScript(mergedJs)) {
       for (const el of members)
-        el.textContent = inlineScriptSource(el.textContent || "", provenance);
+        el.textContent = await inlineScriptSource(el.textContent || "", provenance);
       continue;
     }
     for (const el of members) el.remove();
     if (!mergedJs) continue;
     const inlineScript = document.createElement("script");
-    inlineScript.textContent = inlineScriptSource(mergedJs, provenance);
+    inlineScript.textContent = await inlineScriptSource(mergedJs, provenance);
     if (anchor) anchor.before(inlineScript);
     else document.body.appendChild(inlineScript);
   }
@@ -825,13 +827,13 @@ export function parsesAsScript(source: string): boolean {
   }
 }
 
-function stripJsCommentsParserSafe(
+async function stripJsCommentsParserSafe(
   source: string,
   provenance?: BundleOptions["scriptProvenance"],
-): string {
+): Promise<string> {
   if (!source) return source;
   try {
-    const result = transformSync(source, {
+    const result = await transform(source, {
       loader: "js",
       minify: false,
       legalComments: "none",
@@ -850,8 +852,11 @@ function stripJsCommentsParserSafe(
   }
 }
 
-function inlineScriptSource(js: string, provenance?: BundleOptions["scriptProvenance"]): string {
-  return escapeInlineScriptSource(stripJsCommentsParserSafe(js, provenance));
+async function inlineScriptSource(
+  js: string,
+  provenance?: BundleOptions["scriptProvenance"],
+): Promise<string> {
+  return escapeInlineScriptSource(await stripJsCommentsParserSafe(js, provenance));
 }
 
 export interface BundleScriptProvenance {
@@ -1360,7 +1365,7 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
       const script = document.createElement("script");
       if (scene) script.setAttribute(SCENE_PART_ATTR, scene);
       script.textContent = skipsRunMerge
-        ? inlineScriptSource(text, options?.scriptProvenance)
+        ? await inlineScriptSource(text, options?.scriptProvenance)
         : text;
       document.body.appendChild(script);
     }
@@ -1371,11 +1376,11 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
 
   enforceCompositionPixelSizing(document);
   autoHealMissingCompositionIds(document);
-  coalesceHeadStylesAndBodyScripts(document, options?.scriptProvenance);
+  await coalesceHeadStylesAndBodyScripts(document, options?.scriptProvenance);
   for (const el of document.querySelectorAll(`script[${INLINED_FILE_ATTR}]`)) {
     const js = el.textContent ?? "";
     el.textContent = escapeInlineScriptSource(
-      isJavaScriptType(el) ? stripJsCommentsParserSafe(js, options?.scriptProvenance) : js,
+      isJavaScriptType(el) ? await stripJsCommentsParserSafe(js, options?.scriptProvenance) : js,
     );
   }
   deferScriptsUntilFonts(document, (el) => el.hasAttribute(RUNTIME_BOOTSTRAP_ATTR));

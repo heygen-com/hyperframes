@@ -1761,15 +1761,26 @@ describe("resolveDeviceScaleFactor", () => {
     );
   });
 
-  it("rejects downsampling (4K composition → 1080p output)", () => {
-    expect(() =>
+  it("returns 0.5 for a 4K composition → 1080p output", () => {
+    expect(
       resolveDeviceScaleFactor({
         ...defaults,
         compositionWidth: 3840,
         compositionHeight: 2160,
         outputResolution: "landscape",
       }),
-    ).toThrow(/Downsampling/);
+    ).toBe(0.5);
+  });
+
+  it("scales 1080p down for 720p and 480p, so 480p frames are 854×480", () => {
+    const scale = (outputResolution: "landscape-720p" | "landscape-480p") =>
+      resolveDeviceScaleFactor({ ...defaults, outputResolution });
+    expect(scale("landscape-720p")).toBeCloseTo(2 / 3);
+    expect(scale("landscape-480p")).toBe(854 / 1920);
+    expect([
+      Math.round(1920 * scale("landscape-480p")),
+      Math.round(1080 * scale("landscape-480p")),
+    ]).toEqual([854, 480]);
   });
 
   it("rejects non-integer scale factors", () => {

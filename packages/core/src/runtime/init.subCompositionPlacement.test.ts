@@ -199,6 +199,29 @@ describe("runtime sub-composition placement", () => {
     expect(window.__player?.getDuration()).toBe(9);
   });
 
+  it("keeps the scene in one root after a tween first renders, when the root's own timeline is empty", async () => {
+    const runFrames = stubFrames();
+    document.body.innerHTML =
+      `<div data-composition-id="main" data-root="true" data-duration="10">` +
+      `<div id="host" class="clip" data-composition-id="scene" data-start="1" data-duration="9">` +
+      `<div id="s"></div></div></div>`;
+    const scene = gsap
+      .timeline({ paused: true })
+      .fromTo("#s", { x: -100 }, { x: 0, duration: 0.5, ease: "none" }, 0.5)
+      .to({}, { duration: 9 }, 0);
+    const root = gsap.timeline({ paused: true });
+    window.__timelines = { main: root, scene } as unknown as Record<string, RuntimeTimelineLike>;
+    initSandboxRuntimeModular();
+    window.__player?.seek(1.2);
+    const bound = scene.parent;
+
+    window.__player?.seek(3);
+    await runFrames(6);
+
+    expect(scene.parent).toBe(bound);
+    expect(shownX()).toBe(0);
+  });
+
   it("binds a root timeline that registers after the runtime started on its children", async () => {
     const runFrames = stubFrames();
     loadWithoutRootTimeline(`<div id="r"></div>`);
@@ -397,5 +420,66 @@ describe("runtime sub-composition placement", () => {
     loadSecondHalf(`<video id="fade" data-start="4" data-duration="4" data-fade-in="2"></video>`);
     window.__player?.renderSeek(5);
     expect(video("fade").volume).toBeCloseTo(0.5, 6);
+  });
+});
+
+// The producer's tween-batching stub registers stand-ins: the same methods on another object, the timeline behind it.
+function standIn(real: gsap.core.Timeline): RuntimeTimelineLike {
+  const proxy: Record<string, unknown> = { __hfIsProxy: true, __hfReal: real };
+  const unwrap = (arg: unknown) => (arg as { __hfReal?: unknown } | null)?.__hfReal ?? arg;
+  for (let o: object | null = real; o && o !== Object.prototype; o = Object.getPrototypeOf(o)) {
+    for (const key of Object.getOwnPropertyNames(o)) {
+      const method = (real as unknown as Record<string, unknown>)[key];
+      if (key === "constructor" || key in proxy || typeof method !== "function") continue;
+      proxy[key] = (...args: unknown[]) => {
+        const out = (method as (...a: unknown[]) => unknown).apply(real, args.map(unwrap));
+        return out === real ? proxy : out;
+      };
+    }
+  }
+  return proxy as unknown as RuntimeTimelineLike;
+}
+
+describe("runtime placement of timelines registered as stand-ins", () => {
+  beforeEach(() => {
+    resetRuntimeFixtureDom();
+    window.gsap = gsap as unknown as typeof window.gsap;
+  });
+
+  afterEach(() => {
+    window.__hfRuntimeTeardown?.();
+    vi.restoreAllMocks();
+    delete window.__player;
+    delete window.__playerReady;
+    delete window.__hf;
+  });
+
+  // A card flies in at 0.5 s, its from-vars showing it, hidden from 0 by a fromTo authored after it.
+  function cardScene(card: Element | object) {
+    const scene = gsap.timeline({ paused: true });
+    scene.fromTo(card, { x: -600, opacity: 1 }, { x: 0, duration: 0.34 }, 0.5);
+    scene.fromTo([card], { opacity: 0 }, { opacity: 0, duration: 0.01 }, 0);
+    return scene;
+  }
+
+  it("keeps a scene's fly-in on every rendered frame under an empty root, as playback does", () => {
+    document.body.innerHTML =
+      `<div data-composition-id="main" data-root="true" data-duration="2">` +
+      `<div class="clip" data-composition-id="scene" data-start="0" data-duration="2">` +
+      `<div id="card"></div></div></div>`;
+    const card = document.getElementById("card")!;
+    const scene = cardScene(card);
+    window.__timelines = {
+      main: standIn(gsap.timeline({ paused: true })),
+      scene: standIn(scene),
+    };
+    initSandboxRuntimeModular();
+    const played = { x: 0, opacity: 0 };
+    const playedScene = cardScene(played);
+    for (let frame = 0; frame <= 30; frame++) {
+      playedScene.totalTime(frame / 30);
+      window.__player?.renderSeek(frame / 30, { suppressEvents: true });
+      expect(card.style.opacity, `frame ${frame}`).toBe(String(played.opacity));
+    }
   });
 });

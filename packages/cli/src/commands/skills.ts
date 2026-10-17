@@ -615,6 +615,37 @@ const checkCommand = defineCommand({
   },
 });
 
+// ── externally managed installs ────────────────────────────────────────────────
+
+/**
+ * `HYPERFRAMES_SKIP_SKILLS=1` means something other than this CLI owns the skills
+ * install: CI, tests, or a team that pins the skills to one commit. `init` and the
+ * background nudge already stand down for it; the install commands must too, or
+ * the router's trigger-time `skills update <workflow>` replaces a pinned install
+ * with the latest upstream skills (GH #5695).
+ */
+function skillsManagedExternally(): boolean {
+  return process.env["HYPERFRAMES_SKIP_SKILLS"] === "1";
+}
+
+const SKILLS_MANAGED_EXTERNALLY_NOTICE =
+  "HYPERFRAMES_SKIP_SKILLS=1: skills are managed externally, so the installed skills were left unchanged.";
+
+/** The skip line for an externally managed install: JSON for agents, one dim line for humans. */
+function reportSkillsManagedExternally(requested: readonly string[], json: boolean): void {
+  if (json) {
+    console.log(
+      JSON.stringify(
+        withMeta({ skipped: true, reason: SKILLS_MANAGED_EXTERNALLY_NOTICE, requested }),
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+  console.log(c.dim(SKILLS_MANAGED_EXTERNALLY_NOTICE));
+}
+
 // ── update ───────────────────────────────────────────────────────────────────
 
 /**
@@ -710,6 +741,13 @@ const updateCommand = defineCommand({
     if (rejected.length) {
       reportUpdateFailure(`Invalid skill name(s): ${rejected.join(", ")}`, args.json === true);
       setCommandExitCode(1);
+      return;
+    }
+
+    // Exit 0 without installing, pruning or touching the nudge cache: the pinned
+    // install is the one the caller wants, so the router's step keeps working.
+    if (skillsManagedExternally()) {
+      reportSkillsManagedExternally(requested, args.json === true);
       return;
     }
 
@@ -813,6 +851,10 @@ export default defineCommand({
     // the positional so bare `hyperframes skills` installs, while
     // `hyperframes skills check|update` does not also re-install.
     if (!args._?.[0]) {
+      if (skillsManagedExternally()) {
+        reportSkillsManagedExternally([], false);
+        return;
+      }
       await updateSkills({ all: true });
       // Same as updateSkills: a full install supersedes the background
       // nudge's cached pre-install verdict.

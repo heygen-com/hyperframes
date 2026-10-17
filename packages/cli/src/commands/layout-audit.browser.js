@@ -704,9 +704,24 @@
     return colorAlpha(getComputedStyle(element).color) >= 0.35;
   }
 
+  const RUNTIME_HIDDEN_CLIP = '[data-hf-clip-hidden][style*="visibility: hidden"]';
+
+  // Core's timedClipHide rule hides these clips' whole subtrees: skipping them bounds work by what is on screen.
+  function elementsOnScreenScenes(root) {
+    const elements = [];
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT, {
+      acceptNode: (element) =>
+        element.matches(RUNTIME_HIDDEN_CLIP) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
+    });
+    for (let element = walker.nextNode(); element; element = walker.nextNode()) {
+      elements.push(element);
+    }
+    return elements;
+  }
+
   function collectSolidTextBlocks(root) {
     const blocks = [];
-    for (const element of Array.from(root.querySelectorAll("*"))) {
+    for (const element of elementsOnScreenScenes(root)) {
       if (!isSolidTextBlock(element)) continue;
       const rects = visibleTextClientRects(element, true);
       const rect = unionRects(rects);

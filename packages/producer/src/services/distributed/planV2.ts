@@ -12,28 +12,31 @@
  */
 
 import {
-  closeSync,
   copyFileSync,
   existsSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
-  openSync,
   readFileSync,
-  readSync,
   readdirSync,
   renameSync,
   rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
-import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { DISTRIBUTED_FPS, type DistributedFps, isDistributedFps } from "@hyperframes/core";
 import { createFrameLookupTable, type ExtractedFrames } from "@hyperframes/engine";
-import { recomputePlanHashFromPlanDir, type ChunkSliceJson } from "../render/stages/freezePlan.js";
-import { canonicalJsonStringify, sha256Hex } from "../render/stages/planHash.js";
-import { buildLocalExecutionPlan, type DistributedRenderConfig } from "./plan.js";
+import {
+  planFileSha256,
+  recomputePlanHashFromPlanDir,
+  type ChunkSliceJson,
+  type PlanFileDigests,
+} from "../render/stages/freezePlan.js";
+import { canonicalJsonStringify, sha256File, sha256Hex } from "../render/stages/planHash.js";
+import { defaultLogger, type ProducerLogger } from "../../logger.js";
+import { buildLocalExecutionPlan, type DistributedRenderConfig, logPlanStage } from "./plan.js";
 import {
   PLAN_PROTOCOL_V2,
   readPlanProtocolV1,
@@ -92,7 +95,7 @@ export interface PlanV2Manifest {
   readonly sourcePlanV1Hash: string;
   readonly chunkCount: number;
   readonly totalFrames: number;
-  readonly fps: 24 | 30 | 60;
+  readonly fps: DistributedFps;
   readonly width: number;
   readonly height: number;
   readonly format: DistributedFormat;
@@ -120,7 +123,7 @@ export interface PlanV2Result {
   readonly sourcePlanV1Hash: string;
   readonly chunkCount: number;
   readonly totalFrames: number;
-  readonly fps: 24 | 30 | 60;
+  readonly fps: DistributedFps;
   readonly width: number;
   readonly height: number;
   readonly format: DistributedFormat;
@@ -214,25 +217,6 @@ function listFiles(root: string): Array<{ path: string; absolutePath: string }> 
   }
   walk(rootResolved);
   return files.sort((a, b) => a.path.localeCompare(b.path));
-}
-
-/** Hash large plan artifacts with bounded memory (important above the legacy 2 GiB cap). */
-function sha256File(path: string): string {
-  const hash = createHash("sha256");
-  const buffer = Buffer.allocUnsafe(1024 * 1024);
-  // lgtm[js/insecure-temporary-file] — read-only open of a caller-owned regular file;
-  // this call never creates a file, temporary or otherwise.
-  const fd = openSync(path, "r");
-  try {
-    let bytesRead = 0;
-    do {
-      bytesRead = readSync(fd, buffer, 0, buffer.byteLength, null);
-      if (bytesRead > 0) hash.update(buffer.subarray(0, bytesRead));
-    } while (bytesRead > 0);
-  } finally {
-    closeSync(fd);
-  }
-  return hash.digest("hex");
 }
 
 function assertValidExtractionCacheCompleteSentinel(path: string): void {
@@ -492,6 +476,35 @@ function writeBlob(sourcePath: string, destinationPath: string): void {
   }
 }
 
+function publishBlobFor(absolutePath: string, digests?: PlanFileDigests): PlanV2PublishBlob {
+  return {
+    sourcePath: absolutePath,
+    sha256: planFileSha256(absolutePath, digests),
+    sizeBytes: statSync(absolutePath).size,
+  };
+}
+
+async function putBlobs(
+  publisher: PlanV2ArtifactPublisher,
+  blobs: readonly Readonly<PlanV2PublishBlob>[],
+): Promise<void> {
+  const uploadSlots = 32;
+  let next = 0;
+  let failure: { reason: unknown } | undefined;
+  const upload = async () => {
+    while (!failure && next < blobs.length) {
+      const blob = blobs[next++]!;
+      try {
+        await publisher.putBlob(blob);
+      } catch (reason) {
+        failure ??= { reason };
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: uploadSlots }, upload));
+  if (failure) throw failure.reason;
+}
+
 interface PlanV2Publication {
   readonly manifest: PlanV2Manifest;
   readonly blobs: readonly Readonly<PlanV2PublishBlob>[];
@@ -499,7 +512,10 @@ interface PlanV2Publication {
 
 // Artifact classification intentionally keeps every fail-safe branch together.
 // fallow-ignore-next-line complexity
-function buildPlanV2Publication(executionPlanDir: string): PlanV2Publication {
+function buildPlanV2Publication(
+  executionPlanDir: string,
+  digests?: PlanFileDigests,
+): PlanV2Publication {
   const executionPlanPath = join(executionPlanDir, "plan.json");
   if (!existsSync(executionPlanPath)) {
     throw new PlanV2IntegrityError(`execution plan is missing plan.json: ${executionPlanPath}`);
@@ -516,7 +532,7 @@ function buildPlanV2Publication(executionPlanDir: string): PlanV2Publication {
   if (!isSha256(executionPlanHash)) {
     throw new PlanV2IntegrityError("execution plan.json.planHash must be a sha256 digest");
   }
-  const recomputedExecutionPlanHash = recomputePlanHashFromPlanDir(executionPlanDir);
+  const recomputedExecutionPlanHash = recomputePlanHashFromPlanDir(executionPlanDir, digests);
   if (recomputedExecutionPlanHash !== executionPlanHash) {
     throw new PlanV2IntegrityError(
       `execution plan content fingerprint does not match plan.json.planHash: ` +
@@ -543,15 +559,12 @@ function buildPlanV2Publication(executionPlanDir: string): PlanV2Publication {
     ) {
       continue;
     }
-    const sha256 = sha256File(file.absolutePath);
-    const sizeBytes = statSync(file.absolutePath).size;
-    if (!blobs.has(sha256)) {
-      blobs.set(sha256, { sourcePath: file.absolutePath, sha256, sizeBytes });
-    }
+    const blob = publishBlobFor(file.absolutePath, digests);
+    if (!blobs.has(blob.sha256)) blobs.set(blob.sha256, blob);
     artifacts.push({
       path: file.path,
-      sha256,
-      sizeBytes,
+      sha256: blob.sha256,
+      sizeBytes: blob.sizeBytes,
       ...targets,
     });
   }
@@ -623,24 +636,24 @@ export async function publishPlanV2FromExecutionPlan(
   executionPlanDir: string,
   publisher: PlanV2ArtifactPublisher,
 ): Promise<PlanV2Manifest> {
+  return publishExecutionPlan(executionPlanDir, publisher, {});
+}
+
+async function publishExecutionPlan(
+  executionPlanDir: string,
+  publisher: PlanV2ArtifactPublisher,
+  { digests, log = defaultLogger }: { digests?: PlanFileDigests; log?: ProducerLogger },
+): Promise<PlanV2Manifest> {
   try {
-    const publication = buildPlanV2Publication(executionPlanDir);
-    const uploadSlots = 32;
-    let next = 0;
-    let failure: { reason: unknown } | undefined;
-    const upload = async () => {
-      while (!failure && next < publication.blobs.length) {
-        const blob = publication.blobs[next++]!;
-        try {
-          await publisher.putBlob(blob);
-        } catch (reason) {
-          failure ??= { reason };
-        }
-      }
-    };
-    await Promise.all(Array.from({ length: uploadSlots }, upload));
-    if (failure) throw failure.reason;
+    let stageStarted = Date.now();
+    const publication = buildPlanV2Publication(executionPlanDir, digests);
+    logPlanStage(log, "publication", stageStarted);
+    stageStarted = Date.now();
+    await putBlobs(publisher, publication.blobs);
+    logPlanStage(log, "upload", stageStarted);
+    stageStarted = Date.now();
     await publisher.commitManifest(canonicalJsonStringify(publication.manifest));
+    logPlanStage(log, "manifest", stageStarted);
     return publication.manifest;
   } catch (error) {
     try {
@@ -677,12 +690,22 @@ export async function planV2WithPublisher(
   options: Readonly<PlanV2WithPublisherOptions> = {},
 ): Promise<PlanV2Manifest> {
   const stagingRoot = mkdtempSync(join(options.stagingParentDir ?? tmpdir(), ".execution-plan-"));
+  const digests: PlanFileDigests = new Map();
   try {
     await buildLocalExecutionPlan(projectDir, config, stagingRoot, {
       executionPlanSizeLimitBytes: Number.MAX_SAFE_INTEGER,
       deferVideoExtraction: true,
+      digests,
+      // artifactTargets ships every compiled/ file to all chunks, so each is in the manifest.
+      whileAudioMixes: () =>
+        putBlobs(
+          publisher,
+          listFiles(join(stagingRoot, "compiled")).map((file) =>
+            publishBlobFor(file.absolutePath, digests),
+          ),
+        ),
     });
-    return await publishPlanV2FromExecutionPlan(stagingRoot, publisher);
+    return await publishExecutionPlan(stagingRoot, publisher, { digests, log: config.logger });
   } catch (error) {
     try {
       await publisher.abort();
@@ -765,14 +788,16 @@ function readNonNegativeInteger(value: unknown, field: string): number {
   return value;
 }
 
-function readSupportedFps(value: unknown): 24 | 30 | 60 {
-  if (value !== 24 && value !== 30 && value !== 60) {
-    throw new PlanV2IntegrityError("dimensions.fpsNum must be 24, 30, or 60");
+function readSupportedFps(value: unknown): DistributedFps {
+  if (!isDistributedFps(value)) {
+    throw new PlanV2IntegrityError(
+      `dimensions.fpsNum must be one of ${DISTRIBUTED_FPS.join(", ")}`,
+    );
   }
   return value;
 }
 
-function readExecutionPlanFps(dimensions: Record<string, unknown>): 24 | 30 | 60 {
+function readExecutionPlanFps(dimensions: Record<string, unknown>): DistributedFps {
   const fpsDen = readPositiveInteger(dimensions.fpsDen, "dimensions.fpsDen");
   if (fpsDen !== 1) {
     throw new PlanV2IntegrityError("dimensions.fpsDen must be 1 for plan v2");

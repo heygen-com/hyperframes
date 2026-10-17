@@ -195,6 +195,7 @@ export interface CheckAuditDriver {
   /** True when the root composition explicitly declares that it is intentionally timeline-free. */
   hasNoTimelineDeclaration(): Promise<boolean>;
   getTransitionBoundaries(): Promise<number[]>;
+  getClipEdges(): Promise<number[]>;
   getCanvas(): Promise<Canvas>;
   findAmbiguousSelectors(selectors: string[]): Promise<AnchoredLayoutIssue[]>;
   seek(time: number): Promise<void>;

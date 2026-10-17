@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { parseFps, fpsToNumber, fpsToFfmpegArg } from "./core.types";
+import { fpsToFfmpegArg, fpsToNumber, parseFps } from "./core.types";
+import { DISTRIBUTED_FPS, isDistributedFps } from "./distributedFps";
 
 describe("parseFps — integer forms", () => {
   it("parses integer string '30' as { num: 30, den: 1 }", () => {
@@ -154,5 +155,18 @@ describe("fpsToNumber + fpsToFfmpegArg + frame interval math", () => {
     expect(fpsToFfmpegArg({ num: 30000, den: 1001 })).toBe("30000/1001");
     expect(fpsToFfmpegArg({ num: 24000, den: 1001 })).toBe("24000/1001");
     expect(fpsToFfmpegArg({ num: 60000, den: 1001 })).toBe("60000/1001");
+  });
+});
+
+describe("isDistributedFps", () => {
+  it("accepts exactly the integer rates the distributed renderer supports", () => {
+    expect(DISTRIBUTED_FPS).toEqual([24, 25, 30, 60]);
+    for (const n of DISTRIBUTED_FPS) expect(isDistributedFps(n)).toBe(true);
+  });
+
+  it("rejects other rates, fractions and non-numbers", () => {
+    for (const v of [0, 23.976, 29.97, 48, 50, 120, "30", null, undefined]) {
+      expect(isDistributedFps(v)).toBe(false);
+    }
   });
 });

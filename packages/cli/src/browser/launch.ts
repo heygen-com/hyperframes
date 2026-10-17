@@ -7,6 +7,7 @@ import {
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { requestCliExit } from "../utils/commandResult.js";
 import { processIsAlive } from "../utils/processTree.js";
+import { sandboxDeniedRemediation } from "./sandboxDenied.js";
 
 export class BrowserCleanupError extends AggregateError {}
 
@@ -94,6 +95,9 @@ export async function launchManagedBrowser(
     browsers.add(browser);
     child.once("exit", () => browsers.delete(browser));
     return browser;
+  } catch (error) {
+    const remediation = sandboxDeniedRemediation(normalizeErrorMessage(error));
+    throw remediation ? new Error(remediation, { cause: error }) : error;
   } finally {
     pending.delete(launch);
   }

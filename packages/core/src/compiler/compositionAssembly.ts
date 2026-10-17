@@ -309,3 +309,11 @@ export function enumerateNestedCompositionHosts<TElement extends AssemblyAttribu
 
   return { hosts, skipped };
 }
+
+/** A mount sharing the page root's id counts as a repeat, so it is numbered instead of taking the root's timeline. */
+export function countPageRoot(counts: Map<string, number>, hosts: readonly Element[]): void {
+  const root = hosts[0]?.ownerDocument.querySelector("[data-composition-id]");
+  const rootId = root && !hosts.includes(root) ? root.getAttribute("data-composition-id") : null;
+  const mounts = rootId ? counts.get(rootId) : undefined;
+  if (rootId && mounts) counts.set(rootId, mounts + 1);
+}

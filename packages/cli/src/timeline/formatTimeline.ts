@@ -1,4 +1,9 @@
-import type { ProjectTimeline, TimelineRow, TimelineTrack } from "./describeProject.js";
+import {
+  NEVER_VISIBLE,
+  type ProjectTimeline,
+  type TimelineRow,
+  type TimelineTrack,
+} from "./describeProject.js";
 
 const BAR_WIDTH = 40;
 const n = (v: number) => String(Math.round(v * 1000) / 1000);
@@ -48,6 +53,7 @@ function details(row: TimelineRow): string {
     row.sourceFile && !row.children.length && "children=unread",
     row.laneError && `lanes unreadable: ${row.laneError}`,
     ...lanes,
+    ...row.warnings.filter((w) => w.startsWith(NEVER_VISIBLE)).map((w) => `warning: ${w}`),
   ]
     .filter(Boolean)
     .join(" ");
@@ -63,7 +69,7 @@ function line(row: TimelineRow, total: number): string {
 }
 
 function header({ kind, rows }: TimelineTrack): string {
-  const nested = rows.filter((r) => r.nested).length;
+  const nested = rows.filter((r) => r.nested || r.parentRow).length;
   const split = nested ? `: ${rows.length - nested} top-level, ${nested} nested` : "";
   return `${kind} (${rows.length}${split})`;
 }

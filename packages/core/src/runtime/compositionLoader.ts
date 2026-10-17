@@ -4,6 +4,7 @@ import {
   refreshSvgSelectorAliases,
 } from "../compiler/svgSelectorAliases";
 import {
+  countPageRoot,
   planCompositionAssembly,
   extractedCompositionAssets,
 } from "../compiler/compositionAssembly";
@@ -300,6 +301,7 @@ function countAuthoredCompositionIds(hosts: Element[]): Map<string, number> {
     if (!compId) continue;
     hostCountsByCompositionId.set(compId, (hostCountsByCompositionId.get(compId) || 0) + 1);
   }
+  countPageRoot(hostCountsByCompositionId, hosts);
   return hostCountsByCompositionId;
 }
 

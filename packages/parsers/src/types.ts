@@ -23,6 +23,13 @@ export const CANVAS_DIMENSIONS = {
   "portrait-4k": { width: 2160, height: 3840 },
   square: { width: 1080, height: 1080 },
   "square-4k": { width: 2160, height: 2160 },
+  "landscape-720p": { width: 1280, height: 720 },
+  "portrait-720p": { width: 720, height: 1280 },
+  "square-720p": { width: 720, height: 720 },
+  // 480 tall at 16:9 is 853.33 wide: 854 keeps both sides even for 4:2:0 encoders.
+  "landscape-480p": { width: 854, height: 480 },
+  "portrait-480p": { width: 480, height: 854 },
+  "square-480p": { width: 480, height: 480 },
 } as const;
 
 // Single source of truth: derive the type from the table so adding a preset
@@ -49,6 +56,12 @@ const RESOLUTION_ALIASES: Record<string, CanvasResolution> = {
   "1080p-square": "square",
   "square-1080p": "square",
   "4k-square": "square-4k",
+  "720p": "landscape-720p",
+  "720p-portrait": "portrait-720p",
+  "720p-square": "square-720p",
+  "480p": "landscape-480p",
+  "480p-portrait": "portrait-480p",
+  "480p-square": "square-480p",
 };
 
 /**
@@ -70,6 +83,8 @@ const ASPECT_AGNOSTIC_RESOLUTION_ALIASES: ReadonlySet<string> = new Set([
   "hd",
   "4k",
   "uhd",
+  "720p",
+  "480p",
 ]);
 
 /**

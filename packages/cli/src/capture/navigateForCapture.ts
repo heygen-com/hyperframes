@@ -1,4 +1,5 @@
-import { isNavigationTimeoutError } from "./captureTimeout.js";
+import { TimeoutError, type CDPSession, type HTTPResponse, type Page } from "puppeteer-core";
+import { isNavigationTimeoutError, withRemainingBudget } from "./captureTimeout.js";
 
 export { isNavigationTimeoutError };
 
@@ -60,4 +61,62 @@ export async function navigateForCapture<TResponse>(
     networkIdleTimeoutMs,
     fellBackFromNetworkIdle: true,
   };
+}
+
+const PUPPETEER_LAUNCH_DEFAULT_TIMEOUT_MS = 30_000;
+const SENT_OR_ANSWERED_WITHOUT_NETWORK = [
+  "Network.requestWillBeSentExtraInfo",
+  "Network.responseReceived",
+] as const;
+
+export async function gotoWhenSent(
+  page: Page,
+  url: string,
+  timeoutMs: number,
+  coldChromeFirstRequestTimeoutMs = PUPPETEER_LAUNCH_DEFAULT_TIMEOUT_MS,
+): Promise<HTTPResponse | null> {
+  const cdp = await page.createCDPSession();
+  try {
+    await cdp.send("Network.enable");
+    const sent = documentRequestSent(cdp);
+    const navigation = page.goto(url, { waitUntil: "domcontentloaded", timeout: 0 });
+    const navigationAwaitedBelow = navigation.catch(() => undefined);
+    await withRemainingBudget(
+      Promise.race([sent, navigationAwaitedBelow]),
+      coldChromeFirstRequestTimeoutMs,
+      "sending the page request",
+      () =>
+        new TimeoutError(
+          `Navigation timeout: Chrome did not send the page request within ${coldChromeFirstRequestTimeoutMs} ms`,
+        ),
+    );
+    return await withRemainingBudget(
+      navigation,
+      timeoutMs,
+      "loading the page",
+      () => new TimeoutError(`Navigation timeout of ${timeoutMs} ms exceeded`),
+    );
+  } finally {
+    await cdp.detach().catch(() => undefined);
+  }
+}
+
+export function documentRequestSent(cdp: CDPSession): Promise<void> {
+  const documents = new Set<string>();
+  const sent = new Set<string>();
+  return new Promise((resolve) => {
+    const settle = (requestId: string) => {
+      if (documents.has(requestId) && sent.has(requestId)) resolve();
+    };
+    cdp.on("Network.requestWillBeSent", ({ requestId, type }) => {
+      if (type === "Document") documents.add(requestId);
+      settle(requestId);
+    });
+    for (const event of SENT_OR_ANSWERED_WITHOUT_NETWORK) {
+      cdp.on(event, ({ requestId }) => {
+        sent.add(requestId);
+        settle(requestId);
+      });
+    }
+  });
 }

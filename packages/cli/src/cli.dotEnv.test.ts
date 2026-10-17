@@ -12,7 +12,8 @@ const listeners = eventNames.map((event) => [event, process.listeners(event)] as
 const streams = [process.stdout, process.stderr].map(
   (stream) => [stream, stream.listeners("error")] as const,
 );
-afterEach(() => {
+afterEach(async () => {
+  await vi.dynamicImportSettled();
   process.argv = [...originalArgv];
   process.exitCode = originalExitCode;
   vi.restoreAllMocks();

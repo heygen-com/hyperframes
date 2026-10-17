@@ -19,12 +19,14 @@ interface PutOperation {
 class FakeS3 {
   readonly objects = new Map<string, StoredObject>();
   readonly puts: PutOperation[] = [];
+  sends = 0;
 
   asClient(): import("@aws-sdk/client-s3").S3Client {
     return this as unknown as import("@aws-sdk/client-s3").S3Client;
   }
 
   async send(command: unknown): Promise<unknown> {
+    this.sends += 1;
     // AWS command inputs are the runtime boundary exercised by this fake.
     const value = command as unknown as {
       readonly constructor: { readonly name: string };
@@ -137,6 +139,22 @@ describe("S3PlanV2ArtifactPublisher", () => {
     expect(s3.puts.map((operation) => operation.uri)).toEqual([blobUri, manifestUri]);
     expect(s3.puts.every((operation) => operation.ifNoneMatch === "*")).toBe(true);
     expect(s3.objects.get(manifestUri)?.bytes.toString("utf8")).toBe(manifest);
+  });
+
+  it("sends nothing for a digest it already published", async () => {
+    const source = makeSource("hello");
+    const s3 = new FakeS3();
+    const publisher = new S3PlanV2ArtifactPublisher({
+      s3: s3.asClient(),
+      planOutputS3Prefix: "s3://bucket/render",
+      temporaryRoot: source.root,
+    });
+    const blob = { sourcePath: source.path, sha256: source.digest, sizeBytes: source.sizeBytes };
+
+    await publisher.putBlob(blob);
+    const sendsAfterFirst = s3.sends;
+    await publisher.putBlob(blob);
+    expect(s3.sends).toBe(sendsAfterFirst);
   });
 
   it("refuses to expose a manifest that references an unpublished digest", async () => {

@@ -28,8 +28,12 @@ describe("validateDistributedRenderConfig", () => {
     expect(validateDistributedRenderConfig(base())).toBeDefined();
   });
 
+  it("accepts 25 fps", () => {
+    expect(validateDistributedRenderConfig({ ...base(), fps: 25 }).fps).toBe(25);
+  });
+
   it("rejects a bad fps", () => {
-    expect(() => validateDistributedRenderConfig({ ...base(), fps: 25 } as never)).toThrow(
+    expect(() => validateDistributedRenderConfig({ ...base(), fps: 50 } as never)).toThrow(
       /config\.fps/,
     );
   });

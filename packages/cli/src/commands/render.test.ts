@@ -1871,10 +1871,10 @@ describe("checkRenderResolutionPreflight", () => {
     expect(result?.kind).toBe("hdr-incompatible");
   });
 
-  it("classifies a preset smaller than the composition as downsampling", async () => {
-    // 3840×2160 comp + landscape (1920×1080): same 16:9 aspect, target smaller.
+  it("passes a preset smaller than the composition", async () => {
+    // 3840×2160 comp + landscape (1920×1080): same 16:9 aspect, rendered at 0.5× DPR.
     const result = await checkRenderResolutionPreflight(comp(3840, 2160), "landscape", noModes);
-    expect(result?.kind).toBe("downsampling");
+    expect(result).toBeUndefined();
   });
 
   it("classifies a non-integer upscale as non-integer-scale", async () => {
@@ -1944,12 +1944,18 @@ describe("checkRenderResolutionPreflight", () => {
       expect(result?.kind).toBe("hdr-incompatible");
     });
 
-    it("still flags downsampling + aspect-agnostic (same-orientation, smaller preset)", async () => {
-      // 3840×2160 comp with `--resolution 1080p` → `landscape` (1920×1080).
-      // Same orientation, but tier smaller than comp — user asked for a
-      // downsample. That's a real incompatibility, not an orientation swap.
+    it("passes `--resolution 1080p` on a 4K composition (a smaller, same-orientation preset)", async () => {
       const result = await checkRenderResolutionPreflight(comp(3840, 2160), "landscape", agnostic);
-      expect(result?.kind).toBe("downsampling");
+      expect(result).toBeUndefined();
+    });
+
+    it("never adapts `--resolution 4k` to another tier: a 1922×1080 composition is refused, not rendered at 480p", async () => {
+      const result = await checkRenderResolutionPreflight(
+        comp(1922, 1080),
+        "landscape-4k",
+        agnostic,
+      );
+      expect(result?.kind).toBeDefined();
     });
 
     it("does NOT auto-clear when the flag was explicit (orientation-locked preset stays strict)", async () => {
@@ -1983,14 +1989,10 @@ describe("checkRenderResolutionPreflight", () => {
       expect(result?.message).toMatch(/preset whose orientation matches|omit --resolution/i);
     });
 
-    it("blocks a portrait-4K comp + `1080p` downsample early (orientation-flip masks the tier gap)", async () => {
-      // 2160×3840 (portrait 4K) + `--resolution 1080p` — the compile stage
-      // remaps `landscape` → `portrait` (1080×1920), and *then* the preset
-      // is smaller than the composition. The un-remapped preflight let this
-      // slip through as an aspect-mismatch downgrade; the remap-then-check
-      // catches the real failure — downsampling — early.
+    it("passes a portrait-4K comp + `1080p` once remapped to portrait (a smaller preset)", async () => {
+      // 2160×3840 + `--resolution 1080p` remaps `landscape` → `portrait` (1080×1920), rendered at 0.5× DPR.
       const result = await checkRenderResolutionPreflight(comp(2160, 3840), "landscape", agnostic);
-      expect(result?.kind).toBe("downsampling");
+      expect(result).toBeUndefined();
     });
 
     it("blocks a portrait 720p comp + `1080p` non-integer upscale early (orientation-flip masks the fractional DPR)", async () => {

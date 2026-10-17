@@ -48,6 +48,7 @@ function holdSeekBarrierUntilVideoLands(el: HTMLMediaElement): void {
       for (const type of HOLD_END_EVENTS) el.addEventListener(type, done, true);
       releaseHeldVideo.set(el, done);
     }),
+    "video-frame",
   );
 }
 

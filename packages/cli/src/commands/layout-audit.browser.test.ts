@@ -2360,6 +2360,32 @@ describe("layout-audit.browser content overlap", () => {
     });
   });
 
+  it("never reads inside a scene the runtime hid", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="host" data-hf-clip-hidden style="visibility: hidden"><div id="a">Later scene line</div></div>
+        <div id="b">Current scene line</div>
+      </div>
+    `;
+    installOverlapStyles(
+      { a: "rgb(0, 0, 0)", b: "rgb(0, 0, 0)" },
+      { a: "none", b: "none" },
+      {},
+      { host: "hidden", a: "visible", b: "visible" },
+    );
+    installOverlapGeometry({
+      a: [rect({ left: 100, top: 100, width: 400, height: 100 })],
+      b: [rect({ left: 300, top: 120, width: 400, height: 100 })],
+    });
+    installAuditScript();
+
+    const audit = (window as unknown as { __hyperframesOverlapAudit: OverlapAudit })
+      .__hyperframesOverlapAudit;
+    expect(audit({ time: 1 })).toEqual([]);
+    const read = vi.mocked(window.getComputedStyle).mock.calls.map(([element]) => element.id);
+    expect(read).not.toContain("a");
+  });
+
   // A typewriter span clipped to nothing (clip-path: inset(0 100% 0 0)) keeps a
   // normal box but paints zero pixels; overlapping it must not flag the visible
   // block beneath. The clipped element is unreachable by elementFromPoint, which
@@ -3725,6 +3751,8 @@ interface AuditIssue {
   fixHint?: string;
   coveredFraction?: number;
 }
+
+type OverlapAudit = (options: { time: number }) => AuditIssue[];
 
 function runAudit(options?: { proseCoverageFloor?: number }): AuditIssue[] {
   const audit = (

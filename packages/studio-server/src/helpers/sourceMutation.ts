@@ -173,9 +173,20 @@ export function isHTMLElement(el: Node): el is HTMLElement {
   return HTMLEl ? el instanceof HTMLEl : el.nodeType === 1 && "style" in el;
 }
 
+// A mount's id names the root it mounts; the runtime numbers repeated mounts (id__hf1, id__hf2).
+function mountsComposition(document: Document, host: Element, compositionId: string): boolean {
+  if (host.hasAttribute("data-composition-src")) return true;
+  return (
+    host.children.length === 0 &&
+    querySelectorAllWithTemplates(document, "template").some(
+      (template) => template.id === `${compositionId}-template`,
+    )
+  );
+}
+
 export function dedupeClonedCompositionId(document: Document, clone: Element): void {
   const compositionId = clone.getAttribute("data-composition-id");
-  if (!compositionId) return;
+  if (!compositionId || mountsComposition(document, clone, compositionId)) return;
   const usedCompositionIds = new Set(
     querySelectorAllWithTemplates(document, "[data-composition-id]").map((node) =>
       node.getAttribute("data-composition-id"),

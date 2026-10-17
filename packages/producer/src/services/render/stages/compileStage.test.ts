@@ -418,6 +418,19 @@ describe("runCompileStage — aspect-agnostic --resolution re-map", () => {
     expect(result.outputHeight).toBe(3840);
   });
 
+  it("custom 1922×1080 composition + aspect-agnostic `landscape-4k` → refused, never adapted to 480p", async () => {
+    // Only 480p's tolerance fits 1922×1080; the adaptation stays in the asked tier, so 4K is
+    // checked as asked and refused instead of rendering 854×480.
+    await expect(
+      runResolutionCase({
+        compWidth: 1922,
+        compHeight: 1080,
+        outputResolution: "landscape-4k",
+        aspectAgnostic: true,
+      }),
+    ).rejects.toThrow();
+  });
+
   it("square composition + aspect-agnostic `landscape-4k` preset → re-maps to square-4k, preserves 4K tier", async () => {
     const result = await runResolutionCase({
       compWidth: 1080,

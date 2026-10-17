@@ -21,18 +21,23 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { applyConcreteGpuScreenshotClamp, buildChromeArgs } from "@hyperframes/engine";
 import { recomputePlanHashFromPlanDir } from "../render/stages/freezePlan.js";
+import { defaultLogger } from "../../logger.js";
 import { RenderQualityError } from "../renderOrchestrator.js";
 import { CURRENT_PLAN_PROTOCOL } from "./planProtocol.js";
 import {
   applyDistributedAudioWarningPolicy,
   buildLocalExecutionPlan,
   buildChunkSlices,
+  CHUNK_EXCEEDS_WORKER_TIMEOUT,
+  ChunkExceedsWorkerTimeoutError,
   DEFAULT_CHUNK_SIZE,
   DEFAULT_MAX_PARALLEL_CHUNKS,
+  estimateChunkSeconds,
   MIN_CHUNK_SIZE,
   plan,
   resolveDistributedEngineConfig,
   resolveChunkPlan,
+  resolveMaxParallelChunks,
 } from "./plan.js";
 import { buildSyntheticRenderJob } from "./shared.js";
 
@@ -177,6 +182,108 @@ describe("distributed synthetic render job", () => {
 
     expect(forceScreenshot).toBe(false);
     expect(args).toContain("--enable-begin-frame-control");
+  });
+});
+
+describe("resolveMaxParallelChunks", () => {
+  const MP_1080P = (1920 * 1080) / 1e6;
+  const THIRTY_MIN_30FPS = 54000;
+  const LAMBDA_LIMIT = 900;
+  const recordingLog = () => {
+    const warnings: string[] = [];
+    return { log: { ...defaultLogger, warn: (m: string) => warnings.push(m) }, warnings };
+  };
+
+  it("sizes 30 min of 1080p30 so every chunk fits the Lambda limit with margin", () => {
+    const { log } = recordingLog();
+    const maxParallel = resolveMaxParallelChunks(
+      { workerTimeoutSeconds: LAMBDA_LIMIT, workerConcurrency: 8 },
+      THIRTY_MIN_30FPS,
+      MP_1080P,
+      log,
+    );
+    const { chunkCount, effectiveChunkSize } = resolveChunkPlan(
+      THIRTY_MIN_30FPS,
+      undefined,
+      maxParallel,
+    );
+    expect(chunkCount).toBeGreaterThan(DEFAULT_MAX_PARALLEL_CHUNKS);
+    expect(estimateChunkSeconds(effectiveChunkSize, MP_1080P)).toBeLessThanOrEqual(
+      LAMBDA_LIMIT * 0.75,
+    );
+    // The old fixed 16 planned chunks with no headroom left under the limit.
+    const old = resolveChunkPlan(THIRTY_MIN_30FPS, undefined, DEFAULT_MAX_PARALLEL_CHUNKS);
+    expect(estimateChunkSeconds(old.effectiveChunkSize, MP_1080P)).toBeGreaterThan(
+      LAMBDA_LIMIT * 0.75,
+    );
+  });
+
+  it("tells the user to raise --concurrency when the fitting chunk count exceeds it", () => {
+    const { log, warnings } = recordingLog();
+    const maxParallel = resolveMaxParallelChunks(
+      { workerTimeoutSeconds: LAMBDA_LIMIT, workerConcurrency: 8 },
+      THIRTY_MIN_30FPS,
+      MP_1080P,
+      log,
+    );
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain(`--concurrency ${maxParallel}`);
+  });
+
+  it("goes one wave wide when concurrency allows, up to the 256 ceiling", () => {
+    const { log, warnings } = recordingLog();
+    const args = [3 * THIRTY_MIN_30FPS, MP_1080P, log] as const;
+    expect(
+      resolveMaxParallelChunks(
+        { workerTimeoutSeconds: LAMBDA_LIMIT, workerConcurrency: 200 },
+        ...args,
+      ),
+    ).toBe(200);
+    expect(
+      resolveMaxParallelChunks(
+        { workerTimeoutSeconds: LAMBDA_LIMIT, workerConcurrency: 1000 },
+        ...args,
+      ),
+    ).toBe(256);
+    expect(warnings).toEqual([]);
+  });
+
+  it("keeps short renders to few chunks so per-chunk overhead does not dominate", () => {
+    const { log } = recordingLog();
+    const worker = { workerTimeoutSeconds: LAMBDA_LIMIT, workerConcurrency: 256 };
+    expect(resolveMaxParallelChunks(worker, 60, MP_1080P, log)).toBe(1);
+    expect(resolveMaxParallelChunks(worker, 300, MP_1080P, log)).toBeLessThanOrEqual(3);
+    expect(resolveMaxParallelChunks(worker, 3600, MP_1080P, log)).toBeLessThan(64);
+  });
+
+  it("explicit chunking flags win and no worker inputs keeps the old default", () => {
+    const worker = { workerTimeoutSeconds: LAMBDA_LIMIT, workerConcurrency: 200 };
+    const args = [THIRTY_MIN_30FPS, MP_1080P] as const;
+    expect(resolveMaxParallelChunks({ ...worker, maxParallelChunks: 4 }, ...args)).toBe(4);
+    expect(resolveMaxParallelChunks({ ...worker, chunkSize: 240 }, ...args)).toBe(
+      DEFAULT_MAX_PARALLEL_CHUNKS,
+    );
+    expect(resolveMaxParallelChunks({ ...worker, targetChunkFrames: 300 }, ...args)).toBe(
+      DEFAULT_MAX_PARALLEL_CHUNKS,
+    );
+    expect(resolveMaxParallelChunks({}, ...args)).toBe(DEFAULT_MAX_PARALLEL_CHUNKS);
+  });
+
+  it("fails fast with a typed error when even 256 chunks cannot fit the limit", () => {
+    const eightHours = 8 * 60 * 60 * 30;
+    let caught: unknown;
+    try {
+      resolveMaxParallelChunks({ workerTimeoutSeconds: LAMBDA_LIMIT }, eightHours, MP_1080P);
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(ChunkExceedsWorkerTimeoutError);
+    expect((caught as ChunkExceedsWorkerTimeoutError).code).toBe(CHUNK_EXCEEDS_WORKER_TIMEOUT);
+    expect((caught as Error).message).toContain("900 s worker time limit");
+    // A limit shorter than one chunk's fixed overhead can never fit.
+    expect(() => resolveMaxParallelChunks({ workerTimeoutSeconds: 30 }, 300, MP_1080P)).toThrow(
+      ChunkExceedsWorkerTimeoutError,
+    );
   });
 });
 
@@ -388,6 +495,28 @@ describe("plan() defaults", () => {
     expect(DEFAULT_MAX_PARALLEL_CHUNKS).toBe(16);
     expect(MIN_CHUNK_SIZE).toBe(10);
   });
+
+  it("sizes chunks from the worker inputs the adapter passes", async () => {
+    const config = { fps: 30, width: 320, height: 240, format: "mp4" } as const;
+    const fixed = await plan(projectDir, config, join(runRoot, "plan-fixed-16"));
+    const sized = await plan(
+      projectDir,
+      { ...config, workerTimeoutSeconds: 900, workerConcurrency: 8 },
+      join(runRoot, "plan-worker-sized"),
+    );
+    expect(fixed.chunkCount).toBe(3);
+    expect(sized.chunkCount).toBe(1);
+  }, 30_000);
+
+  it("rejects at plan time when no chunk can finish inside the worker limit", async () => {
+    await expect(
+      plan(
+        projectDir,
+        { fps: 30, width: 320, height: 240, format: "mp4", workerTimeoutSeconds: 30 },
+        join(runRoot, "plan-too-slow"),
+      ),
+    ).rejects.toBeInstanceOf(ChunkExceedsWorkerTimeoutError);
+  }, 30_000);
 });
 
 describe("plan() — golden planDir + planHash determinism", () => {

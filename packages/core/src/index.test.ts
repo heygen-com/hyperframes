@@ -22,6 +22,12 @@ describe("@hyperframes/core public API exports", () => {
         "portrait-4k",
         "square",
         "square-4k",
+        "landscape-720p",
+        "portrait-720p",
+        "square-720p",
+        "landscape-480p",
+        "portrait-480p",
+        "square-480p",
       ]);
     });
 

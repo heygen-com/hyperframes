@@ -20,6 +20,11 @@ describe("validateDistributedRenderConfig", () => {
     expect(validateDistributedRenderConfig(VALID)).toBe(VALID);
   });
 
+  it("accepts 25 fps", () => {
+    const cfg: SerializableDistributedRenderConfig = { ...VALID, fps: 25 };
+    expect(validateDistributedRenderConfig(cfg)).toBe(cfg);
+  });
+
   it("accepts optional fields when valid", () => {
     const cfg: SerializableDistributedRenderConfig = {
       ...VALID,
@@ -39,7 +44,7 @@ describe("validateDistributedRenderConfig", () => {
     ["null config", null as unknown as SerializableDistributedRenderConfig, "config"],
     [
       "wrong fps",
-      { ...VALID, fps: 25 as 24 | 30 | 60 } satisfies SerializableDistributedRenderConfig,
+      { ...VALID, fps: 50 as never } satisfies SerializableDistributedRenderConfig,
       "config.fps",
     ],
     [
@@ -115,6 +120,16 @@ describe("validateDistributedRenderConfig", () => {
       "maxParallelChunks 0",
       { ...VALID, maxParallelChunks: 0 } satisfies SerializableDistributedRenderConfig,
       "config.maxParallelChunks",
+    ],
+    [
+      "workerTimeoutSeconds 0",
+      { ...VALID, workerTimeoutSeconds: 0 } satisfies SerializableDistributedRenderConfig,
+      "config.workerTimeoutSeconds",
+    ],
+    [
+      "fractional workerConcurrency",
+      { ...VALID, workerConcurrency: 1.5 } satisfies SerializableDistributedRenderConfig,
+      "config.workerConcurrency",
     ],
     [
       "unknown runtimeCap",

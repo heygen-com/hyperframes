@@ -415,10 +415,8 @@ export function wrapScopedCompositionScript(
           if (prop !== __hfCompId) {
             return Reflect.get(target, prop, target);
           }
-          var authoredValue = Reflect.get(target, prop, target);
-          return authoredValue === undefined
-            ? Reflect.get(target, __hfTimelineCompId, target)
-            : authoredValue;
+          var runtimeValue = Reflect.get(target, __hfTimelineCompId, target);
+          return runtimeValue === undefined ? Reflect.get(target, prop, target) : runtimeValue;
         },
         set: function(target, prop, value, receiver) {
           if (prop !== __hfCompId) {
@@ -426,11 +424,15 @@ export function wrapScopedCompositionScript(
           }
           // The authored node remains in the compiled DOM when its local id
           // differs from the runtime mount id, so readiness legitimately sees
-          // both compositions. Publish the same timeline under both identities
-          // instead of replacing one with the other.
-          var authoredSet = Reflect.set(target, __hfCompId, value, target);
+          // both compositions. Publish the same timeline under both identities,
+          // unless another mount of the same file already owns the authored one.
+          var authoredValue = Reflect.get(target, __hfCompId, target);
+          var ownsAuthored =
+            authoredValue === undefined ||
+            authoredValue === Reflect.get(target, __hfTimelineCompId, target);
           var runtimeSet = Reflect.set(target, __hfTimelineCompId, value, target);
-          return authoredSet && runtimeSet;
+          if (!ownsAuthored) return runtimeSet;
+          return Reflect.set(target, __hfCompId, value, target) && runtimeSet;
         },
       });
     }

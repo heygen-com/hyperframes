@@ -8,6 +8,7 @@ import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
 import { resolveProject } from "../utils/project.js";
 import { resolveDiagnosticNavigationTimeoutMs } from "../utils/renderArgs.js";
+import { gotoWhenSent } from "../capture/navigateForCapture.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
 import { printDeprecationNotice, withMeta } from "../utils/updateCheck.js";
@@ -184,10 +185,7 @@ async function alignViewportToComposition(
   });
 
   await page.setViewport(size);
-  await page.goto(url, {
-    waitUntil: "domcontentloaded",
-    timeout: resolveDiagnosticNavigationTimeoutMs(),
-  });
+  await gotoWhenSent(page, url, resolveDiagnosticNavigationTimeoutMs());
 }
 
 async function runLayoutAudit(
@@ -237,10 +235,7 @@ async function runLayoutAudit(
     const page = await chromeBrowser.newPage();
     await installPageFunctionGuard(page);
     await page.setViewport({ width: 1920, height: 1080 });
-    await page.goto(server.url, {
-      waitUntil: "domcontentloaded",
-      timeout: resolveDiagnosticNavigationTimeoutMs(),
-    });
+    await gotoWhenSent(page, server.url, resolveDiagnosticNavigationTimeoutMs());
     await assertWebGpuAdapterAvailable(page, requiresWebGpu, softwareWebGpu);
     await alignViewportToComposition(page, server.url);
     await waitForRuntimeReady(page, opts.timeout);

@@ -1,5 +1,5 @@
 /** Drives one edit accuracy case in the built Studio and measures it. All distances are composition px. */
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { classifyTweenPropertyGroup } from "../../../../parsers/src/gsapConstants.ts";
 import { parseGsapScript } from "../../../../parsers/src/gsapParser.ts";
 import { readFileSync, statSync } from "node:fs";
@@ -62,11 +62,15 @@ export function killServers() {
 
 const announcedPort = (log) => /http:\/\/localhost:(\d+)/.exec(log.join(""))?.[1];
 
+/** The real node binary: a version manager's shim (Volta) finds node through HOME, which the server's env replaces. */
+const nodeBinary = () =>
+  execFileSync("node", ["-p", "process.execPath"], { encoding: "utf8" }).trim();
+
 /** Starts Studio at `port` or, when that is busy, the next free one the CLI binds; returns the port it serves. */
 // fallow-ignore-next-line complexity
 export async function startServer(cli, dir, port, log, home) {
   const child = spawn(
-    "node",
+    nodeBinary(),
     [cli, "preview", dir, "--port", String(port), "--no-open", "--foreground", "--force-new"],
     {
       stdio: ["ignore", "pipe", "pipe"],
