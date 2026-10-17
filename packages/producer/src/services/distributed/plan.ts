@@ -956,6 +956,18 @@ function pathInside(root: string, path: string): string | null {
 }
 
 /**
+ * Name a video source without the planner's scratch folder, so `meta/videos.json`
+ * (and the planHash over it) is the same on every run with the same inputs.
+ */
+function stableSourcePath(roots: ReadonlyArray<[root: string, prefix: string]>, srcPath: string) {
+  for (const [root, prefix] of roots) {
+    const rel = pathInside(root, srcPath);
+    if (rel !== null) return [prefix, ...rel.split(sep)].filter(Boolean).join("/");
+  }
+  return srcPath;
+}
+
+/**
  * Return a planDir-relative path chunks can extract a deferred video from.
  * Sources the plan already ships under `compiled/` are reused; anything else
  * (downloads, files outside the project) is linked into `video-sources/`.
@@ -1286,12 +1298,18 @@ export async function buildLocalExecutionPlan(
     workCompiledDir: compiledDir,
     workVideoFramesDir: stagedVideoFrames,
   });
+  // Staged frames live inside compiledDir, so they must match first.
+  const sourceRoots: Array<[string, string]> = [
+    [stagedVideoFrames, "video-frames"],
+    [compiledDir, "compiled"],
+    [projectDir, ""],
+  ];
   const planVideosJson: PlanVideosJson = buildPlanVideosJson({
     videos: composition.videos,
     compositionEnd: job.duration ?? Number.NaN,
     extracted: (extractResult.extractionResult?.extracted ?? []).map((ext) => ({
       videoId: ext.videoId,
-      srcPath: ext.srcPath,
+      srcPath: stableSourcePath(sourceRoots, ext.srcPath),
       framePattern: ext.framePattern,
       fps: ext.fps,
       totalFrames: ext.totalFrames,

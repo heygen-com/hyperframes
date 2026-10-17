@@ -16,6 +16,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -787,10 +788,11 @@ describe("plan() — golden planDir + planHash determinism", () => {
   // variant generates a 1s silent wav via `ffmpeg`, references it from
   // the composition, and runs plan() — exercising the audio-mix path
   // that produced the original bug.
-  const HAS_FFMPEG = (() => {
-    const { spawnSync } = require("node:child_process") as typeof import("node:child_process");
-    return spawnSync("ffmpeg", ["-version"]).status === 0;
-  })();
+  const HAS_FFMPEG = spawnSync("ffmpeg", ["-version"]).status === 0;
+  const ffmpegOrThrow = (args: string[]) => {
+    const ffmpeg = spawnSync("ffmpeg", ["-nostdin", "-loglevel", "error", ...args]);
+    if (ffmpeg.status !== 0) throw new Error(`ffmpeg fixture failed: ${ffmpeg.stderr?.toString()}`);
+  };
 
   it.skipIf(!HAS_FFMPEG)(
     "plan.json.planHash matches recompute on an audio-bearing composition",
@@ -800,11 +802,7 @@ describe("plan() — golden planDir + planHash determinism", () => {
       // Generate a 1s mono silent wav. PCM keeps the file tiny without
       // pulling in an audio asset fixture.
       const audioPath = join(audioProjectDir, "silence.wav");
-      const { spawnSync } = require("node:child_process") as typeof import("node:child_process");
-      const ffmpeg = spawnSync("ffmpeg", [
-        "-nostdin",
-        "-v",
-        "error",
+      ffmpegOrThrow([
         "-f",
         "lavfi",
         "-i",
@@ -815,9 +813,6 @@ describe("plan() — golden planDir + planHash determinism", () => {
         "pcm_s16le",
         audioPath,
       ]);
-      if (ffmpeg.status !== 0) {
-        throw new Error(`ffmpeg silence-wav generation failed: ${ffmpeg.stderr?.toString()}`);
-      }
       writeFileSync(
         join(audioProjectDir, "index.html"),
         `<!doctype html>
@@ -848,6 +843,46 @@ describe("plan() — golden planDir + planHash determinism", () => {
       // pins the wrong path — the same false-pass mode as the
       // no-audio variant above).
       expect(existsSync(join(planDir, "audio.m4a"))).toBe(true);
+    },
+    TIMEOUT_MS,
+  );
+
+  it.skipIf(!HAS_FFMPEG)(
+    "plans a video-bearing project to the same planHash from different plan folders",
+    async () => {
+      const videoProjectDir = join(runRoot, "project-with-video");
+      mkdirSync(videoProjectDir, { recursive: true });
+      ffmpegOrThrow([
+        "-f",
+        "lavfi",
+        "-i",
+        "testsrc=size=320x240:rate=30:duration=1",
+        "-pix_fmt",
+        "yuv420p",
+        "-c:v",
+        "libx264",
+        join(videoProjectDir, "clip.mp4"),
+      ]);
+      writeFileSync(
+        join(videoProjectDir, "index.html"),
+        `<!doctype html>
+<div data-composition-id="root" data-width="320" data-height="240" data-duration="1">
+  <video id="clip" src="clip.mp4" data-start="0" muted></video>
+</div>`,
+        "utf-8",
+      );
+
+      const config = { fps: 30 as const, width: 320, height: 240, format: "mp4" as const };
+      const dirA = join(runRoot, "plan-video-a");
+      const dirB = join(runRoot, "nested", "plan-video-b");
+      for (const dir of [dirA, dirB]) mkdirSync(dir, { recursive: true });
+      const a = await plan(videoProjectDir, config, dirA);
+      const b = await plan(videoProjectDir, config, dirB);
+
+      expect(a.planHash).toBe(b.planHash);
+      const videosJson = (dir: string) => readFileSync(join(dir, "meta", "videos.json"), "utf-8");
+      expect(videosJson(dirB)).toBe(videosJson(dirA));
+      expect(JSON.parse(videosJson(dirA)).extracted[0].srcPath).toBe("compiled/clip.mp4");
     },
     TIMEOUT_MS,
   );
