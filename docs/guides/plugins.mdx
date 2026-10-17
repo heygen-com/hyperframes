@@ -42,9 +42,13 @@ Start a new session or run `/reload-plugins`, then try:
 Using /hyperframes:hyperframes, make a 5-second title card that says "Hello world".
 ```
 
-**Enable automatic updates:** run `/plugin`, open **Marketplaces**, select
-**hyperframes**, and choose **Enable auto-update**. Third-party marketplaces do
-not enable this by default. To update manually:
+**Enable automatic updates in Claude Code's terminal UI:** open a terminal in
+your project and run `claude`. In that session, run `/plugin`, open **Marketplaces**,
+select **hyperframes**, and choose **Enable auto-update**. If you installed through
+Claude Code's IDE extension or desktop app, use this terminal route on the same
+machine. Third-party marketplaces do not enable this by default. See
+[Claude Code's auto-update guidance](https://code.claude.com/docs/en/plugins/install#turn-auto-update-on-or-off-for-a-marketplace)
+for details. To update manually:
 
 ```bash
 claude plugin update hyperframes@hyperframes
