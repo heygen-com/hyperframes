@@ -5,7 +5,7 @@ import { join } from "node:path";
 import type { SFNClient } from "@aws-sdk/client-sfn";
 import type { SerializableDistributedRenderConfig } from "../events.js";
 import { asS3Client, FakeS3 } from "./__fixtures__/fakeS3.js";
-import type { SiteHandle } from "./deploySite.js";
+import { deploySite, type SiteHandle } from "./deploySite.js";
 import { renderToLambda } from "./renderToLambda.js";
 import { InvalidConfigError } from "./validateConfig.js";
 
@@ -76,9 +76,7 @@ describe("renderToLambda", () => {
     expect(handle.executionArn).toContain("smoke-1");
     expect(handle.bucketName).toBe("test-bucket");
     expect(handle.outputS3Uri).toBe("s3://test-bucket/renders/smoke-1/output.mp4");
-    expect(handle.projectS3Uri).toMatch(
-      /^s3:\/\/test-bucket\/sites\/[0-9a-f]{16}\/project\.tar\.gz$/,
-    );
+    expect(handle.projectS3Uri).toMatch(/^s3:\/\/test-bucket\/sites\/[0-9a-f]{16}\/files\.json$/);
     expect(Object.keys(handle)).toEqual([
       "renderId",
       "executionArn",
@@ -163,6 +161,48 @@ describe("renderToLambda", () => {
     expect(handle.projectS3Uri).toBe(prebuilt.projectS3Uri);
     // No HEAD/PUT means s3.existing stayed empty.
     expect(s3.existing.size).toBe(0);
+  });
+
+  describe("with a site whose files expired from the content store", () => {
+    async function deployThenExpire(s3: FakeS3): Promise<{ site: SiteHandle; expiredKey: string }> {
+      const site = await deploySite({ projectDir, bucketName: "test-bucket", s3: asS3Client(s3) });
+      const expiredKey = [...s3.existing].find((id) => id.includes("/cas/sha256/"))!;
+      s3.existing.delete(expiredKey);
+      s3.ops.length = 0;
+      return { site, expiredKey };
+    }
+    const renderWith = (s3: FakeS3, sfn: FakeSFN, site: SiteHandle, dir?: string) =>
+      renderToLambda({
+        siteHandle: site,
+        projectDir: dir,
+        bucketName: "test-bucket",
+        stateMachineArn: "arn:aws:states:us-east-1:1234:stateMachine:hf",
+        config: baseConfig,
+        sfn: asSFNClient(sfn),
+        s3: asS3Client(s3),
+      });
+
+    it("re-uploads the expired file from the project dir, then renders", async () => {
+      const s3 = new FakeS3();
+      const sfn = new FakeSFN();
+      const { site, expiredKey } = await deployThenExpire(s3);
+      await renderWith(s3, sfn, site, projectDir);
+      expect(
+        s3.ops.filter((op) => op.kind === "put").map((op) => `${op.bucket}/${op.key}`),
+      ).toEqual([expiredKey]);
+      expect(sfn.starts).toHaveLength(1);
+    });
+
+    it("without a project dir, refuses with the missing-file count before starting", async () => {
+      const s3 = new FakeS3();
+      const sfn = new FakeSFN();
+      const { site } = await deployThenExpire(s3);
+      await expect(renderWith(s3, sfn, site)).rejects.toMatchObject({
+        name: "SITE_FILES_MISSING",
+        message: expect.stringContaining("1 of 1 files"),
+      });
+      expect(sfn.starts).toHaveLength(0);
+    });
   });
 
   it("rejects invalid configs synchronously before any AWS call", async () => {

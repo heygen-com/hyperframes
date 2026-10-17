@@ -19,11 +19,11 @@
 
 import { randomUUID } from "node:crypto";
 import { SFNClient, StartExecutionCommand } from "@aws-sdk/client-sfn";
-import type { S3Client } from "@aws-sdk/client-s3";
+import { S3Client } from "@aws-sdk/client-s3";
 import type { LambdaPlanProtocol, SerializableDistributedRenderConfig } from "../events.js";
 import { formatExtension } from "../formatExtension.js";
 import { formatS3Uri } from "../s3Transport.js";
-import { deploySite, type SiteHandle } from "./deploySite.js";
+import { deploySite, ensureSiteStored, type SiteHandle } from "./deploySite.js";
 import {
   validateDistributedRenderConfig,
   validateStepFunctionsInputSize,
@@ -31,7 +31,7 @@ import {
 
 /** Options for {@link renderToLambda}. */
 export interface RenderToLambdaOptions {
-  /** Local project directory. Required when `siteHandle` is not supplied. */
+  /** Local project directory. Required without `siteHandle`; with one, re-uploads expired files. */
   projectDir?: string;
   /** Re-use an existing `deploySite` upload (skips tar+S3 PUT). */
   siteHandle?: SiteHandle;
@@ -101,6 +101,10 @@ export async function renderToLambda(opts: RenderToLambdaOptions): Promise<Rende
   });
   const outputS3Uri = formatS3Uri({ bucket: opts.bucketName, key: outputKey });
 
+  if (opts.siteHandle) {
+    const s3 = opts.s3 ?? new S3Client({ region: opts.region });
+    await ensureSiteStored(opts.siteHandle, s3, opts.projectDir);
+  }
   const site =
     opts.siteHandle ??
     (await deploySite({

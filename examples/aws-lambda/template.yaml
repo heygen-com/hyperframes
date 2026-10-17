@@ -129,6 +129,11 @@ Resources:
             # Users keep the final mp4 (different key prefix); the rest
             # can age out after a week to keep storage costs flat.
             ExpirationInDays: 7
+          - Id: ExpireSharedContent
+            Status: Enabled
+            Prefix: cas/sha256/
+            # Project files and plan artifacts by SHA-256, shared across renders.
+            ExpirationInDays: 30
       Tags:
         - Key: Project
           Value: !Ref ProjectName

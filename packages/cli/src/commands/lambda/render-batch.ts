@@ -222,12 +222,12 @@ export async function runRenderBatch(args: RenderBatchArgs): Promise<void> {
   // Deploy the site once and reuse it across every entry. --site-id and
   // --dry-run both skip the deploy via a synthesised handle.
   let siteHandle: SiteHandle;
+  const { deploySite, siteHandleFromId } = await loadSDK();
   if (args.siteId) {
-    siteHandle = makePlaceholderSiteHandle(args.siteId, stack.bucketName);
+    siteHandle = siteHandleFromId(stack.bucketName, args.siteId);
   } else if (args.dryRun) {
-    siteHandle = makePlaceholderSiteHandle("dry-run-site", stack.bucketName);
+    siteHandle = siteHandleFromId(stack.bucketName, "dry-run-site");
   } else {
-    const { deploySite } = await loadSDK();
     siteHandle = await deploySite({
       projectDir,
       bucketName: stack.bucketName,
@@ -271,6 +271,7 @@ export async function runRenderBatch(args: RenderBatchArgs): Promise<void> {
     }
     try {
       const handle = await renderToLambda({
+        projectDir,
         siteHandle,
         bucketName: stack.bucketName,
         stateMachineArn: stack.stateMachineArn,
@@ -327,23 +328,6 @@ export async function runRenderBatch(args: RenderBatchArgs): Promise<void> {
     console.log(`  ${tag} line ${row.inputLine}  ${c.dim(row.outputKey)}  ${detail}`);
   }
   if (failed > 0) setCommandExitCode(1);
-}
-
-/**
- * Synthesise a SiteHandle from a known siteId for paths that skip the
- * `deploySite` upload (`--site-id` and `--dry-run`). The SDK reads only
- * `siteId` + `projectS3Uri` when `uploaded: false`, so the byte / time
- * fields are intentional placeholders.
- */
-function makePlaceholderSiteHandle(siteId: string, bucketName: string): SiteHandle {
-  return {
-    siteId,
-    bucketName,
-    projectS3Uri: `s3://${bucketName}/sites/${siteId}/project.tar.gz`,
-    bytes: 0,
-    uploadedAt: "",
-    uploaded: false,
-  };
 }
 
 /**

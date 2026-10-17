@@ -29,12 +29,14 @@ import { createHash } from "node:crypto";
 import { dirname } from "node:path";
 import { pipeline } from "node:stream/promises";
 import {
+  CopyObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
   PutObjectCommand,
   type S3Client,
 } from "@aws-sdk/client-s3";
 import * as tar from "tar";
+import { CONTENT_STORE_REFRESH_AFTER_DAYS, contentStoreUri } from "./contentStore.js";
 
 /** Parsed `s3://bucket/key` URI. */
 export interface S3Location {
@@ -144,6 +146,16 @@ export async function uploadContentAddressedFileToS3(
   expectedSha256: string,
   contentType?: string,
 ): Promise<"uploaded" | "reused"> {
+  return (await putImmutableFile(client, localPath, uri, expectedSha256, contentType)).outcome;
+}
+
+async function putImmutableFile(
+  client: S3Client,
+  localPath: string,
+  uri: string,
+  expectedSha256: string,
+  contentType?: string,
+): Promise<{ outcome: "uploaded" | "reused"; lastModified?: Date }> {
   assertSha256(expectedSha256);
   if (!existsSync(localPath)) {
     throw new Error(`[s3Transport] upload source missing: ${localPath}`);
@@ -160,8 +172,9 @@ export async function uploadContentAddressedFileToS3(
   const { bucket, key } = parseS3Uri(uri);
   const size = statSync(localPath).size;
   const existing = await inspectContentAddressedObject(client, bucket, key, size, expectedSha256);
-  if (existing === "matching") return "reused";
-  if (existing === "conflict") throwImmutableObjectConflict(uri);
+  if (existing.state === "matching")
+    return { outcome: "reused", lastModified: existing.lastModified };
+  if (existing.state === "conflict") throwImmutableObjectConflict(uri);
 
   const body = createReadStream(localPath);
   try {
@@ -180,12 +193,12 @@ export async function uploadContentAddressedFileToS3(
         IfNoneMatch: "*",
       }),
     );
-    return "uploaded";
+    return { outcome: "uploaded" };
   } catch (error) {
     if (!isS3PreconditionFailed(error)) throw error;
     const raced = await inspectContentAddressedObject(client, bucket, key, size, expectedSha256);
-    if (raced === "matching") return "reused";
-    if (raced === "conflict") throwImmutableObjectConflict(uri);
+    if (raced.state === "matching") return { outcome: "reused" };
+    if (raced.state === "conflict") throwImmutableObjectConflict(uri);
     // The winning object was deleted between the conditional failure and
     // verification. Preserve the service error so the orchestrator may retry.
     throw error;
@@ -195,6 +208,30 @@ export async function uploadContentAddressedFileToS3(
     // Lambda planner.
     body.destroy();
   }
+}
+
+export async function mapConcurrent<T>(
+  values: readonly T[],
+  concurrency: number,
+  fn: (value: T) => Promise<void>,
+): Promise<void> {
+  let cursor = 0;
+  async function worker(): Promise<void> {
+    while (cursor < values.length) {
+      const index = cursor++;
+      await fn(values[index]!);
+    }
+  }
+  const results = await Promise.allSettled(
+    Array.from({ length: Math.min(concurrency, values.length) }, () => worker()),
+  );
+  const failure = results.find(
+    (result): result is PromiseRejectedResult => result.status === "rejected",
+  );
+  // Do not reject while sibling workers may still be writing into invocation
+  // scratch. The caller removes that directory in `finally`; draining the pool
+  // first prevents late S3 streams from racing cleanup after another GET fails.
+  if (failure) throw failure.reason;
 }
 
 export async function sha256File(path: string): Promise<string> {
@@ -213,7 +250,9 @@ function assertSha256(value: string): void {
   }
 }
 
-type ContentAddressedObjectState = "missing" | "matching" | "conflict";
+type ContentAddressedObjectState =
+  | { state: "missing" | "conflict" }
+  | { state: "matching"; lastModified?: Date };
 
 async function inspectContentAddressedObject(
   client: S3Client,
@@ -227,12 +266,69 @@ async function inspectContentAddressedObject(
       new HeadObjectCommand({ Bucket: bucket, Key: key, ChecksumMode: "ENABLED" }),
     );
     return existing.ContentLength === expectedSize && existing.Metadata?.sha256 === expectedSha256
-      ? "matching"
-      : "conflict";
+      ? { state: "matching", lastModified: existing.LastModified }
+      : { state: "conflict" };
   } catch (error) {
-    if (isS3NotFound(error)) return "missing";
+    if (isS3NotFound(error)) return { state: "missing" };
     throw error;
   }
+}
+
+/** Put a file into the shared content store once; reusing an aging object restarts its expiry. */
+export async function putContentStoreFile(
+  client: S3Client,
+  localPath: string,
+  bucket: string,
+  sha256: string,
+): Promise<"uploaded" | "reused"> {
+  const uri = contentStoreUri(bucket, sha256);
+  const { outcome, lastModified } = await putImmutableFile(client, localPath, uri, sha256);
+  if (lastModified) await refreshAgingObject(client, uri, sha256, lastModified);
+  return outcome;
+}
+
+/** Confirm an object the caller never uploaded is in the content store, restarting an aging one. */
+export async function ensureContentStoreObject(
+  client: S3Client,
+  bucket: string,
+  sha256: string,
+  sizeBytes: number,
+): Promise<void> {
+  const uri = contentStoreUri(bucket, sha256);
+  const { key } = parseS3Uri(uri);
+  const existing = await inspectContentAddressedObject(client, bucket, key, sizeBytes, sha256);
+  if (existing.state === "matching") {
+    if (existing.lastModified) await refreshAgingObject(client, uri, sha256, existing.lastModified);
+    return;
+  }
+  if (existing.state === "conflict") throwImmutableObjectConflict(uri);
+  const error = new Error(
+    `[s3Transport] PLAN_ARTIFACT_MISSING: ${uri} is not in the content store`,
+  );
+  error.name = "PLAN_ARTIFACT_MISSING";
+  throw error;
+}
+
+// S3 lifecycle expiry counts from the last write, not the last read, so reuse has to write.
+async function refreshAgingObject(
+  client: S3Client,
+  uri: string,
+  sha256: string,
+  lastModified: Date,
+): Promise<void> {
+  const { bucket, key } = parseS3Uri(uri);
+  const ageMs = Date.now() - lastModified.getTime();
+  if (ageMs < CONTENT_STORE_REFRESH_AFTER_DAYS * 86_400_000) return;
+  await client.send(
+    new CopyObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      CopySource: `${bucket}/${key}`,
+      MetadataDirective: "REPLACE",
+      Metadata: { sha256 },
+      ChecksumAlgorithm: "SHA256",
+    }),
+  );
 }
 
 function throwImmutableObjectConflict(uri: string): never {

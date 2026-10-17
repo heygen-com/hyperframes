@@ -631,7 +631,7 @@ describe("handler dispatch", () => {
     expect(planned).toMatchObject({
       PlanProtocol: "v2",
       PlanV2ManifestS3Uri: "s3://bucket/renders/v2/v2/manifest.json",
-      PlanV2ArtifactS3Prefix: "s3://bucket/renders/v2/v2/artifacts/sha256",
+      PlanV2ArtifactS3Prefix: "s3://bucket/cas/sha256",
     });
     expect("PlanS3Uri" in planned).toBe(false);
     if (!("PlanProtocol" in planned) || planned.PlanProtocol !== "v2") {
@@ -741,6 +741,111 @@ describe("handler dispatch", () => {
         skipChromeResolution: true,
       }),
     ).rejects.toThrow(/no recognised Action/);
+  });
+});
+
+describe("handler — plan from a deployed site", () => {
+  function storeSiteFile(s3: FakeS3Client, bytes: string): string {
+    const sha256 = createHash("sha256").update(bytes).digest("hex");
+    const uri = `s3://bucket/cas/sha256/${sha256.slice(0, 2)}/${sha256}`;
+    s3.objects.set(uri, Buffer.from(bytes));
+    s3.metadata.set(uri, { sha256 });
+    return sha256;
+  }
+
+  function planEvent(): PlanEvent {
+    return {
+      Action: "plan",
+      ProjectS3Uri: "s3://bucket/sites/site1/files.json",
+      PlanOutputS3Prefix: "s3://bucket/renders/r1/",
+      Config: { fps: 30, width: 640, height: 360, format: "mp4" },
+    };
+  }
+
+  it("rebuilds the project from the content store and reuses its media without uploading it", async () => {
+    const s3 = new FakeS3Client();
+    const html = storeSiteFile(s3, "<html></html>");
+    const media = storeSiteFile(s3, "VIDEO-BYTES");
+    s3.objects.set(
+      "s3://bucket/sites/site1/files.json",
+      Buffer.from(
+        JSON.stringify({
+          files: [
+            { path: "assets/bg.mp4", sha256: media, sizeBytes: 11 },
+            { path: "index.html", sha256: html, sizeBytes: 13 },
+          ],
+        }),
+      ),
+    );
+    const planV2WithPublisher = mock(
+      async (projectDir: string, _config: unknown, publisher: PlanV2ArtifactPublisher) => {
+        expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toBe("<html></html>");
+        const mediaPath = join(projectDir, "assets", "bg.mp4");
+        await publisher.putBlob({ sourcePath: mediaPath, sha256: media, sizeBytes: 11 });
+        const manifest = {
+          planHash: "c".repeat(64),
+          chunkCount: 1,
+          totalFrames: 30,
+          fps: 30,
+          width: 640,
+          height: 360,
+          format: "mp4",
+          ffmpegVersion: "test",
+          producerVersion: "test",
+          artifacts: [{ path: "compiled/assets/bg.mp4", sha256: media, sizeBytes: 11 }],
+        };
+        await publisher.commitManifest(JSON.stringify(manifest));
+        return manifest as unknown as PlanV2Manifest;
+      },
+    );
+
+    const result = await handler(planEvent(), {
+      s3: s3 as unknown as import("@aws-sdk/client-s3").S3Client,
+      primitives: {
+        plan: mock() as unknown as typeof import("@hyperframes/producer/distributed").plan,
+        planV2WithPublisher:
+          planV2WithPublisher as unknown as typeof import("@hyperframes/producer/distributed").planV2WithPublisher,
+        renderChunk:
+          mock() as unknown as typeof import("@hyperframes/producer/distributed").renderChunk,
+        assemble: mock() as unknown as typeof import("@hyperframes/producer/distributed").assemble,
+      },
+      tmpRoot: makeTmpRoot(),
+      skipChromeResolution: true,
+    });
+
+    expect(result).toMatchObject({ PlanV2ArtifactS3Prefix: "s3://bucket/cas/sha256" });
+    expect(planV2WithPublisher).toHaveBeenCalledTimes(1);
+    expect(s3.ops.filter((op) => op.kind === "upload").map((op) => op.uri)).toEqual([
+      "s3://bucket/renders/r1/v2/manifest.json",
+    ]);
+    expect(s3.ops.some((op) => op.uri.endsWith(".tar.gz"))).toBe(false);
+  });
+
+  it("refuses a site manifest path that escapes the project", async () => {
+    const s3 = new FakeS3Client();
+    const sha256 = storeSiteFile(s3, "x");
+    s3.objects.set(
+      "s3://bucket/sites/site1/files.json",
+      Buffer.from(JSON.stringify({ files: [{ path: "../escape", sha256, sizeBytes: 1 }] })),
+    );
+    const planV2WithPublisher = mock();
+    await expect(
+      handler(planEvent(), {
+        s3: s3 as unknown as import("@aws-sdk/client-s3").S3Client,
+        primitives: {
+          plan: mock() as unknown as typeof import("@hyperframes/producer/distributed").plan,
+          planV2WithPublisher:
+            planV2WithPublisher as unknown as typeof import("@hyperframes/producer/distributed").planV2WithPublisher,
+          renderChunk:
+            mock() as unknown as typeof import("@hyperframes/producer/distributed").renderChunk,
+          assemble:
+            mock() as unknown as typeof import("@hyperframes/producer/distributed").assemble,
+        },
+        tmpRoot: makeTmpRoot(),
+        skipChromeResolution: true,
+      }),
+    ).rejects.toMatchObject({ name: "SITE_MANIFEST_INVALID" });
+    expect(planV2WithPublisher).not.toHaveBeenCalled();
   });
 });
 

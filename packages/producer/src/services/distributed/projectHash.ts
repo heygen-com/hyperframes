@@ -2,8 +2,8 @@
  * Content-addressing for a project directory, shared by the distributed-render
  * adapters' `deploySite` verbs.
  *
- * Each adapter uploads a project tarball to `…/sites/<siteId>/project.tar.gz`
- * and short-circuits the upload when the object already exists. `siteId` is a
+ * Each adapter uploads a project under `…/sites/<siteId>/` (AWS: a file list,
+ * Cloud Run: a tarball) and skips content already uploaded. `siteId` is a
  * SHA-256 over the project's files so identical content always maps to the
  * same key — that contract has to be byte-identical across adapters, which is
  * exactly why it lives here rather than being copy-pasted per adapter.

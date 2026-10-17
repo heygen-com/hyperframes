@@ -8,7 +8,12 @@
  * AWS-SDK only — safe to load in any Node environment.
  */
 
-export { deploySite, type DeploySiteOptions, type SiteHandle } from "./deploySite.js";
+export {
+  deploySite,
+  type DeploySiteOptions,
+  type SiteHandle,
+  siteHandleFromId,
+} from "./deploySite.js";
 export { renderToLambda, type RenderHandle, type RenderToLambdaOptions } from "./renderToLambda.js";
 export {
   getRenderProgress,

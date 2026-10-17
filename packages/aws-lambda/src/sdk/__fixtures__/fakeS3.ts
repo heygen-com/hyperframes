@@ -8,6 +8,7 @@
  * `deploySite`'s `finally` block has rmSync'd it.
  */
 
+import { Readable } from "node:stream";
 import { buffer } from "node:stream/consumers";
 import type { S3Client } from "@aws-sdk/client-s3";
 
@@ -21,35 +22,48 @@ export class FakeS3 {
   ops: FakeS3Op[] = [];
   existing = new Set<string>();
   bodies = new Map<string, Buffer>();
+  metadata = new Map<string, Record<string, string> | undefined>();
 
   async send(command: unknown): Promise<unknown> {
     const cmdName = (command as { constructor: { name: string } }).constructor.name;
-    const input = (command as { input: { Bucket: string; Key: string } }).input;
-    if (cmdName === "HeadObjectCommand") {
-      this.ops.push({ kind: "head", bucket: input.Bucket, key: input.Key });
-      if (this.existing.has(`${input.Bucket}/${input.Key}`)) {
-        return { ContentLength: 1, LastModified: new Date("2026-05-16T00:00:00Z") };
+    const input = (
+      command as {
+        input: { Bucket: string; Key: string; Metadata?: Record<string, string>; Body?: unknown };
       }
-      const err = new Error("Not Found") as Error & {
-        $metadata: { httpStatusCode: number };
-        name: string;
-      };
-      err.name = "NotFound";
-      err.$metadata = { httpStatusCode: 404 };
-      throw err;
+    ).input;
+    const id = `${input.Bucket}/${input.Key}`;
+    const handlers: Record<string, () => Promise<unknown>> = {
+      HeadObjectCommand: async () => {
+        this.ops.push({ kind: "head", bucket: input.Bucket, key: input.Key });
+        return this.head(id);
+      },
+      GetObjectCommand: async () => ({
+        Body: Readable.from([this.bodies.get(id) ?? Buffer.alloc(0)]),
+      }),
+      PutObjectCommand: async () => {
+        this.ops.push({ kind: "put", bucket: input.Bucket, key: input.Key });
+        this.existing.add(id);
+        this.metadata.set(id, input.Metadata);
+        this.bodies.set(id, await drainBody(input.Body as NodeJS.ReadableStream | Buffer));
+        return {};
+      },
+    };
+    const handler = handlers[cmdName];
+    if (!handler) throw new Error(`FakeS3: unexpected command ${cmdName}`);
+    return handler();
+  }
+
+  private head(id: string): unknown {
+    if (this.existing.has(id)) {
+      return { ContentLength: this.bodies.get(id)?.length, Metadata: this.metadata.get(id) };
     }
-    if (cmdName === "PutObjectCommand") {
-      this.ops.push({ kind: "put", bucket: input.Bucket, key: input.Key });
-      this.existing.add(`${input.Bucket}/${input.Key}`);
-      this.bodies.set(
-        `${input.Bucket}/${input.Key}`,
-        await drainBody(
-          (command as { input: { Body: NodeJS.ReadableStream | Buffer } }).input.Body,
-        ),
-      );
-      return {};
-    }
-    throw new Error(`FakeS3: unexpected command ${cmdName}`);
+    const err = new Error("Not Found") as Error & {
+      $metadata: { httpStatusCode: number };
+      name: string;
+    };
+    err.name = "NotFound";
+    err.$metadata = { httpStatusCode: 404 };
+    throw err;
   }
 }
 

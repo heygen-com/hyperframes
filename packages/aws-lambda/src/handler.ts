@@ -54,12 +54,14 @@ import type {
 import {
   downloadS3ObjectToFile,
   downloadS3ObjectToFileVerified,
+  mapConcurrent,
   parseS3Uri,
   tarDirectory,
   untarDirectory,
   uploadFileToS3,
 } from "./s3Transport.js";
 import { S3PlanV2ArtifactPublisher } from "./s3PlanV2Publisher.js";
+import { downloadSiteFiles, isSiteManifestUri } from "./siteManifest.js";
 
 /**
  * Lazily-constructed S3 client. Cached at module scope so warm Lambda
@@ -337,17 +339,10 @@ async function handlePlan(event: PlanEvent, deps?: HandlerDeps): Promise<PlanLam
   }
 
   const work = mkdtempSync(join(deps?.tmpRoot ?? tmpdir(), "hf-lambda-plan-"));
-  // We use `.tar.gz` (not `.zip`) as the project archive's on-the-wire
-  // format because Lambda's Amazon Linux base image ships GNU `tar` but
-  // not `unzip` in `/usr/bin`. The smoke script + future CLI both
-  // produce tar.gz uploads.
-  const projectArchive = join(work, "project.tar.gz");
-  const projectDir = join(work, "project");
   const planDir = join(work, "plan");
 
   try {
-    await downloadS3ObjectToFile(s3, event.ProjectS3Uri, projectArchive);
-    await untarDirectory(projectArchive, projectDir);
+    const projectDir = await fetchProject(s3, event.ProjectS3Uri, work);
 
     const config: DistributedRenderConfig = {
       ...event.Config,
@@ -395,6 +390,22 @@ async function handlePlan(event: PlanEvent, deps?: HandlerDeps): Promise<PlanLam
   }
 }
 
+/**
+ * `ProjectS3Uri` is a site manifest from `deploySite`, or a `.tar.gz` of the project
+ * (hand-built uploads such as `examples/aws-lambda/scripts/smoke.sh`).
+ */
+async function fetchProject(s3: S3Client, projectS3Uri: string, work: string): Promise<string> {
+  const projectDir = join(work, "project");
+  if (isSiteManifestUri(projectS3Uri)) {
+    await downloadSiteFiles(s3, projectS3Uri, projectDir);
+  } else {
+    const projectArchive = join(work, "project.tar.gz");
+    await downloadS3ObjectToFile(s3, projectS3Uri, projectArchive);
+    await untarDirectory(projectArchive, projectDir);
+  }
+  return projectDir;
+}
+
 // Plan v2 orchestration is kept as one transactional boundary: stage, CAS upload,
 // and manifest-last publication must stay ordered and fail together.
 // fallow-ignore-next-line complexity
@@ -410,11 +421,8 @@ async function handlePlanV2(
   }
 
   const work = mkdtempSync(join(deps?.tmpRoot ?? tmpdir(), "hf-lambda-plan-v2-"));
-  const projectArchive = join(work, "project.tar.gz");
-  const projectDir = join(work, "project");
   try {
-    await downloadS3ObjectToFile(s3, event.ProjectS3Uri, projectArchive);
-    await untarDirectory(projectArchive, projectDir);
+    const projectDir = await fetchProject(s3, event.ProjectS3Uri, work);
     const publisher = new S3PlanV2ArtifactPublisher({
       s3,
       planOutputS3Prefix: event.PlanOutputS3Prefix,
@@ -747,30 +755,6 @@ function throwPlanHashMismatch(expected: string, actual: string): never {
   );
   error.name = "PLAN_HASH_MISMATCH";
   throw error;
-}
-
-async function mapConcurrent<T>(
-  values: readonly T[],
-  concurrency: number,
-  fn: (value: T) => Promise<void>,
-): Promise<void> {
-  let cursor = 0;
-  async function worker(): Promise<void> {
-    while (cursor < values.length) {
-      const index = cursor++;
-      await fn(values[index]!);
-    }
-  }
-  const results = await Promise.allSettled(
-    Array.from({ length: Math.min(concurrency, values.length) }, () => worker()),
-  );
-  const failure = results.find(
-    (result): result is PromiseRejectedResult => result.status === "rejected",
-  );
-  // Do not reject while sibling workers may still be writing into invocation
-  // scratch. The caller removes that directory in `finally`; draining the pool
-  // first prevents late S3 streams from racing cleanup after another GET fails.
-  if (failure) throw failure.reason;
 }
 
 async function downloadChunkObjects(
