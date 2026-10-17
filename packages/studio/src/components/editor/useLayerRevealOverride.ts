@@ -1,3 +1,4 @@
+import { setTimedClipPaintVisibility } from "@hyperframes/core/runtime/timed-clip-hide";
 import { useCallback, useEffect, useRef } from "react";
 import {
   LAYER_REVEAL_PRIOR_POSITION_ATTR,
@@ -59,7 +60,8 @@ interface RevealState {
 }
 
 function restoreInline(el: HTMLElement, property: string, prior: string): void {
-  if (prior) el.style.setProperty(property, prior);
+  if (property === "visibility") setTimedClipPaintVisibility(el, prior);
+  else if (prior) el.style.setProperty(property, prior);
   else el.style.removeProperty(property);
 }
 
@@ -195,7 +197,7 @@ function revealNode(
     applied.display = el.style.display;
   }
   if (needs.visibility) {
-    el.style.visibility = "visible";
+    setTimedClipPaintVisibility(el, "visible");
     applied.visibility = "visible";
   }
   if (needs.opacity) {

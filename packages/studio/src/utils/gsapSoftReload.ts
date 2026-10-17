@@ -1,5 +1,6 @@
 import { COLOR_GRADING_SOURCE_HIDDEN_ATTR } from "@hyperframes/core/color-grading";
 import { motionPathPluginUrl } from "@hyperframes/core/gsap-cdn";
+import { showHiddenClipFilters } from "@hyperframes/core/runtime/timed-clip-hide";
 import { findAuthoredElement } from "./authoredSource";
 import { applyAuthoredInlineOpacity, readStampedAuthoredOpacity } from "./authoredOpacity";
 import {
@@ -439,20 +440,25 @@ export function applySoftReload(
     for (const script of staleScripts) script.remove();
 
     const executeScript = () => {
-      if (win.MotionPathPlugin && win.gsap?.registerPlugin) {
-        win.gsap.registerPlugin(win.MotionPathPlugin);
+      const restoreFilters = showHiddenClipFilters(doc);
+      try {
+        if (win.MotionPathPlugin && win.gsap?.registerPlugin) {
+          win.gsap.registerPlugin(win.MotionPathPlugin);
+        }
+        const s = doc.createElement("script");
+        s.textContent = `(function(){${scriptText}\n})();`;
+        const ownScriptNode = 1;
+        const before = doc.body.querySelectorAll("*").length + ownScriptNode;
+        doc.body.appendChild(s);
+        // A script that builds DOM builds it again on every run; only a full load starts from the file.
+        // Not seen: text-only writes, nodes put in the head or a shadow root, nodes added
+        // later, and a builder that removes its old nodes first (which needs no full load).
+        builtDom = doc.body.querySelectorAll("*").length > before;
+        if (builtDom && deferredToAsync) onAsyncFailure?.();
+        finalizeSoftReload(win, currentTime);
+      } finally {
+        restoreFilters();
       }
-      const s = doc.createElement("script");
-      s.textContent = `(function(){${scriptText}\n})();`;
-      const ownScriptNode = 1;
-      const before = doc.body.querySelectorAll("*").length + ownScriptNode;
-      doc.body.appendChild(s);
-      // A script that builds DOM builds it again on every run; only a full load starts from the file.
-      // Not seen: text-only writes, nodes put in the head or a shadow root, nodes added
-      // later, and a builder that removes its old nodes first (which needs no full load).
-      builtDom = doc.body.querySelectorAll("*").length > before;
-      if (builtDom && deferredToAsync) onAsyncFailure?.();
-      finalizeSoftReload(win, currentTime);
     };
 
     const needsMotionPath = /motionPath\s*[:{]/.test(scriptText);

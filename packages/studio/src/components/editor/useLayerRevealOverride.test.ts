@@ -109,6 +109,41 @@ describe("useLayerRevealOverride — delayed reveal ownership", () => {
     document.body.innerHTML = "";
   });
 
+  it("settles the timed filter gate on reveal and owned restore", () => {
+    const selected = makeEl("2", "absolute");
+    selected.style.visibility = "hidden";
+    selected.setAttribute("data-hf-clip-hidden", "");
+    const reveal = { transitionProperty: "filter", effect: { target: selected }, finish: vi.fn() };
+    const restore = { transitionProperty: "filter", effect: { target: selected }, finish: vi.fn() };
+    Object.defineProperty(selected, "getAnimations", {
+      value: vi
+        .fn()
+        .mockReturnValueOnce([])
+        .mockReturnValueOnce([reveal])
+        .mockReturnValueOnce([])
+        .mockReturnValueOnce([restore]),
+    });
+    const host = makeEl();
+    const root = createRoot(host);
+    let scheduleReveal: ((element: HTMLElement, delayMs: number) => void) | undefined;
+    function Harness() {
+      ({ scheduleReveal } = useLayerRevealOverride({
+        isPlaying: false,
+        selectedElement: selected,
+      }));
+      return null;
+    }
+    act(() => root.render(React.createElement(Harness)));
+    act(() => scheduleReveal!(selected, 0));
+    act(() => vi.advanceTimersByTime(0));
+    expect(selected.style.visibility).toBe("visible");
+    expect(reveal.finish).toHaveBeenCalledOnce();
+    act(() => root.unmount());
+    expect(selected.style.visibility).toBe("hidden");
+    expect(selected.hasAttribute("data-hf-clip-hidden")).toBe(true);
+    expect(restore.finish).toHaveBeenCalledOnce();
+  });
+
   it("cancels a pending reveal when selection changes or playback begins", () => {
     const host = document.createElement("div");
     const selected = makeEl("2", "absolute");

@@ -41,9 +41,11 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@hyperframes/core": "workspace:*",
     "html2canvas": "^1.4.1"
   },
   "devDependencies": {
+    "gsap": "^3.15.0",
     "tsup": "^8.0.0",
     "typescript": "^5.0.0",
     "vitest": "^4.1.11"

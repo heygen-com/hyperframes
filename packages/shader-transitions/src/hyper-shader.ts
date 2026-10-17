@@ -1,4 +1,8 @@
 import {
+  setTimedClipPaintVisibility,
+  showHiddenClipFilters,
+} from "@hyperframes/core/runtime/timed-clip-hide";
+import {
   createContext,
   setupQuad,
   createProgram,
@@ -1002,7 +1006,7 @@ export function init(config: HyperShaderConfig): GsapTimeline {
 
   const setScenePlaybackState = (scene: HTMLElement, visible: boolean, opacity: string): void => {
     setSceneLayer(scene, visible, opacity);
-    scene.style.visibility = visible ? "visible" : "hidden";
+    setTimedClipPaintVisibility(scene, visible ? "visible" : "hidden");
   };
 
   const paintScenePairState = (
@@ -1270,8 +1274,13 @@ export function init(config: HyperShaderConfig): GsapTimeline {
       : fallback;
   };
   const setActualTimelineTime = (time: number, suppressEvents: boolean): GsapTimeline => {
-    const result = originalTime(time, suppressEvents);
-    return typeof result === "number" ? tl : result;
+    const restoreFilters = showHiddenClipFilters(canvasEl.ownerDocument);
+    try {
+      const result = originalTime(time, suppressEvents);
+      return typeof result === "number" ? tl : result;
+    } finally {
+      restoreFilters();
+    }
   };
   const suppressSceneMutationTracking = <T>(fn: () => T): T => {
     sceneMutationSuppressionDepth += 1;
@@ -1942,11 +1951,11 @@ export function init(config: HyperShaderConfig): GsapTimeline {
     for (let sampleIndex = 0; sampleIndex < sampleCount; sampleIndex += 1) {
       const sampleTime = cache.time + (cache.duration * sampleIndex) / (sampleCount - 1);
       suppressSceneMutationTracking(() => {
-        originalTime(sampleTime, false);
+        setActualTimelineTime(sampleTime, false);
       });
       await waitForPaint();
       suppressSceneMutationTracking(() => {
-        originalTime(sampleTime, true);
+        setActualTimelineTime(sampleTime, true);
       });
 
       const fromScene = document.getElementById(cache.fromId);

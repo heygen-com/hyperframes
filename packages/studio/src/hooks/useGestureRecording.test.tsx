@@ -67,9 +67,13 @@ describe("useGestureRecording", () => {
 
   it("releases the preview runtime when unmounted during a recording", () => {
     const cancelAnimationFrame = vi.fn();
+    let previewFrame: FrameRequestCallback | undefined;
     vi.stubGlobal(
       "requestAnimationFrame",
-      vi.fn(() => 17),
+      vi.fn((callback: FrameRequestCallback) => {
+        previewFrame = callback;
+        return 17;
+      }),
     );
     vi.stubGlobal("cancelAnimationFrame", cancelAnimationFrame);
 
@@ -79,6 +83,17 @@ describe("useGestureRecording", () => {
     const element = previewDocument.createElement("div");
     element.id = "card";
     element.style.visibility = "hidden";
+    element.setAttribute("data-hf-clip-hidden", "");
+    const reveal = { transitionProperty: "filter", effect: { target: element }, finish: vi.fn() };
+    const restore = { transitionProperty: "filter", effect: { target: element }, finish: vi.fn() };
+    Object.defineProperty(element, "getAnimations", {
+      value: vi
+        .fn()
+        .mockReturnValueOnce([])
+        .mockReturnValueOnce([reveal])
+        .mockReturnValueOnce([])
+        .mockReturnValueOnce([restore]),
+    });
     element.style.setProperty("translate", "10px 20px");
     element.style.setProperty("--hf-studio-offset-x", "12px");
     element.style.setProperty("--hf-studio-offset-y", "-8px");
@@ -106,8 +121,14 @@ describe("useGestureRecording", () => {
     expect(element.style.getPropertyValue("--hf-studio-offset-x")).toBe("0px");
     expect(element.style.getPropertyValue("--hf-studio-offset-y")).toBe("0px");
 
+    document.dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientX: 10 }));
+    act(() => previewFrame?.(1));
+    expect(element.style.visibility).toBe("visible");
     act(() => root.unmount());
 
+    expect(reveal.finish).toHaveBeenCalledOnce();
+    expect(restore.finish).toHaveBeenCalledOnce();
+    expect(element.hasAttribute("data-hf-clip-hidden")).toBe(true);
     expect(cancelAnimationFrame).toHaveBeenCalledWith(17);
     expect(set).toHaveBeenCalledWith(element, {
       clearProps: "x,y,scale,scaleX,scaleY,rotation,rotationX,rotationY,opacity,z",

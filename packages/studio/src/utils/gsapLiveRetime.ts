@@ -1,4 +1,5 @@
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
+import { showHiddenClipFilters } from "@hyperframes/core/runtime/timed-clip-hide";
 import { parseGsapScriptAcorn, scriptShape } from "@hyperframes/parsers/gsap-parser-acorn";
 import { hasExplicitTime } from "@hyperframes/parsers/gsap-writer-acorn";
 import { RUNTIME_FILLER } from "@hyperframes/core/runtime/protocol";
@@ -258,15 +259,20 @@ export function applyLiveRetime(iframe: HTMLIFrameElement | null, plan: LiveReti
     const bySource = plan.tweens
       .map((t, i) => ({ ...t, tween: children[i]! }))
       .sort((a, b) => a.source - b.source);
-    for (const { tween } of bySource) timeline.remove(tween);
-    for (const { tween, start, duration } of bySource) {
-      if (tween.duration() !== duration) tween.duration(duration);
-      timeline.add(tween, start);
+    const restoreFilters = showHiddenClipFilters(plan.script.ownerDocument);
+    try {
+      for (const { tween } of bySource) timeline.remove(tween);
+      for (const { tween, start, duration } of bySource) {
+        if (tween.duration() !== duration) tween.duration(duration);
+        timeline.add(tween, start);
+      }
+      // Replayed to the playhead as the runtime binds a fresh load, callbacks included.
+      const at = timeline.time();
+      timeline.progress(0.0001, true);
+      timeline.totalTime(at, false);
+    } finally {
+      restoreFilters();
     }
-    // Replayed to the playhead as the runtime binds a fresh load, callbacks included.
-    const at = timeline.time();
-    timeline.progress(0.0001, true);
-    timeline.totalTime(at, false);
   }
   // A script element runs once, so this only keeps the next comparison honest; nothing re-executes.
   plan.script.textContent = plan.after;

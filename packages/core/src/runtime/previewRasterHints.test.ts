@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PREVIEW_RASTER_ATTR } from "../studioPreviewMark";
 import { setPreviewRasterScale } from "./previewRasterHints";
+import { setTimedClipVisibility, showHiddenClipFilters } from "./timedClipHide";
 
 function layer(style: string, parent: Element = document.body): HTMLElement {
   const element = document.createElement("div");
@@ -190,5 +191,24 @@ describe("setPreviewRasterScale", () => {
     expect(ownReads.length).toBeLessThanOrEqual(3);
     expect(marked(group)).toBe(true);
     reads.mockRestore();
+  });
+  it("ignores a restored filter sampling window while following authored attributes", async () => {
+    const clip = layer(POSITIONED);
+    layer("position: absolute", clip);
+    setTimedClipVisibility(clip, "hidden");
+    setPreviewRasterScale(0.5);
+    await Promise.resolve();
+    const reads = vi.spyOn(window, "getComputedStyle");
+    try {
+      showHiddenClipFilters()();
+      await Promise.resolve();
+      expect(reads).not.toHaveBeenCalled();
+      clip.dataset.scene = "authored";
+      await Promise.resolve();
+      expect(reads).toHaveBeenCalled();
+      expect(marked(clip)).toBe(true);
+    } finally {
+      reads.mockRestore();
+    }
   });
 });

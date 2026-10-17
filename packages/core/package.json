@@ -544,6 +544,12 @@
       "node": "./dist/timelineAssetId.js",
       "import": "./src/timelineAssetId.ts",
       "types": "./src/timelineAssetId.ts"
+    },
+    "./runtime/timed-clip-hide": {
+      "bun": "./src/runtime/timedClipHide.ts",
+      "node": "./dist/runtime/timedClipHide.js",
+      "import": "./src/runtime/timedClipHide.ts",
+      "types": "./src/runtime/timedClipHide.ts"
     }
   },
   "publishConfig": {
@@ -900,6 +906,10 @@
       "./timeline-asset-id": {
         "import": "./dist/timelineAssetId.js",
         "types": "./dist/timelineAssetId.d.ts"
+      },
+      "./runtime/timed-clip-hide": {
+        "import": "./dist/runtime/timedClipHide.js",
+        "types": "./dist/runtime/timedClipHide.d.ts"
       }
     },
     "main": "./dist/index.js",

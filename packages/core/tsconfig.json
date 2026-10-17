@@ -21,7 +21,8 @@
     "src/runtime/stackingContext.ts",
     "src/runtime/webAudioRoute.ts",
     "src/runtime/levelTap.ts",
-    "src/runtime/wiggleEase.ts"
+    "src/runtime/wiggleEase.ts",
+    "src/runtime/timedClipHide.ts"
   ],
   "include": ["src/**/*"],
   "exclude": [

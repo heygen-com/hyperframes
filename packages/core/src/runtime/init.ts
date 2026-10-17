@@ -11,6 +11,8 @@ import {
   revealTimedClipsAfterFirstPass,
   SKIPPED_CLIP,
   showHiddenClips,
+  showHiddenClipFilters,
+  setTimedClipVisibility,
   skipsHiddenImages,
 } from "./timedClipHide";
 import {
@@ -2960,8 +2962,10 @@ export function initSandboxRuntimeModular(): void {
         clipChainVisibleAt(rawNode.parentElement, currentTime, visibleAt, rootComp);
       visibilityDecided.set(rawNode, isVisibleNow);
       const isRuntimeStamped = stampsForStudio && rawNode.hasAttribute(RUNTIME_STAMPED_ATTR);
-      if (!isRuntimeStamped) rawNode.style.visibility = isVisibleNow ? "visible" : "hidden";
-      rawNode.toggleAttribute(CLIP_HIDDEN_ATTR, !isRuntimeStamped && !isVisibleNow);
+      setTimedClipVisibility(
+        rawNode,
+        isRuntimeStamped ? null : isVisibleNow ? "visible" : "hidden",
+      );
       const upcoming =
         hiddenImagesSkipped && !isVisibleNow && dueSoon(rawNode, visibleAt, currentTime);
       if (upcoming && !rawNode.hasAttribute(STUDIO_PREVIEW_UPCOMING_ATTR))
@@ -4569,70 +4573,68 @@ export function initSandboxRuntimeModular(): void {
     if (revision !== tweensRenderedThrough.revision)
       tweensRenderedThrough = { revision, time: Number.NEGATIVE_INFINITY };
     const jumped = !(Math.abs(t - lastTransportSeekTime) <= 1.5 / state.canonicalFps);
-    const firstRenders = jumped && t > tweensRenderedThrough.time;
-    const hideClipsAgain = firstRenders ? showHiddenClips() : null;
-    if (tl) {
-      // #10: when data-duration exceeds the timeline's intrinsic length the
-      // engine requests frames past the last tween. Seeking a paused GSAP
-      // timeline past its end can revert from()-tweens to their empty initial
-      // state, blanking the final poster. Clamp the MASTER seek to the
-      // timeline's full extent so it holds the final computed frame instead.
-      // Adapters still receive the raw `t` (their media may run longer).
-      // totalDuration() includes repeats; Infinity (infinite repeat) → no clamp.
-      let tlSeekTime = t;
-      if (typeof tl.totalDuration === "function") {
+    const firstRenders = t > tweensRenderedThrough.time;
+    const hideClipsAgain = firstRenders
+      ? jumped
+        ? showHiddenClips()
+        : showHiddenClipFilters()
+      : null;
+    try {
+      if (tl) {
+        // Clamp the master seek to its full extent so the final frame holds.
+        // Adapters receive raw `t`; infinite timelines remain unclamped.
+        let tlSeekTime = t;
+        if (typeof tl.totalDuration === "function") {
+          try {
+            const total = Number(tl.totalDuration());
+            if (Number.isFinite(total) && total > 0 && t > total) {
+              tlSeekTime = total;
+            }
+          } catch (err) {
+            swallow("runtime.init.transport.clampDuration", err);
+          }
+        }
         try {
-          const total = Number(tl.totalDuration());
-          if (Number.isFinite(total) && total > 0 && t > total) {
-            tlSeekTime = total;
+          if (typeof tl.totalTime === "function") {
+            const structure = gsapStructureOf(tl);
+            const redrawn = seekGsapTimeline(tl, tlSeekTime, suppressEvents, structure);
+            if (!redrawn && !suppressEvents && !hasZeroDurationCallbackTween(tl, structure)) {
+              // The first seek is the only eventful one; the re-render only refreshes styles.
+              rerenderGsapTimelineAt(
+                {
+                  totalTime: tl.totalTime.bind(tl),
+                  totalDuration: tl.totalDuration?.bind(tl),
+                  getChildren: tl.getChildren?.bind(tl),
+                },
+                tlSeekTime,
+                structure,
+              );
+            }
+          } else {
+            tl.seek(tlSeekTime, suppressEvents);
           }
         } catch (err) {
-          swallow("runtime.init.transport.clampDuration", err);
+          swallow("runtime.init.transport.seek", err);
+        }
+        // Root propagation cannot represent an authored child source offset or
+        // playback rate. Re-seek registered children below with their host's
+        // explicit source-time contract.
+      }
+      seekStandaloneRegisteredTimelines(t, opts);
+      tweensRenderedThrough.time = Math.max(tweensRenderedThrough.time, t);
+      const pageAnimations = pageAnimationsForOnePass();
+      for (const adapter of state.deterministicAdapters) {
+        if (adapter.name === "gsap" && tl) continue;
+        try {
+          adapter.seek({ time: t, suppressEvents, pageAnimations });
+        } catch (err) {
+          swallow("runtime.init.transport.adapter", err);
         }
       }
-      try {
-        if (typeof tl.totalTime === "function") {
-          const structure = gsapStructureOf(tl);
-          const redrawn = seekGsapTimeline(tl, tlSeekTime, suppressEvents, structure);
-          if (!redrawn && !suppressEvents && !hasZeroDurationCallbackTween(tl, structure)) {
-            // The first seek is the only eventful one; the re-render only refreshes styles.
-            rerenderGsapTimelineAt(
-              {
-                totalTime: tl.totalTime.bind(tl),
-                totalDuration: tl.totalDuration?.bind(tl),
-                getChildren: tl.getChildren?.bind(tl),
-              },
-              tlSeekTime,
-              structure,
-            );
-          }
-        } else {
-          tl.seek(tlSeekTime, suppressEvents);
-        }
-      } catch (err) {
-        swallow("runtime.init.transport.seek", err);
-      }
-      // Root propagation cannot represent an authored child source offset or
-      // playback rate. Re-seek registered children below with their host's
-      // explicit source-time contract.
+      return pageAnimations;
+    } finally {
+      hideClipsAgain?.();
     }
-    // A second `activateSiblingTimelines` used to follow this call. Dropping it is
-    // safe because nothing between frames READS a sibling's paused() — grepped over
-    // the deterministic adapters, syncTimedElementVisibility, the hf-timelines-built
-    // handler and __hfReseekGpu. It only ever moved the state the seek left behind.
-    seekStandaloneRegisteredTimelines(t, opts);
-    hideClipsAgain?.();
-    tweensRenderedThrough.time = Math.max(tweensRenderedThrough.time, t);
-    const pageAnimations = pageAnimationsForOnePass();
-    for (const adapter of state.deterministicAdapters) {
-      if (adapter.name === "gsap" && tl) continue;
-      try {
-        adapter.seek({ time: t, suppressEvents, pageAnimations });
-      } catch (err) {
-        swallow("runtime.init.transport.adapter", err);
-      }
-    }
-    return pageAnimations;
   }
 
   // True while the Studio is mid-drag on an element (the gesture marker is
@@ -4642,12 +4644,7 @@ export function initSandboxRuntimeModular(): void {
   //
   // The watch is document-global (fine for today's single-composition Studio;
   // revisit if a multi-composition editor needs to scope this to one root).
-  // It used to be a `document.querySelector` on every paused frame, described
-  // here as negligible; measured, it was 1.8 ms/s on a 1689-element project and
-  // 3.0 ms/s — 6.4% of the whole paused main-thread budget — on a media-heavy
-  // one. An attribute-filtered observer answers the same question in O(edits),
-  // and its change callback is also what un-parks the transport when a drag
-  // starts or ends.
+  // Its attribute-filtered observer wakes the transport when a drag starts or ends.
   const manualEditGestureWatch = createManualEditGestureWatch(document, () => {
     wakeTransport();
   });

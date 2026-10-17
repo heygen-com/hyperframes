@@ -1,5 +1,6 @@
 import { PREVIEW_RASTER_ATTR } from "../studioPreviewMark";
 import { isElementNode } from "./domRealm";
+import { FILTER_SAMPLING_ATTR } from "./timedClipHide";
 
 // Chromium rasters a `will-change: transform` layer at no less than device scale, so a preview shown
 // small rasters each one at full size. Below 1x the hint is dropped wherever nothing depends on the
@@ -111,7 +112,12 @@ function markLayers(): void {
 }
 
 function followAttribute(record: MutationRecord, batch: FollowBatch): void {
-  if (!isElementNode(record.target) || record.attributeName === PREVIEW_RASTER_ATTR) return;
+  if (
+    !isElementNode(record.target) ||
+    record.attributeName === PREVIEW_RASTER_ATTR ||
+    record.attributeName === FILTER_SAMPLING_ATTR
+  )
+    return;
   // Any attribute can match a selector; inline style is the per-frame case, so it is cheaper.
   if (record.attributeName === "style") followStyle(record.target);
   else followTree(record.target, batch);
@@ -129,7 +135,13 @@ function ownAttributeChanges(records: MutationRecord[]): Set<Element> {
   const changed = new Set<Element>();
   for (const record of records) {
     const name = record.attributeName;
-    if (name === null || name === "style" || name === PREVIEW_RASTER_ATTR) continue;
+    if (
+      name === null ||
+      name === "style" ||
+      name === PREVIEW_RASTER_ATTR ||
+      name === FILTER_SAMPLING_ATTR
+    )
+      continue;
     if (isElementNode(record.target)) changed.add(record.target);
   }
   return changed;

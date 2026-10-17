@@ -160,6 +160,29 @@ describe("runtime entry", () => {
     expect(document.querySelector("style[data-hf-first-pass-hide]")).toBeNull();
   });
 
+  it("suppresses a hidden clip's final paint without changing authored styles or layout", async () => {
+    const root = mountRoot();
+    const clip = timed(root, "div", "2");
+    clip.style.cssText =
+      "position:absolute;width:100px;height:80px;opacity:.6!important;filter:blur(2px)";
+    await evaluateRuntime();
+    const filtered = () => getComputedStyle(clip).filter;
+    expect(filtered()).toBe("opacity(0)");
+    expect(getComputedStyle(clip).opacity).toBe("0.6");
+    expect(getComputedStyle(clip).width).toBe("100px");
+    expect(getComputedStyle(clip).display).not.toBe("none");
+    window.__player?.seek(3);
+    expect(filtered()).toBe("blur(2px)");
+    window.__player?.seek(5);
+    expect(filtered()).toBe("opacity(0)");
+    // Studio's reveal and shader-transition copies override visibility while retaining the flag.
+    clip.style.visibility = "visible";
+    expect(filtered()).toBe("blur(2px)");
+    window.__player?.seek(3);
+    expect(filtered()).toBe("blur(2px)");
+    expect(clip.style.getPropertyPriority("opacity")).toBe("important");
+  });
+
   it("gives a render document neither rule, no look-ahead marks and no held seeks", async () => {
     const root = mountRoot();
     const current = timed(root, "div", "0");

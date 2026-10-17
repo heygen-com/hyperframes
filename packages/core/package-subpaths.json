@@ -547,6 +547,12 @@
       "runtime": "./dist/timelineAssetId.js",
       "types": "./dist/timelineAssetId.d.ts",
       "environments": ["browser", "bun", "node"]
+    },
+    "./runtime/timed-clip-hide": {
+      "source": "./src/runtime/timedClipHide.ts",
+      "runtime": "./dist/runtime/timedClipHide.js",
+      "types": "./dist/runtime/timedClipHide.d.ts",
+      "environments": ["browser", "bun", "node"]
     }
   }
 }

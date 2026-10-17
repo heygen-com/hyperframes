@@ -1,4 +1,5 @@
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
+import { showHiddenClipFilters } from "@hyperframes/core/runtime/timed-clip-hide";
 import { elementTargets } from "../utils/elementGsap";
 import { resolveTweenStart } from "../utils/globalTimeCompiler";
 import { KEYFRAME_PCT_MATCH } from "./gsapShared";
@@ -126,18 +127,26 @@ function parseUnplayed(win: GsapWindow, element: Element, tween: ParsedTween, pr
   const seek = !isParsed(tween) && seekable(win, tween);
   if (!seek) return;
   const { parent, gsap } = seek;
-  const before = layerStates(tween, element);
-  const now = parent.time();
-  const start = tween.startTime?.() ?? 0;
-  gsap.set(element, { clearProps: props.join(",") });
-  // Re-read now, so GSAP rebuilds its transform cache from the cleared element before the seek.
-  for (const p of props) gsap.getProperty(element, p);
+  const restoreFilters = showHiddenClipFilters(element.ownerDocument);
   try {
-    parent.seek(start, true);
-    parent.seek(start + (tween.duration?.() ?? 0), true);
+    const before = layerStates(tween, element);
+    const now = parent.time();
+    const start = tween.startTime?.() ?? 0;
+    try {
+      gsap.set(element, { clearProps: props.join(",") });
+      // Re-read now, so GSAP rebuilds its transform cache from the cleared element before the seek.
+      for (const p of props) gsap.getProperty(element, p);
+      parent.seek(start, true);
+      parent.seek(start + (tween.duration?.() ?? 0), true);
+    } finally {
+      try {
+        parent.seek(now, true);
+      } finally {
+        restore(before);
+      }
+    }
   } finally {
-    parent.seek(now, true);
-    restore(before);
+    restoreFilters();
   }
 }
 
