@@ -44,7 +44,9 @@ import {
 } from "./adapters/video-texture-compat";
 import {
   forceDispatchSeekEvent,
+  hasPendingSeekCompletion,
   registerSeekCompletion,
+  seekCompletionsSettled,
   waitForSeekCompletion,
 } from "./adapters/seek-dispatch";
 import { sourceTimeAt } from "../speedRamp";
@@ -3461,6 +3463,22 @@ export function initSandboxRuntimeModular(): void {
   };
   // Studio re-reads the whole manifest on every post, so playback holds them until it stops.
   let timelinePostHeld = false;
+  // A jump paints its frame first; the posts its scene mounts cause become one after.
+  let jumpLanding = false;
+  let timelinePostAfterSeek = false;
+  const postTimelineAfterSeek = () => {
+    if (timelinePostAfterSeek) return;
+    timelinePostAfterSeek = true;
+    void seekCompletionsSettled().then(() =>
+      window.requestAnimationFrame(() =>
+        setTimeout(() => {
+          timelinePostAfterSeek = false;
+          jumpLanding = false;
+          if (!state.tornDown) postTimeline();
+        }),
+      ),
+    );
+  };
   const postTimeline = () => {
     sanitizeCompositionDurationAttributes();
     applyCompositionSizing();
@@ -3476,6 +3494,9 @@ export function initSandboxRuntimeModular(): void {
     bindRootTimelineIfAvailable();
     timelinePostHeld = clock.isPlaying();
     if (timelinePostHeld) return;
+    if (jumpLanding && !renderCaptureSeekStarted && hasPendingSeekCompletion())
+      return postTimelineAfterSeek();
+    jumpLanding = false;
     const payload = collectRuntimeTimelinePayload({
       canonicalFps: state.canonicalFps,
     });
@@ -4049,15 +4070,18 @@ export function initSandboxRuntimeModular(): void {
     state.currentTime = clock.now();
     state.isPlaying = false;
     state.mediaForceSyncNextTick = true;
+    const keepPlaying = options?.keepPlaying && wasPlaying;
+    jumpLanding = !keepPlaying;
+    // Decoding starts before the page renders, so the two overlap.
+    if (!keepPlaying) syncMediaForCurrentState();
     const tl = state.capturedTimeline;
     pauseTimelineIfPossible(tl);
     const pageAnimations = seekTimelineAndAdapters(state.currentTime);
     runAdapters("pause", 0, pageAnimations);
-    if (options?.keepPlaying && wasPlaying) {
+    if (keepPlaying) {
       transport.play();
       return;
     }
-    syncMediaForCurrentState();
     colorGrading.redraw();
     paintVfx(state.currentTime);
     postState(true);
