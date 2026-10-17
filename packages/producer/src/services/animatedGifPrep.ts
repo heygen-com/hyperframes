@@ -177,18 +177,18 @@ function resolveClipWindowSeconds(img: Element, compositionDuration: number | nu
 
 function resolvePreparedPlayback(
   metadata: AnimatedGifMetadata,
-  loop: boolean,
+  loopOverride: boolean | null,
   windowSeconds: number | null,
 ): { loopIterations: number; padSeconds: number } {
   const gifDuration = metadata.durationSeconds > 0 ? metadata.durationSeconds : null;
 
   let loopIterations = 1;
-  if (loop) {
+  if (resolveLoop(metadata, loopOverride)) {
     loopIterations =
       windowSeconds != null && gifDuration != null
         ? Math.min(MAX_LOOP_ITERATIONS, Math.max(1, Math.ceil(windowSeconds / gifDuration)))
         : 1;
-  } else if (metadata.loopCount != null && metadata.loopCount > 1) {
+  } else if (loopOverride == null && metadata.loopCount != null && metadata.loopCount > 1) {
     loopIterations = Math.min(MAX_LOOP_ITERATIONS, metadata.loopCount);
   }
 
@@ -395,9 +395,14 @@ export async function prepareAnimatedGifInputs(
     const metadata = parseAnimatedGifMetadata(bytes);
     if (!metadata?.animated) continue;
 
-    const loop = resolveLoop(metadata, readLoopOverride(img));
+    const loopOverride = readLoopOverride(img);
+    const loop = resolveLoop(metadata, loopOverride);
     const windowSeconds = resolveClipWindowSeconds(img, compositionDuration);
-    const { loopIterations, padSeconds } = resolvePreparedPlayback(metadata, loop, windowSeconds);
+    const { loopIterations, padSeconds } = resolvePreparedPlayback(
+      metadata,
+      loopOverride,
+      windowSeconds,
+    );
     const hash = computePreparedGifHash(bytes, loopIterations, padSeconds);
     const filename = `${CACHE_SCHEMA}-${hash.slice(0, 24)}.webm`;
     const cachePath = join(cacheDir, filename);
