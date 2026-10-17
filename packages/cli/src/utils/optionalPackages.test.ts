@@ -52,6 +52,40 @@ describe("loadInstalledOptionalPackage", () => {
   });
 });
 
+describe("installedOptionalPackageVersion from the cache", () => {
+  it.each(['{"version":', "null", '"1.52.0"', "[]", "{}", '{"version":123}', '{"version":""}'])(
+    "treats an invalid cached manifest as unavailable: %s",
+    (manifest) => {
+      const cache = mkdtempSync(join(tmpdir(), "hf-optional-version-"));
+      const name = "@google/genai";
+      const packageDir = join(optionalPackageDir(name, cache), "node_modules", name);
+      mkdirSync(packageDir, { recursive: true });
+      writeFileSync(join(packageDir, "package.json"), manifest);
+      const cliUrl = pathToFileURL(join(cache, "cli.js")).href;
+      try {
+        expect(installedOptionalPackageVersion(name, cache, cliUrl)).toBeNull();
+      } finally {
+        rmSync(cache, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("returns the cached version without loading the package entry", () => {
+    const cache = mkdtempSync(join(tmpdir(), "hf-optional-version-"));
+    const name = "@google/genai";
+    const packageDir = join(optionalPackageDir(name, cache), "node_modules", name);
+    mkdirSync(packageDir, { recursive: true });
+    writeFileSync(join(packageDir, "package.json"), '{"version":"1.52.0","main":"index.js"}');
+    writeFileSync(join(packageDir, "index.js"), 'throw new Error("entry must not load");');
+    const cliUrl = pathToFileURL(join(cache, "cli.js")).href;
+    try {
+      expect(installedOptionalPackageVersion(name, cache, cliUrl)).toBe("1.52.0");
+    } finally {
+      rmSync(cache, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("loadOptionalPackage", () => {
   it("installs on first use with one plain line, then loads from the cache without installing again", async () => {
     const { deps, install, log } = fakeDeps();
