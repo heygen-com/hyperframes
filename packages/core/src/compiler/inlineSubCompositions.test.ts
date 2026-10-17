@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { parseHTML } from "linkedom";
-import { ensureExternalLinkTag, inlineSubCompositions } from "./inlineSubCompositions";
+import {
+  ensureExternalLinkTag,
+  inlineSubCompositions,
+  registryReads,
+} from "./inlineSubCompositions";
 import { readDeclaredDefaults, parseHostVariableValues } from "../runtime/getVariables";
 import { JSDOM } from "jsdom";
 
@@ -1089,5 +1093,31 @@ describe("SVG namespacing compatibility on current compiler", () => {
     for (const script of result.moduleScripts) dom.window.eval(script);
     expect(dom.window.moduleHit).toBe("b--shape");
     dom.window.close();
+  });
+});
+
+describe("registryReads", () => {
+  it("names the keys a script reads and leaves the registry's own setup and computed writes alone", () => {
+    const setup =
+      "window.__timelines = window.__timelines || {}; window.__timelines ??= {}; if (!window.__timelines) {} typeof window.__timelines;";
+    expect(registryReads(setup)).toEqual({ names: [], everyScene: false });
+    expect(registryReads(`${setup} window.__timelines[id] = tl;`)).toEqual({
+      names: [],
+      everyScene: false,
+    });
+    expect(
+      registryReads(
+        'window.__timelines["a"] = tl; window.__timelines.b.progress(1); __timelines?.["c"]; __timelines?.d;',
+      ),
+    ).toEqual({ names: ["a", "b", "c", "d"], everyScene: false });
+  });
+  it("reads every scene when a read is not to one named key", () => {
+    for (const script of [
+      "Object.keys(window.__timelines)",
+      "const all = window.__timelines; all.b;",
+      "window.__timelines[id].progress(1)",
+      "for (const k in window.__timelines) {}",
+    ])
+      expect(registryReads(script).everyScene, script).toBe(true);
   });
 });

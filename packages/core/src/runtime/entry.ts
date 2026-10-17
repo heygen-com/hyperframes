@@ -7,6 +7,7 @@ import {
 } from "./init";
 import { installAuthoredOpacityCapture } from "./colorGrading";
 import { deferMediaUntilDue } from "./preloadMedia";
+import { holdFarSceneScripts } from "./heldScenes";
 import { hideTimedClipsUntilFirstPass } from "./timedClipHide";
 import { fitTextFontSize } from "../text/fitTextFontSize";
 import { pretext } from "../text/pretext";
@@ -76,7 +77,9 @@ function bootstrapHyperframeRuntime(): void {
 function startAfterCompositionScripts(): void {
   try {
     refreshSvgSelectorAliases();
-    const deferred = Array.from(document.querySelectorAll(AFTER_FONTS_SCRIPTS));
+    const deferred = holdFarSceneScripts(
+      Array.from(document.querySelectorAll(AFTER_FONTS_SCRIPTS)),
+    );
     if (deferred.length === 0) bootstrapHyperframeRuntime();
     else {
       void runScriptsAfterFonts(deferred, bootstrapHyperframeRuntime).catch((err: unknown) => {

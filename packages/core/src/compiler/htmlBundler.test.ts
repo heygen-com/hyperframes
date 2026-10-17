@@ -3303,6 +3303,168 @@ describe("bundleToSingleHtml sceneParts", () => {
     expect(styleText(doc.documentElement.outerHTML).match(/@import/g)).toHaveLength(1);
   });
 
+  it("keeps a scene eager when its script reaches outside its root or leaves state on window", async () => {
+    const scene = (id: string, script: string, type = "") =>
+      `<template id="${id}-template"><div data-composition-id="${id}"><p class="${id}-text">${id}</p>
+  <script${type}>${script}</script></div></template>`;
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><head></head><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-duration="12">
+${["a", "b", "c", "d", "e", "f"].map((id, i) => `    <div data-composition-id="${id}" data-composition-src="compositions/${id}.html" data-start="${i * 2}" data-duration="2"></div>`).join("\n")}
+  </div>
+  <script>document.querySelector(".f-text");</script></body></html>`,
+      "compositions/a.html": scene(
+        "a",
+        'window.__timelines = window.__timelines || {}; window.__timelines["a"] = gsap.timeline(); document.querySelector("canvas")?.getContext("2d");',
+      ),
+      "compositions/b.html": scene("b", "window.__bSeq = (window.__bSeq || 0) + 1;"),
+      "compositions/c.html": scene("c", "document.documentElement.style.color = 'red';"),
+      "compositions/d.html": scene("d", 'window.__timelines["a"].progress(1);'),
+      "compositions/e.html": scene("e", "export {};", ' type="module"'),
+      "compositions/f.html": scene("f", ""),
+    });
+    const doc = parseHTML(await bundleToSingleHtml(dir, { sceneParts: true })).document;
+    const eager = (id: string) =>
+      doc.querySelector(`div[data-hf-scene="${id}"]`)?.getAttribute("data-hf-scene-eager");
+    expect(["a", "b", "c", "d", "e", "f"].map(eager)).toEqual([
+      "d reads it",
+      "its script uses window.__bSeq =",
+      "its script uses documentElement",
+      "its script names a",
+      "it runs a module script or import map",
+      "a script outside the scene selects .f-text",
+    ]);
+    // Swap refusals are their own: a canvas scene cannot swap, yet it can wait for the playhead.
+    expect(doc.querySelector('div[data-hf-scene="a"]')?.getAttribute("data-hf-scene-no-swap")).toBe(
+      "its script uses getContext",
+    );
+  });
+
+  it("keeps every scene an eager scene reads eager too, however far out it starts", async () => {
+    const scene = (id: string, script: string) =>
+      `<template id="${id}-template"><div data-composition-id="${id}"><p>${id}</p>
+  <script>${script}</script></div></template>`;
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><head></head><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-duration="60">
+    <div data-composition-id="b" data-composition-src="compositions/b.html" data-start="30" data-duration="5"></div>
+    <div data-composition-id="a" data-composition-src="compositions/a.html" data-start="0" data-duration="5"></div>
+    <div data-composition-id="c" data-composition-src="compositions/c.html" data-start="40" data-duration="5"></div>
+    <div data-composition-id="d" data-composition-src="compositions/d.html" data-start="50" data-duration="5"></div>
+  </div></body></html>`,
+      "compositions/b.html": scene("b", 'window.__timelines["b"] = window.__timelines["c"];'),
+      "compositions/a.html": scene(
+        "a",
+        'document.title = String(Boolean(window.__timelines["b"]));',
+      ),
+      "compositions/c.html": scene("c", 'window.__timelines["c"] = gsap.timeline();'),
+      "compositions/d.html": scene("d", 'window.__timelines["d"] = gsap.timeline();'),
+    });
+    const doc = parseHTML(await bundleToSingleHtml(dir, { sceneParts: true })).document;
+    const eager = (id: string) =>
+      doc.querySelector(`div[data-hf-scene="${id}"]`)?.getAttribute("data-hf-scene-eager");
+    expect(["a", "b", "c", "d"].map(eager)).toEqual([
+      "its script names b",
+      "its script names c",
+      "b reads it",
+      null,
+    ]);
+  });
+
+  it("keeps every scene a root script reads eager, and what a root-selected scene reads", async () => {
+    const scene = (id: string, script: string) =>
+      `<template id="${id}-template"><div data-composition-id="${id}"><p class="${id}-text">${id}</p>
+  <script>${script}</script></div></template>`;
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><head></head><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-duration="60">
+${["b", "f", "g", "h"].map((id, i) => `    <div data-composition-id="${id}" data-composition-src="compositions/${id}.html" data-start="${[30, 0, 50, 55][i]}" data-duration="5"></div>`).join("\n")}
+  </div>
+  <output id="status"></output>
+  <script>document.addEventListener("DOMContentLoaded", () => {
+    document.getElementById("status").textContent = String(Boolean(window.__timelines["b"]));
+    document.querySelector(".f-text");
+  });</script></body></html>`,
+      "compositions/b.html": scene("b", 'window.__timelines["b"] = gsap.timeline();'),
+      "compositions/f.html": scene("f", 'window.__timelines["f"] = window.__timelines["g"];'),
+      "compositions/g.html": scene("g", 'window.__timelines["g"] = gsap.timeline();'),
+      "compositions/h.html": scene("h", 'window.__timelines["h"] = gsap.timeline();'),
+    });
+    const doc = parseHTML(await bundleToSingleHtml(dir, { sceneParts: true })).document;
+    const eager = (id: string) =>
+      doc.querySelector(`div[data-hf-scene="${id}"]`)?.getAttribute("data-hf-scene-eager");
+    expect(["b", "f", "g", "h"].map(eager)).toEqual([
+      "a root script reads it",
+      "a script outside the scene selects .f-text",
+      "f reads it",
+      null,
+    ]);
+  });
+
+  it("keeps a scene a root script reads by dot eager, and every scene when a script reads the whole registry", async () => {
+    const scene = (id: string, script: string) =>
+      `<template id="${id}-template"><div data-composition-id="${id}"><p>${id}</p>
+  <script>${script}</script></div></template>`;
+    const project = (rootRead: string) =>
+      makeTempProject({
+        "index.html": `<!doctype html><html><head></head><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-duration="60">
+${["b", "h"].map((id, i) => `    <div data-composition-id="${id}" data-composition-src="compositions/${id}.html" data-start="${[30, 55][i]}" data-duration="5"></div>`).join("\n")}
+  </div>
+  <output id="status"></output>
+  <script>document.addEventListener("DOMContentLoaded", () => {
+    document.getElementById("status").textContent = String(${rootRead});
+  });</script></body></html>`,
+        "compositions/b.html": scene(
+          "b",
+          'window.__timelines = window.__timelines || {}; window.__timelines["b"] = gsap.timeline();',
+        ),
+        "compositions/h.html": scene(
+          "h",
+          'window.__timelines = window.__timelines || {}; window.__timelines["h"] = gsap.timeline();',
+        ),
+      });
+    const eager = async (rootRead: string) => {
+      const doc = parseHTML(
+        await bundleToSingleHtml(project(rootRead), { sceneParts: true }),
+      ).document;
+      return ["b", "h"].map((id) =>
+        doc.querySelector(`div[data-hf-scene="${id}"]`)?.getAttribute("data-hf-scene-eager"),
+      );
+    };
+    expect(await eager("Boolean(window.__timelines.b)")).toEqual(["a root script reads it", null]);
+    expect(await eager("typeof window.__timelines.b")).toEqual(["a root script reads it", null]);
+    expect(await eager("Object.keys(window.__timelines).length")).toEqual([
+      "a root script reads it",
+      "a root script reads it",
+    ]);
+  });
+
+  it("keeps every renamed copy of a scene a root script reads eager, by the id its author gave it", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><head></head><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-duration="60">
+    <div data-composition-id="b" data-composition-src="compositions/b.html" data-start="30" data-duration="5"></div>
+    <div data-composition-id="b" data-composition-src="compositions/b.html" data-start="45" data-duration="5"></div>
+  </div>
+  <output id="status"></output>
+  <script>document.addEventListener("DOMContentLoaded", () => {
+    document.getElementById("status").textContent = String(Boolean(window.__timelines.b));
+  });</script></body></html>`,
+      "compositions/b.html": `<template id="b-template"><div data-composition-id="b"><p>b</p>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["b"] = gsap.timeline();</script></div></template>`,
+    });
+    const doc = parseHTML(await bundleToSingleHtml(dir, { sceneParts: true })).document;
+    const copies = [
+      ...doc.querySelectorAll('[data-hf-original-composition-id="b"][data-hf-scene]'),
+    ];
+    expect(copies).toHaveLength(2);
+    expect(copies.map((el) => el.getAttribute("data-hf-scene-eager"))).toEqual([
+      "a root script reads it",
+      "a root script reads it",
+    ]);
+  });
+
   it("marks a scene whose own script leaves work running as not swappable, and only that scene", async () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html><html><head>
