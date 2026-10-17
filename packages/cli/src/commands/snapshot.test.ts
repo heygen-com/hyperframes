@@ -83,11 +83,11 @@ describe("transparent snapshot capture", () => {
     expect(source).toContain('page.screenshot({ type: "png", omitBackground: true })');
   });
 
-  it("exposes --proxy/--no-proxy and forwards the override to the static server", () => {
+  it("exposes --proxy and forwards it to the snapshot page server", () => {
     const source = readFileSync(new URL("./snapshot.ts", import.meta.url), "utf8");
     expect(source).toContain("proxy: {");
     expect(source).toContain("autoProxy: args.proxy as boolean | undefined");
-    expect(source).toContain("opts.autoProxy");
+    expect(source).toContain("serveSnapshotPage(projectDir, html, opts.autoProxy)");
   });
 
   it("pairs every frame with the frame-exact reference frame under --against", () => {
