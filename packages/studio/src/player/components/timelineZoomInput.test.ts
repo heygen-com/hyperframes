@@ -384,6 +384,20 @@ describe("zoomTimelineStep", () => {
     expect(usePlayerStore.getState().userZoomCount).toBeGreaterThan(0);
   });
 
+  it("lands at once when settled mid-glide, and keeps a scroll made after", () => {
+    const { scroll } = viewport();
+    zoomTimelineStep("in");
+    vi.advanceTimersToNextFrame();
+    vi.advanceTimersToNextFrame();
+    settleTimelineZoom();
+    expect(usePlayerStore.getState().timelinePps).toBeCloseTo(20);
+    const landed = scroll.scrollLeft;
+    scroll.scrollLeft = landed + 500;
+    run();
+    expect(usePlayerStore.getState().timelinePps).toBeCloseTo(20);
+    expect(scroll.scrollLeft).toBe(landed + 500);
+  });
+
   it("doubles the scale and keeps an on-screen playhead where it is", () => {
     usePlayerStore.setState({ currentTime: 40 });
     viewport();
