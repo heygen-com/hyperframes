@@ -7,7 +7,7 @@ import {
 } from "./init";
 import { installAuthoredOpacityCapture } from "./colorGrading";
 import { deferMediaUntilDue } from "./preloadMedia";
-import { holdFarSceneScripts } from "./heldScenes";
+import { bootFontFamilies, holdFarSceneScripts } from "./heldScenes";
 import { hideTimedClipsUntilFirstPass } from "./timedClipHide";
 import { fitTextFontSize } from "../text/fitTextFontSize";
 import { pretext } from "../text/pretext";
@@ -82,10 +82,13 @@ function startAfterCompositionScripts(): void {
     );
     if (deferred.length === 0) bootstrapHyperframeRuntime();
     else {
-      void runScriptsAfterFonts(deferred, bootstrapHyperframeRuntime).catch((err: unknown) => {
-        recordStartupError(err);
-        reportError(err);
-      });
+      const families = bootFontFamilies();
+      void runScriptsAfterFonts(deferred, bootstrapHyperframeRuntime, families).catch(
+        (err: unknown) => {
+          recordStartupError(err);
+          reportError(err);
+        },
+      );
     }
   } catch (err) {
     recordStartupError(err);

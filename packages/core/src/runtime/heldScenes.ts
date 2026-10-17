@@ -1,4 +1,10 @@
-import { SCENE_EAGER_ATTR, SCENE_PART_ATTR } from "../sceneParts";
+import {
+  READ_BY_SCENE_REASON,
+  REACHED_BY_ROOT_REASON,
+  SCENE_EAGER_ATTR,
+  SCENE_PART_ATTR,
+} from "../sceneParts";
+import { fontFamilyKey } from "./afterFonts";
 import { parseStrictFiniteTimingNumber } from "./playbackRate";
 import { skipsHiddenImages } from "./timedClipHide";
 
@@ -19,16 +25,18 @@ const timing = (host: Element, name: string) =>
 
 function holdable(host: Element | undefined): HeldScene | null {
   // Swaps and boot give captions their edited words; a mount would not.
-  if (!host || host.hasAttribute(SCENE_EAGER_ATTR) || host.querySelector(".caption-group"))
-    return null;
+  if (!host || host.querySelector(".caption-group")) return null;
   const start = timing(host, "data-start");
   const duration = timing(host, "data-duration");
   if (start == null || duration == null || start <= SCENE_LEAD_SECONDS) return null;
-  return { host, start, end: start + duration, scripts: [] };
+  const eager = host.getAttribute(SCENE_EAGER_ATTR);
+  if (eager == null) return { host, start, end: start + duration, scripts: [] };
+  if (eager.startsWith(REACHED_BY_ROOT_REASON) || eager.endsWith(READ_BY_SCENE_REASON)) return null;
+  return { host, start: -Infinity, end: Infinity, scripts: [] };
 }
 
-/** Preview only: the boot scripts, less those of scenes that start past the lead, which wait for
- * the playhead to come near. A known library a scene loads still runs at boot. */
+/** Preview only: the boot scripts, less far scenes' (run near the playhead) and eager scenes' (run
+ * right after boot, in order). A known library a scene loads still runs at boot. */
 export function holdFarSceneScripts(scripts: Element[]): Element[] {
   held.clear();
   if (!skipsHiddenImages()) return scripts;
@@ -56,4 +64,20 @@ export function takeHeldScenesNear(t: number): HeldScene[] {
       due.push(entry);
     }
   return due;
+}
+
+/** The font families of the text the boot scripts' scenes show, or null when no scene waits. */
+export function bootFontFamilies(): Set<string> | null {
+  if (held.size === 0 || !document.body) return null;
+  const waiting = new Set([...held.values()].map((scene) => scene.host));
+  const families = new Set<string>();
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT, {
+    acceptNode: (node) =>
+      waiting.has(node as Element) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
+  });
+  for (let el = walker.nextNode() as Element | null; el; el = walker.nextNode() as Element | null)
+    if ([...el.childNodes].some((node) => node.nodeType === 3 && node.textContent?.trim()))
+      for (const family of getComputedStyle(el).fontFamily.split(","))
+        families.add(fontFamilyKey(family));
+  return families;
 }

@@ -27,10 +27,33 @@ const sceneScript = (id: string) =>
   `document.body.dataset.ran = (document.body.dataset.ran || "") + "${id} ";` +
   `document.dispatchEvent(new CustomEvent("scene-ran", { detail: "${id}" }));</script>`;
 
-const host = (id: string, start: number, attrs = "") =>
-  `<div data-composition-id="${id}" data-hf-scene="${id}" data-start="${start}" data-duration="5"${attrs}><p>${id}</p></div>`;
+const host = (id: string, start: number, attrs = "", font = "serif") =>
+  `<div data-composition-id="${id}" data-hf-scene="${id}" data-start="${start}" data-duration="5"${attrs}><p style="font-family: ${font}">${id}</p></div>`;
 
-async function boot(preview: boolean) {
+// A face per family, each loading until the test settles it.
+function serveFonts(...families: string[]) {
+  const settle: Record<string, () => void> = {};
+  const faces = families.map((family) => {
+    const face = { family, status: "loading" as FontFaceLoadStatus, loaded: Promise.resolve() };
+    face.loaded = new Promise<void>((done) => {
+      settle[family] = () => {
+        face.status = "loaded";
+        done();
+      };
+    });
+    return face;
+  });
+  Object.defineProperty(document, "fonts", {
+    configurable: true,
+    value: {
+      ready: Promise.all(faces.map((face) => face.loaded)),
+      [Symbol.iterator]: () => faces[Symbol.iterator](),
+    },
+  });
+  return settle;
+}
+
+async function boot(preview: boolean, fonts = { near: "serif", tied: "serif" }) {
   (globalThis as { CSS?: { escape?: (v: string) => string } }).CSS ??= {};
   globalThis.CSS.escape ??= (v: string) => v;
   if (preview)
@@ -39,11 +62,12 @@ async function boot(preview: boolean) {
     );
   document.body.innerHTML =
     `<div data-composition-id="main" data-root="true" data-start="0" data-duration="60" data-width="1920" data-height="1080">` +
-    host("near", 0) +
+    host("near", 0, "", fonts.near) +
     host("far", 30) +
-    host("tied", 40, ' data-hf-scene-eager="its script uses documentElement"') +
+    host("tied", 40, ' data-hf-scene-eager="its script uses documentElement"', fonts.tied) +
+    host("reached", 50, ' data-hf-scene-eager="a script outside the scene selects .x"') +
     `</div>` +
-    ["near", "far", "tied"].map(sceneScript).join("");
+    ["near", "far", "tied", "reached"].map(sceneScript).join("");
   const added: Array<[unknown, number | undefined]> = [];
   window.__timelines = { main: timeline(60, added) };
   document.addEventListener("scene-ran", (event) => {
@@ -67,6 +91,7 @@ describe("scene scripts held until the playhead nears", () => {
     delete document.body.dataset.saw;
     window.__timelines = {};
     delete window.__player;
+    delete (document as { fonts?: unknown }).fonts;
     delete (window as { __hyperframeRuntimeBootstrapped?: boolean })
       .__hyperframeRuntimeBootstrapped;
   });
@@ -94,20 +119,21 @@ describe("scene scripts held until the playhead nears", () => {
 
   it("runs a far scene's scripts once a seek comes within the lead, and nests it at its start", async () => {
     const added = await boot(true);
-    expect(ran()).toBe("near tied ");
+    await window.__hfWaitForSeekCompletion?.();
+    expect(ran()).toBe("near reached tied ");
 
     window.__player!.seek(12);
     await window.__hfWaitForSeekCompletion?.();
-    expect(ran()).toBe("near tied ");
+    expect(ran()).toBe("near reached tied ");
 
     window.__player!.seek(25);
     await window.__hfWaitForSeekCompletion?.();
-    expect(ran()).toBe("near tied far ");
+    expect(ran()).toBe("near reached tied far ");
     expect(added).toContainEqual([window.__timelines!.far, 30]);
 
     window.__player!.seek(31);
     await window.__hfWaitForSeekCompletion?.();
-    expect(ran()).toBe("near tied far ");
+    expect(ran()).toBe("near reached tied far ");
   });
 
   it("runs a far scene the playback reaches without pausing the clock", async () => {
@@ -127,6 +153,16 @@ describe("scene scripts held until the playhead nears", () => {
 
   it("runs every scene's scripts at boot outside a preview, as a capture does", async () => {
     await boot(false);
-    expect(ran()).toBe("near far tied ");
+    expect(ran()).toBe("near far tied reached ");
+  });
+
+  it("boots once the fonts of the near scenes load; a far eager scene runs once every font has", async () => {
+    const settle = serveFonts("Near", "Far");
+    settle.Near!();
+    await boot(true, { near: '"Near", serif', tied: "Far" });
+    expect(ran()).toBe("near reached ");
+
+    settle.Far!();
+    await vi.waitFor(() => expect(ran()).toBe("near reached tied "));
   });
 });

@@ -45,7 +45,13 @@ import {
   planCompositionAssembly,
   extractedCompositionAssets,
 } from "./compositionAssembly";
-import { SCENE_EAGER_ATTR, SCENE_NO_SWAP_ATTR, SCENE_PART_ATTR } from "../sceneParts";
+import {
+  REACHED_BY_ROOT_REASON,
+  READ_BY_SCENE_REASON,
+  SCENE_EAGER_ATTR,
+  SCENE_NO_SWAP_ATTR,
+  SCENE_PART_ATTR,
+} from "../sceneParts";
 
 // Anything a scene script can leave running, pending or registered outside its timeline, or that
 // throws when run again: only the timeline is torn down when a scene is swapped, so when unsure, refuse.
@@ -164,7 +170,7 @@ export function refuseScenesReachedByRootScripts(document: Document, rootScripts
     for (const host of reached)
       for (const attr of [SCENE_NO_SWAP_ATTR, SCENE_EAGER_ATTR])
         if (!host.hasAttribute(attr))
-          host.setAttribute(attr, `a script outside the scene selects ${literal}`);
+          host.setAttribute(attr, `${REACHED_BY_ROOT_REASON} ${literal}`);
   }
 }
 
@@ -840,7 +846,7 @@ export function keepScenesReadAtBootEager(
     for (const provider of readsOf(reader)) {
       const host = sceneHosts.get(provider);
       if (!host || host.hasAttribute(SCENE_EAGER_ATTR)) continue;
-      host.setAttribute(SCENE_EAGER_ATTR, `${reader} reads it`);
+      host.setAttribute(SCENE_EAGER_ATTR, `${reader} ${READ_BY_SCENE_REASON}`);
       eager.push(provider);
     }
   }

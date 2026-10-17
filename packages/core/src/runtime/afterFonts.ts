@@ -6,26 +6,28 @@ export const FONT_WAIT_TIMEOUT_MS = 5000;
 
 (window as unknown as Record<string, unknown>)[AFTER_FONTS_CLAIM] = true;
 
-/** Resolves once the page's web fonts are ready or the timeout passes, reporting faces still loading. */
-export async function waitForFonts(): Promise<void> {
+export const fontFamilyKey = (family: string) => family.replace(/["']/g, "").trim().toLowerCase();
+
+/** Resolves once the web fonts (of `families`, if given) are ready or time out, reporting faces still loading. */
+export async function waitForFonts(families?: ReadonlySet<string> | null): Promise<void> {
   const fonts = document.fonts;
   if (!fonts) return;
   // Layout starts loading the faces laid-out text uses; with none loading, ready resolves at once.
   void document.body?.offsetHeight;
+  const counts = (face: FontFace) => !families || families.has(fontFamilyKey(face.family));
+  const loading = () =>
+    Array.from(fonts).filter((face) => face.status === "loading" && counts(face));
+  const ready = families
+    ? Promise.all(loading().map((face) => face.loaded.catch(() => face)))
+    : fonts.ready;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timedOut = await Promise.race([
-    fonts.ready.then(() => false),
+    ready.then(() => false),
     new Promise<boolean>((resolve) => (timer = setTimeout(resolve, FONT_WAIT_TIMEOUT_MS, true))),
   ]);
   clearTimeout(timer);
   if (!timedOut) return;
-  const loadingFamilies = [
-    ...new Set(
-      Array.from(fonts)
-        .filter((face) => face.status === "loading")
-        .map((face) => face.family),
-    ),
-  ];
+  const loadingFamilies = [...new Set(loading().map((face) => face.family))];
   console.warn(
     `[hyperframes] fonts still loading after ${FONT_WAIT_TIMEOUT_MS} ms, composition scripts run without them: ${loadingFamilies.join(", ")}`,
   );
@@ -126,8 +128,9 @@ function afterQueuedModules(): Promise<unknown> {
 export async function runScriptsAfterFonts(
   scripts: readonly Element[],
   afterRun?: () => void,
+  families?: ReadonlySet<string> | null,
 ): Promise<void> {
-  await waitForFonts();
+  await waitForFonts(families);
   const isLate = (el: Element) => typeAfterFonts(el) === "module" || el.matches(DEFERRED_FILE);
   const held: HeldListener[] = [];
   const release = [document, window].map((target) => holdPassedLoadEvents(target, held));
