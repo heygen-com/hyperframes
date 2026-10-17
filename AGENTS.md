@@ -59,9 +59,9 @@ any test file that no runner reaches.
 Uses **oxlint** and **oxfmt** (not eslint, not prettier, not biome).
 
 ```bash
-bunx oxlint <files>        # Lint
-bunx oxfmt <files>         # Format
-bunx oxfmt --check <files> # Check formatting (CI / pre-commit)
+node_modules/.bin/oxlint <files>        # Lint
+node_modules/.bin/oxfmt <files>         # Format
+node_modules/.bin/oxfmt --check <files> # Check formatting (CI / pre-commit)
 ```
 
 Always lint and format changed files before committing. Lefthook pre-commit hooks enforce this automatically.
