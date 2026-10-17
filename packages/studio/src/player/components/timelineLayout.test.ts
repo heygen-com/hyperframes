@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   RULER_H,
   TRACK_H,
+  COMPACT_TRACK_H,
   LANE_H,
   TRACKS_TOP_PAD,
   TRACKS_BOTTOM_PAD,
@@ -15,6 +16,8 @@ import {
   createTimelineRowGeometry,
   getTimelineRowGeometry,
   trackHeights,
+  getTimelineLaneTop,
+  getTimelineTrackHeight,
   resolveTimelineAssetDrop,
   getTimelineBeatEntries,
 } from "./timelineLayout";
@@ -83,6 +86,49 @@ describe("horizontal timeline window", () => {
 
 /** N collapsed rows, the shape every caller passes when nothing is expanded. */
 const baseRows = (count: number) => Array.from({ length: count }, () => TRACK_H);
+
+describe("track density", () => {
+  const tracks = [
+    [{ clipId: "a", laneCount: 0 }],
+    [{ clipId: "b", laneCount: 2 }],
+    [{ clipId: "c", laneCount: 0 }],
+  ];
+
+  it("maps each density to its track height", () => {
+    expect(getTimelineTrackHeight("comfortable")).toBe(TRACK_H);
+    expect(getTimelineTrackHeight("compact")).toBe(COMPACT_TRACK_H);
+    expect(COMPACT_TRACK_H).toBeLessThan(TRACK_H);
+  });
+
+  it.each([
+    ["comfortable", TRACK_H],
+    ["compact", COMPACT_TRACK_H],
+  ] as const)("lays out rows, lanes and hit testing at %s height", (density, height) => {
+    const trackHeight = getTimelineTrackHeight(density);
+    const heights = trackHeights(tracks, new Set(["b"]), trackHeight);
+    expect(heights).toEqual([height, height + 2 * LANE_H, height]);
+
+    const geometry = createTimelineRowGeometry([0, 1, 2], heights, {}, trackHeight);
+    expect(geometry.trackHeight).toBe(height);
+    expect(geometry.getRowTop(2)).toBe(RULER_H + TRACKS_TOP_PAD + 2 * height + 2 * LANE_H);
+    expect(geometry.padding.bottom).toBe(height);
+    expect(geometry.canvasHeight).toBe(RULER_H + TRACKS_TOP_PAD + 3 * height + 2 * LANE_H + height);
+    expect(Math.floor(geometry.getRowFromY(geometry.getRowTop(2) + height / 2))).toBe(2);
+    // Past the last row, the ghost lane is measured in tracks of the same height.
+    expect(geometry.getRowFromY(geometry.getRowTop(3) + height / 2)).toBe(3.5);
+    expect(getTimelineLaneTop(1, trackHeight)).toBe(height + LANE_H);
+  });
+
+  it("keeps a host's bottom pad regardless of density", () => {
+    const geometry = createTimelineRowGeometry(
+      [0],
+      [COMPACT_TRACK_H],
+      { bottom: 0 },
+      COMPACT_TRACK_H,
+    );
+    expect(geometry.padding.bottom).toBe(0);
+  });
+});
 
 describe("variable timeline row geometry", () => {
   const tracks = [

@@ -8,6 +8,7 @@ import {
   readStudioUiPreferences,
   writeStudioUiPreferences,
   type TimelineTimeDisplayMode,
+  type TimelineTrackDensity,
 } from "../../utils/studioUiPreferences";
 import { clampTimelineZoomPercent, computePinnedZoomPercent } from "../components/timelineZoom";
 import { createKeyframeSlice, type KeyframeSlice } from "./keyframeSlice";
@@ -121,6 +122,9 @@ interface PlayerState extends PlayerStoreSlices {
   /** Transport + ruler readout: timecode ("time") or frame number ("frame"). */
   timeDisplayMode: TimelineTimeDisplayMode;
   setTimeDisplayMode: (mode: TimelineTimeDisplayMode) => void;
+  /** Track height preset; read it through `useTimelineTrackHeight`. */
+  timelineTrackDensity: TimelineTrackDensity;
+  setTimelineTrackDensity: (density: TimelineTrackDensity) => void;
   /** Pin the timeline zoom to its current scale before a duration change, so
    *  it stops rescaling every clip. No-op once already pinned. */
   pinTimelineZoom: (currentPixelsPerSecond: number, fitPixelsPerSecond: number) => void;
@@ -451,6 +455,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   setTimeDisplayMode: (mode) => {
     writeStudioUiPreferences({ timeDisplayMode: mode });
     set({ timeDisplayMode: mode });
+  },
+  timelineTrackDensity: readStudioUiPreferences().timelineTrackDensity ?? "comfortable",
+  setTimelineTrackDensity: (density) => {
+    writeStudioUiPreferences({ timelineTrackDensity: density });
+    set({ timelineTrackDensity: density });
   },
   pinTimelineZoom: (currentPixelsPerSecond, fitPixelsPerSecond) =>
     set((s) => {

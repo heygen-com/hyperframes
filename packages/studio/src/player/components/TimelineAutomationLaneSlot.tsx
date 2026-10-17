@@ -12,6 +12,7 @@ import { resolveAutomationRange, type HfAutomationLane } from "@hyperframes/core
 import { TimelineAutomationLane } from "./TimelineAutomationLane";
 import { AUTOMATION_LANE_H } from "./automationLaneHeight";
 import { getTimelineLaneTop } from "./timelineLayout";
+import { useTimelineTrackHeight } from "./useTimelineTrackHeight";
 import { groupAutomationLanes, isCarveLane } from "./automationLaneData";
 import { isAudioOrVideoTimelineElement } from "../../utils/timelineInspector";
 import { getTimelineElementIdentity } from "../lib/timelineElementHelpers";
@@ -174,6 +175,7 @@ export function TimelineAutomationLaneSlot({
   currentTime,
   beatTimes,
 }: TimelineAutomationLaneSlotProps) {
+  const trackHeight = useTimelineTrackHeight();
   // Broader than a raw-attribute check — a clip mid-edit (see the stale-
   // selection test) has lanes in its live binding before the attribute commits.
   const clips = elements.filter(isAudioOrVideoTimelineElement);
@@ -186,7 +188,7 @@ export function TimelineAutomationLaneSlot({
       else rowsByClip.set(key, [{ lane: entry.lane, rowIndex }]);
     }
   });
-  const top = topOffset ?? getTimelineLaneTop(laneCount);
+  const top = topOffset ?? getTimelineLaneTop(laneCount, trackHeight);
   return (
     <>
       {clips.map((element) => (
