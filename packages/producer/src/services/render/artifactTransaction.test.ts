@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   existsSync,
   lstatSync,
@@ -246,6 +246,133 @@ describe("ArtifactTransaction", () => {
     transaction.rollback();
   });
 
+  it.each([
+    { expectedFrames: 120, capturedFrames: 118, accepted: false },
+    { expectedFrames: 120, capturedFrames: 119, accepted: true },
+    { expectedFrames: 1000, capturedFrames: 998, accepted: true },
+    { expectedFrames: 1000, capturedFrames: 997, accepted: false },
+  ])(
+    "validates $capturedFrames PNG frames against an expectation of $expectedFrames",
+    async ({ expectedFrames, capturedFrames, accepted }) => {
+      const dir = tempDir();
+      const destination = join(dir, "frames");
+      mkdirSync(destination);
+      writeFileSync(join(destination, "frame_000001.png"), "existing-frame");
+      const transaction = new ArtifactTransaction(destination, "directory", undefined, neverCalled);
+      mkdirSync(transaction.stagingPath);
+      for (let frame = 1; frame <= capturedFrames; frame++) {
+        writeFileSync(
+          join(transaction.stagingPath, `frame_${String(frame).padStart(6, "0")}.png`),
+          "frame",
+        );
+      }
+
+      try {
+        const validation = transaction.validate({
+          expectedDurationSeconds: expectedFrames / 30,
+          fps: 30,
+          expectedFrames,
+        });
+        if (accepted) await expect(validation).resolves.toBeUndefined();
+        else await expect(validation).rejects.toThrow(/truncated.*frames/);
+        expect(readFileSync(join(destination, "frame_000001.png"), "utf8")).toBe("existing-frame");
+      } finally {
+        transaction.rollback();
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("does not count audio sidecars or unrelated files as PNG frames", async () => {
+    const dir = tempDir();
+    const transaction = new ArtifactTransaction(
+      join(dir, "frames"),
+      "directory",
+      undefined,
+      neverCalled,
+    );
+    mkdirSync(transaction.stagingPath);
+    writeFileSync(join(transaction.stagingPath, "frame_000001.png"), "frame");
+    writeFileSync(join(transaction.stagingPath, "audio.m4a"), "sidecar");
+    writeFileSync(join(transaction.stagingPath, "poster.png"), "poster");
+    const nested = join(transaction.stagingPath, "notes");
+    mkdirSync(nested);
+    writeFileSync(join(nested, "frame_000002.png"), "unrelated-frame");
+
+    try {
+      await expect(
+        transaction.validate({ expectedDurationSeconds: 0.3, fps: 10, expectedFrames: 3 }),
+      ).rejects.toThrow(/truncated.*3 frames.*1 frames/);
+    } finally {
+      transaction.rollback();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects an expected PNG sequence containing only a sidecar", async () => {
+    const dir = tempDir();
+    const transaction = new ArtifactTransaction(
+      join(dir, "frames"),
+      "directory",
+      undefined,
+      neverCalled,
+    );
+    mkdirSync(transaction.stagingPath);
+    writeFileSync(join(transaction.stagingPath, "audio.m4a"), "sidecar");
+
+    try {
+      await expect(
+        transaction.validate({ expectedDurationSeconds: 0.3, fps: 10, expectedFrames: 3 }),
+      ).rejects.toThrow(/truncated.*3 frames.*0 frames/);
+    } finally {
+      transaction.rollback();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("retains the one-frame tolerance for long video artifacts", async () => {
+    const dir = tempDir();
+    const probe: ArtifactDurationProbe = async () => ({ durationSeconds: 1000, frames: 9980 });
+    const transaction = new ArtifactTransaction(join(dir, "render.mp4"), "file", undefined, probe);
+    writeFileSync(transaction.stagingPath, "video");
+
+    try {
+      await expect(
+        transaction.validate({ expectedDurationSeconds: 1000, fps: 10, expectedFrames: 10000 }),
+      ).rejects.toThrow(/truncated.*10000 frames.*9980 frames/);
+    } finally {
+      transaction.rollback();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it.each([undefined, 0, -1, Number.NaN])(
+    "validates video duration quietly when the probe returns %s frames",
+    async (frames) => {
+      const dir = tempDir();
+      const probe: ArtifactDurationProbe = async () => ({ durationSeconds: 4, frames });
+      const transaction = new ArtifactTransaction(
+        join(dir, "render.webm"),
+        "file",
+        undefined,
+        probe,
+      );
+      writeFileSync(transaction.stagingPath, "video");
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      try {
+        await expect(
+          transaction.validate({ expectedDurationSeconds: 4, fps: 30, expectedFrames: 120 }),
+        ).resolves.toBeUndefined();
+        expect(warn).not.toHaveBeenCalled();
+      } finally {
+        warn.mockRestore();
+        transaction.rollback();
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("rejects a video whose probed duration is far shorter than the captured duration", async () => {
     // Field packet from #3395: expected 52.2s (1566 frames), artifact
     // contained 41.333s (1240 frames). The gate must catch the 11s
@@ -423,18 +550,23 @@ describe("ArtifactTransaction", () => {
     const probe: ArtifactDurationProbe = async () => ({ durationSeconds: 4.0 });
     const transaction = new ArtifactTransaction(destination, "directory", undefined, probe);
     stageHlsDirectory(transaction);
-
-    await expect(
-      transaction.validate({
-        expectedDurationSeconds: 4.0,
-        fps: 30,
-        expectedFrames: 120,
-        probeTarget: "video.m3u8",
-        requiredFiles: ["master.m3u8"],
-      }),
-    ).resolves.toBeUndefined();
-
-    transaction.rollback();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await expect(
+        transaction.validate({
+          expectedDurationSeconds: 4.0,
+          fps: 30,
+          expectedFrames: 120,
+          probeTarget: "video.m3u8",
+          requiredFiles: ["master.m3u8"],
+        }),
+      ).resolves.toBeUndefined();
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+      transaction.rollback();
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("rejects an HLS package with no master playlist before probing", async () => {
@@ -480,8 +612,15 @@ describe("buildArtifactExpectation", () => {
   const base = { durationSeconds: 4, fps: 30, expectedFrames: 120 };
 
   it("returns no expectation for the formats with nothing probeable", () => {
-    expect(buildArtifactExpectation({ ...base, outputFormat: "png-sequence" })).toBeUndefined();
     expect(buildArtifactExpectation({ ...base, outputFormat: "gif" })).toBeUndefined();
+  });
+
+  it("passes the captured frame count for PNG sequences without a duration probe target", () => {
+    expect(buildArtifactExpectation({ ...base, outputFormat: "png-sequence" })).toEqual({
+      expectedDurationSeconds: 4,
+      fps: 30,
+      expectedFrames: 120,
+    });
   });
 
   it("returns no expectation when the pipeline has no usable duration", () => {
