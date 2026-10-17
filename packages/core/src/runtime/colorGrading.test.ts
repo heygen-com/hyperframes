@@ -122,6 +122,11 @@ function createMockWebGl(
   } as unknown as WebGLRenderingContext;
 }
 
+// Each clip shows its pixels on a 2D canvas, copied from the one shared WebGL canvas.
+function mock2d(): CanvasRenderingContext2D {
+  return { clearRect: vi.fn(), drawImage: vi.fn() } as unknown as CanvasRenderingContext2D;
+}
+
 function makeDrawableVideo(): HTMLVideoElement {
   const video = document.createElement("video");
   video.id = "hero-video";
@@ -182,6 +187,8 @@ describe("createColorGradingRuntime", () => {
   let getContextSpy: ReturnType<typeof vi.spyOn>;
   let runtime: RuntimeColorGradingApi | null = null;
 
+  const webglContexts = () => getContextSpy.mock.calls.filter(([type]) => type === "webgl").length;
+
   beforeEach(() => {
     document.body.innerHTML = "";
     lastUniform1f = null;
@@ -192,7 +199,7 @@ describe("createColorGradingRuntime", () => {
     getContextSpy = vi
       .spyOn(HTMLCanvasElement.prototype, "getContext")
       .mockImplementation((type: string) =>
-        type === "webgl" ? createMockWebGl() : null,
+        type === "webgl" ? createMockWebGl() : type === "2d" ? mock2d() : null,
       ) as ReturnType<typeof vi.spyOn>;
   });
 
@@ -355,9 +362,39 @@ describe("createColorGradingRuntime", () => {
     const recreated = document.querySelector<HTMLCanvasElement>("[data-hf-color-grading-canvas]");
     expect(recreated).not.toBeNull();
     expect(recreated).toBe(canvas);
-    expect(getContextSpy).toHaveBeenCalledTimes(1);
+    expect(webglContexts()).toBe(1);
     expect(video.style.getPropertyValue("opacity")).toBe("0");
     expect(video.style.getPropertyPriority("opacity")).toBe("important");
+  });
+
+  it("draws every graded clip through one WebGL context, however often a seek run shows and hides them", () => {
+    const clips = Array.from({ length: 6 }, (_, i) => {
+      const video = makeDrawableVideo();
+      video.id = `clip-${i}`;
+      video.style.display = "none";
+      document.body.appendChild(video);
+      return video;
+    });
+    runtime = createColorGradingRuntime();
+
+    // Each seek shows two neighbouring clips and hides the rest, as scenes come and go.
+    for (const at of [0, 2, 4, 1, 3, 5, 0, 4]) {
+      clips.forEach((video, i) => {
+        const shown = i === at || i === (at + 1) % clips.length;
+        video.style.display = shown ? "block" : "none";
+        runtime?.setSourceVisibility(video, shown);
+      });
+    }
+
+    expect(webglContexts()).toBe(1);
+    const shared = getContextSpy.mock.instances[0];
+    const copies = getContextSpy.mock.results
+      .filter((_, i) => getContextSpy.mock.calls[i]?.[0] === "2d")
+      .flatMap(
+        ({ value }) => (value as { drawImage: ReturnType<typeof vi.fn> }).drawImage.mock.calls,
+      );
+    expect(copies.length).toBeGreaterThan(0);
+    expect(copies.every(([source]) => source === shared)).toBe(true);
   });
 
   it("defers WebGL setup for hidden attributed media until it becomes visible", () => {
@@ -367,7 +404,7 @@ describe("createColorGradingRuntime", () => {
 
     runtime = createColorGradingRuntime();
 
-    expect(getContextSpy).not.toHaveBeenCalled();
+    expect(webglContexts()).toBe(0);
     expect(document.querySelector("[data-hf-color-grading-canvas]")).toBeNull();
     expect(runtime.getStatus(video)).toEqual({
       state: "pending",
@@ -376,7 +413,7 @@ describe("createColorGradingRuntime", () => {
 
     video.style.display = "block";
     expect(runtime.setSourceVisibility(video, true)).toBe(true);
-    expect(getContextSpy).toHaveBeenCalledTimes(1);
+    expect(webglContexts()).toBe(1);
     expect(document.querySelector("[data-hf-color-grading-canvas]")).not.toBeNull();
   });
 
@@ -406,12 +443,12 @@ describe("createColorGradingRuntime", () => {
         { id: "warm", dataUrl: "data:image/png;base64,preview" },
       ],
     });
-    expect(getContextSpy).toHaveBeenCalledTimes(1);
+    expect(webglContexts()).toBe(1);
     expect(document.querySelector("[data-hf-color-grading-canvas]")).toBeNull();
     expect(video.style.opacity).toBe("");
 
     await runtime.renderPreviews("#hero-video", [{ id: "mono", grading: "mono-clean" }]);
-    expect(getContextSpy).toHaveBeenCalledTimes(1);
+    expect(webglContexts()).toBe(1);
 
     const retinaBatch = await runtime.renderPreviews(
       "#hero-video",
@@ -717,7 +754,7 @@ describe("createColorGradingRuntime", () => {
 
     runtime = createColorGradingRuntime();
 
-    expect(getContextSpy).toHaveBeenCalledTimes(1);
+    expect(webglContexts()).toBe(1);
     if (!lastUniform1f) throw new Error("Expected WebGL uniform calls");
     expect(lastUniform1f).toHaveBeenCalledWith("u_intensity", 0);
     expect(lastUniform1f).toHaveBeenCalledWith("u_kuwahara", 0);
@@ -1037,7 +1074,7 @@ describe("createColorGradingRuntime", () => {
 
     runtime = createColorGradingRuntime();
 
-    expect(getContextSpy).toHaveBeenCalledTimes(1);
+    expect(webglContexts()).toBe(1);
     expect(document.querySelector("[data-hf-color-grading-canvas]")).not.toBeNull();
   });
 
@@ -1079,7 +1116,7 @@ describe("createColorGradingRuntime", () => {
     expect(runtime.setSourceVisibility(video, false)).toBe(true);
     runtime.refresh();
     expect(canvas.isConnected).toBe(false);
-    expect(getContextSpy).toHaveBeenCalledTimes(1);
+    expect(webglContexts()).toBe(1);
     expect(video.hasAttribute("data-hf-color-grading-source-hidden")).toBe(false);
   });
 
@@ -1329,7 +1366,11 @@ describe("createColorGradingRuntime", () => {
 
   it("falls back to the untreated shader output when half-float targets are unavailable", () => {
     getContextSpy.mockImplementation((type: string) =>
-      type === "webgl" ? createMockWebGl({ halfFloatSupported: false }) : null,
+      type === "webgl"
+        ? createMockWebGl({ halfFloatSupported: false })
+        : type === "2d"
+          ? mock2d()
+          : null,
     );
     const video = makeDrawableVideo();
     video.setAttribute(
@@ -1785,7 +1826,11 @@ describe("createColorGradingRuntime", () => {
 
   it("reports media texture upload failures in runtime status", () => {
     getContextSpy.mockImplementation((type: string) =>
-      type === "webgl" ? createMockWebGl({ failMediaUpload: true }) : null,
+      type === "webgl"
+        ? createMockWebGl({ failMediaUpload: true })
+        : type === "2d"
+          ? mock2d()
+          : null,
     );
     const video = makeDrawableVideo();
     document.body.appendChild(video);
@@ -1800,9 +1845,10 @@ describe("createColorGradingRuntime", () => {
 
   it("falls back to the source media on WebGL context loss and redraws after restore", () => {
     const { video, canvas } = startRuntimeWithVideo();
+    const shared = getContextSpy.mock.instances[0] as HTMLCanvasElement;
 
     const lost = new Event("webglcontextlost", { cancelable: true });
-    canvas.dispatchEvent(lost);
+    shared.dispatchEvent(lost);
 
     expect(lost.defaultPrevented).toBe(true);
     expect(canvas.style.display).toBe("none");
@@ -1813,7 +1859,7 @@ describe("createColorGradingRuntime", () => {
       message: "WebGL context lost",
     });
 
-    canvas.dispatchEvent(new Event("webglcontextrestored"));
+    shared.dispatchEvent(new Event("webglcontextrestored"));
 
     expect(runtime?.getStatus("#hero-video").state).toBe("active");
     expect(video.hasAttribute("data-hf-color-grading-source-hidden")).toBe(true);
