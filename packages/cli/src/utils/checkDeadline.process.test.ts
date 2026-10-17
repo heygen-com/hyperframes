@@ -134,11 +134,11 @@ async function runWitness(inspectLinuxTree: boolean, inspectProfiles = false): P
     } catch (error) {
       if (!exited()) terminationFailure = error;
     } finally {
-      const pid = existsSync(pidFile) ? readPid(pidFile) : undefined;
+      const pids = [pidFile, `${pidFile}.first-pid`].filter(existsSync).map(readPid);
       const descendants = existsSync(`${pidFile}.tree`)
         ? readTree(`${pidFile}.tree`).descendants
         : [];
-      await stopTestProcesses(child, [...descendants, ...(pid === undefined ? [] : [pid])]);
+      await stopTestProcesses(child, [...descendants, ...pids]);
     }
     if (terminationFailure !== undefined) throw terminationFailure;
     await rm(dir, {
@@ -148,7 +148,16 @@ async function runWitness(inspectLinuxTree: boolean, inspectProfiles = false): P
       retryDelay: 100,
     });
   });
-  expect(await done, output).toBe(1);
+  expect(await done, output).toBe(inspectProfiles ? 0 : 1);
+  if (inspectProfiles) {
+    expect(readFileSync(`${pidFile}.first-alive`, "utf8")).toBe("true");
+    const profiles = parseProfiles(readFileSync(`${pidFile}.profiles`, "utf8"));
+    expect(profiles).toHaveLength(2);
+    expect(new Set(profiles).size).toBe(2);
+    expect(testProcessIsAlive(readPid(`${pidFile}.first-pid`))).toBe(false);
+    expect(testProcessIsAlive(readPid(pidFile))).toBe(false);
+    return;
+  }
   const report = parseReport(stdout.slice(stdout.indexOf('{\n  "ok"')));
   if (!report) throw new Error(`Invalid check JSON: ${output}`);
   expect(report.ok).toBe(false);
@@ -161,12 +170,6 @@ async function runWitness(inspectLinuxTree: boolean, inspectProfiles = false): P
   );
   const browserPid = readPid(pidFile);
   expect(testProcessIsAlive(browserPid)).toBe(false);
-  if (inspectProfiles) {
-    expect(readFileSync(`${pidFile}.first-alive`, "utf8")).toBe("true");
-    const profiles = parseProfiles(readFileSync(`${pidFile}.profiles`, "utf8"));
-    expect(profiles).toHaveLength(2);
-    expect(new Set(profiles).size).toBe(2);
-  }
   expect(readFileSync(`${pidFile}.profile`, "utf8")).not.toBe(join(dir, "profile"));
   expect(readFileSync(`${pidFile}.report-browser-alive`, "utf8")).toBe("false");
   expect(readFileSync(`${pidFile}.script`, "utf8")).toBe("started");
