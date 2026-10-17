@@ -12,6 +12,7 @@ import {
   findByPrompt,
   findByEntity,
   nextId,
+  typeDirPath,
   withReservedFile,
   withReservedFileSync,
 } from "./lib/manifest.mjs";
@@ -55,6 +56,8 @@ import {
   versionLessThan,
 } from "./lib/heygen-cli.mjs";
 import { BundledSfxAssetsError, inspectBundledSfxAssets } from "./lib/bundled-sfx-provider.mjs";
+import { OPENVERSE_SFX_PROVIDER } from "./lib/sfx-provider.mjs";
+import { writeSfxCredit } from "./lib/openverse.mjs";
 import {
   fetchMediaVectors,
   mediaVectorRows,
@@ -441,57 +444,43 @@ async function run() {
     return resolveColor(type, intent, { projectDir });
   }
 
-  // SFX search is bundled, local-index, then HeyGen.
+  // SFX search is Openverse, the bundled library, then the local media index.
   let searchResult = null;
   let providerFailure = null;
   let localIndexFailure = null;
   try {
-    if (type === "sfx" && !args.provider) {
-      searchResult = await runCapability(type, "search", intent, {
-        ...ctx,
-        provider: "bundled.sfx",
-      });
-      if (!searchResult && !localOnly) {
-        const registry =
-          process.env.HYPERFRAMES_REGISTRY ||
-          "https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry";
-        try {
-          await fetchMediaVectors(registry);
-          const ranked = await rankMediaRowsWithVectors(
-            intent,
-            mediaVectorRows().filter((row) => row.kind === "sfx"),
-          );
-          const row = ranked.rows[0];
-          const candidates = row
-            ? [resolve(row.file), join(import.meta.dirname, "..", "..", "..", row.file)]
-            : [];
-          const localPath = candidates.find((candidate) => existsSync(candidate));
-          if (row && localPath) {
-            searchResult = {
-              localPath,
-              ext: extname(localPath),
-              source: "local-index",
-              metadata: {
-                description: row.description,
-                duration: row.duration ?? null,
-                provider: "catalog.local",
-                provenance: { library_key: row.id, tier: ranked.tier },
-              },
-            };
-          }
-        } catch (error) {
-          localIndexFailure = error;
+    searchResult = await runCapability(type, "search", intent, ctx);
+    if (!searchResult && type === "sfx" && !args.provider && !localOnly) {
+      const registry =
+        process.env.HYPERFRAMES_REGISTRY ||
+        "https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry";
+      try {
+        await fetchMediaVectors(registry);
+        const ranked = await rankMediaRowsWithVectors(
+          intent,
+          mediaVectorRows().filter((row) => row.kind === "sfx"),
+        );
+        const row = ranked.rows[0];
+        const candidates = row
+          ? [resolve(row.file), join(import.meta.dirname, "..", "..", "..", row.file)]
+          : [];
+        const localPath = candidates.find((candidate) => existsSync(candidate));
+        if (row && localPath) {
+          searchResult = {
+            localPath,
+            ext: extname(localPath),
+            source: "local-index",
+            metadata: {
+              description: row.description,
+              duration: row.duration ?? null,
+              provider: "catalog.local",
+              provenance: { library_key: row.id, tier: ranked.tier },
+            },
+          };
         }
+      } catch (error) {
+        localIndexFailure = error;
       }
-      if (!searchResult) searchResult = await runCapability(type, "search", intent, ctx);
-      // Keep HeyGen remediation diagnostics while bundled remains authoritative.
-      else if (!localOnly)
-        await runCapability(type, "search", intent, {
-          ...ctx,
-          provider: "heygen.audio.sounds",
-        });
-    } else {
-      searchResult = await runCapability(type, "search", intent, ctx);
     }
   } catch (error) {
     providerFailure = error;
@@ -601,16 +590,6 @@ async function run() {
       ...searchResult.metadata?.provenance,
     },
   };
-
-  const heygenRemediation = consumeHeygenRemediation();
-  if (
-    searchResult.metadata?.provider === "bundled.sfx" &&
-    !localOnly &&
-    !args.provider &&
-    heygenRemediation
-  ) {
-    record.advisory = heygenRemediation;
-  }
 
   appendRecord(projectDir, record);
   regenerateIndex(projectDir);
@@ -1304,6 +1283,13 @@ async function reuseGlobal(shaArg) {
 }
 
 async function result(record, source) {
+  const { provider, license, credit, source_url: sourceUrl } = record.provenance ?? {};
+  if (provider === OPENVERSE_SFX_PROVIDER)
+    writeSfxCredit(join(typeDirPath(projectDir, "sfx"), "CREDITS.md"), record.path, {
+      license,
+      credit,
+      sourceUrl,
+    });
   // Non-PII usage event: which media type, how it resolved, which provider won.
   // Never the intent text or paths. Awaited so a short-lived run flushes it.
   await track("media_use_resolve", {

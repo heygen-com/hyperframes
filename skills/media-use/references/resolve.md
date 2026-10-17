@@ -11,7 +11,7 @@ Returns one line: `resolved <id> → <path> (<type>, <metadata>)`
 | Type    | What it finds                    | Provider / cascade                                           |
 | ------- | -------------------------------- | ------------------------------------------------------------ |
 | `bgm`   | Background music                 | HeyGen audio catalog (10k+ tracks)                           |
-| `sfx`   | Sound effects                    | Bundled 19-file library + HeyGen catalog                     |
+| `sfx`   | Sound effects                    | Openverse (CC0 / CC BY), then the bundled 21-file library    |
 | `image` | Photos, backgrounds              | HeyGen asset search (75k+ vectors)                           |
 | `icon`  | Icons, symbols                   | HeyGen asset search (type=icon)                              |
 | `logo`  | Official brand marks             | theSVG → GitHub org avatar → domain favicon                  |

@@ -6,12 +6,12 @@
 //
 //   node <MEDIA_DIR>/scripts/audio.mjs --request ./audio_request.json --hyperframes . --out ./audio_meta.json
 //
-// The three capabilities degrade on ONE switch — whether HeyGen is configured
-// (credential present, NOT the CLI). This mirrors the table in ../SKILL.md:
+// TTS and BGM degrade on ONE switch — whether HeyGen is configured (credential
+// present, NOT the CLI). SFX needs no credential. This mirrors ../SKILL.md:
 //
 //   TTS : HeyGen REST → ElevenLabs → Kokoro (CLI)
 //   BGM : HeyGen retrieve  → (no credential) Lyria/MusicGen generate
-//   SFX : HeyGen retrieve  → (no credential) bundled 19-file library
+//   SFX : Openverse (CC0 / CC BY) → (offline, rate limited, no match) bundled library
 //
 // ── audio_request.json (input) ────────────────────────────────────────────────
 //   {
@@ -31,7 +31,7 @@
 //     bgm: { path, volume, mode, query?, duration_s? } | null,
 //     bgm_pending, bgm_provider, bgm_pid, bgm_log, bgm_mode, bgm_target_duration_s, …,
 //     voices: [ { id, path, duration_s, words: [{id,text,start,end}] } ],
-//     sfx:    [ { id, name, file, source, offset_s, duration_s, volume } ],
+//     sfx:    [ { id, name, file, source, offset_s, duration_s, volume, license?, credit? } ],
 //     total_duration_s }
 //
 // --only tts,bgm,sfx  runs a subset and MERGES into an existing --out (so a
@@ -52,7 +52,7 @@ import {
   withWordIds,
 } from "./lib/tts.mjs";
 import { generateBgmDetached, inferBgmPrompt, retrieveBgm } from "./lib/bgm.mjs";
-import { resolveSfx } from "./lib/sfx.mjs";
+import { BUNDLED_SFX_DIR, resolveSfx } from "./lib/sfx.mjs";
 import { mapWithConcurrency } from "./lib/concurrency.mjs";
 import { openAudioMeta } from "./lib/audio-meta.mjs";
 import { recordInManifest, voicePaths, writtenAssets } from "./lib/media-record.mjs";
@@ -83,7 +83,7 @@ const ttsConcurrency = Math.max(1, Number(process.env.HYPERFRAMES_TTS_CONCURRENC
 const hyperframesDir = resolve(flag("hyperframes", "."));
 const requestPath = resolve(flag("request", join(hyperframesDir, "audio_request.json")));
 const outPath = resolve(flag("out", join(hyperframesDir, "audio_meta.json")));
-const sfxLibDir = resolve(flag("sfx-lib", join(HERE, "..", "assets", "sfx")));
+const sfxLibDir = resolve(flag("sfx-lib", BUNDLED_SFX_DIR));
 const lyriaRecipe = resolve(flag("lyria-recipe", join(HERE, "lyria-recipe.py")));
 const onlyArg = flag("only", "tts,bgm,sfx");
 const only = new Set(
@@ -275,12 +275,12 @@ if (only.has("sfx")) {
       .map((name) => ({ id: String(l.id), name: String(name).trim() }))
       .filter((c) => c.name),
   );
-  const headers = heygenOK && cues.length ? heygenAuthHeaders() : null;
-  const res = await resolveSfx({ cues, heygenOK, headers, hyperframesDir, sfxLibDir });
+  const res = await resolveSfx({ cues, hyperframesDir, sfxLibDir });
   sfx = res.sfx;
   anomalies.push(...res.anomalies);
+  const openverse = sfx.filter((s) => s.source === "openverse").length;
   console.error(
-    `· sfx: ${sfx.length} cue(s) resolved (${heygenOK ? "heygen retrieval" : "bundled library"})`,
+    `· sfx: ${sfx.length} cue(s) resolved (${openverse} Openverse, ${sfx.length - openverse} bundled library)`,
   );
 }
 

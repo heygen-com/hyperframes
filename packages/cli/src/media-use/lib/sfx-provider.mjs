@@ -1,22 +1,32 @@
-import { heygenSearch } from "./heygen-search.mjs";
+import { OpenverseUnavailableError, searchOpenverseSfx } from "./openverse.mjs";
+
+export const OPENVERSE_SFX_PROVIDER = "openverse.audio";
 
 export const sfxProvider = {
   async search(intent) {
-    const results = heygenSearch("audio sounds list", intent, {
-      type: "sound_effects",
-      minScore: 0.4,
-    });
-    if (!results) return null;
-    const best = results[0];
+    let sound;
+    try {
+      sound = await searchOpenverseSfx(intent);
+    } catch (error) {
+      if (!(error instanceof OpenverseUnavailableError)) throw error;
+      console.error(`media-use: ${error.message}; using the bundled sound effects`);
+      return null;
+    }
+    if (!sound) return null;
     return {
-      url: best.audio_url,
+      url: sound.url,
+      ext: sound.ext,
       source: "search",
-      // ext derived from audio_url by resolve.mjs — catalog SFX are .mp3 or .wav
       metadata: {
-        description: best.description || best.name || intent,
-        duration: best.duration || null,
-        provider: "heygen.audio.sounds",
-        provenance: { track_id: best.id, score: best.score, query: intent },
+        description: sound.title || intent,
+        duration: sound.durationS,
+        provider: OPENVERSE_SFX_PROVIDER,
+        provenance: {
+          openverse_id: sound.id,
+          license: sound.license,
+          credit: sound.credit,
+          source_url: sound.sourceUrl,
+        },
       },
     };
   },

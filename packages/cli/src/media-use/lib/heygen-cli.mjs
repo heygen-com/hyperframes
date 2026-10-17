@@ -102,19 +102,16 @@ const pendingFailureTracking = new Set();
 // API, move this state into a per-resolve context before reusing that path.
 let pendingRemediation = null;
 
-const TOOL_WORDS = { bgm: "music", sfx: "sound-effect" };
-
-/** A music or sound-effect resolve miss after the heygen CLI was missing or too old: what is missing, the host
- * app's own tool, the fix. Other types keep the generic miss. */
+/** A music resolve miss after the heygen CLI was missing or too old: what is missing, the host app's own
+ * tool, the fix. Other types keep the generic miss. */
 export function heygenMiss(type, { code }) {
-  const tool = TOOL_WORDS[type];
-  if (!tool) return null;
+  if (type !== "bgm") return null;
   const outdated = code === "outdated";
   const state = outdated ? `older than v${HEYGEN_MIN_VERSION}` : "not installed";
   return {
     code: outdated ? "heygen_cli_outdated" : "heygen_cli_missing",
     fix: outdated ? HEYGEN_UPDATE_COMMAND : HEYGEN_INSTALL_COMMAND,
-    error: `${type} needs the heygen CLI, which is ${state}: use your host app's own ${tool} tool if it has one, or ${outdated ? "update" : "install"} the CLI.`,
+    error: `${type} needs the heygen CLI, which is ${state}: use your host app's own music tool if it has one, or ${outdated ? "update" : "install"} the CLI.`,
   };
 }
 

@@ -115,6 +115,7 @@ function toProductLaunchMeta(neutral) {
     offset_s: s.offset_s ?? 0,
     duration_s: s.duration_s ?? 1,
     volume: s.volume ?? 0.35,
+    ...(s.license && { license: s.license, credit: s.credit }),
   }));
   return { bgm, bgm_pending: bgmPending, voices, sfx };
 }

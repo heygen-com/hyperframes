@@ -32,18 +32,18 @@ test("listTypes exposes the v2 media types", () => {
   }
 });
 
-test("heygen provider is first for every type it serves except bundled sfx", () => {
+test("heygen provider is first for every type it serves", () => {
   for (const t of ["bgm", "image", "icon"]) {
     const first = getProviders(t)[0];
     assert.ok(first, `no enabled provider for ${t}`);
     assert.match(first.name, /^heygen/, `${t} first provider is ${first.name}`);
   }
-  assert.equal(getProviders("sfx")[0].name, "bundled.sfx");
+  assert.ok(!getProviders("sfx").some((p) => p.name.startsWith("heygen")), "sfx never asks HeyGen");
 });
 
-test("sanctioned providers only: heygen, local mflux/kokoro/ltx, codex, design spec, logo tiers", () => {
+test("sanctioned providers only: heygen, Openverse, local mflux/kokoro/ltx, codex, design spec, logo tiers", () => {
   const allowed =
-    /^heygen|^bundled\.sfx$|^mflux\.local$|^kokoro\.local$|^ltx\.local$|^codex\.image_gen$|^design_spec$|^thesvg$|^github\.avatar$|^favicon\.ddg$|^color_grade\.local$|^cube_lut\.local$/;
+    /^heygen|^openverse\.audio$|^bundled\.sfx$|^mflux\.local$|^kokoro\.local$|^ltx\.local$|^codex\.image_gen$|^design_spec$|^thesvg$|^github\.avatar$|^favicon\.ddg$|^color_grade\.local$|^cube_lut\.local$/;
   for (const t of listTypes()) {
     for (const p of getProviders(t)) {
       assert.ok(allowed.test(p.name), `${t} lists unsanctioned provider: ${p.name}`);
@@ -85,13 +85,14 @@ test("video cascade: HeyGen first, LTX local fallback, generate-only", async () 
   assert.equal(await runCapability("video", "search", "x", {}), null);
 });
 
-test("sfx cascade: bundled library first, HeyGen catalog remains the network fallback", () => {
+test("sfx cascade: Openverse first, the bundled library is the offline fallback", () => {
   const ps = getProviders("sfx");
-  assert.equal(ps[0].name, "bundled.sfx");
-  assert.equal(typeof ps[0].search, "function");
-  assert.ok(!ps[0].network, "bundled SFX remain available offline");
-  assert.equal(ps[1].name, "heygen.audio.sounds");
-  assert.ok(ps[1].network, "HeyGen SFX catalog is network-only");
+  assert.deepEqual(
+    ps.map((p) => p.name),
+    ["openverse.audio", "bundled.sfx"],
+  );
+  assert.ok(ps[0].network && !ps[0].paid, "Openverse is free and network-only");
+  assert.ok(!ps[1].network, "bundled SFX remain available offline");
 });
 
 test("ctx.provider forces one generator (e.g. 'make an image WITH codex')", async () => {
@@ -201,9 +202,8 @@ test("providerTierFor reports the registry's own A/N/P declaration", () => {
 });
 
 test("providerTierFor agrees across every type that declares the same name", () => {
-  // heygen.audio.sounds serves both bgm and sfx; heygen.asset.search serves both
-  // image and icon. A name whose tier depended on the media type would make the
-  // telemetry property meaningless.
+  // heygen.asset.search serves both image and icon. A name whose tier depended
+  // on the media type would make the telemetry property meaningless.
   const byName = new Map();
   for (const type of listTypes()) {
     for (const name of providerNamesFor(type)) {

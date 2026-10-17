@@ -10,6 +10,10 @@ export const skillModuleCopies = [
     ["skills/media-use/scripts/lib/media-fetch.mjs"],
   ],
   [
+    "packages/cli/src/media-use/lib/openverse.mjs",
+    ["skills/media-use/audio/scripts/lib/openverse.mjs"],
+  ],
+  [
     "skills/media-use/audio/scripts/lib/bgm-volume.mjs",
     workflows.map((skill) => `skills/${skill}/scripts/lib/bgm-volume.mjs`),
   ],

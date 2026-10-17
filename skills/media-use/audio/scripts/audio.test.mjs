@@ -10,7 +10,11 @@ import { resolveSfx } from "./lib/sfx.mjs";
 
 // Proves the relocated engine (skills/media-use/audio/) still resolves its
 // bundled SFX library from the moved location — the path most likely to break
-// on a subtree move. Offline (heygenOK:false), no network.
+// on a subtree move. Openverse is unreachable unless a test serves it.
+const offline = async () => {
+  throw new TypeError("fetch failed");
+};
+globalThis.fetch = offline;
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const sfxLibDir = join(HERE, "..", "assets", "sfx"); // same offset the engine uses
@@ -21,7 +25,6 @@ test("bundled SFX library resolves from the relocated path", async () => {
   try {
     const { sfx, anomalies } = await resolveSfx({
       cues: [{ id: "1", name: "whoosh" }],
-      heygenOK: false,
       hyperframesDir: dir,
       sfxLibDir,
     });
@@ -39,7 +42,6 @@ test("an unknown cue is reported, not fatal", async () => {
   try {
     const { sfx, anomalies } = await resolveSfx({
       cues: [{ id: "1", name: "definitely-not-a-real-sfx" }],
-      heygenOK: false,
       hyperframesDir: dir,
       sfxLibDir,
     });
@@ -59,7 +61,6 @@ test("a person's own file under a bundled name survives, and the cue gets the ne
     const resolve = () =>
       resolveSfx({
         cues: [{ id: "1", name: "whoosh" }],
-        heygenOK: false,
         hyperframesDir: dir,
         sfxLibDir,
       });
@@ -89,18 +90,24 @@ test("two effects never share a file when one's name is taken by the person, run
   try {
     mkdirSync(join(dir, "assets", "sfx"), { recursive: true });
     writeFileSync(join(dir, "assets", "sfx", "glitch.mp3"), "the person's own glitch");
-    const realFetch = globalThis.fetch;
     globalThis.fetch = async (url) => {
-      const query = new URL(url).searchParams.get("query");
+      const query = new URL(url).searchParams.get("q");
       if (query)
-        return Response.json({ data: [{ audio_url: `https://sound.test/${query}`, score: 0.6 }] });
+        return Response.json({
+          results: [
+            {
+              license: "cc0",
+              filetype: "mp3",
+              duration: 500,
+              url: `https://sound.test/${encodeURIComponent(query)}`,
+            },
+          ],
+        });
       return new Response(`bytes of ${new URL(url).pathname}`);
     };
     const run = async (names) => {
       const { sfx } = await resolveSfx({
         cues: names.map((name, index) => ({ id: String(index), name })),
-        heygenOK: true,
-        headers: {},
         hyperframesDir: dir,
         sfxLibDir,
       });
@@ -119,7 +126,7 @@ test("two effects never share a file when one's name is taken by the person, run
         "assets/sfx/glitch-2.mp3",
       ]);
     } finally {
-      globalThis.fetch = realFetch;
+      globalThis.fetch = offline;
     }
   } finally {
     rmSync(dir, { recursive: true, force: true });

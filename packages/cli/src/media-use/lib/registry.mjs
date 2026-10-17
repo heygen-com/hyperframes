@@ -10,6 +10,8 @@
 // own auth. Providers, by type:
 //   - heygen CLI: catalog + TTS, first for every type it serves (OAuth free
 //     allowance first, then the user's HeyGen billing path)
+//   - Openverse: free, keyless sound effects (CC0 / CC BY), with the bundled
+//     library as the offline fallback
 //   - mflux: local FLUX-class image gen, spec-selected to the machine's RAM
 //     (free, private, offline once cached)
 //   - codex CLI: image gen on the user's ChatGPT sub — the better-quality upsell
@@ -21,7 +23,7 @@
 // (e.g. "make an image with codex").
 
 import { bgmProvider } from "./bgm-provider.mjs";
-import { sfxProvider } from "./sfx-provider.mjs";
+import { OPENVERSE_SFX_PROVIDER, sfxProvider } from "./sfx-provider.mjs";
 import { bundledSfxProvider } from "./bundled-sfx-provider.mjs";
 import { imageProvider, iconProvider } from "./image-provider.mjs";
 import { brandProvider } from "./brand-provider.mjs";
@@ -46,8 +48,8 @@ const P = (name, caps) => ({ name, network: true, paid: true, ...caps }); // rem
 const REGISTRY = {
   bgm: [N("heygen.audio.sounds", { search: bgmProvider.search })],
   sfx: [
+    N(OPENVERSE_SFX_PROVIDER, { search: sfxProvider.search }),
     A("bundled.sfx", { search: bundledSfxProvider.search }),
-    N("heygen.audio.sounds", { search: sfxProvider.search }),
   ],
   image: [
     N("heygen.asset.search", { search: imageProvider.search }),
