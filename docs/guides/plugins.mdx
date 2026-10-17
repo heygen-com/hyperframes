@@ -44,7 +44,16 @@ Using /hyperframes:hyperframes, make a 5-second title card that says "Hello worl
 
 **Enable automatic updates:** run `/plugin`, open **Marketplaces**, select
 **hyperframes**, and choose **Enable auto-update**. Third-party marketplaces do
-not enable this by default. To update manually:
+not enable this by default.
+
+<Note>
+  The **Enable auto-update** toggle only appears in the terminal (CLI) `/plugin`
+  UI — the IDE/Desktop app's "Manage Plugins" dialog has no such toggle. Run
+  `claude` in a terminal to enable it (this works even if you installed the
+  plugin from the IDE).
+</Note>
+
+To update manually:
 
 ```bash
 claude plugin update hyperframes@hyperframes

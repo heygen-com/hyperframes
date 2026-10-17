@@ -47,6 +47,11 @@ Enable auto-update for the **hyperframes** marketplace in `/plugin` → **Market
 then use `/hyperframes:hyperframes`. See the [plugin guide](docs/guides/plugins.mdx)
 for Copilot, VS Code, Cursor, Gemini CLI, updates, and migration.
 
+> **Note:** The **Enable auto-update** toggle only appears in the terminal (CLI)
+> `/plugin` UI — the IDE/Desktop app's "Manage Plugins" dialog has no such toggle.
+> Run `claude` in a terminal to enable it (this works even if you installed the
+> plugin from the IDE).
+
 For standalone skills (including OpenCode), use:
 
 ```bash
