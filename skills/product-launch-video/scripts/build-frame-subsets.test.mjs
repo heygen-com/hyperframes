@@ -150,3 +150,32 @@ for (const skill of workflows) {
     },
   );
 }
+
+for (const skill of workflows) {
+  test(skill + " declares every per-script subset file with its unicode-range", async () => {
+    const { brandFontFaces } = await import(
+      new URL("../../" + skill + "/scripts/captions.mjs", import.meta.url)
+    );
+    const project = mkdtempSync(join(tmpdir(), "font-subsets-"));
+    try {
+      mkdirSync(join(project, "assets/fonts"), { recursive: true });
+      writeFileSync(
+        join(project, "frame.md"),
+        'typography:\n  display: { fontFamily: "Source Serif 4", weight: 400 }\n',
+      );
+      for (const subset of ["cyrillic", "latin", "latin-ext"]) {
+        writeFileSync(join(project, `assets/fonts/source-serif-4-${subset}.woff2`), subset);
+      }
+      const faces = brandFontFaces(join(project, "frame.md"), project);
+      assert.equal((faces.match(/@font-face/g) ?? []).length, 3);
+      assert.match(
+        faces,
+        /source-serif-4-cyrillic\.woff2'[^}]*unicode-range: U\+0301, U\+0400-045F/,
+      );
+      assert.match(faces, /source-serif-4-latin\.woff2'[^}]*unicode-range: U\+0000-00FF/);
+      assert.match(faces, /source-serif-4-latin-ext\.woff2'[^}]*unicode-range: U\+0100-02BA/);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+}
