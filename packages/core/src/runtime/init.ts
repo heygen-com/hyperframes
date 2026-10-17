@@ -3473,6 +3473,23 @@ export function initSandboxRuntimeModular(): void {
     if (manifest !== lastPostedManifest) postTimeline();
   };
 
+  // Whole-film work a jump's frame does not need: one post once the frame has painted (a task after the next frame).
+  let timelinePostQueued = false;
+  const postTimelineAfterPaint = () => {
+    if (timelinePostQueued) return;
+    timelinePostQueued = true;
+    window.requestAnimationFrame(() =>
+      setTimeout(() => {
+        timelinePostQueued = false;
+        if (state.tornDown) return;
+        // Discharges what the transport saw meanwhile, as its own post does.
+        lastSeenTimingRevision = readCompositionTimingRevision();
+        postTimeline();
+        compositionChangePending = false;
+      }, 0),
+    );
+  };
+
   const finitePositiveDuration = (value: number | null | undefined): number =>
     typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0;
 
@@ -3718,7 +3735,10 @@ export function initSandboxRuntimeModular(): void {
   // Swap edited scenes in place from a rebuilt preview document. Refuses before changing anything unless
   // the documents differ only inside existing scenes; a later failure is left to the caller's reload.
   // Nests the timelines a scene's scripts just made and redraws the current frame with them.
-  const nestRanScenes = (hosts: Element[], { drawnByTick = false } = {}) => {
+  const nestRanScenes = (
+    hosts: Element[],
+    { drawnByTick = false, postAfterPaint = false } = {},
+  ) => {
     childrenBound = false;
     bindRootTimelineIfAvailable();
     // Probed before the scene was nested, so the new media found no volume envelope.
@@ -3741,7 +3761,8 @@ export function initSandboxRuntimeModular(): void {
     if (!(drawnByTick && clock.isPlaying() && !cutShort))
       transport.seek(cutShort ? duration : state.currentTime, { keepPlaying: !cutShort });
     syncTimedElementVisibility(state.currentTime);
-    postTimeline();
+    if (postAfterPaint) postTimelineAfterPaint();
+    else postTimeline();
   };
   const swapScenes = async (html: string, signal?: AbortSignal): Promise<void> => {
     const generation = sceneSwapGeneration;
@@ -3949,7 +3970,7 @@ export function initSandboxRuntimeModular(): void {
       for (const host of hosts) applyVariableBindings(document, host);
       bindMediaMetadataListeners();
       initVfx(document.body, state.canonicalFps);
-      nestRanScenes(hosts, { drawnByTick: true });
+      nestRanScenes(hosts, { drawnByTick: true, postAfterPaint: true });
     });
     sceneMounts = mounted.catch(() => undefined);
     registerSeekCompletion(mounted);
@@ -4920,7 +4941,12 @@ export function initSandboxRuntimeModular(): void {
           postTimeline();
         }
       }
-      if (changeDrivenService || pausedCounterDue(TIMELINE_POST_INTERVAL_FRAMES)) {
+      // A queued after-paint post carries whatever changed meanwhile; posting here would run before the paint.
+      const postOwedHere = !timelinePostQueued;
+      if (
+        postOwedHere &&
+        (changeDrivenService || pausedCounterDue(TIMELINE_POST_INTERVAL_FRAMES))
+      ) {
         // The manifest is what carries a composition change to its consumers,
         // so posting it is what discharges the pending flag — whichever path
         // got here. Clearing it when the change is merely SEEN would drop it
@@ -4933,7 +4959,7 @@ export function initSandboxRuntimeModular(): void {
         // change happens to wake the loop again.
         postTimeline();
         compositionChangePending = false;
-      } else if (playingPollDue || stoppedPlaying) {
+      } else if (postOwedHere && (playingPollDue || stoppedPlaying)) {
         postTimelineIfManifestChanged();
       }
       if (changeDrivenService || pausedCounterDue(MEDIA_BIND_INTERVAL_FRAMES)) {

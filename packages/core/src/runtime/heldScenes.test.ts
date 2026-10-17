@@ -110,6 +110,25 @@ describe("scene scripts held until the playhead nears", () => {
     expect(ran()).toBe("near tied far ");
   });
 
+  it("posts the timeline a far scene's mount changes after the jump's frame paints, not before", async () => {
+    await boot(true);
+    // Boot's own posts settle first.
+    await vi.waitFor(() => expect(window.__renderReady).toBe(true));
+    await new Promise((done) => setTimeout(done, 500));
+    const post = vi.spyOn(window, "postMessage");
+    const timelinePosts = () =>
+      post.mock.calls.filter(([message]) => (message as { type?: string }).type === "timeline")
+        .length;
+    window.__player!.seek(25);
+    await window.__hfWaitForSeekCompletion?.();
+    expect(ran()).toContain("far");
+    expect(timelinePosts()).toBe(0);
+    await vi.waitFor(() => expect(timelinePosts()).toBe(1));
+    // The transport saw the mount too: the one post discharged it.
+    await new Promise((done) => setTimeout(done, 500));
+    expect(timelinePosts()).toBe(1);
+  });
+
   it("runs a far scene the playback reaches without pausing the clock", async () => {
     await boot(true);
     window.__player!.seek(19.5);
