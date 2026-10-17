@@ -262,6 +262,35 @@ describe("loadCompositions external hosts", () => {
     ).toBeNull();
   });
 
+  // `assets/theme.css` in a sub-composition loaded from compositions/assets/ in the preview and 404'd, while the render
+  // resolved it from the project root (rewriteAssetPath: a plain path is a sibling only if one exists).
+  it.each([
+    ["no sibling file: the project root", false, "assets/theme.css"],
+    ["a sibling file: beside the composition", true, "compositions/assets/theme.css"],
+  ])(
+    "a plain stylesheet path resolves as the render does, %s",
+    async (_case, sibling, expected) => {
+      appendExternalHost("compositions/scene.html", "scene");
+      const compositionHtml = `<template id="scene-template">
+      <div data-composition-id="scene"><link rel="stylesheet" href="assets/theme.css"><p>Styled</p></div>
+    </template>`;
+      const siblingUrl = new URL("compositions/assets/theme.css", document.baseURI).href;
+      vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+        const url = new URL(String(input instanceof Request ? input.url : input), document.baseURI)
+          .href;
+        if (url === siblingUrl) return new Response("", { status: sibling ? 200 : 404 });
+        return new Response(compositionHtml, { status: 200 });
+      });
+
+      await loadFixture();
+
+      const hrefs = [
+        ...document.head.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]'),
+      ].map((link) => link.href);
+      expect(hrefs).toEqual([new URL(expected, document.baseURI).href]);
+    },
+  );
+
   it("does not inject stylesheet href variants that resolve to the composition document", async () => {
     appendExternalHost("https://example.com/compositions/scene.html", "scene");
 
