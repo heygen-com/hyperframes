@@ -185,7 +185,7 @@ window.__contrastAuditPrepare = function () {
   function isClippedAway(el, rect) {
     if (typeof document.elementFromPoint !== "function") return false;
     if (!hasClipPath(el)) return false;
-    return !paintsAnyProbePoint(el, rect);
+    return !paintsAnyProbePoint(el, rect, true);
   }
 
   function isIntentionallyOccluded(el, rect) {
