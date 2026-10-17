@@ -57,6 +57,7 @@ type SpawnPreview = (
   args: string[],
   options: {
     detached: boolean;
+    windowsHide: boolean;
     stdio: ["ignore", number, number];
     env: NodeJS.ProcessEnv;
   },
@@ -248,6 +249,7 @@ function spawnDetachedPreview(
       buildBackgroundPreviewArgs(dependencies.argv ?? process.argv.slice(1)),
       {
         detached: true,
+        windowsHide: true,
         stdio: ["ignore", logFd, logFd],
         env: process.env,
       },
