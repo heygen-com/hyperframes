@@ -18,6 +18,7 @@ import {
   detectRenderModeHints,
   detectShaderTransitionUsage,
   detectThreeDTransformUsage,
+  detectWebGlUsage,
   discoverMediaFromBrowser,
   discoverAudioVolumeAutomationFromTimeline,
   discoverVideoVisibilityFromTimeline,
@@ -1002,6 +1003,49 @@ describe("detectThreeDTransformUsage", () => {
 
   it("does not match perspective: none", () => {
     expect(detectThreeDTransformUsage("<style>.s { perspective: none; }</style>")).toBe(false);
+  });
+});
+
+describe("detectWebGlUsage", () => {
+  it("detects getContext('webgl') and getContext('webgl2')", () => {
+    expect(detectWebGlUsage('<script>const gl = canvas.getContext("webgl");</script>')).toBe(true);
+    expect(detectWebGlUsage("<script>const gl = canvas.getContext('webgl2');</script>")).toBe(true);
+    expect(detectWebGlUsage('<script>const gl = canvas.getContext("experimental-webgl");</script>')).toBe(true);
+  });
+
+  it("detects WebGPU contexts and attributes", () => {
+    expect(detectWebGlUsage('<script>const context = canvas.getContext("webgpu");</script>')).toBe(true);
+    expect(detectWebGlUsage('<div data-requires-webgpu id="render"></div>')).toBe(true);
+  });
+
+  it("detects Three.js references and renderer constructors", () => {
+    expect(detectWebGlUsage("<script>const renderer = new THREE.WebGLRenderer();</script>")).toBe(true);
+    expect(detectWebGlUsage("<script>const scene = new THREE.Scene();</script>")).toBe(true);
+    expect(detectWebGlUsage("<script>const cam = new THREE.PerspectiveCamera(75, 1, 0.1, 1000);</script>")).toBe(true);
+    expect(detectWebGlUsage("<script>if (window.THREE) { init(); }</script>")).toBe(true);
+  });
+
+  it("detects Babylon.js and PixiJS", () => {
+    expect(detectWebGlUsage("<script>const engine = new BABYLON.Engine(canvas, true);</script>")).toBe(true);
+    expect(detectWebGlUsage("<script>const app = new PIXI.Application();</script>")).toBe(true);
+  });
+
+  it("detects framework CDN scripts", () => {
+    expect(detectWebGlUsage('<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>')).toBe(true);
+    expect(detectWebGlUsage('<script src="https://cdn.example.com/pixi.js"></script>')).toBe(true);
+    expect(detectWebGlUsage('<script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>')).toBe(true);
+  });
+
+  it("detects hyperframes adapter hooks", () => {
+    expect(detectWebGlUsage("<script>window.__hfTypegpuTime = 0;</script>")).toBe(true);
+    expect(detectWebGlUsage("<script>window.__hfMapbox = map;</script>")).toBe(true);
+    expect(detectWebGlUsage("<script>window.__hfMaplibre = map;</script>")).toBe(true);
+  });
+
+  it("does not false-positive on 2d canvas or standard HTML", () => {
+    expect(detectWebGlUsage('<script>const ctx = canvas.getContext("2d");</script>')).toBe(false);
+    expect(detectWebGlUsage('<div class="hero"><h1>Title</h1><p>Description</p></div>')).toBe(false);
+    expect(detectWebGlUsage('<script>gsap.to(".box", { x: 100, duration: 1 });</script>')).toBe(false);
   });
 });
 

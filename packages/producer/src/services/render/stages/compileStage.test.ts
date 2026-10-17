@@ -276,6 +276,67 @@ describe("runCompileStage — master bus", () => {
   });
 });
 
+const WEBGL_HTML = `<!doctype html>
+<html>
+<head><meta charset="utf-8"></head>
+<body>
+  <div data-composition-id="root" data-width="1920" data-height="1080" data-duration="1">
+    <canvas id="c"></canvas>
+    <script>
+      const gl = document.getElementById("c").getContext("webgl");
+    </script>
+  </div>
+</body>
+</html>`;
+
+describe("runCompileStage — drawElement WebGL gate", () => {
+  it("gates drawElement when composition uses WebGL", async () => {
+    const fixture = setupFixture(WEBGL_HTML);
+    try {
+      const cfg = createCfg({ useDrawElement: true });
+      const result = await runCompileStage({
+        projectDir: join(fixture.workDir, "project"),
+        workDir: fixture.workDir,
+        htmlPath: fixture.htmlPath,
+        entryFile: "index.html",
+        job: createJob(),
+        cfg,
+        needsAlpha: false,
+        log: noopLog,
+        assertNotAborted: () => {},
+      });
+      expect(result.compiled.usesWebGl).toBe(true);
+      expect(result.deCompileGate).toBe("webgl");
+      expect(cfg.useDrawElement).toBe(false);
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  it("does not gate drawElement on standard non-WebGL HTML", async () => {
+    const fixture = setupFixture(PLAIN_HTML);
+    try {
+      const cfg = createCfg({ useDrawElement: true });
+      const result = await runCompileStage({
+        projectDir: join(fixture.workDir, "project"),
+        workDir: fixture.workDir,
+        htmlPath: fixture.htmlPath,
+        entryFile: "index.html",
+        job: createJob(),
+        cfg,
+        needsAlpha: false,
+        log: noopLog,
+        assertNotAborted: () => {},
+      });
+      expect(result.compiled.usesWebGl).toBe(false);
+      expect(result.deCompileGate).toBeUndefined();
+      expect(cfg.useDrawElement).toBe(true);
+    } finally {
+      fixture.cleanup();
+    }
+  });
+});
+
 describe("runCompileStage — font fetch cancellation", () => {
   let fixture: CompileFixture | null = null;
 

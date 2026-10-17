@@ -127,6 +127,8 @@ export interface CompiledComposition {
   usesMixBlendMode: boolean;
   /** Ancestors of the composition root carry a background-image (gradient/url). */
   hasAncestorBackgroundImage: boolean;
+  /** Composition exercises WebGL / WebGPU accelerated canvas contexts. */
+  usesWebGl: boolean;
 }
 
 const INFERRED_MEDIA_DURATION_ATTR = "data-hf-inferred-duration";
@@ -388,6 +390,22 @@ const MIX_BLEND_MODE_PATTERN = /mix-blend-mode\s*:/i;
 
 function detectMixBlendModeUsage(html: string): boolean {
   return MIX_BLEND_MODE_PATTERN.test(html);
+}
+
+/**
+ * Signals that the composition exercises WebGL or WebGPU contexts.
+ * drawElementImage cannot faithfully capture accelerated canvases — they freeze
+ * under seek-based capture or drop texture presentations, triggering the
+ * engine's `webgl-context` init-time risk gate. Detecting WebGL statically
+ * allows the orchestrator to route to the platform baseline (screenshot)
+ * across parallel workers up front instead of falling into the single-worker
+ * inversion.
+ */
+const WEBGL_USAGE_PATTERN =
+  /\.getContext\s*\(\s*["'](?:webgl2?|experimental-webgl|webgpu)["']|\b(?:THREE\.)?WebGL(?:1|2)?Renderer\b|\bWebGL2?RenderingContext\b|\bdata-requires-webgpu\b|\b__hfTypegpuTime\b|\b__hfMapbox\b|\b__hfMaplibre\b|\bwindow\.THREE\b|\bTHREE\.(?:Scene|PerspectiveCamera|OrthographicCamera|DefaultLoadingManager)\b|\b(?:new\s+)?BABYLON\.Engine\b|\b(?:new\s+)?PIXI\.(?:Application|Renderer)\b|<script[^>]*src=["'][^"']*(?:three|pixi|babylon|mapbox-gl|maplibre-gl)(?:[.-]min)?\.js/i;
+
+export function detectWebGlUsage(html: string): boolean {
+  return WEBGL_USAGE_PATTERN.test(html);
 }
 
 /** A background declaration whose value paints an image (gradient or url). */
@@ -2035,6 +2053,7 @@ export async function compileForRender(
   const usesThreeDTransforms = detectThreeDTransformUsage(sanitizedHtml);
   const usesMixBlendMode = detectMixBlendModeUsage(sanitizedHtml);
   const hasAncestorBackgroundImage = detectAncestorBackgroundImage(sanitizedHtml);
+  let usesWebGl = detectWebGlUsage(sanitizedHtml);
 
   const normalizedFontHtml = normalizeSystemFontPrimaryFamilies(
     injectTextRenderingRule(
@@ -2051,6 +2070,9 @@ export async function compileForRender(
 
   // CDN scripts are inlined after coalescing so they stay separate from the merged inline runs.
   const assembledHtml = await inlineExternalScripts(coalescedHtml);
+  if (!usesWebGl && detectWebGlUsage(assembledHtml)) {
+    usesWebGl = true;
+  }
 
   // Inject studio position seek re-apply script when positions are baked into HTML.
   // GSAP overwrites the `translate` CSS property on every frame seek; this script
@@ -2214,6 +2236,7 @@ export async function compileForRender(
     usesThreeDTransforms,
     usesMixBlendMode,
     hasAncestorBackgroundImage,
+    usesWebGl,
   };
 }
 

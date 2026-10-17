@@ -280,6 +280,26 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
         "so page-side compositing stays available.",
     );
   }
+  // WebGL / accelerated canvas gate: drawElementImage cannot faithfully capture
+  // accelerated canvases (they freeze under seek-based capture or drop texture
+  // swaps, triggering the engine's `webgl-context` init-time risk gate).
+  // When a composition uses WebGL, disable drawElementImage so the render uses
+  // the platform's baseline route (screenshot) across parallel workers instead
+  // of collapsing to a single worker under the DE priority inversion.
+  // HF_FAST_CAPTURE_WEBGL=true or HF_FAST_CAPTURE_CSSFX=true bypasses for R&D.
+  if (
+    cfg.useDrawElement &&
+    process.env.HF_FAST_CAPTURE_WEBGL !== "true" &&
+    process.env.HF_FAST_CAPTURE_CSSFX !== "true" &&
+    compiled.usesWebGl
+  ) {
+    cfg.useDrawElement = false;
+    deCompileGate = "webgl";
+    log.info(
+      "[Render] Fast capture: composition uses WebGL / accelerated canvas, so disabling drawElementImage " +
+        "for this render. Capture uses the platform's baseline route.",
+    );
+  }
   // Whenever a compile-time gate cleared useDrawElement, restore page-side
   // compositing — but ONLY when resolveConfig auto-disabled it because
   // drawElement was going to run. An explicit enablePageSideCompositing:false

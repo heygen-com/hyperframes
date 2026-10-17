@@ -2744,6 +2744,9 @@ describe("shouldPreferSingleWorkerDrawElement (DE priority inversion)", () => {
   it("requires drawElement to be enabled and ungated", () => {
     expect(shouldPreferSingleWorkerDrawElement({ ...eligible, useDrawElement: false })).toBe(false);
     expect(shouldPreferSingleWorkerDrawElement({ ...eligible, deCompileGate: "3d" })).toBe(false);
+    expect(shouldPreferSingleWorkerDrawElement({ ...eligible, deCompileGate: "webgl" })).toBe(
+      false,
+    );
     expect(shouldPreferSingleWorkerDrawElement({ ...eligible, forceScreenshot: true })).toBe(false);
   });
 
@@ -2952,6 +2955,7 @@ describe("shouldPreferParallelDrawElement (DE parallel router)", () => {
   it("requires drawElement to be enabled and ungated", () => {
     expect(shouldPreferParallelDrawElement({ ...eligible, useDrawElement: false })).toBe(false);
     expect(shouldPreferParallelDrawElement({ ...eligible, deCompileGate: "3d" })).toBe(false);
+    expect(shouldPreferParallelDrawElement({ ...eligible, deCompileGate: "webgl" })).toBe(false);
     expect(shouldPreferParallelDrawElement({ ...eligible, forceScreenshot: true })).toBe(false);
   });
 
