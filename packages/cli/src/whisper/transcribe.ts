@@ -7,6 +7,7 @@ import { existsSync, readFileSync, mkdirSync, rmSync, statSync, unlinkSync } fro
 import { basename, join, extname } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
+import { probeAudio } from "../audio/analysis/decode.js";
 import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
 import { stoppedByCancelSignal } from "../utils/renderCancellation.js";
 import { stoppableExecFile } from "../utils/stoppableExecFile.js";
@@ -333,6 +334,12 @@ async function runFfmpeg(
   }
 }
 
+/** Selects the playable audio track; ffmpeg's own pick when ffprobe gives no answer. */
+async function audioTrackMap(file: string): Promise<string[]> {
+  const stream = await probeAudio(file).catch(() => null);
+  return stream ? ["-map", `0:a:${stream.track}`] : [];
+}
+
 /**
  * Extract audio from a video file as 16kHz mono WAV (whisper requirement).
  */
@@ -344,9 +351,10 @@ async function extractAudio(videoPath: string, signal?: AbortSignal): Promise<st
     );
   }
   const wavPath = tempWavPath();
+  const map = await audioTrackMap(videoPath);
   await runFfmpeg(
     ffmpegPath,
-    ["-i", videoPath, "-vn", "-ar", "16000", "-ac", "1", "-f", "wav"],
+    ["-i", videoPath, ...map, "-vn", "-ar", "16000", "-ac", "1", "-f", "wav"],
     wavPath,
     resolveAudioPreparationTimeoutMs(getMediaDurationSeconds(videoPath)),
     signal,
@@ -401,9 +409,10 @@ async function prepareAudio(audioPath: string, signal?: AbortSignal): Promise<st
     throw new Error(`ffmpeg is required to prepare audio. Install: ${getFFmpegInstallHint()}`);
   }
   const wavPath = tempWavPath();
+  const map = await audioTrackMap(audioPath);
   await runFfmpeg(
     ffmpegPath,
-    ["-i", audioPath, "-ar", "16000", "-ac", "1", "-f", "wav"],
+    ["-i", audioPath, ...map, "-ar", "16000", "-ac", "1", "-f", "wav"],
     wavPath,
     resolveAudioPreparationTimeoutMs(getMediaDurationSeconds(audioPath)),
     signal,

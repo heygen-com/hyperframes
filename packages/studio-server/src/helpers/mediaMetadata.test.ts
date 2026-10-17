@@ -102,6 +102,19 @@ describe("probeMediaMetadata", () => {
     }));
     expect(silent).toMatchObject({ kind: "video", hasAudio: false });
 
+    // An iPhone spatial track alone plays nowhere, so it is not audio to drop.
+    const spatialOnly = await probeMediaMetadata("/tmp/iphone.mov", () => ({
+      status: 0,
+      stdout: JSON.stringify({
+        streams: [
+          { codec_type: "video", codec_name: "hevc" },
+          { codec_type: "audio", codec_name: "unknown" },
+        ],
+      }),
+      stderr: "",
+    }));
+    expect(spatialOnly).toMatchObject({ kind: "video", hasAudio: false });
+
     // An audio file is not a video; the flag is a video question only.
     const audioFile = await probeMediaMetadata("/tmp/music.wav", () => ({
       status: 0,

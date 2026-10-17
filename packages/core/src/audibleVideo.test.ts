@@ -3,6 +3,7 @@ import {
   AUDIBLE_MEDIA_SELECTOR,
   audibleVideoNeedsWebAudio,
   isAudibleVideoElement,
+  playableAudioTrack,
 } from "./audibleVideo";
 
 const el = (tagName: string, attrs: Record<string, string>) => ({
@@ -64,5 +65,21 @@ describe("audibleVideoNeedsWebAudio", () => {
     { volume: 1, masterChain: '{"version":1,"nodes":[]}' },
   ])("routes a video carrying %o", (fields) => {
     expect(audibleVideoNeedsWebAudio(fields)).toBe(true);
+  });
+});
+
+describe("playableAudioTrack", () => {
+  const video = { codec_type: "video", codec_name: "hevc" };
+  const aac = { codec_type: "audio", codec_name: "aac" };
+  const spatial = { codec_type: "audio", codec_name: "unknown" };
+
+  it("skips an iPhone spatial track ffprobe cannot name, counting audio streams only", () => {
+    expect(playableAudioTrack([video, spatial, aac])).toBe(1);
+    expect(playableAudioTrack([video, aac, spatial])).toBe(0);
+    expect(playableAudioTrack([video, { codec_type: "audio" }, aac])).toBe(1);
+  });
+  it("has no answer when no audio stream plays", () => {
+    expect(playableAudioTrack([video, spatial])).toBeUndefined();
+    expect(playableAudioTrack([video])).toBeUndefined();
   });
 });

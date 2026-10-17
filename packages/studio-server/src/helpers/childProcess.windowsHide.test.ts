@@ -45,6 +45,7 @@ describe("Studio child-process options", () => {
     spawnMock.mockReturnValue(proc);
 
     const peaks = decodeAudioPeaks("/tmp/audio.wav");
+    await vi.waitFor(() => expect(spawnMock).toHaveBeenCalled());
     proc.stdout.emit("data", Buffer.from(new Float32Array([0.5]).buffer));
     proc.emit("close", 0);
     await peaks;

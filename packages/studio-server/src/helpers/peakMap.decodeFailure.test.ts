@@ -21,7 +21,10 @@ describe("decodePeakMap, decode failure", () => {
         writeFileSync(file, `#!/bin/sh\n${body}\n`);
         chmodSync(file, 0o755);
       };
-      script("ffprobe", "echo 2");
+      script(
+        "ffprobe",
+        `echo '{"streams":[{"codec_type":"audio","codec_name":"aac","channels":2}]}'`,
+      );
       script("ffmpeg", "head -c 38400 /dev/zero; exit 1");
       await expect(decodePeakMap("truncated.mov")).rejects.toThrow(/exit 1/);
     },

@@ -115,6 +115,7 @@ const MAX_RAMP_SLICES = 240;
 
 /** Bake a rate lane as consecutive source slices, each stretched by its mean `sourceTimeAt` rate, keeping pitch. */
 function buildRampFilterComplex(
+  input: string,
   lane: RateSpec & object,
   duration: number,
   headFilter: string | null,
@@ -123,7 +124,7 @@ function buildRampFilterComplex(
   const slices = Math.min(MAX_RAMP_SLICES, Math.max(1, Math.ceil(duration / RAMP_SLICE_SECONDS)));
   const step = duration / slices;
   const split = Array.from({ length: slices }, (_, i) => `[s${i}]`).join("");
-  const parts = [`[0:a]${headFilter ? `${headFilter},` : ""}asplit=${slices}${split}`];
+  const parts = [`[${input}]${headFilter ? `${headFilter},` : ""}asplit=${slices}${split}`];
   for (let i = 0; i < slices; i += 1) {
     const from = sourceTimeAt(lane, i * step);
     const to = sourceTimeAt(lane, (i + 1) * step);
@@ -151,11 +152,13 @@ function preparedAudioOutputArgs(
   headFilter: string | null,
 ): string[] {
   const channelFilter = metadata?.channels === 1 ? STEREO_CHANNEL_FILTER : null;
+  const input = metadata ? `0:a:${metadata.audioTrack}` : "0:a";
   const outputArgs = channelFilter ? [] : ["-ac", "2"];
   if (typeof playbackRate === "object") {
-    const graph = buildRampFilterComplex(playbackRate, duration, headFilter, channelFilter);
+    const graph = buildRampFilterComplex(input, playbackRate, duration, headFilter, channelFilter);
     return ["-filter_complex", graph, "-map", "[out]", ...outputArgs];
   }
+  if (metadata) outputArgs.push("-map", input);
   const filters = [headFilter, channelFilter, buildAtempoFilter(playbackRate)].filter(Boolean);
   if (filters.length > 0) outputArgs.push("-af", filters.join(","));
   return outputArgs;

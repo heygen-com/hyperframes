@@ -1,8 +1,14 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
+import { writeIphoneClip } from "./iphoneClip.test-helpers.js";
 import {
   absoluteLoudnessPlan,
   audioTags,
   loudnessMeasureArgs,
+  measureAudio,
   updateAudioVolume,
 } from "./loudness.js";
 
@@ -169,4 +175,26 @@ describe("audioTags on hostile markup", () => {
     const html = `< audio id="vo" src="vo.mp3">< / audio><a_b></a_b>`;
     expect(audioTags(html).map((t) => t.id)).toEqual(["vo"]);
   });
+});
+
+describe("measureAudio on an iPhone clip", () => {
+  const ffmpeg = findFfBinary("ffmpeg");
+  it.skipIf(!ffmpeg || !findFfBinary("ffprobe"))(
+    "measures the AAC voice, not the undecodable spatial track",
+    async () => {
+      const dir = mkdtempSync(join(tmpdir(), "hf-loudness-"));
+      try {
+        const clip = writeIphoneClip(ffmpeg ?? "ffmpeg", dir, 2);
+        const measured = await measureAudio(ffmpeg ?? "ffmpeg", clip, {
+          mediaStart: 0,
+          duration: null,
+        });
+        // ffmpeg's sine is 1/8 amplitude, about -21 LUFS.
+        expect(measured.integratedLufs).toBeGreaterThan(-26);
+        expect(measured.integratedLufs).toBeLessThan(-16);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
 });

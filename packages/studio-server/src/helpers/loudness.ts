@@ -5,6 +5,7 @@ import { isAudibleVideoElement } from "@hyperframes/core/audible-video";
 import { formatAudioGain, MAX_AUDIO_GAIN_DB } from "@hyperframes/core/audio-gain";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { readMediaOffsetSeconds } from "@hyperframes/parsers/media-duration";
+import { probeMediaMetadata } from "./mediaMetadata.js";
 import { requestedProjectPath } from "./requestSubPath.js";
 
 const execFileAsync = promisify(execFile);
@@ -446,12 +447,13 @@ export function updateAudioVolume(html: string, id: string, volume: number): str
  * -61.8 LUFS: output-side `-t 4` reported -33.8 LUFS, input-side reports -61.8,
  * the same as physically cutting the file first.
  */
-export function loudnessMeasureArgs(file: string, tag: MeasuredWindow): string[] {
+export function loudnessMeasureArgs(file: string, tag: MeasuredWindow, audioTrack = 0): string[] {
   const args = ["-hide_banner", "-nostats"];
   if (tag.mediaStart > 0) args.push("-ss", String(tag.mediaStart));
   const sourceSpan = tag.duration === null ? null : tag.duration * (tag.playbackRate ?? 1);
   if (sourceSpan !== null && sourceSpan > 0) args.push("-t", String(sourceSpan));
-  args.push("-i", file, "-map", "0:a:0", "-vn", "-af", "ebur128=peak=true", "-f", "null", "-");
+  args.push("-i", file, "-map", `0:a:${audioTrack}`);
+  args.push("-vn", "-af", "ebur128=peak=true", "-f", "null", "-");
   return args;
 }
 
@@ -463,7 +465,8 @@ export async function measureAudio(
   file: string,
   tag: MeasuredWindow,
 ): Promise<LoudnessMeasurement> {
-  const result = await execFileAsync(ffmpegPath, loudnessMeasureArgs(file, tag), {
+  const { audioTrack } = await probeMediaMetadata(file);
+  const result = await execFileAsync(ffmpegPath, loudnessMeasureArgs(file, tag, audioTrack), {
     encoding: "utf8",
     maxBuffer: 16 * 1024 * 1024,
     timeout: FFMPEG_TIMEOUT_MS,
