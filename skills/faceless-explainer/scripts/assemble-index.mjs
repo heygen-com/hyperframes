@@ -22,9 +22,12 @@
 //   20+i   SFX <audio> (one lane each)
 //
 // audio_meta.json contract (produced by audio.mjs; OPTIONAL — absent ⇒ silent
-// video, frames only). Durations come from STORYBOARD (audio sync-durations
+// video, frames only). Frame durations come from STORYBOARD (audio sync-durations
 // writes them), NOT from here; this file carries only media PATHS, keyed by
-// frame number:
+// frame number. Voice clips are the exception: their data-duration is measured
+// from the audio file itself (probeMediaDuration below), because the storyboard
+// duration includes inter-frame padding while a data-duration longer than the
+// file pads the clip window with silence:
 //   { "bgm":   { "path": "assets/bgm/x.mp3", "volume": 0.12 } | null,
 //     "voices":[ { "frame": 3, "path": "assets/voice/03.wav" } ],
 //     "sfx":   [ { "frame": 3, "file": "assets/sfx/x.mp3", "offset_s": 0,
@@ -372,6 +375,32 @@ if (existsSync(audioMetaPath)) {
 const voiceByFrame = new Map();
 for (const v of audio.voices) if (v.frame != null) voiceByFrame.set(v.frame, v);
 
+// Measure a media file's true length in seconds, the same ffprobe invocation
+// ensureBgmCovers uses. Voice narration stops at the file's end, so its clip
+// window must match the media — a data-duration longer than the file pads the
+// window with silence (dead air between frames). Returns null when ffprobe is
+// unavailable or the duration is unreadable; the caller then falls back to the
+// storyboard duration rather than failing assembly on missing audio tooling.
+function probeMediaDuration(hyperframesDir, relPath) {
+  const probe = spawnSync(
+    "ffprobe",
+    [
+      "-v",
+      "error",
+      "-show_entries",
+      "format=duration",
+      "-of",
+      "csv=p=0",
+      "--",
+      join(hyperframesDir, relPath),
+    ],
+    { encoding: "utf8" },
+  );
+  if (probe.status !== 0) return null;
+  const dur = parseFloat(String(probe.stdout || "").trim());
+  return Number.isFinite(dur) && dur > 0 ? dur : null;
+}
+
 // ---------- build <body> in track order ----------
 const body = [];
 let voiceCount = 0;
@@ -393,12 +422,18 @@ for (const m of mounted) {
   const v = m.frame.number != null ? voiceByFrame.get(m.frame.number) : undefined;
   if (v?.path) {
     if (existsSync(join(hyperframesDir, v.path))) {
+      const voiceDuration = probeMediaDuration(hyperframesDir, v.path);
+      if (voiceDuration == null) {
+        anomalies.push(
+          `${m.compId}: could not probe duration of voice ${v.path} — falling back to the frame duration (${m.durationSeconds}s), which may pad the clip with silence`,
+        );
+      }
       body.push(
         `      <audio`,
         `        id="el-${m.compId}-voice"`,
         `        src="${v.path}"`,
         `        data-start="${m.start}"`,
-        `        data-duration="${m.durationSeconds}"`,
+        `        data-duration="${r3(voiceDuration ?? m.durationSeconds)}"`,
         `        data-track-index="10"`,
         `        data-volume="1"`,
         `      ></audio>`,

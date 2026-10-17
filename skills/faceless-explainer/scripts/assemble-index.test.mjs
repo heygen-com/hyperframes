@@ -125,3 +125,59 @@ test(
     assert.equal(probe.stdout.trim(), "mp3");
   },
 );
+
+// ── voice clip duration = the audio file's length, not the frame's ───────────
+// The storyboard frame duration covers the frame's whole beat, padding included;
+// mounting the voice <audio> with data-duration=frameDuration leaves a window
+// longer than the file, which the runtime fills with silence (dead air before
+// the next frame's line). The assembled voice clip must carry the file's own
+// measured duration.
+function writeVoiceFile(projectDir, relPath, seconds) {
+  const out = join(projectDir, relPath);
+  mkdirSync(join(out, ".."), { recursive: true });
+  const gen = spawnSync(
+    "ffmpeg",
+    ["-y", "-f", "lavfi", "-i", `sine=frequency=440:duration=${seconds}`, out],
+    { encoding: "utf8" },
+  );
+  assert.equal(gen.status, 0, gen.stderr);
+}
+
+test(
+  "voice clip data-duration is the probed media duration, not the frame duration",
+  { skip: !HAS_FFMPEG },
+  () => {
+    const { dir, r } = assembleWith({
+      audioMeta: { bgm: null, voices: [{ frame: 1, path: "assets/voice/01.wav" }], sfx: [] },
+      beforeAssemble: (projectDir) => writeVoiceFile(projectDir, "assets/voice/01.wav", 1.5),
+    });
+
+    assert.equal(r.status, 0, r.stderr);
+    const html = readFileSync(join(dir, "index.html"), "utf8");
+    const voiceEl = html.match(/id="el-01-a-voice"[\s\S]*?data-duration="([^"]+)"/);
+    assert.ok(voiceEl, "expected a voice <audio> element in index.html");
+    const dur = parseFloat(voiceEl[1]);
+    // The frame's storyboard duration is 3s; the file is 1.5s. Allow probe
+    // rounding (container/stream length can differ by a frame or two).
+    assert.ok(Math.abs(dur - 1.5) < 0.1, `voice data-duration should be ~1.5, got ${dur}`);
+    assert.notEqual(dur, 3);
+  },
+);
+
+test("voice clip falls back to the frame duration when the file cannot be probed", () => {
+  const { dir, r } = assembleWith({
+    audioMeta: { bgm: null, voices: [{ frame: 1, path: "assets/voice/01.wav" }], sfx: [] },
+    // Exists on disk (so the clip is mounted) but is not a probeable audio file.
+    beforeAssemble: (projectDir) => {
+      mkdirSync(join(projectDir, "assets", "voice"), { recursive: true });
+      writeFileSync(join(projectDir, "assets", "voice", "01.wav"), "not audio");
+    },
+  });
+
+  assert.equal(r.status, 0, r.stderr);
+  const html = readFileSync(join(dir, "index.html"), "utf8");
+  const voiceEl = html.match(/id="el-01-a-voice"[\s\S]*?data-duration="([^"]+)"/);
+  assert.ok(voiceEl, "expected a voice <audio> element in index.html");
+  assert.equal(parseFloat(voiceEl[1]), 3);
+  assert.match(r.stdout + r.stderr, /could not probe.*01\.wav/);
+});
