@@ -17,6 +17,7 @@ import { basename, join } from "node:path";
 import { S3Client } from "@aws-sdk/client-s3";
 import {
   assemble,
+  chunksAreStitchedMp4,
   type AssembleResult,
   type ChunkRenderer,
   type ChunkResult,
@@ -36,6 +37,7 @@ import {
   renderChunk,
 } from "@hyperframes/producer/distributed";
 import { resolveChromeExecutablePath } from "./chromium.js";
+import { stitchMp4InS3 } from "./s3Stitch.js";
 import { type DistributedFormat, formatExtension } from "./formatExtension.js";
 import type {
   AssembleEvent,
@@ -440,6 +442,7 @@ async function handlePlanV2(
     });
     const manifest: PlanV2Manifest = await primitive(projectDir, config, publisher, {
       stagingParentDir: work,
+      chunksCarryAudio: true,
     });
 
     return {
@@ -551,7 +554,7 @@ async function handleRenderChunkV2(
   }
   const work = mkdtempSync(join(deps?.tmpRoot ?? tmpdir(), "hf-lambda-chunk-v2-"));
   try {
-    const planDir = await downloadAndMaterializePlanV2(
+    const { planDir } = await downloadAndMaterializePlanV2(
       s3,
       event,
       { role: "chunk", chunkIndex: event.ChunkIndex },
@@ -677,7 +680,15 @@ async function handleAssembleV2(
   const primitive = deps?.primitives?.assemble ?? assemble;
   const work = mkdtempSync(join(deps?.tmpRoot ?? tmpdir(), "hf-lambda-assemble-v2-"));
   try {
-    const planDir = await downloadAndMaterializePlanV2(s3, event, { role: "assembler" }, work);
+    const { planDir, manifest } = await downloadAndMaterializePlanV2(
+      s3,
+      event,
+      { role: "assembler" },
+      work,
+    );
+    if (chunksAreStitchedMp4(planDir, event.Cfr === true)) {
+      return await stitchChunksInS3(s3, event, manifest, started);
+    }
     // `downloadAndMaterializePlanV2` materializes atomically. Audio is
     // assembler-only and lives at the familiar v1-compatible location.
     const audioPath = resolvePlanAudioPath(planDir);
@@ -718,6 +729,36 @@ async function handleAssembleV2(
   }
 }
 
+async function stitchChunksInS3(
+  s3: S3Client,
+  event: AssembleV2Event,
+  plan: PlanV2Manifest,
+  started: number,
+): Promise<AssembleLambdaResult> {
+  if (event.ChunkS3Uris.length !== plan.chunkCount) {
+    throw new Error(
+      `[handler] ${event.ChunkS3Uris.length} chunk URIs for a plan of ${plan.chunkCount} chunks`,
+    );
+  }
+  const stitchStarted = Date.now();
+  const stitched = await stitchMp4InS3(s3, event.ChunkS3Uris, event.OutputS3Uri);
+  logEvent({
+    event: "assemble_stages",
+    mode: "s3-stitch",
+    planMs: stitchStarted - started,
+    stitchMs: Date.now() - stitchStarted,
+    parts: stitched.parts,
+    downloadedBytes: stitched.downloadedBytes,
+  });
+  return {
+    Action: "assemble",
+    OutputS3Uri: event.OutputS3Uri,
+    FramesEncoded: plan.totalFrames,
+    FileSize: stitched.fileSize,
+    DurationMs: Date.now() - started,
+  };
+}
+
 async function downloadAndMaterializePlanV2(
   s3: S3Client,
   event: {
@@ -727,7 +768,7 @@ async function downloadAndMaterializePlanV2(
   },
   target: PlanV2MaterializationTarget,
   work: string,
-): Promise<string> {
+): Promise<{ planDir: string; manifest: PlanV2Manifest }> {
   const transportDir = join(work, "plan-v2");
   mkdirSync(transportDir, { recursive: true });
   await downloadS3ObjectToFile(s3, event.PlanV2ManifestS3Uri, join(transportDir, "plan.json"));
@@ -744,7 +785,7 @@ async function downloadAndMaterializePlanV2(
   });
   const planDir = join(work, "plan");
   materializePlanV2Target(transportDir, target, planDir);
-  return planDir;
+  return { planDir, manifest };
 }
 
 async function downloadPlanV2Artifact(

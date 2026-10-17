@@ -391,7 +391,7 @@ async function runAssembleFfmpeg(
 }
 
 /** Chunks that carry their audio are stitched under one index, the same bytes as the S3 stitch. */
-function chunksAreStitchedMp4(planDir: string, cfr: boolean): boolean {
+export function chunksAreStitchedMp4(planDir: string, cfr: boolean): boolean {
   if (!chunksCarryAudio(planDir)) return false;
   if (cfr) {
     throw new Error("[assemble] cfr=true cannot re-encode a plan whose mp4 chunks carry audio");

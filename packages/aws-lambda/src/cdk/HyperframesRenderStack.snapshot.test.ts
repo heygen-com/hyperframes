@@ -279,6 +279,18 @@ describe("HyperframesRenderStack — snapshot", () => {
     }
   });
 
+  it("lets the render function abort the multipart uploads its S3 stitch starts", () => {
+    const cdkPolicies = JSON.stringify(SYNTHED.template.findResources("AWS::IAM::Policy"));
+    expect(cdkPolicies).toContain("s3:Abort*");
+    const samFunction = requireRecordProperty(readSamResources(), "RenderFunction", "SAM function");
+    const samProperties = requireRecordProperty(
+      samFunction,
+      "Properties",
+      "SAM function properties",
+    );
+    expect(JSON.stringify(samProperties.Policies)).toContain("s3:AbortMultipartUpload");
+  });
+
   it("keeps same-named Lambda tasks in different branches apart", () => {
     const task = (format: string) => ({
       Type: "Task",
@@ -433,7 +445,7 @@ function getV1TaskStates(definition: {
   };
 }
 
-function readSamDefinition(): { States: Record<string, unknown> } {
+function readSamResources(): Record<string, unknown> {
   const source = readFileSync(
     new URL("../../../../examples/aws-lambda/template.yaml", import.meta.url),
     "utf8",
@@ -443,7 +455,11 @@ function readSamDefinition(): { States: Record<string, unknown> } {
   // warnings for the intentionally unresolved `!Ref`/`!GetAtt` tags.
   const parsed: unknown = parseYaml(source, { logLevel: "silent" });
   const root = requireRecord(parsed, "SAM template");
-  const resources = requireRecordProperty(root, "Resources", "SAM resources");
+  return requireRecordProperty(root, "Resources", "SAM resources");
+}
+
+function readSamDefinition(): { States: Record<string, unknown> } {
+  const resources = readSamResources();
   const stateMachine = requireRecordProperty(
     resources,
     "RenderStateMachine",

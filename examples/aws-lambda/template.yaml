@@ -162,6 +162,10 @@ Resources:
       Policies:
         - S3CrudPolicy:
             BucketName: !Ref RenderBucket
+        - Statement:
+            - Effect: Allow
+              Action: s3:AbortMultipartUpload
+              Resource: !Sub "arn:${AWS::Partition}:s3:::${RenderBucket}/*"
       # CloudWatch Logs perms are covered by SAM's default
       # AWSLambdaBasicExecutionRole — explicit `CloudWatchLogsFullAccess`
       # would be overscope (`logs:*` on `*`, including DeleteLogGroup +
