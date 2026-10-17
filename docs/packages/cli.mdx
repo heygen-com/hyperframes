@@ -215,6 +215,12 @@ link-local and special-use addresses are refused. IPv6-only sites are currently
 unsupported. Plain WebSocket upgrades are refused; slow or refused resources
 may be absent from the capture.
 
+Capture needs direct internet access. Since 0.8.164 it does not use
+`HTTPS_PROXY` or `HTTP_PROXY`: its own proxy dials each checked public address
+itself. Where the only way out is a proxy, as in some sandboxes and corporate
+networks, every page fails with `net::ERR_TUNNEL_CONNECTION_FAILED`, even though
+`curl` reaches the same site through that proxy.
+
 Capture uses a temporary browser profile with non-proxied WebRTC UDP disabled.
 The profile and proxy are removed when the browser closes. The Chromium sandbox
 is retained on macOS and Windows; Linux retains the container compatibility
