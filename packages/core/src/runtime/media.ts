@@ -331,6 +331,8 @@ function steeredVideoRate(el: HTMLMediaElement, offset: number, baseRate: number
   return baseRate * (1 + direction * VIDEO_STEER);
 }
 
+export type MediaResyncReason = "hard" | "strict";
+
 // fallow-ignore-next-line complexity
 export function syncRuntimeMedia(params: {
   clips: RuntimeMediaClip[];
@@ -372,6 +374,8 @@ export function syncRuntimeMedia(params: {
   /** Lets a video clip that runs to the composition end hold its last frame at the terminal time.
    *  A thunk, because deriving the duration is only worth it for a clip past its own end. */
   getCompositionDuration: () => number;
+  /** A playing video was seeked back onto the playhead; `drift` is the pre-seek gap in seconds. */
+  onResync?: (el: HTMLMediaElement, drift: number, reason: MediaResyncReason) => void;
 }): void {
   const forceMuteAll = !!(params.outputMuted || params.userMuted);
   for (const clip of params.clips) {
@@ -633,6 +637,11 @@ export function syncRuntimeMedia(params: {
         // only exists during render).
         const skipForInjectedVideo = el.tagName === "VIDEO" && !!findInjectedRenderFrame(el);
         if (!skipForInjectedVideo) {
+          // A clip's first tick is its initial placement and a forced tick is the transport's own
+          // move (seek, play, loop); only drift the video made by itself is a resync.
+          if (el.tagName === "VIDEO" && playing && !firstTickOfClip && !params.forceSync) {
+            params.onResync?.(el, drift, hardSync ? "hard" : "strict");
+          }
           try {
             el.currentTime = relTime;
           } catch (err) {

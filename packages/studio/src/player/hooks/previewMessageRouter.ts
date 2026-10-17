@@ -14,6 +14,7 @@ import type { ClipManifestClip, IframeWindow, PlaybackAdapter } from "../lib/pla
 import { hasTimelinePerformanceFixtureLease } from "../lib/timelinePerformanceFixture";
 import { acceptStudioRuntimeMessage } from "../lib/runtimeProtocol";
 import { parseTimelineFromDOM } from "../lib/timelineDOM";
+import { trackMediaResynced } from "../../telemetry/events";
 
 /** What `processTimelineMessage` accepts — the clip-manifest postMessage. */
 export interface ClipManifestMessage {
@@ -29,6 +30,8 @@ interface PreviewMessage {
   source?: string;
   type?: string;
   clips?: unknown;
+  event?: unknown;
+  properties?: unknown;
 }
 
 export interface PreviewMessageRouterDeps {
@@ -113,6 +116,11 @@ export function createPreviewMessageHandler(
     const data = acceptedPreviewMessage(e, iframe);
     if (!data) return;
     if (data.type === "state") return handleStateMessage(deps, iframe);
+    // Only this runtime analytics event goes to telemetry; the others stay local.
+    if (data.type === "analytics" && data.event === "media_resynced") {
+      const props = data.properties;
+      return trackMediaResynced(typeof props === "object" && props !== null ? { ...props } : {});
+    }
     if (data.type === "timeline" && Array.isArray(data.clips)) {
       handleTimelineMessage(deps, iframe, data as unknown as ClipManifestMessage);
     }

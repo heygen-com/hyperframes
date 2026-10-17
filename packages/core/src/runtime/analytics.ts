@@ -18,7 +18,8 @@ export type RuntimeAnalyticsEvent =
   | "auto_marker_install_failed"
   | "custom_ease_install_failed"
   | "custom_ease_parse_failed"
-  | "keyframe_ease_repair_failed";
+  | "keyframe_ease_repair_failed"
+  | "media_resynced";
 
 export type RuntimeAnalyticsProperties = Record<string, string | number | boolean | null>;
 

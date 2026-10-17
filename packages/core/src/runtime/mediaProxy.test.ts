@@ -14,9 +14,11 @@ import {
   handleErrorForProxy,
   handleMetadataForProxy,
   maybeProxyProactively,
+  reportMediaResync,
   swapToProxy,
   type MediaCodecMapEntry,
 } from "./mediaProxy";
+import { initRuntimeAnalytics } from "./analytics";
 
 vi.mock("./bridge", () => ({
   postRuntimeMessage: vi.fn(),
@@ -867,5 +869,83 @@ describe("a copy sized to how large the video shows", () => {
     made = true;
     await vi.advanceTimersByTimeAsync(2_000);
     expect(boxOf(el)).toBe("2896x4096");
+  });
+});
+
+describe("media_resynced event", () => {
+  const posted = vi.fn();
+  const resyncEvents = () =>
+    posted.mock.calls.map(([msg]) => msg).filter((msg) => msg.event === "media_resynced");
+
+  function playingVideo(src: string) {
+    const el = createVideo(src);
+    Object.defineProperty(el, "paused", { value: false, writable: true, configurable: true });
+    Object.defineProperty(el, "currentTime", { value: 2, writable: true, configurable: true });
+    el.play = vi.fn(() => Promise.resolve());
+    el.pause = vi.fn();
+    const clip = {
+      el,
+      start: 0,
+      mediaStart: 0,
+      duration: 30,
+      end: 30,
+      volume: null,
+      playbackRate: 1,
+      loop: false,
+      sourceDuration: null,
+    };
+    const tick = (timeSeconds: number, playing = true) =>
+      syncRuntimeMedia({
+        clips: [clip],
+        timeSeconds,
+        playing,
+        playbackRate: 1.15,
+        onResync: reportMediaResync,
+      });
+    return { el, tick };
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    posted.mockReset();
+    initRuntimeAnalytics(posted);
+    window.__HF_MEDIA_CODEC_MAP__ = { "/video.mp4": HEVC_ENTRY };
+  });
+
+  it("emits one event when a playing video is hard-resynced, with drift, codec, rate and copy", () => {
+    const { el, tick } = playingVideo("/video.mp4?hf-proxy=h264");
+    tick(2);
+    expect(resyncEvents()).toEqual([]);
+    tick(5.27);
+    expect(el.currentTime).toBe(5.27);
+    expect(resyncEvents()).toEqual([
+      {
+        source: "hf-preview",
+        type: "analytics",
+        event: "media_resynced",
+        properties: { drift: 3.3, codec: "hevc", rate: 1.15, copy: true, reason: "hard" },
+      },
+    ]);
+  });
+
+  it("emits nothing for a jump while paused", () => {
+    const { el, tick } = playingVideo("/video.mp4");
+    tick(2, false);
+    tick(8, false);
+    expect(el.currentTime).toBe(8);
+    expect(resyncEvents()).toEqual([]);
+  });
+
+  it("emits at most one event per element per 10 s", () => {
+    const { tick } = playingVideo("/video.mp4");
+    tick(2);
+    tick(6);
+    vi.advanceTimersByTime(9_000);
+    tick(12);
+    expect(resyncEvents()).toHaveLength(1);
+    vi.advanceTimersByTime(1_000);
+    tick(18);
+    expect(resyncEvents()).toHaveLength(2);
+    expect(resyncEvents()[1].properties).toMatchObject({ codec: "hevc", copy: false });
   });
 });

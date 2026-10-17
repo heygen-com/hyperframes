@@ -1,6 +1,7 @@
 import { postRuntimeMessage } from "./bridge";
 import { swallow } from "./diagnostics";
-import { evictMediaSyncState, HOLD_CAP_MS } from "./media";
+import { emitAnalyticsEvent } from "./analytics";
+import { evictMediaSyncState, HOLD_CAP_MS, type MediaResyncReason } from "./media";
 import { findInjectedRenderFrame } from "./renderFrameSibling";
 import type { RuntimeJson } from "./types";
 import { isVideoElement } from "./domRealm";
@@ -251,6 +252,37 @@ function lookupCodecMapEntry(
     lookupLongestExactSuffix(pathname, map) ??
     lookupNormalizedSuffix(pathname, map)
   );
+}
+
+const RESYNC_EVENT_INTERVAL_MS = 10_000;
+const lastResyncEventAt = new WeakMap<HTMLMediaElement, number>();
+
+/** One `media_resynced` event per element per 10 s; carries no file names. */
+export function reportMediaResync(
+  el: HTMLMediaElement,
+  drift: number,
+  reason: MediaResyncReason,
+): void {
+  const now = Date.now();
+  const last = lastResyncEventAt.get(el);
+  if (last !== undefined && now - last < RESYNC_EVENT_INTERVAL_MS) return;
+  lastResyncEventAt.set(el, now);
+  const map = window.__HF_MEDIA_CODEC_MAP__;
+  const key = map ? deriveCodecMapKey(el) : null;
+  const entry = map && key !== null ? lookupCodecMapEntry(key, map) : null;
+  let copy = false;
+  try {
+    copy = new URL(currentSrcValue(el), document.baseURI).searchParams.has(PROXY_QUERY_PARAM);
+  } catch (err) {
+    swallow("runtime.mediaProxy.resyncCopy", err);
+  }
+  emitAnalyticsEvent("media_resynced", {
+    drift: Math.round(drift * 10) / 10,
+    codec: entry?.codecName ?? null,
+    rate: el.playbackRate,
+    copy,
+    reason,
+  });
 }
 
 function appendProxyParam(src: string, variant: string, box: PreviewProxyBox | null): string {

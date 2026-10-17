@@ -37,6 +37,20 @@ export function trackStudioRenderStart(props: {
   });
 }
 
+/** The preview runtime seeked a playing video back onto the playhead. Unknown shapes are dropped. */
+export function trackMediaResynced(props: Record<string, unknown>): void {
+  const { drift, codec, rate, copy, reason } = props;
+  if (typeof drift !== "number" || typeof rate !== "number" || typeof copy !== "boolean") return;
+  if (reason !== "hard" && reason !== "strict") return;
+  trackEvent("media_resynced", {
+    drift,
+    codec: typeof codec === "string" && /^[\w.-]{1,32}$/.test(codec) ? codec : undefined,
+    rate,
+    copy,
+    reason,
+  });
+}
+
 export type StudioTimelinePerformanceSample = {
   total_clip_count: number;
   mounted_clip_count: number;

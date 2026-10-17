@@ -66,6 +66,7 @@ import {
   handleErrorForProxy,
   handleMetadataForProxy,
   maybeProxyProactively,
+  reportMediaResync,
   setProxyDisplayScale,
 } from "./mediaProxy";
 import {
@@ -3340,6 +3341,7 @@ export function initSandboxRuntimeModular(): void {
           webAudio.setElementVolume(el, authorVolume),
         isWebAudioOwned: (el) => webAudio.ownsElement(el),
         isWebAudioRouted: (el) => webAudio.routesElement(el),
+        onResync: reportMediaResync,
         onAutoplayBlocked: () => {
           if (state.mediaAutoplayBlockedPosted) return;
           state.mediaAutoplayBlockedPosted = true;
