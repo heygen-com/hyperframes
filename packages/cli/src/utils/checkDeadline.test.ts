@@ -1,3 +1,4 @@
+import { TimeoutError, type Page } from "puppeteer-core";
 import { afterEach, expect, it, vi } from "vitest";
 import { CheckDeadline, CheckDeadlineError } from "./checkDeadline.js";
 
@@ -92,4 +93,47 @@ it("closing before browser readiness prevents a later clock from starting", asyn
   await vi.advanceTimersByTimeAsync(150_000);
   expect(vi.getTimerCount()).toBe(0);
   expect(deadline.signal.aborted).toBe(false);
+});
+
+/** A deadline whose page has said a composition's script started and not finished, or none. */
+async function deadlineWithRunningScript(running: string | null): Promise<CheckDeadline> {
+  const deadline = new CheckDeadline();
+  const listeners: Array<(message: { text(): string }) => void> = [];
+  const page = {
+    on: (_event: string, listener: (message: { text(): string }) => void) =>
+      listeners.push(listener),
+    evaluateOnNewDocument: async () => {},
+  };
+  await deadline.preparePage(page as unknown as Page);
+  deadline.start();
+  if (running)
+    for (const listener of listeners)
+      listener({ text: () => `[hyperframes:script:start] ${running}` });
+  return deadline;
+}
+
+const loadTimesOut = () =>
+  Promise.reject(new TimeoutError("Navigation timeout of 10000 ms exceeded"));
+
+it("a page load that times out while a composition's script runs names that script, as the deadline would", async () => {
+  const deadline = await deadlineWithRunningScript("compositions/hang.html");
+  try {
+    const failed = deadline.run(loadTimesOut);
+    await expect(failed).rejects.toBeInstanceOf(CheckDeadlineError);
+    await expect(failed).rejects.toMatchObject({
+      sourceFile: "compositions/hang.html",
+      message: expect.stringContaining("script did not finish"),
+    });
+  } finally {
+    await deadline.close();
+  }
+});
+
+it("a page load that times out with no script running stays a navigation timeout", async () => {
+  const deadline = await deadlineWithRunningScript(null);
+  try {
+    await expect(deadline.run(loadTimesOut)).rejects.toBeInstanceOf(TimeoutError);
+  } finally {
+    await deadline.close();
+  }
 });
