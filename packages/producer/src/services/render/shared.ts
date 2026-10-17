@@ -454,6 +454,7 @@ type MaterializeExtractedFramesOptions = {
    * Default `false` preserves the in-process renderer's symlink behavior.
    */
   materializeSymlinks?: boolean;
+  frameRootName?: string;
 };
 
 const materializePathModule: MaterializePathModule = {
@@ -642,7 +643,10 @@ export function materializeExtractedFramesForCompiledDir(
   const pathModule = options.pathModule ?? materializePathModule;
   const fileSystem = options.fileSystem ?? materializeFileSystem;
   const resolvedCompiledDir = pathModule.resolve(compiledDir);
-  const compiledFrameRoot = pathModule.join(resolvedCompiledDir, "__hyperframes_video_frames");
+  const compiledFrameRoot = pathModule.join(
+    resolvedCompiledDir,
+    options.frameRootName ?? "__hyperframes_video_frames",
+  );
 
   for (const ext of extracted) {
     const resolvedOut = pathModule.resolve(ext.outputDir);

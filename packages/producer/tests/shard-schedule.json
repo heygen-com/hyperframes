@@ -23,6 +23,7 @@
     "gsap-letters-render-compat": 9,
     "gsap-redraw-start-and-overlap": 6,
     "hdr-hlg-regression": 125,
+    "hdr-overlay-filter-regression": 30,
     "hdr-regression": 207,
     "iframe-render-compat": 11,
     "many-cuts": 16,

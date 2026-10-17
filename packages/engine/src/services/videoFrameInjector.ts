@@ -11,7 +11,11 @@ import { type Page } from "puppeteer-core";
 import { promises as fs } from "fs";
 import { type FrameLookupTable } from "./videoFrameExtractor.js";
 import { touchCacheDir } from "./extractionCache.js";
-import { injectVideoFramesBatch, syncVideoFrameVisibility } from "./screenshotService.js";
+import {
+  HDR_LAYER_UNIT_ATTR,
+  injectVideoFramesBatch,
+  syncVideoFrameVisibility,
+} from "./screenshotService.js";
 import { type BeforeCaptureHook } from "./frameCapture.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import {
@@ -186,7 +190,7 @@ export function createVideoFrameInjector(
   );
   const bytesLimit = bytesLimitMb * 1024 * 1024;
   const frameCache = createFrameSourceCache(entryLimit, bytesLimit, config?.frameSrcResolver);
-  const lastInjectedFrameByVideo = new Map<string, number>();
+  const lastInjectedFrameByVideo = new Map<string, string>();
   const lastCacheTouchByDir = new Map<string, number>();
 
   /**
@@ -213,19 +217,18 @@ export function createVideoFrameInjector(
       }
     }
 
-    const updates: Array<{ videoId: string; dataUri: string; frameIndex: number }> = [];
+    const updates: Array<{ videoId: string; dataUri: string; framePath: string }> = [];
     const activeIds = new Set<string>();
     if (activePayloads.size > 0) {
-      const pendingReads: Array<Promise<{ videoId: string; dataUri: string; frameIndex: number }>> =
+      const pendingReads: Array<Promise<{ videoId: string; dataUri: string; framePath: string }>> =
         [];
       for (const [videoId, payload] of activePayloads) {
         activeIds.add(videoId);
-        const lastFrameIndex = lastInjectedFrameByVideo.get(videoId);
-        if (lastFrameIndex === payload.frameIndex) continue;
+        if (lastInjectedFrameByVideo.get(videoId) === payload.framePath) continue;
         pendingReads.push(
           frameCache
             .get(payload.framePath)
-            .then((dataUri) => ({ videoId, dataUri, frameIndex: payload.frameIndex })),
+            .then((dataUri) => ({ videoId, dataUri, framePath: payload.framePath })),
         );
       }
       updates.push(...(await Promise.all(pendingReads)));
@@ -243,7 +246,7 @@ export function createVideoFrameInjector(
       // injectVideoFramesBatch skips any video whose visual ancestor is
       // hidden (sub-comp host out-of-window) and returns the subset of ids
       // it really wrote — recording the rest would short-circuit the next
-      // call at the same frameIndex and leave the host's first visible
+      // call at the same frame and leave the host's first visible
       // frame blank.
       const injectedIds = new Set(
         await injectVideoFramesBatch(
@@ -253,7 +256,7 @@ export function createVideoFrameInjector(
       );
       for (const update of updates) {
         if (injectedIds.has(update.videoId)) {
-          lastInjectedFrameByVideo.set(update.videoId, update.frameIndex);
+          lastInjectedFrameByVideo.set(update.videoId, update.framePath);
         }
       }
       if (injectedIds.size > 0) {
@@ -458,7 +461,13 @@ export async function queryElementStacking(
   const hdrIds = Array.from(nativeHdrIds);
   return page.evaluate(
     // fallow-ignore-next-line complexity
-    (hdrIdList: string[], prefix: string, suffix: string): ElementStackingInfo[] => {
+    (
+      hdrIdList: string[],
+      prefix: string,
+      suffix: string,
+      layerUnitAttr: string,
+      canvasPrefix: string,
+    ): ElementStackingInfo[] => {
       const hdrSet = new Set(hdrIdList);
       const elements = document.querySelectorAll("[data-start]");
       const results: ElementStackingInfo[] = [];
@@ -698,58 +707,126 @@ export async function queryElementStacking(
         );
       }
 
-      for (const el of elements) {
-        // Report the render id so callers can match these back to the media list.
-        // `||`, not `??`: `__hfMediaId` yields "" for an element with neither id.
-        const id = window.__hfMediaId?.(el) || el.id;
-        if (!id) continue;
+      function isRenderFrameVisible(id: string): boolean {
+        const renderFrame = document.getElementById(`${prefix}${id}${suffix}`);
+        return renderFrame ? isElementPaintable(renderFrame) : false;
+      }
+
+      // For HDR elements, use the full accumulated viewport matrix so the
+      // affine blit can apply rotation/scale/translate properly. For DOM
+      // elements, the element-level transform is sufficient for reference.
+      function blitGeometry(
+        el: Element,
+        style: CSSStyleDeclaration,
+        isHdrEl: boolean,
+      ): Pick<ElementStackingInfo, "transform" | "borderRadius" | "clipRect"> {
+        if (!isHdrEl) {
+          return {
+            transform: style.transform || "none",
+            borderRadius: [0, 0, 0, 0],
+            clipRect: null,
+          };
+        }
+        return {
+          transform: getViewportMatrix(el),
+          borderRadius: getEffectiveBorderRadius(el),
+          clipRect: getClipRect(el),
+        };
+      }
+
+      function describe(el: Element, id: string): ElementStackingInfo {
         const rect = el.getBoundingClientRect();
         const style = window.getComputedStyle(el);
-        const zIndex = getEffectiveZIndex(el);
         const isHdrEl = hdrSet.has(id);
-        // The frame injector now uses `visibility: hidden` (without `opacity: 0`)
-        // to hide native <video> elements, so the element's own computed opacity
-        // remains the GSAP-controlled value. Walk from the element itself to
-        // multiply through any ancestor opacity stacks.
-        const opacity = getEffectiveOpacity(el);
-        const visible = isElementPaintable(el);
-        const renderFrame = document.getElementById(`${prefix}${id}${suffix}`);
-        const renderFrameVisible = renderFrame ? isElementPaintable(renderFrame) : false;
         // offsetWidth/offsetHeight only exist on HTMLElement (not on
         // SVGElement, MathMLElement, etc.). Fall back to the bounding rect
         // dimensions for non-HTML elements so callers always get sensible
         // layout numbers.
         const htmlEl = el instanceof HTMLElement ? el : null;
-        results.push({
+        return {
           id,
-          zIndex,
+          zIndex: getEffectiveZIndex(el),
           x: Math.round(rect.x),
           y: Math.round(rect.y),
           width: Math.round(rect.width),
           height: Math.round(rect.height),
           layoutWidth: htmlEl?.offsetWidth || Math.round(rect.width),
           layoutHeight: htmlEl?.offsetHeight || Math.round(rect.height),
-          opacity,
-          visible,
-          renderFrameVisible,
-          isHdr: hdrSet.has(id),
-          // For HDR elements, use the full accumulated viewport matrix so the
-          // affine blit can apply rotation/scale/translate properly. For DOM
-          // elements, the element-level transform is sufficient for reference.
-          transform: isHdrEl ? getViewportMatrix(el) : style.transform || "none",
-          borderRadius: isHdrEl ? getEffectiveBorderRadius(el) : [0, 0, 0, 0],
+          // The frame injector now uses `visibility: hidden` (without `opacity: 0`)
+          // to hide native <video> elements, so the element's own computed opacity
+          // remains the GSAP-controlled value. Walk from the element itself to
+          // multiply through any ancestor opacity stacks.
+          opacity: getEffectiveOpacity(el),
+          visible: isElementPaintable(el),
+          renderFrameVisible: isRenderFrameVisible(id),
+          isHdr: isHdrEl,
+          ...blitGeometry(el, style, isHdrEl),
           // `getComputedStyle` returns "" when the property doesn't apply (e.g.
           // for non-replaced elements); normalize to the CSS defaults so callers
           // can rely on a populated value.
           objectFit: style.objectFit || "fill",
           objectPosition: style.objectPosition || "50% 50%",
-          clipRect: isHdrEl ? getClipRect(el) : null,
-        });
+        };
+      }
+
+      const hdrElements: Element[] = [];
+      const described = new Set<Element>();
+      for (const el of elements) {
+        // Report the render id so callers can match these back to the media list.
+        // `||`, not `??`: `__hfMediaId` yields "" for an element with neither id.
+        const id = window.__hfMediaId?.(el) || el.id;
+        if (!id) continue;
+        results.push(describe(el, id));
+        described.add(el);
+        if (hdrSet.has(id)) hdrElements.push(el);
+      }
+
+      // Content without its own entry that paints above an HDR element (a later sibling of it or of an
+      // ancestor, or one with a higher z-index) is its own layer, so the HDR blit stays under it.
+      const lastHdrBelow = new Map<Element, Element>();
+      for (const hdrEl of hdrElements) {
+        const hdrZ = getEffectiveZIndex(hdrEl);
+        for (
+          let node: Element = hdrEl;
+          node.parentElement && node.parentElement !== document.body;
+          node = node.parentElement
+        ) {
+          let afterNode = false;
+          for (const sibling of node.parentElement.children) {
+            if (sibling === node) {
+              afterNode = true;
+              continue;
+            }
+            if (described.has(sibling) || sibling.matches("script,style,template,link,meta"))
+              continue;
+            if (sibling.id.startsWith(prefix) || sibling.id.startsWith(canvasPrefix)) continue;
+            const siblingZ = getEffectiveZIndex(sibling);
+            if (siblingZ > hdrZ || (siblingZ === hdrZ && afterNode))
+              lastHdrBelow.set(sibling, hdrEl);
+          }
+        }
+      }
+      const seq = window as unknown as { __hfLayerUnitSeq?: number };
+      const placedAfter = new Map<Element, number>();
+      for (const [unit, hdrEl] of lastHdrBelow) {
+        let unitId = unit.getAttribute(layerUnitAttr);
+        if (!unitId) {
+          seq.__hfLayerUnitSeq = (seq.__hfLayerUnitSeq ?? 0) + 1;
+          unitId = `hf-layer-unit-${seq.__hfLayerUnitSeq}`;
+          unit.setAttribute(layerUnitAttr, unitId);
+        }
+        const hdrId = window.__hfMediaId?.(hdrEl) || hdrEl.id;
+        const placed = placedAfter.get(hdrEl) ?? 0;
+        const at = results.findIndex((entry) => entry.id === hdrId);
+        results.splice(at + 1 + placed, 0, describe(unit, unitId));
+        placedAfter.set(hdrEl, placed + 1);
       }
       return results;
     },
     hdrIds,
     RENDER_FRAME_ID_PREFIX,
     RENDER_FRAME_ID_SUFFIX,
+    HDR_LAYER_UNIT_ATTR,
+    HF_COLOR_GRADING_CANVAS_ID_PREFIX,
   );
 }

@@ -70,6 +70,7 @@ import {
   cleanupHdrVideoFrameSource,
   extractHdrVideoFrames,
   planHdrResources,
+  findCssFilteredVideos,
   probeHdrExtractionDims,
 } from "./captureHdrResources.js";
 import { partitionTransitionFrames, shouldUseHybridLayeredPath } from "./captureHdrFrameShared.js";
@@ -100,6 +101,11 @@ export interface CaptureHdrStageInput {
   effectiveHdr: { transfer: HdrTransfer } | undefined;
   nativeHdrVideoIds: Set<string>;
   nativeHdrImageIds: Set<string>;
+  /** Re-extracts these HDR videos tone-mapped to SDR, for the frame injector to show. */
+  toneMapVideosToSdr: (
+    videoIds: ReadonlySet<string>,
+    hdrTransfer: HdrTransfer | undefined,
+  ) => Promise<void>;
   videoTransfers: Map<string, HdrTransfer>;
   imageTransfers: Map<string, HdrTransfer>;
   hdrImageSrcPaths: Map<string, string>;
@@ -149,8 +155,9 @@ export async function runCaptureHdrStage(
     composition,
     hasHdrContent,
     effectiveHdr,
-    nativeHdrVideoIds,
+    nativeHdrVideoIds: probedHdrVideoIds,
     nativeHdrImageIds,
+    toneMapVideosToSdr,
     videoTransfers,
     imageTransfers,
     hdrImageSrcPaths,
@@ -171,7 +178,6 @@ export async function runCaptureHdrStage(
   let lastBrowserConsole: string[] = [];
   let captureDurationMs = 0;
   let encodeMs = 0;
-  const nativeHdrIds = new Set([...nativeHdrVideoIds, ...nativeHdrImageIds]);
 
   log.info(
     hasHdrContent
@@ -195,16 +201,6 @@ export async function runCaptureHdrStage(
 
   if (!fileServer) throw new Error("fileServer must be initialized before HDR compositing");
 
-  // Plan HDR resources (videos to extract, images to decode, layout-probe
-  // start times) up-front — pure data transformation, no IO yet.
-  const prep = planHdrResources({
-    composition,
-    nativeHdrVideoIds,
-    nativeHdrImageIds,
-    projectDir,
-    compiledDir,
-  });
-
   const domSession = await createCaptureSession(
     fileServer.url,
     framesDir,
@@ -223,6 +219,33 @@ export async function runCaptureHdrStage(
     assertNotAborted();
     lastBrowserConsole = domSession.browserConsoleBuffer;
     await initTransparentBackground(domSession.page, { clearCompositionRoot: true });
+
+    // The HDR blit cannot apply CSS filters, so a filtered HDR video renders like the preview,
+    // through the SDR path.
+    const filtered = await findCssFilteredVideos(
+      domSession.page,
+      composition.videos.filter((video) => probedHdrVideoIds.has(video.id)),
+    );
+    for (const { id, filter } of filtered) {
+      log.info(
+        `[Render] HDR video "${id}" renders through the SDR path: CSS filter ${filter} applies to it at its start`,
+      );
+    }
+    const compositeTransfer = resolveCompositeTransfer(hasHdrContent, effectiveHdr);
+    const hdrTargetTransfer = compositeTransfer === "srgb" ? undefined : compositeTransfer;
+    if (filtered.length > 0) {
+      await toneMapVideosToSdr(new Set(filtered.map((f) => f.id)), hdrTargetTransfer);
+    }
+    const sdrVideoIds = new Set(filtered.map((f) => f.id));
+    const nativeHdrVideoIds = new Set([...probedHdrVideoIds].filter((id) => !sdrVideoIds.has(id)));
+    const nativeHdrIds = new Set([...nativeHdrVideoIds, ...nativeHdrImageIds]);
+    const prep = planHdrResources({
+      composition,
+      nativeHdrVideoIds,
+      nativeHdrImageIds,
+      projectDir,
+      compiledDir,
+    });
 
     // ── Scene detection for shader transitions ──────────────────────────
     const transitionMeta: HdrTransitionMeta[] = await domSession.page.evaluate(() => {
@@ -321,8 +344,6 @@ export async function runCaptureHdrStage(
       if (debugDumpDir && !existsSync(debugDumpDir)) {
         mkdirSync(debugDumpDir, { recursive: true });
       }
-      const compositeTransfer = resolveCompositeTransfer(hasHdrContent, effectiveHdr);
-      const hdrTargetTransfer = compositeTransfer === "srgb" ? undefined : compositeTransfer;
       const hdrCacheMaxBytes = process.env.HDR_TRANSFER_CACHE_MAX_BYTES
         ? Number(process.env.HDR_TRANSFER_CACHE_MAX_BYTES)
         : undefined;

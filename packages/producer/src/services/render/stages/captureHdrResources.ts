@@ -607,3 +607,27 @@ export function decodeHdrImageBuffers(args: {
   }
   return out;
 }
+
+export async function findCssFilteredVideos(
+  page: CaptureSession["page"],
+  videos: ReadonlyArray<{ id: string; start: number }>,
+): Promise<Array<{ id: string; filter: string }>> {
+  const filtered: Array<{ id: string; filter: string }> = [];
+  for (const video of videos) {
+    const filter = await page.evaluate(
+      (id: string, start: number) => {
+        if (window.__hf && typeof window.__hf.seek === "function") window.__hf.seek(start);
+        const element = window.__hfMediaEl?.(id) ?? document.getElementById(id);
+        for (let node: Element | null = element; node; node = node.parentElement) {
+          const value = window.getComputedStyle(node).filter;
+          if (value && value !== "none") return value;
+        }
+        return null;
+      },
+      video.id,
+      video.start,
+    );
+    if (filter) filtered.push({ id: video.id, filter });
+  }
+  return filtered;
+}

@@ -3639,6 +3639,46 @@ describe.skipIf(!HAS_ZSCALE)("forced-SDR HDR extraction", () => {
     expect(Math.max(...shown.map((v, i) => Math.abs(v - expected[i]!)))).toBeLessThanOrEqual(2);
   }, 60_000);
 
+  it("gives a tone-mapped clip in an HDR render the BT.2020 primaries of its SDR neighbours", async () => {
+    const hlg = join(fixtureDir, "hlg-beside-sdr.mp4");
+    await synthesizeHlgClip(hlg);
+    const sdr = join(fixtureDir, "sdr-beside-hlg.mp4");
+    const synthesized = await runFfmpeg([
+      ...["-y", "-v", "error", "-f", "lavfi", "-i", "color=c=0xe0b080:s=64x64:r=1:d=1"],
+      ...["-c:v", "libx264", "-pix_fmt", "yuv420p", "-color_primaries", "bt709"],
+      ...["-color_trc", "bt709", "-colorspace", "bt709", sdr],
+    ]);
+    if (!synthesized.success) throw new Error(synthesized.stderr.slice(-400));
+    const video = (id: string, src: string): VideoElement => ({
+      id,
+      src,
+      start: 0,
+      end: 1,
+      mediaStart: 0,
+      loop: false,
+      hasAudio: false,
+    });
+    const centre = async (videos: VideoElement[], id: string, hdr?: "hlg") => {
+      const result = await extractAllVideoFrames(videos, fixtureDir, {
+        fps: 1,
+        outputDir: join(fixtureDir, `beside-${id}-${hdr ?? "sdr"}`),
+        format: "png",
+        toneMapHdrToSdr: true,
+        hdrTransferAfterToneMap: hdr,
+      });
+      const frames = result.extracted.find((frames) => frames.videoId === id);
+      return readFirstFramePixel(frames!.framePaths.get(0)!, 0, 0);
+    };
+    const together = [video("sdr", sdr), video("hlg", hlg)];
+    const neighbour = await centre(together, "sdr", "hlg");
+    const toneMapped = await centre(together, "hlg", "hlg");
+    const toneMappedForSdr = await centre([video("hlg", hlg)], "hlg");
+    const saturation = (rgb: Rgb) => (Math.max(...rgb) - Math.min(...rgb)) / Math.max(...rgb);
+
+    expect(Math.abs(saturation(toneMapped) - saturation(neighbour))).toBeLessThan(0.03);
+    expect(Math.abs(saturation(toneMappedForSdr) - saturation(neighbour))).toBeGreaterThan(0.05);
+  }, 60_000);
+
   it("matches Studio's HLG tone map and isolates transformed cache entries", async () => {
     const source = join(fixtureDir, "hlg-warm.mp4");
     await synthesizeHlgClip(source);

@@ -168,6 +168,7 @@ export {
   captureAlphaPng,
   applyDomLayerMask,
   removeDomLayerMask,
+  layerUnitsInside,
   DOM_LAYER_MASK_STYLE_ID,
   type BeginFrameResult,
 } from "./services/screenshotService.js";

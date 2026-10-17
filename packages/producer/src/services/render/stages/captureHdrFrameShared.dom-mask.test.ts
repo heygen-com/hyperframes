@@ -5,6 +5,7 @@ import {
   blitRgba8OverRgb48le,
   captureAlphaPng,
   decodePng,
+  layerUnitsInside,
   removeDomLayerMask,
 } from "@hyperframes/engine";
 import type { ProducerLogger } from "../../../logger.js";
@@ -19,6 +20,7 @@ vi.mock("@hyperframes/engine", async (importOriginal) => {
     captureAlphaPng: vi.fn(async () => Buffer.from("png")),
     decodePng: vi.fn(() => ({ data: Buffer.alloc(4), width: 1, height: 1 })),
     removeDomLayerMask: vi.fn(async () => undefined),
+    layerUnitsInside: vi.fn(async () => []),
     blitRgba8OverRgb48le: vi.fn(),
   };
 });
@@ -83,6 +85,37 @@ describe("captureSceneIntoBuffer", () => {
     vi.mocked(decodePng).mockClear();
     vi.mocked(removeDomLayerMask).mockClear();
     vi.mocked(blitRgba8OverRgb48le).mockClear();
+  });
+
+  it("keeps a layer unit in the scene that holds it", async () => {
+    const page = { evaluate: vi.fn(async () => undefined) };
+    vi.mocked(layerUnitsInside).mockResolvedValueOnce(["hf-layer-unit-1"]);
+
+    await captureSceneIntoBuffer({
+      session: { page, onBeforeCapture: null } as never,
+      sceneBuf: Buffer.alloc(6),
+      sceneIds: new Set(["scene-a", "title"]),
+      stackingInfo: [makeEl("scene-a"), makeEl("hf-layer-unit-1"), makeEl("scene-b")],
+      time: 0.5,
+      width: 1,
+      height: 1,
+      nativeHdrIds: new Set(),
+      nativeHdrImageIds: new Set(),
+      beforeCaptureHook: null,
+      hdrCompositeCtx: makeContext(),
+      compositeTransfer: "srgb",
+      hdrTargetTransfer: undefined,
+      hdrPerf: undefined,
+      log: makeLogger(),
+      frameIdx: 15,
+    });
+
+    expect(layerUnitsInside).toHaveBeenCalledWith(page, ["scene-a", "title"]);
+    expect(applyDomLayerMask).toHaveBeenCalledWith(
+      page,
+      ["scene-a", "hf-layer-unit-1"],
+      ["scene-b"],
+    );
   });
 
   it("does not re-show hidden transition-scene members in the DOM mask", async () => {
