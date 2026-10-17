@@ -30,7 +30,7 @@ function normalizeRepoUrl(repoUrl: string): string {
 }
 
 function truncate(value: string, max: number): string {
-  return value.length > max ? `${value.slice(0, max - 1)}…` : value;
+  return value.length > max ? `${value.slice(0, max - 1).replace(/[\uD800-\uDBFF]$/, "")}…` : value;
 }
 
 function buildIssueTitle(rating: number, comment?: string): string {
