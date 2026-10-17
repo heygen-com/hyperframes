@@ -82,6 +82,38 @@ describe("extractMediaMetadata nb_frames duration cross-check", () => {
     vi.resetModules();
   });
 
+  it("never reads a non-PNG video's bytes looking for PNG colour metadata", async () => {
+    const { spawn } = createSpawnSpy([
+      {
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({
+          streams: [
+            {
+              codec_type: "video",
+              codec_name: "h264",
+              width: 16,
+              height: 16,
+              r_frame_rate: "30/1",
+              avg_frame_rate: "30/1",
+            },
+          ],
+          format: { duration: "1" },
+        }),
+      },
+    ]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { extractMediaMetadata: mocked } = await import("./ffprobe.js");
+    // Bytes that carry PNG cICP, reported by ffprobe as an untagged H.264 stream.
+    const dir = mkdtempSync(`${tmpdir()}/hf-not-png-`);
+    const path = `${dir}/clip.mp4`;
+    writeFileSync(path, buildMinimalPng());
+    const meta = await mocked(path);
+    rmSync(dir, { recursive: true, force: true });
+    expect(meta.colorSpace).toBeNull();
+  });
+
   it("uses nb_frames to bound video duration when stream duration is absent and audio is longer", async () => {
     const { spawn } = createSpawnSpy([
       {

@@ -12,28 +12,32 @@
  */
 
 import {
-  closeSync,
   copyFileSync,
   existsSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
-  openSync,
   readFileSync,
-  readSync,
   readdirSync,
   renameSync,
   rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
-import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { createFrameLookupTable, type ExtractedFrames } from "@hyperframes/engine";
-import { recomputePlanHashFromPlanDir, type ChunkSliceJson } from "../render/stages/freezePlan.js";
-import { canonicalJsonStringify, sha256Hex } from "../render/stages/planHash.js";
-import { buildLocalExecutionPlan, type DistributedRenderConfig } from "./plan.js";
+import {
+  readPlanRemoteFiles,
+  recomputePlanHashFromPlanDir,
+  type ChunkSliceJson,
+} from "../render/stages/freezePlan.js";
+import { canonicalJsonStringify, sha256FileHex, sha256Hex } from "../render/stages/planHash.js";
+import {
+  type BuildLocalExecutionPlanOptions,
+  buildLocalExecutionPlan,
+  type DistributedRenderConfig,
+} from "./plan.js";
 import {
   PLAN_PROTOCOL_V2,
   readPlanProtocolV1,
@@ -137,6 +141,8 @@ export interface PlanV2WithPublisherOptions {
    * can avoid a second set of data blocks.
    */
   readonly stagingParentDir?: string;
+  /** See {@link BuildLocalExecutionPlanOptions.remoteFiles}; needs a publisher with `referenceStoredBlob`. */
+  readonly remoteFiles?: BuildLocalExecutionPlanOptions["remoteFiles"];
 }
 
 export interface PlanV2MaterializationResult {
@@ -214,25 +220,6 @@ function listFiles(root: string): Array<{ path: string; absolutePath: string }> 
   }
   walk(rootResolved);
   return files.sort((a, b) => a.path.localeCompare(b.path));
-}
-
-/** Hash large plan artifacts with bounded memory (important above the legacy 2 GiB cap). */
-function sha256File(path: string): string {
-  const hash = createHash("sha256");
-  const buffer = Buffer.allocUnsafe(1024 * 1024);
-  // lgtm[js/insecure-temporary-file] — read-only open of a caller-owned regular file;
-  // this call never creates a file, temporary or otherwise.
-  const fd = openSync(path, "r");
-  try {
-    let bytesRead = 0;
-    do {
-      bytesRead = readSync(fd, buffer, 0, buffer.byteLength, null);
-      if (bytesRead > 0) hash.update(buffer.subarray(0, bytesRead));
-    } while (bytesRead > 0);
-  } finally {
-    closeSync(fd);
-  }
-  return hash.digest("hex");
 }
 
 function assertValidExtractionCacheCompleteSentinel(path: string): void {
@@ -495,6 +482,8 @@ function writeBlob(sourcePath: string, destinationPath: string): void {
 interface PlanV2Publication {
   readonly manifest: PlanV2Manifest;
   readonly blobs: readonly Readonly<PlanV2PublishBlob>[];
+  /** Remote project files: referenced by digest, never read by the planner. */
+  readonly storedBlobs: readonly Readonly<Omit<PlanV2PublishBlob, "sourcePath">>[];
 }
 
 // Artifact classification intentionally keeps every fail-safe branch together.
@@ -543,7 +532,7 @@ function buildPlanV2Publication(executionPlanDir: string): PlanV2Publication {
     ) {
       continue;
     }
-    const sha256 = sha256File(file.absolutePath);
+    const sha256 = sha256FileHex(file.absolutePath);
     const sizeBytes = statSync(file.absolutePath).size;
     if (!blobs.has(sha256)) {
       blobs.set(sha256, { sourcePath: file.absolutePath, sha256, sizeBytes });
@@ -553,6 +542,15 @@ function buildPlanV2Publication(executionPlanDir: string): PlanV2Publication {
       sha256,
       sizeBytes,
       ...targets,
+    });
+  }
+  const storedBlobs = new Map<string, Omit<PlanV2PublishBlob, "sourcePath">>();
+  for (const remote of readPlanRemoteFiles(executionPlanDir)) {
+    const { sha256, sizeBytes } = remote;
+    if (!blobs.has(sha256)) storedBlobs.set(sha256, { sha256, sizeBytes });
+    artifacts.push({
+      ...remote,
+      ...artifactTargets(remote.path, videoDependencyPlan.dependencies),
     });
   }
 
@@ -578,6 +576,7 @@ function buildPlanV2Publication(executionPlanDir: string): PlanV2Publication {
       planHash: computeManifestHash(base),
     },
     blobs: [...blobs.values()],
+    storedBlobs: [...storedBlobs.values()],
   };
 }
 
@@ -590,6 +589,9 @@ export function createPlanV2FromExecutionPlan(
     throw new PlanV2IntegrityError(`output directory already exists: ${planV2Dir}`);
   }
   const publication = buildPlanV2Publication(executionPlanDir);
+  if (publication.storedBlobs.length > 0) {
+    throw new PlanV2IntegrityError("a local plan v2 directory cannot reference remote files");
+  }
   mkdirSync(dirname(planV2Dir), { recursive: true });
   const tempDir = mkdtempSync(join(dirname(planV2Dir), ".plan-v2-build-"));
   try {
@@ -625,14 +627,21 @@ export async function publishPlanV2FromExecutionPlan(
 ): Promise<PlanV2Manifest> {
   try {
     const publication = buildPlanV2Publication(executionPlanDir);
+    if (publication.storedBlobs.length > 0 && !publisher.referenceStoredBlob) {
+      throw new PlanV2IntegrityError("this publisher cannot reference remote files");
+    }
+    const tasks = [
+      ...publication.blobs.map((blob) => () => publisher.putBlob(blob)),
+      ...publication.storedBlobs.map((blob) => () => publisher.referenceStoredBlob!(blob)),
+    ];
     const uploadSlots = 32;
     let next = 0;
     let failure: { reason: unknown } | undefined;
     const upload = async () => {
-      while (!failure && next < publication.blobs.length) {
-        const blob = publication.blobs[next++]!;
+      while (!failure && next < tasks.length) {
+        const task = tasks[next++]!;
         try {
-          await publisher.putBlob(blob);
+          await task();
         } catch (reason) {
           failure ??= { reason };
         }
@@ -681,6 +690,7 @@ export async function planV2WithPublisher(
     await buildLocalExecutionPlan(projectDir, config, stagingRoot, {
       executionPlanSizeLimitBytes: Number.MAX_SAFE_INTEGER,
       deferVideoExtraction: true,
+      remoteFiles: options.remoteFiles,
     });
     return await publishPlanV2FromExecutionPlan(stagingRoot, publisher);
   } catch (error) {
@@ -923,7 +933,7 @@ function verifyBlob(planV2Dir: string, artifact: Readonly<PlanV2Artifact>): stri
   if (!stats.isFile() || stats.size !== artifact.sizeBytes) {
     throw new PlanV2IntegrityError(`artifact size mismatch for ${artifact.path}`);
   }
-  if (sha256File(sourcePath) !== artifact.sha256) {
+  if (sha256FileHex(sourcePath) !== artifact.sha256) {
     throw new PlanV2IntegrityError(`artifact hash mismatch for ${artifact.path}`);
   }
   return sourcePath;
@@ -1021,7 +1031,7 @@ export function validatePlanV2MaterializedTarget(
         `materialized artifact missing or truncated: ${artifact.path}`,
       );
     }
-    if (sha256File(path) !== artifact.sha256) {
+    if (sha256FileHex(path) !== artifact.sha256) {
       throw new PlanV2IntegrityError(`materialized artifact hash mismatch: ${artifact.path}`);
     }
   }

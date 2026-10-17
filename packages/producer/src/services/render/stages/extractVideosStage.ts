@@ -86,6 +86,7 @@ export interface ExtractVideosStageInput {
    */
   materializeSymlinks?: boolean;
   deferRangeExtraction?: boolean;
+  urlByAbsentLocalPath?: ReadonlyMap<string, string>;
 }
 
 export interface ExtractVideosStageResult {
@@ -386,6 +387,7 @@ export async function runExtractVideosStage(
     assertNotAborted,
     materializeSymlinks,
     deferRangeExtraction,
+    urlByAbsentLocalPath,
   } = input;
 
   const stage2Start = Date.now();
@@ -510,6 +512,7 @@ export async function runExtractVideosStage(
         collectProbeFailures: extractionPolicy.failureMode === "enforce",
         deferRangeExtraction,
         contentKeyedDirs: [join(compiledDir, REMOTE_MEDIA_SUBDIR)],
+        urlByAbsentLocalPath,
       },
       abortSignal,
       cfg,

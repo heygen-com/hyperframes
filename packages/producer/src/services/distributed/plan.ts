@@ -66,6 +66,7 @@ import {
   type CompositionMetadataJson,
   freezePlan,
   type LockedRenderConfig,
+  writePlanRemoteFiles,
 } from "../render/stages/freezePlan.js";
 import {
   canonicalJsonStringify,
@@ -292,6 +293,17 @@ export interface BuildLocalExecutionPlanOptions {
    * chunks write those frames into their own work directory.
    */
   readonly deferVideoExtraction?: boolean;
+  /**
+   * Project files (by `/`-separated project path) left out of `projectDir`. The planner probes
+   * them at `url` and publishes them by digest; it never copies their bytes. Plan v2 only.
+   */
+  readonly remoteFiles?: Readonly<Record<string, RemoteProjectFile>>;
+}
+
+export interface RemoteProjectFile {
+  readonly url: string;
+  readonly sha256: string;
+  readonly sizeBytes: number;
 }
 
 /**
@@ -858,6 +870,7 @@ function createVideoSourceShipper(input: {
   projectDir: string;
   workCompiledDir: string;
   workVideoFramesDir: string;
+  isRemote: (srcPath: string) => boolean;
 }): (srcPath: string) => string {
   const shipped = new Map<string, string>();
   return (srcPath) => {
@@ -869,7 +882,10 @@ function createVideoSourceShipper(input: {
     let result: string | null = null;
     for (const root of stagedRel === null ? [input.workCompiledDir, input.projectDir] : []) {
       const rel = pathInside(root, srcPath);
-      if (rel !== null && existsSync(join(input.planDir, "compiled", rel))) {
+      if (
+        rel !== null &&
+        (existsSync(join(input.planDir, "compiled", rel)) || input.isRemote(srcPath))
+      ) {
         result = ["compiled", ...rel.split(sep)].join("/");
         break;
       }
@@ -997,7 +1013,18 @@ export async function buildLocalExecutionPlan(
   const needsAlpha = outputNeedsAlpha(config.format);
 
   // ── Compile ──
+  const remoteFiles = Object.entries(options.remoteFiles ?? {});
+  const remoteLocalPath = (rel: string) => join(projectDir, ...rel.split("/"));
+  // Keyed by the path each file would have had, which is what every media resolver computes.
+  const urlByAbsentLocalPath = new Map(
+    remoteFiles.map(([rel, file]) => [remoteLocalPath(rel), file.url]),
+  );
+  const localPathByUrl = new Map(
+    remoteFiles.map(([rel, file]) => [file.url, remoteLocalPath(rel)]),
+  );
+
   const compileResult = await runCompileStage({
+    urlByAbsentLocalPath,
     projectDir,
     workDir,
     htmlPath,
@@ -1109,6 +1136,7 @@ export async function buildLocalExecutionPlan(
     assertNotAborted,
     materializeSymlinks: true,
     deferRangeExtraction: options.deferVideoExtraction,
+    urlByAbsentLocalPath,
   });
   if (extractResult.failureToEnforce) throw extractResult.failureToEnforce;
   if (extractResult.extractionResult) {
@@ -1133,6 +1161,7 @@ export async function buildLocalExecutionPlan(
     audioGain: cfg.audioGain,
     audios: composition.audios,
     masterFxChain: composition.masterFxChain,
+    urlByAbsentLocalPath,
     abortSignal,
     assertNotAborted,
   });
@@ -1170,23 +1199,36 @@ export async function buildLocalExecutionPlan(
     projectDir,
     workCompiledDir: compiledDir,
     workVideoFramesDir: stagedVideoFrames,
+    isRemote: (srcPath) => urlByAbsentLocalPath.has(srcPath),
   });
   const planVideosJson: PlanVideosJson = buildPlanVideosJson({
     videos: composition.videos,
     compositionEnd: job.duration ?? Number.NaN,
-    extracted: (extractResult.extractionResult?.extracted ?? []).map((ext) => ({
-      videoId: ext.videoId,
-      srcPath: ext.srcPath,
-      framePattern: ext.framePattern,
-      fps: ext.fps,
-      totalFrames: ext.totalFrames,
-      metadata: ext.metadata,
-      ...(ext.deferredRange
-        ? { deferredRange: { ...ext.deferredRange, sourcePath: shipVideoSource(ext.srcPath) } }
-        : {}),
-    })),
+    extracted: (extractResult.extractionResult?.extracted ?? []).map((ext) => {
+      // A remote source is recorded by its project path; its pre-signed URL never enters the plan.
+      const srcPath = localPathByUrl.get(ext.srcPath) ?? ext.srcPath;
+      return {
+        videoId: ext.videoId,
+        srcPath,
+        framePattern: ext.framePattern,
+        fps: ext.fps,
+        totalFrames: ext.totalFrames,
+        metadata: ext.metadata,
+        ...(ext.deferredRange
+          ? { deferredRange: { ...ext.deferredRange, sourcePath: shipVideoSource(srcPath) } }
+          : {}),
+      };
+    }),
   });
   mkdirSync(join(planDir, "meta"), { recursive: true });
+  writePlanRemoteFiles(
+    planDir,
+    remoteFiles.map(([rel, { sha256, sizeBytes }]) => ({
+      path: `compiled/${rel}`,
+      sha256,
+      sizeBytes,
+    })),
+  );
   writeFileSync(
     join(planDir, PLAN_VIDEOS_META_RELATIVE_PATH),
     JSON.stringify(planVideosJson, null, 2),

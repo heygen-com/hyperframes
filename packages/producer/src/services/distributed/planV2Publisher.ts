@@ -26,6 +26,7 @@ export interface PlanV2ArtifactPublisher {
    * adapters must finish reading/uploading it before the promise resolves.
    */
   putBlob(blob: Readonly<PlanV2PublishBlob>): Promise<void>;
+  referenceStoredBlob?(blob: Readonly<Omit<PlanV2PublishBlob, "sourcePath">>): Promise<void>;
   /** Commit the manifest only after every referenced blob is durable. */
   commitManifest(manifestBytes: string): Promise<void>;
   /** Idempotent best-effort cleanup for an unpublished or partial plan. */

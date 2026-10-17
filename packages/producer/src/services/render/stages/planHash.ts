@@ -31,6 +31,7 @@
  * are hashed verbatim.
  */
 
+import { closeSync, openSync, readSync } from "node:fs";
 import { createHash } from "node:crypto";
 import type { DistributedFormat } from "../../distributed/shared.js";
 
@@ -171,4 +172,23 @@ export function sha256Hex(bytes: Uint8Array | string): string {
   const h = createHash("sha256");
   h.update(bytes);
   return h.digest("hex");
+}
+
+/** Hash large plan artifacts with bounded memory (important above the legacy 2 GiB cap). */
+export function sha256FileHex(path: string): string {
+  const hash = createHash("sha256");
+  const buffer = Buffer.allocUnsafe(1024 * 1024);
+  // lgtm[js/insecure-temporary-file] — read-only open of a caller-owned regular file;
+  // this call never creates a file, temporary or otherwise.
+  const fd = openSync(path, "r");
+  try {
+    let bytesRead = 0;
+    do {
+      bytesRead = readSync(fd, buffer, 0, buffer.byteLength, null);
+      if (bytesRead > 0) hash.update(buffer.subarray(0, bytesRead));
+    } while (bytesRead > 0);
+  } finally {
+    closeSync(fd);
+  }
+  return hash.digest("hex");
 }

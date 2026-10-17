@@ -89,6 +89,8 @@ export interface CompileStageInput {
   allowSystemFontCapture?: boolean;
   /** Render-time variable overrides (`--variables`); see CompileForRenderOptions.variables. */
   variables?: Record<string, unknown>;
+  /** Absolute project paths not on disk, readable at these URLs instead. */
+  urlByAbsentLocalPath?: ReadonlyMap<string, string>;
 }
 
 export interface CompileStageResult {
@@ -171,6 +173,7 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
     allowSystemFontCapture,
     abortSignal,
     variables: input.variables,
+    urlByAbsentLocalPath: input.urlByAbsentLocalPath,
     animatedGifCacheDir: cfg.extractCacheDir
       ? join(cfg.extractCacheDir, "animated-gif")
       : undefined,

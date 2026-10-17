@@ -769,7 +769,11 @@ export async function extractMediaMetadata(filePath: string): Promise<VideoMetad
     // ffprobe ran at all, which is exactly the build it exists to cover: one
     // that reports gbr but does not decode cICP. An HDR PQ PNG then resolved
     // colorTransfer "" and graded SDR.
-    const cicp = colorTransfer && colorPrimaries && colorSpaceVal ? null : stillImage()?.colorSpace;
+    const isPng = output !== null && isPngImageProbe(output);
+    const cicp =
+      !isPng || (colorTransfer && colorPrimaries && colorSpaceVal)
+        ? null
+        : stillImage()?.colorSpace;
     const merged = {
       colorTransfer: colorTransfer || cicp?.colorTransfer || "",
       colorPrimaries: colorPrimaries || cicp?.colorPrimaries || "",

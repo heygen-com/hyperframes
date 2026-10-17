@@ -247,6 +247,7 @@ export interface ExtractionOptions {
   deferRangeExtraction?: boolean;
   /** Directories the caller rewrites on every render (downloaded media); their sources are cached by content. */
   contentKeyedDirs?: readonly string[];
+  urlByAbsentLocalPath?: ReadonlyMap<string, string>;
 }
 
 const DOWNLOAD_SUBDIR = "_downloads";
@@ -1797,6 +1798,11 @@ export async function extractAllVideoFrames(
       let videoPath = video.src;
       if (!isHttpUrl(videoPath)) {
         videoPath = resolveProjectRelativeSrc(video.src, baseDir, compiledDir);
+      }
+      const remoteUrl = options.urlByAbsentLocalPath?.get(videoPath);
+      if (remoteUrl) {
+        resolvedVideos.push({ video, videoPath: remoteUrl });
+        continue;
       }
 
       if (isHttpUrl(videoPath)) {

@@ -41,6 +41,7 @@ export {
   // Types
   type DistributedRenderConfig,
   type PlanResult,
+  type RemoteProjectFile,
   // Constants
   DEFAULT_CHUNK_SIZE,
   DEFAULT_MAX_PARALLEL_CHUNKS,

@@ -42,6 +42,7 @@ export interface AudioStageInput {
   /** Read-only view of `composition.audios`. */
   audios: CompositionMetadata["audios"];
   masterFxChain?: string;
+  urlByAbsentLocalPath?: ReadonlyMap<string, string>;
   abortSignal: AbortSignal | undefined;
   assertNotAborted: () => void;
   /** Where a per-track failure's detail goes. Optional so tests need not pass one. */
@@ -82,6 +83,7 @@ export async function runAudioStage(input: AudioStageInput): Promise<AudioStageR
     audioGain,
     audios,
     masterFxChain,
+    urlByAbsentLocalPath,
     abortSignal,
     assertNotAborted,
     log,
@@ -109,7 +111,7 @@ export async function runAudioStage(input: AudioStageInput): Promise<AudioStageR
         audioOutputPath,
         duration,
         abortSignal,
-        { ffmpegProcessTimeout, audioGain, masterFxChain },
+        { ffmpegProcessTimeout, audioGain, masterFxChain, urlByAbsentLocalPath },
         compiledDir,
       );
     } catch (err) {

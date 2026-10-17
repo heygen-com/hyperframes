@@ -21,6 +21,7 @@ const INTEGRATION_TEST_FILES = new Set([
   "src/services/distributed/plan.masterBus.test.ts",
   "src/services/distributed/plan.test.ts",
   "src/services/distributed/planSizeCap.test.ts",
+  "src/services/distributed/planV2RemoteFiles.test.ts",
   "src/services/distributed/renderChunk.test.ts",
   "src/services/fileServer.test.ts",
   "src/services/fileServer.file-race.test.ts",

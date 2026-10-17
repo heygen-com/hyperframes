@@ -1,11 +1,10 @@
-/**
- * A deployed site is `sites/<siteId>/files.json`: the project's files by path, each stored once
- * in the shared content store under its SHA-256 (see {@link contentStoreUri}).
- */
+// A deployed site is `sites/<siteId>/files.json`: the project's files by path, each stored once
+// in the shared content store under its SHA-256 (see `contentStoreUri`).
 
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { extname, join } from "node:path";
 import type { S3Client } from "@aws-sdk/client-s3";
+import type { RemoteProjectFile } from "@hyperframes/producer/distributed";
 import { contentStoreUri } from "./contentStore.js";
 import {
   downloadS3ObjectToFile,
@@ -13,9 +12,12 @@ import {
   formatS3Uri,
   mapConcurrent,
   parseS3Uri,
+  presignS3GetUrl,
 } from "./s3Transport.js";
 
 const SITE_MANIFEST_NAME = "files.json";
+const VIDEO_EXTENSIONS_PLANNED_IN_PLACE = new Set([".mp4", ".mov", ".m4v", ".webm", ".mkv"]);
+const REMOTE_URL_TTL_SECONDS = 3600;
 
 export interface SiteFile {
   /** `/`-separated, relative to the project root. */
@@ -56,24 +58,31 @@ export function parseSiteManifest(text: string): SiteFile[] {
   });
 }
 
-/** Rebuild the project under `projectDir`, verifying every file's SHA-256 on the way. */
+/** Rebuild the project under `projectDir`, SHA-256 verified; videos can stay remote, as URLs. */
 export async function downloadSiteFiles(
   s3: S3Client,
   manifestUri: string,
   projectDir: string,
-): Promise<void> {
+  leaveVideosRemote: boolean,
+): Promise<Record<string, RemoteProjectFile>> {
   const manifestPath = `${projectDir}.${SITE_MANIFEST_NAME}`;
   await downloadS3ObjectToFile(s3, manifestUri, manifestPath);
   const files = parseSiteManifest(readFileSync(manifestPath, "utf-8"));
   const { bucket } = parseS3Uri(manifestUri);
-  await mapConcurrent(files, 16, (file) =>
-    downloadS3ObjectToFileVerified(
-      s3,
-      contentStoreUri(bucket, file.sha256),
-      join(projectDir, ...file.path.split("/")),
-      file.sha256,
-    ),
-  );
+  const remoteFiles: Record<string, RemoteProjectFile> = {};
+  await mapConcurrent(files, 16, async ({ path, sha256, sizeBytes }) => {
+    const uri = contentStoreUri(bucket, sha256);
+    if (leaveVideosRemote && VIDEO_EXTENSIONS_PLANNED_IN_PLACE.has(extname(path).toLowerCase())) {
+      remoteFiles[path] = {
+        url: await presignS3GetUrl(s3, uri, REMOTE_URL_TTL_SECONDS),
+        sha256,
+        sizeBytes,
+      };
+      return;
+    }
+    await downloadS3ObjectToFileVerified(s3, uri, join(projectDir, ...path.split("/")), sha256);
+  });
+  return remoteFiles;
 }
 
 function isSafeRelativePath(path: string): boolean {

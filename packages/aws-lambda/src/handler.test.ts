@@ -20,6 +20,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { S3Client } from "@aws-sdk/client-s3";
 import {
   CURRENT_PLAN_PROTOCOL,
   PlanVideosMetadataError,
@@ -28,6 +29,7 @@ import {
   type PlanResult,
   type PlanV2ArtifactPublisher,
   type PlanV2Manifest,
+  type PlanV2WithPublisherOptions,
   publishPlanV2FromExecutionPlan,
 } from "@hyperframes/producer/distributed";
 import { recomputePlanHashFromPlanDir } from "../../producer/src/services/render/stages/freezePlan.js";
@@ -744,6 +746,16 @@ describe("handler dispatch", () => {
   });
 });
 
+/** A real client (so it can pre-sign offline) whose requests go to the fake. */
+function presigningClient(fake: FakeS3Client): import("@aws-sdk/client-s3").S3Client {
+  const client = new S3Client({
+    region: "us-east-2",
+    credentials: { accessKeyId: "AKIDTEST", secretAccessKey: "test-secret" },
+  });
+  client.send = fake.send.bind(fake) as S3Client["send"];
+  return client;
+}
+
 describe("handler — plan from a deployed site", () => {
   function storeSiteFile(s3: FakeS3Client, bytes: string): string {
     const sha256 = createHash("sha256").update(bytes).digest("hex");
@@ -762,7 +774,7 @@ describe("handler — plan from a deployed site", () => {
     };
   }
 
-  it("rebuilds the project from the content store and reuses its media without uploading it", async () => {
+  it("plans a site's video in place: never downloads, never uploads its bytes", async () => {
     const s3 = new FakeS3Client();
     const html = storeSiteFile(s3, "<html></html>");
     const media = storeSiteFile(s3, "VIDEO-BYTES");
@@ -778,10 +790,19 @@ describe("handler — plan from a deployed site", () => {
       ),
     );
     const planV2WithPublisher = mock(
-      async (projectDir: string, _config: unknown, publisher: PlanV2ArtifactPublisher) => {
+      async (
+        projectDir: string,
+        _config: unknown,
+        publisher: PlanV2ArtifactPublisher,
+        options: PlanV2WithPublisherOptions,
+      ) => {
         expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toBe("<html></html>");
-        const mediaPath = join(projectDir, "assets", "bg.mp4");
-        await publisher.putBlob({ sourcePath: mediaPath, sha256: media, sizeBytes: 11 });
+        expect(existsSync(join(projectDir, "assets", "bg.mp4"))).toBe(false);
+        const remote = options.remoteFiles?.["assets/bg.mp4"];
+        expect(remote).toMatchObject({ sha256: media, sizeBytes: 11 });
+        expect(remote?.url).toContain(`/cas/sha256/${media.slice(0, 2)}/${media}?`);
+        expect(remote?.url).toContain("X-Amz-Signature=");
+        await publisher.referenceStoredBlob!({ sha256: media, sizeBytes: 11 });
         const manifest = {
           planHash: "c".repeat(64),
           chunkCount: 1,
@@ -800,7 +821,7 @@ describe("handler — plan from a deployed site", () => {
     );
 
     const result = await handler(planEvent(), {
-      s3: s3 as unknown as import("@aws-sdk/client-s3").S3Client,
+      s3: presigningClient(s3),
       primitives: {
         plan: mock() as unknown as typeof import("@hyperframes/producer/distributed").plan,
         planV2WithPublisher:
@@ -819,6 +840,8 @@ describe("handler — plan from a deployed site", () => {
       "s3://bucket/renders/r1/v2/manifest.json",
     ]);
     expect(s3.ops.some((op) => op.uri.endsWith(".tar.gz"))).toBe(false);
+    const mediaKey = `s3://bucket/cas/sha256/${media.slice(0, 2)}/${media}`;
+    expect(s3.ops.filter((op) => op.uri === mediaKey && op.kind === "download")).toEqual([]);
   });
 
   it("refuses a site manifest path that escapes the project", async () => {

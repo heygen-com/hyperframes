@@ -10,6 +10,7 @@ import {
 } from "@hyperframes/producer/distributed";
 import { CONTENT_STORE_PREFIX } from "./contentStore.js";
 import {
+  ensureContentStoreObject,
   formatS3Uri,
   parseS3Uri,
   putContentStoreFile,
@@ -99,6 +100,13 @@ export class S3PlanV2ArtifactPublisher implements PlanV2ArtifactPublisher {
       );
     }
     await putContentStoreFile(this.#s3, blob.sourcePath, this.#bucket, digest);
+    this.#publishedDigests.add(digest);
+  }
+
+  async referenceStoredBlob(blob: Readonly<Omit<PlanV2PublishBlob, "sourcePath">>): Promise<void> {
+    this.#assertOpen("reference a stored blob");
+    const digest = assertSha256(blob.sha256, "S3 referenced blob sha256");
+    await ensureContentStoreObject(this.#s3, this.#bucket, digest, blob.sizeBytes);
     this.#publishedDigests.add(digest);
   }
 

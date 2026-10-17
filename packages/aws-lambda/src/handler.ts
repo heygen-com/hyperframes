@@ -33,6 +33,7 @@ import {
   type PlanV2Manifest,
   type PlanV2MaterializationTarget,
   readPlanV2Manifest,
+  type RemoteProjectFile,
   renderChunk,
 } from "@hyperframes/producer/distributed";
 import { resolveChromeExecutablePath } from "./chromium.js";
@@ -342,7 +343,7 @@ async function handlePlan(event: PlanEvent, deps?: HandlerDeps): Promise<PlanLam
   const planDir = join(work, "plan");
 
   try {
-    const projectDir = await fetchProject(s3, event.ProjectS3Uri, work);
+    const { projectDir } = await fetchProject(s3, event.ProjectS3Uri, work);
 
     const config: DistributedRenderConfig = {
       ...event.Config,
@@ -394,16 +395,21 @@ async function handlePlan(event: PlanEvent, deps?: HandlerDeps): Promise<PlanLam
  * `ProjectS3Uri` is a site manifest from `deploySite`, or a `.tar.gz` of the project
  * (hand-built uploads such as `examples/aws-lambda/scripts/smoke.sh`).
  */
-async function fetchProject(s3: S3Client, projectS3Uri: string, work: string): Promise<string> {
+async function fetchProject(
+  s3: S3Client,
+  projectS3Uri: string,
+  work: string,
+  leaveVideosRemote = false,
+): Promise<{ projectDir: string; remoteFiles: Record<string, RemoteProjectFile> }> {
   const projectDir = join(work, "project");
   if (isSiteManifestUri(projectS3Uri)) {
-    await downloadSiteFiles(s3, projectS3Uri, projectDir);
-  } else {
-    const projectArchive = join(work, "project.tar.gz");
-    await downloadS3ObjectToFile(s3, projectS3Uri, projectArchive);
-    await untarDirectory(projectArchive, projectDir);
+    const remoteFiles = await downloadSiteFiles(s3, projectS3Uri, projectDir, leaveVideosRemote);
+    return { projectDir, remoteFiles };
   }
-  return projectDir;
+  const projectArchive = join(work, "project.tar.gz");
+  await downloadS3ObjectToFile(s3, projectS3Uri, projectArchive);
+  await untarDirectory(projectArchive, projectDir);
+  return { projectDir, remoteFiles: {} };
 }
 
 // Plan v2 orchestration is kept as one transactional boundary: stage, CAS upload,
@@ -422,7 +428,7 @@ async function handlePlanV2(
 
   const work = mkdtempSync(join(deps?.tmpRoot ?? tmpdir(), "hf-lambda-plan-v2-"));
   try {
-    const projectDir = await fetchProject(s3, event.ProjectS3Uri, work);
+    const { projectDir, remoteFiles } = await fetchProject(s3, event.ProjectS3Uri, work, true);
     const publisher = new S3PlanV2ArtifactPublisher({
       s3,
       planOutputS3Prefix: event.PlanOutputS3Prefix,
@@ -430,6 +436,7 @@ async function handlePlanV2(
     });
     const manifest: PlanV2Manifest = await primitive(projectDir, { ...event.Config }, publisher, {
       stagingParentDir: work,
+      remoteFiles,
     });
 
     return {

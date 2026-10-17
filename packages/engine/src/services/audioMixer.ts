@@ -1118,6 +1118,7 @@ export async function processCompositionAudio(
   config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout" | "audioGain">> & {
     /** Serialised master bus chain, from `parseMasterFxChain`. */
     masterFxChain?: string;
+    urlByAbsentLocalPath?: ReadonlyMap<string, string>;
   },
   compiledDir?: string,
 ): Promise<MixResult> {
@@ -1172,6 +1173,7 @@ export async function processCompositionAudio(
         if (!isHttpUrl(srcPath)) {
           // Same browser-URL path semantics as videos.
           srcPath = resolveProjectRelativeSrc(element.src, baseDir, compiledDir);
+          srcPath = config?.urlByAbsentLocalPath?.get(srcPath) ?? srcPath;
         }
 
         if (isHttpUrl(srcPath)) {

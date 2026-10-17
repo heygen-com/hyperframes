@@ -35,6 +35,7 @@ import {
   PutObjectCommand,
   type S3Client,
 } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import * as tar from "tar";
 import { CONTENT_STORE_REFRESH_AFTER_DAYS, contentStoreUri } from "./contentStore.js";
 
@@ -307,6 +308,17 @@ export async function ensureContentStoreObject(
   );
   error.name = "PLAN_ARTIFACT_MISSING";
   throw error;
+}
+
+export async function presignS3GetUrl(
+  client: S3Client,
+  uri: string,
+  expiresInSeconds: number,
+): Promise<string> {
+  const { bucket, key } = parseS3Uri(uri);
+  return getSignedUrl(client, new GetObjectCommand({ Bucket: bucket, Key: key }), {
+    expiresIn: expiresInSeconds,
+  });
 }
 
 // S3 lifecycle expiry counts from the last write, not the last read, so reuse has to write.
