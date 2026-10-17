@@ -1,0 +1,120 @@
+/**
+ * AAC for the mixed 48 kHz audio. One encoder is single-threaded (about 60x real time),
+ * so long audio is encoded as frame-aligned segments in parallel and their frames joined.
+ */
+
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { runFfmpeg, type RunFfmpegResult } from "../utils/runFfmpeg.js";
+
+const SAMPLE_RATE = 48_000;
+const FRAME_SAMPLES = 1024;
+const MIN_SEGMENT_SECONDS = 60;
+// Fixed rather than the core count, so the bytes (and the planHash) do not depend on the machine.
+const MAX_SEGMENTS = 8;
+// Encoded on each side of a segment and dropped. The encoder's rate control takes about
+// 10 s to settle (its error is higher until then), so a segment starts 10 s before its cut.
+const PRE_ROLL_FRAMES = 469;
+const POST_ROLL_FRAMES = 8;
+export const AAC_ARGS = ["-acodec", "aac", "-b:a", "192k"];
+
+export function aacSegmentCount(totalDuration: number): number {
+  return Math.max(1, Math.min(MAX_SEGMENTS, Math.floor(totalDuration / MIN_SEGMENT_SECONDS)));
+}
+
+export function splitAdtsFrames(bytes: Buffer): Buffer[] {
+  const frames: Buffer[] = [];
+  for (let at = 0; at < bytes.length; ) {
+    const length = ((bytes[at + 3]! & 0x03) << 11) | (bytes[at + 4]! << 3) | (bytes[at + 5]! >> 5);
+    if (bytes[at] !== 0xff || (bytes[at + 1]! & 0xf0) !== 0xf0 || length < 7) {
+      throw new Error(`Not an ADTS frame at byte ${at}`);
+    }
+    frames.push(bytes.subarray(at, at + length));
+    at += length;
+  }
+  return frames;
+}
+
+/**
+ * Packet g of the stream covers samples [(g-1)*1024, (g+1)*1024); packet 0 is the
+ * encoder delay. Segment k encodes from `firstFrame` and keeps its packets [keepFrom, keepTo).
+ */
+function planSegments(totalDuration: number, count: number) {
+  // Round to whole samples first: 147.52 * 48000 is 7080960.000000001 in floating point.
+  const packets = Math.ceil(Math.round(totalDuration * SAMPLE_RATE) / FRAME_SAMPLES) + 1;
+  const cuts = Array.from({ length: count + 1 }, (_, k) => Math.round((k * packets) / count));
+  return cuts.slice(0, -1).map((cut, k) => {
+    const next = cuts[k + 1]!;
+    const firstFrame = Math.max(0, cut - PRE_ROLL_FRAMES);
+    const end = k === count - 1 ? "" : `:end_sample=${(next + POST_ROLL_FRAMES) * FRAME_SAMPLES}`;
+    const trim = `atrim=start_sample=${firstFrame * FRAME_SAMPLES}${end}`;
+    return { trim, keepFrom: cut - firstFrame, keepTo: next - firstFrame };
+  });
+}
+
+/** `input` is a 48 kHz WAV of exactly `totalDuration`. */
+export async function encodeAac(
+  input: string,
+  outputPath: string,
+  totalDuration: number,
+  { signal, timeout }: { signal?: AbortSignal; timeout: number },
+): Promise<RunFfmpegResult> {
+  const count = aacSegmentCount(totalDuration);
+  if (count === 1) {
+    const args = ["-i", input, "-t", String(totalDuration), ...AAC_ARGS, "-y", outputPath];
+    return runFfmpeg(args, { signal, timeout });
+  }
+
+  const dir = mkdtempSync(join(dirname(outputPath), ".aac-segments-"));
+  try {
+    const segments = planSegments(totalDuration, count).map((segment, k) => ({
+      ...segment,
+      path: join(dir, `${k}.aac`),
+    }));
+    const results = await Promise.all(
+      segments.map(({ trim, path }) =>
+        runFfmpeg(["-i", input, "-af", trim, ...AAC_ARGS, "-f", "adts", "-y", path], {
+          signal,
+          timeout,
+        }),
+      ),
+    );
+    const failed = results.find((result) => !result.success);
+    if (failed) return failed;
+
+    const joined = join(dir, "joined.aac");
+    const frames = segments.flatMap(({ path, keepFrom, keepTo }) => {
+      const segmentFrames = splitAdtsFrames(readFileSync(path));
+      if (segmentFrames.length < keepTo) {
+        throw new Error(`AAC segment ${path} has ${segmentFrames.length} frames, needs ${keepTo}`);
+      }
+      return segmentFrames.slice(keepFrom, keepTo);
+    });
+    writeFileSync(joined, Buffer.concat(frames));
+    // ADTS carries neither the encoder delay nor the last packet's short duration: the offset
+    // restores the delay, and setts ends the stream at totalDuration as one encoder would.
+    const offset = String(-FRAME_SAMPLES / SAMPLE_RATE);
+    const end = `setts=duration='if(gte((PTS+DURATION)*TB,${totalDuration}),round(${totalDuration}/TB-PTS),DURATION)'`;
+    const muxed = await runFfmpeg(
+      [
+        "-itsoffset",
+        offset,
+        "-f",
+        "aac",
+        "-i",
+        joined,
+        "-c",
+        "copy",
+        "-bsf:a",
+        end,
+        "-y",
+        outputPath,
+      ],
+      { signal, timeout },
+    );
+    const slowest = Math.max(...results.map((result) => result.durationMs));
+    return { ...muxed, durationMs: slowest + muxed.durationMs };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
