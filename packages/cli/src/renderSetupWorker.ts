@@ -18,11 +18,19 @@ const disposeSignalHandlers = installRenderSetupSignalHandlers(
   process.env.HYPERFRAMES_RENDER_DETACHED !== "1",
 );
 
+function lowerPriority(): void {
+  try {
+    setPriority(constants.priority.PRIORITY_LOW);
+  } catch (error) {
+    process.stderr.write(`Lint runs at normal priority: ${(error as Error).message}\n`);
+  }
+}
+
 async function runMode(): Promise<unknown> {
   if (mode === "browser") return ensureBrowser(input);
   if (mode === "lint") {
     // Nobody waits on a background lint the way they wait on a Studio boot, so it takes idle CPU only.
-    setPriority(constants.priority.PRIORITY_LOW);
+    lowerPriority();
     return lintProject(
       input.projectDir,
       input.entryFile,
