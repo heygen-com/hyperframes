@@ -17,7 +17,6 @@ import {
   rmSync,
   statSync,
   writeFileSync,
-  unlinkSync,
 } from "node:fs";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { createHash } from "node:crypto";
@@ -87,6 +86,9 @@ import {
   HistoryBusyError,
   HistoryClosedError,
   historyCache,
+  renderDirectoryMetadata,
+  renderMetadataPath,
+  removeRenderArtifacts,
 } from "@hyperframes/studio-server";
 import { encoderJobOptions } from "@hyperframes/studio-server/encoder-options";
 import { isLinkFreeWithinProject } from "@hyperframes/studio-server/safe-path";
@@ -700,28 +702,21 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         status: "rendering",
         progress: 0,
         outputPath: opts.outputPath,
+        kind: opts.format === "png-sequence" ? "directory" : "file",
         cancel: () => abortController.abort(),
       };
 
       // Run render asynchronously, mutating the state object
       const startTime = Date.now();
       const cpu = startRenderCpuSampler(opts.telemetryOptOut !== true);
+      const metaPath = renderMetadataPath(opts.outputPath, opts.jobId);
       const run = (async () => {
         let renderJob: RenderJob | undefined;
         const removeCancelledOutput = () => {
           // User-initiated cancel: not a failure. Remove any output so the
           // cancelled job doesn't resurrect in the render history.
           state.status = "cancelled";
-          for (const suffix of ["", ".meta.json"]) {
-            const fp = suffix
-              ? opts.outputPath.replace(/\.(mp4|webm|mov|gif)$/, suffix)
-              : opts.outputPath;
-            try {
-              if (existsSync(fp)) unlinkSync(fp);
-            } catch {
-              /* ignore */
-            }
-          }
+          removeRenderArtifacts([opts.outputPath, metaPath]);
         };
         try {
           const { createRenderJob, executeRenderJob } = await loadStudioProducer();
@@ -788,13 +783,13 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
           if (job.audioLoweredDb !== undefined) state.audioLoweredDb = job.audioLoweredDb;
           state.status = "complete";
           state.progress = 100;
-          const metaPath = opts.outputPath.replace(/\.(mp4|webm|mov|gif)$/, ".meta.json");
           writeFileSync(
             metaPath,
             JSON.stringify({
               status: "complete",
               durationMs: Date.now() - startTime,
               ...(job.audioLoweredDb !== undefined ? { audioLoweredDb: job.audioLoweredDb } : {}),
+              ...renderDirectoryMetadata(opts.outputPath),
             }),
           );
           // Refreshed HERE, not just at render start: a render can run for
@@ -822,7 +817,6 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
             cpu.stop(),
           );
           try {
-            const metaPath = opts.outputPath.replace(/\.(mp4|webm|mov|gif)$/, ".meta.json");
             writeFileSync(metaPath, JSON.stringify({ status: "failed" }));
           } catch {
             /* ignore */
