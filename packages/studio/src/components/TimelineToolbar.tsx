@@ -6,7 +6,6 @@ import {
   Magnet,
   MagnifyingGlassMinus,
   MagnifyingGlassPlus,
-  Rows,
 } from "@phosphor-icons/react";
 import {
   useEnableKeyframes,
@@ -38,6 +37,7 @@ import type { DomEditSelection } from "./editor/domEditingTypes";
 import { canSplitElement } from "../utils/timelineElementSplit";
 import { useAudioMetersVisible } from "../utils/audioMeterVisibility";
 import { LinkedSelectionToggle } from "./LinkedSelectionToggle";
+import { TimelineTrackDensityToggle } from "./TimelineTrackDensityToggle";
 import { useProjectHasAudio } from "../utils/audioMeterMath";
 import { canAddBeatAt, addBeatAtCompositionTime } from "../utils/beatEditActions";
 import { isTypingTarget } from "../utils/typingTarget";
@@ -172,9 +172,6 @@ export const TimelineToolbar = memo(function TimelineToolbar({
   const thumbnailMode = usePlayerStore((s) => s.thumbnailMode);
   const setThumbnailMode = usePlayerStore((s) => s.setThumbnailMode);
   const thumbnailsVisible = thumbnailMode === "adaptive";
-  const trackDensity = usePlayerStore((s) => s.timelineTrackDensity);
-  const setTrackDensity = usePlayerStore((s) => s.setTimelineTrackDensity);
-  const compactTracks = trackDensity === "compact";
   const audioMetersVisible = useAudioMetersVisible((s) => s.visible);
   const setAudioMetersVisible = useAudioMetersVisible((s) => s.setVisible);
   const projectHasAudio = useProjectHasAudio();
@@ -507,21 +504,7 @@ export const TimelineToolbar = memo(function TimelineToolbar({
               <Image size={16} aria-hidden="true" />
             </button>
           </Tooltip>
-          <Tooltip label={compactTracks ? "Comfortable track height" : "Compact track height"}>
-            <button
-              type="button"
-              aria-label="Compact track height"
-              aria-pressed={compactTracks}
-              onClick={() => setTrackDensity(compactTracks ? "comfortable" : "compact")}
-              className={`h-7 px-2 rounded-md text-[11px] font-medium transition-colors ${
-                compactTracks
-                  ? "bg-studio-accent/10 text-accent-ink"
-                  : "text-neutral-400 hover:bg-hover hover:text-neutral-200"
-              }`}
-            >
-              <Rows size={16} aria-hidden="true" />
-            </button>
-          </Tooltip>
+          <TimelineTrackDensityToggle />
           <Tooltip
             label={
               canZoomSelection

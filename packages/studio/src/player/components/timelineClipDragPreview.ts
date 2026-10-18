@@ -212,13 +212,13 @@ export function computeDragPreview(
   const { scroll, pps, duration, trackOrder, buildSnapTargets } = ctx;
   const dragMaxStart = resolveDragMaxStart(scroll, pps, duration);
   const scrollRectTop = scroll?.getBoundingClientRect().top ?? 0;
+  // Without ctx.rowGeometry the rows default to TRACK_H whatever the density; callers pass it.
   const geometry =
     ctx.rowGeometry ?? getTimelineRowGeometry(ctx.rowHeights ?? ctx.trackOrder.map(() => TRACK_H));
   const originRow = geometry.getRowFromY(drag.originClientY - scrollRectTop + drag.originScrollTop);
   const aim = dragRowAim(drag, clientY, ctx, geometry);
   const currentRow = aim.rowFloat;
-  // resolveTimelineMove's vertical axis is row indices, which is why the pointer
-  // and scroll pixels are folded into originRow/currentRow above.
+  // resolveTimelineMove works in rows, so pointer and scroll pixels fold into originRow/currentRow.
   const nextMove = resolveTimelineMove(
     {
       start: drag.element.start,

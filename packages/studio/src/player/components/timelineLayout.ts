@@ -68,12 +68,9 @@ export function getTimelineLaneTop(laneIndex: number, trackHeight: number = TRAC
  *
  * - TRACKS_TOP_PAD: empty space between the (sticky) ruler and the first track,
  *   just enough that the first clip isn't jammed under the ruler.
- * - TRACKS_BOTTOM_PAD: one empty track below the last, drawn as a ghost lane;
- *   dropping a clip or file there creates a new bottom track.
- *   Without a host override the pad is one track at the current density.
+ * - The bottom pad defaults to one empty track at the current density: the ghost lane.
  */
 export const TRACKS_TOP_PAD = 8;
-export const TRACKS_BOTTOM_PAD = TRACK_H;
 export interface TimelineTrackPadding {
   top?: number;
   bottom?: number;
@@ -167,7 +164,6 @@ export function createTimelineRowGeometry(
   trackHeight: number = TRACK_H,
 ): TimelineRowGeometry {
   const topPad = validPad(padding.top, TRACKS_TOP_PAD);
-  // The default bottom pad is one empty track, so it follows the density.
   const bottomPad = validPad(padding.bottom, trackHeight);
   const heights = Object.freeze(rowHeights.map((height) => validRowHeight(height, trackHeight)));
   const keys = Object.freeze(
@@ -198,8 +194,7 @@ export function createTimelineRowGeometry(
     const rowsHeight = offsets[heights.length] ?? 0;
     if (y >= rowsHeight) return heights.length + (y - rowsHeight) / trackHeight;
 
-    // First boundary strictly greater than y. Unlike the old linear scan this
-    // stays logarithmic for large timelines and uses the precomputed offsets.
+    // Binary search over the precomputed offsets for the first boundary above y.
     let low = 1;
     let high = heights.length;
     while (low < high) {
@@ -237,6 +232,7 @@ export function createTimelineRowGeometry(
 export function getTimelineRowGeometry(rowHeights: readonly number[]): TimelineRowGeometry {
   const cached = rowGeometryCache.get(rowHeights);
   if (cached) return cached;
+  // A fresh array has no density, so this falls back to TRACK_H; pass a geometry instead.
   const geometry = createTimelineRowGeometry(
     rowHeights.map((_, row) => row),
     rowHeights,
@@ -254,6 +250,7 @@ export function getTimelineRowHeight(
   row: number,
   rowHeights: readonly number[] = EMPTY_ROW_HEIGHTS,
 ): number {
+  // Out-of-range rows read TRACK_H, not the density; use rowGeometry.getRowHeight for those.
   return validRowHeight(rowHeights[row]);
 }
 

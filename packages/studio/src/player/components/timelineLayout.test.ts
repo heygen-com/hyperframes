@@ -5,7 +5,6 @@ import {
   COMPACT_TRACK_H,
   LANE_H,
   TRACKS_TOP_PAD,
-  TRACKS_BOTTOM_PAD,
   GUTTER,
   TRACKS_LEFT_PAD,
   getTimelineRowTop,
@@ -169,7 +168,7 @@ describe("variable timeline row geometry", () => {
   it("sums resolved row heights into the canvas height", () => {
     const heights = trackHeights(tracks, new Set(["b"]));
     expect(getTimelineCanvasHeight(heights)).toBe(
-      RULER_H + TRACKS_TOP_PAD + 3 * TRACK_H + 2 * LANE_H + TRACKS_BOTTOM_PAD,
+      RULER_H + TRACKS_TOP_PAD + 3 * TRACK_H + 2 * LANE_H + TRACK_H,
     );
   });
 
@@ -188,7 +187,7 @@ describe("variable timeline row geometry", () => {
     expect(geometry.getRowFromY(geometry.getRowTop(1))).toBe(1);
     expect(geometry.getRowFromY(geometry.getRowTop(2) - 0.001)).toBeLessThan(2);
     expect(geometry.getRowFromY(geometry.getRowTop(2))).toBe(2);
-    expect(geometry.canvasHeight).toBe(RULER_H + TRACKS_TOP_PAD + 228 + TRACKS_BOTTOM_PAD);
+    expect(geometry.canvasHeight).toBe(RULER_H + TRACKS_TOP_PAD + 228 + TRACK_H);
   });
 });
 
@@ -261,9 +260,9 @@ describe("track-area breathing pad y-math", () => {
 
   describe("getTimelineCanvasHeight", () => {
     it("reserves ruler + top pad + lanes + bottom pad", () => {
-      expect(getTimelineCanvasHeight([])).toBe(RULER_H + TRACKS_TOP_PAD + TRACKS_BOTTOM_PAD);
+      expect(getTimelineCanvasHeight([])).toBe(RULER_H + TRACKS_TOP_PAD + TRACK_H);
       expect(getTimelineCanvasHeight(baseRows(3))).toBe(
-        RULER_H + TRACKS_TOP_PAD + 3 * TRACK_H + TRACKS_BOTTOM_PAD,
+        RULER_H + TRACKS_TOP_PAD + 3 * TRACK_H + TRACK_H,
       );
     });
 
@@ -351,16 +350,16 @@ describe("host track padding", () => {
 
   it("clamps a negative pad to 0 and replaces a non-finite one with the default", () => {
     const odd = createTimelineRowGeometry([0], baseRows(1), { top: -20, bottom: Number.NaN });
-    expect(odd.padding).toEqual({ top: 0, bottom: TRACKS_BOTTOM_PAD });
+    expect(odd.padding).toEqual({ top: 0, bottom: TRACK_H });
     expect(odd.getRowTop(0)).toBe(RULER_H);
-    expect(odd.canvasHeight).toBe(RULER_H + TRACK_H + TRACKS_BOTTOM_PAD);
+    expect(odd.canvasHeight).toBe(RULER_H + TRACK_H + TRACK_H);
     const infinite = createTimelineRowGeometry([0], baseRows(1), { top: Infinity });
     expect(infinite.padding.top).toBe(TRACKS_TOP_PAD);
   });
 
   it("keeps the default pads when a host passes none", () => {
     const defaults = createTimelineRowGeometry([0], baseRows(1));
-    expect(defaults.padding).toEqual({ top: TRACKS_TOP_PAD, bottom: TRACKS_BOTTOM_PAD });
+    expect(defaults.padding).toEqual({ top: TRACKS_TOP_PAD, bottom: TRACK_H });
   });
 });
 

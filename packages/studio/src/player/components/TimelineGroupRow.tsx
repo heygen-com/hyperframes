@@ -143,12 +143,12 @@ export function TimelineGroupRow({
       {/* Header and its lane labels in ONE sticky column — the shape
           `TimelineTrackHeader` already uses: a fixed track-height line box with the
           lane rows absolutely positioned beneath it, the whole thing pinned.
-          The labels used to be SIBLINGS of the header, so `absolute left-0`
-          resolved against the ROW, and the row is what scrolls horizontally —
-          they slid away with the canvas. Sticky lives here rather than on the
-          header, which keeps its own box inside; a zero-width sticky wrapper
-          around the labels alone does not work either, because as a flex item
-          after the header it starts at x = columnWidth, i.e. inside the lanes. */}
+          As SIBLINGS of the header, `absolute left-0` would resolve against the
+          ROW, which scrolls horizontally, and the labels would slide away with
+          the canvas. Sticky lives here rather than on the header, which keeps
+          its own box inside; a zero-width sticky wrapper around the labels alone
+          does not work either, because as a flex item after the header it
+          starts at x = columnWidth, i.e. inside the lanes. */}
       <div
         className="sticky left-0 z-12 shrink-0"
         style={{ width: contentOrigin >= LABEL_COL_W ? LABEL_COL_W : contentOrigin }}

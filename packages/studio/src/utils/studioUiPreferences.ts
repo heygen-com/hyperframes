@@ -29,7 +29,6 @@ export interface StudioUiPreferences {
   rippleEditEnabled?: boolean;
   /** Transport + ruler readout mode: timecode or frame number. */
   timeDisplayMode?: TimelineTimeDisplayMode;
-  /** Timeline track height: "compact" fits more tracks without scrolling. */
   timelineTrackDensity?: TimelineTrackDensity;
   /**
    * Timeline zoom mode. Persisted so a zoom PINNED on the first edit survives the
