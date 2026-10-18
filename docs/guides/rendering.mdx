@@ -188,7 +188,10 @@ npx hyperframes render --chroma-subsampling 444 --output master.mp4
 
 This encodes H.264 High 4:4:4 Predictive (yuv444p) and captures every frame as
 a lossless PNG, because Chrome's JPEG capture is already 4:2:0 on Linux and on
-screenshot capture. Expect a slower capture than the default render.
+screenshot capture. Rendering is slower: in our tests a text and UI
+composition took about twice as long as the default render, and full-frame
+footage about three and a half times as long, because PNG encoding gets more
+expensive as the image gets more detailed.
 
 Measured at the same CRF against lossless masters, chroma PSNR rose by about
 16 dB for coloured text and 13 dB for a UI screen recording, while camera
