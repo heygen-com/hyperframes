@@ -13,7 +13,7 @@ function formatTimeAgo(timestamp: number): string {
   return `${Math.floor(diff / 3600000)}h ago`;
 }
 
-export function RenderQueueInfo({ job }: { job: RenderJob }) {
+export function RenderQueueInfo({ job, detail }: { job: RenderJob; detail?: string }) {
   const isRendering = job.status === "rendering";
   return (
     <div className="flex-1 min-w-0">
@@ -54,7 +54,10 @@ export function RenderQueueInfo({ job }: { job: RenderJob }) {
       )}
 
       {!isRendering && (
-        <span className="text-step-9 text-text-5">{formatTimeAgo(job.createdAt)}</span>
+        <span className="text-step-9 text-text-5">
+          {formatTimeAgo(job.createdAt)}
+          {detail}
+        </span>
       )}
     </div>
   );

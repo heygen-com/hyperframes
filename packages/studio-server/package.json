@@ -128,6 +128,12 @@
       "node": "./dist/helpers/mediaRange.js",
       "import": "./src/helpers/mediaRange.ts",
       "types": "./src/helpers/mediaRange.ts"
+    },
+    "./render-directory-stats": {
+      "bun": "./src/helpers/renderDirectoryStats.ts",
+      "node": "./dist/helpers/renderDirectoryStats.js",
+      "import": "./src/helpers/renderDirectoryStats.ts",
+      "types": "./src/helpers/renderDirectoryStats.ts"
     }
   },
   "publishConfig": {
@@ -209,6 +215,10 @@
       "./media-range": {
         "import": "./dist/helpers/mediaRange.js",
         "types": "./dist/helpers/mediaRange.d.ts"
+      },
+      "./render-directory-stats": {
+        "import": "./dist/helpers/renderDirectoryStats.js",
+        "types": "./dist/helpers/renderDirectoryStats.d.ts"
       }
     },
     "main": "./dist/index.js",

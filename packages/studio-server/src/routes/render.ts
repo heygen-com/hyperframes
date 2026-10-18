@@ -8,8 +8,9 @@ import {
   unlinkSync,
   readdirSync,
   statSync,
+  rmSync,
 } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { Readable } from "node:stream";
 import type { StudioApiAdapter, RenderJobState } from "../types.js";
 import { VALID_CANVAS_RESOLUTIONS, type CanvasResolution } from "@hyperframes/parsers";
@@ -24,6 +25,9 @@ import { projectDirMissing } from "../helpers/projectDirMissing.js";
 import { isVariablesPayload, VARIABLES_PAYLOAD_ERROR } from "../helpers/variablesPayload.js";
 import { parseEncoderOptions, type EncoderOptionsBody } from "../helpers/encoderOptions.js";
 import { forgetJobsFinishedLongerThan } from "../helpers/finishedJobs.js";
+import { directoryZipResponse } from "../helpers/renderZipStream.js";
+import { contentDispositionHeader } from "../helpers/contentDisposition.js";
+import { readRenderDirectoryStats } from "../helpers/renderDirectoryStats.js";
 
 const VALID_RESOLUTIONS = new Set<string>(VALID_CANVAS_RESOLUTIONS);
 const RENDER_MIME: Record<string, string> = {
@@ -31,29 +35,156 @@ const RENDER_MIME: Record<string, string> = {
   ".webm": "video/webm",
   ".mov": "video/quicktime",
   ".gif": "image/gif",
+  ".png": "image/png",
 };
-const RENDER_EXTENSIONS = Object.keys(RENDER_MIME);
-const RENDER_ARTIFACT_EXTENSIONS = [...RENDER_EXTENSIONS, ".meta.json"];
+// `.png` is only a MIME type for frames inside a directory render, never a
+// standalone render artifact, so it stays out of the delete/list candidates.
+const RENDER_FILE_EXTENSIONS = [".mp4", ".webm", ".mov", ".gif"] as const;
+const RENDER_ARTIFACT_EXTENSIONS = [...RENDER_FILE_EXTENSIONS, ".meta.json"] as const;
+const RENDER_FILE_PATTERN = /\.(mp4|webm|mov|gif)$/;
 
-function resolveRenderArtifacts(directories: readonly string[], jobId: string): string[] | null {
-  const artifacts = [...new Set(directories)]
-    .filter(existsSync)
-    .flatMap((directory) =>
-      RENDER_ARTIFACT_EXTENSIONS.map((extension) =>
-        resolveWithinProject(directory, `${jobId}${extension}`),
-      ),
-    );
-  return artifacts.every((path) => path !== null) ? artifacts : null;
-}
+type RenderFormat = "mp4" | "webm" | "mov" | "gif" | "png-sequence";
+type RenderArtifactKind = "file" | "directory";
 
-function contentDispositionHeader(disposition: "inline" | "attachment", filename: string): string {
-  const fallback = filename.replace(/[^\x20-\x7e]|["\\]/g, "_");
-  const encoded = encodeURIComponent(filename).replace(
-    /[!'()*]/g,
-    (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+const FORMAT_EXT: Record<RenderFormat, string> = {
+  mp4: ".mp4",
+  webm: ".webm",
+  mov: ".mov",
+  gif: ".gif",
+  "png-sequence": "",
+};
+
+const FORMAT_KIND: Record<RenderFormat, RenderArtifactKind> = {
+  mp4: "file",
+  webm: "file",
+  mov: "file",
+  gif: "file",
+  "png-sequence": "directory",
+};
+
+function isRenderFormat(format: unknown): format is RenderFormat {
+  return (
+    format === "mp4" ||
+    format === "webm" ||
+    format === "mov" ||
+    format === "gif" ||
+    format === "png-sequence"
   );
-  return `${disposition}; filename="${fallback}"; filename*=UTF-8''${encoded}`;
 }
+
+interface RenderArtifact {
+  kind: RenderArtifactKind;
+  /** Containment-checked path (symlinks resolved). */
+  path: string;
+  /** The literal `renders/<name>` entry, used where symlinks must not be followed. */
+  candidatePath: string;
+}
+
+function resolveRenderArtifacts(
+  directories: readonly string[],
+  jobId: string,
+): RenderArtifact[] | null {
+  const artifacts: RenderArtifact[] = [];
+  for (const directory of new Set(directories)) {
+    if (!existsSync(directory)) continue;
+    const names: Array<{ kind: RenderArtifactKind; name: string }> = [
+      { kind: "directory", name: jobId },
+      ...RENDER_ARTIFACT_EXTENSIONS.map((extension) => ({
+        kind: "file" as const,
+        name: `${jobId}${extension}`,
+      })),
+    ];
+    for (const { kind, name } of names) {
+      const path = resolveWithinProject(directory, name);
+      if (!path) return null;
+      artifacts.push({ kind, path, candidatePath: join(directory, name) });
+    }
+  }
+  return artifacts;
+}
+
+function isRealDirectory(path: string): boolean {
+  try {
+    return lstatSync(path).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+function deleteRenderArtifact(artifact: RenderArtifact): void {
+  if (artifact.kind === "file") {
+    if (existsSync(artifact.path)) unlinkSync(artifact.path);
+    return;
+  }
+  // lstat on the literal entry: a symlink is never followed into a recursive
+  // removal, even one whose target is inside the project.
+  if (isRealDirectory(artifact.candidatePath)) {
+    rmSync(artifact.candidatePath, { recursive: true, force: true });
+  }
+}
+
+function directoryDownload(directory: string, jobId: string): Response | null {
+  if (!isRealDirectory(directory)) return null;
+  try {
+    return directoryZipResponse(directory, jobId);
+  } catch {
+    return null;
+  }
+}
+
+function renderContentType(filePath: string): string {
+  const ext = Object.keys(RENDER_MIME).find((e) => filePath.endsWith(e));
+  return (ext && RENDER_MIME[ext]) ?? "video/mp4";
+}
+
+/** A single render file streamed from disk; inline responses also advertise byte ranges. */
+function renderFileResponse(
+  filePath: string,
+  disposition: "inline" | "attachment",
+  filename: string,
+  method: string,
+): Response {
+  const headers = {
+    "Content-Type": renderContentType(filePath),
+    "Content-Disposition": contentDispositionHeader(disposition, filename),
+    ...(disposition === "inline" ? { "Accept-Ranges": "bytes" } : {}),
+    "Content-Length": String(statSync(filePath).size),
+  };
+  if (method === "HEAD") return new Response(null, { headers });
+  // Node and DOM stream declarations differ; the response receives a web byte stream.
+  const body = Readable.toWeb(createReadStream(filePath)) as unknown as ReadableStream;
+  return new Response(body, { headers });
+}
+
+interface RenderMeta {
+  status?: unknown;
+  durationMs?: unknown;
+  audioLoweredDb?: unknown;
+  frameCount?: unknown;
+  size?: unknown;
+  audioSidecar?: unknown;
+}
+
+function readRenderMeta(metaPath: string): RenderMeta | null {
+  if (!existsSync(metaPath)) return null;
+  try {
+    const meta: unknown = JSON.parse(readFileSync(metaPath, "utf-8"));
+    return meta && typeof meta === "object" ? meta : null;
+  } catch {
+    return null;
+  }
+}
+
+type RenderListingRow = {
+  id: string;
+  filename: string;
+  path: string;
+  size: number;
+  createdAt: number;
+  status: "complete" | "failed";
+  durationMs?: number;
+  audioLoweredDb?: number;
+} & ({ kind?: undefined } | { kind: "directory"; frameCount: number; audioSidecar: boolean });
 
 export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void {
   // Scoped job store — not shared across createStudioApi() calls
@@ -126,14 +257,8 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
       previewMotionBlur?: boolean;
       pageMotionBlur?: unknown;
     };
-    const VALID_FORMATS = ["mp4", "webm", "mov", "gif"] as const;
-    const FORMAT_EXT: Record<string, string> = {
-      mp4: ".mp4",
-      webm: ".webm",
-      mov: ".mov",
-      gif: ".gif",
-    };
-    const format = VALID_FORMATS.find((value) => value === body.format) ?? "mp4";
+    const format: RenderFormat = isRenderFormat(body.format) ? body.format : "mp4";
+    const kind = FORMAT_KIND[format];
 
     // Default to 30 fps when unset or unparseable. The route stays lenient on
     // invalid fps values (matching the lenient handling of `resolution` and
@@ -185,13 +310,20 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
 
     const rendersDir = adapter.rendersDir(project);
     mkdirWithinProject(project.dir, rendersDir);
-    const ext = FORMAT_EXT[format] ?? ".mp4";
+    const ext = FORMAT_EXT[format];
     const jobId = nextFreeRenderJobId(
       `${project.id}_${formatRenderOutputTimestamp(new Date())}`,
       ext,
       rendersDir,
     );
-    const outputPath = join(rendersDir, `${jobId}${ext}`);
+    const outputName = `${jobId}${ext}`;
+    const outputPath = join(rendersDir, outputName);
+    // A directory output is later removed recursively, so make sure it can
+    // only ever land inside the renders folder.
+    const checkedOutput = resolveWithinProject(rendersDir, outputName);
+    if (!checkedOutput || isPrivateProjectFile(project.dir, checkedOutput)) {
+      return c.json({ error: "forbidden" }, 403);
+    }
 
     const jobState = adapter.startRender({
       project,
@@ -210,6 +342,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
       telemetryOptOut: body.telemetryOptOut === true,
       ...(pageMotionBlur === undefined ? {} : { pageMotionBlur }),
     });
+    jobState.kind ??= kind;
     renderJobs.set(jobId, jobState);
 
     ensureCleanupTimer();
@@ -272,47 +405,28 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     }
   };
 
-  function renderContentType(filePath: string): string {
-    const ext = RENDER_EXTENSIONS.find((e) => filePath.endsWith(e));
-    return (ext && RENDER_MIME[ext]) ?? "video/mp4";
-  }
-
-  function renderFileResponse(
-    filePath: string,
-    disposition: "inline" | "attachment",
-    filename: string,
-    method: string,
-  ): Response {
-    const headers = {
-      "Content-Type": renderContentType(filePath),
-      "Content-Disposition": contentDispositionHeader(disposition, filename),
-      ...(disposition === "inline" ? { "Accept-Ranges": "bytes" } : {}),
-      "Content-Length": String(statSync(filePath).size),
-    };
-    if (method === "HEAD") return new Response(null, { headers });
-    // Node and DOM stream declarations differ; the response receives a web byte stream.
-    const body = Readable.toWeb(createReadStream(filePath)) as unknown as ReadableStream;
-    return new Response(body, { headers });
-  }
-
+  // Serve render inline (for in-browser playback — opens in a new tab).
+  // Directory renders are not playable, so they fall through to 404.
   api.get("/render/:jobId/view", (c) => {
-    const { jobId } = c.req.param();
-    const job = renderJobs.get(jobId);
-    if (!job?.outputPath || !isPlainFile(job.outputPath)) {
+    const job = renderJobs.get(c.req.param("jobId"));
+    if (!job?.outputPath || job.kind === "directory" || !isPlainFile(job.outputPath)) {
       return c.json({ error: "not found" }, 404);
     }
-    const filename = job.outputPath.split("/").pop() ?? `render.mp4`;
-    return renderFileResponse(job.outputPath, "inline", filename, c.req.method);
+    return renderFileResponse(job.outputPath, "inline", basename(job.outputPath), c.req.method);
   });
 
+  // Download render. A directory render streams as a ZIP64 archive.
   api.get("/render/:jobId/download", (c) => {
     const { jobId } = c.req.param();
     const job = renderJobs.get(jobId);
+    if (job?.kind === "directory") {
+      const archive = job.status === "rendering" ? null : directoryDownload(job.outputPath, jobId);
+      return archive ?? c.json({ error: "not found" }, 404);
+    }
     if (!job?.outputPath || !isPlainFile(job.outputPath)) {
       return c.json({ error: "not found" }, 404);
     }
-    const filename = job.outputPath.split("/").pop() ?? `render.mp4`;
-    return renderFileResponse(job.outputPath, "attachment", filename, c.req.method);
+    return renderFileResponse(job.outputPath, "attachment", basename(job.outputPath), c.req.method);
   });
 
   async function renderDirectories(jobId: string): Promise<string[]> {
@@ -329,13 +443,17 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     if (jobId.includes("/") || jobId.includes("\\") || jobId.includes("\0")) {
       return c.json({ error: "forbidden" }, 403);
     }
+    // While rendering, the producer writes to a hidden staging sibling and
+    // publishes the final artifact only at the end. Deleting now would remove
+    // nothing and the render would reappear once it commits.
+    if (renderJobs.get(jobId)?.status === "rendering") {
+      return c.json({ error: "render in progress; cancel it first" }, 409);
+    }
     const directories = await renderDirectories(jobId);
     const artifacts = resolveRenderArtifacts(directories, jobId);
     if (!artifacts) return c.json({ error: "forbidden" }, 403);
 
-    for (const path of artifacts) {
-      if (existsSync(path)) unlinkSync(path);
-    }
+    for (const artifact of artifacts) deleteRenderArtifact(artifact);
     renderJobs.delete(jobId);
     return c.json({ deleted: true });
   });
@@ -354,8 +472,8 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     // dir; resolveWithinProject canonicalizes with realpath before serving.
     const fp = resolveWithinProject(rendersDir, filename);
     if (!fp || isPrivateProjectFile(project.dir, fp)) return c.json({ error: "forbidden" }, 403);
-    if (!existsSync(fp)) return c.json({ error: "not found" }, 404);
-    return renderFileResponse(fp, "inline", filename, c.req.method);
+    if (!existsSync(fp) || !statSync(fp).isFile()) return c.json({ error: "not found" }, 404);
+    return renderFileResponse(fp, "inline", basename(filename), c.req.method);
   });
 
   // List renders
@@ -364,57 +482,84 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     if (!project) return c.json({ error: "not found" }, 404);
     const rendersDir = adapter.rendersDir(project);
     if (!existsSync(rendersDir)) return c.json({ renders: [] });
-    const files = readdirSync(rendersDir)
-      .filter((f) => RENDER_EXTENSIONS.some((extension) => f.endsWith(extension)))
-      .flatMap((f) => {
-        const fp = resolveWithinProject(rendersDir, f);
-        return fp && !isPrivateProjectFile(project.dir, fp) ? [{ f, fp }] : [];
-      })
-      .map(({ f, fp }) => {
-        const stat = statSync(fp);
-        const rid = f.replace(/\.(mp4|webm|mov|gif)$/, "");
-        const metaPath = join(rendersDir, `${rid}.meta.json`);
-        let status: "complete" | "failed" = "complete";
-        let durationMs: number | undefined;
-        let audioLoweredDb: number | undefined;
-        if (existsSync(metaPath)) {
-          try {
-            const meta = JSON.parse(readFileSync(metaPath, "utf-8"));
-            // A stale failed sidecar can remain after a retry succeeds. An
-            // existing output artifact is authoritative for the list view;
-            // don't present a downloadable render as failed solely because
-            // an earlier attempt left behind failed metadata.
-            if (meta.status === "failed" && !existsSync(fp)) status = "failed";
-            if (meta.durationMs) durationMs = meta.durationMs;
-            if (typeof meta.audioLoweredDb === "number") audioLoweredDb = meta.audioLoweredDb;
-          } catch {
-            /* ignore */
-          }
+    const rows: RenderListingRow[] = [];
+    for (const entry of readdirSync(rendersDir, { withFileTypes: true })) {
+      // Dot-prefixed entries include the producer's in-progress staging dirs.
+      if (entry.name.startsWith(".")) continue;
+      // Dirent does not follow symlinks, so a symlinked directory is neither
+      // listed as a directory render nor matched by the file extensions.
+      const isDirectory = entry.isDirectory();
+      if (!isDirectory && !RENDER_FILE_PATTERN.test(entry.name)) continue;
+      const fp = resolveWithinProject(rendersDir, entry.name);
+      if (!fp || isPrivateProjectFile(project.dir, fp)) continue;
+
+      const rid = isDirectory ? entry.name : entry.name.replace(RENDER_FILE_PATTERN, "");
+      const meta = readRenderMeta(join(rendersDir, `${rid}.meta.json`));
+      let stat;
+      try {
+        stat = statSync(fp);
+      } catch {
+        continue;
+      }
+      // A stale failed sidecar can remain after a retry succeeds. An existing
+      // output artifact is authoritative for the list view; don't present a
+      // downloadable render as failed solely because an earlier attempt left
+      // behind failed metadata.
+      const status: "complete" | "failed" =
+        meta?.status === "failed" && !existsSync(fp) ? "failed" : "complete";
+      const durationMs =
+        typeof meta?.durationMs === "number" && meta.durationMs ? meta.durationMs : undefined;
+      const audioLoweredDb =
+        typeof meta?.audioLoweredDb === "number" ? meta.audioLoweredDb : undefined;
+      const base = {
+        id: rid,
+        filename: entry.name,
+        path: fp,
+        createdAt: stat.mtimeMs,
+        status,
+        durationMs,
+        ...(audioLoweredDb !== undefined ? { audioLoweredDb } : {}),
+      };
+
+      if (!isDirectory) {
+        rows.push({ ...base, size: stat.size });
+        continue;
+      }
+
+      let frameCount: number;
+      let size: number;
+      let audioSidecar: boolean;
+      if (typeof meta?.frameCount === "number" && typeof meta.size === "number") {
+        frameCount = meta.frameCount;
+        size = meta.size;
+        audioSidecar = meta.audioSidecar === true;
+      } else {
+        // No cached facts (e.g. a CLI-rendered directory): scan once.
+        try {
+          ({ frameCount, size, audioSidecar } = readRenderDirectoryStats(fp));
+        } catch {
+          continue;
         }
-        return {
-          id: rid,
-          filename: f,
-          path: fp,
-          size: stat.size,
-          createdAt: stat.mtimeMs,
-          status,
-          durationMs,
-          ...(audioLoweredDb !== undefined ? { audioLoweredDb } : {}),
-        };
-      })
-      .sort((a, b) => b.createdAt - a.createdAt);
+        // An arbitrary folder without frames or a sidecar is not a render.
+        if (frameCount === 0 && !meta) continue;
+      }
+      rows.push({ ...base, kind: "directory", size, frameCount, audioSidecar });
+    }
+    rows.sort((a, b) => b.createdAt - a.createdAt);
+
     // Register on-disk renders that aren't in the current session's job map
     // so they remain downloadable after a server restart.
-    for (const file of files) {
-      if (!renderJobs.has(file.id)) {
-        renderJobs.set(file.id, {
-          id: file.id,
-          status: file.status,
+    for (const row of rows) {
+      if (!renderJobs.has(row.id)) {
+        renderJobs.set(row.id, {
+          id: row.id,
+          status: row.status,
           progress: 100,
-          outputPath: file.path,
+          outputPath: row.path,
+          kind: row.kind === "directory" ? "directory" : "file",
         });
       }
     }
-    return c.json({ renders: files.map(({ path: _path, ...render }) => render) });
+    return c.json({ renders: rows.map(({ path: _path, ...render }) => render) });
   });
 }

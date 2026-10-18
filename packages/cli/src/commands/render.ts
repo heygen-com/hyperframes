@@ -5,7 +5,7 @@ import { resolveGsapVendorDir } from "../server/gsapVendor.js";
 import { failCommand, requestCliExit, scheduleCliExit } from "../utils/commandResult.js";
 import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
-import { mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, statSync, writeFileSync, rmSync } from "node:fs";
 import {
   createRenderPlan,
   resolveBrowserGpuForCli,
@@ -71,6 +71,7 @@ export const examples: Example[] = [
 import { freemem, tmpdir } from "node:os";
 import { resolve, dirname, join, basename } from "node:path";
 import { execFileSync, spawn } from "node:child_process";
+import { readRenderDirectoryStats } from "@hyperframes/studio-server/render-directory-stats";
 import { loadProducer } from "../utils/producer.js";
 import { c } from "../ui/colors.js";
 import { desktopHint } from "../utils/desktopApp.js";
@@ -2119,16 +2120,8 @@ function readOutputFootprint(outputPath: string): { fileSize: string; isDirector
     if (!stat.isDirectory()) return { fileSize: formatBytes(stat.size), isDirectory: false };
     // png-sequence and hls write a directory; sum contained file sizes so the
     // user sees the deliverable footprint, not the directory inode size.
-    let total = 0;
-    for (const entry of readdirSync(outputPath, { withFileTypes: true })) {
-      if (!entry.isFile()) continue;
-      try {
-        total += statSync(join(outputPath, entry.name)).size;
-      } catch {
-        // skip unreadable entries
-      }
-    }
-    return { fileSize: formatBytes(total), isDirectory: true };
+    const { size } = readRenderDirectoryStats(outputPath);
+    return { fileSize: formatBytes(size), isDirectory: true };
   } catch {
     return { fileSize: "unknown", isDirectory: false };
   }
