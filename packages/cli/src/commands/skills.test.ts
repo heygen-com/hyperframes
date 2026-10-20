@@ -133,15 +133,18 @@ vi.mock("../utils/skillsUpdateCheck.js", () => ({
 
 // The global install command this CLI runs (after `skills add <url>` and the
 // per-name `--skill` selection).
-const GLOBAL_ARGS_TAIL = [
-  "--global",
-  "--agent",
-  "claude-code",
-  "universal",
-  "--copy",
-  "--full-depth",
-  "--yes",
-] as const;
+// --copy only on Windows; elsewhere upstream links the Claude store to the universal one.
+function globalArgsTail(platform: NodeJS.Platform): string[] {
+  return [
+    "--global",
+    "--agent",
+    "claude-code",
+    "universal",
+    ...(platform === "win32" ? ["--copy"] : []),
+    "--full-depth",
+    "--yes",
+  ];
+}
 
 function setPlatform(platform: NodeJS.Platform): void {
   Object.defineProperty(process, "platform", {
@@ -245,7 +248,7 @@ describe("hyperframes skills", () => {
         "hyperframes-core",
         "--skill",
         "pr-to-video",
-        ...GLOBAL_ARGS_TAIL,
+        ...globalArgsTail("linux"),
       ],
     ],
     [
@@ -262,7 +265,7 @@ describe("hyperframes skills", () => {
         "hyperframes-core",
         "--skill",
         "pr-to-video",
-        ...GLOBAL_ARGS_TAIL,
+        ...globalArgsTail("darwin"),
       ],
     ],
     [
@@ -283,7 +286,7 @@ describe("hyperframes skills", () => {
         "hyperframes-core",
         "--skill",
         "pr-to-video",
-        ...GLOBAL_ARGS_TAIL,
+        ...globalArgsTail("win32"),
       ],
     ],
   ] as const)(
@@ -319,7 +322,7 @@ describe("hyperframes skills", () => {
     // straight from GitHub, globally, as a faithful clone
     expect(args).toContain("https://github.com/heygen-com/hyperframes");
     expect(args).toContain("--global");
-    expect(args).toContain("--copy");
+    expect(args).not.toContain("--copy");
     expect(args).toContain("--full-depth");
     // targeted per-name selection: the stale core skills only
     expect(skillFlagValues(args).sort()).toEqual(["hyperframes", "hyperframes-core"]);

@@ -65,7 +65,7 @@ function spawnNpx(args: string[], opts: { cwd?: string } = {}): Promise<void> {
       // interactive path too (the user still sees the output).
       stdio: ["inherit", 2, 2],
       // We install with --full-depth (a full `git clone` of the repo, the only
-      // path that bypasses the laggy skills.sh blob — see GLOBAL_INSTALL_ARGS_TAIL),
+      // path that bypasses the laggy skills.sh blob — see globalInstallArgsTail),
       // which is heavier than the blob fetch, so allow more headroom.
       timeout: 300_000,
       cwd: opts.cwd,
@@ -94,29 +94,29 @@ function spawnNpx(args: string[], opts: { cwd?: string } = {}): Promise<void> {
   });
 }
 
-// One faithful global install: --copy lands real files in Claude Code's global
-// store (~/.claude/skills, which Claude Code reads at global priority) plus the
-// shared universal store (~/.agents/skills). mirrorGlobalSkills then fans that
-// store out to every OTHER installed agent's global dir. Skills are
-// framework-general knowledge, so installing once globally beats copying a full
-// set into every project — and avoids the ~70-agent `--all` spray entirely.
+// One global install: the universal store (~/.agents/skills) plus Claude Code's
+// global store (~/.claude/skills, read at global priority); mirrorGlobalSkills
+// fans it out to every OTHER installed agent's global dir. Installing once
+// globally beats copying a set into every project and avoids the `--all` spray.
 //
-// Why --copy: real files (not the upstream symlink default, which re-serialises
-// each SKILL.md's frontmatter) so an installed bundle byte-matches the published
-// manifest and `skills check` reads it as current. Why --full-depth: it forces a
-// full `git clone` of HEAD; without it even a full-URL `skills add` fetches the
-// skills.sh registry blob, which lags GitHub main by hours, so a fresh install
-// would read as several skills "outdated" (verified: blob → ~9 outdated;
-// --full-depth → all current).
-const GLOBAL_INSTALL_ARGS_TAIL = [
-  "--global",
-  "--agent",
-  "claude-code",
-  "universal",
-  "--copy",
-  "--full-depth",
-  "--yes",
-];
+// On Unix, upstream's symlink mode keeps one copy: real files in the universal
+// store, a relative link per skill in the Claude store, still byte-matching the
+// manifest (upstream rewrites SKILL.md only for `eve`). Windows symlinks need
+// admin or Developer Mode, so --copy writes real files to both stores there.
+// --full-depth forces a full `git clone` of HEAD; without it `skills add`
+// fetches the skills.sh registry blob, which lags GitHub main by hours, so a
+// fresh install would read as several skills "outdated".
+function globalInstallArgsTail(platform: NodeJS.Platform = process.platform): string[] {
+  return [
+    "--global",
+    "--agent",
+    "claude-code",
+    "universal",
+    ...(platform === "win32" ? ["--copy"] : []),
+    "--full-depth",
+    "--yes",
+  ];
+}
 
 /** All skills, or an explicit list of skill names to install. */
 type SkillSelection = "*" | readonly string[];
@@ -134,7 +134,7 @@ function runSkillsAdd(
   opts: { cwd?: string } = {},
 ): Promise<void> {
   return spawnNpx(
-    ["skills", "add", source, ...skillSelectionArgs(selection), ...GLOBAL_INSTALL_ARGS_TAIL],
+    ["skills", "add", source, ...skillSelectionArgs(selection), ...globalInstallArgsTail()],
     opts,
   );
 }
@@ -161,7 +161,7 @@ function runSkillsRemove(names: string[], opts: { global: boolean }): Promise<vo
 }
 
 // Use the full GitHub URL (not the `owner/repo` slug) as the clone source. The
-// freshness comes from --full-depth (see GLOBAL_INSTALL_ARGS_TAIL), which clones the
+// freshness comes from --full-depth (see globalInstallArgsTail), which clones the
 // repo at latest `main`; the URL just names what to clone. Our freshness check
 // resolves "latest" straight from GitHub too, so install and check agree.
 const SOURCES = [{ name: "HyperFrames", url: "https://github.com/heygen-com/hyperframes" }];

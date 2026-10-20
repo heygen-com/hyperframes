@@ -1,12 +1,12 @@
 // Fan the canonical global skills store out to every OTHER installed agent.
 //
-// `skills add --global --agent claude-code universal --copy` writes REAL files
-// to two global stores: the Claude store (~/.claude/skills — what Claude Code
-// reads, at global priority) and the shared universal store (~/.agents/skills,
-// which Cursor/… read in PROJECT scope and Codex, Pi and the .agents-family
-// agents read globally). But every other agent reads its OWN global dir (~/.cursor/skills,
-// goose → ~/.config/goose/skills, …), which upstream's --global does NOT
-// populate.
+// `skills add --global --agent claude-code universal` fills two global stores:
+// the Claude store (~/.claude/skills — what Claude Code reads, at global
+// priority; on Unix each entry links into the universal store) and the shared
+// universal store (~/.agents/skills, which Cursor/… read in PROJECT scope and
+// Codex, Pi and the .agents-family agents read globally). But every other agent
+// reads its OWN global dir (~/.cursor/skills, goose → ~/.config/goose/skills, …),
+// which upstream's --global does NOT populate.
 //
 // So we mirror the canonical Claude store into each of those per-agent dirs, but
 // only for agents the machine actually has (their marker dir exists). Agents
@@ -280,8 +280,8 @@ export function mirrorGlobalSkills(opts: {
   const platform = opts.platform ?? process.platform;
   const bases = resolveBases(home, opts.env ?? process.env);
 
-  // The two stores the global --copy install writes as real files. The mirror
-  // reads from the Claude store and must never link/copy onto either of them.
+  // The two stores the global install owns. The mirror reads from the Claude
+  // store and must never link/copy onto either of them.
   const source = join(bases.claudeHome, "skills");
   const universalStore = join(home, ".agents", "skills");
   if (!existsSync(source)) return { source: null, mirrored: [], skipped: [] };
