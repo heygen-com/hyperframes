@@ -121,6 +121,7 @@ export const TimelineClip = memo(function TimelineClip({
     isHovered ? "is-hovered" : "",
     isDragging ? "is-dragging" : "",
     isAudioClip ? "is-audio" : "",
+    isComposition ? "is-composition" : "",
   ]
     .filter((className) => className.length > 0)
     .join(" ");

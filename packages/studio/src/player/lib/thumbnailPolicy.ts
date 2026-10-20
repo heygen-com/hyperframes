@@ -1,7 +1,7 @@
 export type ThumbnailMode = "adaptive" | "hidden";
 export type ThumbnailRuntimePolicy = "follow-preference" | "force-hidden" | "legacy-default";
 
-// "Adaptive" currently means the scheduler pauses rich work while scrolling.
+// "Adaptive" currently means the scheduler pauses rich work while the timeline zooms.
 // The mode name leaves room for finer-grained runtime heuristics later.
 
 const rawPolicy = import.meta.env?.VITE_STUDIO_TIMELINE_THUMBNAIL_POLICY;

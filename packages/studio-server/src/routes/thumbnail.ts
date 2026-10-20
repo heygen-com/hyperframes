@@ -14,12 +14,15 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
-import type { StudioApiAdapter } from "../types.js";
+import type { StudioApiAdapter, ThumbnailRenderOptions } from "../types.js";
 import { STUDIO_MANUAL_EDITS_PATH } from "../helpers/manualEditsRenderScript.js";
 import { compositionInputSignature } from "../helpers/compositionInputs.js";
 import { createProjectSignature, resolveProjectAndSignature } from "../helpers/projectSignature.js";
 import { STUDIO_MOTION_PATH } from "../helpers/studioMotionRenderScript.js";
-import { thumbnailGenerationCoordinator } from "./thumbnailGenerationCoordinator.js";
+import {
+  BACKGROUND_RANK,
+  thumbnailGenerationCoordinator,
+} from "./thumbnailGenerationCoordinator.js";
 import { requestSubPath } from "../helpers/requestSubPath.js";
 import {
   isProjectRootMissing,
@@ -28,6 +31,7 @@ import {
 } from "../helpers/safePath.js";
 import { proxyActivityMark } from "../helpers/proxyTranscoder.js";
 import { PREVIEW_CAPTURE_PARAM } from "./preview.js";
+import { loadSharp } from "./imageThumbnail.js";
 
 const THUMBNAIL_CACHE_VERSION = "v5";
 const THUMBNAIL_MAX_OUTPUT_WIDTH = 240;
@@ -35,6 +39,45 @@ const THUMBNAIL_MAX_OUTPUT_HEIGHT = 135;
 const THUMBNAIL_CACHE_MAX_BYTES = 512 * 1024 * 1024;
 const THUMBNAIL_CACHE_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
 const prunedCacheDirs = new Set<string>();
+const MAX_STRIP_FRAMES = 8;
+
+export function parseStripTimes(raw: string): number[] | null {
+  const times = raw.split(",").map((part) => (part.trim() ? Number(part) : Number.NaN));
+  if (times.length > MAX_STRIP_FRAMES || !times.every((t) => Number.isFinite(t) && t >= 0)) {
+    return null;
+  }
+  return [...new Set(times)].sort((a, b) => a - b);
+}
+
+/** From one page load when the adapter can; otherwise ascending in one turn, for a forward-only warm page. */
+async function renderStripFrames(
+  adapter: StudioApiAdapter,
+  options: ThumbnailRenderOptions,
+  times: number[],
+): Promise<Buffer[] | null> {
+  if (adapter.generateThumbnailFrames) {
+    return adapter.generateThumbnailFrames({ ...options, seekTimes: times });
+  }
+  const frames: Buffer[] = [];
+  for (const seekTime of times) {
+    const frame = await adapter.generateThumbnail!({ ...options, seekTime });
+    if (!frame) return null;
+    frames.push(frame);
+  }
+  return frames;
+}
+
+async function composeStrip(frames: Buffer[], format: "jpeg" | "png"): Promise<Buffer> {
+  const sharp = await loadSharp();
+  const { width = 1, height = 1 } = await sharp(frames[0]).metadata();
+  const cells = await Promise.all(
+    frames.map((frame) => sharp(frame).resize(width, height, { fit: "contain" }).toBuffer()),
+  );
+  const strip = sharp({
+    create: { width: width * frames.length, height, channels: 3, background: "#1c2028" },
+  }).composite(cells.map((input, i) => ({ input, left: i * width, top: 0 })));
+  return format === "png" ? strip.png().toBuffer() : strip.jpeg({ quality: 80 }).toBuffer();
+}
 
 export function pruneThumbnailCache(
   cacheDir: string,
@@ -140,6 +183,8 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
     const rawSeekTime = url.searchParams.get("t");
     const parsedSeekTime = rawSeekTime == null ? Number.NaN : parseFloat(rawSeekTime);
     const seekTime = Number.isFinite(parsedSeekTime) ? parsedSeekTime : 0.5;
+    const rawTimes = url.searchParams.get("times");
+    const stripTimes = rawTimes == null ? null : parseStripTimes(rawTimes);
     const vpWidth = parseInt(url.searchParams.get("w") || "0") || 0;
     const vpHeight = parseInt(url.searchParams.get("h") || "0") || 0;
     const selector = url.searchParams.get("selector") || undefined;
@@ -152,6 +197,9 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
       requestedOutput === "source" || (requestedOutput !== "preview" && format === "png")
         ? "source"
         : "preview";
+    if (rawTimes != null && (!stripTimes || outputMode === "source")) {
+      return c.json({ error: "times must be up to 8 non-negative numbers, at preview size" }, 400);
+    }
     const rawSelectorIndex = Number.parseInt(url.searchParams.get("selectorIndex") || "0", 10);
     const selectorIndex =
       Number.isFinite(rawSelectorIndex) && rawSelectorIndex > 0 ? rawSelectorIndex : undefined;
@@ -205,8 +253,13 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
         : Math.min(1, THUMBNAIL_MAX_OUTPUT_WIDTH / compW, THUMBNAIL_MAX_OUTPUT_HEIGHT / compH);
     const outputWidth = Math.max(1, Math.round(compW * outputScale));
     const outputHeight = Math.max(1, Math.round(compH * outputScale));
-    const cacheKey = `${THUMBNAIL_CACHE_VERSION}${urlVersionKey}${inputSignatureKey}${manualEdits.key}${motion.key}${sourceKey}_${format}_${outputMode}_${compPath.replace(/\//g, "_")}_${compW}x${compH}_${outputWidth}x${outputHeight}_${sourceMtime}_${seekTime.toFixed(2)}${selectorKey}.${format === "png" ? "png" : "jpg"}`;
-    const cachePath = join(cacheDir, cacheKey);
+    const cacheKey = `${THUMBNAIL_CACHE_VERSION}${urlVersionKey}${inputSignatureKey}${manualEdits.key}${motion.key}${sourceKey}_${format}_${outputMode}_${compPath.replace(/\//g, "_")}_${compW}x${compH}_${outputWidth}x${outputHeight}_${sourceMtime}_${stripTimes ? stripTimes.map((t) => t.toFixed(3)).join("-") : seekTime.toFixed(2)}${selectorKey}`;
+    // Named by a hash of the whole identity: a deep composition path or a strip's times must not pass 255 bytes.
+    const cacheName = createHash("sha1").update(cacheKey).digest("hex").slice(0, 32);
+    const cachePath = join(
+      cacheDir,
+      `${THUMBNAIL_CACHE_VERSION}_${cacheName}.${format === "png" ? "png" : "jpg"}`,
+    );
     if (!prunedCacheDirs.has(cacheDir)) {
       prunedCacheDirs.add(cacheDir);
       pruneThumbnailCache(
@@ -229,10 +282,9 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
         c.req.raw.signal,
         async (signal) => {
           const previewCopiesAtStart = proxyActivityMark(project.dir);
-          const generated = await adapter.generateThumbnail!({
+          const renderOptions: ThumbnailRenderOptions = {
             project,
             compPath,
-            seekTime,
             width: compW,
             height: compH,
             outputWidth,
@@ -242,7 +294,12 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
             format,
             selectorIndex,
             signal,
-          });
+          };
+          const generated = await (stripTimes
+            ? renderStripFrames(adapter, renderOptions, stripTimes).then(
+                (frames) => frames && composeStrip(frames, format),
+              )
+            : adapter.generateThumbnail!({ ...renderOptions, seekTime }));
           if (!generated) return null;
           const previewCopiesAtEnd = proxyActivityMark(project.dir);
           const afterGeneration = await resolveProjectAndSignature(adapter, project.id);
@@ -265,6 +322,7 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
           writeThumbnailAtomically(cachePath, generated);
           return generated;
         },
+        { rank: url.searchParams.get("background") === "1" ? BACKGROUND_RANK : stripTimes ? 1 : 0 },
       );
       if (!buffer) {
         return c.json(

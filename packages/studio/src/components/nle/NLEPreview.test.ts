@@ -471,7 +471,7 @@ describe("NLEPreview", () => {
 
   describe("a missing poster", () => {
     const renderUrl =
-      "/api/projects/timeline-edit-playground/thumbnail/index.html?t=0&output=source";
+      "/api/projects/timeline-edit-playground/thumbnail/index.html?t=0&output=source&background=1";
     const fetchSpy = vi.fn((_url: string, _init?: RequestInit) => Promise.resolve(new Response()));
     beforeEach(() => {
       fetchSpy.mockClear();

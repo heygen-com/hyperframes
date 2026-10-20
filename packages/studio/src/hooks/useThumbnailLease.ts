@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useRef, useSyncExternalStore } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import {
   createThumbnailRequestIdentity,
   thumbnailScheduler,
@@ -16,7 +16,10 @@ export function useThumbnailLease(
   const requestRef = useRef(request);
   requestRef.current = request;
   const leaseRef = useRef<ReturnType<ThumbnailScheduler["acquire"]> | null>(null);
-  const identity = request ? createThumbnailRequestIdentity(request) : null;
+  const identity = useMemo(
+    () => (request ? createThumbnailRequestIdentity(request) : null),
+    [request],
+  );
   const priority = request?.priority;
   const subscribe = useCallback(
     (listener: () => void) => {

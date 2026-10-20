@@ -5,6 +5,7 @@ import { execFileSync } from "node:child_process";
 import { homedir } from "node:os";
 import { join, win32 as pathWin32 } from "node:path";
 import {
+  clearElementScreenshotIsolation,
   getElementScreenshotClip,
   thumbnailDeviceScaleFactor,
   type ScreenshotClip,
@@ -203,9 +204,13 @@ export interface GenerateThumbnailOptions {
   signal: AbortSignal;
 }
 
-async function prepareThumbnailPage(
+export type GenerateThumbnailFramesOptions = Omit<GenerateThumbnailOptions, "seekTime"> & {
+  seekTimes: readonly number[];
+};
+
+async function loadThumbnailPage(
   page: import("puppeteer-core").Page,
-  opts: GenerateThumbnailOptions,
+  opts: GenerateThumbnailFramesOptions,
 ): Promise<void> {
   await page.setViewport({
     width: opts.width,
@@ -224,9 +229,19 @@ async function prepareThumbnailPage(
       timeout: 5000,
     })
     .catch(() => {});
-  await seekThumbnailPreview(page, opts.seekTime);
+}
+
+async function settleThumbnailFrame(
+  page: import("puppeteer-core").Page,
+  opts: GenerateThumbnailFramesOptions,
+  seekTime: number,
+  firstFrame: boolean,
+): Promise<void> {
+  await seekThumbnailPreview(page, seekTime);
   await page.evaluate("window.__hfWaitForSeekCompletion?.()");
-  await applyStudioRenderBodyScriptsToThumbnailPage(page, opts.project.dir, opts.compPath);
+  if (firstFrame) {
+    await applyStudioRenderBodyScriptsToThumbnailPage(page, opts.project.dir, opts.compPath);
+  }
   await page.evaluate("document.fonts?.ready");
   await new Promise((resolve) => setTimeout(resolve, 200));
   await reapplyStudioRenderBodyScriptsToThumbnailPage(page);
@@ -246,7 +261,27 @@ async function captureThumbnail(
   return Buffer.from(screenshot);
 }
 
-export async function generateThumbnail(opts: GenerateThumbnailOptions): Promise<Buffer | null> {
+async function captureFrames(
+  page: import("puppeteer-core").Page,
+  opts: GenerateThumbnailFramesOptions,
+): Promise<Buffer[] | null> {
+  const frames: Buffer[] = [];
+  for (const [index, seekTime] of opts.seekTimes.entries()) {
+    await settleThumbnailFrame(page, opts, seekTime, index === 0);
+    const clip = opts.selector
+      ? await page.evaluate(getElementScreenshotClip, opts.selector, opts.selectorIndex)
+      : undefined;
+    if (opts.signal.aborted) return null;
+    frames.push(await captureThumbnail(page, opts.format, clip));
+    if (opts.selector) await page.evaluate(clearElementScreenshotIsolation);
+  }
+  return frames;
+}
+
+/** Every time from one page load, seeking forward in order, as a render does. */
+export async function generateThumbnailFrames(
+  opts: GenerateThumbnailFramesOptions,
+): Promise<Buffer[] | null> {
   if (opts.signal.aborted) return null;
   let page: import("puppeteer-core").Page | null = null;
   const closePage = () => void page?.close().catch(() => {});
@@ -256,12 +291,8 @@ export async function generateThumbnail(opts: GenerateThumbnailOptions): Promise
     if (!sharedBrowser || opts.signal.aborted) return null;
     page = await sharedBrowser.newPage();
     if (opts.signal.aborted) return null;
-    await prepareThumbnailPage(page, opts);
-    const clip = opts.selector
-      ? await page.evaluate(getElementScreenshotClip, opts.selector, opts.selectorIndex)
-      : undefined;
-    if (opts.signal.aborted) return null;
-    return await captureThumbnail(page, opts.format, clip);
+    await loadThumbnailPage(page, opts);
+    return await captureFrames(page, opts);
   } catch (error) {
     if (!opts.signal.aborted) {
       console.warn(
@@ -274,4 +305,12 @@ export async function generateThumbnail(opts: GenerateThumbnailOptions): Promise
     opts.signal.removeEventListener("abort", closePage);
     await page?.close().catch(() => {});
   }
+}
+
+export async function generateThumbnail({
+  seekTime,
+  ...opts
+}: GenerateThumbnailOptions): Promise<Buffer | null> {
+  const frames = await generateThumbnailFrames({ ...opts, seekTimes: [seekTime] });
+  return frames?.[0] ?? null;
 }

@@ -1,11 +1,14 @@
 export type ThumbnailGenerationValue = Buffer | null;
 export type ThumbnailGenerationWork = (signal: AbortSignal) => Promise<ThumbnailGenerationValue>;
+export const BACKGROUND_RANK = 2;
 
 interface GenerationEntry {
   key: string;
   controller: AbortController;
   leases: number;
   state: "queued" | "active";
+  rank: number;
+  run: number;
   work: ThumbnailGenerationWork;
   promise: Promise<ThumbnailGenerationValue>;
   resolve: (value: ThumbnailGenerationValue) => void;
@@ -29,6 +32,7 @@ export class ThumbnailGenerationCoordinator {
     key: string,
     signal: AbortSignal,
     work: ThumbnailGenerationWork,
+    { rank = 0 }: { rank?: number } = {},
   ): Promise<ThumbnailGenerationValue> {
     if (signal.aborted) return Promise.reject(new DOMException("Aborted", "AbortError"));
 
@@ -45,13 +49,16 @@ export class ThumbnailGenerationCoordinator {
         controller: new AbortController(),
         leases: 0,
         state: "queued",
+        rank,
+        run: 0,
         work,
         promise,
         resolve,
         reject,
       };
       this.entries.set(key, entry);
-      this.queue.push(entry);
+      this.enqueue(entry);
+      if (rank < BACKGROUND_RANK) this.preemptBackground();
     }
     entry.leases++;
     this.pump();
@@ -112,17 +119,40 @@ export class ThumbnailGenerationCoordinator {
     }
   }
 
+  private enqueue(entry: GenerationEntry): void {
+    const firstOfLaterRank = this.queue.findIndex((queued) => queued.rank > entry.rank);
+    this.queue.splice(firstOfLaterRank < 0 ? this.queue.length : firstOfLaterRank, 0, entry);
+  }
+
+  private preemptBackground(): void {
+    if (this.active < this.concurrency) return;
+    const background = [...this.activeEntries].find((active) => active.rank >= BACKGROUND_RANK);
+    if (!background) return;
+    background.run++;
+    background.controller.abort();
+  }
+
   private async run(entry: GenerationEntry): Promise<void> {
+    const run = entry.run;
+    const preempted = () => entry.run !== run;
     try {
-      entry.resolve(await entry.work(entry.controller.signal));
+      const value = await entry.work(entry.controller.signal);
+      if (!preempted()) entry.resolve(value);
     } catch (error) {
-      entry.reject(error);
+      if (!preempted()) entry.reject(error);
     } finally {
       this.active--;
       this.activeEntries.delete(entry);
-      if (this.entries.get(entry.key) === entry) this.entries.delete(entry.key);
+      if (preempted() && entry.leases > 0) this.requeueBehindForeground(entry);
+      else if (this.entries.get(entry.key) === entry) this.entries.delete(entry.key);
       this.pump();
     }
+  }
+
+  private requeueBehindForeground(entry: GenerationEntry): void {
+    entry.controller = new AbortController();
+    entry.state = "queued";
+    this.enqueue(entry);
   }
 }
 
