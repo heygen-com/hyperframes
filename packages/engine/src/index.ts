@@ -446,6 +446,7 @@ export {
 export { trackChildProcess, killTrackedProcesses } from "./utils/processTracker.js";
 export { renameWithRetry, renameWithRetryAsync } from "@hyperframes/core/rename-retry";
 export { removeScratch, collectScratchLeftovers } from "@hyperframes/core/remove-scratch";
+export { retrySpawnWhileLocked } from "./utils/spawnLockRetry.js";
 
 // drawElement self-verify comparison — shared by the streaming drain
 // (producer) and the parallel disk-path verify (parallelCoordinator).
