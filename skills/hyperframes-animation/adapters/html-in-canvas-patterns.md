@@ -1,5 +1,7 @@
 # HTML-in-Canvas Patterns
 
+<!-- skill-paths: allow=examples/js/,examples/jsm/ -->
+
 ## Contents
 
 - [Core Boilerplate (same in every HTML-in-Canvas composition)](#core-boilerplate-same-in-every-html-in-canvas-composition)

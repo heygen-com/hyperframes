@@ -1,5 +1,7 @@
 # Contributing a Block or Component to the Registry
 
+<!-- skill-paths: allow=scripts/upload-docs-images.sh,scripts/generate-registry-items.ts,scripts/generate-catalog-pages.ts -->
+
 Guide the user from idea to merged PR for a new registry block or component.
 
 ## Workflow

@@ -74,11 +74,11 @@ only credential is an expired OAuth token it stops with a hint to run
 export HEYGEN_API_KEY=...   # or put it in a project .env
 
 # Synthesize + capture word timestamps in one call (skips a Whisper pass)
-node skills/media-use/audio/scripts/heygen-tts.mjs \
+node <SKILL_DIR>/audio/scripts/heygen-tts.mjs \
   "Welcome to HyperFrames." -o narration.wav --words narration.words.json
 
-node skills/media-use/audio/scripts/heygen-tts.mjs ./script.txt -o narration.wav
-node skills/media-use/audio/scripts/heygen-tts.mjs --list   # public starfish voices
+node <SKILL_DIR>/audio/scripts/heygen-tts.mjs ./script.txt -o narration.wav
+node <SKILL_DIR>/audio/scripts/heygen-tts.mjs --list   # public starfish voices
 ```
 
 - **Voice:** `--voice <id>` must be a **starfish** voice_id (`--list`, or `GET /v3/voices?engine=starfish`) or one of your cloned voice ids (below). v2-catalog ids are rejected with HTTP 400. Omit `--voice` (English) and it defaults to **Marcia** (`05f19352e8f74b0392a8f411eba40de1`, a fixed default so the choice is deterministic). Non-English with no `--voice` falls back to the first matching catalog voice.
@@ -94,9 +94,9 @@ Clone a voice from an mp3 or wav recording, then pass the printed id to
 message to stderr and exits 1.
 
 ```bash
-node skills/media-use/audio/scripts/heygen-voice.mjs clone take.mp3 --name "My voice"  # → {"voice_id":"..."}
-node skills/media-use/audio/scripts/heygen-voice.mjs list --prefix "My"   # → [{"voice_id","name","created_at"}]
-node skills/media-use/audio/scripts/heygen-voice.mjs delete <voice_id>
+node <SKILL_DIR>/audio/scripts/heygen-voice.mjs clone take.mp3 --name "My voice"  # → {"voice_id":"..."}
+node <SKILL_DIR>/audio/scripts/heygen-voice.mjs list --prefix "My"   # → [{"voice_id","name","created_at"}]
+node <SKILL_DIR>/audio/scripts/heygen-voice.mjs delete <voice_id>
 ```
 
 `clone` waits up to 120 s for the clone to finish. `list` reads

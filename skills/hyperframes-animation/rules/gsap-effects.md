@@ -129,9 +129,11 @@ Pre-extract audio data, drive Canvas / DOM rendering from the timeline. **Do not
 Bundled extractor (requires `ffmpeg` + Python `numpy`):
 
 ```bash
-python skills/hyperframes-creative/scripts/extract-audio-data.py audio.mp3 -o audio-data.json
-python skills/hyperframes-creative/scripts/extract-audio-data.py video.mp4 --fps 30 --bands 16 -o audio-data.json
+python <HYPERFRAMES_CREATIVE_SKILL_DIR>/scripts/extract-audio-data.py audio.mp3 -o audio-data.json
+python <HYPERFRAMES_CREATIVE_SKILL_DIR>/scripts/extract-audio-data.py video.mp4 --fps 30 --bands 16 -o audio-data.json
 ```
+
+`<HYPERFRAMES_CREATIVE_SKILL_DIR>` is the installed `hyperframes-creative` skill directory.
 
 Output: `{ "fps": 30, "totalFrames": 5415, "frames": [{ "time": 0.0, "rms": 0.42, "bands": [0.8, 0.6, 0.3] }] }` — `rms` (0-1) is overall loudness; `bands[]` (0-1) are frequency magnitudes, index 0 = bass, each band normalized independently.
 

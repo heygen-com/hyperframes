@@ -132,7 +132,7 @@ Priority ship order based on competitive gap:
 1. Classify the clip: `tone × shot × platform` (see matrix above)
 2. Look up direction in matrix
 3. Read that direction's spec in this file
-4. Translate spec into plan.json parameters OR clone the canonical HTML from `examples/`
+4. Translate spec into plan.json parameters OR clone the canonical HTML from `references/example-renders/`
 5. Tune layout per scene (agent judgment, see `aesthetic-principles.md §1–18`)
 
 If no direction fits cleanly → **Standard mode**. Don't fake-fit an ill-matched direction.

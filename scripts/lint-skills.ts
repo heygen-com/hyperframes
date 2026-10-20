@@ -10,7 +10,7 @@
  */
 
 import { readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml, YAMLParseError } from "yaml";
 import type { RegistryManifest } from "../packages/core/src/index.js";
@@ -329,8 +329,8 @@ export function lintRegistryItemRefs(content: string, known: Set<string>): LineV
 }
 
 // Cross-references between skill docs: relative link targets, and backticked `./` or `../` .md/.html paths, must
-// resolve from the referencing file; `#anchor`s into .md files must match a GitHub heading slug. Bare backticked
-// paths like `references/<name>.md` are skill-root shorthand and deliberately unchecked.
+// resolve from the referencing file; `#anchor`s into .md files must match a GitHub heading slug. Bare paths like
+// `references/<name>.md` are skill-root shorthand, checked by lintSkillPaths below.
 
 interface DocRef {
   line: number;
@@ -509,6 +509,262 @@ export function lintDocRefs(filePath: string, content: string): LineViolation[] 
     .flatMap((ref) => checkDocRef(ref, filePath, content) ?? []);
 }
 
+// ---------------------------------------------------------------------------
+// Skill-root paths and skill names
+// ---------------------------------------------------------------------------
+//
+// The cross-reference rule above leaves bare paths alone, and bare paths are how
+// skills actually point at their own files: `references/bgm.md`,
+// `<SKILL_DIR>/scripts/carve.mjs`, `hyperframes-core/references/sub-compositions.md`. When one of
+// those goes stale the agent gets a read error mid-task (heygen-com/hyperframes#5025
+// lists a batch). This rule checks every path-shaped token, in prose and in fenced
+// blocks alike, whose first segment says it lives inside a skill:
+//
+//   <SKILL_DIR>/rest      rest must exist under the referencing skill's root
+//   <NAME_SKILL_DIR>/rest rest must exist under skill `name` (`<HYPERFRAMES_AUDIO_SKILL_DIR>`
+//                         is hyperframes-audio)
+//   <skill-name>/rest     rest must exist under that skill's root
+//   skills/<name>/rest    <name> must be a skill; in the distributed skills/ set it is
+//                         flagged anyway, because it never resolves once a skill is
+//                         installed (repo-native skills run in the repo)
+//   <content-dir>/rest    a directory some skill ships (references/, scripts/, ...):
+//                         rest must exist under the referencing skill, under any
+//                         directory between it and the referencing file, or under a
+//                         skill the same paragraph names as `/name` or `name`
+//
+// and every backticked `/name` that names a skill must name one that exists. A skill
+// name resolves in the referencing skill's own tree first (`.claude/skills` and
+// `.agents/skills` mirror each other), then in the distributed set.
+//
+// Anything else (project paths like `compositions/`, `.hyperframes/`, package
+// paths, URLs, `./` and `../` paths, which the rule above owns) is not this rule's
+// business. Paths containing placeholders (`<id>`, `{slug}`, `*`, `$VAR`) are skipped,
+// as are extensionless paths without a trailing slash, which are too often ids or
+// npm-style names to be read as files.
+//
+// A doc that names paths or skills on purpose that do not resolve from an installed
+// skill (a shared file spliced into each workflow's own copy, a contributor guide
+// naming repo scripts, an upstream skill) lists them in one or more marker lines:
+//
+//   <!-- skill-paths: allow=scripts/frame-packets.mjs,references/cut-catalog.md,/upstream-skill -->
+
+export interface SkillIndex {
+  /** Skills tree (the directory holding skill roots) → skill name → root directory. */
+  trees: Map<string, Map<string, string>>;
+  /** Names of the top-level directories any skill ships. */
+  contentDirs: Set<string>;
+  /** The set users install; repo-native skills elsewhere may name repo paths. */
+  distributedDir: string;
+}
+
+// Skills that live outside this repo but are legitimately referenced by `/name`.
+const EXTERNAL_SKILLS = new Set(["animate-text"]);
+// Skill directories whose names are also the conventional project directory, so a
+// bare `assets/logo.png` is far more often the user's project than the skill's.
+const PROJECT_DIR_NAMES = new Set(["assets"]);
+const SKILL_DIR_SEGMENT = /^(?:<SKILL_DIR>|\$\{?SKILL_DIR\}?)$/;
+const NAMED_SKILL_DIR_SEGMENT = /^<([A-Z][A-Z0-9_]*)_SKILL_DIR>$/;
+const PATH_TOKEN = /[\w.@<>${}*-]*\/[\w.@<>${}*/-]*/g;
+const PATH_PLACEHOLDER = /[<>{}*$]/;
+const SLASH_SKILL_REF = /`\/([a-z][a-z0-9-]*)`/g;
+// `/name` anywhere, or a whole backticked `name`; a bare word that happens to equal a
+// skill name ("the hyperframes CLI") is not a mention.
+const SKILL_MENTION = /`\/?([a-z][a-z0-9-]*)`|(?:^|[^\w/-])\/([a-z][a-z0-9-]*)/g;
+const SKILL_PATHS_MARKER = /<!--\s*skill-paths:\s*allow=([^\s]*)\s*-->/g;
+
+export function buildSkillIndex(
+  skillFiles: string[],
+  distributedDir = join(REPO_ROOT, "skills"),
+): SkillIndex {
+  const trees = new Map<string, Map<string, string>>();
+  const contentDirs = new Set<string>();
+  for (const file of skillFiles) {
+    const root = dirname(file);
+    const tree = trees.get(dirname(root)) ?? new Map<string, string>();
+    tree.set(basename(root), root);
+    trees.set(dirname(root), tree);
+    for (const entry of readdirSync(root, { withFileTypes: true })) {
+      if (entry.isDirectory() && !PROJECT_DIR_NAMES.has(entry.name)) contentDirs.add(entry.name);
+    }
+  }
+  return { trees, contentDirs, distributedDir };
+}
+
+function skillRootOf(filePath: string, index: SkillIndex): string | null {
+  let best: string | null = null;
+  for (const tree of index.trees.values()) {
+    for (const root of tree.values()) {
+      const inside = filePath.startsWith(root + "/");
+      if (inside && (best === null || root.length > best.length)) best = root;
+    }
+  }
+  return best;
+}
+
+/** The root of skill `name` as seen from `ownRoot`: its own tree first, then the distributed set. */
+function rootNamed(name: string, ownRoot: string, index: SkillIndex): string | undefined {
+  return (
+    index.trees.get(dirname(ownRoot))?.get(name) ?? index.trees.get(index.distributedDir)?.get(name)
+  );
+}
+
+function skillsMentionedIn(paragraph: string, ownRoot: string, index: SkillIndex): string[] {
+  const roots = [...paragraph.matchAll(SKILL_MENTION)]
+    .map((m) => rootNamed(m[1] ?? m[2] ?? "", ownRoot, index))
+    .filter((root): root is string => root !== undefined);
+  return [...new Set(roots)];
+}
+
+/** For each line, the skill roots its paragraph (run of non-blank lines) mentions. */
+function paragraphMentionsByLine(lines: string[], ownRoot: string, index: SkillIndex): string[][] {
+  const out: string[][] = [];
+  let start = 0;
+  for (let i = 0; i <= lines.length; i++) {
+    if (i < lines.length && (lines[i] ?? "").trim() !== "") continue;
+    const mentioned = skillsMentionedIn(lines.slice(start, i).join("\n"), ownRoot, index);
+    for (let j = start; j <= i && j < lines.length; j++) out[j] = mentioned;
+    start = i + 1;
+  }
+  return out;
+}
+
+/** The referencing file's directory and each of its ancestors up to the skill root. */
+function dirsUpToRoot(filePath: string, ownRoot: string): string[] {
+  const dirs: string[] = [];
+  for (let dir = dirname(filePath); dir.startsWith(ownRoot); dir = dirname(dir)) dirs.push(dir);
+  return dirs;
+}
+
+function cleanPathToken(raw: string): string {
+  return raw.replace(/[.]+$/, "");
+}
+
+function isFileOrDirShaped(rest: string[]): boolean {
+  const last = rest[rest.length - 1] ?? "";
+  return last === "" || /\.[A-Za-z0-9]+$/.test(last);
+}
+
+type PathCandidate =
+  | { kind: "resolve"; bases: string[]; rest: string }
+  | { kind: "nonPortable" }
+  | { kind: "unknownSkill"; name: string };
+
+interface PathContext {
+  filePath: string;
+  ownRoot: string;
+  mentioned: string[];
+  index: SkillIndex;
+}
+
+function skillCandidate(name: string, rest: string, ctx: PathContext): PathCandidate {
+  const root = rootNamed(name, ctx.ownRoot, ctx.index);
+  return root === undefined
+    ? { kind: "unknownSkill", name }
+    : { kind: "resolve", bases: [root], rest };
+}
+
+function classifyPath(token: string, ctx: PathContext): PathCandidate | null {
+  const segments = token.split("/");
+  const [first = "", ...rest] = segments;
+  if (rest.length === 0 || first === "" || first.startsWith(".")) return null;
+  if (SKILL_DIR_SEGMENT.test(first))
+    return { kind: "resolve", bases: [ctx.ownRoot], rest: rest.join("/") };
+  const named = NAMED_SKILL_DIR_SEGMENT.exec(first);
+  if (named)
+    return skillCandidate((named[1] ?? "").toLowerCase().replace(/_/g, "-"), rest.join("/"), ctx);
+  if (first === "skills") {
+    const [name = "", ...inner] = rest;
+    if (inner.length === 0 || PATH_PLACEHOLDER.test(name)) return null;
+    if (ctx.ownRoot.startsWith(ctx.index.distributedDir + "/")) return { kind: "nonPortable" };
+    return skillCandidate(name, inner.join("/"), ctx);
+  }
+  if (rootNamed(first, ctx.ownRoot, ctx.index) !== undefined)
+    return skillCandidate(first, rest.join("/"), ctx);
+  if (!ctx.index.contentDirs.has(first)) return null;
+  const bases = [...dirsUpToRoot(ctx.filePath, ctx.ownRoot), ...ctx.mentioned];
+  return { kind: "resolve", bases: [...new Set(bases)], rest: segments.join("/") };
+}
+
+function pathViolation(
+  token: string,
+  candidate: PathCandidate,
+  lineNumber: number,
+  text: string,
+): LineViolation | null {
+  if (candidate.kind === "nonPortable") {
+    return violation(
+      lineNumber,
+      `"${token}" only resolves from the repo root, not from an installed skill. Use <SKILL_DIR>/... for this skill's own files, or name the other skill (\`/name\`) and its skill-relative path.`,
+      text,
+    );
+  }
+  if (candidate.kind === "unknownSkill") {
+    return violation(
+      lineNumber,
+      `"${token}" names "${candidate.name}", which is not a skill in this repo.`,
+      text,
+    );
+  }
+  const rest = candidate.rest.split("/");
+  if (rest.some((s) => PATH_PLACEHOLDER.test(s)) || !isFileOrDirShaped(rest)) return null;
+  const found = candidate.bases.some((base) =>
+    statSync(join(base, candidate.rest), { throwIfNoEntry: false }),
+  );
+  if (found) return null;
+  const looked = candidate.bases.map((b) => relative(REPO_ROOT, b) || ".").join(", ");
+  return violation(
+    lineNumber,
+    `Skill path "${token}" does not resolve (looked under: ${looked}).`,
+    text,
+  );
+}
+
+function skillNameViolations(
+  line: string,
+  lineNumber: number,
+  ownRoot: string,
+  index: SkillIndex,
+  allowed: Set<string>,
+): LineViolation[] {
+  return (
+    [...new Set([...line.matchAll(SLASH_SKILL_REF)].map((m) => m[1] ?? ""))]
+      // A hyphenless `/word` is as often arithmetic (`/fps`) or a caption as a skill.
+      .filter((name) => name.includes("-") && rootNamed(name, ownRoot, index) === undefined)
+      .filter((name) => !EXTERNAL_SKILLS.has(name) && !allowed.has(`/${name}`))
+      .map((name) => violation(lineNumber, `"/${name}" is not a skill in this repo.`, line.trim()))
+  );
+}
+
+function allowedTokens(content: string): Set<string> {
+  const lists = [...content.matchAll(SKILL_PATHS_MARKER)].map((m) => m[1] ?? "");
+  return new Set(lists.flatMap((list) => list.split(",")).filter(Boolean));
+}
+
+/** Violations for skill-root paths and `/skill` names in `content` (located at `filePath`) that do not resolve. */
+export function lintSkillPaths(
+  filePath: string,
+  content: string,
+  index: SkillIndex,
+): LineViolation[] {
+  const ownRoot = skillRootOf(filePath, index);
+  if (ownRoot === null) return [];
+  const allowed = allowedTokens(content);
+  const lines = content.split("\n");
+  const mentions = paragraphMentionsByLine(lines, ownRoot, index);
+  return lines.flatMap((line, i) => {
+    const text = line.trim();
+    const ctx: PathContext = { filePath, ownRoot, mentioned: mentions[i] ?? [], index };
+    const tokens = new Set([...line.matchAll(PATH_TOKEN)].map((m) => cleanPathToken(m[0])));
+    const paths = [...tokens]
+      .filter((token) => !allowed.has(token))
+      .flatMap((token) => {
+        const candidate = classifyPath(token, ctx);
+        return candidate ? (pathViolation(token, candidate, i + 1, text) ?? []) : [];
+      });
+    return [...paths, ...skillNameViolations(line, i + 1, ownRoot, index, allowed)];
+  });
+}
+
 function collectMarkdownFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true, recursive: true })
     .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
@@ -531,12 +787,18 @@ function lintFile(filePath: string): Violation[] {
 type Report = (file: string, violations: LineViolation[]) => void;
 
 /** Doc cross-references and registry snapshots for every markdown file; returns the snapshot count. */
-function lintMarkdownFiles(paths: string[], knownItems: Set<string>, report: Report): number {
+function lintMarkdownFiles(
+  paths: string[],
+  knownItems: Set<string>,
+  skills: SkillIndex,
+  report: Report,
+): number {
   let snapshotsChecked = 0;
   for (const path of paths) {
     const content = readFileSync(path, "utf-8");
     const file = relative(process.cwd(), path);
     report(file, lintDocRefs(path, content));
+    report(file, lintSkillPaths(path, content, skills));
     const found = lintRegistryItemRefs(content, knownItems);
     if (found === null) continue;
     snapshotsChecked++;
@@ -570,7 +832,8 @@ function main(): void {
 
   const knownItems = registryItemNames();
   const markdownFiles = skillsDirs.flatMap(collectMarkdownFiles);
-  const snapshotsChecked = lintMarkdownFiles(markdownFiles, knownItems, report);
+  const skills = buildSkillIndex(files);
+  const snapshotsChecked = lintMarkdownFiles(markdownFiles, knownItems, skills, report);
 
   if (totalViolations > 0) {
     console.error(`\n${totalViolations} skill lint error(s) found.`);

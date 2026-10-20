@@ -44,6 +44,6 @@ If your dispatch carries `lint` / `check` feedback from a prior pass, address ea
 - Each group shows across its frame-local span and hides outside it; `t=0` renders; group→group cuts are 0ms; ids / uniforms namespaced.
 - Each group's text / palette match its block's `params` / `copy`, drawn from `frame.md`.
 - `phrase_flow` frames pace by phrase / energy.
-- Seek-safe per `hyperframes-core/determinism-rules.md` (derive variation from indices; swap text / numbers with `tl.set`).
+- Seek-safe per `hyperframes-core/references/determinism-rules.md` (derive variation from indices; swap text / numbers with `tl.set`).
 - Asset clips: muted `<video>`, direct children of `#stage`, with `data-start` / `data-duration` / `data-track-index`. Crossfade outgoing clips to `opacity:0` ending at the next anchor.
 - Final frame is intentional; hero text is readable and clear of the edges.

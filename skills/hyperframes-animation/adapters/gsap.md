@@ -91,7 +91,7 @@ HyperFrames is stricter than vanilla GSAP. Animate only:
 - `./gsap-timeline-and-labels.md` — timeline creation, position parameter (`+=`, `<`, `>`), labels, nesting, sub-comp `fromTo` preference, playback control.
 - `./gsap-easing-and-stagger.md` — easing families, stagger objects, function-based values, `gsap.matchMedia()`, `gsap.defaults()`.
 - `./gsap-transforms-and-perf.md` — transform aliases, autoAlpha, `quickTo`, `will-change`, performance rules.
-- `../rules/gsap-effects.md` — drop-in recipes: typewriter (with cursor / backspace / word rotation) + audio visualizer (uses `skills/hyperframes-creative/scripts/extract-audio-data.py`).
+- `../rules/gsap-effects.md` — drop-in recipes: typewriter (with cursor / backspace / word rotation) + audio visualizer (uses `hyperframes-creative/scripts/extract-audio-data.py`).
 
 ## Best Practices
 

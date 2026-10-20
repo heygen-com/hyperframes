@@ -82,7 +82,7 @@ Save as `script-tokens.json` in the project.
 # so it uses the tracked hyperframes-media TTS helper directly (no `npx hyperframes
 # skills` install step). If you've copied the skill into another repo, swap in
 # your own path to the media-use / hyperframes-media heygen-tts.mjs.
-node skills/hyperframes-media/scripts/heygen-tts.mjs ./vo-spoken.txt \
+node skills/media-use/audio/scripts/heygen-tts.mjs ./vo-spoken.txt \
   -o voiceover.mp3 --words vo-words.json \
   --voice 330290724a1b470fb63153f34d4c0183   # Annie — lifelike (do not substitute)
 ```

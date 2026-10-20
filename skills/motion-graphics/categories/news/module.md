@@ -49,8 +49,6 @@ The editorial article-card layout (logo top-left + date + big serif headline wit
 4. **Person cutout** (`#subject`, the bg-removed PNG, `height≈860`, `right:40; bottom:0`, `drop-shadow`) — **slides up from bottom-right** as the hero beat.
 5. **Timeline** (seek-safe, paused): logo `back.out` @0.15 → date @0.4 → **subject slides up** (`set{autoAlpha:0,x:90,y:60}`→`to{autoAlpha:1,x:0,y:0,duration:0.85,ease:"power3.out"}`) @0.45 → headline @0.7 → dek @1.5 → outlet @1.9 → **keyword highlight** (`--hlw 0→100%`, `duration:0.8`) @2.2. duration ~6.5s.
 
-**Reference:** `samples/news/_ref-article-layout.html` (a real article rendered with a real outlet logo + a background-removed person + a real story).
-
 ## Critical
 
 Highlight is **grown in place, swept on AFTER the text — never pre-applied**. The text **stays readable — do NOT zoom the keyword to fill the frame** (team feedback 2026-06-09: zoom loses context and reads wrong; the technique never zooms — it presents the text and highlights the word). For Layout B, the person MUST be a `remove-background` cutout (no rectangular photo box). Deterministic; honor `references/builder-contract.md`.

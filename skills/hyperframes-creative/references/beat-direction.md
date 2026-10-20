@@ -53,7 +53,7 @@ The vocabulary of motion verbs (organized by physical character, not by energy l
 
 Every element gets a verb. If you can't name the verb, the element is not yet designed. The verb should follow from the beat's concept — not from a lookup of what "high energy" or "low energy" beats use.
 
-For text elements specifically, you can name a deterministic, named effect by ID (e.g. `typewriter`, `kinetic-center-build`, `soft-blur-in`) instead of inventing timing from scratch — the 24-effect vocabulary and how to load it live in `skills/hyperframes-animation/adapters/animate-text.md`.
+For text elements specifically, you can name a deterministic, named effect by ID (e.g. `typewriter`, `kinetic-center-build`, `soft-blur-in`) instead of inventing timing from scratch — the 24-effect vocabulary and how to load it live in `hyperframes-animation/adapters/animate-text.md`.
 
 ### Transition
 
@@ -69,9 +69,9 @@ How this beat hands off to the next. Specify the type and parameters.
 
 Rule of thumb: if the beat is the _centerpiece_ of the video, shader-transition into it. If the beat is connective tissue, a CSS crossfade is fine. A brand reel of 5-7 beats usually wants 1-2 shader transitions (the hero reveal + the CTA) — too many flatten their impact.
 
-**Mixing shader and CSS crossfade transitions in one composition is supported.** Omit `shader` on any transition entry to get a smooth opacity crossfade — HyperShader manages all scene visibility regardless. Let HyperShader create the timeline (don't pass a pre-built `timeline:` option) and add all composition tweens to the returned `tl` after `init()`. Config snippet in `skills/hyperframes-animation/transitions/overview.md` → "CSS vs Shader".
+**Mixing shader and CSS crossfade transitions in one composition is supported.** Omit `shader` on any transition entry to get a smooth opacity crossfade — HyperShader manages all scene visibility regardless. Let HyperShader create the timeline (don't pass a pre-built `timeline:` option) and add all composition tweens to the returned `tl` after `init()`. Config snippet in `hyperframes-animation/transitions/overview.md` → "CSS vs Shader".
 
-**CSS transitions** — 30+ patterns across 13 categories. Full code in `skills/hyperframes-animation/transitions/` (route via `catalog.md`). Pick based on the energy and feel:
+**CSS transitions** — 30+ patterns across 13 categories. Full code in `hyperframes-animation/transitions/` (route via `catalog.md`). Pick based on the energy and feel:
 
 | Category           | Patterns                                                                 | Motion character                                                           |
 | ------------------ | ------------------------------------------------------------------------ | -------------------------------------------------------------------------- |
@@ -99,7 +99,7 @@ Common quick-picks:
 
 Timing presets: snappy (0.2s), smooth (0.4s), gentle (0.6s), dramatic (0.5s), instant (0.15s), luxe (0.7s).
 
-**Shader transitions** — 14 built-in WebGL GPU effects. Install with `npx hyperframes add <name>` (block name ≠ shader name — see `skills/hyperframes-registry/references/discovery.md`); full API in `packages/shader-transitions/README.md`.
+**Shader transitions** — 14 built-in WebGL GPU effects. Install with `npx hyperframes add <name>` (block name ≠ shader name — see `hyperframes-registry/references/discovery.md`); full API in `packages/shader-transitions/README.md`.
 
 | Shader                  | Visual description                                                                             | Duration range |
 | ----------------------- | ---------------------------------------------------------------------------------------------- | -------------- |
