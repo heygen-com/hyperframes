@@ -45,6 +45,8 @@ These **18 families** are the ones the renderer **pre-bundles** — embedded as 
 
 **Reconciling with the Banned list below:** several embedded families (Inter, Roboto, Open Sans, Lato, Nunito, Poppins, Outfit, Playfair Display, EB Garamond) are _also_ on the Banned monoculture list — they render fine but read as generic. The families that are **embedded AND not banned** — your safe-and-distinctive picks — are: **Montserrat, Oswald, League Gothic, Archivo Black, Space Mono, IBM Plex Mono, JetBrains Mono, Source Code Pro, Noto Sans JP**. Reach for these (or a non-bundled font you've confirmed via the Finding-Fonts step). A non-bundled name isn't guaranteed-broken — a real Google font is auto-fetched and embedded — but it carries a lint warning and a fail-closed fetch in cloud renders, so for anything that must render predictably, **embed it yourself via `@font-face`** (see "Finding Fonts") rather than relying on the implicit fetch.
 
+> **Arabic, Persian, Urdu:** none of the 18 bundled families covers Arabic script. Embed an Arabic font with `@font-face` (for example Noto Sans Arabic, IBM Plex Sans Arabic, Cairo, Tajawal), and read `hyperframes-animation/rules/arabic-rtl-text.md` before splitting or staggering the text. (Hebrew renders with bundled Open Sans, which has a Hebrew subset; the direction rules in that file still apply.)
+
 ## Banned
 
 Training-data defaults that every LLM reaches for. These produce monoculture across compositions.
