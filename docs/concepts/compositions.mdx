@@ -161,6 +161,16 @@ Use a separate file when you want to reuse it.
   </Tree.Folder>
 </Tree>
 
+### `:root` styles stay inside the composition
+
+A sub-composition's `html`, `body` and `:root` rules apply to its own root, not the
+host page, so a mounted scene can't restyle the page around it. Custom properties
+declared in its `:root` still reach the scene's CSS, but a script that reads them with
+`getComputedStyle(document.documentElement)` gets an empty value once mounted (it
+works when the file renders on its own). Read them from the scene's root element
+instead, for example
+`getComputedStyle(document.querySelector('[data-composition-id="intro-anim"]')).getPropertyValue("--accent")`.
+
 ## HTML sets the timing, scripts do the motion
 
 Your HTML says what plays, when, and on which track, all through

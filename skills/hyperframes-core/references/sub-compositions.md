@@ -143,6 +143,8 @@ Static file checks cannot prove the **cross-file mount contract**. These failure
 - Seeks the sub-composition's timeline independently from the host's playhead.
 - Plays the sub-composition's content from `data-start` of the host clip, for `data-duration` seconds.
 
+A sub-composition's `html`, `body` and `:root` rules apply to its own root, not the host page, so a mounted scene can't restyle the page around it. Custom properties declared in its `:root` still reach the scene's CSS, but a script that reads them with `getComputedStyle(document.documentElement)` gets an empty value once mounted (it works standalone). Read them from the scene's root element instead: `getComputedStyle(document.querySelector('[data-composition-id="data-chart"]')).getPropertyValue("--accent")`.
+
 **Do not** manually `master.add(child)` a sub-composition timeline into the host timeline. HyperFrames already drives them independently — nesting them in GSAP causes double-seeks.
 
 ### The host clip's `data-duration` is the slot's visible window
