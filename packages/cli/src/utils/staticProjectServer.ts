@@ -15,7 +15,6 @@ import {
   decideMediaProxyEligibility,
   isProxyVariantRequest,
   probeAssetCodec,
-  recordProxyRequest,
   resolveProxyVariantRequest,
   PROXY_VARIANT_CONFIG,
   type ProxyVariantRequest,
@@ -235,7 +234,6 @@ async function serveProxyRequest(
       res.end("media proxy variant does not match asset");
       return;
     }
-    recordProxyRequest();
     const proxyPath = await resolveProxy(projectDir, filePath, variant, undefined, { signal });
     // The await above can span a whole transcode; the client may be gone.
     if (res.writableEnded || res.destroyed) return;
@@ -262,9 +260,7 @@ export async function serveStaticProjectHtml(
   // static for the lifetime of this server, not re-scanned per request.
   const autoProxy = resolveAutoProxy(projectDir, autoProxyOverride);
   const copies = new AbortController();
-  const servedHtml = autoProxy
-    ? await injectMediaCodecMap(html, projectDir, [{ html }], undefined, true, copies.signal)
-    : html;
+  const servedHtml = autoProxy ? await injectMediaCodecMap(html, projectDir, [{ html }]) : html;
 
   // fallow-ignore-next-line complexity
   const server = createServer((req, res) => {

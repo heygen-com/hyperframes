@@ -1,6 +1,8 @@
 /** Query parameter carrying the largest box, in device pixels, a preview shows a proxied video at. */
 export const PREVIEW_PROXY_BOX_PARAM = "hf-proxy-box";
 
+export const PREVIEW_CAPTURE_PARAM = "hf-capture";
+
 export type PreviewProxyBox = { width: number; height: number };
 
 // 256 * 2^(k/2), even: nearby boxes share one cached copy, and a rung overshoots by at most ~41%.

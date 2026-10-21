@@ -69,6 +69,9 @@ import {
   handleMetadataForProxy,
   isRenderMode,
   maybeProxyProactively,
+  noteSeekCopyPlayback,
+  setOwnMediaWrite,
+  startSeekCopies,
   setProxyDisplayScale,
 } from "./mediaProxy";
 import {
@@ -1390,6 +1393,13 @@ export function initSandboxRuntimeModular(): void {
     if (pending.length > 0 || ours.some((record) => record.target !== el))
       invalidateCompositionTimingCaches();
   };
+
+  // A copy swap moves no clip; the forced sync lands the new file on the playhead even while paused.
+  setOwnMediaWrite((el, write) => {
+    withoutOwnTimingRecords(el, write);
+    state.mediaForceSyncNextTick = true;
+    syncMediaForCurrentState();
+  });
 
   const watchCompositionTimingInputs = () => {
     if (compositionTimingObserver || typeof MutationObserver === "undefined") return;
@@ -3265,6 +3275,7 @@ export function initSandboxRuntimeModular(): void {
     wakeTransport();
   };
   window.__hf.leasePausedMedia = leasePausedMedia;
+  window.__hf.unproxiedSrc = unproxiedSrc;
   window.__hf.releasePausedMedia = releasePausedMedia;
   window.__hf.setLoopStart = (seconds) => {
     loopStartSeconds = seconds != null && Number.isFinite(seconds) && seconds >= 0 ? seconds : null;
@@ -3437,6 +3448,7 @@ export function initSandboxRuntimeModular(): void {
     // wake call bolted onto each mutator (and forgotten on the next one).
     if (force) wakeTransport();
     if (force && timelinePostHeld && !clock.isPlaying()) postTimeline();
+    noteSeekCopyPlayback(state.isPlaying);
     const frame = Math.max(0, Math.round((state.currentTime || 0) * state.canonicalFps));
     const now = Date.now();
     const shouldPost =
@@ -3547,6 +3559,11 @@ export function initSandboxRuntimeModular(): void {
         if (state.tornDown) return;
         assetsSettled = true;
         postRuntimeMessage({ source: "hf-preview", type: "assets-ready", timedOut });
+        startSeekCopies({
+          playhead: () => state.currentTime,
+          playing: () => state.isPlaying,
+          clips: () => resolveMediaClipIndex().clips,
+        });
       });
     }
     scheduleRootStageLayoutDiagnostics();

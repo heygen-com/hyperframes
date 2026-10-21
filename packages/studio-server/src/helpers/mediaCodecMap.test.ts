@@ -11,7 +11,6 @@ import {
   proxyVariantFor,
   resolveProxyVariantRequest,
   scanProjectMediaCodecMap,
-  shouldPrewarmProxy,
   type AssetCodecFacts,
 } from "./mediaCodecMap.js";
 
@@ -38,6 +37,18 @@ function makeRunner(
         ]
       : [];
     return { status: 0, stdout: JSON.stringify({ streams }), stderr: "" };
+  };
+}
+
+/** Answers the codec probe with `codecName` and the keyframe probe with packets keyed at `keyframes`. */
+function keyframedRunner(codecName: string, keyframes: number[], end: number): FfprobeRunner {
+  return (_command, args) => {
+    if (!args.includes("packet=pts_time,flags")) {
+      const streams = [{ codec_type: "video", codec_name: codecName, width: 1920, height: 1080 }];
+      return { status: 0, stdout: JSON.stringify({ streams }), stderr: "" };
+    }
+    const lines = [...keyframes.map((t) => `${t.toFixed(6)},K__`), `${end.toFixed(6)},___`];
+    return { status: 0, stdout: lines.join("\n"), stderr: "" };
   };
 }
 
@@ -187,6 +198,81 @@ describe("probeAssetCodec", () => {
   });
 });
 
+describe("seek-hostile video", () => {
+  it("flags a browser-safe video whose keyframes are more than 2 s apart, and maps it", async () => {
+    const project = tmpProject();
+    writeFileSync(join(project, "sparse.mp4"), "fake video bytes");
+    writeFileSync(join(project, "dense.mp4"), "other fake video bytes");
+    const runner: FfprobeRunner = (command, args, options) =>
+      (args.at(-1)!.endsWith("sparse.mp4")
+        ? keyframedRunner("h264", [0, 8, 16], 19.97)
+        : keyframedRunner("h264", [0, 1, 2], 2.97))(command, args, options);
+
+    const map = await scanProjectMediaCodecMap(
+      project,
+      [{ html: videoHtml("sparse.mp4", "dense.mp4") }],
+      { runner },
+    );
+
+    expect(Object.keys(map)).toEqual(["/sparse.mp4"]);
+    expect(map["/sparse.mp4"]).toMatchObject({
+      browserHostile: false,
+      seekHostile: true,
+      width: 1920,
+      height: 1080,
+    });
+  });
+
+  it("counts a long last stretch, with one keyframe and nothing after it for 20 s", async () => {
+    const project = tmpProject();
+    const videoPath = join(project, "clip.mp4");
+    writeFileSync(videoPath, "fake video bytes");
+
+    const facts = await probeAssetCodec(videoPath, keyframedRunner("h264", [0], 19.97));
+
+    expect(facts?.seekHostile).toBe(true);
+  });
+
+  it("never flags an alpha source, whose VP8 copy cannot carry a keyframe every second", async () => {
+    const project = tmpProject();
+    const videoPath = join(project, "clip.webm");
+    writeFileSync(videoPath, "fake video bytes");
+    const sparse = keyframedRunner("vp8", [0], 19.97);
+    const runner: FfprobeRunner = (command, args, options) =>
+      args.includes("packet=pts_time,flags")
+        ? sparse(command, args, options)
+        : makeRunner({ [videoPath]: { codecName: "vp8", pixFmt: "yuva420p" } })(
+            command,
+            args,
+            options,
+          );
+
+    const facts = await probeAssetCodec(videoPath, runner);
+
+    expect(facts).toMatchObject({ hasAlpha: true });
+    expect(facts?.seekHostile).toBeUndefined();
+  });
+
+  it("allows a seek-hostile copy only at a preview size, never at source size", () => {
+    const facts: AssetCodecFacts = {
+      codecName: "h264",
+      browserHostile: false,
+      representativeMime: null,
+      hasAlpha: false,
+      seekHostile: true,
+    };
+
+    expect(decideMediaProxyEligibility(facts, { width: 1024, height: 724 })).toEqual({
+      eligible: true,
+      mayStartCopy: true,
+    });
+    expect(decideMediaProxyEligibility(facts)).toEqual({
+      eligible: false,
+      reason: "browser_safe_codec",
+    });
+  });
+});
+
 describe("BROWSER_HOSTILE_CODECS representative mimes", () => {
   // Pinned because nulling one is silent and expensive: the runtime skips
   // `canPlayType` when the mime is null (packages/core/src/runtime/mediaProxy.ts,
@@ -201,40 +287,9 @@ describe("BROWSER_HOSTILE_CODECS representative mimes", () => {
   });
 });
 
-describe("shouldPrewarmProxy", () => {
-  function facts(codecName: string): AssetCodecFacts {
-    return { codecName, browserHostile: true, representativeMime: null, hasAlpha: false };
-  }
-
-  it.each(["hevc", "prores", "theora"])(
-    "pre-warms %s, which has no cross-platform browser decode",
-    (codecName) => {
-      expect(shouldPrewarmProxy(facts(codecName))).toBe(true);
-    },
-  );
-
-  it.each(["vp9", "av1"])(
-    "does not pre-warm %s, which every mainstream engine decodes itself",
-    (codecName) => {
-      expect(shouldPrewarmProxy(facts(codecName))).toBe(false);
-    },
-  );
-
-  it("does not pre-warm a browser-safe codec", () => {
-    expect(
-      shouldPrewarmProxy({
-        codecName: "h264",
-        browserHostile: false,
-        representativeMime: null,
-        hasAlpha: false,
-      }),
-    ).toBe(false);
-  });
-
-  // `shouldPrewarmProxy` alone cannot catch a missing `Object.hasOwn` guard —
-  // `.prewarm === true` is already strict against `Object.prototype.constructor`.
-  // The input that misbehaves goes through `codecFactsFor`, which would report
-  // an ordinary asset as browser-hostile.
+describe("BROWSER_HOSTILE_CODECS lookup", () => {
+  // Without the `Object.hasOwn` guard, `codecFactsFor` would report an
+  // ordinary asset as browser-hostile.
   it("does not treat a codec named after an Object.prototype key as hostile", async () => {
     const project = tmpProject();
     const videoPath = join(project, "clip.mp4");
@@ -248,7 +303,6 @@ describe("shouldPrewarmProxy", () => {
       representativeMime: null,
       hasAlpha: false,
     });
-    expect(shouldPrewarmProxy(facts!)).toBe(false);
   });
 });
 
@@ -261,7 +315,7 @@ describe("decideMediaProxyEligibility", () => {
         representativeMime: null,
         hasAlpha: false,
       }),
-    ).toEqual({ eligible: true });
+    ).toEqual({ eligible: true, mayStartCopy: true });
     expect(
       decideMediaProxyEligibility({
         codecName: "prores",
@@ -269,7 +323,7 @@ describe("decideMediaProxyEligibility", () => {
         representativeMime: null,
         hasAlpha: true,
       }),
-    ).toEqual({ eligible: true });
+    ).toEqual({ eligible: true, mayStartCopy: true });
   });
 
   it("rejects browser-safe sources even when they carry alpha", () => {
@@ -295,6 +349,25 @@ describe("decideMediaProxyEligibility", () => {
     });
   });
 
+  it("lets a capture use a finished copy but never start one", () => {
+    const hevc = {
+      codecName: "hevc",
+      browserHostile: true,
+      representativeMime: null,
+      hasAlpha: false,
+    };
+    const farKeyframes = { ...hevc, codecName: "h264", browserHostile: false, seekHostile: true };
+    const box = { width: 256, height: 256 };
+    expect(decideMediaProxyEligibility(hevc, box, true)).toEqual({
+      eligible: true,
+      mayStartCopy: false,
+    });
+    expect(decideMediaProxyEligibility(farKeyframes, box, true)).toEqual({
+      eligible: true,
+      mayStartCopy: false,
+    });
+  });
+
   it("proxies an alpha VP9 source to the Chromium-compatible VP8 variant", () => {
     expect(
       decideMediaProxyEligibility({
@@ -303,7 +376,7 @@ describe("decideMediaProxyEligibility", () => {
         representativeMime: 'video/webm; codecs="vp09.00.10.08"',
         hasAlpha: true,
       }),
-    ).toEqual({ eligible: true });
+    ).toEqual({ eligible: true, mayStartCopy: true });
   });
 });
 

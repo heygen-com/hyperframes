@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach, beforeAll } from "vitest";
 import { createPickerModule } from "./picker";
+import { swappedElements } from "./proxySrc";
 
 // jsdom does not implement CSS.escape — polyfill a compact spec-adjacent
 // version. Parallel (simpler) polyfills already live in compositionLoader.test.ts
@@ -192,6 +193,16 @@ describe("createPickerModule", () => {
           value: originalElementsFromPoint,
         });
       }
+    });
+
+    it("reports a picked video's authored src, not the preview copy it plays", () => {
+      const picker = createPickerModule({ postMessage: createMockPostMessage() });
+      picker.installPickerApi();
+      document.body.innerHTML = `<video id="clip" src="/clip.mp4?hf-proxy=h264"></video>`;
+      const video = document.getElementById("clip")!;
+      swappedElements.set(video, "/clip.mp4");
+
+      expect(candidatesUnder(() => [video, ...ancestorsOf(video)], "src")[0]).toBe("/clip.mp4");
     });
 
     it("picks inside a mounted section whose root sets pointer-events:none", () => {

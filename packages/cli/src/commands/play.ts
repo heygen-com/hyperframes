@@ -49,7 +49,6 @@ import {
   decideMediaProxyEligibility,
   isProxyVariantRequest,
   probeAssetCodec,
-  recordProxyRequest,
   resolveProxyVariantRequest,
   PROXY_VARIANT_CONFIG,
 } from "@hyperframes/studio-server/media-codec-map";
@@ -266,7 +265,6 @@ export async function registerCompositionRoute(
         if (!proxyVariant) {
           return ctx.text("Media proxy variant does not match asset", 422);
         }
-        recordProxyRequest();
         const proxyPath = await resolveProxy(project.dir, filePath, proxyVariant);
         return buildRangeResponse(
           proxyPath,

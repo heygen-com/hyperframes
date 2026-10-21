@@ -115,6 +115,24 @@ describe("cleanupProxyCache", () => {
     expect(existsSync(inFlight)).toBe(true);
   });
 
+  it("bounds boxed preview copies and their temp files like any other copy", () => {
+    const cache = cacheDir();
+    const now = 1_800_000_000_000;
+    const boxed = proxy(cache, "clip").replace(".mp4", "-1448x2048.mp4");
+    const staleTemp = join(cache, `.tmp-${randomUUID()}-${basename(boxed)}`);
+    writeEntry(boxed, 4, now - 40 * 24 * 60 * 60 * 1000);
+    writeEntry(staleTemp, 3, now - 2 * 60 * 60 * 1000);
+
+    const result = cleanupProxyCache(cache, {
+      now,
+      maxIdleMs: 30 * 24 * 60 * 60 * 1000,
+      staleTempMs: 60 * 60 * 1000,
+      minSweepIntervalMs: 0,
+    });
+
+    expect(result.removed.sort()).toEqual([boxed, staleTemp].sort());
+  });
+
   it("never removes a file the transcoder did not name, even from an idle cache over budget", () => {
     const cache = cacheDir();
     const now = 1_800_000_000_000;

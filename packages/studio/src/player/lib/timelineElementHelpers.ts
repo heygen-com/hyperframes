@@ -21,6 +21,7 @@ import {
   clampPlaybackRate,
   readMediaOffsetSeconds,
 } from "@hyperframes/parsers/media-duration";
+import { authoredSrc } from "../../utils/authoredSrc";
 
 // ---------------------------------------------------------------------------
 // Layer-reveal lift transparency
@@ -245,7 +246,7 @@ export function applyMediaMetadataFromElement(entry: TimelineElement, el: Elemen
   if (!mediaEl) return;
 
   entry.tag = mediaEl.tagName.toLowerCase();
-  const src = mediaEl.getAttribute("src");
+  const src = authoredSrc(mediaEl);
   if (src) entry.src = src;
 
   if (!isMediaElement(mediaEl)) return;

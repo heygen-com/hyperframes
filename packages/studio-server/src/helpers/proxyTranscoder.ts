@@ -1,6 +1,7 @@
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, renameSync, statSync, unlinkSync, utimesSync } from "node:fs";
+import { existsSync, readdirSync, renameSync, statSync, unlinkSync, utimesSync } from "node:fs";
+import { constants as osConstants, setPriority } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
   formatPreviewProxyBox,
@@ -21,10 +22,11 @@ import { mkdirWithinProject, realpath, realProjectRoot } from "./safePath.js";
  *
  * Every caller of a cache key shares one ffmpeg child (in-flight dedupe below). A
  * caller's `signal` detaches that caller; once no caller is left, the copy is
- * dropped from the queue or its ffmpeg is killed.
+ * dropped from the queue or its ffmpeg is killed. A larger box for the same
+ * source stops a smaller copy outright (one copy per source, below).
  */
 
-export const PROXY_PARAMS_VERSION = "v5";
+export const PROXY_PARAMS_VERSION = "v6";
 
 export const CACHE_DIR_NAME = ".transcode-cache";
 
@@ -173,16 +175,12 @@ function canonicalizeProxySource(
   };
 }
 
-function buildProxyCacheKey(
-  source: CanonicalProxySource,
-  variant: ProxyVariant,
-  box: PreviewProxyBox | undefined,
-): string {
+/** Names every copy of one source version and variant; a boxed copy adds `-WxH`. */
+function buildProxySourceKey(source: CanonicalProxySource, variant: ProxyVariant): string {
   const stat = statSync(source.sourcePath);
-  const size = box ? `\0${formatPreviewProxyBox(box)}` : "";
   return createHash("sha256")
     .update(
-      `${source.relativePath}\0${source.cacheIdentity}\0${stat.mtimeMs}\0${stat.size}\0${PROXY_PARAMS_VERSION}\0${variant}${size}`,
+      `${source.relativePath}\0${source.cacheIdentity}\0${stat.mtimeMs}\0${stat.size}\0${PROXY_PARAMS_VERSION}\0${variant}`,
     )
     .digest("hex");
 }
@@ -192,11 +190,76 @@ function getCanonicalProxyCachePath(
   variant: ProxyVariant,
   box?: PreviewProxyBox,
 ): string {
-  const key = buildProxyCacheKey(source, variant, box);
+  const key = buildProxySourceKey(source, variant);
+  const size = box ? `-${formatPreviewProxyBox(box)}` : "";
   return join(
     source.projectDir,
     CACHE_DIR_NAME,
-    `${key}${PROXY_VARIANT_CONFIG[variant].extension}`,
+    `${key}${size}${PROXY_VARIANT_CONFIG[variant].extension}`,
+  );
+}
+
+const covers = (a: PreviewProxyBox, b: PreviewProxyBox): boolean =>
+  a.width >= b.width && a.height >= b.height;
+
+const largerOf = (a: PreviewProxyBox, b: PreviewProxyBox): PreviewProxyBox => ({
+  width: Math.max(a.width, b.width),
+  height: Math.max(a.height, b.height),
+});
+
+/** This source's finished boxed copies, read from their names. */
+function boxedCopies(
+  source: CanonicalProxySource,
+  variant: ProxyVariant,
+): Array<{ path: string; box: PreviewProxyBox }> {
+  const dir = join(source.projectDir, CACHE_DIR_NAME);
+  const name = new RegExp(
+    `^${buildProxySourceKey(source, variant)}-(\\d+)x(\\d+)\\${PROXY_VARIANT_CONFIG[variant].extension}$`,
+  );
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir).flatMap((entry) => {
+    const match = name.exec(entry);
+    return match
+      ? [{ path: join(dir, entry), box: { width: +match[1]!, height: +match[2]! } }]
+      : [];
+  });
+}
+
+/** The finished copy a request is served from: its own, else this source's larger copy. */
+function finishedCopyFor(
+  source: CanonicalProxySource,
+  variant: ProxyVariant,
+  box: PreviewProxyBox | undefined,
+): string | null {
+  const exact = getCanonicalProxyCachePath(source, variant, box);
+  if (existsSync(exact)) return exact;
+  if (!box) return null;
+  return boxedCopies(source, variant).find((copy) => covers(copy.box, box))?.path ?? null;
+}
+
+/** This source's largest finished copy, whatever its size, or null while there is none. */
+export function finishedProxyPath(
+  projectDir: string,
+  absoluteSourcePath: string,
+  variant: ProxyVariant,
+): string | null {
+  const source = canonicalizeProxySource(projectDir, absoluteSourcePath);
+  const sourceSize = getCanonicalProxyCachePath(source, variant);
+  if (existsSync(sourceSize)) return sourceSize;
+  const area = ({ box }: { box: PreviewProxyBox }) => box.width * box.height;
+  return boxedCopies(source, variant).sort((a, b) => area(b) - area(a))[0]?.path ?? null;
+}
+
+/** The file name a request is served from, so a validator changes when the file does. */
+export function servedProxyName(
+  projectDir: string,
+  absoluteSourcePath: string,
+  variant: ProxyVariant,
+  box?: PreviewProxyBox,
+): string {
+  const source = canonicalizeProxySource(projectDir, absoluteSourcePath);
+  return basename(
+    finishedCopyFor(source, variant, box) ?? getCanonicalProxyCachePath(source, variant, box),
   );
 }
 
@@ -219,18 +282,33 @@ export function getProxyCachePath(
 }
 
 // --- global concurrency limiter -------------------------------------------
-// ponytail: a counter + one wait queue is the whole semaphore. Priority copies
-// queue ahead of the rest and are never refused for a full queue, so a few
-// priority asks (the copy a viewer is waiting on) can exceed the cap.
+// ponytail: a counter + one wait line is the whole semaphore; priority asks skip the queue cap.
+// Invariant: a freed slot goes to the line's head: priority, then foreground, then background,
+// FIFO within each by when it joined that rank. A stopped copy a viewer waits on joins as
+// foreground and resumes, so queued background copies never starve it.
 
 /** One copy per cache key, shared by every caller asking for it. */
 interface ProxyJob {
   cachePath: string;
   priority: boolean;
+  background: boolean;
+  /** The source's name in the cache and the box being made, for one copy per source. */
+  sourceKey: string;
+  box?: PreviewProxyBox;
+  /** Set while its ffmpeg runs; replaced copies are stopped through it. */
+  stop?: () => void;
+  replaced?: boolean;
   /** Callers still waiting; one without a signal never leaves, so its copy is always made. */
   callers: number;
   /** Set while the job waits for a slot. */
   queued?: { start: () => void; drop: () => void };
+  /** Counted in activeTranscodes; a stopped background copy gives its slot back. */
+  holdsSlot?: boolean;
+  stopped?: boolean;
+  /** Set while its ffmpeg runs: SIGCONTs a stopped copy into a free slot. */
+  resume?: () => void;
+  /** Pauses the timeout while stopped, so it counts encoding time only. */
+  clock?: { pause: () => void; run: () => void };
   abandoned: AbortController;
 }
 
@@ -244,10 +322,12 @@ class ProxyDroppedError extends ProxyTranscodeError {
 let activeTranscodes = 0;
 const waitQueue: ProxyJob[] = [];
 
+const rank = (job: ProxyJob): number => (job.priority ? 0 : job.background ? 2 : 1);
+
 function enqueue(job: ProxyJob): void {
-  const firstNormal = job.priority ? waitQueue.findIndex((queued) => !queued.priority) : -1;
-  if (firstNormal === -1) waitQueue.push(job);
-  else waitQueue.splice(firstNormal, 0, job);
+  const firstLower = waitQueue.findIndex((queued) => rank(queued) > rank(job));
+  if (firstLower === -1) waitQueue.push(job);
+  else waitQueue.splice(firstLower, 0, job);
 }
 
 function dequeue(job: ProxyJob): void {
@@ -255,16 +335,21 @@ function dequeue(job: ProxyJob): void {
   if (index !== -1) waitQueue.splice(index, 1);
 }
 
+function takeSlot(job: ProxyJob): void {
+  job.holdsSlot = true;
+  activeTranscodes++;
+}
+
 function acquireSlot(job: ProxyJob): Promise<void> {
   if (activeTranscodes < MAX_CONCURRENT_TRANSCODES) {
-    activeTranscodes++;
+    takeSlot(job);
     return Promise.resolve();
   }
   return new Promise((resolveSlot, reject) => {
     job.queued = {
       start: () => {
         job.queued = undefined;
-        activeTranscodes++;
+        takeSlot(job);
         resolveSlot();
       },
       drop: () => {
@@ -278,21 +363,39 @@ function acquireSlot(job: ProxyJob): Promise<void> {
   });
 }
 
+/** Stopped copies waiting to resume were admitted already; only unstarted ones fill the queue. */
 function queueIsFull(): boolean {
-  return activeTranscodes >= MAX_CONCURRENT_TRANSCODES && waitQueue.length >= MAX_QUEUED_TRANSCODES;
+  return (
+    activeTranscodes >= MAX_CONCURRENT_TRANSCODES &&
+    waitQueue.filter((job) => job.queued).length >= MAX_QUEUED_TRANSCODES
+  );
 }
 
-function releaseSlot(): void {
+function releaseSlot(job: ProxyJob): void {
+  if (!job.holdsSlot) return;
+  job.holdsSlot = false;
   activeTranscodes--;
-  waitQueue.shift()?.queued?.start();
+  const next = waitQueue.shift();
+  if (next?.queued) next.queued.start();
+  else next?.resume?.();
 }
 
-function prioritize(job: ProxyJob): void {
-  if (job.priority) return;
-  job.priority = true;
-  if (!job.queued) return;
+function requeue(job: ProxyJob): void {
+  if (!waitQueue.includes(job)) return;
   dequeue(job);
   enqueue(job);
+}
+
+/** A caller's ask lifts the copy it joins: priority moves it up the line, a foreground ask stops it yielding. */
+function raise(job: ProxyJob, options: ResolveProxyOptions): void {
+  if (options.priority && !job.priority) {
+    job.priority = true;
+    requeue(job);
+  }
+  if (options.background || !job.background) return;
+  job.background = false;
+  requeue(job);
+  applyHold();
 }
 
 function leave(job: ProxyJob): void {
@@ -303,7 +406,173 @@ function leave(job: ProxyJob): void {
     return;
   }
   forget(job);
+  dequeue(job);
   job.abandoned.abort();
+}
+
+// --- background copies yield ------------------------------------------------
+// ponytail: SIGSTOP/SIGCONT, rechecked each second; Windows has none (Node would kill the child).
+
+const PREVIEW_PLAYING_LEASE_MS = 15_000;
+let previewPlayingUntil = 0;
+const runningExports = new Set<{ status: string }>();
+const backgroundCopies = new Map<ChildProcess, ProxyJob>();
+let holdTimer: NodeJS.Timeout | undefined;
+
+function backgroundCopiesHeld(): boolean {
+  for (const job of runningExports) if (job.status !== "rendering") runningExports.delete(job);
+  return runningExports.size > 0 || Date.now() < previewPlayingUntil;
+}
+
+// A stopped copy frees its slot so a needed copy never waits behind it, and resumes only into a free one.
+function applyHold(): void {
+  if (process.platform === "win32") return;
+  const held = backgroundCopiesHeld();
+  for (const [proc, job] of backgroundCopies) {
+    if (held && job.background) stopCopy(proc, job);
+    else resumeCopy(proc, job);
+  }
+}
+
+function stopCopy(proc: ChildProcess, job: ProxyJob): void {
+  if (job.stopped || !proc.kill("SIGSTOP")) return;
+  job.stopped = true;
+  job.clock?.pause();
+  releaseSlot(job);
+}
+
+/** Into a free slot; with none, a copy a viewer waits on joins the line for the next one. */
+function resumeCopy(proc: ChildProcess, job: ProxyJob): void {
+  if (!job.stopped) return;
+  if (activeTranscodes >= MAX_CONCURRENT_TRANSCODES) {
+    if (!job.background && !waitQueue.includes(job)) enqueue(job);
+    return;
+  }
+  dequeue(job);
+  job.stopped = false;
+  takeSlot(job);
+  proc.kill("SIGCONT");
+  job.clock?.run();
+}
+
+function holdWhileBusy(proc: ChildProcess, job: ProxyJob): void {
+  backgroundCopies.set(proc, job);
+  job.resume = () => resumeCopy(proc, job);
+  applyHold();
+  holdTimer ??= setInterval(applyHold, 1000).unref();
+  proc.once("close", () => {
+    dequeue(job);
+    backgroundCopies.delete(proc);
+    if (backgroundCopies.size > 0) return;
+    clearInterval(holdTimer);
+    holdTimer = undefined;
+  });
+}
+
+// Running encoders and their temp output. A child outlives a server that exits, so exit kills it.
+const encoders = new Map<ChildProcess, string>();
+let killEncodersOnExit = false;
+
+function trackEncoder(proc: ChildProcess, tempPath: string): void {
+  encoders.set(proc, tempPath);
+  proc.once("close", () => encoders.delete(proc));
+  if (killEncodersOnExit) return;
+  killEncodersOnExit = true;
+  process.once("exit", () => {
+    for (const [encoder, temp] of encoders) {
+      encoder.kill("SIGKILL");
+      if (existsSync(temp)) unlinkSync(temp);
+    }
+  });
+}
+
+/** A hung ffmpeg never keeps a slot: killed after TRANSCODE_TIMEOUT_MS of encoding (long assets
+ * encode at about real time). Not spawn's `timeout`, which also counts time spent SIGSTOPped. */
+function timeEncoder(proc: ChildProcess, job: ProxyJob): void {
+  let left = TRANSCODE_TIMEOUT_MS;
+  let since = 0;
+  let timer: NodeJS.Timeout | undefined;
+  job.clock = {
+    pause: () => {
+      clearTimeout(timer);
+      left -= Date.now() - since;
+    },
+    run: () => {
+      since = Date.now();
+      timer = setTimeout(() => proc.kill("SIGKILL"), left).unref();
+    },
+  };
+  job.clock.run();
+  proc.once("close", () => clearTimeout(timer));
+}
+
+/** Below-normal priority, stopped on exit, timed, and stoppable or pausable through its job. */
+function superviseEncoder(proc: ChildProcess, outputPath: string, job?: ProxyJob): void {
+  try {
+    if (proc.pid) setPriority(proc.pid, osConstants.priority.PRIORITY_BELOW_NORMAL);
+  } catch {}
+  trackEncoder(proc, outputPath);
+  if (!job) return;
+  timeEncoder(proc, job);
+  job.stop = () => proc.kill("SIGKILL");
+  if (job.replaced) job.stop();
+  if (job.background) holdWhileBusy(proc, job);
+}
+
+/** The preview says it is playing (repeated while it plays) or paused. */
+export function notePreviewPlaying(playing: boolean): void {
+  previewPlayingUntil = playing ? Date.now() + PREVIEW_PLAYING_LEASE_MS : 0;
+  applyHold();
+}
+
+/** Background copies stop until this export's status leaves "rendering". */
+export function holdBackgroundCopiesDuring(job: { status: string }): void {
+  runningExports.add(job);
+  applyHold();
+}
+
+// --- one copy per source, at the largest size it is shown -------------------
+
+// A copy asked for this recently may be mid-play: Chrome refills a playing video by Range request.
+const IN_USE_MS = 30_000;
+const lastAsked = new Map<string, number>();
+
+function pendingBoxedCopy(
+  sourceKey: string,
+): { promise: Promise<string>; job: ProxyJob } | undefined {
+  for (const entry of inFlight.values())
+    if (entry.job.sourceKey === sourceKey && entry.job.box) return entry;
+  return undefined;
+}
+
+/** A larger box was asked while this copy was queued or encoding: stop it; its temp file goes. */
+function replaceCopy(job: ProxyJob): void {
+  job.replaced = true;
+  forget(job);
+  if (job.queued) job.queued.drop();
+  else {
+    dequeue(job);
+    job.stop?.();
+  }
+}
+
+/** Drops this source's copies the new one covers, each once nothing has read it for a while. */
+function dropSmallerCopies(
+  source: CanonicalProxySource,
+  variant: ProxyVariant,
+  box: PreviewProxyBox,
+): void {
+  let busy = false;
+  const kept = getCanonicalProxyCachePath(source, variant, box);
+  for (const copy of boxedCopies(source, variant)) {
+    if (copy.path === kept || !covers(box, copy.box)) continue;
+    if (Date.now() - (lastAsked.get(copy.path) ?? 0) < IN_USE_MS) busy = true;
+    else {
+      unlinkSync(copy.path);
+      lastAsked.delete(copy.path);
+    }
+  }
+  if (busy) setTimeout(() => dropSmallerCopies(source, variant, box), IN_USE_MS).unref();
 }
 
 // --- per-key in-flight dedupe ----------------------------------------------
@@ -420,8 +689,9 @@ async function runFfmpeg(
   outputPath: string,
   variant: ProxyVariant,
   box: PreviewProxyBox | undefined,
-  signal: AbortSignal,
+  job: ProxyJob,
 ): Promise<void> {
+  const signal = job.abandoned.signal;
   const metadata = await probeMediaMetadata(sourcePath);
   const ffmpegPath = findFfBinary("ffmpeg", { configuredMustExist: true });
   if (!ffmpegPath) {
@@ -446,6 +716,8 @@ async function runFfmpeg(
   return new Promise((resolvePromise, reject) => {
     const commonArgs = ["-y", "-i", sourcePath, "-vf", videoFilter];
     const h264Args = [
+      "-force_key_frames",
+      "expr:gte(t,n_forced*1)",
       "-c:v",
       "libx264",
       "-profile:v",
@@ -497,18 +769,14 @@ async function runFfmpeg(
     ];
     const args = [...commonArgs, ...(variant === "vp8" ? vp8Args : h264Args), outputPath];
 
-    // Hard ceiling so a hung ffmpeg can never permanently occupy one of the
-    // global transcode slots: the child is killed and the slot released via
-    // the caller's finally. Generous because long assets transcode at
-    // roughly real time; a healthy encode of any authoring asset fits.
     signal.throwIfAborted();
     const proc = spawn(ffmpegPath, args, {
       stdio: ["ignore", "ignore", "pipe"],
-      timeout: TRANSCODE_TIMEOUT_MS,
       killSignal: "SIGKILL",
       signal,
       windowsHide: true,
     });
+    superviseEncoder(proc, outputPath, job);
     let stderrTail = "";
     proc.stderr?.on("data", (chunk: Buffer) => {
       stderrTail = (stderrTail + chunk.toString()).slice(-STDERR_TAIL_MAX_CHARS);
@@ -558,7 +826,7 @@ async function transcodeToCache(
     mkdirWithinProject(projectDir, cacheDir);
     const tempPath = join(cacheDir, `.tmp-${randomUUID()}-${basename(cachePath)}`);
     try {
-      await runFfmpeg(absoluteSourcePath, tempPath, variant, box, job.abandoned.signal);
+      await runFfmpeg(absoluteSourcePath, tempPath, variant, box, job);
       renameSync(tempPath, cachePath);
       maintainProxyCache(cacheDir);
       return cachePath;
@@ -568,7 +836,7 @@ async function transcodeToCache(
       if (existsSync(tempPath)) unlinkSync(tempPath);
     }
   } finally {
-    releaseSlot();
+    releaseSlot(job);
   }
 }
 
@@ -603,18 +871,24 @@ export async function resolveProxy(
 ): Promise<string> {
   options.signal?.throwIfAborted();
   const source = canonicalizeProxySource(projectDir, absoluteSourcePath);
-  const cachePath = getCanonicalProxyCachePath(source, variant, box);
-  if (existsSync(cachePath)) {
-    markCacheEntryUsed(cachePath);
-    maintainProxyCache(dirname(cachePath));
-    return cachePath;
+  const served = finishedCopyFor(source, variant, box);
+  if (served) {
+    lastAsked.set(served, Date.now());
+    markCacheEntryUsed(served);
+    maintainProxyCache(dirname(served));
+    return served;
   }
+  const sourceKey = buildProxySourceKey(source, variant);
+  const pending = box ? pendingBoxedCopy(sourceKey) : undefined;
+  if (box && pending?.job.box && covers(pending.job.box, box)) {
+    raise(pending.job, options);
+    return joinJob(pending.promise, pending.job, options.signal);
+  }
+  const target = box && pending?.job.box ? largerOf(box, pending.job.box) : box;
+  if (pending) replaceCopy(pending.job);
+  const cachePath = getCanonicalProxyCachePath(source, variant, target);
 
-  const rememberedFailure = failedTranscodes.get(cachePath);
-  if (rememberedFailure) {
-    if (rememberedFailure.expiresAt > Date.now()) throw rememberedFailure.error;
-    failedTranscodes.delete(cachePath);
-  }
+  throwIfFailedRecently(cachePath);
 
   let entry = inFlight.get(cachePath);
   if (!entry) {
@@ -624,7 +898,10 @@ export async function resolveProxy(
     }
     const job: ProxyJob = {
       cachePath,
-      priority: options.priority === true,
+      priority: options.priority === true || pending?.job.priority === true,
+      background: options.background === true,
+      sourceKey,
+      box: target,
       callers: 0,
       abandoned: new AbortController(),
     };
@@ -634,12 +911,16 @@ export async function resolveProxy(
       source.sourcePath,
       cachePath,
       variant,
-      box,
+      target,
     )
+      .then((path) => {
+        if (target) dropSmallerCopies(source, variant, target);
+        return path;
+      })
       .catch((err: unknown) => {
-        if (!(err instanceof ProxyDroppedError) && !job.abandoned.signal.aborted) {
-          rememberFailure(cachePath, err);
-        }
+        // A SIGSTOPped ffmpeg cannot exit by itself, so ending while stopped is a kill, not the source.
+        const stopped = job.replaced || job.abandoned.signal.aborted || job.stopped;
+        if (!(err instanceof ProxyDroppedError) && !stopped) rememberFailure(cachePath, err);
         throw err;
       })
       .finally(() => {
@@ -649,8 +930,15 @@ export async function resolveProxy(
     entry = { promise, job };
     inFlight.set(cachePath, entry);
   }
-  if (options.priority) prioritize(entry.job);
+  raise(entry.job, options);
   return joinJob(entry.promise, entry.job, options.signal);
+}
+
+function throwIfFailedRecently(cachePath: string): void {
+  const remembered = failedTranscodes.get(cachePath);
+  if (!remembered) return;
+  if (remembered.expiresAt > Date.now()) throw remembered.error;
+  failedTranscodes.delete(cachePath);
 }
 
 /** Batch resolve for check and publish: at most MAX_CONCURRENT_TRANSCODES of its own requests in
@@ -682,6 +970,8 @@ export async function resolveProxies(
 
 export interface ResolveProxyOptions {
   priority?: boolean;
+  /** A copy nobody waits on: it stops while a preview plays or an export runs. */
+  background?: boolean;
   signal?: AbortSignal;
 }
 

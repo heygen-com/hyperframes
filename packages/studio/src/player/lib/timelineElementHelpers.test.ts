@@ -48,6 +48,21 @@ describe("preview nodes built in another realm", () => {
     applyMediaMetadataFromElement(entry, el);
     expect(entry.sourceDuration).toBe(12);
   });
+
+  it("lists a video under its authored src while the preview plays a copy of it", () => {
+    const el = foreignNode(`<video src="a.mp4?hf-proxy=h264&hf-proxy-box=724x362"></video>`);
+    const view = el.ownerDocument.defaultView as unknown as { __hf?: unknown };
+    view.__hf = { unproxiedSrc: () => "a.mp4" };
+    const entry = { id: "v", tag: "div", start: 0, duration: 4, track: 0 } as TimelineElement;
+
+    try {
+      applyMediaMetadataFromElement(entry, el);
+    } finally {
+      delete view.__hf;
+    }
+
+    expect(entry.src).toBe("a.mp4");
+  });
 });
 
 describe("readTimelineText", () => {

@@ -8,6 +8,7 @@ import { isCarveVoiceElement } from "./useFxCarveGrouping.js";
 import { automationAttrValue, HF_AUDIO_AUTOMATION_ATTR } from "./propertyPanelAutomation";
 import type { CarveClip } from "./useFxCarveNodes.js";
 import { readClipClock } from "./clipAudioClock.js";
+import { authoredSrc } from "../../utils/authoredSrc";
 
 /** Lanes belonging to nodes the carve generated, which a re-run replaces. */
 export function withoutCarveLanes(automation: HfAutomation, chain: HfAudioFxChain): HfAutomation {
@@ -26,7 +27,7 @@ export function resolveCarveVoices(doc: Document, sources: readonly string[]): C
     const el = doc.getElementById(id);
     // By tag name: iframe-realm elements fail `instanceof HTMLAudioElement`.
     if (!isCarveVoiceElement(el)) continue;
-    const src = el.getAttribute("src");
+    const src = authoredSrc(el);
     if (!src) continue;
     const clock = readClipClock((name) => el.getAttribute(name));
     voices.push({ src, start: el.getAttribute("data-start"), clock });

@@ -8,6 +8,18 @@ import {
 import { liveMarkupWithoutPreviewMarks } from "./authoredSource";
 
 describe("liveMarkupWithoutPreviewMarks", () => {
+  it("copies a video under its authored src, not the preview copy it plays", () => {
+    const live = document.createElement("div");
+    live.innerHTML = `<video src="clip.mp4?hf-proxy=h264"></video>`;
+    const view = window as unknown as { __hf?: unknown };
+    view.__hf = { unproxiedSrc: (el: Element) => (el.tagName === "VIDEO" ? "clip.mp4" : null) };
+    try {
+      expect(liveMarkupWithoutPreviewMarks(live)).toBe('<div><video src="clip.mp4"></video></div>');
+    } finally {
+      delete view.__hf;
+    }
+  });
+
   it("drops the preview's raster mark from an element and its descendants", () => {
     const live = document.createElement("div");
     live.innerHTML = `<div class="line" ${PREVIEW_RASTER_ATTR}><span class="word">LOUD</span></div>`;

@@ -33,6 +33,7 @@ import {
   HF_AUDIO_AUTOMATION_ATTR,
 } from "../../components/editor/propertyPanelAutomation";
 import { spanOf } from "../../components/editor/propertyPanelAudioFxGroupUtils";
+import { authoredSrc } from "../../utils/authoredSrc";
 
 export type WriteBedAttribute = (attr: string, value: string | null) => Promise<void>;
 export type GroupClips = (clipIds: readonly string[], groupId: string) => Promise<void>;
@@ -98,7 +99,7 @@ async function writeMeasuredCarve(
   const voices = resolveCarveVoices(doc, expanded);
   if (voices.length === 0) return;
   const measured = await measureCarve(doc, voices, settings.strength, {
-    src: bed.getAttribute("src"),
+    src: authoredSrc(bed),
     start: bed.getAttribute("data-start"),
     clock: readClipClock((name) => bed.getAttribute(name)),
   });

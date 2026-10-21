@@ -26,6 +26,7 @@ import {
 } from "./timelineElementHelpers";
 import { postRuntimeControlMessage } from "./runtimeProtocol";
 import { transitionLabelsForDocument } from "./timelineTransitionMetadata";
+import { authoredSrc } from "../../utils/authoredSrc";
 
 // ---------------------------------------------------------------------------
 // Viewport / DOM normalisation
@@ -404,7 +405,7 @@ function attachCompositionSource(
   if (compositionSrc) return { ...entry, compositionSrc };
   const innerVideo = element.querySelector("video[src]");
   if (!innerVideo) return entry;
-  return { ...entry, src: optionalNonEmpty(innerVideo.getAttribute("src")), tag: "video" };
+  return { ...entry, src: optionalNonEmpty(authoredSrc(innerVideo)), tag: "video" };
 }
 
 function buildMissingCompositionEntry(params: {
@@ -468,8 +469,8 @@ function buildMissingCompositionEntry(params: {
     selectorIndex,
     sourceFile,
     zIndex: readTimelineElementZIndex(element),
-    src: optionalNonEmpty(element.getAttribute("src"))
-      ? new URL(element.getAttribute("src")!, element.baseURI).href
+    src: optionalNonEmpty(authoredSrc(element))
+      ? new URL(authoredSrc(element)!, element.baseURI).href
       : undefined,
   };
   return attachCompositionSource(entry, element, compositionSrc);

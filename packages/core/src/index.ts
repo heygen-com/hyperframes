@@ -267,6 +267,7 @@ export {
   type ToneMapSourceColour,
 } from "./hdrToneMap";
 export {
+  PREVIEW_CAPTURE_PARAM,
   PREVIEW_PROXY_BOX_PARAM,
   formatPreviewProxyBox,
   parsePreviewProxyBox,

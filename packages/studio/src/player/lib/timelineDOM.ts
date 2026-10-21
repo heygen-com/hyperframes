@@ -61,6 +61,7 @@ export {
   resolveIframe,
   buildMissingCompositionElements,
 } from "./timelineIframeHelpers";
+import { authoredSrc } from "../../utils/authoredSrc";
 
 // ---------------------------------------------------------------------------
 // TimelineElement factories
@@ -146,7 +147,7 @@ export function createTimelineElementFromManifestClip(params: {
   if (hostEl) {
     applyMediaMetadataFromElement(entry, hostEl);
     if (!entry.src) {
-      const rawSrc = hostEl.getAttribute("src");
+      const rawSrc = authoredSrc(hostEl);
       if (rawSrc) entry.src = new URL(rawSrc, hostEl.baseURI).href;
     }
     if (hostEl.hasAttribute("data-hidden")) entry.hidden = true;
@@ -196,7 +197,7 @@ export function createTimelineElementFromManifestClip(params: {
     } else if (hostEl) {
       const innerVideo = hostEl.querySelector("video[src]");
       if (innerVideo) {
-        entry.src = innerVideo.getAttribute("src") || undefined;
+        entry.src = authoredSrc(innerVideo) || undefined;
         entry.tag = "video";
       }
     }
@@ -376,7 +377,7 @@ export function parseTimelineFromDOM(
       // Inline composition — expose inner video or image for thumbnails
       const innerMedia = el.querySelector("video[src], img[src]");
       if (innerMedia) {
-        entry.src = innerMedia.getAttribute("src") || undefined;
+        entry.src = authoredSrc(innerMedia) || undefined;
         entry.tag = innerMedia.tagName === "IMG" ? "img" : "video";
       }
     }

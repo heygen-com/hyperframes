@@ -6,6 +6,12 @@ import { join } from "node:path";
 import { VALID_CANVAS_RESOLUTIONS } from "@hyperframes/parsers";
 import { registerRenderRoutes } from "./render";
 import type { StudioApiAdapter } from "../types";
+import { holdBackgroundCopiesDuring } from "../helpers/proxyTranscoder.js";
+
+vi.mock("../helpers/proxyTranscoder.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../helpers/proxyTranscoder.js")>()),
+  holdBackgroundCopiesDuring: vi.fn(),
+}));
 
 function createAdapter(
   startRenderSpy: ReturnType<typeof vi.fn>,
@@ -58,6 +64,25 @@ describe("GET /projects/:id/renders — stale sidecar status", () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.renders).toEqual([expect.objectContaining({ id: "retry", status: "complete" })]);
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe("POST /projects/:id/render — background copies", () => {
+  it("stops background media copies for as long as the render runs", async () => {
+    const { app, cleanup } = buildApp(vi.fn());
+    try {
+      const res = await app.request("http://localhost/projects/demo/render", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ format: "mp4" }),
+      });
+      expect(res.status).toBe(200);
+      expect(holdBackgroundCopiesDuring).toHaveBeenCalledWith(
+        expect.objectContaining({ id: (await res.json()).jobId, status: "rendering" }),
+      );
     } finally {
       cleanup();
     }

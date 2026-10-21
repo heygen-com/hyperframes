@@ -1,5 +1,6 @@
 import { HF_AUDIO_GROUP_TAG } from "@hyperframes/core/audio-groups";
 import type { TimelineElement } from "../player";
+import { authoredSrc } from "./authoredSrc";
 
 const AUDIO_TIMELINE_TAGS = new Set(["audio", "music", "sfx", "sound", "narration"]);
 const AUDIO_SOURCE_EXT_RE = /\.(aac|flac|m4a|mp3|ogg|opus|wav)(?:[?#].*)?$/i;
@@ -21,7 +22,7 @@ export function isAudioDomElement(node: Element | null | undefined): boolean {
   if (node.tagName.toLowerCase() === HF_AUDIO_GROUP_TAG) return true;
   return isAudioTimelineElement({
     tag: node.tagName,
-    src: node.getAttribute("src") ?? undefined,
+    src: authoredSrc(node) ?? undefined,
   });
 }
 

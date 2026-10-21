@@ -1,7 +1,9 @@
+// fallow-ignore-file code-duplication
 import { execFileSync, spawn as realSpawn, spawnSync, type ChildProcess } from "node:child_process";
 import { EventEmitter, once } from "node:events";
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   realpathSync,
@@ -59,7 +61,12 @@ function createFakeProc(): FakeProc {
   return proc;
 }
 
-type SpawnOptions = { windowsHide?: boolean; signal?: AbortSignal };
+type SpawnOptions = {
+  windowsHide?: boolean;
+  signal?: AbortSignal;
+  timeout?: number;
+  killSignal?: string;
+};
 type SpawnCall = { command: string; args: string[]; options?: SpawnOptions; proc: FakeProc };
 type SpawnImpl = (command: string, args: string[], options?: SpawnOptions) => FakeProc;
 
@@ -125,9 +132,17 @@ afterEach(() => {
   vi.resetModules();
   vi.doUnmock("node:child_process");
   vi.doUnmock("@hyperframes/parsers/ff-binaries");
+  vi.doUnmock("node:os");
   delete process.env.HYPERFRAMES_PROXY_MAX_CONCURRENCY;
   delete process.env.HYPERFRAMES_PROXY_MAX_QUEUE;
 });
+
+function mockSetPriority(setPriority: (pid: number, priority: number) => void): void {
+  vi.doMock("node:os", async (importOriginal) => {
+    const mocked = { ...(await importOriginal<typeof import("node:os")>()), setPriority };
+    return { ...mocked, default: mocked };
+  });
+}
 
 async function loadModule(
   spawn: SpawnImpl,
@@ -214,6 +229,525 @@ describe("resolveProxy", () => {
     expect(cacheDirEntries).toEqual([expectedCachePath.split("/").at(-1)]);
   });
 
+  it("makes a keyframe every second, at below-normal OS priority", async () => {
+    const setPriority = vi.fn();
+    mockSetPriority(setPriority);
+    const { spawn, calls } = createSpawnSpy();
+    const { resolveProxy } = await loadModule(
+      (...args) => Object.assign(spawn(...args), { pid: 4242 }),
+      FFMPEG_PATH,
+    );
+    const projectDir = tmpProject();
+    const sourcePath = join(projectDir, "sparse.mp4");
+    writeFileSync(sourcePath, "source-bytes");
+
+    const resultPromise = resolveProxy(projectDir, sourcePath, "h264", {
+      width: 1024,
+      height: 724,
+    });
+    await flush();
+    const args = calls[0]!.args;
+    expect(args[args.indexOf("-force_key_frames") + 1]).toBe("expr:gte(t,n_forced*1)");
+    expect(setPriority).toHaveBeenCalledWith(4242, 10);
+
+    succeed(calls[0]!);
+    await expect(resultPromise).resolves.toContain(".transcode-cache");
+  });
+
+  it("still makes the copy when the OS refuses to lower its priority", async () => {
+    mockSetPriority(() => {
+      throw new Error("EACCES");
+    });
+    const { spawn, calls } = createSpawnSpy();
+    const { resolveProxy } = await loadModule(
+      (...args) => Object.assign(spawn(...args), { pid: 4242 }),
+      FFMPEG_PATH,
+    );
+    const projectDir = tmpProject();
+    const sourcePath = join(projectDir, "sparse.mp4");
+    writeFileSync(sourcePath, "source-bytes");
+
+    const resultPromise = resolveProxy(projectDir, sourcePath);
+    await flush();
+    succeed(calls[0]!);
+
+    await expect(resultPromise).resolves.toContain(".transcode-cache");
+  });
+
+  describe("background copies yield to playback and exports", () => {
+    const box = { width: 1024, height: 724 };
+    type Killable = SpawnCall & { proc: FakeProc & { kill: ReturnType<typeof vi.fn> } };
+
+    async function startCopies() {
+      const { spawn, calls } = createSpawnSpy();
+      const transcoder = await loadModule(
+        (...args) => Object.assign(spawn(...args), { pid: 4242, kill: vi.fn(() => true) }),
+        FFMPEG_PATH,
+      );
+      const projectDir = realpathSync(tmpProject());
+      const [seek, waited] = ["sparse.mp4", "hevc.mov"].map((name) => {
+        const sourcePath = join(projectDir, name);
+        writeFileSync(sourcePath, name);
+        return sourcePath;
+      });
+      const copies = [
+        transcoder.resolveProxy(projectDir, seek!, "h264", box, { background: true }),
+        transcoder.resolveProxy(projectDir, waited!, "h264", box),
+      ];
+      await flush();
+      const callFor = (name: string) =>
+        (calls as Killable[]).find((call) => call.args.includes(join(projectDir, name)))!;
+      const signals = (name: string) => callFor(name).proc.kill.mock.calls.map(([sig]) => sig);
+      const finish = async () => {
+        calls.forEach((call) => succeed(call));
+        await Promise.all(copies);
+      };
+      return { transcoder, signals, finish, projectDir, seek: seek! };
+    }
+
+    afterEach(() => vi.useRealTimers());
+
+    it("stops a background copy while the preview plays and resumes it on pause", async () => {
+      const { transcoder, signals, finish } = await startCopies();
+
+      transcoder.notePreviewPlaying(true);
+      expect(signals("sparse.mp4")).toEqual(["SIGSTOP"]);
+      expect(signals("hevc.mov")).toEqual([]);
+
+      transcoder.notePreviewPlaying(false);
+      expect(signals("sparse.mp4")).toEqual(["SIGSTOP", "SIGCONT"]);
+      await finish();
+    });
+
+    it("resumes once a preview that said it plays goes quiet past its lease", async () => {
+      vi.useFakeTimers();
+      const { transcoder, signals, finish } = await startCopies();
+
+      transcoder.notePreviewPlaying(true);
+      await vi.advanceTimersByTimeAsync(14_000);
+      expect(signals("sparse.mp4")).toEqual(["SIGSTOP"]);
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(signals("sparse.mp4")).toEqual(["SIGSTOP", "SIGCONT"]);
+      await finish();
+    });
+
+    it("stops a background copy while an export renders", async () => {
+      vi.useFakeTimers();
+      const { transcoder, signals, finish } = await startCopies();
+      const job = { status: "rendering" };
+
+      transcoder.holdBackgroundCopiesDuring(job);
+      expect(signals("sparse.mp4")).toEqual(["SIGSTOP"]);
+      job.status = "complete";
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(signals("sparse.mp4")).toEqual(["SIGSTOP", "SIGCONT"]);
+      expect(signals("hevc.mov")).toEqual([]);
+      await finish();
+    });
+
+    it("frees a stopped copy's slot for a needed copy, and resumes stopped copies only into free slots", async () => {
+      vi.useFakeTimers();
+      const { spawn, calls } = createSpawnSpy();
+      const transcoder = await loadModule(
+        (...args) => Object.assign(spawn(...args), { pid: 4242, kill: vi.fn(() => true) }),
+        FFMPEG_PATH,
+      );
+      const projectDir = tmpProject();
+      const source = (name: string) => {
+        writeFileSync(join(projectDir, name), name);
+        return join(projectDir, name);
+      };
+      const copies = ["a.mp4", "b.mp4"].map((name) =>
+        transcoder.resolveProxy(projectDir, source(name), "h264", box, { background: true }),
+      );
+      await flush();
+      const signals = (index: number) =>
+        (calls[index] as Killable).proc.kill.mock.calls.map(([sig]) => sig);
+
+      transcoder.notePreviewPlaying(true);
+      copies.push(transcoder.resolveProxy(projectDir, source("prores.mov"), "h264", box));
+      await flush();
+      expect(calls).toHaveLength(MAX_CONCURRENT + 1);
+
+      transcoder.notePreviewPlaying(false);
+      expect([signals(0), signals(1)]).toEqual([["SIGSTOP", "SIGCONT"], ["SIGSTOP"]]);
+      succeed(calls[2]!);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(signals(1)).toEqual(["SIGSTOP", "SIGCONT"]);
+      calls.forEach((call) => succeed(call));
+      await Promise.all(copies);
+    });
+
+    it("resumes a stopped background copy as soon as a viewer asks for it", async () => {
+      const { transcoder, signals, finish, projectDir, seek } = await startCopies();
+      transcoder.notePreviewPlaying(true);
+      expect(signals("sparse.mp4")).toEqual(["SIGSTOP"]);
+
+      const asked = transcoder.resolveProxy(projectDir, seek, "h264", box);
+      expect(signals("sparse.mp4")).toEqual(["SIGSTOP", "SIGCONT"]);
+      transcoder.notePreviewPlaying(false);
+      await finish();
+      await asked;
+    });
+
+    /** Fake ffmpegs that die on SIGKILL and honour spawn's `timeout` as Node does. */
+    async function dyingCopies() {
+      const { spawn, calls } = createSpawnSpy();
+      const transcoder = await loadModule((command, args, options) => {
+        const proc = spawn(command, args, options);
+        let dead = false;
+        const kill = vi.fn((sig: string) => {
+          if (sig === "SIGKILL" && !dead) {
+            dead = true;
+            proc.emit("close", null, "SIGKILL");
+          }
+          return true;
+        });
+        if (options?.timeout) {
+          const timer = setTimeout(() => kill(options.killSignal ?? "SIGTERM"), options.timeout);
+          proc.once("close", () => clearTimeout(timer));
+        }
+        options?.signal?.addEventListener("abort", () => kill(options.killSignal ?? "SIGTERM"));
+        return Object.assign(proc, { pid: 4242, kill });
+      }, FFMPEG_PATH);
+      const projectDir = tmpProject();
+      const source = (name: string) => {
+        writeFileSync(join(projectDir, name), name);
+        return join(projectDir, name);
+      };
+      const signals = (index: number) =>
+        (calls[index] as Killable).proc.kill.mock.calls.map(([sig]) => sig);
+      return { transcoder, calls, projectDir, source, signals };
+    }
+
+    it("resumes a stopped copy a viewer waits on into the next freed slot, ahead of queued background copies", async () => {
+      vi.useFakeTimers();
+      const { transcoder, calls, projectDir, source, signals } = await dyingCopies();
+      const [a, b] = [source("a.mp4"), source("b.mp4")];
+      const copies = [a, b].map((sourcePath) =>
+        transcoder.resolveProxy(projectDir, sourcePath, "h264", box, { background: true }),
+      );
+      await flush();
+      transcoder.notePreviewPlaying(true);
+      copies.push(
+        ...["c.mov", "d.mov"].map((name) =>
+          transcoder.resolveProxy(projectDir, source(name), "h264", box),
+        ),
+        transcoder.resolveProxy(projectDir, source("e.mp4"), "h264", box, { background: true }),
+      );
+      await flush();
+      expect(calls).toHaveLength(4);
+
+      copies.push(transcoder.resolveProxy(projectDir, a, "h264", box));
+      expect(signals(0)).toEqual(["SIGSTOP"]);
+      succeed(calls[2]!);
+      await flush(50);
+      expect(signals(0)).toEqual(["SIGSTOP", "SIGCONT"]);
+      expect(signals(1)).toEqual(["SIGSTOP"]);
+      expect(calls).toHaveLength(4);
+
+      transcoder.notePreviewPlaying(false);
+      [0, 1, 3].forEach((index) => succeed(calls[index]!));
+      await flush(50);
+      expect(calls).toHaveLength(5);
+      succeed(calls[4]!);
+      await Promise.all(copies);
+    });
+
+    it("drops a stopped copy from the line when its viewers leave, leaking no slot", async () => {
+      vi.useFakeTimers();
+      const { transcoder, calls, projectDir, source, signals } = await dyingCopies();
+      const [a, b] = [source("a.mp4"), source("b.mp4")];
+      const leaving = new AbortController();
+      const copies = [
+        transcoder
+          .resolveProxy(projectDir, a, "h264", box, { background: true, signal: leaving.signal })
+          .catch(() => "left"),
+        transcoder.resolveProxy(projectDir, b, "h264", box, { background: true }),
+      ];
+      await flush();
+      transcoder.notePreviewPlaying(true);
+      copies.push(
+        ...["c.mov", "d.mov"].map((name) =>
+          transcoder.resolveProxy(projectDir, source(name), "h264", box),
+        ),
+        transcoder.resolveProxy(projectDir, source("e.mp4"), "h264", box, { background: true }),
+        transcoder
+          .resolveProxy(projectDir, a, "h264", box, { signal: leaving.signal })
+          .catch(() => "left"),
+      );
+      await flush();
+      leaving.abort();
+      expect(signals(0)).toEqual(["SIGSTOP", "SIGKILL"]);
+
+      succeed(calls[2]!);
+      await flush(50);
+      expect(calls).toHaveLength(5);
+      transcoder.notePreviewPlaying(false);
+      [1, 3, 4].forEach((index) => succeed(calls[index]!));
+      await Promise.all(copies);
+
+      const fresh = ["f.mov", "g.mov", "h.mov"].map((name) =>
+        transcoder.resolveProxy(projectDir, source(name), "h264", box),
+      );
+      await flush(50);
+      expect(calls).toHaveLength(5 + MAX_CONCURRENT);
+      [5, 6].forEach((index) => succeed(calls[index]!));
+      await flush(50);
+      succeed(calls[7]!);
+      await Promise.all(fresh);
+    });
+
+    it("counts only encoding time toward the timeout, not time spent stopped", async () => {
+      vi.useFakeTimers();
+      const { transcoder, projectDir, source, signals } = await dyingCopies();
+      const copy = transcoder.resolveProxy(projectDir, source("a.mp4"), "h264", box, {
+        background: true,
+      });
+      await flush();
+      const exportJob = { status: "rendering" };
+      transcoder.holdBackgroundCopiesDuring(exportJob);
+      await vi.advanceTimersByTimeAsync(20 * 60_000);
+      expect(signals(0)).toEqual(["SIGSTOP"]);
+
+      exportJob.status = "complete";
+      await vi.advanceTimersByTimeAsync(1_000);
+      const killed = expect(copy).rejects.toBeInstanceOf(transcoder.ProxyTranscodeError);
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
+      expect(signals(0)).toEqual(["SIGSTOP", "SIGCONT"]);
+      // The budget resumes where it paused: 15 minutes of encoding in all.
+      await vi.advanceTimersByTimeAsync(5 * 60_000);
+      expect(signals(0)).toEqual(["SIGSTOP", "SIGCONT", "SIGKILL"]);
+      await killed;
+    });
+
+    it("does not remember a copy killed while stopped as a failure", async () => {
+      vi.useFakeTimers();
+      const { transcoder, calls, projectDir, source } = await dyingCopies();
+      const sourcePath = source("a.mp4");
+      const copy = transcoder.resolveProxy(projectDir, sourcePath, "h264", box, {
+        background: true,
+      });
+      await flush();
+      transcoder.notePreviewPlaying(true);
+      calls[0]!.proc.emit("close", null, "SIGKILL");
+      await expect(copy).rejects.toBeInstanceOf(transcoder.ProxyTranscodeError);
+
+      const again = transcoder.resolveProxy(projectDir, sourcePath, "h264", box);
+      await flush();
+      expect(calls).toHaveLength(2);
+      succeed(calls[1]!);
+      await expect(again).resolves.toContain(".transcode-cache");
+    });
+
+    it("still fails, and remembers, a running copy that outlasts the timeout", async () => {
+      vi.useFakeTimers();
+      const { transcoder, calls, projectDir, source, signals } = await dyingCopies();
+      const sourcePath = source("a.mp4");
+      const copy = transcoder.resolveProxy(projectDir, sourcePath, "h264", box);
+      const failed = expect(copy).rejects.toBeInstanceOf(transcoder.ProxyTranscodeError);
+      await flush();
+      await vi.advanceTimersByTimeAsync(transcoder.TRANSCODE_TIMEOUT_MS - 1_000);
+      expect(signals(0)).toEqual([]);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(signals(0)).toEqual(["SIGKILL"]);
+      await failed;
+
+      await expect(transcoder.resolveProxy(projectDir, sourcePath, "h264", box)).rejects.toThrow(
+        /killed by SIGKILL/,
+      );
+      expect(calls).toHaveLength(1);
+    });
+
+    it("never signals on Windows, where Node would kill the copy instead", async () => {
+      const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+      Object.defineProperty(process, "platform", { ...platform, value: "win32" });
+      try {
+        const { transcoder, signals, finish } = await startCopies();
+        transcoder.notePreviewPlaying(true);
+        expect(signals("sparse.mp4")).toEqual([]);
+        await finish();
+      } finally {
+        Object.defineProperty(process, "platform", platform);
+      }
+    });
+  });
+
+  describe("one copy per source, at the largest size it is shown", () => {
+    const small = { width: 724, height: 362 };
+    const large = { width: 1448, height: 724 };
+
+    async function source() {
+      const { spawn, calls } = createSpawnSpy();
+      const transcoder = await loadModule(
+        (...args) => Object.assign(spawn(...args), { pid: 4242, kill: vi.fn(() => true) }),
+        FFMPEG_PATH,
+      );
+      const projectDir = tmpProject();
+      const sourcePath = join(projectDir, "clip.mp4");
+      writeFileSync(sourcePath, "source-bytes");
+      const copyAt = (box: { width: number; height: number }) =>
+        transcoder.resolveProxy(projectDir, sourcePath, "h264", box);
+      const pathAt = (box: { width: number; height: number }) =>
+        transcoder.getProxyCachePath(projectDir, sourcePath, "h264", box);
+      return {
+        transcoder,
+        calls: calls as Array<SpawnCall & { proc: { kill: ReturnType<typeof vi.fn> } }>,
+        copyAt,
+        pathAt,
+        projectDir,
+      };
+    }
+
+    afterEach(() => vi.useRealTimers());
+
+    it("serves a smaller box from the larger copy still being made", async () => {
+      const { calls, copyAt, pathAt } = await source();
+      const larger = copyAt(large);
+      await flush();
+      const smaller = copyAt(small);
+      await flush();
+
+      expect(calls).toHaveLength(1);
+      succeed(calls[0]!);
+      await expect(smaller).resolves.toBe(pathAt(large));
+      await expect(larger).resolves.toBe(pathAt(large));
+    });
+
+    it("moves the larger queued copy up when a priority ask is served by it", async () => {
+      const { transcoder, calls, copyAt, projectDir } = await source();
+      const others = ["fill-1.mp4", "fill-2.mp4", "other.mp4"].map((name) => {
+        writeFileSync(join(projectDir, name), name);
+        return transcoder.resolveProxy(projectDir, join(projectDir, name), "h264", small);
+      });
+      await flush();
+      const larger = copyAt(large);
+      const asked = transcoder.resolveProxy(
+        projectDir,
+        join(projectDir, "clip.mp4"),
+        "h264",
+        small,
+        {
+          priority: true,
+        },
+      );
+      await flush();
+      expect(calls).toHaveLength(MAX_CONCURRENT);
+
+      succeed(calls[0]!);
+      await flush();
+      expect(calls[2]!.args.some((arg) => arg.endsWith("clip.mp4"))).toBe(true);
+      calls.forEach((call) => succeed(call));
+      await flush();
+      calls.forEach((call) => succeed(call));
+      await Promise.all([...others, larger, asked]);
+    });
+
+    it("stops a smaller copy being made when a larger box is asked, and makes one at the larger box", async () => {
+      const { calls, copyAt, pathAt } = await source();
+      const smaller = copyAt(small);
+      await flush();
+      const temp = calls[0]!.args.at(-1)!;
+      writeFileSync(temp, "partial");
+
+      const larger = copyAt(large);
+      expect(calls[0]!.proc.kill).toHaveBeenCalledWith("SIGKILL");
+      calls[0]!.proc.emit("close", null, "SIGKILL");
+      await expect(smaller).rejects.toThrow();
+      await flush();
+      expect(existsSync(temp)).toBe(false);
+      expect(calls).toHaveLength(2);
+
+      const again = copyAt(small);
+      await flush();
+      expect(calls).toHaveLength(2);
+      succeed(calls[1]!);
+      await expect(larger).resolves.toBe(pathAt(large));
+      await expect(again).resolves.toBe(pathAt(large));
+    });
+
+    it("stops a smaller copy replaced before its encoder started, as soon as it starts", async () => {
+      const { calls, copyAt } = await source();
+      void copyAt(small).catch(() => {});
+      void copyAt(large).catch(() => {});
+      await flush();
+
+      const smallCall = calls.find((call) => call.args.at(-1)!.includes("724x362"))!;
+      expect(smallCall.proc.kill).toHaveBeenCalledWith("SIGKILL");
+    });
+
+    it("makes the smaller copy afresh if the larger one fails, not failing for the stopped one", async () => {
+      const { calls, copyAt } = await source();
+      void copyAt(small).catch(() => {});
+      await flush();
+      const larger = copyAt(large);
+      calls[0]!.proc.emit("close", null, "SIGKILL");
+      await flush();
+      fail(calls[1]!);
+      await expect(larger).rejects.toThrow();
+
+      void copyAt(small).catch(() => {});
+      await flush();
+      expect(calls).toHaveLength(3);
+    });
+
+    it("serves a smaller box from a finished larger copy without a new encode", async () => {
+      const { calls, copyAt, pathAt } = await source();
+      const larger = copyAt(large);
+      await flush();
+      succeed(calls[0]!);
+      await larger;
+
+      await expect(copyAt(small)).resolves.toBe(pathAt(large));
+      expect(calls).toHaveLength(1);
+    });
+
+    it("drops the smaller copy once a larger one is made and nothing reads the smaller", async () => {
+      vi.useFakeTimers();
+      const { calls, copyAt, pathAt } = await source();
+      const first = copyAt(small);
+      await flush();
+      succeed(calls[0]!);
+      await first;
+      await copyAt(small);
+
+      const larger = copyAt(large);
+      await flush();
+      succeed(calls[1]!);
+      await larger;
+      expect(existsSync(pathAt(small))).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(existsSync(pathAt(small))).toBe(false);
+      expect(existsSync(pathAt(large))).toBe(true);
+    });
+  });
+
+  it("kills every running encoder and removes its temp file when the server exits", async () => {
+    const before = new Set(process.listeners("exit"));
+    const { spawn, calls } = createSpawnSpy();
+    const { resolveProxy } = await loadModule(
+      (...args) => Object.assign(spawn(...args), { pid: 4242, kill: vi.fn(() => true) }),
+      FFMPEG_PATH,
+    );
+    const projectDir = tmpProject();
+    const sourcePath = join(projectDir, "clip.mov");
+    writeFileSync(sourcePath, "source-bytes");
+    void resolveProxy(projectDir, sourcePath).catch(() => {});
+    await flush();
+    const temp = calls[0]!.args.at(-1)!;
+    writeFileSync(temp, "partial");
+
+    const onExit = process.listeners("exit").find((listener) => !before.has(listener))!;
+    process.removeListener("exit", onExit);
+    onExit.call(process, 0);
+
+    expect(
+      (calls[0]!.proc as unknown as { kill: ReturnType<typeof vi.fn> }).kill,
+    ).toHaveBeenCalledWith("SIGKILL");
+    expect(existsSync(temp)).toBe(false);
+  });
+
   it("names the boxed preview copy resolveProxy writes when given the same box", async () => {
     const { spawn, calls } = createSpawnSpy();
     const { resolveProxy, getProxyCachePath } = await loadModule(spawn, FFMPEG_PATH);
@@ -229,6 +763,26 @@ describe("resolveProxy", () => {
 
     expect(await resultPromise).toBe(boxedPath);
     expect(boxedPath).not.toBe(getProxyCachePath(projectDir, sourcePath, "h264"));
+  });
+
+  it("lends a capture this source's largest finished copy, even one smaller than it shows", async () => {
+    const { finishedProxyPath, getProxyCachePath } = await import("./proxyTranscoder.js");
+    const projectDir = tmpProject();
+    const sourcePath = join(projectDir, "clip.mov");
+    writeFileSync(sourcePath, "source-bytes");
+    const copy = (width: number, height: number) => {
+      const path = getProxyCachePath(projectDir, sourcePath, "h264", { width, height });
+      writeFileSync(path, "copy-bytes");
+      return path;
+    };
+
+    expect(finishedProxyPath(projectDir, sourcePath, "h264")).toBeNull();
+    mkdirSync(join(projectDir, ".transcode-cache"));
+    const pageCopy = copy(256, 512);
+    expect(finishedProxyPath(projectDir, sourcePath, "h264")).toBe(pageCopy);
+    copy(256, 256);
+    const larger = copy(724, 1024);
+    expect(finishedProxyPath(projectDir, sourcePath, "h264")).toBe(larger);
   });
 
   it("uses Chromium-compatible VP8 alpha args and a distinct WebM cache path", async () => {
@@ -249,6 +803,7 @@ describe("resolveProxy", () => {
     const args = calls[0]!.args;
     expect(args).toContain("libvpx");
     expect(args).not.toContain("libvpx-vp9");
+    expect(args).not.toContain("-force_key_frames");
     expect(args).toContain("yuva420p");
     expect(args).toContain("libopus");
     expect(args[args.indexOf("-b:v") + 1]).toBe("0");

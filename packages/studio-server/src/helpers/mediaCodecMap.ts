@@ -9,7 +9,13 @@ import {
   isUnresolvedAssetPlaceholder,
   resolveExistingLocalAsset as resolveAsset,
 } from "@hyperframes/parsers/asset-resolution";
-import { pixelFormatHasAlpha, probeMediaMetadata, type FfprobeRunner } from "./mediaMetadata.js";
+import type { PreviewProxyBox } from "@hyperframes/core";
+import {
+  pixelFormatHasAlpha,
+  probeKeyframeGap,
+  probeMediaMetadata,
+  type FfprobeRunner,
+} from "./mediaMetadata.js";
 
 /**
  * One reusable answer to "what codec is this asset, and is it browser-hostile?",
@@ -27,7 +33,15 @@ export interface AssetCodecFacts {
   /** Source carries an alpha channel (ffprobe pix_fmt). Alpha sources use a
    * VP8/WebM proxy so their transparency is preserved across Chromium builds. */
   hasAlpha: boolean;
+  /** A browser-safe, opaque video whose keyframes are more than 2 s apart, so each jump decodes
+   * far. Set only when true. Alpha is left out: its VP8 copy has no keyframe-every-second recipe. */
+  seekHostile?: boolean;
+  /** Source size, carried by seek-hostile entries so a copy is sized before the video loads. */
+  width?: number;
+  height?: number;
 }
+
+const SEEK_HOSTILE_KEYFRAME_GAP_SECONDS = 2;
 
 /** Server-root-relative URL pathname -> that asset's codec facts. */
 export type MediaCodecMap = Record<string, AssetCodecFacts>;
@@ -37,12 +51,6 @@ export interface BrowserHostileCodec {
    * (ProRes: browsers never decode it, so the runtime always proxies rather
    * than probing `canPlayType`). */
   representativeMime: string | null;
-  /**
-   * Whether the server may transcode before any browser asks. True only where
-   * no cross-platform decode exists, so some client is sure to need the
-   * substitute; false where the first `?hf-proxy=` request can do it lazily.
-   */
-  prewarm: boolean;
 }
 
 /**
@@ -50,19 +58,15 @@ export interface BrowserHostileCodec {
  * one-line change. `ffprobe` cannot emit exact RFC 6381 codec strings, so
  * these `representativeMime` values are deliberately coarse (a false
  * positive costs one proxy transcode, never correctness; a false negative is
- * rescued by the runtime's reactive zero-videoWidth swap).
+ * rescued by the runtime's reactive zero-videoWidth swap). The page's
+ * `canPlayType` decides whether a copy is made; the server never guesses.
  */
 export const BROWSER_HOSTILE_CODECS: Record<string, BrowserHostileCodec> = {
-  // HEVC decode is platform-bound, not absent: macOS Chrome answers
-  // canPlayType with "probably" and keeps the source, while Chrome on
-  // Windows/Linux and Firefox everywhere need the substitute.
-  hevc: { representativeMime: 'video/mp4; codecs="hvc1.1.6.L120.B0"', prewarm: true },
-  prores: { representativeMime: null, prewarm: true },
-  theora: { representativeMime: 'video/ogg; codecs="theora"', prewarm: true },
-  // Every mainstream engine decodes AV1 and VP9, so canPlayType keeps the
-  // original and only the rare browser that cannot pays for a transcode.
-  av1: { representativeMime: 'video/mp4; codecs="av01.0.08M.08"', prewarm: false },
-  vp9: { representativeMime: 'video/webm; codecs="vp09.00.10.08"', prewarm: false },
+  hevc: { representativeMime: 'video/mp4; codecs="hvc1.1.6.L120.B0"' },
+  prores: { representativeMime: null },
+  theora: { representativeMime: 'video/ogg; codecs="theora"' },
+  av1: { representativeMime: 'video/mp4; codecs="av01.0.08M.08"' },
+  vp9: { representativeMime: 'video/webm; codecs="vp09.00.10.08"' },
 };
 
 /** `Object.hasOwn` rather than a bare index: a codec named `constructor` or
@@ -71,72 +75,6 @@ function hostileCodecEntry(codecName: string): BrowserHostileCodec | undefined {
   return Object.hasOwn(BROWSER_HOSTILE_CODECS, codecName)
     ? BROWSER_HOSTILE_CODECS[codecName]
     : undefined;
-}
-
-/** The pre-warm gate: true only for codecs with no cross-platform browser
- * decode, so some client will ask. See `BrowserHostileCodec.prewarm`. */
-export function shouldPrewarmProxy(facts: AssetCodecFacts): boolean {
-  return hostileCodecEntry(facts.codecName)?.prewarm === true;
-}
-
-// Per process, and deliberately in one unit — a call to `resolveProxy` — so
-// the pair reads as a ratio. Summarised at exit on stderr, in the same
-// `[hyperframes:<area>] {json}` shape as `writeUrlDownloadTelemetry`.
-const proxyDemand = { prewarmsRequested: 0, proxyRequests: 0 };
-
-/** Snapshot of this process's pre-warm demand counters. */
-export function mediaProxyDemand(): { prewarmsRequested: number; proxyRequests: number } {
-  return { ...proxyDemand };
-}
-
-function writeDemandLine(event: "prewarm_requested" | "summary"): void {
-  try {
-    process.stderr.write(
-      `[hyperframes:media-proxy] ${JSON.stringify({ event, ...proxyDemand })}\n`,
-    );
-  } catch {
-    // Observability must never change proxy correctness.
-  }
-}
-
-/** Mirrors `isGpuProbeDebugEnabled` in packages/engine/src/utils/gpuEncoder.ts. */
-function isMediaProxyDebugEnabled(): boolean {
-  const value = process.env.HYPERFRAMES_DEBUG_MEDIA_PROXY;
-  return value === "1" || value === "true";
-}
-
-// Registered on the first pre-warm rather than at import, so a process that
-// never pre-warms adds no handler and prints nothing. Sync-only, mirroring the
-// `process.on("exit")` shutdown hooks in packages/cli/src/cli.ts:331 and
-// packages/cli/src/commands/preview.ts:1329.
-let summaryHookInstalled = false;
-
-/**
- * One proxy asked for before any browser wanted it. "Requested", not
- * "started": a warm cache makes `resolveProxy` a no-op and this counter cannot
- * see that, so it is an upper bound on transcodes, not a measure of CPU. The
- * number it does answer exactly is the one that decides policy — a nonzero
- * count beside `proxyRequests: 0` means nothing ever redeemed the pre-warm.
- *
- * The per-asset line is debug-only: a composition with fifty hostile clips
- * would otherwise print fifty JSON lines into a clack-formatted terminal on
- * every re-render. The exit summary carries the same numbers unconditionally.
- */
-export function recordProxyPrewarm(): void {
-  proxyDemand.prewarmsRequested++;
-  if (!summaryHookInstalled) {
-    summaryHookInstalled = true;
-    process.once("exit", () => writeDemandLine("summary"));
-  }
-  if (isMediaProxyDebugEnabled()) writeDemandLine("prewarm_requested");
-}
-
-/** One proxy resolved for a browser that asked, counted on the path that calls
- * `resolveProxy` so it shares a unit with `prewarmsRequested`. A 304 does not
- * count; an unconditional Range refill still does, so read it as zero versus
- * nonzero. Never logged per event, only in the exit summary. */
-export function recordProxyRequest(): void {
-  proxyDemand.proxyRequests++;
 }
 
 export type ProxyVariant = "h264" | "vp8";
@@ -173,14 +111,21 @@ export function resolveProxyVariantRequest(
 export type MediaProxyIneligibilityReason = "browser_safe_codec" | "unknown_codec";
 
 export type MediaProxyEligibility =
-  | { eligible: true }
+  | { eligible: true; mayStartCopy: boolean }
   | { eligible: false; reason: MediaProxyIneligibilityReason };
 
-/** Single policy gate shared by proactive scans and on-demand proxy routes. */
-export function decideMediaProxyEligibility(facts: AssetCodecFacts | null): MediaProxyEligibility {
+/** Single policy gate shared by proactive scans and on-demand proxy routes. A seek-hostile
+ * video qualifies only for a copy sized to a preview `box`, never a source-size one. */
+export function decideMediaProxyEligibility(
+  facts: AssetCodecFacts | null,
+  box?: PreviewProxyBox,
+  capture = false,
+): MediaProxyEligibility {
   if (!facts) return { eligible: false, reason: "unknown_codec" };
-  if (!facts.browserHostile) return { eligible: false, reason: "browser_safe_codec" };
-  return { eligible: true };
+  if (!facts.browserHostile && !(facts.seekHostile && box)) {
+    return { eligible: false, reason: "browser_safe_codec" };
+  }
+  return { eligible: true, mayStartCopy: !capture };
 }
 
 function codecFactsFor(codecName: string, hasAlpha: boolean): AssetCodecFacts {
@@ -205,7 +150,11 @@ async function probeCodecFacts(
   if (metadata.kind !== "video") return null;
   const codecName = metadata.color.codecName;
   if (!codecName) return null;
-  return codecFactsFor(codecName, pixelFormatHasAlpha(metadata.color.pixelFormat));
+  const facts = codecFactsFor(codecName, pixelFormatHasAlpha(metadata.color.pixelFormat));
+  if (facts.browserHostile || facts.hasAlpha) return facts;
+  const gap = await probeKeyframeGap(filePath, runner);
+  if (gap === null || gap <= SEEK_HOSTILE_KEYFRAME_GAP_SECONDS) return facts;
+  return { ...facts, seekHostile: true, width: metadata.width, height: metadata.height };
 }
 
 interface CachedAssetProbe {
@@ -380,7 +329,7 @@ export async function scanProjectMediaCodecMap(
   const map: MediaCodecMap = {};
   entries.forEach(([, pathname], index) => {
     const entryFacts = facts[index];
-    if (entryFacts?.browserHostile) map[pathname] = entryFacts;
+    if (entryFacts?.browserHostile || entryFacts?.seekHostile) map[pathname] = entryFacts;
   });
   return map;
 }

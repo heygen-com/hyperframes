@@ -3,6 +3,7 @@ import {
   PREVIEW_ONLY_ATTRS,
   STUDIO_PREVIEW_LAZY_ATTR,
 } from "@hyperframes/core/studio-preview-mark";
+import { authoredSrc } from "./authoredSrc";
 
 // Stamped as the preview stamps the files it serves, so a live element's hf-id finds its source.
 export function parseSavedSource(html: string): Document {
@@ -97,9 +98,12 @@ export function authoredMarkup(authored: Element, live: Element, sourceFile: str
 
 export function liveMarkupWithoutPreviewMarks(live: Element): string {
   const copy = live.cloneNode(true) as Element;
-  for (const el of [copy, ...Array.from(copy.querySelectorAll("*"))]) {
+  const lives = [live, ...Array.from(live.querySelectorAll("*"))];
+  [copy, ...Array.from(copy.querySelectorAll("*"))].forEach((el, index) => {
     if (el.hasAttribute(STUDIO_PREVIEW_LAZY_ATTR)) el.removeAttribute("loading");
     for (const attr of PREVIEW_ONLY_ATTRS) el.removeAttribute(attr);
-  }
+    const src = authoredSrc(lives[index]);
+    if (src !== null && el.hasAttribute("src")) el.setAttribute("src", src);
+  });
   return copy.outerHTML;
 }

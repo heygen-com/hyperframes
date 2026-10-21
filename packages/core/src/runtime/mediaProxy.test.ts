@@ -1,3 +1,4 @@
+// fallow-ignore-file code-duplication
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   hasMediaSyncStateForTest,
@@ -23,6 +24,7 @@ vi.mock("./bridge", () => ({
 }));
 
 import { postRuntimeMessage } from "./bridge";
+import { collectRuntimeTimelinePayload } from "./timeline";
 import { resetSeekDispatchState, waitForSeekCompletion } from "./adapters/seek-dispatch";
 
 const postRuntimeMessageMock = vi.mocked(postRuntimeMessage);
@@ -532,6 +534,24 @@ describe("swapToProxy", () => {
     expect(url.searchParams.get("hf-proxy")).toBe("h264");
   });
 
+  it("marks a capture page's copy request, and only a capture page's", async () => {
+    const page = createVideo("/page.mp4");
+    swapToProxy(page, HEVC_ENTRY, "proactive");
+    await settle();
+    const path = window.location.pathname;
+    window.history.replaceState(null, "", `${path}?hf-capture=1`);
+    try {
+      const capture = createVideo("/capture.mp4");
+      swapToProxy(capture, HEVC_ENTRY, "proactive");
+      await settle();
+      expect(new URL(capture.src).searchParams.get("hf-capture")).toBe("1");
+      expect(new URL(page.src).searchParams.has("hf-capture")).toBe(false);
+      expect(isProxied(page)).toBe(true);
+    } finally {
+      window.history.replaceState(null, "", path);
+    }
+  });
+
   it("emits the diagnostic and a single console.info line exactly once per element", async () => {
     const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
     const el = createVideo("/video.mp4");
@@ -747,6 +767,78 @@ describe("waiting for the proxy copy", () => {
   });
 });
 
+function showingFrames(el: HTMLVideoElement, playing: boolean): void {
+  Object.defineProperty(el, "videoWidth", { value: 1080, configurable: true });
+  Object.defineProperty(el, "readyState", { value: 4, configurable: true });
+  Object.defineProperty(el, "paused", { value: !playing, configurable: true });
+}
+
+describe("when a served copy replaces what the element plays", () => {
+  it("waits for the next pause while the original plays its own frames", async () => {
+    const el = createVideo("/video.mp4");
+    showingFrames(el, true);
+
+    swapToProxy(el, HEVC_ENTRY, "proactive");
+    await settle();
+    expect(el.getAttribute("src")).toBe("/video.mp4");
+
+    showingFrames(el, false);
+    el.dispatchEvent(new Event("pause"));
+    expect(proxyVariant(el)).toBe("h264");
+    expect(el.load).toHaveBeenCalledTimes(1);
+  });
+
+  it("swaps at once when the playing element shows nothing", async () => {
+    const el = createVideo("/video.mp4");
+    Object.defineProperty(el, "paused", { value: false, configurable: true });
+
+    swapToProxy(el, HEVC_ENTRY, "proactive");
+    await settle();
+
+    expect(proxyVariant(el)).toBe("h264");
+  });
+
+  it("holds no jump once the original shows its own frames", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(null, { status: 202, headers: { "Retry-After": "2" } })),
+    );
+    const el = createVideo("/video.mp4");
+    swapToProxy(el, HEVC_ENTRY, "proactive");
+    let jumped = false;
+    void waitForSeekCompletion().then(() => (jumped = true));
+
+    await vi.advanceTimersByTimeAsync(100);
+    expect(jumped).toBe(false);
+    showingFrames(el, true);
+    el.dispatchEvent(new Event("loadeddata"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(jumped).toBe(true);
+  });
+});
+
+describe("the authored source outside the preview", () => {
+  it("keeps the original src in the clip list after a copy swaps in", async () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-duration", "10");
+    document.body.appendChild(root);
+    const el = createVideo("/video.mp4");
+    el.id = "clip";
+    el.setAttribute("data-start", "0");
+    el.setAttribute("data-duration", "5");
+    root.appendChild(el);
+
+    swapToProxy(el, HEVC_ENTRY, "proactive");
+    await settle();
+    expect(proxyVariant(el)).toBe("h264");
+
+    const { clips } = collectRuntimeTimelinePayload({ canonicalFps: 30 });
+    expect(clips[0]?.assetUrl).toBe(new URL("/video.mp4", document.baseURI).href);
+  });
+});
+
 describe("deriveCodecMapKey", () => {
   it("returns the decoded, query-stripped pathname for a same-origin src", () => {
     const el = createVideo("/assets/my%20clip.mp4?foo=bar");
@@ -837,6 +929,21 @@ describe("a copy sized to how large the video shows", () => {
     expect(el.load).toHaveBeenCalledTimes(2);
   });
 
+  it("moves a playing copy to a larger one only at the next pause", async () => {
+    const { el, setProxyDisplayScale } = await framedVideo(1080, 1920);
+    setProxyDisplayScale(0.5);
+    await settle();
+    showingFrames(el, true);
+
+    setProxyDisplayScale(1);
+    await settle();
+    expect(boxOf(el)).toBe("1448x2048");
+
+    showingFrames(el, false);
+    el.dispatchEvent(new Event("pause"));
+    expect(boxOf(el)).toBe("2896x4096");
+  });
+
   it("loads the newest size asked for, even when an older, smaller copy is served first", async () => {
     const { el, setProxyDisplayScale } = await framedVideo(1080, 1920);
     setProxyDisplayScale(0.5);
@@ -867,5 +974,198 @@ describe("a copy sized to how large the video shows", () => {
     made = true;
     await vi.advanceTimersByTimeAsync(2_000);
     expect(boxOf(el)).toBe("2896x4096");
+  });
+});
+
+describe("seek copies for videos whose keyframes are far apart", () => {
+  const SOURCE_4K = { width: 3840, height: 2160 };
+  // Fresh modules: the copy queue and the playback state are module state.
+  let runtime: typeof import("./mediaProxy");
+  let dispatch: typeof import("./adapters/seek-dispatch");
+  let playhead = 0;
+  let playing = false;
+  let clips: Array<{ el: HTMLMediaElement; start: number; end: number }> = [];
+  const host = { playhead: () => playhead, playing: () => playing, clips: () => clips };
+
+  beforeEach(async () => {
+    vi.resetModules();
+    runtime = await import("./mediaProxy");
+    dispatch = await import("./adapters/seek-dispatch");
+    playhead = 0;
+    playing = false;
+    clips = [];
+    window.__HF_MEDIA_CODEC_MAP__ = {};
+    for (const [side, value] of [
+      ["clientWidth", 640],
+      ["clientHeight", 360],
+    ] as const) {
+      Object.defineProperty(document.documentElement, side, { configurable: true, value });
+    }
+  });
+
+  function sparseClip(src: string, start: number, source = SOURCE_4K): HTMLVideoElement {
+    window.__HF_MEDIA_CODEC_MAP__![src] = { ...H264_ENTRY, seekHostile: true, ...source };
+    const el = createVideo(src);
+    el.getBoundingClientRect = () => ({ width: 640, height: 360 }) as DOMRect;
+    clips.push({ el, start, end: start + 10 });
+    return el;
+  }
+
+  const copiesAskedFor = () =>
+    vi
+      .mocked(fetch)
+      .mock.calls.map(([href]) => new URL(String(href)))
+      .filter((url) => url.searchParams.has("hf-proxy"))
+      .map((url) => `${url.pathname} ${url.searchParams.get("hf-proxy-box")}`);
+
+  const playbackPosts = () =>
+    vi
+      .mocked(fetch)
+      .mock.calls.filter(([href]) => String(href).endsWith("/playback"))
+      .map(([, init]) => JSON.parse(String(init?.body)).playing);
+
+  it("copies every sparse video one at a time, nearest the playhead first, at min(source, shown)", async () => {
+    sparseClip("/far.mp4", 0, { width: 320, height: 180 });
+    const near = sparseClip("/near.mp4", 30);
+    sparseClip("/next.mp4", 50);
+    playhead = 35;
+
+    runtime.startSeekCopies(host);
+    await settle();
+
+    expect(copiesAskedFor()).toEqual([
+      "/near.mp4 724x362",
+      "/next.mp4 724x362",
+      "/far.mp4 362x256",
+    ]);
+    expect(isProxied(near)).toBe(true);
+    expect(postRuntimeMessageMock).not.toHaveBeenCalled();
+  });
+
+  it("re-picks the nearest clip before each copy, so a jump re-orders the rest", async () => {
+    sparseClip("/start.mp4", 0);
+    sparseClip("/middle.mp4", 30);
+    sparseClip("/end.mp4", 60);
+    playhead = 32;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        playhead = 65;
+        return new Response("x", { status: 206 });
+      }),
+    );
+
+    runtime.startSeekCopies(host);
+    await settle();
+
+    expect(copiesAskedFor().map((ask) => ask.split(" ")[0])).toEqual([
+      "/middle.mp4",
+      "/end.mp4",
+      "/start.mp4",
+    ]);
+  });
+
+  it("starts no copy while playing, tells the server, and resumes on pause", async () => {
+    sparseClip("/sparse.mp4", 0);
+    playing = true;
+
+    runtime.startSeekCopies(host);
+    runtime.noteSeekCopyPlayback(true);
+    await settle();
+    expect(copiesAskedFor()).toEqual([]);
+    expect(playbackPosts()).toEqual([true]);
+
+    playing = false;
+    runtime.noteSeekCopyPlayback(false);
+    await settle();
+    expect(playbackPosts()).toEqual([true, false]);
+    expect(copiesAskedFor()).toEqual(["/sparse.mp4 724x362"]);
+  });
+
+  it("drops a copy picked just before playback started, and asks for it after the pause", async () => {
+    sparseClip("/sparse.mp4", 0);
+
+    runtime.startSeekCopies(host);
+    playing = true;
+    runtime.noteSeekCopyPlayback(true);
+    await settle();
+    expect(copiesAskedFor()).toEqual([]);
+
+    playing = false;
+    runtime.noteSeekCopyPlayback(false);
+    await settle();
+    expect(copiesAskedFor()).toEqual(["/sparse.mp4 724x362"]);
+  });
+
+  it("keeps telling the server it plays, so a closed preview cannot hold copies forever", async () => {
+    vi.useFakeTimers();
+    sparseClip("/sparse.mp4", 0);
+    playing = true;
+    runtime.startSeekCopies(host);
+
+    runtime.noteSeekCopyPlayback(true);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(playbackPosts()).toEqual([true, true, true]);
+
+    playing = false;
+    runtime.noteSeekCopyPlayback(false);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(playbackPosts()).toEqual([true, true, true, false]);
+  });
+
+  it("never holds a jump while a copy is being made", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(null, { status: 202, headers: { "Retry-After": "2" } })),
+    );
+    const el = sparseClip("/sparse.mp4", 0);
+    runtime.startSeekCopies(host);
+    let jumped = false;
+    void dispatch.waitForSeekCompletion().then(() => (jumped = true));
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(copiesAskedFor()).toHaveLength(1);
+    expect(jumped).toBe(true);
+    expect(el.getAttribute("src")).toBe("/sparse.mp4");
+  });
+
+  it("keeps a playing original until it pauses", async () => {
+    const el = sparseClip("/sparse.mp4", 0);
+    showingFrames(el, true);
+
+    runtime.startSeekCopies(host);
+    await settle();
+    expect(copiesAskedFor()).toHaveLength(1);
+    expect(isProxied(el)).toBe(false);
+
+    Object.defineProperty(el, "paused", { value: true, configurable: true });
+    el.dispatchEvent(new Event("pause"));
+    expect(isProxied(el)).toBe(true);
+  });
+
+  it("copies a video that joins later once its metadata arrives", async () => {
+    sparseClip("/first.mp4", 0);
+    runtime.startSeekCopies(host);
+    await settle();
+    expect(copiesAskedFor()).toHaveLength(1);
+    const late = sparseClip("/late.mp4", 20);
+    Object.defineProperty(late, "videoWidth", { value: 3840, configurable: true });
+
+    runtime.handleMetadataForProxy(late);
+    await settle();
+
+    expect(copiesAskedFor().map((ask) => ask.split(" ")[0])).toEqual(["/first.mp4", "/late.mp4"]);
+  });
+
+  it("does nothing while exporting", async () => {
+    window.__HF_EXPORT_RENDER_SEEK_CONFIG = { mode: "seek" };
+    sparseClip("/sparse.mp4", 0);
+
+    runtime.startSeekCopies(host);
+    runtime.noteSeekCopyPlayback(true);
+    await settle();
+
+    expect(fetch).not.toHaveBeenCalled();
   });
 });

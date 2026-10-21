@@ -55,6 +55,7 @@ import {
 } from "@hyperframes/core/audio-groups";
 import { useFxLevelling } from "./useFxLevelling.js";
 import { isCarveVoiceElement } from "./useFxCarveGrouping.js";
+import { authoredSrc } from "../../utils/authoredSrc";
 
 function auditionSpan(startRaw: string | undefined, durationRaw: string | undefined) {
   const start = Number.parseFloat(startRaw ?? "");
@@ -379,7 +380,7 @@ export function AudioFxGroup({
       // What this track sounds like, by the same reading that decides which
       // OTHER tracks a carve may listen to. The shelf uses it to stop offering
       // "My voice sounds amateur" on a music bed.
-      trackKind={classifyAudioName(element.id, element.element?.getAttribute("src"))}
+      trackKind={classifyAudioName(element.id, authoredSrc(element.element))}
       onLevel={() => void runLeveller()}
       onRemoveLevel={removeLeveller}
       levelled={chain.nodes.some((n) => n.fromLeveller)}
