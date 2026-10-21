@@ -305,17 +305,37 @@ export function buildVirtualTimeShim(options: VirtualTimeShimOptions): string {
     ? window.cancelAnimationFrame.bind(window)
     : null;
 ${seededRandomBlock}
-  function flushAnimationFrame() {
-    if (!rafQueue.length) return;
-    var current = rafQueue.slice();
-    rafQueue.length = 0;
-    for (var i = 0; i < current.length; i++) {
-      var entry = current[i];
-      if (entry.cancelled) continue;
-      try {
-        entry.callback(virtualNowMs);
-      } catch {}
+  // One rAF turn runs every queued callback exactly once, so a callback that
+  // re-registers itself (a deferred reveal chain or a perpetual rAF loop)
+  // advances only one turn per rendered frame. Work scheduled that way is
+  // meant to be settled AT the current virtual time, so drain the queue to
+  // quiescence instead of leaving it for the next seek. Both caps bound the
+  // pathological opposite (a queue that never empties): turns bound drain
+  // depth, and each turn dequeues at most ranCap - ran entries so a single
+  // oversized batch cannot blow the total-execution cap.
+  var RAF_DRAIN_MAX_TURNS = 64;
+  var RAF_DRAIN_MAX_CALLBACKS = 2048;
+  var lastDrainStats = { turns: 0, ran: 0, pending: 0 };
+  function drainAnimationFrames(maxTurns, maxCallbacks) {
+    var turnCap = Math.max(0, Math.floor(Number(maxTurns))) || RAF_DRAIN_MAX_TURNS;
+    var ranCap = Math.max(0, Math.floor(Number(maxCallbacks))) || RAF_DRAIN_MAX_CALLBACKS;
+    var turns = 0;
+    var ran = 0;
+    while (rafQueue.length > 0 && turns < turnCap && ran < ranCap) {
+      var width = Math.min(rafQueue.length, ranCap - ran);
+      var current = rafQueue.splice(0, width);
+      for (var i = 0; i < current.length; i++) {
+        var entry = current[i];
+        if (entry.cancelled) continue;
+        try {
+          entry.callback(virtualNowMs);
+        } catch {}
+      }
+      ran += width;
+      turns++;
     }
+    lastDrainStats = { turns: turns, ran: ran, pending: rafQueue.length };
+    return lastDrainStats;
   }
 
   function VirtualDate() {
@@ -372,10 +392,19 @@ ${seededRandomBlock}
     originalClearInterval: originalClearInterval,
     originalRequestAnimationFrame: originalRequestAnimationFrame,
     originalCancelAnimationFrame: originalCancelAnimationFrame,
+    // Stats from the most recent drain (the seek's own drain, or an explicit
+    // drainAnimationFrames call); the capture path reads this to know whether
+    // deferred work ran at the current virtual time.
+    get lastDrain() {
+      return lastDrainStats;
+    },
+    drainAnimationFrames: function(maxTurns, maxCallbacks) {
+      return drainAnimationFrames(maxTurns, maxCallbacks);
+    },
     seekToTime: function(nextTimeMs) {
       var safeTimeMs = Math.max(0, Number(nextTimeMs) || 0);
       virtualNowMs = safeTimeMs;
-      ${seekToTimeReseedCall}flushAnimationFrame();
+      ${seekToTimeReseedCall}drainAnimationFrames();
       return virtualNowMs;
     },
     getTime: function() {
