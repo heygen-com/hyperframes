@@ -150,8 +150,7 @@ function serveFileWithRange(
 
   // Resolve the requested byte window. Absent/malformed Range serves the
   // whole file (200); a valid `bytes=start-end` (including the open-ended
-  // `start-` and suffix `-N` forms) serves a 206 slice. An open-ended range of
-  // audio/video gets a bounded piece (see OPEN_MEDIA_RANGE_BYTES).
+  // `start-` and suffix `-N` forms) serves a 206 slice.
   const last = size - 1;
   let start = 0;
   let end = last;

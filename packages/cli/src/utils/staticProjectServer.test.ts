@@ -11,7 +11,7 @@ import {
   type StaticProjectServer,
 } from "./staticProjectServer.js";
 import { injectMediaCodecMapIntoHtml } from "@hyperframes/studio-server/media-proxy-preview";
-import { OPEN_MEDIA_RANGE_BYTES } from "@hyperframes/studio-server";
+import { MAX_OPEN_MEDIA_RANGE_BYTES } from "@hyperframes/studio-server";
 
 // `serveStaticProjectHtml` reaches these two studio-server helpers via a
 // absolute module regardless of which file's relative specifier reaches it).
@@ -243,10 +243,10 @@ describe("serveStaticProjectHtml range support", () => {
     const res = await fetch(`${url}clip.mp4`, { headers: { Range: "bytes=1000-" } });
     expect(res.status).toBe(206);
     expect(res.headers.get("content-range")).toBe(
-      `bytes 1000-${1000 + OPEN_MEDIA_RANGE_BYTES - 1}/${size}`,
+      `bytes 1000-${1000 + MAX_OPEN_MEDIA_RANGE_BYTES - 1}/${size}`,
     );
-    expect(res.headers.get("content-length")).toBe(String(OPEN_MEDIA_RANGE_BYTES));
-    expect((await res.arrayBuffer()).byteLength).toBe(OPEN_MEDIA_RANGE_BYTES);
+    expect(res.headers.get("content-length")).toBe(String(MAX_OPEN_MEDIA_RANGE_BYTES));
+    expect((await res.arrayBuffer()).byteLength).toBe(MAX_OPEN_MEDIA_RANGE_BYTES);
   });
 
   it("serves an open-ended media range to EOF when the rest is under one piece", async () => {

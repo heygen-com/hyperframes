@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
 import type { ProjectDir } from "../utils/project.js";
-import { OPEN_MEDIA_RANGE_BYTES } from "@hyperframes/studio-server";
+import { MAX_OPEN_MEDIA_RANGE_BYTES } from "@hyperframes/studio-server";
 
 // `registerCompositionRoute` reaches these two studio-server helpers via a
 // module, since both files sit at the same depth under packages/cli/src/.
@@ -260,8 +260,10 @@ describe("registerCompositionRoute", () => {
     const res = await app.request("/composition/clip.mp4", { headers: { Range: "bytes=0-" } });
 
     expect(res.status).toBe(206);
-    expect(res.headers.get("content-range")).toBe(`bytes 0-${OPEN_MEDIA_RANGE_BYTES - 1}/${size}`);
-    expect((await res.arrayBuffer()).byteLength).toBe(OPEN_MEDIA_RANGE_BYTES);
+    expect(res.headers.get("content-range")).toBe(
+      `bytes 0-${MAX_OPEN_MEDIA_RANGE_BYTES - 1}/${size}`,
+    );
+    expect((await res.arrayBuffer()).byteLength).toBe(MAX_OPEN_MEDIA_RANGE_BYTES);
   });
 
   it("serves the resolved proxy's bytes for ?hf-proxy=h264 on a hostile asset", async () => {

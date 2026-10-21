@@ -30,7 +30,7 @@ import { AFTER_FONTS_SCRIPT_TYPE } from "@hyperframes/core/compiler";
 import { PREVIEW_BUNDLE_OPTIONS, PREVIEW_CAPTURE_PARAM, registerPreviewRoutes } from "./preview";
 import { registerFileRoutes } from "./files";
 import { createPreviewDocumentStore } from "../helpers/previewDocumentStore";
-import { OPEN_MEDIA_RANGE_BYTES } from "../helpers/mediaRange";
+import { MAX_OPEN_MEDIA_RANGE_BYTES } from "../helpers/mediaRange";
 import type { StudioApiAdapter } from "../types";
 import {
   affectsPreview,
@@ -2709,10 +2709,10 @@ describe("preview asset byte ranges", () => {
     });
     expect(res.status).toBe(206);
     expect(res.headers.get("Content-Range")).toBe(
-      `bytes 5000000-${5000000 + OPEN_MEDIA_RANGE_BYTES - 1}/${size}`,
+      `bytes 5000000-${5000000 + MAX_OPEN_MEDIA_RANGE_BYTES - 1}/${size}`,
     );
-    expect(res.headers.get("Content-Length")).toBe(String(OPEN_MEDIA_RANGE_BYTES));
-    expect((await res.arrayBuffer()).byteLength).toBe(OPEN_MEDIA_RANGE_BYTES);
+    expect(res.headers.get("Content-Length")).toBe(String(MAX_OPEN_MEDIA_RANGE_BYTES));
+    expect((await res.arrayBuffer()).byteLength).toBe(MAX_OPEN_MEDIA_RANGE_BYTES);
   });
 });
 
