@@ -16,7 +16,7 @@
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
-const { hfBrowser } = require("./hf-cli.cjs");
+const { hfBrowser, closeBrowser } = require("./hf-cli.cjs");
 
 const HF_ROOTS = [
   process.argv[2] && path.resolve(process.argv[2]), // project-owned helper dependencies
@@ -105,7 +105,7 @@ async function main() {
         "[overflow] ⚠ timeline did not register (GSAP CDN blocked?) — overflow check " +
           "INCONCLUSIVE; eyeball the render for off-frame captions.",
       );
-      await browser.close();
+      await closeBrowser(browser);
       process.exit(0);
     }
     await page.evaluate(async () => {
@@ -183,7 +183,7 @@ async function main() {
       );
     }
   } finally {
-    await browser.close();
+    await closeBrowser(browser);
   }
 }
 main().catch((e) => {

@@ -18,7 +18,7 @@
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
-const { hfBrowser } = require("./hf-cli.cjs");
+const { hfBrowser, closeBrowser } = require("./hf-cli.cjs");
 
 const HF_ROOTS = [
   process.argv[2] && path.resolve(process.argv[2]), // project-owned helper dependencies
@@ -71,13 +71,21 @@ const toks = (s) =>
     .map(norm)
     .filter((t) => t.length >= 2);
 
+// ok()/fail() throw instead of calling process.exit(): they run inside the try that owns Chrome, and exiting
+// there skips `finally`, so Puppeteer SIGKILLs Chrome. main().catch() exits with the code after Chrome closed.
+class Exit extends Error {
+  constructor(code) {
+    super(`exit ${code}`);
+    this.exitCode = code;
+  }
+}
 function ok(msg) {
   if (msg) console.log(msg);
-  process.exit(0);
+  throw new Exit(0);
 } // can't-determine / pass → never blocks
 function fail(msg) {
   console.error(msg);
-  process.exit(2);
+  throw new Exit(2);
 }
 
 async function newPage(browser, W, H) {
@@ -223,12 +231,13 @@ async function main() {
       `[rail-climax] ✓ ok — promoted word(s) ${[...climaxTokens].map((w) => `"${w}"`).join(", ")} not duplicated in the rail (window ${winIn.toFixed(2)}–${winOut.toFixed(2)}s)`,
     );
   } finally {
-    await Promise.race([browser.close().catch(() => {}), new Promise((r) => setTimeout(r, 8000))]);
+    await closeBrowser(browser);
   }
 }
 main()
   .then(() => process.exit(0))
   .catch((e) => {
+    if (e instanceof Exit) process.exit(e.exitCode);
     console.error(`[rail-climax] (skipped — ${e.message})`);
     process.exit(0);
   });

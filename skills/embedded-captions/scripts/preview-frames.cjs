@@ -25,7 +25,7 @@ const fs = require("fs");
 const os = require("os");
 const crypto = require("crypto");
 const { pathToFileURL } = require("url");
-const { hfBrowser } = require("./hf-cli.cjs");
+const { hfBrowser, closeBrowser } = require("./hf-cli.cjs");
 
 function sriSha384(source) {
   return `sha384-${crypto.createHash("sha384").update(source).digest("base64")}`;
@@ -278,7 +278,7 @@ async function main() {
       );
     }
   } finally {
-    await Promise.race([browser.close().catch(() => {}), new Promise((r) => setTimeout(r, 8000))]);
+    await closeBrowser(browser);
   }
 }
 if (require.main === module) {

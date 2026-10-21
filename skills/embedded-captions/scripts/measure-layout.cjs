@@ -17,7 +17,7 @@
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
-const { hfBrowser } = require("./hf-cli.cjs");
+const { hfBrowser, closeBrowser } = require("./hf-cli.cjs");
 
 // Locate hyperframes' bundled puppeteer. render-and-composite.sh exports
 // HYPERFRAMES_ROOT; standalone we also try the in-repo path + ~/Downloads, and
@@ -126,8 +126,6 @@ async function main() {
     sampleTimes = [...allTimes].sort((a, b) => a - b);
   }
 
-  // Match render-and-composite's Chrome detection
-
   const W = plan?.width || 720;
   const H = plan?.height || 1290;
   const FPS = plan?.fps || 24;
@@ -173,8 +171,8 @@ async function main() {
       await new Promise((res) => setTimeout(res, 200));
     }
     if (!ready) {
-      console.error("[measure] GSAP timeline never registered");
-      process.exit(4);
+      // Throw, never process.exit() here: exiting skips `finally`, and Puppeteer then SIGKILLs Chrome.
+      throw Object.assign(new Error("[measure] GSAP timeline never registered"), { exitCode: 4 });
     }
     // Inject the skill's bundled @font-face set so headless Chromium measures the SAME
     // glyph metrics the renderer will use. Without this, Inter/etc fall back to system
@@ -277,7 +275,7 @@ async function main() {
     // Chromium occasionally hangs on shutdown. This script runs synchronously
     // inside check-occlusion.cjs, which the render gate blocks on — a hung close
     // would wedge the whole render. Cap the close, then force-exit below.
-    await Promise.race([browser.close().catch(() => {}), new Promise((r) => setTimeout(r, 8000))]);
+    await closeBrowser(browser);
   }
 }
 
@@ -286,6 +284,6 @@ async function main() {
 main()
   .then(() => process.exit(0))
   .catch((e) => {
-    console.error(e);
-    process.exit(1);
+    console.error(e.exitCode ? e.message : e);
+    process.exit(e.exitCode || 1);
   });

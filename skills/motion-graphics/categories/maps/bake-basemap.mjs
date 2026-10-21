@@ -27,13 +27,26 @@ import { spawnSync } from "node:child_process";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // --- resolve Chrome dynamically (no hardcoded machine path) ---
+// Never the installed Google Chrome app: on macOS a killed Chrome.app leaves a ~1.4 GB code_sign_clone behind;
+// chrome-headless-shell is a plain binary that leaves none.
 function resolveChrome() {
-  if (process.env.CHROME && existsSync(process.env.CHROME)) return process.env.CHROME;
+  for (const p of [process.env.CHROME, process.env.HYPERFRAMES_BROWSER_PATH])
+    if (p && existsSync(p)) return p;
   const exe = process.platform === "win32" ? "chrome-headless-shell.exe" : "chrome-headless-shell";
-  const base = join(homedir(), ".cache", "puppeteer", "chrome-headless-shell");
-  if (existsSync(base)) {
-    for (const v of readdirSync(base).sort().reverse()) {
-      // lexical sort; any working binary is fine
+  const ver = (dir) => (dir.split("-").pop() || "").split(".").map((n) => parseInt(n, 10) || 0);
+  const byNewest = (a, b) => {
+    const x = ver(a),
+      y = ver(b);
+    for (let i = 0; i < Math.max(x.length, y.length); i++)
+      if ((x[i] || 0) !== (y[i] || 0)) return (y[i] || 0) - (x[i] || 0);
+    return 0;
+  };
+  for (const base of [
+    join(homedir(), ".cache", "hyperframes", "chrome", "chrome-headless-shell"),
+    join(homedir(), ".cache", "puppeteer", "chrome-headless-shell"),
+  ]) {
+    if (!existsSync(base)) continue;
+    for (const v of readdirSync(base).sort(byNewest)) {
       try {
         for (const inner of readdirSync(join(base, v))) {
           const bin = join(base, v, inner, exe);
@@ -44,12 +57,7 @@ function resolveChrome() {
       }
     }
   }
-  for (const c of [
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-    "/usr/bin/google-chrome",
-    "/usr/bin/chromium",
-    "/usr/bin/chromium-browser",
-  ])
+  for (const c of ["/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser"])
     if (existsSync(c)) return c;
   throw new Error(
     "Chrome not found. Set CHROME=/path/to/chrome-headless-shell, or install one:\n" +
@@ -269,5 +277,16 @@ try {
     console.log(`[${NAME}] done — all ${N} frames reached map idle (complete tiles).`);
   }
 } finally {
-  await browser.close();
+  // close politely for 5 s, then SIGKILL, so a hung close can neither wedge the bake nor leave Chrome running
+  const proc = browser.process();
+  let timer;
+  const closed = await Promise.race([
+    browser.close().then(
+      () => true,
+      () => false,
+    ),
+    new Promise((r) => (timer = setTimeout(() => r(false), 5000))),
+  ]);
+  clearTimeout(timer);
+  if (!closed && proc && proc.exitCode === null && proc.signalCode === null) proc.kill("SIGKILL");
 }
