@@ -4,6 +4,7 @@ const VIDEO_FRAME_FORMATS = ["auto", "jpg", "png"] as const;
 const HDR_MODES = ["auto", "force-hdr", "force-sdr"] as const;
 
 interface EncoderOptions {
+  gifLoop?: number;
   crf?: number;
   videoBitrate?: string;
   videoFrameFormat?: (typeof VIDEO_FRAME_FORMATS)[number];
@@ -11,6 +12,7 @@ interface EncoderOptions {
 }
 
 export interface EncoderOptionsBody {
+  gifLoop?: unknown;
   crf?: unknown;
   videoBitrate?: unknown;
   videoFrameFormat?: unknown;
@@ -55,6 +57,17 @@ export function parseEncoderOptions(body: EncoderOptionsBody, format: string): P
   const rate = parseRateControl(body, format);
   if (!rate.ok) return rate;
   const options: EncoderOptions = { ...rate.options };
+  if (isSet(body.gifLoop)) {
+    if (
+      typeof body.gifLoop !== "number" ||
+      !Number.isInteger(body.gifLoop) ||
+      body.gifLoop < 0 ||
+      body.gifLoop > 65535
+    ) {
+      return { ok: false, error: "gifLoop must be an integer from 0 to 65535" };
+    }
+    if (format === "gif") options.gifLoop = body.gifLoop;
+  }
   if (isSet(body.videoFrameFormat)) {
     if (!oneOf(body.videoFrameFormat, VIDEO_FRAME_FORMATS)) {
       return {

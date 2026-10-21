@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
-import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { VALID_CANVAS_RESOLUTIONS } from "@hyperframes/parsers";
@@ -976,6 +976,129 @@ describe("audioLoweredDb — the limiter's attenuation reaches the host", () => 
       ).json()) as { renders: Array<{ id: string; audioLoweredDb?: number }> };
       expect(renders.find((r) => r.id === "loud")?.audioLoweredDb).toBe(1.44);
       expect(renders.find((r) => r.id === "quiet")).not.toHaveProperty("audioLoweredDb");
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe("Studio GIF renders", () => {
+  it.each([undefined, null, 0, 1, 65535])("accepts GIF with gifLoop %j", async (gifLoop) => {
+    const spy = vi.fn();
+    const { app, cleanup } = buildApp(spy);
+    try {
+      const res = await app.request("/projects/demo/render", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ format: "gif", gifLoop, gpu: true }),
+      });
+      expect(res.status).toBe(200);
+      expect(spy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          format: "gif",
+          outputPath: expect.stringMatching(/\.gif$/),
+          useGpu: false,
+          ...(typeof gifLoop === "number" ? { gifLoop } : {}),
+        }),
+      );
+      if (gifLoop == null) expect(spy.mock.calls[0][0]).not.toHaveProperty("gifLoop");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it.each([-1, 65536, 1.5, "2", true, {}, []])(
+    "rejects invalid gifLoop %j before starting",
+    async (gifLoop) => {
+      const spy = vi.fn();
+      const { app, cleanup } = buildApp(spy);
+      try {
+        const res = await app.request("/projects/demo/render", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ format: "gif", gifLoop }),
+        });
+        expect(res.status).toBe(400);
+        expect(await res.json()).toEqual({ error: "gifLoop must be an integer from 0 to 65535" });
+        expect(spy).not.toHaveBeenCalled();
+      } finally {
+        cleanup();
+      }
+    },
+  );
+
+  it("leaves video exports unchanged when a valid GIF loop option is supplied", async () => {
+    const spy = vi.fn();
+    const { app, cleanup } = buildApp(spy);
+    try {
+      const res = await app.request("/projects/demo/render", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ format: "mp4", gifLoop: 3 }),
+      });
+      expect(res.status).toBe(200);
+      expect(spy.mock.calls[0][0]).not.toHaveProperty("gifLoop");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("lists a saved GIF after restart, serves image bytes, and deletes its sidecar", async () => {
+    const { app, rendersDir, cleanup } = buildApp(vi.fn());
+    try {
+      const output = join(rendersDir, "saved.gif");
+      const meta = join(rendersDir, "saved.meta.json");
+      writeFileSync(output, "GIF89a");
+      writeFileSync(meta, JSON.stringify({ status: "complete", durationMs: 42 }));
+      const list = await app.request("/projects/demo/renders");
+      expect(await list.json()).toMatchObject({
+        renders: [{ id: "saved", filename: "saved.gif", durationMs: 42 }],
+      });
+      for (const url of [
+        "/projects/demo/renders/file/saved.gif",
+        "/render/saved/view",
+        "/render/saved/download",
+      ]) {
+        const res = await app.request(url);
+        expect(res.status).toBe(200);
+        expect(res.headers.get("content-type")).toBe("image/gif");
+        expect(await res.text()).toBe("GIF89a");
+        expect(res.headers.get("content-disposition")).toContain(
+          url.endsWith("download") ? "attachment" : "inline",
+        );
+      }
+      expect((await app.request("/render/saved", { method: "DELETE" })).status).toBe(200);
+      expect(existsSync(output)).toBe(false);
+      expect(existsSync(meta)).toBe(false);
+      expect(await (await app.request("/projects/demo/renders")).json()).toEqual({ renders: [] });
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe("Studio GIF frame-rate cap", () => {
+  it.each([
+    { format: "gif", fps: 60, expected: { num: 30, den: 1 } },
+    { format: "gif", fps: "60000/1001", expected: { num: 30, den: 1 } },
+    { format: "gif", fps: "30001/1000", expected: { num: 30, den: 1 } },
+    { format: "gif", fps: "30000/1001", expected: { num: 30000, den: 1001 } },
+    { format: "gif", fps: 30, expected: { num: 30, den: 1 } },
+    { format: "gif", fps: 24, expected: { num: 24, den: 1 } },
+    { format: "mp4", fps: 60, expected: { num: 60, den: 1 } },
+    { format: "webm", fps: 60, expected: { num: 60, den: 1 } },
+    { format: "mov", fps: 60, expected: { num: 60, den: 1 } },
+  ])("forwards $format at $fps fps as $expected", async ({ format, fps, expected }) => {
+    const spy = vi.fn();
+    const { app, cleanup } = buildApp(spy);
+    try {
+      const res = await app.request("/projects/demo/render", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ format, fps }),
+      });
+      expect(res.status).toBe(200);
+      expect(spy).toHaveBeenCalledWith(expect.objectContaining({ format, fps: expected }));
     } finally {
       cleanup();
     }

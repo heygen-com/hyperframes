@@ -1,3 +1,7 @@
+import {
+  waitForRenderCancellation,
+  cancelAndVerifyArtifacts,
+} from "../../../../test-utils/renderCancellation";
 import { EventEmitter } from "node:events";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -407,6 +411,46 @@ describe("createStudioServer shutdown", () => {
     ]);
     rmSync(outDir, { recursive: true, force: true });
   });
+
+  it("forwards GIF loop count and writes a metadata sidecar without overwriting output", async () => {
+    producerState.executeRenderJob = async (job, _dir, outputPath) => {
+      expect(job).toMatchObject({ format: "gif", gifLoop: 3 });
+      writeFileSync(outputPath, "GIF89a");
+    };
+    const projectDir = tmpProject();
+    const outputPath = join(projectDir, "out.gif");
+    server = createStudioServer({ projectDir });
+    const state = server.adapter.startRender({
+      ...startRenderOpts("gif-job", outputPath),
+      format: "gif",
+      gifLoop: 3,
+    });
+    await vi.waitFor(() => expect(state.status, state.error).toBe("complete"));
+    expect(readFileSync(outputPath, "utf8")).toBe("GIF89a");
+    expect(JSON.parse(readFileSync(join(projectDir, "out.meta.json"), "utf8"))).toMatchObject({
+      status: "complete",
+    });
+  });
+
+  it.each([false, true])(
+    "removes cancelled GIF output and sidecar (late completion: %s)",
+    async (lateCompletion) => {
+      const projectDir = tmpProject();
+      const outputPath = join(projectDir, "out.gif");
+      const metaPath = join(projectDir, "out.meta.json");
+      producerState.executeRenderJob = async (_job, _dir, output, _progress, signal) => {
+        writeFileSync(output, "partial-gif");
+        writeFileSync(metaPath, "{}");
+        await waitForRenderCancellation(signal, lateCompletion);
+      };
+      server = createStudioServer({ projectDir });
+      const state = server.adapter.startRender({
+        ...startRenderOpts("gif-job", outputPath),
+        format: "gif",
+      });
+      await cancelAndVerifyArtifacts(state, outputPath, metaPath);
+    },
+  );
 
   it("cancels an in-flight render's signal and waits for it before draining the browser pool", async () => {
     const events: string[] = [];
