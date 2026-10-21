@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
 import type { ProjectDir } from "../utils/project.js";
+import { OPEN_MEDIA_RANGE_BYTES } from "@hyperframes/studio-server";
 
 // `registerCompositionRoute` reaches these two studio-server helpers via a
 // module, since both files sit at the same depth under packages/cli/src/.
@@ -247,6 +248,20 @@ describe("registerCompositionRoute", () => {
     expect(res.headers.get("accept-ranges")).toBe("bytes");
     expect(res.headers.get("content-range")).toBe("bytes 2-5/10");
     expect(await res.text()).toBe("2345");
+  });
+
+  it("answers an open-ended media range with a bounded piece, not the rest of the file", async () => {
+    // Served to EOF, each <video> holds one of the browser's six connections (#6029).
+    const project = tmpProject();
+    const size = 8 * 1024 * 1024;
+    writeFileSync(join(project.dir, "clip.mp4"), Buffer.alloc(size, 0x61));
+    const app = await buildApp(project, false);
+
+    const res = await app.request("/composition/clip.mp4", { headers: { Range: "bytes=0-" } });
+
+    expect(res.status).toBe(206);
+    expect(res.headers.get("content-range")).toBe(`bytes 0-${OPEN_MEDIA_RANGE_BYTES - 1}/${size}`);
+    expect((await res.arrayBuffer()).byteLength).toBe(OPEN_MEDIA_RANGE_BYTES);
   });
 
   it("serves the resolved proxy's bytes for ?hf-proxy=h264 on a hostile asset", async () => {
