@@ -7,6 +7,7 @@ import {
 } from "./init";
 import { installAuthoredOpacityCapture } from "./colorGrading";
 import { deferMediaUntilDue } from "./preloadMedia";
+import { bootFontFamilies, holdFarSceneScripts } from "./heldScenes";
 import { hideTimedClipsUntilFirstPass } from "./timedClipHide";
 import { fitTextFontSize } from "../text/fitTextFontSize";
 import { pretext } from "../text/pretext";
@@ -76,13 +77,18 @@ function bootstrapHyperframeRuntime(): void {
 function startAfterCompositionScripts(): void {
   try {
     refreshSvgSelectorAliases();
-    const deferred = Array.from(document.querySelectorAll(AFTER_FONTS_SCRIPTS));
+    const deferred = holdFarSceneScripts(
+      Array.from(document.querySelectorAll(AFTER_FONTS_SCRIPTS)),
+    );
     if (deferred.length === 0) bootstrapHyperframeRuntime();
     else {
-      void runScriptsAfterFonts(deferred, bootstrapHyperframeRuntime).catch((err: unknown) => {
-        recordStartupError(err);
-        reportError(err);
-      });
+      const families = bootFontFamilies();
+      void runScriptsAfterFonts(deferred, bootstrapHyperframeRuntime, families).catch(
+        (err: unknown) => {
+          recordStartupError(err);
+          reportError(err);
+        },
+      );
     }
   } catch (err) {
     recordStartupError(err);

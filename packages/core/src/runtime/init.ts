@@ -101,6 +101,7 @@ import { createRuntimeStartTimeResolver } from "./startResolver";
 import { createClipTree } from "./clipTree";
 import { loadCompositions } from "./compositionLoader";
 import { runScriptsAfterFonts } from "./afterFonts";
+import { takeHeldScenesNear } from "./heldScenes";
 import {
   applyCaptionOverrides,
   applyFetchedCaptionOverrides,
@@ -3822,6 +3823,32 @@ export function initSandboxRuntimeModular(): void {
   };
   // Swap edited scenes in place from a rebuilt preview document. Refuses before changing anything unless
   // the documents differ only inside existing scenes; a later failure is left to the caller's reload.
+  // Nests the timelines a scene's scripts just made and redraws the current frame with them.
+  const nestRanScenes = (hosts: Element[], { drawnByTick = false } = {}) => {
+    childrenBound = false;
+    bindRootTimelineIfAvailable();
+    // Probed before the scene was nested, so the new media found no volume envelope.
+    const movers = passMovers();
+    for (const host of hosts) {
+      for (const el of host.querySelectorAll<HTMLMediaElement>("video, audio")) {
+        volumeKeyframeCache.delete(el);
+        probeAndCacheVolumeKeyframes(el, movers);
+      }
+    }
+    const duration = getSafeTimelineDurationSeconds(state.capturedTimeline, 0);
+    if (duration > 0) clock.setDuration(duration);
+    // Adapters drive only the elements they found at discover time; the new scene's are new.
+    runAdapters("discover", state.currentTime);
+    // The rebind above skips these when the root timeline object did not change.
+    applyPositionEdits(document);
+    // Redraw the current frame as a seek does; a playing film cut to end at or before it stops there, as at its end.
+    const cutShort = clock.isPlaying() && duration > 0 && state.currentTime >= duration;
+    // Playing, the next tick draws the frame; a seek would pause and restart the clock and media.
+    if (!(drawnByTick && clock.isPlaying() && !cutShort))
+      transport.seek(cutShort ? duration : state.currentTime, { keepPlaying: !cutShort });
+    syncTimedElementVisibility(state.currentTime);
+    postTimeline();
+  };
   const swapScenes = async (html: string, signal?: AbortSignal): Promise<void> => {
     const generation = sceneSwapGeneration;
     const next = new DOMParser().parseFromString(html, "text/html");
@@ -4014,27 +4041,25 @@ export function initSandboxRuntimeModular(): void {
     initVfx(document.body, state.canonicalFps);
     applyFetchedCaptionOverrides(captionOverrides, captionHosts, rewindCaptionTimelines);
     releaseDetachedMedia();
-    childrenBound = false;
-    bindRootTimelineIfAvailable();
-    // Probed before the scene was nested, so the new media found no volume envelope.
-    const swapMovers = passMovers();
-    for (const host of swappedHosts) {
-      for (const el of host.querySelectorAll<HTMLMediaElement>("video, audio")) {
-        volumeKeyframeCache.delete(el);
-        probeAndCacheVolumeKeyframes(el, swapMovers);
-      }
-    }
-    const duration = getSafeTimelineDurationSeconds(state.capturedTimeline, 0);
-    if (duration > 0) clock.setDuration(duration);
-    // Adapters drive only the elements they found at discover time; the new scene's are new.
-    runAdapters("discover", state.currentTime);
-    // The rebind above skips these when the root timeline object did not change.
-    applyPositionEdits(document);
-    // Redraw the current frame as a seek does; a playing film cut to end at or before it stops there, as at its end.
-    const cutShort = clock.isPlaying() && duration > 0 && state.currentTime >= duration;
-    transport.seek(cutShort ? duration : state.currentTime, { keepPlaying: !cutShort });
-    syncTimedElementVisibility(state.currentTime);
-    postTimeline();
+    nestRanScenes(swappedHosts);
+  };
+
+  // Scripts held at boot run once the playhead nears their scene, one batch after another.
+  let sceneMounts: Promise<void> = Promise.resolve();
+  const mountHeldScenesNear = (t: number) => {
+    const due = takeHeldScenesNear(t);
+    if (due.length === 0) return;
+    const mounted = sceneMounts.then(async () => {
+      await runScriptsAfterFonts(due.flatMap((scene) => scene.scripts));
+      if (state.tornDown) return;
+      const hosts = due.map((scene) => scene.host);
+      for (const host of hosts) applyVariableBindings(document, host);
+      bindMediaMetadataListeners();
+      initVfx(document.body, state.canonicalFps);
+      nestRanScenes(hosts, { drawnByTick: true });
+    });
+    sceneMounts = mounted.catch(() => undefined);
+    registerSeekCompletion(mounted);
   };
   // Only a preview served with a scene manifest can swap; elsewhere the caller reloads directly.
   if (readSceneParts(document)) {
@@ -4098,6 +4123,7 @@ export function initSandboxRuntimeModular(): void {
     held?.apply();
   };
   const applySeek = (quantized: number, options?: { keepPlaying?: boolean }) => {
+    mountHeldScenesNear(quantized);
     webAudio.stopAll();
     clock.detachAudioSource();
     const wasPlaying = clock.isPlaying();
@@ -4341,6 +4367,7 @@ export function initSandboxRuntimeModular(): void {
     forceDispatchSeekEvent(t);
   };
   window.__hfWaitForSeekCompletion = waitForSeekCompletion;
+  mountHeldScenesNear(state.currentTime);
   runtimeCleanupCallbacks.push(() => {
     if (window.__hfWaitForSeekCompletion === waitForSeekCompletion) {
       delete window.__hfWaitForSeekCompletion;
@@ -5131,6 +5158,7 @@ export function initSandboxRuntimeModular(): void {
 
       const t = clock.now();
       state.currentTime = t;
+      if (playing) mountHeldScenesNear(t);
       // During a paused Studio manual-edit drag, the draft writer owns the
       // gestured element's transform (e.g. gsap.set for x/y). Re-seeking the
       // timeline every frame re-applies the animated value and clobbers the
@@ -5475,6 +5503,7 @@ export function initSandboxRuntimeModular(): void {
       refreshTransportClockSource();
       const t = clock.now();
       state.currentTime = t;
+      mountHeldScenesNear(t);
       if (t !== lastTransportSeekTime || state.capturedTimeline !== lastTransportSeekTimeline) {
         seekTimelineAndAdapters(t);
       }

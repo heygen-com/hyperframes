@@ -7,7 +7,8 @@ import { resetRuntimeDataForTests } from "./runtimeData";
 import { WebAudioTransport } from "./webAudioTransport";
 import { probeAndCacheElementVolume } from "./mediaVolumeEnvelope.js";
 import { wrapScopedCompositionScript } from "../compiler/compositionScoping";
-import { AFTER_FONTS_SCRIPT_TYPE } from "../compiler/scriptRuns";
+import { AFTER_FONTS_SCRIPT_TYPE, AFTER_FONTS_SCRIPTS } from "../compiler/scriptRuns";
+import { holdFarSceneScripts } from "./heldScenes";
 
 vi.mock("./mediaVolumeEnvelope.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./mediaVolumeEnvelope.js")>();
@@ -216,6 +217,34 @@ describe("__hfSwapScenes", () => {
     delete window.__hfSceneAnimations;
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+  });
+
+  it("swaps a scene still waiting for the playhead, so only its new script ever runs", async () => {
+    const { root } = trackingRoot();
+    const ran: string[] = [];
+    (window as unknown as { __ran: string[] }).__ran = ran;
+    const far: Scene = { ...B, id: "c", start: 20, label: "c1", hash: "hc1" };
+    made.c1 = tl("c1");
+    made.c2 = tl("c2");
+    const logs = (label: string) => `if (window.__made) window.__ran.push("${label}");`;
+    mount(
+      [A1, { ...far, script: logs("c1") }],
+      root,
+      (head) => `<style data-hf-skip-hidden-images></style>${head}`,
+    );
+    holdFarSceneScripts([...document.querySelectorAll(AFTER_FONTS_SCRIPTS)]);
+    initSandboxRuntimeModular();
+    const next: Scene = {
+      ...far,
+      label: "c2",
+      hash: "hc2",
+      body: "<p>C two</p>",
+      script: logs("c2"),
+    };
+    await window.__hfSwapScenes!(preview([A1, next]).html);
+    window.__player!.seek(15);
+    await window.__hfWaitForSeekCompletion?.();
+    expect(ran).toEqual(["c2"]);
   });
 
   it("swaps only the edited scene: its DOM, style and timeline, keeping the time and the other scene", async () => {
