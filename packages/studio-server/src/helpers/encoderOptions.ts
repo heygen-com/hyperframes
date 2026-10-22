@@ -2,12 +2,14 @@ const CRF_MAX_BY_FORMAT: Record<string, number> = { mp4: 51, webm: 63 };
 const VIDEO_BITRATE = /^\d+(\.\d+)?[kKmMgG]?$/;
 const VIDEO_FRAME_FORMATS = ["auto", "jpg", "png"] as const;
 const HDR_MODES = ["auto", "force-hdr", "force-sdr"] as const;
+const CHROMA_SUBSAMPLINGS = ["420", "444"] as const;
 
 interface EncoderOptions {
   crf?: number;
   videoBitrate?: string;
   videoFrameFormat?: (typeof VIDEO_FRAME_FORMATS)[number];
   hdrMode?: (typeof HDR_MODES)[number];
+  chromaSubsampling?: (typeof CHROMA_SUBSAMPLINGS)[number];
 }
 
 export interface EncoderOptionsBody {
@@ -15,6 +17,9 @@ export interface EncoderOptionsBody {
   videoBitrate?: unknown;
   videoFrameFormat?: unknown;
   hdrMode?: unknown;
+  chromaSubsampling?: unknown;
+  /** Read only to refuse 4:4:4 with GPU encoding; callers resolve `gpu` themselves. */
+  gpu?: unknown;
 }
 
 type Parsed = { ok: true; options: EncoderOptions } | { ok: false; error: string };
@@ -50,6 +55,33 @@ function parseRateControl(body: EncoderOptionsBody, format: string): Parsed {
   return { ok: true, options: {} };
 }
 
+/**
+ * 4:4:4 needs SDR MP4 from the software encoder; anything else would come back 4:2:0
+ * or fail mid-render, so refuse it here with a 400 instead.
+ */
+function parseChromaSubsampling(body: EncoderOptionsBody, format: string): Parsed {
+  const chromaSubsampling = body.chromaSubsampling;
+  if (!isSet(chromaSubsampling)) return { ok: true, options: {} };
+  if (!oneOf(chromaSubsampling, CHROMA_SUBSAMPLINGS)) {
+    return {
+      ok: false,
+      error: `chromaSubsampling must be one of ${CHROMA_SUBSAMPLINGS.join(", ")}`,
+    };
+  }
+  if (chromaSubsampling === "444") {
+    if (format !== "mp4") {
+      return { ok: false, error: `chromaSubsampling "444" supports mp4 only (got ${format})` };
+    }
+    if (body.gpu === true) {
+      return { ok: false, error: 'chromaSubsampling "444" requires the software encoder, not gpu' };
+    }
+    if (body.hdrMode === "force-hdr") {
+      return { ok: false, error: 'chromaSubsampling "444" is SDR only, not force-hdr' };
+    }
+  }
+  return { ok: true, options: { chromaSubsampling } };
+}
+
 /** Explicit encoder overrides from a render request. MOV (ProRes) takes no rate control. */
 export function parseEncoderOptions(body: EncoderOptionsBody, format: string): Parsed {
   const rate = parseRateControl(body, format);
@@ -70,5 +102,7 @@ export function parseEncoderOptions(body: EncoderOptionsBody, format: string): P
     }
     options.hdrMode = body.hdrMode;
   }
-  return { ok: true, options };
+  const chroma = parseChromaSubsampling(body, format);
+  if (!chroma.ok) return chroma;
+  return { ok: true, options: { ...options, ...chroma.options } };
 }

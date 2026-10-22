@@ -385,6 +385,23 @@ describe("POST /projects/:id/render — crf", () => {
     expect(res.status).toBe(400);
     expect(opts).toBeUndefined();
   });
+
+  it("forwards 4:4:4 chroma for mp4 and omits it when not requested", async () => {
+    const chroma = await post({ format: "mp4", chromaSubsampling: "444" });
+    expect(chroma.res.status).toBe(200);
+    expect(chroma.opts.chromaSubsampling).toBe("444");
+    expect((await post({ format: "mp4" })).opts).not.toHaveProperty("chromaSubsampling");
+  });
+
+  it.each([
+    { format: "webm", chromaSubsampling: "444" },
+    { format: "mp4", chromaSubsampling: "444", gpu: true },
+    { format: "mp4", chromaSubsampling: "422" },
+  ])("rejects chroma request %j with 400 and does not start a render", async (body) => {
+    const { res, opts } = await post(body);
+    expect(res.status).toBe(400);
+    expect(opts).toBeUndefined();
+  });
 });
 
 describe("POST /projects/:id/render — composition path safety", () => {

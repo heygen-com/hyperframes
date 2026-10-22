@@ -352,6 +352,46 @@ describe("RenderRequest", () => {
   });
 });
 
+describe("chromaSubsampling", () => {
+  function chromaRequest(chromaSubsampling: "420" | "444", distributed = false) {
+    return createRenderRequest({
+      projectDir: "/project",
+      outputPath: "/output/video.mp4",
+      engineConfig: DEFAULT_CONFIG,
+      options: {
+        fps: { num: 30, den: 1 },
+        quality: "standard",
+        format: "mp4",
+        chromaSubsampling,
+        ...(distributed ? { distributed: { width: 1920, height: 1080 } } : {}),
+      },
+    });
+  }
+
+  it("round-trips 4:4:4 into the local render config", () => {
+    const value = chromaRequest("444");
+    expect(parseRenderRequest(serializeRenderRequest(value))).toEqual(value);
+    expect(renderConfigFromRequest(value).chromaSubsampling).toBe("444");
+  });
+
+  it("rejects an unknown chroma value at the wire boundary", () => {
+    const value = chromaRequest("420");
+    expect(() =>
+      parseRenderRequest({ ...value, options: { ...value.options, chromaSubsampling: "422" } }),
+    ).toThrow("chromaSubsampling is invalid");
+  });
+
+  it("refuses 4:4:4 for a distributed render, which would come back 4:2:0", () => {
+    expect(() => distributedConfigFromRequest(chromaRequest("444", true))).toThrow(
+      "Distributed render does not support chromaSubsampling 444",
+    );
+  });
+
+  it("still converts an explicit 4:2:0 request to a distributed config", () => {
+    expect(distributedConfigFromRequest(chromaRequest("420", true)).format).toBe("mp4");
+  });
+});
+
 describe("segmented resume flags", () => {
   it("carries resumeSegments and keepSegments from the request into the render config", () => {
     const req = createRenderRequest({

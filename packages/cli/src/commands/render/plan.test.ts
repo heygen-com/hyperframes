@@ -203,6 +203,39 @@ describe("createRenderPlan", () => {
     expect(vi.mocked(console.error).mock.calls.flat().join("\n")).toContain(flag);
   });
 
+  it("defaults chroma subsampling to 4:2:0 and accepts 4:4:4 for SDR mp4", () => {
+    expect(createRenderPlan({ dir: projectDir }).chromaSubsampling).toBe("420");
+    expect(
+      createRenderPlan({ dir: projectDir, "chroma-subsampling": "444" }).chromaSubsampling,
+    ).toBe("444");
+    expect(
+      createRenderPlan({ dir: projectDir, "chroma-subsampling": "444", sdr: true })
+        .chromaSubsampling,
+    ).toBe("444");
+  });
+
+  it("rejects an unknown chroma-subsampling value", () => {
+    expect(() => createRenderPlan({ dir: projectDir, "chroma-subsampling": "422" })).toThrow(
+      CliUsageError,
+    );
+    expect(vi.mocked(console.error).mock.calls.flat().join("\n")).toContain("Must be 420 or 444");
+  });
+
+  it.each([
+    ["--format webm", { format: "webm" }],
+    ["--format mov", { format: "mov" }],
+    ["--format gif", { format: "gif" }],
+    ["--format png-sequence", { format: "png-sequence" }],
+    ["--format hls", { format: "hls" }],
+    ["--gpu", { gpu: true }],
+    ["--hdr", { hdr: true }],
+  ])("rejects --chroma-subsampling 444 with %s", (flag, conflicting) => {
+    expect(() =>
+      createRenderPlan({ dir: projectDir, "chroma-subsampling": "444", ...conflicting }),
+    ).toThrow(CliUsageError);
+    expect(vi.mocked(console.error).mock.calls.flat().join("\n")).toContain(flag);
+  });
+
   it("keeps MP4 and WebM rate controls available", () => {
     expect(createRenderPlan({ dir: projectDir, format: "mp4", crf: "18" }).crf).toBe(18);
     expect(

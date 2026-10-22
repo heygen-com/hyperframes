@@ -71,7 +71,7 @@ import {
 import type { RenderJob } from "../../renderOrchestrator.js";
 import { isActionableProbeFailure } from "./probeFailures.js";
 import { preflightCompositionAssetMediaTypes } from "../../assetMediaType.js";
-import { resolveCaptureImageFormat, resolveCaptureJpegQuality } from "../captureImageFormat.js";
+import { resolveCaptureSurface } from "../captureImageFormat.js";
 
 export interface ProbeStageInput {
   projectDir: string;
@@ -368,19 +368,19 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
       });
       assertNotAborted();
 
-      // Motion blur averages the sub-frame samples pixel by pixel, so the frames have to be
-      // captured losslessly even when the output container wants no alpha. This is the one
-      // place a render picks its capture format; the encoder reads the result rather than
-      // re-deriving it, so the two cannot disagree about what is on disk.
+      // Motion blur and 4:4:4 output need lossless frames even when the output container
+      // wants no alpha. This is the one place a render picks its capture format; the encoder
+      // reads the result rather than re-deriving it, so the two cannot disagree about what
+      // is on disk.
       const motionBlur = job.config.motionBlur;
-      const captureFormat = resolveCaptureImageFormat({ needsAlpha, motionBlur });
       const captureOpts: CaptureOptions = {
         width,
         height,
         fps: job.config.fps,
-        format: captureFormat,
-        quality:
-          captureFormat === "png" ? undefined : resolveCaptureJpegQuality(job.config.quality),
+        ...resolveCaptureSurface(
+          { needsAlpha, motionBlur, chromaSubsampling: job.config.chromaSubsampling },
+          job.config.quality,
+        ),
         variables: job.config.variables,
         deviceScaleFactor,
         motionBlur,

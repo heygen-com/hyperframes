@@ -58,6 +58,7 @@ await startServer({ port: 8080 });
 | `format`            | `"mp4"`      | Output container — `"mp4"`, `"webm"`, `"mov"`, `"gif"`, `"png-sequence"`, or `"hls"`. See [Transparent Video Output](#transparent-video-output) and [HLS Output](#hls-output) below. |
 | `hlsSegmentSeconds` | `4`          | HLS target segment length in whole seconds. Ignored for every other format.                                                                                                          |
 | `videoFrameFormat`  | `"auto"`     | Source video frame extraction format — `"auto"`, `"jpg"`, or `"png"`. Use `"png"` for UI recordings, screen captures, and color-sensitive source videos.                             |
+| `chromaSubsampling` | `"420"`      | MP4 chroma, `"420"` or `"444"`. `"444"` encodes yuv444p from lossless PNG capture for text/UI masters; SDR MP4 and software encoder only. Many players cannot decode it.             |
 
 ## Transparent Video Output
 

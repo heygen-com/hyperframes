@@ -1162,6 +1162,21 @@ describe("renderLocal browser GPU config", () => {
     expect(producerState.createdJobs[0]?.videoFrameFormat).toBe("png");
   });
 
+  it("forwards chromaSubsampling to createRenderJob", async () => {
+    await renderLocal(PROJECT_DIR, "/tmp/out.mp4", {
+      fps: { num: 30, den: 1 },
+      quality: "standard",
+      format: "mp4",
+      gpu: false,
+      browserGpuMode: "software",
+      hdrMode: "auto",
+      quiet: true,
+      chromaSubsampling: "444",
+    });
+
+    expect(producerState.createdJobs[0]?.chromaSubsampling).toBe("444");
+  });
+
   it("forwards debug mode to createRenderJob", async () => {
     await renderLocal(PROJECT_DIR, "/tmp/out.mp4", {
       fps: { num: 30, den: 1 },

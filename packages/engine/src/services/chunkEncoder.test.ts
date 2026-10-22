@@ -884,6 +884,27 @@ describe("getEncoderPreset", () => {
     expect(preset.codec).toBe("h264");
     expect(preset.pixelFormat).toBe("yuv420p");
   });
+
+  it("returns yuv444p for SDR mp4 when 4:4:4 chroma is requested", () => {
+    for (const q of ["draft", "standard", "high"] as const) {
+      const preset = getEncoderPreset(q, "mp4", undefined, "444");
+      expect(preset.codec).toBe("h264");
+      expect(preset.preset).toBe(ENCODER_PRESETS[q].preset);
+      expect(preset.pixelFormat).toBe("yuv444p");
+    }
+  });
+
+  it("keeps yuv420p for SDR mp4 when 4:2:0 chroma is requested explicitly", () => {
+    expect(getEncoderPreset("standard", "mp4", undefined, "420").pixelFormat).toBe("yuv420p");
+  });
+
+  it("ignores the chroma option for webm, mov and HDR presets", () => {
+    expect(getEncoderPreset("standard", "webm", undefined, "444").pixelFormat).toBe("yuva420p");
+    expect(getEncoderPreset("standard", "mov", undefined, "444").pixelFormat).toBe("yuva444p10le");
+    expect(getEncoderPreset("standard", "mp4", { transfer: "pq" }, "444").pixelFormat).toBe(
+      "yuv420p10le",
+    );
+  });
 });
 
 describe("buildEncoderArgs anti-banding", () => {
@@ -1164,6 +1185,27 @@ describe("buildEncoderArgs color space", () => {
     );
     const vfIdx = args.indexOf("-vf");
     expect(args[vfIdx + 1]).toBe(`${SDR_CAPTURE_TO_BT709_FILTER},pad=ceil(iw/2)*2:ceil(ih/2)*2`);
+  });
+
+  it("encodes 4:4:4 at odd dimensions without padding, keeping BT.709 tags", () => {
+    const args = buildEncoderArgs(
+      {
+        ...baseOptions,
+        width: 1081,
+        height: 721,
+        codec: "h264",
+        preset: "medium",
+        quality: 18,
+        pixelFormat: "yuv444p",
+      },
+      inputArgs,
+      "out.mp4",
+    );
+    expect(args[args.indexOf("-c:v") + 1]).toBe("libx264");
+    expect(args[args.indexOf("-pix_fmt") + 1]).toBe("yuv444p");
+    expect(args[args.indexOf("-vf") + 1]).toBe(SDR_CAPTURE_TO_BT709_FILTER);
+    expect(args[args.indexOf("-colorspace:v") + 1]).toBe("bt709");
+    expect(args[args.indexOf("-color_range") + 1]).toBe("tv");
   });
 
   it("prepends range conversion to VAAPI filter chain", () => {

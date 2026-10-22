@@ -252,6 +252,14 @@ export default defineCommand({
       description:
         "libvpx-vp9 -cpu-used value for WebM encodes (-8 to 8). Higher is faster with a larger quality/size tradeoff. Env: PRODUCER_VP9_CPU_USED.",
     },
+    "chroma-subsampling": {
+      type: "string",
+      description:
+        "MP4 chroma: 420 (default) or 444. 444 keeps full-resolution colour for thin coloured " +
+        "text and UI (yuv444p, lossless PNG capture, slower). Software encoder and SDR MP4 only; " +
+        "many players cannot decode 4:4:4.",
+      default: "420",
+    },
     gpu: { type: "boolean", description: "Use GPU encoding", default: false },
     "browser-gpu": {
       type: "boolean",
@@ -503,6 +511,8 @@ export interface RenderOptions {
   vp9CpuUsed?: number;
   videoBitrate?: string;
   videoFrameFormat?: VideoFrameFormat;
+  /** "444" opts an SDR MP4 render into full-resolution chroma. Absent means 4:2:0. */
+  chromaSubsampling?: "420" | "444";
   quiet: boolean;
   debug?: boolean;
   /** Segmented capture: reuse a prior run's validated segments. */
@@ -832,6 +842,7 @@ async function renderDocker(
       vp9CpuUsed: options.vp9CpuUsed,
       videoBitrate: options.videoBitrate,
       videoFrameFormat: options.videoFrameFormat,
+      chromaSubsampling: options.chromaSubsampling,
       quiet: options.quiet,
       variables: options.variables,
       entryFile: options.entryFile,
@@ -1110,6 +1121,7 @@ async function executeLocalRender(
       crf: options.crf,
       videoBitrate: options.videoBitrate,
       videoFrameFormat: options.videoFrameFormat,
+      chromaSubsampling: options.chromaSubsampling,
       variables: options.variables,
       entryFile: options.entryFile,
       outputResolution: options.outputResolution,

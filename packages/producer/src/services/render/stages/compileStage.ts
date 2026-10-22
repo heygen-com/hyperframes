@@ -286,6 +286,18 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
         "so page-side compositing stays available.",
     );
   }
+  // 4:4:4 output captures lossless opaque PNG. drawElement's self-verification and
+  // worker-encode drain are JPEG-only and its PNG path is built for transparent
+  // output, so the render uses the platform's baseline capture instead. No R&D bypass:
+  // a drawElement JPEG fallback would ship 4:2:0 colour in a 4:4:4 file.
+  if (cfg.useDrawElement && job.config.chromaSubsampling === "444") {
+    cfg.useDrawElement = false;
+    deCompileGate = "chroma_444";
+    log.info(
+      "[Render] Fast capture: chromaSubsampling 444 captures lossless PNG frames, so disabling " +
+        "drawElementImage for this render. Capture uses the platform's baseline route.",
+    );
+  }
   // Whenever a compile-time gate cleared useDrawElement, restore page-side
   // compositing — but ONLY when resolveConfig auto-disabled it because
   // drawElement was going to run. An explicit enablePageSideCompositing:false

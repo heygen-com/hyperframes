@@ -472,3 +472,47 @@ describe("runCompileStage — aspect-agnostic --resolution re-map", () => {
     ).rejects.toThrow(/aspect ratio|--resolution portrait/i);
   });
 });
+
+describe("runCompileStage — chromaSubsampling 444 drawElement gate", () => {
+  let fixture: CompileFixture | null = null;
+
+  afterEach(() => {
+    fixture?.cleanup();
+    fixture = null;
+  });
+
+  async function compileWithChroma(
+    chromaSubsampling: "420" | "444" | undefined,
+  ): Promise<{ result: CompileStageResult; cfg: EngineConfig }> {
+    fixture = setupFixture(PLAIN_HTML);
+    const cfg = createCfg({ useDrawElement: true });
+    const result = await runCompileStage({
+      projectDir: join(fixture.workDir, "project"),
+      workDir: fixture.workDir,
+      htmlPath: fixture.htmlPath,
+      entryFile: "index.html",
+      job: createJob(chromaSubsampling ? { chromaSubsampling } : {}),
+      cfg,
+      needsAlpha: false,
+      log: noopLog,
+      assertNotAborted: () => {},
+    });
+    return { result, cfg };
+  }
+
+  it("turns drawElement off for 4:4:4, whose lossless PNG frames it cannot capture", async () => {
+    const { result, cfg } = await compileWithChroma("444");
+    expect(cfg.useDrawElement).toBe(false);
+    expect(result.deCompileGate).toBe("chroma_444");
+  });
+
+  it("leaves drawElement on for the default and for explicit 4:2:0", async () => {
+    for (const chroma of [undefined, "420"] as const) {
+      const { result, cfg } = await compileWithChroma(chroma);
+      expect(cfg.useDrawElement).toBe(true);
+      expect(result.deCompileGate).toBeUndefined();
+      fixture?.cleanup();
+      fixture = null;
+    }
+  });
+});

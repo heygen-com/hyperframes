@@ -21,6 +21,7 @@ Requires: Docker installed and running.
 - `--video-bitrate` — Target video bitrate such as `10M` (mutually exclusive with `--crf`)
 - `--vp9-cpu-used` — WebM VP9 speed/quality tradeoff (`-8` to `8`, default: `4`). Higher values encode faster with larger output / quality tradeoff.
 - `--video-frame-format` — Source video frame extraction format: `auto`, `jpg`, or `png` (default: `auto`). Use `png` for UI recordings, screen captures, and color-sensitive source videos.
+- `--chroma-subsampling` — MP4 chroma: `420` or `444` (default: `420`). `444` keeps full-resolution colour for thin coloured text and UI (yuv444p, lossless PNG capture, slower). SDR MP4 with the software encoder only; many players cannot decode 4:4:4.
 - `--gpu` — Use GPU encoding (NVENC, VideoToolbox, AMF, VAAPI, QSV)
 - `--browser-gpu` / `--no-browser-gpu` — Force host GPU or software (SwiftShader) for Chrome/WebGL capture. Default for local renders is `auto` — probe WebGL availability on first launch and fall back to software if no GPU is reachable. Docker mode always uses software.
 - `-o, --output` — Custom output path
@@ -31,5 +32,6 @@ Requires: Docker installed and running.
 - Local renders auto-detect GPU on first launch; use `--browser-gpu` to force hardware (errors if no GPU) or `--no-browser-gpu` to force SwiftShader
 - Use `--gpu` when a local render also benefits from hardware FFmpeg encoding
 - Use `--video-frame-format png` when source videos contain saturated UI colors that should avoid JPEG extraction
+- Use `--chroma-subsampling 444` for text- and UI-heavy MP4 masters; keep the default for files you publish directly
 - Use `npx hyperframes benchmark` to find optimal settings
 - 4 workers is usually the sweet spot for most compositions

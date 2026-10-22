@@ -355,6 +355,7 @@ export function createViteAdapter(
             ...(opts.videoBitrate ? { videoBitrate: opts.videoBitrate } : {}),
             ...(opts.videoFrameFormat ? { videoFrameFormat: opts.videoFrameFormat } : {}),
             ...(opts.hdrMode ? { hdrMode: opts.hdrMode } : {}),
+            ...(opts.chromaSubsampling ? { chromaSubsampling: opts.chromaSubsampling } : {}),
             ...(opts.useGpu ? { useGpu: true } : {}),
             ...(opts.pageMotionBlur ? { pageMotionBlur: opts.pageMotionBlur } : {}),
           });
