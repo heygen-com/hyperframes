@@ -173,6 +173,7 @@ export {
   DOM_LAYER_MASK_STYLE_ID,
   type BeginFrameResult,
 } from "./services/screenshotService.js";
+export { installMediaRenderIdBridge } from "./services/mediaRenderIdBridge.js";
 
 // ── Encoding ───────────────────────────────────────────────────────────────────
 export {

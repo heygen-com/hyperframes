@@ -1027,3 +1027,37 @@ describe("snapshot composite recapture", () => {
     expect(finalCapture).toBeGreaterThan(recapture);
   });
 });
+
+describe("snapshot media identity", () => {
+  it("keys two videos that share an author id apart, as the render path does", async () => {
+    const project = mkdtempSync(join(tmpdir(), "hf-snapshot-dup-ids-"));
+    const clip = (src: string) =>
+      `<video id="clip" class="clip" src="${src}" data-start="0" data-duration="4" muted></video>`;
+    writeFileSync(
+      join(project, "index.html"),
+      `<html><body><div data-composition-id="main" data-width="1920" data-height="1080" data-duration="4">` +
+        `${clip("a.mp4")}${clip("b.mp4")}</div></body></html>`,
+    );
+    snapshotState.openSettledPage.mockClear();
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    try {
+      await expect(
+        snapshotCommand.run?.({
+          args: { dir: project, at: "1", end: false, output: join(project, "out") },
+        } as never),
+      ).rejects.toBeDefined();
+      const [html, , options] = snapshotState.openSettledPage.mock.calls[0] as unknown as [
+        string,
+        string,
+        { beforeNavigate?: unknown },
+      ];
+      expect(html).toContain('data-hf-render-id="clip"');
+      expect(html).toContain('data-hf-render-id="clip__hf2"');
+      expect(typeof options.beforeNavigate).toBe("function");
+    } finally {
+      log.mockRestore();
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+});

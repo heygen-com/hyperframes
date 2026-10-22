@@ -16,6 +16,7 @@ import {
   initTransparentBackground,
   DOM_LAYER_MASK_STYLE_ID,
 } from "./screenshotService.js";
+import { installMediaRenderIdBridge } from "./mediaRenderIdBridge.js";
 
 // These DOM tests isolate layout/decode from the CDP transport, exercised in Chrome separately.
 vi.mock("./videoFrameTransport.js", () => ({
@@ -619,6 +620,33 @@ describe("video-frame injection respects ancestor visibility", () => {
     }
 
     expect(seededImg.style.visibility).toBe("hidden");
+  });
+
+  it("keeps a frame injected by render id visible through the sync, as snapshot calls them", async () => {
+    const { teardown, setup } = withGlobals(
+      setupHostHiddenScenario({}, { hostAttribute: "data-start" }),
+    );
+    setup.video.setAttribute("data-hf-render-id", "pip__hf2");
+    try {
+      await installMediaRenderIdBridge({
+        evaluateOnNewDocument: async (fn: (...args: unknown[]) => unknown, ...args: unknown[]) =>
+          fn(...args),
+      } as unknown as Page);
+      await injectVideoFramesBatch(passthroughPage(), [
+        {
+          videoId: "pip__hf2",
+          dataUri:
+            "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkAAIAAAoAAv/lxKUAAAAASUVORK5CYII=",
+        },
+      ]);
+      await syncVideoFrameVisibility(passthroughPage(), ["pip__hf2"]);
+    } finally {
+      teardown();
+    }
+
+    const img = setup.video.nextElementSibling as HTMLElement | null;
+    expect(img?.classList.contains("__render_frame__")).toBe(true);
+    expect(img?.style.visibility).toBe("visible");
   });
 
   it("syncVideoFrameVisibility hides the replacement <img> for ancestor-hidden actives", async () => {

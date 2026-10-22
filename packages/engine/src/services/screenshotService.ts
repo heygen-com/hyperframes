@@ -889,7 +889,7 @@ export async function syncVideoFrameVisibility(
         const img = video.nextElementSibling as HTMLElement | null;
         const hasImg = img && img.classList.contains("__render_frame__");
         const ancestorHidden = isVisualAncestorHidden(video);
-        const visible = active.has(video.id) && !ancestorHidden;
+        const visible = active.has(window.__hfMediaId?.(video) || video.id) && !ancestorHidden;
         if (visible) {
           // Active video: show injected <img>, hide native <video>.
           // Do NOT clobber inline opacity here — GSAP-controlled opacity must

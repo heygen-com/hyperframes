@@ -36,13 +36,17 @@ import {
   type ZoomTarget,
 } from "../capture/captureCompositionFrame.js";
 import {
+  assignMediaRenderIds,
   isClipVisibleAt,
   isInClipWindow,
+  MEDIA_RENDER_ID_ATTR,
   readElementRateSpec,
   sourceTimeAt,
   timeAtSourceTime,
   type RateSpec,
 } from "@hyperframes/core";
+import { parseHTML } from "linkedom";
+import type { Page } from "puppeteer-core";
 import { resolveProject } from "../utils/project.js";
 import {
   definitiveEntryMismatchComposition,
@@ -491,6 +495,18 @@ export function serveCapturePage(projectDir: string, html: string, proxy: boolea
   return serveStaticProjectHtml(projectDir, html, undefined, [], proxy === true);
 }
 
+/** Two clips sharing an author id must stay two frames, keyed as the render path keys them. */
+function withMediaRenderIds(html: string): string {
+  const { document } = parseHTML(html);
+  assignMediaRenderIds(document);
+  return document.toString();
+}
+
+async function installMediaRenderIdBridge(page: Page): Promise<void> {
+  const engine = await import("@hyperframes/engine").catch(() => null);
+  await engine?.installMediaRenderIdBridge(page);
+}
+
 /**
  * Render key frames from a composition as PNG screenshots.
  * The agent can Read these to verify its output visually.
@@ -541,7 +557,7 @@ async function captureSnapshots(
 
   // Localize fonts (embed remote @font-face as data URIs, matching the render
   // path) so snapshots render the real font instead of a fallback sans.
-  const html = await bundleWithLocalizedFonts(projectDir);
+  const html = withMediaRenderIds(await bundleWithLocalizedFonts(projectDir));
   const server = await serveCapturePage(projectDir, html, opts.autoProxy);
 
   const savedPaths: string[] = [];
@@ -555,6 +571,7 @@ async function captureSnapshots(
       renderReadyTimeoutMs: opts.timeout ?? 5000,
       renderReadyWarningSuffix: "snapshots may be inaccurate",
       browserGpuMode: opts.browserGpuMode,
+      beforeNavigate: installMediaRenderIdBridge,
     });
 
     try {
@@ -755,7 +772,7 @@ async function captureSnapshots(
         if (cameraExpr) await page.evaluate(cameraExpr);
 
         if (injectVideoFramesBatch && syncVideoFrameVisibility) {
-          const candidates = await page.evaluate(() => {
+          const candidates = await page.evaluate((renderIdAttr: string) => {
             const runtimeWindow = window as Window & {
               __hfResolveMediaStartSeconds?: (element: Element) => number;
             };
@@ -769,7 +786,7 @@ async function captureSnapshots(
               const rawDuration = parseFloat(v.dataset.duration ?? "");
               const srcDur = Number.isFinite(v.duration) && v.duration > 0 ? v.duration : 0;
               return {
-                id: v.id,
+                id: v.getAttribute(renderIdAttr) || v.id,
                 src: v.currentSrc || v.src,
                 authoredStart,
                 authoredRate: v.dataset.playbackRate,
@@ -788,7 +805,7 @@ async function captureSnapshots(
                 devicePixelRatio: window.devicePixelRatio,
               };
             });
-          });
+          }, MEDIA_RENDER_ID_ATTR);
           const compositionDuration = duration;
           const active = candidates.flatMap((candidate) => {
             const start = resolveSnapshotVideoClipStart(candidate);
