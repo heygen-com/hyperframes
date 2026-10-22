@@ -46,6 +46,7 @@ jobs:
     outputs:
       code: ${{ (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.catalog_publish)) && 'true' || steps.edit.outputs.passed == 'true' && 'false' || steps.filter.outputs.code }}
       matrix: ${{ steps.shards.outputs.matrix }}
+      render_capture: ${{ github.event_name == 'schedule' && 'true' || steps.edit.outputs.passed == 'true' && 'false' || steps.filter.outputs.render_capture }}
     steps:
       # Force git-based change detection instead of the pull_request REST API.
       # The API path can fail the whole workflow on transient listFiles
@@ -86,6 +87,14 @@ jobs:
               - "packages/producer/**"
               - "packages/engine/**"
               - "Dockerfile*"
+              - ".github/workflows/regression.yml"
+            render_capture:
+              - "packages/engine/src/services/**"
+              - "packages/producer/src/services/render/**"
+              - "packages/cli/src/commands/render.ts"
+              - "packages/cli/src/commands/render/**"
+              - "scripts/ci/render-soak.sh"
+              - "scripts/ci/fixtures/render-soak/**"
               - ".github/workflows/regression.yml"
       # Bin-pack the shard matrix from recorded per-fixture timings rather than
       # a hand-written list. Fails if any fixture on disk is neither scheduled
@@ -187,10 +196,36 @@ jobs:
           path: packages/producer/tests/*/failures/
           if-no-files-found: ignore
 
+  # Renders with every core busy, where timing races an idle runner never hits (#5795's blank worker pages) fail.
+  # A backstop, not proof: bring #5795's media release back only with its root cause and a deterministic test.
+  render-soak:
+    name: Render soak under load
+    needs: changes
+    if: needs.changes.outputs.render_capture == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          lfs: true
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Install FFmpeg
+        uses: ./.github/actions/install-ffmpeg-linux
+      - uses: ./.github/actions/prepare-ffmpeg-bin
+      - name: Install dependencies
+        run: bash scripts/ci/install-workspace-dependencies.sh
+      - name: Build monorepo
+        run: bun run build
+      - name: Render 30 times and the counter fixture twice, under load
+        run: bash scripts/ci/render-soak.sh
+
   # Summary job — matches the required check name in branch protection
   regression:
     runs-on: ubuntu-latest
-    needs: [changes, regression-shards]
+    needs: [changes, regression-shards, render-soak]
     if: always()
     steps:
       - name: Check results
@@ -198,6 +233,8 @@ jobs:
           CHANGES_RESULT: ${{ needs.changes.result }}
           CODE_CHANGED: ${{ needs.changes.outputs.code }}
           SHARDS_RESULT: ${{ needs.regression-shards.result }}
+          SOAK_NEEDED: ${{ needs.changes.outputs.render_capture }}
+          SOAK_RESULT: ${{ needs.render-soak.result }}
         run: |
           if [ "$CHANGES_RESULT" != "success" ]; then
             echo "::error::Change detection did not succeed."
@@ -213,4 +250,15 @@ jobs:
               echo "All regression shards succeeded."
               ;;
             *) echo "::error::Change detection returned no valid decision."; exit 1 ;;
+          esac
+          case "$SOAK_NEEDED" in
+            false) echo "No render capture changes." ;;
+            true)
+              if [ "$SOAK_RESULT" != "success" ]; then
+                echo "::error::Render soak under load did not succeed."
+                exit 1
+              fi
+              echo "Render soak under load succeeded."
+              ;;
+            *) echo "::error::Change detection returned no render capture decision."; exit 1 ;;
           esac

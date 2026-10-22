@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 640px;
+        height: 360px;
+        overflow: hidden;
+        background: #000;
+      }
+      #root {
+        position: relative;
+        width: 640px;
+        height: 360px;
+        overflow: hidden;
+      }
+      #root video {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      #counter {
+        position: absolute;
+        left: 24px;
+        bottom: 24px;
+        padding: 8px 16px;
+        background: #000;
+        color: #fff;
+        font: 700 64px/1 monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="3"
+      data-width="640"
+      data-height="360"
+    >
+      <!-- clip.mp4 is written by scripts/ci/render-soak.sh; its frames come from FFmpeg, the path #5795 broke. -->
+      <video
+        id="clip"
+        class="clip"
+        src="clip.mp4"
+        muted
+        playsinline
+        data-start="0"
+        data-duration="3"
+        data-track-index="0"
+      ></video>
+      <div id="counter" class="clip" data-start="0" data-duration="3" data-track-index="10">0</div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      var counter = document.getElementById("counter");
+      var state = { frame: 0 };
+      var tl = gsap.timeline({ paused: true });
+      // A new number on every frame at 30 fps, so a held or shifted frame shows up in the frame hashes.
+      tl.to(
+        state,
+        {
+          frame: 90,
+          duration: 3,
+          ease: "none",
+          onUpdate: function () {
+            counter.textContent = String(Math.round(state.frame));
+          },
+        },
+        0,
+      );
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

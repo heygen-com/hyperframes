@@ -33,6 +33,9 @@ jobs:
     name: Validate docs
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    env:
+      # Pinned: an unpinned npx takes a minutes-old mint whose own pinned packages may not be published yet.
+      MINT: mint@4.2.1072
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -45,10 +48,10 @@ jobs:
 
       - name: Validate build
         working-directory: docs
-        run: npx mint validate
+        run: npx "$MINT" validate
 
       - name: Check broken links
         working-directory: docs
         # --check-redirects also resolves every redirect destination, so a
         # restructure cannot leave a redirect pointing at a page it removed.
-        run: npx mint broken-links --check-redirects
+        run: npx "$MINT" broken-links --check-redirects

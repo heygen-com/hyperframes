@@ -289,10 +289,17 @@ const summary = regressionWorkflow.jobs.regression.steps.find(
   (step) => step.name === "Check results",
 );
 
-function runSummary(changes, code, shards) {
+function runSummary(changes, code, shards, soakNeeded = "false", soak = "skipped") {
   return spawnSync("bash", ["-e", "-c", summary.run], {
     encoding: "utf8",
-    env: { ...process.env, CHANGES_RESULT: changes, CODE_CHANGED: code, SHARDS_RESULT: shards },
+    env: {
+      ...process.env,
+      CHANGES_RESULT: changes,
+      CODE_CHANGED: code,
+      SHARDS_RESULT: shards,
+      SOAK_NEEDED: soakNeeded,
+      SOAK_RESULT: soak,
+    },
     timeout: 5000,
   });
 }
@@ -326,6 +333,25 @@ test("regression code changes require every shard to succeed", () => {
 test("regression accepts completed shards after successful change detection", () => {
   const result = runSummary("success", "true", "success");
   assert.equal(result.status, 0, result.stdout + result.stderr);
+});
+
+test("regression render capture changes require the render soak to succeed", () => {
+  for (const state of ["failure", "cancelled", "skipped"]) {
+    const result = runSummary("success", "true", "success", "true", state);
+    assert.equal(result.status, 1, result.stdout + result.stderr);
+  }
+});
+
+test("regression accepts a successful render soak", () => {
+  const result = runSummary("success", "true", "success", "true", "success");
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+});
+
+test("regression rejects missing or malformed render capture decisions", () => {
+  for (const decision of ["", "unknown"]) {
+    const result = runSummary("success", "true", "success", decision, "success");
+    assert.equal(result.status, 1, result.stdout + result.stderr);
+  }
 });
 
 function commitPaths(git, message, paths) {
