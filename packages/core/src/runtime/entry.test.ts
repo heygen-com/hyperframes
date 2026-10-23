@@ -1,7 +1,11 @@
 // fallow-ignore-file code-duplication
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { HF_COLOR_GRADING_ATTR, serializeHfColorGrading } from "../colorGrading";
-import { STUDIO_PREVIEW_LAZY_ATTR, STUDIO_PREVIEW_MARK_META } from "../studioPreviewMark";
+import {
+  STUDIO_PREVIEW_MARK,
+  STUDIO_PREVIEW_LAZY_ATTR,
+  STUDIO_PREVIEW_MARK_META,
+} from "../studioPreviewMark";
 import type { RuntimeTimelineLike } from "./types";
 
 function pausedTimeline(duration: number): RuntimeTimelineLike {
@@ -403,6 +407,27 @@ describe("runtime entry", () => {
       starts.map((start) => timed(root, "video", start));
     const armed = (...els: HTMLMediaElement[]) => els.map((el) => el.preload === "auto");
     afterEach(() => vi.restoreAllMocks());
+
+    it("loads a capture build's media only near its moment, while every image of a hidden clip stays shown", async () => {
+      spyLoad();
+      // What a capture build carries: the mark, with the capture value.
+      document.head.appendChild(
+        Object.assign(document.createElement("meta"), {
+          name: STUDIO_PREVIEW_MARK_META,
+          content: STUDIO_PREVIEW_MARK.capture,
+        }),
+      );
+      const root = mountRoot();
+      const [now, later] = videos(root, "0", "9");
+      const hidden = withImage(timed(root, "div", "9"));
+
+      await evaluateRuntime();
+      expect(armed(now, later)).toEqual([true, false]);
+      expect(loadsOf(now, later)).toEqual([1, 0]);
+      expect(imageSkipped(hidden)).toEqual([false]);
+      window.__player?.seek(9.5);
+      expect(armed(later)).toEqual([true]);
+    });
 
     it("loads a preview's media only on screen or due within the look-ahead, and frees what the playhead left", async () => {
       spyLoad();

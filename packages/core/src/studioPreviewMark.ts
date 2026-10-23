@@ -1,4 +1,5 @@
 export const STUDIO_PREVIEW_MARK_META = "hyperframes-studio-preview";
+export const STUDIO_PREVIEW_MARK = { preview: "preview", capture: "capture" } as const;
 export const STUDIO_PREVIEW_UPCOMING_ATTR = "data-hf-upcoming";
 export const STUDIO_PREVIEW_LAZY_ATTR = "data-hf-preview-lazy";
 export const STUDIO_PREVIEW_ERRORS = "__hfPreviewErrors";
@@ -18,3 +19,12 @@ export function applyAuthoredTiming(
   for (const [name, value] of attrs) el.setAttribute(name, value);
   el.removeAttribute(RUNTIME_STAMPED_ATTR);
 }
+
+const markOf = (doc: Document) =>
+  doc.querySelector(`meta[name="${STUDIO_PREVIEW_MARK_META}"]`)?.getAttribute("content") ?? null;
+
+export const defersMedia = (doc: Document): boolean =>
+  doc.querySelector(`meta[name="${STUDIO_PREVIEW_MARK_META}"]`) !== null;
+
+export const skipsImagesOfHiddenClips = (doc: Document): boolean =>
+  defersMedia(doc) && markOf(doc) !== STUDIO_PREVIEW_MARK.capture;

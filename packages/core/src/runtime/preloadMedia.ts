@@ -1,6 +1,6 @@
 import { parseStrictFiniteTimingNumber } from "./playbackRate";
 import { createRuntimeStartTimeResolver } from "./startResolver";
-import { skipsHiddenImages } from "./timedClipHide";
+import { defersMedia } from "../studioPreviewMark";
 
 type PreloadableMedia = Pick<
   HTMLMediaElement,
@@ -34,13 +34,13 @@ export function lengthIsAuthored(media: Element): boolean {
 
 type DeferralWindow = Window & { __hfMediaDeferral?: MutationObserver };
 
-/** Preview only: later clips parse at preload none, as Chromium ignores a none set mid-fetch.
+/** Preview and capture builds only: later clips parse at preload none, as Chromium ignores a none set mid-fetch.
  * One watcher per page: a runtime evaluated again replaces the last one's. */
 export function deferMediaUntilDue(): void {
   const win = window as DeferralWindow;
   win.__hfMediaDeferral?.disconnect();
   win.__hfMediaDeferral = undefined;
-  if (!skipsHiddenImages()) return;
+  if (!defersMedia(document)) return;
   const defer = (el: Element, startInFilm: (el: Element) => number) => {
     const start = parseStrictFiniteTimingNumber(el.getAttribute("data-start"));
     if (start != null && lengthIsAuthored(el) && startInFilm(el) > 0)
