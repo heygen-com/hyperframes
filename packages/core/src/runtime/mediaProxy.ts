@@ -7,6 +7,7 @@ import { isVideoElement } from "./domRealm";
 import { swappedElements } from "./proxySrc";
 import { waitForServedProxy } from "./proxyWait";
 import { registerSeekCompletion } from "./adapters/seek-dispatch";
+import { PREVIEW_CAPTURE_PARAM } from "../studioPreviewMark";
 import {
   formatPreviewProxyBox,
   PREVIEW_PROXY_BOX_PARAM,
@@ -372,12 +373,24 @@ export function swapToProxy(
   );
 }
 
+/** A capture page (`?hf-capture`) must show the same frames in every browser. */
+function isCapture(): boolean {
+  return new URLSearchParams(window.location.search).has(PREVIEW_CAPTURE_PARAM);
+}
+
+/** Whether this browser claims it can play the entry's codec. */
+function browserPlays(el: HTMLMediaElement, entry: MediaCodecMapEntry): boolean {
+  const canPlay = entry.representativeMime ? el.canPlayType(entry.representativeMime) : "";
+  return canPlay === "probably" || canPlay === "maybe";
+}
+
 /**
  * Proactive trigger: consult the codec map before an element's first
  * `load()` and swap ahead of time when the browser is known-unlikely to
  * decode it, avoiding an error flash. `<audio>` is never proxied (per the
  * plan's KTD — an HEVC container's AAC track demuxes fine regardless of the
- * browser's video codec support).
+ * browser's video codec support). A capture always swaps a hostile entry:
+ * a browser that claims HEVC may still fail to seek it frame by frame.
  */
 export function maybeProxyProactively(el: HTMLMediaElement): void {
   if (isRenderMode(el)) return;
@@ -389,8 +402,7 @@ export function maybeProxyProactively(el: HTMLMediaElement): void {
   if (key === null) return;
   const entry = lookupCodecMapEntry(key, map);
   if (!entry || !entry.browserHostile) return;
-  const canPlay = entry.representativeMime ? el.canPlayType(entry.representativeMime) : "";
-  if (canPlay === "probably" || canPlay === "maybe") return;
+  if (!isCapture() && browserPlays(el, entry)) return;
   swapToProxy(el, entry, "proactive");
 }
 

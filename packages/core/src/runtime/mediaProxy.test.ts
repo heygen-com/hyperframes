@@ -142,6 +142,23 @@ describe("maybeProxyProactively", () => {
     expect(el.load).not.toHaveBeenCalled();
   });
 
+  it("on a capture page swaps a hostile entry even when canPlayType reports probably", async () => {
+    window.history.replaceState(null, "", "/index.html?hf-capture=1");
+    try {
+      window.__HF_MEDIA_CODEC_MAP__ = { "/video.mp4": HEVC_ENTRY };
+      const el = createVideo("/video.mp4");
+      stubCanPlayType(el, "probably");
+
+      maybeProxyProactively(el);
+      await settle();
+
+      expect(isProxied(el)).toBe(true);
+      expect(el.load).toHaveBeenCalledTimes(1);
+    } finally {
+      window.history.replaceState(null, "", "/");
+    }
+  });
+
   it("swaps when hostile and representativeMime is null (no canPlayType check possible)", async () => {
     window.__HF_MEDIA_CODEC_MAP__ = {
       "/video.mp4": {

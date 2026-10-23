@@ -14,6 +14,7 @@ import {
   type BundleOptions,
 } from "@hyperframes/core/compiler";
 import {
+  PREVIEW_CAPTURE_PARAM,
   STUDIO_PREVIEW_MARK_META,
   STUDIO_PREVIEW_ERRORS,
 } from "@hyperframes/core/studio-preview-mark";
@@ -320,8 +321,8 @@ function previewVariablesFromRequest(rawVariables: string | undefined):
   return { raw: rawVariables, values: parse.values };
 }
 
-/** Captures screenshot right after a seek, so they get every image eager and no preview mark. */
-export const PREVIEW_CAPTURE_PARAM = "hf-capture";
+// Captures get every image eager and no preview mark.
+export { PREVIEW_CAPTURE_PARAM };
 
 // Studio's console capture attaches at the iframe's load; this keeps what was raised before it.
 const EARLY_ERRORS_SCRIPT = `<script>(function(){var seen=window.${STUDIO_PREVIEW_ERRORS}=[];
