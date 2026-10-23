@@ -45,7 +45,12 @@ import {
 } from "../templates/generators.js";
 import { fetchRemoteTemplate } from "../templates/remote.js";
 import { trackInitTemplate } from "../telemetry/events.js";
-import { DEFAULT_MODEL, hasFFmpeg } from "../whisper/manager.js";
+import {
+  DEFAULT_MODEL,
+  WHISPER_MODELS,
+  hasFFmpeg,
+  whisperModelProblem,
+} from "../whisper/manager.js";
 import { TRANSCRIPT_FILE } from "../whisper/transcriptFile.js";
 import { initialModelForLanguage } from "../whisper/transcribe.js";
 import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
@@ -766,8 +771,7 @@ export default defineCommand({
     },
     model: {
       type: "string",
-      description:
-        "Whisper model for transcription (e.g. tiny.en, base.en, small.en, medium.en, large)",
+      description: `Whisper model for transcription. Options: ${WHISPER_MODELS.join(", ")}`,
     },
     language: {
       type: "string",
@@ -849,6 +853,11 @@ export default defineCommand({
       languageFlag,
     );
     const interactive = !nonInteractive && process.stdout.isTTY === true;
+    const modelProblem = !skipTranscribe && whisperModelProblem(initialTranscriptionModel);
+    if (modelProblem) {
+      console.error(c.error(modelProblem));
+      failCommand();
+    }
 
     if (skipSkillsFlagIgnored) {
       console.log(

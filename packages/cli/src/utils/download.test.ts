@@ -1,7 +1,13 @@
-import { randomUUID } from "node:crypto";
 import { MODELS_DIR, ensureModel } from "../whisper/manager.js";
 import { EventEmitter } from "node:events";
-import fs, { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import fs, {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  truncateSync,
+} from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -12,6 +18,16 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { downloadFile, REDIRECT_CODES, redirectTarget } from "./download.js";
 
 vi.mock("node:https", () => ({ get: vi.fn() }));
+// Model downloads land in a throwaway home, never the real model cache.
+const home = vi.hoisted(() => `${process.env.TMPDIR ?? "/tmp"}/hf-download-${process.pid}`);
+vi.mock("node:os", async (original) => ({
+  ...(await original<typeof import("node:os")>()),
+  homedir: () => home,
+}));
+vi.mock("../whisper/modelFile.js", async (original) => ({
+  ...(await original<typeof import("../whisper/modelFile.js")>()),
+  verifies: vi.fn(async () => true),
+}));
 
 const mockGet = vi.mocked(httpsGet);
 const tempDirs: string[] = [];
@@ -46,6 +62,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   syncBuiltinESMExports();
   for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  rmSync(home, { recursive: true, force: true });
 });
 
 describe("downloadFile", () => {
@@ -72,39 +89,34 @@ describe("downloadFile", () => {
       return request;
     }) as unknown as typeof httpsGet);
     const controller = new AbortController();
-    const model = `test-${randomUUID()}`;
 
-    const download = ensureModel(model, { signal: controller.signal });
+    const download = ensureModel("tiny", { signal: controller.signal });
     await new Promise((resolve) => setImmediate(resolve));
     controller.abort();
 
     await expect(download).rejects.toThrow("The operation was aborted");
     expect(seen).toBe(controller.signal);
-    expect(readdirSync(MODELS_DIR).filter((name) => name.includes(model))).toEqual([]);
+    expect(readdirSync(MODELS_DIR)).toEqual([]);
   });
 
   it("carries model download progress through the real pipeline and stays quiet on cache hits", async () => {
     mockGet.mockImplementation(httpsResponse(200, { "content-length": "5" }, "hello"));
     const events: unknown[] = [];
-    const model = `test-${randomUUID()}`;
     const options = {
       onDownloadProgress: (receivedBytes: number, totalBytes: number | null) =>
         events.push({ receivedBytes, totalBytes }),
     };
-    const modelPath = await ensureModel(model, options);
-    try {
-      expect(readFileSync(modelPath, "utf8")).toBe("hello");
-      expect(events).toEqual([
-        { receivedBytes: 0, totalBytes: 5 },
-        { receivedBytes: 5, totalBytes: 5 },
-      ]);
-      events.length = 0;
-      expect(await ensureModel(model, options)).toBe(modelPath);
-      expect(events).toEqual([]);
-      expect(mockGet).toHaveBeenCalledTimes(1);
-    } finally {
-      rmSync(modelPath);
-    }
+    const modelPath = await ensureModel("tiny", options);
+    expect(readFileSync(modelPath, "utf8")).toBe("hello");
+    expect(events).toEqual([
+      { receivedBytes: 0, totalBytes: 5 },
+      { receivedBytes: 5, totalBytes: 5 },
+    ]);
+    events.length = 0;
+    truncateSync(modelPath, 77_691_713);
+    expect(await ensureModel("tiny", options)).toBe(modelPath);
+    expect(events).toEqual([]);
+    expect(mockGet).toHaveBeenCalledTimes(1);
   });
 
   it.each([

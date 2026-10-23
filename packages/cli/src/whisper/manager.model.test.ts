@@ -71,3 +71,12 @@ it("uses a model that is not pinned as it was downloaded", async () => {
   expect(downloadFile).not.toHaveBeenCalled();
   expect(existsSync(custom)).toBe(true);
 });
+
+it("refuses a model that is neither pinned nor downloaded, before any download", async () => {
+  await expect(ensureModel("small.zh")).rejects.toThrow(
+    /^Unknown whisper model 'small\.zh'\. Use: tiny,/,
+  );
+
+  expect(downloadFile).not.toHaveBeenCalled();
+  expect(readdirSync(modelsDir)).toEqual([]);
+});

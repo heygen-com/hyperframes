@@ -413,6 +413,23 @@ describe("transcribe", () => {
     });
     expect(transcribeMock).not.toHaveBeenCalled();
   });
+
+  it("rejects a whisper model that does not exist before installing or downloading anything", async () => {
+    const ensureWhisper = vi.spyOn(manager, "ensureWhisper");
+
+    const err = await transcribeError({
+      input: dummyAudio(),
+      engine: "whisper",
+      model: "small.zh",
+    });
+
+    expect(err).toMatchObject({ code: "invalid_option" });
+    expect(err.message).toMatch(
+      /^Unknown whisper model 'small\.zh'\. Use: tiny, tiny\.en, .*large-v3-turbo\.$/,
+    );
+    expect(ensureWhisper).not.toHaveBeenCalled();
+    expect(transcribeMock).not.toHaveBeenCalled();
+  });
 });
 
 describe("removeBackground", () => {

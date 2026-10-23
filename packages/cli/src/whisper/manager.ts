@@ -47,7 +47,7 @@ const pinned = (model: string, bytes: number, sha256: string): [string, ModelFil
   { name: `ggml-${model}.bin`, bytes, sha256 },
 ];
 
-/** Sizes and sha256 at MODEL_REVISION; a model not listed here is used as downloaded. */
+/** Sizes and sha256 at MODEL_REVISION; a model not listed here is used only if already downloaded. */
 const PINNED_MODELS: ReadonlyMap<string, ModelFile> = new Map([
   pinned("tiny", 77_691_713, "be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21"),
   pinned("tiny.en", 77_704_715, "921e4cf8686fdd993dcd081a5da5b6c365bfde1162e72b08d75ac75289920b1f"),
@@ -97,6 +97,16 @@ const PINNED_MODELS: ReadonlyMap<string, ModelFile> = new Map([
 
 export function pinnedWhisperModel(model: string): ModelFile | undefined {
   return PINNED_MODELS.get(model);
+}
+
+export const WHISPER_MODELS: readonly string[] = [...PINNED_MODELS.keys()];
+
+/** Why `model` cannot be used: only a pinned model downloads; any other must already be in MODELS_DIR. */
+export function whisperModelProblem(model: string): string | undefined {
+  const usable = PINNED_MODELS.has(model) || existsSync(join(MODELS_DIR, `ggml-${model}.bin`));
+  return usable
+    ? undefined
+    : `Unknown whisper model '${model}'. Use: ${WHISPER_MODELS.join(", ")}.`;
 }
 
 // --- Find helpers -----------------------------------------------------------
@@ -308,6 +318,8 @@ export async function ensureModel(
     onDownloadProgress?: (receivedBytes: number, totalBytes: number | null) => void;
   },
 ): Promise<string> {
+  const problem = whisperModelProblem(model);
+  if (problem) throw new Error(problem);
   const modelPath = join(MODELS_DIR, `ggml-${model}.bin`);
   const pin = PINNED_MODELS.get(model);
   const cachedBytes = statSync(modelPath, { throwIfNoEntry: false })?.size;

@@ -5,7 +5,12 @@ import {
   createRenderCancellationScope,
   stoppedByCancelSignal,
 } from "../utils/renderCancellation.js";
-import { DEFAULT_MODEL, findWhisper, isWhisperUnavailable } from "../whisper/manager.js";
+import {
+  DEFAULT_MODEL,
+  findWhisper,
+  isWhisperUnavailable,
+  whisperModelProblem,
+} from "../whisper/manager.js";
 import { initialModelForLanguage } from "../whisper/modelForLanguage.js";
 import {
   formatSrt,
@@ -401,6 +406,8 @@ async function transcribeAudio(
 
   const model = options.model ?? DEFAULT_MODEL;
   const whisperModel = initialModelForLanguage(model, options.language);
+  const modelProblem = runner === "whisper" && whisperModelProblem(whisperModel);
+  if (modelProblem) throw new TranscribeError("invalid_option", modelProblem);
   options.onEngine?.({
     runner,
     engine: engineOf(runner),

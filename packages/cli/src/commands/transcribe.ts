@@ -4,7 +4,7 @@ import { defineCommand } from "citty";
 import type { Example } from "./_examples.js";
 import * as clack from "@clack/prompts";
 import { c } from "../ui/colors.js";
-import { DEFAULT_MODEL } from "../whisper/manager.js";
+import { DEFAULT_MODEL, WHISPER_MODELS } from "../whisper/manager.js";
 import { trackTranscribeUnavailable } from "../telemetry/events.js";
 import {
   MIN_TIMEOUT_MS,
@@ -56,7 +56,7 @@ export default defineCommand({
     },
     model: {
       type: "string",
-      description: `Whisper model (default: ${DEFAULT_MODEL}). Options: tiny.en, base.en, small.en, medium.en, large-v3`,
+      description: `Whisper model (default: ${DEFAULT_MODEL}). Options: ${WHISPER_MODELS.join(", ")}`,
       alias: "m",
     },
     language: {
