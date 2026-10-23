@@ -144,6 +144,7 @@ export {
   type StaticVerificationOutcome,
   VfxFailureError,
   waitForImagesReady,
+  waitForPendingSeekCompletion,
 } from "./services/frameCapture.js";
 export {
   CaptureFailure,

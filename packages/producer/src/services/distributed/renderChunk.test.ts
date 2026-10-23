@@ -18,7 +18,7 @@
  * available on the host — CI runs the real check inside `Dockerfile.test`.
  */
 
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
@@ -40,6 +40,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   type CaptureOptions,
+  type CaptureSession,
   extractVideoFramesRange,
   VideoSourceExtractionError,
 } from "@hyperframes/engine";
@@ -198,6 +199,56 @@ describe("renderChunk()", () => {
   // 60s ceiling absorbs Chrome cold-start + 5-frame capture + ffmpeg encode
   // on slower CI workers.
   const TIMEOUT_MS = 60_000;
+
+  it.each([false, true])(
+    "keeps the null capture hook with layered observation requested=%s",
+    async (requested) => {
+      if (!hasChrome) throw new Error("Chrome required for layered observation wiring proof");
+      const sessions: CaptureSession[] = [];
+      const original = distributedCaptureSessionDependencies.createCaptureSession;
+      const create = spyOn(
+        distributedCaptureSessionDependencies,
+        "createCaptureSession",
+      ).mockImplementation(async (...args) => {
+        const session = await original(...args);
+        sessions.push(session);
+        return session;
+      });
+      const info = spyOn(defaultLogger, "info");
+      try {
+        const options = requested ? { observeLayeredEligibility: true } : undefined;
+        const result = await renderChunk(
+          planDir,
+          0,
+          join(runRoot, `observation-${requested}`),
+          options,
+        );
+        expect(result.framesEncoded).toBeGreaterThan(0);
+        expect(sessions.length).toBeGreaterThan(0);
+        expect(sessions.every((session) => session.onBeforeCapture === null)).toBe(true);
+        const decisions = info.mock.calls
+          .filter(([message]) => message === "[renderChunk] layered eligibility")
+          .map(([, meta]) => meta);
+        if (requested) {
+          expect(decisions).toEqual([
+            {
+              chunkIndex: 0,
+              kind: "fallback",
+              reason: "no_video",
+              frameIndex: null,
+              renderPath: "existing",
+            },
+          ]);
+        } else {
+          expect(decisions).toEqual([]);
+        }
+      } finally {
+        create.mockRestore();
+        info.mockRestore();
+      }
+    },
+    TIMEOUT_MS,
+  );
 
   it(
     "produces a byte-identical chunk on a second invocation (byte-identical-retry contract)",

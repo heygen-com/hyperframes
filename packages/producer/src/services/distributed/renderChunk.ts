@@ -60,6 +60,7 @@ import {
   type ShownBox,
 } from "@hyperframes/engine";
 import { defaultLogger } from "../../logger.js";
+import { createLayeredChunkObserver } from "./layeredEligibility.js";
 import { applyRenderWarningPolicy, collectVideoMetadataHints } from "../renderOrchestrator.js";
 import { runEncodeStage } from "../render/stages/encodeStage.js";
 import { frameCacheOptions } from "../render/frameCacheBudget.js";
@@ -199,6 +200,7 @@ export interface ChunkFrameRange {
 }
 
 export interface RenderChunkOptions {
+  observeLayeredEligibility?: boolean;
   /**
    * Render only these frames of the chunk, e.g. to retry a slow chunk as
    * parts rendered in parallel. Must be a non-empty range inside the chunk's
@@ -844,6 +846,14 @@ export async function renderChunk(
         forceScreenshot: forceScreenshotForChunk,
         // fallow-ignore-next-line complexity
         run: async (forceScreenshot) => {
+          const layeredObserver =
+            options?.observeLayeredEligibility === true
+              ? createLayeredChunkObserver(range, resolveRenderFpsConfig(job.config.fps).value)
+              : null;
+          const createCaptureInjector =
+            layeredObserver === null
+              ? createChunkVideoFrameInjector
+              : () => layeredObserver.wrap(createChunkVideoFrameInjector());
           const captureCfg: EngineConfig =
             cfg.forceScreenshot === forceScreenshot
               ? cfg
@@ -892,11 +902,19 @@ export async function renderChunk(
             // fallback remains observable to adapters and smoke tests.
             dedupPerfs: capturePerfs,
             buildCaptureOptions: () => captureOptions,
-            createRenderVideoFrameInjector: createChunkVideoFrameInjector,
+            createRenderVideoFrameInjector: createCaptureInjector,
             abortSignal: undefined,
             assertNotAborted: () => {},
             frameRange: range,
           });
+
+          if (layeredObserver !== null) {
+            log.info("[renderChunk] layered eligibility", {
+              chunkIndex,
+              ...layeredObserver.decision(),
+              renderPath: "existing",
+            });
+          }
 
           const observedModes = new Set(capturePerfs.map((perf) => perf.captureMode));
           if (observedModes.size !== 1 || ![...observedModes].every(isCaptureMode)) {
