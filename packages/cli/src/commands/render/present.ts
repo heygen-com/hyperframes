@@ -1,6 +1,6 @@
-import { cpus } from "node:os";
 import { readFileSync } from "node:fs";
 import { fpsToFfmpegArg } from "@hyperframes/core";
+import { getUsableCpuCount } from "@hyperframes/engine/system-cpu";
 import { c } from "../../ui/colors.js";
 import type { RenderPlan } from "./plan.js";
 
@@ -30,7 +30,7 @@ function presentRenderSummary(plan: RenderPlan): void {
   const workerLabel =
     plan.workers != null
       ? `${plan.workers} workers`
-      : `auto workers (${cpus().length} cores detected)`;
+      : `auto workers (${getUsableCpuCount()} cores detected)`;
   const nameLabel = plan.entryFile ? `${plan.project.name}/${plan.entryFile}` : plan.project.name;
   console.log("");
   console.log(

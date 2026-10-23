@@ -22,6 +22,7 @@ import {
 } from "./parallelCoordinator.js";
 import type { EngineConfig } from "../config.js";
 import { CaptureFailure } from "./captureFailure.js";
+import { getUsableCpuCount } from "./systemCpu.js";
 
 describe("parallel worker phase deadline", () => {
   it("fails a wedged operation with phase and browser diagnostics before the aggregate watchdog", async () => {
@@ -138,19 +139,39 @@ vi.mock("v8", async (importOriginal) => {
   const v8 = await importOriginal<typeof import("v8")>();
   return { ...v8, default: v8, getHeapStatistics: vi.fn(v8.getHeapStatistics) };
 });
+vi.mock("./systemCpu.js", async (importOriginal) => {
+  const systemCpu = await importOriginal<typeof import("./systemCpu.js")>();
+  return { ...systemCpu, getUsableCpuCount: vi.fn(systemCpu.getUsableCpuCount) };
+});
 
 describe("computeWorkerSizing", () => {
   afterEach(() => {
     vi.mocked(cpus).mockRestore();
     vi.mocked(totalmem).mockRestore();
     vi.mocked(getHeapStatistics).mockRestore();
+    vi.mocked(getUsableCpuCount).mockRestore();
+  });
+
+  // Repro: a container limited to 6 cores on a 32-vCPU host sized a 450-frame render as if it had 32.
+  it("sizes workers from the container's CPU limit, not the host's cores", () => {
+    vi.mocked(cpus).mockReturnValue(
+      Array.from({ length: 32 }, () => ({}) as ReturnType<typeof cpus>[number]),
+    );
+    vi.mocked(getUsableCpuCount).mockReturnValue(6);
+    vi.mocked(totalmem).mockReturnValue(64 * 1024 ** 3);
+    vi.mocked(getHeapStatistics).mockReturnValue({
+      heap_size_limit: 8192 * 1024 ** 2,
+    } as ReturnType<typeof getHeapStatistics>);
+    const sizing = computeWorkerSizing(450, undefined, { concurrency: "auto" });
+    expect(sizing.cpuCount).toBe(6);
+    expect(sizing.cpuBasedWorkers).toBe(4);
+    expect(sizing.workers).toBe(2);
+    expect(sizing.boundBy).toBe("contention");
   });
 
   // The field case: a 24GB 14-core Mac, Node's default ~4GB heap, a long 1080x1920 project.
   it("never auto-picks more workers than the V8 heap can feed", () => {
-    vi.mocked(cpus).mockReturnValue(
-      Array.from({ length: 14 }, () => ({}) as ReturnType<typeof cpus>[number]),
-    );
+    vi.mocked(getUsableCpuCount).mockReturnValue(14);
     vi.mocked(totalmem).mockReturnValue(24 * 1024 ** 3);
     vi.mocked(getHeapStatistics).mockReturnValue({
       heap_size_limit: 4192 * 1024 ** 2,

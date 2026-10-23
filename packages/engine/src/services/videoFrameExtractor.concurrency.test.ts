@@ -8,9 +8,9 @@ import { FFMPEG_PATH_ENV, getFfmpegBinary } from "../utils/ffmpegBinaries.js";
 import { runFfmpeg } from "../utils/runFfmpeg.js";
 
 // Two CPUs: the extractor runs at most one ffmpeg at a time.
-vi.mock("os", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("os")>()),
-  cpus: () => [{}, {}],
+vi.mock("./systemCpu.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./systemCpu.js")>()),
+  getUsableCpuCount: () => 2,
 }));
 
 const { extractAllVideoFrames, extractVideoFramesRange } = await import("./videoFrameExtractor.js");

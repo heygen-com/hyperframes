@@ -40,7 +40,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
 import { createRequire } from "node:module";
 import { existsSync } from "node:fs";
-import { cpus } from "node:os";
+import { getUsableCpuCount } from "@hyperframes/engine";
 
 interface PoolLogger {
   info?: (msg: string, meta?: Record<string, unknown>) => void;
@@ -49,7 +49,7 @@ interface PoolLogger {
 }
 
 export interface ShaderTransitionPoolOptions {
-  /** Number of worker threads. Clamped to [1, cpus().length]. */
+  /** Number of worker threads. Clamped to [1, usable CPU count]. */
   size: number;
   /** Optional logger; falls back to no-op. */
   log?: PoolLogger;
@@ -197,7 +197,7 @@ function buildExecArgv(entryIsTs: boolean): string[] {
 export async function createShaderTransitionWorkerPool(
   opts: ShaderTransitionPoolOptions,
 ): Promise<ShaderTransitionWorkerPool> {
-  const cpuCount = Math.max(1, cpus().length);
+  const cpuCount = getUsableCpuCount();
   const size = Math.max(1, Math.min(opts.size, cpuCount));
   const log = opts.log ?? {};
   const { path: entry, isTs: entryIsTs } = resolveWorkerEntry(opts.workerEntryPath);

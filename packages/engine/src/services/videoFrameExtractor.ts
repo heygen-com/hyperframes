@@ -9,7 +9,6 @@
 import { audioGroupsById, isMemberGroupHidden, isSelfOrAncestorHidden } from "./mediaHidden.js";
 import { copyFileSync, existsSync, linkSync, mkdirSync, rmSync } from "fs";
 import { join } from "path";
-import { cpus } from "os";
 import { createConcurrencyLimit } from "../utils/concurrencyLimit.js";
 import { parseHTML } from "linkedom";
 import { isPathInside } from "@hyperframes/parsers/asset-paths";
@@ -82,6 +81,7 @@ import {
   type CacheFrameFormat,
 } from "./extractionCache.js";
 import { framePathsFromDirectory } from "./extractedFrameIndex.js";
+import { getUsableCpuCount } from "./systemCpu.js";
 
 export { resolveProjectRelativeSrc };
 
@@ -879,7 +879,7 @@ function undoTickRoundingOnTheSourceFrameGrid(seek: number, lead: number): strin
 }
 
 // Caps extraction ffmpeg runs across all clips; uncapped, dozens of clips starved each other into timeouts.
-const EXTRACTION_SLOTS = Math.max(1, Math.floor(cpus().length / 2));
+const EXTRACTION_SLOTS = Math.max(1, Math.floor(getUsableCpuCount() / 2));
 const inExtractionSlot = createConcurrencyLimit(EXTRACTION_SLOTS);
 
 interface SegmentedExtraction {

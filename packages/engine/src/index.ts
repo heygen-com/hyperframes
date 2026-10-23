@@ -78,6 +78,7 @@ export {
   isLowMemorySystem,
   LOW_MEMORY_TOTAL_MB_THRESHOLD,
 } from "./services/systemMemory.js";
+export { getCgroupCpuLimit, getUsableCpuCount } from "./services/systemCpu.js";
 
 // ── Browser management ─────────────────────────────────────────────────────────
 export { chromeMajorCeiling } from "./services/chromeHostCeiling.js";
