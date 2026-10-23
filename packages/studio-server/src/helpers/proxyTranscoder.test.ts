@@ -15,6 +15,7 @@ import { basename, join } from "node:path";
 import { hdrToSdrToneMapFilter } from "@hyperframes/core";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { writeIphoneClip } from "./iphoneClip.test-helpers.js";
 
 const FFMPEG_PATH = "/usr/bin/ffmpeg";
 const realFfmpeg = findFfBinary("ffmpeg");
@@ -549,6 +550,68 @@ describe("resolveProxy", () => {
       const full = await resolveProxy(projectDir, sourcePath);
       expect(size(full)).toBe("1080,1920");
       expect(new Set([boxed, roomy, full]).size).toBe(3);
+    },
+    60_000,
+  );
+
+  it.skipIf(!realFfmpeg || !findFfBinary("ffprobe"))(
+    "proxies an iPhone clip with its AAC voice when its first audio track cannot be decoded",
+    async () => {
+      vi.resetModules();
+      vi.doUnmock("./mediaMetadata.js");
+      const { resolveProxy } = await import("./proxyTranscoder.js");
+      const projectDir = tmpProject();
+      const sourcePath = writeIphoneClip(realFfmpeg!, projectDir, 0.5);
+
+      const proxyPath = await resolveProxy(projectDir, sourcePath);
+      const streams = execFileSync(
+        findFfBinary("ffprobe")!,
+        ["-v", "error", "-show_entries", "stream=codec_name", "-of", "csv=p=0", "--", proxyPath],
+        { encoding: "utf8" },
+      );
+      expect(streams.trim().split("\n")).toEqual(["h264", "aac"]);
+    },
+    60_000,
+  );
+
+  it.skipIf(!realFfmpeg || !findFfBinary("ffprobe") || process.platform === "win32")(
+    "keeps the sound of a symlinked clip whose target has no extension",
+    async () => {
+      vi.resetModules();
+      vi.doUnmock("./mediaMetadata.js");
+      const { resolveProxy } = await import("./proxyTranscoder.js");
+      const projectDir = tmpProject();
+      const blob = join(projectDir, "blob");
+      execFileSync(realFfmpeg!, [
+        "-v",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        "testsrc2=size=64x64:rate=10:duration=0.5",
+        "-f",
+        "lavfi",
+        "-i",
+        "sine=frequency=440:duration=0.5",
+        "-c:v",
+        "libx264",
+        "-c:a",
+        "aac",
+        "-f",
+        "mov",
+        "-y",
+        blob,
+      ]);
+      const clip = join(projectDir, "clip.mov");
+      symlinkSync(blob, clip);
+
+      const proxyPath = await resolveProxy(projectDir, clip);
+      const streams = execFileSync(
+        findFfBinary("ffprobe")!,
+        ["-v", "error", "-show_entries", "stream=codec_name", "-of", "csv=p=0", "--", proxyPath],
+        { encoding: "utf8" },
+      );
+      expect(streams.trim().split("\n")).toEqual(["h264", "aac"]);
     },
     60_000,
   );

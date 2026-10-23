@@ -1,9 +1,9 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as manager from "./manager.js";
-import { transcribe } from "./transcribe.js";
+import { prepareWav, transcribe } from "./transcribe.js";
 
 describe("whisper transcribe with a signal", () => {
   let dir: string;
@@ -20,6 +20,7 @@ describe("whisper transcribe with a signal", () => {
   });
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
     rmSync(dir, { recursive: true, force: true });
   });
 
@@ -50,4 +51,27 @@ describe("whisper transcribe with a signal", () => {
       expect.objectContaining({ signal: controller.signal }),
     );
   });
+
+  it.skipIf(process.platform === "win32")(
+    "stops on abort while the audio track probe is still running",
+    async () => {
+      const hang = join(dir, "hang.sh");
+      const asked = join(dir, "asked.log");
+      writeFileSync(hang, `#!/bin/sh\necho "$*" >> "${asked}"\nexec sleep 60\n`);
+      chmodSync(hang, 0o755);
+      vi.stubEnv("HYPERFRAMES_FFPROBE_PATH", hang);
+      vi.stubEnv("HYPERFRAMES_FFMPEG_PATH", hang);
+      const controller = new AbortController();
+      const reason = new Error("stopped during the probe");
+
+      // The probe has spawned by the time prepareWav returns; nothing else has run yet.
+      const preparing = prepareWav(join(dir, "voice.m4a"), undefined, controller.signal);
+      controller.abort(reason);
+
+      await expect(preparing).rejects.toBe(reason);
+      expect(readFileSync(asked, { encoding: "utf8", flag: "a+" })).not.toContain(
+        "format=duration",
+      );
+    },
+  );
 });

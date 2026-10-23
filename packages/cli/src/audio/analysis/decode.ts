@@ -1,11 +1,13 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { playableAudioTrack } from "@hyperframes/core/audible-video";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import type { AudioSignal } from "@hyperframes/core/audio-analysis";
 
 const run = promisify(execFile);
 
 export interface AudioStreamInfo {
+  track: number;
   sampleRate: number;
   channels: number;
   duration: number;
@@ -17,15 +19,18 @@ function requiredBinary(name: "ffmpeg" | "ffprobe"): string {
   return path;
 }
 
-/** The first audio stream's format, or `null` when the file has no audio. */
-export async function probeAudio(file: string): Promise<AudioStreamInfo | null> {
+/** The playable audio stream's format, or `null` when the file has none. */
+export async function probeAudio(
+  file: string,
+  options: { signal?: AbortSignal; timeout?: number } = {},
+): Promise<AudioStreamInfo | null> {
   const { stdout } = await run(
     requiredBinary("ffprobe"),
     [
       "-v",
       "error",
       "-select_streams",
-      "a:0",
+      "a",
       "-show_streams",
       "-show_format",
       "-of",
@@ -33,15 +38,24 @@ export async function probeAudio(file: string): Promise<AudioStreamInfo | null> 
       "--",
       file,
     ],
-    { maxBuffer: 8 * 1024 * 1024, windowsHide: true },
+    { maxBuffer: 8 * 1024 * 1024, windowsHide: true, ...options },
   );
   const parsed = JSON.parse(stdout) as {
-    streams?: { sample_rate?: string; channels?: number; duration?: string }[];
+    streams?: {
+      codec_type?: string;
+      codec_name?: string;
+      sample_rate?: string;
+      channels?: number;
+      duration?: string;
+    }[];
     format?: { duration?: string };
   };
-  const stream = parsed.streams?.[0];
-  if (!stream) return null;
+  const streams = parsed.streams ?? [];
+  const track = playableAudioTrack(streams);
+  const stream = track === undefined ? undefined : streams[track];
+  if (track === undefined || !stream) return null;
   return {
+    track,
     sampleRate: Number(stream.sample_rate),
     channels: stream.channels ?? 1,
     duration: Number(stream.duration ?? parsed.format?.duration ?? 0),
@@ -65,7 +79,7 @@ export interface Decoded {
   stream: AudioStreamInfo;
 }
 
-/** Decode the first audio stream at its own sample rate, each channel kept apart; `null` when the file has none. */
+/** Decode the playable audio stream at its own sample rate, each channel kept apart; `null` when the file has none. */
 export async function decodeAudio(
   file: string,
   window: DecodeWindow = {},
@@ -91,7 +105,7 @@ export async function decodeAudio(
       file,
       ...length,
       "-map",
-      "0:a:0",
+      `0:a:${info.track}`,
       ...(format.mono ? ["-ac", "1"] : []),
       ...(format.sampleRate ? ["-ar", String(format.sampleRate)] : []),
       "-f",

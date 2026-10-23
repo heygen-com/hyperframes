@@ -20,6 +20,7 @@ const { runFfmpegMock, capturedFilterScripts, extractAudioMetadataMock } = vi.ho
       sampleRate: 48_000,
       channels: 2,
       audioCodec: "aac",
+      audioTrack: 0,
     })),
     runFfmpegMock: vi.fn(async (args: string[]) => {
       const legacyIdx = args.indexOf("-filter_complex_script");
@@ -137,6 +138,7 @@ describe("processCompositionAudio", () => {
       sampleRate: 48_000,
       channels: 2,
       audioCodec: "aac",
+      audioTrack: 0,
     });
     applyAudioFxChainMock.mockClear();
     capturedFilterScripts.length = 0;

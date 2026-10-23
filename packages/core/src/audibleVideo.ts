@@ -25,3 +25,12 @@ export function audibleVideoNeedsWebAudio(fields: {
     Boolean(fields.fxChain || fields.automation || fields.audioGroup || fields.masterChain)
   );
 }
+
+export function playableAudioTrack(
+  streams: ReadonlyArray<{ codec_type?: string; codec_name?: string }>,
+): number | undefined {
+  const track = streams
+    .filter((stream) => stream.codec_type === "audio")
+    .findIndex((stream) => Boolean(stream.codec_name) && stream.codec_name !== "unknown");
+  return track === -1 ? undefined : track;
+}

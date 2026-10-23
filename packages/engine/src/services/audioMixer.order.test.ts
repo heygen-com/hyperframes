@@ -17,7 +17,7 @@ vi.mock("./aacEncode.js", async (importOriginal) => ({
 }));
 
 vi.mock("../utils/ffprobe.js", () => ({
-  extractAudioMetadata: vi.fn(async () => ({ durationSeconds: 1, channels: 2 })),
+  extractAudioMetadata: vi.fn(async () => ({ durationSeconds: 1, channels: 2, audioTrack: 0 })),
 }));
 
 import { processCompositionAudio, type AudioElement } from "./audioMixer.js";

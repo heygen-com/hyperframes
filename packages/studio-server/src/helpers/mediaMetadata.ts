@@ -5,6 +5,7 @@ import {
   parseFirstFrameColour,
   type ToneMapSourceColour,
 } from "@hyperframes/core";
+import { playableAudioTrack } from "@hyperframes/core/audible-video";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { videoStreamHasAlpha } from "@hyperframes/parsers/media-alpha";
 
@@ -76,6 +77,7 @@ export interface MediaMetadata {
   hasAudio?: boolean;
   /** Video stream carries alpha (pix_fmt or the VP8/VP9 alpha_mode tag). */
   hasAlpha?: boolean;
+  audioTrack?: number;
   probeError?: string;
 }
 
@@ -239,7 +241,8 @@ export async function probeMediaMetadata(
     });
     const metadata: MediaMetadata = { kind, color: classifyMediaColor(stream) };
     if (kind === "video") {
-      metadata.hasAudio = (parsed.streams ?? []).some((item) => item.codec_type === "audio");
+      metadata.audioTrack = playableAudioTrack(parsed.streams ?? []);
+      metadata.hasAudio = metadata.audioTrack !== undefined;
       metadata.hasAlpha = stream !== undefined && videoStreamHasAlpha(stream);
     }
     return metadata;

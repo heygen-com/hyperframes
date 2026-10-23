@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -53,6 +53,29 @@ function firstAudibleSeconds(path: string): number {
     if (Math.abs(pcm.readInt16LE(i * 2)) > 512) return i / sampleRate;
   }
   throw new Error(`No audible sample found in ${path}`);
+}
+
+/** An iPhone-shaped clip: a spatial-audio track ffmpeg cannot decode first, the AAC voice second. */
+function iphoneClip(dir: string): string {
+  const base = join(dir, "base.mov");
+  const setup = spawnSync(
+    getFfmpegBinary(),
+    [
+      ...["-nostdin", "-v", "error", "-f", "lavfi", "-i", "testsrc=s=64x64:d=1"],
+      ...["-f", "lavfi", "-i", "anoisesrc=d=1,aformat=channel_layouts=4.0"],
+      ...["-f", "lavfi", "-i", "sine=frequency=1000:duration=1:sample_rate=48000"],
+      ...["-map", "0:v", "-map", "1:a", "-map", "2:a", "-c:v", "libx264"],
+      ...["-c:a:0", "pcm_s16le", "-c:a:1", "aac", "-movflags", "+faststart", base],
+    ],
+    { encoding: "utf-8" },
+  );
+  expect(setup.status, setup.stderr).toBe(0);
+  // The header comes first (faststart), so the first `sowt` is the PCM track's sample entry.
+  const bytes = readFileSync(base);
+  bytes.write("apac", bytes.indexOf("sowt"), "latin1");
+  const clip = join(dir, "iphone.mov");
+  writeFileSync(clip, bytes);
+  return clip;
 }
 
 // Same real-ffmpeg exposure as audioMixer.grouping.test.ts, which timed out on a
@@ -166,6 +189,53 @@ describe.skipIf(!HAS_FFMPEG)(
       expect(result.success).toBe(true);
       expect(firstAudibleSeconds(outputPath)).toBeCloseTo(2, 2);
     });
+
+    it.each([
+      ["at normal speed", 1],
+      [
+        "on a speed ramp",
+        {
+          target: "rate",
+          points: [
+            { t: 0, v: 1 },
+            { t: 0.5, v: 1 },
+          ],
+        },
+      ],
+    ])(
+      "exports an iPhone clip's AAC voice, not its undecodable spatial track, %s",
+      async (_, rate) => {
+        const projectDir = mkdtempSync(join(tmpdir(), "hf-iphone-"));
+        const workDir = mkdtempSync(join(tmpdir(), "hf-iphone-work-"));
+        tempDirs.push(projectDir, workDir);
+        const outputPath = join(projectDir, MIXED_AUDIO_FILENAME);
+        iphoneClip(projectDir);
+
+        const result = await processCompositionAudio(
+          [
+            {
+              id: "clip",
+              src: "iphone.mov",
+              start: 0,
+              end: 0.5,
+              mediaStart: 0,
+              playbackRate: rate,
+              layer: 0,
+              volume: 1,
+              type: "video",
+            },
+          ],
+          projectDir,
+          workDir,
+          outputPath,
+          0.5,
+        );
+
+        expect(result.success).toBe(true);
+        // The 1 kHz sine sits near -21 dB; a dropped track mixes to digital silence.
+        expect(meanVolumeDb(outputPath)).toBeGreaterThan(-30);
+      },
+    );
   },
   60_000,
 );

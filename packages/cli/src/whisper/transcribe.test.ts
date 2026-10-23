@@ -2,6 +2,8 @@ import { chmodSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, test } from "vitest";
+import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
+import { writeIphoneClip } from "../../../studio-server/src/helpers/iphoneClip.test-helpers.js";
 import {
   getPreparedWavDurationSeconds,
   initialModelForLanguage,
@@ -289,6 +291,21 @@ describe("getPreparedWavDurationSeconds", () => {
 });
 
 describe.skipIf(process.platform === "win32")("prepareWav", () => {
+  const ffmpeg = findFfBinary("ffmpeg");
+  it.skipIf(!ffmpeg || !findFfBinary("ffprobe"))(
+    "extracts an iPhone clip's AAC voice, not its undecodable spatial track",
+    async () => {
+      const dir = mkdtempSync(join(tmpdir(), "hf-prepare-wav-"));
+      try {
+        const wav = await prepareWav(writeIphoneClip(ffmpeg ?? "ffmpeg", dir));
+        expect(getPreparedWavDurationSeconds(wav)).toBeCloseTo(1, 1);
+        rmSync(wav, { force: true });
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("removes the partial WAV when ffmpeg fails or is stopped", async () => {
     const dir = mkdtempSync(join(tmpdir(), "hf-prepare-wav-"));
     const ffmpeg = join(dir, "ffmpeg");

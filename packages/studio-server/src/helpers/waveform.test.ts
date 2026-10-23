@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { buildWaveformCacheKey, decodeAudioPeaks } from "./waveform.js";
+import { writeIphoneClip } from "./iphoneClip.test-helpers.js";
 
 describe("buildWaveformCacheKey", () => {
   it("is stable for the same file", () => {
@@ -71,4 +72,17 @@ describe("decodeAudioPeaks on a video file", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it.skipIf(!ffmpeg || !findFfBinary("ffprobe"))(
+    "reads an iPhone clip's AAC voice, not its undecodable spatial track",
+    async () => {
+      const dir = mkdtempSync(join(tmpdir(), "hf-wave-video-"));
+      try {
+        const peaks = await decodeAudioPeaks(writeIphoneClip(ffmpeg ?? "ffmpeg", dir));
+        expect(Math.max(...peaks)).toBeCloseTo(1, 3);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
 });

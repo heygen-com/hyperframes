@@ -11,6 +11,7 @@ import {
   decodePeakMap,
   finishPeaks,
 } from "./peakMap.js";
+import { writeIphoneClip } from "./iphoneClip.test-helpers.js";
 
 function stereo(frames: Array<[number, number]>): Buffer {
   const buf = Buffer.alloc(frames.length * 8);
@@ -66,7 +67,7 @@ describe("buildPeakMapCacheKey", () => {
     expect(a).toBe(buildPeakMapCacheKey("a/talk.mp4", { size: 10, mtimeMs: 1 }));
     expect(a).not.toBe(buildPeakMapCacheKey("a/talk.mp4", { size: 11, mtimeMs: 1 }));
     expect(a).not.toBe(buildPeakMapCacheKey("a/talk.mp4", { size: 10, mtimeMs: 2 }));
-    expect(a).toMatch(/^peaks-v2_a_talk\.mp4_10-1\.json$/);
+    expect(a).toMatch(/^peaks-v3_a_talk\.mp4_10-1\.json$/);
   });
 });
 
@@ -141,6 +142,20 @@ describe("decodePeakMap", () => {
         expect(peaks.length).toBeGreaterThanOrEqual(19);
         expect(peaks.length).toBeLessThanOrEqual(21);
         expect(Math.max(...peaks)).toBeCloseTo(0.1, 2);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.skipIf(!ffmpeg)(
+    "reads an iPhone clip's AAC voice, not its undecodable spatial track",
+    async () => {
+      const dir = mkdtempSync(join(tmpdir(), "hf-peaks-"));
+      try {
+        const peaks = await decodePeakMap(writeIphoneClip(ffmpeg ?? "ffmpeg", dir));
+        // ffmpeg's sine peaks at 1/8.
+        expect(Math.max(...peaks)).toBeGreaterThan(0.1);
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }

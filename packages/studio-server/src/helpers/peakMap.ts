@@ -1,11 +1,12 @@
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
+import { playableAudioTrack } from "@hyperframes/core/audible-video";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 
 export const PEAK_BIN_SECONDS = 0.05;
 const PEAK_SAMPLE_RATE = 48_000;
 const execFileAsync = promisify(execFile);
-const PEAK_MAP_CACHE_VERSION = "peaks-v2";
+const PEAK_MAP_CACHE_VERSION = "peaks-v3";
 
 /**
  * Running max-abs per bin over interleaved f32le at the source's own channel
@@ -61,30 +62,33 @@ export function finishPeaks(acc: PeakAccumulator): number[] {
   return acc.bins.map((peak) => Number(peak.toFixed(4)));
 }
 
-async function probeChannels(mediaPath: string): Promise<number> {
+async function probeAudioTrack(mediaPath: string): Promise<{ track: number; channels: number }> {
   const { stdout } = await execFileAsync(
     findFfBinary("ffprobe") ?? "ffprobe",
     [
       "-v",
       "error",
       "-select_streams",
-      "a:0",
+      "a",
       "-show_entries",
-      "stream=channels",
+      "stream=codec_type,codec_name,channels",
       "-of",
-      "csv=p=0",
+      "json",
       "--",
       mediaPath,
     ],
     { encoding: "utf8", timeout: 30_000, windowsHide: true },
   );
-  const channels = Number.parseInt(stdout.trim(), 10);
-  if (!Number.isFinite(channels) || channels < 1) throw new Error("no audio stream");
-  return channels;
+  const streams: Array<{ codec_type?: string; codec_name?: string; channels?: number }> =
+    JSON.parse(stdout).streams ?? [];
+  const track = playableAudioTrack(streams);
+  const channels = track === undefined ? undefined : streams[track]?.channels;
+  if (track === undefined || !channels || channels < 1) throw new Error("no audio stream");
+  return { track, channels };
 }
 
 export async function decodePeakMap(mediaPath: string): Promise<number[]> {
-  const channels = await probeChannels(mediaPath);
+  const { track, channels } = await probeAudioTrack(mediaPath);
   return new Promise((resolvePromise, reject) => {
     const proc = spawn(
       findFfBinary("ffmpeg") ?? "ffmpeg",
@@ -94,7 +98,7 @@ export async function decodePeakMap(mediaPath: string): Promise<number[]> {
         "-i",
         mediaPath,
         "-map",
-        "0:a:0",
+        `0:a:${track}`,
         "-vn",
         "-ar",
         String(PEAK_SAMPLE_RATE),

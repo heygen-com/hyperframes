@@ -11,10 +11,11 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
+import { probeMediaMetadata } from "./mediaMetadata.js";
 
 const SAMPLE_RATE = 4000;
 const PEAK_COUNT = 4000;
-const WAVEFORM_CACHE_VERSION = "v2";
+const WAVEFORM_CACHE_VERSION = "v3";
 
 /**
  * Cache filename for one asset's peaks, keyed on its content as well as its name.
@@ -58,13 +59,16 @@ function computePeaks(floats: Float32Array, count: number): number[] {
   return peaks.map((p) => p / maxPeak);
 }
 
-export function decodeAudioPeaks(audioPath: string): Promise<number[]> {
+export async function decodeAudioPeaks(audioPath: string): Promise<number[]> {
+  const { audioTrack } = await probeMediaMetadata(audioPath);
+  const map = audioTrack === undefined ? [] : ["-map", `0:a:${audioTrack}`];
   return new Promise((resolvePromise, reject) => {
     const proc = spawn(
       findFfBinary("ffmpeg") ?? "ffmpeg",
       [
         "-i",
         audioPath,
+        ...map,
         "-af",
         "atrim=start_sample=1152",
         "-f",

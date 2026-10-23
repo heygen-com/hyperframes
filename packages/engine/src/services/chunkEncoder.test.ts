@@ -681,6 +681,7 @@ describe("muxVideoWithAudio audio codec handling", () => {
       sampleRate: 48000,
       channels: 2,
       audioCodec: "aac",
+      audioTrack: 0,
     }));
     vi.resetModules();
     vi.doMock("child_process", () => ({ spawn }));
@@ -714,6 +715,7 @@ describe("muxVideoWithAudio audio codec handling", () => {
       sampleRate: 48000,
       channels: 2,
       audioCodec: "mp3",
+      audioTrack: 0,
     }));
     vi.resetModules();
     vi.doMock("child_process", () => ({ spawn }));
