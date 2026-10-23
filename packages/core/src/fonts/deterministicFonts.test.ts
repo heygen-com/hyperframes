@@ -23,10 +23,10 @@ describe("existing font-face recognition", () => {
       '@font-face { font-family: "Other Font"; } @font-face { font-family: "Existing Font"; }',
       false,
     ],
-    ['@font-face { font-family: "Existing Font" }', true],
+    ['@font-face { font-family: "Existing Font" }', false],
     ['@font-face { font-family: "Existing Font";', true],
-    ['@font-face { font-family: "Other Font"; font-family: "Existing Font"; }', true],
-    ['@font-face { font-family:   ; font-family: "Existing Font"; }', true],
+    ['@font-face { font-family: "Other Font"; font-family: "Existing Font"; }', false],
+    ['@font-face { font-family:   ; font-family: "Existing Font"; }', false],
   ])("preserves authored font and fallback decisions for %j", async (css, needsFallback) => {
     const html = `<html><head><style>${css}</style></head><body><p style="font-family: 'Existing Font';">Hello</p></body></html>`;
     let requests = 0;

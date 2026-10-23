@@ -138,18 +138,46 @@ function adaptAspectAgnosticResolution(
   aspectAgnostic: boolean | undefined,
   width: number,
   height: number,
-  log: ProducerLogger,
 ): CanvasResolution | undefined {
   if (!requested || !aspectAgnostic) return requested;
   const flipped = suggestMatchingPreset(width, height, requested);
   if (!flipped || flipped === requested) return requested;
+  return flipped;
+}
+
+function mediaContextFor(job: RenderJob, needsAlpha: boolean) {
+  return ({ width, height }: { width: number; height: number }) => {
+    const outputResolution = adaptAspectAgnosticResolution(
+      job.config.outputResolution,
+      job.config.outputResolutionAspectAgnostic,
+      width,
+      height,
+    );
+    const deviceScaleFactor = resolveDeviceScaleFactor({
+      compositionWidth: width,
+      compositionHeight: height,
+      outputResolution,
+      hdrRequested: job.config.hdrMode === "force-hdr",
+      alphaRequested: needsAlpha,
+    });
+    return { deviceScaleFactor, outputResolution };
+  };
+}
+
+function logAdaptedResolution(
+  log: ProducerLogger,
+  job: RenderJob,
+  effectiveResolution: CanvasResolution | undefined,
+  width: number,
+  height: number,
+): void {
+  if (!effectiveResolution || effectiveResolution === job.config.outputResolution) return;
   log.info("Adapted aspect-agnostic --resolution to composition orientation", {
     compositionWidth: width,
     compositionHeight: height,
-    requestedResolution: requested,
-    effectiveResolution: flipped,
+    requestedResolution: job.config.outputResolution,
+    effectiveResolution,
   });
-  return flipped;
 }
 
 export async function runCompileStage(input: CompileStageInput): Promise<CompileStageResult> {
@@ -181,6 +209,7 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
       ? join(cfg.extractCacheDir, "animated-gif")
       : undefined,
     ffmpegProcessTimeout: cfg.ffmpegProcessTimeout,
+    resolveMediaContext: mediaContextFor(job, needsAlpha),
   });
   assertNotAborted();
   const compileOnlyMs = Date.now() - compileStart;
@@ -328,20 +357,8 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
   });
   assertNotAborted();
   const { width, height } = composition;
-  const effectiveResolution = adaptAspectAgnosticResolution(
-    job.config.outputResolution,
-    job.config.outputResolutionAspectAgnostic,
-    width,
-    height,
-    log,
-  );
-  const deviceScaleFactor = resolveDeviceScaleFactor({
-    compositionWidth: width,
-    compositionHeight: height,
-    outputResolution: effectiveResolution,
-    hdrRequested: job.config.hdrMode === "force-hdr",
-    alphaRequested: needsAlpha,
-  });
+  const { deviceScaleFactor, outputResolution: effectiveResolution } = compiled.mediaContext;
+  logAdaptedResolution(log, job, effectiveResolution, width, height);
   const outputWidth = Math.round(width * deviceScaleFactor);
   const outputHeight = Math.round(height * deviceScaleFactor);
   if (deviceScaleFactor !== 1) {

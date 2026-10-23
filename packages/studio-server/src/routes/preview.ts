@@ -1,3 +1,7 @@
+import {
+  readCompositionSizeFromDocument,
+  DEFAULT_PREVIEW_VIEWPORT,
+} from "@hyperframes/core/composition-viewport";
 import type { Hono } from "hono";
 import { parseHTML } from "linkedom";
 import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
@@ -361,6 +365,9 @@ async function transformPreviewHtml(
   try {
     return await adapter.transformPreviewHtml({
       html,
+      viewport:
+        readCompositionSizeFromDocument(parseHTML(html).document as unknown as Document) ??
+        DEFAULT_PREVIEW_VIEWPORT,
       project,
       activeCompositionPath,
     });
@@ -416,6 +423,10 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     "Cache-Control": "private, no-cache",
     ETag: etag,
   });
+  const notModifiedResponse = (ifNoneMatch: string | undefined, etag: string) =>
+    ifNoneMatch === etag
+      ? new Response(null, { status: 304, headers: previewCacheHeaders(etag) })
+      : null;
 
   // One probe cache per server instance (this function runs once per
   // registered API), reused across every preview request so the mtime-cache
@@ -530,13 +541,8 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     const capture = c.req.query(PREVIEW_CAPTURE_PARAM) !== undefined;
 
     const etag = `"preview:${signature}${variablesEtagSalt(vars.raw)}${capture ? ":capture" : ""}"`;
-    const ifNoneMatch = c.req.header("If-None-Match");
-    if (ifNoneMatch === etag) {
-      return new Response(null, {
-        status: 304,
-        headers: previewCacheHeaders(etag),
-      });
-    }
+    const notModified = notModifiedResponse(c.req.header("If-None-Match"), etag);
+    if (notModified) return notModified;
     const builtKey = `${project.id}\n${etag}`;
     const cached = builtPreviews.get(builtKey) ?? adapter.previewDocuments?.read(builtKey);
     if (cached) {
@@ -592,13 +598,8 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     const compPathHash = createHash("sha1").update(compPath).digest("hex");
     const capture = c.req.query(PREVIEW_CAPTURE_PARAM) !== undefined;
     const etag = `"comp:v2:${compPathHash}:${signature}${variablesEtagSalt(vars.raw)}${capture ? ":capture" : ""}"`;
-    const ifNoneMatch = c.req.header("If-None-Match");
-    if (ifNoneMatch === etag) {
-      return new Response(null, {
-        status: 304,
-        headers: previewCacheHeaders(etag),
-      });
-    }
+    const notModified = notModifiedResponse(c.req.header("If-None-Match"), etag);
+    if (notModified) return notModified;
 
     const stamped = pinSubCompHfIds(compFile, compPath);
     if (stamped === null) return c.text("not found", 404); // file removed between stat and read

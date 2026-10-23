@@ -1,3 +1,4 @@
+import { DEFAULT_PREVIEW_VIEWPORT } from "@hyperframes/core/composition-viewport";
 import { CompositionProbe, type ProbeResult, readPositiveDimension } from "./composition-probe.js";
 import { isControlsClick, setupControls, setupPoster } from "./controls-setup.js";
 import { adoptShadowStyles, createCompositionIframe, scaleIframeToFit } from "./iframe-dom.js";
@@ -144,8 +145,8 @@ class HyperframesPlayer extends HTMLElement {
   private _scrubbing = false;
   private _lastUpdateMs = 0;
   private _volume = 1;
-  private _compositionWidth = 1920;
-  private _compositionHeight = 1080;
+  private _compositionWidth: number = DEFAULT_PREVIEW_VIEWPORT.width;
+  private _compositionHeight: number = DEFAULT_PREVIEW_VIEWPORT.height;
   private _rescaleWarned = false;
   private _directTimelineAdapter: DirectTimelineAdapter | null = null;
   private _directTimelineClock: DirectTimelineClock;
@@ -307,10 +308,16 @@ class HyperframesPlayer extends HTMLElement {
       // reach scaleIframeToFit as scale(NaN) or a division by zero and
       // blank the player); fall back to the defaults instead.
       case "width":
-        this._setCompositionSize(readPositiveDimension(val) ?? 1920, this._compositionHeight);
+        this._setCompositionSize(
+          readPositiveDimension(val) ?? DEFAULT_PREVIEW_VIEWPORT.width,
+          this._compositionHeight,
+        );
         break;
       case "height":
-        this._setCompositionSize(this._compositionWidth, readPositiveDimension(val) ?? 1080);
+        this._setCompositionSize(
+          this._compositionWidth,
+          readPositiveDimension(val) ?? DEFAULT_PREVIEW_VIEWPORT.height,
+        );
         break;
       case "controls":
         if (val !== null) this._setupControls();

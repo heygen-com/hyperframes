@@ -1,3 +1,12 @@
+export { promoteUnconditionalStylesheetImports } from "./promoteStylesheetImports.js";
+import {
+  collectFontFamilyCustomPropertyCandidates,
+  type FontCustomPropertyValue,
+} from "./fontStylesheets.js";
+import { parseHTMLContent } from "../compiler/htmlDocument.js";
+import { analyzeFontStylesheets, parseCssRoot, parseStylesheetImport } from "./fontStylesheets.js";
+import { resolveFontMediaContext, type FontMediaContext } from "./fontMediaContext.js";
+export { resolveFontMediaContext, type FontMediaContext } from "./fontMediaContext.js";
 import { createHash } from "node:crypto";
 import {
   existsSync,
@@ -71,18 +80,8 @@ const CSS_WIDE_KEYWORDS: ReadonlySet<string> = new Set([
   "revert-layer",
 ]);
 
-/**
- * Parse a single `font-family` value (e.g. `"Inter", -apple-system,
- * sans-serif`) into a list of unquoted family names in declaration order.
- * Whitespace and surrounding `"…"` / `'…'` quotes are stripped; case is
- * preserved. Pass each name through `normalizeFamilyName` for case-
- * insensitive comparisons.
- *
- * Only top-level commas split: a `var(--x, fallback)` expression stays one
- * token, as does a comma inside a quoted family name.
- */
 // fallow-ignore-next-line complexity
-export function parseFontFamilyValue(value: string): string[] {
+function splitFontFamilyValue(value: string): string[] {
   const pieces: string[] = [];
   let start = 0;
   let depth = 0;
@@ -115,8 +114,13 @@ export function parseFontFamilyValue(value: string): string[] {
   }
   pieces.push(value.slice(start));
 
-  return pieces
-    .map((piece) => piece.trim().replace(/^['"]/, "").replace(/['"]$/, "").trim())
+  return pieces.map((piece) => piece.trim()).filter((piece) => piece.length > 0);
+}
+
+/** Splits a `font-family` value on top-level commas into unquoted names, keeping case. */
+export function parseFontFamilyValue(value: string): string[] {
+  return splitFontFamilyValue(value)
+    .map((piece) => piece.replace(/^['"]/, "").replace(/['"]$/, "").trim())
     .filter((piece) => piece.length > 0);
 }
 
@@ -127,7 +131,7 @@ function systemPrimaryReplacement(
 ): string | null {
   const variable = primaryCssVariable(value);
   if (variable) {
-    if (customProperties.get(variable.name) || variable.fallback === null) return null;
+    if (customProperties.has(variable.name) || variable.fallback === null) return null;
     // Rewrite the fallback in place so a property defined at runtime still wins.
     const fallback = systemPrimaryReplacement(
       variable.fallback,
@@ -140,14 +144,6 @@ function systemPrimaryReplacement(
   if (families.length === 0) return null;
   if (!GENERIC_FAMILIES.has(normalizeFamilyName(families[0]!))) return null;
   return `${deterministicPrimary}, ${value.trim()}`;
-}
-
-function parseCssRoot(css: string): postcss.Root | null {
-  try {
-    return postcss.parse(css);
-  } catch {
-    return null;
-  }
 }
 
 function isFontFaceDeclaration(decl: Declaration): boolean {
@@ -210,9 +206,17 @@ function normalizeInlineStyleAttribute(style: string, replacePrimary: PrimaryRep
 export function normalizeSystemFontPrimaryFamilies(
   html: string,
   deterministicPrimary = "Inter",
+  options: Pick<InjectDeterministicFontFacesOptions, "mediaContext" | "stylesheetBaseDir"> = {},
 ): string {
   const { document } = parseHTML(html);
-  const customProperties = collectFontFamilyCustomProperties(html);
+  const mediaContext = resolveFontMediaContext(html, options.mediaContext);
+  const activeHtml = analyzeFontStylesheets(
+    html,
+    mediaContext,
+    options.stylesheetBaseDir,
+    "suppression",
+  );
+  const customProperties = collectFontFamilyCustomProperties(activeHtml);
   const replacePrimary: PrimaryReplacer = (value) =>
     systemPrimaryReplacement(value, deterministicPrimary, customProperties);
   let changed = false;
@@ -351,34 +355,99 @@ function primaryCssVariable(
  * and a transient failure warns instead of throwing.
  */
 type ResolvedFamily = { family: string; optional: boolean };
+function mergeResolvedFamily(
+  previous: ResolvedFamily | undefined,
+  next: ResolvedFamily,
+): ResolvedFamily {
+  return {
+    family: previous?.family ?? next.family,
+    optional: (previous?.optional ?? true) && next.optional,
+  };
+}
 
 // Deep enough for real alias chains; stops `--a: var(--b); --b: var(--a)` cycles.
 const MAX_CSS_VARIABLE_DEPTH = 8;
 
+function propertyAlternatives(property: FontCustomPropertyValue | undefined): {
+  values: Iterable<string>;
+  mayBeUnset: boolean;
+} {
+  if (typeof property === "string") return { values: [property], mayBeUnset: false };
+  return property ?? { values: [], mayBeUnset: true };
+}
+
+function resolveFamilyList(
+  pieces: string[],
+  customProperties: ReadonlyMap<string, FontCustomPropertyValue>,
+  optional: boolean,
+  depth: number,
+  memo: Map<string, ResolvedFamily[]>,
+): ResolvedFamily[] {
+  const resolved = new Map<string, ResolvedFamily>();
+  for (const piece of pieces) {
+    const families = resolveDeclaredFamilies(piece, customProperties, optional, depth, memo);
+    // One invalid empty substitution invalidates the entire font-family list.
+    if (families.length === 0) return [];
+    for (const family of families) {
+      const normalized = family.family.toLowerCase();
+      resolved.set(normalized, mergeResolvedFamily(resolved.get(normalized), family));
+    }
+  }
+  return [...resolved.values()];
+}
+
 function resolveDeclaredFamilies(
   declaration: string,
-  customProperties: ReadonlyMap<string, string>,
+  customProperties: ReadonlyMap<string, FontCustomPropertyValue>,
   optional = false,
   depth = 0,
+  memo = new Map<string, ResolvedFamily[]>(),
 ): ResolvedFamily[] {
+  const key = JSON.stringify([declaration, optional, depth]);
+  const cached = memo.get(key);
+  if (cached !== undefined) return cached;
   const tag = (families: string[]) => families.map((family) => ({ family, optional }));
+  const pieces = splitFontFamilyValue(declaration);
+  if (pieces.length > 1) {
+    const result = resolveFamilyList(pieces, customProperties, optional, depth, memo);
+    memo.set(key, result);
+    return result;
+  }
+
   const families = parseFontFamilyValue(declaration);
   const variable = depth < MAX_CSS_VARIABLE_DEPTH ? primaryCssVariable(declaration) : null;
-  if (!variable) return tag(families);
-
-  const resolved = customProperties.get(variable.name);
-  // An undefined property uses the var() fallback, as the browser does.
-  const source = resolved || variable.fallback;
-  if (source === null) return tag(families);
-  const primary = resolveDeclaredFamilies(
-    source,
-    customProperties,
-    !resolved || depth > 0,
-    depth + 1,
-  );
-  // An empty substitution makes the declaration invalid, so the browser inherits instead.
-  if (primary.length === 0) return [];
-  return [...primary, ...tag(families.slice(1))];
+  if (!variable) {
+    const result = tag(families);
+    memo.set(key, result);
+    return result;
+  }
+  const { values, mayBeUnset } = propertyAlternatives(customProperties.get(variable.name));
+  const resolved = new Map<string, ResolvedFamily>();
+  const register = (family: ResolvedFamily) => {
+    const normalized = family.family.toLowerCase();
+    resolved.set(normalized, mergeResolvedFamily(resolved.get(normalized), family));
+  };
+  const include = (source: string, sourceOptional: boolean) => {
+    const primary = resolveDeclaredFamilies(
+      source,
+      customProperties,
+      sourceOptional,
+      depth + 1,
+      memo,
+    );
+    // Defined-empty substitution invalidates the declaration; it does not select a fallback.
+    if (primary.length === 0) return;
+    for (const family of primary) register(family);
+  };
+  for (const value of values) include(value, depth > 0);
+  if (mayBeUnset) {
+    if (variable.fallback === null) {
+      for (const family of tag(families)) register(family);
+    } else include(variable.fallback, true);
+  }
+  const result = [...resolved.values()];
+  memo.set(key, result);
+  return result;
 }
 
 export function resolveFontFamilyDeclarationFamilies(
@@ -519,26 +588,12 @@ function fontDataUri(
 
 function extractExistingFontFaces(html: string): Set<string> {
   const families = new Set<string>();
-  const opening = /@font-face\s*\{/gi;
-  const family = /font-family\s*:/gi;
-  while (opening.exec(html)) {
-    family.lastIndex = opening.lastIndex;
-    let declaration = family.exec(html);
-    // The original matcher requires at least one character before ';'.
-    while (declaration && html[family.lastIndex] === ";") {
-      declaration = family.exec(html);
-    }
-    // If this opener has no complete family/semicolon/closer suffix, no later
-    // opener can have one. Never retry the same unmatched suffix.
-    if (!declaration) break;
-    const valueStart = family.lastIndex;
-    const semicolon = html.indexOf(";", valueStart);
-    if (semicolon < 0) break;
-    const end = html.indexOf("}", semicolon + 1);
-    if (end < 0) break;
-    const normalized = normalizeFamilyName(html.slice(valueStart, semicolon));
-    if (normalized) families.add(normalized);
-    opening.lastIndex = end + 1;
+  const { document } = parseHTML(html);
+  for (const style of document.querySelectorAll("style")) {
+    parseCssRoot(style.textContent ?? "")?.walkAtRules(/^font-face$/i, (rule) => {
+      const family = fontFaceRuleFamily(rule);
+      if (family) families.add(normalizeFamilyName(family));
+    });
   }
   return families;
 }
@@ -548,18 +603,26 @@ function isFetchableFamilyName(normalized: string): boolean {
   return !GENERIC_FAMILIES.has(normalized) && !CSS_WIDE_KEYWORDS.has(normalized);
 }
 
-function extractRequestedFontFamilies(html: string): Map<string, ResolvedFamily> {
+function extractRequestedFontFamilies(
+  html: string,
+  customProperties: ReadonlyMap<string, FontCustomPropertyValue>,
+): Map<string, ResolvedFamily> {
   const requested = new Map<string, ResolvedFamily>();
-  const customProperties = collectFontFamilyCustomProperties(html);
+  const memo = new Map<string, ResolvedFamily[]>();
   for (const { declaration } of iterateFontFamilyDeclarations(html)) {
-    for (const { family, optional } of resolveDeclaredFamilies(declaration, customProperties)) {
+    for (const { family, optional } of resolveDeclaredFamilies(
+      declaration,
+      customProperties,
+      false,
+      0,
+      memo,
+    )) {
       const normalized = family.toLowerCase();
       if (!isFetchableFamilyName(normalized)) continue;
-      const seen = requested.get(normalized);
-      requested.set(normalized, {
-        family: seen?.family ?? family,
-        optional: (seen?.optional ?? true) && optional,
-      });
+      requested.set(
+        normalized,
+        mergeResolvedFamily(requested.get(normalized), { family, optional }),
+      );
     }
   }
   return requested;
@@ -854,16 +917,7 @@ function googleFontsUrlFamilies(rawUrl: string): string[] {
 }
 
 function importRuleUrl(params: string): string | null {
-  const trimmed = params.trim();
-  if (trimmed.toLowerCase().startsWith("url(")) {
-    const close = trimmed.indexOf(")");
-    if (close < 0 || !isUnconditionalMedia(trimmed.slice(close + 1))) return null;
-    return trimmed.slice(4, close).trim().replace(/^['"]/, "").replace(/['"]$/, "");
-  }
-  const quote = trimmed[0];
-  if (quote !== '"' && quote !== "'") return null;
-  const end = trimmed.indexOf(quote, 1);
-  return end > 0 && isUnconditionalMedia(trimmed.slice(end + 1)) ? trimmed.slice(1, end) : null;
+  return parseStylesheetImport(params)?.url ?? null;
 }
 
 function fontFaceRuleFamily(rule: AtRule): string | undefined {
@@ -872,24 +926,6 @@ function fontFaceRuleFamily(rule: AtRule): string | undefined {
     if (decl.prop.toLowerCase() === "font-family") family = parseFontFamilyValue(decl.value)[0];
   });
   return family;
-}
-
-function isUnconditionalMedia(media: string | null): boolean {
-  const normalized = (media ?? "").trim().toLowerCase();
-  return normalized === "" || normalized === "all";
-}
-
-function isUnconditionalStylesheet(element: {
-  getAttribute(name: string): string | null;
-  hasAttribute(name: string): boolean;
-}): boolean {
-  const type = (element.getAttribute("type") ?? "").trim().toLowerCase();
-  return (
-    isUnconditionalMedia(element.getAttribute("media")) &&
-    (type === "" || type === "text/css") &&
-    !(element.getAttribute("title") ?? "").trim() &&
-    !element.hasAttribute("disabled")
-  );
 }
 
 type DeclaredFontRegister = (family: string, fontFaceRule?: AtRule) => void;
@@ -902,13 +938,12 @@ function declareStyleFontFamilies(
   },
   register: DeclaredFontRegister,
 ): void {
-  if (!isUnconditionalStylesheet(styleEl)) return;
   const root = parseCssRoot(styleEl.textContent ?? "");
   if (!root) return;
   root.walkAtRules((atRule) => {
-    if (atRule.parent?.type !== "root") return;
     const name = atRule.name.toLowerCase();
     if (name === "import") {
+      if (atRule.parent?.type !== "root") return;
       const url = importRuleUrl(atRule.params);
       if (url) for (const family of googleFontsUrlFamilies(url)) register(family);
       return;
@@ -927,12 +962,11 @@ function declareLinkedFontFamilies(
   register: DeclaredFontRegister,
 ): void {
   const rel = (link.getAttribute("rel") ?? "").toLowerCase().split(/\s+/);
-  if (!rel.includes("stylesheet") || rel.includes("alternate") || !isUnconditionalStylesheet(link))
-    return;
+  if (!rel.includes("stylesheet") || rel.includes("alternate")) return;
   for (const family of googleFontsUrlFamilies(link.getAttribute("href") ?? "")) register(family);
 }
 
-function collectDeclaredFontFamilies(html: string): DeclaredFontFamilies {
+function collectDeclaredFontFamilies(html: string, activeFaceHtml: string): DeclaredFontFamilies {
   const { document } = parseHTML(html);
   const declared = new Map<string, DeclaredFontFamily>();
   const register: DeclaredFontRegister = (family, fontFaceRule) => {
@@ -947,7 +981,14 @@ function collectDeclaredFontFamilies(html: string): DeclaredFontFamilies {
   };
 
   for (const styleEl of Array.from(document.querySelectorAll("style"))) {
-    declareStyleFontFamilies(styleEl, register);
+    declareStyleFontFamilies(styleEl, (family) => register(family));
+  }
+  // Unknown conditions can offer family names, but only active own faces may be re-emitted as aliases.
+  const activeDocument = parseHTML(activeFaceHtml).document;
+  for (const styleEl of Array.from(activeDocument.querySelectorAll("style"))) {
+    declareStyleFontFamilies(styleEl, (family, rule) => {
+      if (rule) register(family, rule);
+    });
   }
   for (const link of Array.from(document.querySelectorAll("link[href]"))) {
     declareLinkedFontFamilies(link, register);
@@ -1818,6 +1859,10 @@ export interface InjectDeterministicFontFacesOptions {
    * to contain the same fonts as the authoring machine.
    */
   allowSystemFontCapture?: boolean;
+  /** Where relative `<link rel="stylesheet">` hrefs live; their CSS then counts toward the families requested. */
+  stylesheetBaseDir?: string;
+  /** Screen viewport defaults to the authored composition size; DPR defaults to 1. */
+  mediaContext?: Partial<FontMediaContext>;
 }
 
 // Keep the complete CSS request under the broadly supported ~2 KB URL limit.
@@ -2001,6 +2046,8 @@ export async function injectDeterministicFontFaces(
   const fetchImpl = options.fetchImpl ?? fetch;
   const allowSystemFontCapture = options.allowSystemFontCapture !== false;
   const retryPolicy = resolveFontFetchRetryPolicy(options.fontFetchRetryPolicy);
+  const mediaContext = resolveFontMediaContext(html, options.mediaContext);
+  const styledHtml = analyzeFontStylesheets(html, mediaContext, options.stylesheetBaseDir);
   const fetchOptions: InternalFontFetchOptions = {
     log: options.logger ?? STDERR_LOGGER,
     failClosedFontFetch,
@@ -2009,12 +2056,21 @@ export async function injectDeterministicFontFaces(
     abortSignal: options.abortSignal,
     retryPolicy,
     retryDeadlineMs: Date.now() + retryPolicy.maxElapsedMs,
-    authoredStylesheets: authoredGoogleFontStylesheets(html),
+    authoredStylesheets: authoredGoogleFontStylesheets(styledHtml, mediaContext),
     diag,
   };
 
-  const existingFaces = extractExistingFontFaces(html);
-  const requestedFamilies = extractRequestedFontFamilies(html);
+  const activeFaceHtml = analyzeFontStylesheets(
+    html,
+    mediaContext,
+    options.stylesheetBaseDir,
+    "suppression",
+  );
+  const existingFaces = extractExistingFontFaces(activeFaceHtml);
+  const requestedFamilies = extractRequestedFontFamilies(
+    styledHtml,
+    collectFontFamilyCustomPropertyCandidates(styledHtml, mediaContext),
+  );
   const pendingFamilies = new Map<string, ResolvedFamily>();
 
   for (const [normalizedFamily, requested] of requestedFamilies) {
@@ -2031,7 +2087,7 @@ export async function injectDeterministicFontFaces(
   const { css, unresolved } = await buildFontFaceCss(
     pendingFamilies,
     fetchOptions,
-    () => (declaredFamilies ??= collectDeclaredFontFamilies(html)),
+    () => (declaredFamilies ??= collectDeclaredFontFamilies(styledHtml, activeFaceHtml)),
     extractGoogleFontsText(html),
   );
   // An optional family that no source serves, or that stayed unavailable, is tolerated.
@@ -2058,11 +2114,8 @@ export async function injectDeterministicFontFaces(
     return html;
   }
 
-  const { document } = parseHTML(html);
-  const head = document.querySelector("head");
-  if (!head) {
-    return html;
-  }
+  const document = parseHTMLContent(html);
+  const head = document.head;
 
   const styleEl = document.createElement("style");
   styleEl.setAttribute("data-hyperframes-deterministic-fonts", "true");

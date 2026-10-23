@@ -30,7 +30,7 @@ describe("bundleWithLocalizedFonts (call-site integration)", () => {
     const localize = vi.fn(async (html: string) => html.replace("bundled", "bundled+fonts"));
     const html = await bundleWithLocalizedFonts("/project", localize);
     expect(localize).toHaveBeenCalledOnce();
-    expect(localize).toHaveBeenCalledWith("<html><body>bundled</body></html>");
+    expect(localize).toHaveBeenCalledWith("<html><body>bundled</body></html>", "/project");
     expect(html).toBe("<html><body>bundled+fonts</body></html>");
   });
 
@@ -42,7 +42,7 @@ describe("bundleWithLocalizedFonts (call-site integration)", () => {
 
 describe("localizeWithProducer", () => {
   it("loads the injector through the producer module bundled with the CLI", async () => {
-    const out = await localizeWithProducer("<html></html>");
+    const out = await localizeWithProducer("<html></html>", "/project");
     expect(producerMocks.loadProducer).toHaveBeenCalledOnce();
     expect(out).toBe("<html></html><!--bundled-producer-->");
   });
@@ -50,14 +50,34 @@ describe("localizeWithProducer", () => {
   it("embeds fonts when the injector is available", async () => {
     const inject = vi.fn(async (html: string) => `${html}<!--fonts-->`);
     const warn = vi.fn();
-    const out = await localizeWithProducer("<html></html>", async () => inject, warn);
+    const out = await localizeWithProducer("<html></html>", "/project", async () => inject, warn);
     expect(out).toBe("<html></html><!--fonts-->");
+    expect(inject).toHaveBeenCalledWith("<html></html>", {
+      stylesheetBaseDir: "/project",
+      mediaContext: { viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 },
+    });
     expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("passes the CLI's resolved composition viewport to the injector", async () => {
+    const inject = vi.fn(async (html: string) => html);
+    const html =
+      '<section data-composition-id="main" data-width="8192" data-height="720"></section>';
+    await localizeWithProducer(html, "/project", async () => inject, vi.fn());
+    expect(inject).toHaveBeenCalledWith(html, {
+      stylesheetBaseDir: "/project",
+      mediaContext: { viewport: { width: 4096, height: 720 }, deviceScaleFactor: 1 },
+    });
   });
 
   it("fails open silently when producer is unavailable (module absent → null)", async () => {
     const warn = vi.fn();
-    const out = await localizeWithProducer("<html>plain</html>", async () => null, warn);
+    const out = await localizeWithProducer(
+      "<html>plain</html>",
+      "/project",
+      async () => null,
+      warn,
+    );
     // Never worse than a plain bundle; benign absence is not a warning.
     expect(out).toBe("<html>plain</html>");
     expect(warn).not.toHaveBeenCalled();
@@ -66,7 +86,12 @@ describe("localizeWithProducer", () => {
   it("fails open WITH a diagnostic when the injector itself throws", async () => {
     const warn = vi.fn();
     const boom: () => Promise<never> = () => Promise.reject(new Error("fetch layer down"));
-    const out = await localizeWithProducer("<html>plain</html>", async () => boom, warn);
+    const out = await localizeWithProducer(
+      "<html>plain</html>",
+      "/project",
+      async () => boom,
+      warn,
+    );
     expect(out).toBe("<html>plain</html>");
     expect(warn).toHaveBeenCalledOnce();
     expect(warn.mock.calls[0]?.[0]).toContain("fetch layer down");
@@ -76,7 +101,7 @@ describe("localizeWithProducer", () => {
     const warn = vi.fn();
     const boom: () => Promise<never> = () => Promise.reject(new Error("same failure"));
     for (let i = 0; i < 5; i++) {
-      await localizeWithProducer("<html></html>", async () => boom, warn);
+      await localizeWithProducer("<html></html>", "/project", async () => boom, warn);
     }
     // snapshot/check re-bundle per grid point; the warning must fire once.
     expect(warn).toHaveBeenCalledOnce();

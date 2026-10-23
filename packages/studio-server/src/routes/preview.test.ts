@@ -631,6 +631,26 @@ describe("registerPreviewRoutes", () => {
     expect(html).toContain('<meta name="preview-path" content="index.html">');
   });
 
+  it("passes the player's actual composition viewport to adapter transforms", async () => {
+    const projectDir = createProjectDir();
+    let viewport: unknown;
+    const app = new Hono();
+    registerPreviewRoutes(
+      app,
+      createAdapter(projectDir, {
+        bundle: async () =>
+          '<html><head></head><body><section data-composition-id="main" data-width="640" data-height="360"></section></body></html>',
+        transformPreviewHtml: async (options) => {
+          viewport = options.viewport;
+          return options.html;
+        },
+      }),
+    );
+    const response = await app.request("http://localhost/projects/demo/preview");
+    expect(response.status).toBe(200);
+    expect(viewport).toEqual({ width: 640, height: 360 });
+  });
+
   it("applies adapter preview transforms to sub-composition previews", async () => {
     const projectDir = createProjectDir();
     mkdirSync(join(projectDir, "compositions"), { recursive: true });

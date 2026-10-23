@@ -550,6 +550,12 @@
       "node": "./dist/timelineAssetId.js",
       "import": "./src/timelineAssetId.ts",
       "types": "./src/timelineAssetId.ts"
+    },
+    "./composition-viewport": {
+      "bun": "./src/compositionViewport.ts",
+      "node": "./dist/compositionViewport.js",
+      "import": "./src/compositionViewport.ts",
+      "types": "./src/compositionViewport.ts"
     }
   },
   "publishConfig": {
@@ -910,6 +916,10 @@
       "./timeline-asset-id": {
         "import": "./dist/timelineAssetId.js",
         "types": "./dist/timelineAssetId.d.ts"
+      },
+      "./composition-viewport": {
+        "import": "./dist/compositionViewport.js",
+        "types": "./dist/compositionViewport.d.ts"
       }
     },
     "main": "./dist/index.js",
@@ -947,6 +957,9 @@
   },
   "dependencies": {
     "@chenglou/pretext": "^0.0.5",
+    "@csstools/css-parser-algorithms": "^4.0.2",
+    "@csstools/css-tokenizer": "^4.0.2",
+    "@csstools/media-query-list-parser": "^5.0.2",
     "@hyperframes/lint": "workspace:*",
     "@hyperframes/parsers": "workspace:*",
     "@hyperframes/studio-server": "workspace:*",

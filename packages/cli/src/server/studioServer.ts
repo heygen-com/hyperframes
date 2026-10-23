@@ -529,7 +529,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       }
     },
 
-    async transformPreviewHtml({ html, project }) {
+    async transformPreviewHtml({ html, project, viewport }) {
       const { injectDeterministicFontFaces } = await import("@hyperframes/core/fonts/embed");
       const { prepareAnimatedGifInputs } =
         await import("../../../producer/src/services/animatedGifPrep.js");
@@ -549,7 +549,10 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
           }),
         ),
       });
-      return injectDeterministicFontFaces(prepared.html);
+      return injectDeterministicFontFaces(prepared.html, {
+        stylesheetBaseDir: project.dir,
+        mediaContext: { viewport, deviceScaleFactor: 1 },
+      });
     },
 
     getProjectSignature: projectSignature,

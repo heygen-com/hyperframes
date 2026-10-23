@@ -76,9 +76,17 @@ it.each([
   `<link rel="alternate stylesheet" title="other" href="${bold}">`,
   `<style media="print">@import url("${bold}");</style>`,
   `<style>@import url("${bold}") print;</style>`,
-  `<style>@import url("${bold}") supports(display: grid);</style>`,
   `<!-- <link rel="stylesheet" href="${bold}"> -->`,
 ])("does not promote an inactive font source: %s", async (inactive) => {
   await injectDeterministicFontFaces(page(`${inactive}<link rel="stylesheet" href="${normal}">`));
   expect(requestedFamilies()).toEqual(["Fraunces:wght@400"]);
+});
+
+it("promotes an import whose supports() condition is true", async () => {
+  await injectDeterministicFontFaces(
+    page(
+      `<style>@import url("${bold}") supports(display: grid);</style><link rel="stylesheet" href="${normal}">`,
+    ),
+  );
+  expect(requestedFamilies()).toEqual(["Fraunces:wght@700", "Fraunces:wght@400"]);
 });

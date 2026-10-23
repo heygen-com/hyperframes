@@ -472,3 +472,46 @@ describe("runCompileStage — aspect-agnostic --resolution re-map", () => {
     ).rejects.toThrow(/aspect ratio|--resolution portrait/i);
   });
 });
+
+describe("runCompileStage media context", () => {
+  it.each([
+    { outputResolution: "portrait" as const, dpr: 1, embedded: false },
+    { outputResolution: "portrait-4k" as const, dpr: 2, embedded: true },
+  ])(
+    "font selection and capture share the configured DPR $dpr",
+    async ({ outputResolution, dpr, embedded }) => {
+      const html = orientedHtml(1080, 1920).replace(
+        "<head>",
+        "<head><style>@media (resolution: 2dppx) { p { font-family: Inter; } }</style>",
+      );
+      const fixture = setupFixture(html);
+      try {
+        const result = await runCompileStage({
+          projectDir: join(fixture.workDir, "project"),
+          workDir: fixture.workDir,
+          htmlPath: fixture.htmlPath,
+          entryFile: "index.html",
+          job: createJob({ outputResolution }),
+          cfg: createCfg(),
+          needsAlpha: false,
+          log: noopLog,
+          assertNotAborted: () => {},
+          allowSystemFontCapture: false,
+        });
+        expect(result.deviceScaleFactor).toBe(dpr);
+        expect(result.compiled.mediaContext).toEqual({
+          viewport: { width: 1080, height: 1920 },
+          deviceScaleFactor: dpr,
+          outputResolution,
+        });
+        expect(result.outputWidth).toBe(dpr === 1 ? 1080 : 2160);
+        expect(result.outputHeight).toBe(dpr === 1 ? 1920 : 3840);
+        expect(result.compiled.html.includes('data-hyperframes-deterministic-fonts="true"')).toBe(
+          embedded,
+        );
+      } finally {
+        fixture.cleanup();
+      }
+    },
+  );
+});

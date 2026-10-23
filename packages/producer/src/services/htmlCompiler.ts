@@ -1,3 +1,9 @@
+import {
+  promoteUnconditionalStylesheetImports,
+  resolveFontMediaContext,
+  type FontMediaContext,
+} from "@hyperframes/core/fonts/embed";
+import type { CanvasResolution } from "@hyperframes/core";
 import { decodedUrlPath } from "@hyperframes/parsers/asset-paths";
 // fallow-ignore-file code-duplication complexity
 /**
@@ -105,7 +111,11 @@ function logRemoteDownloadTelemetry(event: UrlDownloadTelemetry): void {
   defaultLogger.info("[Compiler] Remote asset download integrity", { ...event });
 }
 
+type CompileMediaDecision = { deviceScaleFactor: number; outputResolution?: CanvasResolution };
+export type CompileMediaContext = FontMediaContext & CompileMediaDecision;
+
 export interface CompiledComposition {
+  mediaContext: CompileMediaContext;
   html: string;
   subCompositions: Map<string, string>;
   videos: VideoElement[];
@@ -826,58 +836,6 @@ async function parseSubCompositions(
   return { subCompositions };
 }
 
-/**
- * Extract CSS `@import url(...)` rules that load external stylesheets (e.g. Google Fonts)
- * from inline `<style>` blocks and promote them to `<link rel="stylesheet">` +
- * `<link rel="preload">` in `<head>`.
- *
- * This moves font discovery from the CSS cascade to the document parser level so
- * Chromium's `load` event and `networkidle2` correctly track them, preventing
- * font-swap artifacts during frame capture.
- */
-function promoteCssImportsToLinkTags(html: string): string {
-  const { document } = parseHTML(html);
-  const head = document.querySelector("head");
-  if (!head) return html;
-
-  const importRe = /@import\s+url\(\s*['"]?([^'")\s]+)['"]?\s*\)\s*;?/gi;
-  const seenUrls = new Set<string>();
-  const styleEls = document.querySelectorAll("style");
-
-  for (const styleEl of styleEls) {
-    const original = styleEl.textContent || "";
-    let modified = original;
-    let match: RegExpExecArray | null;
-    importRe.lastIndex = 0;
-    while ((match = importRe.exec(original)) !== null) {
-      const url = match[1] ?? "";
-      if (!url.startsWith("http://") && !url.startsWith("https://")) continue;
-      if (seenUrls.has(url)) {
-        modified = modified.replace(match[0], "");
-        continue;
-      }
-      seenUrls.add(url);
-      modified = modified.replace(match[0], "");
-
-      const preload = document.createElement("link");
-      preload.setAttribute("rel", "preload");
-      preload.setAttribute("href", url);
-      preload.setAttribute("as", "style");
-      head.appendChild(preload);
-
-      const link = document.createElement("link");
-      link.setAttribute("rel", "stylesheet");
-      link.setAttribute("href", url);
-      head.appendChild(link);
-    }
-    if (modified !== original) {
-      styleEl.textContent = modified;
-    }
-  }
-
-  return document.toString();
-}
-
 class ProducerHostIdentityMap extends Map<Element, BundledHostCompositionIdentity> {
   readonly #document: Document;
   readonly #lateInstanceByCompositionId = new Map<string, number>();
@@ -937,6 +895,28 @@ class ProducerHostIdentityMap extends Map<Element, BundledHostCompositionIdentit
  * export, preventing font-loading and animation-ordering regressions.
  */
 
+/** A stylesheet link between two styles fixes their order; merging would move the later rules above it. */
+function splitRunsAtStylesheetLinks(runs: Element[][]): Element[][] {
+  return runs.flatMap((run) => {
+    const parts: Element[][] = [[run[0]!]];
+    for (const el of run.slice(1)) {
+      const previous = parts.at(-1)!.at(-1)!;
+      let linked = false;
+      for (let node = previous.nextSibling; node && node !== el; node = node.nextSibling) {
+        const rel = node.nodeType === 1 ? ((node as Element).getAttribute("rel") ?? "") : "";
+        if (
+          (node as Element).localName === "link" &&
+          rel.toLowerCase().split(/\s+/).includes("stylesheet")
+        )
+          linked = true;
+      }
+      if (linked) parts.push([el]);
+      else parts.at(-1)!.push(el);
+    }
+    return parts;
+  });
+}
+
 function coalesceHeadStylesAndBodyScripts(html: string): string {
   const { document } = parseHTML(html);
   const head = document.querySelector("head");
@@ -945,7 +925,9 @@ function coalesceHeadStylesAndBodyScripts(html: string): string {
 
   const styleEls = head ? Array.from(head.querySelectorAll("style")) : [];
   const importRe = /@import\s+url\([^)]*\)\s*;|@import\s+["'][^"']+["']\s*;/gi;
-  for (const run of styleEls.length > 1 ? headStyleRuns(styleEls) : []) {
+  for (const run of styleEls.length > 1
+    ? splitRunsAtStylesheetLinks(headStyleRuns(styleEls))
+    : []) {
     const imports: string[] = [];
     const cssParts: string[] = [];
     const seenImports = new Set<string>();
@@ -1198,7 +1180,10 @@ function inlineSubCompositions(
 function ensureFullDocument(html: string): string {
   const trimmed = html.trim();
   if (/^<!DOCTYPE\s+html/i.test(trimmed) || /^<html/i.test(trimmed)) {
-    return html;
+    const { document } = parseHTML(html);
+    if (document.querySelector("head")) return html;
+    document.documentElement.prepend(document.createElement("head"));
+    return document.toString();
   }
   // Wrap fragment with a proper document including margin/padding reset.
   // Without this, Chrome applies default body { margin: 8px } which creates
@@ -1910,6 +1895,7 @@ async function embedLocalFontFaces(html: string, projectDir: string): Promise<st
  * additive; omitting `options` preserves the in-process renderer's defaults.
  */
 export interface CompileForRenderOptions {
+  resolveMediaContext?: (viewport: FontMediaContext["viewport"]) => CompileMediaDecision;
   /**
    * Logger for compile-time diagnostics (e.g. the data-duration vs. media
    * mismatch warning). Optional so non-render callers can omit it.
@@ -2077,14 +2063,37 @@ export async function compileForRender(
   const usesMixBlendMode = detectMixBlendModeUsage(sanitizedHtml);
   const hasAncestorBackgroundImage = detectAncestorBackgroundImage(sanitizedHtml);
 
-  const normalizedFontHtml = normalizeSystemFontPrimaryFamilies(
-    injectTextRenderingRule(
-      coalesceHeadStylesAndBodyScripts(promoteCssImportsToLinkTags(sanitizedHtml)),
-    ),
+  const preparedFontHtml = injectTextRenderingRule(
+    coalesceHeadStylesAndBodyScripts(promoteUnconditionalStylesheetImports(sanitizedHtml)),
   );
 
+  // Read dimensions from root composition element using DOM parser
+  const { document: viewportDocument } = parseHTML(preparedFontHtml);
+  const rootEl = viewportDocument.querySelector("[data-composition-id]");
+
+  const width = rootEl ? parseInt(rootEl.getAttribute("data-width") || "1080", 10) : 1080;
+  const height = rootEl ? parseInt(rootEl.getAttribute("data-height") || "1920", 10) : 1920;
+  const viewport = { width, height };
+  const decision = options.resolveMediaContext
+    ? options.resolveMediaContext(viewport)
+    : { deviceScaleFactor: 1 };
+  const mediaContext: CompileMediaContext = {
+    ...resolveFontMediaContext(preparedFontHtml, {
+      viewport,
+      deviceScaleFactor: decision.deviceScaleFactor,
+    }),
+    ...decision,
+  };
+
+  const normalizedFontHtml = normalizeSystemFontPrimaryFamilies(preparedFontHtml, "Inter", {
+    mediaContext,
+    stylesheetBaseDir: projectDir,
+  });
+
   const coalescedHtml = await injectDeterministicFontFaces(normalizedFontHtml, {
+    mediaContext,
     logger: defaultLogger,
+    stylesheetBaseDir: projectDir,
     failClosedFontFetch: options.failClosedFontFetch === true,
     allowSystemFontCapture: options.allowSystemFontCapture,
     abortSignal: options.abortSignal,
@@ -2223,13 +2232,6 @@ export async function compileForRender(
     })().catch(() => {});
   }
 
-  // Read dimensions from root composition element using DOM parser
-  const { document } = parseHTML(html);
-  const rootEl = document.querySelector("[data-composition-id]");
-
-  const width = rootEl ? parseInt(rootEl.getAttribute("data-width") || "1080", 10) : 1080;
-  const height = rootEl ? parseInt(rootEl.getAttribute("data-height") || "1920", 10) : 1920;
-
   // Static duration (may be 0 if set at runtime by GSAP)
   const staticDuration = rootEl
     ? (parseStrictFiniteTimingNumber(rootEl.getAttribute("data-duration")) ??
@@ -2238,6 +2240,7 @@ export async function compileForRender(
     : 0;
 
   return {
+    mediaContext,
     html,
     subCompositions,
     videos,

@@ -1000,20 +1000,10 @@ describe("writeCompiledArtifacts — external assets on Windows drive-letter pat
 
     const externalAssets = new Map<string, string>([[key, srcFile]]);
     const compiled = {
+      ...createCompiledComposition([]),
       html: "<!doctype html><html><body></body></html>",
-      subCompositions: new Map<string, string>(),
-      videos: [],
-      audios: [],
-      unresolvedCompositions: [],
       externalAssets,
-      width: 1920,
-      height: 1080,
       staticDuration: 10,
-      renderModeHints: {
-        recommendScreenshot: false,
-        reasons: [],
-      },
-      hasShaderTransitions: false,
     };
 
     writeCompiledArtifacts(compiled, workDir, false);
@@ -1035,20 +1025,10 @@ describe("writeCompiledArtifacts — external assets on Windows drive-letter pat
 
     const externalAssets = new Map<string, string>([["hf-ext/../../etc/passwd", srcFile]]);
     const compiled = {
+      ...createCompiledComposition([]),
       html: "<!doctype html>",
-      subCompositions: new Map<string, string>(),
-      videos: [],
-      audios: [],
-      unresolvedCompositions: [],
       externalAssets,
-      width: 1920,
-      height: 1080,
       staticDuration: 10,
-      renderModeHints: {
-        recommendScreenshot: false,
-        reasons: [],
-      },
-      hasShaderTransitions: false,
     };
 
     writeCompiledArtifacts(compiled, workDir, false);
@@ -1062,10 +1042,13 @@ function createCompiledComposition(
   reasonCodes: Array<"iframe" | "requestAnimationFrame">,
 ): CompiledComposition {
   return {
+    mediaContext: { viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 },
     html: "<html></html>",
     subCompositions: new Map(),
     videos: [],
     audios: [],
+    images: [],
+    droppedMediaIds: new Set(),
     unresolvedCompositions: [],
     externalAssets: new Map(),
     width: 1920,
@@ -1079,6 +1062,9 @@ function createCompiledComposition(
       })),
     },
     hasShaderTransitions: false,
+    usesThreeDTransforms: false,
+    usesMixBlendMode: false,
+    hasAncestorBackgroundImage: false,
   };
 }
 

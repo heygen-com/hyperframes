@@ -44,3 +44,16 @@ it("adds a text subset before the URL fragment without replacing authored text",
   );
   expect(withPageText(url, undefined)).toBe(url);
 });
+
+it.each([
+  ["screen and (min-width: 1000px)", true],
+  ["screen and (min-width: 1200px)", false],
+  ["print", false],
+])("evaluates conditional imports with the same viewport: %s", (media, active) => {
+  const html = `<style>@import '${url}' ${media};</style>`;
+  const resources = authoredGoogleFontStylesheets(html, {
+    viewport: { width: 1080, height: 1920 },
+    deviceScaleFactor: 1,
+  });
+  expect(resources.has("fraunces")).toBe(active);
+});

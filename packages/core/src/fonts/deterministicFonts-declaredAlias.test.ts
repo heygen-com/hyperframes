@@ -349,16 +349,12 @@ describe("declared-family aliases preserve stylesheet conditions", () => {
     ],
     ["import media", `<style>@import url("${googleUrl}") print;</style>`],
     ["quoted import media", `<style>@import "${googleUrl}" print;</style>`],
-    ["import supports", `<style>@import url("${googleUrl}") supports(display: grid);</style>`],
-    ["import layer", `<style>@import url("${googleUrl}") layer(brand);</style>`],
     ["link media", `<link rel="stylesheet" media="print" href="${googleUrl}">`],
     ["alternate link", `<link rel="alternate stylesheet" title="Brand" href="${googleUrl}">`],
     ["disabled link", `<link rel="stylesheet" disabled href="${googleUrl}">`],
     ["non-stylesheet link", `<link rel="preload" href="${googleUrl}">`],
     ["non-CSS style", `<style type="text/plain">@import url("${googleUrl}");</style>`],
     ["non-CSS link", `<link rel="stylesheet" type="text/plain" href="${googleUrl}">`],
-    ["titled style", `<style title="Brand">@import url("${googleUrl}");</style>`],
-    ["titled link", `<link rel="stylesheet" title="Brand" href="${googleUrl}">`],
   ])("ignores %s as an unconditional alias source", async (_case, declaration) => {
     const html = htmlWith(
       `${declaration}<style>h1 { font-family: "Saira ExtraCondensed"; }</style>`,
@@ -374,6 +370,11 @@ describe("declared-family aliases preserve stylesheet conditions", () => {
     `<style media="all" type="text/css">@import url("${googleUrl}");</style>`,
     `<link rel="stylesheet" media="all" type="text/css" href="${googleUrl}">`,
     `<style>@import "${googleUrl}" all;</style>`,
+    // A layer only orders the cascade, a true supports() passes, and a lone titled sheet is the preferred set.
+    `<style>@import url("${googleUrl}") layer(brand);</style>`,
+    `<style>@import url("${googleUrl}") supports(display: grid);</style>`,
+    `<style title="Brand">@import url("${googleUrl}");</style>`,
+    `<link rel="stylesheet" title="Brand" href="${googleUrl}">`,
   ])("accepts an unconditional stylesheet: %s", async (declaration) => {
     const { result } = await compile(
       htmlWith(`${declaration}<style>h1 { font-family: "Saira ExtraCondensed"; }</style>`),

@@ -1,3 +1,4 @@
+import { readCompositionSizeFromDocument } from "@hyperframes/core/composition-viewport";
 /**
  * Probes an iframe document to discover the composition's playback adapter
  * and detect whether the HyperFrames runtime needs to be injected.
@@ -41,31 +42,10 @@ export interface ProbeCallbacks {
   hostOwnsDeadline?: () => boolean;
 }
 
-/**
- * Parse a composition dimension, rejecting anything that isn't a positive
- * finite number. Exported because the `width`/`height` attribute handlers in
- * hyperframes-player.ts need the same guard: dimensions feed
- * scaleIframeToFit's `w / compositionWidth` division, where NaN produces an
- * invalid `scale(NaN)` transform and zero a division by zero — both render
- * the player blank with no signal.
- */
-export function readPositiveDimension(value: string | null): number | null {
-  if (value === null) return null;
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-}
-
-export function readCompositionSizeFromDocument(
-  doc: Document | null | undefined,
-): { width: number; height: number } | null {
-  const root =
-    doc?.querySelector("[data-composition-id][data-width][data-height]") ??
-    doc?.querySelector("[data-width][data-height]");
-  if (!root) return null;
-  const width = readPositiveDimension(root.getAttribute("data-width"));
-  const height = readPositiveDimension(root.getAttribute("data-height"));
-  return width !== null && height !== null ? { width, height } : null;
-}
+export {
+  readPositiveDimension,
+  readCompositionSizeFromDocument,
+} from "@hyperframes/core/composition-viewport";
 
 type ProbeOutcome =
   | { kind: "ready"; result: ProbeResult }

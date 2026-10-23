@@ -553,6 +553,12 @@
       "runtime": "./dist/timelineAssetId.js",
       "types": "./dist/timelineAssetId.d.ts",
       "environments": ["browser", "bun", "node"]
+    },
+    "./composition-viewport": {
+      "source": "./src/compositionViewport.ts",
+      "runtime": "./dist/compositionViewport.js",
+      "types": "./dist/compositionViewport.d.ts",
+      "environments": ["browser", "bun", "node"]
     }
   }
 }

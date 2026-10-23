@@ -1,3 +1,4 @@
+import type { CompositionViewport } from "@hyperframes/core/composition-viewport";
 import type { CanvasResolution } from "@hyperframes/parsers";
 import type { RegistryItem } from "@hyperframes/core";
 import type { BundleOptions } from "@hyperframes/core/compiler";
@@ -149,6 +150,7 @@ export interface StudioApiAdapter {
    */
   transformPreviewHtml?: (opts: {
     html: string;
+    viewport: CompositionViewport;
     project: ResolvedProject;
     activeCompositionPath: string;
   }) => Promise<string> | string;
