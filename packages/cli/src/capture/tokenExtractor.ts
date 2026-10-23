@@ -88,6 +88,9 @@ const EXTRACT_SCRIPT = `(() => {
 
   // 4. Colors — hybrid: DOM computed styles + visual pixel sampling
   var colorSet = {};
+  // One CPU-backed canvas: a GPU canvas per lookup stalls behind a busy software-GL page for minutes.
+  var colorCanvas = null;
+  var resolvedColors = {};
   function addColor(c, weight) {
     if (!c || c === "rgba(0, 0, 0, 0)" || c === "transparent" || c === "inherit" || c === "initial" || c === "currentcolor") return;
     var hex = rgbToHex(c);
@@ -109,15 +112,21 @@ const EXTRACT_SCRIPT = `(() => {
         // Use a 1x1 canvas to resolve ANY CSS color to RGB — this works even when
         // getComputedStyle returns the color in its original color space (Chrome 131+)
         if (/oklch|oklab|lch|lab|hsla?|color-mix|color\\(/.test(color)) {
+          if (color in resolvedColors) return resolvedColors[color];
           try {
-            var cvs = document.createElement('canvas');
-            cvs.width = 1; cvs.height = 1;
-            var ctx2d = cvs.getContext('2d');
+            if (!colorCanvas) {
+              var cvs = document.createElement('canvas');
+              cvs.width = 1; cvs.height = 1;
+              colorCanvas = cvs.getContext('2d', { willReadFrequently: true });
+            }
+            var ctx2d = colorCanvas;
             if (ctx2d) {
+              ctx2d.clearRect(0, 0, 1, 1);
+              ctx2d.fillStyle = '#000000';
               ctx2d.fillStyle = color;
               ctx2d.fillRect(0, 0, 1, 1);
               var px = ctx2d.getImageData(0, 0, 1, 1).data;
-              if (px[3] > 0) return '#' + ((1<<24) + (px[0]<<16) + (px[1]<<8) + px[2]).toString(16).slice(1).toUpperCase();
+              if (px[3] > 0) return (resolvedColors[color] = '#' + ((1<<24) + (px[0]<<16) + (px[1]<<8) + px[2]).toString(16).slice(1).toUpperCase());
             }
           } catch(e2) {}
           // Fallback: temp element approach

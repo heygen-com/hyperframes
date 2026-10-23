@@ -3,7 +3,7 @@ import { createPartialCaptureState } from "./partialCapture.js";
 import { CAPTURE_PHASE_SCHEMA } from "./types.js";
 import type { CaptureOptions, CaptureResult } from "./types.js";
 import { captureBrowserArgs } from "./browserLaunchArgs.js";
-import { NavigationDeadlineError } from "./captureErrors.js";
+import { NavigationDeadlineError, PageStoppedRespondingError } from "./captureErrors.js";
 
 const { captureWebsiteAttemptMock } = vi.hoisted(() => ({
   captureWebsiteAttemptMock: vi.fn(),
@@ -29,7 +29,13 @@ describe("capture navigation retry launch", () => {
     expect(args).not.toContain("--use-gl=angle");
   });
 
-  it("retries a WebGL navigation deadline and carries the degradation warning into the result", async () => {
+  it.each([
+    [new NavigationDeadlineError(new Error("timeout")), "Navigation timed out"],
+    [
+      new PageStoppedRespondingError("design token extraction"),
+      "The page stopped responding during design token extraction",
+    ],
+  ])("retries %s and carries the degradation warning into the result", async (error, why) => {
     const options: CaptureOptions = {
       url: "https://example.com",
       outputDir: "/tmp/hf-capture-test",
@@ -54,9 +60,7 @@ describe("capture navigation retry launch", () => {
         remainingMs: 1,
       },
     };
-    captureWebsiteAttemptMock
-      .mockRejectedValueOnce(new NavigationDeadlineError(new Error("timeout"), true))
-      .mockResolvedValueOnce(result);
+    captureWebsiteAttemptMock.mockRejectedValueOnce(error).mockResolvedValueOnce(result);
     const phases: string[] = [];
 
     const { captureWebsite } = await import("./index.js");
@@ -73,22 +77,24 @@ describe("capture navigation retry launch", () => {
       expect.anything(),
       expect.anything(),
     );
-    expect(actual.warnings).toContain("Navigation timed out; retrying once with WebGL disabled");
+    expect(actual.warnings).toContain(`${why}; retrying once with WebGL disabled`);
     expect(phases).toContain("webgl-disabled-retry");
   });
 
-  it("does not retry a navigation deadline without observed WebGL", async () => {
+  it("retries only once when the WebGL-off attempt stops too", async () => {
     const options: CaptureOptions = {
       url: "https://example.com",
-      outputDir: "/tmp/hf-capture-test-no-webgl",
+      outputDir: "/tmp/hf-capture-test-retry-once",
     };
     captureWebsiteAttemptMock.mockReset();
-    captureWebsiteAttemptMock.mockRejectedValueOnce(
-      new NavigationDeadlineError(new Error("timeout"), false),
-    );
+    captureWebsiteAttemptMock
+      .mockRejectedValueOnce(new NavigationDeadlineError(new Error("timeout")))
+      .mockRejectedValueOnce(new PageStoppedRespondingError("Lottie DOM scan"));
 
     const { captureWebsite } = await import("./index.js");
-    await expect(captureWebsite(options)).rejects.toThrow("capture navigation timed out");
-    expect(captureWebsiteAttemptMock).toHaveBeenCalledOnce();
+    await expect(captureWebsite(options)).rejects.toThrow(
+      "the page stopped responding during Lottie DOM scan",
+    );
+    expect(captureWebsiteAttemptMock).toHaveBeenCalledTimes(2);
   });
 });

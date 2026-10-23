@@ -3,12 +3,20 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Page, Browser } from "puppeteer-core";
-import { runCoreExtraction } from "./coreExtractionPhase.js";
+import { coreExtractionStatus, runCoreExtraction } from "./coreExtractionPhase.js";
 import { createPartialCaptureState } from "./partialCapture.js";
 import { createCaptureDownloadBudget } from "./readBoundedResponse.js";
 import { StageBudgetTimeoutError } from "./captureTimeout.js";
 
-const control = vi.hoisted(() => ({ remaining: 10000, expireLazy: false, throwCatalog: false }));
+const control = vi.hoisted(() => ({
+  remaining: 10000,
+  expireLazy: false,
+  throwCatalog: false,
+  hangTokens: false,
+  hangStop: false,
+  htmlReads: 0,
+  webglRetry: false,
+}));
 vi.mock("./lazyScrollForCapture.js", () => ({
   lazyScrollForCapture: async () => {
     if (control.expireLazy) control.remaining = 0;
@@ -22,17 +30,20 @@ vi.mock("./animationCataloger.js", () => ({
   },
 }));
 vi.mock("./tokenExtractor.js", () => ({
-  extractTokens: async () => ({
-    title: "Fixture",
-    description: "",
-    cssVariables: {},
-    fonts: [],
-    colors: [],
-    headings: [],
-    ctas: [],
-    svgs: [],
-    sections: [],
-  }),
+  extractTokens: async () =>
+    control.hangTokens
+      ? new Promise(() => {})
+      : {
+          title: "Fixture",
+          description: "",
+          cssVariables: {},
+          fonts: [],
+          colors: [],
+          headings: [],
+          ctas: [],
+          svgs: [],
+          sections: [],
+        },
 }));
 vi.mock("./designStyleExtractor.js", () => ({
   extractDesignStyles: async () => ({
@@ -48,6 +59,7 @@ vi.mock("./designStyleExtractor.js", () => ({
 vi.mock("./assetCataloger.js", () => ({ catalogAssets: async () => [] }));
 vi.mock("./htmlExtractor.js", () => ({
   extractHtml: async () => ({
+    reads: control.htmlReads++,
     headHtml: "",
     bodyHtml: "",
     cssomRules: "",
@@ -71,6 +83,10 @@ afterEach(() => {
   control.remaining = 10000;
   control.expireLazy = false;
   control.throwCatalog = false;
+  control.hangTokens = false;
+  control.hangStop = false;
+  control.htmlReads = 0;
+  control.webglRetry = false;
 });
 
 const REFUSED = "Protocol error (Page.captureScreenshot): Unable to capture screenshot";
@@ -81,6 +97,11 @@ async function extract(expireScreenshot = false, refuseShot?: number) {
   const outputDir = mkdtempSync(join(tmpdir(), "hf-core-budget-"));
   mkdirSync(join(outputDir, "extracted"));
   const state = createPartialCaptureState({ url: "https://example.com", outputDir });
+  const cdpSend = vi.fn((method: string) =>
+    control.hangStop && method === "Runtime.terminateExecution"
+      ? new Promise<never>(() => {})
+      : Promise.resolve(),
+  );
   let shots = 0;
   const screenshot = vi.fn(async () => {
     if (++shots === refuseShot) throw new Error(REFUSED);
@@ -99,8 +120,9 @@ async function extract(expireScreenshot = false, refuseShot?: number) {
   try {
     const pending = runCoreExtraction({
       page1: page,
+      canRetryWithoutWebgl: control.webglRetry,
       chromeBrowser: {} as Browser,
-      cdp: { send: async () => {} } as never,
+      cdp: { send: cdpSend } as never,
       cdpAnims: [],
       state,
       outputDir,
@@ -130,9 +152,10 @@ async function extract(expireScreenshot = false, refuseShot?: number) {
       downloadByteBudget: createCaptureDownloadBudget(),
       canWrite: () => true,
     });
+    pending.catch(() => {});
     await vi.runAllTimersAsync();
     const result = await pending;
-    return { result, warnings: state.warnings, screenshot };
+    return { result, warnings: state.warnings, screenshot, cdpSend };
   } finally {
     vi.useRealTimers();
     rmSync(outputDir, { recursive: true, force: true });
@@ -183,5 +206,59 @@ describe("core extraction screenshot budget", () => {
     expect(warnings).toContain(
       "animation catalog evaluate timed out; continuing without animation catalog",
     );
+  });
+});
+
+describe("core extraction page steps", () => {
+  it("stops a token step that never returns and still takes the screenshots", async () => {
+    control.hangTokens = true;
+    const { result, warnings, cdpSend } = await extract();
+    expect(result.timedOutSteps).toEqual(["design token extraction"]);
+    expect(warnings).toContain("design token extraction timed out; continuing without it");
+    expect(cdpSend).toHaveBeenCalledWith("Runtime.terminateExecution");
+    expect(result.screenshotOutcome).toEqual({ kind: "complete" });
+    expect(result.screenshots).toHaveLength(3);
+  });
+
+  it("skips the rest of the page steps once Chrome stops answering, and keeps the screenshots", async () => {
+    control.hangTokens = true;
+    control.hangStop = true;
+    const { result, warnings } = await extract();
+    expect(result.timedOutSteps).toEqual(["design token extraction"]);
+    expect(warnings).toContain(
+      "HTML extraction skipped: the page stopped responding during design token extraction",
+    );
+    expect(control.htmlReads).toBe(0);
+    expect(result.screenshots).toHaveLength(3);
+  });
+});
+
+describe("core extraction on a page that stops answering", () => {
+  it("ends the attempt for the WebGL-off retry instead of running the rest", async () => {
+    control.hangTokens = true;
+    control.hangStop = true;
+    control.webglRetry = true;
+    await expect(extract()).rejects.toMatchObject({
+      name: "PageStoppedRespondingError",
+      step: "design token extraction",
+    });
+    expect(control.htmlReads).toBe(0);
+  });
+});
+
+describe("core extraction status", () => {
+  it("reports a timed-out page step as degraded even when every screenshot landed", () => {
+    expect(
+      coreExtractionStatus({ screenshotOutcome: { kind: "complete" }, timedOutSteps: ["tokens"] }),
+    ).toEqual({ status: "degraded", reason: "request-timeout" });
+    expect(
+      coreExtractionStatus({ screenshotOutcome: { kind: "complete" }, timedOutSteps: [] }),
+    ).toEqual({ status: "completed" });
+    expect(
+      coreExtractionStatus({
+        screenshotOutcome: { kind: "partial", reason: "budget-exhausted" },
+        timedOutSteps: ["tokens"],
+      }),
+    ).toEqual({ status: "degraded", reason: "budget-exhausted" });
   });
 });

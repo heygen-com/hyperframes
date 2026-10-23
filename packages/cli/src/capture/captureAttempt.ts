@@ -30,7 +30,7 @@ import type { CaptureWatchdog } from "./captureWatchdog.js";
 
 import type { PartialCaptureState } from "./partialCapture.js";
 import { runNavigationChecks } from "./navigationPhase.js";
-import { runCoreExtraction } from "./coreExtractionPhase.js";
+import { coreExtractionStatus, runCoreExtraction } from "./coreExtractionPhase.js";
 import { runPostExtraction } from "./postExtractionPhase.js";
 
 const DEFAULT_POST_NAVIGATION_BUDGET_MS = 120_000;
@@ -177,7 +177,6 @@ export async function captureWebsiteAttempt(
       HTMLCanvasElement.prototype.getContext = function(type, attrs) {
         var ctx = origGetContext.call(this, type, attrs);
         if (ctx && (type === 'webgl' || type === 'webgl2' || type === 'experimental-webgl')) {
-          window.__hfWebglSeen = true;
           if (ctx.shaderSource && !ctx.__hfHooked) {
             var origShaderSource = ctx.shaderSource.bind(ctx);
             ctx.shaderSource = function(shader, source) {
@@ -239,6 +238,7 @@ export async function captureWebsiteAttempt(
 
     const coreResult = await runCoreExtraction({
       page1,
+      canRetryWithoutWebgl: !disableWebgl,
       chromeBrowser,
       cdp,
       cdpAnims,
@@ -278,8 +278,9 @@ export async function captureWebsiteAttempt(
     } = coreResult);
 
     const screenshotOutcome = coreResult.screenshotOutcome;
-    if (screenshotOutcome.kind === "complete") phase("core-extraction", "completed");
-    else phase("core-extraction", "degraded", screenshotOutcome.reason);
+    const core = coreExtractionStatus(coreResult);
+    if (core.status === "completed") phase("core-extraction", "completed");
+    else phase("core-extraction", "degraded", core.reason);
     const postResult = await runPostExtraction({
       state,
       outputDir,

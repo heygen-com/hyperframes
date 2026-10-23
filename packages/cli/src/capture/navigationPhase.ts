@@ -45,15 +45,7 @@ async function navigatePage(context: NavigationPhaseInput) {
   try {
     navigation = await navigateForCapture(context.page1, context.url, context.timeout);
   } catch (err) {
-    if (isNavigationTimeoutError(err)) {
-      let webglObserved = false;
-      try {
-        webglObserved = Boolean(await context.page1.evaluate("Boolean(window.__hfWebglSeen)"));
-      } catch {
-        /* the browser may already be closing */
-      }
-      throw new NavigationDeadlineError(err, webglObserved);
-    }
+    if (isNavigationTimeoutError(err)) throw new NavigationDeadlineError(err);
     throw err;
   }
   if (navigation.fellBackFromNetworkIdle) {

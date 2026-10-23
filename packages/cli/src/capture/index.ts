@@ -2,7 +2,7 @@ import { createCaptureWatchdog, runWithWatchdog } from "./captureWatchdog.js";
 import { createPartialCaptureState, writePartialCaptureBundle } from "./partialCapture.js";
 import type { PartialCaptureState } from "./partialCapture.js";
 import { captureWebsiteAttempt } from "./captureAttempt.js";
-import { NavigationDeadlineError } from "./captureErrors.js";
+import { NavigationDeadlineError, PageStoppedRespondingError } from "./captureErrors.js";
 import { CAPTURE_PHASE_SCHEMA } from "./types.js";
 import type { CaptureOptions, CaptureResult } from "./types.js";
 
@@ -21,14 +21,16 @@ export async function captureWebsite(
     if (first.kind === "error") throw first.error;
     return first.result;
   } catch (err) {
-    if (!(err instanceof NavigationDeadlineError) || watchdog.expired() || !err.webglObserved) {
+    const stuck = err instanceof PageStoppedRespondingError;
+    if (!(stuck || err instanceof NavigationDeadlineError) || watchdog.expired()) {
       throw err;
     }
-    onProgress?.("warn", "Navigation timed out; retrying once with WebGL disabled");
-    state.warnings.push("Navigation timed out; retrying once with WebGL disabled");
+    const retrying = `${stuck ? `The page stopped responding during ${err.step}` : "Navigation timed out"}; retrying once with WebGL disabled`;
+    onProgress?.("warn", retrying);
+    state.warnings.push(retrying);
     opts.onPhase?.({
       schema: CAPTURE_PHASE_SCHEMA,
-      phase: "navigation",
+      phase: stuck ? "core-extraction" : "navigation",
       status: "degraded",
       remainingMs: null,
       reason: "webgl-disabled-retry",

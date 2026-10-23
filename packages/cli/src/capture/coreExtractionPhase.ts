@@ -11,7 +11,7 @@ import { startCdpAnimationCapture } from "./animationCataloger.js";
 import { createCaptureDownloadBudget } from "./readBoundedResponse.js";
 import { detectLibraries } from "./contentExtractor.js";
 import { writeCaptureFileSync } from "./captureFile.js";
-import { CaptureDirRefusedError } from "./captureErrors.js";
+import { CaptureDirRefusedError, PageStoppedRespondingError } from "./captureErrors.js";
 import { join } from "node:path";
 import { extractHtml } from "./htmlExtractor.js";
 import { extractTokens } from "./tokenExtractor.js";
@@ -24,13 +24,17 @@ import {
   captureVideoManifest,
 } from "./mediaCapture.js";
 import { extractVisibleText } from "./contentExtractor.js";
-import { isDegradableEvaluateTimeoutError } from "./captureTimeout.js";
+import { isDegradableEvaluateTimeoutError, runPageStep } from "./captureTimeout.js";
 import { waitForPageReady } from "./navigateForCapture.js";
 import { lazyScrollForCapture } from "./lazyScrollForCapture.js";
 import { filterExtractedScripts } from "./filterExtractedScripts.js";
 
+// Above extractHtml's own 20 s inlining budget, so its final DOM read gets to run.
+const HTML_STEP_CAP_MS = 45_000;
+
 export interface CoreExtractionInput {
   page1: Page;
+  canRetryWithoutWebgl: boolean;
   chromeBrowser: Browser;
   cdp: Awaited<ReturnType<typeof startCdpAnimationCapture>>["cdp"];
   cdpAnims: Awaited<ReturnType<typeof startCdpAnimationCapture>>["animations"];
@@ -73,6 +77,7 @@ export interface CoreExtractionResult {
   tokens: DesignTokens;
   extracted: ExtractedHtml;
   screenshots: string[];
+  timedOutSteps: string[];
   screenshotOutcome:
     | { kind: "complete" }
     | {
@@ -119,6 +124,38 @@ export async function runCoreExtraction(input: CoreExtractionInput): Promise<Cor
       ? "animation catalog evaluate timed out; continuing without animation catalog"
       : "--capture-budget spent before the animation catalog finished; continuing without animation catalog";
   let screenshotOutcome: CoreExtractionResult["screenshotOutcome"] = { kind: "complete" };
+  const timedOutSteps: string[] = [];
+  let unresponsiveSince: string | undefined;
+  const warnStep = (message: string): void => {
+    warnings.push(message);
+    progress("warn", message);
+  };
+  const pageStep = async <T>(
+    label: string,
+    step: () => Promise<T>,
+    fallback: T,
+    capMs?: number,
+  ): Promise<T> => {
+    if (unresponsiveSince) {
+      warnStep(`${label} skipped: the page stopped responding during ${unresponsiveSince}`);
+      return fallback;
+    }
+    const outcome = await runPageStep(step, {
+      label,
+      stopPageScript: () => cdp.send("Runtime.terminateExecution"),
+      capMs,
+    });
+    if (outcome.kind === "done") return outcome.value;
+    timedOutSteps.push(label);
+    if (!outcome.pageAnswered) unresponsiveSince ??= label;
+    warnStep(`${label} timed out; continuing without it`);
+    return fallback;
+  };
+  const retryIfStuck = (): void => {
+    if (unresponsiveSince && input.canRetryWithoutWebgl) {
+      throw new PageStoppedRespondingError(unresponsiveSince);
+    }
+  };
   const runLazyAndLottie = async (): Promise<void> => {
     if (!contentCheckTimedOut && pageContentCheck.textLength < 100) {
       const reason =
@@ -151,7 +188,10 @@ export async function runCoreExtraction(input: CoreExtractionInput): Promise<Cor
       // Save discovered Lottie animations
       // Also scan DOM for Lottie web components not caught by network interception
       try {
-        const domLotties = await page1.evaluate(`(() => {
+        const domLotties = await pageStep(
+          "Lottie DOM scan",
+          () =>
+            page1.evaluate(`(() => {
     var urls = [];
     document.querySelectorAll('dotlottie-wc, lottie-player, dotlottie-player').forEach(function(el) {
       var src = el.getAttribute('src');
@@ -164,7 +204,9 @@ export async function runCoreExtraction(input: CoreExtractionInput): Promise<Cor
       });
     }
     return urls;
-  })()`);
+  })()`),
+          [],
+        );
         if (Array.isArray(domLotties)) {
           for (const lottieUrl of domLotties) {
             if (
@@ -213,12 +255,17 @@ export async function runCoreExtraction(input: CoreExtractionInput): Promise<Cor
     await saveDiscoveredLotties();
   };
   await runAnimationDiscovery();
+  retryIfStuck();
   recordBudget("animation discovery");
 
   // Save captured WebGL shaders (useful context for shader transitions + library detection)
   const runShaderCapture = async (): Promise<void> => {
     try {
-      const shaders = await page1.evaluate(`window.__capturedShaders || []`);
+      const shaders = await pageStep(
+        "WebGL shader read",
+        () => page1.evaluate(`window.__capturedShaders || []`),
+        [],
+      );
       if (Array.isArray(shaders) && shaders.length > 0) {
         const seen = new Set<string>();
         const unique = (shaders as Array<{ type: string; source: string }>).filter((s) => {
@@ -241,6 +288,7 @@ export async function runCoreExtraction(input: CoreExtractionInput): Promise<Cor
     }
   };
   await runShaderCapture();
+  retryIfStuck();
   recordBudget("shader capture");
 
   const runTokenExtraction = async (): Promise<void> => {
@@ -248,7 +296,7 @@ export async function runCoreExtraction(input: CoreExtractionInput): Promise<Cor
 
     // Extract design tokens
     progress("tokens", "Extracting design tokens...");
-    tokens = await extractTokens(page1);
+    tokens = await pageStep("design token extraction", () => extractTokens(page1), tokens);
     state.tokens = tokens;
     // Save tokens.json without SVG outerHTML (kept in memory for asset downloader)
     if (canWrite()) {
@@ -262,7 +310,12 @@ export async function runCoreExtraction(input: CoreExtractionInput): Promise<Cor
     // Extract computed design styles (typography, buttons, cards, spacing, shadows)
     progress("style", "Extracting design styles...");
     try {
-      const designStyles = await extractDesignStyles(page1);
+      const designStyles = await pageStep(
+        "design style extraction",
+        () => extractDesignStyles(page1),
+        null,
+      );
+      if (!designStyles) return;
       state.designStyles = designStyles;
       if (canWrite()) {
         writeCaptureFileSync(
@@ -283,6 +336,7 @@ export async function runCoreExtraction(input: CoreExtractionInput): Promise<Cor
     }
   };
   await runTokenExtraction();
+  retryIfStuck();
   recordBudget("design token extraction");
 
   const runAnimationCapture = async (): Promise<void> => {
@@ -315,6 +369,7 @@ export async function runCoreExtraction(input: CoreExtractionInput): Promise<Cor
     recordBudget("animation catalog");
   };
   await runAnimationCapture();
+  retryIfStuck();
 
   const runScreenshotCapture = async (): Promise<void> => {
     progress("screenshots", "Capturing scroll screenshots...");
@@ -362,6 +417,7 @@ export async function runCoreExtraction(input: CoreExtractionInput): Promise<Cor
     progress("screenshots", `${screenshots.length} scroll screenshots captured`);
   };
   await runScreenshotCapture();
+  retryIfStuck();
   const runHtmlExtraction = async (): Promise<void> => {
     await waitForPageReady(page1, {
       timeoutMs: Math.min(15_000, remainingMs()),
@@ -371,6 +427,7 @@ export async function runCoreExtraction(input: CoreExtractionInput): Promise<Cor
     // Catalog all assets (must run before extractHtml which converts img src to data URLs)
     progress("design", "Cataloging assets...");
     try {
+      if (unresponsiveSince) throw new PageStoppedRespondingError(unresponsiveSince);
       const { catalogAssets } = await import("./assetCataloger.js");
       catalogedAssets = await catalogAssets(page1);
       progress("design", `${catalogedAssets.length} assets cataloged`);
@@ -385,7 +442,19 @@ export async function runCoreExtraction(input: CoreExtractionInput): Promise<Cor
 
     // ── MUTATION phase: extractHtml modifies the live DOM (converts images to data URLs) ──
     progress("extract", "Extracting HTML & CSS...");
-    extracted = await extractHtml(page1, { settleTime: 1000 });
+    extracted = await pageStep(
+      "HTML extraction",
+      () =>
+        extractHtml(page1, {
+          settleTime: 1000,
+          onWarning: (message) => {
+            warnings.push(message);
+            progress("warn", message);
+          },
+        }),
+      extracted,
+      HTML_STEP_CAP_MS,
+    );
     state.extracted = extracted;
 
     // Strip framework scripts from the extracted body — keep visual library scripts
@@ -418,16 +487,27 @@ export async function runCoreExtraction(input: CoreExtractionInput): Promise<Cor
     }
 
     // Detect JS libraries via globals, DOM fingerprints, script URLs, and shaders
-    detectedLibraries = await detectLibraries(page1, capturedShaders);
+    detectedLibraries = await pageStep(
+      "library detection",
+      () => detectLibraries(page1, capturedShaders),
+      [],
+    );
 
     // Extract all visible text in DOM order
-    visibleTextContent = await extractVisibleText(page1);
+    visibleTextContent = await pageStep(
+      "visible text extraction",
+      () => extractVisibleText(page1),
+      "",
+    );
 
     // Extract favicon links before closing page (removed from tokens to reduce noise)
     // `sizes` and `type` are the only evidence of icon quality: page.html on disk does not
     // keep the <link> tags, and the bytes are only fetched for the candidate that wins, so
     // dropping these attributes here makes the choice unrecoverable downstream.
-    faviconLinks = (await page1.evaluate(`(() => {
+    faviconLinks = await pageStep(
+      "favicon read",
+      () =>
+        page1.evaluate(`(() => {
   var iconEls = Array.from(document.querySelectorAll('link[rel*="icon"], link[rel="apple-touch-icon"]'));
   return iconEls.map(function(l) {
     return {
@@ -437,7 +517,9 @@ export async function runCoreExtraction(input: CoreExtractionInput): Promise<Cor
       type: l.getAttribute('type'),
     };
   });
-})()`)) as IconCandidate[];
+})()`) as Promise<IconCandidate[]>,
+      [],
+    );
 
     await page1.close();
   };
@@ -445,6 +527,7 @@ export async function runCoreExtraction(input: CoreExtractionInput): Promise<Cor
 
   return {
     screenshotOutcome,
+    timedOutSteps,
     animationCatalog,
     capturedShaders,
     catalogedAssets,
@@ -455,4 +538,15 @@ export async function runCoreExtraction(input: CoreExtractionInput): Promise<Cor
     extracted,
     screenshots,
   };
+}
+
+export function coreExtractionStatus(
+  result: Pick<CoreExtractionResult, "screenshotOutcome" | "timedOutSteps">,
+):
+  | { status: "completed" }
+  | { status: "degraded"; reason: ScreenshotInterruption["reason"] | "deadline" } {
+  if (result.screenshotOutcome.kind !== "complete")
+    return { status: "degraded", reason: result.screenshotOutcome.reason };
+  if (result.timedOutSteps.length > 0) return { status: "degraded", reason: "request-timeout" };
+  return { status: "completed" };
 }

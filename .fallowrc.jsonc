@@ -481,6 +481,9 @@
     // require intrusive middleware changes beyond this PR's scope.
     "minLines": 6,
     "ignore": [
+      // Pre-existing clone: captureAttempt passes runCoreExtraction's ~25 inputs by name and
+      // coreExtractionPhase destructures the same list. Any edit to either file re-flags it.
+      "packages/cli/src/capture/captureAttempt.ts",
       // Pre-existing clone with extractVideosStage.ffmpegTimeout.test.ts: both mock the engine's whole
       // ExtractionResult. Touching the mock to record another option re-flags it.
       "packages/producer/src/services/render/stages/extractVideosStage.timelineBound.test.ts",

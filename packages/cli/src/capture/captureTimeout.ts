@@ -83,6 +83,34 @@ export async function withRemainingBudget<T>(
   }
 }
 
+const PAGE_STEP_CAP_MS = 30_000;
+const STOP_CONFIRM_MS = 5_000;
+
+export type PageStepOutcome<T> =
+  | { kind: "done"; value: T }
+  | { kind: "timed-out"; pageAnswered: boolean };
+
+export async function runPageStep<T>(
+  step: () => Promise<T>,
+  opts: { label: string; stopPageScript: () => Promise<unknown>; capMs?: number },
+): Promise<PageStepOutcome<T>> {
+  try {
+    const value = await withRemainingBudget(step(), opts.capMs ?? PAGE_STEP_CAP_MS, opts.label);
+    return { kind: "done", value };
+  } catch (err) {
+    if (!isDegradableEvaluateTimeoutError(err)) throw err;
+    const pageAnswered = await withRemainingBudget(
+      opts.stopPageScript(),
+      STOP_CONFIRM_MS,
+      `stopping ${opts.label}`,
+    ).then(
+      () => true,
+      (stopError: unknown) => !(stopError instanceof StageBudgetTimeoutError),
+    );
+    return { kind: "timed-out", pageAnswered };
+  }
+}
+
 export function formatCaptureFailureReason(errMsg: string): string {
   if (hasProtocolEvaluateTimeoutMessage(errMsg) || /stage budget exceeded/i.test(errMsg)) {
     return (
