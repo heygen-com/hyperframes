@@ -29,6 +29,7 @@ import { AFTER_FONTS_SCRIPT_TYPE } from "@hyperframes/core/compiler";
 import { PREVIEW_BUNDLE_OPTIONS, PREVIEW_CAPTURE_PARAM, registerPreviewRoutes } from "./preview";
 import { registerFileRoutes } from "./files";
 import { createPreviewDocumentStore } from "../helpers/previewDocumentStore";
+import { MAX_OPEN_MEDIA_RANGE_BYTES } from "../helpers/mediaRange";
 import type { StudioApiAdapter } from "../types";
 import {
   affectsPreview,
@@ -2394,6 +2395,29 @@ describe("preview asset byte ranges", () => {
     });
     expect(res.status).toBe(416);
     expect(res.headers.get("Content-Range")).toBe("bytes */3");
+  });
+
+  it("answers an open-ended media range with a bounded piece, not the rest of the file", async () => {
+    // A media element reads `bytes=N-` until its buffer is full, then leaves the response open.
+    // Served to EOF, each <video> held one of the browser's six connections, so seven clips on
+    // one file left every other request queued (#6029).
+    const projectDir = createProjectDir();
+    const size = 3 * 1024 * 1024 * 1024;
+    const fd = openSync(join(projectDir, "clip.mp4"), "w");
+    ftruncateSync(fd, size);
+    closeSync(fd);
+
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+    const res = await app.request("http://localhost/projects/demo/preview/clip.mp4", {
+      headers: { Range: "bytes=5000000-" },
+    });
+    expect(res.status).toBe(206);
+    expect(res.headers.get("Content-Range")).toBe(
+      `bytes 5000000-${5000000 + MAX_OPEN_MEDIA_RANGE_BYTES - 1}/${size}`,
+    );
+    expect(res.headers.get("Content-Length")).toBe(String(MAX_OPEN_MEDIA_RANGE_BYTES));
+    expect((await res.arrayBuffer()).byteLength).toBe(MAX_OPEN_MEDIA_RANGE_BYTES);
   });
 });
 

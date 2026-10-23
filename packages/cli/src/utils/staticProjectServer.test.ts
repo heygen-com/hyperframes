@@ -9,6 +9,7 @@ import {
   type StaticProjectServer,
 } from "./staticProjectServer.js";
 import { injectMediaCodecMapIntoHtml } from "@hyperframes/studio-server/media-proxy-preview";
+import { MAX_OPEN_MEDIA_RANGE_BYTES } from "@hyperframes/studio-server";
 
 // `serveStaticProjectHtml` reaches these two studio-server helpers via a
 // absolute module regardless of which file's relative specifier reaches it).
@@ -131,9 +132,9 @@ afterEach(async () => {
   mocks.decideMediaProxyEligibility.mockReturnValue({ eligible: true });
 });
 
-async function serveWith(bytes: Buffer): Promise<{ url: string }> {
+async function serveWith(bytes: Buffer, name = "tone.wav"): Promise<{ url: string }> {
   dir = mkdtempSync(join(tmpdir(), "hf-static-"));
-  writeFileSync(join(dir, "tone.wav"), bytes);
+  writeFileSync(join(dir, name), bytes);
   server = await serveStaticProjectHtml(dir, "<html></html>");
   return { url: server.url };
 }
@@ -211,6 +212,38 @@ describe("serveStaticProjectHtml range support", () => {
     const res = await fetch(`${url}tone.wav`, { headers: { Range: "bytes=99-200" } });
     expect(res.status).toBe(416);
     expect(res.headers.get("content-range")).toBe(`bytes */${body.length}`);
+  });
+
+  it("answers an open-ended media range with a bounded piece, not the rest of the file", async () => {
+    // A media element reads `bytes=N-` until its buffer is full, then leaves the response open.
+    // Served to EOF, each <video> held one of Chrome's six connections, so seven clips on one
+    // file left every other request queued and `hyperframes check` hung (#6029).
+    const size = 8 * 1024 * 1024;
+    const { url } = await serveWith(Buffer.alloc(size, 0x61), "clip.mp4");
+    const res = await fetch(`${url}clip.mp4`, { headers: { Range: "bytes=1000-" } });
+    expect(res.status).toBe(206);
+    expect(res.headers.get("content-range")).toBe(
+      `bytes 1000-${1000 + MAX_OPEN_MEDIA_RANGE_BYTES - 1}/${size}`,
+    );
+    expect(res.headers.get("content-length")).toBe(String(MAX_OPEN_MEDIA_RANGE_BYTES));
+    expect((await res.arrayBuffer()).byteLength).toBe(MAX_OPEN_MEDIA_RANGE_BYTES);
+  });
+
+  it("serves an open-ended media range to EOF when the rest is under one piece", async () => {
+    const { url } = await serveWith(Buffer.from("0123456789", "utf-8"), "clip.mp4");
+    const res = await fetch(`${url}clip.mp4`, { headers: { Range: "bytes=2-" } });
+    expect(res.status).toBe(206);
+    expect(res.headers.get("content-range")).toBe("bytes 2-9/10");
+    expect(await res.text()).toBe("23456789");
+  });
+
+  it("serves an open-ended range of a file that isn't media to EOF", async () => {
+    const size = 8 * 1024 * 1024;
+    const { url } = await serveWith(Buffer.alloc(size, 0x61), "data.bin");
+    const res = await fetch(`${url}data.bin`, { headers: { Range: "bytes=1000-" } });
+    expect(res.status).toBe(206);
+    expect(res.headers.get("content-range")).toBe(`bytes 1000-${size - 1}/${size}`);
+    expect((await res.arrayBuffer()).byteLength).toBe(size - 1000);
   });
 });
 

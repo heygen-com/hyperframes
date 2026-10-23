@@ -28,6 +28,7 @@ import {
   resolveWithinProject,
 } from "../helpers/safePath.js";
 import { getMimeType } from "../helpers/mime.js";
+import { openRangeEnd } from "../helpers/mediaRange.js";
 import { buildSubCompositionHtml, hasBaseElement } from "../helpers/subComposition.js";
 import {
   createProjectSignature,
@@ -740,7 +741,9 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     const match = rangeHeader ? /bytes=(\d+)-(\d*)/.exec(rangeHeader) : null;
     if (match) {
       const start = parseInt(match[1]!, 10);
-      const end = match[2] ? parseInt(match[2], 10) : totalSize - 1;
+      const end = match[2]
+        ? parseInt(match[2], 10)
+        : openRangeEnd(start, totalSize - 1, servedContentType);
       const safeEnd = Math.min(end, totalSize - 1);
       if (start > safeEnd) {
         return new Response(null, {
