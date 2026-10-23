@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { TimelineElement } from "../player";
 import { usePlayerStore } from "../player";
 import { getTimelineElementLabel } from "../utils/studioHelpers";
@@ -7,6 +7,11 @@ import { canSplitElementAt, selectSplittableElements } from "../utils/timelineEl
 import { linkedMembersOf } from "../player/components/audioClipLink";
 import { isLinkedSelectionOn } from "../utils/linkedClipPreferences";
 import { buildAtomicCutIntents, runAtomicCutTransaction } from "../utils/razorSplitTransaction";
+import {
+  createRazorSplitRefreshGate,
+  type QueuedRazorSplit,
+  type RazorSplitRefreshGate,
+} from "../utils/razorSplitRefreshGate";
 import type { RecordEditInput } from "./timelineEditingHelpers";
 import { useFreezeFrame } from "./useFreezeFrame";
 
@@ -22,6 +27,8 @@ interface UseRazorSplitOptions {
   forceReloadSdkSession?: () => void;
   isRecordingRef?: React.RefObject<boolean>;
 }
+
+const REFRESH_TIMEOUT_MS = 15_000;
 
 export function useRazorSplit({
   projectId,
@@ -56,36 +63,44 @@ export function useRazorSplit({
     async (elements: readonly TimelineElement[], splitTime: number, mode: "single" | "all") => {
       const pid = projectIdRef.current;
       if (!pid || elements.length === 0) return;
-      const intents = buildAtomicCutIntents(elements, splitTime, activeCompPath);
-      const requestedCount = intents.reduce((count, file) => count + file.targets.length, 0);
-      const label =
-        mode === "single"
-          ? "Split timeline clip"
-          : `Split ${requestedCount} clips at ${splitTime.toFixed(2)}s`;
+      const gate = gateRef.current;
+      gate?.arm();
+      try {
+        const intents = buildAtomicCutIntents(elements, splitTime, activeCompPath);
+        const requestedCount = intents.reduce((count, file) => count + file.targets.length, 0);
+        const label =
+          mode === "single"
+            ? "Split timeline clip"
+            : `Split ${requestedCount} clips at ${splitTime.toFixed(2)}s`;
 
-      const result = await runAtomicCutTransaction({
-        projectId: pid,
-        intents,
-        label,
-        writeProjectFile,
-        recordEdit,
-        observeProjectFileVersion,
-        synchronize,
-      });
-      trackStudioRazorSplit({ mode, count: result.splitCount });
-      if (result.syncFailed) {
-        showToast(
-          "Cut was saved, but Studio could not refresh it. Reload the preview to resynchronize.",
-          "error",
-        );
+        const result = await runAtomicCutTransaction({
+          projectId: pid,
+          intents,
+          label,
+          writeProjectFile,
+          recordEdit,
+          observeProjectFileVersion,
+          synchronize,
+        });
+        trackStudioRazorSplit({ mode, count: result.splitCount });
+        if (result.syncFailed) {
+          gate?.flushWithoutRefresh();
+          showToast(
+            "Cut was saved, but Studio could not refresh it. Reload the preview to resynchronize.",
+            "error",
+          );
+        }
+        if (result.skippedSelectors.length > 0) {
+          showToast(
+            `Some animations use non-ID selectors (${result.skippedSelectors.join(", ")}) and were not retargeted`,
+            "info",
+          );
+        }
+        return result;
+      } catch (error) {
+        gate?.flushWithoutRefresh();
+        throw error;
       }
-      if (result.skippedSelectors.length > 0) {
-        showToast(
-          `Some animations use non-ID selectors (${result.skippedSelectors.join(", ")}) and were not retargeted`,
-          "info",
-        );
-      }
-      return result;
     },
     [
       activeCompPath,
@@ -97,16 +112,11 @@ export function useRazorSplit({
     ],
   );
 
-  const handleRazorSplit = useCallback(
-    async (element: TimelineElement, splitTime: number) => {
-      if (isRecordingRef?.current) {
-        showToast("Cannot edit timeline while recording", "error");
-        return;
-      }
-      if (!canSplitElementAt(element, splitTime)) return;
+  const splitSingle = useCallback(
+    async (primary: TimelineElement, splitTime: number) => {
       try {
         const members = linkedMembersOf(
-          element,
+          primary,
           usePlayerStore.getState().elements,
           isLinkedSelectionOn(),
         );
@@ -115,15 +125,72 @@ export function useRazorSplit({
           splitTime,
           "single",
         );
-        if (!result) return;
-        if (result.syncFailed) return;
-        showToast(`Split ${getTimelineElementLabel(element)} at ${splitTime.toFixed(2)}s`, "info");
+        if (!result || result.syncFailed) return;
+        showToast(`Split ${getTimelineElementLabel(primary)} at ${splitTime.toFixed(2)}s`, "info");
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to split timeline clip";
         showToast(message, "error");
       }
     },
-    [isRecordingRef, runCut, showToast],
+    [runCut, showToast],
+  );
+
+  const splitAll = useCallback(
+    async (splitTime: number) => {
+      try {
+        const splittable = selectSplittableElements(usePlayerStore.getState().elements, splitTime);
+        if (splittable.length === 0) return;
+        const result = await runCut(splittable, splitTime, "all");
+        if (!result || result.syncFailed) return;
+        showToast(`Split ${result.splitCount} clips at ${splitTime.toFixed(2)}s`, "info");
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to split clips";
+        showToast(message, "error");
+      }
+    },
+    [runCut, showToast],
+  );
+
+  const replayQueuedSplit = useCallback(
+    async (item: QueuedRazorSplit) => {
+      if (item.mode === "all") {
+        await splitAll(item.splitTime);
+        return;
+      }
+      const primary = usePlayerStore
+        .getState()
+        .elements.find(
+          (element) => element.track === item.track && canSplitElementAt(element, item.splitTime),
+        );
+      if (!primary) return;
+      await splitSingle(primary, item.splitTime);
+    },
+    [splitAll, splitSingle],
+  );
+
+  const replayRef = useRef(replayQueuedSplit);
+  replayRef.current = replayQueuedSplit;
+
+  const gateRef = useRef<RazorSplitRefreshGate | null>(null);
+  gateRef.current ??= createRazorSplitRefreshGate({
+    getElements: () => usePlayerStore.getState().elements,
+    subscribe: (listener) => usePlayerStore.subscribe(listener),
+    replay: (item) => replayRef.current(item),
+    timeoutMs: REFRESH_TIMEOUT_MS,
+  });
+  useEffect(() => () => gateRef.current?.dispose(), []);
+
+  const handleRazorSplit = useCallback(
+    async (element: TimelineElement, splitTime: number) => {
+      if (isRecordingRef?.current) {
+        showToast("Cannot edit timeline while recording", "error");
+        return;
+      }
+      if (gateRef.current?.offer({ mode: "single", track: element.track, splitTime })) return;
+      if (!canSplitElementAt(element, splitTime)) return;
+      await splitSingle(element, splitTime);
+    },
+    [isRecordingRef, splitSingle, showToast],
   );
 
   const handleRazorSplitAll = useCallback(
@@ -132,19 +199,10 @@ export function useRazorSplit({
         showToast("Cannot edit timeline while recording", "error");
         return;
       }
-      const splittable = selectSplittableElements(usePlayerStore.getState().elements, splitTime);
-      if (splittable.length === 0) return;
-      try {
-        const result = await runCut(splittable, splitTime, "all");
-        if (!result) return;
-        if (result.syncFailed) return;
-        showToast(`Split ${result.splitCount} clips at ${splitTime.toFixed(2)}s`, "info");
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Failed to split clips";
-        showToast(message, "error");
-      }
+      if (gateRef.current?.offer({ mode: "all", splitTime })) return;
+      await splitAll(splitTime);
     },
-    [isRecordingRef, runCut, showToast],
+    [isRecordingRef, splitAll, showToast],
   );
 
   const handleFreezeFrame = useFreezeFrame({

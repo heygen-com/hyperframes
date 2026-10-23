@@ -143,3 +143,154 @@ describe("useRazorSplit linked clips", () => {
     act(() => root.unmount());
   });
 });
+
+interface RecordedCut {
+  originalId?: string;
+  splitTime: number;
+}
+
+describe("useRazorSplit rapid consecutive cuts", () => {
+  const wideClip: TimelineElement = {
+    id: "clip",
+    domId: "clip",
+    tag: "div",
+    start: 0,
+    duration: 10,
+    track: 0,
+  };
+  const leftHalf: TimelineElement = { ...wideClip, duration: 5 };
+  const rightHalf: TimelineElement = {
+    ...wideClip,
+    id: "clip-split",
+    domId: "clip-split",
+    start: 5,
+  };
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    const { usePlayerStore } = await import("../player");
+    usePlayerStore.setState({ elements: [] });
+  });
+
+  it("queues a second cut until the refreshed elements land, then re-aims it", async () => {
+    const { usePlayerStore } = await import("../player");
+    usePlayerStore.getState().setElements([wideClip]);
+    const requests: RecordedCut[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.includes("/files/")) return jsonResponse({ content: "", version: '"v0"' });
+      if (url.includes("/file-mutations/split-batch")) {
+        const body = JSON.parse(String(init?.body)) as {
+          files: Array<{ targets: RecordedCut[] }>;
+        };
+        for (const file of body.files) for (const target of file.targets) requests.push(target);
+        return jsonResponse({
+          ok: true,
+          outcome: "committed",
+          files: [
+            {
+              path: "index.html",
+              before: "<a></a>",
+              after: "<b></b>",
+              version: '"v1"',
+              writeToken: "cut",
+              splitCount: 1,
+              skippedSelectors: [],
+            },
+          ],
+        });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    const toasts: string[] = [];
+    let split: ((element: TimelineElement, splitTime: number) => Promise<void>) | undefined;
+    const root = createRoot(document.body.appendChild(document.createElement("div")));
+    function Harness() {
+      split = useRazorSplit({
+        projectId: "p1",
+        activeCompPath: "index.html",
+        showToast: (message) => toasts.push(message),
+        writeProjectFile: vi.fn(),
+        recordEdit: vi.fn().mockResolvedValue(undefined),
+        reloadPreview: vi.fn(),
+      }).handleRazorSplit;
+      return null;
+    }
+    await act(async () => root.render(React.createElement(Harness)));
+
+    // First cut commits and arms the refresh gate (the preview reload is async).
+    await act(async () => {
+      await split?.(wideClip, 5);
+    });
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({ originalId: "clip", splitTime: 5 });
+
+    // Second click inside the refresh window: queued, nothing hits the server.
+    await act(async () => {
+      await split?.(wideClip, 3);
+    });
+    expect(requests).toHaveLength(1);
+
+    // The reloaded preview reports the split halves; the queued cut replays
+    // against them and re-aims at the piece that owns t=3 (the left half).
+    await act(async () => {
+      usePlayerStore.getState().setElements([leftHalf, rightHalf]);
+    });
+    await vi.waitFor(() => expect(requests).toHaveLength(2));
+    expect(requests[1]).toMatchObject({ originalId: "clip", splitTime: 3 });
+    expect(toasts.some((toast) => toast.includes("3.00"))).toBe(true);
+
+    act(() => root.unmount());
+  });
+
+  it("replays a queued cut immediately when the first cut fails", async () => {
+    const { usePlayerStore } = await import("../player");
+    usePlayerStore.getState().setElements([wideClip]);
+    const requests: RecordedCut[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.includes("/files/")) return jsonResponse({ content: "", version: '"v0"' });
+      if (url.includes("/file-mutations/split-batch")) {
+        const body = JSON.parse(String(init?.body)) as {
+          files: Array<{ targets: RecordedCut[] }>;
+        };
+        for (const file of body.files) for (const target of file.targets) requests.push(target);
+        return jsonResponse(
+          { error: "Cut target was not found or was outside its authored bounds in index.html" },
+          400,
+        );
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    let split: ((element: TimelineElement, splitTime: number) => Promise<void>) | undefined;
+    const root = createRoot(document.body.appendChild(document.createElement("div")));
+    function Harness() {
+      split = useRazorSplit({
+        projectId: "p1",
+        activeCompPath: "index.html",
+        showToast: vi.fn(),
+        writeProjectFile: vi.fn(),
+        recordEdit: vi.fn().mockResolvedValue(undefined),
+        reloadPreview: vi.fn(),
+      }).handleRazorSplit;
+      return null;
+    }
+    await act(async () => root.render(React.createElement(Harness)));
+
+    await act(async () => {
+      await split?.(wideClip, 5);
+    });
+    expect(requests).toHaveLength(1);
+    // The failed cut changed nothing, so nothing will refresh: the queued click
+    // replays right away instead of waiting for a refresh that never comes.
+    await act(async () => {
+      await split?.(wideClip, 3);
+    });
+    expect(requests).toHaveLength(2);
+    expect(requests[1]).toMatchObject({ splitTime: 3 });
+
+    act(() => root.unmount());
+  });
+});

@@ -6,6 +6,7 @@ export interface SplitBody {
   splitTime: number;
   elementStart: number;
   elementDuration: number;
+  originalId?: string;
 }
 
 interface BatchFileBody {
