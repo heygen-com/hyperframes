@@ -289,6 +289,24 @@ describe("createVideoFrameInjector cache hygiene against page-side skips", () =>
     expect(injectVideoFramesBatchMock.mock.calls[1]?.[0]).toBe(screenshotPage);
   });
 
+  it("injects on a second page that one hook reaches at the same frame index", async () => {
+    // drawElement verification runs the session's hook on a throwaway page
+    // before capture starts on the real page.
+    const hook = createVideoFrameInjector(
+      fakeTable({ videoId: "clip", framePath: "/clip-7", frameIndex: 7 }),
+      { frameSrcResolver: inlineResolver },
+    );
+    const verificationPage = { evaluate: async () => undefined } as unknown as Page;
+    const capturePage = { evaluate: async () => undefined } as unknown as Page;
+
+    injectVideoFramesBatchMock.mockResolvedValue(["clip"]);
+    await hook!(verificationPage, 0.7);
+    await hook!(capturePage, 0.7);
+
+    expect(injectVideoFramesBatchMock).toHaveBeenCalledTimes(2);
+    expect(injectVideoFramesBatchMock.mock.calls[1]?.[0]).toBe(capturePage);
+  });
+
   // Regression: WebGL/WebGPU compositions that sample a <video> as a texture
   // render on `hf-seek` BEFORE frames are injected. After injecting the
   // decoded frames, the hook must re-render the GPU adapters at the same time

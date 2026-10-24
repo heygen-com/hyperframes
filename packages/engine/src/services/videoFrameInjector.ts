@@ -187,7 +187,7 @@ export function createVideoFrameInjector(
   );
   const bytesLimit = bytesLimitMb * 1024 * 1024;
   const frameCache = createFrameSourceCache(entryLimit, bytesLimit, config?.frameSrcResolver);
-  const lastInjectedFrameByVideo = new Map<string, number>();
+  const lastInjectedFrameByPage = new WeakMap<Page, Map<string, number>>();
   const lastCacheTouchByDir = new Map<string, number>();
 
   /**
@@ -206,6 +206,11 @@ export function createVideoFrameInjector(
 
   // fallow-ignore-next-line complexity
   return async (page: Page, time: number, heldVideoTime?: number) => {
+    let lastInjectedFrameByVideo = lastInjectedFrameByPage.get(page);
+    if (!lastInjectedFrameByVideo) {
+      lastInjectedFrameByVideo = new Map<string, number>();
+      lastInjectedFrameByPage.set(page, lastInjectedFrameByVideo);
+    }
     for (const cacheDir of frameLookup.frameDirs()) renewCacheLease(cacheDir);
     const activePayloads = frameLookup.getActiveFramePayloads(time);
     if (heldVideoTime !== undefined) {
