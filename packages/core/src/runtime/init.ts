@@ -2,7 +2,13 @@
 import { setPreviewRasterScale } from "./previewRasterHints";
 import { refreshSvgSelectorAliases } from "../compiler/svgSelectorAliases";
 import { RUNTIME_FILLER } from "./protocol";
-import { preloadMedia, releaseMedia, lengthIsAuthored, stopMediaDownload } from "./preloadMedia";
+import {
+  preloadMedia,
+  prepareUpcomingMedia,
+  releaseMedia,
+  lengthIsAuthored,
+  stopMediaDownload,
+} from "./preloadMedia";
 import { installRuntimeControlBridge, postRuntimeMessage, setRuntimeProtocolFps } from "./bridge";
 import { instantTolerance } from "../clipFacts";
 import { isInClipWindow } from "./clipWindow";
@@ -2858,6 +2864,15 @@ export function initSandboxRuntimeModular(): void {
   // cannot fetch in time on a slow link.
   const armedBy = new WeakMap<HTMLMediaElement, HTMLMediaElement>();
   const armedFrom = new WeakSet<HTMLMediaElement>();
+  const approachingMedia = new WeakSet<HTMLMediaElement>();
+  const prepareInWindow = (el: HTMLMediaElement) =>
+    prepareUpcomingMedia(
+      el,
+      () =>
+        !state.tornDown &&
+        mediaNearPlayhead.get(el) === true &&
+        resolveAbsoluteMediaStartSeconds(el) > clock.now(),
+    );
   // An untracked clip (NaN) shares a track with nothing, as in the timeline payload.
   const hostOf = (el: Element) => el.parentElement?.closest("[data-composition-id]");
   // Clips due soon fetch a few at a time, earliest first: a fast cut sequence has dozens inside the
@@ -2889,6 +2904,7 @@ export function initSandboxRuntimeModular(): void {
   };
   const startPrefetch = (el: HTMLMediaElement) => {
     preloadMedia(el);
+    prepareInWindow(el);
     if (prefetching.has(el) || el.readyState >= 3) return;
     prefetching.add(el);
     for (const type of PREFETCH_SETTLED_EVENTS) el.addEventListener(type, onPrefetchSettled);
@@ -2948,7 +2964,14 @@ export function initSandboxRuntimeModular(): void {
     const spent = passed && (decided !== true || (el.networkState === 2 && el.readyState < 4));
     const near = visible || armed || (upcoming && !unslotted && !spent);
     if ((visible || !near) && endPrefetch(el)) queueMicrotask(fillPrefetchSlots);
-    if (decided === near) return;
+    const approaching = near && !visible && resolveAbsoluteMediaStartSeconds(el) > clock.now();
+    const wasApproaching = approachingMedia.has(el);
+    if (approaching) approachingMedia.add(el);
+    else approachingMedia.delete(el);
+    if (decided === near) {
+      if (approaching && !wasApproaching) prepareInWindow(el);
+      return;
+    }
     mediaNearPlayhead.set(el, near);
     if (!near) {
       if (el.preload !== "none") {

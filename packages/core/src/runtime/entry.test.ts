@@ -472,6 +472,32 @@ describe("runtime entry", () => {
       expect(armed(...due)).toEqual([true, true, true, true, true]);
     });
 
+    it("prepares a queued split only after a prefetch slot opens", async () => {
+      spyLoad();
+      servePreview();
+      const [now, first, second, third, queued] = videos(
+        mountRoot(),
+        "0",
+        "1",
+        "1.2",
+        "1.4",
+        "1.6",
+      );
+      for (const video of [first, second, third, queued])
+        video.setAttribute("data-media-start", "6");
+
+      await evaluateRuntime();
+      expect(armed(now, first, second, third, queued)).toEqual([true, true, true, true, false]);
+      queued.dispatchEvent(new Event("loadedmetadata"));
+      expect(queued.currentTime).toBe(0);
+
+      first.dispatchEvent(new Event("error"));
+      queued.dispatchEvent(new Event("loadedmetadata"));
+      expect(queued.preload).toBe("auto");
+      expect(queued.currentTime).toBe(6);
+      expect(loadsOf(queued)).toEqual([1]);
+    });
+
     it("frees a clip the playhead has passed while it is still downloading, and keeps one that finished", async () => {
       spyLoad();
       servePreview();
@@ -519,6 +545,77 @@ describe("runtime entry", () => {
       otherTrack.setAttribute("data-track-index", "2");
       return { now, next, afterNext, otherTrack };
     };
+
+    it("decodes an upcoming split video at its source offset before playback reaches it", async () => {
+      spyLoad();
+      servePreview();
+      const { next } = tracks(mountRoot());
+      next.setAttribute("data-media-start", "6");
+
+      await evaluateRuntime();
+      window.__player?.play();
+      next.dispatchEvent(new Event("loadedmetadata"));
+      expect(next.currentTime).toBe(6);
+      expect(next.paused).toBe(true);
+      expect(visibility(next)).toEqual(["hidden"]);
+    });
+
+    it("prepares a loaded upcoming video when the paused playhead enters its look-ahead", async () => {
+      spyLoad();
+      servePreview();
+      const [, next] = videos(mountRoot(), "0", "5");
+      next.setAttribute("data-media-start", "6");
+      Object.defineProperty(next, "readyState", { value: 4 });
+
+      await evaluateRuntime();
+      window.__player?.seek(3.5);
+      expect(next.currentTime).toBe(6);
+      expect(next.paused).toBe(true);
+      expect(loadsOf(next)).toEqual([0]);
+    });
+
+    it("leaves a late preload callback out of a jump that already reached the video", async () => {
+      spyLoad();
+      servePreview();
+      const [, next] = videos(mountRoot(), "0", "5");
+      next.setAttribute("data-media-start", "6");
+
+      await evaluateRuntime();
+      window.__player?.seek(3.5);
+      window.__player?.seek(5.5);
+      expect(next.currentTime).toBe(6.5);
+      next.dispatchEvent(new Event("loadedmetadata"));
+      expect(next.currentTime).toBe(6.5);
+    });
+
+    it("does not rewind a loaded outgoing video while it remains in the trailing window", async () => {
+      spyLoad();
+      servePreview();
+      const [previous] = videos(mountRoot(), "0", "2");
+      previous.setAttribute("data-media-start", "6");
+      Object.defineProperty(previous, "readyState", { value: 4 });
+
+      await evaluateRuntime();
+      window.__player?.seek(1.5);
+      expect(previous.currentTime).toBe(7.5);
+      window.__player?.seek(2.1);
+      expect(previous.currentTime).toBe(7.5);
+    });
+
+    it("prepares a split again on replay when the loaded clip never leaves the window", async () => {
+      spyLoad();
+      servePreview();
+      const [, next] = videos(mountRoot(), "0", "2");
+      next.setAttribute("data-media-start", "6");
+      Object.defineProperty(next, "readyState", { value: 4 });
+
+      await evaluateRuntime();
+      window.__player?.seek(3.5);
+      expect(next.currentTime).toBe(7.5);
+      window.__player?.seek(0);
+      expect(next.currentTime).toBe(6);
+      expect(loadsOf(next)).toEqual([0]);
+    });
 
     it("arms the next clip on a clip's track when it starts playing, and nothing else", async () => {
       spyLoad();

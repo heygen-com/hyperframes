@@ -1,7 +1,8 @@
-import { parseStrictFiniteTimingNumber } from "./playbackRate";
+import { parseStrictFiniteTimingNumber, readMediaStart } from "./playbackRate";
 import { createRuntimeStartTimeResolver } from "./startResolver";
 import { readMediaRenderId } from "./renderFrameSibling";
 import { defersMedia } from "./timedClipHide";
+import { swallow } from "./diagnostics";
 
 type PreloadableMedia = Pick<
   HTMLMediaElement,
@@ -24,8 +25,48 @@ export function preloadMedia(media: PreloadableMedia): void {
   if (media.readyState < 3 && !videoAlreadyLoading) media.load();
 }
 
+const pendingPlaybackStart = new WeakMap<HTMLMediaElement, () => void>();
+
+function cancelPlaybackStart(media: HTMLMediaElement): void {
+  pendingPlaybackStart.get(media)?.();
+}
+
+export function prepareUpcomingMedia(media: HTMLMediaElement, isUpcoming: () => boolean): void {
+  cancelPlaybackStart(media);
+  if (media.tagName !== "VIDEO" || isRenderFrameVideo(media)) return;
+  const prepare = () => {
+    if (!media.isConnected || !media.paused || media.seeking || !isUpcoming()) return;
+    const start = readMediaStart(media);
+    if (Math.abs(media.currentTime - start) <= 0.02) return;
+    try {
+      media.currentTime = start;
+    } catch (error) {
+      swallow("runtime.preload.playbackStart", error);
+    }
+  };
+  if (media.readyState > 0) {
+    prepare();
+    return;
+  }
+  const cancel = () => {
+    media.removeEventListener("loadedmetadata", loaded);
+    media.removeEventListener("error", cancel);
+    media.removeEventListener("abort", cancel);
+    pendingPlaybackStart.delete(media);
+  };
+  const loaded = () => {
+    cancel();
+    prepare();
+  };
+  pendingPlaybackStart.set(media, cancel);
+  media.addEventListener("loadedmetadata", loaded);
+  media.addEventListener("error", cancel);
+  media.addEventListener("abort", cancel);
+}
+
 /** Ends a fetch in flight for good, which preload none alone does not. */
 export function stopMediaDownload(media: HTMLMediaElement): void {
+  cancelPlaybackStart(media);
   for (const source of media.querySelectorAll("source")) source.remove();
   media.removeAttribute("src");
   media.load();
