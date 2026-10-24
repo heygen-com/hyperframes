@@ -248,6 +248,56 @@ describe("createColorGradingRuntime", () => {
     },
   );
 
+  it.each([
+    { axis: "y", position: "50% 0%", percent: 0 },
+    { axis: "y", position: "50% 22%", percent: 22 },
+    { axis: "y", position: "50% 100%", percent: 100 },
+    { axis: "x", position: "0% 50%", percent: 0 },
+    { axis: "x", position: "22% 50%", percent: 22 },
+    { axis: "x", position: "100% 50%", percent: 100 },
+  ] as const)(
+    "crops a cover-fit source at object-position $position the way CSS does",
+    ({ axis, position, percent }) => {
+      vi.stubGlobal("devicePixelRatio", 1);
+      // 4:3 box holding a 9:16 (y) or 16:9 (x) source: 1/3 of a box overflows.
+      const video = makeDrawableVideo();
+      const [box, source] =
+        axis === "y"
+          ? [
+              [1080, 1440],
+              [1080, 1920],
+            ]
+          : [
+              [1440, 1080],
+              [1920, 1080],
+            ];
+      for (const [key, value] of Object.entries({
+        offsetWidth: box[0],
+        offsetHeight: box[1],
+        videoWidth: source[0],
+        videoHeight: source[1],
+      })) {
+        Object.defineProperty(video, key, { value, configurable: true });
+      }
+      video.style.objectFit = "cover";
+      video.style.objectPosition = position;
+
+      startRuntimeWithVideo(video);
+
+      const gl = getContextSpy.mock.results[0]?.value as WebGLRenderingContext;
+      const calls = vi.mocked(gl.uniform2f).mock.calls;
+      const last = (name: string) => calls.filter((call) => call[0] === name).at(-1)!;
+      const [, scaleX, scaleY] = last("u_uvScale");
+      const [, offsetX, offsetY] = last("u_uvOffset");
+      // Shader: textureUv = (canvasUv - offset) / scale, both bottom-origin with
+      // a flipped upload. Read back which source fraction lands on the box's
+      // top-left edge, measured from the source's top-left like CSS.
+      const visibleStart = axis === "y" ? 1 - (1 - offsetY) / scaleY : -offsetX / scaleX;
+      // The source overflows the box by (1920 - 1440) / 1920 = 1/4 of its length.
+      expect(visibleStart).toBeCloseTo((0.25 * percent) / 100, 6);
+    },
+  );
+
   it("draws a bordered source's grading canvas without a border over its whole box", () => {
     vi.stubGlobal("devicePixelRatio", 1);
     const video = makeDrawableVideo();
