@@ -31,6 +31,11 @@ The CLI can build the renderer automatically when it runs from a HyperFrames
 repository checkout. Outside the repository, pass an image built from
 `packages/gcp-cloud-run/Dockerfile` with `--image`.
 
+The renderer image uses Chrome 152, matching the CLI's managed browser, so
+gradient text inside transformed child elements also renders in Cloud Run.
+Existing deployments need a rebuilt image and a new deployment to receive
+the browser update.
+
 ## Deploy
 
 ```bash
