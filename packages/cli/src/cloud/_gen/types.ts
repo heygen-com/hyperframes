@@ -181,10 +181,6 @@ export interface CreateHyperframesRenderRequest {
    */
   crf?: number | null;
   /**
-   * Set 'off' to disable page motion blur. Omit or null to keep behavior.
-   */
-  page_motion_blur?: "off" | null;
-  /**
    * Output resolution tier. Defaults to '1080p'. Pass '4k' for 4K renders
    * (billed at 1.5x).
    */
@@ -317,9 +313,13 @@ export interface HyperframesRenderDetail {
   failure_message?: string | null;
   /**
    * Why billing refused a finished render: 'hf_usage_exhausted',
-   * 'hf_subscription_required' or 'api_key_required'. Present only when status
-   * is 'failed' for that reason; nothing was charged, so the render can be sent
-   * again on a HeyGen API key.
+   * 'hf_subscription_required' or 'api_key_required', for which nothing was
+   * charged and the render can be sent again on a HeyGen API key; or
+   * 'usage_limit_reached', when a usage limit a workspace admin set (the API
+   * key's credit limit or the member's usage limit) was reached; sending the
+   * render again does not help until the limit is raised or resets, and
+   * `failure_message` is the limit's own message. Present only when status is
+   * 'failed' for one of these reasons.
    */
   failure_code?: string | null;
 }
