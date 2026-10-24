@@ -1,4 +1,4 @@
-export const RENDER_TOO_SLOW = "RENDER_TOO_SLOW" as const;
+const RENDER_TOO_SLOW = "RENDER_TOO_SLOW" as const;
 
 /** Fail only when the ETA clears the budget by this factor, so borderline renders survive. */
 const ETA_MARGIN = 1.2;
@@ -57,32 +57,43 @@ interface RenderEtaGuardOptions {
   pollMs?: number;
 }
 
+/** Measured wall ms per frame once enough capture time and frames are in; a counter reset restarts the sample. */
+function createRateSampler() {
+  let base: { at: number; frames: number } | undefined;
+  let lastFrames = 0;
+  return {
+    observe(done: number, at: number): number | undefined {
+      if (done === 0 || done < lastFrames) base = undefined;
+      lastFrames = done;
+      if (done === 0) return undefined;
+      base ??= { at, frames: done };
+      const sampleMs = at - base.at;
+      const sampleFrames = done - base.frames;
+      if (sampleMs < MIN_SAMPLE_MS || sampleFrames < MIN_SAMPLE_FRAMES) return undefined;
+      return sampleMs / sampleFrames;
+    },
+  };
+}
+
 /** Polls `job.framesRendered`, which every capture path updates, and trips once. Returns stop(). */
 export function startRenderEtaGuard(options: RenderEtaGuardOptions): () => void {
   const { maxRenderMs, job, totalFrames, pipelineStartMs, onTooSlow, now = Date.now } = options;
   if (!maxRenderMs || maxRenderMs <= 0) return () => {};
-  let base: { at: number; frames: number } | undefined;
-  let lastFrames = 0;
+  const sampler = createRateSampler();
   const stop = () => clearInterval(timer);
   const timer = setInterval(() => {
     const done = job.framesRendered ?? 0;
-    const at = now();
-    // A capture retry resets the counter: sample the new attempt from scratch.
-    if (done === 0 || done < lastFrames) base = undefined;
-    lastFrames = done;
-    if (done === 0) return;
     // Capture is complete: encode and assemble are not frame-driven, so the guard has nothing left to judge.
     if (done >= totalFrames) return stop();
-    base ??= { at, frames: done };
-    const sampleMs = at - base.at;
-    const sampleFrames = done - base.frames;
-    if (sampleMs < MIN_SAMPLE_MS || sampleFrames < MIN_SAMPLE_FRAMES) return;
+    const at = now();
+    const msPerFrame = sampler.observe(done, at);
+    if (msPerFrame === undefined) return;
     const error = checkRenderEta("capture", {
       maxRenderMs,
       elapsedMs: at - pipelineStartMs,
       framesCompleted: done,
       totalFrames,
-      msPerFrame: sampleMs / sampleFrames,
+      msPerFrame,
     });
     if (!error) return;
     stop();

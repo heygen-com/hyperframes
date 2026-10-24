@@ -51,6 +51,24 @@ const browserConsoleBuffer = ["[FrameCapture:ERROR] page.goto failed"];
 const closeCaptureSession = mock(async () => {});
 class DrawElementVerificationError extends Error {}
 
+async function replaySlowCapture(
+  signal: AbortSignal | undefined,
+  onProgress: ((progress: unknown) => void) | undefined,
+): Promise<never[]> {
+  for (let frame = 1; frame <= slowTotal; frame++) {
+    if (signal?.aborted) throw new Error("[Parallel] Capture failed: aborted");
+    virtualNow += 2_000;
+    onProgress?.({
+      totalFrames: slowTotal,
+      capturedFrames: frame,
+      activeWorkers: 2,
+      workerProgress: new Map(),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 1));
+  }
+  return [];
+}
+
 mock.module("@hyperframes/engine", () => ({
   calculateOptimalWorkers: () => 1,
   convertTransfer: () => {},
@@ -158,20 +176,7 @@ mock.module("@hyperframes/engine", () => ({
         signal?.addEventListener("abort", fail, { once: true });
       });
     }
-    if (slowParallel) {
-      for (let frame = 1; frame <= slowTotal; frame++) {
-        if (signal?.aborted) throw new Error("[Parallel] Capture failed: aborted");
-        virtualNow += 2_000;
-        onProgress?.({
-          totalFrames: slowTotal,
-          capturedFrames: frame,
-          activeWorkers: 2,
-          workerProgress: new Map(),
-        });
-        await new Promise((resolve) => setTimeout(resolve, 1));
-      }
-      return [];
-    }
+    if (slowParallel) return replaySlowCapture(signal, onProgress);
     if (parallelFrames > 0) {
       const report = (capturedFrames: number, phase?: string) =>
         onProgress?.({

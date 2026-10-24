@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RenderTooSlowError, checkRenderEta, startRenderEtaGuard } from "./renderEtaGuard.js";
 
+const RENDER_TOO_SLOW = "RENDER_TOO_SLOW";
+
 describe("checkRenderEta", () => {
   const base = { maxRenderMs: 100_000, elapsedMs: 0, framesCompleted: 0, totalFrames: 100 };
 
@@ -10,6 +12,10 @@ describe("checkRenderEta", () => {
     expect(error).toBeInstanceOf(RenderTooSlowError);
     expect(error?.message).toMatch(/^render too slow:/);
     expect(error?.publicMetadata).toMatchObject({ stage: "capture", etaMs: 120_100 });
+    // The producer server reads these off the error to build the wire envelope.
+    expect(error?.code).toBe(RENDER_TOO_SLOW);
+    expect(error?.owner).toBe("user");
+    expect(error?.retryable).toBe(false);
   });
 
   it("counts time already spent", () => {
