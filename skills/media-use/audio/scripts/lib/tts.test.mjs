@@ -16,6 +16,7 @@ import {
   ffprobeDuration,
   synthesizeOne,
   synthesizeHeygen,
+  synthesizeVoicestudio,
   synthResult,
   pickProvider,
 } from "./tts.mjs";
@@ -227,4 +228,117 @@ test("pickProvider heygen with an unreadable credentials path says to fix that p
     }
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("pickProvider accepts voicestudio with no credential check (local server, no auth)", () => {
+  assert.equal(pickProvider("voicestudio"), "voicestudio");
+});
+
+test("pickProvider never auto-picks voicestudio or gemini into the fallback chain", () => {
+  const saved = [
+    "HEYGEN_API_KEY",
+    "HYPERFRAMES_API_KEY",
+    "ELEVENLABS_API_KEY",
+    "GEMINI_API_KEY",
+    "GOOGLE_API_KEY",
+  ].map((k) => [k, process.env[k]]);
+  try {
+    for (const [k] of saved) delete process.env[k];
+    // Nothing configured — must fall through to kokoro, never voicestudio/gemini,
+    // even if a VoiceStudio backend happens to be running on this machine.
+    assert.equal(pickProvider(undefined), "kokoro");
+  } finally {
+    for (const [k, v] of saved) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
+});
+
+test("synthesizeVoicestudio writes wav bytes directly from a successful response (no transcode step)", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "tts-vs-"));
+  try {
+    const wavAbs = join(dir, "assets", "voice", "line-0.wav"); // nested, not yet created
+    const fakeBytes = new Uint8Array([1, 2, 3, 4]);
+    const res = await synthesizeVoicestudio(
+      { text: "hi", voiceId: "default", lang: null, speed: 1, wavAbs },
+      {
+        base: "http://127.0.0.1:3900",
+        engine: "voxcpm2",
+        fetch: async (url, opts) => {
+          assert.equal(url, "http://127.0.0.1:3900/v1/audio/speech");
+          const body = JSON.parse(opts.body);
+          assert.deepEqual(body, {
+            input: "hi",
+            model: "voxcpm2",
+            voice: "default",
+            response_format: "wav",
+            speed: 1,
+          });
+          return {
+            ok: true,
+            status: 200,
+            headers: { get: () => "audio/wav" },
+            arrayBuffer: async () => fakeBytes.buffer,
+          };
+        },
+      },
+    );
+    assert.equal(res.ok, true);
+    assert.equal(res.words, null);
+    assert.ok(existsSync(wavAbs), "output directory should be created and wav written");
+    assert.deepEqual(new Uint8Array(readFileSync(wavAbs)), fakeBytes);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("synthesizeVoicestudio surfaces a model-licence refusal (e.g. an unaccepted NC licence) instead of swallowing it", async () => {
+  const res = await synthesizeVoicestudio(
+    { text: "hi", voiceId: "default", lang: null, speed: 1, wavAbs: "/tmp/x.wav" },
+    {
+      base: "http://127.0.0.1:3900",
+      engine: "omnivoice",
+      fetch: async () => ({
+        ok: false,
+        status: 403,
+        headers: { get: () => "application/json" },
+        json: async () => ({ error: { message: "Licence not accepted for k2-fsa/OmniVoice" } }),
+      }),
+    },
+  );
+  assert.equal(res.ok, false);
+  assert.match(res.error, /Licence not accepted/);
+});
+
+test("synthesizeVoicestudio surfaces a plain HTTP failure", async () => {
+  const res = await synthesizeVoicestudio(
+    { text: "hi", voiceId: "default", lang: null, speed: 1, wavAbs: "/tmp/x.wav" },
+    {
+      base: "http://127.0.0.1:3900",
+      engine: "voxcpm2",
+      fetch: async () => ({ ok: false, status: 500, headers: { get: () => "text/plain" } }),
+    },
+  );
+  assert.equal(res.ok, false);
+  assert.match(res.error, /HTTP 500/);
+});
+
+test("synthesizeVoicestudio names the backend URL when the connection itself fails", async () => {
+  const res = await synthesizeVoicestudio(
+    { text: "hi", voiceId: "default", lang: null, speed: 1, wavAbs: "/tmp/x.wav" },
+    {
+      base: "http://127.0.0.1:3900",
+      engine: "voxcpm2",
+      fetch: async () => {
+        const err = new Error("fetch failed");
+        err.cause = { code: "ECONNREFUSED" };
+        throw err;
+      },
+    },
+  );
+  assert.equal(res.ok, false);
+  assert.match(res.error, /127\.0\.0\.1:3900/);
+  assert.match(res.error, /ECONNREFUSED/);
+  assert.match(res.error, /dev:api/);
 });

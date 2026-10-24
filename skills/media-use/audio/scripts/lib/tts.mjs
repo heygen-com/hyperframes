@@ -13,6 +13,18 @@ import { fetchMedia } from "../../../scripts/lib/media-fetch.mjs";
 //
 // "HeyGen available" is decided by CREDENTIAL presence (heygenCredential), never
 // by the CLI — see the note above.
+//
+// Gemini and VoiceStudio are explicit-choice-only (--provider / request.provider),
+// never auto-detected into the fallback chain below:
+//   - Gemini needs an explicit model/voice decision (geminiConfigured()).
+//   - VoiceStudio (github.com/debpalash/VoiceStudio) is a local server with no
+//     required credential, so "is it running" can only be answered with a
+//     network call — pickProvider's other checks are deliberately synchronous.
+//     Silently auto-picking it would also silently pick whichever TTS engine
+//     VoiceStudio has active, and that choice has real licence consequences
+//     (VoiceStudio's default engine, OmniVoice, is CC-BY-NC with restricted
+//     commercial inference — see VOICESTUDIO_ENGINE below). No word timings →
+//     caller chains transcribeWav(), same as ElevenLabs/Kokoro.
 
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -36,11 +48,31 @@ export function elevenlabsAvailable() {
   return r.status === 0;
 }
 
+// VoiceStudio's base URL — a local backend (bun run dev:api from a VoiceStudio
+// checkout; see github.com/debpalash/VoiceStudio), not a cloud API, so there is
+// no credential to probe synchronously. Always loopback by default.
+export function voicestudioBase() {
+  return process.env.VOICESTUDIO_API_BASE || "http://127.0.0.1:3900";
+}
+
+// Engine pinned to VoxCPM2, NOT VoiceStudio's default "omnivoice" engine.
+// omnivoice's model (k2-fsa/OmniVoice) ships CC-BY-NC with restricted
+// commercial inference; VoxCPM2 is Apache-2.0 and still supports voice
+// cloning (unlike the other commercially-safe engines, Kokoro/KittenTTS,
+// which are fixed-preset only). Override via $VOICESTUDIO_ENGINE if your
+// backend has a different engine installed and you've checked its licence
+// at GET /models on your own instance — licence terms can change upstream.
+export function voicestudioEngine() {
+  return process.env.VOICESTUDIO_ENGINE || "voxcpm2";
+}
+
 // First available provider wins; an explicit choice is honored (and validated).
 export function pickProvider(userProvider) {
   if (userProvider) {
-    if (!["heygen", "elevenlabs", "kokoro", "gemini"].includes(userProvider))
-      throw new Error(`invalid provider "${userProvider}" (heygen | elevenlabs | kokoro | gemini)`);
+    if (!["heygen", "elevenlabs", "kokoro", "gemini", "voicestudio"].includes(userProvider))
+      throw new Error(
+        `invalid provider "${userProvider}" (heygen | elevenlabs | kokoro | gemini | voicestudio)`,
+      );
     if (userProvider === "gemini" && !geminiConfigured())
       throw new Error(
         "provider=gemini needs GEMINI_API_KEY or GOOGLE_API_KEY, or service-account credentials (GOOGLE_APPLICATION_CREDENTIALS or GCS_CREDS)",
@@ -49,6 +81,9 @@ export function pickProvider(userProvider) {
     if (userProvider === "heygen" && !heygenAvailable()) heygenAuthHeaders();
     if (userProvider === "elevenlabs" && !process.env.ELEVENLABS_API_KEY)
       throw new Error("provider=elevenlabs but $ELEVENLABS_API_KEY is not set");
+    // No synchronous reachability check for voicestudio — see the header note.
+    // synthesizeVoicestudio surfaces a clear connection error if the backend
+    // at voicestudioBase() isn't actually running.
     return userProvider;
   }
   return heygenAvailable() ? "heygen" : elevenlabsAvailable() ? "elevenlabs" : "kokoro";
@@ -62,6 +97,7 @@ export async function resolveVoiceId({ provider, userVoice, lang = "en" }) {
   if (userVoice) return userVoice;
   if (provider === "gemini") return "Kore";
   if (provider === "elevenlabs") return "21m00Tcm4TlvDq8ikWAM"; // Rachel
+  if (provider === "voicestudio") return "default"; // engine's own default voice for voicestudioEngine()
   if (provider === "kokoro") {
     if (lang === "en") return "am_michael";
     throw new Error("Kokoro non-English needs an explicit --voice (see references/tts.md)");
@@ -261,6 +297,8 @@ export async function synthesizeOne({
   if (provider === "heygen") return synthesizeHeygen({ text, voiceId, lang, speed, wavAbs });
   if (provider === "gemini")
     return synthesizeGemini({ text, voiceId, model, style, speed, wavAbs });
+  if (provider === "voicestudio")
+    return synthesizeVoicestudio({ text, voiceId, lang, speed, wavAbs });
   if (provider === "elevenlabs") {
     // The Python helper writes straight to wavAbs; unlike heygen (transcodeToWav)
     // and kokoro (the `hyperframes tts` CLI), it does NOT create the parent dir,
@@ -349,6 +387,47 @@ export async function synthesizeHeygen({ text, voiceId, lang, speed, wavAbs }, d
     return { ok: true, words };
   } catch (e) {
     return { ok: false, words: null, error: heygenMessage(e) };
+  }
+}
+
+// VoiceStudio's OpenAI-compatible /v1/audio/speech. Verified live against a
+// VoiceStudio 0.5.7 backend (native macOS process, Apple Silicon MPS; the
+// published Docker image is linux/amd64-only with no GPU access in that
+// container — run the backend natively for Metal acceleration). Unlike
+// HeyGen, `response_format: "wav"` returns wav bytes directly — no mp3→wav
+// transcode step needed. No word timestamps in the response (see header
+// note); caller chains transcribeWav(), same as ElevenLabs/Kokoro.
+export async function synthesizeVoicestudio({ text, voiceId, lang, speed, wavAbs }, deps = {}) {
+  const fetchImpl = deps.fetch ?? fetch;
+  const base = deps.base ?? voicestudioBase();
+  const engine = deps.engine ?? voicestudioEngine();
+  try {
+    const body = { input: text, model: engine, voice: voiceId, response_format: "wav", speed };
+    if (lang) body.language = lang;
+    const res = await fetchImpl(`${base}/v1/audio/speech`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const contentType = res.headers?.get?.("content-type") ?? "";
+    if (contentType.includes("application/json")) {
+      const errBody = await res.json().catch(() => ({}));
+      const msg = errBody?.error?.message ?? errBody?.detail?.message ?? JSON.stringify(errBody);
+      return { ok: false, words: null, error: `VoiceStudio /v1/audio/speech: ${msg}` };
+    }
+    if (!res.ok) {
+      return { ok: false, words: null, error: `VoiceStudio /v1/audio/speech: HTTP ${res.status}` };
+    }
+    mkdirSync(dirname(wavAbs), { recursive: true });
+    writeFileSync(wavAbs, Buffer.from(await res.arrayBuffer()));
+    return { ok: true, words: null };
+  } catch (e) {
+    const cause = e?.cause?.code ? ` (${e.cause.code})` : "";
+    return {
+      ok: false,
+      words: null,
+      error: `cannot reach VoiceStudio backend at ${base}${cause} — is \`bun run dev:api\` running? (${e.message})`,
+    };
   }
 }
 
