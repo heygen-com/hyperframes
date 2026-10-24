@@ -8,6 +8,73 @@ import { testProcessIsAlive, waitForTestCondition } from "./processTestUtils.js"
 
 const IS_POSIX = process.platform !== "win32";
 
+const splitOutputSource = [
+  "const [output, exitCode, keepAlive] = process.argv.slice(1);",
+  "const bytes = Buffer.from(output);",
+  "process.stdout.write(bytes.subarray(0, 1));",
+  "process.stderr.write(bytes.subarray(0, 1));",
+  "setTimeout(() => {",
+  "  process.stdout.write(bytes.subarray(1));",
+  "  process.stderr.write(bytes.subarray(1));",
+  "  process.exitCode = Number(exitCode);",
+  "  if (keepAlive === '1') setTimeout(() => {}, 10_000);",
+  "}, 50);",
+].join("\n");
+
+describe("cancellable process output", () => {
+  it.each(["é", "项目/音声.wav", "🎬 render", "ASCII output"])(
+    "preserves split output on both streams for %s",
+    async (output) => {
+      const chunks: string[] = [];
+      const result = await runCancellableProcess(
+        process.execPath,
+        ["--eval", splitOutputSource, output, "0"],
+        { onStdout: (chunk) => chunks.push(chunk) },
+      );
+      expect(result).toEqual({ stdout: output, stderr: output });
+      expect(chunks.join("")).toBe(output);
+    },
+  );
+
+  it("preserves split diagnostics when the process fails", async () => {
+    const output = "診断: 🎬";
+    await expect(
+      runCancellableProcess(process.execPath, ["--eval", splitOutputSource, output, "1"]),
+    ).rejects.toMatchObject({ status: 1, stdout: output, stderr: output });
+  });
+
+  it("counts a split UTF-8 character once at the combined byte limit", async () => {
+    const result = await runCancellableProcess(
+      process.execPath,
+      ["--eval", splitOutputSource, "é", "0"],
+      { maxBufferBytes: 4 },
+    );
+    expect(result).toEqual({ stdout: "é", stderr: "é" });
+  });
+
+  it("still rejects output that exceeds the combined raw byte limit", async () => {
+    await expect(
+      runCancellableProcess(process.execPath, ["--eval", splitOutputSource, "é", "0", "1"], {
+        maxBufferBytes: 3,
+      }),
+    ).rejects.toMatchObject({ code: "ENOBUFS", killed: true });
+  });
+
+  it("flushes incomplete trailing UTF-8 bytes when the streams end", async () => {
+    const chunks: string[] = [];
+    const result = await runCancellableProcess(
+      process.execPath,
+      [
+        "--eval",
+        "process.stdout.write(Buffer.from([0xe2, 0x82])); process.stderr.write(Buffer.from([0xf0, 0x9f]));",
+      ],
+      { onStdout: (chunk) => chunks.push(chunk) },
+    );
+    expect(result).toEqual({ stdout: "�", stderr: "�" });
+    expect(chunks.join("")).toBe("�");
+  });
+});
+
 function processGroupOf(pid: number): string {
   return execFileSync("ps", ["-o", "pgid=", "-p", String(pid)], { encoding: "utf8" }).trim();
 }
