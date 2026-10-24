@@ -496,6 +496,23 @@ describe("media rules", () => {
     },
   );
 
+  it("video_audio_double_source ignores a room tone, the audio that bridges a cut with another stretch of the file", async () => {
+    const found = await codes(
+      wrap(`<video id="v" data-start="0" data-duration="10" data-media-start="2" data-has-audio="true" src="clip.mp4"></video>
+    <audio id="a" data-start="3.2" data-duration="0.06" data-media-start="7" data-timeline-role="room-tone" src="clip.mp4"></audio>`),
+    );
+    expect(found).not.toContain("video_audio_double_source");
+  });
+
+  it("video_audio_double_source still flags a plain audio of the same file beside the room tone", async () => {
+    const found = await codes(
+      wrap(`<video id="v" data-start="0" data-duration="10" data-has-audio="true" src="clip.mp4"></video>
+    <audio id="tone" data-start="3.2" data-duration="0.06" data-media-start="7" data-timeline-role="room-tone" src="clip.mp4"></audio>
+    <audio id="a" data-start="3" data-duration="2" src="clip.mp4"></audio>`),
+    );
+    expect(found).toContain("video_audio_double_source");
+  });
+
   it("video_audio_double_source ignores same-src clips that do not overlap in time", async () => {
     const found = await codes(
       wrap(`<video id="v" data-start="0" data-duration="4" data-has-audio="true" src="clip.mp4"></video>

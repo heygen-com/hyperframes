@@ -831,7 +831,8 @@ export const mediaRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = 
       const source = { id: readAttr(tag.raw, "id") || undefined, raw: tag.raw };
       if (tag.name === "video") {
         if (isAudibleVideoTag(tag.raw)) videos.push([src, source]);
-      } else if (tag.name === "audio") {
+      } else if (tag.name === "audio" && readAttr(tag.raw, "data-timeline-role") !== "room-tone") {
+        // A room tone plays another stretch of the file under the video's own sound to bridge a cut: it is meant.
         audios.push([src, source]);
       }
     }
