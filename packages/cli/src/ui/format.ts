@@ -3,16 +3,16 @@ import { c } from "./colors.js";
 
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  const kb = Math.round((bytes / 1024) * 10) / 10;
+  if (kb < 1024) return `${kb.toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 export function formatDuration(ms: number): string {
-  const seconds = ms / 1000;
-  if (seconds < 60) return `${seconds.toFixed(1)}s`;
-  const minutes = Math.floor(seconds / 60);
-  const remaining = seconds - minutes * 60;
-  return `${minutes}m ${remaining.toFixed(1)}s`;
+  const tenths = Math.round(ms / 100);
+  if (tenths < 600) return `${(tenths / 10).toFixed(1)}s`;
+  const minutes = Math.floor(tenths / 600);
+  return `${minutes}m ${((tenths - minutes * 600) / 10).toFixed(1)}s`;
 }
 
 /**
