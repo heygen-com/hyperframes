@@ -58,7 +58,10 @@ export async function loadAllItems(
   let timedOut = false;
   const loaded = await runWithConcurrencyLimit(entries, ITEM_FETCH_CONCURRENCY, async (e) => {
     try {
-      return await fetchItemManifest(e.name, e.type, baseUrl, { cacheOnly: timedOut });
+      return await fetchItemManifest(e.name, e.type, baseUrl, {
+        skipCache: options.skipCache,
+        cacheOnly: timedOut,
+      });
     } catch (err) {
       if (err instanceof Error && err.name === "TimeoutError") timedOut = true;
       skipped.push(`"${e.name}"`);
@@ -173,7 +176,9 @@ export async function resolveItemWithDependencies(
       );
     }
 
-    const pending = fetchItemManifest(registryEntry.name, registryEntry.type, options.baseUrl);
+    const pending = fetchItemManifest(registryEntry.name, registryEntry.type, options.baseUrl, {
+      skipCache: options.skipCache,
+    });
     itemCache.set(itemName, pending);
     return pending;
   };
