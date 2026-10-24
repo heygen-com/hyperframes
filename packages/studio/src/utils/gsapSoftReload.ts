@@ -1,5 +1,5 @@
 import { COLOR_GRADING_SOURCE_HIDDEN_ATTR } from "@hyperframes/core/color-grading";
-import { motionPathPluginUrl } from "@hyperframes/core/gsap-cdn";
+import { GSAP_BASE_URL_META, motionPathPluginUrl } from "@hyperframes/core/gsap-cdn";
 import { findAuthoredElement } from "./authoredSource";
 import { applyAuthoredInlineOpacity, readStampedAuthoredOpacity } from "./authoredOpacity";
 import {
@@ -50,6 +50,13 @@ type IframeWindow = Window & {
 // At most one preview waits for its runtime; a newer load replaces it, so a frame that never boots is not kept alive.
 let pendingReadyRetry: ((event: MessageEvent) => void) | null = null;
 
+function previewMotionPathUrl(doc: Document, version?: string): string {
+  const baseUrl = doc.head.querySelector<HTMLMetaElement>(
+    `meta[name="${GSAP_BASE_URL_META}"]`,
+  )?.content;
+  return motionPathPluginUrl(version, baseUrl);
+}
+
 export function ensureMotionPathPluginLoaded(iframe: HTMLIFrameElement | null): void {
   if (pendingReadyRetry) window.removeEventListener("message", pendingReadyRetry);
   pendingReadyRetry = null;
@@ -86,7 +93,7 @@ export function ensureMotionPathPluginLoaded(iframe: HTMLIFrameElement | null): 
   try {
     win.__hfMotionPathPluginLoading = true;
     const pluginScript = doc.createElement("script");
-    pluginScript.src = motionPathPluginUrl(win.gsap?.version);
+    pluginScript.src = previewMotionPathUrl(doc, win.gsap?.version);
     const finalize = () => {
       win.__hfMotionPathPluginLoading = false;
       try {
@@ -480,7 +487,7 @@ export function applySoftReload(
       }
       win.__hfMotionPathPluginLoading = true;
       const pluginScript = doc.createElement("script");
-      pluginScript.src = motionPathPluginUrl(win.gsap?.version);
+      pluginScript.src = previewMotionPathUrl(doc, win.gsap?.version);
       pluginScript.onload = () => {
         win.__hfMotionPathPluginLoading = false;
         executeScript();

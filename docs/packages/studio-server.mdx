@@ -66,6 +66,48 @@ the bundler inlines can be served with ids that a later save does not mint.
 bundle: (dir, options) => bundleToSingleHtml(dir, { runtime: "inline", ...options }),
 ```
 
+## Serve GSAP from your own mirror
+
+Studio can load the GSAP dependencies it adds from a local or private mirror
+when jsDelivr is unavailable. Set `HYPERFRAMES_GSAP_BASE_URL` before starting
+the preview server or creating the Studio API:
+
+```bash
+HYPERFRAMES_GSAP_BASE_URL=http://127.0.0.1:8080/vendor/npm \
+  npx hyperframes preview ./my-video
+```
+
+Serve the GSAP distribution files under that URL with this layout, using the
+versions your compositions need:
+
+```text
+<mirror-root>/gsap@3.15.0/dist/gsap.min.js
+<mirror-root>/gsap@3.15.0/dist/CustomEase.min.js
+<mirror-root>/gsap@3.15.0/dist/MotionPathPlugin.min.js
+```
+
+Studio uses the mirror for the GSAP, CustomEase, and MotionPathPlugin scripts
+it adds to previews, including dependencies loaded when you edit motion.
+Keep `gsap@<version>` in authored GSAP URLs so the server can infer which
+plugin version to add. When it cannot infer a version, it uses the framework's
+default, currently `3.15.0`.
+
+The base must be an absolute HTTP(S) URL without credentials, a query string,
+or a fragment. Surrounding whitespace and trailing slashes are removed.
+An unset or empty value uses `https://cdn.jsdelivr.net/npm`; an invalid
+nonempty value stops API startup with a configuration error.
+
+The server reads this setting once at startup. Restart it after changing the
+value. For a managed CLI preview, run `npx hyperframes preview ./my-video --stop`
+before starting it again with the new setting. Cached preview HTML is keyed
+by the normalized mirror URL, so a different mirror takes effect after restart
+without deleting the preview cache.
+
+This setting changes only dependencies Studio adds. Your composition's own
+script, font, image, and media URLs stay as authored; serve those locally too
+for an offline project. If the selected mirror is unavailable or lacks a
+requested file, Studio does not retry that dependency through jsDelivr.
+
 ## Other entry points
 
 | Import | Purpose |

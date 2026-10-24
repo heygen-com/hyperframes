@@ -19,7 +19,12 @@ import {
   STUDIO_PREVIEW_ERRORS,
 } from "@hyperframes/core/studio-preview-mark";
 import { PREVIEW_PROXY_BOX_PARAM, parsePreviewProxyBox } from "@hyperframes/core";
-import { gsapCdnDist, motionPathPluginUrl } from "@hyperframes/core/gsap-cdn";
+import {
+  GSAP_BASE_URL_META,
+  gsapCdnDist,
+  motionPathPluginUrl,
+  normalizeGsapBaseUrl,
+} from "@hyperframes/core/gsap-cdn";
 import { findStartTags, injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document";
 import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
 import type { ResolvedProject, StudioApiAdapter } from "../types.js";
@@ -76,9 +81,13 @@ import { requestSubPath } from "../helpers/requestSubPath.js";
 import { lazyPreviewImages } from "../helpers/lazyPreviewImages.js";
 
 const PROJECT_SIGNATURE_META = "hyperframes-project-signature";
-const GSAP_CDN_SCRIPT = `<script src="${gsapCdnDist()}gsap.min.js"></script>`;
-const GSAP_CUSTOM_EASE_CDN_SCRIPT = `<script src="${gsapCdnDist()}CustomEase.min.js"></script>`;
-const GSAP_MOTION_PATH_CDN_SCRIPT = `<script src="${motionPathPluginUrl()}"></script>`;
+function escapeGsapUrl(url: string): string {
+  return url.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+}
+
+function gsapScriptTag(file: string, baseUrl: string): string {
+  return `<script src="${escapeGsapUrl(gsapCdnDist(undefined, baseUrl) + file)}"></script>`;
+}
 
 function injectProjectSignature(html: string, signature: string): string {
   const tag = `<meta name="${PROJECT_SIGNATURE_META}" content="${signature}">`;
@@ -166,7 +175,7 @@ function htmlHasMotionPathPlugin(html: string): boolean {
   );
 }
 
-function injectMotionPathPluginIfNeeded(html: string): string {
+function injectMotionPathPluginIfNeeded(html: string, baseUrl: string): string {
   if (!htmlUsesMotionPath(html) || htmlHasMotionPathPlugin(html)) return html;
   // The plugin registers onto an already-loaded gsap, so it must come AFTER the
   // core gsap script — which often lives at body-end, not <head>. Insert it
@@ -176,10 +185,10 @@ function injectMotionPathPluginIfNeeded(html: string): string {
   if (gsap) {
     const version = gsap.src.match(/gsap@([\d.]+)/)?.[1];
     const ordering = `${gsap.type ? ` type="${gsap.type}"` : ""}${gsap.defer ? " defer" : ""}`;
-    const pluginTag = `<script${ordering} src="${motionPathPluginUrl(version)}"></script>`;
+    const pluginTag = `<script${ordering} src="${escapeGsapUrl(motionPathPluginUrl(version, baseUrl))}"></script>`;
     return html.slice(0, gsap.end) + "\n" + pluginTag + html.slice(gsap.end);
   }
-  return injectScriptTagIntoHead(html, GSAP_MOTION_PATH_CDN_SCRIPT);
+  return injectScriptTagIntoHead(html, gsapScriptTag("MotionPathPlugin.min.js", baseUrl));
 }
 
 function isGsapCoreUrl(src: string): boolean {
@@ -221,13 +230,18 @@ function scriptCloseEnd(html: string, start: number): number {
   return closeAt === undefined ? 0 : html.indexOf(">", closeAt) + 1;
 }
 
-function injectStudioMotionDependencies(html: string, manifestContent: string): string {
+function injectStudioMotionDependencies(
+  html: string,
+  manifestContent: string,
+  baseUrl: string,
+): string {
   const manifest = parseStudioMotionManifestContent(manifestContent);
   if (!manifest.hasMotion) return html;
   let next = html;
-  if (!htmlHasGsap(next)) next = injectScriptTagIntoHead(next, GSAP_CDN_SCRIPT);
+  if (!htmlHasGsap(next))
+    next = injectScriptTagIntoHead(next, gsapScriptTag("gsap.min.js", baseUrl));
   if (manifest.hasCustomEase && !htmlHasCustomEase(next)) {
-    next = injectScriptTagIntoHead(next, GSAP_CUSTOM_EASE_CDN_SCRIPT);
+    next = injectScriptTagIntoHead(next, gsapScriptTag("CustomEase.min.js", baseUrl));
   }
   return next;
 }
@@ -236,21 +250,23 @@ function injectStudioMotionScript(
   html: string,
   projectDir: string,
   activeCompositionPath: string,
+  baseUrl: string,
 ): string {
   const manifestContent = readStudioMotionManifestContent(projectDir);
   const script = createStudioMotionRenderBodyScript(manifestContent, {
     activeCompositionPath,
   });
   if (!script) return html;
-  const withDependencies = injectStudioMotionDependencies(html, manifestContent);
+  const withDependencies = injectStudioMotionDependencies(html, manifestContent, baseUrl);
   const tag = `<script type="${AFTER_FONTS_SCRIPT_TYPE}">${script.replace(/<\/script/gi, "<\\/script")}</script>`;
   return insertBeforeCloseTag(withDependencies, "body", tag) ?? `${withDependencies}${tag}`;
 }
 
 const GSAP_FALLBACK_ATTR = "data-hf-gsap-fallback";
-const GSAP_CDN_FALLBACK_SCRIPT = `<script ${GSAP_FALLBACK_ATTR}>
+function gsapCdnFallbackScript(baseUrl: string): string {
+  return `<script ${GSAP_FALLBACK_ATTR}>
 (function(){
-  var cdnBase="${gsapCdnDist()}";
+  var cdnBase=${JSON.stringify(gsapCdnDist(undefined, baseUrl)).replace(/</g, "\\u003c")};
   var loaded={};
   function loadFallback(file){
     if(loaded[file])return loaded[file];
@@ -270,11 +286,13 @@ const GSAP_CDN_FALLBACK_SCRIPT = `<script ${GSAP_FALLBACK_ATTR}>
   },true);
 })();
 </script>`;
+}
 
-function injectGsapCdnFallback(html: string): string {
+function injectGsapCdnFallback(html: string, baseUrl: string): string {
   if (html.includes(GSAP_FALLBACK_ATTR)) return html;
-  if (html.includes("<head>")) return html.replace("<head>", "<head>" + GSAP_CDN_FALLBACK_SCRIPT);
-  return GSAP_CDN_FALLBACK_SCRIPT + html;
+  if (html.includes("<head>"))
+    return html.replace("<head>", "<head>" + gsapCdnFallbackScript(baseUrl));
+  return gsapCdnFallbackScript(baseUrl) + html;
 }
 
 /**
@@ -333,9 +351,9 @@ function injectStudioPreviewAugmentations(
   adapter: StudioApiAdapter,
   projectDir: string,
   activeCompositionPath: string,
-  capture: boolean,
+  options: { capture: boolean; gsapBaseUrl: string },
 ): string {
-  const marked = capture
+  const marked = options.capture
     ? injectTagsAtHeadStart(
         html,
         `<meta name="${STUDIO_PREVIEW_MARK_META}" content="${STUDIO_PREVIEW_CAPTURE_MODE}">`,
@@ -347,11 +365,20 @@ function injectStudioPreviewAugmentations(
   return injectStudioMotionScript(
     injectMotionPathPluginIfNeeded(
       injectGsapCdnFallback(
-        injectProjectSignature(marked, resolveProjectSignature(adapter, projectDir)),
+        injectProjectSignature(
+          injectTagsAtHeadStart(
+            marked,
+            `<meta name="${GSAP_BASE_URL_META}" content="${escapeGsapUrl(options.gsapBaseUrl)}">`,
+          ),
+          resolveProjectSignature(adapter, projectDir),
+        ),
+        options.gsapBaseUrl,
       ),
+      options.gsapBaseUrl,
     ),
     projectDir,
     activeCompositionPath,
+    options.gsapBaseUrl,
   );
 }
 
@@ -416,6 +443,16 @@ const withPreviewBase = (html: string, projectId: string) =>
     : injectTagsAtHeadStart(html, `<base href="${previewBaseHref(projectId)}">`);
 
 export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): void {
+  let gsapBaseUrl: string;
+  try {
+    gsapBaseUrl = normalizeGsapBaseUrl(process.env.HYPERFRAMES_GSAP_BASE_URL);
+  } catch (cause) {
+    throw new Error(
+      "Invalid HYPERFRAMES_GSAP_BASE_URL: use an absolute HTTP(S) npm mirror root without credentials, query, or fragment",
+      { cause },
+    );
+  }
+  const gsapEtagSalt = `:gsap:${createHash("sha1").update(gsapBaseUrl).digest("hex").slice(0, 12)}`;
   const previewCacheHeaders = (etag: string) => ({
     "Cache-Control": "private, no-cache",
     ETag: etag,
@@ -472,7 +509,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
         adapter,
         project.dir,
         mainCompositionPath,
-        capture,
+        { capture, gsapBaseUrl },
       );
       if (previewVariables) bundled = injectPreviewVariables(bundled, previewVariables);
       bundled = await injectMediaCodecMap(
@@ -502,7 +539,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
           adapter,
           project.dir,
           fallback.compositionPath,
-          capture,
+          { capture, gsapBaseUrl },
         );
         if (previewVariables) {
           fallbackAugmented = injectPreviewVariables(fallbackAugmented, previewVariables);
@@ -533,7 +570,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     const previewVariables = vars.values;
     const capture = c.req.query(PREVIEW_CAPTURE_PARAM) !== undefined;
 
-    const etag = `"preview:${signature}${variablesEtagSalt(vars.raw)}${capture ? ":capture" : ""}"`;
+    const etag = `"preview:${signature}${gsapEtagSalt}${variablesEtagSalt(vars.raw)}${capture ? ":capture" : ""}"`;
     const ifNoneMatch = c.req.header("If-None-Match");
     if (ifNoneMatch === etag) {
       return new Response(null, {
@@ -595,7 +632,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     // not revalidate to a 304 that skips the pin.
     const compPathHash = createHash("sha1").update(compPath).digest("hex");
     const capture = c.req.query(PREVIEW_CAPTURE_PARAM) !== undefined;
-    const etag = `"comp:v2:${compPathHash}:${signature}${variablesEtagSalt(vars.raw)}${capture ? ":capture" : ""}"`;
+    const etag = `"comp:v2:${compPathHash}:${signature}${gsapEtagSalt}${variablesEtagSalt(vars.raw)}${capture ? ":capture" : ""}"`;
     const ifNoneMatch = c.req.header("If-None-Match");
     if (ifNoneMatch === etag) {
       return new Response(null, {
@@ -614,11 +651,15 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
       adapter.runtimeUrl,
       baseHref,
       stamped,
+      gsapBaseUrl,
     );
     if (!html) return c.text("not found", 404);
     recordPreviewReferences(project.dir, html);
     html = ensureHfIds(await transformPreviewHtml(html, adapter, project, compPath));
-    html = injectStudioPreviewAugmentations(html, adapter, project.dir, compPath, capture);
+    html = injectStudioPreviewAugmentations(html, adapter, project.dir, compPath, {
+      capture,
+      gsapBaseUrl,
+    });
     if (previewVariables) html = injectPreviewVariables(html, previewVariables);
     html = await injectMediaCodecMap(html, adapter, project.dir, compPath, mediaCodecProbeCache);
     return c.html(html, 200, previewCacheHeaders(etag));

@@ -269,6 +269,7 @@ export function buildSubCompositionHtml(
   runtimeUrl: string,
   baseHref?: string,
   rawOverride?: string,
+  gsapBaseUrl?: string,
 ): string | null {
   const compFile = join(projectDir, compPath);
   if (!existsSync(compFile)) return null;
@@ -353,7 +354,7 @@ export function buildSubCompositionHtml(
 
   // Fallback: if no index.html head was found, add minimal deps
   if (!headContent.includes("gsap")) {
-    headContent += `\n<script src="${gsapCdnDist()}gsap.min.js"></script>`;
+    headContent += `\n<script src="${gsapCdnDist(undefined, gsapBaseUrl).replace(/&/g, "&amp;")}gsap.min.js"></script>`;
   }
 
   const htmlOpen = htmlAttrs ? `<html ${htmlAttrs}>` : "<html>";

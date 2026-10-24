@@ -318,6 +318,28 @@ window.__timelines["root"] = tl;`;
     expect(contentWindow.__hfMotionPathPluginLoading).toBe(false);
   });
 
+  it("loads a missing soft-reload plugin from the iframe mirror and reports its failure", () => {
+    const { iframe, contentWindow } = buildMockIframe({
+      gsap: { timeline: vi.fn(), registerPlugin: vi.fn(), version: "3.14.2" },
+    });
+    const head = iframe.contentDocument!.head;
+    const meta = document.createElement("meta");
+    meta.name = "hyperframes-gsap-base-url";
+    meta.content = "http://localhost:8080/vendor/npm";
+    head.appendChild(meta);
+    const onAsyncFailure = vi.fn();
+    expect(applySoftReload(iframe, MOTION_PATH_SCRIPT_TEXT, { onAsyncFailure })).toBe("applied");
+    const plugin = head.querySelector("script");
+    expect(plugin?.src).toBe(
+      "http://localhost:8080/vendor/npm/gsap@3.14.2/dist/MotionPathPlugin.min.js",
+    );
+    plugin?.onerror?.(new Event("error"));
+    expect(onAsyncFailure).toHaveBeenCalledTimes(1);
+    expect(contentWindow.__hfForceTimelineRebind).not.toHaveBeenCalled();
+    expect(contentWindow.__hfMotionPathPluginLoading).toBe(false);
+    expect(head.querySelectorAll("script")).toHaveLength(1);
+  });
+
   it('returns "cannot-soft-reload" when multiple GSAP scripts exist (ambiguous)', () => {
     const script1 = document.createElement("script");
     script1.textContent = "const tl = gsap.timeline({ paused: true });";
@@ -488,6 +510,26 @@ describe("ensureMotionPathPluginLoaded", () => {
     expect(appendedScripts[0]!.src).toBe(
       "https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/MotionPathPlugin.min.js",
     );
+  });
+
+  it("preloads from the iframe mirror once, retaining the runtime version", () => {
+    const { iframe, appendedScripts, contentWindow, registerPlugin } = buildBootstrapIframe({
+      gsap: { version: "3.14.2", registerPlugin: vi.fn() },
+    });
+    const meta = document.createElement("meta");
+    meta.name = "hyperframes-gsap-base-url";
+    meta.content = "http://localhost:8080/vendor/npm";
+    iframe.contentDocument!.head.appendChild(meta);
+    ensureMotionPathPluginLoaded(iframe);
+    ensureMotionPathPluginLoaded(iframe);
+    expect(appendedScripts).toHaveLength(1);
+    expect(appendedScripts[0]!.src).toBe(
+      "http://localhost:8080/vendor/npm/gsap@3.14.2/dist/MotionPathPlugin.min.js",
+    );
+    appendedScripts[0]!.onerror?.(new Event("error"));
+    expect(contentWindow.__hfMotionPathPluginLoading).toBe(false);
+    expect(registerPlugin).not.toHaveBeenCalled();
+    expect(appendedScripts).toHaveLength(1);
   });
 
   it("appends the plugin script once and registers it on load", () => {

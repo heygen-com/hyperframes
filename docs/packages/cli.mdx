@@ -874,6 +874,11 @@ The server picks one of three modes by itself: **embedded** (the default for
 **monorepo** (the studio dev server, when you run from the source repo).
 `--background` works with the embedded server only.
 
+To load the GSAP dependencies Studio adds from a local or private mirror, set
+`HYPERFRAMES_GSAP_BASE_URL` before starting the server. See
+[Serve GSAP from your own mirror](/packages/studio-server#serve-gsap-from-your-own-mirror)
+for the directory layout, restart requirements, and authored-resource scope.
+
 <Note>
   Preview plays in real time, so paint-heavy compositions can stutter on your
   machine. Render seeks and captures one frame at a time, so the same work usually
