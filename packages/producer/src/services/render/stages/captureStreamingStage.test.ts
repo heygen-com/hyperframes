@@ -36,6 +36,10 @@ let workerFailurePageErrors: string[] = [];
 // Parallel capture that reports this many frames, advancing the clock by parallelFrameMs each.
 let parallelFrames = 0;
 let parallelFrameMs = 0;
+// Slow parallel capture on a virtual clock: one frame per 2 s, `slowTotal` frames, stops on abort.
+let slowParallel = false;
+let slowTotal = 0;
+let virtualNow = 0;
 let injectedWorkerFailure: Error | null = null;
 const reorderAbortCalls: unknown[] = [];
 let hangSequentialUntilStall = false;
@@ -46,6 +50,24 @@ let initializeSessionErrorMessage = "initialize failed";
 const browserConsoleBuffer = ["[FrameCapture:ERROR] page.goto failed"];
 const closeCaptureSession = mock(async () => {});
 class DrawElementVerificationError extends Error {}
+
+async function replaySlowCapture(
+  signal: AbortSignal | undefined,
+  onProgress: ((progress: unknown) => void) | undefined,
+): Promise<never[]> {
+  for (let frame = 1; frame <= slowTotal; frame++) {
+    if (signal?.aborted) throw new Error("[Parallel] Capture failed: aborted");
+    virtualNow += 2_000;
+    onProgress?.({
+      totalFrames: slowTotal,
+      capturedFrames: frame,
+      activeWorkers: 2,
+      workerProgress: new Map(),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 1));
+  }
+  return [];
+}
 
 mock.module("@hyperframes/engine", () => ({
   calculateOptimalWorkers: () => 1,
@@ -154,6 +176,7 @@ mock.module("@hyperframes/engine", () => ({
         signal?.addEventListener("abort", fail, { once: true });
       });
     }
+    if (slowParallel) return replaySlowCapture(signal, onProgress);
     if (parallelFrames > 0) {
       const report = (capturedFrames: number, phase?: string) =>
         onProgress?.({
@@ -452,6 +475,56 @@ describe("runCaptureStreamingStage", () => {
     ]);
     expect(stages).toHaveLength(42);
     expect(stages.at(-1)).toBe("Encoding frame 40/40");
+  });
+
+  async function runSlowParallel(total: number, maxRenderMs: number | undefined) {
+    slowParallel = true;
+    slowTotal = total;
+    virtualNow = 0;
+    const controller = new AbortController();
+    const { runCaptureStreamingStage } = await import("./captureStreamingStage.js");
+    const { startRenderEtaGuard } = await import("../renderEtaGuard.js");
+    const baseInput = createInput({ forceScreenshot: false, ffmpegStreamingTimeout: 3_600_000 });
+    const input = {
+      ...baseInput,
+      totalFrames: total,
+      plan: { ...baseInput.plan, workerCount: 2, forceParallelStream: true },
+      abortSignal: controller.signal,
+    };
+    let tooSlow: Error | undefined;
+    const stop = startRenderEtaGuard({
+      maxRenderMs,
+      job: input.job,
+      totalFrames: total,
+      pipelineStartMs: 0,
+      now: () => virtualNow,
+      pollMs: 1,
+      onTooSlow: (error) => {
+        tooSlow = error;
+        controller.abort(error);
+      },
+    });
+    try {
+      await runCaptureStreamingStage(input);
+      return { tooSlow, completed: true };
+    } catch {
+      return { tooSlow, completed: false };
+    } finally {
+      stop();
+      slowParallel = false;
+    }
+  }
+
+  it("stops a crawling parallel capture through the ETA guard", async () => {
+    const { tooSlow, completed } = await runSlowParallel(1_000, 120_000);
+    expect(completed).toBe(false);
+    expect(tooSlow?.message).toMatch(/^render too slow: stage capture/);
+  });
+
+  it("does not stop the same slow capture without maxRenderMs", async () => {
+    const { tooSlow, completed } = await runSlowParallel(60, undefined);
+    expect(tooSlow).toBeUndefined();
+    expect(completed).toBe(true);
   });
 
   it("does not flood the callback when frames arrive faster than the report interval", async () => {
