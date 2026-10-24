@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="en" data-composition-variables='[
+  {"id":"whatsappLink","type":"string","label":"WhatsApp link (lower third)","default":"{{WA_LINK}}"},
+  {"id":"whatsappHandle","type":"string","label":"WhatsApp link (end card)","default":"{{WA_LINK}}"}
+]'>
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=1920, height=960" />
+<title>My Reel</title>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+<style>
+  @font-face { font-family: "Caveat Brush"; src: url("assets/fonts/CaveatBrush-Regular.ttf") format("truetype"); }
+  @font-face { font-family: "Poppins"; font-weight: 600; src: url("assets/fonts/Poppins-SemiBold.ttf") format("truetype"); }
+  @font-face { font-family: "Poppins"; font-weight: 700; src: url("assets/fonts/Poppins-Bold.ttf") format("truetype"); }
+  @font-face { font-family: "Anton"; src: url("assets/fonts/Anton-Regular.ttf") format("truetype"); }
+  @font-face { font-family: "Bebas Neue"; src: url("assets/fonts/BebasNeue-Regular.ttf") format("truetype"); }
+
+  :root { --ink: #0A0A0A; --paper: #F2EFE8; --red: #D7261E; }
+  html, body { margin: 0; background: var(--ink); }
+  #root { position: relative; width: 100%; height: 100%; overflow: hidden; background: var(--ink); }
+  #stage { position: absolute; inset: 0; }
+  .frame { position: absolute; inset: 0; }
+  .frame video, #depth-fg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .clip { position: absolute; inset: 0; }
+
+  /* hook */
+  #hook { display: flex; align-items: flex-end; justify-content: center; padding-bottom: 170px; box-sizing: border-box; }
+  #hook .line { display: flex; gap: 16px; font-family: "Caveat Brush", cursive; font-size: 48px; color: var(--paper);
+    text-shadow: 0 3px 14px rgba(10,10,10,.7), 0 0 12px rgba(242,239,232,.35); letter-spacing: .02em; }
+  #hook .hw { display: block; }
+  #globe { display: flex; align-items: center; justify-content: flex-end; padding-right: 110px; box-sizing: border-box; }
+  #globe svg { width: 640px; height: 640px; display: block; }
+
+  /* layoffs chart card (opening) */
+  #layoffs { perspective: 1400px; }
+  #lc-card { position: absolute; right: 56px; top: 120px; width: 740px; padding: 26px 30px 22px; box-sizing: border-box;
+    background: rgba(38,39,44,.94); border: 1px solid rgba(242,239,232,.10); border-radius: 22px;
+    box-shadow: 0 30px 80px rgba(0,0,0,.55), 0 0 60px rgba(107,138,247,.18); transform-origin: 50% 70%; }
+  #lc-title { font-family: "Poppins", sans-serif; font-weight: 700; font-size: 27px; color: var(--paper); line-height: 1.2; }
+  #lc-plot { position: relative; height: 380px; margin: 26px 0 0 78px; }
+  #lc-plot .grid { position: absolute; left: 0; right: 0; height: 1px; background: rgba(242,239,232,.12); }
+  #lc-plot .tick { position: absolute; right: calc(100% + 14px); transform: translateY(-50%); font-family: "Poppins", sans-serif;
+    font-weight: 600; font-size: 18px; color: rgba(242,239,232,.72); white-space: nowrap; }
+  #lc-plot .ylab { position: absolute; left: -62px; top: 50%; transform: translate(-50%, -50%) rotate(-90deg); font-family: "Poppins", sans-serif;
+    font-weight: 700; font-size: 16px; color: rgba(242,239,232,.72); white-space: nowrap; }
+  #lc-bars { position: absolute; inset: 0; display: flex; justify-content: space-around; align-items: flex-end; padding: 0 10px; }
+  .lc-col { position: relative; width: 104px; height: 100%; }
+  .lc-bar { position: absolute; left: 0; right: 0; bottom: 0; border-radius: 12px 12px 0 0; transform-origin: 50% 100%;
+    background: linear-gradient(180deg, #7f9bff, #5c7cf2); box-shadow: 0 0 22px rgba(107,138,247,.35); }
+  .lc-col.peak .lc-bar { background: linear-gradient(180deg, #ff5a4f, var(--red)); box-shadow: 0 0 34px rgba(215,38,30,.55); }
+  .lc-val { position: absolute; left: -20px; right: -20px; text-align: center; font-family: "Poppins", sans-serif; font-weight: 700;
+    font-size: 22px; color: var(--paper); }
+  .lc-col.peak .lc-val { font-size: 30px; color: #ff6a60; }
+  #lc-years { display: flex; justify-content: space-around; margin: 12px 0 0 78px; padding: 0 10px; }
+  #lc-years span { width: 104px; text-align: center; font-family: "Poppins", sans-serif; font-weight: 600; font-size: 19px;
+    color: rgba(242,239,232,.75); white-space: nowrap; }
+
+  /* depth title */
+  #depth-title .small-wrap { position: absolute; left: 60px; top: 22px; transform: rotate(-5deg); transform-origin: 0% 100%; }
+  #depth-title .small { display: block; font-family: "Caveat Brush", cursive; font-size: 84px; line-height: 1; color: var(--paper);
+    text-shadow: 0 4px 16px rgba(10,10,10,.75), 0 0 14px rgba(242,239,232,.35); }
+  #depth-title .big-wrap { position: absolute; left: 0; right: 0; top: 14px; display: flex; justify-content: center; }
+  #depth-title .big { display: block; font-family: "Anton", sans-serif; font-size: 410px; line-height: 1; color: var(--paper);
+    letter-spacing: .11em; margin-right: -.11em; transform-origin: 50% 60%;
+    text-shadow: 8px 8px 0 var(--red), 0 0 40px rgba(242,239,232,.35), 0 0 90px rgba(242,239,232,.15); }
+  #depth-fg { clip-path: inset(0 480px 0 480px); }
+
+  /* hero red titles */
+  .hero { display: flex; align-items: center; justify-content: center; }
+  .hero.top { align-items: flex-start; padding-top: 70px; box-sizing: border-box; }
+  .scrim { position: absolute; inset: 0; background: radial-gradient(ellipse 62% 58% at 50% 48%, rgba(10,10,10,.78), rgba(10,10,10,.35) 70%, rgba(10,10,10,0)); }
+  .hero-wrap { position: relative; filter: drop-shadow(0 0 28px rgba(215,38,30,.45)); }
+  .hero-text { display: flex; flex-direction: column; align-items: center; font-family: "Bebas Neue", sans-serif; font-size: 220px;
+    line-height: .86; color: var(--red); letter-spacing: .01em;
+    -webkit-mask-image: url("assets/grunge.png"); mask-image: url("assets/grunge.png"); -webkit-mask-size: 100% 100%; mask-size: 100% 100%; }
+  .hero-text span { display: block; }
+
+  /* captions */
+  .cap { display: flex; align-items: flex-end; justify-content: center; padding-bottom: 130px; box-sizing: border-box; }
+  .cap-in { display: flex; align-items: baseline; gap: 20px; font-family: "Poppins", sans-serif; font-weight: 600; font-size: 60px;
+    color: var(--paper); text-transform: lowercase; transform-origin: 50% 100%;
+    text-shadow: 0 4px 18px rgba(10,10,10,.7), 0 0 14px rgba(242,239,232,.32); }
+  .cap-in .key { font-size: 78px; }
+  .cap.top { align-items: flex-start; padding-bottom: 0; padding-top: 70px; }
+  .cap.top .cap-in { transform-origin: 50% 0%; }
+
+  /* skill set is waste / YOU */
+  #skillwaste { display: flex; align-items: flex-end; justify-content: center; padding-bottom: 130px; box-sizing: border-box; }
+  #skillwaste .phrase { position: relative; display: flex; gap: 20px; font-family: "Poppins", sans-serif; font-weight: 600; font-size: 78px;
+    color: var(--paper); text-shadow: 0 4px 18px rgba(10,10,10,.7), 0 0 14px rgba(242,239,232,.32); }
+  #skillwaste .phrase span { display: block; }
+  #skillwaste .slash { position: absolute; left: -20px; right: -20px; top: 50%; height: 12px; margin-top: -4px; background: var(--red);
+    transform-origin: 0% 50%; box-shadow: 0 0 18px rgba(215,38,30,.6); }
+  #skillwaste .you { position: absolute; left: 0; right: 0; bottom: 110px; display: flex; justify-content: center; }
+  #skillwaste .you span { display: block; font-family: "Poppins", sans-serif; font-weight: 700; font-size: 156px; color: var(--paper);
+    text-shadow: 0 6px 26px rgba(10,10,10,.75), 0 0 24px rgba(242,239,232,.4); }
+
+  /* whatsapp join */
+  #wajoin .icon { position: absolute; left: 0; right: 0; top: 250px; display: flex; justify-content: center; }
+  #wajoin .icon-box { position: relative; width: 220px; height: 220px; }
+  #wajoin .icon-box svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  #wajoin .line { position: absolute; left: 0; right: 0; bottom: 130px; display: flex; justify-content: center; gap: 20px;
+    font-family: "Poppins", sans-serif; font-weight: 600; font-size: 60px; color: var(--paper); text-transform: lowercase;
+    text-shadow: 0 4px 18px rgba(10,10,10,.7), 0 0 14px rgba(242,239,232,.32); }
+  #wajoin .line span { display: block; }
+  #wajoin .line .key { font-size: 78px; color: var(--paper); }
+
+  /* callouts */
+  .co svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .co path { fill: none; stroke: var(--paper); stroke-width: 4; stroke-dasharray: 100; stroke-dashoffset: 100; }
+  .co circle { fill: var(--red); }
+  .co .label { position: absolute; font-family: "Poppins", sans-serif; font-weight: 700; font-size: 58px; letter-spacing: .08em;
+    color: var(--paper); text-shadow: 0 4px 18px rgba(10,10,10,.8), 0 0 16px rgba(242,239,232,.35); border-bottom: 8px solid var(--red); padding-bottom: 4px; }
+
+  /* lower third */
+  .lower .lt { position: absolute; left: 96px; bottom: 96px; display: flex; align-items: center; gap: 28px; padding: 22px 30px;
+    background: rgba(10,10,10,.82); border-left: 10px solid var(--red); }
+  .lower .txt { display: flex; flex-direction: column; gap: 4px; }
+  .lower .kicker { font-family: "Bebas Neue", sans-serif; font-size: 44px; color: var(--red); letter-spacing: .06em; line-height: 1; }
+  .lower .link { font-family: "Poppins", sans-serif; font-weight: 600; font-size: 36px; color: var(--paper); }
+  .lower .join { font-family: "Bebas Neue", sans-serif; font-size: 52px; color: var(--paper); background: var(--red);
+    padding: 10px 30px 6px; border-radius: 999px; line-height: 1; box-shadow: 0 0 26px rgba(215,38,30,.55); display: block; }
+
+  .lower .mark-sm { font-family: "Bebas Neue", sans-serif; font-size: 96px; line-height: .9; color: var(--red); display: block;
+    -webkit-mask-image: url("assets/grunge.png"); mask-image: url("assets/grunge.png"); -webkit-mask-size: 100% 100%; mask-size: 100% 100%; }
+
+  /* grow / evolve / EARN */
+  #stack .col { position: absolute; left: 150px; top: 170px; display: flex; flex-direction: column; gap: 0; }
+  #stack .col span { display: block; font-family: "Poppins", sans-serif; font-weight: 600; font-size: 120px; line-height: 1.08; color: var(--paper);
+    text-shadow: 0 6px 24px rgba(10,10,10,.75), 0 0 20px rgba(242,239,232,.35); }
+  #stack .col .earn { font-family: "Bebas Neue", sans-serif; font-size: 230px; line-height: .9; color: var(--red); text-shadow: 0 0 30px rgba(215,38,30,.5); }
+
+  /* folders */
+  #folders .f { position: absolute; top: 300px; width: 300px; height: 300px; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+  #folders .f svg { width: 260px; height: 195px; display: block; filter: drop-shadow(0 10px 30px rgba(10,10,10,.7)); }
+  #folders .f .fl { font-family: "Poppins", sans-serif; font-weight: 700; font-size: 46px; letter-spacing: .08em; color: var(--paper);
+    text-shadow: 0 4px 18px rgba(10,10,10,.85); display: block; }
+  #folders #f-demos { left: 330px; }
+  #folders #f-practice { left: 1290px; }
+  #folders #f-agency { left: 810px; top: 270px; }
+  #folders #f-agency svg { width: 300px; height: 225px; }
+  #folders #f-agency .fl { color: var(--paper); font-size: 58px; }
+
+  /* static burst + end card + flash */
+  #static { background: url("assets/static.png") 0 0 / 1920px 960px; mix-blend-mode: screen; opacity: .55; }
+  #endcard { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; }
+  #endcard .bg { position: absolute; inset: 0; background: var(--ink); }
+  #endcard .mark { position: relative; font-family: "Bebas Neue", sans-serif; font-size: 240px; line-height: .9; color: var(--red);
+    -webkit-mask-image: url("assets/grunge.png"); mask-image: url("assets/grunge.png"); -webkit-mask-size: 100% 100%; mask-size: 100% 100%; display: block; }
+  #endcard .site { position: relative; font-family: "Poppins", sans-serif; font-weight: 600; font-size: 48px; color: var(--paper); display: block; }
+  #endcard .handle { position: relative; font-family: "Poppins", sans-serif; font-weight: 600; font-size: 28px; color: var(--paper); opacity: .75; display: block; margin-top: 6px; }
+  #flash { position: absolute; inset: 0; background: var(--paper); opacity: 0; pointer-events: none; }
+</style>
+</head>
+<body>
+<div id="root" data-template-composition-id="main" data-start="0" data-width="1920" data-height="960" data-duration="{{DUR}}">
+  <svg width="0" height="0" style="position:absolute">
+    <filter id="rgb" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+      <feColorMatrix in="SourceGraphic" type="matrix" values="1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="r" />
+      <feOffset in="r" dx="6" dy="0" result="r2" />
+      <feColorMatrix in="SourceGraphic" type="matrix" values="0 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="gb" />
+      <feOffset in="gb" dx="-6" dy="0" result="gb2" />
+      <feBlend in="r2" in2="gb2" mode="screen" />
+    </filter>
+  </svg>
+
+  <div id="stage">
+    <div class="frame" id="aroll-wrap">
+      <video id="aroll" src="assets/aroll_graded.mp4" data-start="0" data-duration="{{DUR}}" data-track-index="0" muted playsinline></video>
+    </div>
+
+    <div id="globe" class="clip" data-start="0" data-duration="6.0" data-track-index="10">
+      <svg id="globe-svg" viewBox="-320 -320 640 640"></svg>
+    </div>
+
+    <div id="hook" class="clip" data-start="1.0" data-duration="2.04" data-track-index="11">
+      <div class="line">{{HOOK}}</div>
+    </div>
+
+    <div id="layoffs" class="clip" data-start="2.80" data-duration="3.20" data-track-index="28">
+      <div id="lc-card">
+        <div id="lc-title">Global Tech Layoffs &amp; Corporate Restructuring (2020–2026)</div>
+        <div id="lc-plot">
+          <div class="ylab">Job Cuts (in Lakhs)</div>
+          <div id="lc-bars"></div>
+        </div>
+        <div id="lc-years"></div>
+      </div>
+    </div>
+
+    <div id="depth-title" class="clip" data-start="{{T_YOUR NAME}}" data-duration="{{T_YOUR NAME_DUR}}" data-track-index="12">
+      <div class="big-wrap"><span class="big">YOUR NAME</span></div>
+      <div class="small-wrap"><span class="small">my name is</span></div>
+    </div>
+    <div class="frame" id="depth-fg-wrap">
+      <video id="depth-fg" src="assets/depth_fg.webm" data-start="{{T_YOUR NAME}}" data-duration="{{T_YOUR NAME_DUR}}" data-media-start="0.2" data-track-index="13" muted playsinline></video>
+    </div>
+
+    {{BROLL}}
+
+    <div id="hero-lakhs" class="clip hero" data-start="{{H_lakhs_S}}" data-duration="{{H_lakhs_D}}" data-track-index="14">
+      <div class="scrim"></div>
+      <div class="hero-wrap"><div class="hero-text"><span>LAKHS OF</span><span>JOBS</span></div></div>
+    </div>
+
+    <div id="static" class="clip" data-start="{{DEST}}" data-duration="0.4" data-track-index="15"></div>
+
+    <div id="hero-exist" class="clip hero top" data-start="{{H_exist_S}}" data-duration="{{H_exist_D}}" data-track-index="16">
+      <div class="scrim"></div>
+      <div class="hero-wrap"><div class="hero-text"><span>WON'T</span><span>EXIST</span></div></div>
+    </div>
+
+    <div id="skillwaste" class="clip" data-start="29.30" data-duration="2.70" data-track-index="17">
+      <div class="phrase"><span id="sw-a">skill set</span><span id="sw-b">is</span><span id="sw-c">waste</span><div class="slash" id="sw-slash"></div></div>
+      <div class="you"><span id="sw-you">YOU</span></div>
+    </div>
+
+    <div id="hero-taste" class="clip hero" data-start="{{H_taste_S}}" data-duration="{{H_taste_D}}" data-track-index="18">
+      <div class="scrim"></div>
+      <div class="hero-wrap"><div class="hero-text"><span>SKILL +</span><span>TASTE</span></div></div>
+    </div>
+
+    <div id="wajoin" class="clip" data-start="40.60" data-duration="1.40" data-track-index="19">
+      <div class="icon"><div class="icon-box" id="wa-box">
+        <svg viewBox="-110 -110 220 220">
+          <circle id="wa-pulse1" r="80" fill="none" stroke="#D7261E" stroke-width="6" />
+          <circle id="wa-pulse2" r="80" fill="none" stroke="#D7261E" stroke-width="4" />
+          <g id="wa-orbit"><circle r="100" fill="none" stroke="#F2EFE8" stroke-width="3" stroke-dasharray="6 14" opacity=".7" /></g>
+          <g id="wa-glyph">
+            <path d="M0 -70 A70 70 0 1 1 -45 53 L-68 66 L-58 40 A70 70 0 0 1 0 -70 Z" fill="none" stroke="#F2EFE8" stroke-width="10" stroke-linejoin="round" />
+            <path d="M-26 -30 q6 -6 12 0 l10 14 q3 6 -2 10 l-6 5 q8 18 26 26 l5 -6 q4 -5 10 -2 l14 10 q6 6 0 12 l-8 8 q-10 8 -34 -4 q-24 -14 -36 -38 q-10 -22 -1 -30 z" fill="#F2EFE8" />
+          </g>
+        </svg>
+      </div></div>
+      <div class="line"><span id="wj-1">join</span><span id="wj-2">our</span><span id="wj-3" class="key">whatsapp</span></div>
+    </div>
+
+    <div id="co-workshops" class="clip co" data-start="42.96" data-duration="1.04" data-track-index="21">
+      <svg viewBox="0 0 1920 960"><path d="M1000 330 L1180 230 L1370 230" pathLength="100" /><circle cx="1000" cy="330" r="12" /></svg>
+      <div class="label" style="left:1390px; top:188px;">WORKSHOPS</div>
+    </div>
+    <div id="co-news" class="clip co" data-start="44.22" data-duration="1.38" data-track-index="22">
+      <svg viewBox="0 0 1920 960"><path d="M800 235 L640 150 L440 150" pathLength="100" /><circle cx="800" cy="235" r="12" /></svg>
+      <div class="label" style="left:240px; top:108px;">NEWS</div>
+    </div>
+    <div id="co-career" class="clip co" data-start="45.89" data-duration="1.45" data-track-index="23">
+      <svg viewBox="0 0 1920 960"><path d="M1070 265 L1220 200 L1400 200" pathLength="100" /><circle cx="1070" cy="265" r="12" /></svg>
+      <div class="label" style="left:1420px; top:158px;">CAREER</div>
+    </div>
+
+    <div id="lowerthird" class="clip lower" data-start="{{LT_WA_S}}" data-duration="{{LT_WA_D}}" data-track-index="24">
+      <div class="lt" id="lt-box">
+        <div class="txt"><span class="kicker">JOIN THE WHATSAPP</span><span class="link" data-var-text="whatsappLink">{{WA_LINK}}</span></div>
+        <span class="join" id="lt-join">JOIN</span>
+      </div>
+    </div>
+
+    <div id="stack" class="clip" data-start="54.0" data-duration="2.0" data-track-index="25">
+      <div class="col"><span id="st-grow">grow</span><span id="st-evolve">evolve</span><span id="st-earn" class="earn">EARN</span></div>
+    </div>
+
+    <div id="folders" class="clip" data-start="{{FOLDERS_S}}" data-duration="{{FOLDERS_D}}" data-track-index="26">
+      <div class="f" id="f-demos"><svg viewBox="0 0 200 150"><path d="M0 22 Q0 10 12 10 H70 L86 26 H188 Q200 26 200 38 V138 Q200 150 188 150 H12 Q0 150 0 138 Z" fill="#F2EFE8" /></svg><span class="fl">DEMOS</span></div>
+      <div class="f" id="f-practice"><svg viewBox="0 0 200 150"><path d="M0 22 Q0 10 12 10 H70 L86 26 H188 Q200 26 200 38 V138 Q200 150 188 150 H12 Q0 150 0 138 Z" fill="#F2EFE8" /></svg><span class="fl">PRACTICE</span></div>
+      <div class="f" id="f-agency"><svg viewBox="0 0 200 150"><path d="M0 22 Q0 10 12 10 H70 L86 26 H188 Q200 26 200 38 V138 Q200 150 188 150 H12 Q0 150 0 138 Z" fill="#D7261E" /></svg><span class="fl">AGENCY</span></div>
+    </div>
+
+    <div id="lowersite" class="clip lower" data-start="{{LT_SITE_S}}" data-duration="{{LT_SITE_D}}" data-track-index="27">
+      <div class="lt" id="ls-box">
+        <div class="txt"><span class="mark-sm">YOUR NAME</span><span class="link">{{SITE}}</span></div>
+      </div>
+    </div>
+
+    {{CAPTIONS}}
+
+    <div id="endcard" class="clip" data-start="63.5" data-duration="1.93" data-track-index="30">
+      <div class="bg" id="ec-bg"></div>
+      <span class="mark" id="ec-mark">YOUR NAME</span>
+      <span class="site" id="ec-site">{{SITE}}</span>
+      <span class="handle" id="ec-handle" data-var-text="whatsappHandle">{{WA_LINK}}</span>
+    </div>
+  </div>
+
+  <div id="flash"></div>
+
+  <audio id="voice" src="assets/aroll.mp4" data-start="0" data-duration="{{DUR}}" data-track-index="31" data-volume="1"></audio>
+  <audio id="bed" src="assets/ambient_bed.mp3" data-start="0" data-duration="{{DUR}}" data-track-index="32" data-volume="1" data-automation="{{BED_AUTO}}"></audio>
+  {{SFX}}
+</div>
+
+<script>
+  const D = {{DATA}};
+  const f = 1 / D.fps;
+  const tl = gsap.timeline({ paused: true });
+
+  const wordPop = (el, t, extra = {}) =>
+    tl.fromTo(el, { scale: 0.85, opacity: 0, y: 10 }, { scale: 1, opacity: 1, y: 0, duration: 0.15, ease: "back.out(2)", ...extra }, t);
+  const flash = (t) => tl.set("#flash", { opacity: 0.9 }, t).set("#flash", { opacity: 0 }, t + 2 * f);
+  const flicker = (t) =>
+    tl.set("#stage", { filter: "url(#rgb) brightness(1)", x: 12, scale: 1.02 }, t)
+      .set("#stage", { filter: "url(#rgb) brightness(2.2)", x: -12 }, t + f)
+      .set("#stage", { filter: "url(#rgb) brightness(0.6)", x: 12 }, t + 2 * f)
+      .set("#stage", { filter: "none", x: 0, scale: 1 }, t + 3 * f);
+  const heroRedIn = (sel, t) => {
+    tl.fromTo(sel + " .scrim", { opacity: 0 }, { opacity: 1, duration: 0.15, ease: "none" }, t);
+    tl.fromTo(sel + " .hero-text", { scale: 1.3, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.25, ease: "expo.out" }, t);
+    flash(t);
+  };
+
+  // A-roll punch-ins: hard cuts, no easing
+  D.punch.forEach(([t, s, ox, oy]) => tl.set(["#aroll-wrap", "#depth-fg-wrap"], { scale: s, transformOrigin: ox + "% " + oy + "%" }, t));
+
+  // B-roll Ken Burns
+  D.broll.forEach(([id, s, e]) =>
+    tl.fromTo("#bw-" + id, { scale: 1, x: 0 }, { scale: 1.08, x: -20, duration: e - s, ease: "none", immediateRender: false }, s));
+
+  // flickers (B-roll entries, hero titles, "chart", "destination")
+  D.flickers.forEach(flicker);
+
+  // dot globe, 40% opacity
+  const globe = document.getElementById("globe-svg");
+  const N = 340, pts = [];
+  for (let i = 0; i < N; i++) {
+    const y = 1 - (i / (N - 1)) * 2, r = Math.sqrt(1 - y * y), th = i * Math.PI * (3 - Math.sqrt(5));
+    pts.push([Math.cos(th) * r, y, Math.sin(th) * r]);
+  }
+  const dots = pts.map(() => {
+    const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    c.setAttribute("fill", "#F2EFE8");
+    globe.appendChild(c);
+    return c;
+  });
+  const g = { a: 0 };
+  const drawGlobe = () => {
+    const ca = Math.cos(g.a), sa = Math.sin(g.a), tilt = 0.35, ct = Math.cos(tilt), st = Math.sin(tilt);
+    pts.forEach(([x, y, z], i) => {
+      const x1 = x * ca + z * sa, z1 = -x * sa + z * ca;
+      const y2 = y * ct - z1 * st, z2 = y * st + z1 * ct;
+      dots[i].setAttribute("cx", (x1 * 280).toFixed(2));
+      dots[i].setAttribute("cy", (y2 * 280).toFixed(2));
+      dots[i].setAttribute("r", (2.2 + 2.4 * (z2 + 1) / 2).toFixed(2));
+      dots[i].setAttribute("opacity", (0.25 + 0.75 * (z2 + 1) / 2).toFixed(3));
+    });
+  };
+  drawGlobe();
+  tl.fromTo("#globe-svg", { opacity: 0 }, { opacity: 0.4, duration: 1, ease: "none" }, 0);
+  tl.to(g, { a: Math.PI * 0.9, duration: 6, ease: "none", onUpdate: drawGlobe }, 0);
+
+  // layoffs chart: rises out of the background on "provoked", flies past camera on "this chart"
+  const LC = [["2020", 0.95, "0.95"], ["2023", 2.62, "2.6 L"], ["2024", 1.45, "1.4 L"], ["2025", 1.15, "1.1 L"], ["2026 (Est.)", 1.30, "1.3 L"]];
+  const LC_MAX = 3.0, LC_IN = 3.04, LC_OUT = 5.62;
+  const plot = document.getElementById("lc-plot"), barsEl = document.getElementById("lc-bars"), yearsEl = document.getElementById("lc-years");
+  for (let k = 0; k <= 6; k++) {
+    const v = k * 0.5, top = (1 - v / LC_MAX) * 100 + "%";
+    plot.insertAdjacentHTML("afterbegin", `<div class="grid" style="top:${top}"></div><div class="tick" style="top:${top}">${v ? v.toFixed(1) + " L" : "0"}</div>`);
+  }
+  LC.forEach(([year, v, label], k) => {
+    const h = (v / LC_MAX) * 100;
+    barsEl.insertAdjacentHTML("beforeend",
+      `<div class="lc-col${k === 1 ? " peak" : ""}"><div class="lc-bar" style="height:${h}%"></div>` +
+      `<div class="lc-val" style="bottom:calc(${h}% + 12px)">${label}</div></div>`);
+    yearsEl.insertAdjacentHTML("beforeend", `<span>${year}</span>`);
+  });
+  tl.to("#globe-svg", { opacity: 0, duration: 0.45, ease: "power2.inOut" }, 2.8);
+  tl.fromTo("#lc-card",
+    { opacity: 0, scale: 0.55, y: 140, rotationX: 28, filter: "blur(18px)" },
+    { opacity: 1, scale: 1, y: 0, rotationX: 0, filter: "blur(0px)", duration: 0.8, ease: "expo.out" }, LC_IN);
+  tl.fromTo("#lc-card", { y: 0 }, { y: -14, duration: LC_OUT - LC_IN - 0.8, ease: "sine.inOut", immediateRender: false }, LC_IN + 0.8);
+  tl.fromTo("#lc-title", { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" }, LC_IN + 0.2);
+  tl.fromTo("#lc-plot .grid, #lc-plot .tick, #lc-plot .ylab, #lc-years span", { opacity: 0 }, { opacity: 1, duration: 0.4, ease: "power1.out" }, LC_IN + 0.25);
+  document.querySelectorAll(".lc-col").forEach((col, k) => {
+    const t = LC_IN + 0.4 + k * 0.12, [, v, label] = LC[k], val = col.querySelector(".lc-val"), h = (v / LC_MAX) * 100;
+    tl.fromTo(col.querySelector(".lc-bar"), { scaleY: 0 }, { scaleY: 1, duration: 0.7, ease: "power4.out" }, t);
+    const n = { v: 0 };
+    const fmt = () => {
+      val.textContent = n.v >= v - 1e-6 ? label : label.endsWith(" L") ? n.v.toFixed(1) + " L" : n.v.toFixed(2);
+      val.style.bottom = `calc(${(n.v / LC_MAX) * 100}% + 12px)`;
+    };
+    tl.fromTo(val, { opacity: 0 }, { opacity: 1, duration: 0.2, ease: "none" }, t + 0.05);
+    tl.fromTo(n, { v: 0 }, { v, duration: 0.7, ease: "power4.out", onUpdate: fmt, onComplete: fmt }, t);
+  });
+  // 2023 peak: a soft pulse once every bar has landed
+  tl.fromTo(".lc-col.peak .lc-bar", { filter: "brightness(1)" }, { filter: "brightness(1.35)", duration: 0.3, ease: "sine.inOut", yoyo: true, repeat: 1 }, LC_IN + 1.35);
+  tl.fromTo(".lc-col.peak .lc-val", { scale: 1 }, { scale: 1.18, duration: 0.3, ease: "sine.inOut", yoyo: true, repeat: 1 }, LC_IN + 1.35);
+  tl.to("#lc-card", { opacity: 0, scale: 1.35, y: -40, filter: "blur(14px)", duration: 0.36, ease: "power2.in" }, LC_OUT);
+
+  // hook quote word by word
+  document.querySelectorAll("#hook .hw").forEach((el) => wordPop(el, parseFloat(el.dataset.t)));
+
+  // captions
+  document.querySelectorAll(".cap").forEach((el) => wordPop(el.querySelector(".cap-in"), parseFloat(el.dataset.start)));
+
+  // depth title behind the speaker's head (matte layered above)
+  wordPop("#depth-title .small", D.depth[0]);
+  tl.fromTo("#depth-title .big",
+    { filter: "blur(20px)", opacity: 0, scale: 1.25 },
+    { filter: "blur(0px)", opacity: 1, scale: 1, duration: 0.3, ease: "power3.out" }, D.T.speaker);
+  flash(D.T.speaker);
+
+  // red hero titles
+  D.heroes.forEach(([id, s]) => heroRedIn("#hero-" + id, s));
+
+  // static burst on "destination"
+  for (let k = 0; k < 12; k++) tl.set("#static", { backgroundPosition: ((k * 397) % 1920) + "px " + ((k * 211) % 960) + "px" }, D.dest + k * f);
+
+  // skill set is waste -> YOU
+  wordPop("#sw-a", D.T.skill); wordPop("#sw-b", D.T.is_); wordPop("#sw-c", D.T.waste1);
+  tl.fromTo("#sw-slash", { scaleX: 0 }, { scaleX: 1, duration: 0.18, ease: "power2.out" }, D.T.waste1 + 0.08);
+  tl.set(["#skillwaste .phrase"], { opacity: 0 }, D.T.waste2);
+  tl.fromTo("#sw-you", { scale: 0.6, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.2, ease: "back.out(2.4)" }, D.T.waste2);
+
+  // join our WhatsApp + icon pop, pulse, orbit ring
+  wordPop("#wj-1", D.T.join); wordPop("#wj-2", D.T.our); wordPop("#wj-3", D.T.wa);
+  tl.fromTo("#wa-box", { scale: 0, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.22, ease: "back.out(2.6)" }, D.T.wa);
+  tl.fromTo("#wa-pulse1", { scale: 1, opacity: 0.9, transformOrigin: "50% 50%" }, { scale: 1.45, opacity: 0, duration: 0.6, ease: "power2.out", repeat: 1 }, D.T.wa + 0.1);
+  tl.fromTo("#wa-pulse2", { scale: 1, opacity: 0.7, transformOrigin: "50% 50%" }, { scale: 1.3, opacity: 0, duration: 0.6, ease: "power2.out", repeat: 1 }, D.T.wa + 0.4);
+  tl.fromTo("#wa-orbit", { rotation: 0, transformOrigin: "50% 50%" }, { rotation: 360 * (1.4 / 12), duration: 1.4, ease: "none" }, 40.6);
+
+  // callout lines -> labels land on the spoken word
+  [["#co-workshops", 43.36], ["#co-news", 44.62], ["#co-career", 46.29]].forEach(([sel, t]) => {
+    tl.fromTo(sel + " circle", { opacity: 0 }, { opacity: 1, duration: 0.08 }, t - 0.4);
+    tl.fromTo(sel + " path", { strokeDashoffset: 100 }, { strokeDashoffset: 0, duration: 0.4, ease: "power2.inOut" }, t - 0.4);
+    wordPop(sel + " .label", t);
+  });
+
+  // lower third + pulsing JOIN
+  tl.fromTo("#lt-box", { x: -60, opacity: 0 }, { x: 0, opacity: 1, duration: 0.35, ease: "power3.out" }, D.lt[0]);
+  tl.fromTo("#lt-join", { scale: 1 }, { scale: 1.1, duration: 0.32, ease: "sine.inOut", yoyo: true, repeat: 13 }, D.lt[0] + 0.3);
+  tl.fromTo("#ls-box", { x: -60, opacity: 0 }, { x: 0, opacity: 1, duration: 0.35, ease: "power3.out" }, D.site[0]);
+
+  // grow / evolve / EARN
+  wordPop("#st-grow", D.T.grow); wordPop("#st-evolve", D.T.evolve);
+  tl.fromTo("#st-earn", { scale: 1.3, opacity: 0, transformOrigin: "0% 50%" }, { scale: 1, opacity: 1, duration: 0.25, ease: "expo.out" }, D.T.earn);
+
+  // folders fly into AGENCY
+  wordPop("#f-demos", D.T.demos, { duration: 0.2 });
+  wordPop("#f-practice", D.T.practices, { duration: 0.2 });
+  tl.fromTo("#f-agency", { scale: 0.6, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.2, ease: "back.out(2.4)" }, D.T.agency);
+  tl.to("#f-demos", { x: 480, y: 10, scale: 0.35, opacity: 0, duration: 0.5, ease: "power3.in" }, D.T.agency + 0.08);
+  tl.to("#f-practice", { x: -480, y: 10, scale: 0.35, opacity: 0, duration: 0.5, ease: "power3.in" }, D.T.agency + 0.08);
+  tl.to("#f-agency", { scale: 1.15, duration: 0.08, ease: "power2.out", yoyo: true, repeat: 1 }, D.T.agency + 0.58);
+
+  // end card
+  tl.fromTo("#ec-bg", { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "none" }, 63.5);
+  tl.fromTo("#ec-mark", { scale: 1.3, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.25, ease: "expo.out" }, 64.0);
+  flash(64.0);
+  wordPop("#ec-site", 64.3);
+  wordPop("#ec-handle", 64.5);
+
+  window.__timelines["main"] = tl;
+</script>
+</body>
+</html>
