@@ -3,11 +3,11 @@ name: hyperframes-cli
 description: The HyperFrames CLI by job - scaffold, check, look at frames, edit the timeline, preview, render locally or in the cloud, publish, project history - plus reading its JSON and recovering from build or render failures.
 ---
 
-**Plugin installs:** Before setup or freshness commands, follow [plugin execution rules](../hyperframes/references/plugin-installation.md) when this skill is inside a HyperFrames plugin.
+**Plugin installs:** For setup or refresh, follow [plugin execution rules](../hyperframes/references/plugin-installation.md) inside a HyperFrames plugin.
 
 # HyperFrames CLI
 
-Run `npx hyperframes <command>` unless the project gives a wrapper; then use the wrapper. It needs Node.js 22+ and FFmpeg. Every command has `--help`; most take `--json`, and a failure prints `✗ …`, a `Fix:` line and exits non-zero.
+Run the project's wrapper, or `npx hyperframes <command>` if none. Needs Node.js 22+ and FFmpeg. All commands have `--help`; most take `--json`. Failures print `✗ …`, a `Fix:` line and exit non-zero.
 
 ## Commands by job
 
@@ -27,6 +27,8 @@ Run `npx hyperframes <command>` unless the project gives a wrapper; then use the
 `validate`, `inspect` and `layout` are deprecated aliases of `check`; `events` is telemetry for skills' own scripts. Don't run them.
 
 ## The loop
+
+Before planning or designing a local video: `references/doctor-browser.md`.
 
 1. Write, then `npx hyperframes lint` after the first pass and after structural changes.
 2. `npx hyperframes check --json` and fix every error. While a lint error remains the layout and contrast audits don't run; "0 samples" means nothing was checked. Contrast failures carry a `suggestedColor`. A finding at a single sample (an entrance in flight) is info; a 3 s+ video with no visible change fails `sweep_static`.
@@ -71,7 +73,7 @@ After a verified render, send one `feedback --rating`, plus a report for anythin
 
 | Symptom | Fix |
 | --- | --- |
-| Chrome missing or won't start | `npx hyperframes browser ensure`; `doctor --json` always exits 0, gate on `.ok` |
+| Chrome missing or won't start | `npx hyperframes browser ensure`; `doctor --json` exits 0; `.ok` includes optional tools |
 | A heavy page isn't ready in time | Raise `--timeout` on `check` or `snapshot` |
 | Unusual codec looks blank | Keep `--proxy` on (the default) |
 | Render slow on Linux | The summary's second line says `screenshot` + `software gpu`: the slow path |

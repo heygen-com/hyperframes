@@ -72,6 +72,18 @@ sudo apt install ffmpeg
 
 Verify with `ffmpeg -version`, then rerun `npx hyperframes doctor`.
 
+If you already have executable FFmpeg and FFprobe binaries, you can use them
+without a package manager:
+
+```bash
+export HYPERFRAMES_FFMPEG_PATH="/absolute/path/to/ffmpeg"
+export HYPERFRAMES_FFPROBE_PATH="/absolute/path/to/ffprobe"
+npx hyperframes doctor --json
+```
+
+Check that both entries report `ok: true` and the expected paths. The command
+always exits zero; its top-level `ok` also includes optional tools.
+
 ### Docker render will not start
 
 Run `docker info`.
