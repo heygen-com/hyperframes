@@ -637,7 +637,7 @@ describe("a stall on a motion-blurred frame names the step in progress", () => {
 });
 
 describe("the per-session blur line", () => {
-  const log = () => vi.spyOn(console, "log").mockImplementation(() => {});
+  const log = () => vi.spyOn(console, "error").mockImplementation(() => {});
   const askForBlur = (report: object) => {
     const page = (globalThis as Record<string, unknown>).window as Record<string, unknown>;
     page.__hfMotionBlur = { report: () => report };
@@ -647,6 +647,7 @@ describe("the per-session blur line", () => {
 
   it("is logged once, after the session's first captured frame, from the page's report", async () => {
     const spy = log();
+    const stdout = vi.spyOn(console, "log").mockImplementation(() => {});
     askForBlur({ state: "on", reasonCode: null, movers: 4, failedFrames: 0 });
     const session = makeSession({ motionBlur: undefined });
     await captureFrameToBuffer(session, 0, 0);
@@ -656,6 +657,7 @@ describe("the per-session blur line", () => {
       .map(([line]) => line)
       .filter((l) => `${l}`.includes("[motion-blur]"));
     expect(lines).toEqual(["[motion-blur] on reasonCode=null movers=4 failedFrames=0"]);
+    expect(stdout).not.toHaveBeenCalled();
   });
 
   it("says why blur is off for the session", async () => {
