@@ -133,6 +133,24 @@ out of the chain rather than assuming what was minted.
 A `volume` lane and a GSAP tween on `volume` conflict: the lane wins and the
 tween is ignored. The linter reports that as `audio_volume_double_automation`.
 
+### Tracks add up; nothing averages them
+
+The render sums every track at unity. A track at `data-volume="1"` sits in the
+mix at its source level whether it plays alone or beside twenty others, and a
+clip ending does not raise the ones still playing. Adding a track never turns
+the others down.
+
+- `data-volume`, a `volume` lane, fades and a group fader each scale only their
+  own track or group. Doubling a voice moves the voice +6 dB; how much the whole
+  mix moves depends on what else is playing at that moment.
+- Nothing limits the sum. Loud tracks that overlap can pass 0 dBFS and clip in
+  the exported AAC. Leave headroom, or put a `limiter` or `truepeak` on the
+  [master bus](#the-master-bus-data-fx-chain-on-the-composition-root).
+- The render's master gain, `PRODUCER_AUDIO_GAIN` (default `1`), multiplies the
+  finished sum once, before the master bus chain.
+- To check a level, compare the export against its source scaled by the
+  `data-volume` you wrote, in a window where only that track plays.
+
 ### `data-fx-carve`
 
 ```html
