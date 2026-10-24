@@ -112,6 +112,17 @@ function collectHostDomChildren(
   }
 }
 
+type SceneMarkupWindow = Window & {
+  __hfParkedSceneMarkup?: (placeholder: Element) => Element | null;
+};
+
+/** A clip's host; for a scene the preview unmounted, the markup it mounts with. */
+function clipHostOf(iframeDoc: Document, clip: ClipManifestClip): Element | null {
+  const host = findClipElementById(iframeDoc, clip);
+  const view = iframeDoc.defaultView as SceneMarkupWindow | null;
+  return (host && view?.__hfParkedSceneMarkup?.(host)) ?? host;
+}
+
 /**
  * Every sub-composition's internal elements, across the whole manifest.
  *
@@ -129,7 +140,7 @@ export function collectSubCompositionDomChildren(
   if (!iframeDoc) return out;
   for (const clip of clips) {
     if (clip.kind !== "composition" || !clip.id) continue;
-    const hostEl = findClipElementById(iframeDoc, clip);
+    const hostEl = clipHostOf(iframeDoc, clip);
     if (!hostEl) continue;
     const innerRoot = hostEl.querySelector("[data-hf-inner-root]") ?? hostEl;
     collectHostDomChildren(clip.id, innerRoot, clip.id, parentMap, out);
@@ -173,7 +184,7 @@ export function collectSubCompositionHostState(
   if (!iframeDoc) return out;
   for (const clip of clips) {
     if (clip.kind !== "composition" || !clip.id) continue;
-    const hostEl = findClipElementById(iframeDoc, clip);
+    const hostEl = clipHostOf(iframeDoc, clip);
     if (!hostEl) continue;
     for (const el of Array.from(hostEl.querySelectorAll("[id]"))) {
       const state = readSubCompositionHostState(el);

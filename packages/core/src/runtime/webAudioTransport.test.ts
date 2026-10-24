@@ -160,6 +160,39 @@ describe("WebAudioTransport", () => {
       expect(transport.routesElement(mockEl)).toBe(false);
     });
 
+    it("stops what plays from media gone from the page without sending it to the destination", async () => {
+      const { transport, mock, gen } = setupTransport(100);
+      const nodes: Array<{
+        connect: ReturnType<typeof vi.fn>;
+        disconnect: ReturnType<typeof vi.fn>;
+      }> = [];
+      mock.ctx.createMediaElementSource = vi.fn(() => {
+        nodes.push({ connect: vi.fn(), disconnect: vi.fn() });
+        return nodes.at(-1)!;
+      }) as never;
+      const media = () =>
+        ({ ...mockEl, isConnected: true }) as HTMLMediaElement & { isConnected: boolean };
+      const [gone, kept] = [media(), media()];
+      for (const el of [gone, kept])
+        await transport.scheduleMediaElementPlayback(el, 0, 0, 0, 1, gen, 1);
+      for (const node of nodes) {
+        node.connect.mockClear();
+        node.disconnect.mockClear();
+      }
+      gone.isConnected = false;
+      transport.releaseDetached();
+
+      const touched = nodes.map((n) => [
+        n.disconnect.mock.calls.length > 0,
+        n.connect.mock.calls.length > 0,
+      ]);
+      expect(touched).toEqual([
+        [true, false],
+        [false, false],
+      ]);
+      expect([transport.routesElement(gone), transport.routesElement(kept)]).toEqual([false, true]);
+    });
+
     it("creates one MediaElementAudioSourceNode per element and context", async () => {
       const { transport, mock } = setupTransport(100);
 
@@ -1632,6 +1665,24 @@ describe("WebAudioTransport", () => {
       const second = await transport.decodeAudioElement(el("corrupt.wav"));
       expect(second).toBeNull();
       expect(fetchMock).toHaveBeenCalledTimes(1); // short-circuited, no re-fetch
+      vi.unstubAllGlobals();
+    });
+
+    it("fetches and decodes a source once when a play and a seek both ask before it decodes", async () => {
+      const decoded = {} as AudioBuffer;
+      const transport = transportWithDecode(async () => decoded);
+      const fetchMock = vi.fn(async () => ({
+        ok: true,
+        arrayBuffer: async () => new ArrayBuffer(8),
+      }));
+      vi.stubGlobal("fetch", fetchMock);
+
+      const both = await Promise.all([
+        transport.decodeAudioElement(el("sfx.wav")),
+        transport.decodeAudioElement(el("sfx.wav")),
+      ]);
+      expect(both).toEqual([decoded, decoded]);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
       vi.unstubAllGlobals();
     });
   });

@@ -99,6 +99,8 @@ declare global {
     __hfSceneAnimations?: Record<string, SceneAnimation[]> | null;
     /** Swap edited scenes from a rebuilt preview document; refuses before changing anything when it cannot. */
     __hfSwapScenes?: (html: string, signal?: AbortSignal) => Promise<void>;
+    __hfHoldScenes?: (names: string[]) => Promise<void>;
+    __hfParkedSceneMarkup?: (placeholder: Element) => Element | null;
     __HF_EXPORT_RENDER_SEEK_CONFIG?: {
       mode?: string;
       diagnostics?: boolean;

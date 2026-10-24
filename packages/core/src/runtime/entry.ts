@@ -18,6 +18,7 @@ import { AFTER_FONTS_SCRIPTS } from "../compiler/scriptRuns";
 import { hasFrameSources, registerFrameSource } from "./frameSources";
 import { createFilmBridge } from "./filmBridge";
 import { trackAcceleratedCanvases } from "./captureMotionBlur";
+import { parkFarScenesAtBoot } from "./sceneWindow";
 
 type HyperframeWindow = Window & {
   __hyperframeRuntimeBootstrapped?: boolean;
@@ -77,6 +78,7 @@ function bootstrapHyperframeRuntime(): void {
 // Compiled composition scripts wait for web fonts, so what they measure matches every run.
 function startAfterCompositionScripts(): void {
   try {
+    parkFarScenesAtBoot();
     refreshSvgSelectorAliases();
     const deferred = Array.from(document.querySelectorAll(AFTER_FONTS_SCRIPTS));
     if (deferred.length === 0) bootstrapHyperframeRuntime();

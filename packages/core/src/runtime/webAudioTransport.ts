@@ -153,6 +153,7 @@ const IDLE_SUSPEND_MS = 10000;
 export class WebAudioTransport {
   private _ctx: AudioContext | null = null;
   private _bufferCache = new Map<string, AudioBuffer>();
+  private _decoding = new Map<string, Promise<AudioBuffer | null>>();
   private _failedSrcs = new Set<string>();
   private _mediaElementSources = new WeakMap<HTMLMediaElement, MediaElementAudioSourceNode>();
   private _activeSources: ScheduledSource[] = [];
@@ -270,9 +271,18 @@ export class WebAudioTransport {
     }
   }
 
-  async decodeAudioElement(el: HTMLMediaElement): Promise<AudioBuffer | null> {
+  /** One fetch and decode per source at a time: a play and a seek scheduling together share it. */
+  decodeAudioElement(el: HTMLMediaElement): Promise<AudioBuffer | null> {
     const src = decodeKey(el);
-    if (!src) return null;
+    if (!src) return Promise.resolve(null);
+    const pending = this._decoding.get(src);
+    if (pending) return pending;
+    const decoding = this.fetchAndDecode(src).finally(() => this._decoding.delete(src));
+    this._decoding.set(src, decoding);
+    return decoding;
+  }
+
+  private async fetchAndDecode(src: string): Promise<AudioBuffer | null> {
     if (this._bufferCache.has(src)) return this._bufferCache.get(src)!;
     if (this._failedSrcs.has(src)) return null;
     if (!this._ctx) return null;
@@ -893,28 +903,39 @@ export class WebAudioTransport {
   }
 
   stopAll(): void {
-    for (const source of this._activeSources) {
-      try {
-        if (isBufferSource(source)) source.sourceNode.stop();
-        source.sourceNode.disconnect();
-        source.fx?.dispose();
-        source.clipGainNode.disconnect();
-        source.laneNode.disconnect();
-        source.gainNode.disconnect();
-      } catch {
-        // already stopped
-      }
-      if (isBufferSource(source)) source.el.muted = source.priorMuted;
-      else {
-        source.el.volume = source.priorVolume;
-        // Captured, it has no native output; outside a play it sounds through the destination.
-        if (this._ctx) source.sourceNode.connect(this._ctx.destination);
-      }
-    }
+    for (const source of this._activeSources) this.dispose(source);
     this._activeSources = [];
     this._paused = true;
     this._playGeneration += 1;
     this.rest();
+  }
+
+  /** Stops what plays from media gone from the page, without sending it to the destination as a stop does. */
+  releaseDetached(): void {
+    this._activeSources = this._activeSources.filter((source) => {
+      if (source.el.isConnected) return true;
+      this.dispose(source, false);
+      return false;
+    });
+  }
+
+  private dispose(source: ScheduledSource, keepsSounding = true): void {
+    try {
+      if (isBufferSource(source)) source.sourceNode.stop();
+      source.sourceNode.disconnect();
+      source.fx?.dispose();
+      source.clipGainNode.disconnect();
+      source.laneNode.disconnect();
+      source.gainNode.disconnect();
+    } catch {
+      // already stopped
+    }
+    if (isBufferSource(source)) source.el.muted = source.priorMuted;
+    else {
+      source.el.volume = source.priorVolume;
+      // Captured, it has no native output; outside a play it sounds through the destination.
+      if (this._ctx && keepsSounding) source.sourceNode.connect(this._ctx.destination);
+    }
   }
 
   setVolume(volume: number): void {

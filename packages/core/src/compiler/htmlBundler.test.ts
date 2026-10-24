@@ -3462,9 +3462,8 @@ describe("bundleToSingleHtml sceneParts", () => {
       "its script uses addEventListener",
     );
     expect(host("b")?.hasAttribute("data-hf-scene-no-swap")).toBe(false);
-    expect(host("c")?.getAttribute("data-hf-scene-no-swap")).toBe(
-      "it runs a script that is not a known library",
-    );
+    // A project file is read and held to the rules of an inline script.
+    expect(host("c")?.getAttribute("data-hf-scene-no-swap")).toBe("its script uses .animate(");
     // The root loading the same URL does not make a scene's own initializer a library.
     expect(host("d")?.getAttribute("data-hf-scene-no-swap")).toBe(
       "it runs a script that is not a known library",
@@ -3478,6 +3477,52 @@ describe("bundleToSingleHtml sceneParts", () => {
     );
     const rendered = await bundleToSingleHtml(dir);
     expect(parseHTML(rendered).document.querySelector("[data-hf-scene-no-swap]")).toBeNull();
+  });
+
+  it("lets a scene load a project helper and wait for fonts, and refuses anything else either leaves pending", async () => {
+    const scenes: Record<string, string> = {
+      helper: `<script src="../lib/helper.js"></script><script>window.__timelines.helper = window.build("helper");</script>`,
+      fontsThen: `<script>document.fonts.ready.then(() => window.fit("fontsThen"));</script>`,
+      fontsAwait: `<script>(async () => { await document.fonts.ready; window.fit("fontsAwait"); })();</script>`,
+      timerHelper: `<script src="../lib/ticker.js"></script>`,
+      missingHelper: `<script src="../lib/gone.js"></script>`,
+      fetchThen: `<script>fetch("data.json").then((r) => r.json());</script>`,
+      otherAwait: `<script>(async () => { await document.fonts.ready; await window.load(); })();</script>`,
+      promise: `<script>new Promise((done) => done()).then(() => {});</script>`,
+    };
+    const names = Object.keys(scenes);
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><head></head><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-duration="2">
+    ${names.map((n) => `<div data-composition-id="${n}" data-composition-src="compositions/${n}.html" data-start="0" data-duration="2"></div>`).join("\n")}
+  </div></body></html>`,
+      "lib/helper.js": `window.build = function (id) { var tl = gsap.timeline({ paused: true }); tl.to(document.querySelector('[data-composition-id="' + id + '"] p'), { x: 1 }); return tl; };`,
+      "lib/ticker.js": `setInterval(function () {}, 100);`,
+      ...Object.fromEntries(
+        names.map((n) => [
+          `compositions/${n}.html`,
+          `<template id="${n}-template"><div data-composition-id="${n}"><p>${n}</p>${scenes[n]}</div></template>`,
+        ]),
+      ),
+    });
+    const doc = parseHTML(await bundleToSingleHtml(dir, { sceneParts: true })).document;
+    const refusals = Object.fromEntries(
+      names.map((n) => [
+        n,
+        doc.querySelector(`div[data-hf-scene="${n}"]`)?.getAttribute("data-hf-scene-no-swap") ??
+          null,
+      ]),
+    );
+    expect(refusals).toEqual({
+      helper: null,
+      fontsThen: null,
+      fontsAwait: null,
+      timerHelper: "its script uses setInterval",
+      missingHelper: "it runs a script that is not a known library",
+      fetchThen: "its script uses fetch",
+      otherAwait: "its script uses async",
+      promise: "its script uses Promise",
+    });
   });
 
   const rootProject = (root: string, extra: Record<string, string> = {}) =>

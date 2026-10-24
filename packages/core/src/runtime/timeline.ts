@@ -101,7 +101,7 @@ function parseNum(value: string | null | undefined): number | null {
   return parseStrictFiniteTimingNumber(value);
 }
 
-function parseElementDurationAttr(element: Element): number | null {
+export function parseElementDurationAttr(element: Element): number | null {
   const publicDuration = element.getAttribute("data-duration");
   const authoredDuration = element.getAttribute(AUTHORED_DURATION_ATTR);
   const resolved = resolveAuthoredTimingWindow({
@@ -259,8 +259,12 @@ function buildTimelineClipLabel(node: Element, kind: RuntimeTimelineClip["kind"]
   return `${humanizeTimelineToken(kind)} ${ordinal + 1}`;
 }
 
+export type ParkedTimelineScene = { name: string; host: () => Element };
+
 export function collectRuntimeTimelinePayload(params: {
   canonicalFps: number;
+  parked?: ParkedTimelineScene[];
+  parkedClips?: Map<string, RuntimeTimelineClip[]>;
 }): RuntimeTimelineMessage {
   const stackingByParent = new Map<Element | null, string>();
   const runtimeWindow = window as Window & {
@@ -425,16 +429,13 @@ export function collectRuntimeTimelinePayload(params: {
   // as clips — they have no declared timing so the timeline can't show their
   // actual visibility window. They can still appear as scenes via the separate
   // scene collection below.
-  const nodes = Array.from(
-    document.querySelectorAll(
-      "[data-start], [data-track-index], [data-composition-id], video, audio, img",
-    ),
-  );
+  const CLIP_NODES = "[data-start], [data-track-index], [data-composition-id], video, audio, img";
+  const nodes = Array.from(document.querySelectorAll(CLIP_NODES));
   let maxEnd = 0;
-  for (const [i, node] of nodes.entries()) {
-    if (node === root) continue;
+  const clipOf = (node: Element, i: number): RuntimeTimelineClip | null => {
+    if (node === root) return null;
     if (["SCRIPT", "STYLE", "LINK", "META", "TEMPLATE", "NOSCRIPT"].includes(node.tagName))
-      continue;
+      return null;
     const compositionContext = resolveNearestCompositionContext(node, root);
     const tag = node.tagName.toLowerCase();
     let start =
@@ -461,19 +462,17 @@ export function collectRuntimeTimelinePayload(params: {
         duration = Math.max(0, inheritedEnd - start);
       }
     }
-    if (duration == null || duration <= 0) continue;
+    if (duration == null || duration <= 0) return null;
     duration = clampDurationToRootWindow(start, duration);
-    if (duration <= 0) continue;
+    if (duration <= 0) return null;
     const slots = startResolver.resolveHostSlotsForElement(node);
     if (slots.length > 0) {
       const played = cutToHostSlots({ start, end: start + duration }, slots);
       const keepZeroLengthSoStudioNestsChildren = isNestedHost;
-      if (played.end <= played.start && !keepZeroLengthSoStudioNestsChildren) continue;
+      if (played.end <= played.start && !keepZeroLengthSoStudioNestsChildren) return null;
       start = played.start;
       duration = played.end - played.start;
     }
-    const end = start + duration;
-    maxEnd = Math.max(maxEnd, end);
     const kind: RuntimeTimelineClip["kind"] =
       nodeCompositionId && nodeCompositionId !== rootCompositionId
         ? "composition"
@@ -484,7 +483,7 @@ export function collectRuntimeTimelinePayload(params: {
             : tag === "img"
               ? "image"
               : "element";
-    clips.push({
+    return {
       id: stableClipId(node) ?? nodeCompositionId ?? null,
       label: buildTimelineClipLabel(node, kind, clips.length),
       start,
@@ -506,7 +505,26 @@ export function collectRuntimeTimelinePayload(params: {
       timelineLabel: node.getAttribute("data-timeline-label"),
       timelineGroup: node.getAttribute("data-timeline-group"),
       timelinePriority: parseNum(node.getAttribute("data-timeline-priority")),
-    });
+    };
+  };
+  const addClip = (clip: RuntimeTimelineClip) => {
+    clips.push(clip);
+    maxEnd = Math.max(maxEnd, clip.start + clip.duration);
+  };
+  for (const [i, node] of nodes.entries()) {
+    const clip = clipOf(node, i);
+    if (clip) addClip(clip);
+  }
+  for (const scene of params.parked ?? []) {
+    let parkedClips = params.parkedClips?.get(scene.name);
+    if (!parkedClips) {
+      const offset = nodes.length;
+      parkedClips = Array.from(scene.host().querySelectorAll(CLIP_NODES)).flatMap(
+        (node, j) => clipOf(node, offset + j) ?? [],
+      );
+      params.parkedClips?.set(scene.name, parkedClips);
+    }
+    for (const clip of parkedClips) addClip(clip);
   }
   // ── GSAP introspection ──────────────────────────────────────────────────
   // Discover elements animated by GSAP that weren't picked up by the DOM query

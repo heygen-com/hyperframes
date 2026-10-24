@@ -19,6 +19,7 @@ import {
   type DomEditSelection,
 } from "../components/editor/domEditing";
 import { reapplyPositionEditsAfterSeek } from "../components/editor/manualEdits";
+import { holdScenesOf } from "../utils/sceneHold";
 import { useStudioTestHooks } from "./useStudioTestHooks";
 import { logSelect } from "../utils/selectDebug";
 import { announceTimelineSelection as announceSelectionToTimeline } from "./domSelectionTimelineMirror";
@@ -308,6 +309,8 @@ export function useDomSelection({
       }
       if (!doc) return null;
 
+      const held = holdScenesOf(iframe, element);
+      if (held) await held;
       reapplyPositionEditsAfterSeek(doc);
 
       const targetElement = findElementForTimelineElement(doc, element, {
@@ -328,6 +331,7 @@ export function useDomSelection({
     async (element: TimelineElement | null) => {
       const seq = ++timelineSelectSeqRef.current;
       if (!element) {
+        void holdScenesOf(previewIframeRef.current, null);
         applyDomSelection(null, { revealPanel: false });
         return;
       }
@@ -344,7 +348,7 @@ export function useDomSelection({
       // and Delete acts on the canvas first — so it removed that, not the clip.
       applyDomSelection(null, { revealPanel: false, announce: false });
     },
-    [applyDomSelection, buildDomSelectionForTimelineElement],
+    [applyDomSelection, buildDomSelectionForTimelineElement, previewIframeRef],
   );
 
   // Forward handle to the group refresher defined below: the single-selection

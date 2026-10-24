@@ -107,6 +107,26 @@ describe("collectSubCompositionHostState", () => {
     expect(rows.map((child) => child.id)).toEqual(["scene-2-title"]);
   });
 
+  it("reads a scene the preview unmounted from the markup it mounts with", () => {
+    const markup = mountScene().getElementById("scene-2-slot")!.cloneNode(true) as Element;
+    document.body.innerHTML = `<div id="scene-2-slot" data-composition-id="scene-2" data-hf-parked-scene></div>`;
+    const view = window as Window & { __hfParkedSceneMarkup?: (el: Element) => Element | null };
+    view.__hfParkedSceneMarkup = (el) => (el.hasAttribute("data-hf-parked-scene") ? markup : null);
+    try {
+      const rows = collectSubCompositionDomChildren(document, sceneClips, new Map());
+      expect(rows.map((child) => child.id)).toEqual([
+        "scene-2-video-region",
+        "scene-2-title",
+        "scene-2-caption",
+      ]);
+      expect(collectSubCompositionHostState(document, sceneClips).get("scene-2-video")).toEqual({
+        hidden: true,
+      });
+    } finally {
+      delete view.__hfParkedSceneMarkup;
+    }
+  });
+
   it("returns empty without a document, rather than throwing", () => {
     expect(collectSubCompositionHostState(null, sceneClips).size).toBe(0);
   });

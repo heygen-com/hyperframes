@@ -1216,6 +1216,10 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     },
     flattenInnerRoot: prepareFlattenedInnerRoot,
     tagScenes: options?.sceneParts === true,
+    readProjectScript: (path: string) => {
+      const resolved = isRelativeUrl(path) ? resolveEntryUrl(path) : null;
+      return resolved ? safeReadFile(resolved) : null;
+    },
     readVariableDefaults: readDeclaredDefaults,
     parseHostVariables: parseHostVariableValues,
     buildScopeSelector: (compId: string) => cssAttributeSelector("data-composition-id", compId),
