@@ -730,6 +730,8 @@ Source: `packages/lint/src/rules/fonts.ts`.
 
 **Fix:** Declare each family with `@font-face` pointing at the captured `.woff2` files, or bundle the font under `capture/assets/fonts/`.
 
+The declaration may use a quoted or unquoted family name. If `font-family` is the last descriptor in the block, its final semicolon is optional.
+
 ### `system_font_will_alias`
 
 **Warning.** A system font family is used without a matching `@font-face`; in distributed rendering system-font capture is disabled, so the font is substituted at render time and text can reflow. Only reported when the linter runs with the `distributed: true` option (linting for distributed or Lambda renders); a local render captures the system font as designed, so it is not flagged there.

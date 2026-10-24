@@ -239,6 +239,20 @@ p { FONT-FAMILY: "Real Brand", sans-serif !important; }
       expect(findings).toHaveLength(0);
     });
 
+    it.each(["ProjectFont", "Project Font"])(
+      "recognizes an unquoted final font-family descriptor without a semicolon: %s",
+      async (family) => {
+        const html = `<div data-composition-id="test" data-width="1920" data-height="1080">
+          <style>
+            @font-face { src: local('DejaVu Sans'); font-family: ${family} }
+            body { font-family: ${family}, sans-serif }
+          </style>
+        </div>`;
+        const findings = await findByCode(html, "font_family_without_font_face");
+        expect(findings).toHaveLength(0);
+      },
+    );
+
     it("does not flag a system font declared via @font-face src: local()", async () => {
       // Regression: two independent reports of this rule hard-erroring on OS
       // system fonts (Hiragino Sans, Microsoft YaHei) that have no downloadable
