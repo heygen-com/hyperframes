@@ -108,8 +108,8 @@ import { InstallCommand } from "/snippets/install-command.jsx";
             container-type: size;
             isolation: isolate;
             overflow: hidden;
-            color: var(--fg);
-            font-family: var(--font-body);
+            color: var(--fg, #f5f7ff);
+            font-family: var(--font-body, Inter, system-ui, sans-serif);
           }
 
           .wt-clip {
@@ -118,7 +118,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
             display: grid;
             place-items: center;
             overflow: hidden;
-            background: var(--bg);
+            background: var(--bg, #070a12);
           }
 
           .wt-stage {
@@ -138,9 +138,9 @@ import { InstallCommand } from "/snippets/install-command.jsx";
             grid-template-columns: repeat(var(--wt-columns), minmax(0, 1fr));
             grid-template-rows: repeat(var(--wt-rows), minmax(0, 1fr));
             overflow: hidden;
-            border: min(0.12cqw, 0.22cqh) solid var(--border);
-            border-radius: var(--radius);
-            background: var(--surface);
+            border: min(0.12cqw, 0.22cqh) solid var(--border, rgba(245, 247, 255, 0.14));
+            border-radius: var(--radius, 16px);
+            background: var(--surface, #151b2b);
           }
 
           .wt-tile {
@@ -148,8 +148,8 @@ import { InstallCommand } from "/snippets/install-command.jsx";
             min-width: 0;
             min-height: 0;
             overflow: hidden;
-            box-shadow: inset 0 0 0 min(0.08cqw, 0.14cqh) var(--border);
-            background: var(--surface);
+            box-shadow: inset 0 0 0 min(0.08cqw, 0.14cqh) var(--border, rgba(245, 247, 255, 0.14));
+            background: var(--surface, #151b2b);
           }
 
           .wt-noise,
@@ -161,20 +161,20 @@ import { InstallCommand } from "/snippets/install-command.jsx";
           }
 
           .wt-noise-a {
-            background: color-mix(in srgb, var(--surface) 64%, var(--muted));
+            background: color-mix(in srgb, var(--surface, #151b2b) 64%, var(--muted, #7f8aa3));
           }
 
           .wt-noise-b {
-            background: color-mix(in srgb, var(--surface) 58%, var(--brand));
+            background: color-mix(in srgb, var(--surface, #151b2b) 58%, var(--brand, #7c9dff));
           }
 
           .wt-noise-c {
-            background: color-mix(in srgb, var(--surface) 56%, var(--accent));
+            background: color-mix(in srgb, var(--surface, #151b2b) 56%, var(--accent, #64e2c2));
           }
 
           .wt-resolved {
             overflow: hidden;
-            background: color-mix(in srgb, var(--surface) 92%, var(--brand));
+            background: color-mix(in srgb, var(--surface, #151b2b) 92%, var(--brand, #7c9dff));
           }
 
           /* Every tile contains one crop of the same stable wordmark surface.
@@ -187,8 +187,8 @@ import { InstallCommand } from "/snippets/install-command.jsx";
             height: 48cqh;
             display: grid;
             place-items: center;
-            color: var(--fg);
-            font-family: var(--font-display);
+            color: var(--fg, #f5f7ff);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
             font-size: var(--wt-font-size);
             font-weight: 800;
             line-height: 1;

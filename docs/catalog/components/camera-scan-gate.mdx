@@ -13,7 +13,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
   compositionSrc="compositions/components/camera-scan-gate.html"
   title="Camera Scan Gate"
   description="A camera and QR recognition moment with a viewfinder sweep, bracket lock, confirmation pulse, and verified next beat."
-  variables={[{"id":"scanColor","type":"string","role":"style","label":"Scan color","description":"Any CSS color value used by the scan line and recognition glow.","default":"var(--brand)"},{"id":"targetLabel","type":"string","role":"content","label":"Target label","description":"Confirmation label revealed at recognition lock. Blank hides the line.","default":"Verified"},{"id":"sweepSpeed","type":"number","role":"timing","label":"Sweep speed","description":"Speed multiplier for the scan sweep phase only.","default":1,"min":0.8,"max":1.6,"step":0.1,"unit":"x"}]}
+  variables={[{"id":"scanColor","type":"string","role":"style","label":"Scan color","description":"Any CSS color value used by the scan line and recognition glow.","default":"var(--brand, #22c55e)"},{"id":"targetLabel","type":"string","role":"content","label":"Target label","description":"Confirmation label revealed at recognition lock. Blank hides the line.","default":"Verified"},{"id":"sweepSpeed","type":"number","role":"timing","label":"Sweep speed","description":"Speed multiplier for the scan sweep phase only.","default":1,"min":0.8,"max":1.6,"step":0.1,"unit":"x"}]}
   meta={{"category":"Camera","badge":"Stable","codeLines":522}}
   attribution={{"path":"registry/components/camera-scan-gate","tags":["prop","ui-props","camera","qr","scan","recognition","interaction","demonstrate"]}}
   hasCode
@@ -40,7 +40,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
   it for passive camera decoration or a generic loading state.
 
   Variables (declared in data-composition-variables below):
-    - scanColor (string, default "var(--brand)"): any CSS color value used by
+    - scanColor (string, default "var(--brand, #22c55e)"): any CSS color value used by
       the scan line, lock brackets, and confirmation glow.
     - targetLabel (string, default "Verified"): label revealed at lock. Empty
       string hides the label line entirely.
@@ -80,7 +80,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
 <html
   lang="en"
   data-composition-variables='[
-    { "id": "scanColor", "type": "string", "role": "style", "label": "Scan color", "description": "Any CSS color value used by the scan line and recognition glow.", "default": "var(--brand)" },
+    { "id": "scanColor", "type": "string", "role": "style", "label": "Scan color", "description": "Any CSS color value used by the scan line and recognition glow.", "default": "var(--brand, #22c55e)" },
     { "id": "targetLabel", "type": "string", "role": "content", "label": "Target label", "description": "Confirmation label revealed at recognition lock. Blank hides the line.", "default": "Verified" },
     { "id": "sweepSpeed", "type": "number", "role": "timing", "label": "Sweep speed", "description": "Speed multiplier for the scan sweep phase only.", "default": 1, "min": 0.8, "max": 1.6, "step": 0.1, "unit": "x" }
   ]'
@@ -394,7 +394,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
                 : {};
             var scanColor =
               vars.scanColor == null || String(vars.scanColor).trim() === ""
-                ? "var(--brand)"
+                ? "var(--brand, #22c55e)"
                 : String(vars.scanColor);
             var targetLabel = vars.targetLabel == null ? "" : String(vars.targetLabel);
             var rawSweepSpeed = Number(vars.sweepSpeed);
@@ -573,7 +573,7 @@ want to change on the element:
 
 | Variable | Default | Accepts | What it does |
 | --- | --- | --- | --- |
-| `scanColor` | `var(--brand)` | string | Any CSS color value used by the scan line and recognition glow. |
+| `scanColor` | `var(--brand, #22c55e)` | string | Any CSS color value used by the scan line and recognition glow. |
 | `targetLabel` | `Verified` | string | Confirmation label revealed at recognition lock. Blank hides the line. |
 | `sweepSpeed` | `1` | 0.8x to 1.6x, step 0.1x | Speed multiplier for the scan sweep phase only. |
 
@@ -584,7 +584,7 @@ defaults, so this behaves exactly like the preview above until you change one:
 <div
   data-composition-id="camera-scan-gate"
   data-composition-src="compositions/components/camera-scan-gate.html"
-  data-variable-values='{"scanColor":"var(--brand)","targetLabel":"Verified","sweepSpeed":1}'
+  data-variable-values='{"scanColor":"var(--brand, #22c55e)","targetLabel":"Verified","sweepSpeed":1}'
 ></div>
 ```
 
