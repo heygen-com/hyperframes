@@ -1,4 +1,4 @@
-export { createStudioApi } from "./createStudioApi.js";
+export { createStudioApi, type StudioApiOptions } from "./createStudioApi.js";
 export { MAX_UPLOAD_BYTES } from "./routes/files.js";
 export {
   createProjectSignature,

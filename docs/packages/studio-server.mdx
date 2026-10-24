@@ -47,6 +47,20 @@ Studio reads the flag once, when its modules load, so set
 `window.__HF_STUDIO_ENV__` before loading Studio; the CLI injects it, but a host
 that mounts the API itself must inject it too.
 
+The API is unauthenticated, so state-changing requests are checked against
+the request's own origin, scheme included: a write is accepted only when it
+comes from the Studio page this server serves. Loopback works with no setup.
+If you mount the API on a public host name (your own domain, a tunnel, a
+Codespaces address), name it in `allowedHosts` so writes from that origin
+pass:
+
+```ts
+app.route(
+  "/api",
+  createStudioApi(adapter, { allowedHosts: ["studio.example.com"] }),
+);
+```
+
 A `StudioApiAdapter` supplies:
 
 - project listing and resolution;
