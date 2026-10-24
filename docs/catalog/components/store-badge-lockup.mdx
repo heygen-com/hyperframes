@@ -89,8 +89,8 @@ import { InstallCommand } from "/snippets/install-command.jsx";
             container-type: size;
             isolation: isolate;
             overflow: hidden;
-            color: var(--fg);
-            font-family: var(--font-body);
+            color: var(--fg, #f7f9fc);
+            font-family: var(--font-body, Inter, system-ui, sans-serif);
           }
 
           .sbl-clip {
@@ -98,9 +98,9 @@ import { InstallCommand } from "/snippets/install-command.jsx";
             height: 100%;
             display: grid;
             place-items: center;
-            padding: var(--space-3);
+            padding: var(--space-3, 4.8cqh);
             overflow: hidden;
-            background: var(--bg);
+            background: var(--bg, #080b13);
           }
 
           .sbl-lockup {
@@ -113,8 +113,8 @@ import { InstallCommand } from "/snippets/install-command.jsx";
           .sbl-headline {
             margin: 0;
             max-width: 82cqw;
-            color: var(--fg);
-            font-family: var(--font-display);
+            color: var(--fg, #f7f9fc);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
             font-size: min(8.2cqw, 12.5cqh);
             font-weight: 750;
             line-height: 1;
@@ -129,7 +129,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: var(--space-2);
+            gap: var(--space-2, 2.4cqh);
           }
 
           /* EDIT ZONE: both destinations share one badge geometry and one
@@ -141,13 +141,13 @@ import { InstallCommand } from "/snippets/install-command.jsx";
             display: grid;
             grid-template-columns: auto minmax(0, 1fr);
             align-items: center;
-            gap: var(--space-1);
+            gap: var(--space-1, 1.2cqh);
             padding: min(2.2cqw, 3.2cqh) min(3cqw, 4.8cqh);
-            border: 0.16cqh solid var(--border);
-            border-radius: calc(var(--radius) * 4);
-            background: var(--surface);
-            color: var(--fg);
-            box-shadow: 0 1.5cqh 3.8cqh color-mix(in srgb, var(--bg) 70%, transparent);
+            border: 0.16cqh solid var(--border, #3b4659);
+            border-radius: calc(var(--radius, 2.4cqh) * 4);
+            background: var(--surface, #151c29);
+            color: var(--fg, #f7f9fc);
+            box-shadow: 0 1.5cqh 3.8cqh color-mix(in srgb, var(--bg, #080b13) 70%, transparent);
             will-change: transform, opacity;
           }
 
@@ -157,14 +157,14 @@ import { InstallCommand } from "/snippets/install-command.jsx";
             display: grid;
             place-items: center;
             flex: none;
-            border: 0.16cqh solid color-mix(in srgb, var(--fg) 28%, transparent);
-            border-radius: calc(var(--radius) * 0.72);
-            background: color-mix(in srgb, var(--brand) 20%, var(--surface));
-            color: var(--fg);
+            border: 0.16cqh solid color-mix(in srgb, var(--fg, #f7f9fc) 28%, transparent);
+            border-radius: calc(var(--radius, 2.4cqh) * 0.72);
+            background: color-mix(in srgb, var(--brand, #7c6cff) 20%, var(--surface, #151c29));
+            color: var(--fg, #f7f9fc);
           }
 
           .sbl-apple-mark {
-            font-family: var(--font-display);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
             font-size: min(3.2cqw, 5.2cqh);
             font-weight: 800;
             line-height: 1;
@@ -184,8 +184,8 @@ import { InstallCommand } from "/snippets/install-command.jsx";
           }
 
           .sbl-microcopy {
-            color: var(--muted);
-            font-family: var(--font-body);
+            color: var(--muted, #aab4c5);
+            font-family: var(--font-body, Inter, system-ui, sans-serif);
             font-size: min(1.65cqw, 2.65cqh);
             font-weight: 600;
             line-height: 1;
@@ -194,8 +194,8 @@ import { InstallCommand } from "/snippets/install-command.jsx";
           }
 
           .sbl-label {
-            color: var(--fg);
-            font-family: var(--font-display);
+            color: var(--fg, #f7f9fc);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
             font-size: min(3.75cqw, 5.8cqh);
             font-weight: 720;
             line-height: 1;

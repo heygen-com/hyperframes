@@ -89,9 +89,9 @@ import { InstallCommand } from "/snippets/install-command.jsx";
             container-type: size;
             isolation: isolate;
             overflow: hidden;
-            background: var(--bg);
-            color: var(--fg);
-            font-family: var(--font-body);
+            background: var(--bg, #070a12);
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-body, Inter, system-ui, sans-serif);
           }
 
           .fs-clip {
@@ -121,15 +121,15 @@ import { InstallCommand } from "/snippets/install-command.jsx";
             justify-content: space-between;
             padding: 5cqh 3.2cqw;
             overflow: hidden;
-            border: 0.16cqw solid var(--border);
-            border-radius: var(--radius);
-            background: var(--surface);
-            box-shadow: 0 2.2cqh 5cqh color-mix(in srgb, var(--bg) 72%, transparent);
+            border: 0.16cqw solid var(--border, #34405a);
+            border-radius: var(--radius, 22px);
+            background: var(--surface, #151c2c);
+            box-shadow: 0 2.2cqh 5cqh color-mix(in srgb, var(--bg, #070a12) 72%, transparent);
             transform-origin: center;
             will-change: transform, filter, opacity;
             /* Both cards are the same placeholder material. Which one holds
                attention is said by blur, scale, and opacity, never by hue. */
-            --fs-card-accent: color-mix(in srgb, var(--fg) 72%, var(--surface));
+            --fs-card-accent: color-mix(in srgb, var(--fg, #f8fafc) 72%, var(--surface, #151c2c));
           }
 
           .fs-card::before {
@@ -144,7 +144,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
             display: flex;
             align-items: center;
             justify-content: space-between;
-            gap: var(--space-2);
+            gap: var(--space-2, 16px);
           }
 
           .fs-card-letter {
@@ -153,16 +153,16 @@ import { InstallCommand } from "/snippets/install-command.jsx";
             width: 5cqw;
             aspect-ratio: 1;
             border-radius: 50%;
-            background: color-mix(in srgb, var(--fg) 13%, var(--surface));
-            color: var(--fg);
-            font-family: var(--font-mono);
+            background: color-mix(in srgb, var(--fg, #f8fafc) 13%, var(--surface, #151c2c));
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
             font-size: 2.3cqw;
             font-weight: 700;
           }
 
           .fs-status {
-            color: var(--muted);
-            font-family: var(--font-mono);
+            color: var(--muted, #94a3b8);
+            font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
             font-size: 1.25cqw;
             letter-spacing: 0.12em;
             text-transform: uppercase;
@@ -170,12 +170,12 @@ import { InstallCommand } from "/snippets/install-command.jsx";
 
           .fs-copy {
             display: grid;
-            gap: var(--space-1);
+            gap: var(--space-1, 8px);
           }
 
           .fs-title {
-            color: var(--fg);
-            font-family: var(--font-display);
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
             font-size: 3.4cqw;
             font-weight: 680;
             line-height: 1;
@@ -183,7 +183,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
           }
 
           .fs-detail {
-            color: var(--muted);
+            color: var(--muted, #94a3b8);
             font-size: 1.45cqw;
             line-height: 1.35;
           }
@@ -191,8 +191,8 @@ import { InstallCommand } from "/snippets/install-command.jsx";
           .fs-meter {
             height: 1.1cqh;
             overflow: hidden;
-            border-radius: var(--radius);
-            background: color-mix(in srgb, var(--border) 60%, transparent);
+            border-radius: var(--radius, 22px);
+            background: color-mix(in srgb, var(--border, #34405a) 60%, transparent);
           }
 
           .fs-meter-fill {
