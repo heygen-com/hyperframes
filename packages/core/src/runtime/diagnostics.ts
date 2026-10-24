@@ -42,6 +42,26 @@ export function recordStartupError(error: unknown): void {
     `entries; if they look right, report this as a HyperFrames bug.`;
 }
 
+/**
+ * A rejected `window.__hf.buildReady[key]` is the composition saying its own setup failed, so
+ * readiness waits (render, snapshot, check) fail with the key and reason instead of capturing an
+ * unbuilt scene. Returns the recorded message so a teardown can clear exactly this error.
+ */
+export function recordBuildReadyRejection(key: string, error: unknown): string {
+  let detail = "unknown error";
+  try {
+    detail = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+  } catch (err) {
+    swallow("runtime.buildReadyRejection", err);
+  }
+  const message =
+    `window.__hf.buildReady[${JSON.stringify(key)}] rejected: ${detail}. ` +
+    `The composition reported that its own setup failed, so it cannot be rendered. Fix that ` +
+    `setup, or resolve the promise only once the scene is drawable.`;
+  (window as Window & { __hfStartupError?: string }).__hfStartupError = message;
+  return message;
+}
+
 export function swallow(label: string, error?: unknown): void {
   if (typeof window === "undefined") return;
   const w = getDebugSurface();
