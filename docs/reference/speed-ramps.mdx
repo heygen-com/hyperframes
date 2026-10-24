@@ -39,6 +39,9 @@ which the preview and the renderer both use, so the render shows the frames the
 preview showed. Set `data-duration` on the clip to fix how long it holds the
 timeline; without it the length follows from the source and the speed.
 
+If a browser probe discovers a rate lane on an existing clip, export preserves
+the scene's trim in both the ramp's position and the source media in-point.
+
 Pitch is kept. The preview leaves the browser's default pitch correction on.
 The render time-stretches audio in short constant-speed slices (a quarter
 second, coarser on clips longer than a minute), which approximates the curve

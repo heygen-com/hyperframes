@@ -36,6 +36,7 @@ describe("discoverMediaFromBrowser", () => {
     currentSrcById: Record<string, string>,
     serializeCallback = false,
     intrinsicDurationById: Record<string, number> = {},
+    defaultPlaybackRateById: Record<string, number> = {},
   ) {
     const { document } = parseHTML(html);
     for (const [id, currentSrc] of Object.entries(currentSrcById)) {
@@ -45,6 +46,13 @@ describe("discoverMediaFromBrowser", () => {
     for (const [id, duration] of Object.entries(intrinsicDurationById)) {
       const element = document.getElementById(id);
       if (element) Object.defineProperty(element, "duration", { value: duration });
+    }
+    for (const [id, defaultPlaybackRate] of Object.entries(defaultPlaybackRateById)) {
+      const element = document.getElementById(id);
+      if (element) {
+        Object.defineProperty(element, "defaultPlaybackRate", { value: defaultPlaybackRate });
+        Object.defineProperty(element, "playbackRate", { value: defaultPlaybackRate * 2 });
+      }
     }
     const previousDocument = Reflect.get(globalThis, "document");
     Reflect.set(globalThis, "document", document);
@@ -154,6 +162,58 @@ describe("discoverMediaFromBrowser", () => {
       true,
     );
     expect(media[0]).toMatchObject({ start: 0, end: 2, duration: 2, mediaStart: 1 });
+  });
+
+  it("reads authored rates and native defaults after the browser callback is serialized", async () => {
+    const media = await discover(
+      `<video id="authored" src="clip.mp4" data-start="0" data-duration="2" data-playback-rate="1.5"></video>
+       <audio id="native" src="clip.wav" data-start="0" data-duration="2"></audio>
+       <video id="invalid" src="clip.mp4" data-start="0" data-duration="2" data-playback-rate="0"></video>
+       <audio id="bounded" src="clip.wav" data-start="0" data-duration="2" data-playback-rate="20"></audio>
+       <video id="default" src="clip.mp4" data-start="0" data-duration="2"></video>`,
+      {},
+      true,
+      {},
+      { authored: 0.5, native: 0.5, invalid: 1.25 },
+    );
+
+    expect(media.map((element) => element.playbackRate)).toEqual([1.5, 0.5, 1.25, 10, 1]);
+  });
+
+  it.each(["video", "audio"])(
+    "discovers a %s rate lane after the browser callback is serialized",
+    async (tag) => {
+      const lane = {
+        target: "rate",
+        points: [
+          { t: 0, v: 1 },
+          { t: 1, v: 2 },
+        ],
+      };
+      const automation = JSON.stringify({ version: 1, lanes: [lane] });
+      const media = await discover(
+        `<${tag} id="clip" src="clip.mp4" data-start="0" data-duration="1" data-playback-rate="3" data-automation='${automation}'></${tag}>`,
+        {},
+        true,
+        {},
+        { clip: 0.5 },
+      );
+
+      expect(media[0]?.playbackRate).toEqual(lane);
+    },
+  );
+
+  it("uses scalar rates when automation is invalid or has no rate lane", async () => {
+    const media = await discover(
+      `<video id="invalid" src="clip.mp4" data-start="0" data-playback-rate="1.5" data-automation="{nope"></video>
+       <audio id="other" src="clip.wav" data-start="0" data-automation='{"version":1,"lanes":[{"target":"volume","points":[{"t":0,"v":0.5}]}]}'></audio>`,
+      {},
+      true,
+      {},
+      { other: 0.5 },
+    );
+
+    expect(media.map((element) => element.playbackRate)).toEqual([1.5, 0.5]);
   });
 
   it("reports colliding empty-src videos by render id, not author id", async () => {

@@ -53,6 +53,7 @@ import {
   resolveProjectRelativeSrc,
   runVideoExtractionWithRetry,
   safeVideoExtractionSourceIdentity,
+  videoAudioId,
 } from "@hyperframes/engine";
 import {
   collectVideoMetadataHints,
@@ -579,7 +580,7 @@ export function appendAutoDetectedVideoAudio(
     const video = composition.videos.find((v) => v.id === ext.videoId);
     if (!video || !video.hasAudio || video.hidden || existingAudioSrcs.has(video.src)) continue;
     composition.audios.push({
-      id: `${video.id}-audio`,
+      id: videoAudioId(video.id),
       src: video.src,
       start: video.start,
       end: video.end,

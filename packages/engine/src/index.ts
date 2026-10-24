@@ -266,6 +266,7 @@ export {
   parseAudioElements,
   parseMasterFxChain,
   processCompositionAudio,
+  videoAudioId,
 } from "./services/audioMixer.js";
 export { audioFailureDiagnostics } from "./services/audioFailureDiagnostic.js";
 export { cloneCaptureWarning, cloneCaptureWarnings } from "./services/captureWarning.js";

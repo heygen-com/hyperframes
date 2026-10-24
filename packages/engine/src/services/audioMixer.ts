@@ -557,6 +557,10 @@ export function parseMasterFxChain(html: string): string | undefined {
   return readMasterFxChain(parseHTML(unwrapTemplate(html)).document);
 }
 
+export function videoAudioId(videoId: string): string {
+  return `${videoId}-audio`;
+}
+
 export function parseAudioElements(html: string): AudioElement[] {
   const elements: AudioElement[] = [];
   const { document } = parseHTML(unwrapTemplate(html));
@@ -656,7 +660,7 @@ export function parseAudioElements(html: string): AudioElement[] {
     const src = resolveMediaElementSrc(el);
     if (!id || !src || isHidden(el) || memberGroupHidden(el)) continue;
     if (isKnownInactiveTimelineWindow(el, resolveStart(el))) continue;
-    elements.push(build(el, `${id}-audio`, src, "video", true));
+    elements.push(build(el, videoAudioId(id), src, "video", true));
   }
 
   return elements;
