@@ -300,6 +300,89 @@ describe("TimelineClip", () => {
     act(() => root.unmount());
   });
 
+  it("shows the full name in a tooltip when the label is cut off, and no tooltip when it fits", async () => {
+    const longName = "International Space Station flyover";
+    const shortName = "Cut";
+    const prior = ["scrollWidth", "clientWidth"].map(
+      (key) => [key, Object.getOwnPropertyDescriptor(HTMLElement.prototype, key)] as const,
+    );
+    Object.defineProperty(HTMLElement.prototype, "scrollWidth", {
+      configurable: true,
+      get() {
+        const text = (this as HTMLElement).textContent ?? "";
+        const measured =
+          (this as HTMLElement).classList.contains("timeline-clip__name") ||
+          (this as HTMLElement).classList.contains("timeline-clip__label");
+        if (!measured) return 0;
+        return text.length > 12 ? 240 : 40;
+      },
+    });
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+      configurable: true,
+      get() {
+        const measured =
+          (this as HTMLElement).classList.contains("timeline-clip__name") ||
+          (this as HTMLElement).classList.contains("timeline-clip__label");
+        return measured ? 80 : 0;
+      },
+    });
+    try {
+      const long = renderClip({
+        element: { id: "long", label: longName, tag: "div", start: 0, duration: 2, track: 0 },
+      });
+      const short = renderClip({
+        element: { id: "short", label: shortName, tag: "div", start: 0, duration: 2, track: 0 },
+      });
+      expect(long.host.querySelector(".timeline-clip__name")?.textContent).toBe(longName);
+      expect(short.host.querySelector(".timeline-clip__name")?.textContent).toBe(shortName);
+      expect(long.host.querySelector(".timeline-clip")?.getAttribute("title")).toBeNull();
+      expect(short.host.querySelector(".timeline-clip")?.getAttribute("title")).toContain(
+        shortName,
+      );
+
+      // The shared tooltip arms on pointerenter and opens after the pointer rests.
+      const hover = async (host: HTMLElement) => {
+        const trigger = host.querySelector("[data-base-ui-tooltip-trigger]");
+        const button = host.querySelector("button");
+        act(() => {
+          trigger?.dispatchEvent(
+            new PointerEvent("pointerenter", { bubbles: true, pointerType: "mouse" }),
+          );
+          button?.dispatchEvent(
+            new PointerEvent("pointerenter", { bubbles: true, pointerType: "mouse" }),
+          );
+          trigger?.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+          button?.dispatchEvent(
+            new MouseEvent("mousemove", { bubbles: true, movementX: 6, movementY: 4 }),
+          );
+          trigger?.dispatchEvent(
+            new MouseEvent("mousemove", { bubbles: true, movementX: 6, movementY: 4 }),
+          );
+        });
+        await act(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+        });
+      };
+      await hover(long.host);
+      expect(document.querySelector("[role='tooltip']")?.textContent).toBe(longName);
+      await hover(short.host);
+      const tips = [...document.querySelectorAll("[role='tooltip']")].map(
+        (node) => node.textContent,
+      );
+      expect(tips).not.toContain(shortName);
+
+      act(() => {
+        long.root.unmount();
+        short.root.unmount();
+      });
+    } finally {
+      for (const [key, descriptor] of prior) {
+        if (descriptor) Object.defineProperty(HTMLElement.prototype, key, descriptor);
+        else Reflect.deleteProperty(HTMLElement.prototype, key);
+      }
+    }
+  });
+
   it("is a roving native button with explicit selection semantics", () => {
     const { host, onClick, root } = renderClip({
       element: { id: "hero", label: "Hero", tag: "div", start: 1, duration: 2, track: 0 },

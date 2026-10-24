@@ -1,4 +1,4 @@
-import { memo, type CSSProperties, type ReactNode } from "react";
+import { memo, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { TimelineElement } from "../store/playerStore";
 import {
   CLIP_TRIM_HIT_PX,
@@ -16,6 +16,7 @@ import { ClipBadges } from "./ClipBadges";
 import { linkLabelColor } from "./linkLabelColor";
 import { OutOfSyncBadge } from "./OutOfSyncBadge";
 import { clipSpeedSuffix } from "./clipToolAttrs";
+import { Tooltip } from "../../components/ui/Tooltip";
 import { ClipPeakTooltip } from "./ClipPeakTooltip";
 import { timeLayerPercent } from "./TimelineTimeLayer";
 
@@ -95,6 +96,23 @@ export const TimelineClip = memo(function TimelineClip({
   const showDefaultText = !hasCustomContent && ladder === "labeled";
   const startLabel = el.start.toFixed(1);
   const endLabel = (el.start + el.duration).toFixed(1);
+  const clipRef = useRef<HTMLButtonElement>(null);
+  const [labelTruncated, setLabelTruncated] = useState(false);
+  useLayoutEffect(() => {
+    const node = clipRef.current?.querySelector<HTMLElement>(
+      isAudioClip ? ".timeline-clip__label" : ".timeline-clip__name",
+    );
+    if (!node) {
+      setLabelTruncated(false);
+      return;
+    }
+    const update = () => setLabelTruncated(node.scrollWidth > node.clientWidth);
+    update();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(update);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [displayLabel, showLabel, widthPx, isAudioClip]);
   const themeVariables = {
     "--clip-bg": theme.clipBackground,
     "--clip-bg-active": theme.clipBackgroundActive,
@@ -145,6 +163,7 @@ export const TimelineClip = memo(function TimelineClip({
 
   const clip = (
     <button
+      ref={clipRef}
       type="button"
       data-clip={isGestureActor ? undefined : "true"}
       data-el-id={isGestureActor ? undefined : (el.key ?? el.id)}
@@ -168,9 +187,11 @@ export const TimelineClip = memo(function TimelineClip({
       className={clipClassName}
       style={style}
       title={
-        isComposition
-          ? `${el.compositionSrc} • Double-click to open`
-          : `${displayLabel} • ${startLabel}s to ${endLabel}s`
+        labelTruncated
+          ? undefined
+          : isComposition
+            ? `${el.compositionSrc} • Double-click to open`
+            : `${displayLabel} • ${startLabel}s to ${endLabel}s`
       }
       onPointerEnter={onHoverStart}
       onPointerLeave={onHoverEnd}
@@ -271,5 +292,16 @@ export const TimelineClip = memo(function TimelineClip({
       )}
     </button>
   );
-  return isAudioClip || el.hasAudio ? <ClipPeakTooltip>{clip}</ClipPeakTooltip> : clip;
+  if (isAudioClip || el.hasAudio) {
+    return (
+      <ClipPeakTooltip overflowLabel={labelTruncated ? displayLabel : undefined}>
+        {clip}
+      </ClipPeakTooltip>
+    );
+  }
+  return (
+    <Tooltip label={displayLabel} disabled={!labelTruncated}>
+      {clip}
+    </Tooltip>
+  );
 });
