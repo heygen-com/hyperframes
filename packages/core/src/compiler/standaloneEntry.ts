@@ -1,9 +1,7 @@
 import { parseHTML } from "linkedom";
 import { HF_AUDIO_FX_ATTR } from "../audioFx";
 
-export function isTemplateEntry(html: string): boolean {
-  return html.trimStart().startsWith("<template");
-}
+export { isTemplateEntry } from "./htmlDocument";
 
 function normalizeCompositionSrcPath(srcPath: string): string {
   return srcPath.replace(/\\/g, "/").replace(/^\.\//, "");

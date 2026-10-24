@@ -104,6 +104,11 @@ Use a separate file when you want to reuse it.
     </template>
     ```
 
+    Leading HTML comments are allowed before `<template>`. Targeting this scene
+    with `render -c compositions/intro-anim.html` or
+    `keyframes compositions/intro-anim.html --shot scene.png` reuses its mount
+    from `index.html`, including the project's library scripts.
+
     `data-playback-start` picks which moment of the child timeline shows first.
     It defaults to `0`. Trimming or splitting from the left pushes this offset
     forward by the time elapsed multiplied by `data-playback-rate`, so the

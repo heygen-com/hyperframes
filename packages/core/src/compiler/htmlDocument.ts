@@ -16,6 +16,10 @@ const SIMPLE_RUNTIME_FLAG_ASSIGNMENTS = [
 
 const LEADING_COMMENTS = /^(?:\s|<!--(?:>|->|[\s\S]*?-->))*/;
 
+export function isTemplateEntry(html: string): boolean {
+  return /^<template[\s>/]/i.test(html.replace(LEADING_COMMENTS, ""));
+}
+
 export function isFullHtmlDocument(html: string): boolean {
   return /^(?:<!doctype|<html[\s>/])/i.test(html.replace(LEADING_COMMENTS, ""));
 }
