@@ -14,6 +14,7 @@ import {
   type EditHistoryHandle,
   type UseEditHistoryActionsOptions,
 } from "./useEditHistoryActions";
+import { isTypingTarget } from "../utils/typingTarget";
 import { useStableHandlers } from "./useStableHandlers";
 
 function iframeContentWindow(iframe: HTMLIFrameElement | null): Window | null {
@@ -239,6 +240,29 @@ export function useAppHotkeys({
     return () => window.removeEventListener("keydown", handleAppKeyDown, true);
   }, [handleAppKeyDown]);
 
+  const handlePreviewKeyDown = useCallback(
+    (event: KeyboardEvent) => {
+      if (event.key === "?") {
+        if (event.defaultPrevented || event.composedPath().some(isTypingTarget)) return;
+        const forwarded = new KeyboardEvent("keydown", {
+          key: event.key,
+          shiftKey: event.shiftKey,
+          ctrlKey: event.ctrlKey,
+          metaKey: event.metaKey,
+          altKey: event.altKey,
+          repeat: event.repeat,
+          isComposing: event.isComposing,
+          cancelable: true,
+        });
+        window.dispatchEvent(forwarded);
+        if (forwarded.defaultPrevented) event.preventDefault();
+        return;
+      }
+      handleAppKeyDown(event);
+    },
+    [handleAppKeyDown],
+  );
+
   // ── Preview iframe forwarding ──
 
   /**
@@ -252,12 +276,12 @@ export function useAppHotkeys({
       previewHistoryCleanupRef.current = null;
       const win = iframeContentWindow(iframe);
       if (!win) return;
-      const appHandler = handleAppKeyDown as EventListener;
+      const appHandler = handlePreviewKeyDown as EventListener;
       // Window only: a capture listener on the document too would run it twice per press.
       safeAddListener(win, "keydown", appHandler, true);
       previewHistoryCleanupRef.current = () => safeRemoveListener(win, "keydown", appHandler, true);
     },
-    [handleAppKeyDown],
+    [handlePreviewKeyDown],
   );
 
   useEffect(

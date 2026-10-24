@@ -1,7 +1,8 @@
-import { useState, useCallback, useRef, memo } from "react";
+import { useState, useCallback, useRef, useEffect, memo } from "react";
 import { formatTime, frameToSeconds } from "../lib/time";
 import { Popover, Tooltip } from "../../components/ui";
 import { flatActive, flatIdle } from "../../components/timelineToolbarStyles";
+import { isTypingTarget } from "../../utils/typingTarget";
 import { usePlayerStore } from "../store/playerStore";
 import { DEFAULT_SHORTCUT_SECTIONS, type ShortcutSection } from "./studioShortcuts";
 
@@ -33,6 +34,26 @@ export const ShortcutsPanel = memo(function ShortcutsPanel({
   const [jumpFrame, setJumpFrame] = useState("");
   // Focus lands on the scrolling body, not the frame input, so keyboard users can scroll and read it.
   const panelBodyRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.key !== "?" ||
+        event.defaultPrevented ||
+        event.repeat ||
+        event.isComposing ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.altKey ||
+        event.composedPath().some(isTypingTarget)
+      )
+        return;
+      event.preventDefault();
+      setShowShortcuts((open) => !open);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   const commitJumpFrame = useCallback(() => {
     if (disabled) return;

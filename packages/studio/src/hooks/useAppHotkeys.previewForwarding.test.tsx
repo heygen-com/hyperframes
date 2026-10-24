@@ -5,6 +5,7 @@ import type { Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import { usePlayerStore } from "../player/store/playerStore";
+import { ShortcutsButton } from "../player/components/ShortcutsPanel";
 import { useAppHotkeys } from "./useAppHotkeys";
 import { mountReactHarness } from "./domSelectionTestHarness";
 import { trackStudioEvent } from "../utils/studioTelemetry";
@@ -59,7 +60,7 @@ function Harness() {
     onAfterUndoRedo: vi.fn(),
   } as unknown as Parameters<typeof useAppHotkeys>[0]);
   sync = hotkeys.syncPreviewHotkeys;
-  return null;
+  return <ShortcutsButton />;
 }
 
 afterEach(() => {
@@ -116,6 +117,40 @@ describe("preview iframe hotkey forwarding", () => {
       );
     });
   }
+
+  it("toggles shortcuts once per ? in the preview, including after a reload", async () => {
+    const inner = mountWithPreview();
+    const button = document.querySelector('button[aria-label="Shortcuts and tools"]');
+    await press(inner, { key: "?", shiftKey: true });
+    expect(button?.getAttribute("aria-expanded")).toBe("true");
+    await press(inner, { key: "?", shiftKey: true, repeat: true });
+    expect(button?.getAttribute("aria-expanded")).toBe("true");
+    act(() => sync?.(document.querySelector("iframe")));
+    await press(inner, { key: "?", shiftKey: true });
+    expect(button?.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("does not forward ? typed into editable preview content", () => {
+    const inner = mountWithPreview();
+    const editable = inner.document.createElement("div");
+    editable.contentEditable = "plaintext-only";
+    const child = inner.document.createElement("span");
+    editable.append(child);
+    inner.document.body.append(editable);
+    const event = new inner.KeyboardEvent("keydown", {
+      key: "?",
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    act(() => child.dispatchEvent(event));
+    expect(
+      document
+        .querySelector('button[aria-label="Shortcuts and tools"]')
+        ?.getAttribute("aria-expanded"),
+    ).toBe("false");
+    expect(event.defaultPrevented).toBe(false);
+  });
 
   it("takes one tracked undo step per Cmd+Z pressed inside the preview", async () => {
     await press(mountWithPreview(), { key: "z", ctrlKey: true });
