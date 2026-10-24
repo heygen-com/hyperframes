@@ -15,6 +15,7 @@ import { readClipTiming } from "@hyperframes/core/composition-contract";
 import { readMasterFxChain } from "@hyperframes/core/audio-groups";
 import { linkScopeOf } from "@hyperframes/core/media-link";
 import { createRuntimeStartTimeResolver } from "@hyperframes/core/runtime/start-resolver";
+import { RUNTIME_STAMPED_ATTR } from "@hyperframes/core/studio-preview-mark";
 import { groupInfoFor } from "./timelineGroupInfo";
 import { transitionLabelsForDocument } from "./timelineTransitionMetadata";
 import {
@@ -150,6 +151,7 @@ export function createTimelineElementFromManifestClip(params: {
       if (rawSrc) entry.src = new URL(rawSrc, hostEl.baseURI).href;
     }
     if (hostEl.hasAttribute("data-hidden")) entry.hidden = true;
+    if (hostEl.hasAttribute(RUNTIME_STAMPED_ATTR)) entry.runtimeStamped = true;
     const timelineRole = hostEl.getAttribute("data-timeline-role");
     if (timelineRole) entry.timelineRole = timelineRole;
     const link = hostEl.getAttribute("data-link");

@@ -35,8 +35,11 @@ export function layoutAfterTrackInsert(
   const targetTrack = insertTrackValue(trackOrder, insertRow);
   // Foreign display rows and the opposite zone must not affect this topology.
   const writableZone = classifyZone(element);
+  const moving = (src: TimelineElement) => keyOf(src) === editKey || !!multi?.keys.has(keyOf(src));
   const writable = (src: TimelineElement): boolean =>
-    sameSourceFile(src, element) && classifyZone(src) === writableZone;
+    sameSourceFile(src, element) &&
+    classifyZone(src) === writableZone &&
+    (!src.runtimeStamped || moving(src));
   let topologyOrder = [...new Set(elements.filter(writable).map((e) => e.track))].sort(
     (a, b) => a - b,
   );
