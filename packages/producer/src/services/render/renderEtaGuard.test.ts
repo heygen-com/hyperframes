@@ -103,6 +103,28 @@ describe("startRenderEtaGuard", () => {
     ).toBeUndefined();
   });
 
+  it("is never tripped by the encode and assemble time after capture completes", () => {
+    const job = { framesRendered: 0 };
+    const onTooSlow = vi.fn();
+    const stop = startRenderEtaGuard({
+      maxRenderMs: 120_000,
+      job,
+      totalFrames: 100,
+      pipelineStartMs: Date.now(),
+      onTooSlow,
+    });
+    // Capture finishes inside the budget...
+    for (let i = 0; i < 10; i++) {
+      job.framesRendered += 10;
+      vi.advanceTimersByTime(5_000);
+    }
+    // ...then a mux that runs for an hour with the counter parked at the total.
+    vi.advanceTimersByTime(60 * 60_000);
+    stop();
+    expect(onTooSlow).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("is a no-op without a budget", () => {
     expect(
       run({ maxRenderMs: undefined, framesPerStep: 1, steps: 200, total: 1_000 }).tripped,

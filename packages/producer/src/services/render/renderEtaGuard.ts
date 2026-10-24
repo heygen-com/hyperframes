@@ -63,6 +63,7 @@ export function startRenderEtaGuard(options: RenderEtaGuardOptions): () => void 
   if (!maxRenderMs || maxRenderMs <= 0) return () => {};
   let base: { at: number; frames: number } | undefined;
   let lastFrames = 0;
+  const stop = () => clearInterval(timer);
   const timer = setInterval(() => {
     const done = job.framesRendered ?? 0;
     const at = now();
@@ -70,6 +71,8 @@ export function startRenderEtaGuard(options: RenderEtaGuardOptions): () => void 
     if (done === 0 || done < lastFrames) base = undefined;
     lastFrames = done;
     if (done === 0) return;
+    // Capture is complete: encode and assemble are not frame-driven, so the guard has nothing left to judge.
+    if (done >= totalFrames) return stop();
     base ??= { at, frames: done };
     const sampleMs = at - base.at;
     const sampleFrames = done - base.frames;
@@ -82,9 +85,9 @@ export function startRenderEtaGuard(options: RenderEtaGuardOptions): () => void 
       msPerFrame: sampleMs / sampleFrames,
     });
     if (!error) return;
-    clearInterval(timer);
+    stop();
     onTooSlow(error);
   }, options.pollMs ?? POLL_MS);
   timer.unref?.();
-  return () => clearInterval(timer);
+  return stop;
 }
