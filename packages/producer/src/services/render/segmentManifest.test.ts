@@ -31,10 +31,16 @@ const hashInput: SegmentPlanHashInput = {
   outputWidth: 1920,
   outputHeight: 1080,
   motionBlur: "",
+  pageMotionBlur: undefined,
   captureQuality: 80,
 };
 
 describe("computeSegmentPlanHash", () => {
+  it("does not reuse authored-blur segments when page blur is explicitly off", () => {
+    expect(computeSegmentPlanHash({ ...hashInput, pageMotionBlur: "off" })).not.toBe(
+      computeSegmentPlanHash(hashInput),
+    );
+  });
   it("is stable and 16 hex chars", () => {
     const a = computeSegmentPlanHash(hashInput);
     expect(a).toMatch(/^[0-9a-f]{16}$/);

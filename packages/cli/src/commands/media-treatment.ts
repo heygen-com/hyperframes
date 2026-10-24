@@ -10,6 +10,7 @@ import {
   serializeHfColorGrading,
 } from "@hyperframes/core";
 import {
+  COLOR_GRADING_SOURCE_TAGS,
   isColorGradingVariableRef,
   validateColorGradingContract,
 } from "@hyperframes/parsers/color-grading-contract";
@@ -344,9 +345,11 @@ interface ApplyMediaTreatmentOptions {
   clear?: boolean;
 }
 
+type GradingSourceTag = (typeof COLOR_GRADING_SOURCE_TAGS)[number];
+
 interface MediaTreatmentTargetResult {
   selectorIndex: number;
-  tag: "img" | "video";
+  tag: GradingSourceTag;
   changed: boolean;
   value: string | null;
   before: unknown;
@@ -443,7 +446,7 @@ function queryIncludingTemplates(root: Document | Element, selector: string): El
   return [];
 }
 
-type MediaTarget = { element: Element; selectorIndex: number; tag: "img" | "video" };
+type MediaTarget = { element: Element; selectorIndex: number; tag: GradingSourceTag };
 
 function selectMediaElements(
   document: Document,
@@ -463,9 +466,11 @@ function selectMediaElements(
   const indexes = selectorIndex === undefined ? matches.keys() : [selectorIndex];
   return Array.from(indexes, (index) => {
     const element = matches[index]!;
-    const tag = element.tagName.toLowerCase();
-    if (tag !== "img" && tag !== "video") {
-      throw new Error(`Color grading requires an <img> or <video>; selector matched <${tag}>`);
+    const tag = element.tagName.toLowerCase() as GradingSourceTag;
+    if (!COLOR_GRADING_SOURCE_TAGS.includes(tag)) {
+      throw new Error(
+        `Color grading requires a <video>, <img> or <canvas>; selector matched <${tag}>`,
+      );
     }
     if (!isHTMLElement(element)) {
       throw new Error(`Color grading requires an HTML <${tag}>; selector matched one inside <svg>`);

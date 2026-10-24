@@ -138,7 +138,7 @@ describe("decodeDynamicCssBackgroundImages", () => {
     expect(decoded).toEqual(["/assets/row-0.jpg", "/assets/row-1.jpg"]);
   });
 
-  it("awaits the page-local decoder after every seek in drawElement batch capture", () => {
+  it("awaits seek completion and the page-local decoder before batch paint", () => {
     const drawElementSource = readFileSync(
       fileURLToPath(new URL("./drawElementService.ts", import.meta.url)),
       "utf8",
@@ -148,7 +148,7 @@ describe("decodeDynamicCssBackgroundImages", () => {
     );
 
     expect(batchSource).toMatch(
-      /aw\.__hf\.seek\(t\);\s*await aw\.__hfDecodeDynamicCssBackgroundImages\?\.\(\);/,
+      /aw\.__hf\.seek\(t\);\s*await aw\.__hfWaitForSeekCompletion\?\.\(\);\s*await aw\.__hfDecodeDynamicCssBackgroundImages\?\.\(\);/,
     );
   });
 });

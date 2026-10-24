@@ -5,12 +5,12 @@ description: "The six-part skeleton — route, spec, beats, copy, technique, neg
 
 import { DocsVideo } from "/snippets/docs-video.jsx";
 
-Your Level 1 prompts worked because the workflow filled the gaps for you — the palette, the pacing, the structure. This is Level 2: the skeleton is how you take that control yourself.
+Your Level 1 prompts worked because the agent filled the gaps for you — the palette, the pacing, the structure. This is Level 2: the skeleton is how you take that control yourself.
 
 The [copy-paste examples](/prompting/examples) share one skeleton. Each part removes a decision agents most often get wrong on a first try:
 
 ```text
-[route]      /motion-graphics
+[route]      /hyperframes
 [spec]       8-second 1920x1080 video.
 [beats]      Beat 1 (0-4s): ...  Beat 2 (4-5s): ...  Beat 3 (5-8s): ...
 [copy]       the exact on-screen text, quoted
@@ -18,7 +18,7 @@ The [copy-paste examples](/prompting/examples) share one skeleton. Each part rem
 [negatives]  No narration, no image or media files.
 ```
 
-- **Route** with a slash command — it loads the right workflow and the framework rules.
+- **Route** with a slash command — `/hyperframes` loads the framework rules (`/slideshow` for a deck).
 - **Spec** duration and resolution up front. Defaults are 1920x1080 at 30fps.
 - **Beats** get timestamps. Include pacing instructions ("then hold on the blinking cursor") — agents skip breathing room unless told.
 - **Copy** is quoted exactly, with `/` for line breaks. Unquoted copy gets paraphrased.
@@ -27,7 +27,7 @@ The [copy-paste examples](/prompting/examples) share one skeleton. Each part rem
 
 Assembled:
 
-> /motion-graphics Make an 8-second 1920x1080 video. Beat 1 (0-4s): dark macOS terminal types "npx skills add heygen-com/hyperframes" character by character, then hold on the blinking cursor. Beat 2 (4-5s): the terminal shatters into fragments. Beat 3 (5-8s): bold white kinetic text on black slams in word by word, snappy: "YOU JUST MADE THIS / WITH HYPERFRAMES." Adapt the `code-typing` and `vfx-shatter` registry blocks; hand-author the kinetic text. No narration, no image or media files.
+> /hyperframes Make an 8-second 1920x1080 video. Beat 1 (0-4s): dark macOS terminal types "npx skills add heygen-com/hyperframes" character by character, then hold on the blinking cursor. Beat 2 (4-5s): the terminal shatters into fragments. Beat 3 (5-8s): bold white kinetic text on black slams in word by word, snappy: "YOU JUST MADE THIS / WITH HYPERFRAMES." Adapt the `code-typing` and `vfx-shatter` registry blocks; hand-author the kinetic text. No narration, no image or media files.
 
 <DocsVideo
   title="HyperFrames video: Validate Anatomy Terminal"
@@ -98,7 +98,7 @@ The skeleton above is how you ask. This is what the agent writes, and it's worth
 | Footage with sound | `<video playsinline data-has-audio="true">` — the sound stays on the clip |
 | Music / voiceover | separate `<audio>` |
 
-You rarely write these by hand, but naming them in a prompt is legitimate and sometimes necessary — "put the captions on their own track index," "keep it one composition file, one timeline" — and it's the vocabulary every error message uses. The full contract lives in the `/hyperframes-core` skill; the [appendix](/prompting/rules-and-anti-patterns) carries the rules that most often bite.
+You rarely write these by hand, but naming them in a prompt is legitimate and sometimes necessary — "put the captions on their own track index," "keep it one composition file, one timeline" — and it's the vocabulary every error message uses. The full contract lives in the `/hyperframes` skill and its `references/format.md`; the [appendix](/prompting/rules-and-anti-patterns) carries the rules that most often bite.
 
 <Note>
 **Capstone thread** — the [Level 7 film](/prompting/capstone) makes this table its scenery. In the Mount region the timeline wire splits into three track lanes and clip chips seat onto them, tagging themselves with the very attributes above — the framework's own vocabulary, staged as a set. And the whole prompt is this chapter's skeleton at maximum scale: route, spec, beats (its nine regions), copy quoted exactly, technique pinned per region, and a hard negative list.

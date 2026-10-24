@@ -123,7 +123,7 @@ const ALLOW = new Set([
   ...REACT_DOM_EXPORTS,
 ]);
 
-// Files a skill workflow writes into the user's project at run time; skill docs name them bare.
+// Files a skill workflow or a CLI command (`capture`, `transcribe`) writes into the user's project at run time; skill docs name them bare.
 const PROJECT_FILES = new Set([
   "frame.md",
   "STORYBOARD.md",
@@ -135,6 +135,15 @@ const PROJECT_FILES = new Set([
   "_role.md",
   "cinematic.json",
   "safe-zones.json",
+  "BLOCKED.md",
+  "REVIEW.md",
+  "STORYLINES.md",
+  "assets/transcript.json",
+  "asset-descriptions.md",
+  "extracted/page.html",
+  "extracted/visible-text.txt",
+  "extracted/tokens.json",
+  "extracted/design-styles.json",
 ]);
 
 // A URL, an absolute path, a `<sha>:<path>`, build output or a project file: none resolve in the tree.
@@ -873,6 +882,19 @@ export function checkComments(root, files, scope = { kind: "all" }) {
   return { failures: [...failures, ...blockFailures], warnings, examined };
 }
 
+export function generatedPaths(root, ref, paths) {
+  if (paths.length === 0) return new Set();
+  const attributes = execFileSync(
+    "git",
+    ["check-attr", `--source=${ref}`, "-z", "--stdin", "linguist-generated"],
+    { cwd: root, encoding: "utf8", input: `${paths.join("\0")}\0`, maxBuffer: 64e6 },
+  ).split("\0");
+  const generated = new Set();
+  for (let i = 0; i + 2 < attributes.length; i += 3)
+    if (["set", "true"].includes(attributes[i + 2])) generated.add(attributes[i]);
+  return generated;
+}
+
 function mergeBase(root, ref) {
   return execFileSync("git", ["merge-base", ref, "HEAD"], { cwd: root, encoding: "utf8" }).trim();
 }
@@ -985,8 +1007,10 @@ if (process.argv[1] && import.meta.url === `file://${process.argv[1]}`) {
   const base =
     explicit.length > 0 ? null : mergeBase(root, process.env.COMMENT_CHECK_BASE ?? "origin/main");
   // The probe is graded by the self-check only, or every PR that edits it would go red.
-  const files =
+  const candidates =
     base === null ? explicit : changedFiles(root, base).filter((file) => file !== PROBE);
+  const generated = base === null ? new Set() : generatedPaths(root, base, candidates);
+  const files = candidates.filter((file) => !generated.has(file));
   const scope = base === null ? { kind: "all" } : { kind: "lines", ...diffScope(root, base) };
   const { failures, warnings, examined } = checkComments(root, files, scope);
 

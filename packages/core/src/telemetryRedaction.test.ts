@@ -17,6 +17,14 @@ describe("redactTelemetryString", () => {
     ).toBe("[path] [path] [path] [path] [file-url] https://example.com/video.mp4?…");
   });
 
+  it("redacts a signing parameter cut off from its URL", () => {
+    expect(
+      redactTelemetryString(
+        "z-Signature=supersecret&X-Amz-Credential=AKID x-goog-signature=abc -t 1",
+      ),
+    ).toBe("z-Signature=…&X-Amz-Credential=… x-goog-signature=… -t 1");
+  });
+
   // The redactor used to enumerate roots (/Users, /home, /opt, /tmp, …). Any
   // root outside that list reached telemetry verbatim, which is most of them.
   it.each([

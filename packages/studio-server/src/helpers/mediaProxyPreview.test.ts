@@ -75,11 +75,40 @@ describe("injectMediaCodecMapIntoHtml pre-warm", () => {
       projectDir,
       resolve(projectDir, "videos/broll.mov"),
       "h264",
+      undefined,
+      { signal: undefined },
     );
     // Both entries still reach the client: the browser-side canPlayType check
     // owns whether a VP9 asset needs a proxy, and that contract is unchanged.
     expect(html).toContain("/videos/avatar.webm");
     expect(html).toContain("/videos/broll.mov");
+  });
+
+  it("pre-warms the copy the page will ask for when given its box", async () => {
+    const projectDir = tmpProject();
+    const { injectMediaCodecMapIntoHtml, resolveProxy } = await loadHelper({
+      "/videos/broll.mov": hostile("hevc", 'video/mp4; codecs="hvc1.1.6.L120.B0"'),
+    });
+    const box = { width: 2048, height: 1448 };
+
+    await injectMediaCodecMapIntoHtml(
+      "<html><head></head></html>",
+      projectDir,
+      [{ html: "<html></html>" }],
+      undefined,
+      true,
+      undefined,
+      box,
+    );
+    await settle();
+
+    expect(resolveProxy).toHaveBeenCalledWith(
+      projectDir,
+      resolve(projectDir, "videos/broll.mov"),
+      "h264",
+      box,
+      { signal: undefined },
+    );
   });
 
   it("counts the pre-warms it requests, and none for a widely-decoded codec", async () => {

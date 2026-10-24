@@ -238,10 +238,11 @@ export async function registerCompositionRoute(
 
     const contentType = assetContentType(filePath);
     // Edited text is caught by a content hash; an mtime tag can repeat for a same-size rewrite.
+    const mediaType = contentType.split(";")[0]!.trim();
     const isText =
-      contentType.startsWith("text/") ||
-      contentType === "application/json" ||
-      contentType === "image/svg+xml";
+      mediaType.startsWith("text/") ||
+      mediaType === "application/json" ||
+      mediaType === "image/svg+xml";
     if (isText && !ctx.req.header("Range")) {
       return revalidatedResponse(
         readFileSync(filePath, "utf-8"),

@@ -412,6 +412,56 @@ describe("runProbeStage — forceScreenshot threading", () => {
     expect(mediaPreflightComposition).toBe(input.composition);
   });
 
+  it("preserves browser-discovered loops on audio and audible video tracks", async () => {
+    resetRetryMocks();
+    const timing = {
+      start: 0,
+      end: 5,
+      duration: 5,
+      mediaStart: 0,
+      loop: true,
+      volume: 1,
+      muted: false,
+    };
+    browserMediaResults = [
+      { id: "existing", tagName: "audio", src: "tone.wav", hasAudio: false, ...timing },
+      { id: "inserted", tagName: "audio", src: "other.wav", hasAudio: false, ...timing },
+      { id: "muted", tagName: "audio", src: "muted.wav", hasAudio: false, ...timing, muted: true },
+      { id: "clip", tagName: "video", src: "clip.mp4", hasAudio: true, ...timing },
+    ];
+    const { runProbeStage } = await import("./probeStage.js");
+    const input = makeProbeInput({});
+    input.compiled.html = '<script>new Audio("other.wav")</script>';
+    input.composition.duration = 5;
+    input.composition.audios.push(
+      { id: "existing", src: "tone.wav", start: 0, end: 5, mediaStart: 0, layer: 0, type: "audio" },
+      {
+        id: "clip-audio",
+        src: "clip.mp4",
+        start: 0,
+        end: 5,
+        mediaStart: 0,
+        layer: 0,
+        type: "video",
+      },
+    );
+    input.composition.videos.push({
+      id: "clip",
+      src: "clip.mp4",
+      start: 0,
+      end: 5,
+      mediaStart: 0,
+      loop: false,
+      hasAudio: true,
+    });
+    await runProbeStage(input);
+    expect(input.composition.audios.map((audio) => ({ id: audio.id, loop: audio.loop }))).toEqual([
+      { id: "existing", loop: true },
+      { id: "clip-audio", loop: true },
+      { id: "inserted", loop: true },
+    ]);
+  });
+
   // Scene in-point 5 and clip trim 1: the collector starts picture and sound at source 6.
   it.each([
     { pageStart: 1, expected: 6 },
@@ -924,6 +974,29 @@ describe("runProbeStage — render variable threading", () => {
     expect(capturedOptions[0]).toMatchObject({
       variables: { short: true, sceneCount: 2 },
     });
+  });
+});
+
+describe("runProbeStage — page motion blur", () => {
+  // The probe session is reused for capture, so it must carry the render's "off" like any session.
+  it("passes pageMotionBlur to the probe session so a reused session installs the off global", async () => {
+    capturedOptions.length = 0;
+    const { runProbeStage } = await import("./probeStage.js");
+    const input = makeProbeInput({ stageForceScreenshot: false });
+    input.job.config.pageMotionBlur = "off";
+
+    await runProbeStage(input);
+
+    expect(capturedOptions[0]).toMatchObject({ pageMotionBlur: "off" });
+  });
+
+  it("leaves pageMotionBlur unset when the render does not ask for off", async () => {
+    capturedOptions.length = 0;
+    const { runProbeStage } = await import("./probeStage.js");
+
+    await runProbeStage(makeProbeInput({ stageForceScreenshot: false }));
+
+    expect(capturedOptions[0]).not.toHaveProperty("pageMotionBlur", "off");
   });
 });
 

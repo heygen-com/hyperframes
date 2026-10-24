@@ -3,16 +3,16 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { lintHyperframeHtml } from "../packages/lint/src/index.ts";
 
-const OWNER = "skills/hyperframes-core/references/creator-editing-recipes.md";
-const STUDIO_SKILL = "skills/hyperframes-studio/SKILL.md";
+const MIXING = "skills/media-use/references/mixing.md";
+const FORMAT = "skills/hyperframes/references/format.md";
+const ENTRY_SKILL = "skills/hyperframes/SKILL.md";
 const VOLUME_TWEEN = /\.(?:to|from|fromTo|set)\(\s*["'`]#[\w-]+["'`]\s*,\s*\{[^}]*\bvolume\s*:/;
 const TWEEN_SCANNED = [
-  "skills/hyperframes-core/references/variables-and-media.md",
-  "skills/hyperframes-core/references/data-attributes.md",
-  "skills/hyperframes-animation/adapters/gsap.md",
-  "skills/hyperframes-audio/SKILL.md",
-  "skills/hyperframes-audio/references/attributes.md",
-  "skills/music-to-video/references/montage.md",
+  ENTRY_SKILL,
+  FORMAT,
+  "skills/hyperframes/references/runtimes.md",
+  "skills/hyperframes/references/motion.md",
+  "skills/hyperframes/references/film.md",
   "skills/media-use/references/operations.md",
   "packages/cli/src/docs/data-attributes.md",
 ];
@@ -26,9 +26,9 @@ const wrap = (fragment) =>
     ? fragment
     : `<html><body><div id="root" data-composition-id="main" data-start="0" data-duration="120" data-width="1920" data-height="1080">${fragment}</div><script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script><script>window.__timelines = window.__timelines || {};</script></body></html>`;
 
-test("every html example in the owner doc lints with no errors and no volume double-automation", async () => {
-  const blocks = htmlBlocks(await read(OWNER));
-  assert.ok(blocks.length >= 10, "expected the owner doc to keep its worked examples");
+test("every html example in the mixing doc lints with no errors and no volume double-automation", async () => {
+  const blocks = htmlBlocks(await read(MIXING));
+  assert.ok(blocks.length >= 1, "expected the mixing doc to keep its worked example");
   for (const [i, block] of blocks.entries()) {
     const { findings } = await lintHyperframeHtml(wrap(block), { filePath: "index.html" });
     const bad = findings.filter(
@@ -37,7 +37,7 @@ test("every html example in the owner doc lints with no errors and no volume dou
     assert.deepEqual(
       bad.map((f) => `${f.code}: ${f.message}`),
       [],
-      `example ${i + 1} in ${OWNER}`,
+      `example ${i + 1} in ${MIXING}`,
     );
   }
 });
@@ -46,14 +46,8 @@ test("no other doc teaches a timeline tween as the way to fade volume", async ()
   for (const path of TWEEN_SCANNED) {
     const lines = (await read(path)).split("\n");
     const hit = lines.findIndex((l) => VOLUME_TWEEN.test(l));
-    assert.equal(hit, -1, `${path}:${hit + 1} teaches a volume tween; point at ${OWNER}`);
+    assert.equal(hit, -1, `${path}:${hit + 1} teaches a volume tween; point at ${MIXING}`);
   }
-});
-
-test("the Studio skill holds conventions only and points at the owner doc for edits", async () => {
-  const skill = await read(STUDIO_SKILL);
-  assert.match(skill, /creator-editing-recipes\.md/);
-  assert.equal(htmlBlocks(skill).length, 0, "a recipe restated in the Studio skill will drift");
 });
 
 test("the Remotion translation docs do not claim volume ramps are unsupported", async () => {
@@ -65,13 +59,13 @@ test("the Remotion translation docs do not claim volume ramps are unsupported", 
   }
 });
 
-test("the Studio skill's safe boxes equal the preview's", async () => {
+test("the entry skill's safe boxes equal the preview's", async () => {
   const src = await read("packages/studio/src/utils/previewSafeMargins.ts");
   const action = src.match(/ACTION_SAFE_PERCENT = (\d+)/)?.[1];
   const title = src.match(/TITLE_SAFE_PERCENT = (\d+)/)?.[1];
-  const skill = await read(STUDIO_SKILL);
-  assert.match(skill, new RegExp(`Action-safe\\s*\\|\\s*${action}%`));
-  assert.match(skill, new RegExp(`Title-safe\\s*\\|\\s*${title}%`));
+  const skill = await read(ENTRY_SKILL);
+  assert.match(skill, new RegExp(`${action}% action-safe`));
+  assert.match(skill, new RegExp(`${title}% title-safe`));
 });
 
 async function studioDefaultSeconds(kind) {
@@ -83,68 +77,45 @@ async function studioDefaultSeconds(kind) {
 }
 
 async function addMediaSection() {
-  const doc = await read(OWNER);
-  const afterHeading = doc.split("## Add media")[1] ?? "";
-  const section = afterHeading.split("\n## ")[0];
-  const imageMatch = section.match(/<img[\s\S]*?\/>/);
-  const image = imageMatch ? imageMatch[0] : "";
-  return { section, image };
+  const doc = await read(FORMAT);
+  const afterHeading = doc.split("## Adding media")[1] ?? "";
+  return afterHeading.split("\n## ")[0];
 }
 
-test("the add-media recipe uses Studio's default durations", async () => {
-  const { section, image } = await addMediaSection();
+test("an image without a duration lasts Studio's default image duration", async () => {
   const imageSecs = await studioDefaultSeconds("image");
   assert.ok(imageSecs, "could not read Studio's image default");
-  assert.match(section, new RegExp(`defaults to ${imageSecs} seconds`));
-  assert.match(section, /`data-start` is enough/);
+  assert.match(await read(FORMAT), new RegExp(`an \`<img>\` without one lasts ${imageSecs} s`));
+});
+
+test("the add-media recipe raises the root's duration and never probes the file", async () => {
+  const section = await addMediaSection();
+  assert.match(section, /Raise the root's `data-duration` to cover the new clip's end/);
   assert.doesNotMatch(section, /ffprobe/);
-  assert.match(section, /root composition's `data-duration` is at least/);
-  assert.match(section, new RegExp(`${imageSecs} for an image unless you set another`));
-  assert.doesNotMatch(image, /data-duration/);
 });
 
 test("the add-media recipe uses Studio's full-frame geometry", async () => {
-  const { section, image } = await addMediaSection();
+  const section = await addMediaSection();
   const dropOps = await read("packages/studio/src/hooks/useTimelineAssetDropOps.ts");
   assert.match(
     dropOps,
     /fitTimelineAssetGeometry\(\s*null,/,
     "Studio centres by natural size now; update the doc",
   );
-  assert.match(section, /fill the whole frame/);
-  assert.match(image, /left: 0px; top: 0px; width: 1920px; height: 1080px/);
+  assert.match(section, /fill the frame/);
+  assert.match(section, /left: 0; top: 0/);
+  assert.match(section, /width and height equal to the canvas/);
 });
 
-test("the add-media example carries every attribute Studio's drop writes", async () => {
-  const { image } = await addMediaSection();
+test("the add-media recipe names every attribute Studio's drop writes, and no media duration", async () => {
+  const section = await addMediaSection();
   const drop = await read("packages/studio/src/utils/timelineAssetDrop.ts");
   for (const attr of ['class="clip"', "data-start", "data-duration", "data-track-index"]) {
     assert.ok(drop.includes(attr), `Studio no longer writes ${attr}`);
   }
-  for (const attr of ['class="clip"', "data-start", "data-track-index"]) {
-    assert.ok(image.includes(attr), `doc example lacks ${attr}`);
+  const attributes = section.split("\n").find((line) => line.startsWith("- `id`")) ?? "";
+  for (const attr of ["`id`", 'class="clip"', "data-start", "data-track-index"]) {
+    assert.ok(attributes.includes(attr), `the add-media attributes lack ${attr}`);
   }
-});
-
-const CLIP_ATTRS = ["id=", 'class="clip"', "data-start", "data-track-index"];
-
-const mediaExample = (section, tag) =>
-  section.match(new RegExp(`<${tag}[\\s\\S]*?</${tag}>`))?.[0] ?? "";
-
-const assertNoAuthoredDuration = (example, tag) => {
-  assert.ok(example, `no <${tag}> example`);
-  assert.doesNotMatch(example, /data-duration/, `${tag} example must not author a duration`);
-};
-
-const assertHasAttrs = (example, tag, attrs) => {
-  for (const attr of attrs) assert.ok(example.includes(attr), `${tag} example lacks ${attr}`);
-};
-
-test("the video and audio add-media examples carry no data-duration and keep the clip attributes", async () => {
-  const { section } = await addMediaSection();
-  for (const tag of ["video", "audio"]) {
-    const example = mediaExample(section, tag);
-    assertNoAuthoredDuration(example, tag);
-    assertHasAttrs(example, tag, CLIP_ATTRS);
-  }
+  assert.doesNotMatch(attributes, /data-duration/, "media must not author a duration");
 });

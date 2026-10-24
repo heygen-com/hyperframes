@@ -45,7 +45,7 @@ didn't specify trim.
 ```
 
 Volume ramps become a `data-automation` volume lane on the `<audio>`
-(form in `hyperframes-core/references/creator-editing-recipes.md`); `data-volume`
+(form in `/media-use` → `references/mixing.md`); `data-volume`
 is the static baseline.
 
 ### Trim / playbackRate

@@ -16,3 +16,23 @@ export function launchTestChrome(executablePath: string | undefined): Promise<Br
     args: ["--no-sandbox", "--disable-dev-shm-usage"],
   });
 }
+
+/** Closes a test Chrome, killing it when close hangs (seen on Windows runners) so afterAll never times out. */
+export async function closeTestChrome(
+  browser: Browser | undefined,
+  timeoutMs = 5_000,
+): Promise<void> {
+  if (!browser) return;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const closed = await Promise.race([
+    browser.close().then(
+      () => true,
+      () => false,
+    ),
+    new Promise<boolean>((resolve) => (timer = setTimeout(resolve, timeoutMs, false))),
+  ]);
+  clearTimeout(timer);
+  if (closed) return;
+  browser.process()?.kill("SIGKILL");
+  await browser.disconnect().catch(() => undefined);
+}

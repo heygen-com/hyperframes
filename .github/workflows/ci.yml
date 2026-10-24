@@ -170,7 +170,6 @@ jobs:
               - "skills/gsap/**"
               - "skills/media-use/**"
             skills:
-              - "scripts/generate-captured-font-copies.mjs"
               - "packages/cli/src/media-use/**"
               - "scripts/check-media-use-copy-parity.test.mjs"
               - "scripts/check-skill-import-boundaries.test.mjs"
@@ -192,7 +191,6 @@ jobs:
               - ".claude-plugin/**"
               - ".cursor-plugin/**"
               - "scripts/package-agent-plugin*"
-              - "scripts/agent-plugin-captions.test.mjs"
               - "scripts/set-version*"
               - "LICENSE"
               - ".codex-plugin/**"
@@ -330,6 +328,7 @@ jobs:
       - run: bash scripts/ci/install-workspace-dependencies.sh
       - run: bun run build
       - run: bun run verify:packed-manifests
+      - run: bun run check:cli-lazy-deps
       - name: Share the built CLI with the edit accuracy shards
         if: needs.changes.outputs.edit_accuracy == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -715,8 +714,6 @@ jobs:
       - name: Exercise npm-cli bootstrap command
         run: >-
           node --test
-          skills/hyperframes-animation/scripts/package-loader.test.mjs
-          skills/hyperframes-creative/scripts/package-loader.test.mjs
           skills/hyperframes/scripts/plugin-cli.test.mjs
 
   # Guards that skills-manifest.json (the published freshness fingerprint read
@@ -786,8 +783,6 @@ jobs:
         run: node --test scripts/package-agent-plugin.test.mjs
       - name: Build portable agent plugin
         run: node scripts/package-agent-plugin.mjs
-      - name: Exercise captions from the extracted portable bundle
-        run: node --test scripts/agent-plugin-captions.test.mjs
       - name: Build upload-ready Codex plugin
         run: node scripts/package-codex-plugin.mjs
 
@@ -1315,7 +1310,8 @@ jobs:
       - name: Fail if the gate failed
         if: steps.gate.outputs.exit_code != '0'
         run: |
-          echo "::error::Edit accuracy fell against the base branch; see the PR comment."
+          verdict=$(jq -r '.verdict // empty' /tmp/edit-accuracy-gate/gate.json 2>/dev/null)
+          echo "::error::${verdict:-The edit accuracy gate could not finish; see its log.}"
           exit 1
 
   smoke-global-install:
@@ -1522,9 +1518,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 1
     steps:
+      # A pull request checks out its merge commit, whose first parent is the base: two commits are the whole diff.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          fetch-depth: 0
+          fetch-depth: 2
       - name: Check file sizes (max 600 lines)
         # Scoped to files THIS PR changed under packages/studio. Walking the
         # whole tree blamed every unrelated PR for pre-existing offenders.
@@ -1535,7 +1532,7 @@ jobs:
           if [ -n "${{ github.base_ref }}" ]; then
             mapfile -t files < <(
               git diff --name-only --diff-filter=ACMR \
-                "origin/${{ github.base_ref }}...HEAD" -- \
+                HEAD^1 HEAD -- \
                 'packages/studio/**/*.ts' 'packages/studio/**/*.tsx' \
                 | grep -vE '\.(test|spec)\.(ts|tsx)$|\.generated\.' || true
             )

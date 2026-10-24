@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readdir, rm, rmdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, rm, rmdir, stat, writeFile } from "node:fs/promises";
 import {
   type Dirent,
   type Stats,
@@ -30,6 +30,7 @@ import {
   listProjectFiles,
 } from "../helpers/projectSignature.js";
 import { openBlobStore, readBlob, type BlobStore } from "./blobStore.js";
+import { isUncopied, uncopiedOnlyHashes } from "./uncopied.js";
 import { pruneGoneProjectHistoriesDaily } from "./pruneHistories.js";
 import {
   ID_PATH,
@@ -460,6 +461,7 @@ class Engine {
     );
     if (!log) return this.firstOpen();
     this.log = withoutHiddenPaths(log);
+    await this.reclaimUncopied();
     if (!this.log.keepsLedger) await this.takeInUnnamedLedger();
     const cache = this.readStatCache();
     const last = this.log.entries.at(-1)?.id ?? START;
@@ -474,6 +476,11 @@ class Engine {
     // What changed while the project was closed is one outside entry, or the closed window's.
     this.reopenClosedWindow();
     await this.settleAll();
+  }
+
+  /** Copies an older version took of files that are no longer copied; text and small files are never touched. */
+  async reclaimUncopied(): Promise<void> {
+    await this.blobs.drop(uncopiedOnlyHashes(this.log, (hash) => this.blobs.size(hash)));
   }
 
   hearWrites(): void {
@@ -491,7 +498,8 @@ class Engine {
         chainBackFrom(this.overwritten.get(path), replaced).set(after, replaced),
       );
       this.queue(async () => {
-        if (!this.blobs.has(replaced)) await this.storeBytes(bytes);
+        if (!this.blobs.has(replaced) && !isUncopied(path, bytes.length))
+          await this.storeBytes(bytes);
       }).catch((error) => this.options.onError?.(error));
     });
   }
@@ -589,7 +597,8 @@ class Engine {
   async recordAdopted(file: ListedFile, sweptAt: number, stored: string | null) {
     if (stored === null || this.whereFolder() !== "here") return;
     // A prune that ran while this copy waited for the queue may have taken its bytes.
-    const hash = this.blobs.has(stored) ? stored : await this.storeIfPresent(file.path);
+    const kept = this.blobs.has(stored) || isUncopied(file.path, file.size);
+    const hash = kept ? stored : await this.storeIfPresent(file.path);
     if (hash === null) return;
     const change = { path: file.path, before: null, after: hash };
     const found = this.overwrittenBy(change, undefined, new Set());
@@ -679,7 +688,9 @@ class Engine {
   /** The file's hash once copied in; null when it was removed before the copy (the next sweep records that). */
   async storeIfPresent(path: string): Promise<string | null> {
     try {
-      return await this.blobs.put(join(this.dir, path));
+      const abs = join(this.dir, path);
+      const { size } = await stat(abs);
+      return await (isUncopied(path, size) ? this.blobs.reference(abs) : this.blobs.put(abs));
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
       throw error;
@@ -1096,6 +1107,11 @@ class Engine {
     const changes = [...target]
       .filter(([path, hash]) => (this.tracked.get(path)?.hash ?? null) !== hash)
       .sort(([, a], [, b]) => Number(a !== null) - Number(b !== null));
+    const gone = changes.find(([, hash]) => hash !== null && !this.blobs.has(hash));
+    if (gone)
+      throw new Error(
+        `An earlier version of ${gone[0]} is not kept, so this cannot be brought back.`,
+      );
     const deleted = new Set(changes.filter(([, hash]) => hash === null).map(([path]) => path));
     const blocked = changes
       .filter(([, hash]) => hash !== null)
@@ -1222,6 +1238,18 @@ class Engine {
       [...this.tracked.keys()].map((path) => [path, null]),
     );
     for (const [path, hash] of files) target.set(path, hash);
+    if (point === START && this.adopting.size > 0) {
+      throw new HistoryRefusedError(
+        "The project's starting copy is still being saved; try again in a moment. Nothing was changed.",
+      );
+    }
+    const isProjectFile = (path: string) => !KEPT_HIDDEN_PATHS.has(path);
+    const keepsAny = [...target].some(([path, hash]) => hash !== null && isProjectFile(path));
+    if ([...this.tracked.keys()].some(isProjectFile) && !keepsAny) {
+      throw new HistoryRefusedError(
+        "Restoring this point would remove every file in this project, so nothing was changed.",
+      );
+    }
     return this.writeAs(who, label, target, { restoredTo: point });
   }
 
@@ -1288,6 +1316,9 @@ class Engine {
           if ((await readdir(dest).catch(missingIsEmpty)).length > 0)
             throw new Error(`Checkout writes into an empty folder only: ${dest}`);
           const files = manifestAround(this.log, entryId, side)!;
+          for (const [path, hash] of files)
+            if (!this.blobs.has(hash))
+              throw new Error(`The version of ${path} from then is not kept.`);
           try {
             for (const [path, hash] of files) await this.blobs.writeTo(hash, join(dest, path));
           } catch (error) {
@@ -1350,6 +1381,13 @@ export class HistoryClosedError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "HistoryClosedError";
+  }
+}
+
+export class HistoryRefusedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "HistoryRefusedError";
   }
 }
 

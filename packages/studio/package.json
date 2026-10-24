@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/studio",
-  "version": "0.8.173",
+  "version": "0.8.192",
   "description": "",
   "repository": {
     "type": "git",
@@ -109,6 +109,7 @@
     "@mcp-b/global": "^5.0.1",
     "@phosphor-icons/react": "^2.1.10",
     "@tanstack/react-virtual": "^3.14.13",
+    "acorn": "^8.17.0",
     "cn": "0.2.4",
     "dockview-react": "8.3.1",
     "gsap": "^3.13.0",

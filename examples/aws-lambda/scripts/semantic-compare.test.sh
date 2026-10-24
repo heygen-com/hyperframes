@@ -39,28 +39,25 @@ jq -e '
   .encoded.equal == false
 ' "$WORK/equal.json" >/dev/null
 
-cat > "$WORK/v1-history.json" <<'JSON'
-{"events":[
-  {"taskSucceededEventDetails":{"output":"{\"Payload\":{\"Action\":\"renderChunk\",\"ChunkIndex\":1,\"Sha256\":\"bbb\",\"FramesEncoded\":12}}"}},
-  {"taskSucceededEventDetails":{"output":"{\"Payload\":{\"Action\":\"plan\",\"ChunkCount\":2}}"}},
-  {"taskSucceededEventDetails":{"output":"{\"Payload\":{\"Action\":\"renderChunk\",\"ChunkIndex\":0,\"Sha256\":\"aaa\",\"FramesEncoded\":12}}"}}
-]}
-JSON
-cat > "$WORK/v2-history.json" <<'JSON'
-{"events":[
-  {"taskSucceededEventDetails":{"output":"{\"Payload\":{\"Action\":\"renderChunk\",\"ChunkIndex\":0,\"Sha256\":\"aaa\",\"FramesEncoded\":12}}"}},
-  {"taskSucceededEventDetails":{"output":"{\"Payload\":{\"Action\":\"renderChunk\",\"ChunkIndex\":1,\"Sha256\":\"bbb\",\"FramesEncoded\":12}}"}}
-]}
-JSON
+# Map exit output as Step Functions records it: the whole state, chunk results under Chunks.
+map_exit() {
+  jq -nc --arg name "$1" --argjson chunks "$2" \
+    '{type: "MapStateExited", stateExitedEventDetails: {name: $name, output: ({Plan: {ChunkCount: 2}, Chunks: $chunks} | tojson)}}'
+}
+CHUNKS='[{"ChunkIndex":1,"Sha256":"bbb","FramesEncoded":12,"DurationMs":9},{"ChunkIndex":0,"Sha256":"aaa","FramesEncoded":12,"DurationMs":8}]'
+jq -n --argjson exit "$(map_exit RenderChunks "$CHUNKS")" \
+  '{events: [{type: "TaskSucceeded", taskSucceededEventDetails: {output: "{}"}}, $exit]}' \
+  > "$WORK/v1-history.json"
+jq -n --argjson exit "$(map_exit RenderChunksV2 "$CHUNKS")" '{events: [$exit]}' \
+  > "$WORK/v2-history.json"
 hf_compare_render_semantics \
   "$WORK/original.mp4" "$WORK/rewrapped.mp4" "$WORK/chunks-equal" \
   "$WORK/v1-history.json" "$WORK/v2-history.json"
 jq -e '.semanticEqual == true and .chunks == {checked:true,equal:true,v1Count:2,v2Count:2}' \
   "$WORK/chunks-equal.json" >/dev/null
 
-jq '(.events[0].taskSucceededEventDetails.output) =
-  "{\"Payload\":{\"Action\":\"renderChunk\",\"ChunkIndex\":0,\"Sha256\":\"different\",\"FramesEncoded\":12}}"' \
-  "$WORK/v2-history.json" > "$WORK/v2-history-mismatch.json"
+jq -n --argjson exit "$(map_exit RenderChunksV2 "$(jq -c '.[1].Sha256 = "different"' <<<"$CHUNKS")")" \
+  '{events: [$exit]}' > "$WORK/v2-history-mismatch.json"
 if hf_compare_render_semantics \
   "$WORK/original.mp4" "$WORK/rewrapped.mp4" "$WORK/chunks-mismatch" \
   "$WORK/v1-history.json" "$WORK/v2-history-mismatch.json"; then

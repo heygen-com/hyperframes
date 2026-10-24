@@ -389,7 +389,10 @@ async function runMotionPass(
   await page.addScriptTag({ content: loadBrowserScript("motion-signature.browser.js") });
   await page.addScriptTag({ content: loadBrowserScript("motion-sample.browser.js") });
   const frames = await collectMotionFrames(page, times, selectors, livenessScopes);
-  return { issues: evaluateMotion(frames, spec.assertions, canvas), sampleCount: frames.length };
+  return {
+    issues: evaluateMotion(frames, spec.assertions, canvas, duration),
+    sampleCount: frames.length,
+  };
 }
 
 /** Read + validate the motion sidecar; print the error and exit on a bad spec. */

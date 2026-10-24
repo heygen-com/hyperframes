@@ -8,6 +8,10 @@ export function machServiceDenied(errorMessage: string): boolean {
   return MACH_SERVICE_DENIED.test(errorMessage);
 }
 
+export function pipeLaunchClosedOnMac(error: unknown, platform = process.platform): boolean {
+  return platform === "darwin" && error instanceof Error && error.name === "TargetCloseError";
+}
+
 /** Codex runs agent commands in a macOS seatbelt, which names itself in the environment. */
 export function inAgentSandbox(env = process.env, platform = process.platform): boolean {
   return platform === "darwin" && env.CODEX_SANDBOX === "seatbelt";

@@ -12,18 +12,23 @@
 
 import { HF_AUDIO_FX_ATTR, parseAudioFxChain, type HfAudioFxChain } from "../audioFx.js";
 import {
+  gainedVolumePoints,
   HF_AUDIO_AUTOMATION_ATTR,
   parseAutomation,
   resolveAutomation,
+  VOLUME_RANGE,
   type HfAutomation,
 } from "../audioAutomation.js";
 import {
   cancelParamLane,
   clearParamLane,
   scheduleChainAutomation,
+  scheduleParamLane,
+  volumeLane,
   type AutomationTiming,
 } from "../audio/audioFxAutomation.js";
 import type { FxParamTarget } from "../audio/audioFxGraph.js";
+import { clampAudioGain } from "../audioGain.js";
 import {
   audioFxWorkletsReady,
   buildFxChain,
@@ -123,6 +128,34 @@ export interface FxAttributes {
   automation: string | null;
 }
 
+/** Where a volume lane plays, and the `data-volume` it multiplies (`gainAhead`: played upstream). */
+export interface VolumeTarget {
+  param: AudioParam;
+  gain?: () => number;
+  gainAhead?: boolean;
+}
+
+/** The element's volume lane on `target`, as a target to cancel later; none when it has no lane. */
+export function scheduleVolume(
+  target: VolumeTarget,
+  automation: HfAutomation,
+  at: AutomationTiming,
+): FxParamTarget[] {
+  const lane = volumeLane(automation);
+  if (!lane) return [];
+  const points = gainedVolumePoints(lane, target.gain?.() ?? 1, target.gainAhead);
+  scheduleParamLane([{ param: target.param }], { ...lane, points }, VOLUME_RANGE.scale, at);
+  return [{ param: target.param }];
+}
+
+function restoreStaticVolume(target: VolumeTarget, at: AutomationTiming): void {
+  clearParamLane([target]);
+  target.param.setValueAtTime(
+    target.gainAhead ? 1 : clampAudioGain(target.gain?.() ?? 1),
+    at.scheduledAt,
+  );
+}
+
 export function attachElementFxChain(
   ctx: BaseAudioContext,
   el: { getAttribute?(name: string): string | null },
@@ -130,6 +163,7 @@ export function attachElementFxChain(
   destination: AudioNode,
   timing?: AutomationTiming,
   attrs: FxAttributes = { automation: HF_AUDIO_AUTOMATION_ATTR },
+  volume?: VolumeTarget,
 ): ElementFxHandle | null {
   const { chain } = readChain(el);
 
@@ -205,16 +239,23 @@ export function attachElementFxChain(
   };
 
   const scheduleFor = (next: HfAudioFxChain, at: AutomationTiming | null): void => {
-    automated =
-      at && handle
-        ? scheduleChainAutomation(
-            readAutomation(el, next, attrs.automation),
-            next,
-            handle.nodes,
-            at,
-            handle.presets,
-          )
-        : [];
+    if (!at) {
+      automated = [];
+      return;
+    }
+    const automation = readAutomation(el, next, attrs.automation);
+    const fxTargets = handle
+      ? scheduleChainAutomation(automation, next, handle.nodes, at, handle.presets)
+      : [];
+    const volumeTargets = volume ? scheduleVolume(volume, automation, at) : [];
+    if (
+      volume &&
+      volumeTargets.length === 0 &&
+      automated.some((target) => target.param === volume.param)
+    ) {
+      restoreStaticVolume(volume, at);
+    }
+    automated = [...fxTargets, ...volumeTargets];
   };
 
   // The reference frame every later reschedule measures from. Mutable because a
@@ -293,7 +334,12 @@ export function attachElementFxChain(
     });
     observer.observe(target, {
       attributes: true,
-      attributeFilter: attrs.automation ? [HF_AUDIO_FX_ATTR, attrs.automation] : [HF_AUDIO_FX_ATTR],
+      attributeFilter: [
+        HF_AUDIO_FX_ATTR,
+        ...(attrs.automation ? [attrs.automation] : []),
+        // The lane's ceiling depends on the gain it multiplies.
+        ...(volume?.gain ? ["data-volume"] : []),
+      ],
     });
   }
 

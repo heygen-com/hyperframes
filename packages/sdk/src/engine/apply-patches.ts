@@ -20,6 +20,7 @@ import {
   setStyleSheet,
 } from "./model.js";
 import { keyToPath, stylePath } from "./patches.js";
+import { scriptLooksUp } from "./scriptLookups.js";
 import {
   writeVariableDefault,
   clearVariableDefault,
@@ -158,12 +159,29 @@ export function applyOverrideSet(parsed: ParsedDocument, overrides: OverrideSet)
       patches.push({ op: "remove", path: stylePath(rootId, `--${key.slice("var.".length)}`) });
     }
   }
-  applyPatchesToDocument(parsed, patches);
+  applyPatchesToDocument(parsed, patches, { keepScriptTargets: true });
+}
+
+/** Keep a deleted node a script looks up: serialize writes it back hidden, so the script finds it. */
+function keepDelete(parsed: ParsedDocument, el: Element): void {
+  const parent = el.parentElement;
+  (parsed.keptDeletes ??= []).push({
+    hfId: el.getAttribute("data-hf-id") ?? "",
+    html: el.outerHTML,
+    parentId: parent?.getAttribute("data-hf-id") ?? null,
+    siblingIndex: parent ? Array.from(parent.children).indexOf(el) : 0,
+  });
+}
+
+interface ApplyOptions {
+  /** Keep a copy of each removed element an inline script looks up (stored deletes replayed onto a base). */
+  keepScriptTargets?: boolean;
 }
 
 export function applyPatchesToDocument(
   parsed: ParsedDocument,
   patches: readonly JsonPatchOp[],
+  options: ApplyOptions = {},
 ): void {
   for (const patch of patches) {
     const p = parsePath(patch.path);
@@ -171,12 +189,17 @@ export function applyPatchesToDocument(
     if (p.id && patch.path.startsWith("/elements/")) {
       p.id = p.id.replace(/~1/g, "/").replace(/~0/g, "~");
     }
-    applyOne(parsed, patch, p);
+    applyOne(parsed, patch, p, options);
   }
 }
 
 // fallow-ignore-next-line complexity
-function applyOne(parsed: ParsedDocument, patch: JsonPatchOp, p: ParsedPath): void {
+function applyOne(
+  parsed: ParsedDocument,
+  patch: JsonPatchOp,
+  p: ParsedPath,
+  options: ApplyOptions,
+): void {
   switch (p.type) {
     case "style": {
       const el = p.id ? findById(parsed.document, p.id) : null;
@@ -245,6 +268,8 @@ function applyOne(parsed: ParsedDocument, patch: JsonPatchOp, p: ParsedPath): vo
       if (!p.id) return;
       if (patch.op === "remove") {
         const el = findById(parsed.document, p.id);
+        if (el && options.keepScriptTargets && scriptLooksUp(parsed.document, el))
+          keepDelete(parsed, el);
         el?.remove();
       } else if (patch.op === "add" && patch.value) {
         const v = patch.value as { html: string; parentId: string | null; siblingIndex: number };

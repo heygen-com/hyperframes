@@ -1,4 +1,4 @@
-import { defineCommand } from "citty";
+import { defineCommand, type ArgDef } from "citty";
 import type { Example } from "./_examples.js";
 import { describeProject } from "../timeline/describeProject.js";
 import { formatTimeline } from "../timeline/formatTimeline.js";
@@ -7,7 +7,7 @@ import { resolveProject } from "../utils/project.js";
 import { withMeta } from "../utils/updateCheck.js";
 import { runApply, runIds, runUndo } from "../timeline/a2Commands.js";
 import { runMutation } from "../timeline/a2MutationCommand.js";
-import type { MutationVerb } from "../timeline/a2Shared.js";
+import { FIELDS_READ_BY_VERB, type MutationVerb } from "../timeline/a2Shared.js";
 import { resolveExtraPositionals } from "../utils/reject-extra-positionals.js";
 import { assertKnownFlags } from "../utils/reject-unknown-flags.js";
 
@@ -17,21 +17,30 @@ export const examples: Example[] = [
   ["Delete a clip and return a receipt", "hyperframes timeline delete '#hero' --json"],
 ];
 
+const MUTATION_OPTIONS: Record<string, ArgDef> = {
+  time: { type: "positional", required: true },
+  at: { type: "string" },
+  start: { type: "string" },
+  end: { type: "string" },
+  duration: { type: "string" },
+  volume: { type: "string" },
+  rate: { type: "string" },
+  track: { type: "string" },
+  overwrite: { type: "boolean", default: false },
+};
+
 function mutationCommand(verb: MutationVerb) {
+  const fields = FIELDS_READ_BY_VERB[verb];
   return defineCommand({
     meta: { name: verb, description: `${verb} a timeline clip` },
     args: {
       ref: { type: "positional", required: true },
-      time: { type: "positional", required: verb === "move" || verb === "split" },
-      at: { type: "string" },
+      ...(verb === "set" && { assignment: { type: "positional", required: false } }),
+      ...Object.fromEntries(fields.map((field) => [field, MUTATION_OPTIONS[field]!])),
       dir: { type: "string" },
-      start: { type: "string" },
-      end: { type: "string" },
-      duration: { type: "string" },
       plan: { type: "boolean", default: false },
       json: { type: "boolean", default: false },
-      overwrite: { type: "boolean", default: false },
-      snap: { type: "boolean", default: false },
+      ...(verb !== "set" && { snap: { type: "boolean", default: false } }),
     },
     async run({ args }) {
       await runMutation(verb, args);

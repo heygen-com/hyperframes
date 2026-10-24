@@ -203,7 +203,7 @@ async function findHandles(ctx) {
 }
 
 async function readQuads({ handles }) {
-  return Promise.all([
+  const read = await Promise.all([
     contentQuad(handles.root),
     contentQuad(handles.target),
     handles.target.evaluate((e) => ({
@@ -212,6 +212,12 @@ async function readQuads({ handles }) {
       clip: getComputedStyle(e).clipPath,
     })),
   ]);
+  const shown = await handles.target.evaluate((e) => {
+    const host = e.ownerDocument.defaultView?.frameElement;
+    return !host || host.checkVisibility({ visibilityProperty: true });
+  });
+  if (!shown) throw new Error("the measured preview was retired");
+  return read;
 }
 
 /** The target's rendered quad, visible (cropped) quad and the screen/composition mapping, from CDP quads. */
@@ -242,11 +248,13 @@ const STILL_MS = process.env.EDIT_ACCURACY_STILL_MS
   : null;
 export const STILL_FRAMES = 3;
 
-// The server's event stream stays open for the page's life; timeline thumbnails are rendered by the server
-// for the timeline strip, can take seconds, and never change the preview.
-const backgroundRequest = (request) =>
+// The server's event stream stays open for the page's life; timeline thumbnails and the background lint
+// behind the lint badge run on the server, can take seconds (lint over 15 s on a busy runner), and never
+// change the preview. A blob: load is page memory (a thumbnail's image) and can end with no event at all.
+export const backgroundRequest = (request) =>
   request.resourceType() === "eventsource" ||
-  /\/api\/projects\/[^/]+\/thumbnail\//.test(request.url());
+  request.url().startsWith("blob:") ||
+  /\/api\/projects\/[^/]+\/(thumbnail\/|lint(\?|$))/.test(request.url());
 
 /**
  * The Studio page's network, for the stillness check: requests in flight, a counter bumped by any request or
@@ -670,12 +678,26 @@ async function waitingQuad(page, map) {
   return quad;
 }
 
-async function sample(ctx, gesture, point, pointerScreen) {
-  const m = await measure(ctx);
-  if (gesture === "crop") m.outline = await cropOutline(ctx, m.map);
-  const waiting = await waitingQuad(ctx.page, m.map);
-  const shown = waiting ? { ...m, quad: waiting, visible: waiting } : m;
-  return { m: shown, actual: m.visible, p: point(shown), c: m.map.toComp(pointerScreen) };
+export async function sample(ctx, gesture, point, pointerScreen) {
+  for (;;) {
+    const waiting = await ctx.page.$("[data-dom-edit-press-waiting]");
+    try {
+      const m = await measure(ctx);
+      if (gesture === "crop") m.outline = await cropOutline(ctx, m.map);
+      const quad = waiting && (await contentQuad(waiting)).map(m.map.toComp);
+      // Replay removes the marker before moving the element. Do not combine a pre-replay
+      // element read with a post-replay marker read into a position nobody displayed.
+      if (
+        waiting &&
+        !(await waiting.evaluate((e) => e.hasAttribute("data-dom-edit-press-waiting")))
+      )
+        continue;
+      const shown = quad ? { ...m, quad, visible: quad } : m;
+      return { m: shown, actual: m.visible, p: point(shown), c: m.map.toComp(pointerScreen) };
+    } finally {
+      await waiting?.dispose();
+    }
+  }
 }
 
 const TRACE_CATEGORIES = ["toplevel", "devtools.timeline", "blink.user_timing"];

@@ -14,6 +14,7 @@ import {
   type BundleOptions,
 } from "@hyperframes/core/compiler";
 import {
+  STUDIO_PREVIEW_CAPTURE_MODE,
   STUDIO_PREVIEW_MARK_META,
   STUDIO_PREVIEW_ERRORS,
 } from "@hyperframes/core/studio-preview-mark";
@@ -320,7 +321,7 @@ function previewVariablesFromRequest(rawVariables: string | undefined):
   return { raw: rawVariables, values: parse.values };
 }
 
-/** Captures screenshot right after a seek, so they get every image eager and no preview mark. */
+/** Captures screenshot right after a seek, so they get every image eager; media loads near the playhead. */
 export const PREVIEW_CAPTURE_PARAM = "hf-capture";
 
 // Studio's console capture attaches at the iframe's load; this keeps what was raised before it.
@@ -335,7 +336,10 @@ function injectStudioPreviewAugmentations(
   capture: boolean,
 ): string {
   const marked = capture
-    ? html
+    ? injectTagsAtHeadStart(
+        html,
+        `<meta name="${STUDIO_PREVIEW_MARK_META}" content="${STUDIO_PREVIEW_CAPTURE_MODE}">`,
+      )
     : injectTagsAtHeadStart(
         lazyPreviewImages(html),
         `<meta name="${STUDIO_PREVIEW_MARK_META}">${EARLY_ERRORS_SCRIPT}`,

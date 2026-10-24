@@ -1,8 +1,8 @@
 /**
  * Authoring-skill slug helpers, shared by the `events` and `render` commands.
  *
- * A skill slug names the authoring workflow that drove a telemetry event
- * (e.g. "product-launch-video"). Values are slug-gated so a caller can't push
+ * A skill slug names the authoring skill that drove a telemetry event
+ * (e.g. "hyperframes"). Values are slug-gated so a caller can't push
  * high-cardinality or PII strings (paths, shell output, free text) into the
  * anonymous event stream.
  */

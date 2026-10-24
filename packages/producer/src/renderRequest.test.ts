@@ -50,6 +50,20 @@ function request() {
 }
 
 describe("RenderRequest", () => {
+  it("preserves explicit motion blur off through the distributed request round trip", () => {
+    const value = request();
+    value.options.pageMotionBlur = "off";
+    const config = distributedConfigFromRequest(value);
+    expect(config.pageMotionBlur).toBe("off");
+    expect(
+      renderRequestFromDistributedConfig({
+        projectDir: value.projectDir,
+        outputPath: value.outputPath,
+        config,
+      }).options.pageMotionBlur,
+    ).toBe("off");
+  });
+
   it("round-trips through JSON without dropping nested options", () => {
     const value = request();
     expect(parseRenderRequest(serializeRenderRequest(value))).toEqual(value);

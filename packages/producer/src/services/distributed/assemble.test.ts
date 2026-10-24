@@ -26,7 +26,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
+import { availableParallelism, tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   applyFaststart,
@@ -38,7 +38,7 @@ import {
 } from "@hyperframes/engine";
 import { padOrTrimAudioToVideoFrameCount } from "../render/audioPadTrim.js";
 import type { ChunkSliceJson } from "../render/stages/freezePlan.js";
-import { assemble, cfrRateControlArgs } from "./assemble.js";
+import { assemble, cfrEncodeArgs, cfrRateControlArgs } from "./assemble.js";
 import type { DistributedFormat } from "./shared.js";
 
 let runRoot: string;
@@ -662,6 +662,11 @@ describe("assemble()", () => {
     },
     TIMEOUT_MS,
   );
+
+  it("cfr re-encode pins x264 threads to the CPU quota", () => {
+    const args = cfrEncodeArgs(["-i", "chunk.mp4"], {}, "30");
+    expect(args[args.indexOf("-threads") + 1]).toBe(String(availableParallelism()));
+  });
 
   it("cfr re-encode keeps the chunks' rate control", () => {
     expect(cfrRateControlArgs({})).toEqual(["-preset", "medium", "-crf", "18"]);

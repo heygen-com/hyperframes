@@ -2,7 +2,7 @@
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { DomEditSelection } from "../components/editor/domEditing";
+import { findElementForSelection, type DomEditSelection } from "../components/editor/domEditing";
 import { resolveElementForOverlay } from "../components/editor/domEditOverlayGeometry";
 import {
   makePreview,
@@ -44,14 +44,13 @@ function mountHost(followPromotions: boolean) {
     const live = useLivePreviewIframe(host);
     useDomEditPreviewSync({
       previewIframe: followPromotions ? live : host,
-      activeCompPath: null,
       captionEditMode: false,
       domEditSelectionRef: selectionRef,
-      domEditGroupSelectionsRef: { current: [] },
       domEditSelection: selectionRef.current,
-      refreshDomEditGroupSelectionsFromPreview: async () => {},
-      applyDomSelection: (selection) => void (selectionRef.current = selection),
-      buildDomSelectionFromTarget: async (element) => selectionOf(element),
+      refreshDomEditSelectionFromPreview: async (selection, iframe) => {
+        const element = findElementForSelection(iframe.contentDocument!, selection, null);
+        selectionRef.current = element ? selectionOf(element) : null;
+      },
       refreshPreviewDocumentVersion: () => {},
       syncPreviewHotkeys: () => {},
       applyStudioManualEditsToPreviewRef: { current: async () => {} },

@@ -14,6 +14,7 @@ import {
   cleanupProxyCache,
   listProjectHistories,
   pruneGoneProjectHistories,
+  reclaimUncopiedBlobs,
 } from "@hyperframes/studio-server";
 import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
@@ -169,6 +170,17 @@ async function sweepHistories(sweep: Sweep, historyRoot: string, tempDir: string
     sweep.result.removed.push({
       what: "Project history",
       path: join(historyRoot, history.id),
+      bytes: history.bytes,
+    });
+  }
+  const reclaimed = await reclaimUncopiedBlobs(historyRoot, {
+    dryRun: sweep.dryRun,
+    onError: (error) => recordError(sweep, error),
+  });
+  for (const history of reclaimed) {
+    sweep.result.removed.push({
+      what: "Video and audio copies in project history",
+      path: join(historyRoot, history.id, "blobs"),
       bytes: history.bytes,
     });
   }

@@ -84,6 +84,7 @@ interface RenderInput {
   quality: "draft" | "standard" | "high";
   format?: "mp4" | "webm" | "mov";
   videoFrameFormat?: RenderConfig["videoFrameFormat"];
+  pageMotionBlur?: RenderConfig["pageMotionBlur"];
   outputDynamicRange?: "auto" | "hdr" | "sdr";
   workers?: number;
   crf?: number;
@@ -317,6 +318,7 @@ function buildRenderJobConfig(input: RenderInput, outputPath: string, log: Produ
       outputResolution: input.outputResolution,
       outputResolutionAspectAgnostic: input.outputResolutionAspectAgnostic,
       videoFrameFormat: input.videoFrameFormat,
+      pageMotionBlur: input.pageMotionBlur,
       hdrMode: toRenderHdrMode(input.outputDynamicRange),
     },
   });
@@ -376,10 +378,7 @@ function validateRenderOverrides(body: Record<string, unknown>): string | undefi
 /**
  * Validate an explicitly-supplied `outputResolution`. Rejects (a) non-string
  * values, which parseRenderOverrides would otherwise silently coerce to
- * `undefined`; (b) unknown presets; and (c) the alpha-format combination —
- * outputResolution drives deviceScaleFactor supersampling, which the webm/mov
- * capture path can't apply (resolveDeviceScaleFactor throws mid-render), so we
- * reject it here for a clean 400 regardless of which caller sent it.
+ * `undefined`; and (b) unknown presets.
  */
 function validateOutputResolutionOverride(body: Record<string, unknown>): string | undefined {
   if (body.outputResolution === undefined) return undefined;
@@ -389,9 +388,6 @@ function validateOutputResolutionOverride(body: Record<string, unknown>): string
   const normalized = normalizeResolutionFlag(body.outputResolution);
   if (body.outputResolution.trim().length > 0 && normalized === undefined) {
     return `Invalid outputResolution "${body.outputResolution}". Must be one of: landscape, portrait, landscape-4k, portrait-4k, square, square-4k (aliases: 1080p, 4k, …).`;
-  }
-  if (normalized !== undefined && (body.format === "webm" || body.format === "mov")) {
-    return `outputResolution is not supported with format "${body.format}": the alpha (webm/mov) capture path can't supersample. Use format "mp4", or omit outputResolution to render at the composition's native dimensions.`;
   }
   return undefined;
 }
@@ -462,7 +458,11 @@ export async function prepareRenderBody(
   const overrideError = validateRenderOverrides(body);
   if (overrideError) return { error: overrideError };
 
-  const options = parseRenderOptions(body);
+  const pageMotionBlur = body.pageMotionBlur;
+  if (pageMotionBlur !== undefined && pageMotionBlur !== "off") {
+    return { error: "pageMotionBlur must be off when supplied" };
+  }
+  const options: Omit<RenderInput, "projectDir"> = { ...parseRenderOptions(body), pageMotionBlur };
   const project = prepareProjectDirectory(body.projectDir, options);
   if (project) return project;
   const source = await resolveInlineRenderHtml(body);

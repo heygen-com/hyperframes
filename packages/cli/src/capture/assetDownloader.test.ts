@@ -23,8 +23,13 @@ import type { IconCandidate } from "./faviconRanker.js";
 import { CAPTURE_USER_AGENT } from "./userAgent.js";
 import sharp from "sharp";
 import { publicRequest } from "./publicNetwork.js";
+import { loadSharp } from "../utils/optionalPackages.js";
 
 vi.mock("./publicNetwork.js", () => ({ publicRequest: vi.fn() }));
+vi.mock("../utils/optionalPackages.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../utils/optionalPackages.js")>();
+  return { ...actual, loadSharp: vi.fn(actual.loadSharp) };
+});
 
 // Exercise production URL/redirect checks while replacing only the socket transport.
 function mockRequest(implementation: (url: string, init?: RequestInit) => Promise<Response>) {
@@ -834,6 +839,24 @@ describe("a planted directory link inside the capture directory (#4304)", () => 
         /outside the capture directory/,
       );
       expect(readdirSync(outside)).toEqual([]);
+    });
+  });
+});
+
+describe("downloadAssets without sharp", () => {
+  afterEach(() => vi.mocked(publicRequest).mockReset());
+
+  it("fails the download instead of counting every image unavailable", async () => {
+    vi.mocked(loadSharp).mockRejectedValueOnce(new Error("sharp is not installed"));
+    await withTempDir(async (dir) => {
+      const fetchMock = vi.fn();
+      mockRequest(fetchMock);
+      await expect(
+        downloadAssets(tokensWithNoSvgs(), dir, [
+          { type: "Image", url: "https://cdn.example/hero.png", contexts: ["img[src]"] },
+        ] as never),
+      ).rejects.toThrow("sharp is not installed");
+      expect(fetchMock).not.toHaveBeenCalled();
     });
   });
 });

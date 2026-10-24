@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { PREVIEW_RASTER_ATTR } from "../studioPreviewMark";
+import { PREVIEW_RASTER_ATTR, STUDIO_PREVIEW_UPCOMING_ATTR } from "../studioPreviewMark";
 import { setPreviewRasterScale } from "./previewRasterHints";
+import { CLIP_HIDDEN_ATTR } from "./timedClipHide";
 
 function layer(style: string, parent: Element = document.body): HTMLElement {
   const element = document.createElement("div");
@@ -158,6 +159,19 @@ describe("setPreviewRasterScale", () => {
     expect(marked(words)).toBe(true);
   });
 
+  it("ignores the clip attributes the runtime toggles while playing", async () => {
+    const scene = layer(POSITIONED);
+    for (let i = 0; i < 20; i += 1) layer("position: absolute", scene);
+    setPreviewRasterScale(0.5);
+    const reads = vi.spyOn(window, "getComputedStyle");
+    scene.toggleAttribute(STUDIO_PREVIEW_UPCOMING_ATTR, true);
+    scene.toggleAttribute(CLIP_HIDDEN_ATTR, true);
+    await Promise.resolve();
+    expect(reads).not.toHaveBeenCalled();
+    expect(marked(scene)).toBe(true);
+    reads.mockRestore();
+  });
+
   it("re-checks the page when a linked stylesheet loads", async () => {
     const sheet = document.createElement("style");
     document.head.append(sheet);
@@ -174,6 +188,39 @@ describe("setPreviewRasterScale", () => {
     expect(marked(words)).toBe(false);
     sheet.remove();
     link.remove();
+  });
+
+  it("decides every mark in a changed subtree before writing any, so the page restyles once", async () => {
+    const sheet = document.createElement("style");
+    sheet.textContent = "[data-flat] > div { position: static !important }";
+    document.head.append(sheet);
+    const panel = layer("");
+    const rows = Array.from({ length: 10 }, () => layer(POSITIONED, panel));
+    setPreviewRasterScale(0.5);
+    expect(rows.every(marked)).toBe(true);
+    const order: string[] = [];
+    const realRead = window.getComputedStyle.bind(window);
+    const reads = vi.spyOn(window, "getComputedStyle").mockImplementation((el, pseudo) => {
+      order.push("read");
+      return realRead(el, pseudo);
+    });
+    const realToggle = Element.prototype.toggleAttribute;
+    const writes = vi.spyOn(Element.prototype, "toggleAttribute").mockImplementation(function (
+      this: Element,
+      name: string,
+      force?: boolean,
+    ) {
+      if (name === PREVIEW_RASTER_ATTR) order.push("write");
+      return realToggle.call(this, name, force);
+    });
+    panel.setAttribute("data-flat", "");
+    await Promise.resolve();
+    reads.mockRestore();
+    writes.mockRestore();
+    expect(rows.some(marked)).toBe(false);
+    expect(order.filter((step) => step === "write")).toHaveLength(10);
+    expect(order.lastIndexOf("read")).toBeLessThan(order.indexOf("write"));
+    sheet.remove();
   });
 
   it("checks each element once for a batch of attribute changes inside one subtree", async () => {

@@ -2,7 +2,8 @@
 // Nothing in this file should emit findings — it only parses and extracts.
 
 import { Parser } from "htmlparser2";
-import { parse } from "acorn";
+import { parse, type CallExpression, type Comment, type Program } from "acorn";
+import { base, recursive, simple } from "acorn-walk";
 
 export type OpenTag = {
   raw: string;
@@ -228,11 +229,14 @@ export function hasAttrName(tagSource: string, attr: string): boolean {
 }
 
 // An explicit data-has-audio is authoritative for the compiler; only the exact value "true" means audible.
+export function isAudibleVideo(attr: (name: string) => string | null): boolean {
+  if (attr("muted") !== null) return false;
+  const declared = attr("data-has-audio");
+  return declared === null || declared === "true";
+}
+
 export function isAudibleVideoTag(tagSource: string): boolean {
-  if (hasAttrName(tagSource, "muted")) return false;
-  if (!hasAttrName(tagSource, "data-has-audio")) return true;
-  const declared = readAttr(tagSource, "data-has-audio");
-  return declared === "true";
+  return isAudibleVideo((name) => readDecodedAttr(tagSource, name));
 }
 
 export function mediaTimeWindow(tagSource: string): { start: number; end: number } | null {
@@ -554,6 +558,104 @@ function scanJsComments(source: string): { out: string; balanced: boolean } {
 
 export function stripJsComments(source: string): string {
   return scanJsComments(source).out;
+}
+
+// A GreenSock banner, or the producer's inlined-source comment when its URL path is an npm gsap dist file.
+function isGsapLibraryComment(comment: Comment): boolean {
+  if (comment.type !== "Block") return false;
+  const { value } = comment;
+  const src = /^\s*inlined:\s*(\S+)\s*$/.exec(value)?.[1]?.split(/[?#]/)[0];
+  return (
+    (value.startsWith("!") && /\bGreenSock\b/.test(value)) ||
+    (src !== undefined && /(?:^|\/)gsap(?:@[^/]+)?\/dist\/[^/]+\.js$/.test(src))
+  );
+}
+
+/** GSAP's UMD wrapper `function (g, f) { ...define.amd... }(this, function (e) {...})`, AMD in its own body. */
+function isUmdWrapperCall(call: CallExpression): boolean {
+  const [scope, factory] = call.arguments;
+  if (
+    call.callee.type !== "FunctionExpression" ||
+    call.arguments.length !== 2 ||
+    scope?.type !== "ThisExpression" ||
+    factory?.type !== "FunctionExpression"
+  )
+    return false;
+  let checksAmd = false;
+  recursive(call.callee.body, null, {
+    Function() {},
+    MemberExpression(member, state, visit) {
+      if (
+        !member.computed &&
+        member.object.type === "Identifier" &&
+        member.object.name === "define" &&
+        member.property.type === "Identifier" &&
+        member.property.name === "amd"
+      )
+        checksAmd = true;
+      base.MemberExpression?.(member, state, visit);
+    },
+  });
+  return checksAmd;
+}
+
+/**
+ * A GSAP banner belongs only to the wrapper right after it. A banner inside a factory exempts nothing:
+ * a bundler (Rollup ESM to UMD) puts it in the same factory as author code.
+ */
+function bannerOwner(
+  banner: Comment,
+  source: string,
+  commentAt: Map<number, Comment>,
+  wrappers: CallExpression[],
+): CallExpression | undefined {
+  let next = banner.end;
+  for (;;) {
+    while (/[\s!;(]/.test(source[next] ?? "")) next++;
+    const comment = commentAt.get(next);
+    if (!comment) break;
+    next = comment.end;
+  }
+  return wrappers.find((call) => call.start === next);
+}
+
+/** Offsets of inlined GSAP library code: the UMD wrapper call each GSAP banner belongs to. */
+function findInlinedGsapLibrarySpans(source: string): Array<[number, number]> {
+  if (!/GreenSock|inlined:/.test(source)) return [];
+  const comments: Comment[] = [];
+  let program: Program;
+  try {
+    program = parse(source, {
+      ecmaVersion: "latest",
+      sourceType: "script",
+      allowReturnOutsideFunction: true,
+      onComment: comments,
+    });
+  } catch {
+    return [];
+  }
+  const banners = comments.filter(isGsapLibraryComment);
+  const wrappers: CallExpression[] = [];
+  simple(program, {
+    CallExpression(call) {
+      if (isUmdWrapperCall(call)) wrappers.push(call);
+    },
+  });
+  const commentAt = new Map(comments.map((comment) => [comment.start, comment]));
+  const owners = new Set<CallExpression>();
+  for (const banner of banners) {
+    const owner = bannerOwner(banner, source, commentAt, wrappers);
+    if (owner) owners.add(owner);
+  }
+  return [...owners].map((call): [number, number] => [call.start, call.end]);
+}
+
+export function blankInlinedGsapLibrary(source: string): string {
+  let out = source;
+  for (const [start, end] of findInlinedGsapLibrarySpans(source)) {
+    out = out.slice(0, start) + " ".repeat(end - start) + out.slice(end);
+  }
+  return out;
 }
 
 export function stripJsCode(source: string): string {

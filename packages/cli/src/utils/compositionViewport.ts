@@ -1,3 +1,4 @@
+import { quantizePreviewProxyBox, type PreviewProxyBox } from "@hyperframes/core";
 import { ensureDOMParser } from "./dom.js";
 
 const DEFAULT_VIEWPORT = { width: 1920, height: 1080 } as const;
@@ -26,6 +27,11 @@ export function findCompositionDimensions(html: string): { width: number; height
   const height = parseViewportDimension(root.getAttribute("data-height"));
   if (width === null || height === null) return null;
   return { width, height };
+}
+
+export function findStageProxyBox(html: string): PreviewProxyBox | undefined {
+  const stage = findCompositionDimensions(html);
+  return (stage && quantizePreviewProxyBox(stage.width, stage.height)) || undefined;
 }
 
 export function resolveCompositionViewportFromHtml(html: string): {

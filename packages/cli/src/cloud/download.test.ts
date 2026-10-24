@@ -10,6 +10,8 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -28,6 +30,61 @@ function makeBytesFetch(bytes: Uint8Array, headers: Record<string, string> = {})
 
 function makeErrorFetch(status: number, statusText = "Not Found"): typeof fetch {
   return (async () => new Response("nope", { status, statusText })) as unknown as typeof fetch;
+}
+
+interface RangeServer {
+  url: string;
+  ranges: (string | undefined)[];
+  close: () => Promise<void>;
+}
+
+async function serveBytes(
+  body: Buffer,
+  // `drop` cuts the first `times` responses whose range covers byte `at`, right before it.
+  options: { honourRange: boolean; drop?: { at: number; times: number } },
+): Promise<RangeServer> {
+  const ranges: (string | undefined)[] = [];
+  const server: Server = createServer((req, res) => {
+    ranges.push(req.headers.range);
+    const match = /^bytes=(\d+)-(\d+)$/.exec(req.headers.range ?? "");
+    if (!options.honourRange || !match) {
+      res.writeHead(200, { "content-length": body.length }).end(body);
+      return;
+    }
+    const start = Number(match[1]);
+    if (start >= body.length) {
+      res.writeHead(416, { "content-range": `bytes */${body.length}` }).end();
+      return;
+    }
+    const end = Math.min(Number(match[2]), body.length - 1);
+    res.writeHead(206, {
+      "content-length": end - start + 1,
+      "content-range": `bytes ${start}-${end}/${body.length}`,
+    });
+    const drop = options.drop;
+    if (drop && drop.times > 0 && start <= drop.at && drop.at <= end) {
+      drop.times--;
+      res.write(body.subarray(start, drop.at), () => res.destroy());
+      return;
+    }
+    res.end(body.subarray(start, end + 1));
+  });
+  // Windows completes a large loopback write at once, so the 5 s keep-alive idle clock
+  // started before a slow reader finished and closed the socket under it.
+  server.keepAliveTimeout = 0;
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address() as AddressInfo;
+  return {
+    url: `http://127.0.0.1:${port}/video.mp4`,
+    ranges,
+    close: () => new Promise((resolve) => server.close(() => resolve())),
+  };
+}
+
+function patternBytes(length: number): Buffer {
+  const bytes = Buffer.alloc(length);
+  for (let i = 0; i < length; i++) bytes[i] = (i * 31 + (i >> 13)) & 0xff;
+  return bytes;
 }
 
 describe("cloud/download", () => {
@@ -221,4 +278,77 @@ describe("cloud/download", () => {
       expect(readdirSync(join(dir, "root")).sort()).toEqual(["sub"]);
     },
   );
+
+  describe("over HTTP", () => {
+    const servers: RangeServer[] = [];
+    afterEach(async () => {
+      await Promise.all(servers.splice(0).map((server) => server.close()));
+    });
+    // Small parts keep the split the same while moving little data: a Windows runner's loopback
+    // has carried a single connection at ~1 MB/s, past the timeout for megabyte bodies.
+    const PART = 64 * 1024;
+    const options = { partBytes: PART };
+    async function serve(...args: Parameters<typeof serveBytes>) {
+      const server = await serveBytes(...args);
+      servers.push(server);
+      return server;
+    }
+
+    it("splits a large file into parallel ranged requests", async () => {
+      const body = patternBytes(7.5 * PART + 123);
+      const server = await serve(body, { honourRange: true });
+      const dest = join(dir, "out.mp4");
+      const result = await downloadToFile(server.url, dest, options);
+      expect(result.bytes).toBe(body.length);
+      expect(readFileSync(dest).equals(body)).toBe(true);
+      expect(server.ranges).toHaveLength(8);
+      expect(server.ranges[0]).toBe(`bytes=0-${PART - 1}`);
+      expect(readdirSync(dir)).toEqual(["out.mp4"]);
+    });
+
+    it("fetches small and empty files in one request", async () => {
+      for (const size of [1000, 0]) {
+        const body = patternBytes(size);
+        const server = await serve(body, { honourRange: true });
+        const dest = join(dir, `out-${size}.mp4`);
+        await downloadToFile(server.url, dest, options);
+        expect(readFileSync(dest).equals(body)).toBe(true);
+        expect(server.ranges[0]).toBe(`bytes=0-${PART - 1}`);
+        expect(server.ranges.slice(1)).toEqual(size === 0 ? [undefined] : []);
+      }
+    });
+
+    it("streams the whole file in one request when the server ignores Range", async () => {
+      const body = patternBytes(2.5 * PART);
+      const server = await serve(body, { honourRange: false });
+      const dest = join(dir, "out.mp4");
+      await downloadToFile(server.url, dest, options);
+      expect(readFileSync(dest).equals(body)).toBe(true);
+      expect(server.ranges).toEqual([`bytes=0-${PART - 1}`]);
+    });
+
+    it("resumes a range whose connection drops mid-body from the bytes it already has", async () => {
+      const body = patternBytes(6.25 * PART);
+      const at = PART + 1024;
+      const server = await serve(body, { honourRange: true, drop: { at, times: 2 } });
+      const dest = join(dir, "out.mp4");
+      const result = await downloadToFile(server.url, dest, options);
+      expect(result.bytes).toBe(body.length);
+      expect(readFileSync(dest).equals(body)).toBe(true);
+      expect(server.ranges.filter((range) => range?.startsWith(`bytes=${at}-`))).toHaveLength(2);
+    });
+
+    it("keeps the previous output and leaves no staged file when one part keeps dropping", async () => {
+      const body = patternBytes(6.25 * PART);
+      const server = await serve(body, {
+        honourRange: true,
+        drop: { at: PART + 1024, times: Infinity },
+      });
+      const dest = join(dir, "out.mp4");
+      writeFileSync(dest, "previous render");
+      await expect(downloadToFile(server.url, dest, options)).rejects.toThrow(/dropped 4 times/);
+      expect(readFileSync(dest, "utf8")).toBe("previous render");
+      expect(readdirSync(dir)).toEqual(["out.mp4"]);
+    });
+  });
 });

@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/core",
-  "version": "0.8.173",
+  "version": "0.8.192",
   "description": "",
   "repository": {
     "type": "git",
@@ -115,6 +115,18 @@
       "node": "./dist/keyframeDefaults.js",
       "import": "./src/keyframeDefaults.ts",
       "types": "./src/keyframeDefaults.ts"
+    },
+    "./html-in-canvas": {
+      "bun": "./src/htmlInCanvas.ts",
+      "node": "./dist/htmlInCanvas.js",
+      "import": "./src/htmlInCanvas.ts",
+      "types": "./src/htmlInCanvas.ts"
+    },
+    "./motion-blur-settings": {
+      "bun": "./src/motionBlurSettings.ts",
+      "node": "./dist/motionBlurSettings.js",
+      "import": "./src/motionBlurSettings.ts",
+      "types": "./src/motionBlurSettings.ts"
     },
     "./gsap-cdn": {
       "bun": "./src/gsapCdn.ts",
@@ -613,6 +625,14 @@
       "./keyframe-defaults": {
         "import": "./dist/keyframeDefaults.js",
         "types": "./dist/keyframeDefaults.d.ts"
+      },
+      "./html-in-canvas": {
+        "import": "./dist/htmlInCanvas.js",
+        "types": "./dist/htmlInCanvas.d.ts"
+      },
+      "./motion-blur-settings": {
+        "import": "./dist/motionBlurSettings.js",
+        "types": "./dist/motionBlurSettings.d.ts"
       },
       "./gsap-cdn": {
         "import": "./dist/gsapCdn.js",

@@ -1,5 +1,6 @@
 /**
- * `hyperframes lambda deploy` — build the handler ZIP, sam-deploy the
+ * `hyperframes lambda deploy` — build the handler ZIP (or, outside a
+ * checkout, fetch the adapter's pinned prebuilt one), sam-deploy the
  * Phase 6a SAM template, and persist the stack outputs locally so the
  * other lambda subcommands don't need re-derive them.
  *
@@ -9,67 +10,69 @@
 
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { c } from "../../ui/colors.js";
+import { stagePrebuiltHandler } from "./prebuiltHandler.js";
 import { fetchStackOutputs, locateSamTemplate, samDeploy } from "./sam.js";
 import { repoRoot } from "./repoRoot.js";
-import { DEFAULT_STACK_NAME, writeStackOutputs } from "./state.js";
+import { DEFAULT_STACK_NAME, readStackOutputs, writeStackOutputs } from "./state.js";
+import { pushVideoImage, type VideoArch } from "./videoImage.js";
 
 export interface DeployArgs {
   stackName: string;
   region: string;
   awsProfile?: string;
-  reservedConcurrency: number;
+  /** -1 removes the reservation. Omitted: a redeploy keeps it; a new stack reserves none. */
+  reservedConcurrency?: number;
   chromeSource: "sparticuz" | "chrome-headless-shell";
   lambdaMemoryMb: number;
+  videoArch: VideoArch;
   /** Override the handler-ZIP rebuild step. Useful for CI runs that already built it. */
   skipBuild: boolean;
 }
 
 const DEFAULT_REGION = "us-east-1";
 const DEFAULT_MEMORY_MB = 10240;
-// Low default reserved-concurrency so a first-time user doesn't get
-// surprise-billed by a runaway Map state. Adopters with their own quota
-// raise this explicitly via `--concurrency`.
-const DEFAULT_CONCURRENCY = 8;
 
 export async function runDeploy(args: Partial<DeployArgs> = {}): Promise<void> {
   const resolved: DeployArgs = {
     stackName: args.stackName ?? DEFAULT_STACK_NAME,
     region: args.region ?? process.env.AWS_REGION ?? DEFAULT_REGION,
     awsProfile: args.awsProfile ?? process.env.AWS_PROFILE,
-    reservedConcurrency: args.reservedConcurrency ?? DEFAULT_CONCURRENCY,
+    reservedConcurrency: args.reservedConcurrency,
     chromeSource: args.chromeSource ?? "sparticuz",
     lambdaMemoryMb: args.lambdaMemoryMb ?? DEFAULT_MEMORY_MB,
+    videoArch: args.videoArch ?? "arm64",
     skipBuild: args.skipBuild ?? false,
   };
 
-  const root = repoRoot();
-  // Locate the SAM template up-front so users get a fast, clear error
-  // (not an opaque `sam deploy` failure) when this isn't a checkout.
-  locateSamTemplate(root);
-
-  if (!resolved.skipBuild) {
-    console.log(c.dim("→ Building handler ZIP"));
-    buildHandlerZip(root);
-  } else {
-    const zip = join(root, "packages", "aws-lambda", "dist", "handler.zip");
-    if (!existsSync(zip)) {
-      throw new Error(
-        `--skip-build set but ${zip} does not exist. Run \`bun run --cwd packages/aws-lambda build:zip\` first or drop --skip-build.`,
-      );
-    }
+  if (resolved.videoArch === "arm64" && resolved.chromeSource !== "sparticuz") {
+    throw new Error(
+      "[lambda deploy] The arm64 video image bundles sparticuz Chrome only. " +
+        "Pass --video-arch x86_64 to deploy with --chrome-source chrome-headless-shell.",
+    );
   }
+  const root = repoRoot();
+  const samDir = await prepareSamDir(root, resolved);
+  const video =
+    resolved.videoArch === "arm64"
+      ? await pushVideoImage({
+          stackName: resolved.stackName,
+          region: resolved.region,
+          inCheckout: root !== undefined,
+        })
+      : undefined;
 
   console.log(c.dim(`→ sam deploy (stack=${resolved.stackName} region=${resolved.region})`));
   samDeploy({
-    repoRoot: root,
+    samDir,
     stackName: resolved.stackName,
     region: resolved.region,
     awsProfile: resolved.awsProfile,
     reservedConcurrency: resolved.reservedConcurrency,
     lambdaMemoryMb: resolved.lambdaMemoryMb,
     chromeSource: resolved.chromeSource,
+    videoImageUri: video?.imageUri,
   });
 
   console.log(c.dim("→ Reading stack outputs"));
@@ -86,18 +89,66 @@ export async function runDeploy(args: Partial<DeployArgs> = {}): Promise<void> {
     stateMachineArn: outputs.stateMachineArn,
     functionName: outputs.functionName,
     lambdaMemoryMb: resolved.lambdaMemoryMb,
-    reservedConcurrency: resolved.reservedConcurrency,
+    reservedConcurrency: outputs.reservedConcurrency,
+    videoFunctionName: outputs.videoFunctionName,
+    // Back on x86 the repository outlives the video function, so destroy still needs its name.
+    videoRepository: video?.repositoryName ?? readStackOutputs(resolved.stackName)?.videoRepository,
     deployedAt: new Date().toISOString(),
   });
+
+  if (resolved.reservedConcurrency === -1) {
+    console.log(
+      c.warn(
+        "Removed the stack's reserved concurrency; each render now sizes itself to the account.",
+      ),
+    );
+  } else if (
+    resolved.reservedConcurrency === undefined &&
+    outputs.reservedConcurrency !== undefined
+  ) {
+    console.log(
+      c.warn(
+        `Kept the stack's reserved concurrency of ${outputs.reservedConcurrency}. Pass --concurrency=N to change it.`,
+      ),
+    );
+  }
 
   console.log();
   console.log(c.success("Stack deployed."));
   console.log(`  ${c.dim("Bucket:")}         ${outputs.bucketName}`);
   console.log(`  ${c.dim("State machine:")}  ${outputs.stateMachineArn}`);
   console.log(`  ${c.dim("Function:")}       ${outputs.functionName}`);
+  if (outputs.videoFunctionName) {
+    console.log(`  ${c.dim("Video function:")} ${outputs.videoFunctionName} (arm64)`);
+  }
   console.log(`  ${c.dim("State file:")}     ${resolve(statePath)}`);
   console.log();
   console.log(c.dim(`Render with: hyperframes lambda render <project-dir>`));
+}
+
+/** Checkout: build the ZIP from source. Otherwise: stage the adapter's pinned prebuilt ZIP. */
+async function prepareSamDir(root: string | undefined, args: DeployArgs): Promise<string> {
+  if (!root) {
+    if (args.chromeSource !== "sparticuz") {
+      throw new Error(
+        "[lambda deploy] The prebuilt handler bundles sparticuz Chrome; --chrome-source=chrome-headless-shell needs a hyperframes checkout.",
+      );
+    }
+    return stagePrebuiltHandler();
+  }
+  const samDir = dirname(locateSamTemplate(root));
+  if (!args.skipBuild) {
+    console.log(c.dim("→ Building handler ZIP"));
+    buildHandlerZip(root);
+  } else {
+    const zip = join(root, "packages", "aws-lambda", "dist", "handler.zip");
+    if (!existsSync(zip)) {
+      throw new Error(
+        `--skip-build set but ${zip} does not exist. Run \`bun run --cwd packages/aws-lambda build:zip\` first or drop --skip-build.`,
+      );
+    }
+  }
+  return samDir;
 }
 
 function buildHandlerZip(root: string): void {

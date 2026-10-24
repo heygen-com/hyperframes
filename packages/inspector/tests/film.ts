@@ -1,3 +1,4 @@
+import { snippetSource } from "./snippetSource";
 import { Inspector } from "../src/service";
 import { cpSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
@@ -57,16 +58,8 @@ try {
   notes.afterState = await state();
   assert.equal(inspector.stats.browserStarts, 1);
   assert.equal(inspector.stats.pageLoads, 2);
-  for (const snippet of after.snippets) {
-    const text = readFileSync(join(project, snippet.file), "utf8");
-    assert.equal(
-      snippet.code,
-      text
-        .split(/(?<=\n)/)
-        .slice(snippet.startLine - 1, snippet.endLine)
-        .join(""),
-    );
-  }
+  for (const snippet of after.snippets)
+    assert.equal(snippet.code, snippetSource(project, snippet.id));
   const afterState = notes.afterState as typeof before;
   assert.deepEqual(afterState.timelines, before.timelines);
   const parity = [];

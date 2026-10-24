@@ -11,7 +11,7 @@ function rejectOnAbort(signal: AbortSignal): Promise<never> {
   });
 }
 
-it("readiness and later sampling spend one 120-second budget", async () => {
+it("an idle check ends 120 s after its last progress", async () => {
   vi.useFakeTimers();
   const deadline = new CheckDeadline();
   deadline.start();
@@ -92,4 +92,69 @@ it("closing before browser readiness prevents a later clock from starting", asyn
   await vi.advanceTimersByTimeAsync(150_000);
   expect(vi.getTimerCount()).toBe(0);
   expect(deadline.signal.aborted).toBe(false);
+});
+
+it("an expired check names the phase it was in and the seconds each phase took", async () => {
+  vi.useFakeTimers();
+  const deadline = new CheckDeadline();
+  const outcome = deadline
+    .run(() => rejectOnAbort(deadline.signal))
+    .catch((error: unknown) => error);
+  try {
+    deadline.enter("copies");
+    await vi.advanceTimersByTimeAsync(247_000);
+    deadline.enter("launch");
+    await vi.advanceTimersByTimeAsync(2_000);
+    deadline.start();
+    await vi.advanceTimersByTimeAsync(3_000);
+    deadline.enter("settle");
+    await vi.advanceTimersByTimeAsync(60_000);
+    deadline.enter("samples");
+    await vi.advanceTimersByTimeAsync(50_000);
+    deadline.enter("overlap");
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(((await outcome) as Error).message).toBe(
+      "Check did not finish within its deadline (no progress for 120 s after Chrome was ready), while running the overlap pass. " +
+        "Seconds per phase: making video copies 247.0 (before the deadline), starting Chrome 2.0 (before the deadline), " +
+        "loading the page 3.0, waiting for the page to be ready 60.0, checking samples 50.0, running the overlap pass 120.0.",
+    );
+  } finally {
+    await deadline.close();
+  }
+});
+
+it("keeps going while each step makes progress, and ends once none does", async () => {
+  vi.useFakeTimers();
+  const deadline = new CheckDeadline();
+  const outcome = deadline
+    .run(() => rejectOnAbort(deadline.signal))
+    .catch((error: unknown) => error);
+  try {
+    deadline.start();
+    for (let step = 0; step < 10; step++) {
+      await vi.advanceTimersByTimeAsync(90_000);
+      deadline.enter("overlap");
+    }
+    expect(deadline.signal.aborted).toBe(false);
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(await outcome).toBeInstanceOf(CheckDeadlineError);
+  } finally {
+    await deadline.close();
+  }
+});
+
+it("an operation that settles restarts the idle clock", async () => {
+  vi.useFakeTimers();
+  const deadline = new CheckDeadline();
+  try {
+    deadline.start();
+    await vi.advanceTimersByTimeAsync(100_000);
+    await deadline.run(async () => "done");
+    await vi.advanceTimersByTimeAsync(100_000);
+    expect(deadline.signal.aborted).toBe(false);
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(deadline.signal.aborted).toBe(true);
+  } finally {
+    await deadline.close();
+  }
 });

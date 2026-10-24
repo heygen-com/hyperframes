@@ -448,7 +448,6 @@ export interface HyperframesConfig {
   /** How many skills were missing (not installed) at the last check. */
   skillsMissingCount?: number;
   /** How many installed skills were flagged removed-upstream at the last check. */
-  skillsRemovedCount?: number;
   /**
    * True once the DE parallel-router experiment ("HF_DE_PARALLEL_ROUTER")
    * has actually FAILED (its self-verify/generic-failure safety net fired —
@@ -660,7 +659,6 @@ function passthroughFields(parsed: Partial<HyperframesConfig>): Partial<Hyperfra
     skillsUpdateAvailable: parsed.skillsUpdateAvailable,
     skillsOutdatedCount: parsed.skillsOutdatedCount,
     skillsMissingCount: parsed.skillsMissingCount,
-    skillsRemovedCount: parsed.skillsRemovedCount,
     localEmbeddingEnabled: consentFrom(parsed.localEmbeddingEnabled),
   };
 }

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { classifyMediaColor, pixelFormatHasAlpha, probeMediaMetadata } from "./mediaMetadata.js";
+import { classifyMediaColor, probeMediaMetadata } from "./mediaMetadata.js";
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -173,25 +173,5 @@ describe("probeMediaMetadata", () => {
       stderr: "",
     }));
     expect(metadata).toMatchObject({ kind: "video", color: { codecName: "h264" } });
-  });
-});
-
-describe("pixelFormatHasAlpha", () => {
-  it("detects alpha-bearing pixel formats", () => {
-    for (const pixFmt of [
-      "yuva420p",
-      "yuva444p10le",
-      "rgba",
-      "argb",
-      "bgra",
-      "abgr",
-      "gbrap12le",
-      "ya8",
-    ]) {
-      expect(pixelFormatHasAlpha(pixFmt)).toBe(true);
-    }
-    for (const pixFmt of ["yuv420p", "yuv422p10le", "rgb24", "gbrp", "gray", undefined]) {
-      expect(pixelFormatHasAlpha(pixFmt)).toBe(false);
-    }
   });
 });

@@ -7,8 +7,9 @@ import { join } from "node:path";
 const fixtureRoot = mkdtempSync(join(tmpdir(), "hf-stage-test-"));
 const framesDir = join(fixtureRoot, "frames");
 afterAll(() => rmSync(fixtureRoot, { recursive: true, force: true }));
-import { getCaptureStageBrowserConsole } from "../captureStageError.js";
+import { CaptureStageError, getCaptureStageBrowserConsole } from "../captureStageError.js";
 import { createCapturePlan } from "../capturePlan.js";
+import type { CaptureHdrStageInput } from "./captureHdrStage.js";
 
 type MinimalEngineConfig = {
   forceScreenshot: boolean;
@@ -31,6 +32,7 @@ let hangParallelUntilAbort = false;
 // a capture call (the watchdog's job); session_init = still booting (not).
 let hangParallelPhase: "session_init" | "frame_capture" = "frame_capture";
 let failWorkerTransient = false;
+let workerFailurePageErrors: string[] = [];
 // Parallel capture that reports this many frames, advancing the clock by parallelFrameMs each.
 let parallelFrames = 0;
 let parallelFrameMs = 0;
@@ -72,6 +74,7 @@ mock.module("@hyperframes/engine", () => ({
     return { buffer: Buffer.from("frame"), captureTimeMs: 1 };
   },
   closeCaptureSession,
+  cloneCaptureWarnings: () => [],
   completeDeferredDrawElementInit: async () => {},
   createCaptureSession: async () => ({
     isInitialized: false,
@@ -79,6 +82,12 @@ mock.module("@hyperframes/engine", () => ({
     options: { captureBeyondViewport: false },
     workerEncodeEnabled: sessionWorkerEncodeEnabled,
     captureMode: captureSessionMode,
+    page: {
+      evaluate: mock(async (): Promise<unknown> => [])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce({}),
+    },
+    warnings: [],
   }),
   createFrameReorderBuffer: () => ({
     waitForFrame: async () => {},
@@ -108,10 +117,12 @@ mock.module("@hyperframes/engine", () => ({
       // That ordering is the engine's contract, pinned without a browser by
       // parallelCoordinator.test.ts "createPoolFailureHandler"; this mock
       // only replays it.
-      injectedWorkerFailure = Object.assign(
-        new Error("Protocol error (Page.captureScreenshot): Target closed"),
-        { kind: "transient_browser" },
-      );
+      const { CaptureFailure } = await import("@hyperframes/engine");
+      injectedWorkerFailure = new CaptureFailure({
+        kind: "transient_browser",
+        message: "Protocol error (Page.captureScreenshot): Target closed",
+        pageErrorLines: workerFailurePageErrors,
+      });
       hooks?.onWorkerFailure?.(injectedWorkerFailure);
       throw new Error(
         "[Parallel] Capture failed: Worker 1: Protocol error (Page.captureScreenshot): Target closed",
@@ -207,6 +218,7 @@ mock.module("../../renderOrchestrator.js", () => ({
   closeHdrVideoFrameSource: () => {},
   createHdrPerfCollector: () => ({}),
   executeDiskCaptureWithAdaptiveRetry: async () => [],
+  explainStreamingEncodeGate: () => ({ enabled: true, reason: "single_worker" }),
   findMissingFrameRanges: () => [],
   isTransientCaptureRetryEligible: () => false,
   sampleDirectoryBytes: () => 0,
@@ -480,12 +492,42 @@ describe("runCaptureStreamingStage", () => {
       else process.env.HF_DE_STALL_MS = prev;
     }
 
-    // The exact failure object the engine reported — not the pool's flattened
-    // "[Parallel] Capture failed: …" string, and not a stall.
-    expect(caught).toBe(injectedWorkerFailure);
+    // The engine's own failure, not the pool's flattened "[Parallel] Capture failed: …"
+    // string and not a stall, wrapped so the stage reports the page's console.
+    expect(caught).toBeInstanceOf(CaptureStageError);
+    expect((caught as CaptureStageError).cause).toBe(injectedWorkerFailure);
+    expect((caught as CaptureStageError).kind).toBe("transient_browser");
     expect((caught as Error).message).not.toContain("stalled");
     // Parked peers were released with that same error.
     expect(reorderAbortCalls).toEqual([injectedWorkerFailure]);
+  });
+
+  it("reports the script's page errors when a worker dies in a streaming render", async () => {
+    failWorkerTransient = true;
+    workerFailurePageErrors = ["[Browser:PAGEERROR] ReferenceError: gsap is not defined"];
+    const { runCaptureStreamingStage } = await import("./captureStreamingStage.js");
+    const cfg = { forceScreenshot: false, ffmpegStreamingTimeout: 3_600_000 };
+    const baseInput = createInput(cfg);
+    const input = {
+      ...baseInput,
+      totalFrames: 100,
+      plan: { ...baseInput.plan, workerCount: 2, forceParallelStream: true },
+    };
+
+    let caught: unknown;
+    try {
+      await runCaptureStreamingStage(input);
+    } catch (error) {
+      caught = error;
+    } finally {
+      failWorkerTransient = false;
+      workerFailurePageErrors = [];
+    }
+
+    expect(caught).toBeInstanceOf(CaptureStageError);
+    expect(getCaptureStageBrowserConsole(caught)).toContain(
+      "[Browser:PAGEERROR] ReferenceError: gsap is not defined",
+    );
   });
 
   it("does not relabel a genuine parent-abort as a stall", async () => {
@@ -752,6 +794,94 @@ describe("runCaptureStage", () => {
 });
 
 describe("runCaptureHdrStage", () => {
+  function createHdrInput(useGpu: boolean | undefined): CaptureHdrStageInput {
+    const plan = createCapturePlan({
+      workerCount: 1,
+      forceScreenshot: true,
+      useStreamingEncode: false,
+      useLayeredComposite: true,
+      usePageSideCompositing: false,
+      hasHdrContent: true,
+      needsAlpha: false,
+    });
+    if (plan.kind !== "hdr_layered") throw new Error("Expected an HDR layered capture plan");
+    return {
+      job: {
+        id: "capture-hdr-stage-test",
+        config: { fps: { num: 30, den: 1 }, quality: "draft", useGpu },
+        status: "queued",
+        progress: 0,
+        currentStage: "HDR Capture",
+        createdAt: new Date(0),
+        duration: 1,
+      },
+      cfg: { forceScreenshot: true },
+      plan,
+      log: { error: () => {}, warn: () => {}, info: () => {}, debug: () => {} },
+      projectDir: fixtureRoot,
+      compiledDir: fixtureRoot,
+      framesDir,
+      videoOnlyPath: join(fixtureRoot, "video-only.mp4"),
+      width: 64,
+      height: 64,
+      totalFrames: 1,
+      composition: { duration: 1, videos: [], audios: [], images: [], width: 64, height: 64 },
+      hasHdrContent: true,
+      effectiveHdr: { transfer: "pq" },
+      nativeHdrVideoIds: new Set<string>(),
+      nativeHdrImageIds: new Set<string>(),
+      videoTransfers: new Map(),
+      imageTransfers: new Map(),
+      hdrImageSrcPaths: new Map(),
+      preset: {
+        preset: "ultrafast",
+        quality: 28,
+        codec: "h265",
+        pixelFormat: "yuv420p10le",
+        hdr: { transfer: "pq" },
+      },
+      effectiveQuality: 28,
+      effectiveBitrate: undefined,
+      fileServer: {
+        url: "http://127.0.0.1:4173",
+        port: 4173,
+        close: () => {},
+        addPreHeadScript: () => {},
+      },
+      buildCaptureOptions: () => ({}),
+      createRenderVideoFrameInjector: () => null,
+      hdrDiagnostics: { videoExtractionFailures: 0, imageDecodeFailures: 0 },
+      abortSignal: undefined,
+      assertNotAborted: () => {},
+    };
+  }
+
+  it.each([true, false, undefined])("forwards useGpu=%s to the HDR encoder", async (useGpu) => {
+    failCaptureFrameToBuffer = false;
+    failInitializeSession = false;
+    spawnStreamingEncoder.mockClear();
+    closeEncoder.mockClear();
+    const { runCaptureHdrStage } = await import("./captureHdrStage.js");
+    const input = createHdrInput(useGpu);
+
+    const result = await runCaptureHdrStage(input);
+
+    expect(spawnStreamingEncoder).toHaveBeenCalledTimes(1);
+    expect(spawnStreamingEncoder).toHaveBeenCalledWith(
+      input.videoOnlyPath,
+      expect.objectContaining({
+        useGpu,
+        codec: "h265",
+        hdr: { transfer: "pq" },
+        rawInputFormat: "rgb48le",
+      }),
+      undefined,
+      { ffmpegStreamingTimeout: 3_600_000 },
+    );
+    expect(closeEncoder).toHaveBeenCalledTimes(1);
+    expect(result.encodeMs).toBe(123);
+  });
+
   it("wraps HDR capture failures with the browser console buffer", async () => {
     failCaptureFrameToBuffer = false;
     failInitializeSession = true;

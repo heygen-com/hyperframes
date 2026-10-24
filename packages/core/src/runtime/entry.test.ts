@@ -96,6 +96,23 @@ const neverDecodes = (clip: HTMLElement) => {
 describe("runtime entry", () => {
   afterEach(resetRuntimeGlobals);
 
+  it("starts a held capture-motion-blur frame when capture waits on the seek, after video injection", async () => {
+    const release = vi.fn();
+    vi.doMock("./captureMotionBlur", async (original) => ({
+      ...(await original<typeof import("./captureMotionBlur")>()),
+      releaseCaptureMotionBlurFrame: release,
+    }));
+    try {
+      mountRoot().appendChild(document.createElement("div"));
+      await evaluateRuntime();
+      expect(release).not.toHaveBeenCalled();
+      await window.__hfWaitForSeekCompletion?.();
+      expect(release).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.doUnmock("./captureMotionBlur");
+    }
+  });
+
   it("drives an async frame source without a GSAP timeline and waits before capture", async () => {
     const root = mountRoot();
     root.setAttribute("data-duration", "10");
@@ -436,6 +453,59 @@ describe("runtime entry", () => {
       window.__player?.seek(8.4);
       expect(armed(now, later)).toEqual([false, true]);
       expect(loadsOf(later)).toEqual([beforeJump]);
+    });
+
+    it("fetches the clips due soon three at a time, earliest first, so the clip due never queues behind them", async () => {
+      spyLoad();
+      servePreview();
+      const [now, ...due] = videos(mountRoot(), "0", "1.5", "1.1", "1.4", "1.2", "1.3");
+
+      await evaluateRuntime();
+      expect(armed(now, ...due)).toEqual([true, true, true, true, false, false]);
+      expect(loadsOf(...due)).toEqual([1, 1, 1, 0, 0]);
+      due[0]!.dispatchEvent(new Event("suspend"));
+      expect(armed(...due)).toEqual([true, true, true, false, false]);
+      Object.defineProperty(due[0]!, "readyState", { value: 3 });
+      due[0]!.dispatchEvent(new Event("canplay"));
+      expect(armed(...due)).toEqual([true, true, true, true, false]);
+      due[1]!.dispatchEvent(new Event("error"));
+      expect(armed(...due)).toEqual([true, true, true, true, true]);
+    });
+
+    it("frees a clip the playhead has passed while it is still downloading, and keeps one that finished", async () => {
+      spyLoad();
+      servePreview();
+      stubPlayback();
+      const [slow, done] = videos(mountRoot(), "0", "0.5");
+      Object.defineProperty(slow, "networkState", { value: 2 });
+      Object.defineProperty(done, "networkState", { value: 1 });
+      Object.defineProperty(done, "readyState", { value: 4 });
+
+      await evaluateRuntime();
+      window.__player?.play();
+      expect(armed(slow, done)).toEqual([true, true]);
+      window.__player?.seek(2.6, { keepPlaying: true });
+      expect(armed(slow, done)).toEqual([false, true]);
+    });
+
+    it("keeps a passed clip released for the rest of the play instead of refetching it each pass", async () => {
+      spyLoad();
+      servePreview();
+      stubPlayback();
+      const [slow, next] = videos(mountRoot(), "0", "2");
+      // A fetch is running whenever preload asks for one.
+      Object.defineProperty(slow, "networkState", { get: () => (slow.preload === "auto" ? 2 : 1) });
+
+      await evaluateRuntime();
+      window.__player?.play();
+      window.__player?.seek(2.05, { keepPlaying: true });
+      expect(armed(slow, next)).toEqual([false, true]);
+      const loadsAfterRelease = loadsOf(slow)[0];
+      for (let t = 2.1; t <= 4.0; t += 0.05) {
+        window.__player?.seek(t, { keepPlaying: true });
+        expect(slow.preload).toBe("none");
+      }
+      expect(loadsOf(slow)[0]).toBe(loadsAfterRelease);
     });
 
     // jsdom's media elements cannot play; the runtime only needs play() to settle.

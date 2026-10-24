@@ -10,7 +10,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CliRuntimeError } from "../utils/commandResult.js";
+import { CliRuntimeError, registerRootExitRequester } from "../utils/commandResult.js";
 import { CAPTURE_PHASE_SCHEMA } from "../capture/types.js";
 
 const { captureWebsiteMock } = vi.hoisted(() => ({
@@ -203,6 +203,58 @@ describe("capture command — vision control", () => {
       expect.objectContaining({ maxScreenshots: 3 }),
       undefined,
     );
+  });
+
+  it.each([
+    [true, 0],
+    [false, 1],
+  ])("asks to end the process once its result is out (ok %s)", async (ok, exitCode) => {
+    vi.useFakeTimers();
+    const exit = vi.fn();
+    registerRootExitRequester(exit);
+    try {
+      vi.spyOn(console, "log").mockImplementation(() => {});
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      captureWebsiteMock.mockResolvedValueOnce({
+        ok,
+        projectDir: "/tmp/capture",
+        url: "https://example.com",
+        title: "Example",
+        extracted: {},
+        screenshots: [],
+        tokens: { sections: [], fonts: [] },
+        assets: [],
+        warnings: [],
+      });
+      await captureCommand.run!({
+        args: { url: "https://example.com", output: "/tmp/hf-exit", json: true },
+      } as never).catch(() => {});
+      expect(exit).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(100);
+      expect(exit).toHaveBeenCalledWith(exitCode);
+    } finally {
+      registerRootExitRequester(() => {});
+      vi.useRealTimers();
+    }
+  });
+
+  it("asks to end the process with 1 after a capture that threw", async () => {
+    vi.useFakeTimers();
+    const exit = vi.fn();
+    registerRootExitRequester(exit);
+    try {
+      vi.spyOn(console, "log").mockImplementation(() => {});
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      captureWebsiteMock.mockRejectedValueOnce(new Error("browser crashed"));
+      await captureCommand.run!({
+        args: { url: "https://example.com", output: "/tmp/hf-exit-threw", json: true },
+      } as never).catch(() => {});
+      vi.advanceTimersByTime(100);
+      expect(exit).toHaveBeenCalledWith(1);
+    } finally {
+      registerRootExitRequester(() => {});
+      vi.useRealTimers();
+    }
   });
 
   it("returns a nonzero command result after presenting failed capture JSON once", async () => {

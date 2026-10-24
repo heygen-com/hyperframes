@@ -42,7 +42,7 @@ The package ships the capability, not agent tools: a harness defines its own too
 
 ## Output
 
-The default JSON is capped at 12,000 UTF-8 bytes, including metadata. `snippets` contain file, start/end line, kinds, associated input target indices, **unmodified full source lines**, and whether that exact block occurs only once in the file. No pretty-printing or ellipses are inserted into code. Adjacent/overlapping blocks merge across targets.
+The default JSON is capped at 12,000 UTF-8 bytes, including metadata. Each snippet's `id` names its file and its start and end lines (`file:start-end`); a snippet also carries its kinds, **unmodified full source lines**, and whether that exact block occurs only once in the file. When a query names more than one target, `targets` gives the input target indices it serves. No pretty-printing or ellipses are inserted into code. Adjacent/overlapping blocks merge across targets.
 
 ```json
 {
@@ -51,9 +51,6 @@ The default JSON is capped at 12,000 UTF-8 bytes, including metadata. `snippets`
   "snippets": [
     {
       "id": "scene.html:20-24",
-      "file": "scene.html",
-      "startLine": 20,
-      "endLine": 24,
       "kind": ["animation creation"],
       "targets": [0, 1],
       "code": "the exact original source lines, including whitespace",
@@ -65,7 +62,7 @@ The default JSON is capped at 12,000 UTF-8 bytes, including metadata. `snippets`
 
 This illustration omits metadata. Actual files in the implementation report show the full output.
 
-Shared helpers appear once with all **queried** targets using them. `coTargets` names observed additional DOM targets of the same tween; it does not claim to enumerate all separate calls to a helper. Creation statements and authored caller statements are mapped; small named helper functions are returned whole. Variable assignments are not a stack/data-flow history. A missing source origin increments `unmappedAnimations`, rather than guessing an editable location.
+Shared helpers appear once with all **queried** targets using them. `coTargets` names up to three observed additional DOM targets of the same tween, prioritizing elements outside the query, and `coTargetsOmitted` counts the rest; it does not claim to enumerate all separate calls to a helper. Creation statements and authored caller statements are mapped; small named helper functions are returned whole. Variable assignments are not a stack/data-flow history. A missing source origin increments `unmappedAnimations`, rather than guessing an editable location.
 
 HTML snippets are uniquely identified authored opening tags (their full source lines); dynamically generated markup may have no authored tag match. CSS is an authored-selector candidate scan, not proof of active cascade, media-query state, or inherited styles. In particular, a class reused in different scoped scene styles can have multiple candidate source rules.
 

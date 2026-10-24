@@ -5,8 +5,11 @@ function truncateTelemetryString(value: string, maxLength: number): string {
   return `${value.slice(0, maxLength - 1)}…`;
 }
 
-function redactUrlQueryStrings(value: string): string {
-  return value.replace(/\b(https?:\/\/[^\s?]+)\?[^\s]*/g, "$1?…");
+/** Strips http(s) URL queries, and any signing parameter left without its URL (e.g. after a cut). */
+export function redactUrlQueryStrings(value: string): string {
+  return value
+    .replace(/\b(https?:\/\/[^\s?]+)\?[^\s]*/g, "$1?…")
+    .replace(/((?:X-(?:Amz|Goog)-[\w-]*|Signature)=)[^&\s]*/gi, "$1…");
 }
 
 /**

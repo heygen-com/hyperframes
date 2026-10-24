@@ -32,7 +32,7 @@ describe("the GPU probe where nothing may listen", () => {
       pipe: true,
       args: ["--headless", "--single-process", "--disable-gpu-compositing"],
     });
-    expect(probe.options[1]!.pipe).toBeUndefined();
+    expect(probe.options[1]!.pipe).toBe(true);
     expect(probe.options[1]!.args).toEqual(["--headless"]);
   });
 });

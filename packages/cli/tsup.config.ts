@@ -15,6 +15,8 @@ export default defineConfig({
     cli: "src/cli.ts",
     fontLocalizeCli: "src/fontLocalizeCli.ts",
     runtimeVersion: "src/runtimeVersion.ts",
+    warmCheck: "src/warmCheck.ts",
+    warmCheckClient: "src/warmCheckClient.ts",
     renderSetupWorker: "src/renderSetupWorker.ts",
     backgroundChecksWorker: "src/backgroundChecksWorker.ts",
     sherpaWorker: "src/whisper/sherpaWorker.ts",

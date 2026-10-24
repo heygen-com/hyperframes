@@ -11,7 +11,11 @@ import {
   truncateSnippet,
   WINDOW_TIMELINE_ASSIGN_PATTERN,
 } from "../utils";
-import { COMPOSITION_VARIABLE_TYPES, isSafeMediaUrl } from "@hyperframes/parsers/composition";
+import {
+  COMPOSITION_VARIABLE_TYPES,
+  isCompositionVariable,
+  isSafeMediaUrl,
+} from "@hyperframes/parsers/composition";
 import { COMPOSITION_ATTRIBUTES, readClipTiming } from "@hyperframes/parsers/composition-contract";
 import { resolveCompositionDuration } from "@hyperframes/parsers/composition-duration";
 import {
@@ -482,6 +486,17 @@ function variablesDeclarationFindings(
       });
       continue;
     }
+    if (!isCompositionVariable(e)) {
+      findings.push({
+        code: "invalid_composition_variables_declaration",
+        severity: "error",
+        message: `data-composition-variables entry [${i}] has a default that does not match its type, or an enum without an options array.`,
+        fixHint:
+          "Use number defaults for number variables, boolean defaults for boolean variables, and string defaults for other types. Enum variables also require an options array.",
+        snippet: truncateSnippet(tag.raw),
+      });
+      continue;
+    }
     const id = String(e.id);
     if (
       (e.type === "image" || varSrcIds.has(id)) &&
@@ -693,7 +708,7 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     for (const tag of tags) {
       if (isInsideInertTemplate(tag, tags)) continue;
       // A `data-composition-src` element is a MOUNT of a sub-composition, not a
-      // composition root, and sub-compositions.md documents mounting one source
+      // composition root, and the hyperframes skill's format.md documents mounting one source
       // repeatedly with different `data-variable-values` to get per-instance
       // variations. Those mounts legitimately share an id: the runtime rewrites
       // repeated ones to `id__hf1`, `id__hf2` so they coexist. Counting them

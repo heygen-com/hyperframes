@@ -1,3 +1,4 @@
+import { snippetSource } from "./snippetSource";
 import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -89,17 +90,10 @@ try {
   assert.equal(result.results[0]!.unmappedAnimations, 0);
   assert(
     result.snippets.some(
-      (s) => s.code.includes("function move") && s.targets.includes(0) && s.targets.includes(1),
+      (s) => s.code.includes("function move") && s.targets?.includes(0) && s.targets.includes(1),
     ),
   );
-  for (const s of result.snippets)
-    assert.equal(
-      s.code,
-      readFileSync(join(dir, s.file), "utf8")
-        .split(/(?<=\n)/)
-        .slice(s.startLine - 1, s.endLine)
-        .join(""),
-    );
+  for (const s of result.snippets) assert.equal(s.code, snippetSource(dir, s.id));
   const timeline = await live.timeline(runner, { at: 2, component: { selector: "#title" } });
   assert.equal(timeline.status, "found");
   assert(timeline.text.includes("index.html:"), "timeline maps its animations to source lines");

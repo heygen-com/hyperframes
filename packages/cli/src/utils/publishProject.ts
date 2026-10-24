@@ -1,5 +1,14 @@
 import { basename, dirname, join, posix, relative, resolve } from "node:path";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  fstatSync,
+  openSync,
+  readdirSync,
+  readFileSync,
+  type Stats,
+  statSync,
+} from "node:fs";
 import { parseHTML } from "linkedom";
 import AdmZip from "adm-zip";
 import ignore, { type Ignore } from "ignore";
@@ -130,25 +139,20 @@ function getUploadHeaders(
     }
   }
 
-  if (!Object.keys(headers).some((key) => key.toLowerCase() === "content-type")) {
-    headers["content-type"] = contentType;
+  setHeaderIfAbsent(headers, "content-type", contentType);
+  const signedHeaders =
+    new URL(uploadUrl).searchParams.get("X-Amz-SignedHeaders")?.split(";") ?? [];
+  if (signedHeaders.includes("x-amz-server-side-encryption")) {
+    setHeaderIfAbsent(headers, "x-amz-server-side-encryption", "AES256");
   }
-
-  const signedHeaders = new URL(uploadUrl).searchParams.get("X-Amz-SignedHeaders");
-  if (
-    signedHeaders?.split(";").includes("x-amz-server-side-encryption") &&
-    !Object.keys(headers).some((key) => key.toLowerCase() === "x-amz-server-side-encryption")
-  ) {
-    headers["x-amz-server-side-encryption"] = "AES256";
+  if (signedHeaders.includes("content-length")) {
+    setHeaderIfAbsent(headers, "content-length", String(archiveByteLength));
   }
-  if (
-    signedHeaders?.split(";").includes("content-length") &&
-    !Object.keys(headers).some((key) => key.toLowerCase() === "content-length")
-  ) {
-    headers["content-length"] = String(archiveByteLength);
-  }
-
   return headers;
+}
+
+function setHeaderIfAbsent(headers: Record<string, string>, name: string, value: string): void {
+  if (!Object.keys(headers).some((key) => key.toLowerCase() === name)) headers[name] = value;
 }
 
 async function readJson(response: Response): Promise<unknown> {
@@ -338,9 +342,66 @@ function collectProjectFiles(
 
 const EXT_ASSETS_PREFIX = "_ext";
 
+/** Files whose text a reference rewrite or scan reads; they are always staged in memory. */
+export const TEXT_FILE_EXTS = /\.(html?|css|m?js|cjs|json|svg|xml|txt)$/i;
+
+/** A large non-text project file left on disk; `size` and `mtimeMs` detect an edit after staging. */
+export interface DiskFile {
+  absPath: string;
+  size: number;
+  mtimeMs: number;
+}
+
+export type StagedFile = Buffer | DiskFile;
+
+export function stagedSize(file: StagedFile): number {
+  return Buffer.isBuffer(file) ? file.byteLength : file.size;
+}
+
+function assertSame(file: DiskFile, now: Stats | undefined): void {
+  if (now?.size !== file.size || now.mtimeMs !== file.mtimeMs) {
+    throw new Error(`${file.absPath} changed on disk while it was being prepared. Run it again.`);
+  }
+}
+
+export function assertUnchanged(file: DiskFile): void {
+  assertSame(file, statSync(file.absPath, { throwIfNoEntry: false }));
+}
+
+/** Reads through one descriptor, so `check` (run before and after) sees the stat of the bytes returned. */
+export function readChecked(path: string, check: (stat: Stats) => void): Buffer {
+  const fd = openSync(path, "r");
+  try {
+    check(fstatSync(fd));
+    const bytes = readFileSync(fd);
+    check(fstatSync(fd));
+    return bytes;
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/** The staged bytes; a file left on disk is read now and must not have changed since staging. */
+export function readStaged(file: StagedFile): Buffer {
+  if (Buffer.isBuffer(file)) return file;
+  return readChecked(file.absPath, (stat) => assertSame(file, stat));
+}
+
+function stageFile(absPath: string, onDiskMinBytes: number): StagedFile {
+  const fd = openSync(absPath, "r");
+  try {
+    const { size, mtimeMs } = fstatSync(fd);
+    if (size < onDiskMinBytes || TEXT_FILE_EXTS.test(absPath)) return readFileSync(fd);
+    return { absPath, size, mtimeMs };
+  } finally {
+    closeSync(fd);
+  }
+}
+
 interface ExternalAssetContext {
   absProjectDir: string;
-  fileContents: Map<string, Buffer>;
+  fileContents: Map<string, StagedFile>;
+  onDiskMinBytes: number;
   externalMap: Map<string, string>;
   usedArchivePaths: Set<string>;
 }
@@ -361,7 +422,7 @@ function addExternalAsset(ctx: ExternalAssetContext, absPath: string): string {
     archivePath = `${base}_${i}${ext}`;
   }
 
-  ctx.fileContents.set(archivePath, readFileSync(absPath));
+  ctx.fileContents.set(archivePath, stageFile(absPath, ctx.onDiskMinBytes));
   ctx.externalMap.set(absPath, archivePath);
   ctx.usedArchivePaths.add(archivePath);
   return archivePath;
@@ -383,25 +444,29 @@ function tryResolveExternal(
   return addExternalAsset(ctx, absPath);
 }
 
-function rewriteCssUrls(
-  ctx: ExternalAssetContext,
+/** Resolves a raw attribute or CSS `url()` value to the archive path or absolute
+ * URL it should point at, or `null` to leave it untouched. */
+export type HtmlAttributeResolver = (rawValue: string, referrerAbsDir: string) => string | null;
+
+function referenceFrom(entryPath: string, target: string): string {
+  return isNonRelativeUrl(target) ? target : posix.relative(posix.dirname(entryPath), target);
+}
+
+export function rewriteCssUrls(
   css: string,
   referrerAbsDir: string,
   entryPath: string,
+  resolveTarget: HtmlAttributeResolver,
 ): { css: string; modified: boolean } {
   let modified = false;
   const rewritten = css.replace(CSS_URL_RE, (full, quote: string, rawUrl: string) => {
-    const archivePath = tryResolveExternal(ctx, (rawUrl || "").trim(), referrerAbsDir);
-    if (!archivePath) return full;
+    const target = resolveTarget((rawUrl || "").trim(), referrerAbsDir);
+    if (!target) return full;
     modified = true;
-    return `url(${quote || ""}${posix.relative(posix.dirname(entryPath), archivePath)}${quote || ""})`;
+    return `url(${quote || ""}${referenceFrom(entryPath, target)}${quote || ""})`;
   });
   return { css: rewritten, modified };
 }
-
-/** Resolves a raw attribute value (plus the referrer's absolute directory) to
- * the archive path it should point at, or `null` to leave it untouched. */
-export type HtmlAttributeResolver = (rawValue: string, referrerAbsDir: string) => string | null;
 
 interface RewriteHtmlAttributesOptions {
   /** Attributes to inspect (default: src + href, matching the external-asset
@@ -436,26 +501,26 @@ export function rewriteHtmlAttributes(
     for (const attr of attrs) {
       const val = (el.getAttribute(attr) || "").trim();
       if (!val) continue;
-      const archivePath = resolveTarget(val, referrerAbsDir);
-      if (!archivePath) continue;
-      el.setAttribute(attr, posix.relative(posix.dirname(entryPath), archivePath));
+      const target = resolveTarget(val, referrerAbsDir);
+      if (!target) continue;
+      el.setAttribute(attr, referenceFrom(entryPath, target));
       modified = true;
     }
   }
   return modified;
 }
 
-function rewriteStyleBlocks(
-  ctx: ExternalAssetContext,
+export function rewriteStyleBlocks(
   document: Document,
   referrerAbsDir: string,
   entryPath: string,
+  resolveTarget: HtmlAttributeResolver,
 ): boolean {
   let modified = false;
   for (const styleEl of document.querySelectorAll("style")) {
     const css = styleEl.textContent || "";
     if (!css.includes("url(")) continue;
-    const result = rewriteCssUrls(ctx, css, referrerAbsDir, entryPath);
+    const result = rewriteCssUrls(css, referrerAbsDir, entryPath, resolveTarget);
     if (result.modified) {
       styleEl.textContent = result.css;
       modified = true;
@@ -464,7 +529,7 @@ function rewriteStyleBlocks(
   for (const el of document.querySelectorAll("[style]")) {
     const style = el.getAttribute("style") || "";
     if (!style.includes("url(")) continue;
-    const result = rewriteCssUrls(ctx, style, referrerAbsDir, entryPath);
+    const result = rewriteCssUrls(style, referrerAbsDir, entryPath, resolveTarget);
     if (result.modified) {
       el.setAttribute("style", result.css);
       modified = true;
@@ -476,10 +541,9 @@ function rewriteStyleBlocks(
 function localizeHtmlEntry(ctx: ExternalAssetContext, entryPath: string, content: Buffer): void {
   const referrerAbsDir = resolve(ctx.absProjectDir, dirname(entryPath));
   const { document } = parseHTML(content.toString("utf-8"));
-  const attrsChanged = rewriteHtmlAttributes(document, referrerAbsDir, entryPath, (val, dir) =>
-    tryResolveExternal(ctx, val, dir),
-  );
-  const stylesChanged = rewriteStyleBlocks(ctx, document, referrerAbsDir, entryPath);
+  const resolveTarget: HtmlAttributeResolver = (val, dir) => tryResolveExternal(ctx, val, dir);
+  const attrsChanged = rewriteHtmlAttributes(document, referrerAbsDir, entryPath, resolveTarget);
+  const stylesChanged = rewriteStyleBlocks(document, referrerAbsDir, entryPath, resolveTarget);
   if (attrsChanged || stylesChanged) {
     ctx.fileContents.set(entryPath, Buffer.from(document.toString(), "utf-8"));
   }
@@ -489,7 +553,9 @@ function localizeCssEntry(ctx: ExternalAssetContext, entryPath: string, content:
   const referrerAbsDir = resolve(ctx.absProjectDir, dirname(entryPath));
   const css = content.toString("utf-8");
   if (!css.includes("url(")) return;
-  const result = rewriteCssUrls(ctx, css, referrerAbsDir, entryPath);
+  const result = rewriteCssUrls(css, referrerAbsDir, entryPath, (val, dir) =>
+    tryResolveExternal(ctx, val, dir),
+  );
   if (result.modified) {
     ctx.fileContents.set(entryPath, Buffer.from(result.css, "utf-8"));
   }
@@ -502,17 +568,19 @@ function localizeCssEntry(ctx: ExternalAssetContext, entryPath: string, content:
  */
 export function localizeExternalAssets(
   absProjectDir: string,
-  fileContents: Map<string, Buffer>,
+  fileContents: Map<string, StagedFile>,
+  onDiskMinBytes = Infinity,
 ): number {
   const ctx: ExternalAssetContext = {
     absProjectDir,
     fileContents,
+    onDiskMinBytes,
     externalMap: new Map(),
     usedArchivePaths: new Set(),
   };
 
   for (const [entryPath, content] of [...fileContents.entries()]) {
-    if (entryPath.startsWith(EXT_ASSETS_PREFIX + "/")) continue;
+    if (entryPath.startsWith(EXT_ASSETS_PREFIX + "/") || !Buffer.isBuffer(content)) continue;
     if (entryPath.endsWith(".html") || entryPath.endsWith(".htm")) {
       localizeHtmlEntry(ctx, entryPath, content);
     } else if (entryPath.endsWith(".css")) {
@@ -531,6 +599,14 @@ export function localizeExternalAssets(
  * keeps calling `createPublishArchive` directly.
  */
 export function buildPublishFileMap(projectDir: string): Map<string, Buffer> {
+  return stagePublishFiles(projectDir, Infinity) as Map<string, Buffer>;
+}
+
+/** {@link buildPublishFileMap}, but non-text files of `onDiskMinBytes` or more stay on disk. */
+export function stagePublishFiles(
+  projectDir: string,
+  onDiskMinBytes: number,
+): Map<string, StagedFile> {
   const absProjectDir = resolve(projectDir);
   const filePaths: string[] = [];
   collectProjectFiles(absProjectDir, absProjectDir, filePaths, createProjectIgnore(absProjectDir));
@@ -540,12 +616,12 @@ export function buildPublishFileMap(projectDir: string): Map<string, Buffer> {
     );
   }
 
-  const fileContents = new Map<string, Buffer>();
+  const fileContents = new Map<string, StagedFile>();
   for (const filePath of filePaths) {
-    fileContents.set(filePath, readFileSync(join(absProjectDir, filePath)));
+    fileContents.set(filePath, stageFile(join(absProjectDir, filePath), onDiskMinBytes));
   }
 
-  localizeExternalAssets(absProjectDir, fileContents);
+  localizeExternalAssets(absProjectDir, fileContents, onDiskMinBytes);
   return fileContents;
 }
 
@@ -561,7 +637,7 @@ export function buildPublishFileMap(projectDir: string): Map<string, Buffer> {
  * rather than of its contents, which is the opposite of what a
  * content-addressed artifact needs.
  *
- * Built from local components on purpose: `fromDate2DOS` reads `getFullYear`,
+ * Built from local components on purpose: adm-zip's DOS date encoding reads `getFullYear`,
  * `getMonth`, `getHours` and friends, so a fixed *instant* would still encode
  * differently in different timezones. Fixing the wall-clock reading is what
  * makes the bytes match across machines. 1980-01-01 is the earliest a DOS

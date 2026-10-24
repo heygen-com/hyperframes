@@ -103,7 +103,7 @@ export default defineCommand({
     }
 
     let text: string;
-    if (isTextFile(input)) {
+    if (args["text-file"] !== undefined || isTextFile(input)) {
       text = readFileSync(resolve(input), "utf-8").trim();
       if (!text) {
         console.error(c.error("File is empty."));

@@ -29,6 +29,7 @@ interface PreviewMessage {
   source?: string;
   type?: string;
   clips?: unknown;
+  isPlaying?: unknown;
 }
 
 export interface PreviewMessageRouterDeps {
@@ -68,6 +69,7 @@ function acceptedPreviewMessage(
 function handleStateMessage(
   deps: PreviewMessageRouterDeps,
   iframe: HTMLIFrameElement | null,
+  playingHoldsClipListPosts: boolean,
 ): void {
   try {
     if (usePlayerStore.getState().elements.length === 0) {
@@ -76,7 +78,7 @@ function handleStateMessage(
         deps.processTimelineMessageRef.current(manifest);
       }
     }
-    if (Date.now() - deps.lastTimelineMessageRef.current > 500) {
+    if (!playingHoldsClipListPosts && Date.now() - deps.lastTimelineMessageRef.current > 500) {
       deps.enrichMissingCompositionsRef.current();
     }
   } catch {}
@@ -112,7 +114,7 @@ export function createPreviewMessageHandler(
     const iframe = deps.iframeRef.current;
     const data = acceptedPreviewMessage(e, iframe);
     if (!data) return;
-    if (data.type === "state") return handleStateMessage(deps, iframe);
+    if (data.type === "state") return handleStateMessage(deps, iframe, data.isPlaying === true);
     if (data.type === "timeline" && Array.isArray(data.clips)) {
       handleTimelineMessage(deps, iframe, data as unknown as ClipManifestMessage);
     }

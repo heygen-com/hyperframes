@@ -115,6 +115,18 @@ describe("createRenderPlan", () => {
     expect(plan.bestEffort).toBe(false);
   });
 
+  it.each([undefined, "off"])("preserves page motion blur override %s", (value) => {
+    expect(createRenderPlan({ dir: projectDir, "page-motion-blur": value }).pageMotionBlur).toBe(
+      value,
+    );
+  });
+
+  it.each(["", "on", "false", "OFF"])("rejects unsupported page motion blur value %s", (value) => {
+    expect(() => createRenderPlan({ dir: projectDir, "page-motion-blur": value })).toThrow(
+      CliUsageError,
+    );
+  });
+
   it("preserves an aspect-agnostic resolution alias through the execution plan", () => {
     const plan = createRenderPlan({ dir: projectDir, resolution: "1080p" });
     expect(plan.outputResolution).toBe("landscape");

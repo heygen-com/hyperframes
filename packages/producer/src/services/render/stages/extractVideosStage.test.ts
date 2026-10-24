@@ -114,6 +114,17 @@ describe("appendAutoDetectedVideoAudio", () => {
     expect(composition.audios).toHaveLength(0);
   });
 
+  it("keeps the loop and speed of auto-detected video audio", () => {
+    const composition = {
+      videos: [makeVideo({ loop: true, playbackRate: 2, mediaStart: 1 })],
+      audios: [] as never[],
+    };
+    appendAutoDetectedVideoAudio(composition, [makeExtracted("v1", true)]);
+    expect(composition.audios).toEqual([
+      expect.objectContaining({ loop: true, playbackRate: 2, mediaStart: 1 }),
+    ]);
+  });
+
   it("skips a hidden video so a track hidden in Studio stays silent in the render", () => {
     const composition = {
       videos: [makeVideo({ hidden: true })],

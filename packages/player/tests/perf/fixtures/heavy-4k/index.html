@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>perf fixture: heavy-4k</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #050714;
+        overflow: hidden;
+        font-family: system-ui, sans-serif;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      video {
+        position: absolute;
+        object-fit: cover;
+      }
+    </style>
+    <script src="/vendor/gsap.min.js"></script>
+    <script data-hyperframes-runtime="1" src="/vendor/hyperframe.runtime.iife.js"></script>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-width="1920"
+      data-height="1080"
+      data-duration="10"
+      data-fps="30"
+    ></div>
+    <script>
+      (function () {
+        var root = document.getElementById("root");
+        var tl = gsap.timeline({ paused: true });
+        function video(src, track, start, duration, css) {
+          var v = document.createElement("video");
+          v.setAttribute("data-start", String(start));
+          v.setAttribute("data-duration", String(duration));
+          v.setAttribute("data-track-index", String(track));
+          v.setAttribute("src", "../_media/" + src);
+          v.setAttribute("preload", "auto");
+          v.setAttribute("playsinline", "");
+          v.muted = true;
+          v.style.cssText = css;
+          root.appendChild(v);
+          return v;
+        }
+        // Three 4K decodes at once: one full frame and two picture-in-picture.
+        video("hevc-2160.mp4", 0, 0, 10, "inset:0;width:100%;height:100%;");
+        var a = video(
+          "h264-2160.mp4",
+          1,
+          0,
+          10,
+          "left:80px;top:80px;width:640px;height:360px;border-radius:16px;",
+        );
+        var b = video(
+          "hevc-2160.mp4",
+          2,
+          0,
+          10,
+          "right:80px;bottom:80px;width:640px;height:360px;border-radius:16px;",
+        );
+        tl.to(a, { x: 400, y: 200, duration: 10, ease: "none" }, 0);
+        tl.to(b, { x: -400, y: -200, duration: 10, ease: "none" }, 0);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+      })();
+    </script>
+  </body>
+</html>

@@ -120,6 +120,7 @@ class HyperframesPlayer extends HTMLElement {
 
   private shadow: ShadowRoot;
   private container: HTMLDivElement;
+  private readonly sizer = document.createElement("div");
   private iframe: HTMLIFrameElement;
   private posterEl: HTMLImageElement | null = null;
   private controlsApi: ReturnType<typeof setupControls> | null = null;
@@ -169,6 +170,8 @@ class HyperframesPlayer extends HTMLElement {
 
     adoptShadowStyles(this.shadow, PLAYER_STYLES);
     ({ container: this.container, iframe: this.iframe } = createCompositionIframe());
+    this.sizer.className = "hfp-sizer";
+    this.shadow.appendChild(this.sizer);
     this.shadow.appendChild(this.container);
 
     const loaderElements = createShaderLoader();
@@ -1486,6 +1489,7 @@ class HyperframesPlayer extends HTMLElement {
     const changed = width !== this._compositionWidth || height !== this._compositionHeight;
     this._compositionWidth = width;
     this._compositionHeight = height;
+    this.sizer.style.aspectRatio = `${width} / ${height}`;
     this._rescale();
     if (!changed) return;
     const detail = { compositionWidth: width, compositionHeight: height };

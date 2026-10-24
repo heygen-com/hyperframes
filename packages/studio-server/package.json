@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/studio-server",
-  "version": "0.8.173",
+  "version": "0.8.192",
   "repository": {
     "type": "git",
     "url": "https://github.com/heygen-com/hyperframes",
@@ -189,8 +189,7 @@
     "hono": "^4.0.0",
     "linkedom": "^0.18.12",
     "postcss": "^8.5.8",
-    "postcss-selector-parser": "^7.1.2",
-    "sharp": "^0.35.0"
+    "postcss-selector-parser": "^7.1.2"
   },
   "devDependencies": {
     "@types/node": "^25.0.10",
@@ -198,5 +197,8 @@
     "tsx": "^4.21.0",
     "typescript": "^5.0.0",
     "vitest": "^4.1.11"
+  },
+  "optionalDependencies": {
+    "sharp": "^0.35.0"
   }
 }

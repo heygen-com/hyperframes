@@ -1,3 +1,4 @@
+import { acceleratedCanvasTrackerSource } from "../pageMotionBlur.js";
 import { parseHTML } from "linkedom";
 
 export const RUNTIME_BOOTSTRAP_ATTR = "data-hyperframes-preview-runtime";
@@ -347,7 +348,7 @@ export function insertBeforeCloseTag(
   return insertBeforeDocumentTag(html, `</${name}`, markup);
 }
 
-export function insertRuntimeTag(html: string, tag: string): string {
+function insertTagInHead(html: string, tag: string): string {
   const withHead = insertBeforeCloseTag(html, "head", `${tag}\n`);
   if (withHead !== null) return withHead;
   const htmlOpenMatch = html.match(/<html\b[^>]*>/i);
@@ -361,6 +362,16 @@ export function insertRuntimeTag(html: string, tag: string): string {
     return html.slice(0, insertPos) + tag + html.slice(insertPos);
   }
   return tag + html;
+}
+
+const ACCEL_TRACKER_ATTR = "data-hf-accel-tracker";
+const OPTS_INTO_MOTION_BLUR = /\sdata-motion-blur\s*=\s*["']?on[\s"'>]/i;
+
+export function insertRuntimeTag(html: string, tag: string): string {
+  const withRuntime = insertTagInHead(html, tag);
+  if (!OPTS_INTO_MOTION_BLUR.test(html) || html.includes(ACCEL_TRACKER_ATTR)) return withRuntime;
+  const tracker = `<script ${ACCEL_TRACKER_ATTR}>${acceleratedCanvasTrackerSource()}</script>`;
+  return injectTagsAtHeadStart(withRuntime, tracker);
 }
 
 /**

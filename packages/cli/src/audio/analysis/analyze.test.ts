@@ -83,6 +83,34 @@ describe("analyzeSignal", () => {
   });
 });
 
+describe("analyzeSignal quality", () => {
+  const service: AudioAnalysisProvider<AudioSignal> = {
+    id: "service",
+    local: false,
+    capabilities: ["describe"],
+    analyze: async () => ({ tags: [{ label: "speech", score: 0.9 }] }),
+  };
+
+  it("keeps audio on this machine unless best is asked for, and says what best would add", async () => {
+    const local = await analyzeSignal(tone, { capabilities: ["describe"] }, [service]);
+    expect(local.values.describe).toBeNull();
+    expect(local.ladder.describe).toEqual([
+      {
+        provider: "service",
+        outcome: "excluded",
+        reason: "quality local keeps audio on this machine",
+      },
+    ]);
+    expect(local.warnings.at(-1)).toContain("--quality best");
+
+    const best = await analyzeSignal(tone, { capabilities: ["describe"], quality: "best" }, [
+      service,
+    ]);
+    expect(best.provenance.describe).toBe("service");
+    expect(best.warnings).toEqual([]);
+  });
+});
+
 describe("envelopeHopMs", () => {
   it("keeps short sounds at 5 ms and coarsens long ones to about 2,000 values", () => {
     expect(envelopeHopMs(1)).toBe(5);

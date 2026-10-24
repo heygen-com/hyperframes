@@ -1,6 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_CONFIG } from "@hyperframes/engine";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync, type Stats } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+  type Stats,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import {
@@ -215,6 +224,28 @@ describe("parseCompositionEntryArg", () => {
     expect(err.kind).toBe("outside-project");
   });
 
+  it("accepts an absolute path inside the project and returns it project-relative", () => {
+    expect(
+      parseCompositionEntryArg(resolve(PROJECT, "compositions/intro.html"), PROJECT, stat),
+    ).toEqual({ ok: true, value: "compositions/intro.html" });
+  });
+
+  it("keeps a dot-named entry relative to the project", () => {
+    const dotStat = makeStat({ [resolve(PROJECT, ".solo.html")]: "file", [PROJECT]: "directory" });
+    expect(parseCompositionEntryArg(".solo.html", PROJECT, dotStat)).toEqual({
+      ok: true,
+      value: ".solo.html",
+    });
+  });
+
+  it("rejects an absolute path outside the project", () => {
+    const outsideStat = makeStat({ "/elsewhere/x.html": "file", [PROJECT]: "directory" });
+    const err = expectCompositionErr(
+      parseCompositionEntryArg("/elsewhere/x.html", PROJECT, outsideStat),
+    );
+    expect(err.kind).toBe("outside-project");
+  });
+
   it("rejects a sibling-prefix path (trailing-separator guard)", () => {
     // Without the trailing-separator guard, `/proj-evil/x.html`.startsWith('/proj')
     // returns true and the sibling-directory escape passes validation.
@@ -228,6 +259,28 @@ describe("parseCompositionEntryArg", () => {
     expect(err.kind).toBe("outside-project");
   });
 });
+
+describe.skipIf(process.platform === "win32")(
+  "parseCompositionEntryArg through a symlinked project path",
+  () => {
+    it("accepts an absolute entry spelled with the alias of the project directory", () => {
+      const root = realpathSync(mkdtempSync(join(tmpdir(), "hyperframes-entry-alias-")));
+      try {
+        const project = join(root, "project");
+        mkdirSync(project);
+        writeFileSync(join(project, "entry.html"), "<html></html>");
+        const alias = join(root, "alias");
+        symlinkSync(project, alias);
+        expect(parseCompositionEntryArg(join(alias, "entry.html"), project, statSync)).toEqual({
+          ok: true,
+          value: "entry.html",
+        });
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+  },
+);
 
 describe("resolveDefaultFpsArg", () => {
   function writeComposition(path: string, fps: string): void {
@@ -274,6 +327,21 @@ describe("resolveDefaultFpsArg", () => {
     const project = makeProject();
     try {
       expect(resolveDefaultFpsArg(undefined, project.dir, project.indexPath, undefined)).toBe("24");
+    } finally {
+      project.cleanup();
+    }
+  });
+
+  it("uses an uppercase HTML data-fps declaration when --fps is omitted", () => {
+    const project = makeProject();
+    try {
+      writeFileSync(
+        project.indexPath,
+        '<!DOCTYPE html><html><body><div data-composition-id="root" DATA-FPS="24">x</div></body></html>',
+      );
+
+      expect(resolveDefaultFpsArg(undefined, project.dir, project.indexPath, undefined)).toBe("24");
+      expect(resolveDefaultFpsArg("60", project.dir, project.indexPath, undefined)).toBe("60");
     } finally {
       project.cleanup();
     }

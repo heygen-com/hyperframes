@@ -1,8 +1,9 @@
 import { spawnSync } from "node:child_process";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import puppeteer, { type Browser } from "puppeteer-core";
+import type { Browser } from "puppeteer-core";
 import { resolveHeadlessShellPath } from "./browserManager.js";
 import { applyVideoMetadataHints } from "./frameCapture.js";
+import { closeTestChrome, launchTestChrome } from "./__fixtures__/loopback.js";
 
 const chromePath = resolveHeadlessShellPath();
 const hasBrowser = chromePath !== undefined && spawnSync(chromePath, ["--version"]).status === 0;
@@ -23,15 +24,9 @@ describe.skipIf(!hasBrowser)("applyVideoMetadataHints in Chrome", () => {
   let browser: Browser;
 
   beforeAll(async () => {
-    browser = await puppeteer.launch({
-      executablePath: chromePath,
-      headless: true,
-      args: ["--no-sandbox", "--disable-dev-shm-usage"],
-    });
+    browser = await launchTestChrome(chromePath);
   });
-  afterAll(async () => {
-    await browser?.close();
-  });
+  afterAll(() => closeTestChrome(browser));
 
   it("lays out a video without loaded metadata as it would with it", async () => {
     const page = await browser.newPage();

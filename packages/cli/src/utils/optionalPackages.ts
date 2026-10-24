@@ -39,9 +39,14 @@ type PinnedPackage = keyof typeof PINNED_PACKAGES;
 
 export const CACHE_DIR = join(homedir(), ".cache", "hyperframes", "optional");
 
+/** Installed on first use only when a host bundled the CLI without its sharp dependency. */
+export const SHARP_VERSION = "0.35.3";
+
+type FirstUsePackage = OptionalPackage | "sharp";
+
 export interface OptionalPackageDeps {
   cacheDir: string;
-  loadBesideCli(name: OptionalPackage): unknown | null;
+  loadBesideCli(name: FirstUsePackage): unknown | null;
   /** The package's exports when already installed in `dir`, else null. */
   loadInstalled(dir: string, name: string): unknown | null;
   /** Install `name@version` into `dir`; rejects with npm's output on failure. */
@@ -50,8 +55,12 @@ export interface OptionalPackageDeps {
 }
 
 /** One directory per package and version, so a version bump never reads a stale install. */
-export function optionalPackageDir(name: OptionalPackage, cacheDir = CACHE_DIR): string {
-  return join(cacheDir, `${name.replace("/", "__")}@${OPTIONAL_PACKAGES[name]}`);
+export function optionalPackageDir(name: FirstUsePackage, cacheDir = CACHE_DIR): string {
+  return join(cacheDir, `${name.replace("/", "__")}@${versionOf(name)}`);
+}
+
+function versionOf(name: FirstUsePackage): string {
+  return name === "sharp" ? SHARP_VERSION : OPTIONAL_PACKAGES[name];
 }
 
 /** Installed version, or null. Reads the manifest only, so it never loads a native binding. */
@@ -62,18 +71,27 @@ export function installedOptionalPackageVersion(
 ): string | null {
   if (pinnedPackageBesideCli(name, cliUrl)?.resolution === "entry") return OPTIONAL_PACKAGES[name];
   const dir = optionalPackageDir(name, cacheDir);
-  if (!isInstalled(dir, name)) return null;
-  return (JSON.parse(readFileSync(manifestPath(dir, name), "utf-8")) as { version: string })
-    .version;
+  try {
+    const manifest: unknown = JSON.parse(readFileSync(manifestPath(dir, name), "utf-8"));
+    if (typeof manifest !== "object" || manifest === null || !("version" in manifest)) return null;
+    const version = manifest.version;
+    return typeof version === "string" && version.length > 0 ? version : null;
+  } catch {
+    return null;
+  }
 }
 
 export function loadInstalledOptionalPackage<N extends OptionalPackage>(
   name: N,
   deps: OptionalPackageDeps = defaultDeps,
 ): OptionalPackageModules[N] | null {
-  const found =
-    deps.loadBesideCli(name) ?? deps.loadInstalled(optionalPackageDir(name, deps.cacheDir), name);
-  return found as OptionalPackageModules[N] | null;
+  return loadPresent(name, deps) as OptionalPackageModules[N] | null;
+}
+
+function loadPresent(name: FirstUsePackage, deps: OptionalPackageDeps): unknown | null {
+  return (
+    deps.loadBesideCli(name) ?? deps.loadInstalled(optionalPackageDir(name, deps.cacheDir), name)
+  );
 }
 
 /**
@@ -85,11 +103,111 @@ export async function loadOptionalPackage<N extends OptionalPackage>(
   feature: string,
   deps: OptionalPackageDeps = defaultDeps,
 ): Promise<OptionalPackageModules[N]> {
-  const present = loadInstalledOptionalPackage(name, deps);
+  return (await loadOrInstall(name, feature, deps)) as OptionalPackageModules[N];
+}
+
+type Sharp = typeof import("sharp").default;
+type FindSharp = (feature: string) => Sharp | null;
+
+export async function loadSharp(
+  feature: string,
+  deps: OptionalPackageDeps = defaultDeps,
+  besideCli: FindSharp = requireSharpBesideCli,
+): Promise<Sharp> {
+  return besideCli(feature) ?? sharpExport(await loadOrInstall("sharp", feature, deps));
+}
+
+let backgroundSharpInstall: Promise<unknown> | undefined;
+
+/** The installed sharp; else rejects now and installs it once in the background for a later call. */
+export async function loadSharpInBackground(
+  feature: string,
+  deps: OptionalPackageDeps = defaultDeps,
+  besideCli: FindSharp = requireSharpBesideCli,
+): Promise<Sharp> {
+  const present = loadInstalledSharp(feature, deps, besideCli);
   if (present !== null) return present;
+  const install = loadOrInstall("sharp", feature, deps);
+  if (backgroundSharpInstall !== install) {
+    backgroundSharpInstall = install;
+    install.catch((err: unknown) => deps.log((err as Error).message));
+  }
+  const notYet = Symbol("installing");
+  const settled = await Promise.race([install, notYet]);
+  if (settled === notYet)
+    throw new Error(`sharp is not installed yet; installing it once for ${feature}`);
+  return sharpExport(settled);
+}
+
+export function loadInstalledSharp(
+  feature: string,
+  deps: OptionalPackageDeps = defaultDeps,
+  besideCli: FindSharp = requireSharpBesideCli,
+): Sharp | null {
+  const found = besideCli(feature) ?? loadPresent("sharp", deps);
+  return found === null ? null : sharpExport(found);
+}
+
+/** Any version counts, found as require finds it (NODE_PATH included). A copy that fails to load throws. */
+export function requireSharpBesideCli(feature: string, cliUrl = import.meta.url): Sharp | null {
+  const req = createRequire(cliUrl);
+  let entry: string;
+  try {
+    entry = req.resolve("sharp");
+  } catch {
+    return null;
+  }
+  try {
+    return sharpExport(req(entry));
+  } catch (err) {
+    throw new Error(
+      `${feature} needs sharp, which is installed but could not load (${(err as Error).message}). ` +
+        "Reinstall hyperframes with optional dependencies enabled, or run: npm i sharp",
+    );
+  }
+}
+
+function sharpExport(module: unknown): Sharp {
+  const m = module as Sharp & { default?: Sharp };
+  return m.default ?? m;
+}
+
+/** `1` turns off every first-use install; a comma-separated list turns off just those packages. */
+function installTurnedOff(name: FirstUsePackage): boolean {
+  const value = process.env["HYPERFRAMES_NO_OPTIONAL_INSTALL"]?.trim() ?? "";
+  return value === "1" || value.split(",").some((entry) => entry.trim() === name);
+}
+
+const installs = new WeakMap<OptionalPackageDeps, Map<FirstUsePackage, Promise<unknown>>>();
+
+/** One install per package per process: concurrent and later callers share its result, failure included. */
+function loadOrInstall(
+  name: FirstUsePackage,
+  feature: string,
+  deps: OptionalPackageDeps,
+): Promise<unknown> {
+  const present = loadPresent(name, deps);
+  if (present !== null) return Promise.resolve(present);
+  let pending = installs.get(deps);
+  if (!pending) installs.set(deps, (pending = new Map()));
+  let install = pending.get(name);
+  if (!install) pending.set(name, (install = installAndLoad(name, feature, deps)));
+  return install;
+}
+
+async function installAndLoad(
+  name: FirstUsePackage,
+  feature: string,
+  deps: OptionalPackageDeps,
+): Promise<unknown> {
   const dir = optionalPackageDir(name, deps.cacheDir);
 
-  const version = OPTIONAL_PACKAGES[name];
+  const version = versionOf(name);
+  if (installTurnedOff(name)) {
+    throw new Error(
+      `${name} is not installed, and HYPERFRAMES_NO_OPTIONAL_INSTALL turns off installing it; ${feature} needs it.`,
+    );
+  }
   deps.log(`installing ${name} for ${feature}, once`);
   try {
     await deps.install(dir, name, version);
@@ -107,7 +225,7 @@ export async function loadOptionalPackage<N extends OptionalPackage>(
   if (loaded === null) {
     throw new Error(`${name}@${version} installed into ${dir} but could not be loaded.`);
   }
-  return loaded as OptionalPackageModules[N];
+  return loaded;
 }
 
 const NETWORK_FAILURE = /ENOTFOUND|ETIMEDOUT|EAI_AGAIN|ECONNRESET|ECONNREFUSED|network/i;
@@ -253,7 +371,7 @@ export async function install(
 
 const defaultDeps: OptionalPackageDeps = {
   cacheDir: CACHE_DIR,
-  loadBesideCli: (name) => loadBesideCli(name),
+  loadBesideCli: (name) => (name === "sharp" ? null : loadBesideCli(name)),
   loadInstalled,
   install,
   log: (line) => console.error(line),

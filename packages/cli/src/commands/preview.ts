@@ -477,17 +477,6 @@ export default defineCommand({
     // modes all receive identical --proxy/--no-proxy + config semantics.
     const autoProxy = resolveAutoProxy(dir, args.proxy as boolean | undefined);
 
-    // Kill orphaned chrome-headless-shell processes from previous crashed
-    // sessions. Deliberately last: this reaches outside the process and kills
-    // other people's PIDs, so it must not run for an invocation that turns out
-    // to be a validation error and never starts anything.
-    const orphansKilled = killOrphanedProcesses();
-    if (orphansKilled > 0 && !args.json) {
-      console.log(
-        `  ${c.dim(`Cleaned up ${orphansKilled} orphaned process${orphansKilled === 1 ? "" : "es"} from a previous session.`)}`,
-      );
-    }
-
     const launchMode = previewLaunchMode({
       background: Boolean(args.background),
       foreground: Boolean(args.foreground),
@@ -500,6 +489,17 @@ export default defineCommand({
     if (hostAppError) {
       reportPreviewFailure(Boolean(args.json), "start", "host-app-owns-preview", hostAppError);
       return;
+    }
+
+    // Kill orphaned chrome-headless-shell processes from previous crashed
+    // sessions. Deliberately last: this reaches outside the process and kills
+    // other people's PIDs, so it must not run for an invocation that turns out
+    // to be a validation error or a refusal and never starts anything.
+    const orphansKilled = killOrphanedProcesses();
+    if (orphansKilled > 0 && !args.json) {
+      console.log(
+        `  ${c.dim(`Cleaned up ${orphansKilled} orphaned process${orphansKilled === 1 ? "" : "es"} from a previous session.`)}`,
+      );
     }
 
     // Runs in the CLI worker while Studio starts, so it never delays the opening; --json skips it.

@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/parsers",
-  "version": "0.8.173",
+  "version": "0.8.192",
   "repository": {
     "type": "git",
     "url": "https://github.com/heygen-com/hyperframes",
@@ -124,6 +124,12 @@
       "import": "./src/ffBinaries.ts",
       "types": "./src/ffBinaries.ts"
     },
+    "./media-alpha": {
+      "bun": "./src/mediaAlpha.ts",
+      "node": "./dist/mediaAlpha.js",
+      "import": "./src/mediaAlpha.ts",
+      "types": "./src/mediaAlpha.ts"
+    },
     "./asset-resolution": {
       "bun": "./src/assetResolution.ts",
       "node": "./dist/assetResolution.js",
@@ -141,6 +147,18 @@
       "node": "./dist/timeSpans.js",
       "import": "./src/timeSpans.ts",
       "types": "./src/timeSpans.ts"
+    },
+    "./media-timing": {
+      "bun": "./src/mediaTiming.ts",
+      "node": "./dist/mediaTiming.js",
+      "import": "./src/mediaTiming.ts",
+      "types": "./src/mediaTiming.ts"
+    },
+    "./reference-resolver": {
+      "bun": "./src/referenceResolver.ts",
+      "node": "./dist/referenceResolver.js",
+      "import": "./src/referenceResolver.ts",
+      "types": "./src/referenceResolver.ts"
     },
     "./composition-duration": {
       "bun": "./src/compositionDuration.ts",
@@ -225,6 +243,10 @@
         "import": "./dist/ffBinaries.js",
         "types": "./dist/ffBinaries.d.ts"
       },
+      "./media-alpha": {
+        "import": "./dist/mediaAlpha.js",
+        "types": "./dist/mediaAlpha.d.ts"
+      },
       "./asset-resolution": {
         "import": "./dist/assetResolution.js",
         "types": "./dist/assetResolution.d.ts"
@@ -236,6 +258,14 @@
       "./time-spans": {
         "import": "./dist/timeSpans.js",
         "types": "./dist/timeSpans.d.ts"
+      },
+      "./media-timing": {
+        "import": "./dist/mediaTiming.js",
+        "types": "./dist/mediaTiming.d.ts"
+      },
+      "./reference-resolver": {
+        "import": "./dist/referenceResolver.js",
+        "types": "./dist/referenceResolver.d.ts"
       },
       "./composition-duration": {
         "import": "./dist/compositionDuration.js",

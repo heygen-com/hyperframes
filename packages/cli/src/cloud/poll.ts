@@ -1,8 +1,8 @@
 /**
  * Poll a HyperFrames render until it reaches a terminal state.
  *
- * Defaults: 10s interval, 60min cap — confirmed with the API owner. The
- * `start_to_close` timeout on the underlying Temporal workflow is the
+ * Defaults: 2s interval (well under the status GET's per-user rate limit), 60min cap.
+ * The `start_to_close` timeout on the underlying Temporal workflow is the
  * same order of magnitude, so polling longer would only hide a stuck
  * workflow rather than recover from one.
  *
@@ -25,7 +25,7 @@ export interface PollOptions {
   signal?: AbortSignal;
 }
 
-export const DEFAULT_POLL_INTERVAL_MS = 10_000;
+export const DEFAULT_POLL_INTERVAL_MS = 2_000;
 export const DEFAULT_MAX_WAIT_MS = 60 * 60 * 1000;
 
 const TERMINAL_STATUSES: ReadonlySet<HyperframesRenderStatus> = new Set(["completed", "failed"]);

@@ -54,6 +54,21 @@ export function pushWorkerDedupPerfs(
   }
 }
 
+/** Adds each worker's page-error console lines to `sink`, once per distinct line. */
+export function pushWorkerPageErrors(
+  results: ReadonlyArray<{ pageErrorLines?: string[] }>,
+  sink: string[],
+): void {
+  for (const result of results) {
+    for (const line of result.pageErrorLines ?? []) if (!sink.includes(line)) sink.push(line);
+  }
+}
+
+/** The console lines plus the workers' page-error lines the console does not already hold. */
+export function withWorkerPageErrors(consoleLines: string[], workerLines: string[]): string[] {
+  return [...consoleLines, ...workerLines.filter((line) => !consoleLines.includes(line))];
+}
+
 /**
  * Collapse per-session/per-worker static-dedup perf into one render-level
  * outcome. enabled/armed = OR across workers (they run the same gates on the
@@ -83,6 +98,8 @@ export function roundDb(value: number | undefined): number | undefined {
 export interface DrawElementPerfInput {
   compileGate?: string;
   clampReason?: string;
+  /** Engine init-time gate the pre-capture probe hit; its session may be closed before capture. */
+  probeGateReason?: string;
   workerInversion?: "inverted" | "reverted";
   /** Auto-resolved worker count before the inversion pinned it to 1 (set only when the inversion fired). */
   preInversionWorkers?: number;
@@ -145,7 +162,9 @@ function aggregateDrawElement(
   if (perfs.length === 0) return undefined;
   const modes = [...new Set(perfs.map((p) => p.captureMode).filter(Boolean))].sort();
   const gateReasons = [
-    ...new Set(perfs.map((p) => p.deGateReason).filter((r): r is string => !!r)),
+    ...new Set(
+      [de.probeGateReason, ...perfs.map((p) => p.deGateReason)].filter((r): r is string => !!r),
+    ),
   ].sort();
   const gpuRenderers = [
     ...new Set(perfs.map((p) => p.gpuRenderer).filter((r): r is string => !!r)),

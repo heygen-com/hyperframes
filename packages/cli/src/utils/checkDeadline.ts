@@ -2,22 +2,38 @@ import type { Browser, Page } from "puppeteer-core";
 import { normalizeErrorMessage } from "./errorMessage.js";
 import { withRemainingBudget } from "../capture/captureTimeout.js";
 import { BrowserCleanupError, closeManagedBrowser } from "../browser/launch.js";
+import type { CheckBrowserResult } from "./checkTypes.js";
 
-const CHECK_DEADLINE_MS = 120_000;
+const CHECK_IDLE_MS = 120_000;
 const SCRIPT_START = "[hyperframes:script:start] ";
 const SCRIPT_FINISH = "[hyperframes:script:finish] ";
 
+const PHASE_LABELS = {
+  copies: "making video copies",
+  launch: "starting Chrome",
+  load: "loading the page",
+  settle: "waiting for the page to be ready",
+  samples: "checking samples",
+  overlap: "running the overlap pass",
+  crops: "capturing finding crops",
+} as const;
+export type CheckPhase = keyof typeof PHASE_LABELS;
+const BEFORE_DEADLINE: ReadonlySet<CheckPhase> = new Set(["copies", "launch"]);
+
 export class CheckDeadlineError extends Error {
-  constructor(readonly sourceFile?: string) {
+  constructor(
+    readonly sourceFile?: string,
+    phases = "",
+  ) {
     super(
-      sourceFile === undefined
-        ? "Check did not finish within its deadline."
-        : `${sourceFile}: its script did not finish within the check deadline.`,
+      (sourceFile === undefined
+        ? "Check did not finish within its deadline"
+        : `${sourceFile}: its script did not finish within the check deadline`) + (phases || "."),
     );
   }
 }
 
-/** One Node clock starts at the composition browser and spans readiness, sampling and crops. */
+/** Ends a check that makes no progress for CHECK_IDLE_MS; each phase entered or operation settled restarts it. */
 export class CheckDeadline {
   private readonly abort = new AbortController();
   private readonly operations = new Set<Promise<unknown>>();
@@ -29,6 +45,9 @@ export class CheckDeadline {
   private readonly expiry: Promise<never>;
   private rejectExpiry!: (error: CheckDeadlineError) => void;
   private phase: "waiting" | "started" | "closed" = "waiting";
+  private work: { phase: CheckPhase; since: number } | undefined;
+  private readonly spent = new Map<CheckPhase, number>();
+  private readonly partials: Array<() => Partial<CheckBrowserResult>> = [];
 
   constructor() {
     this.expiry = new Promise((_, reject) => {
@@ -36,15 +55,52 @@ export class CheckDeadline {
     });
   }
 
+  keepPartial = (read: () => Partial<CheckBrowserResult>): void => {
+    this.partials.push(read);
+  };
+
+  partialResult(): Partial<CheckBrowserResult> {
+    return Object.assign({}, ...this.partials.map((read) => read()));
+  }
+
+  enter = (phase: CheckPhase): void => {
+    if (this.expired) return;
+    const now = Date.now();
+    if (this.work) this.spend(this.work.phase, now - this.work.since);
+    this.work = { phase, since: now };
+    this.spend(phase, 0);
+    this.rearm();
+  };
+
+  private spend(phase: CheckPhase, ms: number): void {
+    this.spent.set(phase, (this.spent.get(phase) ?? 0) + ms);
+  }
+
+  private describe(): string {
+    if (!this.work) return "";
+    const open = Date.now() - this.work.since;
+    const parts = [...this.spent].map(([phase, ms]) => {
+      const seconds = ((phase === this.work?.phase ? ms + open : ms) / 1000).toFixed(1);
+      return `${PHASE_LABELS[phase]} ${seconds}${BEFORE_DEADLINE.has(phase) ? " (before the deadline)" : ""}`;
+    });
+    return ` (no progress for ${CHECK_IDLE_MS / 1000} s after Chrome was ready), while ${PHASE_LABELS[this.work.phase]}. Seconds per phase: ${parts.join(", ")}.`;
+  }
+
   start = (): void => {
     if (this.phase !== "waiting") return;
     this.phase = "started";
+    this.enter("load");
+  };
+
+  private rearm(): void {
+    if (this.phase !== "started" || this.expired) return;
+    clearTimeout(this.timer);
     this.timer = setTimeout(() => {
-      this.expired = new CheckDeadlineError(this.scripts.at(-1));
+      this.expired = new CheckDeadlineError(this.scripts.at(-1), this.describe());
       this.rejectExpiry(this.expired);
       this.abort.abort(this.expired);
-    }, CHECK_DEADLINE_MS);
-  };
+    }, CHECK_IDLE_MS);
+  }
 
   ownBrowser = (browser: Browser): void => {
     if (this.expired) throw this.expired;
@@ -76,6 +132,8 @@ export class CheckDeadline {
     if (this.expired) return Promise.reject(this.expired);
     const pending = operation();
     this.operations.add(pending);
+    const settled = (): void => this.rearm();
+    pending.then(settled, settled);
     return Promise.race([pending, this.expiry]);
   }
 

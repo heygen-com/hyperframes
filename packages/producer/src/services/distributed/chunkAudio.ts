@@ -1,10 +1,15 @@
 // Distributed mp4 chunks can carry their own slice of the plan audio: the AAC packets of the one
 // plan-wide encode that start inside the chunk's frame range, so the chunks' audio has no seams.
 
+import { closeSync, existsSync, ftruncateSync, mkdirSync, openSync, readFileSync } from "node:fs";
+import { writeFileSync, writeSync } from "node:fs";
+import { join } from "node:path";
 import type { Fps } from "@hyperframes/core";
 import { appendRenderProvenanceArgs, describeFfmpegFailure, runFfmpeg } from "@hyperframes/engine";
 import { runFfprobeJson } from "../render/audioPadTrim.js";
 import type { ChunkSliceJson } from "../render/stages/freezePlan.js";
+import { fileRange, readMp4Layout, readTracks } from "./mp4Stitch.js";
+import { resolvePlanAudioPath } from "./shared.js";
 
 /** Where AAC packet `j` of the plan audio starts: `firstStart + j * packetSamples`, in samples. */
 interface AacPacketGrid {
@@ -52,6 +57,24 @@ export function audioCutForChunk(
   return { seekSeconds, durationSeconds, firstPacket: first, packetCount: end - first };
 }
 
+/** Chunk `index` split around `range`, so `audioCutForChunk` treats `range` as a chunk. */
+export function chunksWithSubRange(
+  chunks: readonly ChunkSliceJson[],
+  index: number,
+  range: { startFrame: number; endFrame: number },
+): { chunks: ChunkSliceJson[]; index: number } {
+  const slice = chunks[index]!;
+  const parts = [
+    { startFrame: slice.startFrame, endFrame: range.startFrame },
+    range,
+    { startFrame: range.endFrame, endFrame: slice.endFrame },
+  ].filter((part) => part.endFrame > part.startFrame);
+  const split = [...chunks.slice(0, index), ...parts, ...chunks.slice(index + 1)].map(
+    (chunk, i) => ({ index: i, startFrame: chunk.startFrame, endFrame: chunk.endFrame }),
+  );
+  return { chunks: split, index: range.startFrame > slice.startFrame ? index + 1 : index };
+}
+
 interface FfprobeAudioGrid {
   streams?: { sample_rate?: string; time_base?: string; nb_frames?: string }[];
   packets?: { pts?: number; duration?: number }[];
@@ -88,6 +111,96 @@ async function probeAacPacketGrid(audioPath: string): Promise<AacPacketGrid> {
     throw new Error(`[chunkAudio] could not read the AAC packet grid: ${JSON.stringify(probe)}`);
   }
   return grid;
+}
+
+// A sliced plan keeps the audio's moov once, in `frame.m4a` (the file minus its mdat payload),
+// and each chunk's packet bytes in their own file. A chunk rebuilds a sparse copy of the whole
+// file from them, so it runs the same cut on the same moov and bytes in any ffmpeg version.
+const SLICE_DIR = "audio-chunks";
+const SLICE_FRAME = `${SLICE_DIR}/frame.m4a`;
+const SLICE_LAYOUT = `${SLICE_DIR}/layout.json`;
+
+interface SliceLayout {
+  sizeBytes: number;
+  payloadStart: number;
+  payloadEnd: number;
+  partStarts: Record<string, number>;
+}
+
+export function chunkAudioSlicePath(index: number): string {
+  return `${SLICE_DIR}/${String(index).padStart(4, "0")}.bin`;
+}
+
+/** Which chunks need a sliced-audio file: `"all"`, one index, or `null` if it is not one. */
+export function chunkAudioSliceTarget(path: string): "all" | number | null {
+  if (path === SLICE_FRAME || path === SLICE_LAYOUT) return "all";
+  const match = /^audio-chunks\/(\d{4,})\.bin$/.exec(path);
+  return match ? Number(match[1]) : null;
+}
+
+export async function writeChunkAudioSlices(input: {
+  audioPath: string;
+  planDir: string;
+  chunks: readonly ChunkSliceJson[];
+  fps: Fps;
+}): Promise<void> {
+  const grid = await probeAacPacketGrid(input.audioPath);
+  const { payloadStart, payloadEnd, moov } = await readMp4Layout(fileRange(input.audioPath));
+  const [track] = readTracks(moov);
+  const offsets: number[] = [];
+  track!.chunkOffsets.forEach((offset, chunk) => {
+    for (let i = 0; i < track!.samplesPerChunk[chunk]!; i++) {
+      offsets.push(offset);
+      offset += track!.sizes[offsets.length - 1]!;
+    }
+  });
+  const bytes = readFileSync(input.audioPath);
+  const layout: SliceLayout = { sizeBytes: bytes.length, payloadStart, payloadEnd, partStarts: {} };
+  mkdirSync(join(input.planDir, SLICE_DIR), { recursive: true });
+  input.chunks.forEach((_, index) => {
+    const cut = audioCutForChunk(grid, input.chunks, index, input.fps);
+    if (!cut) return;
+    const last = cut.firstPacket + cut.packetCount - 1;
+    const start = offsets[cut.firstPacket]!;
+    layout.partStarts[index] = start;
+    const end = offsets[last]! + track!.sizes[last]!;
+    writeFileSync(join(input.planDir, chunkAudioSlicePath(index)), bytes.subarray(start, end));
+  });
+  const frame = [bytes.subarray(0, payloadStart), bytes.subarray(payloadEnd)];
+  writeFileSync(join(input.planDir, SLICE_FRAME), Buffer.concat(frame));
+  writeFileSync(join(input.planDir, SLICE_LAYOUT), JSON.stringify(layout));
+}
+
+/** The plan audio for a chunk: the whole file, or one rebuilt at `scratchPath` from its slice. */
+export function chunkAudioSource(
+  planDir: string,
+  chunkIndex: number,
+  scratchPath: string,
+): string | null {
+  const layoutPath = join(planDir, SLICE_LAYOUT);
+  if (!existsSync(layoutPath)) return resolvePlanAudioPath(planDir);
+  const layout = JSON.parse(readFileSync(layoutPath, "utf-8")) as SliceLayout;
+  const frame = readFileSync(join(planDir, SLICE_FRAME));
+  const fd = openSync(scratchPath, "w");
+  try {
+    writeSync(fd, frame, 0, layout.payloadStart, 0);
+    writeSync(
+      fd,
+      frame,
+      layout.payloadStart,
+      frame.length - layout.payloadStart,
+      layout.payloadEnd,
+    );
+    const start = layout.partStarts[chunkIndex];
+    if (start !== undefined) {
+      const part = readFileSync(join(planDir, chunkAudioSlicePath(chunkIndex)));
+      writeSync(fd, part, 0, part.length, start);
+    }
+    ftruncateSync(fd, layout.sizeBytes);
+  } finally {
+    closeSync(fd);
+  }
+  return scratchPath;
 }
 
 interface MuxInput {

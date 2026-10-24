@@ -2,6 +2,7 @@ export const COLOR_GRADING_CONTRACT_VERSION = 2;
 export const COLOR_GRADING_COLOR_SPACE = "rec709";
 export const COLOR_GRADING_MAX_CURVE_POINTS = 16;
 export const COLOR_GRADING_MAX_SECONDARIES = 4;
+export const COLOR_GRADING_SOURCE_TAGS = ["video", "img", "canvas"] as const;
 export const COLOR_GRADING_ADVANCED_LIMITS = {
   hueDegrees: { min: 0, max: 360, inclusiveMax: false },
   unit: { min: 0, max: 1 },

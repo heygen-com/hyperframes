@@ -6,6 +6,7 @@ import {
   type ToneMapSourceColour,
 } from "@hyperframes/core";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
+import { videoStreamHasAlpha } from "@hyperframes/parsers/media-alpha";
 
 export interface FfprobeRunResult {
   status: number | null;
@@ -73,6 +74,9 @@ export interface MediaMetadata {
   color: MediaColorMetadata;
   /** Video audio stream, when probed. Absent means the drop path stays muted. */
   hasAudio?: boolean;
+  /** Video stream carries alpha (pix_fmt or the VP8/VP9 alpha_mode tag). */
+  hasAlpha?: boolean;
+  durationSeconds?: number;
   probeError?: string;
 }
 
@@ -86,6 +90,7 @@ interface FfprobeStream {
   color_primaries?: string;
   bits_per_raw_sample?: string;
   disposition?: { attached_pic?: number };
+  tags?: Record<string, string | undefined>;
 }
 
 const VIDEO_EXT = new Set([
@@ -135,17 +140,6 @@ function colorLabel(input: {
     return "SDR Rec.709";
   }
   return "SDR/unknown";
-}
-
-// Conservative alpha-bearing pix_fmt list: yuva* (yuva420p, yuva444p10le...),
-// rgba/argb/bgra/abgr (packed RGB+alpha), gbrap* (planar GBR+alpha, ProRes
-// 4444 decodes to these), ya* (gray+alpha). Prefix match keeps bit-depth /
-// endianness suffixes covered.
-const ALPHA_PIX_FMT_RE = /^(?:yuva|rgba|argb|bgra|abgr|gbrap|ya)/;
-
-/** True when an ffprobe `pix_fmt` carries an alpha component. */
-export function pixelFormatHasAlpha(pixFmt: string | undefined): boolean {
-  return pixFmt !== undefined && ALPHA_PIX_FMT_RE.test(pixFmt.toLowerCase());
 }
 
 export function classifyMediaColor(stream: FfprobeStream | null | undefined): MediaColorMetadata {
@@ -222,7 +216,7 @@ export async function probeMediaMetadata(
       "-v",
       "error",
       "-show_entries",
-      "stream=codec_type,codec_name,profile,pix_fmt,color_space,color_transfer,color_primaries,bits_per_raw_sample:stream_disposition=attached_pic",
+      "stream=codec_type,codec_name,profile,pix_fmt,color_space,color_transfer,color_primaries,bits_per_raw_sample:stream_disposition=attached_pic:stream_tags=alpha_mode:format=duration",
       "-of",
       "json",
       "--",
@@ -239,7 +233,10 @@ export async function probeMediaMetadata(
   }
 
   try {
-    const parsed = JSON.parse(String(result.stdout || "{}")) as { streams?: FfprobeStream[] };
+    const parsed = JSON.parse(String(result.stdout || "{}")) as {
+      streams?: FfprobeStream[];
+      format?: { duration?: string };
+    };
     const stream = parsed.streams?.find((item) => {
       if (kind === "image") return item.codec_type === "video";
       return item.codec_type === kind && item.disposition?.attached_pic !== 1;
@@ -247,6 +244,9 @@ export async function probeMediaMetadata(
     const metadata: MediaMetadata = { kind, color: classifyMediaColor(stream) };
     if (kind === "video") {
       metadata.hasAudio = (parsed.streams ?? []).some((item) => item.codec_type === "audio");
+      metadata.hasAlpha = stream !== undefined && videoStreamHasAlpha(stream);
+      const duration = Number(parsed.format?.duration);
+      if (Number.isFinite(duration) && duration > 0) metadata.durationSeconds = duration;
     }
     return metadata;
   } catch {

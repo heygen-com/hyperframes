@@ -31,4 +31,6 @@ export default defineConfig({
   splitting: true,
   clean: true,
   dts: true,
+  // An optional dependency, so tsup would otherwise inline it.
+  external: ["sharp"],
 });

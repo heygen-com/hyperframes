@@ -1,12 +1,16 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
+import { Worker } from "node:worker_threads";
 import {
+  ageBlockedPackages,
   CONSUMER_TSCONFIG,
   countTypeErrorsByPackage,
+  installConsumer,
   listPackedExportContracts,
   listPackageSizeIssues,
   listPackedJavaScriptImportIssues,
@@ -24,14 +28,34 @@ describe("packed manifest verifier", () => {
     assert.deepEqual(listPackageSizeIssues("pkg", { packed: 950, unpacked: 3900 }, budget), []);
   });
 
-  it("fails a package over its size budget", () => {
+  it("passes a package a few hundred bytes over its budget, within 1%", () => {
+    const budget = { packed: 73369, unpacked: 266805 };
+    // The sizes the 0.8.187 publish job measured for aws-lambda: 115 B and 208 B over.
+    assert.deepEqual(listPackageSizeIssues("pkg", { packed: 73484, unpacked: 267013 }, budget), []);
+    assert.deepEqual(
+      listPackageSizeIssues(
+        "pkg",
+        { packed: 1010, unpacked: 4040 },
+        {
+          packed: 1000,
+          unpacked: 4000,
+        },
+      ),
+      [],
+    );
+  });
+
+  it("fails a package more than 1% over its size budget", () => {
     const issues = listPackageSizeIssues(
       "pkg",
-      { packed: 1001, unpacked: 3900 },
+      { packed: 1011, unpacked: 3900 },
       { packed: 1000, unpacked: 4000 },
     );
     assert.equal(issues.length, 1);
-    assert.match(issues[0], /pkg packed size 1001 bytes is over its budget of 1000/);
+    assert.match(
+      issues[0],
+      /pkg packed size 1011 bytes is over its budget of 1000 by more than 1%/,
+    );
   });
 
   it("makes a budget follow a package down once it shrinks", () => {
@@ -292,5 +316,131 @@ describe("packed manifest verifier", () => {
       /node_modules\/@hyperframes\/example\/dist\/index\.d\.ts\(1,\d+\): error TS283[45]/,
     );
     assert.equal(typecheckConsumerOf('export type { Example } from "./types.js";\n'), "");
+  });
+});
+
+// The install is synchronous, so the registry answers from a worker thread.
+const REGISTRY = `
+const { createServer } = require("node:http");
+const { parentPort, workerData } = require("node:worker_threads");
+const { packuments, tarballs } = workerData;
+const server = createServer((req, res) => {
+  const path = decodeURIComponent(req.url.slice(1));
+  const body = path.includes("/-/") ? tarballs[path] : packuments[path];
+  if (!body) return res.writeHead(404).end();
+  if (typeof body !== "string") return res.writeHead(200).end(Buffer.from(body));
+  res.writeHead(200).end(body.replaceAll("{{origin}}", "http://" + req.headers.host));
+});
+server.listen(0, "127.0.0.1", () => parentPort.postMessage(server.address().port));
+`;
+
+function packTarball(dir, name, version) {
+  const pkgDir = join(dir, `${name}-${version}`, "package");
+  mkdirSync(pkgDir, { recursive: true });
+  writeFileSync(join(pkgDir, "package.json"), JSON.stringify({ name, version }));
+  const file = join(dir, `${name}-${version}.tgz`);
+  execFileSync("tar", ["-czf", file, "-C", dirname(pkgDir), "package"]);
+  return readFileSync(file);
+}
+
+/** `versions`: version -> { daysOld, served }; a version not served lists but its tarball 404s. */
+async function withRegistry(name, versions, run) {
+  const dir = mkdtempSync(join(tmpdir(), "fake-registry-"));
+  const tarballs = {};
+  const packument = { name, "dist-tags": {}, versions: {}, time: {} };
+  for (const [version, { daysOld, served }] of Object.entries(versions)) {
+    const tgz = packTarball(dir, name, version);
+    const integrity = `sha512-${createHash("sha512").update(tgz).digest("base64")}`;
+    const path = `${name}/-/${name}-${version}.tgz`;
+    if (served) tarballs[path] = tgz;
+    packument.versions[version] = {
+      name,
+      version,
+      dist: { tarball: `{{origin}}/${path}`, integrity },
+    };
+    packument.time[version] = new Date(Date.now() - daysOld * 86_400_000).toISOString();
+    packument["dist-tags"].latest = version;
+  }
+  const worker = new Worker(REGISTRY, {
+    eval: true,
+    workerData: { packuments: { [name]: JSON.stringify(packument) }, tarballs },
+  });
+  try {
+    const port = await new Promise((resolve) => worker.once("message", resolve));
+    return await run(`http://127.0.0.1:${port}`, dir);
+  } finally {
+    await worker.terminate();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+describe("ageBlockedPackages", () => {
+  const blockedBy = (first, second, name, range) =>
+    `Resolving dependencies\nerror: No version matching "${first}" found for specifier "${second}" (blocked by minimum-release-age: 86400 seconds)\nerror: ${name}@${range} failed to resolve\n`;
+
+  it("names the package whichever order bun quotes it in", () => {
+    assert.deepEqual(ageBlockedPackages(blockedBy("fake-dep", "^1.1.0", "fake-dep", "^1.1.0")), [
+      "fake-dep",
+    ]);
+    assert.deepEqual(ageBlockedPackages(blockedBy("^1.1.0", "fake-dep", "fake-dep", "^1.1.0")), [
+      "fake-dep",
+    ]);
+    assert.deepEqual(
+      ageBlockedPackages(blockedBy("^2.0.1", "@scope/pkg", "@scope/pkg", "^2.0.1")),
+      ["@scope/pkg"],
+    );
+  });
+
+  it("names none when bun's output does not say which token is the package", () => {
+    const unpaired = `error: No version matching "^1.1.0" found for specifier "fake-dep" (blocked by minimum-release-age: 86400 seconds)\n`;
+    assert.equal(ageBlockedPackages(unpaired), null);
+    assert.equal(ageBlockedPackages("error: fake-dep@^9.0.0 failed to resolve\n"), null);
+  });
+});
+
+describe("packed consumer install", () => {
+  /** Installs `deps` into a fresh consumer against the registry; returns the installed fake-dep version. */
+  function install(registry, dir, deps) {
+    const consumer = join(dir, "consumer");
+    mkdirSync(consumer);
+    writeFileSync(
+      join(consumer, "package.json"),
+      JSON.stringify({ name: "c", dependencies: deps }),
+    );
+    const env = { ...process.env, BUN_INSTALL_CACHE_DIR: join(dir, "cache") };
+    installConsumer(consumer, { args: ["--registry", registry], env });
+    const installed = join(consumer, "node_modules", "fake-dep", "package.json");
+    return JSON.parse(readFileSync(installed, "utf8")).version;
+  }
+
+  it("skips a version published minutes ago whose tarball is not served yet", async () => {
+    const versions = {
+      "1.0.0": { daysOld: 10, served: true },
+      "1.1.0": { daysOld: 0, served: false },
+    };
+    const version = await withRegistry("fake-dep", versions, (registry, dir) =>
+      install(registry, dir, { "fake-dep": "^1.0.0" }),
+    );
+    assert.equal(version, "1.0.0");
+  });
+
+  it("installs a same-day dependency bump whose only matching version is an hour old", async () => {
+    const fresh = { daysOld: 1 / 24, served: true };
+    for (const versions of [
+      { "1.1.0": fresh },
+      { "1.0.0": { daysOld: 10, served: true }, "1.1.0": fresh },
+    ]) {
+      const version = await withRegistry("fake-dep", versions, (registry, dir) =>
+        install(registry, dir, { "fake-dep": "^1.1.0" }),
+      );
+      assert.equal(version, "1.1.0");
+    }
+  });
+
+  it("still fails on a package the registry does not have", async () => {
+    const versions = { "1.0.0": { daysOld: 10, served: true } };
+    await withRegistry("fake-dep", versions, (registry, dir) =>
+      assert.throws(() => install(registry, dir, { "missing-dep": "^1.0.0" }), /missing-dep/),
+    );
   });
 });

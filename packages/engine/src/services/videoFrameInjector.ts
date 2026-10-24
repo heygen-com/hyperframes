@@ -15,6 +15,7 @@ import { injectVideoFramesBatch, syncVideoFrameVisibility } from "./screenshotSe
 import { type BeforeCaptureHook } from "./frameCapture.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import {
+  HF_COLOR_GRADING_ATTR,
   HF_COLOR_GRADING_CANVAS_ID_PREFIX,
   RENDER_FRAME_ID_PREFIX,
   RENDER_FRAME_ID_SUFFIX,
@@ -340,6 +341,74 @@ async function setVideoElementsVisibility(
     HF_COLOR_GRADING_CANVAS_ID_PREFIX,
     visible,
   );
+}
+
+export interface ShownBox {
+  width: number;
+  height: number;
+}
+
+/**
+ * Seeks to each of `times`; returns each video's largest drawn box in device pixels. Videos that are
+ * graded, sampled by a canvas, `object-fit: none | scale-down` or never laid out get none (full size).
+ */
+export async function measureVideoShownBoxes(
+  page: Page,
+  videoIds: readonly string[],
+  times: readonly number[],
+): Promise<Map<string, ShownBox>> {
+  if (videoIds.length === 0 || times.length === 0) return new Map();
+  const boxes = await page.evaluate(
+    async (
+      ids: string[],
+      seekTimes: number[],
+      gradingAttr: string,
+      gradingCanvasPrefix: string,
+    ) => {
+      const hf = (window as Window & { __hf?: { seek?: (t: number) => void } }).__hf;
+      if (typeof hf?.seek !== "function") return [];
+      const waitForSeek = (window as Window & { __hfWaitForSeekCompletion?: () => Promise<void> })
+        .__hfWaitForSeekCompletion;
+      const largest = new Map<string, ShownBox>();
+      const fullSize = new Set<string>();
+      const keepsFullSize = (video: Element): boolean => {
+        if (video.hasAttribute(gradingAttr)) return true;
+        const fit = window.getComputedStyle(video).objectFit;
+        return fit === "none" || fit === "scale-down";
+      };
+      const measure = (id: string): void => {
+        const video = window.__hfMediaEl?.(id) ?? document.getElementById(id);
+        if (!video || keepsFullSize(video)) {
+          fullSize.add(id);
+          return;
+        }
+        const rect = video.getBoundingClientRect();
+        const box = largest.get(id) ?? { width: 0, height: 0 };
+        box.width = Math.max(box.width, rect.width * window.devicePixelRatio);
+        box.height = Math.max(box.height, rect.height * window.devicePixelRatio);
+        largest.set(id, box);
+      };
+      const pageHasCanvas = (): boolean =>
+        Array.from(document.querySelectorAll("canvas")).some(
+          (canvas) => !canvas.id.startsWith(gradingCanvasPrefix),
+        );
+      for (const t of seekTimes) {
+        hf.seek(t);
+        await waitForSeek?.();
+        // A canvas could sample any video, so every video keeps full size.
+        if (pageHasCanvas()) return [];
+        for (const id of ids) measure(id);
+      }
+      return Array.from(largest).filter(
+        ([id, box]) => !fullSize.has(id) && box.width > 0 && box.height > 0,
+      );
+    },
+    [...videoIds],
+    [...times],
+    HF_COLOR_GRADING_ATTR,
+    HF_COLOR_GRADING_CANVAS_ID_PREFIX,
+  );
+  return new Map(boxes);
 }
 
 /**

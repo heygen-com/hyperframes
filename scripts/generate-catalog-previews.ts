@@ -255,8 +255,8 @@ export interface PrepareOptions {
    * into: its root is content with no canvas behind it and no vertical
    * placement. Mounted into the plain wrapper it lands against white in the
    * top-left corner and clips. This supplies the part its authored demo would
-   * have: a dark canvas, the dark theme its own tokens are written against, and
-   * the component centred with room around it.
+   * have: the theme tokens the demo hands its mount, a canvas in the demo's
+   * background, and the component centred with room around it.
    */
   uiFragment?: boolean;
   /**
@@ -335,7 +335,7 @@ function readWrapperManifest(tmpDir: string): WrapperManifest {
 }
 
 function wrapperBackground(tags: string[], uiFragment: boolean | undefined): string {
-  if (uiFragment) return "#0a0a0a";
+  if (uiFragment) return "var(--bg, #0a0a0a)";
   return tags.includes("social") || tags.includes("overlay") ? "#1a1a2e" : "#ffffff";
 }
 
@@ -361,16 +361,19 @@ interface WrapperSpec {
   duration: number | null;
   bgColor: string;
   uiFragment: boolean | undefined;
+  /** Custom property declarations for the wrapper's `:root`. */
+  themeTokens: string[];
 }
 
 function renderWrapperHtml(spec: WrapperSpec): string {
-  const { name, entrySrc, width, height, duration, bgColor, uiFragment } = spec;
+  const { name, entrySrc, width, height, duration, bgColor, uiFragment, themeTokens } = spec;
   // `inset: 0` keeps the mount from shrinking to its content; `center stretch` centres vertically only.
   const staging = uiFragment
     ? `\n    [data-composition-src] { inset: 0; display: grid; place-items: center stretch; box-sizing: border-box; padding: ${Math.round(height / 11)}px; }`
     : "";
   const timing = duration === null ? "" : ` data-duration="${duration}"`;
   const theme = uiFragment ? ' data-hf-theme="dark"' : "";
+  const tokens = themeTokens.length > 0 ? `:root { ${themeTokens.join(" ")} } ` : "";
 
   return `<!doctype html>
 <html lang="en">
@@ -378,7 +381,7 @@ function renderWrapperHtml(spec: WrapperSpec): string {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=${width}, height=${height}" />
   <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
-  <style>* { margin: 0; padding: 0; } html, body { width: ${width}px; height: ${height}px; overflow: hidden; background: ${bgColor}; }${staging}</style>
+  <style>${tokens}* { margin: 0; padding: 0; } html, body { width: ${width}px; height: ${height}px; overflow: hidden; background: ${bgColor}; }${staging}</style>
 </head>
 <body>
   <div data-composition-id="preview-root" data-width="${width}" data-height="${height}" data-start="0"${timing}${theme}>
@@ -404,6 +407,54 @@ function authoredEntryDuration(html: string): number | null {
   );
 }
 
+function flatRules(rules: CSSRuleList | undefined): CSSRule[] {
+  return [...(rules ?? [])].flatMap((rule) =>
+    "cssRules" in rule ? flatRules((rule as CSSGroupingRule).cssRules) : [rule],
+  );
+}
+
+function matchesSelector(element: Element, selector: string): boolean {
+  try {
+    return element.matches(selector);
+  } catch {
+    // Pseudo-elements and selectors the parser does not know never style the element itself.
+    return false;
+  }
+}
+
+function customProperties(style: CSSStyleDeclaration): string[] {
+  return [...Array(style.length).keys()]
+    .map((i) => style[i] ?? "")
+    .filter((prop) => prop.startsWith("--"))
+    .map((prop) => `${prop}: ${style.getPropertyValue(prop).trim()};`);
+}
+
+// Custom properties the demo sets on this entry's mount or its ancestors, outermost first so
+// the nearest wins: the preview wears the demo's theme, not the snippet's fallbacks.
+function demoThemeTokens(tmpDir: string, entryFile: string): string[] {
+  const demoPath = join(tmpDir, "demo.html");
+  if (!existsSync(demoPath)) return [];
+  const document = parseHTMLContent(readFileSync(demoPath, "utf-8"));
+  const entryPath = resolve(tmpDir, entryFile);
+  const mount = [...document.querySelectorAll("[data-composition-src]")].find(
+    (el) => resolve(tmpDir, el.getAttribute("data-composition-src") ?? "") === entryPath,
+  );
+  if (!mount) return [];
+
+  const rules = [...document.querySelectorAll("style")]
+    .flatMap((style) => flatRules((style as HTMLStyleElement).sheet?.cssRules))
+    .filter((rule): rule is CSSStyleRule => "selectorText" in rule);
+  const lineage: Element[] = [];
+  for (let el: Element | null = mount; el; el = el.parentElement) lineage.unshift(el);
+  // ponytail: rules on one element apply in source order, not by specificity; no demo relies on it.
+  return lineage.flatMap((el) => [
+    ...rules
+      .filter((rule) => matchesSelector(el, rule.selectorText))
+      .flatMap((rule) => customProperties(rule.style)),
+    ...customProperties((el as HTMLElement).style),
+  ]);
+}
+
 function writeWrapperIndex(
   tmpDir: string,
   item: CatalogItem,
@@ -418,6 +469,7 @@ function writeWrapperIndex(
     duration: authoredEntryDuration(entryHtml) ?? manifest.duration ?? null,
     bgColor: wrapperBackground(manifest.tags ?? [], uiFragment),
     uiFragment,
+    themeTokens: uiFragment ? demoThemeTokens(tmpDir, item.entryFile) : [],
   });
   writeFileSync(join(tmpDir, "index.html"), wrapper, "utf-8");
 }

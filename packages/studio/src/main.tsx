@@ -6,6 +6,11 @@ import { ShowThemeToggle } from "./components/ThemeToggle";
 import { StudioErrorBoundary } from "./components/StudioErrorBoundary";
 import { readIconTokens } from "./styles/iconTokens";
 import { trackStudioEvent } from "./utils/studioTelemetry";
+import {
+  errorProps,
+  isCompositionAssetError,
+  isExtensionOnlyStack,
+} from "./utils/rejectionTelemetry";
 import { prefetchPreviewForHash } from "./utils/previewPrefetch";
 import { bindThumbnailPageLifecycle } from "./player/lib/thumbnailPageLifecycle";
 import "./styles/studio.css";
@@ -16,30 +21,6 @@ import.meta.hot?.dispose(unbindThumbnailPageLifecycle);
 prefetchPreviewForHash(window.location.hash);
 window.addEventListener("hashchange", () => prefetchPreviewForHash(window.location.hash));
 trackStudioEvent("session_start");
-
-function errorProps(value: unknown): {
-  error_message: string;
-  error_name: string | null;
-  stack_trace: string | null;
-} {
-  if (value instanceof Error) {
-    return {
-      error_message: value.message,
-      error_name: value.name,
-      stack_trace: value.stack?.slice(0, 4000) ?? null,
-    };
-  }
-  return { error_message: String(value), error_name: null, stack_trace: null };
-}
-
-// fallow-ignore-next-line complexity
-function isCompositionAssetError(msg: string, name: string | null): boolean {
-  if (msg.includes("Error fetching") && (msg.includes("404") || msg.includes("Not Found")))
-    return true;
-  if (name === "EncodingError" || msg.includes("unsupported or unrecognizable format")) return true;
-  if (msg.includes("MEDIA_ERR_SRC_NOT_SUPPORTED")) return true;
-  return false;
-}
 
 const ERROR_CAP = 50;
 let errorCount = 0;
@@ -114,6 +95,8 @@ window.addEventListener("unhandledrejection", (event) => {
     }
     return;
   }
+  // Not ours: an extension's own promise. Dropped before the cap so it cannot silence ours.
+  if (isExtensionOnlyStack(props.stack_trace)) return;
 
   rejectionCount++;
   if (rejectionCount > ERROR_CAP) {

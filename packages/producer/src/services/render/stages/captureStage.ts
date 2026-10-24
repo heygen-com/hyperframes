@@ -26,13 +26,9 @@
  *   - `job.framesRendered` is updated at every per-frame / per-progress
  *     point; `Capturing frame N/M` goes through `reportFrameProgress`.
  *
- * Known follow-up: this stage imports `executeDiskCaptureWithAdaptiveRetry`
- * from `renderOrchestrator.ts`, which itself imports the stage — a runtime
- * cycle that resolves at module-init time because no stage function is
- * invoked during load. A subsequent PR will consolidate the capture
- * helpers (`executeDiskCaptureWithAdaptiveRetry`, `countFrameRanges`,
- * `safeCleanup`, `sampleDirectoryBytes`, etc.) into a shared module so
- * the stages can import them without reaching back into the orchestrator.
+ * Known follow-up: this stage imports `executeDiskCaptureWithAdaptiveRetry` from
+ * `renderOrchestrator.ts`, which imports the stage (a cycle that resolves at module init). The
+ * capture helpers should move to a shared module so stages stop reaching back into the orchestrator.
  */
 
 import { existsSync, readdirSync, statfsSync } from "node:fs";
@@ -45,6 +41,7 @@ import {
   type CapturePerfSummary,
   type CaptureSession,
   type EngineConfig,
+  type LandedFrame,
   captureFrame,
   captureFrameToBufferPipelined,
   verifyDiskDrawElementSamples,
@@ -60,15 +57,18 @@ import type { FileServerHandle } from "../../fileServer.js";
 import type { ProducerLogger } from "../../../logger.js";
 import {
   executeDiskCaptureWithAdaptiveRetry,
+  explainStreamingEncodeGate,
   findMissingFrameRanges,
   isTransientCaptureRetryEligible,
   sampleDirectoryBytes,
   type CaptureAttemptSummary,
   type ProgressCallback,
+  type RenderConfig,
   type RenderJob,
 } from "../../renderOrchestrator.js";
 import { wrapCaptureStageError } from "../captureStageError.js";
 import { reportFrameProgress, reportWorkerStartup } from "../shared.js";
+import { withWorkerPageErrors } from "../perfSummary.js";
 import type { SdrDiskCapturePlan } from "../capturePlan.js";
 
 export interface CaptureStageInput {
@@ -116,6 +116,7 @@ export interface CaptureStageInput {
    * When set, `endFrame - startFrame` MUST equal `totalFrames`.
    */
   frameRange?: { startFrame: number; endFrame: number };
+  onFrameLanded?: (frame: LandedFrame) => void;
 }
 
 export interface CaptureStageResult {
@@ -146,7 +147,6 @@ export function shouldAllowAdaptiveCaptureRetry(
 const JPEG_RAW_RGBA_DIVISOR = 8;
 /** Above draft's quality 80; quality-100 jpeg of grainy 4K footage measures about 1/6 of raw RGBA. */
 const HIGH_QUALITY_JPEG_RAW_RGBA_DIVISOR = 4;
-/** Frames captured before the measured projection replaces the static estimate. */
 const DISK_PROJECTION_SAMPLE_FRAMES = 10;
 
 export function estimateDiskCaptureBytes(
@@ -199,11 +199,46 @@ export function inspectDiskCaptureHeadroom(
   return { available: false, estimatedBytes, freeBytes };
 }
 
+/**
+ * Why this render stores frames and what would take it off disk. `--workers 1`
+ * is offered only when a one-worker run of the same render would stream.
+ */
+export function diskCaptureRemedy(
+  cfg: EngineConfig,
+  outputFormat: NonNullable<RenderConfig["format"]>,
+  durationSeconds: number,
+  workerCount: number,
+): string {
+  const oneWorker = explainStreamingEncodeGate(cfg, outputFormat, 1, durationSeconds);
+  if (workerCount > 1 && oneWorker.enabled) {
+    return (
+      `This render stores frames because it captures with ${workerCount} workers. ` +
+      "Free up disk space, or re-run this render with --workers 1 to stream frames into the encoder instead. " +
+      "One worker is slower, so keep the default worker count for renders that fit on disk."
+    );
+  }
+  switch (oneWorker.reason) {
+    case "format_excluded":
+      return `${outputFormat} output stores every frame at any worker count. Free up disk space or render to mp4.`;
+    case "disabled_by_config":
+      return "PRODUCER_ENABLE_STREAMING_ENCODE=false sends every render to disk. Free up disk space or unset it.";
+    case "duration_cap":
+      return (
+        "The streaming duration cap (PRODUCER_STREAMING_ENCODE_DURATION_CAP_ENABLED=true) sends renders longer " +
+        "than PRODUCER_STREAMING_ENCODE_MAX_DURATION_SECONDS to disk at any worker count. Free up disk space, " +
+        "unset the cap, or use --low-memory-mode, which streams past it on one worker."
+      );
+    default:
+      return "Free up disk space.";
+  }
+}
+
 export function diskCaptureShortfallError(
   needBytes: number,
   freeBytes: number,
   framesDir: string,
   basis: "estimate" | "measured",
+  remedy: string,
 ): Error {
   const basisNote =
     basis === "measured"
@@ -212,37 +247,7 @@ export function diskCaptureShortfallError(
   return new Error(
     `Disk capture may need ~${(needBytes / 1e6).toFixed(1)} MB of temporary frame storage${basisNote}, ` +
       `but only ${(freeBytes / 1e6).toFixed(1)} MB is free at ${framesDir}. ` +
-      "Disk capture stores every frame as an image file (JPEG, or PNG for alpha). mp4/mov renders stream instead: " +
-      "always at --workers 1, and multi-worker on Linux BeginFrame capture. " +
-      "This render landed on disk because the output is png-sequence or gif, because it " +
-      "is multi-worker screenshot capture (opt in with HF_CAPTURE_PARALLEL_STREAM=true), " +
-      "or because streaming was switched off: HF_CAPTURE_PARALLEL_STREAM=false, " +
-      "PRODUCER_ENABLE_STREAMING_ENCODE=false, or the duration cap " +
-      "(PRODUCER_STREAMING_ENCODE_DURATION_CAP_ENABLED=true) on a render longer than " +
-      "PRODUCER_STREAMING_ENCODE_MAX_DURATION_SECONDS. HDR and shader-transition renders " +
-      "never reach this check; they run their own compositor. " +
-      "Re-run with --workers 1, use --low-memory-mode, or free up disk space.",
-  );
-}
-
-export function assertDiskCaptureHeadroom(
-  framesDir: string,
-  totalFrames: number,
-  captureOptions: CaptureOptions,
-  freeDiskBytes?: (path: string) => number | null,
-): void {
-  const headroom = inspectDiskCaptureHeadroom(
-    framesDir,
-    totalFrames,
-    captureOptions,
-    freeDiskBytes,
-  );
-  if (headroom.available) return;
-  throw diskCaptureShortfallError(
-    headroom.estimatedBytes,
-    headroom.freeBytes,
-    framesDir,
-    "estimate",
+      `Disk capture stores every frame as an image file (JPEG, or PNG for alpha). ${remedy}`,
   );
 }
 
@@ -269,9 +274,10 @@ export function createDiskCaptureProjection(input: {
   framesDir: string;
   totalFrames: number;
   measureBytes: () => number;
+  remedy: string;
   freeDiskBytes?: (path: string) => number | null;
 }): (capturedFrames: number) => void {
-  const { framesDir, totalFrames, measureBytes, freeDiskBytes = freeDiskBytesAt } = input;
+  const { framesDir, totalFrames, measureBytes, remedy, freeDiskBytes = freeDiskBytesAt } = input;
   let checked = false;
   return (capturedFrames) => {
     if (checked || capturedFrames < DISK_PROJECTION_SAMPLE_FRAMES) return;
@@ -283,7 +289,7 @@ export function createDiskCaptureProjection(input: {
     if (remaining <= 0 || freeBytes === null) return;
     const needBytes = Math.ceil((measured / capturedFrames) * remaining);
     if (needBytes > freeBytes * 0.9) {
-      throw diskCaptureShortfallError(needBytes, freeBytes, framesDir, "measured");
+      throw diskCaptureShortfallError(needBytes, freeBytes, framesDir, "measured", remedy);
     }
   };
 }
@@ -310,6 +316,7 @@ export async function runCaptureStage(input: CaptureStageInput): Promise<Capture
   let { workerCount } = plan;
   const { forceScreenshot } = plan;
   let lastBrowserConsole: string[] = [];
+  const workerPageErrors: string[] = [];
   let captureBeyondViewport: boolean | undefined = probeSession?.options.captureBeyondViewport;
 
   // Derive a local cfg view rather than reading `forceScreenshot` from the
@@ -346,11 +353,12 @@ export async function runCaptureStage(input: CaptureStageInput): Promise<Capture
   }
 
   const captureOptions = buildCaptureOptions();
-  assertDiskCaptureHeadroom(framesDir, totalFrames, captureOptions);
+  const remedy = diskCaptureRemedy(cfg, job.config.format ?? "mp4", job.duration ?? 0, workerCount);
   const checkDiskProjection = createDiskCaptureProjection({
     framesDir,
     totalFrames,
     measureBytes: () => measureCaptureFrameBytes(workDir, framesDir),
+    remedy,
   });
 
   if (workerCount > 1) {
@@ -370,11 +378,13 @@ export async function runCaptureStage(input: CaptureStageInput): Promise<Capture
       abortSignal,
       frameRangeStart: frameRange?.startFrame,
       dedupPerfs,
+      pageErrorLines: workerPageErrors,
       onProgress: (progress) => {
         if (progress.latestWorkerPhase) {
           if (progress.capturedFrames === 0) reportWorkerStartup(job, progress, onProgress);
           return;
         }
+        if (progress.landedFrame) input.onFrameLanded?.(progress.landedFrame);
         job.framesRendered = progress.capturedFrames;
         checkDiskProjection(progress.capturedFrames);
         const frameProgress = progress.capturedFrames / progress.totalFrames;
@@ -389,6 +399,11 @@ export async function runCaptureStage(input: CaptureStageInput): Promise<Capture
       },
       cfg: captureCfg,
       log,
+    }).catch((error: unknown) => {
+      throw wrapCaptureStageError(
+        error,
+        withWorkerPageErrors(probeSession?.browserConsoleBuffer ?? [], workerPageErrors),
+      );
     });
     captureAttempts.push(...attempts);
     const lastAttempt = attempts[attempts.length - 1];
@@ -401,6 +416,7 @@ export async function runCaptureStage(input: CaptureStageInput): Promise<Capture
       await closeCaptureSession(probeSession);
       probeSession = null;
     }
+    lastBrowserConsole = withWorkerPageErrors(lastBrowserConsole, workerPageErrors);
   } else {
     const sequential = await runSequentialDiskCapture(
       input,

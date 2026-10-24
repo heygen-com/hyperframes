@@ -31,6 +31,8 @@ vi.mock("../capture/captureCompositionFrame.js", async (importOriginal) => ({
     renderReadyTimedOut: false,
   })),
   seekCompositionTimeline: capture.seek,
+  seekCompositionTimelineOnly: capture.seek,
+  settleCompositionSeek: vi.fn(async () => ({ pending: [], failed: [] })),
 }));
 
 vi.mock("../utils/staticProjectServer.js", () => ({
@@ -46,7 +48,8 @@ vi.mock("@hyperframes/engine", () => ({
   extractMediaMetadata: vi.fn(),
 }));
 
-import snapshotCommand from "./snapshot.js";
+import snapshotCommand, { SNAPSHOT_IMAGE_NAME } from "./snapshot.js";
+import { planReview, reviewFrames } from "./snapshotReview.js";
 import { historyDeps } from "../utils/historyOwner.js";
 import { openProjectHistory } from "@hyperframes/studio-server/history";
 
@@ -81,7 +84,7 @@ describe("snapshot contact sheet failures", () => {
 
   afterEach(() => {
     vi.doUnmock("../capture/contactSheet.js");
-    vi.doUnmock("sharp");
+    vi.doUnmock("../utils/optionalPackages.js");
     vi.restoreAllMocks();
     rmSync(project, { recursive: true, force: true });
   });
@@ -97,8 +100,9 @@ describe("snapshot contact sheet failures", () => {
         throw new Error(message);
       });
       if (failure === "import") {
-        vi.doMock("sharp", () => ({
-          get default() {
+        vi.doMock("../utils/optionalPackages.js", async (importOriginal) => ({
+          ...(await importOriginal<typeof import("../utils/optionalPackages.js")>()),
+          loadSharp: async () => {
             throw new Error(message);
           },
         }));
@@ -146,11 +150,63 @@ describe("snapshot contact sheet failures", () => {
       ],
     });
 
-    expect(generate).toHaveBeenCalledWith(join(project, "snapshots"), sheet);
+    expect(generate).toHaveBeenCalledWith(
+      ["frame-00-at-0.5s.png", "frame-01-at-1s.png"].map((name) =>
+        join(project, "snapshots", name),
+      ),
+      sheet,
+    );
     expect(console.log).toHaveBeenCalledWith(expect.stringContaining("contact-sheet.jpg"));
     expect(console.warn).not.toHaveBeenCalled();
     expect(console.error).not.toHaveBeenCalled();
   });
+
+  it("builds the sheet from this run's frames, not another frame-*.png in the folder", async () => {
+    const output = join(project, "snapshots");
+    mkdirSync(output, { recursive: true });
+    writeFileSync(join(output, "frame-hero.png"), "user image");
+    const read: string[] = [];
+    const image = {
+      metadata: async () => ({ width: 640, height: 360, autoOrient: { width: 640, height: 360 } }),
+      autoOrient: () => image,
+      resize: () => image,
+      composite: () => image,
+      jpeg: () => image,
+      toBuffer: async () => Buffer.from("sheet"),
+    };
+    vi.doMock("../utils/optionalPackages.js", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../utils/optionalPackages.js")>()),
+      loadSharp: async () => (input: unknown) => {
+        if (typeof input === "string") read.push(input);
+        return image;
+      },
+    }));
+
+    await runCommand(snapshotCommand, {
+      rawArgs: [project, ...["--at", "0.5,1", "--no-end", "--describe", "false", "-o", output]],
+    });
+
+    expect([...new Set(read)]).toEqual([
+      join(output, "frame-00-at-0.5s.png"),
+      join(output, "frame-01-at-1s.png"),
+    ]);
+    expect(readFileSync(join(output, "frame-hero.png"), "utf8")).toBe("user image");
+    expect(console.warn).not.toHaveBeenCalled();
+  });
+
+  it.each(["-1", "0.5,-1", "Infinity", "NaN", "1,", "1junk", ""])(
+    "refuses --at %s before writing anything",
+    async (at) => {
+      const output = join(project, "snapshots");
+      await expect(
+        runCommand(snapshotCommand, {
+          rawArgs: [project, "--at", at, "--no-end", "--describe", "false", "-o", output],
+        }),
+      ).rejects.toThrow("--at must be comma-separated times in seconds, each 0 or more");
+      expect(capture.screenshot).not.toHaveBeenCalled();
+      expect(existsSync(output)).toBe(false);
+    },
+  );
 
   it("keeps and records the captured frames when another process holds history", async () => {
     const args = {
@@ -191,6 +247,49 @@ describe("snapshot contact sheet failures", () => {
     } finally {
       historyDeps.ownerWaitMs = previousWait;
       await held.close();
+    }
+  });
+
+  it("describes frames without resizing when sharp is absent and installs are off", async () => {
+    vi.stubEnv("GEMINI_API_KEY", "test-key");
+    vi.stubEnv("HYPERFRAMES_NO_OPTIONAL_INSTALL", "sharp");
+    const generateContent = vi.fn(async (_request: unknown) => ({ text: "a described frame" }));
+    const loadSharp = vi.fn(async () => {
+      throw new Error(
+        "sharp is not installed, and HYPERFRAMES_NO_OPTIONAL_INSTALL turns off installing it",
+      );
+    });
+    vi.doMock("../utils/optionalPackages.js", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../utils/optionalPackages.js")>()),
+      loadInstalledSharp: () => null,
+      loadSharp,
+      loadOptionalPackage: async () => ({
+        GoogleGenAI: class {
+          models = { generateContent };
+        },
+      }),
+    }));
+    const { default: command } = await import("./snapshot.js");
+
+    try {
+      await runCommand(command, {
+        rawArgs: [
+          project,
+          ...["--at", "0.5,1", "--no-end", "--describe", "true"],
+          ...["--output", join(project, "snapshots")],
+        ],
+      });
+
+      expect(generateContent).toHaveBeenCalledTimes(2);
+      expect(JSON.stringify(generateContent.mock.calls[0]?.[0])).toContain(
+        '"mimeType":"image/png"',
+      );
+      expect(readFileSync(join(project, "snapshots", "descriptions.md"), "utf8")).toContain(
+        "a described frame",
+      );
+      expect(loadSharp).not.toHaveBeenCalledWith("--describe");
+    } finally {
+      vi.unstubAllEnvs();
     }
   });
 });
@@ -259,5 +358,76 @@ describe("snapshot --keep", () => {
       expect(lstatSync(join(stills, still)).isFile()).toBe(true);
       expect(readFileSync(join(stills, still), "utf8")).toBe("new PNG");
     }
+  });
+});
+
+describe("snapshot --output", () => {
+  let project: string;
+
+  const USER_IMAGES = ["hero.png", "logo.jpg", "Notes.PNG", "frame-hero.png"];
+  const PREVIOUS_RUN = [
+    "frame-00-at-0.25s.png",
+    "frame-07-at-12.5s.png",
+    "at-3s.png",
+    "ref-00-at-0.25s.png",
+    "pair-00-at-0.25s.jpg",
+    "contact-sheet-2.jpg",
+    "beat-01-at-0.3s.png",
+    "seam-01-3-at-6s.png",
+    "review-beats.jpg",
+    "review-seam-01.jpg",
+    "review-phone-2.jpg",
+  ];
+
+  beforeEach(() => {
+    project = mkdtempSync(join(tmpdir(), "hf-snapshot-output-"));
+    writeFileSync(join(project, "index.html"), PROJECT_HTML);
+    capture.screenshot.mockImplementation(async () => Buffer.from("captured PNG"));
+    primePage(2);
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    rmSync(project, { recursive: true, force: true });
+  });
+
+  it.each([
+    ["a snapshots folder", "snapshots"],
+    ["the project folder", "."],
+    ["the assets folder", "assets"],
+  ])("replaces the previous run's images in %s and keeps every other image", async (_, sub) => {
+    const output = join(project, sub);
+    mkdirSync(output, { recursive: true });
+    for (const name of [...USER_IMAGES, ...PREVIOUS_RUN]) writeFileSync(join(output, name), name);
+
+    await runCommand(snapshotCommand, {
+      rawArgs: [project, ...["--at", "0.5,1", "--no-end", "--describe", "false", "-o", output]],
+    });
+
+    for (const name of USER_IMAGES) expect(readFileSync(join(output, name), "utf8")).toBe(name);
+    for (const name of PREVIOUS_RUN) expect(existsSync(join(output, name))).toBe(false);
+    for (const name of ["frame-00-at-0.5s.png", "frame-01-at-1s.png"]) {
+      expect(readFileSync(join(output, name), "utf8")).toBe("captured PNG");
+    }
+  });
+
+  it("names every review still with a name the next run clears", () => {
+    const plan = planReview(
+      {
+        window: [0, 10],
+        scenes: [
+          { id: "a", start: 0, end: 4 },
+          { id: "b", start: 4, end: 10 },
+        ],
+        beats: [],
+        notes: [],
+      },
+      10,
+    );
+    const files = reviewFrames(plan).map((frame) => frame.file);
+    expect(files.some((file) => file.startsWith("seam-"))).toBe(true);
+    for (const file of files) expect(file).toMatch(SNAPSHOT_IMAGE_NAME);
   });
 });

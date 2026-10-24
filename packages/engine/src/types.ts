@@ -9,6 +9,8 @@ import type { Fps } from "@hyperframes/core";
 import type { ChromeMemoryStats } from "./services/chromeMemorySampler.js";
 import type { MotionBlurOptions } from "./services/motionBlur.js";
 
+export type PageMotionBlurOff = "off" | "hdr-render" | "layered-composite" | "distributed-render";
+
 /**
  * Outcome of waiting for a sub-composition's GSAP timelines to register.
  * Threaded string-typed through `CapturePerfSummary` / `RenderPerfSummary` /
@@ -30,6 +32,7 @@ export type CaptureWarningCode =
   | "audio_processing_failed"
   | "sub_timeline_readiness_timeout"
   | "sub_timeline_script_failure"
+  | "script_error_isolated"
   | "vfx_failure"
   | "live_map_detected";
 
@@ -41,6 +44,7 @@ export interface CaptureWarning {
     mediaType?: "image" | "video" | "audio";
     sources?: string[];
     pendingCompositionIds?: string[];
+    isolatedElements?: Array<{ compositionId: string; elementId: string | null }>;
     timeoutMs?: number;
     audioFailures?: AudioFailureDiagnostic[];
     failureReasons?: string[];
@@ -171,6 +175,8 @@ export interface CaptureOptions {
    * screenshot capture mode; see `services/motionBlur.ts`.
    */
   motionBlur?: MotionBlurOptions;
+  /** Why the page's capture motion blur stands down: the preview could not blur, or the route cannot host it. */
+  pageMotionBlur?: PageMotionBlurOff;
   deviceScaleFactor?: number;
   /**
    * Opt into Chrome's capture-beyond-viewport screenshot path. Leave undefined

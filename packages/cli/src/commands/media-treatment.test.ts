@@ -598,7 +598,20 @@ describe("applyMediaTreatmentToHtml", () => {
         selector: "#hero",
         grading: { preset: "warm-daylight" },
       }),
-    ).toThrow(/requires an <img> or <video>/);
+    ).toThrow(/requires a <video>, <img> or <canvas>/);
+  });
+
+  it("grades a canvas", () => {
+    const result = applyMediaTreatmentToHtml(
+      `<canvas id="drawn" width="640" height="360"></canvas>`,
+      {
+        selector: "#drawn",
+        grading: { preset: "warm-daylight" },
+      },
+    );
+
+    expect(result.tag).toBe("canvas");
+    expect(result.html).toContain("data-color-grading=");
   });
 
   it("rejects unknown keys instead of silently dropping agent mistakes", () => {

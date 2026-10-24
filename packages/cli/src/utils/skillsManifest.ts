@@ -17,14 +17,7 @@
 
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import {
-  existsSync,
-  readdirSync,
-  readFileSync,
-  renameSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
@@ -65,9 +58,7 @@ export interface SkillsManifest {
   skills: Record<string, SkillEntry>;
 }
 
-// "removed" = installed from our source but no longer in the manifest (renamed
-// or dropped upstream). Attributed via the skills lock — see detectRemoved.
-export type SkillStatus = "current" | "outdated" | "missing" | "removed";
+export type SkillStatus = "current" | "outdated" | "missing";
 
 export interface SkillDiff {
   name: string;
@@ -97,16 +88,10 @@ export interface SkillsCheckResult {
     outdated: number;
     missing: number;
     coreMissing: number;
-    removed: number;
   };
   skills: SkillDiff[];
-  /**
-   * True when an install was located but the upstream skills lock was absent at
-   * the expected path, so removed-detection couldn't run (it silently reports
-   * zero removed). Lets the CLI warn instead of misreporting "up to date" — a
-   * guard against the lock path silently no-op'ing if upstream moves it.
-   */
-  lockMissing: boolean;
+  /** Manifest-named skills the lock attributes to another publisher; left untouched. */
+  foreign: string[];
 }
 
 const DEFAULT_REPO_SLUG = "heygen-com/hyperframes";
@@ -118,22 +103,20 @@ const FETCH_TIMEOUT_MS = 4000;
 //
 // Two tiers decide what installs eagerly vs on demand:
 //
-//   core     — the `/hyperframes` entry router plus the shared domain skills
-//              (`hyperframes-*`, `media-use`) that every creation workflow
-//              references structurally (sibling `../hyperframes-animation/…`
-//              paths, "call /media-use" preambles). These must be present and
-//              current for ANY workflow to run, so `init` / `skills update`
-//              keep them fresh.
-//   on-demand — everything else: the end-user workflow skills (pr-to-video,
-//              embedded-captions, …) and optional integrations (figma). They
-//              install lazily, when their workflow is actually triggered
-//              (`hyperframes skills update <name>`), instead of being sprayed
-//              onto every machine that runs `init`.
+//   core     — the `/hyperframes` entry skill plus the shared skills
+//              (`hyperframes-*`, `media-use`) every other skill references
+//              structurally (sibling `../hyperframes/references/…` paths,
+//              "call /media-use" preambles). These must be present and current
+//              for any video work, so `init` / `skills update` keep them fresh.
+//   on-demand — everything else: decks (slideshow), Remotion ports
+//              (remotion-to-hyperframes) and optional integrations (figma).
+//              They install when named (`hyperframes skills update <name>`),
+//              instead of being sprayed onto every machine that runs `init`.
 
-/** The entry/router skill — the capability map that routes every request. */
+/** The entry skill — read first for any video request. */
 const ENTRY_SKILL = "hyperframes";
 
-/** True for skills every workflow depends on (see "Skill tiers" above). */
+/** True for skills every other skill depends on (see "Skill tiers" above). */
 export function isCoreSkill(name: string): boolean {
   return name === ENTRY_SKILL || name.startsWith("hyperframes-") || name === "media-use";
 }
@@ -149,16 +132,60 @@ export function isCoreSkill(name: string): boolean {
  */
 export const FALLBACK_CORE_SKILLS: readonly string[] = [
   "hyperframes",
+  "hyperframes-cli",
+  "hyperframes-registry",
+  "media-use",
+];
+
+/**
+ * Domain skills folded into the `hyperframes` and `media-use` skills. Their
+ * `hyperframes-` prefix makes them ours by name, so an on-disk bundle with no
+ * lock entry is removed too.
+ */
+const RETIRED_DOMAIN_SKILLS: readonly string[] = [
   "hyperframes-animation",
   "hyperframes-audio",
-  "hyperframes-cli",
   "hyperframes-core",
   "hyperframes-creative",
   "hyperframes-keyframes",
-  "hyperframes-registry",
   "hyperframes-studio",
-  "media-use",
 ];
+
+/**
+ * Workflow skills retired when their knowledge moved into the `hyperframes`
+ * skill's references (film, captions, overlays, motion, look). Their names are
+ * generic, so only a lock entry attributing them to our source marks them ours.
+ */
+const RETIRED_WORKFLOW_SKILLS: readonly string[] = [
+  "embedded-captions",
+  "faceless-explainer",
+  "general-video",
+  "motion-graphics",
+  "music-to-video",
+  "pr-to-video",
+  "product-launch-video",
+  "talking-head-recut",
+];
+
+/**
+ * Skills no longer published. Machines that installed them still carry the old
+ * bundles; detectRemoved flags these names whenever the manifest no longer
+ * lists them, so `skills update` removes them, and naming one in
+ * `skills update <name>` explains where its knowledge went instead of failing.
+ */
+export const RETIRED_SKILLS: readonly string[] = [
+  ...RETIRED_DOMAIN_SKILLS,
+  ...RETIRED_WORKFLOW_SKILLS,
+];
+
+/** Where a retired skill's knowledge lives now, for `skills update <retired-name>`. */
+export function retiredSkillNotice(name: string): string {
+  const home =
+    name === "hyperframes-audio"
+      ? "the /media-use skill (references/mixing.md)"
+      : "the /hyperframes skill and its references (film, captions, overlays, motion, look, format)";
+  return `${name} was retired; its knowledge now lives in ${home}, which \`skills update\` keeps current.`;
+}
 
 // ── Hashing ────────────────────────────────────────────────────────────────
 
@@ -300,7 +327,7 @@ function discoverSkillRoots(base: string, scope: "project" | "global"): SkillRoo
 
 /**
  * Decide whether an explicit `--dir` is a project- or global-scoped install, so
- * removed-detection reads the *right* lock. The upstream `skills` CLI keeps two
+ * lock attribution reads the *right* lock. The upstream `skills` CLI keeps two
  * locks: a project lock at `<cwd>/skills-lock.json` and a global lock under
  * `$HOME` (see lockPathForScope).
  *
@@ -330,7 +357,7 @@ function scopeForDir(dir: string, home: string, cwd: string): "project" | "globa
 /**
  * Find the first skill root that actually contains HyperFrames skills. A
  * `--dir` override (if given) is treated as a `.../skills` directory directly;
- * its scope is inferred (see scopeForDir) so removed-detection reads the right
+ * its scope is inferred (see scopeForDir) so lock attribution reads the right
  * lock. Otherwise scan global ($HOME) then project (cwd), auto-discovering hosts.
  *
  * Global is checked FIRST to match how agents actually load skills: Claude Code
@@ -436,27 +463,15 @@ export function diffSkills(
   };
 }
 
-// ── Removed-upstream (orphaned) skills ────────────────────────────────────────
+// ── Install record (lock) ────────────────────────────────────────────────────
 //
-// `skills add` / `init` / `hyperframes skills update` only ever add or refresh —
-// none of them delete a skill that was renamed or dropped upstream (e.g.
-// graphic-overlays → talking-head-recut), so a stale bundle lingers forever and
-// the manifest-only diff above can't see it. We surface these by cross-checking
-// the vercel-labs/skills lock: a skill the lock attributes to OUR manifest
-// `source` that the manifest no longer lists is "removed". Attribution is the
-// whole point — `.../skills` is shared across sources, so we never infer "ours"
-// from a directory name alone (that would flag every other source's skills too).
+// The vercel-labs/skills lock records which source each installed skill came
+// from. `.../skills` is shared across sources, so a skill is never called ours
+// from its directory name alone.
 
 interface LockEntry {
   source?: string;
   sourceUrl?: string;
-  /**
-   * Path of the skill's SKILL.md within the source repo, as upstream records it
-   * (`skills/general-video/SKILL.md`, `.agents/skills/seam-craft/SKILL.md`). The
-   * only field distinguishing skills the published manifest covers from ones
-   * installed out of the same repo's other skill roots — see manifestCoversSkill.
-   */
-  skillPath?: string;
 }
 
 /** The slice of the vercel-labs/skills lock file we read. */
@@ -482,19 +497,20 @@ export function skillsAttributedToSource(lock: SkillLock | null, source: string)
     .map(([name]) => name);
 }
 
-// Removed-detection reads the vercel-labs/skills lock, whose on-disk paths live
-// in *their* repo, not ours — so if upstream moves the lock, our cross-reference
-// silently finds nothing and `detectRemoved` no-ops without a peep. Pin the
-// upstream version these paths were verified against so a future bump is a
-// deliberate, reviewable edit (re-check src/skill-lock.ts `getSkillLockPath`
-// and src/local-lock.ts `getLocalLockPath` when bumping):
+/**
+ * The lock records another publisher as the skill's source. A skill with no
+ * lock entry is not "from another source": provenance is unknown, not foreign.
+ */
+function isFromOtherSource(entry: LockEntry | undefined, source: string): boolean {
+  const recorded = [repoSlug(entry?.source), repoSlug(entry?.sourceUrl)].filter(Boolean);
+  return recorded.length > 0 && !recorded.includes(repoSlug(source));
+}
+
+// Lock locations, verified against vercel-labs/skills@v1.5.13 (src/skill-lock.ts,
+// src/local-lock.ts); re-check them when bumping:
 //   - global:  $XDG_STATE_HOME/skills/.skill-lock.json  else  ~/.agents/.skill-lock.json
 //   - project: <cwd>/skills-lock.json
-// https://github.com/vercel-labs/skills/blob/v1.5.13/src/skill-lock.ts (global)
-// https://github.com/vercel-labs/skills/blob/v1.5.13/src/local-lock.ts (project)
-export const SKILLS_CLI_LOCK_PATHS_VERIFIED_AT = "vercel-labs/skills@v1.5.13";
-
-/** Locate the vercel-labs/skills lock for a scope (paths pinned to the version above). */
+/** Locate the vercel-labs/skills lock for a scope. */
 function lockPathForScope(
   scope: "project" | "global",
   opts: { cwd?: string; home?: string },
@@ -528,107 +544,6 @@ export function hyperframesSkillNames(opts: {
 }): string[] {
   const lockPath = lockPathForScope(opts.scope, { cwd: opts.cwd, home: opts.home });
   return skillsAttributedToSource(readSkillLock(lockPath), DEFAULT_REPO_SLUG);
-}
-
-interface RemovedResult {
-  removed: SkillDiff[];
-  /** The lock was absent at the expected path — removed-detection silently no-ops. */
-  lockMissing: boolean;
-}
-
-/**
- * The repo directory the published manifest is generated from — see
- * `packages/cli/scripts/gen-skills-manifest.ts`, which walks `<repoRoot>/skills`
- * and nothing else. Anything installed from a DIFFERENT root of the same repo
- * (`.claude/skills/`, `.agents/skills/` — the repo-native contributor skills) is
- * outside the manifest's coverage, so the manifest says nothing about it.
- */
-const MANIFEST_COVERAGE_ROOT = "skills/";
-
-/**
- * Is the manifest authoritative about whether this skill still exists upstream?
- *
- * Only for skills installed from the directory the manifest is generated from.
- * The lock records where in the repo each skill came from (`skillPath`, e.g.
- * `skills/general-video/SKILL.md` vs `.agents/skills/seam-craft/SKILL.md`), and
- * both carry the same `source`, so source attribution alone cannot tell them
- * apart. An entry with no `skillPath` (older lock format) is treated as NOT
- * covered — for a delete, unknown provenance must fail safe. GH #3111.
- */
-function manifestCoversSkill(entry: LockEntry | undefined): boolean {
-  const path = entry?.skillPath;
-  return typeof path === "string" && path.startsWith(MANIFEST_COVERAGE_ROOT);
-}
-
-/**
- * Skills the lock attributes to our source that the manifest no longer ships.
- *
- * "Absent from the manifest" only means "removed upstream" for skills the
- * manifest actually covers. `skills add --skill '*'` installs every skill in the
- * repo — including the repo-native ones under `.claude/skills/` and
- * `.agents/skills/`, which the published manifest deliberately omits — and
- * attributes them all to our source. Without the coverage filter, every install
- * is immediately followed by a prune that deletes those skills as "no longer
- * published", so `check || update` never converges: `add` reinstalls them and
- * the next `update` deletes them again, forever. GH #3111.
- */
-function detectRemoved(
-  root: SkillRoot,
-  latest: SkillsManifest,
-  opts: { cwd?: string; home?: string },
-): RemovedResult {
-  const lock = readSkillLock(lockPathForScope(root.scope, opts));
-  const removed = skillsAttributedToSource(lock, latest.source)
-    .filter((name) => manifestCoversSkill(lock?.skills?.[name]))
-    .filter((name) => !(name in latest.skills))
-    .sort()
-    .map((name) => ({ name, status: "removed" as const }));
-  return { removed, lockMissing: lock === null };
-}
-
-/**
- * Remove `names` from the vercel-labs/skills lock at `scope`, writing the file
- * back if anything changed. Self-heals the half of removed-upstream detection
- * that `skills remove` can't: upstream's `remove` command scans ON-DISK skill
- * directories to decide what's installed (see vercel-labs/skills'
- * `removeCommand`), so a lock entry for a skill retired before it ever shipped
- * a bundle to this machine has no on-disk dir to match. That makes `skills
- * remove <name> -g --yes` a silent no-op — it prints "No matching skills found
- * for: …" and exits 0 WITHOUT touching the lock. Left alone, `detectRemoved`
- * re-flags the same lock entry as "removed" on every future run, forever.
- *
- * Reuses the pinned lock path (see SKILLS_CLI_LOCK_PATHS_VERIFIED_AT above —
- * re-check that comment before bumping the upstream version this is pinned
- * against) so this writes to exactly where the upstream CLI itself reads and
- * writes the lock.
- *
- * Idempotent by construction: only entries still present in the lock are ever
- * touched, so calling this again with the same names — after the upstream
- * `skills remove` no-op reported above has already run once — finds nothing
- * left and returns `[]`.
- */
-export function pruneOrphanedLockEntries(
-  names: readonly string[],
-  scope: "project" | "global",
-  opts: { cwd?: string; home?: string } = {},
-): string[] {
-  const path = lockPathForScope(scope, opts);
-  const lock = readSkillLock(path);
-  if (!lock?.skills) return [];
-  const pruned = names.filter((name) => name in lock.skills!);
-  if (pruned.length === 0) return [];
-  for (const name of pruned) delete lock.skills[name];
-  // Atomic write (temp file + rename, same pattern as telemetry/autoUpdate.ts
-  // and utils/download.ts) so a crash mid-write can never leave a truncated
-  // lock behind. `path` is guaranteed to exist here (readSkillLock already
-  // returned a non-null lock), so preserving its mode on the temp file before
-  // the rename is safe. No trailing newline: matches the upstream
-  // vercel-labs/skills lock's on-disk shape, so a prune stays a minimal diff.
-  const mode = statSync(path).mode & 0o777;
-  const tmp = `${path}.tmp`;
-  writeFileSync(tmp, JSON.stringify(lock, null, 2), { mode });
-  renameSync(tmp, path);
-  return pruned;
 }
 
 // ── Resolving the "latest" manifest ──────────────────────────────────────────
@@ -777,21 +692,29 @@ export async function checkSkills(
   const latest = await resolveLatestManifest(opts.source, opts.cwd, { canonical: opts.canonical });
   const skillNames = Object.keys(latest.skills);
   const root = locateInstall(skillNames, { dir: opts.dir, cwd: opts.cwd, home: opts.home });
-  const installed = root ? hashInstalled(root, skillNames) : {};
-  const diff = diffSkills(installed, latest);
-  const removedResult = root
-    ? detectRemoved(root, latest, { cwd: opts.cwd, home: opts.home })
-    : { removed: [], lockMissing: false };
-  const { removed, lockMissing } = removedResult;
+  // A directory sharing a name with one of ours can belong to another publisher.
+  // The lock says so; such a skill is never compared, refreshed or overwritten.
+  const lock = root ? readSkillLock(lockPathForScope(root.scope, opts)) : null;
+  const foreign = root
+    ? skillNames.filter(
+        (name) =>
+          existsSync(join(root.dir, name, "SKILL.md")) &&
+          isFromOtherSource(lock?.skills?.[name], latest.source),
+      )
+    : [];
+  const ours = skillNames.filter((name) => !foreign.includes(name));
+  const installed = root ? hashInstalled(root, ours) : {};
+  const diff = diffSkills(installed, {
+    ...latest,
+    skills: Object.fromEntries(ours.map((name) => [name, latest.skills[name]!])),
+  });
   return {
     location: root?.dir ?? null,
     agent: root?.agent ?? null,
     scope: root?.scope ?? null,
-    // Removed skills also mean the install isn't reconciled with the manifest —
-    // `skills update` now prunes them, so they count toward "update available".
-    updateAvailable: diff.updateAvailable || removed.length > 0,
-    summary: { ...diff.summary, removed: removed.length },
-    skills: [...diff.skills, ...removed],
-    lockMissing,
+    updateAvailable: diff.updateAvailable,
+    summary: diff.summary,
+    skills: diff.skills,
+    foreign,
   };
 }

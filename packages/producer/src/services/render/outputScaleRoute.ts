@@ -26,6 +26,7 @@ export function assertOutputScaleSupported(
   if (reason === null) return;
   throw new Error(
     `[Render] --resolution other than the composition's size is not supported on the "${route}" ` +
-      `capture route: ${reason}. Render at the composition's size, or as mp4 with page-side compositing.`,
+      `capture route: ${reason}. Render at the composition's size; or, for HDR footage, add --sdr to ` +
+      "render this size in standard colour; or, for shader transitions, render as mp4.",
   );
 }

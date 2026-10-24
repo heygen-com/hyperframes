@@ -9,7 +9,6 @@
  */
 
 import {
-  CDPSession,
   type Browser,
   type Page,
   type Protocol,
@@ -20,6 +19,7 @@ import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import {
   COMPOSITION_SOURCE_URL,
+  MEDIA_RENDER_ID_ATTR,
   quantizeSeekTime,
   quantizeTimeToFrame,
   fpsToNumber,
@@ -27,6 +27,7 @@ import {
   type RawAuthoredTiming,
 } from "@hyperframes/core";
 
+import { holdRenderFrameVideos } from "./renderFrameVideoHold.js";
 import { DrawElementCaptureError } from "./drawElementCaptureError.js";
 import { encodePng } from "../utils/alphaBlit.js";
 import {
@@ -41,6 +42,11 @@ import {
   resolveMotionBlurPlan,
   type MotionBlurPlan,
 } from "./motionBlur.js";
+import {
+  describePageMotionBlur,
+  describePageMotionBlurAtEnd,
+  installPageMotionBlur,
+} from "./pageMotionBlur.js";
 
 // ── Extracted modules ───────────────────────────────────────────────────────
 import {
@@ -203,6 +209,7 @@ export interface CaptureSession {
    * our console output.
    */
   pendingTimelineIds?: string[];
+  isolatedCompositions?: IsolatedComposition[];
   /** The render's shared memo when the caller passed one, else this session's own. */
   subTimelineWaitMemo: SubTimelineWaitMemo;
   /** Structured readiness warnings surfaced to the producer's render policy. */
@@ -236,6 +243,7 @@ export interface CaptureSession {
   beginFrameIntervalMs: number;
   beginFrameHasDamageCount: number;
   beginFrameNoDamageCount: number;
+  beginFrameSeekPresented?: boolean;
   /** Optional producer config — when set, overrides module-level env var constants. */
   config?: Partial<EngineConfig>;
   /** True if running on SwiftShader (detected at init). Undefined before init. */
@@ -269,6 +277,12 @@ export interface CaptureSession {
    * drawElement intermittently returns an anomalously small (blank) frame with no
    * throw; a frame far below the running median is re-captured via screenshot. */
   deFrameSizes?: number[];
+  /** Absolute floor of the serial drawElement size guard. Starts at 20000 bytes and drops to
+   * half of a small frame that redraws byte-identically. */
+  deAbsFloor?: number;
+  /** The last small drawElement frame that redrew byte-identically; an equal frame is kept
+   * without a redraw. */
+  deAcceptedSmall?: Buffer;
   /** Last non-deduped encode result, reused for a static frame on the drawElement
    * worker-encode path (mirrors `lastFrameBuffer` on the screenshot path). Only set
    * when static-frame dedup is armed on the drawElement path. */
@@ -1420,6 +1434,7 @@ async function constructCaptureSession(
   // Cap the existing session's inspection buffer; new sessions have separate buffers.
   const frame = page.mainFrame();
   // Frame.client is runtime-only, so keep capture working when it is absent.
+  const { CDPSession } = await import("puppeteer-core");
   if ("client" in frame && frame.client instanceof CDPSession) {
     await frame.client.send("Network.enable", {
       maxTotalBufferSize: 32 * 1024 * 1024,
@@ -1461,6 +1476,13 @@ async function constructCaptureSession(
   // Media elements are addressed by a document-unique render id, not by the
   // per-file element id. Install the resolvers before any page script runs.
   await installMediaRenderIdBridge(page);
+  if (options.skipReadinessVideoIds?.length) {
+    await page.evaluateOnNewDocument(
+      holdRenderFrameVideos,
+      options.skipReadinessVideoIds,
+      MEDIA_RENDER_ID_ATTR,
+    );
+  }
   // Fast capture: record accelerated canvases (webgl/webgl2/webgpu) and force
   // preserveDrawingBuffer before any page script can create a context — their
   // paint records freeze at the first frame, so captureDrawElementFrame
@@ -1508,6 +1530,7 @@ async function constructCaptureSession(
       }
     }, variablesJson);
   }
+  await installPageMotionBlur(page, options);
   const browserVersion = await browser.version();
   const sessionOptions = resolveCaptureSessionOptions(options, browserVersion);
   const expectedMajor = config?.expectedChromiumMajor;
@@ -1813,20 +1836,68 @@ async function listUnregisteredTimelineIds(page: Page): Promise<string[]> {
   return Array.isArray(evaluated) ? evaluated.map((id) => String(id)) : [];
 }
 
+function isScriptFailure(session: CaptureSession): boolean {
+  const outcome = session.subTimelineWaitOutcome;
+  return outcome === "script_failure" || (outcome === "timeout" && session.pageErrors.length > 0);
+}
+
+/** A nested composition whose script threw gets an empty timeline, but only while another nested timeline is live. */
+async function isolateUnregisteredCompositions(page: Page): Promise<IsolatedComposition[]> {
+  const isolated = await page.evaluate(`(function() {
+    var timelines = (window.__timelines = window.__timelines || {});
+    var out = [];
+    if (!window.gsap) return out;
+    var broken = [];
+    var live = 0;
+    var hosts = document.querySelectorAll("[data-composition-id]");
+    for (var i = 0; i < hosts.length; i++) {
+      var host = hosts[i];
+      var id = host.getAttribute("data-composition-id");
+      if (!id || host.hasAttribute("data-no-timeline")) continue;
+      var isRoot = !host.parentElement || !host.parentElement.closest("[data-composition-id]");
+      if (timelines[id]) {
+        if (!isRoot) live++;
+      } else if (isRoot) {
+        return out;
+      } else {
+        broken.push(host);
+      }
+    }
+    if (live === 0) return out;
+    broken.forEach(function(host) {
+      var tl = window.gsap.timeline({ paused: true });
+      var duration = parseFloat(host.getAttribute("data-duration"));
+      if (duration > 0) tl.set({}, {}, duration);
+      var id = host.getAttribute("data-composition-id");
+      timelines[id] = tl;
+      out.push({ compositionId: id, elementId: host.id || host.getAttribute("data-hf-id") || null });
+    });
+    if (out.length && typeof window.__hfForceTimelineRebind === "function") window.__hfForceTimelineRebind();
+    return out;
+  })()`);
+  return Array.isArray(isolated) ? (isolated as IsolatedComposition[]) : [];
+}
+
 export async function waitForSubCompositionTimelines(
   session: CaptureSession,
   page: Page,
   timeoutMs: number,
+  options: { scriptErrorGraceMs?: number } = {},
 ): Promise<void> {
   const memo = session.subTimelineWaitMemo;
   session.subTimelineWaitOutcome = await pollSubCompositionTimelines(page, timeoutMs, {
     getScriptLoadFailures: () => session.scriptLoadFailures,
+    getPageErrors: () => session.pageErrors,
+    scriptErrorGraceMs: options.scriptErrorGraceMs,
     onPending: (ids) => {
       session.pendingTimelineIds = [...ids];
     },
     shouldStop: () => session.vfxFailure !== undefined,
     knownUnregisteredIds: memo.unregisteredIds,
   });
+  if (isScriptFailure(session) && session.scriptLoadFailures.length === 0) {
+    session.isolatedCompositions = await isolateUnregisteredCompositions(page);
+  }
   // Only a clean full-length timeout is replayed: a VFX stop ends early, and page or script
   // errors must reach each session so it can still classify the wait as a script failure.
   const cleanTimeout =
@@ -1839,12 +1910,20 @@ export async function waitForSubCompositionTimelines(
   }
 }
 
+export interface IsolatedComposition {
+  compositionId: string;
+  elementId: string | null;
+}
+
 export interface SubTimelinePollOptions {
   intervalMs?: number;
   // Fail-fast: a script resource that failed to load can never register its timeline,
   // so once failures exist the poll ends `scriptFailureGraceMs` after it started.
   getScriptLoadFailures?: () => readonly string[];
   scriptFailureGraceMs?: number;
+  // A script that threw can never register its timeline either; waits this long once a page error exists.
+  getPageErrors?: () => readonly string[];
+  scriptErrorGraceMs?: number;
   // Receives the ids still unregistered at bail time, for the structured warning.
   onPending?: (ids: readonly string[]) => void;
   // Ends the wait at once; the caller then fails the render for its own reason.
@@ -1860,6 +1939,8 @@ export async function pollSubCompositionTimelines(
     intervalMs = 150,
     getScriptLoadFailures,
     scriptFailureGraceMs = 2_000,
+    getPageErrors,
+    scriptErrorGraceMs = 5_000,
     onPending,
     shouldStop,
     knownUnregisteredIds = [],
@@ -1886,19 +1967,26 @@ export async function pollSubCompositionTimelines(
   const deadline = start + timeoutMs;
   let ready = false;
   let scriptFailureBail = false;
+  // A page error is given its grace from when it first appeared, not from when the poll began.
+  let errorSeenAt: number | undefined;
   for (;;) {
     ready = Boolean(await page.evaluate(expression));
     if (ready || shouldStop?.()) break;
     const now = Date.now();
     if (now >= deadline) break;
     const failures = getScriptLoadFailures?.() ?? [];
-    if (failures.length > 0 && now - start >= scriptFailureGraceMs) {
+    const errors = getPageErrors?.() ?? [];
+    const failed = failures.length > 0 ? failures : errors;
+    const graceMs = failures.length > 0 ? scriptFailureGraceMs : scriptErrorGraceMs;
+    if (failed.length > 0) errorSeenAt ??= now;
+    const sinceFailure = failures.length > 0 ? now - start : now - (errorSeenAt ?? now);
+    if (failed.length > 0 && sinceFailure >= graceMs) {
       scriptFailureBail = true;
       console.warn(
         `[FrameCapture] Sub-composition timeline wait cut short after ${now - start}ms: ` +
-          `script resource(s) failed to load (${failures.join(", ")}), so ` +
+          `script(s) failed (${failed.join(", ")}), so ` +
           `the timeline registration they carry can never arrive. ` +
-          `Fix the script reference; the render proceeds without those animations.`,
+          `Fix the script.`,
       );
       break;
     }
@@ -1939,7 +2027,7 @@ export async function pollSubCompositionTimelines(
   return scriptFailureBail ? "script_failure" : "timeout";
 }
 
-async function pollVideosReady(
+export async function pollVideosReady(
   page: Page,
   skipIds: readonly string[],
   timeoutMs: number,
@@ -1949,7 +2037,9 @@ async function pollVideosReady(
     return Boolean(
       await page.evaluate((skipIdList: readonly string[]) => {
         const skip = new Set(skipIdList);
-        const vids = Array.from(document.querySelectorAll("video")).filter((v) => !skip.has(v.id));
+        const vids = Array.from(document.querySelectorAll("video"))
+          .filter((v) => !skip.has(v.id))
+          .filter((v) => !v.closest("[data-hidden]"));
         return (
           vids.length === 0 ||
           vids.every((v) => {
@@ -2016,6 +2106,30 @@ export async function pollImagesReady(
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
   }
   return check();
+}
+
+export async function waitForImagesReady(
+  page: Page,
+  timeoutMs: number,
+  onUnloaded: (sources: string) => void,
+): Promise<boolean> {
+  const ready = await pollImagesReady(page, timeoutMs);
+  if (!ready) {
+    onUnloaded(
+      await page.evaluate(() =>
+        Array.from(document.querySelectorAll("img"))
+          .filter((img) => {
+            const src = img.getAttribute("src") || "";
+            if (!src || src.startsWith("data:")) return false;
+            return !(img.complete && img.naturalWidth > 0);
+          })
+          .map((img) => img.src || img.getAttribute("src") || "(no src)")
+          .join(", "),
+      ),
+    );
+  }
+  await decodeAllImages(page);
+  return ready;
 }
 
 type MediaReadinessSnapshot = {
@@ -2106,16 +2220,35 @@ function recordCaptureWarnings(session: CaptureSession, warnings: readonly Captu
 export function recordSubTimelineWarning(session: CaptureSession, timeoutMs: number): void {
   const outcome = session.subTimelineWaitOutcome;
   if (outcome === "ready" || !outcome) return;
-  const threwThenTimedOut = outcome === "timeout" && session.pageErrors.length > 0;
-  const scriptFailure = outcome === "script_failure" || threwThenTimedOut;
+  const threwThenTimedOut =
+    session.pageErrors.length > 0 && session.scriptLoadFailures.length === 0;
+  const scriptFailure = isScriptFailure(session);
   const sources = [...session.scriptLoadFailures, ...session.pageErrors];
   const pending = session.pendingTimelineIds ?? [];
   const pendingSuffix = pending.length > 0 ? ` (still unregistered: ${pending.join(", ")})` : "";
+  const isolated = session.isolatedCompositions ?? [];
+  if (isolated.length > 0) {
+    recordCaptureWarnings(session, [
+      {
+        code: "script_error_isolated",
+        message:
+          `A composition script failed, so its animation was skipped and the render went on: ` +
+          `${isolated.map((c) => c.elementId ?? c.compositionId).join(", ")} (${sources.join(", ")}).`,
+        details: {
+          sources,
+          pendingCompositionIds: [...pending],
+          isolatedElements: isolated,
+          failureOwner: "user",
+        },
+      },
+    ]);
+    return;
+  }
   recordCaptureWarnings(session, [
     {
       code: scriptFailure ? "sub_timeline_script_failure" : "sub_timeline_readiness_timeout",
       message: threwThenTimedOut
-        ? `A composition script threw and a timeline did not register within ${timeoutMs}ms` +
+        ? `A composition script threw before its timeline registered` +
           `${pendingSuffix} (${sources.join(", ")}). Fix the error; a composition animated by ` +
           `CSS or rAF rather than a GSAP timeline must mark its host with data-no-timeline.`
         : scriptFailure
@@ -2164,8 +2297,8 @@ export function buildLiveMapWarning(libraries: readonly string[]): CaptureWarnin
       `Live map viewport(s) detected in the composition (${libraries.join(", ")}). ` +
       `Map tiles load over the network at render time, which the deterministic-render ` +
       `contract forbids: frames captured before tiles arrive ship a blank or partial map ` +
-      `with no error. Bake the map to a video first (see the motion-graphics maps skill / ` +
-      `bake-basemap.mjs) and use the baked file as the imagery layer.`,
+      `with no error. Bake the map to a video first (the hyperframes skill's ` +
+      `scripts/bake-basemap.mjs, see references/film.md) and use the baked file as the imagery layer.`,
     details: { sources: [...libraries] },
   };
 }
@@ -2215,33 +2348,6 @@ async function decodeAllImages(page: Page): Promise<void> {
       }),
     );
   });
-}
-
-/** Out-of-band videos a poster now sizes, so dropping their media cannot move layout. */
-export function releasableVideoIds(options: CaptureOptions): string[] {
-  const hinted = new Set((options.videoMetadataHints ?? []).map((hint) => hint.id));
-  return (options.skipReadinessVideoIds ?? []).filter((id) => hinted.has(id));
-}
-
-/** FFmpeg supplies these videos' frames, so their own players would only hold decoders and buffers in every worker. */
-export async function releaseInjectedVideoMedia(
-  page: Page,
-  videoIds: readonly string[],
-): Promise<void> {
-  if (videoIds.length === 0) return;
-  await page.evaluate(
-    (ids: string[]) => {
-      for (const id of ids) {
-        const video = window.__hfMediaEl?.(id) ?? document.getElementById(id);
-        if (!(video instanceof HTMLVideoElement)) continue;
-        video.pause();
-        for (const source of video.querySelectorAll("source")) source.remove();
-        video.removeAttribute("src");
-        video.load();
-      }
-    },
-    [...videoIds],
-  );
 }
 
 export async function applyVideoMetadataHints(
@@ -2532,7 +2638,6 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     recordSubTimelineWarning(session, pageReadyTimeout);
 
     await applyVideoMetadataHints(page, session.options.videoMetadataHints);
-    await releaseInjectedVideoMedia(page, releasableVideoIds(session.options));
     logInitPhase("applyVideoMetadataHints complete");
 
     // Run independent readiness checks in parallel — videos, images, fonts,
@@ -2540,27 +2645,12 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     const skipVideoIds = session.options.skipReadinessVideoIds ?? [];
     const [videosReady] = await Promise.all([
       pollVideosReady(page, skipVideoIds, pageReadyTimeout),
-      pollImagesReady(page, pageReadyTimeout).then(async (ready) => {
-        if (!ready) {
-          const failedImages = await page.evaluate(() => {
-            return Array.from(document.querySelectorAll("img"))
-              .filter((img) => {
-                const ie = img as HTMLImageElement;
-                const src = ie.getAttribute("src") || "";
-                if (!src || src.startsWith("data:")) return false;
-                return !(ie.complete && ie.naturalWidth > 0);
-              })
-              .map((img) => (img as HTMLImageElement).src || img.getAttribute("src") || "(no src)")
-              .join(", ");
-          });
-          console.warn(
-            `[FrameCapture] Some image elements did not load within ${pageReadyTimeout}ms: ${failedImages}. ` +
-              `Continuing render. Affected images may appear blank/missing in early frames.`,
-          );
-        }
-        await decodeAllImages(page);
-        return ready;
-      }),
+      waitForImagesReady(page, pageReadyTimeout, (failedImages) =>
+        console.warn(
+          `[FrameCapture] Some image elements did not load within ${pageReadyTimeout}ms: ${failedImages}. ` +
+            `Continuing render. Affected images may appear blank/missing in early frames.`,
+        ),
+      ),
       page.evaluate(`document.fonts?.ready`),
       waitForOptionalTailwindReady(page, pageReadyTimeout),
     ]);
@@ -2571,6 +2661,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
         const skip = new Set(skipIdList);
         return Array.from(document.querySelectorAll("video"))
           .filter((v) => !skip.has(v.id))
+          .filter((v) => !v.closest("[data-hidden]"))
           .filter((v) => (v as HTMLVideoElement).readyState < 2 && !(v as HTMLVideoElement).error)
           .map((v) => (v as HTMLVideoElement).src || v.getAttribute("src") || "(no src)")
           .join(", ");
@@ -2689,7 +2780,6 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     recordSubTimelineWarning(session, pageReadyTimeout);
 
     await applyVideoMetadataHints(page, session.options.videoMetadataHints);
-    await releaseInjectedVideoMedia(page, releasableVideoIds(session.options));
     logInitPhase("applyVideoMetadataHints complete");
 
     // Run independent readiness checks in parallel — videos, images, fonts,
@@ -2697,27 +2787,12 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     const bfSkipVideoIds = session.options.skipReadinessVideoIds ?? [];
     const [bfVideosReady] = await Promise.all([
       pollVideosReady(page, bfSkipVideoIds, pageReadyTimeout),
-      pollImagesReady(page, pageReadyTimeout).then(async (ready) => {
-        if (!ready) {
-          const failedImages = await page.evaluate(() => {
-            return Array.from(document.querySelectorAll("img"))
-              .filter((img) => {
-                const ie = img as HTMLImageElement;
-                const src = ie.getAttribute("src") || "";
-                if (!src || src.startsWith("data:")) return false;
-                return !(ie.complete && ie.naturalWidth > 0);
-              })
-              .map((img) => (img as HTMLImageElement).src || img.getAttribute("src") || "(no src)")
-              .join(", ");
-          });
-          console.warn(
-            `[FrameCapture] Some image elements did not load within ${pageReadyTimeout}ms: ${failedImages}. ` +
-              `Continuing render. Affected images may appear blank/missing in early frames.`,
-          );
-        }
-        await decodeAllImages(page);
-        return ready;
-      }),
+      waitForImagesReady(page, pageReadyTimeout, (failedImages) =>
+        console.warn(
+          `[FrameCapture] Some image elements did not load within ${pageReadyTimeout}ms: ${failedImages}. ` +
+            `Continuing render. Affected images may appear blank/missing in early frames.`,
+        ),
+      ),
       page.evaluate(`document.fonts?.ready`),
       waitForOptionalTailwindReady(page, pageReadyTimeout),
     ]);
@@ -2728,6 +2803,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
         const skip = new Set(skipIdList);
         return Array.from(document.querySelectorAll("video"))
           .filter((v) => !skip.has(v.id))
+          .filter((v) => !v.closest("[data-hidden]"))
           .filter((v) => (v as HTMLVideoElement).readyState < 2 && !(v as HTMLVideoElement).error)
           .map((v) => (v as HTMLVideoElement).src || v.getAttribute("src") || "(no src)")
           .join(", ");
@@ -3468,6 +3544,7 @@ export async function createStaticVerificationPage(session: CaptureSession): Pro
           JSON.parse(json);
       }, variablesJson);
     }
+    await installPageMotionBlur(page, session.options);
     await page.setViewport({
       width: session.options.width,
       height: session.options.height,
@@ -3484,7 +3561,6 @@ export async function createStaticVerificationPage(session: CaptureSession): Pro
       knownUnregisteredIds: session.subTimelineWaitMemo.unregisteredIds,
     });
     await applyVideoMetadataHints(page, session.options.videoMetadataHints);
-    await releaseInjectedVideoMedia(page, releasableVideoIds(session.options));
 
     const skipVideoIds = session.options.skipReadinessVideoIds ?? [];
     await Promise.all([
@@ -3994,6 +4070,70 @@ export function resolveSessionMotionBlur(session: CaptureSession): MotionBlurPla
   return plan;
 }
 
+/**
+ * Size guard for a serial drawElement frame. A frame far below the rolling median may be a
+ * dropped paint record, which is intermittent, so the frame is drawn once more: a byte-identical
+ * redraw is real content (a flat or dark frame) and is kept, as the streaming drain guard in the
+ * producer keeps it. Segmented capture reaches only this guard, so it must judge a small frame
+ * the same way, or a render that passes in one pass fails when segmented (GH #5685). A redraw
+ * that differs and is still small throws, and the caller restarts on a fresh screenshot page.
+ */
+async function judgeSmallDrawElementFrame(
+  session: CaptureSession,
+  frameIndex: number,
+  buffer: Buffer,
+  redraw: () => Promise<Buffer>,
+): Promise<Buffer> {
+  const sizes = (session.deFrameSizes ??= []);
+  const sorted = sizes.length >= 12 ? [...sizes].sort((a, b) => a - b) : null;
+  const median = sorted ? (sorted[sorted.length >> 1] ?? 0) : 0;
+  const floor = Math.max(session.deAbsFloor ?? 20000, median * 0.12);
+  let kept = buffer;
+  if (buffer.length < floor && !session.deAcceptedSmall?.equals(buffer)) {
+    const suspect = () =>
+      new DrawElementCaptureError(
+        frameIndex,
+        `suspect small frame (${buffer.length}B < ${Math.round(floor)}B)`,
+      );
+    // Under BeginFrame control the page paints only on the frame already sent for this index,
+    // so a second draw reads the same snapshot and cannot tell a drop from real content.
+    if (session.beginFrameTimeTicks > 0) throw suspect();
+    const retry = await redraw();
+    if (retry.equals(buffer)) {
+      // Halving the floor keeps a run of similar flat frames from redrawing every frame.
+      session.deAbsFloor = Math.min(session.deAbsFloor ?? 20000, Math.floor(buffer.length / 2));
+      session.deAcceptedSmall = buffer;
+    } else if (retry.length < floor) {
+      throw suspect();
+    } else {
+      kept = retry;
+    }
+  }
+  if (sizes.length >= 60) sizes.shift();
+  sizes.push(kept.length);
+  return kept;
+}
+
+/** Seek to `time` again and draw the frame once more, for {@link judgeSmallDrawElementFrame}. */
+async function redrawDrawElementFrame(
+  session: CaptureSession,
+  frameIndex: number,
+  time: number,
+  seekOptions?: HfSeekOptions,
+  heldVideoTime?: number,
+): Promise<Buffer> {
+  const { page, options } = session;
+  await prepareFrameForCapture(session, frameIndex, time, seekOptions, heldVideoTime);
+  return captureDrawElementFrame(
+    page,
+    options.width,
+    options.height,
+    options.format ?? "jpeg",
+    options.quality ?? 80,
+    true,
+  );
+}
+
 /** Frame timings shared by the single-capture and accumulation paths. */
 interface CapturedSurface {
   buffer: Buffer;
@@ -4025,6 +4165,17 @@ async function captureFrameSurface(
 
   if (session.captureMode === "beginframe") {
     const frameTimeTicks = session.beginFrameTimeTicks + frameIndex * session.beginFrameIntervalMs;
+    if (!session.beginFrameSeekPresented) {
+      // A session's first capture can return the frame composited during init instead of
+      // this seek, so display the seek once at a tick between the probe and this capture.
+      const client = await getCdpSession(page);
+      await client.send("HeadlessExperimental.beginFrame", {
+        frameTimeTicks: frameTimeTicks - session.beginFrameIntervalMs / 2,
+        interval: session.beginFrameIntervalMs,
+        noDisplayUpdates: false,
+      });
+      session.beginFrameSeekPresented = true;
+    }
     const result = await beginFrameCapture(
       page,
       options,
@@ -4069,21 +4220,13 @@ async function captureFrameSurface(
       );
       // A tiny JPEG may be a dropped paint record. Never screenshot this page:
       // its injected canvas can still hold the preceding frame's bitmap.
-      // Restart on a fresh screenshot page even if this was a simple valid frame.
       if ((options.format ?? "jpeg") !== "png" && process.env.HF_FORCE_DRAWELEMENT !== "1") {
-        const sizes = (session.deFrameSizes ??= []);
-        const sorted = sizes.length >= 12 ? [...sizes].sort((a, b) => a - b) : null;
-        const median = sorted ? (sorted[sorted.length >> 1] ?? 0) : 0;
-        const floor = Math.max(20000, median * 0.12);
-        if (screenshotBuffer.length < floor) {
-          throw new DrawElementCaptureError(
-            frameIndex,
-            `suspect small frame (${screenshotBuffer.length}B < ${Math.round(floor)}B)`,
-          );
-        } else {
-          if (sizes.length >= 60) sizes.shift();
-          sizes.push(screenshotBuffer.length);
-        }
+        screenshotBuffer = await judgeSmallDrawElementFrame(
+          session,
+          frameIndex,
+          screenshotBuffer,
+          () => redrawDrawElementFrame(session, frameIndex, time, seekOptions, heldVideoTime),
+        );
       }
     } catch (err) {
       // Missing paint records/canvas state require a new screenshot page.
@@ -4367,6 +4510,10 @@ async function captureFrameCore(
     session.capturePerf.screenshotMs += screenshotMs;
     session.capturePerf.totalMs += captureTimeMs;
     session.capturePerf.frameMs.push(captureTimeMs);
+    if (session.capturePerf.frames === 1) {
+      const blur = await describePageMotionBlur(session.page).catch(() => null);
+      if (blur) console.log(blur);
+    }
 
     // Retain this freshly-captured buffer so the following static frames can reuse it.
     if (session.staticFrames) {
@@ -4812,6 +4959,10 @@ export async function closeCaptureSession(session: CaptureSession): Promise<void
     // One last sample so the summary reflects the session's end state, not a
     // point up to `intervalMs` earlier. Best effort; the page may be gone.
     await session.chromeMemory.sampleOnce();
+  }
+  if (session.page && !session.pageReleased) {
+    const blur = await describePageMotionBlurAtEnd(session.page);
+    if (blur) console.log(blur);
   }
   // Realized static-dedup telemetry: how much the cache actually helped this
   // render (vs the prediction logged at arm time). Both capture paths

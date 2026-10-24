@@ -1,15 +1,25 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import puppeteer, { type Browser } from "puppeteer-core";
+import type { CraftFilm, CraftFrame } from "../utils/checkTypes.js";
 
 declare global {
   interface Window {
     __hyperframesLayoutAudit(options: { time: number; tolerance: number }): { code: string }[];
+    __hyperframesCraftSample(): Omit<CraftFrame, "time">;
+    __hyperframesCraftFilm(): CraftFilm;
   }
 }
 
 const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
 const script = readFileSync(new URL("./layout-audit.browser.js", import.meta.url), "utf8");
+const signatureScript = readFileSync(
+  new URL("./motion-signature.browser.js", import.meta.url),
+  "utf8",
+);
+
+const stage = (body: string) =>
+  `<div data-composition-id="main" data-width="1920" data-height="1080" style="position:relative;width:1920px;height:1080px;background:#0b0d12;color:#fff;font-family:Arial">${body}</div>`;
 
 const heading = (top: number, text: string, style = "") =>
   `<h1 style="position:absolute;left:100px;top:${top}px;margin:0;font:120px/1 Arial;${style}">${text}</h1>`;
@@ -17,6 +27,8 @@ const WORDS_08 =
   '<h1 style="position:absolute;left:120px;top:200px;width:900px;margin:0;font:700 140px/0.8 Arial"><span style="display:inline-block;margin-right:.25em">Launch</span><span style="display:inline-block;margin-right:.25em">faster</span><span style="display:inline-block;margin-right:.25em">ship</span><span style="display:inline-block;margin-right:.25em">sooner</span></h1>';
 const WORDS_04 =
   '<h1 style="position:absolute;left:120px;top:200px;width:900px;margin:0;font:700 140px/0.4 Arial"><span style="display:inline-block;margin-right:.25em">Launch</span><span style="display:inline-block;margin-right:.25em">faster</span><span style="display:inline-block;margin-right:.25em">ship</span><span style="display:inline-block;margin-right:.25em">sooner</span></h1>';
+const OPAQUE_IMAGE =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP48uULAAW8At0b1v2OAAAAAElFTkSuQmCC";
 
 describe.runIf(executablePath)("layout audit in Chromium", () => {
   let browser: Browser;
@@ -66,6 +78,41 @@ describe.runIf(executablePath)("layout audit in Chromium", () => {
     { name: "inline child", content: "<span>Gradient text</span>", layered: false },
     { name: "nested child", content: "<div><span>Gradient text</span></div>", layered: false },
     {
+      name: "inline-block child",
+      content: '<span style="display:inline-block">Gradient text</span>',
+      layered: false,
+    },
+    {
+      name: "flex child",
+      content: '<div style="display:flex">Gradient text</div>',
+      layered: false,
+    },
+    {
+      name: "clipped child",
+      content: '<div style="overflow:hidden">Gradient text</div>',
+      layered: false,
+    },
+    {
+      name: "scroll hint",
+      content: '<div style="will-change:scroll-position">Gradient text</div>',
+      layered: false,
+    },
+    {
+      name: "inline transform",
+      content: '<span style="transform:translateY(0)">Gradient text</span>',
+      layered: false,
+    },
+    {
+      name: "inline transform hint",
+      content: '<span style="will-change:transform">Gradient text</span>',
+      layered: false,
+    },
+    {
+      name: "inline containment",
+      content: '<span style="contain:paint">Gradient text</span>',
+      layered: false,
+    },
+    {
       name: "transformed child",
       content: '<div style="transform:translateY(0)">Gradient text</div>',
       layered: true,
@@ -86,6 +133,56 @@ describe.runIf(executablePath)("layout audit in Chromium", () => {
       layered: true,
     },
     { name: "faded child", content: '<div style="opacity:.9">Gradient text</div>', layered: true },
+    {
+      name: "layered wrapper",
+      content: '<div style="transform:translateY(0)"><span>Gradient text</span></div>',
+      layered: true,
+    },
+    {
+      name: "isolated child",
+      content: '<div style="isolation:isolate">Gradient text</div>',
+      layered: true,
+    },
+    {
+      name: "paint-contained child",
+      content: '<div style="contain:paint">Gradient text</div>',
+      layered: true,
+    },
+    {
+      name: "transform hint",
+      content: '<div style="will-change:transform">Gradient text</div>',
+      layered: true,
+    },
+    {
+      name: "clip path",
+      content: '<div style="clip-path:inset(0)">Gradient text</div>',
+      layered: true,
+    },
+    {
+      name: "prefixed clip path",
+      content: '<div style="-webkit-clip-path:inset(0)">Gradient text</div>',
+      layered: true,
+    },
+    {
+      name: "clip path hint",
+      content: '<div style="will-change:clip-path">Gradient text</div>',
+      layered: true,
+    },
+    {
+      name: "view transition",
+      content: '<div style="view-transition-name:headline">Gradient text</div>',
+      layered: true,
+    },
+    {
+      name: "clip-path wrapper",
+      content: '<div style="clip-path:inset(0)"><span>Gradient text</span></div>',
+      layered: true,
+    },
+    {
+      name: "separately painted flex item",
+      content: '<div style="display:flex"><div style="z-index:1">Gradient text</div></div>',
+      layered: true,
+    },
   ])("recognizes ancestor gradient paint for a $name", async ({ content, layered }) => {
     const direct = await gradientFrame(gradientHeading("Gradient text"));
     const descendant = await gradientFrame(gradientHeading(content));
@@ -95,10 +192,80 @@ describe.runIf(executablePath)("layout audit in Chromium", () => {
       expect(descendant.image).toEqual(direct.image);
       expect(descendant.codes).not.toContain("text_not_painted");
     } else {
-      if (layered) expect(descendant.image).not.toEqual(direct.image);
-      else expect(descendant.image).toEqual(direct.image);
-      expect(descendant.codes).toContain("text_not_painted");
+      if (layered) {
+        expect(descendant.image).not.toEqual(direct.image);
+        expect(descendant.image).toEqual((await gradientFrame(gradientHeading(""))).image);
+        expect(descendant.codes).toContain("text_not_painted");
+      } else {
+        expect(descendant.image).toEqual(direct.image);
+        expect(descendant.codes).not.toContain("text_not_painted");
+      }
     }
+  });
+
+  it.each([
+    { name: "inline child", content: "<span>Gradient text</span>", layered: false },
+    { name: "nested child", content: "<div><span>Gradient text</span></div>", layered: false },
+    {
+      name: "transformed child",
+      content: '<div style="transform:translateY(0)">Gradient text</div>',
+      layered: true,
+    },
+    {
+      name: "image on a second clipped layer",
+      content: "<span>Gradient text</span>",
+      backgroundStyle: "background-clip:border-box,text;background-image:none,",
+      layered: false,
+    },
+    {
+      name: "image-set background",
+      content: "<span>Gradient text</span>",
+      backgroundStyle: "background-image:image-set(url('IMAGE') 1x)",
+      layered: false,
+    },
+  ])(
+    "recognizes ancestor image paint for a $name",
+    async ({ content, backgroundStyle, layered }) => {
+      const background = backgroundStyle?.includes("IMAGE")
+        ? backgroundStyle.replace("IMAGE", OPAQUE_IMAGE)
+        : backgroundStyle
+          ? `${backgroundStyle}url('${OPAQUE_IMAGE}')`
+          : `background-image:url('${OPAQUE_IMAGE}')`;
+      const direct = await gradientFrame(gradientHeading("Gradient text", background));
+      const descendant = await gradientFrame(gradientHeading(content, background));
+      const empty = await gradientFrame(gradientHeading("", background));
+      expect(direct.image).not.toEqual(empty.image);
+      expect(direct.codes).not.toContain("text_not_painted");
+      const version = await browser.version();
+      const chromiumVersion = Number(version.split("/")[1]?.split(".")[0]);
+      const dropsChild = chromiumVersion < 150 && layered;
+      expect(descendant.image).toEqual(dropsChild ? empty.image : direct.image);
+      expect(descendant.codes.includes("text_not_painted")).toBe(dropsChild);
+    },
+  );
+
+  it.each([
+    { name: "unclipped image", backgroundStyle: "background-clip:border-box" },
+    {
+      name: "image on a different background layer",
+      backgroundStyle: "background-image:url('IMAGE'),none;background-clip:border-box,text",
+    },
+  ])("reports invisible glyphs beneath an $name", async ({ backgroundStyle }) => {
+    const background = `background-image:url('${OPAQUE_IMAGE}');${backgroundStyle.replace("IMAGE", OPAQUE_IMAGE)}`;
+    expect(await auditCodes(gradientHeading("<span>Gradient text</span>", background))).toContain(
+      "text_not_painted",
+    );
+  });
+
+  it("reports text positioned outside an ancestor image background", async () => {
+    expect(
+      await auditCodes(
+        gradientHeading(
+          '<span style="position:relative;top:150px">Gradient text</span>',
+          `background-image:url('${OPAQUE_IMAGE}')`,
+        ),
+      ),
+    ).toContain("text_not_painted");
   });
 
   it.each([
@@ -237,5 +404,75 @@ describe.runIf(executablePath)("layout audit in Chromium", () => {
     const codes = await auditCodes(`
         <div data-composition-id="main" data-width="1920" data-height="1080" style="position:relative;width:1920px;height:1080px">${html}</div>`);
     expect(codes.includes("content_overlap")).toBe(overlap);
+  });
+
+  describe("craft sampling", () => {
+    async function sample(body: string) {
+      const page = await browser.newPage();
+      try {
+        await page.setViewport({ width: 1920, height: 1080, deviceScaleFactor: 1 });
+        await page.setContent(`<body style="margin:0">${stage(body)}</body>`);
+        await page.addScriptTag({ content: signatureScript });
+        await page.addScriptTag({ content: script });
+        return await page.evaluate(() => ({
+          frame: window.__hyperframesCraftSample(),
+          again: window.__hyperframesCraftSample(),
+          film: window.__hyperframesCraftFilm(),
+        }));
+      } finally {
+        await page.close();
+      }
+    }
+
+    it("reads a headline split into inline word spans as one reading block", async () => {
+      const { frame } = await sample(
+        `<h1 id="title" style="position:absolute;left:100px;top:300px;margin:0;font-size:96px"><span style="display:inline-block">Ship</span> <span style="display:inline-block">it</span> <span style="display:inline-block">faster</span></h1>`,
+      );
+      expect(frame.parts.map((part) => part.text)).toEqual(["Ship", "it", "faster"]);
+      expect(new Set(frame.parts.map((part) => part.block)).size).toBe(1);
+      expect(frame.parts[0]?.blockSelector).toBe("#title");
+    });
+
+    it("flags captions-track text and leaves out data-layout-ignore text", async () => {
+      const { frame } = await sample(
+        `<div data-track-kind="captions" style="position:absolute;bottom:80px;left:0;font-size:40px"><span>caption word</span></div>
+         <div data-layout-ignore style="position:absolute;top:40px;left:40px;font-size:12px">texture</div>
+         <p style="position:absolute;top:500px;left:100px;margin:0;font-size:48px">Reading line</p>`,
+      );
+      expect(frame.parts.map((part) => [part.text, part.captions])).toEqual([
+        ["caption word", true],
+        ["Reading line", false],
+      ]);
+    });
+
+    it("measures the rendered font size through an ancestor scale", async () => {
+      const { frame } = await sample(
+        `<div style="position:absolute;left:100px;top:100px;transform:scale(0.5);transform-origin:0 0"><p style="margin:0;font-size:40px">Scaled label</p></div>`,
+      );
+      expect(frame.parts[0]?.fontPx).toBeCloseTo(20, 0);
+    });
+
+    it("reports an empty frame, a held element and a stable signature", async () => {
+      const empty = await sample(
+        `<h1 style="position:absolute;top:300px;opacity:0;font-size:96px">Not yet</h1><div style="position:absolute;inset:0;background:#111"></div>`,
+      );
+      expect(empty.frame.painted).toBe(false);
+      expect(empty.frame.held).toBe(false);
+      expect(empty.frame.signature).not.toBe("");
+      expect(empty.again.signature).toBe(empty.frame.signature);
+
+      const held = await sample(
+        `<section data-hold style="position:absolute;inset:0"><svg width="200" height="200"><circle cx="100" cy="100" r="80" fill="#7dd3fc"/></svg></section>`,
+      );
+      expect(held.frame.painted).toBe(true);
+      expect(held.frame.held).toBe(true);
+    });
+
+    it("counts the sound sources the render mixes", async () => {
+      const { film } = await sample(
+        `<audio src="music.mp3"></audio><video src="a.mp4"></video><video src="b.mp4" muted></video><video src="c.mp4" data-has-audio="false"></video>`,
+      );
+      expect(film.soundSources).toBe(2);
+    });
   });
 });

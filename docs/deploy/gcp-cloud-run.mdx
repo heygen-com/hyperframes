@@ -72,7 +72,8 @@ use H.264 or H.265. Distributed rendering is currently SDR-only.
 ## Reuse an upload
 
 Projects are content-addressed. Upload an unchanged project once, then reuse
-its site ID for later renders:
+its site ID for later renders. Site IDs from earlier versions keep working, but
+the ID scheme changed, so each project uploads once more under a new ID:
 
 ```bash
 hyperframes cloudrun sites create ./my-project

@@ -56,7 +56,7 @@ export default defineCommand({
     },
     model: {
       type: "string",
-      description: `Whisper model (default: ${DEFAULT_MODEL}). Options: tiny.en, base.en, small.en, medium.en, large-v3`,
+      description: `Whisper model (default: ${DEFAULT_MODEL}). Options: tiny.en, base.en, small.en, medium.en, small, medium, large-v3`,
       alias: "m",
     },
     language: {
@@ -127,6 +127,7 @@ export default defineCommand({
         onStatus: json ? undefined : (message) => ui.spin?.message(message),
         onProgress: json ? createProgressWriter(process.stderr) : undefined,
         onEngine: (event) => {
+          if (event.notice && !json) console.error(c.dim(`  Note: ${event.notice}`));
           ui.spin = showEngine(event, ui.spin, { json, model: args.model });
         },
       });

@@ -1,18 +1,10 @@
 // fallow-ignore-file complexity
 import { createHash } from "node:crypto";
-import {
-  copyFileSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  statSync,
-} from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { parseHTML } from "linkedom";
 import { parseAnimatedGifMetadata, type AnimatedGifMetadata } from "@hyperframes/core";
-import { DEFAULT_VP9_CPU_USED, runFfmpeg } from "@hyperframes/engine";
+import { DEFAULT_VP9_CPU_USED, runFfmpeg, renameWithRetry } from "@hyperframes/engine";
 import { isHttpUrl } from "../utils/urlDownloader.js";
 import { encoderFailureError } from "./render/encoderInterruption.js";
 
@@ -301,7 +293,7 @@ async function ensurePreparedWebm(input: {
         throw new Error("Animated GIF transcode produced an empty output");
       }
       if (!isUsableFile(input.cachePath)) {
-        renameSync(tmpPath, input.cachePath);
+        renameWithRetry(tmpPath, input.cachePath);
       } else {
         rmSync(tmpPath, { force: true });
       }

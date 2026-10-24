@@ -102,6 +102,21 @@ export function isSeekCompletionBarrierActive(): boolean {
   return _activeCompletionBarriers > 0;
 }
 
+/** Settles with every pending completion, without consuming a failure the barrier reports. */
+export async function seekCompletionsSettled(): Promise<void> {
+  for (
+    let pending = [..._pendingCompletions];
+    pending.length > 0;
+    pending = [..._pendingCompletions]
+  ) {
+    await Promise.all(pending);
+  }
+}
+
+export function hasPendingSeekCompletion(): boolean {
+  return _pendingCompletions.size > 0;
+}
+
 /** `videoFrames: false` skips only the video-frame holds: a geometry read needs every other completion. */
 export async function waitForSeekCompletion(options?: { videoFrames?: boolean }): Promise<void> {
   const awaited = () =>

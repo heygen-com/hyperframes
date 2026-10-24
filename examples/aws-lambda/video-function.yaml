@@ -1,0 +1,108 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  HyperFrames arm64 video renderer: the render handler as a container image, invoked for plan and
+  renderChunk. Nested in template.yaml when VideoImageUri is set; plain CloudFormation, because `sam deploy`
+  demands an image repository for any top-level image function, even one whose Condition is false.
+
+Parameters:
+  ProjectName:
+    Type: String
+  ImageUri:
+    Type: String
+  RenderBucket:
+    Type: String
+  MemorySize:
+    Type: Number
+  Timeout:
+    Type: Number
+  ReservedConcurrency:
+    Type: Number
+  ChromeSource:
+    Type: String
+
+Conditions:
+  HasReservedConcurrency: !Not [!Equals [!Ref ReservedConcurrency, -1]]
+
+Resources:
+  Role:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/AWSXRayDaemonWriteAccess"
+      # The render function's S3CrudPolicy plus AbortMultipartUpload, spelled out.
+      Policies:
+        - PolicyName: render-bucket
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                  - s3:GetBucketLocation
+                  - s3:GetObjectVersion
+                  - s3:PutObject
+                  - s3:PutObjectAcl
+                  - s3:GetLifecycleConfiguration
+                  - s3:PutLifecycleConfiguration
+                  - s3:DeleteObject
+                  - s3:AbortMultipartUpload
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:s3:::${RenderBucket}"
+                  - !Sub "arn:${AWS::Partition}:s3:::${RenderBucket}/*"
+              # The plan sizes an unreserved render to the account's concurrency.
+              - Effect: Allow
+                Action: lambda:GetAccountSettings
+                Resource: "*"
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: HyperFramesComponent
+          Value: lambda-renderer
+
+  Function:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${ProjectName}-video"
+      Description: HyperFrames distributed render handler on arm64, invoked for plan and renderChunk.
+      PackageType: Image
+      Code:
+        ImageUri: !Ref ImageUri
+      Architectures: [arm64]
+      Role: !GetAtt Role.Arn
+      MemorySize: !Ref MemorySize
+      Timeout: !Ref Timeout
+      ReservedConcurrentExecutions: !If
+        - HasReservedConcurrency
+        - !Ref ReservedConcurrency
+        - !Ref AWS::NoValue
+      EphemeralStorage:
+        Size: 10240
+      TracingConfig:
+        Mode: Active
+      Environment:
+        Variables:
+          NODE_OPTIONS: "--enable-source-maps"
+          HYPERFRAMES_LAMBDA_CHROME_SOURCE: !Ref ChromeSource
+          TMPDIR: /tmp
+          HYPERFRAMES_RENDER_BUCKET: !Ref RenderBucket
+          HYPERFRAMES_LAMBDA_RESERVED_CONCURRENCY: !Ref ReservedConcurrency
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: HyperFramesComponent
+          Value: lambda-renderer
+
+Outputs:
+  FunctionArn:
+    Value: !GetAtt Function.Arn
+  FunctionName:
+    Value: !Ref Function

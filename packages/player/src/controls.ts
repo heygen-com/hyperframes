@@ -101,7 +101,7 @@ export function createControls(
   speedBtn.className = "hfp-speed-btn";
   speedBtn.type = "button";
   speedBtn.textContent = "1x";
-  speedBtn.setAttribute("aria-label", "Playback speed");
+  speedBtn.setAttribute("aria-label", "Playback speed: 1x");
 
   const speedMenu = document.createElement("div");
   speedMenu.className = "hfp-speed-menu";
@@ -273,6 +273,7 @@ export function createControls(
     const newSpeed = parseFloat(target.dataset.speed!);
     speedIndex = presets.indexOf(newSpeed);
     speedBtn.textContent = formatSpeed(newSpeed);
+    speedBtn.setAttribute("aria-label", `Playback speed: ${formatSpeed(newSpeed)}`);
     setActiveOption(newSpeed);
     speedMenu.classList.remove("hfp-open");
     speedBtn.setAttribute("aria-expanded", "false");
@@ -374,6 +375,7 @@ export function createControls(
       const idx = presets.indexOf(speed);
       if (idx !== -1) speedIndex = idx;
       speedBtn.textContent = formatSpeed(speed);
+      speedBtn.setAttribute("aria-label", `Playback speed: ${formatSpeed(speed)}`);
       setActiveOption(speed);
     },
     updateMuted(muted: boolean) {

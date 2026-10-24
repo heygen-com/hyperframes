@@ -5,7 +5,15 @@ import { join } from "node:path";
 import { createRenderJob, executeRenderJob } from "./renderOrchestrator.js";
 
 const MASTER_CHAIN = '{"version":1,"nodes":[]}';
-const seen = vi.hoisted((): { audioInput?: { masterFxChain?: string } } => ({}));
+const seen = vi.hoisted(
+  (): {
+    audioInput?: {
+      masterFxChain?: string;
+      totalFrames?: number;
+      fps?: { num: number; den: number };
+    };
+  } => ({}),
+);
 
 vi.mock("@hyperframes/engine", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hyperframes/engine")>()),
@@ -70,7 +78,7 @@ afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-it("the local renderer gives the audio stage the composition's master chain", async () => {
+it("the local renderer gives the shared audio stage its master chain and video clock", async () => {
   const root = mkdtempSync(join(tmpdir(), "hf-master-bus-orchestrator-"));
   dirs.push(root);
   writeFileSync(join(root, "index.html"), "<div></div>");
@@ -84,4 +92,6 @@ it("the local renderer gives the audio stage the composition's master chain", as
     "audio stage reached",
   );
   expect(seen.audioInput?.masterFxChain).toBe(MASTER_CHAIN);
+  expect(seen.audioInput?.totalFrames).toBe(30);
+  expect(seen.audioInput?.fps).toEqual({ num: 30, den: 1 });
 });

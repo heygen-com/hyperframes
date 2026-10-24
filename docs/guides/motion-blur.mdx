@@ -1,0 +1,90 @@
+---
+title: "Motion Blur"
+description: "Smear fast-moving elements along their path, in Studio preview and in renders. Off until you turn it on."
+---
+
+Motion blur gives fast-moving elements a real shutter smear. For each frame, HyperFrames reads where every mover was across the shutter interval and blurs it along that path. A box sliding across the frame leaves a streak instead of a sharp copy at one position.
+
+It is **opt-in**. Nothing blurs until you add `data-motion-blur="on"` to the composition root.
+
+## Turn it on
+
+```html
+<div
+  id="root"
+  data-composition-id="main"
+  data-width="1920"
+  data-height="1080"
+  data-duration="10"
+  data-motion-blur="on"
+>
+  ...
+</div>
+```
+
+That is all. The same attribute drives Studio preview and `hyperframes render`.
+
+| Attribute | Default | Meaning |
+| --- | --- | --- |
+| `data-motion-blur` | none | `on` enables blur. `off` opts out, on the root or on any subtree. |
+| `data-motion-blur-shutter` | `240` | Shutter angle in degrees, 0–720. Larger is a longer smear. |
+| `data-motion-blur-samples` | at least 32 | A fixed number of samples per frame, 2–64. Left unset, each mover gets at least 32, and about one per 2 px of smear when that is more, so a fast move never shows steps. |
+| `data-motion-blur-events` | off | `on` runs timeline callbacks (`onUpdate` and similar) while blur looks for movers and at each sample. Needed when the motion is set from a callback, such as a `render(t)` function, which blur cannot otherwise see. |
+| `data-motion-blur-tier` | `auto` | `capture` or `filter` forces one of the two ways blur is drawn (below). |
+
+## In Studio
+
+The **Blur** tab in Studio's right dock sets it with one control: **Off**, **Subtle** or **Strong**. Subtle is the default blur (240° shutter, samples sized to the smear). Strong opens the shutter to 720° and the samples to 64. The panel writes the attributes above to the composition root, so a render uses the same setting, and Undo works. Off removes `data-motion-blur` and leaves the other attributes where they are.
+
+## What it blurs
+
+Elements that move quickly in 2D: position, scale and rotation changes from GSAP, CSS animations and transitions, and the Web Animations API. Slow movers and static content are left sharp. A mover's glow and shadow travel with it, and the background behind it stays where it is.
+
+## Two ways it is drawn
+
+**Capture** copies each mover out of the page with Chrome's [HTML in Canvas](/guides/html-in-canvas) API and redraws it along its path. It draws turns and zooms truthfully: a spinning tile smears along its arc and its centre stays sharp, and a zoom streaks outward.
+
+**Filter** puts an SVG filter on each mover: copies of the element along its path, averaged, and softened along the motion. It works in any Chrome, over a WebGL canvas, and costs about what a render without blur costs. Turns and zooms are only softened, not streaked.
+
+With `data-motion-blur-tier="auto"` (the default), blur uses the filter tier when every mover only translates and capture when anything turns or scales, because for translation the two look the same and the filter tier is much cheaper.
+
+Capture needs a browser with HTML in Canvas. Chrome 157 and 158 builds exposed it without a flag in headless and Chrome-for-Testing builds; whether stable Chrome does is unverified. Chrome 155 and earlier need `chrome://flags/#html-in-canvas`.
+
+Blur uses the filter tier instead of capture when capture cannot run:
+
+| Found in the composition | Why capture cannot draw it |
+| --- | --- |
+| A WebGL or WebGPU canvas anywhere in the document | Captured frozen. |
+| `backface-visibility: hidden` inside a 3D context (including from an animation) | Drawn mirrored. |
+| A transform on the root element | Ignored by the capture. |
+| Opacity below 1, or `mix-blend-mode`, on the root element | Not applied by the capture. |
+| An `iframe`, `object`, `embed` or custom element in the root | Not captured faithfully. |
+| A nested capture canvas, such as a VFX block | Hangs the renderer. |
+| A browser without HTML in Canvas, or three failed captures in a row | Capture is unavailable. |
+
+This is decided once for the whole composition, from the first frame. A defect the scan misses (a WebGL canvas added late, say) is caught per frame instead: that one frame is rendered sharp and counted in `failedFrames`.
+
+Blur is off, and stays off, for HDR renders, distributed renders, and renders that use the engine's own sub-frame blur.
+
+### Find out which one is drawing
+
+```bash
+npx hyperframes check
+```
+
+| Finding | Severity | Meaning |
+| --- | --- | --- |
+| `motion_blur_filter_fallback` | info | Capture could not run, so the filter tier draws. The message names the cause and how to get capture back. |
+| `motion_blur_no_movers` | info | Blur is on but nothing moves fast enough to blur. If the motion is set from a callback, add `data-motion-blur-events="on"`. |
+| `motion_blur_unverified` | info | The check browser cannot run capture, so it drew with the filter tier. Render once to see capture. |
+
+In the page, `window.__hfMotionBlur.report()` returns `state`, `tier`, `reason`, `reasonCode` and `movers`. A render logs one line per session with the tier, and a session-end line when any frames fell back to sharp (`failedFrames > 0`).
+
+## Cost and limits
+
+- **Render time.** On an 8 s test composition with four whips, a render took 9.8 s with capture, 5.2–5.4 s with the filter tier and 5.3–5.9 s with no blur (two runs each, including startup). Capture adds a second paint per blurred frame; the filter tier adds almost nothing.
+- **Editing.** With capture the root is wrapped only while playing or rendering; paused, it is plain DOM, so click-to-select works. The filter tier never wraps anything.
+- **Capture only.** Blurred preview can run at half the frame rate on heavy compositions, and a `<video>` drawn through the capture looks about 2–3% darker in Studio preview than in normal playback. Renders are not affected.
+- **Preview and render.** A browser without HTML in Canvas previews with the filter tier. A render then uses capture where the composition needs it, so a spin or zoom looks softer in that preview than in the render. Force one tier with `data-motion-blur-tier` for an exact match.
+- **Worker count.** Output is not bit-identical between worker counts (around 60 dB PSNR), about the size of the difference chunking already causes.
+- **Not handled.** Pose errors under CSS `zoom`, `position: fixed` and `foreignObject`; a very short Web Animations API animation that falls between scan samples; a large see-through mover (a full-frame translucent sweep), which is left sharp while its fast children still blur. With capture, a mover is drawn above the static content, so a static element that should cover a mover does not.

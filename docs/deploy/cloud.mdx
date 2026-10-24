@@ -54,12 +54,12 @@ hyperframes cloud render --resolution 4k
 ```
 
 <Warning>
-  4K is billed at 1.5× and supports MP4 only. WebM and MOV use the alpha-capable path, which does not support 4K supersampling.
+  4K is billed at 1.5×.
 </Warning>
 
 ## Check what will upload
 
-Cloud project archives have a 200 MB limit. Inspect the archive before starting a render:
+Media files of 5 MB or more that the project names by path upload as HeyGen assets and are referenced by public, unsigned URL, so large footage and audio do not count against the 200 MB project archive limit. Uploads are cached, so re-rendering uploads only new or changed media. Media is streamed from disk as it uploads, so a large file never has to fit in memory; editing one while the command is preparing it stops the run. Inspect what will upload before starting a render:
 
 ```bash
 hyperframes cloud render --dry-run

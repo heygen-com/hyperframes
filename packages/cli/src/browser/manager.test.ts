@@ -21,9 +21,17 @@
  * `background-removal/manager.test.ts`) so we don't touch the real
  * `HOME` cache.
  */
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, relative, sep } from "node:path";
+import { basename, dirname, join, relative, sep } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { managedChromeVersion } from "./manager.js";
 
@@ -42,7 +50,7 @@ const HF_RECLAIM_LOCK = join(CACHE_ROOT, ".chrome.install.reclaim.lock");
 const PUPPETEER_CACHE = join(FAKE_HOME, ".cache", "puppeteer", "chrome-headless-shell");
 const PUPPETEER_BINARY = join(
   PUPPETEER_CACHE,
-  "linux-148.0.7778.97",
+  `linux-${CHROME_VERSION}`,
   "chrome-headless-shell-linux64",
   "chrome-headless-shell",
 );
@@ -200,6 +208,7 @@ function installFsMocks({
 interface InstallMockOptions {
   buildId: string;
   cacheDir: string;
+  unpack?: boolean;
   logger?: (prefix: string) => ((...args: unknown[]) => void) | undefined;
 }
 
@@ -218,12 +227,14 @@ function installPuppeteerBrowsersMock(
     installImpl?: (
       options: InstallMockOptions,
     ) => Promise<{ executablePath: string; path?: string }>;
+    unzip?: (archivePath: string, folderPath: string) => Promise<boolean>;
   } = {},
 ) {
   const impl =
     opts.installImpl ?? (async () => opts.installResult ?? { executablePath: HF_BINARY });
   // Fixtures name the binary where it lands in HF_CACHE; install() really writes it under its own cacheDir.
   const stagedInstall = async (options: InstallMockOptions) => {
+    if (options.unpack === false) return join(options.cacheDir, "archive.zip");
     const result = await impl(options);
     if (result.path || !result.executablePath.startsWith(HF_CACHE + sep)) return result;
     const rel = relative(HF_CACHE, result.executablePath);
@@ -232,8 +243,15 @@ function installPuppeteerBrowsersMock(
     mockedPaths?.add(path).add(executablePath);
     return { executablePath, path };
   };
+  vi.doMock("./unzipArchive.js", () => ({ unzipArchive: opts.unzip ?? vi.fn(async () => true) }));
   vi.doMock("@puppeteer/browsers", () => ({
     Browser: { CHROMEHEADLESSSHELL: "chrome-headless-shell" },
+    Cache: class {
+      constructor(private readonly dir: string) {}
+      installationDir(browser: string, platform: string, buildId: string) {
+        return join(this.dir, browser, `${platform}-${buildId}`);
+      }
+    },
     detectBrowserPlatform: () => opts.browserPlatform ?? "linux",
     getInstalledBrowsers: opts.installedInHfCacheError
       ? vi.fn().mockRejectedValue(opts.installedInHfCacheError)
@@ -900,7 +918,7 @@ describe("findBrowser — cache resolution", () => {
     // scenario from the hf#677 spike.
     installFsMocks({
       existing: new Set([PUPPETEER_CACHE, PUPPETEER_BINARY]),
-      dirs: { [PUPPETEER_CACHE]: ["linux-148.0.7778.97"] },
+      dirs: { [PUPPETEER_CACHE]: [`linux-${CHROME_VERSION}`] },
     });
     installPuppeteerBrowsersMock();
 
@@ -955,7 +973,7 @@ describe("findBrowser — cache resolution", () => {
         value: hostArch,
         configurable: true,
       });
-      const version = "host-148.0.7778.97";
+      const version = `host-${CHROME_VERSION}`;
       const candidates = [
         ["chrome-headless-shell-linux64", "chrome-headless-shell"],
         ["chrome-headless-shell-mac-arm64", "chrome-headless-shell"],
@@ -997,7 +1015,7 @@ describe("findBrowser — cache resolution", () => {
         value: hostArch,
         configurable: true,
       });
-      const version = "host-148.0.7778.97";
+      const version = `host-${CHROME_VERSION}`;
       const binaries = [
         join(PUPPETEER_CACHE, version, "chrome-headless-shell-linux64", "chrome-headless-shell"),
         join(PUPPETEER_CACHE, version, "chrome-headless-shell-win64", "chrome-headless-shell.exe"),
@@ -1016,7 +1034,7 @@ describe("findBrowser — cache resolution", () => {
   it("skips an empty executable in the puppeteer cache", async () => {
     installFsMocks({
       existing: new Set([PUPPETEER_CACHE, PUPPETEER_BINARY]),
-      dirs: { [PUPPETEER_CACHE]: ["linux-148.0.7778.97"] },
+      dirs: { [PUPPETEER_CACHE]: [`linux-${CHROME_VERSION}`] },
       emptyFiles: new Set([PUPPETEER_BINARY]),
     });
     installPuppeteerBrowsersMock();
@@ -1027,75 +1045,90 @@ describe("findBrowser — cache resolution", () => {
     expect(result?.executablePath).not.toBe(PUPPETEER_BINARY);
   });
 
-  it("prefers the puppeteer cache over the hyperframes cache when BOTH are populated", async () => {
-    // The HF cache is pinned to `CHROME_VERSION` (131-era) which lags upstream
-    // by many releases. The engine's `resolveHeadlessShellPath` scans the
-    // puppeteer cache and selects newest-version-first; if the CLI handed
-    // engine the older HF-cache binary while a newer puppeteer-cache binary
-    // exists, the two would silently disagree on which binary to use.
-    // This test pins the priority: puppeteer cache wins when both are populated.
+  it("prefers our pinned cache over the puppeteer cache when BOTH are populated", async () => {
     installFsMocks({
       existing: new Set([HF_CACHE, HF_BINARY, PUPPETEER_CACHE, PUPPETEER_BINARY]),
-      dirs: { [PUPPETEER_CACHE]: ["linux-148.0.7778.97"] },
+      dirs: { [PUPPETEER_CACHE]: [`linux-${CHROME_VERSION}`] },
     });
     installPuppeteerBrowsersMock({
-      installedInHfCache: [{ browser: "chrome-headless-shell", executablePath: HF_BINARY }],
+      installedInHfCache: [
+        { browser: "chrome-headless-shell", executablePath: HF_BINARY, buildId: CHROME_VERSION },
+      ],
     });
 
     const { findBrowser } = await import("./manager.js");
     const result = await findBrowser();
 
-    expect(result?.executablePath).toBe(PUPPETEER_BINARY);
-    expect(result?.source).toBe("cache");
+    expect(result).toEqual({ executablePath: HF_BINARY, source: "cache" });
   });
 
-  it("picks the newest version when multiple chrome-headless-shell builds are cached", async () => {
-    const olderBinary = join(
+  it("uses our pinned build, not another tool's older shell in the puppeteer cache", async () => {
+    // Field report: a Mac whose puppeteer cache held mac_arm-121 got that shell for check and snapshot, and it died.
+    const oldBinary = join(
       PUPPETEER_CACHE,
-      "linux-131.0.6778.85",
+      "linux-121.0.6167.85",
       "chrome-headless-shell-linux64",
       "chrome-headless-shell",
     );
     installFsMocks({
-      existing: new Set([PUPPETEER_CACHE, PUPPETEER_BINARY, olderBinary]),
-      dirs: {
-        [PUPPETEER_CACHE]: ["linux-131.0.6778.85", "linux-148.0.7778.97"],
-      },
+      existing: new Set([HF_CACHE, HF_BINARY, PUPPETEER_CACHE, oldBinary]),
+      dirs: { [PUPPETEER_CACHE]: ["linux-121.0.6167.85"] },
     });
-    installPuppeteerBrowsersMock();
+    installPuppeteerBrowsersMock({
+      installedInHfCache: [
+        { browser: "chrome-headless-shell", executablePath: HF_BINARY, buildId: CHROME_VERSION },
+      ],
+    });
 
     const { findBrowser } = await import("./manager.js");
-    const result = await findBrowser();
 
-    expect(result?.executablePath).toBe(PUPPETEER_BINARY);
+    await expect(findBrowser()).resolves.toEqual({ executablePath: HF_BINARY, source: "cache" });
   });
 
-  it("uses numeric (not lexicographic) version ordering — linux-148 beats linux-99", async () => {
-    // Regression guard for the lexicographic-sort bug: `"linux-99..."` sorts
-    // after `"linux-148..."` character-by-character (because `'9' > '1'`),
-    // which would have caused the CLI to hand engine an ancient 99-era binary
-    // when a fresh 148 was sitting right next to it. Numeric semver-style
-    // ordering is the only correct semantic.
-    const linux99Binary = join(
+  it("skips another build in the puppeteer cache that does not start", async () => {
+    const oldBinary = join(
       PUPPETEER_CACHE,
-      "linux-99.0.6533.123",
+      "linux-121.0.6167.85",
       "chrome-headless-shell-linux64",
       "chrome-headless-shell",
     );
     installFsMocks({
-      existing: new Set([PUPPETEER_CACHE, PUPPETEER_BINARY, linux99Binary]),
-      // Intentionally list the entries in an order that would expose the bug
-      // under naive `.sort().reverse()` (which puts `linux-99...` first).
-      dirs: {
-        [PUPPETEER_CACHE]: ["linux-99.0.6533.123", "linux-148.0.7778.97"],
-      },
+      existing: new Set([PUPPETEER_CACHE, oldBinary]),
+      dirs: { [PUPPETEER_CACHE]: ["linux-121.0.6167.85"] },
     });
     installPuppeteerBrowsersMock();
 
     const { findBrowser } = await import("./manager.js");
-    const result = await findBrowser();
 
-    expect(result?.executablePath).toBe(PUPPETEER_BINARY);
+    expect((await findBrowser())?.executablePath).not.toBe(oldBinary);
+  });
+
+  it("keeps the newest working shell in the puppeteer cache when the pinned build is absent", async () => {
+    const shared = (version: string) =>
+      join(
+        PUPPETEER_CACHE,
+        `linux-${version}`,
+        "chrome-headless-shell-linux64",
+        "chrome-headless-shell",
+      );
+    installFsMocks({
+      existing: new Set([PUPPETEER_CACHE, shared("99.0.6533.123"), shared("148.0.7778.97")]),
+      dirs: { [PUPPETEER_CACHE]: ["linux-99.0.6533.123", "linux-148.0.7778.97"] },
+    });
+    installPuppeteerBrowsersMock();
+    vi.doMock("node:child_process", () => ({
+      execSync: vi.fn(() => {
+        throw new Error("not found");
+      }),
+      spawnSync: vi.fn(() => ({ status: 0 })),
+    }));
+
+    const { findBrowser } = await import("./manager.js");
+
+    await expect(findBrowser()).resolves.toEqual({
+      executablePath: shared("148.0.7778.97"),
+      source: "cache",
+    });
   });
 
   it("falls back to system Chrome and warns on Linux when no cache has headless-shell", async () => {
@@ -1136,7 +1169,7 @@ describe("findBrowser — cache resolution", () => {
   // Sibling env-var alias for the CLI resolver. The engine layer already
   // honors `PRODUCER_HEADLESS_SHELL_PATH` (see
   // `packages/engine/src/services/browserManager.ts`), and docs
-  // (skills/hyperframes-animation/adapters/typegpu.md,
+  // (skills/hyperframes-registry/references/discovery.md,
   // packages/gcp-cloud-run/Dockerfile, examples/k8s-jobs/Dockerfile.example)
   // all instruct users to set that name. Before this alias, `hyperframes
   // check`/`snapshot`/`compare` — which all route through `openSettledCompositionPage`
@@ -1400,6 +1433,136 @@ describe("downloadBrowser — install failure surfaces HYPERFRAMES_BROWSER_PATH 
   );
 });
 
+describe("downloadBrowser — too little disk for the browser", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    delete process.env["HYPERFRAMES_BROWSER_PATH"];
+    delete process.env["PRODUCER_HEADLESS_SHELL_PATH"];
+    installChildProcessMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.doUnmock("node:fs");
+    vi.doUnmock("node:os");
+    vi.doUnmock("node:child_process");
+    vi.doUnmock("@puppeteer/browsers");
+    vi.doUnmock("../telemetry/system.js");
+  });
+
+  // On a disk that fills mid-unzip, unzip waits on a "Continue? (y/n)" nobody answers, holding the install lock.
+  it.each([
+    { freeMb: 400, downloads: false },
+    { freeMb: 4096, downloads: true },
+    { freeMb: null, downloads: true },
+  ])("downloads only with room for it: $freeMb MB free", async ({ freeMb, downloads }) => {
+    installFsMocks({ existing: new Set([CACHE_ROOT]) });
+    const install = vi.fn(async () => ({ executablePath: HF_BINARY }));
+    installPuppeteerBrowsersMock({ installedInHfCache: [], installImpl: install });
+    const freeDiskMb = vi.fn((): number | null => freeMb);
+    vi.doMock("../telemetry/system.js", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../telemetry/system.js")>()),
+      getFreeDiskMb: freeDiskMb,
+    }));
+
+    const { ensureBrowser } = await import("./manager.js");
+    const result = await ensureBrowser().catch((error: Error) => error);
+
+    expect(freeDiskMb).toHaveBeenCalledWith(CACHE_ROOT);
+    expect(install).toHaveBeenCalledTimes(downloads ? 1 : 0);
+    if (downloads) expect(result).toMatchObject({ source: "download" });
+    else
+      expect((result as Error).message).toMatch(
+        /^Low disk space: .*needs about 512 MB.*400 MB free/,
+      );
+  });
+
+  it("removes a killed install's leftovers before reading free space, so they never count against it", async () => {
+    const home = useRealCacheHome();
+    installPuppeteerBrowsersMock({ installedInHfCache: [] });
+    const staging = join(home, ".cache", "hyperframes", ".chrome-staging-dead");
+    let leftoverWhenRead: boolean | undefined;
+    vi.doMock("../telemetry/system.js", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../telemetry/system.js")>()),
+      getFreeDiskMb: () => {
+        leftoverWhenRead = existsSync(staging);
+        return 400;
+      },
+    }));
+    try {
+      const { ensureBrowser, sweepKilledInstalls } = await import("./manager.js");
+      mkdirSync(join(staging, "partial"), { recursive: true });
+      await expect(ensureBrowser({ force: true })).rejects.toThrow(/^Low disk space/);
+      expect(leftoverWhenRead).toBe(false);
+
+      mkdirSync(join(staging, "partial"), { recursive: true });
+      await sweepKilledInstalls();
+      expect(existsSync(staging)).toBe(false);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    { platform: "linux", unzipsFirst: true },
+    { platform: "darwin", unzipsFirst: true },
+    { platform: "win32", unzipsFirst: false },
+  ])(
+    "on $platform, unzips the download itself first: $unzipsFirst",
+    async ({ platform, unzipsFirst }) => {
+      const home = useRealCacheHome();
+      const { platform: origPlatform, arch: origArch } = process;
+      Object.defineProperty(process, "platform", { value: platform, configurable: true });
+      Object.defineProperty(process, "arch", { value: "x64", configurable: true });
+      const unzip = vi.fn(async () => true);
+      installPuppeteerBrowsersMock({
+        unzip,
+        installImpl: async ({ cacheDir, buildId }) =>
+          writeStagedInstall(cacheDir, buildId, "fresh"),
+      });
+      try {
+        const { ensureBrowser } = await import("./manager.js");
+        await ensureBrowser({ force: true });
+        if (!unzipsFirst) return expect(unzip).not.toHaveBeenCalled();
+        const [archive, into] = unzip.mock.calls[0] as unknown as [string, string];
+        expect(into).toBe(stagedVersionDir(dirname(archive), managedChromeVersion()));
+        expect(basename(dirname(archive))).toMatch(/^\.chrome-staging-/);
+      } finally {
+        Object.defineProperty(process, "platform", { value: origPlatform, configurable: true });
+        Object.defineProperty(process, "arch", { value: origArch, configurable: true });
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("a disk that fills mid-unzip fails the install at once and leaves no staged copy", async () => {
+    const home = useRealCacheHome();
+    const { platform: origPlatform, arch: origArch } = process;
+    Object.defineProperty(process, "platform", { value: "linux", configurable: true });
+    Object.defineProperty(process, "arch", { value: "x64", configurable: true });
+    const install = vi.fn(async ({ cacheDir, buildId }: InstallMockOptions) =>
+      writeStagedInstall(cacheDir, buildId, "fresh"),
+    );
+    installPuppeteerBrowsersMock({
+      installImpl: install,
+      unzip: async () => {
+        throw new Error("Extraction failed: the disk filled up while unpacking Chrome.");
+      },
+    });
+    try {
+      const { ensureBrowser } = await import("./manager.js");
+      await expect(ensureBrowser({ force: true })).rejects.toThrow("the disk filled up");
+      expect(install).not.toHaveBeenCalled();
+      const root = join(home, ".cache", "hyperframes");
+      expect(readdirSync(root).filter((name) => name.startsWith(".chrome-staging-"))).toEqual([]);
+    } finally {
+      Object.defineProperty(process, "platform", { value: origPlatform, configurable: true });
+      Object.defineProperty(process, "arch", { value: origArch, configurable: true });
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+});
+
 // Regression guard for HF#2103: `hyperframes render` hung forever on macOS
 // (Apple Silicon) under Node >= 24.16. Root cause was NOT in this file — it was
 // the extractor `@puppeteer/browsers` <3.0.2 shells out to. That chain
@@ -1557,7 +1720,7 @@ describe("browser resolution on macOS 12 (Darwin < 22)", () => {
     });
   });
 
-  it("keeps the newest puppeteer-cache build on macOS 13", async () => {
+  it("keeps the pinned puppeteer-cache build on macOS 13", async () => {
     installFsMocks({
       existing: new Set([
         PUPPETEER_CACHE,

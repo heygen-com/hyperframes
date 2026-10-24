@@ -545,6 +545,60 @@ describe("shadow reload readiness and failure", () => {
     unmount(root);
   });
 
+  // A window behind others on some Linux desktops draws no frames yet reports visible; readiness needs frames.
+  it("does not spend the budget while the window draws no frames, and promotes once they return", () => {
+    vi.useFakeTimers();
+    const frames = holdFrames();
+    const onPreviewReloadFailed = vi.fn();
+    const { getApi, gen, root } = beginReload({ onPreviewReloadFailed });
+    const shadow = makeShadowWithSpies();
+    act(() => {
+      getApi().setShadowIframeNode(shadow.iframe);
+      getApi().onShadowIframeLoad(gen);
+    });
+
+    act(() => void vi.advanceTimersByTime(FULL_WAIT_MS * 2));
+    expect(onPreviewReloadFailed).not.toHaveBeenCalled();
+    expect(getApi().previewSlots).toHaveLength(2);
+
+    act(() => frames.resume());
+    act(() => getApi().onShadowReadyChange(gen, true));
+    expect(getApi().iframeRef.current).toBe(shadow.iframe);
+    unmount(root);
+  });
+
+  it("gives a shadow its full budget once frames return, then fails one that stays silent", () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const frames = holdFrames();
+    const onPreviewReloadFailed = vi.fn();
+    const { getApi, live, root } = beginReload({ onPreviewReloadFailed });
+
+    act(() => void vi.advanceTimersByTime(FULL_WAIT_MS));
+    act(() => frames.resume());
+    act(() => void vi.advanceTimersByTime(FULL_WAIT_MS - 1));
+    expect(onPreviewReloadFailed).not.toHaveBeenCalled();
+    act(() => void vi.advanceTimersByTime(1));
+    expect(onPreviewReloadFailed).toHaveBeenCalledWith(expect.stringContaining("too long"));
+    expect(getApi().iframeRef.current).toBe(live);
+    unmount(root);
+  });
+
+  it("keeps a reload's own budget when the frames a replaced one waited on return", () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const frames = holdFrames();
+    const onPreviewReloadFailed = vi.fn();
+    const { getApi, root } = beginReload({ onPreviewReloadFailed });
+    act(() => void vi.advanceTimersByTime(SHADOW_READY_TIMEOUT_MS + 1000));
+
+    act(() => getApi().refreshPlayer());
+    act(() => frames.resume());
+    act(() => void vi.advanceTimersByTime(FULL_WAIT_MS));
+    expect(onPreviewReloadFailed).toHaveBeenCalledWith(expect.stringContaining("too long"));
+    unmount(root);
+  });
+
   it("still drops and reports a shadow whose window throws on access", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const onPreviewReloadFailed = vi.fn();
@@ -804,6 +858,25 @@ function unmount(root: ReturnType<typeof createRoot>) {
   act(() => {
     root.unmount();
   });
+}
+
+/** A window that draws no frames although it reports visible: frames are held until `resume`, then one per 16 ms. */
+function holdFrames() {
+  let held: FrameRequestCallback[] = [];
+  let flowing = false;
+  vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+    if (flowing) return Number(setTimeout(() => callback(performance.now()), 16));
+    held.push(callback);
+    return held.length;
+  });
+  return {
+    resume: () => {
+      flowing = true;
+      const waiting = held;
+      held = [];
+      for (const callback of waiting) callback(performance.now());
+    },
+  };
 }
 
 function stubVisibility(initial: DocumentVisibilityState) {

@@ -160,15 +160,16 @@ describe("prepareRenderBody — validation", () => {
     expect((result as { error: string }).error).toContain("must be a string preset");
   });
 
-  it("rejects outputResolution combined with an alpha format (webm/mov)", async () => {
+  it("accepts outputResolution with an alpha format (webm/mov)", async () => {
     for (const format of ["webm", "mov"]) {
       const result = await prepareRenderBody({
         outputResolution: "4k",
         format,
         html: "<html></html>",
       });
-      expect(result).toHaveProperty("error");
-      expect((result as { error: string }).error).toContain("can't supersample");
+      expect(result).toHaveProperty("prepared");
+      const { input } = (result as { prepared: { input: Record<string, unknown> } }).prepared;
+      expect(input.outputResolution).toBe("landscape-4k");
     }
   });
 

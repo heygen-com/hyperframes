@@ -175,9 +175,6 @@ not native TTS timestamps. Do not distribute words evenly across a clip.
 - **Timing:** This adapter requests no native word timestamps. It uses the
   existing transcription pass. `lang` selects transcription language; Gemini
   infers speech language from the text.
-- **Workflow adapters:** Product-launch, faceless-explainer, and PR-video audio
-  scripts accept `--provider gemini --voice Kore --tts-model gemini-3.8-flash-tts
---style "Warm and clear"`.
 
 An API error is reported as a failed line; an explicitly chosen Gemini voice
 never silently falls back to another provider. Check the engine's anomalies

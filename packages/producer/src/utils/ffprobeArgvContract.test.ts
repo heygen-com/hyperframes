@@ -46,6 +46,7 @@ const SOURCE_EXT = /\.(?:ts|mjs|cjs|js|py|sh)$/;
  * about being weaker rather than implying the same guarantee.
  */
 const SHELL_EXT = /\.sh$/;
+const SHELL_PROBE_CALL = /(?:^|[^\w-])ffprobe\s+-/m;
 
 /**
  * The caller set as of the sweep that introduced this contract.
@@ -158,7 +159,7 @@ function discoverCallers(): { found: string[]; unclassified: string[]; shell: st
   const shell: string[] = [];
   const classify = (abs: string): void => {
     const src = readFileSync(abs, "utf8");
-    if (SHELL_EXT.test(abs) && /(?:^|[^\w-])ffprobe\s+-/m.test(src)) {
+    if (SHELL_EXT.test(abs) && SHELL_PROBE_CALL.test(src)) {
       shell.push(relative(REPO_ROOT, abs));
     }
     // Discovery is ARGV-shaped, not call-shaped. Matching on spawn/execFile
@@ -241,10 +242,13 @@ function argvTails(source: string): Array<{ snippet: string; tail: string[] }> {
 describe("shell ffprobe invocations terminate their options", () => {
   const shellFiles = discoverCallers().shell;
 
-  it("finds the shell callers", () => {
-    // Guards the guard: `frame_strip.sh` and `render-and-composite.sh` both
-    // shipped un-terminated while the JS-only sweep reported the class closed.
-    expect(shellFiles.length).toBeGreaterThan(0);
+  it("recognises a shell ffprobe command line", () => {
+    // Guards the guard: a detector that stops matching leaves every shell caller
+    // unchecked while the sweep reports none. The repository may hold no shell
+    // caller at all, so the detector is pinned on a literal command line.
+    expect(
+      SHELL_PROBE_CALL.test('dur=$(ffprobe -v error -show_entries format=duration "$IN")'),
+    ).toBe(true);
   });
 
   it.each(shellFiles)("%s passes -- on every ffprobe command line", (relPath) => {
@@ -316,5 +320,28 @@ describe("ffprobe argv contract", () => {
     for (const { tail, snippet } of probeArgvs) {
       expect(tail[0], `terminator not penultimate in ${snippet}`).toBe('"--"');
     }
+  });
+});
+
+describe("ffmpeg/ffprobe stderr has one owner", () => {
+  const SPAWNS_MEDIA_TOOL =
+    /\bspawn\(\s*(?:getFfmpegBinary\(\)|getFfprobeBinary\(\)|command\b|["'`]ff(?:mpeg|probe)["'`])/;
+  const runtimeSources = (dir: string): string[] =>
+    readdirSync(dir).flatMap((entry) => {
+      const abs = join(dir, entry);
+      if (statSync(abs).isDirectory()) return runtimeSources(abs);
+      return /\.ts$/.test(entry) && !/\.(?:test|d)\.ts$/.test(entry) ? [abs] : [];
+    });
+
+  it("every spawn hands its stderr to ManagedChildProcess, which redacts signed URLs", () => {
+    // Its stderr is what errors and logs quote; any other reader would need its own redaction.
+    const offenders = ["engine", "producer", "aws-lambda"]
+      .flatMap((pkg) => runtimeSources(join(REPO_ROOT, "packages", pkg, "src")))
+      .filter((abs) => {
+        const code = stripComments(readFileSync(abs, "utf8"));
+        return SPAWNS_MEDIA_TOOL.test(code) && !code.includes("new ManagedChildProcess(");
+      })
+      .map((abs) => relative(REPO_ROOT, abs));
+    expect(offenders).toEqual([]);
   });
 });

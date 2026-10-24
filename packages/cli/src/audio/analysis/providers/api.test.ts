@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   rhythm,
   signalProvider,
@@ -28,6 +28,7 @@ function clicks(seconds: number): AudioSignal {
 
 interface Received {
   method: string;
+  url: string | undefined;
   apiKey: string | undefined;
   authorization: string | undefined;
   idempotencyKey: string | undefined;
@@ -94,6 +95,7 @@ beforeAll(async () => {
     };
     received.push({
       method: req.method!,
+      url: req.url,
       apiKey: req.headers["x-api-key"] as string | undefined,
       authorization: req.headers.authorization,
       idempotencyKey: req.headers["idempotency-key"] as string | undefined,
@@ -108,32 +110,64 @@ beforeAll(async () => {
 
 afterAll(() => new Promise<void>((done) => server.close(() => done())));
 
+const serverOrigin = () => `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+
+beforeEach(() => {
+  for (const name of ["HEYGEN_API_KEY", "HYPERFRAMES_API_KEY", "HEYGEN_ACCESS_TOKEN"])
+    vi.stubEnv(name, "");
+  vi.stubEnv("HEYGEN_API_URL", serverOrigin());
+});
+
 afterEach(() => {
   received = [];
   uploads = 0;
   enveloped = true;
+  vi.unstubAllEnvs();
   delete process.env.HYPERFRAMES_AUDIO_API_URL;
   delete process.env.HYPERFRAMES_AUDIO_API_KEY;
 });
 
 function configure() {
-  process.env.HYPERFRAMES_AUDIO_API_URL = `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1/audio`;
+  process.env.HYPERFRAMES_AUDIO_API_URL = `${serverOrigin()}/v1/audio`;
   process.env.HYPERFRAMES_AUDIO_API_KEY = "test-key";
 }
 
 describe("apiProvider", () => {
-  it("is unavailable until both the URL and the key are set", () => {
-    expect(apiProvider.available!()).toEqual({
+  it("is unavailable without a HeyGen credential", async () => {
+    expect(await apiProvider.available!()).toEqual({
       ok: false,
-      reason: "HYPERFRAMES_AUDIO_API_URL is not set",
+      reason: expect.stringContaining("no HeyGen credential"),
     });
-    process.env.HYPERFRAMES_AUDIO_API_URL = "http://127.0.0.1:1/";
-    expect(apiProvider.available!()).toEqual({
+    vi.stubEnv("HEYGEN_API_KEY", "test-key");
+    expect(await apiProvider.available!()).toEqual({ ok: true });
+  });
+
+  it("calls HeyGen's audio analysis route with the CLI's HeyGen API key", async () => {
+    vi.stubEnv("HEYGEN_API_KEY", "test-key");
+    reply = () => ({ status: 200, body: { version: 1, beats: { times: [0.25, 0.75] } } });
+    await apiProvider.analyze("beats", clicks(2), {});
+    expect(received.map((r) => [r.url, r.apiKey])).toEqual([["/v3/audio/analysis", "test-key"]]);
+  });
+
+  it("stays off when the host blanks HYPERFRAMES_AUDIO_API_URL, whatever HeyGen credential it holds", async () => {
+    vi.stubEnv("HEYGEN_API_KEY", "gateway-token");
+    process.env.HYPERFRAMES_AUDIO_API_URL = "";
+    process.env.HYPERFRAMES_AUDIO_API_KEY = "";
+    expect(await apiProvider.available!()).toEqual({
       ok: false,
-      reason: "HYPERFRAMES_AUDIO_API_KEY is not set",
+      reason: "HYPERFRAMES_AUDIO_API_URL is empty, which turns this service off",
+    });
+  });
+
+  it("never sends the HeyGen credential to a service named by HYPERFRAMES_AUDIO_API_URL", async () => {
+    vi.stubEnv("HEYGEN_API_KEY", "heygen-key");
+    process.env.HYPERFRAMES_AUDIO_API_URL = "http://127.0.0.1:1/";
+    expect(await apiProvider.available!()).toEqual({
+      ok: false,
+      reason: "HYPERFRAMES_AUDIO_API_URL is set but HYPERFRAMES_AUDIO_API_KEY is not",
     });
     process.env.HYPERFRAMES_AUDIO_API_KEY = "k";
-    expect(apiProvider.available!()).toEqual({ ok: true });
+    expect(await apiProvider.available!()).toEqual({ ok: true });
   });
 
   it("refuses redirects without sending the API key to another origin", async () => {
@@ -180,10 +214,11 @@ describe("apiProvider", () => {
         downbeats: { times: measured.filter((_, k) => k % 4 === 0).map((t) => t - 0.02), meter: 4 },
       } satisfies AudioApiResponse,
     });
-    const analysis = await analyzeSignal(signal, { capabilities: ["beats", "downbeats", "bpm"] }, [
-      apiProvider,
-      signalProvider,
-    ]);
+    const analysis = await analyzeSignal(
+      signal,
+      { quality: "best", capabilities: ["beats", "downbeats", "bpm"] },
+      [apiProvider, signalProvider],
+    );
 
     expect(received).toHaveLength(1);
     const [call] = received;
@@ -225,6 +260,7 @@ describe("apiProvider", () => {
     configure();
     reply = () => ({ status: 200, body: { version: 1, beats: { times: [0.5, 1, 1.5] } } });
     const analysis = await analyzeSignal(clicks(8), {
+      quality: "best",
       capabilities,
       provider: { bpm: "signal" },
     });
@@ -247,6 +283,7 @@ describe("apiProvider", () => {
       });
       await expect(
         analyzeSignal(clicks(8), {
+          quality: "best",
           capabilities: ["describe", "beats", "bpm"],
           provider,
         }),
@@ -272,10 +309,11 @@ describe("apiProvider", () => {
         describe: { text: "clicks", tags: [{ label: "click", score: 0.9 }] },
       },
     });
-    const analysis = await analyzeSignal(signal, { capabilities: ["sections", "describe"] }, [
-      apiProvider,
-      signalProvider,
-    ]);
+    const analysis = await analyzeSignal(
+      signal,
+      { quality: "best", capabilities: ["sections", "describe"] },
+      [apiProvider, signalProvider],
+    );
     expect(received.map((r) => r.request.capabilities)).toEqual([["sections"], ["describe"]]);
     expect(new Set(received.map((r) => r.idempotencyKey)).size).toBe(2);
     expect(uploads).toBe(1);
@@ -296,7 +334,7 @@ describe("apiProvider", () => {
   it("falls through to signal processing with a warning when the service fails or answers in another shape", async () => {
     configure();
     reply = () => ({ status: 503, body: { error: { message: "busy" } } });
-    const failed = await analyzeSignal(clicks(8), { capabilities: ["beats"] }, [
+    const failed = await analyzeSignal(clicks(8), { quality: "best", capabilities: ["beats"] }, [
       apiProvider,
       signalProvider,
     ]);
@@ -306,7 +344,7 @@ describe("apiProvider", () => {
     ]);
 
     reply = () => ({ status: 200, body: { version: 1, beats: { times: ["soon"] } } });
-    const garbled = await analyzeSignal(clicks(8), { capabilities: ["beats"] }, [
+    const garbled = await analyzeSignal(clicks(8), { quality: "best", capabilities: ["beats"] }, [
       apiProvider,
       signalProvider,
     ]);
@@ -328,7 +366,7 @@ describe("apiProvider", () => {
     reply = () => ({ status: 200, body: { version: 1, describe: { tags: [] } } });
     await analyzeSignal(
       { sampleRate: rate, channels: [left, right] },
-      { capabilities: ["describe"] },
+      { quality: "best", capabilities: ["describe"] },
       [apiProvider],
     );
 
@@ -378,7 +416,7 @@ describe("apiProvider", () => {
       reply = () => ({ status: 200, body: { version: 1, describe: { tags: [] } } });
       await analyzeSignal(
         { sampleRate: rate, channels: [left, right] },
-        { capabilities: ["describe"] },
+        { quality: "best", capabilities: ["describe"] },
         [apiProvider],
       );
       const wav = Buffer.from(received[0]!.audio.bytes);
@@ -393,14 +431,22 @@ describe("apiProvider", () => {
     configure();
     enveloped = false;
     reply = () => ({ status: 200, body: { version: 1, describe: { text: "bare", tags: [] } } });
-    const analysis = await analyzeSignal(clicks(2), { capabilities: ["describe"] }, [apiProvider]);
+    const analysis = await analyzeSignal(
+      clicks(2),
+      { quality: "best", capabilities: ["describe"] },
+      [apiProvider],
+    );
     expect(analysis.values.describe).toEqual({ text: "bare", tags: [] });
   });
 
   it("never sends the key anywhere but the x-api-key header", async () => {
     configure();
     reply = () => ({ status: 401, body: { error: { message: "bad key" } } });
-    const analysis = await analyzeSignal(clicks(8), { capabilities: ["describe"] }, [apiProvider]);
+    const analysis = await analyzeSignal(
+      clicks(8),
+      { quality: "best", capabilities: ["describe"] },
+      [apiProvider],
+    );
     expect(JSON.stringify(analysis)).not.toContain("test-key");
     const [call] = received;
     expect(call).toMatchObject({ apiKey: "test-key", authorization: undefined });

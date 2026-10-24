@@ -12,6 +12,8 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { MEDIA_DURATION_FIXTURES } from "@hyperframes/parsers/media-duration-fixtures";
 import { fileURLToPath } from "node:url";
+import { format } from "node:util";
+import { runInNewContext } from "node:vm";
 import { beforeAll, describe, expect, it, onTestFinished } from "vitest";
 import { ensureDOMParser } from "../utils/dom.js";
 import {
@@ -803,10 +805,11 @@ describe("kind tracks list every clip once", () => {
 });
 
 // The documented one-liners run verbatim; only the example query values are swapped for the fixture's.
+const HERE_TL = '<<<"$TL"';
 const docLines = (kind: "jq" | "node -e"): string[] =>
   readFileSync(SKILL_DOC, "utf8")
     .split("\n")
-    .filter((l) => l.startsWith(`${kind} `) && l.endsWith('<<<"$TL"'));
+    .filter((l) => l.startsWith(`${kind} `) && l.endsWith(HERE_TL));
 const oneLiners = (kind: "jq" | "node -e"): string[] =>
   docLines(kind).map((l) => l.replace("12.5", "7").replace("tsfx-pet2", "nested"));
 
@@ -819,23 +822,38 @@ const hasJq = (() => {
   }
 })();
 
-const runOneLiner = async (line: string, timeline?: ProjectTimeline): Promise<string> => {
-  const own = timeline ? null : inversionProject();
-  return execFileSync("bash", ["-c", line], {
-    env: {
-      ...process.env,
-      TL: JSON.stringify({ timeline: timeline ?? (await describeProject(own!)) }),
+/** Argv of a documented `<cmd> ... '<program>' <<<"$TL"` line, quoted as bash reads these lines. */
+const argvOf = (line: string) =>
+  [...line.slice(0, -HERE_TL.length).matchAll(/'([^']*)'|(\S+)/g)].map((m) => m[1] ?? m[2]!);
+
+/** Runs a documented line on `tl` with no shell: jq as a process, a `node -e` program in-process. */
+const runOneLiner = (line: string, tl: string): string => {
+  const [cmd, ...args] = argvOf(line);
+  if (cmd === "jq") return execFileSync("jq", args, { input: tl, encoding: "utf8" });
+  expect([cmd, args[0], args.length]).toEqual(["node", "-e", 2]);
+  const out: string[] = [];
+  const fs = {
+    readFileSync: (fd: number, encoding: string) => {
+      expect([fd, encoding]).toEqual([0, "utf8"]);
+      return tl;
     },
-    encoding: "utf8",
+  };
+  runInNewContext(args[1]!, {
+    require: (id: string) => (id === "fs" ? fs : undefined),
+    console: { log: (...parts: unknown[]) => out.push(`${format(...parts)}\n`) },
   });
+  return out.join("");
 };
+const timelineJson = async (timeline: Promise<ProjectTimeline>) =>
+  JSON.stringify({ timeline: await timeline });
 const parseStream = (out: string) => JSON.parse(`[${out.replace(/}\s*{/g, "},{")}]`);
 
 describe("skill query one-liners", () => {
   it("documents five node one-liners, each answering from the fixture", async () => {
     const lines = oneLiners("node -e");
     expect(lines).toHaveLength(5);
-    const [at = "", find, track, gaps, nth] = await Promise.all(lines.map((l) => runOneLiner(l)));
+    const tl = await timelineJson(describeProject(inversionProject()));
+    const [at = "", find, track, gaps, nth] = lines.map((l) => runOneLiner(l, tl));
     expect(at.split("\n").filter(Boolean)).toEqual([
       "nested compositions/scene.html",
       "host index.html",
@@ -849,9 +867,8 @@ describe("skill query one-liners", () => {
   it.skipIf(!hasJq)("documents five jq one-liners that agree with the node ones", async () => {
     const lines = oneLiners("jq");
     expect(lines).toHaveLength(5);
-    const [at, find, track, gaps, nth] = (await Promise.all(lines.map((l) => runOneLiner(l)))).map(
-      parseStream,
-    );
+    const tl = await timelineJson(describeProject(inversionProject()));
+    const [at, find, track, gaps, nth] = lines.map((l) => parseStream(runOneLiner(l, tl)));
     expect(at[0].map((r: { id: string }) => r.id)).toEqual(["nested", "host"]);
     expect(find).toEqual([
       { file: "compositions/scene.html", trackKind: "video", absStart: 6, absEnd: 8 },
@@ -867,12 +884,10 @@ describe("skill query one-liners", () => {
   });
 
   it("answers the eval questions exactly on the eval fixture, counting no clip twice", async () => {
-    const timeline = await evalTimeline();
+    const tl = await timelineJson(evalTimeline());
     const ids = ["tsfx-pet1", "tmus-pet1", "tmus-pet2", "tsfx-pet2", "v-replay1", "v-replay2"];
-    const run = (l: string) => runOneLiner(l.replace("12.5", "15.7"), timeline);
-    const [at = "", find = "", track = "", , nth = ""] = await Promise.all(
-      docLines("node -e").map(run),
-    );
+    const run = (l: string) => runOneLiner(l.replace("12.5", "15.7"), tl);
+    const [at = "", find = "", track = "", , nth = ""] = docLines("node -e").map(run);
     expect(at.split("\n").filter(Boolean)).toEqual([
       "tsfx-pet2 compositions/terminal-sfx.html",
       "sec-sfx index.html",
@@ -887,7 +902,7 @@ describe("skill query one-liners", () => {
     ).toEqual(ids);
     expect(nth).toBe("1 tmus-pet1 13 compositions/terminal-music.html\n");
     if (!hasJq) return;
-    const [jqAt = "", , jqTrack = "", , jqNth = ""] = await Promise.all(docLines("jq").map(run));
+    const [jqAt = "", , jqTrack = "", , jqNth = ""] = docLines("jq").map(run);
     expect(parseStream(jqAt)[0].map((r: { id: string }) => r.id)).toEqual([
       "tsfx-pet2",
       "sec-sfx",

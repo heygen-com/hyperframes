@@ -166,8 +166,9 @@ Grading picks pixels by value, never by position: no face tracking, region
 tracking, rotoscoping or masks — an HSL selection is a color qualifier, not a
 shape. To treat one part of a frame, split it into its own media layer and grade
 that layer, as in the [implementation reference](/reference/color-grading). It
-targets media elements only, so a whole scene including HTML text cannot be
-graded.
+targets `<video>`, `<img>` and `<canvas>` elements only, so a whole scene
+including HTML text cannot be graded. A `<canvas>` is graded at its drawing-buffer
+size (`width`/`height`) and re-read on every seek and playback frame.
 
 SDR images and video are the supported case; 4K works at a higher preview and
 render cost. An HDR source — iPhone HDR, HLG, Dolby Vision-style — gets an SDR

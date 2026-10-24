@@ -12,17 +12,25 @@ on:
   pull_request:
     branches: [main]
     paths:
+      - ".github/workflows/docs.yml"
       - "docs/**"
       - "DOCS_GUIDELINES.md"
       - "packages/core/schemas/**"
       - "scripts/sync-schemas.ts"
+      # A new CLI command must be listed in the docs (check-docs-cli-commands.mjs).
+      - "packages/cli/src/cli.ts"
+      - "scripts/check-docs-cli-commands.mjs"
   push:
     branches: [main]
     paths:
+      - ".github/workflows/docs.yml"
       - "docs/**"
       - "DOCS_GUIDELINES.md"
       - "packages/core/schemas/**"
       - "scripts/sync-schemas.ts"
+      # A new CLI command must be listed in the docs (check-docs-cli-commands.mjs).
+      - "packages/cli/src/cli.ts"
+      - "scripts/check-docs-cli-commands.mjs"
 
 concurrency:
   group: docs-${{ github.ref }}
@@ -32,7 +40,7 @@ jobs:
   validate:
     name: Validate docs
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -43,12 +51,20 @@ jobs:
       - name: Check schema mirror (core → docs)
         run: npx tsx scripts/sync-schemas.ts --check
 
+      - name: Check every CLI command is listed in the docs
+        run: node scripts/check-docs-cli-commands.mjs
+
+      - name: Install Mint CLI
+        run: |
+          npm install --prefix "$RUNNER_TEMP/mint-cli" --no-save --no-package-lock mint@4.2.1096
+          echo "$RUNNER_TEMP/mint-cli/node_modules/.bin" >> "$GITHUB_PATH"
+
       - name: Validate build
         working-directory: docs
-        run: npx mint validate
+        run: mint validate
 
       - name: Check broken links
         working-directory: docs
         # --check-redirects also resolves every redirect destination, so a
         # restructure cannot leave a redirect pointing at a page it removed.
-        run: npx mint broken-links --check-redirects
+        run: mint broken-links --check-redirects

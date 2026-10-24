@@ -1,0 +1,8 @@
+# name sha256 url  (x264 has no stable tarballs: its line pins a git commit, r3191 as in the x86 ffmpeg-static)
+ffmpeg-7.0.2.tar.xz 8646515b638a3ad303e23af6a3587734447cb8fc0a0c064ecdb8e95c4fd8b389 https://ffmpeg.org/releases/ffmpeg-7.0.2.tar.xz
+x264 4613ac3c15fd75cebc4b9f65b7fb95e70a3acce1 https://code.videolan.org/videolan/x264.git
+x265_4.1.tar.gz a31699c6a89806b74b0151e5e6a7df65de4b49050482fe5ebf8a4379d7af8f29 https://bitbucket.org/multicoreware/x265_git/downloads/x265_4.1.tar.gz
+libvpx-1.15.0.tar.gz e935eded7d81631a538bfae703fd1e293aad1c7fd3407ba00440c95105d2011e https://github.com/webmproject/libvpx/archive/refs/tags/v1.15.0.tar.gz
+opus-1.5.2.tar.gz 65c1d2f78b9f2fb20082c38cbe47c951ad5839345876e46941612ee87f9a7ce1 https://downloads.xiph.org/releases/opus/opus-1.5.2.tar.gz
+zimg-3.0.5.tar.gz a9a0226bf85e0d83c41a8ebe4e3e690e1348682f6a2a7838f1b8cbff1b799bcf https://github.com/sekrit-twc/zimg/archive/refs/tags/release-3.0.5.tar.gz
+dav1d-1.5.1.tar.xz 401813f1f89fa8fd4295805aa5284d9aed9bc7fc1fdbe554af4292f64cbabe21 https://downloads.videolan.org/pub/videolan/dav1d/1.5.1/dav1d-1.5.1.tar.xz

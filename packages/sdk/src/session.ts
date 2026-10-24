@@ -107,6 +107,7 @@ class CompositionImpl implements Composition {
   private selectionHandlers: Array<(ids: string[]) => void> = [];
   private patchHandlers: Array<(e: PatchEvent) => void> = [];
   private errorHandlers: Array<(e: PersistErrorEvent) => void> = [];
+  private persistErrorUnsubscribes = new Set<() => void>();
   private previewSelectionUnsubscribe: (() => void) | null = null;
 
   /** Attached by openComposition() for standalone mode. */
@@ -797,9 +798,10 @@ class CompositionImpl implements Composition {
       const typedH = h as (e: PersistErrorEvent) => void;
       this.errorHandlers.push(typedH);
       const offPersist = this.persist?.on("persist:error", typedH);
+      if (offPersist) this.persistErrorUnsubscribes.add(offPersist);
       return () => {
         this.errorHandlers = this.errorHandlers.filter((x) => x !== typedH);
-        offPersist?.();
+        if (offPersist && this.persistErrorUnsubscribes.delete(offPersist)) offPersist();
       };
     }
     return () => {};
@@ -861,6 +863,8 @@ class CompositionImpl implements Composition {
   dispose(): void {
     this.previewSelectionUnsubscribe?.();
     this.previewSelectionUnsubscribe = null;
+    for (const unsubscribe of this.persistErrorUnsubscribes) unsubscribe();
+    this.persistErrorUnsubscribes.clear();
     this.persistQueueModule?.dispose();
     this.historyModule?.dispose();
     this.changeHandlers = [];

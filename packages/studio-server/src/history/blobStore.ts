@@ -9,6 +9,7 @@ import { atomicTempPath } from "@hyperframes/core/atomic-file";
 export interface BlobStore {
   /** Copies the file in (a clone where the file system can) and returns the copy's hash. */
   put(absPath: string): Promise<string>;
+  reference(absPath: string): Promise<string>;
   has(hash: string): boolean;
   read(hash: string): Promise<Buffer>;
   /** Writes the blob's bytes to `absPath` by clone-or-copy and rename, so a reader never sees half a file. */
@@ -16,11 +17,12 @@ export interface BlobStore {
   bytes(): number;
   size(hash: string): number;
   prune(keep: ReadonlySet<string>): Promise<void>;
+  drop(hashes: Iterable<string>): Promise<void>;
 }
 
 const BLOB_HASH = /^[0-9a-f]{64}$/;
 
-function blobPath(dir: string, hash: string): string {
+export function blobPath(dir: string, hash: string): string {
   // Checked where the path is joined, so no caller can read or write outside the store.
   if (!BLOB_HASH.test(hash)) throw new Error("That is not a history blob.");
   return join(dir, hash.slice(0, 2), hash);
@@ -87,12 +89,22 @@ export async function openBlobStore(dir: string): Promise<BlobStore> {
       total += size;
       return hash;
     },
+    reference: (absPath) => hashFile(absPath),
     has: (hash) => sizes.has(hash),
     read: async (hash) => readBlob(dir, hash),
     writeTo: async (hash, absPath, beforeReplace) =>
       cloneOrCopy(pathOf(hash), absPath, beforeReplace),
     bytes: () => total,
     size: (hash) => sizes.get(hash) ?? 0,
+    async drop(hashes) {
+      for (const hash of hashes) {
+        const size = sizes.get(hash);
+        if (size === undefined) continue;
+        await rm(pathOf(hash), { force: true });
+        sizes.delete(hash);
+        total -= size;
+      }
+    },
     async prune(keep) {
       for (const [hash, size] of sizes) {
         if (keep.has(hash)) continue;

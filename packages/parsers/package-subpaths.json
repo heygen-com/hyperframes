@@ -116,6 +116,12 @@
       "types": "./dist/ffBinaries.d.ts",
       "environments": ["bun", "node"]
     },
+    "./media-alpha": {
+      "source": "./src/mediaAlpha.ts",
+      "runtime": "./dist/mediaAlpha.js",
+      "types": "./dist/mediaAlpha.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./asset-resolution": {
       "source": "./src/assetResolution.ts",
       "runtime": "./dist/assetResolution.js",
@@ -132,6 +138,18 @@
       "source": "./src/timeSpans.ts",
       "runtime": "./dist/timeSpans.js",
       "types": "./dist/timeSpans.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./media-timing": {
+      "source": "./src/mediaTiming.ts",
+      "runtime": "./dist/mediaTiming.js",
+      "types": "./dist/mediaTiming.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./reference-resolver": {
+      "source": "./src/referenceResolver.ts",
+      "runtime": "./dist/referenceResolver.js",
+      "types": "./dist/referenceResolver.d.ts",
       "environments": ["browser", "bun", "node"]
     },
     "./composition-duration": {

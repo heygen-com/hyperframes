@@ -20,37 +20,43 @@
  * so they are hermetic.
  */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   _clearGoogleFontCssCacheForTests,
   injectDeterministicFontFaces,
 } from "./deterministicFonts.js";
-import { fontDirectories } from "./systemFontLocator.js";
+import * as systemFontLocator from "./systemFontLocator.js";
 
-beforeEach(() => _clearGoogleFontCssCacheForTests());
+beforeEach(() => {
+  _clearGoogleFontCssCacheForTests();
+  vi.spyOn(systemFontLocator, "locateSystemFontVariants").mockImplementation((family) =>
+    family === "Hf Authored Fail Test"
+      ? [{ path: localFontFile, format: "woff2", weight: "400", style: "normal" }]
+      : [],
+  );
+});
+afterEach(() => vi.restoreAllMocks());
 
 let cacheDir: string;
 let prevCacheEnv: string | undefined;
-const LOCAL_FONT_DIR = fontDirectories().find((dir) => dir.startsWith(homedir()))!;
-const LOCAL_FONT_FILE = join(LOCAL_FONT_DIR, "hf-authored-fail-test.woff2");
+let localFontFile: string;
 const LOCAL_FONT_BYTES = "LOCAL_ONLY_BYTES";
 
 beforeAll(() => {
   prevCacheEnv = process.env.HYPERFRAMES_FONT_CACHE_DIR;
   cacheDir = mkdtempSync(join(tmpdir(), "hf-font-cache-"));
   process.env.HYPERFRAMES_FONT_CACHE_DIR = cacheDir;
-  mkdirSync(LOCAL_FONT_DIR, { recursive: true });
-  writeFileSync(LOCAL_FONT_FILE, LOCAL_FONT_BYTES);
+  localFontFile = join(cacheDir, "hf-authored-fail-test.woff2");
+  writeFileSync(localFontFile, LOCAL_FONT_BYTES);
 });
 
 afterAll(() => {
   if (prevCacheEnv === undefined) delete process.env.HYPERFRAMES_FONT_CACHE_DIR;
   else process.env.HYPERFRAMES_FONT_CACHE_DIR = prevCacheEnv;
   rmSync(cacheDir, { recursive: true, force: true });
-  rmSync(LOCAL_FONT_FILE, { force: true });
 });
 
 const VIET_RANGE = "U+0102-0103, U+1EA0-1EF9, U+20AB";
@@ -599,6 +605,7 @@ describe("authored Google font stylesheet", () => {
 
     expect(urls.some((url) => url.includes("ital,wght@"))).toBe(true);
     expect(result).not.toContain(b64(LOCAL_FONT_BYTES));
+    expect(systemFontLocator.locateSystemFontVariants).not.toHaveBeenCalled();
   });
 
   it("still embeds a local file when the page has no Google link", async () => {
@@ -609,5 +616,8 @@ describe("authored Google font stylesheet", () => {
     );
 
     expect(result).toContain(b64(LOCAL_FONT_BYTES));
+    expect(systemFontLocator.locateSystemFontVariants).toHaveBeenCalledWith(
+      "Hf Authored Fail Test",
+    );
   });
 });

@@ -3,6 +3,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { parseHTML } from "linkedom";
 import { type Page } from "puppeteer-core";
+import { installMediaRenderIdBridge } from "./mediaRenderIdBridge.js";
 import {
   pageScreenshotCapture,
   pageContentExceedsCaptureHeight,
@@ -557,6 +558,33 @@ describe("video-frame injection respects ancestor visibility", () => {
       globals.CSS = previousCSS;
     };
   }
+
+  it("switches frame visibility by render identity when scenes share an authored video id", async () => {
+    const { setup, teardown } = withGlobals(setupHostHiddenScenario({}));
+    try {
+      const first = setup.video.cloneNode() as HTMLVideoElement;
+      first.setAttribute("data-hf-render-id", "pip");
+      setup.video.setAttribute("data-hf-render-id", "pip__hf2");
+      const firstFrame = setup.document.createElement("img");
+      const secondFrame = setup.document.createElement("img");
+      firstFrame.className = secondFrame.className = "__render_frame__";
+      setup.video.before(first, firstFrame);
+      setup.video.after(secondFrame);
+      const page = {
+        ...passthroughPage(),
+        evaluateOnNewDocument: async (fn: (attr: string) => void, attr: string) => fn(attr),
+      } as unknown as Page;
+      await installMediaRenderIdBridge(page);
+      await syncVideoFrameVisibility(page, ["pip__hf2"]);
+      expect(firstFrame.style.visibility).toBe("hidden");
+      expect(secondFrame.style.visibility).toBe("visible");
+      await syncVideoFrameVisibility(page, ["pip"]);
+      expect(firstFrame.style.visibility).toBe("visible");
+      expect(secondFrame.style.visibility).toBe("hidden");
+    } finally {
+      teardown();
+    }
+  });
 
   it("skips replacement-frame creation when the video's host has visibility:hidden", async () => {
     const { teardown, setup } = withGlobals(setupHostHiddenScenario({ visibility: "hidden" }));

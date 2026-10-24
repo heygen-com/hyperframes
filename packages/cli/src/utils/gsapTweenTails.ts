@@ -76,6 +76,8 @@ export function collectTweenRecords(): TweenRecord[] {
   };
   const NOT_PROPERTIES = new Set([
     "duration",
+    "force3D",
+    "autoRound",
     "delay",
     "ease",
     "repeat",

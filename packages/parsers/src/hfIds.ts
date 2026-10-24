@@ -62,7 +62,6 @@ const IMPLIED = new Set(["html", "head", "body", "tbody"]);
 type StartTag = { name: string; nameEnd: number; bracket: number };
 
 function startTags(html: string): StartTag[] | null {
-  const lower = html.toLowerCase();
   const tags: StartTag[] = [];
   let i = html.indexOf("<");
   while (i >= 0) {
@@ -77,23 +76,16 @@ function startTags(html: string): StartTag[] | null {
     if (end < 0) return null;
     const tag = name[1]!.toLowerCase();
     tags.push({ name: tag, nameEnd: i + name[0].length, bracket: end });
-    const after = RAW_TEXT.has(tag) ? rawTextEnd(lower, tag, end) : end;
+    const after = RAW_TEXT.has(tag) ? rawTextEnd(html, tag, end) : end;
     i = after < 0 ? -1 : html.indexOf("<", after + 1);
   }
   return tags;
 }
 
-function rawTextEnd(lower: string, tag: string, from: number): number {
-  const marker = `</${tag}`;
-  for (
-    let at = lower.indexOf(marker, from);
-    at >= 0;
-    at = lower.indexOf(marker, at + marker.length)
-  ) {
-    const next = lower[at + marker.length];
-    if (next !== undefined && /[\s/>]/.test(next)) return at;
-  }
-  return -1;
+function rawTextEnd(html: string, tag: string, from: number): number {
+  const endTag = new RegExp(`</${tag}(?=[\\s/>]|$)`, "gi");
+  endTag.lastIndex = from;
+  return endTag.exec(html)?.index ?? -1;
 }
 
 function nextTagAfter(html: string, lt: number): number {

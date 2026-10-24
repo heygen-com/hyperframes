@@ -121,6 +121,48 @@ describe("overlay frame loop", () => {
     expect(runs).toBeLessThanOrEqual(Math.ceil(1000 / IDLE_POLL_MS) + 1);
   });
 
+  it("polls less often the longer nothing happens, and fast again after a wake", () => {
+    let runs = 0;
+    subscribeOverlayFrame(() => {
+      runs += 1;
+    });
+    framesOver(10_000);
+    runs = 0;
+    // Backed off: a 4 s wait between polls, where a steady quarter-second poll would run 48 times.
+    framesOver(12_000);
+    expect(runs).toBeLessThanOrEqual(4);
+
+    window.dispatchEvent(new Event("pointermove"));
+    framesOver(500);
+    runs = 0;
+    framesOver(IDLE_POLL_MS * 2);
+    expect(runs).toBeGreaterThan(0);
+  });
+
+  it("does not poll while the page is hidden, and wakes when it shows", () => {
+    let hidden = false;
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => hidden });
+    try {
+      let runs = 0;
+      subscribeOverlayFrame(() => {
+        runs += 1;
+      });
+      framesOver(500);
+      hidden = true;
+      runs = 0;
+      framesOver(8_000);
+      // At most the one poll armed before the page hid; none is armed after it.
+      expect(runs).toBeLessThanOrEqual(1);
+
+      hidden = false;
+      window.dispatchEvent(new Event("visibilitychange"));
+      framesOver(200);
+      expect(runs).toBeGreaterThan(5);
+    } finally {
+      delete (document as { hidden?: boolean }).hidden;
+    }
+  });
+
   it("wakes to full rate on a pointer event", () => {
     let runs = 0;
     subscribeOverlayFrame(() => {

@@ -1,22 +1,21 @@
 ---
 title: "Install and update agent skills"
 sidebarTitle: "Agent skills"
-description: "Teach a coding agent how to create valid HyperFrames projects and load specialized workflows when needed."
+description: "Teach a coding agent how to create valid HyperFrames projects."
 ---
 
 import { DocsVideo } from "/snippets/docs-video.jsx";
 
-HyperFrames skills teach coding agents the project format, animation rules, media workflow, validation loop, and creation workflows that generic web knowledge does not cover.
+HyperFrames skills teach coding agents the project format, animation rules, media workflow, and validation loop that generic web knowledge does not cover.
 
 <DocsVideo
-  title="One command installs the skills, and the router picks the workflow"
+  title="One command installs the skills"
   src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/skills-install-demo-v2.mp4"
   poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/skills-install-demo-v2.jpg"
 />
 
-The terminal output is a real run of the command. Afterwards the router reads a
-request and chooses the workflow for it, instead of the agent guessing at the
-framework's rules.
+The terminal output is a real run of the command. Afterwards the agent reads
+`/hyperframes` before it builds, instead of guessing at the framework's rules.
 
 Prefer a [versioned plugin](/guides/plugins) when your agent supports one. This
 page covers standalone installs, including OpenCode. Plugin users should update
@@ -30,7 +29,7 @@ Run the interactive installer:
 npx skills add heygen-com/hyperframes
 ```
 
-Select **Core Skills**. The `/hyperframes` router installs a specialized creation workflow when the request needs one, so you do not need the full catalog up front.
+Select **Core Skills**. That covers every kind of video; the other skills install when a request needs them, so you do not need the full catalog up front.
 
 Start a fresh agent chat after installation, then ask it to use `/hyperframes`.
 
@@ -42,7 +41,7 @@ For a non-interactive agent or CI environment, use:
 npx hyperframes skills update
 ```
 
-This installs or refreshes the core set and any HyperFrames skills already present in the global install, then links those bundles into compatible installed agents. It does not add every optional workflow.
+This installs or refreshes the core set and any HyperFrames skills already present in the global install, then links those bundles into compatible installed agents. It does not add every optional skill.
 
 Check freshness without changing anything:
 
@@ -50,10 +49,10 @@ Check freshness without changing anything:
 npx hyperframes skills check
 ```
 
-Install or refresh one workflow explicitly:
+Install or refresh one skill explicitly:
 
 ```bash
-npx hyperframes skills update pr-to-video
+npx hyperframes skills update slideshow
 ```
 
 ## Use the skills in GitHub Copilot CLI
@@ -106,23 +105,21 @@ bob
 Ask Bob to use `/hyperframes` for the first request. Running the update again
 refreshes the same global skill bundles without changing the project format.
 
-## Let the router choose
+## What the skills cover
 
-The normal entry point is `/hyperframes`. It confirms the important intent, then selects a workflow from the input:
+Make any video by asking for it; the `/hyperframes` skill carries the contract and the references (each kind of film, story, motion, look, sound, review, captions, overlays).
 
-| You provide | Workflow |
+| Skill | What it covers |
 | --- | --- |
-| A product website or product brief | Product launch video |
-| A topic or script with no website capture | Faceless explainer |
-| A GitHub pull request | PR-to-video |
-| Existing talking-head footage | Captions or a designed recut |
-| A music track | Music-driven video |
-| A short design-led animation | Motion graphic |
-| A presentation | Slideshow |
-| A Figma file or frame | Figma import with assets, brand tokens, components, and reconstructed motion |
-| Anything outside those shapes | General video |
+| `/hyperframes` | Read first for any request to make, edit, animate or render a video, motion graphic, captions or overlays. Holds the render contract and the work loop, and points to the references for format, motion, look, captions, whole films and storyboards. |
+| `/hyperframes-cli` | The CLI by job: scaffold, check, look at frames, edit the timeline, preview, render locally or in the cloud, publish, project history. |
+| `/hyperframes-registry` | About 450 ready-made blocks and components installed as editable source: transitions, overlays, titles, kinetic type, captions, charts, maps, 3D, camera moves. |
+| `/media-use` | Music, sound effects, images, icons, logos, voiceover, avatar and generated video, transcripts, cutouts, colour grades and looks, with HeyGen or free local tools; mixes placed audio. |
+| `/figma` | A Figma file or frame: rendered assets, brand tokens, components, and storyboard frames as reconstructed motion. |
+| `/slideshow` | A presentation, pitch deck or interactive deck. Output is a navigable deck, not a rendered MP4. |
+| `/remotion-to-hyperframes` | Bringing existing video code or footage into HyperFrames (Remotion first; also Motion Canvas, Lottie, Three.js, canvas, other tools' renders), verified frame by frame. |
 
-You can invoke a workflow directly when you already know it is the right one, but you do not need to memorize the names to start.
+You can name a skill directly, but you do not need to memorize the names to start.
 
 ## Install more only when you need it
 
@@ -137,7 +134,7 @@ npx hyperframes skills
 Or install one named skill:
 
 ```bash
-npx skills add heygen-com/hyperframes --skill hyperframes-animation
+npx skills add heygen-com/hyperframes --skill slideshow
 ```
 
 Use the full set for an environment that must work across many HyperFrames tasks without fetching later. For a normal project, the core set is smaller and easier to keep current.
@@ -155,5 +152,5 @@ available in the [HyperFrames repository](https://github.com/heygen-com/hyperfra
 ## Related topics
 
 - [Make your first video](/quickstart)
-- [Choose a specific creation workflow](/workflows)
+- [Choose what to make](/workflows)
 - [Use authentication and hosted services](/guides/authentication)

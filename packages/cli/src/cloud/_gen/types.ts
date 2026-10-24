@@ -175,6 +175,16 @@ export interface CreateHyperframesRenderRequest {
    */
   format?: "mp4" | "webm" | "mov";
   /**
+   * Overrides the quality preset's constant rate factor (lower is higher quality
+   * and a larger file). Integer 0-51 for mp4, 0-63 for webm; ignored for mov.
+   * Omit to use the preset's CRF.
+   */
+  crf?: number | null;
+  /**
+   * Set 'off' to disable page motion blur. Omit or null to keep behavior.
+   */
+  page_motion_blur?: "off" | null;
+  /**
    * Output resolution tier. Defaults to '1080p'. Pass '4k' for 4K renders
    * (billed at 1.5x).
    */
@@ -305,6 +315,13 @@ export interface HyperframesRenderDetail {
    * Error description. Present only when status is 'failed'.
    */
   failure_message?: string | null;
+  /**
+   * Why billing refused a finished render: 'hf_usage_exhausted',
+   * 'hf_subscription_required' or 'api_key_required'. Present only when status
+   * is 'failed' for that reason; nothing was charged, so the render can be sent
+   * again on a HeyGen API key.
+   */
+  failure_code?: string | null;
 }
 
 /**
@@ -339,6 +356,11 @@ export interface StandardAPIError {
    * errors by node).
    */
   errors?: Array<StandardAPIErrorDetail>;
+  /**
+   * Request identifier, also returned in the X-HeyGen-Request-Id response
+   * header. Include it when contacting support.
+   */
+  request_id?: string;
 }
 
 export interface StandardAPIErrorDetail {

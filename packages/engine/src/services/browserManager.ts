@@ -12,7 +12,14 @@ import { execSync } from "child_process";
 import { existsSync, readdirSync, statSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
-import { chromeMajorCeiling, exceedsChromeCeiling } from "./chromeHostCeiling.js";
+import {
+  browserPathFromEnv,
+  chromeMajorCeiling,
+  compareBrowserVersionsDescending,
+  exceedsChromeCeiling,
+  isManagedChromeDir,
+  pickSharedShell,
+} from "./chromeHostCeiling.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { getSystemTotalMb, LOW_MEMORY_TOTAL_MB_THRESHOLD } from "./systemMemory.js";
 import { describeWslGpuAccess, detectWsl, type WslHostFacts } from "./wslHost.js";
@@ -159,27 +166,6 @@ async function readWebGlInfo(browser: Browser): Promise<WebGlProbeInfo> {
 
 export type AcquiredBrowser = BrowserLease;
 
-function compareBrowserVersionsDescending(left: string, right: string): number {
-  const parse = (value: string): number[] => {
-    const version = value.slice(value.indexOf("-") + 1);
-    const segments: number[] = [];
-    for (const segment of version.split(".")) {
-      const parsed = Number.parseInt(segment, 10);
-      if (!Number.isFinite(parsed)) break;
-      segments.push(parsed);
-    }
-    return segments;
-  };
-  const leftSegments = parse(left);
-  const rightSegments = parse(right);
-  const length = Math.max(leftSegments.length, rightSegments.length);
-  for (let index = 0; index < length; index += 1) {
-    const difference = (rightSegments[index] ?? 0) - (leftSegments[index] ?? 0);
-    if (difference !== 0) return difference;
-  }
-  return 0;
-}
-
 const CACHED_HEADLESS_SHELL_EXECUTABLES: Readonly<
   Record<string, readonly [directory: string, executable: string]>
 > = {
@@ -230,6 +216,31 @@ function findCachedHeadlessShell(baseDir: string): string | undefined {
   return undefined;
 }
 
+function findSharedHeadlessShell(baseDir: string): string | undefined {
+  const executable = cachedHeadlessShellExecutable();
+  if (!executable || !existsSync(baseDir)) return undefined;
+  try {
+    return pickSharedShell(readdirSync(baseDir), (version) => {
+      const binary = join(baseDir, version, ...executable);
+      return isNonEmptyFile(binary) ? binary : undefined;
+    });
+  } catch {
+    return undefined;
+  }
+}
+
+function findManagedHeadlessShell(baseDir: string): string | undefined {
+  const executable = cachedHeadlessShellExecutable();
+  if (!executable || !existsSync(baseDir)) return undefined;
+  try {
+    const version = readdirSync(baseDir).find(isManagedChromeDir);
+    const binary = version && join(baseDir, version, ...executable);
+    return binary && isNonEmptyFile(binary) ? binary : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Resolve chrome-headless-shell binary for deterministic BeginFrame rendering.
  * Checks config.chromePath, then PRODUCER_HEADLESS_SHELL_PATH env var,
@@ -241,31 +252,22 @@ export function resolveHeadlessShellPath(
   if (config?.chromePath) {
     return config.chromePath;
   }
-  if (process.env.PRODUCER_HEADLESS_SHELL_PATH) {
-    const envPath = process.env.PRODUCER_HEADLESS_SHELL_PATH;
-    if (!existsSync(envPath)) {
+  const fromEnv = browserPathFromEnv();
+  if (fromEnv) {
+    if (!existsSync(fromEnv.path)) {
       throw new Error(
-        `[BrowserManager] Chrome binary not found at PRODUCER_HEADLESS_SHELL_PATH="${envPath}". ` +
+        `[BrowserManager] Chrome binary not found at ${fromEnv.name}="${fromEnv.path}". ` +
           "Run `hyperframes browser ensure` to re-download.",
       );
     }
-    return envPath;
+    return fromEnv.path;
   }
-  if (process.env.HYPERFRAMES_BROWSER_PATH) {
-    const envPath = process.env.HYPERFRAMES_BROWSER_PATH;
-    if (!existsSync(envPath)) {
-      throw new Error(
-        `[BrowserManager] Chrome binary not found at HYPERFRAMES_BROWSER_PATH="${envPath}". ` +
-          "Run `hyperframes browser ensure` to re-download.",
-      );
-    }
-    return envPath;
-  }
-  const home = homedir();
+  const ours = join(homedir(), ".cache", "hyperframes", "chrome", "chrome-headless-shell");
+  const shared = join(homedir(), ".cache", "puppeteer", "chrome-headless-shell");
   return (
-    findCachedHeadlessShell(
-      join(home, ".cache", "hyperframes", "chrome", "chrome-headless-shell"),
-    ) ?? findCachedHeadlessShell(join(home, ".cache", "puppeteer", "chrome-headless-shell"))
+    findManagedHeadlessShell(ours) ??
+    findSharedHeadlessShell(shared) ??
+    findCachedHeadlessShell(ours)
   );
 }
 
@@ -345,7 +347,6 @@ interface BeginFrameProbeResult {
   durationMs: number;
 }
 
-const BEGINFRAME_SCREENSHOT_PROBE_ATTEMPTS = 10;
 const BEGINFRAME_PROBE_TIMEOUT_MS = 2000;
 const BEGINFRAME_PROBE_CLEANUP_TIMEOUT_MS = 250;
 
@@ -461,7 +462,8 @@ async function probeBeginFrameSupport(
     let bytes = Buffer.alloc(0);
     let isPng = false;
     let attempts = 0;
-    for (attempts = 1; attempts <= BEGINFRAME_SCREENSHOT_PROBE_ATTEMPTS; attempts += 1) {
+    while (!isPng && Date.now() < deadline) {
+      attempts += 1;
       const response = await awaitBeforeDeadline(
         client.send("HeadlessExperimental.beginFrame", {
           frameTimeTicks: 1000 + (attempts - 1) * 33,
@@ -479,7 +481,7 @@ async function probeBeginFrameSupport(
         bytes[1] === 0x50 &&
         bytes[2] === 0x4e &&
         bytes[3] === 0x47;
-      if (isPng) break;
+      if (isPng || Date.now() + 10 >= deadline) break;
       await awaitBeforeDeadline(
         new Promise((resolveDelay) => setTimeout(resolveDelay, 10)),
         deadline,
@@ -489,7 +491,7 @@ async function probeBeginFrameSupport(
     if (!isPng) {
       throw new Error(
         `beginFrame screenshot returned ${bytes.length} bytes after ` +
-          `${BEGINFRAME_SCREENSHOT_PROBE_ATTEMPTS} attempts with signature ` +
+          `${attempts} attempts in ${Date.now() - started}ms with signature ` +
           `${bytes.length >= 4 ? bytes.subarray(0, 4).toString("hex") : "<empty>"}`,
       );
     }
@@ -509,11 +511,7 @@ async function probeBeginFrameSupport(
     };
   }
   if (page && !(await settleWithin(page.close(), BEGINFRAME_PROBE_CLEANUP_TIMEOUT_MS))) {
-    return {
-      supported: false,
-      detail: `${result.detail}; probe page cleanup timed out`,
-      durationMs: Date.now() - started,
-    };
+    return { ...result, detail: `${result.detail}; probe page cleanup timed out` };
   }
   return result;
 }
@@ -1018,6 +1016,7 @@ export interface BuildChromeArgsOptions {
 
 const CANVAS_DRAW_ELEMENT_FEATURE_FLAG = "--enable-features=CanvasDrawElement";
 const WEBGPU_FLAG = "--enable-unsafe-webgpu";
+const DISABLE_DXC_FLAG = "--disable-dawn-features=use_dxc";
 
 type GpuConfig = Partial<
   Pick<EngineConfig, "browserGpuMode" | "disableGpu" | "chromePath" | "allowSoftwareWebGpu">
@@ -1100,6 +1099,9 @@ export function buildChromeArgs(options: BuildChromeArgsOptions, config?: GpuCon
 
   if (browserGpuMode !== "software" || options.requiresWebGpu) {
     chromeArgs.push(WEBGPU_FLAG);
+    if (platform === "win32") {
+      chromeArgs.push(DISABLE_DXC_FLAG);
+    }
   }
   if (softwareWebGpu) chromeArgs.push("--use-vulkan=swiftshader");
 

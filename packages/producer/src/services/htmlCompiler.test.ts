@@ -1,7 +1,7 @@
 // fallow-ignore-file code-duplication
 import { describe, expect, it, mock, beforeAll } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, mkdirSync, rmSync, readFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runInThisContext } from "node:vm";
@@ -118,6 +118,33 @@ describe("discoverMediaFromBrowser", () => {
       tagName: "image",
       src: "https://cdn.example/runtime.avif",
     });
+  });
+
+  it("reports no source for a blank src even though the browser resolves it to the page URL", async () => {
+    const { document } = parseHTML(
+      `<video id="empty" src="" data-start="0" data-end="1"></video>
+       <video id="real" src="clip.mp4" data-start="0" data-end="1"></video>`,
+    );
+    const resolved = {
+      empty: "http://localhost:4000/index.html",
+      real: "http://localhost:4000/clip.mp4",
+    };
+    for (const [id, value] of Object.entries(resolved)) {
+      const element = document.getElementById(id);
+      if (element) Object.defineProperty(element, "src", { value });
+    }
+    const previousDocument = Reflect.get(globalThis, "document");
+    Reflect.set(globalThis, "document", document);
+    try {
+      const media = await discoverMediaFromBrowser({
+        evaluate: async (collect) => collect(),
+      } as never);
+      expect(media.find((item) => item.id === "empty")?.src).toBe("");
+      expect(media.find((item) => item.id === "real")?.src).toBe("http://localhost:4000/clip.mp4");
+    } finally {
+      if (previousDocument === undefined) Reflect.deleteProperty(globalThis, "document");
+      else Reflect.set(globalThis, "document", previousDocument);
+    }
   });
 
   it("keeps strict timing parsing self-contained after Puppeteer serializes the callback", async () => {
@@ -657,6 +684,59 @@ describe("detectRenderModeHints", () => {
 
     expect(result.reasons.map((reason) => reason.code)).toContain("htmlInCanvas");
     expect(result.recommendScreenshot).toBe(true);
+  });
+
+  it("routes a capture-motion-blur root to screenshot capture", () => {
+    const html = `<!DOCTYPE html>
+<html><body>
+  <div data-composition-id="root" data-motion-blur="on" data-width="1920" data-height="1080"></div>
+</body></html>`;
+
+    const result = detectRenderModeHints(html);
+
+    expect(result.reasons.map((reason) => reason.code)).toEqual(["captureMotionBlur"]);
+    expect(result.recommendScreenshot).toBe(true);
+  });
+
+  it("does not route a root whose motion blur is off", () => {
+    const html = `<!DOCTYPE html>
+<html><body>
+  <div data-composition-id="root" data-motion-blur="off" data-width="1920" data-height="1080"></div>
+</body></html>`;
+
+    expect(detectRenderModeHints(html).reasons).toEqual([]);
+  });
+
+  describe("capture motion blur root selection", () => {
+    const codes = (html: string) => detectRenderModeHints(html).reasons.map((r) => r.code);
+
+    it("does not route when only a sub-composition opted in", () => {
+      const html = `<div data-composition-id="root"><div data-composition-id="sub" data-motion-blur="on"></div></div>`;
+      expect(codes(html)).toEqual([]);
+    });
+
+    it("routes when the outermost root opted in, whatever its sub-compositions say", () => {
+      const html = `<div data-composition-id="root" data-motion-blur="on"><div data-composition-id="sub"></div></div>`;
+      expect(codes(html)).toEqual(["captureMotionBlur"]);
+    });
+
+    it("reads data-root=true before the first composition", () => {
+      const first = `<div data-composition-id="a" data-motion-blur="on"></div><div data-composition-id="b" data-root="true"></div>`;
+      const marked = `<div data-composition-id="a"></div><div data-composition-id="b" data-root="true" data-motion-blur="on"></div>`;
+      expect(codes(first)).toEqual([]);
+      expect(codes(marked)).toEqual(["captureMotionBlur"]);
+    });
+  });
+
+  it("does not route a moving root that did not opt in", () => {
+    const tween = `<script>window.__timelines.main = gsap.timeline().to("#a", { x: 400 });</script>`;
+    const plain = `<div data-composition-id="root" data-width="1920" data-height="1080"></div>${tween}`;
+    expect(detectRenderModeHints(plain).reasons).toEqual([]);
+  });
+
+  it("does not route an opted-in root when the render turns page motion blur off", () => {
+    const html = `<div data-composition-id="root" data-motion-blur="on"></div>`;
+    expect(detectRenderModeHints(html, "off").reasons).toEqual([]);
   });
 
   it("does not flag htmlInCanvas for plain canvas elements without layoutsubtree", () => {
@@ -1209,6 +1289,52 @@ describe("local font embedding", () => {
     }
 
     expect(embeddedMessages).toHaveLength(1);
+  });
+
+  it("embeds local ttf and otf fonts as-is without woff2 compression", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-local-font-raw-"));
+    const cacheDir = mkdtempSync(join(tmpdir(), "hf-local-font-cache-"));
+    const font = readFileSync(
+      join(
+        import.meta.dirname,
+        "../../../../docs/public/catalog/items/frost-sequence-camera-orbit/assets/fonts/Geist-Regular.ttf",
+      ),
+    );
+    writeFileSync(join(projectDir, "a.ttf"), font);
+    writeFileSync(join(projectDir, "b.otf"), font);
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html>
+<html><head><style>
+  @font-face { font-family: "A"; src: url("a.ttf"); }
+  @font-face { font-family: "B"; src: url("b.otf"); }
+</style></head><body>
+  <div data-composition-id="root" data-width="640" data-height="360" data-duration="1">Text</div>
+</body></html>`,
+    );
+
+    const previousCacheDir = process.env.HYPERFRAMES_FONT_CACHE_DIR;
+    process.env.HYPERFRAMES_FONT_CACHE_DIR = cacheDir;
+    let html: string;
+    try {
+      ({ html } = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir));
+    } finally {
+      if (previousCacheDir === undefined) delete process.env.HYPERFRAMES_FONT_CACHE_DIR;
+      else process.env.HYPERFRAMES_FONT_CACHE_DIR = previousCacheDir;
+    }
+
+    const embedded = (mime: string) =>
+      Buffer.from(
+        html.match(new RegExp(`data:${mime};base64,([A-Za-z0-9+/=]+)`))?.[1] ?? "",
+        "base64",
+      );
+    expect(embedded("font/ttf").equals(font)).toBe(true);
+    expect(embedded("font/otf").equals(font)).toBe(true);
+    expect(html).not.toContain("data:font/woff2");
+    // The woff2 compressor writes every result to this cache; empty means it never ran.
+    expect(readdirSync(cacheDir, { recursive: true })).toEqual([]);
+    rmSync(projectDir, { recursive: true, force: true });
+    rmSync(cacheDir, { recursive: true, force: true });
   });
 
   it("keeps large local font collections file-backed instead of expanding them into HTML", async () => {

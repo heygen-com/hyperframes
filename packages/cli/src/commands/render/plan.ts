@@ -18,6 +18,7 @@ import {
   type VideoFrameFormat,
 } from "@hyperframes/engine";
 import { errorBox } from "../../ui/format.js";
+import { parseEnumFlag } from "../../cloud/parsing.js";
 import { failUsage } from "../../utils/commandResult.js";
 import { resolveProject } from "../../utils/project.js";
 import {
@@ -73,6 +74,7 @@ export interface RenderCommandArgs {
   "gif-loop"?: string;
   "hls-segment-seconds"?: string;
   "video-frame-format"?: string;
+  "page-motion-blur"?: string;
   workers?: string;
   docker?: boolean;
   hdr?: boolean;
@@ -126,6 +128,7 @@ export interface RenderPlan {
   /** HLS target segment length in seconds; only set for `format: "hls"`. */
   hlsSegmentSeconds?: number;
   videoFrameFormat: VideoFrameFormat;
+  pageMotionBlur?: "off";
   outputResolution?: CanvasResolution;
   outputResolutionAspectAgnostic: boolean;
   outputResolutionRaw?: string;
@@ -224,6 +227,9 @@ function resolveHfEnvOverrides(): readonly string[] {
 /** Parse and validate command input into an immutable execution plan. */
 // fallow-ignore-next-line complexity
 export function createRenderPlan(args: RenderCommandArgs, now = new Date()): RenderPlan {
+  const pageMotionBlur = parseEnumFlag(args["page-motion-blur"], ["off"] as const, {
+    flag: "--page-motion-blur",
+  });
   const hfEnvOverrides = resolveHfEnvOverrides();
   const hasExplicitComposition = hasExplicitCompositionArg(args.composition);
   const project = resolveProject(args.dir, { requireIndex: !hasExplicitComposition });
@@ -525,6 +531,7 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
     gifFpsCapped,
     hlsSegmentSeconds,
     videoFrameFormat: videoFrameFormatRaw,
+    pageMotionBlur,
     outputResolution,
     outputResolutionAspectAgnostic,
     outputResolutionRaw: args.resolution,

@@ -1,0 +1,117 @@
+name: Lambda arm64 image
+
+permissions:
+  contents: read
+
+# Builds the arm64 Lambda video function image: the native ffmpeg on two separate ARM runners (each runs
+# the codec check, the tarballs must match), then the image from the x86 handler ZIP, smoke-run on ARM.
+on:
+  pull_request:
+    paths:
+      - "packages/aws-lambda/image/**"
+      - "packages/aws-lambda/scripts/stage-arm64-image.ts"
+      # A @sparticuz/chromium bump or a ZIP layout change must re-stage the image.
+      - "packages/aws-lambda/package.json"
+      - "packages/aws-lambda/scripts/build-zip.ts"
+      - ".github/workflows/lambda-arm64-image.yml"
+  # On main it also seeds publish.yml's ffmpeg cache.
+  push:
+    branches: [main]
+    paths:
+      - "packages/aws-lambda/image/**"
+  workflow_dispatch:
+
+concurrency:
+  group: lambda-arm64-image-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ffmpeg:
+    name: ffmpeg ${{ matrix.copy }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    strategy:
+      matrix:
+        copy: [a, b]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Build and check
+        run: >-
+          docker buildx build --progress=plain --platform linux/arm64 --target artifact
+          --output type=local,dest=out packages/aws-lambda/image
+      - run: cat out/hf-media-check.txt && sha256sum out/*.tar.gz
+      # Same path and key as publish.yml's lambda-arm64-ffmpeg job reads.
+      - if: matrix.copy == 'a' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: out/
+          key: hf-media-linux-aarch64-${{ hashFiles('packages/aws-lambda/image/**') }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: hf-media-${{ matrix.copy }}
+          path: out/
+          retention-days: 7
+
+  reproducible:
+    name: ffmpeg builds match
+    needs: ffmpeg
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - run: cmp hf-media-a/hf-media-linux-aarch64.tar.gz hf-media-b/hf-media-linux-aarch64.tar.gz
+
+  handler-zip:
+    name: Handler ZIP
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+      - run: bun run --cwd packages/aws-lambda build:zip
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: handler-zip
+          path: packages/aws-lambda/dist/handler.zip
+          retention-days: 7
+
+  image:
+    name: Image smoke
+    needs: [ffmpeg, handler-zip]
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: artifacts
+      - name: Stage /var/task
+        run: >-
+          bun packages/aws-lambda/scripts/stage-arm64-image.ts
+          --zip=artifacts/handler-zip/handler.zip
+          --ffmpeg=artifacts/hf-media-a/hf-media-linux-aarch64.tar.gz --out=staged
+      - name: Build image
+        run: >-
+          docker buildx build --progress=plain --platform linux/arm64 --target video
+          --build-context task=staged/task --load -t hf-video:ci packages/aws-lambda/image
+      - name: ffmpeg and Chrome run under the image's own Lambda runtime
+        run: |
+          docker run -d --name hf-smoke -p 9001:8080 \
+            -v "$PWD/packages/aws-lambda/image/smoke-video.mjs:/var/task/smoke-video.mjs:ro" \
+            hf-video:ci smoke-video.handler
+          reply=$(curl -sS --retry 30 --retry-all-errors --retry-delay 1 \
+            -d '{}' http://localhost:9001/2015-03-31/functions/function/invocations)
+          docker logs hf-smoke
+          echo "$reply"
+          jq -e '.arch == "arm64" and .screenshotBytes > 0 and (.ffmpeg | startswith("ffmpeg version 7.0.2"))' <<<"$reply"
+      - name: The Lambda runtime loads the handler
+        run: |
+          docker run -d --name hf-video -p 9000:8080 hf-video:ci
+          reply=$(curl -sS --retry 30 --retry-all-errors --retry-delay 1 \
+            -d '{"Action":"not-an-action"}' http://localhost:9000/2015-03-31/functions/function/invocations)
+          docker logs hf-video
+          echo "$reply"
+          grep -q 'no recognised Action' <<<"$reply"

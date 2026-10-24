@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import process from "node:process";
 import { DISTRIBUTED_FPS, isDistributedFps } from "@hyperframes/core";
 import { analyzePlanParityDriverResult } from "./plan-parity-analysis.js";
@@ -446,8 +447,7 @@ async function main(): Promise<void> {
 }
 
 const isDirectRun =
-  process.argv[1] !== undefined &&
-  resolve(process.argv[1]) === resolve(new URL(import.meta.url).pathname);
+  process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isDirectRun) {
   await main();
 }

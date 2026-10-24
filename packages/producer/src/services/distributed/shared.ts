@@ -461,6 +461,7 @@ export function buildSyntheticRenderJob(input: SyntheticRenderJobInput): RenderJ
     strictness: input.strictness,
     producerConfig: input.producerConfig,
     variables: input.variables,
+    pageMotionBlur: "off",
   };
   return createRenderJob(renderConfig);
 }

@@ -22,6 +22,7 @@ import {
 } from "./readBoundedResponse.js";
 import { captureFontExtension, captureFontFilename } from "./captureFontValidation.js";
 import { captureImageExtension } from "./captureImageValidation.js";
+import { loadSharp } from "../utils/optionalPackages.js";
 
 interface DownloadBudgetOptions {
   byteBudget?: DownloadByteBudget;
@@ -323,6 +324,7 @@ export async function downloadAssets(
   faviconLinks?: IconCandidate[],
   options: DownloadBudgetOptions = {},
 ): Promise<{ assets: DownloadedAsset[]; drops: AssetDropCounts; icons: IconManifest }> {
+  await loadSharp("website capture");
   options = { ...options, byteBudget: options.byteBudget ?? createCaptureDownloadBudget() };
   const assetsDir = join(outputDir, "assets");
   ensureCaptureDirSync(outputDir, assetsDir);

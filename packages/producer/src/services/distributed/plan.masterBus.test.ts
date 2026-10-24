@@ -5,7 +5,15 @@ import { join } from "node:path";
 import { plan } from "./plan.js";
 
 const MASTER_CHAIN = '{"version":1,"nodes":[]}';
-const seen = vi.hoisted((): { audioInput?: { masterFxChain?: string } } => ({}));
+const seen = vi.hoisted(
+  (): {
+    audioInput?: {
+      masterFxChain?: string;
+      totalFrames?: number;
+      fps?: { num: number; den: number };
+    };
+  } => ({}),
+);
 
 vi.mock("../render/stages/audioStage.js", () => ({
   runAudioStage: async (input: { masterFxChain?: string; workDir: string }) => {
@@ -28,7 +36,7 @@ afterEach(() => {
   rmSync(runRoot, { recursive: true, force: true });
 });
 
-it("plan() gives the audio stage the composition's master chain", async () => {
+it("plan() gives the shared audio stage its master chain and video clock", async () => {
   const projectDir = join(runRoot, "project");
   mkdirSync(projectDir, { recursive: true });
   writeFileSync(
@@ -47,4 +55,6 @@ it("plan() gives the audio stage the composition's master chain", async () => {
   await plan(projectDir, { fps: 30, width: 320, height: 240, format: "mp4" }, planDir);
 
   expect(seen.audioInput?.masterFxChain).toBe(MASTER_CHAIN);
+  expect(seen.audioInput?.totalFrames).toBe(30);
+  expect(seen.audioInput?.fps).toEqual({ num: 30, den: 1 });
 });

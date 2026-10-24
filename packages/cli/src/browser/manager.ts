@@ -15,11 +15,18 @@ import {
 import { homedir } from "node:os";
 import { debuglog } from "node:util";
 import { basename, dirname, join, relative } from "node:path";
-import { chromeMajorCeiling, exceedsChromeCeiling } from "@hyperframes/engine/chrome-host-ceiling";
+import {
+  browserPathFromEnv,
+  managedChromeVersion,
+  pickSharedShell,
+} from "@hyperframes/engine/chrome-host-ceiling";
+import { getFreeDiskMb } from "../telemetry/system.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { runRenderSetupWorker } from "../utils/cancellableProcess.js";
+import { unzipArchive } from "./unzipArchive.js";
 
 type PuppeteerBrowsers = typeof import("@puppeteer/browsers");
+type InstallOptions = import("@puppeteer/browsers").InstallOptions;
 
 async function loadPuppeteerBrowsers(): Promise<PuppeteerBrowsers> {
   try {
@@ -33,32 +40,9 @@ async function loadPuppeteerBrowsers(): Promise<PuppeteerBrowsers> {
   }
 }
 
-// Bumped from 152.0.7928.2 on 2026-08-10 to pick up crbug 522872457's fix
-// (CL 8032671, "Force-merge PendingLayer for canvas child descendant", merged
-// 2026-07-07 — after the 152.0.7935.0 canary cut, so the old pin predated it).
-//
-// Measured on the shipping headless-shell binary, drawElementImage vs a CDP
-// screenshot of the identical state:
-//   sibling content dropped from 3D captures  — FIXED
-//   background lost from 3D captures          — FIXED
-//   backface-visibility:hidden ignored        — STILL BROKEN (1.4 dB -> 14.8 dB;
-//                                               better, still far under the
-//                                               32 dB floor)
-// So the 3D compile gate must stay. See PRINFRA-486.
-//
-// Deliberately Beta, not Canary. 153.0.8000.0 measured identical to this build
-// on every probe variant, so crossing a major buys nothing measurable.
-const CHROME_VERSION = "152.0.7977.30";
-// Last headless-shell milestone that launches on macOS 12 (Darwin < 22); Chrome 151 dropped it.
-// Measured: this build exposes canvas.drawElementImage under --enable-features=CanvasDrawElement.
-const MACOS_12_CHROME_VERSION = "150.0.7871.124";
-
-/** The one place that decides which build HyperFrames installs and matches in its own cache. */
-function managedChromeVersion(): string {
-  return chromeMajorCeiling() === undefined ? CHROME_VERSION : MACOS_12_CHROME_VERSION;
-}
 const CACHE_ROOT_DIR = join(homedir(), ".cache", "hyperframes");
 const CACHE_DIR = join(homedir(), ".cache", "hyperframes", "chrome");
+const ARCHIVE_PLUS_UNPACKED_SHELL_MB = 512;
 // Puppeteer's managed cache — where `@puppeteer/browsers install
 // chrome-headless-shell` (and `puppeteer install`) drop binaries. The engine's
 // `resolveHeadlessShellPath` scans the same directory; the CLI must look here
@@ -317,26 +301,11 @@ function whichBinary(name: string): string | undefined {
   }
 }
 
-// Env-var aliases for a caller-supplied browser executable path. The CLI-native
-// name `HYPERFRAMES_BROWSER_PATH` is the canonical spelling (documented via the
-// download-failure hint added in #2443). `PRODUCER_HEADLESS_SHELL_PATH` is the
-// engine-side name that per-worker render launches already honor (see
-// `packages/engine/src/services/browserManager.ts` and `render.ts` which even
-// propagates the CLI-resolved executable into it). Docs in
-// `skills/hyperframes-animation/adapters/typegpu.md`,
-// `packages/gcp-cloud-run/Dockerfile`, and `examples/k8s-jobs/Dockerfile.example`
-// all instruct users to set `PRODUCER_HEADLESS_SHELL_PATH`, so field reports
-// (e.g. `#hyperframes-cli-feedback` ts=1784095034 on win32/x64) hit the case
-// where `render` completes via that env var while `check`, `snapshot`, and
-// `compare` all ignore it and crash on the cached headless-shell instead.
-// Alias them here so every consumer of `openSettledCompositionPage` (which
-// calls `ensureBrowser` → `findFromEnv`) picks up the same escape hatch.
-// Tiebreak: HYPERFRAMES_BROWSER_PATH wins when both are set, matching the
-// CLI-native canonicalization in `render.ts` (which only sets
-// `PRODUCER_HEADLESS_SHELL_PATH` if not already present).
+// A caller-supplied browser, named by HYPERFRAMES_BROWSER_PATH or PRODUCER_HEADLESS_SHELL_PATH (the engine's
+// and the deploy docs' name). check, snapshot and compare honour it as render does; which name wins is
+// browserPathFromEnv's, so the engine launches what this resolved.
 function findFromEnv(): BrowserResult | undefined {
-  const envPath =
-    process.env["HYPERFRAMES_BROWSER_PATH"] ?? process.env["PRODUCER_HEADLESS_SHELL_PATH"];
+  const envPath = browserPathFromEnv()?.path;
   if (envPath && existsSync(envPath)) {
     return { executablePath: envPath, source: "env" };
   }
@@ -388,71 +357,11 @@ async function findFromHyperframesCache(): Promise<CacheLookupResult> {
 }
 
 async function findFromCache(): Promise<CacheLookupResult> {
-  // 1) Puppeteer's managed cache — where `npx @puppeteer/browsers install
-  // chrome-headless-shell` lands, and where `puppeteer install` from a project
-  // depending on full `puppeteer` (not `puppeteer-core`) lands. The engine's
-  // `resolveHeadlessShellPath` reads from here and selects newest-version-
-  // first; the CLI must match that semantic or it will silently hand the
-  // engine an older binary than the engine itself would pick.
-  //
-  // We intentionally check puppeteer BEFORE the hyperframes-managed cache:
-  // this is the non-`preferManagedChrome` path, which exists so a user who
-  // installed chrome-headless-shell separately (via `@puppeteer/browsers
-  // install`) keeps using that binary instead of being silently switched to
-  // the HF-pinned one. Note `CHROME_VERSION` (above) is a pre-Stable pin
-  // that may be NEWER than a user's puppeteer-cache Stable build — this is
-  // about respecting an explicit prior choice, not "newest wins".
+  // Our pinned build first, as the engine's resolveHeadlessShellPath reads it; then the shared cache's pick.
+  const ours = await findFromHyperframesCache();
+  if (ours.result) return ours;
   const fromPuppeteer = findFromPuppeteerCache();
-  if (fromPuppeteer) {
-    return { result: fromPuppeteer };
-  }
-
-  // 2) Hyperframes-managed cache. This is the fallback path: only reached
-  // when no puppeteer-cache binary exists.
-  return findFromHyperframesCache();
-}
-
-/**
- * Parse a puppeteer-cache version directory name (`linux-148.0.7778.97`,
- * `mac_arm-131.0.6778.85`, etc.) into a numeric tuple for ordering.
- *
- * Lexicographic sort on these strings is buggy because `"99"` > `"148"` (the
- * `9` outranks the `1` character-wise), so a 99-era binary would beat a
- * 148-era binary in `.sort().reverse()`. We split on `-` to drop the platform
- * prefix, then on `.` to get integer segments. Returns `undefined` for names
- * that don't have at least one parseable numeric segment so they sort last.
- */
-function parseVersionSegments(versionDir: string): number[] | undefined {
-  const dashIdx = versionDir.indexOf("-");
-  const versionPart = dashIdx >= 0 ? versionDir.slice(dashIdx + 1) : versionDir;
-  const segments = versionPart.split(".");
-  const parsed: number[] = [];
-  for (const seg of segments) {
-    const n = parseInt(seg, 10);
-    if (!Number.isFinite(n)) {
-      // Stop at the first non-numeric segment but keep what we've collected.
-      break;
-    }
-    parsed.push(n);
-  }
-  return parsed.length > 0 ? parsed : undefined;
-}
-
-/** Numeric semver-style descending comparator for puppeteer cache dirs. */
-function compareVersionDirsDescending(a: string, b: string): number {
-  const pa = parseVersionSegments(a);
-  const pb = parseVersionSegments(b);
-  // Unparseable names sort after parseable ones (so we still try them, just last).
-  if (!pa && !pb) return 0;
-  if (!pa) return 1;
-  if (!pb) return -1;
-  const len = Math.max(pa.length, pb.length);
-  for (let i = 0; i < len; i += 1) {
-    const av = pa[i] ?? 0;
-    const bv = pb[i] ?? 0;
-    if (av !== bv) return bv - av; // descending (newest first)
-  }
-  return 0;
+  return fromPuppeteer ? { result: fromPuppeteer } : ours;
 }
 
 const CACHED_HEADLESS_SHELL_EXECUTABLES: Readonly<
@@ -484,26 +393,15 @@ function findFromPuppeteerCache(): BrowserResult | undefined {
   if (!executable) return undefined;
   let versions: string[];
   try {
-    // Numeric semver-style sort, newest first. Lexicographic `.sort().reverse()`
-    // (the previous implementation, still in engine `resolveHeadlessShellPath`)
-    // mis-orders `linux-99...` ahead of `linux-148...` because character `'9'`
-    // outranks `'1'`. See `parseVersionSegments` above.
-    versions = [...readdirSync(PUPPETEER_CACHE_DIR)].sort(compareVersionDirsDescending);
+    versions = readdirSync(PUPPETEER_CACHE_DIR);
   } catch {
     return undefined;
   }
-  const ceiling = chromeMajorCeiling();
-  for (const version of versions) {
-    if (exceedsChromeCeiling(version, ceiling)) continue;
-    // Same shape as `resolveHeadlessShellPath` in engine/browserManager.ts —
-    // keep them aligned. If puppeteer ever changes the on-disk layout the two
-    // need to move together.
-    const binary = join(PUPPETEER_CACHE_DIR, version, ...executable);
-    if (isUsableExecutable(binary)) {
-      return { executablePath: binary, source: "cache" };
-    }
-  }
-  return undefined;
+  const binary = pickSharedShell(versions, (version) => {
+    const candidate = join(PUPPETEER_CACHE_DIR, version, ...executable);
+    return isUsableExecutable(candidate) ? candidate : undefined;
+  });
+  return binary ? { executablePath: binary, source: "cache" } : undefined;
 }
 
 /**
@@ -802,26 +700,34 @@ async function downloadBrowser(options?: EnsureBrowserOptions): Promise<BrowserR
     return ensureLinuxArmBrowser(options);
   }
 
-  const { Browser, detectBrowserPlatform, install } = await loadPuppeteerBrowsers();
+  // Callers hold the install lock, so every leftover belongs to an install that was killed mid-way.
+  removeInstallLeftovers();
+  const freeMb = getFreeDiskMb(CACHE_ROOT_DIR);
+  if (freeMb !== null && freeMb < ARCHIVE_PLUS_UNPACKED_SHELL_MB) {
+    throw new Error(
+      `Low disk space: Chrome Headless Shell needs about ${ARCHIVE_PLUS_UNPACKED_SHELL_MB} MB to download, ` +
+        `${freeMb} MB free at ${CACHE_ROOT_DIR}. Free disk space, then retry.`,
+    );
+  }
+  const { Browser, Cache, detectBrowserPlatform, install } = await loadPuppeteerBrowsers();
 
   const platform = detectBrowserPlatform();
   if (!platform) {
     throw new Error(`Unsupported platform: ${process.platform} ${process.arch}`);
   }
 
-  // Callers hold the install lock, so every leftover belongs to an install that was killed mid-way.
-  removeInstallLeftovers();
   // Same filesystem as CACHE_DIR so the final rename is atomic.
   const stagingDir = join(CACHE_ROOT_DIR, `${STAGING_PREFIX}${randomUUID()}`);
   const clearStaging = () => rmSync(stagingDir, { recursive: true, force: true });
   // install() only debug-logs each failed unzip tool before trying the next one; keep those lines.
   let unzipLog: string[] = [];
-  const runInstall = () => {
+  const buildId = managedChromeVersion();
+  const runInstall = async () => {
     unzipLog = [];
-    return install({
+    const installOptions: InstallOptions & { unpack?: true } = {
       cacheDir: stagingDir,
       browser: Browser.CHROMEHEADLESSSHELL,
-      buildId: managedChromeVersion(),
+      buildId,
       platform,
       downloadProgressCallback: options?.onProgress,
       logger: (prefix) => {
@@ -834,7 +740,14 @@ async function downloadBrowser(options?: EnsureBrowserOptions): Promise<BrowserR
           if (debug.enabled) debug(line);
         };
       },
-    });
+    };
+    const unzipMayAskOnInput = process.platform !== "win32";
+    if (unzipMayAskOnInput) {
+      const archive = await install({ ...installOptions, unpack: false });
+      const into = new Cache(stagingDir).installationDir(installOptions.browser, platform, buildId);
+      await unzipArchive(archive, into);
+    }
+    return install(installOptions);
   };
 
   try {
@@ -907,6 +820,9 @@ const STAGING_PREFIX = ".chrome-staging-";
 const REPLACED_PREFIX = ".chrome-replaced-";
 
 // Staging and set-aside dirs outlive an install killed by a signal, since `finally` never runs.
+const isInstallLeftover = (name: string) =>
+  name.startsWith(STAGING_PREFIX) || name.startsWith(REPLACED_PREFIX);
+
 function removeInstallLeftovers(): boolean {
   let names: string[];
   try {
@@ -915,12 +831,16 @@ function removeInstallLeftovers(): boolean {
     if (isErrno(err, "ENOENT")) return false;
     throw err;
   }
-  const leftovers = names.filter(
-    (name) => name.startsWith(STAGING_PREFIX) || name.startsWith(REPLACED_PREFIX),
-  );
+  const leftovers = names.filter(isInstallLeftover);
   for (const name of leftovers)
     rmSync(join(CACHE_ROOT_DIR, name), { recursive: true, force: true });
   return leftovers.length > 0;
+}
+
+export async function sweepKilledInstalls(): Promise<void> {
+  const names = existsSync(CACHE_ROOT_DIR) ? readdirSync(CACHE_ROOT_DIR) : [];
+  if (!names.some(isInstallLeftover)) return;
+  await withInstallLock(async () => removeInstallLeftovers());
 }
 
 // Deletes the managed Chrome cache and interrupted-install leftovers; true when any of them existed.

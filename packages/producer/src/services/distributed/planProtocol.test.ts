@@ -199,6 +199,7 @@ describe("getDistributedRenderCapabilities()", () => {
           acceptsLegacyV1WithoutDescriptor: true,
         },
       },
+      chunkFrameRange: true,
     });
   });
 

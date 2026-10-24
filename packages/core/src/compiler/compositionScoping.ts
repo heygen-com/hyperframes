@@ -161,41 +161,127 @@ function isNestedInsideAnotherRule(rule: Rule): boolean {
   return false;
 }
 
+type ScopeOptions = { compoundAuthoredRoot?: boolean; scopeRootSelectors?: boolean };
+
 export function scopeCssToComposition(
   css: string,
   compositionId: string,
   scopeSelectorOverride?: string,
   authoredRootId?: string | null,
-  options?: { compoundAuthoredRoot?: boolean; scopeRootSelectors?: boolean },
+  options?: ScopeOptions,
 ): string {
   const trimmedCompositionId = compositionId.trim();
   if (!css || !trimmedCompositionId) return css;
   const scope =
     scopeSelectorOverride ||
     `[data-composition-id="${escapeCssAttributeValue(trimmedCompositionId)}"]`;
-  let root: postcss.Root;
-  try {
-    root = postcss.parse(css);
-  } catch {
-    return "";
-  }
+  const root = parseCss(css);
+  return root ? scopeParsedCss(root, scope, trimmedCompositionId, authoredRootId, options) : "";
+}
 
+function parseCss(css: string): postcss.Root | null {
+  try {
+    return postcss.parse(css);
+  } catch {
+    return null;
+  }
+}
+
+function forEachScopedRule(root: postcss.Root, visit: (rule: Rule) => void): void {
   root.walkRules((rule) => {
     if (isInsideGlobalAtRule(rule)) return;
     if (isNestedInsideAnotherRule(rule)) return;
+    visit(rule);
+  });
+}
+
+function scopeParsedCss(
+  root: postcss.Root,
+  scope: string,
+  compositionId: string,
+  authoredRootId: string | null | undefined,
+  options: ScopeOptions | undefined,
+): string {
+  forEachScopedRule(root, (rule) => {
     rule.selectors = rule.selectors.map((selector) =>
       scopeSelector(
         selector,
         scope,
-        trimmedCompositionId,
+        compositionId,
         authoredRootId,
         options?.compoundAuthoredRoot,
         options?.scopeRootSelectors,
       ),
     );
   });
-
   return root.toResult({ map: false }).css;
+}
+
+// Shaped like every scope it stands in for, so each selector test treats the two alike; its only `[` is
+// its first character, so no occurrence of it overlaps another or the text around it.
+const PLACEHOLDER_ID = "hf-scope-placeholder";
+const PLACEHOLDER_SCOPE = `[data-composition-id="${PLACEHOLDER_ID}"]`;
+// No quote, bracket, backslash, space or `$` (a String.replace pattern): such a scope lands verbatim.
+const PLAIN_ID = /^[\w.:-]+$/;
+const PLAIN_SCOPE = /^\[data-composition-id="([\w.:-]+)"\]$/;
+
+/** `scopeCssToComposition` for sheets mounted many times: each sheet is scoped once around a
+ * placeholder scope, which each mount's own scope then replaces. */
+export function createCompositionCssScoper(): typeof scopeCssToComposition {
+  const templates = new Map<string, string | null>();
+  return (css, compositionId, scopeSelectorOverride, authoredRootId, options) => {
+    const trimmedId = compositionId.trim();
+    const scope = scopeSelectorOverride ?? "";
+    const scopeId = PLAIN_SCOPE.exec(scope)?.[1];
+    if (
+      !scopeId ||
+      scopeId === trimmedId ||
+      !PLAIN_ID.test(trimmedId) ||
+      trimmedId === PLACEHOLDER_ID
+    )
+      return scopeCssToComposition(
+        css,
+        compositionId,
+        scopeSelectorOverride,
+        authoredRootId,
+        options,
+      );
+    const key = JSON.stringify([
+      trimmedId,
+      authoredRootId ?? null,
+      Boolean(options?.compoundAuthoredRoot),
+      Boolean(options?.scopeRootSelectors),
+      css,
+    ]);
+    let template = templates.get(key);
+    if (template === undefined) {
+      template = scopeTemplate(css, trimmedId, authoredRootId, options);
+      templates.set(key, template);
+    }
+    return template === null
+      ? scopeCssToComposition(css, compositionId, scopeSelectorOverride, authoredRootId, options)
+      : template.split(PLACEHOLDER_SCOPE).join(scope);
+  };
+}
+
+/** Null when the placeholder is already in the sheet, or a selector keeps its raw text (it holds a comment). */
+function scopeTemplate(
+  css: string,
+  compositionId: string,
+  authoredRootId: string | null | undefined,
+  options: ScopeOptions | undefined,
+): string | null {
+  if (css.includes(PLACEHOLDER_SCOPE)) return null;
+  if (!css) return css;
+  const root = parseCss(css);
+  if (!root) return "";
+  let rawSelector = false;
+  forEachScopedRule(root, (rule) => {
+    rawSelector ||= Boolean(rule.raws.selector);
+  });
+  return rawSelector
+    ? null
+    : scopeParsedCss(root, PLACEHOLDER_SCOPE, compositionId, authoredRootId, options);
 }
 
 function isFontFaceAtRule(node: { type: string; name?: string }): node is AtRule {

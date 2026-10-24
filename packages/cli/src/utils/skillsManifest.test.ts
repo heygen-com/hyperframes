@@ -1,13 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
-  chmodSync,
   existsSync,
   mkdtempSync,
   mkdirSync,
   readdirSync,
   readFileSync,
   rmSync,
-  statSync,
   writeFileSync,
 } from "node:fs";
 import { execFile } from "node:child_process";
@@ -23,7 +21,7 @@ import {
   isCoreSkill,
   MANIFEST_FILE,
   presentSkills,
-  pruneOrphanedLockEntries,
+  retiredSkillNotice,
   skillsAttributedToSource,
   type SkillsManifest,
   type SkillEntry,
@@ -136,12 +134,12 @@ describe("buildManifest", () => {
 describe("isCoreSkill", () => {
   it("classifies the entry router, hyperframes-* domain skills, and media-use as core", () => {
     expect(isCoreSkill("hyperframes")).toBe(true);
-    expect(isCoreSkill("hyperframes-core")).toBe(true);
-    expect(isCoreSkill("hyperframes-animation")).toBe(true);
+    expect(isCoreSkill("hyperframes-cli")).toBe(true);
+    expect(isCoreSkill("hyperframes-registry")).toBe(true);
     expect(isCoreSkill("media-use")).toBe(true);
-    // End-user workflows and optional integrations install on demand.
-    expect(isCoreSkill("pr-to-video")).toBe(false);
-    expect(isCoreSkill("embedded-captions")).toBe(false);
+    // Decks, ports and optional integrations install on demand.
+    expect(isCoreSkill("slideshow")).toBe(false);
+    expect(isCoreSkill("remotion-to-hyperframes")).toBe(false);
     expect(isCoreSkill("figma")).toBe(false);
   });
 });
@@ -279,7 +277,7 @@ describe("diffSkills", () => {
       source: "test",
       skills: {
         hyperframes: { hash: "e1", files: 1 }, // core: entry router
-        "pr-to-video": { hash: "w1", files: 1 }, // on-demand workflow
+        slideshow: { hash: "w1", files: 1 }, // on-demand workflow
       },
     };
 
@@ -294,7 +292,7 @@ describe("diffSkills", () => {
     });
 
     // Core itself missing → every workflow needs it, so that IS an update.
-    const coreMissing = diffSkills({ "pr-to-video": { hash: "w1", files: 1 } }, withCore);
+    const coreMissing = diffSkills({ slideshow: { hash: "w1", files: 1 } }, withCore);
     expect(coreMissing.updateAvailable).toBe(true);
     expect(coreMissing.summary).toEqual({ current: 1, outdated: 0, missing: 1, coreMissing: 1 });
   });
@@ -309,7 +307,7 @@ describe("presentSkills", () => {
     mkdirSync(join(skillsDir, "hyperframes"), { recursive: true });
     writeFileSync(join(skillsDir, "hyperframes", "SKILL.md"), "# hyperframes");
 
-    expect(presentSkills(["hyperframes", "pr-to-video"], { cwd: project, home })).toEqual([
+    expect(presentSkills(["hyperframes", "slideshow"], { cwd: project, home })).toEqual([
       "hyperframes",
     ]);
   });
@@ -488,7 +486,14 @@ describe("skillsAttributedToSource", () => {
   });
 });
 
-describe("checkSkills removed-upstream detection", () => {
+describe("retiredSkillNotice", () => {
+  it("says where a retired skill's knowledge lives", () => {
+    expect(retiredSkillNotice("hyperframes-audio")).toContain("media-use");
+    expect(retiredSkillNotice("motion-graphics")).toContain("/hyperframes skill");
+  });
+});
+
+describe("checkSkills foreign skills", () => {
   // The global lock path honours XDG_STATE_HOME; clear it so the fixture under
   // <home>/.agents/.skill-lock.json is the one that's read.
   let xdg: string | undefined;
@@ -546,213 +551,47 @@ describe("checkSkills removed-upstream detection", () => {
     );
   }
 
-  it("flags a lock-attributed skill the manifest dropped, ignoring other sources", async () => {
+  it("never compares or refreshes a skill another publisher installed under one of our names", async () => {
     const { home, opts } = setup({ source: "test", skills: { alpha: { hash: "x", files: 1 } } });
-    writeGlobalLock(home, {
-      alpha: { source: "test" }, // still ours and in the manifest
-      gamma: { source: "test" }, // ours, dropped from manifest → removed
-      delta: { source: "someone/else" }, // a different source → never ours
-    });
-
-    const res = await checkSkills(opts);
-    const byName = Object.fromEntries(res.skills.map((s) => [s.name, s.status]));
-    expect(byName.gamma).toBe("removed");
-    expect(byName.delta).toBeUndefined();
-    expect(res.summary.removed).toBe(1);
-  });
-
-  // GH #3111 — the data-loss regression. `skills add --skill '*'` installs every
-  // skill in the repo, including the repo-native ones under `.claude/skills/`
-  // and `.agents/skills/`, and attributes them all to our source. The published
-  // manifest is generated from `<repoRoot>/skills` ONLY (gen-skills-manifest.ts),
-  // so it never lists them — and reading that silence as "no longer published"
-  // deleted them from every agent directory on the machine, immediately after
-  // the same command installed them.
-  //
-  // Reproduced end-to-end pre-fix against the real CLI: `skills add` installed
-  // 25 skills, then `skills update` printed "Removing 6 skill(s) no longer
-  // published: captions-overlay, changelog-video, cut-the-curve, motion-doctrine,
-  // oversized-cursor, seam-craft" and deleted all six. Their lock entries carried
-  // `.agents/skills/<name>/SKILL.md`; the survivors carried `skills/<name>/…`.
-  it("never prunes a skill installed outside the manifest's coverage root", async () => {
-    const { home, opts } = setup({ source: "test", skills: { alpha: { hash: "x", files: 1 } } });
-    writeGlobalLock(home, {
-      alpha: { source: "test" }, // published, in the manifest → untouched
-      gamma: {
-        source: "test", // ours, absent from the manifest…
-        skillPath: ".agents/skills/gamma/SKILL.md", // …but the manifest never covered it
-      },
-    });
+    writeGlobalLock(home, { alpha: { source: "someone/else" } });
 
     const res = await checkSkills(opts);
 
-    const byName = Object.fromEntries(res.skills.map((s) => [s.name, s.status]));
-    expect(byName.gamma).not.toBe("removed");
-    expect(res.summary.removed).toBe(0);
+    expect(res.skills.find((s) => s.name === "alpha")).toBeUndefined();
+    expect(res.foreign).toEqual(["alpha"]);
+    expect(res.updateAvailable).toBe(false);
   });
 
-  // The other half of the contract: the coverage filter must not blunt the
-  // retired-skill convergence #2176 added. A skill installed FROM `skills/` and
-  // since dropped from the manifest is still a real removal.
-  it("still prunes a manifest-covered skill that was genuinely dropped upstream", async () => {
+  it("never compares or refreshes a skill another publisher installed under one of our names", async () => {
     const { home, opts } = setup({ source: "test", skills: { alpha: { hash: "x", files: 1 } } });
-    writeGlobalLock(home, {
-      alpha: { source: "test" },
-      gamma: { source: "test", skillPath: "skills/gamma/SKILL.md" },
-    });
+    writeGlobalLock(home, { alpha: { source: "someone/else" } });
 
     const res = await checkSkills(opts);
 
-    expect(Object.fromEntries(res.skills.map((s) => [s.name, s.status])).gamma).toBe("removed");
-    expect(res.summary.removed).toBe(1);
+    expect(res.skills.find((s) => s.name === "alpha")).toBeUndefined();
+    expect(res.foreign).toEqual(["alpha"]);
+    expect(res.updateAvailable).toBe(false);
   });
 
-  // Fail safe on unknown provenance: an entry written by an older upstream that
-  // recorded no skillPath cannot be shown to be manifest-covered, and this is a
-  // DELETE path — so it is left alone rather than guessed at.
-  it("leaves an entry with no skillPath alone rather than guessing", async () => {
-    const { home, opts } = setup({ source: "test", skills: { alpha: { hash: "x", files: 1 } } });
-    writeFileSync(
-      join(home, ".agents/.skill-lock.json"),
-      JSON.stringify({
-        version: 3,
-        skills: { alpha: { source: "test" }, gamma: { source: "test" } }, // no skillPath at all
-      }),
-    );
+  it("treats a skill with no lock entry as ours: provenance unknown, not foreign", async () => {
+    const { opts } = setup({ source: "test", skills: { alpha: { hash: "x", files: 1 } } });
 
     const res = await checkSkills(opts);
 
-    expect(res.summary.removed).toBe(0);
+    expect(res.foreign).toEqual([]);
+    expect(res.skills.find((s) => s.name === "alpha")?.status).toBe("outdated");
   });
 
-  it("a removed skill alone makes an update available (no outdated/missing)", async () => {
-    // Manifest lists only alpha, with its REAL hash → "current" (not outdated).
-    const { home, opts } = setup({ source: "test", skills: {} });
-    const manifest: SkillsManifest = {
-      source: "test",
-      skills: { alpha: hashSkillBundle(join(home, ".agents/skills/alpha")) },
-    };
-    writeFileSync(opts.source, JSON.stringify(manifest));
+  it("never reports a skill the manifest dropped as an update", async () => {
+    const { home, opts } = setup({ source: "test", skills: { alpha: { hash: "x", files: 1 } } });
     writeGlobalLock(home, { alpha: { source: "test" }, gamma: { source: "test" } });
 
     const res = await checkSkills(opts);
-    expect(res.summary).toEqual({
-      current: 1,
-      outdated: 0,
-      missing: 0,
-      coreMissing: 0,
-      removed: 1,
-    });
-    expect(res.updateAvailable).toBe(true);
-  });
 
-  it("reports no removed skills when there is no lock to attribute from", async () => {
-    const { opts } = setup({ source: "test", skills: { alpha: { hash: "x", files: 1 } } });
-    // gamma is an orphan on disk, but with no lock we can't attribute it to us.
-    const res = await checkSkills(opts);
-    expect(res.summary.removed).toBe(0);
-    expect(res.skills.some((s) => s.status === "removed")).toBe(false);
-    // No install was located via auto-detect (skills live under <home>/.agents/skills
-    // which IS discovered) — so lockMissing reflects the genuinely-absent lock.
-    expect(res.lockMissing).toBe(true);
-  });
-
-  // A `--dir` pointing at a global-scoped install (under $HOME) must resolve the
-  // GLOBAL lock (<home>/.agents/.skill-lock.json), not the project lock
-  // (<cwd>/skills-lock.json). Before this fix, locateInstall hardcoded scope
-  // "project" for every --dir, so the global lock was never read and
-  // removed-detection silently found nothing for --dir installs.
-  it("--dir under $HOME resolves the global lock so removed-detection works", async () => {
-    const { home, opts } = setup({ source: "test", skills: { alpha: { hash: "x", files: 1 } } });
-    writeGlobalLock(home, {
-      alpha: { source: "test" }, // ours and still in the manifest
-      gamma: { source: "test" }, // ours, dropped from manifest → removed
-    });
-
-    const dir = join(home, ".agents/skills");
-    const res = await checkSkills({ source: opts.source, dir, cwd: opts.cwd, home });
-    expect(res.scope).toBe("global");
-    const byName = Object.fromEntries(res.skills.map((s) => [s.name, s.status]));
-    expect(byName.gamma).toBe("removed");
-    expect(res.summary.removed).toBe(1);
-    expect(res.lockMissing).toBe(false);
-  });
-
-  // Regression (Magi REQUEST_CHANGES at 88daa820): the common project-local case
-  // is *also* under $HOME — a project checkout at `<home>/work/proj` with skills
-  // at `<cwd>/.claude/skills`. A HOME-first heuristic misclassified this as
-  // global, so checkSkills read the global lock and `skills update` would prune
-  // with `-g` against a project install. CWD-containment must win: `--dir` under
-  // `cwd` resolves to PROJECT even when `cwd` itself is nested under $HOME.
-  it("--dir under a cwd that is itself nested under $HOME stays project-scoped", async () => {
-    const home = join(root, "home");
-    const project = join(home, "work", "proj"); // cwd nested INSIDE home
-    const skillsDir = join(project, ".claude/skills");
-    installSkills(skillsDir, ["alpha", "gamma"]);
-    const manifestPath = join(root, "m3.json");
-    writeFileSync(
-      manifestPath,
-      JSON.stringify({ source: "test", skills: { alpha: { hash: "x", files: 1 } } }),
-    );
-    // Project lock at <cwd>/skills-lock.json — only read if scope is "project".
-    // No global lock exists under $HOME, so a wrong-scope ("global") read would
-    // find no lock → zero removed (gamma would NOT be flagged). The project lock
-    // being read (gamma → removed) is the proof CWD-containment won.
-    writeFileSync(
-      join(project, "skills-lock.json"),
-      JSON.stringify({
-        version: 1,
-        skills: {
-          alpha: { source: "test", skillPath: "skills/alpha/SKILL.md" },
-          gamma: { source: "test", skillPath: "skills/gamma/SKILL.md" },
-        },
-      }),
-    );
-
-    const res = await checkSkills({ source: manifestPath, dir: skillsDir, cwd: project, home });
-    expect(res.scope).toBe("project");
-    const byName = Object.fromEntries(res.skills.map((s) => [s.name, s.status]));
-    expect(byName.gamma).toBe("removed");
-    expect(res.summary.removed).toBe(1);
-  });
-
-  // The complementary case: a `--dir` under the project tree (not $HOME) stays
-  // project-scoped and reads <cwd>/skills-lock.json.
-  it("--dir outside $HOME stays project-scoped and reads the project lock", async () => {
-    const project = join(root, "proj2");
-    const skillsDir = join(project, ".claude/skills");
-    installSkills(skillsDir, ["alpha", "gamma"]);
-    const manifestPath = join(root, "m2.json");
-    writeFileSync(
-      manifestPath,
-      JSON.stringify({ source: "test", skills: { alpha: { hash: "x", files: 1 } } }),
-    );
-    // Project lock lives at <cwd>/skills-lock.json — point cwd at the project.
-    writeFileSync(
-      join(project, "skills-lock.json"),
-      JSON.stringify({
-        version: 1,
-        skills: {
-          alpha: { source: "test", skillPath: "skills/alpha/SKILL.md" },
-          gamma: { source: "test", skillPath: "skills/gamma/SKILL.md" },
-        },
-      }),
-    );
-    const home = join(root, "home2");
-    mkdirSync(home, { recursive: true });
-
-    const res = await checkSkills({ source: manifestPath, dir: skillsDir, cwd: project, home });
-    expect(res.scope).toBe("project");
-    const byName = Object.fromEntries(res.skills.map((s) => [s.name, s.status]));
-    expect(byName.gamma).toBe("removed");
-    expect(res.summary.removed).toBe(1);
+    expect(res.skills.map((s) => s.name)).toEqual(["alpha"]);
   });
 });
 
-// Regression coverage for "variant 1" of the retired-skill bug: `updateSkills`
-// (see commands/skills.ts) resolves its own targeted-install check with
-// `canonical: true` specifically so it never trusts a stale local
-// `skills-manifest.json` — this is the mechanism that makes that safe.
 describe("checkSkills canonical bypass of the in-repo manifest shortcut", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -836,92 +675,5 @@ describe("checkSkills canonical bypass of the in-repo manifest shortcut", () => 
     // override it, only the silent in-repo shortcut.
     const res = await checkSkills({ source: explicitSource, cwd: project, home, canonical: true });
     expect(res.skills.map((s) => s.name)).toEqual(["from-explicit-source"]);
-  });
-});
-
-describe("pruneOrphanedLockEntries", () => {
-  function writeLock(path: string, skills: Record<string, { source: string }>): void {
-    writeFileSync(path, JSON.stringify({ version: 1, skills, dismissed: [] }));
-  }
-
-  it("removes only the given names, leaving other entries and lock fields intact", () => {
-    const home = join(root, "home");
-    mkdirSync(join(home, ".agents"), { recursive: true });
-    const lockPath = join(home, ".agents", ".skill-lock.json");
-    writeLock(lockPath, {
-      a: { source: "heygen-com/hyperframes" },
-      b: { source: "heygen-com/hyperframes" },
-      c: { source: "heygen-com/hyperframes" },
-    });
-
-    const pruned = pruneOrphanedLockEntries(["a", "b"], "global", { home });
-
-    expect(pruned.sort()).toEqual(["a", "b"]);
-    const rewritten = JSON.parse(readFileSync(lockPath, "utf8"));
-    expect(Object.keys(rewritten.skills)).toEqual(["c"]);
-    expect(rewritten.version).toBe(1); // other lock fields survive the rewrite
-  });
-
-  it("is idempotent — a second call with the same names finds nothing left and no-ops", () => {
-    const home = join(root, "home");
-    mkdirSync(join(home, ".agents"), { recursive: true });
-    const lockPath = join(home, ".agents", ".skill-lock.json");
-    writeLock(lockPath, { a: { source: "heygen-com/hyperframes" } });
-
-    const first = pruneOrphanedLockEntries(["a"], "global", { home });
-    expect(first).toEqual(["a"]);
-
-    const before = readFileSync(lockPath, "utf8");
-    const second = pruneOrphanedLockEntries(["a"], "global", { home });
-    expect(second).toEqual([]);
-    // No entries left to touch → the file is never rewritten a second time.
-    expect(readFileSync(lockPath, "utf8")).toBe(before);
-  });
-
-  it("writes atomically with no trailing newline, no leftover temp file, and preserves the file mode", () => {
-    const home = join(root, "home-atomic");
-    mkdirSync(join(home, ".agents"), { recursive: true });
-    const lockPath = join(home, ".agents", ".skill-lock.json");
-    writeLock(lockPath, {
-      a: { source: "heygen-com/hyperframes" },
-      b: { source: "heygen-com/hyperframes" },
-    });
-    chmodSync(lockPath, 0o640);
-
-    const pruned = pruneOrphanedLockEntries(["a"], "global", { home });
-
-    expect(pruned).toEqual(["a"]);
-    const raw = readFileSync(lockPath, "utf8");
-    expect(raw.endsWith("\n")).toBe(false);
-    expect(JSON.parse(raw).skills).toEqual({ b: { source: "heygen-com/hyperframes" } });
-    // No `.tmp` sibling left behind by the temp-file + rename.
-    expect(readdirSync(join(home, ".agents"))).toEqual([".skill-lock.json"]);
-    // Original permissions survive the rewrite (POSIX only — Windows's fs
-    // layer reports 0o666 regardless of the mode we set, so the bits aren't
-    // meaningful there).
-    if (process.platform !== "win32") {
-      expect(statSync(lockPath).mode & 0o777).toBe(0o640);
-    }
-  });
-
-  it("no-ops without throwing when the lock file doesn't exist", () => {
-    const home = join(root, "home-without-lock");
-    mkdirSync(home, { recursive: true });
-    expect(pruneOrphanedLockEntries(["a"], "global", { home })).toEqual([]);
-  });
-
-  it("resolves the project lock at <cwd>/skills-lock.json for scope: project", () => {
-    const project = join(root, "project");
-    mkdirSync(project, { recursive: true });
-    writeLock(join(project, "skills-lock.json"), {
-      a: { source: "heygen-com/hyperframes" },
-      b: { source: "heygen-com/hyperframes" },
-    });
-
-    const pruned = pruneOrphanedLockEntries(["a"], "project", { cwd: project });
-
-    expect(pruned).toEqual(["a"]);
-    const rewritten = JSON.parse(readFileSync(join(project, "skills-lock.json"), "utf8"));
-    expect(Object.keys(rewritten.skills)).toEqual(["b"]);
   });
 });

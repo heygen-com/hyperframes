@@ -7,10 +7,10 @@ The lightweight tier of user memory: confirmed brief answers (destination, aspec
 ```bash
 node <SKILL_DIR>/scripts/prefs.mjs get --hyperframes . --json      # merged view (project overrides user)
 node <SKILL_DIR>/scripts/prefs.mjs record --hyperframes . --key destination --value x-feed
-node <SKILL_DIR>/scripts/prefs.mjs record --hyperframes . --key style_preset --value pin-and-paper --workflow faceless-explainer
+node <SKILL_DIR>/scripts/prefs.mjs record --hyperframes . --key style_preset --value pin-and-paper --workflow explainer
 ```
 
-Only what the user actually confirmed gets recorded — never an inferred or defaulted value. How workflows consume these (a remembered value becomes the recommended default with a receipt, and never skips a question) is the brief contract's rule: `hyperframes/references/brief-contract.md` § 2, Remembered defaults.
+Only what the user actually confirmed gets recorded — never an inferred or defaulted value. A remembered value becomes the recommended default, shown with where it came from; it never skips a question.
 
 ## Recipes — frozen video bundles
 
@@ -18,11 +18,11 @@ The heavyweight tier of user memory: one approved run frozen as a named, version
 
 ```bash
 node <SKILL_DIR>/scripts/recipe.mjs freeze --hyperframes . --name weekly-promo   # workflow read from BRIEF.md (--workflow only for briefless projects)
-node <SKILL_DIR>/scripts/recipe.mjs list --hyperframes . --workflow product-launch-video
+node <SKILL_DIR>/scripts/recipe.mjs list --hyperframes . --workflow explainer
 node <SKILL_DIR>/scripts/recipe.mjs use --hyperframes . --name weekly-promo   # also: resolve.mjs --type recipe --entity weekly-promo
 ```
 
-The freeze is offered once after the final approval (`hyperframes/references/review-loop.md` § 4), and the intent layer (`/hyperframes` → `references/intent-interview.md`, step 1) checks for a match before its first question. Adopting a recipe fills the brief, the design spec, and the storyboard skeleton — and unlike preferences it may skip the questions it answers: the bundle was approved as a whole, and adoption itself is the question.
+Offer the freeze once, after the final approval; before the first question about a new video, check `recipe.mjs list` for a match. Adopting a recipe fills the brief, the design spec, and the storyboard skeleton — and unlike preferences it may skip the questions it answers: the bundle was approved as a whole, and adoption itself is the question.
 
 ## Files
 

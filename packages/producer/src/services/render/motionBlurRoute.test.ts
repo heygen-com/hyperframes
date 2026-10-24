@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { assertMotionBlurSupported } from "./motionBlurRoute.js";
+import { assertMotionBlurSupported, pageMotionBlurForRoute } from "./motionBlurRoute.js";
 
 describe("assertMotionBlurSupported", () => {
   it("lets the SDR capture routes through", () => {
@@ -36,5 +36,36 @@ describe("assertMotionBlurSupported", () => {
     expect(orchestrator).toContain(
       "assertMotionBlurSupported(job.config.motionBlur, capturePlan.kind)",
     );
+  });
+});
+
+describe("pageMotionBlurForRoute", () => {
+  it("turns the page blur off for HDR content, whichever way it is composited", () => {
+    expect(pageMotionBlurForRoute({ hasHdrContent: true, useLayeredComposite: true })).toBe(
+      "hdr-render",
+    );
+    expect(pageMotionBlurForRoute({ hasHdrContent: true, useLayeredComposite: false })).toBe(
+      "hdr-render",
+    );
+  });
+
+  it("turns it off for the layered compositor even with no HDR content", () => {
+    expect(pageMotionBlurForRoute({ hasHdrContent: false, useLayeredComposite: true })).toBe(
+      "layered-composite",
+    );
+  });
+
+  it("leaves the page blur alone on the plain SDR routes", () => {
+    expect(
+      pageMotionBlurForRoute({ hasHdrContent: false, useLayeredComposite: false }),
+    ).toBeUndefined();
+  });
+
+  // Reachability: the helper is dead unless the orchestrator feeds it into the options every
+  // capture session is built from, once HDR is known and again once the layered route is.
+  it("feeds every session's capture options, after HDR and after the layered decision", () => {
+    const orchestrator = readFileSync(join(import.meta.dir, "..", "renderOrchestrator.ts"), "utf8");
+    expect(orchestrator.match(/pageMotionBlurForRoute\(/g) ?? []).toHaveLength(2);
+    expect(orchestrator).toContain("pageMotionBlur: routePageMotionBlur");
   });
 });

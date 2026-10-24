@@ -1,11 +1,12 @@
 // fallow-ignore-file code-duplication complexity
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { join } from "node:path";
 import { findFFmpeg } from "../browser/ffmpeg.js";
 import { downloadFile } from "../utils/download.js";
 import { stoppableExecFile } from "../utils/stoppableExecFile.js";
+import { verifies, type ModelFile } from "./modelFile.js";
 
 const MODELS_DIR = join(homedir(), ".cache", "hyperframes", "whisper", "models");
 const DEFAULT_MODEL = "small.en";
@@ -35,8 +36,67 @@ export function isWhisperUnavailable(err: unknown): err is WhisperUnavailableErr
   return err instanceof Error && "code" in err && err.code === "WHISPER_UNAVAILABLE";
 }
 
+const MODEL_REVISION = "5359861c739e955e79d9a303bcbc70fb988958b1";
+
 function getModelUrl(model: string): string {
-  return `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-${model}.bin`;
+  return `https://huggingface.co/ggerganov/whisper.cpp/resolve/${MODEL_REVISION}/ggml-${model}.bin`;
+}
+
+const pinned = (model: string, bytes: number, sha256: string): [string, ModelFile] => [
+  model,
+  { name: `ggml-${model}.bin`, bytes, sha256 },
+];
+
+/** Sizes and sha256 at MODEL_REVISION; a model not listed here is used as downloaded. */
+const PINNED_MODELS: ReadonlyMap<string, ModelFile> = new Map([
+  pinned("tiny", 77_691_713, "be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21"),
+  pinned("tiny.en", 77_704_715, "921e4cf8686fdd993dcd081a5da5b6c365bfde1162e72b08d75ac75289920b1f"),
+  pinned("base", 147_951_465, "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe"),
+  pinned(
+    "base.en",
+    147_964_211,
+    "a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002",
+  ),
+  pinned("small", 487_601_967, "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b"),
+  pinned(
+    "small.en",
+    487_614_201,
+    "c6138d6d58ecc8322097e0f987c32f1be8bb0a18532a3f88f734d1bbf9c41e5d",
+  ),
+  pinned(
+    "medium",
+    1_533_763_059,
+    "6c14d5adee5f86394037b4e4e8b59f1673b6cee10e3cf0b11bbdbee79c156208",
+  ),
+  pinned(
+    "medium.en",
+    1_533_774_781,
+    "cc37e93478338ec7700281a7ac30a10128929eb8f427dda2e865faa8f6da4356",
+  ),
+  pinned(
+    "large-v1",
+    3_094_623_691,
+    "7d99f41a10525d0206bddadd86760181fa920438b6b33237e3118ff6c83bb53d",
+  ),
+  pinned(
+    "large-v2",
+    3_094_623_691,
+    "9a423fe4d40c82774b6af34115b8b935f34152246eb19e80e376071d3f999487",
+  ),
+  pinned(
+    "large-v3",
+    3_095_033_483,
+    "64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2",
+  ),
+  pinned(
+    "large-v3-turbo",
+    1_624_555_275,
+    "1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69",
+  ),
+]);
+
+export function pinnedWhisperModel(model: string): ModelFile | undefined {
+  return PINNED_MODELS.get(model);
 }
 
 // --- Find helpers -----------------------------------------------------------
@@ -249,20 +309,32 @@ export async function ensureModel(
   },
 ): Promise<string> {
   const modelPath = join(MODELS_DIR, `ggml-${model}.bin`);
-  if (existsSync(modelPath)) return modelPath;
+  const pin = PINNED_MODELS.get(model);
+  const cachedBytes = statSync(modelPath, { throwIfNoEntry: false })?.size;
+  if (cachedBytes !== undefined && (!pin || cachedBytes === pin.bytes)) return modelPath;
 
   mkdirSync(MODELS_DIR, { recursive: true });
-
-  options?.onProgress?.(`Downloading model ${model}...`);
-  await downloadFile(getModelUrl(model), modelPath, {
-    signal: options?.signal,
-    onProgress: options?.onDownloadProgress,
-  });
-
-  if (!existsSync(modelPath)) {
-    throw new Error(`Model download failed: ${model}`);
+  rmSync(modelPath, { force: true });
+  options?.onProgress?.(
+    cachedBytes === undefined
+      ? `Downloading model ${model}...`
+      : `Model ${model} is incomplete; downloading it again...`,
+  );
+  const downloaded = `${modelPath}.${process.pid}.download`;
+  try {
+    await downloadFile(getModelUrl(model), downloaded, {
+      signal: options?.signal,
+      onProgress: options?.onDownloadProgress,
+    });
+    if (pin && !(await verifies(downloaded, pin))) {
+      throw new Error(
+        `${pin.name} did not match its pinned size and sha256, so it was discarded. Re-run to retry.`,
+      );
+    }
+    renameSync(downloaded, modelPath);
+  } finally {
+    rmSync(downloaded, { force: true });
   }
-
   return modelPath;
 }
 

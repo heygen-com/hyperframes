@@ -111,9 +111,11 @@ export class Inspector {
     const start = performance.now();
     const generation = randomUUID();
     const provenance: BundleScriptProvenance[] = [];
+    const reads = new Set<string>();
     const html = await bundleToSingleHtml(this.project, {
       runtime: "placeholder",
       scriptProvenance: (p) => provenance.push(p),
+      onRead: (path) => reads.add(path),
     });
     if (fingerprint(this.project) !== digest)
       throw new Error("source_changed_during_load: retry against a stable project");
@@ -205,7 +207,7 @@ export class Inspector {
         fingerprint: digest,
         sourceContext: () => {
           if (!sourceContext) {
-            const sources = new Sources(project);
+            const sources = new Sources(project, reads);
             sourceContext = { sources, map: sources.mapper(html, provenance) };
             this.stats.sourceLoads++;
           }

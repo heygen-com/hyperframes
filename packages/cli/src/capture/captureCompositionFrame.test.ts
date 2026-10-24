@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AUDIT_SEEK_OPTIONS,
   DENSE_GEOMETRY_SEEK_OPTIONS,
+  SCREENSHOT_SEEK_OPTIONS,
   captureRegionCrop,
   clampCropRegion,
   installPageFunctionGuard,
@@ -15,6 +16,8 @@ import {
   resolveCropRegion,
   runFfmpegOnce,
   seekCompositionTimeline,
+  seekCompositionTimelineOnly,
+  settleCompositionSeek,
   waitForRuntimeReady,
   type CompositionSeekPage,
 } from "./captureCompositionFrame.js";
@@ -112,7 +115,19 @@ describe("seekCompositionTimeline", () => {
     expect(evaluate.mock.calls[2]?.[0]).toContain("window.setTimeout(finish, 100)");
     // Post-seek font settle: a seek can reveal glyphs whose unicode-range
     // subsets only start loading after the next layout (CJK snapshot reports).
-    expect(evaluate).toHaveBeenNthCalledWith(4, expect.any(Function), 500);
+    expect(evaluate).toHaveBeenNthCalledWith(4, expect.any(Function), { ms: 500, frames: 1 });
+  });
+
+  it("can seek without finishing the frame, so overlays land before a blurred frame is drawn", async () => {
+    const { page, evaluate } = fakeSeekPage();
+
+    await seekCompositionTimelineOnly(page, 1.25);
+    expect(evaluate).toHaveBeenCalledTimes(1);
+    expect(evaluate).toHaveBeenNthCalledWith(1, expect.any(Function), 1.25, false, false, false);
+
+    await settleCompositionSeek(page);
+    expect(evaluate).toHaveBeenNthCalledWith(2, expect.any(Function), { videoFrames: true });
+    expect(evaluate).toHaveBeenCalledTimes(4);
   });
 
   it("waitForFontsMs: 0 disables the post-seek font wait", async () => {
@@ -215,7 +230,7 @@ describe("seekCompositionTimeline", () => {
     expect(evaluate).toHaveBeenCalledWith(expect.any(Function), 3, true, false, false);
   });
 
-  it("supports layout's ordered double-frame, bounded font, and sleep settles", async () => {
+  it("checks fonts on the double settle's second frame instead of waiting a third", async () => {
     vi.useFakeTimers();
     const { page, evaluate } = fakeSeekPage();
 
@@ -228,11 +243,34 @@ describe("seekCompositionTimeline", () => {
     await vi.advanceTimersByTimeAsync(120);
     await pending;
 
-    expect(evaluate).toHaveBeenCalledTimes(4);
+    expect(evaluate).toHaveBeenCalledTimes(3);
     expect(evaluate).toHaveBeenNthCalledWith(1, expect.any(Function), 4, true, false, false);
     expect(evaluate).toHaveBeenNthCalledWith(2, expect.any(Function), { videoFrames: true });
-    expect(evaluate).toHaveBeenNthCalledWith(3, expect.any(Function));
-    expect(evaluate).toHaveBeenNthCalledWith(4, expect.any(Function), 500);
+    expect(evaluate).toHaveBeenNthCalledWith(3, expect.any(Function), { ms: 500, frames: 2 });
+
+    const frames: (() => void)[] = [];
+    const statusReadAt: number[] = [];
+    let frame = 0;
+    vi.stubGlobal("requestAnimationFrame", (callback: () => void) => frames.push(callback));
+    vi.stubGlobal("document", {
+      body: { offsetHeight: 0 },
+      fonts: {
+        get status() {
+          statusReadAt.push(frame);
+          return "loaded";
+        },
+        ready: Promise.resolve(),
+      },
+    });
+    const fontWait = evaluate.mock.calls[2]?.[0];
+    if (typeof fontWait !== "function") throw new Error("Expected the font wait page function");
+    const waited = Reflect.apply(fontWait, undefined, [{ ms: 500, frames: 2 }]);
+    while (frames.length > 0) {
+      frame += 1;
+      frames.shift()?.();
+    }
+    await waited;
+    expect(statusReadAt).toEqual([2]);
   });
 
   it("awaits GPU completion registered by the seek event before settling", async () => {
@@ -261,7 +299,7 @@ describe("seekCompositionTimeline", () => {
     }).then(() => {
       settled = true;
     });
-    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(evaluateCall).toBe(2);
     expect(settled).toBe(false);
     completeGpu?.();
@@ -470,6 +508,24 @@ describe("installPageFunctionGuard", () => {
   });
 });
 
+describe("SCREENSHOT_SEEK_OPTIONS", () => {
+  it("waits for image decodes before a screenshot, not for a fixed sleep", async () => {
+    vi.useFakeTimers();
+    const { page, evaluate } = fakeSeekPage();
+    let done = false;
+    void seekCompositionTimeline(page, 2, SCREENSHOT_SEEK_OPTIONS).then(() => {
+      done = true;
+    });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(done).toBe(true);
+    expect(evaluate).toHaveBeenLastCalledWith(
+      expect.any(Function),
+      SCREENSHOT_SEEK_OPTIONS.waitForImagesMs,
+    );
+  });
+});
+
 describe("DENSE_GEOMETRY_SEEK_OPTIONS", () => {
   // A 79 s project of 1080p H.264 clips: each of the 600 dense seeks waited ~185 ms for a video frame it never reads,
   // so `check` ran past its deadline. Frame sources and hf-seek work can move the DOM, so those still hold it.
@@ -496,8 +552,10 @@ describe("DENSE_GEOMETRY_SEEK_OPTIONS", () => {
     expect(DENSE_GEOMETRY_SEEK_OPTIONS.animationFrameSettle).toBe("none");
     expect(DENSE_GEOMETRY_SEEK_OPTIONS.waitForFontsMs).toBe(0);
     expect(DENSE_GEOMETRY_SEEK_OPTIONS.settleMs).toBe(0);
-    // AUDIT (the full-settle path used by the base grid) must still carry the waits.
+    // AUDIT (the base grid) keeps the frame and font waits; only a screenshot seek adds the paint sleep.
     expect(AUDIT_SEEK_OPTIONS.animationFrameSettle).toBe("double");
-    expect(AUDIT_SEEK_OPTIONS.settleMs).toBeGreaterThan(0);
+    expect("settleMs" in AUDIT_SEEK_OPTIONS).toBe(false);
+    expect(SCREENSHOT_SEEK_OPTIONS.waitForImagesMs).toBeGreaterThan(0);
+    expect("settleMs" in SCREENSHOT_SEEK_OPTIONS).toBe(false);
   });
 });

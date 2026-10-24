@@ -185,14 +185,11 @@ export function computeAudioResidualRmsDb(
       "-i",
       snapshot,
       "-filter_complex",
-      // Align both streams (resample + stereo + zero-based PTS), invert the
-      // snapshot, sum via amix, run astats. Avoids amix's `normalize`
-      // option (not available on ffmpeg 4.x) — we use volume=-1 + amix to
-      // subtract.
+      // Measure the unscaled difference over the whole track, including before a silent tail.
       [
         "[0:a]aresample=48000,pan=stereo|c0=c0|c1=c1,asetpts=N/SR/TB[a0]",
         "[1:a]aresample=48000,pan=stereo|c0=c0|c1=c1,asetpts=N/SR/TB,volume=-1[a1]",
-        "[a0][a1]amix=inputs=2:duration=shortest:dropout_transition=0,astats=metadata=1:reset=1[out]",
+        "[a0][a1]amix=inputs=2:duration=shortest:dropout_transition=0:normalize=0,astats=metadata=1:reset=0[out]",
       ].join(";"),
       "-map",
       "[out]",

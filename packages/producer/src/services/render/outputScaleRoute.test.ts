@@ -11,6 +11,12 @@ describe("assertOutputScaleSupported", () => {
       expect(() => assertOutputScaleSupported(scale, "hdr_layered")).toThrow(/hdr_layered/);
   });
 
+  it("names the ways out that apply: --sdr for HDR footage, mp4 for shader transitions", () => {
+    expect(() => assertOutputScaleSupported(2, "hdr_layered")).toThrow(/add --sdr/);
+    expect(() => assertOutputScaleSupported(2, "hdr_layered")).toThrow(/render as mp4/);
+    expect(() => assertOutputScaleSupported(2, "hdr_layered")).not.toThrow(/page-side compositing/);
+  });
+
   it("lets every route run at the composition's size, and the screenshot routes scale", () => {
     for (const route of ["sdr_streaming", "sdr_disk", "sdr_segmented", "hdr_layered"] as const)
       expect(() => assertOutputScaleSupported(1, route)).not.toThrow();

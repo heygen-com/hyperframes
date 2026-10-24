@@ -1,4 +1,5 @@
 import { HF_AUDIO_GROUP_TAG } from "../audioGroups.js";
+import { HF_COLOR_GRADING_SOURCE_TAGS } from "../colorGrading.js";
 /**
  * Pure, DOM-free editing-affordance resolution. Single source of truth for what
  * the studio's edit panel (and any SDK consumer) surfaces per selected element:
@@ -221,7 +222,7 @@ export function resolveEditingSections(facts: EditableElementFacts): EditingSect
     media: facts.tag === "video" || facts.tag === "audio" || facts.tag === "img",
     audioFx:
       facts.tag === "audio" || isAudioBus || (facts.tag === "video" && facts.hasAudio === true),
-    colorGrading: facts.tag === "video" || facts.tag === "img",
+    colorGrading: (HF_COLOR_GRADING_SOURCE_TAGS as readonly string[]).includes(facts.tag),
     // A bus has no clip range at all — no `data-start`, no duration, and its
     // automation clock is composition time — so Start/Duration/End would be
     // editing nothing. Audio keeps its timing: an `<audio>` clip is placed on

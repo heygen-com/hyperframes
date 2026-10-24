@@ -333,6 +333,11 @@ function applyEnvelopeToPlanes(
   }
 }
 
+/** The clip's `data-volume`, ahead of the chain where an editor puts clip gain. */
+function applyInputGain(planes: readonly Float32Array[], gain = 1): void {
+  if (gain !== 1) applyEnvelopeToPlanes(planes, 1, () => gain);
+}
+
 /** Inputs over `aboveBytes` render in windows: Node reads no file past 2 GiB whole, and the page would hold it twice. */
 export interface AudioFxStreamingLimits {
   aboveBytes: number;
@@ -435,6 +440,7 @@ async function renderInSegments(
     trackId: string;
     signal?: AbortSignal;
     envelope?: AudioFxEnvelope;
+    inputGain?: number;
   },
   limits: AudioFxStreamingLimits,
 ): Promise<boolean> {
@@ -457,6 +463,7 @@ async function renderInSegments(
         throw new AudioFxRenderError(`Audio FX cancelled for track ${options.trackId}`);
       }
       const planes = deinterleave(readFrames(inFd, header, seg.readFrom, seg.readTo), channels);
+      applyInputGain(planes, options.inputGain);
       // A fresh page per window, so the browser never holds more than one window of audio.
       const page = await openPage();
       let outPlanes: Float32Array[];
@@ -523,6 +530,7 @@ export async function applyAudioFxChain(
     signal?: AbortSignal;
     automation?: HfAutomation;
     envelope?: AudioFxEnvelope;
+    inputGain?: number;
     streaming?: Partial<AudioFxStreamingLimits>;
   },
 ): Promise<{ path: string; envelopeBaked: boolean }> {
@@ -559,6 +567,7 @@ export async function applyAudioFxChain(
   }
   const input = readWav(inputWav);
   const planes = deinterleave(input.samples, input.channels);
+  applyInputGain(planes, options.inputGain);
   // An empty track has nothing to process — and an OfflineAudioContext of zero
   // length throws, which is fatal for the WHOLE render rather than this track:
   // the error travels past the mixer's per-track failure collector. ffmpeg

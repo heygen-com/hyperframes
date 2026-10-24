@@ -24,7 +24,10 @@ import type {
 export type { SerializableDistributedRenderConfig } from "@hyperframes/producer/distributed";
 
 /** Discriminator for the three roles the one Lambda image fulfills. */
-export type LambdaAction = "plan" | "renderChunk" | "assemble";
+export type LambdaAction = "plan" | "audio" | "renderChunk" | "assemble";
+export interface WarmEvent {
+  Action: "warm";
+}
 /** Transport protocol selected for one complete distributed render. */
 export type LambdaPlanProtocol = "v1" | "v2";
 
@@ -38,8 +41,10 @@ export type LambdaPlanProtocol = "v1" | "v2";
  */
 export type LambdaEvent =
   | PlanEvent
+  | AudioEvent
   | RenderChunkEvent
   | AssembleEvent
+  | WarmEvent
   | { Payload: LambdaEvent }
   | { Input: LambdaEvent };
 
@@ -69,6 +74,11 @@ export interface PlanV2Event extends PlanEventBase {
 }
 
 export type PlanEvent = PlanV1Event | PlanV2Event;
+
+/** Makes a v2 plan's audio beside its chunks, from the same project and config as the plan. */
+export interface AudioEvent extends Omit<PlanEventBase, "Action"> {
+  Action: "audio";
+}
 
 /** Activity B: fetch planDir, render one chunk, upload result. */
 interface RenderChunkEventBase {
@@ -163,6 +173,7 @@ interface PlanLambdaResultBase {
   Action: "plan";
   PlanHash: string;
   ChunkCount: number;
+  MaxChunkConcurrency: number;
   TotalFrames: number;
   Fps: SerializableDistributedRenderConfig["fps"];
   Width: number;
@@ -189,9 +200,19 @@ export interface PlanV2LambdaResult extends PlanLambdaResultBase {
   PlanProtocol: "v2";
   PlanV2ManifestS3Uri: string;
   PlanV2ArtifactS3Prefix: string;
+  /** The plan left its audio to the audio task, which has a worker kept free for it. */
+  SeparateAudio: boolean;
 }
 
 export type PlanLambdaResult = PlanV1LambdaResult | PlanV2LambdaResult;
+
+export interface AudioLambdaResult {
+  Action: "audio";
+  HasAudio: boolean;
+  /** The track for the assembler to stitch in; `null` without audio or when the plan mixed it. */
+  AudioS3Uri: string | null;
+  DurationMs: number;
+}
 
 /** Result of a `renderChunk` invocation. Sized ≤200 bytes per §2.4. */
 export interface RenderChunkLambdaResult {
@@ -214,4 +235,13 @@ export interface AssembleLambdaResult {
   DurationMs: number;
 }
 
-export type LambdaResult = PlanLambdaResult | RenderChunkLambdaResult | AssembleLambdaResult;
+export interface WarmLambdaResult {
+  Action: "warm";
+}
+
+export type LambdaResult =
+  | WarmLambdaResult
+  | PlanLambdaResult
+  | AudioLambdaResult
+  | RenderChunkLambdaResult
+  | AssembleLambdaResult;

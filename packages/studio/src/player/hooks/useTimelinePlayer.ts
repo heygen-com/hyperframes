@@ -42,7 +42,7 @@ import { isStudioManualEditGestureLiveIn } from "../../components/editor/manualE
 import { createPreviewMessageHandler } from "./previewMessageRouter";
 import { timelineElementsChanged } from "./timelinePlayerSync";
 import { safeContentDocument } from "./timelineSyncHydration";
-import { sceneSwapFor } from "../sceneSwap";
+import { sceneSwapFor, supersededByNewerEdit } from "../sceneSwap";
 import { whileScriptWrites } from "../previewReloading";
 
 export interface UseTimelinePlayerOptions {
@@ -489,7 +489,7 @@ export function useTimelinePlayer({
   const refreshPlayer = useCallback(() => {
     const iframe = iframeRef.current;
     if (!iframe) return;
-    swapCancelRef.current?.abort(new Error("superseded by a newer edit"));
+    swapCancelRef.current?.abort(supersededByNewerEdit());
     const cancel = new AbortController();
     swapCancelRef.current = cancel;
     logReload("refreshPlayer", () => ({ stack: new Error("refreshPlayer").stack }));

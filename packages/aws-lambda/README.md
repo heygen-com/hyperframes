@@ -77,10 +77,15 @@ infrastructure upgrade. Before upgrading an application that calls
    same new package version.
 3. Resume renders, then upgrade the application/SDK dependency.
 
-Older state machines can default missing protocol fields to v1 or lack v2
-branches, while the new SDK sends explicit v2. If infrastructure cannot be
-redeployed first, keep the application on its previous package version or
-pass `planProtocol: "v1"` explicitly until the redeploy is complete.
+A site is a `sites/<id>/files.json` file list that an older stack cannot
+read, under either plan protocol. Before it uploads anything,
+`renderToLambda` reads the state machine definition
+(`states:DescribeStateMachine`) and fails with `STACK_TOO_OLD` when the
+stack predates that format. If infrastructure cannot be redeployed first,
+keep the application on its previous package version until the redeploy is
+complete. Site ids from earlier versions keep working after the redeploy:
+when `sites/<id>/files.json` is missing, the render uses that site's
+`project.tar.gz`.
 
 ## Chrome runtime
 

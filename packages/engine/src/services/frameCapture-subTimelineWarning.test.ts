@@ -100,6 +100,22 @@ describe("recordSubTimelineWarning", () => {
     });
   });
 
+  it("names the composition whose script threw, not a load failure", () => {
+    const session = makeSession({
+      subTimelineWaitOutcome: "script_failure",
+      pageErrors: [
+        "runtime-error:TypeError: Cannot read properties of null (reading 'appendChild')",
+      ],
+      pendingTimelineIds: ["root"],
+    });
+    recordSubTimelineWarning(session, 45_000);
+
+    const message = session.warnings[0].message;
+    expect(message).toContain("threw before its timeline registered");
+    expect(message).toContain("still unregistered: root");
+    expect(message).not.toContain("failed to load");
+  });
+
   it("names the missing script, not the error it caused, when both are present", () => {
     const session = makeSession({
       subTimelineWaitOutcome: "script_failure",

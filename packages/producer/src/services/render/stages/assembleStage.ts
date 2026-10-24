@@ -57,7 +57,7 @@ export interface AssembleStageResult {
   assembleMs: number;
 }
 
-function recordLimiterAttenuation(job: RenderJob, audioLoweredDb: number | undefined): void {
+export function recordLimiterAttenuation(job: RenderJob, audioLoweredDb: number | undefined): void {
   if (audioLoweredDb === undefined) return;
   job.audioLoweredDb = audioLoweredDb;
   const ceiling = `−${Math.abs(AAC_DELIVERY_TRUE_PEAK_DBFS)} dBTP`;

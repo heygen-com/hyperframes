@@ -172,6 +172,11 @@ describe("resolveEditingAffordances — sections", () => {
     expect(s).toMatchObject({ media: true, colorGrading: true });
   });
 
+  it("canvas: colorGrading", () => {
+    const s = resolveEditingAffordances(baseFacts({ tag: "canvas" })).sections;
+    expect(s).toMatchObject({ media: false, colorGrading: true });
+  });
+
   it("editable text on a plain element: text section", () => {
     const s = resolveEditingAffordances(baseFacts({ hasEditableText: true })).sections;
     expect(s.text).toBe(true);

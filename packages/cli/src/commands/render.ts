@@ -1,6 +1,6 @@
 import { captureArtifactRevision } from "../utils/artifactCapture.js";
 import { recordRenderSuccess, registerRenderOutput } from "@hyperframes/studio-server/history";
-import { failCommand, requestCliExit } from "../utils/commandResult.js";
+import { failCommand, requestCliExit, scheduleCliExit } from "../utils/commandResult.js";
 import { defineCommand } from "citty";
 import type { Example } from "./_examples.js";
 import { mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync, rmSync } from "node:fs";
@@ -159,7 +159,7 @@ export default defineCommand({
     output: {
       type: "string",
       alias: "o",
-      description: "Output path (default: renders/<name>.mp4)",
+      description: "Output path (default: renders/<project>_<YYYY-MM-DD>_<HH-MM-SS>.<ext>)",
     },
     fps: {
       type: "string",
@@ -184,7 +184,7 @@ export default defineCommand({
     skill: {
       type: "string",
       description:
-        "Authoring workflow skill that initiated this render (e.g. product-launch-video). " +
+        "Authoring skill that initiated this render (e.g. hyperframes). " +
         "Recorded on anonymous render telemetry for per-skill usage breakdowns; ignored unless it is a slug.",
     },
     format: {
@@ -214,6 +214,11 @@ export default defineCommand({
         "Use png for UI recordings, screen captures, and color-sensitive source videos; " +
         "alpha-capable sources always extract as PNG.",
       default: "auto",
+    },
+    "page-motion-blur": {
+      type: "string",
+      description:
+        "Set off to disable authored page motion blur. Omit to keep the composition's setting.",
     },
     workers: {
       type: "string",
@@ -503,6 +508,7 @@ export interface RenderOptions {
   vp9CpuUsed?: number;
   videoBitrate?: string;
   videoFrameFormat?: VideoFrameFormat;
+  pageMotionBlur?: "off";
   quiet: boolean;
   debug?: boolean;
   /** Segmented capture: reuse a prior run's validated segments. */
@@ -832,6 +838,7 @@ async function renderDocker(
       vp9CpuUsed: options.vp9CpuUsed,
       videoBitrate: options.videoBitrate,
       videoFrameFormat: options.videoFrameFormat,
+      pageMotionBlur: options.pageMotionBlur,
       quiet: options.quiet,
       variables: options.variables,
       entryFile: options.entryFile,
@@ -921,7 +928,7 @@ async function renderDocker(
   runPostRenderStep("warnIfWebmAlphaDropped", () =>
     warnIfWebmAlphaDropped(outputPath, options.format, options.quiet),
   );
-  if (options.exitAfterComplete) scheduleRenderProcessExit();
+  if (options.exitAfterComplete) scheduleCliExit();
   return { renderTimeMs: elapsed };
 }
 
@@ -1110,6 +1117,7 @@ async function executeLocalRender(
       crf: options.crf,
       videoBitrate: options.videoBitrate,
       videoFrameFormat: options.videoFrameFormat,
+      pageMotionBlur: options.pageMotionBlur,
       variables: options.variables,
       entryFile: options.entryFile,
       outputResolution: options.outputResolution,
@@ -1205,7 +1213,7 @@ async function executeLocalRender(
       }),
     );
   }
-  if (options.exitAfterComplete) scheduleRenderProcessExit();
+  if (options.exitAfterComplete) scheduleCliExit();
   const durationMs = job.perfSummary
     ? Math.round(job.perfSummary.compositionDurationSeconds * 1000)
     : undefined;
@@ -1217,26 +1225,6 @@ async function executeLocalRender(
     outcome,
     warnings: job.warnings.map((warning) => ({ code: warning.code, message: warning.message })),
   };
-}
-
-type UnrefableTimer = {
-  unref: () => void;
-};
-
-function isUnrefableTimer(
-  timer: ReturnType<typeof setTimeout>,
-): timer is ReturnType<typeof setTimeout> & UnrefableTimer {
-  return (
-    typeof timer === "object" &&
-    timer !== null &&
-    "unref" in timer &&
-    typeof timer.unref === "function"
-  );
-}
-
-function scheduleRenderProcessExit(): void {
-  const timer = setTimeout(() => requestCliExit(0), 100);
-  if (isUnrefableTimer(timer)) timer.unref();
 }
 
 function getMemorySnapshot() {
@@ -1961,7 +1949,7 @@ function readOutputFootprint(outputPath: string): { fileSize: string; isDirector
   }
 }
 
-/** A render points to the desktop app; a batch row does not. Drafts do too: music-to-video delivers one. */
+/** A render points to the desktop app; a batch row does not. Drafts do too. */
 export function wantsDesktopHint(options: Pick<RenderOptions, "desktopHint">): boolean {
   return options.desktopHint !== false;
 }

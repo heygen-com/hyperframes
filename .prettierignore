@@ -37,8 +37,6 @@ registry/blocks/orbit-card/assets/three.module.min.js
 registry/blocks/orbit-card/assets/gsap-3.14.2.min.js
 # generated Lottie data: pretty-printing multiplies its size
 registry/blocks/lottie-character-walk/assets/mascot.json
-# reference snippets with intentional pseudo-markup (literal "..." attributes)
-skills/talking-head-recut/references/frames/polaroid.html
 # repo-native skill examples with intentional pseudo-markup placeholders
 # (e.g. <RANGE>, <TOTAL> tokens the agent replaces at build time — not real HTML)
 .claude/skills/**/examples/**/*.html
@@ -49,3 +47,12 @@ skills/talking-head-recut/references/frames/polaroid.html
 # explicitly (not registry/examples/**/*.html) so hand-authored example HTML still
 # gets formatted.
 registry/examples/warm-grain/compositions/captions.html
+
+# Skill entries: agents read each one whole when it opens, so table padding costs tokens every time.
+skills/hyperframes/SKILL.md
+skills/hyperframes-cli/SKILL.md
+skills/hyperframes-registry/SKILL.md
+skills/media-use/SKILL.md
+skills/figma/SKILL.md
+skills/slideshow/SKILL.md
+skills/remotion-to-hyperframes/SKILL.md

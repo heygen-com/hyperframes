@@ -241,12 +241,20 @@ function isGcsPreconditionFailed(error: unknown): boolean {
  * package (pure JS over `node:zlib`) rather than spawning a system tar
  * binary so the archive format is independent of the container's userland.
  */
-export async function tarDirectory(sourceDir: string, destTarball: string): Promise<void> {
+export async function tarDirectory(
+  sourceDir: string,
+  destTarball: string,
+  files?: string[],
+): Promise<void> {
   if (!existsSync(sourceDir) || !statSync(sourceDir).isDirectory()) {
     throw new Error(`[gcsTransport] tar source must be an existing directory: ${sourceDir}`);
   }
   mkdirSync(dirname(destTarball), { recursive: true });
-  await tar.create({ gzip: true, file: destTarball, cwd: sourceDir }, ["."]);
+  // `files` (relative to `sourceDir`) packs exactly those paths, with symlinks followed.
+  await tar.create(
+    { gzip: true, file: destTarball, cwd: sourceDir, follow: files !== undefined },
+    files ?? ["."],
+  );
 }
 
 /**

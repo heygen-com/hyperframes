@@ -5,7 +5,7 @@ export function normalizeErrorMessage(error: unknown): string {
     const msg = (error as Record<string, unknown>).message;
     if (typeof msg === "string") return msg;
     try {
-      return JSON.stringify(error);
+      return JSON.stringify(error) ?? `{${Object.keys(error).join(", ")}}`;
     } catch {
       try {
         return `{${Object.keys(error as object).join(", ")}}`;

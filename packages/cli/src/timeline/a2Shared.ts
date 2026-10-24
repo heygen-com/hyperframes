@@ -4,7 +4,11 @@ import {
   removeElementFromHtml,
   splitElementInHtml,
 } from "@hyperframes/studio-server";
-import type { AppliedFileMutation, PatchOperation } from "@hyperframes/studio-server";
+import type {
+  AppliedFileMutation,
+  PatchOperation,
+  SourceMutationTarget,
+} from "@hyperframes/studio-server";
 import { fpsToNumber, parseFpsWithDefault } from "@hyperframes/core";
 import { isInsideSpan, sameInstant, spansShareTime } from "@hyperframes/core/clip-facts";
 import { readCompositionFps } from "../utils/compositionFps.js";
@@ -16,6 +20,15 @@ import { setCommandExitCode } from "../utils/commandResult.js";
 import { parseSetAssignments, type SetAssignment } from "./a2Mutations.js";
 
 export type MutationVerb = "move" | "trim" | "split" | "delete" | "set" | "duplicate";
+
+export const FIELDS_READ_BY_VERB: Record<MutationVerb, readonly string[]> = {
+  move: ["time", "overwrite"],
+  trim: ["start", "end", "duration", "overwrite"],
+  split: ["time"],
+  delete: ["start", "end"],
+  set: ["volume", "rate", "track"],
+  duplicate: ["at"],
+};
 
 export type MutationDecision =
   | { ok: true; after: string; nextStart: number; nextDuration: number }
@@ -178,9 +191,16 @@ function moveMutation(context: MutationContext, args: Record<string, unknown>): 
       fix: `choose a start at or before the latest valid start ${context.duration - context.row.duration}`,
     };
   }
-  const patched = patchElementInHtml(context.before, context.resolved.target, [
+  const operations: PatchOperation[] = [
     { type: "html-attribute", property: "data-start", value: String(time.seconds) },
-  ]);
+  ];
+  if (context.row.durationAuthored) {
+    operations.push(
+      { type: "html-attribute", property: "data-duration", value: String(context.row.duration) },
+      { type: "html-attribute", property: "data-end", value: null },
+    );
+  }
+  const patched = patchElementInHtml(context.before, context.resolved.target, operations);
   if (!patched.matched) {
     return { ok: false, reason: `${context.ref} was not found`, fix: "choose an existing clip" };
   }
@@ -196,30 +216,44 @@ function splitMutation(context: MutationContext, args: Record<string, unknown>):
   const expression = typeof args.time === "string" ? args.time : "";
   const time = parseMutationTime(context, expression, "pass a valid time expression");
   if (!time.ok) return time;
-  const split = splitElementInHtml(
+  const split = splitSource(
+    context,
     context.before,
     context.resolved.target,
     time.seconds,
-    nextFreeSplitId(context.before, splitBaseId(context.row)),
-    {
-      start: context.row.start,
-      duration: context.row.duration,
-      track: context.row.trackIndex,
-    },
+    context.row.duration,
   );
-  if (!split.matched || !split.newId) {
-    return {
-      ok: false,
-      reason: `${context.ref} cannot be split at ${time.seconds}`,
-      fix: "choose a time inside the clip",
-    };
-  }
+  if (!split.ok) return split;
   return {
     ok: true,
     after: split.html,
     nextStart: context.row.start,
     nextDuration: context.row.duration,
   };
+}
+
+function splitSource(
+  context: MutationContext,
+  source: string,
+  target: SourceMutationTarget,
+  seconds: number,
+  duration: number,
+): { ok: true; html: string; newId: string } | { ok: false; reason: string; fix: string } {
+  const split = splitElementInHtml(
+    source,
+    target,
+    seconds,
+    nextFreeSplitId(source, splitBaseId(context.row)),
+    { start: context.row.start, duration, track: context.row.trackIndex },
+  );
+  if (!split.matched || !split.newId) {
+    return {
+      ok: false,
+      reason: `${context.ref} cannot be split at ${seconds}`,
+      fix: "choose a time inside the clip",
+    };
+  }
+  return { ok: true, html: split.html, newId: split.newId };
 }
 
 function trimMutation(context: MutationContext, args: Record<string, unknown>): MutationDecision {
@@ -321,13 +355,63 @@ function trimDuration(context: MutationContext, expression: string | undefined) 
   return parseMutationTime(context, expression, "pass a valid duration");
 }
 
-function deleteMutation(context: MutationContext): MutationDecision {
+function deleteMutation(context: MutationContext, args: Record<string, unknown>): MutationDecision {
+  const { row, resolved } = context;
+  const range = deleteRange(context, args);
+  if (!range.ok) return range;
+  let html = context.before;
+  if (!sameInstant(range.end, row.end)) {
+    const tail = splitSource(context, html, resolved.target, range.end, row.duration);
+    if (!tail.ok) return tail;
+    html = tail.html;
+  }
+  let removed = resolved.target;
+  if (!sameInstant(range.start, row.start)) {
+    const middle = splitSource(context, html, resolved.target, range.start, range.end - row.start);
+    if (!middle.ok) return middle;
+    html = middle.html;
+    removed = { id: middle.newId };
+  }
   return {
     ok: true,
-    after: removeElementFromHtml(context.before, context.resolved.target),
-    nextStart: context.row.start,
-    nextDuration: context.row.duration,
+    after: removeElementFromHtml(html, removed),
+    nextStart: row.start,
+    nextDuration: row.duration,
   };
+}
+
+function deleteRange(
+  context: MutationContext,
+  args: Record<string, unknown>,
+): { ok: true; start: number; end: number } | { ok: false; reason: string; fix: string } {
+  const { row } = context;
+  const bound = (value: unknown, fallback: number): ParsedMutationTime =>
+    typeof value === "string"
+      ? parseMutationTime(context, value, "pass a valid time expression")
+      : { ok: true, seconds: fallback };
+  const start = bound(args.start, row.start);
+  if (!start.ok) return start;
+  const end = bound(args.end, row.end);
+  if (!end.ok) return end;
+  const inside = (seconds: number) =>
+    sameInstant(seconds, row.start) ||
+    sameInstant(seconds, row.end) ||
+    (seconds > row.start && seconds < row.end);
+  if (!inside(start.seconds) || !inside(end.seconds)) {
+    return {
+      ok: false,
+      reason: `delete range ${start.seconds}-${end.seconds} is not inside ${context.ref} (${row.start}-${row.end})`,
+      fix: "pass --start and --end inside the clip",
+    };
+  }
+  if (end.seconds <= start.seconds || sameInstant(start.seconds, end.seconds)) {
+    return {
+      ok: false,
+      reason: "delete range must be positive",
+      fix: "pass an --end later than --start",
+    };
+  }
+  return { ok: true, start: start.seconds, end: end.seconds };
 }
 
 function setOperation(assignment: SetAssignment): PatchOperation {
@@ -403,7 +487,7 @@ export function decideMutation(
     case "split":
       return splitMutation(context, args);
     case "delete":
-      return deleteMutation(context);
+      return deleteMutation(context, args);
     case "set":
       return setMutation(context, args);
     case "duplicate":

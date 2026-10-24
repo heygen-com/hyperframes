@@ -952,6 +952,7 @@ describe("layout-audit.browser invisible text", () => {
     chromiumVersion = 152,
     outsideBackground = false,
     viewportTop?: number,
+    wrapperStyle: Partial<CSSStyleDeclaration> = {},
   ): AuditIssue[] {
     vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue(
       `Mozilla/5.0 HeadlessChrome/${chromiumVersion}.0.0.0 Safari/537.36`,
@@ -964,6 +965,10 @@ describe("layout-audit.browser invisible text", () => {
     const gradient = document.getElementById("gradient");
     const headline = document.getElementById("headline");
     if (!gradient || !headline) throw new Error("Missing gradient text fixture");
+    Object.defineProperty(document, "elementFromPoint", {
+      configurable: true,
+      value: () => headline,
+    });
     Object.defineProperties(gradient, {
       offsetLeft: { configurable: true, value: 40 },
       offsetTop: { configurable: true, value: 140 },
@@ -997,6 +1002,7 @@ describe("layout-audit.browser invisible text", () => {
           backgroundImage: "linear-gradient(90deg, rgb(255, 0, 0), rgb(0, 0, 255))",
           ...ancestorStyle,
         },
+        wrapper: wrapperStyle,
         headline: { webkitTextFillColor: "rgba(0, 0, 0, 0)", ...headlineStyle },
       },
     );
@@ -1035,13 +1041,52 @@ describe("layout-audit.browser invisible text", () => {
   });
 
   it.each([
+    { name: "image background", css: { backgroundImage: 'url("texture.png")' } },
+    {
+      name: "image-set background",
+      css: { backgroundImage: 'image-set(url("texture.png") 1x)' },
+    },
+    {
+      name: "image on a second clipped layer",
+      css: { backgroundClip: "border-box, text", backgroundImage: 'none, url("texture.png")' },
+    },
+    {
+      name: "image URL containing a comma",
+      css: {
+        backgroundClip: "text, border-box",
+        backgroundImage: 'url("texture.png?palette=light,warm"), none',
+      },
+    },
+    {
+      name: "image with a repeated clip list",
+      css: { backgroundClip: "text", backgroundImage: 'none, url("texture.png")' },
+    },
+  ])("accepts ancestor $name consistently with directly clipped text", ({ css }) => {
+    expect(flagged(ancestorGradientScene(css))).toBe(false);
+  });
+
+  it.each([
     { name: "absent background", css: { backgroundImage: "none" } },
     {
       name: "transparent gradient",
       css: { backgroundImage: "linear-gradient(transparent, rgba(0, 0, 0, 0))" },
     },
     { name: "unclipped background", css: { backgroundClip: "border-box" } },
-    { name: "image with unknown transparency", css: { backgroundImage: 'url("missing.png")' } },
+    {
+      name: "image on a different background layer",
+      css: { backgroundClip: "border-box, text", backgroundImage: 'url("texture.png"), none' },
+    },
+    {
+      name: "image-set on a different background layer",
+      css: {
+        backgroundClip: "border-box, text",
+        backgroundImage: 'image-set(url("texture.png") 1x), none',
+      },
+    },
+    {
+      name: "unclipped image",
+      css: { backgroundClip: "border-box", backgroundImage: 'url("texture.png")' },
+    },
     {
       name: "gradient on a different background layer",
       css: {
@@ -1065,10 +1110,74 @@ describe("layout-audit.browser invisible text", () => {
     expect(flagged(ancestorGradientScene({}, {}, 152, true))).toBe(true);
   });
 
+  it("keeps reporting text outside an ancestor image's background box", () => {
+    expect(
+      flagged(ancestorGradientScene({ backgroundImage: 'url("texture.png")' }, {}, 152, true)),
+    ).toBe(true);
+  });
+
   it("keeps reporting independently painted descendants on Chrome 148", () => {
     expect(flagged(ancestorGradientScene({}, { transform: "matrix(1, 0, 0, 1, 0, 0)" }, 148))).toBe(
       true,
     );
+  });
+
+  it.each([
+    { name: "clip path", css: { clipPath: "inset(0px)" } },
+    { name: "prefixed clip path", css: { webkitClipPath: "inset(0px)" } },
+    { name: "clip path hint", css: { willChange: "clip-path" } },
+    { name: "view transition", css: { viewTransitionName: "headline" } },
+  ])("reports an invisible $name descendant only on older Chrome", ({ css }) => {
+    expect(flagged(ancestorGradientScene({}, css, 148))).toBe(true);
+    expect(flagged(ancestorGradientScene({}, css, 152))).toBe(false);
+    expect(flagged(ancestorGradientScene({}, {}, 148, false, undefined, css))).toBe(true);
+  });
+
+  it("accepts ordinary nested text painted by an ancestor gradient on Chrome 148", () => {
+    expect(flagged(ancestorGradientScene({}, {}, 148))).toBe(false);
+  });
+
+  it("accepts ordinary nested text painted by an ancestor image on Chrome 148", () => {
+    expect(flagged(ancestorGradientScene({ backgroundImage: 'url("texture.png")' }, {}, 148))).toBe(
+      false,
+    );
+  });
+
+  it("keeps reporting image masks on an unknown browser", () => {
+    expect(flagged(ancestorGradientScene({ backgroundImage: 'url("texture.png")' }, {}, 0))).toBe(
+      true,
+    );
+  });
+
+  it("keeps reporting an image-masked child in a layered wrapper on Chrome 148", () => {
+    expect(
+      flagged(
+        ancestorGradientScene(
+          { backgroundImage: 'url("texture.png")' },
+          {},
+          148,
+          false,
+          undefined,
+          {
+            transform: "matrix(1, 0, 0, 1, 0, 0)",
+          },
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it("keeps reporting a plain child inside an independently painted wrapper on Chrome 148", () => {
+    expect(
+      flagged(
+        ancestorGradientScene({}, {}, 148, false, undefined, {
+          transform: "matrix(1, 0, 0, 1, 0, 0)",
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it("keeps reporting ancestor masks on an unknown browser", () => {
+    expect(flagged(ancestorGradientScene({}, {}, 0))).toBe(true);
   });
 
   it("uses the untransformed layout position for a translated child", () => {
@@ -1244,10 +1353,10 @@ describe("layout-audit.browser coordinate-frame findings", () => {
       return drawImage;
     }
 
-    function mountCanvas(canvasRect: DOMRect, attributes = ""): void {
+    function mountCanvas(canvasRect: DOMRect, attributes = "", before = ""): void {
       document.body.innerHTML = `
         <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
-          <canvas id="art" width="1920" height="1080" ${attributes}></canvas>
+          ${before}<canvas id="art" width="1920" height="1080" ${attributes}></canvas>
         </div>
       `;
       installGeometry({
@@ -1304,6 +1413,42 @@ describe("layout-audit.browser coordinate-frame findings", () => {
 
       expect(runAudit().some((issue) => issue.code === "canvas_content_at_edge")).toBe(false);
     });
+
+    it("reads a color-graded video's stand-in canvas as the video, not as drawn art", () => {
+      const drawImage = stubEdgeReads(CUT_TEXT);
+      mountCanvas(FULL_FRAME, "data-hf-color-grading-canvas", '<video id="clip"></video>');
+
+      expect(runAudit().some((issue) => issue.code === "canvas_content_at_edge")).toBe(false);
+      expect(drawImage).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["flags", "", true],
+      ["clears", "data-layout-allow-overflow", false],
+    ])(
+      "%s a graded video's canvas overflowing a clipping wrapper, per the video's own flag",
+      (_, flag, flagged) => {
+        document.body.innerHTML = `
+          <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+            <div id="frame">
+              <video id="clip" ${flag}></video><canvas id="art" data-hf-color-grading-canvas></canvas>
+            </div>
+          </div>
+        `;
+        installGeometry(
+          {
+            root: FULL_FRAME,
+            frame: rect({ left: 0, top: 0, width: 960, height: 540 }),
+            art: rect({ left: -48, top: -27, width: 1056, height: 594 }),
+          },
+          { frame: { overflow: "hidden" } },
+        );
+        installAuditScript();
+
+        const overflow = runAudit().filter((issue) => issue.code === "container_overflow");
+        expect(overflow.map((issue) => issue.selector)).toEqual(flagged ? ["#art"] : []);
+      },
+    );
 
     it("never reads a canvas that sits inside the frame", () => {
       const drawImage = stubEdgeReads(CUT_TEXT);

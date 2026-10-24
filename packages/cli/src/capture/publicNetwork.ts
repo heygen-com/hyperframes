@@ -1,7 +1,12 @@
-import { lookup } from "node:dns/promises";
+import { execFile, type ChildProcess } from "node:child_process";
+import { promises as dns } from "node:dns";
+import { readFile } from "node:fs/promises";
 import { isIP } from "node:net";
 import { request as httpRequest, type IncomingMessage, type ClientRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
+
+const DNS_TIMEOUT_MS = 10_000;
+const CARES_TIMEOUT_MS = 5_000;
 
 function ipv4Number(address: string): number {
   return address.split(".").reduce((value, octet) => value * 256 + Number(octet), 0);
@@ -50,27 +55,110 @@ export async function resolvePublicAddress(hostname: string): Promise<string> {
   ) {
     throw new Error("Capture requires a public hostname");
   }
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    const answers = await Promise.race([
-      lookup(host, { all: true, family: 4, verbatim: true }),
-      new Promise<never>((_resolve, reject) => {
-        timer = setTimeout(() => reject(new Error("Capture DNS timed out")), 10_000);
-        timer.unref();
-      }),
-    ]);
-    if (
-      !answers[0] ||
-      answers.some((answer) => answer.family !== 4 || !isPublicIPv4(answer.address))
-    ) {
-      throw new Error("Capture DNS returned a non-public address");
+  const answers = await resolveIPv4(host);
+  const first = answers[0];
+  if (!first || !answers.every(isPublicIPv4)) {
+    throw new Error("Capture DNS returned a non-public address");
+  }
+  return first;
+}
+
+async function resolveIPv4(host: string): Promise<string[]> {
+  const fromHostsFile = (await hostsFileAnswers()).get(host);
+  if (fromHostsFile) return fromHostsFile;
+  const deadline = Date.now() + DNS_TIMEOUT_MS;
+  const fromSystem = systemAnswers.get(host);
+  if (fromSystem) return beforeDeadline(fromSystem, deadline);
+  return resolveWithCares(host).catch(() =>
+    beforeDeadline(systemLookupInKillableChild(host, deadline - Date.now()), deadline),
+  );
+}
+
+let hostsFile: Promise<Map<string, string[]>> | undefined;
+
+function hostsFileAnswers(): Promise<Map<string, string[]>> {
+  const path =
+    process.platform === "win32"
+      ? `${process.env.SystemRoot ?? "C:\\Windows"}\\System32\\drivers\\etc\\hosts`
+      : "/etc/hosts";
+  hostsFile ??= readFile(path, "utf8").then(parseHostsFile, () => new Map());
+  return hostsFile;
+}
+
+function parseHostsFile(text: string): Map<string, string[]> {
+  const answers = new Map<string, string[]>();
+  for (const line of text.split(/\r?\n/)) {
+    const [address, ...names] = line.replace(/#.*/, "").trim().split(/\s+/);
+    if (!address || isIP(address) !== 4) continue;
+    for (const name of names) {
+      const key = name.toLowerCase().replace(/\.$/, "");
+      answers.set(key, [...(answers.get(key) ?? []), address]);
     }
-    const first = answers[0];
-    if (!first) throw new Error("Capture DNS returned no address");
-    return first.address;
+  }
+  return answers;
+}
+
+function beforeDeadline<T>(work: Promise<T>, deadline: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(
+      () => reject(new Error("Capture DNS timed out")),
+      Math.max(0, deadline - Date.now()),
+    );
+  });
+  return Promise.race([work, late]).finally(() => clearTimeout(timer));
+}
+
+async function resolveWithCares(host: string): Promise<string[]> {
+  const cancellableResolver = new dns.Resolver();
+  const timer = setTimeout(() => cancellableResolver.cancel(), CARES_TIMEOUT_MS);
+  try {
+    return await cancellableResolver.resolve4(host);
   } finally {
     clearTimeout(timer);
   }
+}
+
+const systemAnswers = new Map<string, Promise<string[]>>();
+const SYSTEM_LOOKUP = `require("node:dns").lookup(process.argv[1], { all: true, family: 4 }, (error, answers) =>
+  error ? process.stderr.write(String(error.code)) : process.stdout.write(JSON.stringify(answers.map((a) => a.address))))`;
+
+const liveLookups = new Set<ChildProcess>();
+
+export function systemLookupInKillableChild(host: string, timeoutMs: number): Promise<string[]> {
+  if (!process.listeners("exit").includes(killLiveLookups)) process.on("exit", killLiveLookups);
+  const answers = new Promise<string[]>((resolve, reject) => {
+    const child = execFile(
+      process.execPath,
+      ["-e", SYSTEM_LOOKUP, host],
+      {
+        timeout: Math.max(1, timeoutMs),
+        killSignal: "SIGKILL",
+        windowsHide: true,
+        env: { ...process.env, NODE_OPTIONS: "" },
+      },
+      (error, stdout, stderr) => {
+        if (error?.killed) reject(new Error("Capture DNS timed out"));
+        else if (!stdout) reject(new Error(`Capture DNS failed: ${stderr || error?.message}`));
+        else {
+          try {
+            resolve(JSON.parse(stdout) as string[]);
+          } catch (parseError) {
+            reject(parseError);
+          }
+        }
+      },
+    );
+    liveLookups.add(child);
+    child.once("exit", () => liveLookups.delete(child));
+  });
+  systemAnswers.set(host, answers);
+  answers.catch(() => systemAnswers.delete(host));
+  return answers;
+}
+
+function killLiveLookups(): void {
+  for (const child of liveLookups) child.kill("SIGKILL");
 }
 
 /** Pinned asset transport; redirects are returned for caller validation. */

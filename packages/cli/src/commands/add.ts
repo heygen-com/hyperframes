@@ -146,13 +146,18 @@ export function buildSnippet(
   return "";
 }
 
-/** `add <tag> --json` output: each item's warnings, prefixed with its name. */
-export function tagAddJson(tag: string, results: RunAddResult[]) {
+/** `add <tag> --json` output: successful installs and each item's warnings or failure. */
+export function tagAddJson(
+  tag: string,
+  results: RunAddResult[],
+  errors: Array<{ name: string; error: string }> = [],
+) {
   return {
-    ok: true,
+    ok: errors.length === 0,
     tag,
     installed: results.map((r) => r.name),
     warnings: results.flatMap((r) => r.warnings.map((w) => `${r.name}: ${w}`)),
+    errors,
   };
 }
 
@@ -584,6 +589,7 @@ export default defineCommand({
       }
 
       const results: RunAddResult[] = [];
+      const errors: Array<{ name: string; error: string }> = [];
       for (const item of items) {
         try {
           const result = await runAdd({
@@ -600,16 +606,19 @@ export default defineCommand({
           if (!json) console.log(`  ${c.success("✓")} ${result.name}`);
         } catch (err) {
           const reason = err instanceof Error ? err.message : String(err);
+          errors.push({ name: item.name, error: reason });
           if (!json) console.log(`  ${c.error("✗")} ${item.name} (skipped: ${reason})`);
         }
       }
 
       if (json) {
-        console.log(JSON.stringify(tagAddJson(args.name, results)));
+        console.log(JSON.stringify(tagAddJson(args.name, results, errors)));
       } else {
         console.log("");
-        console.log(`${c.success("✓")} Installed ${results.length}/${items.length} blocks`);
+        const summary = `Installed ${results.length}/${items.length} blocks`;
+        console.log(`${errors.length > 0 ? c.error("✗") : c.success("✓")} ${summary}`);
       }
+      if (errors.length > 0) failCommand();
     }
   },
 });

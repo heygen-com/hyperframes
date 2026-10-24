@@ -31,15 +31,14 @@ quotes, statistics, lower thirds, or picture-in-picture.
 
 ## What should change?
 
-This page covers two workflows. `/hyperframes` picks between them from what you
-ask for, and you can name one directly if you already know which you want.
+Say which of these you want; `/hyperframes` handles both.
 
-- **Words on screen** — `/embedded-captions`. Readable, timed words over the clip.
-  Plain subtitles, or cinematic captions set behind the subject.
-- **Designed cards on screen** — `/talking-head-recut`. Titles, pull-quotes, data
-  callouts, lower thirds, picture-in-picture, synced to the transcript.
-- **Change the footage itself** — neither of these. Use
-  [General Video](/guides/general-video) when pauses, selected moments, or the
+- **Words on screen** — readable, timed words over the clip. Plain subtitles, or
+  cinematic captions set behind the subject.
+- **Designed cards on screen** — titles, pull-quotes, data callouts, lower
+  thirds, picture-in-picture, synced to the transcript.
+- **Change the footage itself** — neither of these. Make a
+  [custom video](/guides/general-video) when pauses, selected moments, or the
   spoken order must change.
 
 Both leave the clip and its audio untouched: the first adds words, the second adds
@@ -47,11 +46,11 @@ graphics, and the footage plays the same underneath either way.
 
 Captions and designed overlays work best on a clear, single-subject clip with audible speech. Both keep the original footage and audio intact.
 
-If you need to remove pauses, choose different moments, or reorder the speech, use [General Video](/guides/general-video).
+If you need to remove pauses, choose different moments, or reorder the speech, make a [custom video](/guides/general-video).
 
 ## Before it builds
 
-Confirm:
+Settle these in the request, or ask the agent to propose them first:
 
 - **Captions:** the intended format and any names or terms the transcript may miss. HyperFrames can recommend a visual treatment after it sees the clip.
 - **Designed overlays:** the format, layout, visual style, and how often a title, quote, statistic, or side panel should appear.
@@ -70,6 +69,9 @@ inspect synchronization and save position, scale, or rotation corrections. Ask
 the agent or edit the caption source for corrected words and durable timing or
 style changes.
 
+To import replacement words, run `hyperframes transcribe transcript.json --dir ./my-video`.
+This replaces the full transcript in existing caption HTML and keeps the surrounding caption code.
+
 <Card title="Finish and share" icon="circle-check" href="/guides/export-and-share">
   Review the chosen caption, overlay, or recut path, then render and watch the final file.
 </Card>
@@ -78,4 +80,4 @@ style changes.
 
 - [Edit captions in Studio](/studio/captions)
 - [Work with voice, music, sound, and captions](/guides/voice-and-audio)
-- [Change the spoken edit with a custom video workflow](/guides/general-video)
+- [Change the spoken edit with a custom video](/guides/general-video)

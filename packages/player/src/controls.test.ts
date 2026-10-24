@@ -76,3 +76,30 @@ describe("createControls host listeners", () => {
     host.remove();
   });
 });
+
+describe("createControls playback speed name", () => {
+  it("includes the visible rate initially and after menu and API updates", () => {
+    const host = document.createElement("div");
+    const onSpeedChange = vi.fn();
+    const api = createControls(host, { ...noopCallbacks(), onSpeedChange });
+    const speedButton = host.querySelector(".hfp-speed-btn");
+
+    expect(speedButton?.textContent).toBe("1x");
+    expect(speedButton?.getAttribute("aria-label")).toBe("Playback speed: 1x");
+
+    const option = host.querySelector<HTMLButtonElement>('[data-speed="1.5"]');
+    expect(option).not.toBeNull();
+    option?.click();
+
+    expect(speedButton?.textContent).toBe("1.5x");
+    expect(speedButton?.getAttribute("aria-label")).toBe("Playback speed: 1.5x");
+    expect(onSpeedChange).toHaveBeenCalledWith(1.5);
+
+    api.updateSpeed(2);
+
+    expect(speedButton?.textContent).toBe("2x");
+    expect(speedButton?.getAttribute("aria-label")).toBe("Playback speed: 2x");
+
+    api.destroy();
+  });
+});

@@ -158,7 +158,7 @@
             ]
           },
           {
-            "group": "Workflows",
+            "group": "Make a video",
             "pages": [
               "workflows",
               "guides/product-launch-video",
@@ -717,7 +717,7 @@
               },
               {
                 "group": "Motion & effects",
-                "tag": "96",
+                "tag": "97",
                 "expanded": false,
                 "pages": [
                   {
@@ -758,7 +758,7 @@
                   },
                   {
                     "group": "Effects",
-                    "tag": "56",
+                    "tag": "57",
                     "expanded": false,
                     "pages": [
                       "catalog/components/avatar-cloud",
@@ -771,6 +771,7 @@
                       "catalog/components/cut-the-curve",
                       "catalog/components/device-frame-stage",
                       "catalog/components/directional-wipe",
+                      "catalog/components/echo-smear",
                       "catalog/components/fade-through",
                       "catalog/components/grid-pixelate-wipe",
                       "catalog/components/halftone-dissolve",
@@ -1000,6 +1001,7 @@
               "concepts/frame-adapters",
               "concepts/determinism",
               "guides/html-in-canvas",
+              "guides/motion-blur",
               "guides/vfx-chain",
               "guides/figma"
             ]
@@ -1285,5 +1287,11 @@
       "destination": "/sdk/quickstart",
       "permanent": true
     }
-  ]
+  ],
+  "integrations": {
+    "posthog": {
+      "apiKey": "phc_zjjbX0PnWxERXrMHhkEJWj9A9BhGVLRReICgsfTMmpx",
+      "sessionRecording": false
+    }
+  }
 }

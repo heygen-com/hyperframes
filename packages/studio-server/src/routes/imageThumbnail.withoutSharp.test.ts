@@ -40,4 +40,37 @@ describe("studio-server where sharp cannot load", () => {
     expect((await app.request(url("b.jpg"))).status).toBe(422);
     expect(warn).toHaveBeenCalledTimes(1);
   });
+
+  it("serves thumbnails once the host's sharp arrives, warning once before", async () => {
+    const { default: realSharp } = await vi.importActual<typeof import("sharp")>("sharp");
+    const jpeg = await realSharp({
+      create: { width: 64, height: 48, channels: 3, background: "#6495ed" },
+    })
+      .jpeg()
+      .toBuffer();
+    const { registerImageThumbnailRoutes } = await import("./imageThumbnail.js");
+    dir = await mkdtemp(join(tmpdir(), "hf-image-late-sharp-"));
+    await writeFile(join(dir, "a.jpg"), jpeg);
+    await writeFile(join(dir, "b.jpg"), jpeg);
+    await writeFile(join(dir, "c.jpg"), jpeg);
+    let installed = false;
+    const adapter = {
+      resolveProject: (id: string) => (id === "p" ? { id, dir } : null),
+      loadSharp: async () => {
+        if (!installed) throw new Error("sharp is not installed yet");
+        return realSharp;
+      },
+    };
+    const app = new Hono();
+    registerImageThumbnailRoutes(app, adapter as unknown as StudioApiAdapter);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const url = (name: string) => `http://localhost/projects/p/image-thumbnail/${name}`;
+    expect((await app.request(url("a.jpg"))).status).toBe(422);
+    expect((await app.request(url("b.jpg"))).status).toBe(422);
+    installed = true;
+    const served = await app.request(url("c.jpg"));
+    expect(served.status).toBe(200);
+    expect(served.headers.get("Content-Type")).toBe("image/jpeg");
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
 });

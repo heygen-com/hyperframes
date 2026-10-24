@@ -1,5 +1,5 @@
 import { DEFAULT_MAX_SCREENSHOTS } from "../capture/types.js";
-import { failCommand } from "../utils/commandResult.js";
+import { failCommand, scheduleCliExit } from "../utils/commandResult.js";
 import { defineCommand } from "citty";
 import { resolve } from "node:path";
 import type { Example } from "./_examples.js";
@@ -303,8 +303,10 @@ export default defineCommand({
       } else {
         console.error(`\n  ✗ Capture failed: ${errMsg}\n`);
       }
+      scheduleCliExit(1);
       failCommand();
     }
+    scheduleCliExit(captureFailed ? 1 : 0);
     if (captureFailed) failCommand();
   },
 });

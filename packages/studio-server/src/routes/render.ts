@@ -108,6 +108,8 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
       // window.__hfVariables — same channel as `hyperframes render --variables`.
       variables?: Record<string, unknown>;
       gpu?: boolean;
+      previewMotionBlur?: boolean;
+      pageMotionBlur?: unknown;
     };
     const VALID_FORMATS = new Set(["mp4", "webm", "mov"]);
     const FORMAT_EXT: Record<string, string> = { mp4: ".mp4", webm: ".webm", mov: ".mov" };
@@ -150,6 +152,15 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     const encoder = parseEncoderOptions(body, format);
     if (!encoder.ok) return c.json({ error: encoder.error }, 400);
 
+    const requestedPageMotionBlur = body.pageMotionBlur;
+    if (requestedPageMotionBlur !== undefined && requestedPageMotionBlur !== "off") {
+      return c.json({ error: "pageMotionBlur must be off when supplied" }, 400);
+    }
+    const pageMotionBlur =
+      requestedPageMotionBlur === undefined && body.previewMotionBlur === false
+        ? "off"
+        : requestedPageMotionBlur;
+
     const now = new Date();
     const jobId = `${project.id}_${formatRenderOutputTimestamp(now)}`;
     const rendersDir = adapter.rendersDir(project);
@@ -172,6 +183,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
       distinctId:
         typeof body.telemetryDistinctId === "string" ? body.telemetryDistinctId : undefined,
       telemetryOptOut: body.telemetryOptOut === true,
+      ...(pageMotionBlur === undefined ? {} : { pageMotionBlur }),
     });
     (jobState as RenderJobState & { createdAt: number }).createdAt = Date.now();
     renderJobs.set(jobId, jobState as RenderJobState & { createdAt: number });

@@ -7,11 +7,11 @@ This is the last chapter of Level 6, and the last before the capstone level — 
 
 ## What this makes
 
-Not a new video — a **translation**. The [`/remotion-to-hyperframes`](/prompting/overview) workflow reads an existing Remotion (React) composition's source and rewrites it as HyperFrames HTML: the same frames, the same timing, the same visual output, running on GSAP instead of React's frame-callback model.
+Not a new video — a **translation**. The [`/remotion-to-hyperframes`](/prompting/overview) skill reads an existing Remotion (React) composition's source and rewrites it as HyperFrames HTML: the same frames, the same timing, the same visual output, running on GSAP instead of React's frame-callback model.
 
 This is a migration, not a creation workflow. It only fires on an explicit ask to port, convert, migrate, or translate a **Remotion** source. Two things that look similar but aren't this:
 
-- "Make something like my Remotion video" with no ask to migrate the actual source → a fresh build, [`/general-video`](/prompting/overview#one-time-setup).
+- "Make something like my Remotion video" with no ask to migrate the actual source → a fresh build with [`/hyperframes`](/prompting/overview#one-time-setup).
 - A non-Remotion source (After Effects, Framer Motion, plain React/CSS) → there's no Remotion source to translate; re-create it natively instead.
 
 The direction is one-way. There's no export back out to Remotion or any other framework.
@@ -30,7 +30,7 @@ The skill lints the source before translating anything, and **refuses** rather t
 - **Third-party React UI kits** — MUI, Chakra, Mantine, antd, shadcn, Radix, NextUI. There's no HTML/CSS/GSAP equivalent to translate them into.
 - **`@remotion/lambda` deploy config** — not a blocker. It's dropped (deployment config, not animation) and the rest of the composition still translates.
 
-If your source hits a blocker, expect the agent to stop and explain the interop recommendation rather than push through — that's the correct behavior, not a failure. Don't ask it to "just approximate" past a blocker; the whole point of this workflow is a validated, measured translation, not a best-effort guess.
+If your source hits a blocker, expect the agent to stop and explain the interop recommendation rather than push through — that's the correct behavior, not a failure. Don't ask it to "just approximate" past a blocker; the whole point of this skill is a validated, measured translation, not a best-effort guess.
 
 ## Validation is not optional
 
@@ -38,7 +38,7 @@ Every translation is graded against the Remotion original by SSIM (structural si
 
 > After translating, render both the Remotion original and the HyperFrames version and report the SSIM diff.
 
-A translation that "looks right" in preview can still measure meaningfully below the validated baseline — that's the difference this workflow is built to catch.
+A translation that "looks right" in preview can still measure meaningfully below the validated baseline — that's the difference this skill is built to catch.
 
 ## The knobs that matter
 
@@ -51,9 +51,9 @@ A translation that "looks right" in preview can still measure meaningfully below
 
 ## Common failure modes
 
-**Asking for a fresh build with Remotion as inspiration.** If you don't have an actual Remotion source to translate, this isn't the workflow — it's a normal build.
+**Asking for a fresh build with Remotion as inspiration.** If you don't have an actual Remotion source to translate, this isn't the skill — it's a normal build.
 - ❌ `/remotion-to-hyperframes make something like my Remotion intro`
-- ✅ `/general-video make an intro like this: [description]` — no Remotion source, no migration
+- ✅ `/hyperframes make an intro like this: [description]` — no Remotion source, no migration
 
 **Asking it to push past a lint blocker.** A `useState`-driven composition isn't a "translate it anyway, best effort" situation — it's a different problem (runtime interop), and forcing a translation produces something that looks plausible but isn't frame-accurate.
 - ❌ `just convert it, don't worry about the state stuff`

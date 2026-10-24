@@ -18,6 +18,7 @@ import { basename, dirname, join } from "node:path";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
+import * as manager from "../whisper/manager.js";
 import { WhisperUnavailableError } from "../whisper/manager.js";
 import { formatVtt, loadTranscript } from "../whisper/normalize.js";
 import * as parakeet from "../whisper/parakeet.js";
@@ -32,7 +33,7 @@ const prepareWavMock = vi.fn((input: string) => input);
 let audioSeconds = 1;
 
 // Engine selection: which runners look installed, and the sherpa decode child it spawns.
-const runners = { sherpa: false, mlx: false };
+const runners: { sherpa: boolean; mlx: boolean; whisper?: boolean } = { sherpa: false, mlx: false };
 let runtimeDir: string;
 const realTranscribeWithSherpa = sherpa.transcribeWithSherpa;
 const realTranscribeWithParakeet = parakeet.transcribeWithParakeet;
@@ -62,6 +63,9 @@ function replaceRunners(): void {
     runners.mlx ? "/bin/parakeet-mlx" : undefined,
   );
   vi.spyOn(parakeet, "transcribeWithParakeet").mockImplementation((...a) => mlxMock(...a));
+  vi.spyOn(manager, "findWhisper").mockImplementation(() =>
+    runners.whisper ? { executablePath: "/bin/whisper-cli", source: "system" } : undefined,
+  );
   vi.spyOn(childProcess, "execFile").mockImplementation(((...a: unknown[]) =>
     execFileMock(...a)) as unknown as typeof childProcess.execFile);
   // Node's named exports of a builtin follow its default export only once synced.
@@ -103,7 +107,7 @@ describe("transcribe command", () => {
     prepareWavMock.mockReset().mockImplementation((input: string) => input);
     trackTranscribeUnavailable.mockReset();
     mlxMock.mockReset();
-    Object.assign(runners, { sherpa: false, mlx: false });
+    Object.assign(runners, { sherpa: false, mlx: false, whisper: false });
     transcribeMock.mockRejectedValue(
       new WhisperUnavailableError("whisper-cpp not found. Install: brew install whisper-cpp"),
     );
@@ -323,6 +327,24 @@ echo '{"sentences":[{"tokens":[{"text":" hola","start":0,"end":1}]}]}' > "$2/$(b
       expect(await transcribeWith("auto", both, "pt-BR")).toMatchObject({ engine: "parakeet" });
       expect(await transcribeWith("auto", both, "UK")).toMatchObject({ engine: "parakeet" });
       expect(transcribeMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("sends a non-English language to an installed whisper, since Parakeet picks its own", async () => {
+      const all = { sherpa: true, mlx: true, whisper: true };
+      expect(await transcribeWith("auto", all, "fr")).toMatchObject({ engine: "whisper" });
+      expect(await transcribeWith("parakeet", all, "es")).toMatchObject({ engine: "whisper" });
+      expect(await transcribeWith("auto", all, "en-GB")).toMatchObject({ engine: "parakeet" });
+      expect(await transcribeWith("auto", all)).toMatchObject({ engine: "parakeet" });
+      const noWhisper = { sherpa: true, mlx: true, whisper: false };
+      expect(await transcribeWith("auto", noWhisper, "fr")).toMatchObject({ engine: "parakeet" });
+
+      Object.assign(runners, all);
+      const { dir, input } = dummyAudio();
+      dirs.push(dir);
+      await transcribeCmd.run!({ args: { input, engine: "auto", language: "fr" } } as never);
+      expect(vi.mocked(console.error).mock.calls.flat().join("\n")).toContain(
+        "Parakeet chooses its own language, so whisper transcribes --language fr.",
+      );
     });
 
     it("--engine parakeet with a language it does not transcribe fails without falling back", async () => {

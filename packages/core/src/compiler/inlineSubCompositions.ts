@@ -26,7 +26,7 @@ import {
 } from "./rewriteSubCompPaths";
 import { warnUnknownEnumValues } from "../runtime/getVariables";
 import {
-  scopeCssToComposition,
+  createCompositionCssScoper,
   wrapInlineScriptWithErrorBoundary,
   scopedModulePrelude,
   wrapScopedCompositionScript,
@@ -287,6 +287,8 @@ export interface InlineSubCompositionsResult {
 // Default helpers
 // ---------------------------------------------------------------------------
 
+const isDocument = (node: Node): node is Document => node.nodeType === 9;
+
 function defaultBuildScopeSelector(compId: string): string {
   const escaped = compId.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
   return `[data-composition-id="${escaped}"]`;
@@ -344,6 +346,24 @@ export function inlineSubCompositions(
   const externalLinks: ExternalLink[] = [];
   const variablesByComp: Record<string, Record<string, unknown>> = {};
   const svgIdScopes: Array<SvgIdScope & { styleStart: number; styleEnd: number }> = [];
+  // A file mounted many times reads the same; only its scope, ids and variables differ per mount.
+  // Each file is parsed once and only read; a mount edits its own copy.
+  const parsed = new Map<string, Document>();
+  const parseOnce = (html: string): Document => {
+    let doc = parsed.get(html);
+    if (!doc) {
+      doc = parseHtml(html);
+      parsed.set(html, doc);
+    }
+    return doc;
+  };
+  const parseCopy = (html: string): Document => {
+    const copy = parseOnce(html).cloneNode(true);
+    return isDocument(copy) ? copy : parseHtml(html);
+  };
+  const usability = new Map<string, ReturnType<typeof checkSubCompositionUsability>>();
+  const sheetsWithAssetUrls = new Map<string, string>();
+  const scopeCssToComposition = createCompositionCssScoper();
 
   const sceneHosts = new Map<string, Element>();
   const queue = hosts.map((element) => ({
@@ -363,7 +383,11 @@ export function inlineSubCompositions(
     // tolerant (skip, don't throw) — preview and studio must keep bundling
     // around a scene that's still being authored. Lint and the render
     // pre-flight check use the same helper to fail loudly instead.
-    const validity = checkSubCompositionUsability(compHtml, parseHtml);
+    let validity = compHtml == null ? undefined : usability.get(compHtml);
+    if (!validity) {
+      validity = checkSubCompositionUsability(compHtml, parseOnce);
+      if (compHtml != null) usability.set(compHtml, validity);
+    }
     if (!validity.ok) {
       onMissingComposition?.(src, validity.detail);
       continue;
@@ -376,7 +400,7 @@ export function inlineSubCompositions(
       continue;
     }
 
-    const compDoc = parseHtml(compHtml);
+    const compDoc = parseCopy(compHtml);
 
     // Determine composition IDs
     let compId: string | null;
@@ -395,7 +419,7 @@ export function inlineSubCompositions(
       onMissingComposition?.(src);
       continue;
     }
-    const contentDoc = parseHtml(contentHtml);
+    const contentDoc = parseCopy(contentHtml);
     if (!contentDoc.documentElement) {
       onMissingComposition?.(src);
       continue;
@@ -463,7 +487,12 @@ export function inlineSubCompositions(
     // sub-comp's html/body/:root rules from clobbering the host document (they
     // are remapped to the composition box); see compositionScoping.
     const scopeSubStyle = (raw: string): string => {
-      const css = rewriteCssAssetUrls(raw, src, assetExists);
+      const sheetKey = JSON.stringify([src, raw]);
+      let css = sheetsWithAssetUrls.get(sheetKey);
+      if (css === undefined) {
+        css = rewriteCssAssetUrls(raw, src, assetExists);
+        sheetsWithAssetUrls.set(sheetKey, css);
+      }
       return scopeCompId
         ? scopeCssToComposition(css, scopeCompId, runtimeScope || undefined, authoredRootId, {
             compoundAuthoredRoot: compoundAuthoredRoot === true,

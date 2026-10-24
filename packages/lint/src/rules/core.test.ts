@@ -1208,6 +1208,172 @@ describe("core rules", () => {
     });
   });
 
+  describe("non_deterministic_code — inlined GSAP library", () => {
+    // UMD wrapper, banner and internals excerpted from gsap@3.14.2 dist/gsap.min.js.
+    const banner = "/*! GSAP 3.14.2 | @license Copyright 2025, GreenSock. All rights reserved. */";
+    const gsapUmd =
+      '!function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):' +
+      '"function"==typeof define&&define.amd?define(["exports"],e):e((t=t||self).window=t.window||{})}' +
+      '(this,function(e){"use strict";function gb(t){return t.sort(function(){return.5-Math.random()})}' +
+      "function Ic(){var t=Date.now(),o=[];return o}});";
+    const pastedGsap = `${banner}\n${gsapUmd}`;
+    const producerInlinedGsap = `/* inlined: https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js */\n${gsapUmd}`;
+    // Unminified builds carry the banner inside the factory.
+    const unminifiedGsap = gsapUmd.replace('"use strict";', `"use strict";${banner}`);
+    const inlinedUnminifiedGsap = `/* inlined: https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.js */\n(${unminifiedGsap.slice(1, -1)});`;
+    const separatedGsap = `${banner};${gsapUmd}`;
+    const umdBundle = (body: string) =>
+      `(function (root, factory) {\nif (typeof define === "function" && define.amd) define([], factory); else factory();\n})(this, function () {\n${body}\n});`;
+    // Rollup 4 `--format umd` output for `import { gsap } from "gsap"` plus author code, excerpted.
+    const rollupBundle = `(function (global, factory) {
+  typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports) :
+  typeof define === 'function' && define.amd ? define(['exports'], factory) :
+  (global = typeof globalThis !== 'undefined' ? globalThis : global || self, factory(global.Composition = {}));
+})(this, (function (exports) { 'use strict';
+
+  ${banner}
+
+  var _config = {
+    autoSleep: 120,
+    force3D: "auto",
+    nullTargetWarn: 1,
+    units: {
+      lineHeight: ""
+    }
+  };
+
+  window.authorSeed = Math.random();
+  window.authorTime = Date.now();
+
+  exports.gsap = gsapWithCSS;
+
+}));`;
+    // The same import through Rollup UMD plus Terser, excerpted: the banner stays inside the factory.
+    const minifiedRollupBundle = `!function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"function"==typeof define&&define.amd?define(["exports"],e):e((t="undefined"!=typeof globalThis?globalThis:t||self).Composition={})}(this,function(t){"use strict";function r(t,e){t.prototype=Object.create(e.prototype),t.prototype.constructor=t,t.__proto__=e}\n${banner}\nvar Ji=Ar.registerPlugin($i)||Ar;Ji.core.Tween,window.authorSeed=Math.random(),window.authorTime=Date.now(),t.gsap=Ji});`;
+    const comp = (library: string, author = "") => `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="5"></div>
+  <script>${library}</script>
+  <script>const tl = gsap.timeline({ paused: true }); ${author} window.__timelines = { main: tl };</script>
+</body></html>`;
+    const labels = async (html: string) =>
+      (await lintHyperframeHtml(html)).findings
+        .filter((f) => f.code === "non_deterministic_code")
+        .map((f) => f.message.match(/`(.+?)`/)?.[1]);
+
+    it.each([
+      ["pasted with its banner", pastedGsap],
+      ["inlined by the producer", producerInlinedGsap],
+      ["unminified and inlined by the producer", inlinedUnminifiedGsap],
+      [
+        "inlined by the producer from an unversioned dist URL with a query and hash",
+        inlinedUnminifiedGsap.replace(
+          "https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.js",
+          "https://unpkg.com/gsap/dist/gsap.js?module#top",
+        ),
+      ],
+      ["after a statement separator", separatedGsap],
+    ])("does not flag GSAP's own internals when %s", async (_shape, library) => {
+      expect(await labels(comp(library))).toEqual([]);
+    });
+
+    it("still flags the author's Math.random() in a script next to inlined GSAP", async () => {
+      expect(await labels(comp(pastedGsap, "const r = Math.random();"))).toEqual(["Math.random()"]);
+    });
+
+    it("still flags author calls before and after GSAP in the same script", async () => {
+      const library = `const a = Math.random();\n${pastedGsap}\nconst b = performance.now();`;
+      expect(await labels(comp(library))).toEqual(["Math.random()", "performance.now()"]);
+    });
+
+    it("checks an outer wrapper that only borrows define.amd from a nested library", async () => {
+      const library = `(function (root, factory) {\n${banner}\nwindow.seed = Math.random();\n${gsapUmd}\n})(this, function () {});`;
+      expect(await labels(comp(library))).toEqual(["Math.random()", "Date.now()"]);
+    });
+
+    it("checks a UMD wrapper whose GSAP banner is separated from it by other code", async () => {
+      expect(await labels(comp(`${banner}\nwindow.x = 1;\n${gsapUmd}`))).toEqual([
+        "Math.random()",
+        "Date.now()",
+      ]);
+    });
+
+    it.each([
+      [
+        "joined to it with a comma",
+        `${banner}\n${gsapUmd.slice(0, -1)}, window.seed = Math.random();`,
+      ],
+      [
+        "beside it inside an outer wrapper",
+        `(function () {\n${pastedGsap}\nwindow.seed = Math.random();\n})();`,
+      ],
+      [
+        "beside it inside an outer two-argument wrapper",
+        `(function (root, factory) {\n${pastedGsap}\nwindow.seed = Math.random();\n})(this, function () {});`,
+      ],
+      [
+        "beside it inside an outer UMD bundle",
+        umdBundle(`${pastedGsap}\nwindow.seed = Math.random();`),
+      ],
+      [
+        "beside producer-inlined unminified GSAP inside an outer UMD bundle",
+        umdBundle(`${inlinedUnminifiedGsap}\nwindow.seed = Math.random();`),
+      ],
+      [
+        "beside separated GSAP inside an outer UMD bundle",
+        umdBundle(`${separatedGsap}\nwindow.seed = Math.random();`),
+      ],
+      [
+        "beside a stray banner inside an outer UMD bundle",
+        umdBundle(`${banner}\nwindow.seed = Math.random();\n${pastedGsap}`),
+      ],
+    ])("still flags author code %s", async (_shape, library) => {
+      expect(await labels(comp(library))).toEqual(["Math.random()"]);
+    });
+
+    it("flags author code that Rollup bundles into one factory with GSAP's banner", async () => {
+      expect(await labels(comp(rollupBundle))).toEqual(["Math.random()", "Date.now()"]);
+    });
+
+    it.each([
+      "gsap-composition.js",
+      "composition.js",
+      "scene.js?vendor=gsap",
+      "https://example.com/gsap-demo/scene.js",
+    ])("flags author code in a minified bundle inlined from %s", async (src) => {
+      const library = `/* inlined: ${src} */\n${minifiedRollupBundle}`;
+      expect(await labels(comp(library))).toEqual(["Math.random()", "Date.now()"]);
+    });
+
+    // Known limit: a banner inside a factory cannot be told apart from a bundled one, so it exempts nothing.
+    it.each([
+      ["pasted unminified GSAP", unminifiedGsap],
+      [
+        "unminified GSAP beside author code in an outer UMD bundle",
+        umdBundle(`${unminifiedGsap}\nwindow.seed = Math.random();`),
+      ],
+    ])("checks %s, whose banner sits inside its factory", async (_shape, library) => {
+      expect(await labels(comp(library))).toEqual(["Math.random()", "Date.now()"]);
+    });
+
+    it.each([
+      ["a string", `const label = "GreenSock"; const x = Math.random();`],
+      ["a comment", `// eased like GreenSock\nconst x = Math.random();`],
+      ["a spoofed banner", `${banner}\nwindow.seed = Math.random();`],
+      ["a spoofed inlining comment", `/* inlined: gsap.min.js */\nwindow.seed = Math.random();`],
+      [
+        "a banner plus define.amd in a string",
+        `${banner}\nwindow.seed = ("define.amd", Math.random());`,
+      ],
+      [
+        "a banner plus define.amd in a comment",
+        `${banner}\nwindow.seed = /* define.amd */ Math.random();`,
+      ],
+    ])("still flags author code whose script mentions GSAP in %s", async (_where, author) => {
+      expect(await labels(comp("", author))).toEqual(["Math.random()"]);
+    });
+  });
+
   describe("timeline_id_mismatch — only top-level registry keys are composition ids", () => {
     const comp = (script: string) => `
 <html><body>

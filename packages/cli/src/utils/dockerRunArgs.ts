@@ -51,6 +51,7 @@ export interface DockerRenderOptions {
   vp9CpuUsed?: number;
   videoBitrate?: string;
   videoFrameFormat?: "auto" | "jpg" | "png";
+  pageMotionBlur?: "off";
   quiet: boolean;
   debug?: boolean;
   bestEffort?: boolean;
@@ -145,6 +146,7 @@ export function buildDockerRunArgs(input: DockerRunArgsInput): string[] {
     ...(options.videoFrameFormat && options.videoFrameFormat !== "auto"
       ? ["--video-frame-format", options.videoFrameFormat]
       : []),
+    ...(options.pageMotionBlur !== undefined ? ["--page-motion-blur", options.pageMotionBlur] : []),
     ...(options.quiet ? ["--quiet"] : []),
     ...(options.debug ? ["--debug"] : []),
     // The in-container CLI is best-effort by default. Only forward the

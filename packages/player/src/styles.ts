@@ -7,6 +7,11 @@ export const PLAYER_STYLES = /* css */ `
     contain: layout style;
   }
 
+  /* The only in-flow child: with no height set, the player takes the composition's shape. */
+  .hfp-sizer {
+    aspect-ratio: 16 / 9;
+  }
+
   .hfp-container {
     position: absolute;
     inset: 0;

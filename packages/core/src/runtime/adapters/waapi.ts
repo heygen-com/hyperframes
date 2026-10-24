@@ -2,6 +2,10 @@ import type { RuntimeDeterministicAdapter } from "../types";
 import { swallow } from "../diagnostics";
 import { holdAnimationAt } from "./_holdAnimationAt";
 
+const isBrowserCreatedCss = (animation: Animation): boolean =>
+  (typeof CSSAnimation !== "undefined" && animation instanceof CSSAnimation) ||
+  (typeof CSSTransition !== "undefined" && animation instanceof CSSTransition);
+
 export function createWaapiAdapter(): RuntimeDeterministicAdapter {
   let didDiscover = false;
   let lastSeekTimeMs = 0;
@@ -158,6 +162,10 @@ export function createWaapiAdapter(): RuntimeDeterministicAdapter {
         trackAnimations(snapshotAnimations(ctx.pageAnimations), didDiscover ? timeMs : 0);
       }
       for (const animation of animations) {
+        if (animation.playState === "idle" && isBrowserCreatedCss(animation)) {
+          animations.delete(animation);
+          continue;
+        }
         const baseline = didDiscover
           ? ensureBaseline(animation, timeMs)
           : ensureBaseline(animation, 0);

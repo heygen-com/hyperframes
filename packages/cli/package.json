@@ -1,7 +1,23 @@
 {
   "name": "@hyperframes/cli",
-  "version": "0.8.173",
-  "description": "HyperFrames CLI — create, preview, and render HTML video compositions",
+  "version": "0.8.192",
+  "description": "Make videos with code and AI agents: write HTML, render MP4. Open source.",
+  "keywords": [
+    "ai-agents",
+    "animation",
+    "claude-code",
+    "codex",
+    "cursor",
+    "gsap",
+    "html-to-video",
+    "hyperframes",
+    "motion-graphics",
+    "mp4",
+    "remotion-alternative",
+    "render",
+    "video",
+    "video-editor"
+  ],
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -39,6 +55,7 @@
   "dependencies": {
     "@hono/node-server": "^2.0.5",
     "@puppeteer/browsers": "^3.2.2",
+    "acorn": "^8.17.0",
     "adm-zip": "^0.6.0",
     "citty": "^0.2.1",
     "compare-versions": "^6.1.1",
@@ -51,9 +68,7 @@
     "ignore": "^5.3.2",
     "open": "^10.0.0",
     "postcss": "^8.5.8",
-    "prettier": "^3.8.1",
     "puppeteer-core": "^25.10.0",
-    "sharp": "^0.35.0",
     "yauzl": "^3.4.0"
   },
   "devDependencies": {
@@ -80,6 +95,9 @@
     "tsx": "^4.0.0",
     "typescript": "^5.0.0",
     "vitest": "^4.1.11"
+  },
+  "optionalDependencies": {
+    "sharp": "^0.35.0"
   },
   "engines": {
     "node": ">=22"

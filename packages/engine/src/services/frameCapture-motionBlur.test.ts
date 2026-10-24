@@ -635,3 +635,54 @@ describe("a stall on a motion-blurred frame names the step in progress", () => {
     expect(session.captureStep).toBe("capturing the frame");
   });
 });
+
+describe("the per-session blur line", () => {
+  const log = () => vi.spyOn(console, "log").mockImplementation(() => {});
+  const askForBlur = (report: object) => {
+    const page = (globalThis as Record<string, unknown>).window as Record<string, unknown>;
+    page.__hfMotionBlur = { report: () => report };
+  };
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it("is logged once, after the session's first captured frame, from the page's report", async () => {
+    const spy = log();
+    askForBlur({ state: "on", reasonCode: null, movers: 4, failedFrames: 0 });
+    const session = makeSession({ motionBlur: undefined });
+    await captureFrameToBuffer(session, 0, 0);
+    await captureFrameToBuffer(session, 1, 1 / 30);
+    await captureFrameToBuffer(session, 2, 2 / 30);
+    const lines = spy.mock.calls
+      .map(([line]) => line)
+      .filter((l) => `${l}`.includes("[motion-blur]"));
+    expect(lines).toEqual(["[motion-blur] on reasonCode=null movers=4 failedFrames=0"]);
+  });
+
+  it("says why blur is off for the session", async () => {
+    const spy = log();
+    askForBlur({ state: "off", reasonCode: "renderer-off", movers: 0 });
+    await captureFrameToBuffer(makeSession({ motionBlur: undefined }), 0, 0);
+    expect(spy).toHaveBeenCalledWith(
+      "[motion-blur] off reasonCode=renderer-off movers=0 failedFrames=0",
+    );
+  });
+
+  it("stays silent for a page that never asked for blur, and survives a page that cannot answer", async () => {
+    const spy = log();
+    await captureFrameToBuffer(makeSession({ motionBlur: undefined }), 0, 0);
+    const broken = makeSession({ motionBlur: undefined });
+    const evaluate = broken.page.evaluate.bind(broken.page);
+    Object.assign(broken.page, {
+      evaluate: async (...args: Parameters<typeof evaluate>) => {
+        if (String(args[0]).includes("__hfMotionBlur")) throw new Error("page is gone");
+        return evaluate(...args);
+      },
+    });
+    await expect(captureFrameToBuffer(broken, 0, 0)).resolves.toMatchObject({
+      captureTimeMs: expect.any(Number),
+    });
+    expect(
+      spy.mock.calls.map(([line]) => `${line}`).filter((l) => l.includes("[motion-blur]")),
+    ).toEqual([]);
+  });
+});

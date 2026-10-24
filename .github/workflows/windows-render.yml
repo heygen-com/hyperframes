@@ -428,7 +428,7 @@ jobs:
     needs: [changes, preflight]
     if: needs.changes.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -508,17 +508,21 @@ jobs:
         shell: pwsh
         run: node --import tsx packages/cli/scripts/prepare-process-test-browser.mjs
 
+      # Step limits stay under the job limit minus setup (~5 min), so a hung run fails its step and keeps the log.
       - name: Run Studio shard ${{ matrix.studio_shard }}
         if: matrix.studio_shard
         shell: pwsh
-        run: bun run --cwd packages/studio test -- --shard=${{ matrix.studio_shard }} --maxWorkers=2
+        timeout-minutes: 16
+        run: bun run --cwd packages/studio test -- --shard=${{ matrix.studio_shard }} --maxWorkers=2 --reporter=verbose
 
       - name: Run ${{ matrix.lane }} package tests
         if: matrix.packages
         shell: pwsh
+        timeout-minutes: 20
         # Each package starts its own Vitest pool. Bound every pool so concurrent
         # package scripts cannot oversubscribe the hosted Windows runner.
-        run: bun run ${{ matrix.packages }} test -- --maxWorkers=2
+        # timeout-minutes did not fire on a hung run, so the script enforces the 16 minutes itself.
+        run: ./scripts/ci/run-with-deadline.ps1 -Minutes 16 -Command 'bun run ${{ matrix.packages }} test -- --maxWorkers=2 --reporter=verbose'
 
       - name: Verify waveform cache writes on Windows
         if: matrix.lane == 'engine-cli'
@@ -539,6 +543,15 @@ jobs:
         if: matrix.lane == 'engine-cli'
         shell: pwsh
         run: bunx vitest run scripts/catalog/catalog-payload-assets.file-race.test.ts scripts/catalog/catalog-payload-assets.cache-race.test.ts --maxWorkers=2
+
+      - name: Upload test step log
+        if: always() && matrix.packages
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: test-step-log-${{ matrix.lane }}
+          path: ${{ runner.temp }}/deadline-step.log
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Run runtime contract test
         if: matrix.runtime_contract

@@ -554,9 +554,11 @@ Source: `packages/lint/src/rules/media.ts`.
 
 ### `color_grading_non_media`
 
-**Error.** `data-color-grading` is set on an element other than `<video>` or `<img>`, such as a wrapper or an element with a CSS background. The shader runtime only grades real `<video>` and `<img>` elements, so the attribute has no effect.
+**Error.** `data-color-grading` is set on an element other than `<video>`, `<img>` or `<canvas>`, such as a
+wrapper or an element with a CSS background. The shader runtime only grades real `<video>`, `<img>` and
+`<canvas>` elements, so the attribute has no effect.
 
-**Fix:** Move the attribute to the `<video>` or `<img>` element itself.
+**Fix:** Move the attribute to the `<video>`, `<img>` or `<canvas>` element itself.
 
 ### `duplicate_media_discovery_risk`
 
@@ -858,7 +860,7 @@ Source: the project lint pass in `packages/lint/src/project.ts`, `packages/lint/
 
 ### `texture_mask_asset_not_found`
 
-**Error.** A CSS `mask-image` references files that are not in the project, so the texture mask fails to load.
+**Error.** A CSS `mask-image` or `-webkit-mask-image` declaration references files that are not in the project, so the texture mask fails to load. In valid CSS, comments and text inside other declarations, such as `content` strings, are ignored.
 
 **Fix:** Add the missing mask file(s) to the project, or update the `mask-image` URL.
 

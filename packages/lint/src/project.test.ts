@@ -399,6 +399,73 @@ describe("missing_or_empty_sub_composition", () => {
   });
 });
 
+describe("texture_mask_asset_not_found declarations", () => {
+  it("still reports a missing inline mask beside a malformed declaration", async () => {
+    const project = makeProject(
+      validHtml().replace(
+        "<div ",
+        '<div style="color: red; broken; mask-image: url(missing.png);" ',
+      ),
+    );
+
+    const { results } = await lintProject(project);
+    const findings = results
+      .flatMap((entry) => entry.result.findings)
+      .filter((finding) => finding.code === "texture_mask_asset_not_found");
+
+    expect(findings).toEqual([
+      expect.objectContaining({
+        severity: "error",
+        message: expect.stringContaining("missing.png"),
+      }),
+    ]);
+  });
+
+  it.each([
+    ["embedded", "comment", "/* .badge { mask-image: url(removed-texture.png); } */"],
+    ["linked", "comment", "/* .badge { mask-image: url(removed-texture.png); } */"],
+    ["embedded", "content string", '.badge::after { content: "mask-image: url(example.png)"; }'],
+    ["linked", "content string", '.badge::after { content: "mask-image: url(example.png)"; }'],
+  ])("ignores mask syntax in a %s stylesheet's %s", async (source, _kind, css) => {
+    const style =
+      source === "linked" ? '<link rel="stylesheet" href="style.css">' : `<style>${css}</style>`;
+    const project = makeProject(validHtml().replace("<body>", `<head>${style}</head><body>`));
+    if (source === "linked") writeFileSync(join(project, "style.css"), css);
+
+    const { totalErrors, results } = await lintProject(project);
+
+    expect(totalErrors).toBe(0);
+    expect(
+      results.flatMap((entry) => entry.result.findings).map((finding) => finding.code),
+    ).not.toContain("texture_mask_asset_not_found");
+  });
+
+  it.each(["embedded", "linked"])(
+    "still errors for missing masks declared in %s CSS",
+    async (source) => {
+      const css = `/* .badge { mask-image: url(removed-texture.png); } */
+      .badge::after { content: "mask-image: url(example.png)"; }
+      .badge { -webkit-mask-image: url(missing-webkit.png); MASK-IMAGE: url(missing.png); }`;
+      const style =
+        source === "linked" ? '<link rel="stylesheet" href="style.css">' : `<style>${css}</style>`;
+      const project = makeProject(validHtml().replace("<body>", `<head>${style}</head><body>`));
+      if (source === "linked") writeFileSync(join(project, "style.css"), css);
+
+      const { results } = await lintProject(project);
+      const findings = results
+        .flatMap((entry) => entry.result.findings)
+        .filter((finding) => finding.code === "texture_mask_asset_not_found");
+
+      expect(findings).toHaveLength(1);
+      expect(findings[0]).toMatchObject({ severity: "error", file: join(project, "index.html") });
+      expect(findings[0]?.message).toContain("missing-webkit.png");
+      expect(findings[0]?.message).toContain("missing.png");
+      expect(findings[0]?.message).not.toContain("removed-texture.png");
+      expect(findings[0]?.message).not.toContain("example.png");
+    },
+  );
+});
+
 describe("template shell style sources", () => {
   it("collects links, style blocks, and inline styles from template content", async () => {
     const project = makeProject(`<html><body>
@@ -1043,6 +1110,51 @@ describe("audio-aware project rules", () => {
         ),
       );
       expect(codes).not.toContain("duplicate_audio_track");
+    });
+
+    const scene = (id: string, videoDuration = 5) => `<template id="${id}-template">
+  <div data-composition-id="${id}" data-width="1920" data-height="1080">
+    ${video('data-has-audio="true"')
+      .replace('src="a.mp4"', `src="${id}.mp4"`)
+      .replace('data-duration="5"', `data-duration="${videoDuration}"`)}
+  </div>
+</template>`;
+    const host = (id: string, start: number | string, length: number | null) =>
+      `<div data-composition-id="${id}" data-composition-src="compositions/${id}.html" data-start="${start}"${length === null ? "" : ` data-duration="${length}"`} data-track-index="1"></div>`;
+    const scenesCodes = (
+      starts: Array<number | string>,
+      { videoDuration = 5, hostDuration = 5 as number | null } = {},
+    ) => {
+      const ids = starts.map((_, i) => `s${i}`);
+      const project = makeProject(
+        composition(ids.map((id, i) => host(id, starts[i]!, hostDuration)).join("")),
+        Object.fromEntries(ids.map((id) => [`${id}.html`, scene(id, videoDuration)])),
+      );
+      return lintProject(project).then(({ results }) =>
+        results.flatMap((result) => result.result.findings.map((f) => f.code)),
+      );
+    };
+
+    it("places each scene's audio at its host's start, so scenes played one after another pass", async () => {
+      expect(await scenesCodes([0, 5])).not.toContain("duplicate_audio_track");
+      expect(await scenesCodes([0, 5], { hostDuration: null })).not.toContain(
+        "duplicate_audio_track",
+      );
+    });
+
+    it("still warns when two scenes' hosts overlap", async () => {
+      expect(await scenesCodes([0, 2])).toContain("duplicate_audio_track");
+    });
+
+    it("places a scene chained to the one before it with a reference start", async () => {
+      expect(await scenesCodes([0, "s0"])).not.toContain("duplicate_audio_track");
+      expect(await scenesCodes([0, "s0 - 2"])).toContain("duplicate_audio_track");
+    });
+
+    it("cuts a scene's audio at its host's end, as playback does", async () => {
+      expect(await scenesCodes([0, 5], { videoDuration: 10 })).not.toContain(
+        "duplicate_audio_track",
+      );
     });
   });
 

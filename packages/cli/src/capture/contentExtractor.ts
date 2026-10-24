@@ -22,7 +22,11 @@ import { basename, join } from "node:path";
 import type sharpType from "sharp";
 import type { CatalogedAsset } from "./assetCataloger.js";
 import type { DesignTokens } from "./types.js";
-import { loadOptionalPackage, type OptionalPackageModules } from "../utils/optionalPackages.js";
+import {
+  loadOptionalPackage,
+  loadSharp,
+  type OptionalPackageModules,
+} from "../utils/optionalPackages.js";
 
 const DEFAULT_VISION_REQUEST_TIMEOUT_MS = 30_000;
 
@@ -523,7 +527,7 @@ export async function captionImagesWithGemini(
       // than crashing the whole capture command on import.
       let sharp: typeof sharpType;
       try {
-        sharp = (await import("sharp")).default as typeof sharpType;
+        sharp = await loadSharp("SVG captions");
       } catch (err) {
         warnings.push(
           `Skipped ${svgFiles.length} SVG caption(s): sharp could not load (${(err as Error).message}). ` +

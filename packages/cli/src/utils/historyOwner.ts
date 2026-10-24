@@ -1,5 +1,13 @@
 import { randomUUID } from "node:crypto";
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import {
+  accessSync,
+  constants,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import {
   DEFAULT_HISTORY_ROOT,
@@ -261,16 +269,58 @@ export async function withOwner<T>(
   }
 }
 
+const CANNOT_WRITE = new Set(["ENOSPC", "EDQUOT", "EACCES", "EPERM", "EROFS"]);
+const WRITE_CALLS = new Set([
+  "mkdir",
+  "write",
+  "rename",
+  "unlink",
+  "link",
+  "copyfile",
+  "rmdir",
+  "symlink",
+  "utime",
+  "ftruncate",
+  "fsync",
+]);
+
+function openedForWriting(path: string): boolean {
+  try {
+    accessSync(path, constants.R_OK);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "ENOENT";
+  }
+}
+
+/** A write the history could not make, never a read: a denied `open` of a missing or readable file was a write. */
+function failedWrite(error: unknown): boolean {
+  const { code = "", syscall = "", path } = error as NodeJS.ErrnoException;
+  if (!CANNOT_WRITE.has(code)) return false;
+  return (
+    WRITE_CALLS.has(syscall) || (syscall === "open" && path !== undefined && openedForWriting(path))
+  );
+}
+
 export async function withReader<T>(
   dir: string | undefined,
   task: (reader: Reader) => Promise<T>,
 ): Promise<T> {
+  let ran = false;
   try {
-    return await withOwner(dir, (owner) => task(owner));
+    return await withOwner(dir, (owner) => {
+      ran = true;
+      return task(owner);
+    });
   } catch (error) {
-    if (!(error instanceof HistoryBusyError)) throw error;
+    const unwritable = failedWrite(error);
+    if (ran || !(error instanceof HistoryBusyError || unwritable)) throw error;
+    if (unwritable)
+      console.error(
+        `[hyperframes] Could not write this project's history (${(error as Error).message}); showing it as last recorded.`,
+      );
   }
-  // Busy is only thrown on opening, so the task has not run; an open turn's marker is left as it is.
+  // Opening failed, so the task has not run; an open turn's marker is left as it is.
   const view = readProjectHistory({
     projectDir: resolveProject(dir).dir,
     historyRoot: historyDeps.historyRoot,

@@ -1148,6 +1148,10 @@
       "type": "hyperframes:component"
     },
     {
+      "name": "echo-smear",
+      "type": "hyperframes:component"
+    },
+    {
       "name": "echo-trail",
       "type": "hyperframes:component"
     },
@@ -1825,6 +1829,6 @@
     }
   ],
   "catalogArtifact": {
-    "revision": "23c72deda09b01ac3f1fb8904cc03e3fdf2ca08d660c6cd7499d289f927b74e2"
+    "revision": "c7135c14ef25e7d5f1be39c15ffcf730e4bd7a4488ac01d59b9ecda894b09dcb"
   }
 }

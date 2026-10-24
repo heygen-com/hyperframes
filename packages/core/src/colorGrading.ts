@@ -13,6 +13,7 @@ import {
   COLOR_GRADING_LUT_KEYS,
   COLOR_GRADING_MAX_CURVE_POINTS,
   COLOR_GRADING_MAX_SECONDARIES,
+  COLOR_GRADING_SOURCE_TAGS,
   COLOR_GRADING_TOP_LEVEL_KEYS,
   COLOR_GRADING_WHEEL_KEYS,
 } from "@hyperframes/parsers/color-grading-contract";
@@ -41,6 +42,7 @@ export const COLOR_GRADING_AUTHORED_OPACITY_ATTR = "data-hf-authored-opacity";
 export const HF_COLOR_GRADING_CANVAS_ID_PREFIX = "__hf_color_grading_";
 
 export const HF_COLOR_GRADING_COLOR_SPACE = COLOR_GRADING_COLOR_SPACE;
+export const HF_COLOR_GRADING_SOURCE_TAGS = COLOR_GRADING_SOURCE_TAGS;
 
 export type HfColorGradingPresetId =
   | "neutral"

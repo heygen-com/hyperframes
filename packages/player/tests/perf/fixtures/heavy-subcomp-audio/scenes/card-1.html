@@ -1,0 +1,53 @@
+<template id="card-1-template">
+  <div data-composition-id="card-1" data-width="960" data-height="540" data-duration="10">
+    <video
+      src="../../_media/h264-1080.mp4"
+      data-start="0"
+      data-duration="10"
+      data-track-index="0"
+      muted
+      playsinline
+    ></video>
+    <div class="title">scene 1</div>
+    <style>
+      [data-composition-id="card-1"] {
+        position: relative;
+        width: 960px;
+        height: 540px;
+        overflow: hidden;
+      }
+      [data-composition-id="card-1"] video {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      [data-composition-id="card-1"] .title {
+        position: absolute;
+        left: 40px;
+        bottom: 40px;
+        color: #fff;
+        font: 700 56px system-ui;
+      }
+    </style>
+    <script>
+      (function () {
+        var tl = gsap.timeline({ paused: true });
+        tl.fromTo(
+          '[data-composition-id="card-1"] .title',
+          { x: -200, opacity: 0 },
+          { x: 0, opacity: 1, duration: 2, ease: "power3.out" },
+          1 * 0.5,
+        );
+        tl.to(
+          '[data-composition-id="card-1"] video',
+          { scale: 1.2, duration: 10, ease: "none" },
+          0,
+        );
+        window.__timelines = window.__timelines || {};
+        window.__timelines["card-1"] = tl;
+      })();
+    </script>
+  </div>
+</template>

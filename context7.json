@@ -1,0 +1,13 @@
+{
+  "$schema": "https://context7.com/schema/context7.json",
+  "folders": ["docs", "skills", "registry", "examples"],
+  "excludeFolders": ["docs/public", "**/tests", "**/test", "**/fixtures", "**/node_modules"],
+  "excludeFiles": ["weekly-updates.mdx"],
+  "rules": [
+    "Install the HyperFrames agent skills before writing a composition: `npx skills add heygen-com/hyperframes`, or in Claude Code `claude plugin marketplace add heygen-com/hyperframes` then `claude plugin install hyperframes@hyperframes`.",
+    "A composition is an HTML file whose root element has data-composition-id, data-width, data-height and data-duration. Timed elements use class=\"clip\" with data-start and data-duration.",
+    "Register one paused GSAP root timeline per composition on window.__timelines[\"<composition-id>\"]. The runtime seeks it frame by frame, so never play it yourself.",
+    "Rendering is deterministic: no Date.now(), no unseeded Math.random(), no network fetches at render time.",
+    "Check before rendering: `npx hyperframes lint`, `npx hyperframes check`, and `npx hyperframes snapshot --at 1,3,5` for frames. Make the MP4 with `npx hyperframes render --output video.mp4`."
+  ]
+}

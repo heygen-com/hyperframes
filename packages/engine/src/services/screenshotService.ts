@@ -662,6 +662,7 @@ async function injectResolvedVideoFramesBatch(
     ) => {
       const injectedIds: string[] = [];
       const pendingDecodes: Array<Promise<void>> = [];
+      const imagesToPublish: HTMLImageElement[] = [];
       const replacementLayoutProperties = new Set([
         "width",
         "height",
@@ -803,6 +804,8 @@ async function injectResolvedVideoFramesBatch(
         img.style.objectPosition = computedStyle.objectPosition;
         img.style.zIndex = computedStyle.zIndex;
 
+        // Publish after full decode so raster cannot race it with a reduced JPEG decode.
+        img.style.setProperty("visibility", "hidden", "important");
         img.decoding = "sync";
         if (img.getAttribute("src") !== item.dataUri) {
           if (item.crossOrigin) img.crossOrigin = item.crossOrigin;
@@ -821,7 +824,7 @@ async function injectResolvedVideoFramesBatch(
           );
         }
         img.style.opacity = String(computedOpacity);
-        img.style.visibility = "visible";
+        imagesToPublish.push(img);
         // Hide the native <video> with visibility only — never clobber inline
         // opacity, so subsequent reads (and queryElementStacking) see the real
         // GSAP-controlled value.
@@ -832,6 +835,7 @@ async function injectResolvedVideoFramesBatch(
       if (pendingDecodes.length > 0) {
         await Promise.all(pendingDecodes);
       }
+      for (const img of imagesToPublish) img.style.visibility = "visible";
       if (injectedIds.length > 0) {
         const redraw = (window as Window & { __hf?: { colorGrading?: { redraw?: () => void } } })
           .__hf?.colorGrading?.redraw;
@@ -889,7 +893,7 @@ export async function syncVideoFrameVisibility(
         const img = video.nextElementSibling as HTMLElement | null;
         const hasImg = img && img.classList.contains("__render_frame__");
         const ancestorHidden = isVisualAncestorHidden(video);
-        const visible = active.has(video.id) && !ancestorHidden;
+        const visible = active.has(window.__hfMediaId?.(video) || video.id) && !ancestorHidden;
         if (visible) {
           // Active video: show injected <img>, hide native <video>.
           // Do NOT clobber inline opacity here — GSAP-controlled opacity must

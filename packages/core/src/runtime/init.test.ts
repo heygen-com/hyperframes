@@ -494,6 +494,37 @@ describe("initSandboxRuntimeModular", () => {
       expect([at(1), at(6), at(9)]).toEqual(["hidden", "visible", "hidden"]);
     });
 
+    it.each([
+      ["no mark", undefined, ["auto", "auto", "auto"]],
+      ["a preview mark", "", ["auto", "none", "none"]],
+      ["a capture-mode mark", "capture", ["auto", "none", "none"]],
+    ])("loads media near the playhead under %s", (_label, mode, expected) => {
+      if (mode !== undefined) {
+        const mark = document.createElement("meta");
+        mark.name = STUDIO_PREVIEW_MARK_META;
+        if (mode) mark.content = mode;
+        document.head.append(mark);
+      }
+      try {
+        document.body.innerHTML =
+          `<div data-composition-id="main" data-root="true" data-start="0" data-duration="60" data-width="1920" data-height="1080">` +
+          [0, 20, 40]
+            .map(
+              (start, i) =>
+                `<video id="v${i}" src="a.mp4" data-start="${start}" data-duration="2" data-track-index="0"></video>`,
+            )
+            .join("") +
+          `</div>`;
+        window.__timelines = { main: createMockTimeline(60) };
+        for (const video of document.querySelectorAll("video")) video.load = vi.fn();
+        initSandboxRuntimeModular();
+        window.__player?.seek(0.5);
+        expect([...document.querySelectorAll("video")].map((v) => v.preload)).toEqual(expected);
+      } finally {
+        document.head.querySelector(`meta[name="${STUDIO_PREVIEW_MARK_META}"]`)?.remove();
+      }
+    });
+
     it("does not hold a paused seek on images in a stamped container its script hides", () => {
       const mark = Object.assign(document.createElement("meta"), {
         name: STUDIO_PREVIEW_MARK_META,
@@ -5913,6 +5944,61 @@ describe("initSandboxRuntimeModular", () => {
 
         expect(audio.muted).toBe(false);
       });
+    });
+  });
+
+  describe("decoded audio across edits", () => {
+    useMockAudioContext();
+    afterEach(() => vi.unstubAllGlobals());
+
+    it("releases buffers for sources the film no longer uses and keeps the rest without re-decoding", async () => {
+      const first = mountAudio("https://cdn.example.com/clip-0.mp3");
+      const audios = [first];
+      for (let i = 1; i < 8; i++) {
+        const audio = document.createElement("audio");
+        audio.setAttribute("data-start", String(i));
+        audio.setAttribute("data-duration", "1");
+        audio.setAttribute("src", `https://cdn.example.com/clip-${i}.mp3`);
+        audio.load = () => {};
+        audio.play = vi.fn(() => Promise.resolve());
+        first.parentElement!.appendChild(audio);
+        audios.push(audio);
+      }
+      (AudioContext.prototype as unknown as { decodeAudioData: unknown }).decodeAudioData =
+        async () => ({}) as AudioBuffer;
+      const fetchMock = vi.fn(async () => ({
+        ok: true,
+        arrayBuffer: async () => new ArrayBuffer(8),
+      }));
+      vi.stubGlobal("fetch", fetchMock);
+      vi.spyOn(console, "info").mockImplementation(() => {});
+      vi.spyOn(WebAudioTransport.prototype, "schedulePlayback").mockResolvedValue(null);
+      const decode = vi.spyOn(WebAudioTransport.prototype, "decodeAudioElement");
+      const settled = async (calls: number) => {
+        await vi.waitFor(() => expect(decode).toHaveBeenCalledTimes(calls));
+        await Promise.all(decode.mock.results.map((r) => r.value));
+      };
+      const cached = () =>
+        [
+          ...(
+            decode.mock.contexts[0] as unknown as { _bufferCache: Map<string, unknown> }
+          )._bufferCache.keys(),
+        ].sort();
+
+      await startPlayback();
+      await settled(8);
+      expect(cached()).toHaveLength(8);
+
+      // An edit swaps the second half of the clips to new sources.
+      window.__player?.pause();
+      audios
+        .slice(4)
+        .forEach((a, i) => a.setAttribute("src", `https://cdn.example.com/edit-${i}.mp3`));
+      window.__player?.play();
+      await settled(16);
+
+      expect(cached()).toEqual(audios.map((a) => a.getAttribute("src")).sort());
+      expect(fetchMock).toHaveBeenCalledTimes(12);
     });
   });
 

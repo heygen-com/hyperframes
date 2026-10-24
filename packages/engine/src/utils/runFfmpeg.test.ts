@@ -245,6 +245,39 @@ describe("ffmpegStatsReader", () => {
   });
 });
 
+describe("a run with a stall timeout", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.doUnmock("child_process");
+    vi.resetModules();
+  });
+
+  it("outlives the timeout while frames advance, and stops once they do not", async () => {
+    vi.useFakeTimers();
+    const proc = Object.assign(new EventEmitter(), {
+      stderr: new EventEmitter(),
+      kill: vi.fn(() => queueMicrotask(() => proc.emit("close", null, "SIGTERM"))),
+    });
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn: () => proc }));
+    const { runFfmpeg } = await import("./runFfmpeg.js");
+
+    const run = runFfmpeg(["-i", "in.mp4", "out-%05d.png"], { stallTimeout: 2_000 });
+    for (let frame = 1; frame <= 4; frame += 1) {
+      await vi.advanceTimersByTimeAsync(1_500);
+      proc.stderr.emit("data", Buffer.from(`frame=${frame} fps=1 time=00:00:0${frame}.00\r`));
+    }
+    // Six seconds in: three stall timeouts, never one without a new frame.
+    expect(proc.kill).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1_000);
+    proc.stderr.emit("data", Buffer.from("frame=4 fps=1 time=00:00:04.00\r"));
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(proc.kill).toHaveBeenCalledWith("SIGTERM");
+    await expect(run).resolves.toMatchObject({ terminationReason: "inactivity" });
+  });
+});
+
 describe("a run whose signal already aborted", () => {
   afterEach(() => {
     vi.doUnmock("child_process");

@@ -16,7 +16,7 @@ ffmpeg -i in.mp4 -ss 00:00:12 -to 00:00:20 -c copy out.mp4   # 0:12–0:20, no r
 ```
 
 In-composition trimming usually needs **no new file**: a clip plays a sub-window
-via `data-media-start` + `data-duration` (see hyperframes-core). Only cut a
+via `data-media-start` + `data-duration` (see `/hyperframes` → `references/format.md`). Only cut a
 physical file when exporting/assembling outside the composition.
 
 ## Reframe / crop: change aspect ratio
@@ -121,7 +121,9 @@ VERIFIED on 24GB: accurate, ~3s (cached) for 8s audio. Parakeet covers 25
 European languages, English included. For other languages, or when parakeet-mlx is not
 installed, transcribe.mjs falls back to `hyperframes transcribe`, which uses the
 CLI's Parakeet when `models install parakeet` has run and whisper.cpp (99
-languages) otherwise. `--engine parakeet|whisper` forces one. (Cohere
+languages) otherwise. `--engine parakeet|whisper` forces one, except that a
+`--language` other than English runs whisper whenever it is installed, since
+Parakeet detects the language itself. (Cohere
 Transcribe tops the leaderboard on paper but its mlx-audio quants produced
 garbage and ran 40-70x slower on a Mac in testing, so it is not wired in.)
 

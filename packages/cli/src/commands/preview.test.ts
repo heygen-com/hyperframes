@@ -36,6 +36,12 @@ vi.mock("../utils/cancellableProcess.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../utils/cancellableProcess.js")>()),
   runRenderSetupWorker: lint.worker,
 }));
+// The real cleanup kills every orphaned Chrome the user owns, so no test may reach it.
+const killOrphanedProcesses = vi.hoisted(() => vi.fn(() => 0));
+vi.mock("../utils/orphanCleanup.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../utils/orphanCleanup.js")>()),
+  killOrphanedProcesses,
+}));
 
 const tempDirs: string[] = [];
 
@@ -633,5 +639,6 @@ describe("preview inside a host app's agent run", () => {
     }
     const payload = JSON.parse(printed);
     expect(payload).toMatchObject({ ok: false, error: { code: "host-app-owns-preview" } });
+    expect(killOrphanedProcesses).not.toHaveBeenCalled();
   });
 });

@@ -60,7 +60,7 @@ export interface ProjectConfig {
   /** Media handling options (e.g. auto-proxying of browser-hostile codecs). */
   media?: ProjectConfigMedia;
   /**
-   * Owning authoring-workflow skill slug (e.g. "product-launch-video"). Stamped
+   * Owning authoring skill slug (e.g. "hyperframes"). Stamped
    * by `hyperframes init --skill` or seeded from the first `hyperframes render
    * --skill`, then read back so every later render of this project — re-render,
    * `npm run render`, `--batch`, preview — is attributed to it on anonymous
@@ -119,7 +119,10 @@ export function readProjectConfigWithStatus(projectDir: string): {
     return { status: isFileNotFound(error) ? "missing" : "unreadable" };
   }
   try {
-    return { status: "ok", config: normalizeConfig(JSON.parse(text) as Partial<ProjectConfig>) };
+    return {
+      status: "ok",
+      config: normalizeConfig(JSON.parse(text.replace(/^\uFEFF/, "")) as Partial<ProjectConfig>),
+    };
   } catch {
     return { status: "unreadable" };
   }
@@ -277,7 +280,7 @@ export function seedProjectAuthoringSkill(projectDir: string, rawSkill: unknown)
   }
 
   try {
-    const parsed: unknown = JSON.parse(text);
+    const parsed: unknown = JSON.parse(text.replace(/^\uFEFF/, ""));
     // A malformed config is left untouched rather than clobbered by a render.
     if (!isJsonObject(parsed)) return;
     // Seed-once. Normalized so a hand-edited garbage slug neither reaches
@@ -285,7 +288,11 @@ export function seedProjectAuthoringSkill(projectDir: string, rawSkill: unknown)
     if (normalizeSkillSlug(parsed.authoringSkill)) return;
     parsed.authoringSkill = skill;
     const indent = /\n([ \t]+)"/.exec(text)?.[1] ?? "  ";
-    writeFileSync(path, JSON.stringify(parsed, null, indent) + "\n", "utf-8");
+    writeFileSync(
+      path,
+      (text.startsWith("\uFEFF") ? "\uFEFF" : "") + JSON.stringify(parsed, null, indent) + "\n",
+      "utf-8",
+    );
   } catch {
     // Corrupt JSON, or a read-only file: attribution is best-effort telemetry,
     // never a render blocker.
@@ -323,7 +330,7 @@ export function recordProjectRegistryItems(
   }
 
   try {
-    const parsed: unknown = JSON.parse(text);
+    const parsed: unknown = JSON.parse(text.replace(/^\uFEFF/, ""));
     if (!isJsonObject(parsed)) return;
     const existing = normalizeRegistryItems(parsed.registryItems) ?? [];
     const byName = new Map(existing.map((item) => [item.name, item]));
@@ -346,7 +353,11 @@ export function recordProjectRegistryItems(
     if (unchanged) return;
     parsed.registryItems = merged;
     const indent = /\n([ \t]+)"/.exec(text)?.[1] ?? "  ";
-    writeFileSync(path, JSON.stringify(parsed, null, indent) + "\n", "utf-8");
+    writeFileSync(
+      path,
+      (text.startsWith("\uFEFF") ? "\uFEFF" : "") + JSON.stringify(parsed, null, indent) + "\n",
+      "utf-8",
+    );
   } catch {
     // Corrupt JSON or a read-only file: the manifest is telemetry provenance,
     // never an install blocker.

@@ -25,7 +25,7 @@ vi.mock("../history/blobStore", async (importOriginal) => {
       return {
         ...store,
         put: async (path: string) => {
-          if (path.endsWith(".mp4")) await mediaCopy.held;
+          if (path.endsWith(".bin")) await mediaCopy.held;
           return store.put(path);
         },
       };
@@ -410,7 +410,7 @@ describe("history routes", () => {
     let finishCopy = () => {};
     mediaCopy.held = new Promise<void>((resolve) => (finishCopy = resolve));
     const { projectDir, file, put, post, histories } = lazyHistoryProject();
-    writeFileSync(join(projectDir, "clip.mp4"), Buffer.alloc(4 * 1024 ** 2, 7));
+    writeFileSync(join(projectDir, "clip.bin"), Buffer.alloc(4 * 1024 ** 2, 7));
 
     // The copy stays held until finishCopy, so a save or claim that waited on it never returns.
     expect((await put("B")).status).toBe(200);
@@ -420,7 +420,7 @@ describe("history routes", () => {
 
     finishCopy();
     const history = (await histories.get(projectDir))!;
-    await vi.waitFor(() => expect(history.peek(START)).toHaveProperty(["clip.mp4"]), {
+    await vi.waitFor(() => expect(history.peek(START)).toHaveProperty(["clip.bin"]), {
       timeout: 10_000,
     });
     await history.flush();
@@ -431,12 +431,12 @@ describe("history routes", () => {
     let finishCopy = () => {};
     mediaCopy.held = new Promise<void>((resolve) => (finishCopy = resolve));
     const { projectDir, api, post } = lazyHistoryProject();
-    const clip = join(projectDir, "clip.mp4");
+    const clip = join(projectDir, "clip.bin");
     const original = Buffer.alloc(4 * 1024 ** 2, 7);
     writeFileSync(clip, original);
     await post("/claim", { label: "Nothing", paths: [] });
 
-    const written = await api.request("/projects/demo/files/clip.mp4", {
+    const written = await api.request("/projects/demo/files/clip.bin", {
       method: "PUT",
       body: Buffer.alloc(4 * 1024 ** 2, 9),
       headers: { "If-Match": fileContentVersion(original) },
@@ -445,8 +445,8 @@ describe("history routes", () => {
     finishCopy();
     const claimed = await post("/claim", {
       label: "Replace clip",
-      paths: ["clip.mp4"],
-      overwrote: { "clip.mp4": fileContentVersion(original) },
+      paths: ["clip.bin"],
+      overwrote: { "clip.bin": fileContentVersion(original) },
     });
     expect(((await claimed.json()) as { claimed: unknown }).claimed).not.toBeNull();
 
@@ -644,4 +644,24 @@ it("checkpoints pending writes without closing an agent window", async () => {
   await window.close();
   expect(history.list()).toHaveLength(2);
   expect(history.list().at(-1)?.who).toEqual(who);
+});
+
+it("refuses an empty start restore with 409 and leaves files intact", async () => {
+  const projectDir = tempDir("hf-history-empty-start-");
+  const history = await openProjectHistory({
+    projectDir,
+    historyRoot: tempDir("hf-history-root-"),
+  });
+  cleanup.push(() => history.close());
+  const call = apiFor(projectDir, history);
+  writeFileSync(join(projectDir, "index.html"), "A");
+  writeFileSync(join(projectDir, "notes.html"), "N");
+  await history.checkpoint();
+  const response = await call("/restore", { point: "start" });
+  expect(response.status).toBe(409);
+  expect(await response.json()).toEqual({
+    error: "Restoring this point would remove every file in this project, so nothing was changed.",
+  });
+  expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toBe("A");
+  expect(readFileSync(join(projectDir, "notes.html"), "utf-8")).toBe("N");
 });

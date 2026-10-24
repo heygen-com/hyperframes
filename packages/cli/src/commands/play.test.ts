@@ -216,6 +216,26 @@ describe("registerCompositionRoute", () => {
     expect(await ranged.text()).toBe("<svg");
   });
 
+  it("serves a same-size, same-mtime JSON edit fresh, labelled UTF-8", async () => {
+    const project = tmpProject();
+    const data = join(project.dir, "data.json");
+    const pinned = new Date("2026-01-01T00:00:00Z");
+    writeFileSync(data, '{"value":1}');
+    utimesSync(data, pinned, pinned);
+    const app = await buildApp(project, false);
+    const first = await app.request("/composition/data.json");
+    expect(first.headers.get("Content-Type")).toBe("application/json; charset=utf-8");
+    const etag = first.headers.get("ETag") ?? "";
+
+    writeFileSync(data, '{"value":2}');
+    utimesSync(data, pinned, pinned);
+    const edited = await app.request("/composition/data.json", {
+      headers: { "If-None-Match": etag },
+    });
+    expect(edited.status).toBe(200);
+    expect(await edited.text()).toBe('{"value":2}');
+  });
+
   it("answers a Range request on a plain asset with 206 + the requested byte slice", async () => {
     const project = tmpProject();
     writeFileSync(join(project.dir, "clip.mp4"), Buffer.from("0123456789", "utf-8"));

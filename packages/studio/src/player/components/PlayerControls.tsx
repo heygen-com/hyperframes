@@ -10,6 +10,7 @@ import { ShortcutsButton } from "./ShortcutsPanel";
 import type { ShortcutSection } from "./studioShortcuts";
 import { SpeedMenu } from "./SpeedMenu";
 import { VolumeControl } from "./VolumeControl";
+import { PreviewSeekBar } from "./PreviewSeekBar";
 
 /* ── Icon sub-components ─────────────────────────────────────────── */
 
@@ -221,9 +222,10 @@ export const PlayerControls = memo(function PlayerControls({
   });
 
   return (
-    <div>
+    <div className="relative z-20">
+      <PreviewSeekBar duration={duration} disabled={controlsDisabled} onSeek={onSeek} />
       <div
-        className="grid h-10 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center px-3"
+        className="grid h-7 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center px-3"
         aria-disabled={disabled || undefined}
         style={{
           paddingBottom: "env(safe-area-inset-bottom)",
@@ -257,7 +259,7 @@ export const PlayerControls = memo(function PlayerControls({
               onTogglePlay();
             }}
             disabled={controlsDisabled}
-            className="flex h-8 w-8 items-center justify-center justify-self-center rounded-md text-neutral-100 transition-colors hover:text-white disabled:pointer-events-none disabled:opacity-30"
+            className="flex h-7 w-8 items-center justify-center justify-self-center rounded-md text-neutral-100 transition-colors hover:text-white disabled:pointer-events-none disabled:opacity-30"
           >
             <PlayPauseMorphIcon playing={isPlaying} />
           </button>

@@ -38,18 +38,28 @@ green guide, points you to the next step along the way.
   <Tab title="Linux">
     <Steps>
       <Step title="Download">
-        Go to [hyperframes.dev/studio](https://hyperframes.dev/studio) and choose **Download** next to Linux. You get
-        one file, `HyperFrames-x86_64.AppImage`, for 64-bit Intel and AMD computers.
+        Go to [hyperframes.dev/studio](https://hyperframes.dev/studio) and choose **Download** next to Linux (.deb).
+        You get `HyperFrames-amd64.deb` for 64-bit Intel and AMD computers on Debian, Ubuntu and their
+        relatives.
       </Step>
-      <Step title="Make it runnable and open it">
+      <Step title="Install it and open it">
         In a terminal, in the folder you downloaded it to:
 
         ```bash
-        chmod +x HyperFrames-x86_64.AppImage
-        ./HyperFrames-x86_64.AppImage
+        sudo apt install ./HyperFrames-amd64*.deb
         ```
+
+        Then open **HyperFrames** from your app menu.
       </Step>
     </Steps>
+
+    Prefer one portable file, or not on a Debian-based system? Choose **Linux (AppImage)** instead, then in the
+    folder you downloaded it to:
+
+    ```bash
+    chmod +x HyperFrames-x86_64*.AppImage
+    ./HyperFrames-x86_64*.AppImage
+    ```
 
     The AppImage is the whole app. Keep it anywhere you like and open it the same way next time.
   </Tab>

@@ -1,0 +1,607 @@
+<!--
+  Echo Smear — a distance-adaptive streak. The faster an element moves, the more time-offset copies trail
+  behind it; below a speed threshold there are none. It is After Effects' Echo effect (Maximum operator)
+  with its copy count and spacing driven by the layer's own speed.
+
+  Usage: paste this snippet into your composition, then call attachEchoSmear() once, after every tween on
+  the timeline is defined and before window.__timelines is registered.
+
+    attachEchoSmear(targets, timeline, options?)
+
+  targets   a selector, an Element, or an array of either; anything GSAP (or CSS) moves with a transform. Each is
+            attached once: a later call that names it, or one of its copies, adds nothing. An element inside an
+            <svg> is skipped with a console warning: attach to the <svg> itself.
+            Copies carry the element's resolved style (one shared class rule per element), so id-based CSS
+            reaches them, but they drop the original's classes and its pseudo-elements. A copy shows the
+            target's transform (with the individual translate, rotate and scale properties folded in),
+            opacity, filter, clip-path and transform-origin as they were at its time; every other style, and
+            anything on a child, is frozen at attach. The group's visibility and the box the copies sit on are
+            also recorded from the timeline, not read live, so a frame never depends on the path taken to it.
+            Media inside (video, audio, iframe) is replaced by an empty box of the same size.
+  options   length        % of the last frame's travel the streak spans (default 100)
+            threshold     px of travel per frame before any smear shows (default 40)
+            countMult     multiplies the number of copies (default 1); raise it if you see stepping
+            maxEchoes     most copies per element per frame (default 60). Copies are built once, up to the most
+                          the element ever shows (known from the recording), and an element that never
+                          smears gets none; this is also the DOM cost
+            measurePoint  [x, y] as fractions of the element's box, the point whose travel is measured
+                          (default null = the box centre). Text uses [0, 0.85], near its baseline origin,
+                          so a spinning or squashing letter counts as moving
+            edgeSpacing   px (default 1.5). The count is raised until the element's farthest point moves at
+                          most this far between copies, so a spinning element's outer edge stays smooth.
+                          0 gives After Effects' exact count, with visible steps on a spin
+            subframes     samples per frame when the motion is recorded (default 8)
+            operator      "maximum" (default): copies combine by per-pixel brightest value inside an
+                          isolated group, never with the background. "normal" stacks them
+            fps           frame rate (default: the render's, then the root's data-fps, then 30)
+            callbacks     false (default): the recording sweep seeks without events, so none of the timeline's
+                          callbacks (tl.call, onStart, onUpdate, other effects) fire during it. Set true only
+                          when an element's motion is WRITTEN by a callback (an onUpdate that sets a
+                          transform), which is otherwise not recorded
+
+  Poses are read from the browser, not from GSAP: the element's resolved transform and opacity at every
+  sample (8 per frame), so a percent shift (xPercent), a skew or a transform written any other way survives
+  in the copies. Travel is measured on the element's own box: motion that comes only from an ancestor is not
+  its own, so attach to the ancestor that moves. A 3D transform (matrix3d) is carried by the nearest sample
+  instead of being interpolated.
+
+  How the count works, per frame:
+    travel = how far the measured point moved over the last half frame
+    n      = travel > threshold / 2 ? round(travel * length / 100 * countMult) : 0
+    then, if edgeSpacing > 0, n is raised to cover the element's edge travel, and capped at maxEchoes.
+    Copy i (1..n) shows the element as it was i * (frame * length / 100) / n seconds earlier.
+
+  The output depends only on the timeline's time, never on how you got there: the motion is recorded once in
+  attachEchoSmear (one forward sweep, then the timeline returns to where it was), so seeking, scrubbing and
+  parallel render workers all give the same frame.
+
+  Limits
+    - Copies are the element's past pose, not a re-render: rotation, scale and opacity smear, but a change in
+      the element's contents (a counter, a morph) does not.
+    - The copies live in a zero-size group inserted just before the element; the element itself is not moved or
+      restyled. The group is a new previous sibling, so sibling selectors (:first-child, +, ~) see it. It takes the
+      target's z-index and its visibility, so it keeps its place in the stack.
+    - Copies use mix-blend-mode, so a composition using this takes the screenshot capture path (not the
+      drawElement fast path).
+    - Cost grows with maxEchoes times the number of targets; keep both modest on long films.
+-->
+
+<script>
+  (function () {
+    function resolveFps(root, opts) {
+      var cfg = window.__HF_EXPORT_RENDER_SEEK_CONFIG;
+      var fps =
+        Number(opts.fps) ||
+        (cfg && Number(cfg.fps)) ||
+        Number(root && root.getAttribute("data-fps")) ||
+        30;
+      return fps > 0 ? fps : 30;
+    }
+
+    function lerpTrack(track, step, t, out) {
+      var f = Math.max(0, Math.min(track.length - 1, t / step));
+      var i = Math.floor(f),
+        j = Math.min(track.length - 1, i + 1),
+        u = f - i;
+      var a = track[i],
+        b = track[j];
+      for (var k = 0; k < a.length; k++) out[k] = a[k] + (b[k] - a[k]) * u;
+      return out;
+    }
+
+    // Echo count for one frame: AE's formula (the half-frame travel of the measured point, gated by
+    // threshold/2), then raised so the element's farthest point moves at most edgeSpacing px between
+    // copies, then capped. The raise never turns a smear on; edgeSpacing 0 gives AE's exact count.
+    function count(move, extent, o) {
+      var n = move > o.threshold / 2 ? Math.round(move * (o.length / 100) * o.countMult) : 0;
+      if (n > 0 && o.edgeSpacing > 0) n = Math.max(n, Math.ceil(extent / o.edgeSpacing));
+      return Math.min(n, o.maxEchoes);
+    }
+
+    var IDENTITY = [1, 0, 0, 1, 0, 0];
+
+    // A computed `transform` as [a, b, c, d, e, f]: "none" is the identity; a matrix3d (or anything
+    // else) is null, because it has no 2D matrix.
+    function parseMatrix(css) {
+      if (!css || css === "none") return IDENTITY.slice();
+      var m = /^matrix\(([^)]+)\)$/.exec(css);
+      if (!m) return null;
+      var v = m[1].split(",").map(parseFloat);
+      return v.length === 6 && v.every(isFinite) ? v : null;
+    }
+
+    // The 2D part of any computed transform, and whether it is exactly 2D. A matrix3d keeps its own string
+    // for the copies; its x/y/scale/turn part (m11 m12 m21 m22 m41 m42) is what travel and extent read.
+    function matrixOf(css) {
+      var flat = parseMatrix(css);
+      if (flat) return { m: flat, flat: true };
+      var d = /^matrix3d\(([^)]+)\)$/.exec(css || "");
+      if (!d) return { m: IDENTITY.slice(), flat: true };
+      var v = d[1].split(",").map(parseFloat);
+      return { m: [v[0], v[1], v[4], v[5], v[12], v[13]], flat: false };
+    }
+
+    function multiply(a, b) {
+      return [
+        a[0] * b[0] + a[2] * b[1],
+        a[1] * b[0] + a[3] * b[1],
+        a[0] * b[2] + a[2] * b[3],
+        a[1] * b[2] + a[3] * b[3],
+        a[0] * b[4] + a[2] * b[5] + a[4],
+        a[1] * b[4] + a[3] * b[5] + a[5],
+      ];
+    }
+
+    // A computed length or percentage as CSS px: a percentage is a share of `reference` (the element's own
+    // box: its width for x, its height for y), a bare number or px is itself, anything else is 0.
+    function lengthPx(value, reference) {
+      var n = parseFloat(value);
+      if (!isFinite(n)) return 0;
+      return /%$/.test(value) ? (n * reference) / 100 : n;
+    }
+
+    // The individual CSS properties `translate`, `rotate` and `scale` apply before `transform`, about the same
+    // origin, as translate · rotate · scale. GSAP can drive them, and the browser leaves `transform` as
+    // `none` when it does. 2D only: a rotation about an axis, or a third component, is left out. `box` is
+    // [width, height] in CSS px, which a percentage translate is a share of.
+    function individualMatrix(translate, rotate, scale, box) {
+      box = box || [0, 0];
+      var m = IDENTITY.slice();
+      if (translate && translate !== "none") {
+        var t = translate.split(" ");
+        m = multiply(m, [1, 0, 0, 1, lengthPx(t[0], box[0]), lengthPx(t[1], box[1])]);
+      }
+      var r = rotate && /^(-?[\d.e+-]+)(deg|rad|turn|grad)$/.exec(rotate);
+      if (r) {
+        var unit = { deg: Math.PI / 180, rad: 1, turn: 2 * Math.PI, grad: Math.PI / 200 }[r[2]];
+        var q = parseFloat(r[1]) * unit;
+        m = multiply(m, [Math.cos(q), Math.sin(q), -Math.sin(q), Math.cos(q), 0, 0]);
+      }
+      if (scale && scale !== "none") {
+        var k = scale.split(" ").map(function (part) {
+          var n = parseFloat(part);
+          return /%$/.test(part) ? n / 100 : n;
+        });
+        var kx = isFinite(k[0]) ? k[0] : 1;
+        m = multiply(m, [kx, 0, 0, isFinite(k[1]) ? k[1] : kx, 0, 0]);
+      }
+      return m;
+    }
+
+    // A point of the element's box, given as fractions of it, after its transform: the transform turns and
+    // scales about `origin` (CSS px from the box's top-left), then translates. AE measures a layer's origin,
+    // so a spinning layer registers travel; a box fraction lets a spin or squash count as motion.
+    function boxPoint(m, box, origin, fx, fy) {
+      var dx = fx * box[0] - origin[0],
+        dy = fy * box[1] - origin[1];
+      return [origin[0] + m[0] * dx + m[2] * dy + m[4], origin[1] + m[1] * dx + m[3] * dy + m[5]];
+    }
+
+    // How far the farthest corner of the box moves between two poses: what the copies have to cover.
+    var CORNERS = [
+      [0, 0],
+      [1, 0],
+      [0, 1],
+      [1, 1],
+    ];
+    function cornerShift(ma, mb, box, origin) {
+      var worst = 0;
+      for (var k = 0; k < 4; k++) {
+        var p = boxPoint(ma, box, origin, CORNERS[k][0], CORNERS[k][1]);
+        var q = boxPoint(mb, box, origin, CORNERS[k][0], CORNERS[k][1]);
+        worst = Math.max(worst, Math.hypot(p[0] - q[0], p[1] - q[1]));
+      }
+      return worst;
+    }
+
+    // An element's box in CSS px. SVG elements have no offsetWidth: fall back to the width/height
+    // attributes, then the computed size.
+    function boxOf(el) {
+      var cs = getComputedStyle(el);
+      return [
+        el.offsetWidth || parseFloat(el.getAttribute("width")) || parseFloat(cs.width) || 0,
+        el.offsetHeight || parseFloat(el.getAttribute("height")) || parseFloat(cs.height) || 0,
+      ];
+    }
+
+    function originOf(el, box) {
+      var o = getComputedStyle(el).transformOrigin.split(" ").map(parseFloat);
+      return o.length >= 2 && isFinite(o[0]) && isFinite(o[1])
+        ? [o[0], o[1]]
+        : [box[0] / 2, box[1] / 2];
+    }
+
+    window.__echoSmear = {
+      count: count,
+      lerpTrack: lerpTrack,
+      parseMatrix: parseMatrix,
+      individualMatrix: individualMatrix,
+      boxPoint: boxPoint,
+    };
+
+    window.attachEchoSmear = function (selector, tl, opts) {
+      opts = opts || {};
+      var length = opts.length != null ? opts.length : 100;
+      var threshold = opts.threshold != null ? opts.threshold : 40;
+      var countMult = opts.countMult != null ? opts.countMult : 1;
+      var maxEchoes = opts.maxEchoes != null ? opts.maxEchoes : 60;
+
+      var targets = [];
+      (Array.isArray(selector) ? selector : [selector]).forEach(function (s) {
+        if (typeof s === "string") targets.push.apply(targets, document.querySelectorAll(s));
+        else if (s instanceof Element) targets.push(s);
+      });
+      // One group per element, and never one around a copy: a selector that also matches an earlier call's
+      // copies (they keep the target's classes) must not turn them into targets.
+      if (!window._hfEsAttached) window._hfEsAttached = new WeakSet();
+      targets = targets.filter(function (el, i) {
+        return (
+          targets.indexOf(el) === i && // named twice in this call
+          !window._hfEsAttached.has(el) &&
+          !el.closest("[data-hf-echo-group]")
+        );
+      });
+      // The copies' group is an HTML element: inside an <svg> it would render nothing.
+      targets = targets.filter(function (el) {
+        if (!el.ownerSVGElement) return true;
+        console.warn(
+          "echo-smear: " +
+            (el.id || el.tagName) +
+            " is inside an <svg>; attach to the <svg> itself. Skipped.",
+        );
+        return false;
+      });
+      if (!targets.length) return;
+      var fd = 1 / resolveFps(targets[0].closest("[data-composition-id]"), opts);
+      // Sample densely enough that sub-frame curves stay curves (AE evaluates each echo time exactly).
+      var step = fd / (opts.subframes || 8);
+      var mp = opts.measurePoint || [0.5, 0.5];
+      // AE's count only follows the origin's travel, so a spinning or scaling layer's outer edge leaves
+      // visible steps between copies. edgeSpacing (px) raises the count until the farthest point of the
+      // element moves at most that far between copies. Set 0 for AE's exact count.
+      var edgeSpacing = opts.edgeSpacing != null ? opts.edgeSpacing : 1.5;
+      // The sweep seeks without events: a composition's callbacks (audio cues, counters, other effects)
+      // would otherwise fire thousands of times at attach. Motion that is written FROM a callback (an
+      // onUpdate that sets a transform) is only recorded with callbacks: true.
+      var quiet = !opts.callbacks;
+
+      // Bake: one forward sweep, the resolved transform and opacity per target at every sample, plus
+      // the measured point. All of it is local to the element's own box, so motion that comes only from
+      // an ancestor is not this element's (attach to the ancestor).
+      var saved = tl.time();
+      var dur = tl.duration();
+      var samples = Math.ceil(dur / step) + 2;
+      var boxes = targets.map(boxOf);
+      var origins = targets.map(function (el, ti) {
+        return originOf(el, boxes[ti]);
+      });
+      var poses = targets.map(function () {
+        return [];
+      });
+      var centres = targets.map(function () {
+        return [];
+      });
+      var matrix3d = targets.map(function () {
+        return [];
+      });
+      // What else the timeline can write that a copy must show as it was: not interpolated, so each copy
+      // takes the nearest sample.
+      var LOOKS = ["filter", "clipPath", "transformOrigin"];
+      var looks = targets.map(function () {
+        return [];
+      });
+      // Everything a copy needs besides its pose is recorded in the sweep too, so a frame never depends
+      // on reading the target while it may not have rendered that time yet (a backward seek renders the
+      // snippet's own update tween before the target's): the group's visibility and the target's box.
+      var showing = targets.map(function () {
+        return [];
+      });
+      var boxAt = targets.map(function () {
+        return [];
+      });
+      var hosts = targets.map(function (el) {
+        return el.parentElement || (el.getRootNode && el.getRootNode().host) || null;
+      });
+      var api = window.__echoSmear;
+      api.baking = (api.baking || 0) + 1; // other attached smears skip their update while this one records
+      try {
+        for (var s = 0; s < samples; s++) {
+          tl.time(Math.min(s * step, dur), quiet);
+          for (var ti = 0; ti < targets.length; ti++) {
+            var cs = getComputedStyle(targets[ti]);
+            var resolved = matrixOf(cs.transform);
+            if (resolved.flat) {
+              resolved.m = multiply(
+                individualMatrix(cs.translate, cs.rotate, cs.scale, boxes[ti]),
+                resolved.m,
+              );
+            }
+            var opacity = parseFloat(cs.opacity);
+            poses[ti].push(resolved.m.concat([isFinite(opacity) ? opacity : 1]));
+            matrix3d[ti].push(resolved.flat ? null : cs.transform);
+            looks[ti].push(
+              LOOKS.map(function (k) {
+                return cs[k] || "";
+              }),
+            );
+            centres[ti].push(boxPoint(resolved.m, boxes[ti], origins[ti], mp[0], mp[1]));
+            // Set only where the target differs from its parent: an explicit value would outlive an
+            // ancestor that hides later, like a clip that has ended.
+            var parentSees = hosts[ti] ? getComputedStyle(hosts[ti]).visibility : "visible";
+            showing[ti].push(cs.visibility === parentSees ? "" : cs.visibility);
+            // An <svg> root has no offset box: its copies keep the left/top/size they were cloned with.
+            var el0 = targets[ti];
+            boxAt[ti].push(
+              el0.offsetLeft === undefined
+                ? null
+                : [
+                    el0.offsetLeft + "px",
+                    el0.offsetTop + "px",
+                    el0.offsetWidth + "px",
+                    el0.offsetHeight + "px",
+                  ],
+            );
+          }
+        }
+      } finally {
+        api.baking--;
+        tl.time(saved, quiet);
+      }
+
+      var MEDIA = "video,audio,iframe";
+
+      // A copy loses the `#id` rules that styled the original, so it carries the target's resolved style.
+      // Every copy of a target shares ONE class per element (a rule written once), instead of an inline
+      // style per copy: hundreds of copies would otherwise each parse a few hundred declarations.
+      // Visibility is not frozen: the group follows the target, so a target hidden at attach still smears.
+      function resolvedStyles(source, out, parentVisibility) {
+        var cs = getComputedStyle(source);
+        var text = "";
+        for (var i = 0; i < cs.length; i++) {
+          var value = cs.getPropertyValue(cs[i]);
+          var inherited = parentVisibility === undefined || value === parentVisibility;
+          if (cs[i] === "visibility" && inherited) continue;
+          text += cs[i] + ":" + value + ";";
+        }
+        // A copy is a still of one instant: a live transition or animation would carry it somewhere
+        // the timeline never sampled.
+        out.push(text + "transition:none;animation:none;");
+        // The copy holds an empty box where media was, so the media's own children have no counterpart.
+        if (source.matches && source.matches(MEDIA)) return out;
+        for (var c = 0; c < source.children.length; c++) {
+          resolvedStyles(source.children[c], out, cs.getPropertyValue("visibility"));
+        }
+        return out;
+      }
+
+      // One rule per element of the target's subtree, kept as text nodes. They go in the target's own
+      // root: a shadow root is its own style scope, and the document's rules do not reach into it.
+      function sheetFor(el) {
+        var root = el.getRootNode ? el.getRootNode() : document;
+        var scope = root.nodeType === 11 ? root : document.head || document.documentElement;
+        var found = scope.querySelector && scope.querySelector("style#hf-es-styles");
+        if (found) return found;
+        var made = document.createElement("style");
+        made.id = "hf-es-styles";
+        scope.appendChild(made);
+        return made;
+      }
+      function writeRules(sheet, rules, texts, tag) {
+        for (var r = 0; r < texts.length; r++) {
+          var css = "." + tag + "-" + r + "{" + texts[r] + "}";
+          if (rules[r]) rules[r].data = css;
+          else sheet.appendChild((rules[r] = document.createTextNode(css)));
+        }
+      }
+      function classCopies(copy, tag, cursor) {
+        copy.setAttribute("class", tag + "-" + cursor.i++);
+        for (var c = 0; c < copy.children.length; c++) classCopies(copy.children[c], tag, cursor);
+      }
+
+      // Copies are stills, and the runtime does not manage media it did not mark: a live copy would show
+      // a frozen frame and fetch its source again. A box of the same size stands in for it.
+      function inertMedia(source, copy) {
+        var from = source.querySelectorAll(MEDIA);
+        var to = copy.querySelectorAll(MEDIA);
+        for (var m = 0; m < to.length; m++) {
+          var stand = document.createElement("div");
+          stand.style.cssText =
+            "display:inline-block;width:" +
+            (from[m].offsetWidth || 0) +
+            "px;height:" +
+            (from[m].offsetHeight || 0) +
+            "px;";
+          to[m].parentNode.replaceChild(stand, to[m]);
+        }
+      }
+
+      var maximum = opts.operator !== "normal";
+      var cfg = {
+        threshold: threshold,
+        length: length,
+        countMult: countMult,
+        maxEchoes: maxEchoes,
+        edgeSpacing: edgeSpacing,
+      };
+      var pa = [0, 0, 0, 0, 0, 0, 1],
+        pb = [0, 0, 0, 0, 0, 0, 1],
+        p0 = [0, 0],
+        p1 = [0, 0];
+      // The copy count for one target at time t.
+      function countAt(st, t) {
+        lerpTrack(st.centres, step, t, p0);
+        lerpTrack(st.centres, step, t - fd / 2, p1);
+        var move = Math.hypot(p0[0] - p1[0], p0[1] - p1[1]);
+        var extent = 0;
+        if (edgeSpacing > 0) {
+          lerpTrack(st.poses, step, t, pa);
+          lerpTrack(st.poses, step, t - fd * (length / 100), pb);
+          extent = cornerShift(pa, pb, st.box, st.origin);
+        }
+        return count(move, extent, cfg);
+      }
+
+      if (!window._hfEsUid) window._hfEsUid = 0;
+      var state = [];
+      targets.forEach(function (el, ti) {
+        window._hfEsAttached.add(el);
+        var st = {
+          el: el,
+          poses: poses[ti],
+          centres: centres[ti],
+          matrix3d: matrix3d[ti],
+          looks: looks[ti],
+          showing: showing[ti],
+          boxAt: boxAt[ti],
+          box: boxes[ti],
+          origin: origins[ti],
+        };
+        // The recording already holds the whole trajectory, so the most copies this target ever shows is
+        // known now: build that many, not maxEchoes. A target that never smears gets nothing.
+        var peak = 0;
+        for (var t = 0; t <= dur; t += step) peak = Math.max(peak, countAt(st, t));
+        if (peak === 0) return;
+
+        // The copies sit in a zero-size group just before the target, so the target itself is untouched:
+        // it keeps its parent, its blend mode and its pointer events. Isolated, so the lighten between
+        // copies never mixes with the background.
+        var group = document.createElement("div");
+        group.setAttribute("data-hf-echo-group", "");
+        group.style.cssText =
+          "position:absolute;left:0;top:0;width:0;height:0;isolation:isolate;pointer-events:none;";
+        // The group is what the siblings stack against, so it takes the target's z-index.
+        var z = getComputedStyle(el).zIndex;
+        if (z && z !== "auto") group.style.zIndex = z;
+
+        var tag = "hf-es" + window._hfEsUid++;
+        var rules = [];
+        var sheet = sheetFor(el);
+        // A copy is a grandchild of its parent, and perspective reaches children only: each copy carries
+        // the parent's perspective in its own transform (the vanishing point is then the copy's own).
+        var host = el.parentElement || (el.getRootNode && el.getRootNode().host) || null;
+        var persp = host ? getComputedStyle(host).perspective : "none";
+        st.perspective = persp && persp !== "none" ? "perspective(" + persp + ") " : "";
+        function snapshot() {
+          // A target hidden right now (an autoAlpha entrance) is read as shown, so the copies' own
+          // resolved style is not a hidden one; the inline value goes back exactly.
+          var hidden = getComputedStyle(el).visibility !== "visible";
+          var inline = el.style.getPropertyValue("visibility");
+          var priority = el.style.getPropertyPriority("visibility");
+          if (hidden) el.style.setProperty("visibility", "visible", "important");
+          try {
+            writeRules(sheet, rules, resolvedStyles(el, []), tag);
+          } finally {
+            if (hidden) el.style.setProperty("visibility", inline, priority);
+          }
+        }
+        snapshot();
+
+        var clones = [];
+        for (var i = 0; i < peak; i++) {
+          var c = el.cloneNode(true);
+          c.removeAttribute("id");
+          [c]
+            .concat(
+              Array.prototype.slice.call(
+                c.querySelectorAll("[data-start],[data-duration],[data-track-index]"),
+              ),
+            )
+            .forEach(function (n) {
+              n.removeAttribute("data-start");
+              n.removeAttribute("data-duration");
+              n.removeAttribute("data-track-index");
+            });
+          c.querySelectorAll("[id]").forEach(function (n) {
+            n.removeAttribute("id");
+          });
+          c.setAttribute("aria-hidden", "true");
+          inertMedia(el, c);
+          classCopies(c, tag, { i: 0 });
+          c.classList.add("es-clone");
+          c.style.position = "absolute";
+          c.style.margin = "0";
+          // The copy is sized to the target's offset box, which includes padding and border.
+          c.style.boxSizing = "border-box";
+          // translate, rotate and scale are folded into the copy's transform: left on, they would apply twice.
+          c.style.translate = "none";
+          c.style.rotate = "none";
+          c.style.scale = "none";
+          c.style.mixBlendMode = maximum ? "lighten" : "normal";
+          c.style.visibility = "hidden";
+          clones.push(c);
+        }
+        // Nearest copy on top: the first copy is the last child.
+        for (var k = clones.length - 1; k >= 0; k--) group.appendChild(clones[k]);
+        el.parentNode.insertBefore(group, el);
+        st.group = group;
+        st.clones = clones;
+        st.host = host;
+        state.push(st);
+      });
+
+      var pose = [0, 0, 0, 0, 0, 0, 1];
+      function render() {
+        if (window.__echoSmear.baking) return;
+        var t = tl.time();
+        state.forEach(function (st) {
+          var n = countAt(st, t);
+          // The target's visibility and box at this time, from the recording.
+          var now = Math.max(0, Math.min(st.poses.length - 1, Math.round(t / step)));
+          var view = { box: st.boxAt[now] };
+          // The group follows the target's own visibility.
+          if (st.group.style.visibility !== st.showing[now])
+            st.group.style.visibility = st.showing[now];
+          var boxKey = view.box ? view.box.join() : "";
+          for (var i = 0; i < st.clones.length; i++) {
+            var c = st.clones[i];
+            if (i >= n) {
+              if (c.style.visibility !== "hidden") c.style.visibility = "hidden";
+              continue;
+            }
+            var back = t - ((i + 1) * fd * (length / 100)) / n;
+            lerpTrack(st.poses, step, back, pose);
+            // The copy sits on the target's own box, so the box follows it: a beat is free to move or
+            // resize it. Written when a copy last saw a different box: a copy hidden while the box
+            // changed must catch up when it is shown, so the key is per copy, not per target.
+            if (view.box && c._esBox !== boxKey) {
+              c._esBox = boxKey;
+              c.style.left = view.box[0];
+              c.style.top = view.box[1];
+              c.style.width = view.box[2];
+              c.style.height = view.box[3];
+            }
+            var near = Math.max(0, Math.min(st.poses.length - 1, Math.round(back / step)));
+            c.style.transform =
+              st.perspective + (st.matrix3d[near] || "matrix(" + pose.slice(0, 6).join(",") + ")");
+            var look = st.looks[near];
+            if (c._esLook !== look) {
+              c._esLook = look;
+              for (var k = 0; k < LOOKS.length; k++) if (look[k]) c.style[LOOKS[k]] = look[k];
+            }
+            c.style.opacity = pose[6];
+            c.style.visibility = "inherit";
+          }
+        });
+      }
+      // Runtime proxies the timeline, so hook updates with a full-length tween (see registry motion-blur).
+      tl.to({ v: 0 }, { v: 1, duration: Math.max(dur, 0.1), ease: "none", onUpdate: render }, 0);
+      render();
+    };
+  })();
+</script>
+
+<!--
+  Timeline integration:
+
+  var tl = gsap.timeline({ paused: true });
+  tl.fromTo(".card", { x: 100 }, { x: 1700, duration: 0.6, ease: "power3.inOut" }, 0.5);
+
+  // Extend to data-duration so seeks past the last tween reach the smear's update.
+  tl.set(document.body, {}, DATA_DURATION);
+
+  // After all tweens, before registration.
+  attachEchoSmear(".card", tl, { length: 100, threshold: 40 });
+
+  window.__timelines = window.__timelines || {};
+  window.__timelines["my-composition"] = tl;
+-->

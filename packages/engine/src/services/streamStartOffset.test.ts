@@ -93,7 +93,7 @@ describe.skipIf(!HAS_FFMPEG)(
       ffmpeg(["-i", join(dir, "video-late.mp4"), "-c", "copy", join(dir, "video-late.ts")]);
     }, 60_000);
 
-    afterAll(() => rmSync(dir, { recursive: true, force: true }));
+    afterAll(() => rmSync(dir, { recursive: true, force: true }), 30_000);
 
     const flatLane = {
       target: "rate",

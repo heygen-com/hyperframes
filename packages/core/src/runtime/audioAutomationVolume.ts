@@ -1,11 +1,9 @@
 /**
  * The volume lane's gain for an element at a moment in its clip.
  *
- * Volume is not scheduled onto the gain AudioParam the way FX parameters are.
- * The runtime rewrites that gain every tick from `data-volume` and the GSAP
- * seeked value, which would erase a scheduled envelope within a frame — so the
- * lane feeds the same per-tick path the probed `volumeKeyframes` already use,
- * and the render still bakes it into the samples.
+ * Read per tick for a clip that sounds through `el.volume`. A clip the Web Audio
+ * transport routes plays its lane scheduled on a gain of its own
+ * (`attachClipStages`), out of reach of the per-tick gain write.
  */
 
 import {

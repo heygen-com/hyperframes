@@ -10,19 +10,26 @@ import { ThumbnailGenerationCoordinator } from "./thumbnailGenerationCoordinator
 const MAX_SOURCE_BYTES = 64 * 1024 * 1024;
 const MAX_CACHE_BYTES = 8 * 1024 * 1024;
 
-let sharpLoad: Promise<typeof import("sharp").default> | undefined;
-function loadSharp() {
-  sharpLoad ??= import("sharp").then(
-    (module) => module.default,
-    (error: unknown) => {
-      console.warn("[Studio] JPEG thumbnails are off: sharp could not load:", error);
+type Sharp = typeof import("sharp").default;
+
+function retryingSharpLoader(adapter: StudioApiAdapter): () => Promise<Sharp> {
+  let loaded: Promise<Sharp> | undefined;
+  let warned = false;
+  const load = () => adapter.loadSharp?.() ?? import("sharp").then((module) => module.default);
+  return () =>
+    (loaded ??= load().catch((error: unknown) => {
+      loaded = undefined;
+      if (!warned) console.warn("[Studio] JPEG thumbnails are off: sharp could not load:", error);
+      warned = true;
       throw error;
-    },
-  );
-  return sharpLoad;
+    }));
 }
 
-async function generateThumbnail(path: string, signal: AbortSignal): Promise<Buffer> {
+async function generateThumbnail(
+  loadSharp: () => Promise<Sharp>,
+  path: string,
+  signal: AbortSignal,
+): Promise<Buffer> {
   const sharp = await loadSharp();
   const file = await open(path, "r");
   try {
@@ -69,6 +76,7 @@ async function resolveSource(adapter: StudioApiAdapter, id: string, url: string)
 
 export function registerImageThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): void {
   const coordinator = new ThumbnailGenerationCoordinator(2);
+  const loadSharp = retryingSharpLoader(adapter);
   const cache = new Map<string, Buffer>();
   let cacheBytes = 0;
   const remember = (key: string, image: Buffer) => {
@@ -100,7 +108,7 @@ export function registerImageThumbnailRoutes(api: Hono, adapter: StudioApiAdapte
         if (coordinator.protectedKeys().size >= 32) return c.text("thumbnail queue full", 429);
         result =
           (await coordinator.acquire(key, c.req.raw.signal, async (signal) => {
-            const image = await generateThumbnail(path, signal);
+            const image = await generateThumbnail(loadSharp, path, signal);
             remember(key, image);
             return image;
           })) ?? undefined;

@@ -117,6 +117,29 @@ describe("collectTweenRecords", () => {
     expect(findTweenTails(records)).toHaveLength(1);
   });
 
+  it("ignores rendering flags when finding shared tween properties", () => {
+    const target = {};
+    const main = fakeTimeline(0);
+    fakeTween(main, target, { x: 200, duration: 1, force3D: false, autoRound: false }, 0);
+    fakeTween(main, target, { opacity: 0.5, duration: 0.4, force3D: false, autoRound: false }, 0.5);
+    (window as unknown as { __timelines: Record<string, unknown> }).__timelines = { main };
+
+    expect(collectTweenRecords().map(({ properties }) => properties)).toEqual([["x"], ["opacity"]]);
+    expect(findTweenTails(collectTweenRecords())).toEqual([]);
+  });
+
+  it("still reports a shared animated property when rendering flags are present", () => {
+    const target = {};
+    const main = fakeTimeline(0);
+    fakeTween(main, target, { opacity: 1, duration: 1, force3D: false, autoRound: false }, 0);
+    fakeTween(main, target, { opacity: 0.5, duration: 0.4, force3D: false, autoRound: false }, 0.5);
+    (window as unknown as { __timelines: Record<string, unknown> }).__timelines = { main };
+
+    expect(findTweenTails(collectTweenRecords())).toEqual([
+      expect.objectContaining({ properties: ["opacity"] }),
+    ]);
+  });
+
   it("returns nothing when no timeline is registered", () => {
     expect(collectTweenRecords()).toEqual([]);
   });

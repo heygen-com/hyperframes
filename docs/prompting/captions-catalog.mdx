@@ -12,7 +12,7 @@ Your faceless explainer from Level 1 already asked for "embedded captions, keywo
 Caption components are drop-in snippets that render animated on-screen text — one visual identity per component, animating per word or per line. Prompts trigger this layer when you ask for captions, subtitles, kinetic text, lyric-style words, or word-by-word titles inside a composition you're building. Describe the *energy* of the captions and the agent picks matching typography, size, and animation; name a component to lock the look.
 
 <Note>
-  These components are for **composed videos** — captions you author into a HyperFrames composition. To add captions to an existing **talking-head MP4**, use the [`/embedded-captions`](/prompting/captions-and-talking-heads) workflow instead: it carries its own catalog of caption identities built around subject matting and occlusion (the caption sits *behind* the speaker), which the composition snippets below don't do.
+  These components are for **composed videos** — captions you author into a HyperFrames composition. To add captions to an existing **talking-head MP4**, see [captions and talking heads](/prompting/captions-and-talking-heads) instead: captions set *behind* the speaker need a cutout of the subject layered over them, which the composition snippets below don't do.
 </Note>
 
 ## Tone → caption component
@@ -40,7 +40,7 @@ Three [Text Effects](/catalog/components/morph-text) components do one focused j
 
 ## Example prompts
 
-> /faceless-explainer 30-second vertical explainer. Add [`caption-highlight`](/catalog/components/caption-highlight) captions, TikTok-style — the visible line stays up, one word highlighted at a time.
+> /hyperframes 30-second vertical explainer. Add [`caption-highlight`](/catalog/components/caption-highlight) captions, TikTok-style — the visible line stays up, one word highlighted at a time.
 
 <DocsVideo
   title="HyperFrames video: Validate Captions Catalog"
@@ -97,7 +97,7 @@ Three [Text Effects](/catalog/components/morph-text) components do one focused j
 
 **Don't reach for these on talking-head footage.** These are composition snippets, not the matting/occlusion pipeline — dropped onto an untouched MP4, a caption sits in front of the speaker, never behind. (The capstone thread below shows `caption-kinetic-slam` reading *behind* a subject, which is not a contradiction: that composition mattes the footage itself first, so the cutout is a separate layer the type can pass under. The limitation is about the snippet alone, not the technique.)
 - ❌ `/hyperframes add caption-highlight to my interview.mp4`
-- ✅ `/embedded-captions` (see [captions and talking heads](/prompting/captions-and-talking-heads))
+- ✅ `/hyperframes caption interview.mp4 with the words set behind the speaker` (see [captions and talking heads](/prompting/captions-and-talking-heads))
 
 **Don't match a hype style to calm content.** A high-energy caption on a corporate explainer fights the tone; let the tone table pick the identity.
 - ❌ `glitchy RGB captions` (on a wellness brand piece)

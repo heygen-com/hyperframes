@@ -103,7 +103,7 @@ npx hyperframes cloud render --quality high --fps 60
 
 ## Templates and variables
 
-Cloud rendering supports [composition variables](../../hyperframes-core/references/variables-and-media.md#variables): declare `data-composition-variables` on the composition, then fill them at render time.
+Cloud rendering supports [composition variables](../../hyperframes/references/format.md#variables): declare `data-composition-variables` on the composition, then fill them at render time.
 
 ```bash
 npx hyperframes cloud render --variables '{"title":"Q4 Recap","theme":"dark"}'
@@ -121,7 +121,7 @@ npx hyperframes cloud render --asset-id asst_abc123 --variables '{"name":"Ada"}'
 npx hyperframes cloud render --asset-id asst_abc123 --variables '{"name":"Linus"}'
 ```
 
-For high-volume personalized batches, both self-managed paths provide JSONL fan-out: AWS Lambda (`lambda.md`) and Google Cloud Run (`cloudrun.md`). The full variables schema (types, declarative bindings, sub-composition overrides, precedence) lives in the `hyperframes-core` skill.
+For high-volume personalized batches, both self-managed paths provide JSONL fan-out: AWS Lambda (`lambda.md`) and Google Cloud Run (`cloudrun.md`). The full variables schema (types, declarative bindings, sub-composition overrides, precedence) lives in [`/hyperframes` format.md](../../hyperframes/references/format.md#variables).
 
 ## Fire-and-forget and webhooks
 
@@ -137,7 +137,7 @@ npx hyperframes cloud render --callback-url https://example.com/hf-hook --no-wai
 | `--no-wait`       | Submit and exit immediately; print the `render_id`. |
 | `--callback-url`  | HTTPS webhook fired when the render terminates.     |
 | `--callback-id`   | Opaque tracking ID echoed in webhook payloads.      |
-| `--poll-interval` | Poll cadence in seconds (default `10`).             |
+| `--poll-interval` | Poll cadence in seconds (default `2`).              |
 | `--max-wait`      | Max poll duration in minutes (default `60`).        |
 
 ## Managing renders

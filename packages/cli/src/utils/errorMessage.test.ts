@@ -28,6 +28,15 @@ describe("normalizeErrorMessage", () => {
     expect(normalizeErrorMessage({ message: 42 })).toBe('{"message":42}');
   });
 
+  it.each([undefined, Symbol("hidden"), () => undefined])(
+    "keeps a string fallback when toJSON returns a non-JSON value (%s)",
+    (value) => {
+      const message = normalizeErrorMessage({ code: "E_RENDER", toJSON: () => value });
+      expect(message).toBe("{code, toJSON}");
+      expect(message.toLowerCase()).toContain("code");
+    },
+  );
+
   it("falls back to a key list when JSON.stringify throws on a cycle", () => {
     const cyclic: Record<string, unknown> = { code: "E_LOOP" };
     cyclic["self"] = cyclic;

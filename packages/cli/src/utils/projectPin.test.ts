@@ -55,4 +55,31 @@ describe("rewriteProjectPinnedScripts", () => {
       }),
     ).toEqual(["0.7.48", "0.7.50"]);
   });
+
+  it.each(["@acme/hyperframes", "custom-hyperframes", "custom.hyperframes"])(
+    "preserves the version of the unrelated package %s",
+    (name) => {
+      const unrelated = `npx --yes ${name}@1.2.3 preview`;
+      const scripts = { unrelated, render: "npx hyperframes@0.7.48 render" };
+      const result = rewriteProjectPinnedScripts(scripts, "0.7.55");
+
+      expect(result.scripts.unrelated).toBe(unrelated);
+      expect(result.scripts.render).toBe("npx hyperframes@0.7.55 render");
+      expect(result.fromVersions).toEqual(["0.7.48"]);
+      expect(readPinnedHyperframesVersions(scripts)).toEqual(["0.7.48"]);
+    },
+  );
+
+  it("recognizes a package option alongside a standalone pin", () => {
+    const scripts = {
+      render: "npx --package=hyperframes@0.7.48 hyperframes render",
+      preview: "bunx hyperframes@0.7.50 preview",
+    };
+
+    expect(readPinnedHyperframesVersions(scripts)).toEqual(["0.7.48", "0.7.50"]);
+    expect(rewriteProjectPinnedScripts(scripts, "0.7.55").scripts).toEqual({
+      render: "npx --package=hyperframes@0.7.55 hyperframes render",
+      preview: "bunx hyperframes@0.7.55 preview",
+    });
+  });
 });

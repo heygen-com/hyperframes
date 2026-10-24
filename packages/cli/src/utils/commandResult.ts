@@ -108,6 +108,12 @@ export function sanitizeSuccessfulExitCode(): void {
   rootExitCodeSanitizer?.();
 }
 
+export async function outputWritten(): Promise<void> {
+  const written = (stream: NodeJS.WriteStream) =>
+    new Promise<void>((resolve) => stream.write("", () => resolve()));
+  await Promise.all([written(process.stdout), written(process.stderr)]);
+}
+
 /** Ask cli.ts to finalize telemetry/output and then terminate the process. */
 export function requestCliExit(exitCode = 0): void {
   if (!rootExitRequester) {
@@ -119,4 +125,25 @@ export function requestCliExit(exitCode = 0): void {
     return;
   }
   rootExitRequester(exitCode);
+}
+
+type UnrefableTimer = {
+  unref: () => void;
+};
+
+function isUnrefableTimer(
+  timer: ReturnType<typeof setTimeout>,
+): timer is ReturnType<typeof setTimeout> & UnrefableTimer {
+  return (
+    typeof timer === "object" &&
+    timer !== null &&
+    "unref" in timer &&
+    typeof timer.unref === "function"
+  );
+}
+
+/** For a command whose result is out: ends the process if anything it started is still holding it. */
+export function scheduleCliExit(exitCode = 0): void {
+  const timer = setTimeout(() => requestCliExit(exitCode), 100);
+  if (isUnrefableTimer(timer)) timer.unref();
 }

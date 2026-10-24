@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,6 +7,10 @@ import { runCancellableProcess, runRenderSetupWorker } from "./cancellableProces
 import { testProcessIsAlive, waitForTestCondition } from "./processTestUtils.js";
 
 const IS_POSIX = process.platform !== "win32";
+
+function processGroupOf(pid: number): string {
+  return execFileSync("ps", ["-o", "pgid=", "-p", String(pid)], { encoding: "utf8" }).trim();
+}
 
 describe.skipIf(!IS_POSIX)("cancellable process tree teardown", () => {
   it("reaps a SIGTERM-resistant grandchild after the setup root exits", async () => {
@@ -76,6 +81,33 @@ describe.skipIf(!IS_POSIX)("cancellable process tree teardown", () => {
       if (grandchildPid && testProcessIsAlive(grandchildPid))
         process.kill(grandchildPid, "SIGKILL");
       rmSync(testDir, { recursive: true, force: true });
+    }
+  }, 5_000);
+
+  it("keeps a child it does not detach in the caller's process group, and a cancel still stops it", async () => {
+    const controller = new AbortController();
+    const abortReason = new Error("cancel unzip");
+    let childPid: number | undefined;
+    try {
+      const run = runCancellableProcess(
+        process.execPath,
+        ["--eval", "setTimeout(() => undefined, 10_000)"],
+        {
+          signal: controller.signal,
+          detached: false,
+          onSpawn: (pid) => {
+            childPid = pid;
+          },
+        },
+      );
+      expect(processGroupOf(childPid!)).toBe(processGroupOf(process.pid));
+
+      controller.abort(abortReason);
+      await expect(run).rejects.toBe(abortReason);
+
+      expect(testProcessIsAlive(childPid!)).toBe(false);
+    } finally {
+      if (childPid && testProcessIsAlive(childPid)) process.kill(childPid, "SIGKILL");
     }
   }, 5_000);
 });

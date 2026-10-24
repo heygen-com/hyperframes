@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/inspector",
-  "version": "0.8.173",
+  "version": "0.8.192",
   "repository": {
     "type": "git",
     "url": "https://github.com/heygen-com/hyperframes",
@@ -71,6 +71,7 @@
     "acorn": "^8.17.0",
     "esbuild": "^0.25.12",
     "eslint-scope": "^9.1.2",
+    "htmlparser2": "^10.1.0",
     "postcss": "^8.5.8",
     "puppeteer-core": "^25.8.0"
   },

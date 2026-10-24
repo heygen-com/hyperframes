@@ -76,7 +76,7 @@ A series is a launch set, a weekly clip, or a per-region cut. Consistency comes 
 
 The constant parts come from that one authoring spec, or from one set of imported Figma tokens. The parts that vary become [variables](/prompting/variables-and-templating).
 
-When `frame.md` changes, rerun the workflow steps that generate or assemble the affected compositions. That's how the authored HTML picks up the new brand value.
+When `frame.md` changes, ask the agent to rebuild the affected compositions. That's how the authored HTML picks up the new brand value.
 
 Some compositions already exist and have to re-skin at render time. Declare the shared brand tokens as composition variables instead. Every scalar variable is applied as a `--{id}` CSS custom property on the composition root, so `var(--id)` in your CSS follows the override.
 
@@ -92,16 +92,16 @@ Prefer an SVG logo over a raster one. It scales and it animates.
 
 State the paths explicitly. That way the agent wires up the real assets instead of generating stand-ins. It also keeps the render deterministic, because every asset is present locally before the render starts.
 
-## Supply inputs a workflow accepts — don't fight its preset
+## Supply brand inputs up front — don't restyle afterward
 
-Each creation workflow comes with a designed look — `/product-launch-video`, `/faceless-explainer`, and the rest. Feed that look your brand inputs. Don't override its composition after the fact.
+Give the agent your palette, fonts, and logo (or a `frame.md`) before the build. Don't override the composition after the fact.
 
-- ❌ `run /product-launch-video, then restyle every scene to my colors afterward`
-- ✅ `run /product-launch-video with my palette, fonts, and logo as inputs up front`
+- ❌ `make the launch video, then restyle every scene to my colors afterward`
+- ✅ `make the launch video with my palette, fonts, and logo as inputs up front`
 
-Why this works: a workflow's preset is a coherent, tested system. Its colors, spacing, motion, and component treatments hang together. Supply your brand inputs at the start and it applies your palette and type *within* that system.
+Why this works: the agent settles the look before the first scene, so colors, spacing, motion, and component treatments hang together as one system.
 
-Restyling scene by scene afterward pulls threads out of a design that was balanced as a whole. You spend more effort fighting the preset than handing it a spec would have cost.
+Restyling scene by scene afterward pulls threads out of a design that was balanced as a whole. You spend more effort fighting it than handing over a spec would have cost.
 
 ## Related
 

@@ -26,6 +26,7 @@ import { withMeta } from "../utils/updateCheck.js";
 import {
   DEFAULT_CHECK_OPTIONS,
   checkExitCode,
+  prelaunchBrowserForNextCheck,
   runCheckPipeline,
   selectFindingCropRequests,
   type CheckFinding,
@@ -35,12 +36,14 @@ import {
 } from "../utils/checkPipeline.js";
 import type { CaptionZoneOptions, FrameCheckOptions, LayoutOptions } from "../utils/checkTypes.js";
 import { resolveLocalBrowserGpuMode } from "../browser/gpuPolicy.js";
+import { preResolveHostileMediaProxies, type PreparedMediaFile } from "../utils/checkBrowser.js";
 
 export const examples: Example[] = [
   ["Run the full verification gate", "hyperframes check"],
   ["Output one agent-readable envelope", "hyperframes check --json"],
   ["Persist the five audited contrast frames", "hyperframes check --snapshots"],
   ["Also fail on warnings", "hyperframes check --strict"],
+  ["Make only the browser-playable video copies, then exit", "hyperframes check --prepare-media"],
 ];
 
 type SavedCheck = Pick<ArtifactRecord, "id" | "revision" | "report" | "attribution">;
@@ -49,6 +52,7 @@ type SavedCheckReport = CheckReport & { saved?: SavedCheck };
 export interface CheckCommandDependencies {
   resolveProject(dir: string | undefined): ProjectDir;
   runPipeline(project: ProjectDir, options: CheckOptions): Promise<SavedCheckReport>;
+  prepareMedia(project: ProjectDir, options: CheckOptions): Promise<PreparedMediaFile[]>;
   withMeta(value: object): object;
 }
 
@@ -68,6 +72,11 @@ const DEFAULT_COMMAND_DEPENDENCIES: CheckCommandDependencies = {
       warnNotRecorded(error);
       return report;
     }
+  },
+  async prepareMedia(project, options) {
+    const { bundleWithLocalizedFonts } = await import("../utils/bundleWithLocalizedFonts.js");
+    const html = await bundleWithLocalizedFonts(project.dir);
+    return (await preResolveHostileMediaProxies(project.dir, html, options.autoProxy)).files;
   },
   withMeta,
 };
@@ -210,6 +219,12 @@ const CHECK_COMMAND_ARGS = {
     description: "Exit non-zero on warnings too",
     default: false,
   },
+  "prepare-media": {
+    type: "boolean",
+    description:
+      "Only make the browser-playable copies of videos Chrome cannot decode, then exit (no browser, no report). Stopped copies resume on the next run",
+    default: false,
+  },
   proxy: {
     type: "boolean",
     description:
@@ -263,6 +278,10 @@ export function createCheckCommand(
         if (!asJson) {
           console.log(`${c.accent("◆")}  Checking ${c.accent(project.name)}`);
         }
+        if (args["prepare-media"] === true) {
+          await runPrepareMedia(dependencies, project, options, asJson);
+          return;
+        }
         const report = await withProjectLock(project.dir, "check", () =>
           dependencies.runPipeline(project, options),
         );
@@ -293,6 +312,40 @@ export function createCheckCommand(
   });
 }
 
+async function runPrepareMedia(
+  dependencies: CheckCommandDependencies,
+  project: ProjectDir,
+  options: CheckOptions,
+  asJson: boolean,
+): Promise<void> {
+  const files = await withProjectLock(project.dir, "check", () =>
+    dependencies.prepareMedia(project, options),
+  );
+  const failed = files.filter((file) => file.state === "failed");
+  if (asJson) {
+    console.log(
+      JSON.stringify(
+        dependencies.withMeta({
+          ok: failed.length === 0,
+          prepared: files,
+          total: files.length,
+          ready: files.length - failed.length,
+          failed: failed.length,
+        }),
+        null,
+        2,
+      ),
+    );
+  } else {
+    const mark = failed.length === 0 ? c.success("✓") : c.error("✗");
+    console.log(
+      `${mark}  Browser-playable copies: ${files.length - failed.length}/${files.length} ready`,
+    );
+    for (const file of failed) console.log(`   ${file.file}: ${file.reason}`);
+  }
+  setCommandExitCode(failed.length === 0 ? 0 : 1);
+}
+
 function parseCheckOptions(args: Record<string, unknown>): CheckOptions {
   const maxTransitionSamples = positiveInteger(args["max-transition-samples"], 0);
   return {
@@ -315,6 +368,11 @@ function parseCheckOptions(args: Record<string, unknown>): CheckOptions {
     autoProxy: args.proxy as boolean | undefined,
     browserGpuMode: resolveLocalBrowserGpuMode(args["browser-gpu"] as boolean | undefined),
   };
+}
+
+export function prelaunchBrowserForCheck(rawArgs: string[]) {
+  const args = parseArgs(rawArgs, CHECK_COMMAND_ARGS);
+  return prelaunchBrowserForNextCheck(resolveProject(args.dir), parseCheckOptions(args));
 }
 
 export function parseCheckRange(value: unknown): [number, number] | undefined {
@@ -551,6 +609,7 @@ function printHumanReport(report: CheckReport): void {
   printLayoutSection("Layout", report.layout);
   printSection("Motion", report.motion);
   printContrastSection(report);
+  printCraftSection(report);
   printSnapshotSection(report);
   console.log();
   const label = report.ok ? c.success("Check passed") : c.error("Check failed");
@@ -615,6 +674,17 @@ function printContrastSection(report: CheckReport): void {
     console.log(`    ${c.dim(`Try ${finding.suggestedColor}; source ${finding.sourceFile}`)}`);
   }
   printCounts(section);
+}
+
+function printCraftSection(report: CheckReport): void {
+  const section = report.craft;
+  if (!section.enabled) {
+    console.log();
+    console.log(c.bold("Craft"));
+    console.log(`  ${c.dim("◇")} skipped`);
+    return;
+  }
+  printSection("Craft", section);
 }
 
 function printSnapshotSection(report: CheckReport): void {

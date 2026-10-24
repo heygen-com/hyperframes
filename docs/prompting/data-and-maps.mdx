@@ -18,7 +18,7 @@ There are two ways to get a chart, and the choice is about control:
 
 Feed data inline or as a file. Small series go straight in the prompt; a CSV gets referenced and parsed at build time (keep it deterministic — no [render-time fetches](/concepts/determinism)).
 
-> /motion-graphics 12-second 1920x1080 video. Title "Most-used languages" with the subtitle "share of respondents, 2026 survey". Turn this into an animated bar chart with a staggered reveal and value labels counting up on each bar, each label suffixed `%`:
+> /hyperframes 12-second 1920x1080 video. Title "Most-used languages" with the subtitle "share of respondents, 2026 survey". Turn this into an animated bar chart with a staggered reveal and value labels counting up on each bar, each label suffixed `%`:
 > ```
 > Python 41, TypeScript 33, Rust 19, Go 14, Java 9
 > ```
@@ -31,7 +31,7 @@ Feed data inline or as a file. Small series go straight in the prompt; a CSV get
 />
 *Rendered from the prompt above, unedited — labels count up while the next bar is already growing.*
 
-> /motion-graphics 10-second 1920x1080 video, dark slate background. Title "Top languages 2026" top-left. Five horizontal bars (Python, TypeScript, Rust, Go, Java) grow from zero with staggered starts, overtaking each other twice mid-animation; each bar has a right-edge value label counting up to its final %. End state holds 2s, alive — the leader pulses once, timed to finish exactly on the last frame, never a frozen tail. Hand-author the marks (no chart library) and make them *look* hand-drawn: wobbly ink strokes, not clean rectangles. Say which two pairs overtake and when, or the reveal will land on a different number of crossings each run. No audio.
+> /hyperframes 10-second 1920x1080 video, dark slate background. Title "Top languages 2026" top-left. Five horizontal bars (Python, TypeScript, Rust, Go, Java) grow from zero with staggered starts, overtaking each other twice mid-animation; each bar has a right-edge value label counting up to its final %. End state holds 2s, alive — the leader pulses once, timed to finish exactly on the last frame, never a frozen tail. Hand-author the marks (no chart library) and make them *look* hand-drawn: wobbly ink strokes, not clean rectangles. Say which two pairs overtake and when, or the reveal will land on a different number of crossings each run. No audio.
 
 <DocsVideo
   title="HyperFrames video: Barrace Handdrawn"
@@ -53,7 +53,7 @@ Feed data inline or as a file. Small series go straight in the prompt; a CSV get
 
 For a single hero number, [`apple-money-count`](/catalog/blocks/apple-money-count) is the Apple-style finance counter — it rolls from $0, flashes green, and bursts money icons with sound. Name it when you want that exact flourish; hand-draw when you want a bare number in your own type.
 
-> /motion-graphics 6-second 1920x1080 video, dark navy background. Beat 1 (0-1s): label "ARR" fades up small, top-center. Beat 2 (1-4s): a giant number counts up to $4.2M with an odometer roll, easing out as it lands. Beat 3 (4-6s): "+312% YoY" stamps in below in green, then settles into a gentle ambient idle. Use the `apple-money-count` registry block as base. No narration.
+> /hyperframes 6-second 1920x1080 video, dark navy background. Beat 1 (0-1s): label "ARR" fades up small, top-center. Beat 2 (1-4s): a giant number counts up to $4.2M with an odometer roll, easing out as it lands. Beat 3 (4-6s): "+312% YoY" stamps in below in green, then settles into a gentle ambient idle. Use the `apple-money-count` registry block as base. No narration.
 
 <DocsVideo
   title="HyperFrames video: Money Count"
@@ -78,7 +78,7 @@ Each map block answers a different geographic question. Say what the map is *for
 
 The US map encodings combine — asking to "shade states *and* draw flows between two cities" gets you one composition: the agent merges the blocks at source onto a shared projection so arcs land exactly on the choropleth's states.
 
-> /motion-graphics 12-second 1920x1080 video. A US choropleth shades states by adoption rate with staggered reveals and a gradient legend, then connection arcs draw between San Francisco, Austin, and New York. Use the `us-map` and `us-map-flow` registry blocks. No audio.
+> /hyperframes 12-second 1920x1080 video. A US choropleth shades states by adoption rate with staggered reveals and a gradient legend, then connection arcs draw between San Francisco, Austin, and New York. Use the `us-map` and `us-map-flow` registry blocks. No audio.
 
 <DocsVideo
   title="HyperFrames video: Validate Us Map Flows"
@@ -104,7 +104,7 @@ The US map encodings combine — asking to "shade states *and* draw flows betwee
 
 For a point-to-point journey — a route drawing across a map with a landing beat — [`nyc-paris-flight`](/catalog/blocks/nyc-paris-flight) is the Apple-style flight animation: a plane flies New York → Paris with a marker circle, landing pop, and sound effects. Use it as the base and re-point the endpoints in your prompt.
 
-> /motion-graphics 6-second 1920x1080 video. A realistic map with a plane flying between two cities, a marker circle at the origin, and a landing pop at the destination. Use the `nyc-paris-flight` registry block as base — the route runs New York (JFK) → Paris (CDG), labelled at both ends. Keep the block's own title card and route ticks. End on the settled map, not on the block's white-out hand-off frame. No audio.
+> /hyperframes 6-second 1920x1080 video. A realistic map with a plane flying between two cities, a marker circle at the origin, and a landing pop at the destination. Use the `nyc-paris-flight` registry block as base — the route runs New York (JFK) → Paris (CDG), labelled at both ends. Keep the block's own title card and route ticks. End on the settled map, not on the block's white-out hand-off frame. No audio.
 
 <DocsVideo
   title="HyperFrames video: Flight Route"

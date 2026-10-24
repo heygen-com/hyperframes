@@ -2,8 +2,14 @@ import { createServer, request as httpRequest, type Server, type ServerResponse 
 import { Duplex } from "node:stream";
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
+import {
+  PREVIEW_PROXY_BOX_PARAM,
+  parsePreviewProxyBox,
+  type PreviewProxyBox,
+} from "@hyperframes/core";
 import { getMimeType } from "@hyperframes/core/studio-api";
 import { decodeWellFormedEscapes } from "@hyperframes/studio-server";
+import { findStageProxyBox } from "./compositionViewport.js";
 import { resolveAutoProxy } from "./projectConfig.js";
 import { injectMediaCodecMap } from "./compositionServer.js";
 import {
@@ -165,6 +171,7 @@ function serveFileWithRange(
   // just `[start, end]` and closes its own fd on end/error. writeHead is
   // deferred to `open` so a failed open can still answer 500.
   const stream = createReadStream(filePath, { start, end });
+  res.once("close", () => stream.destroy());
   stream.on("open", () => {
     res.writeHead(status, headers);
     stream.pipe(res);
@@ -205,9 +212,11 @@ async function serveProxyRequest(
   projectDir: string,
   filePath: string,
   request: ProxyVariantRequest,
+  box: PreviewProxyBox | undefined,
   autoProxy: boolean,
   rangeHeader: string | undefined,
   res: ServerResponse,
+  signal: AbortSignal,
 ): Promise<void> {
   const contentType = getMimeType(filePath);
   if (!autoProxy || !contentType.startsWith("video/")) {
@@ -235,7 +244,7 @@ async function serveProxyRequest(
       return;
     }
     recordProxyRequest();
-    const proxyPath = await resolveProxy(projectDir, filePath, variant);
+    const proxyPath = await resolveProxy(projectDir, filePath, variant, box, { signal });
     // The await above can span a whole transcode; the client may be gone.
     if (res.writableEnded || res.destroyed) return;
     serveFileWithRange(proxyPath, rangeHeader, res, PROXY_VARIANT_CONFIG[variant].contentType);
@@ -260,23 +269,41 @@ export async function serveStaticProjectHtml(
   // this function inherit it in one place; computed once since `html` is
   // static for the lifetime of this server, not re-scanned per request.
   const autoProxy = resolveAutoProxy(projectDir, autoProxyOverride);
-  const servedHtml = autoProxy ? await injectMediaCodecMap(html, projectDir, [{ html }]) : html;
+  const copies = new AbortController();
+  const servedHtml = autoProxy
+    ? await injectMediaCodecMap(
+        html,
+        projectDir,
+        [{ html }],
+        undefined,
+        true,
+        copies.signal,
+        findStageProxyBox(html),
+      )
+    : html;
 
   // fallow-ignore-next-line complexity
   const server = createServer((req, res) => {
     const url = req.url ?? "/";
     if (url === "/" || url === "/index.html") {
-      res.writeHead(200, { "Content-Type": "text/html" });
+      res.writeHead(200, { "Content-Type": getMimeType("index.html") });
       res.end(servedHtml);
       return;
     }
 
     const queryIndex = url.indexOf("?");
     const pathOnly = queryIndex === -1 ? url : url.slice(0, queryIndex);
-    const proxyParam =
-      queryIndex === -1 ? null : new URLSearchParams(url.slice(queryIndex + 1)).get("hf-proxy");
+    const query = new URLSearchParams(queryIndex === -1 ? "" : url.slice(queryIndex + 1));
+    const proxyParam = query.get("hf-proxy");
     const proxyRequest =
       proxyParam !== null && isProxyVariantRequest(proxyParam) ? proxyParam : null;
+    const boxParam = query.get(PREVIEW_PROXY_BOX_PARAM);
+    const proxyBox = boxParam === null ? undefined : parsePreviewProxyBox(boxParam);
+    if (proxyBox === null || (proxyBox && !proxyRequest)) {
+      res.writeHead(404);
+      res.end();
+      return;
+    }
 
     const requestPath = decodeWellFormedEscapes(pathOnly).replace(/^\//, "");
     for (const root of roots) {
@@ -289,9 +316,11 @@ export async function serveStaticProjectHtml(
             projectDir,
             filePath,
             proxyRequest,
+            proxyBox,
             autoProxy,
             req.headers.range,
             res,
+            copies.signal,
           );
         } else {
           serveFileWithRange(filePath, req.headers.range, res);
@@ -329,6 +358,7 @@ export async function serveStaticProjectHtml(
       url,
       port: 0,
       close: async () => {
+        copies.abort();
         inProcessAnswers.delete(new URL(url).origin);
       },
       answer,
@@ -340,6 +370,7 @@ export async function serveStaticProjectHtml(
     port,
     close: () =>
       new Promise<void>((resolveClose) => {
+        copies.abort();
         server.close(() => resolveClose());
       }),
   };

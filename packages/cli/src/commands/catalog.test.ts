@@ -1,5 +1,6 @@
 // fallow-ignore-file code-duplication
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { runCommand, type CommandDef } from "citty";
 
 import type { RegistryItem } from "@hyperframes/core";
 import { catalogRow, countUnindexed, pickByName, searchMissCommand } from "./catalog.js";
@@ -171,6 +172,7 @@ vi.mock("../registry/localEmbedder.js", () => ({
 vi.mock("../registry/localSemantic.js", () => ({
   mediaSemanticRanking: async () => null,
   localSemanticRanking: async () => {
+    if (!state.runtimeOnDisk) throw new Error("the on-device runtime is not installed yet");
     if (state.rankingError) throw state.rankingError;
     return state.ranking;
   },
@@ -736,6 +738,37 @@ describe("the on-device download offer", () => {
     expect(err).toContain("declined, but could not save the answer in settings");
   });
 
+  // Runs the exact command a guidance line names, so an instruction that cannot set anything up fails here.
+  const runAdvertised = async (text: string) => {
+    const named = /`hyperframes catalog ([^`]*)`/.exec(text);
+    expect(named).not.toBeNull();
+    const command = (await import("./catalog.js")).default as CommandDef;
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      await runCommand(command, { rawArgs: [...named![1]!.split(" "), "--json"] });
+    } finally {
+      log.mockRestore();
+    }
+  };
+
+  it("after a first-time yes, names the one command that sets the tier up", async () => {
+    state.modelStatus = "not-asked";
+    state.confirmAnswer = true;
+    state.runtimeOnDisk = false;
+
+    const first = await asATerminal(() => runForExit({ query: "count up" }));
+    expect(first.err).toContain("Run `hyperframes catalog --on-device` once");
+
+    // Consent saved, no model, no runtime: what the plain re-run actually meets.
+    state.consentRecorded = [];
+    state.modelStatus = "unavailable";
+    const rerun = await runEnvelope({ query: "count up" });
+    expect([state.runtimeInstalls, state.downloads, rerun.tier]).toEqual([0, 0, "words"]);
+
+    await runAdvertised(first.err);
+    expect([state.runtimeInstalls, state.downloads]).toEqual([1, 1]);
+  });
+
   it("says so when a no given to the thin-results offer could not be saved", async () => {
     state.modelStatus = "not-asked";
     state.confirmAnswer = false;
@@ -867,11 +900,27 @@ describe("the on-device download offer", () => {
       state.runtimeOnDisk = false;
       if (!savedYes) state.consentSavedMeanwhile = false;
 
-      await runEnvelope({ query: "count up" });
+      await runEnvelope({ query: "count up", "on-device": true });
 
       expect(state.runtimeInstalls).toBe(installs);
     },
   );
+
+  it("searches without installing a runtime missing beside a ready model", async () => {
+    state.runtimeOnDisk = false;
+
+    const envelope = await runEnvelope({ query: "count up" });
+
+    expect([state.runtimeInstalls, state.downloads, state.vectorFetches]).toEqual([0, 0, 0]);
+    expect(envelope.tier).toBe("words");
+    expect(envelope.shown).toBeGreaterThan(0);
+    expect(envelope.warnings).toEqual([
+      "on-device search is off until its runtime is installed: run `hyperframes catalog --on-device` once.",
+    ]);
+
+    await runAdvertised(envelope.warnings![0]!);
+    expect(state.runtimeInstalls).toBe(1);
+  });
 
   it("installs nothing when a person's yes cannot be saved", async () => {
     state.consentRecorded = [false];

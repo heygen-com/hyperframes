@@ -62,6 +62,7 @@ vi.mock("sharp", () => {
 });
 
 vi.mock("../utils/optionalPackages.js", () => ({
+  loadSharp: async () => (await import("sharp")).default,
   loadOptionalPackage: vi.fn(async () => ({
     GoogleGenAI: class {
       models = { generateContent: generateContentMock };

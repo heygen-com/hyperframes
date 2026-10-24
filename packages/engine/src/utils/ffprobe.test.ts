@@ -5,12 +5,7 @@ import { mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "fs
 import { tmpdir } from "os";
 import { basename, resolve } from "path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  extractMediaMetadata,
-  extractPngMetadataFromBuffer,
-  parseFrameRate,
-  pixelFormatHasAlpha,
-} from "./ffprobe.js";
+import { extractMediaMetadata, extractPngMetadataFromBuffer, parseFrameRate } from "./ffprobe.js";
 
 function crc32(buf: Buffer): number {
   let crc = 0xffffffff;
@@ -80,6 +75,38 @@ describe("extractMediaMetadata", () => {
 describe("extractMediaMetadata nb_frames duration cross-check", () => {
   afterEach(() => {
     vi.resetModules();
+  });
+
+  it("never reads a non-PNG video's bytes looking for PNG colour metadata", async () => {
+    const { spawn } = createSpawnSpy([
+      {
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({
+          streams: [
+            {
+              codec_type: "video",
+              codec_name: "h264",
+              width: 16,
+              height: 16,
+              r_frame_rate: "30/1",
+              avg_frame_rate: "30/1",
+            },
+          ],
+          format: { duration: "1" },
+        }),
+      },
+    ]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { extractMediaMetadata: mocked } = await import("./ffprobe.js");
+    // Bytes that carry PNG cICP, reported by ffprobe as an untagged H.264 stream.
+    const dir = mkdtempSync(`${tmpdir()}/hf-not-png-`);
+    const path = `${dir}/clip.mp4`;
+    writeFileSync(path, buildMinimalPng());
+    const meta = await mocked(path);
+    rmSync(dir, { recursive: true, force: true });
+    expect(meta.colorSpace).toBeNull();
   });
 
   it("uses nb_frames to bound video duration when stream duration is absent and audio is longer", async () => {
@@ -1703,27 +1730,6 @@ describe("crc32 works on every runtime the package declares", () => {
     const fresh = await loadWithoutNativeCrc32();
     expect(fresh.extractPngMetadataFromBuffer(png)).toBeNull();
   });
-});
-
-describe("pix_fmt alpha detection", () => {
-  // The old pattern's (^|[^a-z]) anchor bound to `yuva` alone, and the list
-  // omitted formats real files actually use.
-  const ALPHA = [
-    "yuva420p",
-    "rgba",
-    "argb",
-    "bgra",
-    "abgr",
-    "gbrap",
-    "ya8",
-    "ya16le",
-    "ayuv64le",
-    "yuva444p12le",
-  ];
-  const OPAQUE = ["yuv420p", "rgb24", "gray", "gbrp", "nv12", "yuv444p10le", "bgr0", "rgb0"];
-
-  it.each(ALPHA)("detects alpha in %s", (fmt) => expect(pixelFormatHasAlpha(fmt)).toBe(true));
-  it.each(OPAQUE)("reports %s as opaque", (fmt) => expect(pixelFormatHasAlpha(fmt)).toBe(false));
 });
 
 describe("audio duration decode probe never fails the call and needs no profile allowlist", () => {

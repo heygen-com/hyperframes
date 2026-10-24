@@ -227,6 +227,7 @@ vi.mock("../browser/ffmpeg.js", async (importOriginal) => {
 });
 
 vi.mock("../browser/preflight.js", () => ({
+  checkDisk: vi.fn(() => ({ name: "Disk", ok: true, level: "ok", detail: "mock" })),
   runEnvironmentChecks: vi.fn(async () => {
     preflightState.onRun?.();
     return preflightState.result;
@@ -241,6 +242,7 @@ vi.mock("../browser/preflight.js", () => ({
 // the shared `~/.cache/hyperframes/chrome`, racing other packages' browser
 // tests in CI.
 vi.mock("../browser/manager.js", () => ({
+  sweepKilledInstalls: vi.fn(async () => {}),
   ensureBrowser: vi.fn(async (options?: { signal?: AbortSignal }) => {
     await browserManagerState.onEnsure?.(options?.signal);
     return { executablePath: "/mock/chrome", source: "cache" };
@@ -1217,6 +1219,23 @@ describe("renderLocal browser GPU config", () => {
 
     expect(producerState.createdJobs[0]?.variables).toBeUndefined();
   });
+
+  it.each([undefined, "off"] as const)(
+    "preserves page motion blur %s in the producer request",
+    async (pageMotionBlur) => {
+      await renderLocal(PROJECT_DIR, "/tmp/out.mp4", {
+        fps: { num: 30, den: 1 },
+        quality: "standard",
+        format: "mp4",
+        gpu: false,
+        browserGpuMode: "software",
+        hdrMode: "auto",
+        quiet: true,
+        pageMotionBlur,
+      });
+      expect(producerState.createdJobs[0]?.pageMotionBlur).toBe(pageMotionBlur);
+    },
+  );
 
   it("forwards entryFile to createRenderJob when --composition is set", async () => {
     await renderLocal(PROJECT_DIR, "/tmp/out.mp4", {

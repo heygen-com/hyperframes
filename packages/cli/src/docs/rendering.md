@@ -14,8 +14,8 @@ Requires: Docker installed and running.
 
 ## Options
 
-- `-f, --fps` — 24, 30, or 60 (default: 30)
-- `-q, --quality` — draft, standard, high (default: standard)
+- `-f, --fps` — 1-240 or a rational such as 30000/1001 (default: root `data-fps`, else 30)
+- `-q, --quality` — draft, looks, delivery, or standard/high (default: looks)
 - `-w, --workers` — Parallel workers 1-8 (default: auto)
 - `--crf` — Override encoder CRF (mutually exclusive with `--video-bitrate`)
 - `--video-bitrate` — Target video bitrate such as `10M` (mutually exclusive with `--crf`)

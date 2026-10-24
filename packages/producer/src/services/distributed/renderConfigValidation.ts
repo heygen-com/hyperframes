@@ -89,6 +89,10 @@ export function validateDistributedRenderConfig(
   validateIntDimension("config.width", config.width);
   validateIntDimension("config.height", config.height);
 
+  if (config.pageMotionBlur !== undefined && config.pageMotionBlur !== "off") {
+    throw new InvalidConfigError("config.pageMotionBlur", 'must be "off" when provided');
+  }
+
   if (!ALLOWED_FORMATS.includes(config.format)) {
     throw new InvalidConfigError(
       "config.format",

@@ -31,7 +31,7 @@ const GUARDRAIL_LINES = [
   "- Make a targeted change to this element only, unless the request is a timeline edit.",
   "- Preserve the rest of the composition and its timing, except what a timeline edit changes.",
   "- Do not modify other elements' data-* attributes or positioning, except where the requested timeline edit requires it (split, retime, reorder, copy a group, swap media).",
-  "- For timeline edits (trim, split, speed, volume, copy, swap), follow the creator-editing-recipes reference of the hyperframes-core skill and use its exact attribute forms.",
+  "- For timeline edits (trim, split, speed, volume, copy, swap), use the `hyperframes timeline` edit commands (`hyperframes-cli` skill) or the exact attribute forms in the `hyperframes` skill's `references/format.md`.",
   "- Prefer existing inline styles or existing CSS rules for this element over adding unrelated selectors.",
 ];
 

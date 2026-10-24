@@ -10,19 +10,22 @@ import {
   type AudioSignal,
   type Snapper,
 } from "@hyperframes/core/audio-analysis";
-import { AVAILABLE, encodeWav, perSignal, rounded, unavailable } from "./shared.js";
+import {
+  AVAILABLE,
+  encodeWav,
+  perSignal,
+  rounded,
+  serviceAccess,
+  serviceFailure,
+  type ServiceAccess,
+  unavailable,
+} from "./shared.js";
 
 /**
- * The audio analysis service contract.
- *
- * Request: `POST <HYPERFRAMES_AUDIO_API_URL>`, exactly as configured, with `x-api-key: <HYPERFRAMES_AUDIO_API_KEY>`,
- * a new `Idempotency-Key` per request, and an {@link AudioApiRequest} JSON body.
- * The analyzed span is uploaded once as 16-bit PCM WAV, mono at 16 kHz, using the same origin
- * public asset direct-upload and completion routes. The body references that finalized asset.
- *
- * Response: `200` with `application/json`, `{ "data": AudioApiResponse }`; a bare {@link AudioApiResponse} is read
- * too. Every time is in seconds from the start of the uploaded audio. A capability the service cannot answer is left
- * out of the response. Any other status is a failure; its body may be `{ "error": { "message": string } }`.
+ * POST an asset-backed request to the configured audio service with a fresh Idempotency-Key.
+ * Uploads are 16 kHz mono WAV through the same origin's direct-upload routes.
+ * Responses may be bare or wrapped in `data`; times start at the uploaded audio's beginning.
+ * Unavailable capabilities are omitted. Other HTTP statuses fail with the service's error.
  */
 export interface AudioApiRequest {
   version: 1;
@@ -115,11 +118,17 @@ function uploaded(signal: AudioSignal): AudioSignal {
 const askedTogether = (capability: AudioApiCapability): AudioApiCapability[] =>
   capability === "beats" || capability === "downbeats" ? ["beats", "downbeats"] : [capability];
 
-function config() {
-  const url = process.env[URL_ENV]?.trim();
-  const key = process.env[KEY_ENV]?.trim();
-  const timeout = Number(process.env[TIMEOUT_ENV]);
-  return { url, key, timeoutMs: timeout > 0 ? timeout : DEFAULT_TIMEOUT_MS };
+const access = () =>
+  serviceAccess(
+    { url: URL_ENV, key: KEY_ENV, timeout: TIMEOUT_ENV },
+    "/v3/audio/analysis",
+    DEFAULT_TIMEOUT_MS,
+  );
+
+async function granted(): Promise<ServiceAccess> {
+  const found = await access();
+  if (typeof found === "string") throw new Error(found);
+  return found;
 }
 
 const isNumberList = (value: unknown): value is number[] =>
@@ -146,20 +155,8 @@ function checked(capability: AudioApiCapability, body: AudioApiResponse): void {
     throw new Error(`the service answered ${capability} in a shape this CLI cannot read`);
 }
 
-async function failure(response: Response): Promise<Error> {
-  const text = await response.text().catch(() => "");
-  let detail = text.slice(0, 200);
-  try {
-    detail = (JSON.parse(text) as { error?: { message?: string } }).error?.message ?? detail;
-  } catch {
-    // not JSON: keep the text
-  }
-  return new Error(`the service answered ${response.status}${detail ? `: ${detail}` : ""}`);
-}
-
 const uploadedAsset = perSignal(async (analyzed: AudioSignal) => {
-  const { url, key, timeoutMs } = config();
-  if (!url || !key) throw new Error(`${URL_ENV} and ${KEY_ENV} must both be set`);
+  const { url, headers, timeoutMs } = await granted();
   const deadline = AbortSignal.timeout(timeoutMs);
   const boundedFetch: typeof fetch = (input, init) =>
     fetch(input, {
@@ -169,7 +166,7 @@ const uploadedAsset = perSignal(async (analyzed: AudioSignal) => {
     });
   const client = new HyperframesCloudClient({
     baseUrl: new URL(url).origin,
-    getAuthHeaders: () => ({ "x-api-key": key }),
+    getAuthHeaders: () => headers,
     fetchImpl: boundedFetch,
   });
   const asset = await uploadAssetViaDirectUpload({
@@ -184,8 +181,7 @@ const uploadedAsset = perSignal(async (analyzed: AudioSignal) => {
 });
 
 async function ask(analyzed: AudioSignal, capabilities: AudioApiCapability[]) {
-  const { url, key, timeoutMs } = config();
-  if (!url || !key) throw new Error(`${URL_ENV} and ${KEY_ENV} must both be set`);
+  const { url, headers, timeoutMs } = await granted();
   const request: AudioApiRequest = {
     version: 1,
     capabilities,
@@ -195,14 +191,14 @@ async function ask(analyzed: AudioSignal, capabilities: AudioApiCapability[]) {
     method: "POST",
     redirect: "error",
     headers: {
-      "x-api-key": key,
+      ...headers,
       "idempotency-key": randomUUID(),
       "content-type": "application/json",
     },
     body: JSON.stringify(request),
     signal: AbortSignal.timeout(timeoutMs),
   });
-  if (!response.ok) throw await failure(response);
+  if (!response.ok) throw await serviceFailure(response, "the service");
   const body = (await response.json()) as { data?: AudioApiResponse } | null;
   return (body?.data ?? body ?? {}) as AudioApiResponse;
 }
@@ -265,16 +261,14 @@ function measured(capability: AudioApiCapability, signal: AudioSignal, body: Aud
 
 const API_CAPABILITIES: readonly AudioCapability[] = ["beats", "downbeats", "sections", "describe"];
 
-/** HeyGen's audio analysis service, or any service that speaks {@link AudioApiRequest}, configured by environment. */
+/** HeyGen's audio analysis service, or another that speaks {@link AudioApiRequest} when the environment names one. */
 export const apiProvider: AudioAnalysisProvider<AudioSignal> = {
   id: "api",
   local: false,
   capabilities: API_CAPABILITIES,
-  available() {
-    const { url, key } = config();
-    if (!url) return unavailable(`${URL_ENV} is not set`);
-    if (!key) return unavailable(`${KEY_ENV} is not set`);
-    return AVAILABLE;
+  async available() {
+    const found = await access();
+    return typeof found === "string" ? unavailable(found) : AVAILABLE;
   },
   async analyze(capability, signal) {
     const asked = capability as AudioApiCapability;

@@ -25,14 +25,10 @@ describe("useDomEditPreviewSync", () => {
     function Harness() {
       useDomEditPreviewSync({
         previewIframe: iframe,
-        activeCompPath: null,
         captionEditMode: false,
         domEditSelectionRef: { current: null },
-        domEditGroupSelectionsRef: { current: [] },
         domEditSelection: null,
-        refreshDomEditGroupSelectionsFromPreview: async () => {},
-        applyDomSelection: () => {},
-        buildDomSelectionFromTarget: async () => null,
+        refreshDomEditSelectionFromPreview: async () => {},
         refreshPreviewDocumentVersion: refreshVersion,
         syncPreviewHotkeys: () => {},
         applyStudioManualEditsToPreviewRef: { current: applyManualEdits },

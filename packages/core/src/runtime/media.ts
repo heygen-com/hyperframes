@@ -6,9 +6,10 @@ import { elementVolumeLaneGain } from "./audioAutomationVolume.js";
 import { fadeGain, NO_FADES, readElementFades, type AudioFades } from "../audioFade.js";
 import { readElementPlaybackRate, readElementRateSpec, readMediaStart } from "./playbackRate.js";
 import { rateAt, sourceTimeAt, timeAtSourceTime, type RateSpec } from "../speedRamp.js";
-import { clampAudioGain } from "../audioGain.js";
+import { clampAudioGain, clipGain, gainTimesLane } from "../audioGain.js";
 import { isMemberGroupHidden } from "../audioGroups.js";
 import { findInjectedRenderFrame } from "./renderFrameSibling.js";
+import { isRenderFrameVideo } from "./preloadMedia.js";
 import { registerSeekCompletion } from "./adapters/seek-dispatch.js";
 import { cutToHostSlots, type HostSlot } from "../mediaTiming.js";
 export {
@@ -358,7 +359,13 @@ export function syncRuntimeMedia(params: {
    * outbound message; further invocations are suppressed by the caller.
    */
   onAutoplayBlocked?: () => void;
-  onElementVolume?: (el: HTMLMediaElement, effectiveVolume: number, authorVolume: number) => void;
+  /** `clipGain` is `data-volume` for a routed clip, played ahead of its FX; 1 otherwise. */
+  onElementVolume?: (
+    el: HTMLMediaElement,
+    effectiveVolume: number,
+    authorVolume: number,
+    clipGain: number,
+  ) => void;
   /** Is THIS element owned by the Web Audio transport? Owned → mute it (transport
    *  plays it); not owned → leave audible (HTMLMedia fallback). Per-element, not a
    *  global flag, so a not-yet-claimed track isn't muted by other tracks. */
@@ -444,7 +451,7 @@ export function syncRuntimeMedia(params: {
       const currentElementVolume = clampVolume(el.volume);
 
       let authorVolume: number;
-      // An explicit volume lane owns the fader. It is checked before the probed
+      // An explicit volume lane, times `data-volume`, sets the level. Checked before the probed
       // keyframes because the two would otherwise fight, and it is the one the
       // author drew — `lint` warns when a track carries both.
       // Clip-local, NOT `relTime`. A lane's `t` is "seconds from the start of
@@ -456,8 +463,11 @@ export function syncRuntimeMedia(params: {
       // trimmed clip. The FX lanes on this same feature use clip-local elapsed;
       // there is one time base, and this is it.
       const laneGain = elementVolumeLaneGain(el, params.timeSeconds - origin);
+      const routed = params.isWebAudioRouted?.(el) === true;
+      const tweened = laneGain === null && (clip.volumeKeyframes?.length ?? 0) > 0;
+      const preFxGain = routed ? clipGain(fallbackAuthorVolume, tweened) : 1;
       if (laneGain !== null) {
-        authorVolume = clampAudioGain(laneGain);
+        authorVolume = routed ? 1 : gainTimesLane(fallbackAuthorVolume, laneGain);
       } else if (clip.volumeKeyframes && clip.volumeKeyframes.length > 0) {
         // Keyframes probed from the GSAP timeline — same source as the renderer.
         // Use the interpolated envelope value directly; no need to track GSAP changes.
@@ -468,8 +478,8 @@ export function syncRuntimeMedia(params: {
         // for an untrimmed clip playing at 1x from t=0.
         const elapsedInClip = params.timeSeconds - origin;
         authorVolume = clampAudioGain(interpolateVolumeGain(clip.volumeKeyframes, elapsedInClip));
-      } else if (params.isWebAudioRouted?.(el)) {
-        authorVolume = fallbackAuthorVolume;
+      } else if (routed) {
+        authorVolume = 1;
       } else if (previousRuntimeVolume === undefined) {
         // First tick this clip is active. The transport has already seeked GSAP
         // to the current time (seekTimelineAndAdapters runs before syncRuntimeMedia),
@@ -518,19 +528,19 @@ export function syncRuntimeMedia(params: {
       const silencedByHidden =
         el.closest("[data-hidden]") !== null || isMemberGroupHidden(el.ownerDocument, el);
       const effectiveVolume = silencedByHidden ? 0 : clampVolume(authorVolume * userVol);
-      el.volume = effectiveVolume;
+      if (Math.abs(el.volume - effectiveVolume) > 1e-6) el.volume = effectiveVolume;
       lastRuntimeAppliedVolume.set(el, effectiveVolume);
-      params.onElementVolume?.(el, effectiveVolume, authorVolume);
+      params.onElementVolume?.(el, effectiveVolume, authorVolume, preFxGain);
       // Mute only when force-muted or the transport owns this element; an unclaimed
       // track stays audible via the HTMLMedia fallback.
-      if (forceMuteAll || params.isWebAudioOwned?.(el)) el.muted = true;
+      if ((forceMuteAll || params.isWebAudioOwned?.(el)) && !el.muted) el.muted = true;
       // Ensure full preload for every active media element. Streaming
       // formats (MP3) may arrive with preload="metadata", which only
       // buffers the first few seconds and causes seeks to silently fail
       // past the buffered range. Setting this on every tick is cheap
       // (no-op when already "auto") and catches elements whose preload
       // was overridden after init.ts set it.
-      if (el.preload !== "auto") el.preload = "auto";
+      if (el.preload !== "auto" && !isRenderFrameVideo(el)) el.preload = "auto";
       // Per-element rate × global transport rate
       const baseRate = rateAt(clipRate, params.timeSeconds - origin) * params.playbackRate;
       // Too slow for the browser to play: kept paused and stepped onto the playhead by seeks.

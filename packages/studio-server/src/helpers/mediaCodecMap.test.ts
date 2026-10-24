@@ -22,7 +22,10 @@ import {
 const FAKE_FFPROBE_PATH = process.execPath;
 
 function makeRunner(
-  codecByPath: Record<string, string | { codecName: string; pixFmt?: string }>,
+  codecByPath: Record<
+    string,
+    string | { codecName: string; pixFmt?: string; tags?: Record<string, string> }
+  >,
 ): FfprobeRunner {
   return (_command, args) => {
     const filePath = args[args.length - 1] ?? "";
@@ -34,6 +37,7 @@ function makeRunner(
             codec_type: "video",
             codec_name: normalized.codecName,
             pix_fmt: normalized.pixFmt,
+            tags: normalized.tags,
           },
         ]
       : [];
@@ -162,6 +166,23 @@ describe("probeAssetCodec", () => {
       representativeMime: null,
       hasAlpha: true,
     });
+  });
+
+  it("flags a VP9 whose alpha is only in the ALPHA_MODE tag, so it gets the VP8 proxy", async () => {
+    const project = tmpProject();
+    const videoPath = join(project, "cutout.webm");
+    writeFileSync(videoPath, "fake video bytes");
+
+    // What ffprobe prints for a libvpx-vp9 yuva420p encode.
+    const facts = await probeAssetCodec(
+      videoPath,
+      makeRunner({
+        [videoPath]: { codecName: "vp9", pixFmt: "yuv420p", tags: { ALPHA_MODE: "1" } },
+      }),
+    );
+
+    expect(facts?.hasAlpha).toBe(true);
+    expect(proxyVariantFor(facts!)).toBe("vp8");
   });
 
   it("returns null (never throws) when ffprobe is unresolvable", async () => {

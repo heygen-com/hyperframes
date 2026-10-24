@@ -30,7 +30,7 @@ can also sit on an `<hf-audio-group>`, where they apply to the group's whole bus
 **Write the JSON attributes double-quoted, escaping the JSON's own quotes as
 `&quot;` and `&` as `&amp;`** — as every example on this page does. The browser
 reads them through `getAttribute` and does not mind either way, but
-`scripts/carve.mjs` finds them with a `name="..."` regex, so a single-quoted
+`carve.mjs` finds them with a `name="..."` regex, so a single-quoted
 attribute is invisible to it: a carve reports no existing chain and overwrites
 work it could not see.
 
@@ -114,6 +114,14 @@ Preview and render agree on both clocks.
 `v` on a `volume` lane is a linear gain multiplier with a ceiling of **+12 dB**,
 which is about `3.981` — the same ceiling `data-volume` uses. A lane that boosts
 above unity is valid and will play; `1` is unity, not the maximum.
+
+The lane multiplies `data-volume`, the way clip gain offsets volume keyframes in
+an editor: `data-volume="0.5"` under a lane at `1` plays at `0.5`. The product
+shares the same +12 dB ceiling. This holds on clips and on groups.
+
+On a clip, `data-volume` is applied **ahead of** its effects, so a compressor or
+limiter in its `data-fx-chain` reacts to it; the lane comes after them. A group's
+`data-volume` stays after its effects, like a track fader.
 
 A lane holds its first value backwards to the start of its clip and its last
 value forward to the end. **A bed that begins before the voice therefore needs an
@@ -445,8 +453,10 @@ effect and lane you built by hand exactly where it was.
 
 ### From the command line
 
+The script ships with the `media-use` skill; `<SKILL_DIR>` is that skill's folder.
+
 ```bash
-node <SKILL_DIR>/scripts/carve.mjs --comp index.html
+node <SKILL_DIR>/audio/scripts/carve.mjs --comp index.html
 ```
 
 That is the whole command — it finds the voice and the bed itself and prints what

@@ -18,6 +18,8 @@ import {
 export interface RunFfmpegOptions {
   signal?: AbortSignal;
   timeout?: number;
+  /** Replaces `timeout`: stop only once this long passes without a new output frame. */
+  stallTimeout?: number;
   onStderr?: (line: string) => void;
 }
 
@@ -200,11 +202,25 @@ const ABORTED_BEFORE_START: RunFfmpegResult = {
 
 export async function runFfmpeg(args: string[], opts?: RunFfmpegOptions): Promise<RunFfmpegResult> {
   if (opts?.signal?.aborted) return { ...ABORTED_BEFORE_START };
-  const timeout = opts?.timeout ?? DEFAULT_TIMEOUT;
+  const stallTimeout = opts?.stallTimeout;
+  let framesWritten = 0;
+  const readStats = ffmpegStatsReader(({ frames }) => {
+    if (frames === undefined || frames <= framesWritten) return;
+    framesWritten = frames;
+    managed.markActivity();
+  });
   const managed = new ManagedChildProcess(spawnFfmpeg(args), {
     signal: opts?.signal,
-    deadlineAtMs: Date.now() + timeout,
-    onStderr: opts?.onStderr,
+    ...(stallTimeout === undefined
+      ? { deadlineAtMs: Date.now() + (opts?.timeout ?? DEFAULT_TIMEOUT) }
+      : { inactivityTimeoutMs: stallTimeout }),
+    onStderr:
+      stallTimeout === undefined
+        ? opts?.onStderr
+        : (chunk) => {
+            readStats(chunk);
+            opts?.onStderr?.(chunk);
+          },
   });
   return toResult(await managed.wait());
 }

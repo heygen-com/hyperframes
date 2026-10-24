@@ -5,6 +5,9 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import type { AudioSignal, Availability, Downbeats } from "@hyperframes/core/audio-analysis";
 import { medianInterval } from "@hyperframes/core/audio-analysis";
+import { buildAuthHeaders } from "../../../auth/client.js";
+import { tryResolveCredential } from "../../../auth/resolver.js";
+import { refreshIfNeeded, resolveCloudBaseUrl } from "../../../cloud/auth.js";
 
 export const runFile = promisify(execFile);
 
@@ -74,3 +77,58 @@ export function downbeatsWithMeter(beats: number[], downbeats: number[]): Downbe
 
 const round = (t: number) => Math.round(t * 1000) / 1000;
 export const rounded = (times: readonly number[]) => times.map(round);
+
+export interface ServiceAccess {
+  url: string;
+  headers: Record<string, string>;
+  timeoutMs: number;
+}
+
+const NO_HEYGEN_CREDENTIAL =
+  "no HeyGen credential: set HEYGEN_API_KEY or run `hyperframes auth login --api-key`";
+
+async function heygenHeaders(): Promise<Record<string, string> | string> {
+  try {
+    const credential = await tryResolveCredential();
+    return credential ? buildAuthHeaders(await refreshIfNeeded(credential)) : NO_HEYGEN_CREDENTIAL;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+}
+
+/** An explicit service URL requires its own key; never forward the HeyGen credential to it. */
+export async function serviceAccess(
+  env: { url: string; key: string; timeout: string },
+  path: string,
+  defaultMs: number,
+): Promise<ServiceAccess | string> {
+  const timeout = Number(process.env[env.timeout]);
+  const timeoutMs = timeout > 0 ? timeout : defaultMs;
+  const url = process.env[env.url]?.trim();
+  const key = process.env[env.key]?.trim();
+  if (url === "") return `${env.url} is empty, which turns this service off`;
+  if (key)
+    return {
+      url: url || `${resolveCloudBaseUrl()}${path}`,
+      headers: { "x-api-key": key },
+      timeoutMs,
+    };
+  if (url) return `${env.url} is set but ${env.key} is not`;
+  const headers = await heygenHeaders();
+  if (typeof headers === "string") return headers;
+  return { url: `${resolveCloudBaseUrl()}${path}`, headers, timeoutMs };
+}
+
+function errorMessageIn(text: string): string | undefined {
+  try {
+    return (JSON.parse(text) as { error?: { message?: string } }).error?.message;
+  } catch {
+    return undefined;
+  }
+}
+
+export async function serviceFailure(response: Response, service: string): Promise<Error> {
+  const text = await response.text().catch(() => "");
+  const detail = errorMessageIn(text) ?? text.slice(0, 200);
+  return new Error(`${service} answered ${response.status}${detail ? `: ${detail}` : ""}`);
+}

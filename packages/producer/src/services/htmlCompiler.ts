@@ -290,7 +290,11 @@ function assertSubCompositionsUsable(
   }
 }
 
-export type RenderModeHintCode = "iframe" | "requestAnimationFrame" | "htmlInCanvas";
+export type RenderModeHintCode =
+  | "iframe"
+  | "requestAnimationFrame"
+  | "htmlInCanvas"
+  | "captureMotionBlur";
 
 export interface RenderModeHint {
   code: RenderModeHintCode;
@@ -320,7 +324,15 @@ function stripCompilerMountBootstrap(source: string): string {
   );
 }
 
-export function detectRenderModeHints(html: string): RenderModeHints {
+/** The composition the runtime reads data-motion-blur from: `data-root="true"`, else the first. */
+function runtimeRoot(document: ParentNode): Element | null {
+  return (
+    document.querySelector('[data-composition-id][data-root="true"]') ??
+    document.querySelector("[data-composition-id]")
+  );
+}
+
+export function detectRenderModeHints(html: string, pageMotionBlur?: "off"): RenderModeHints {
   const reasons: RenderModeHint[] = [];
   const { document } = parseHTML(html);
 
@@ -329,6 +341,16 @@ export function detectRenderModeHints(html: string): RenderModeHints {
       code: "htmlInCanvas",
       message:
         "Detected html-in-canvas API (layoutsubtree canvas). Chrome does not support concurrent drawElementImage across multiple workers; render is pinned to a single worker.",
+    });
+  } else if (
+    pageMotionBlur !== "off" &&
+    runtimeRoot(document)?.getAttribute("data-motion-blur") === "on"
+  ) {
+    // Not pinned to one worker: k3-promo measured identical across 1 and 4 workers, 2× faster.
+    reasons.push({
+      code: "captureMotionBlur",
+      message:
+        'Detected capture motion blur (data-motion-blur="on"), which draws each frame with html-in-canvas; routed through screenshot capture mode.',
     });
   }
 
@@ -473,6 +495,7 @@ async function resolveMediaDuration(
   tagName: string,
   elementIdentity: string,
   log?: ProducerLogger,
+  urlByAbsentLocalPath?: ReadonlyMap<string, string>,
 ): Promise<{ duration: number | null; resolvedPath: string }> {
   let filePath = src;
 
@@ -490,9 +513,11 @@ async function resolveMediaDuration(
   } else {
     filePath = decodedUrlPath(src);
     if (!filePath.startsWith("/")) filePath = join(baseDir, filePath);
+    // ffprobe reads only the header of a remote source, so it is probed in place.
+    filePath = urlByAbsentLocalPath?.get(filePath) ?? filePath;
   }
 
-  if (!existsSync(filePath)) {
+  if (!isHttpUrl(filePath) && !existsSync(filePath)) {
     return { duration: null, resolvedPath: filePath };
   }
 
@@ -607,6 +632,7 @@ async function compileHtmlFile(
   baseDir: string,
   downloadDir: string,
   log?: ProducerLogger,
+  urlByAbsentLocalPath?: ReadonlyMap<string, string>,
 ): Promise<{ html: string; unresolvedCompositions: UnresolvedElement[] }> {
   const { html: staticCompiled, unresolved } = compileTimingAttrs(html);
 
@@ -628,6 +654,7 @@ async function compileHtmlFile(
         el.tagName,
         el.id,
         log,
+        urlByAbsentLocalPath,
       ).then(({ duration }) => ({ id: el.id, duration })),
     ),
   );
@@ -722,6 +749,7 @@ async function parseSubCompositions(
   projectDir: string,
   downloadDir: string,
   visited: Set<string> = new Set(),
+  urlByAbsentLocalPath?: ReadonlyMap<string, string>,
 ): Promise<{ subCompositions: Map<string, string> }> {
   const subCompositions = new Map<string, string>();
 
@@ -766,6 +794,8 @@ async function parseSubCompositions(
         item.rawSubHtml,
         dirname(item.filePath),
         downloadDir,
+        undefined,
+        urlByAbsentLocalPath,
       );
 
       const nested = await parseSubCompositions(
@@ -773,6 +803,7 @@ async function parseSubCompositions(
         projectDir,
         downloadDir,
         item.nestedVisited,
+        urlByAbsentLocalPath,
       );
 
       return {
@@ -1841,7 +1872,7 @@ async function embedLocalFontFaces(html: string, projectDir: string): Promise<st
               embeddedPaths.add(localPath);
               continue;
             }
-            dataUri = await toDataUri(font.buffer, ext);
+            dataUri = await toDataUri(font.buffer, ext, { compressToWoff2: false });
             dataUriByAbsolutePath.set(absPath, dataUri);
             defaultLogger.info(
               `[Compiler] Embedded local font file: ${localPath} (${(font.buffer.length / 1024).toFixed(0)} KB → data URI)`,
@@ -1884,6 +1915,8 @@ export interface CompileForRenderOptions {
    * mismatch warning). Optional so non-render callers can omit it.
    */
   log?: ProducerLogger;
+  /** Absolute project paths not on disk, readable at these URLs instead. */
+  urlByAbsentLocalPath?: ReadonlyMap<string, string>;
   /**
    * Threaded through to {@link injectDeterministicFontFaces}. When `true`,
    * deterministic font resolution and exhausted transient fetch failures
@@ -1916,6 +1949,7 @@ export interface CompileForRenderOptions {
    * `window.__hfVariables` injection covers script reads, not var() in CSS.
    */
   variables?: Record<string, unknown>;
+  pageMotionBlur?: "off";
 }
 
 const GSAP_CDN_BASE = gsapCdnDist();
@@ -1998,10 +2032,17 @@ export async function compileForRender(
     projectDir,
     downloadDir,
     options.log,
+    options.urlByAbsentLocalPath,
   );
 
   // Compile each referenced sub-composition so the inliner can hoist it.
-  const { subCompositions } = await parseSubCompositions(compiledHtml, projectDir, downloadDir);
+  const { subCompositions } = await parseSubCompositions(
+    compiledHtml,
+    projectDir,
+    downloadDir,
+    undefined,
+    options.urlByAbsentLocalPath,
+  );
 
   // Ensure the HTML is a full document before inlining sub-compositions.
   // When index.html is a fragment (no <html>/<head>/<body>), linkedom.parseHTML()
@@ -2027,7 +2068,7 @@ export async function compileForRender(
     /(<(?:video|audio)\b[^>]*?)\s+preload\s*=\s*["']none["']/gi,
     "$1",
   );
-  const renderModeHints = detectRenderModeHints(sanitizedHtml);
+  const renderModeHints = detectRenderModeHints(sanitizedHtml, options.pageMotionBlur);
   const hasShaderTransitions = detectShaderTransitionUsage(sanitizedHtml);
   // Detected BEFORE inlineExternalScripts: GSAP's own source contains
   // `transformPerspective`, so scanning post-inline HTML would flag every
@@ -2167,7 +2208,7 @@ export async function compileForRender(
       if (analysis.isProblematic) {
         defaultLogger.warn(
           `[Compiler] WARNING: Video "${video.id}" has sparse keyframes (max interval: ${analysis.maxIntervalSeconds}s). ` +
-            `This causes seek failures and frame freezing. Re-encode with: ${reencode}`,
+            `Long GOPs can make preview seeking slower; rendering is unaffected. If preview seeking is slow, re-encode with: ${reencode}`,
         );
       }
       if (metadata.isVFR) {
@@ -2300,7 +2341,10 @@ export async function discoverMediaFromBrowser(page: Page): Promise<BrowserMedia
       if (!id) return;
 
       // currentSrc is authoritative for <video>/<audio><source> and responsive images.
-      const src = htmlEl.currentSrc || htmlEl.src || htmlEl.getAttribute("src") || "";
+      const ownSrc = htmlEl.getAttribute("src");
+      const blankSrc =
+        ownSrc !== null && ownSrc.trim() === "" && !htmlEl.querySelector("source[src]");
+      const src = blankSrc ? "" : htmlEl.currentSrc || htmlEl.src || ownSrc || "";
       const start = parseFloat(htmlEl.getAttribute("data-start") || "0");
       const endRaw = htmlEl.getAttribute("data-end");
       const durationRaw = htmlEl.getAttribute("data-duration");

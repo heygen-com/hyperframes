@@ -140,6 +140,13 @@ jobs:
           PUPPETEER_EXECUTABLE_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
         run: bun run test:browser-raster
 
+      - name: Verify the player takes the box its embed asks for (load shard only)
+        if: matrix.shard == 'load'
+        working-directory: packages/player
+        env:
+          PUPPETEER_EXECUTABLE_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
+        run: bun run test:browser-box
+
       - name: Run player perf — ${{ matrix.shard }} (measure mode)
         working-directory: packages/player
         env:

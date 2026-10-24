@@ -5,12 +5,20 @@ import { createInterface } from "node:readline";
 import type { Readable } from "node:stream";
 import { existsSync, readFileSync, mkdirSync, rmSync, statSync, unlinkSync } from "node:fs";
 import { basename, join, extname } from "node:path";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
 import { stoppedByCancelSignal } from "../utils/renderCancellation.js";
 import { stoppableExecFile } from "../utils/stoppableExecFile.js";
-import { ensureWhisper, ensureModel, hasFFmpeg, DEFAULT_MODEL } from "./manager.js";
+import {
+  ensureWhisper,
+  ensureModel,
+  hasFFmpeg,
+  pinnedWhisperModel,
+  DEFAULT_MODEL,
+  type WhisperResult,
+} from "./manager.js";
+import { sha256File } from "./modelFile.js";
 import { initialModelForLanguage } from "./modelForLanguage.js";
 import { TRANSCRIPT_FILE } from "./transcriptFile.js";
 import { findWavChunk } from "./wav.js";
@@ -294,8 +302,8 @@ function isVideoFile(filePath: string): boolean {
  * Unique path for the temporary 16kHz mono WAV fed to whisper.
  *
  * MUST be unique per call AND per process: callers run many `transcribe`
- * invocations in parallel (e.g. the product-launch-video audio pipeline spawns
- * one `hyperframes transcribe` per scene at once). A `Date.now()`-based name
+ * invocations in parallel (e.g. an audio pipeline that spawns one
+ * `hyperframes transcribe` per scene at once). A `Date.now()`-based name
  * collides when two conversions land in the same millisecond — they clobber
  * each other's WAV in the shared tmpdir, so whisper transcribes the wrong
  * scene's audio and every colliding scene gets identical word timings.
@@ -411,21 +419,6 @@ async function prepareAudio(audioPath: string, signal?: AbortSignal): Promise<st
   return wavPath;
 }
 
-/**
- * Map a ggml model file-stem to whisper.cpp's `--dtw` alignment-heads preset.
- *
- * The two mostly coincide, so the stem was long passed straight to `--dtw` — but
- * they diverge for the large family: the model files are hyphenated
- * (`ggml-large-v3.bin`) while the DTW presets are dotted (`large.v3`,
- * `large.v3.turbo`). `--dtw large-v3` makes whisper-cli abort with
- * "unknown DTW preset 'large-v3'", surfacing as "Transcription failed". The
- * tiny/base/small/medium (+`.en`) families have no hyphen, so `-`→`.` is a no-op
- * for them and correct for the large family.
- */
-export function dtwPresetForModel(model: string): string {
-  return model.replace(/-/g, ".");
-}
-
 /** Aborting `signal` stops ffmpeg, removes its partial WAV and rejects with the reason. */
 export async function prepareWav(
   inputPath: string,
@@ -512,8 +505,6 @@ export async function transcribe(
     "--output-json-full",
     "--output-file",
     outputBase,
-    "--dtw",
-    dtwPresetForModel(model),
     "--suppress-nst",
   ];
   whisperArgs.push("--language", language);
@@ -552,13 +543,15 @@ export async function transcribe(
   } catch (err) {
     // Surface the timeout knob when the child was killed by our own timeout —
     // otherwise the reporter sees a bare ETIMEDOUT / SIGTERM with no hint that
-    // `--timeout` even exists. Non-timeout errors flow through unchanged so the
-    // existing stderr-tail handling in `transcribeAudio` still applies.
-    throw wrapWhisperTimeoutError(err, {
-      effectiveTimeoutMs: whisperTimeoutMs,
-      model,
-      wasOverride: options?.timeoutMs != null,
-    });
+    // `--timeout` even exists. Any other failure names the build, model and stderr.
+    if (isWhisperTimeoutError(err) || stoppedByCancelSignal(err as { signal?: string })) {
+      throw wrapWhisperTimeoutError(err, {
+        effectiveTimeoutMs: whisperTimeoutMs,
+        model,
+        wasOverride: options?.timeoutMs != null,
+      });
+    }
+    throw await diagnoseWhisperFailure(err, whisper, modelPath, model);
   }
 
   // 6. Read and validate output
@@ -666,6 +659,67 @@ async function runWhisper(
   const read = (stream: Readable | null, onLine?: (line: string) => void) =>
     stream && onLine ? once(createInterface({ input: stream }).on("line", onLine), "close") : null;
   await Promise.all([exited, read(stdout, options.onStdout), read(stderr, options.onStderr)]);
+}
+
+/** Every absolute path becomes its file name, so a pasted error names no user or folder. */
+export function withoutPaths(text: string): string {
+  return text
+    .split(homedir())
+    .join("~")
+    .replace(/(?<=^|[\s'"(=:[])(?:~|[A-Za-z]:)?[\\/](?:[^\s'"`\\/]+[\\/])*([^\s'"`\\/]+)/g, "$1");
+}
+
+function whisperVersion(executable: string): string {
+  try {
+    const said = execFileSync(executable, ["--version"], {
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: 5000,
+    });
+    return /version:?\s*(\S+)/i.exec(said)?.[1] ?? "unknown version";
+  } catch {
+    return "unknown version";
+  }
+}
+
+async function describeModel(modelPath: string, model: string): Promise<string> {
+  const bytes = statSync(modelPath, { throwIfNoEntry: false })?.size;
+  if (bytes === undefined) return `model ${model}: file missing`;
+  const sha256 = await sha256File(modelPath).catch(() => "unreadable");
+  const pin = pinnedWhisperModel(model);
+  const verdict = !pin
+    ? "not a pinned model"
+    : pin.bytes === bytes && pin.sha256 === sha256
+      ? "matches the pinned file"
+      : `damaged: expected ${pin.bytes} bytes, sha256 ${pin.sha256.slice(0, 12)}; delete it and re-run`;
+  return `model ${model}: ${bytes} bytes, sha256 ${sha256.slice(0, 12)} (${verdict})`;
+}
+
+/** A whisper-cli failure that says which build, which model file and what whisper printed, for a bug report. */
+async function diagnoseWhisperFailure(
+  err: unknown,
+  whisper: WhisperResult,
+  modelPath: string,
+  model: string,
+): Promise<Error> {
+  const failed = err as { code?: unknown; signal?: string | null; stderr?: unknown };
+  const how = failed.signal
+    ? `crashed (${failed.signal})`
+    : typeof failed.code === "number"
+      ? `exited with code ${failed.code}`
+      : `failed: ${withoutPaths(err instanceof Error ? err.message : String(err))}`;
+  const said = withoutPaths(String(failed.stderr ?? ""))
+    .trim()
+    .split("\n")
+    .slice(-12)
+    .join("\n");
+  const lines = [
+    `whisper-cli ${how}.`,
+    `whisper-cli ${whisperVersion(whisper.executablePath)} (${whisper.source}: ${basename(whisper.executablePath)})`,
+    await describeModel(modelPath, model),
+    said ? `whisper-cli said:\n${said}` : "whisper-cli printed nothing.",
+  ];
+  return new Error(lines.join("\n"), { cause: err });
 }
 
 // ---------------------------------------------------------------------------

@@ -101,7 +101,7 @@ Showcase compositions grouping multiple CSS / GSAP transition styles by family. 
 
 #### Liquid Glass (7)
 
-WebGPU + html-in-canvas frosted-glass surfaces. **Require Brave / Chrome canary** with WebGPU enabled — set `PRODUCER_HEADLESS_SHELL_PATH` to point at the browser; engine auto-passes `--enable-unsafe-webgpu`. See `/hyperframes-animation` → `adapters/typegpu.md`.
+WebGPU + html-in-canvas frosted-glass surfaces. **Require Brave / Chrome canary** with WebGPU enabled — set `PRODUCER_HEADLESS_SHELL_PATH` to point at the browser; engine auto-passes `--enable-unsafe-webgpu`. See `/hyperframes` → `references/runtimes.md`.
 
 | Name                        | Description                                                                             |
 | --------------------------- | --------------------------------------------------------------------------------------- |
@@ -113,7 +113,7 @@ WebGPU + html-in-canvas frosted-glass surfaces. **Require Brave / Chrome canary*
 
 #### VFX (6)
 
-HTML-in-canvas + WebGL composition blocks. See `/hyperframes-animation` → `adapters/three.md` and `adapters/html-in-canvas-patterns.md` for the underlying APIs.
+HTML-in-canvas + WebGL composition blocks. See `/hyperframes` → `references/runtimes.md` for the underlying runtimes.
 
 | Name                    | Description                                                                                             |
 | ----------------------- | ------------------------------------------------------------------------------------------------------- |

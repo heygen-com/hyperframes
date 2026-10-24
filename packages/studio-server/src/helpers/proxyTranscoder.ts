@@ -1,13 +1,24 @@
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, renameSync, statSync, unlinkSync, utimesSync } from "node:fs";
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import {
+  existsSync,
+  mkdtempSync,
+  renameSync,
+  rmSync,
+  statSync,
+  unlinkSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
   formatPreviewProxyBox,
   hdrToSdrToneMapFilter,
   type PreviewProxyBox,
 } from "@hyperframes/core";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
+import { alphaDecoderFor } from "@hyperframes/parsers/media-alpha";
 import { probeFirstFrameColour, probeMediaMetadata } from "./mediaMetadata.js";
 import { cleanupProxyCache } from "./proxyCache.js";
 import { PROXY_VARIANT_CONFIG, type ProxyVariant } from "./mediaCodecMap.js";
@@ -19,9 +30,9 @@ import { mkdirWithinProject, realpath, realProjectRoot } from "./safePath.js";
  * project routes (U3/U4) to serve a `?hf-proxy=` request; never used on
  * the render path (render always sees the original file).
  *
- * A started ffmpeg child is never killed for one caller: every caller of a cache
- * key shares it (in-flight dedupe below). A caller's `signal` only detaches that
- * caller, and drops the copy while it is still queued with no caller left.
+ * Every caller of a cache key shares one ffmpeg child (in-flight dedupe below). A
+ * caller's `signal` detaches that caller; once no caller is left, the copy is
+ * dropped from the queue or its ffmpeg is killed.
  */
 
 export const PROXY_PARAMS_VERSION = "v5";
@@ -43,11 +54,16 @@ const MAX_QUEUED_TRANSCODES = boundedEnvInteger("HYPERFRAMES_PROXY_MAX_QUEUE", 8
 
 const STDERR_TAIL_MAX_CHARS = 4000;
 export const TRANSCODE_TIMEOUT_MS = 15 * 60 * 1000;
+/** A longer source is copied in pieces this long; a stopped copy keeps its finished pieces. */
+const PROXY_CHUNK_SECONDS = 60;
+const CHUNK_PREFIX = ".part-";
+const CONCAT_TIMEOUT_MS = 2 * 60 * 1000;
 const FAILURE_CACHE_TTL_MS = 60 * 1000;
 export const PROXY_PENDING_RETRY_AFTER_SECONDS = 2;
 const ENVIRONMENT_FAILURE_TTL_MS = 5 * PROXY_PENDING_RETRY_AFTER_SECONDS * 1000;
 const MAX_FAILURE_CACHE_ENTRIES = 128;
 export const DEFAULT_PROXY_WAIT_TIMEOUT_MS = 2 * 60 * 1000;
+const UNTOUCHED_TEMP_IS_DEAD_MS = 10 * 60 * 1000;
 
 export class ProxyTranscodeError extends Error {
   readonly exitCode: number | null;
@@ -231,11 +247,12 @@ interface ProxyJob {
   callers: number;
   /** Set while the job waits for a slot. */
   queued?: { start: () => void; drop: () => void };
+  abandoned: AbortController;
 }
 
 class ProxyDroppedError extends ProxyTranscodeError {
   constructor() {
-    super("media proxy copy dropped: every caller left before it started", null, "");
+    super("media proxy copy dropped: every caller left", null, "");
     this.name = "ProxyDroppedError";
   }
 }
@@ -296,7 +313,13 @@ function prioritize(job: ProxyJob): void {
 
 function leave(job: ProxyJob): void {
   job.callers--;
-  if (job.callers === 0) job.queued?.drop();
+  if (job.callers > 0) return;
+  if (job.queued) {
+    job.queued.drop();
+    return;
+  }
+  forget(job);
+  job.abandoned.abort();
 }
 
 // --- per-key in-flight dedupe ----------------------------------------------
@@ -307,9 +330,9 @@ function forget(job: ProxyJob): void {
   if (inFlight.get(job.cachePath)?.job === job) inFlight.delete(job.cachePath);
 }
 
-function maintainProxyCache(cacheDir: string): void {
+function maintainProxyCache(cacheDir: string, staleTempMs?: number): void {
   try {
-    cleanupProxyCache(cacheDir, { protectedPaths: new Set(inFlight.keys()) });
+    cleanupProxyCache(cacheDir, { protectedPaths: new Set(inFlight.keys()), staleTempMs });
   } catch (error) {
     // Cache maintenance must never turn a playable preview into an error.
     console.warn(
@@ -408,18 +431,132 @@ function stderrReason(stderrTail: string): string {
   return line ? `: ${line.replace(/[.!]+$/, "")}` : "";
 }
 
-async function runFfmpeg(
-  sourcePath: string,
-  outputPath: string,
-  variant: ProxyVariant,
-  box: PreviewProxyBox | undefined,
+interface ChunkRange {
+  startSeconds: number;
+  lengthSeconds: number;
+}
+
+/** Null when the source is short enough (or its length unknown) for one pass. */
+function chunkRanges(durationSeconds: number | undefined): ChunkRange[] | null {
+  if (!durationSeconds || durationSeconds <= PROXY_CHUNK_SECONDS * 1.5) return null;
+  const count = Math.floor(durationSeconds / PROXY_CHUNK_SECONDS);
+  // The remainder joins the last piece, so no piece is shorter than a chunk.
+  return Array.from({ length: count }, (_, index) => ({
+    startSeconds: index * PROXY_CHUNK_SECONDS,
+    lengthSeconds:
+      index === count - 1 ? durationSeconds - index * PROXY_CHUNK_SECONDS : PROXY_CHUNK_SECONDS,
+  }));
+}
+
+function ffmpegBudgetError(chunksKept: number, chunkCount: number): ProxyTranscodeError {
+  return new ProxyTranscodeError(
+    `ffmpeg ran out of its ${TRANSCODE_TIMEOUT_MS}ms budget with ${chunksKept}/${chunkCount} pieces done; the finished pieces are kept and the next attempt continues from them`,
+    null,
+    "",
+  );
+}
+
+type EncodeFn = (outputPath: string, timeoutMs: number, range?: ChunkRange) => Promise<void>;
+
+/** Copies a long source in pieces that stay in the cache, so a stopped copy continues from the first missing one. */
+async function encodeInChunks(
+  ranges: ChunkRange[],
+  chunkPrefix: string,
+  tempPath: string,
+  encode: EncodeFn,
+  concat: (listPath: string, target: string) => Promise<void>,
 ): Promise<void> {
-  const metadata = await probeMediaMetadata(sourcePath);
-  const ffmpegPath = findFfBinary("ffmpeg", { configuredMustExist: true });
-  if (!ffmpegPath) {
-    throw new FfmpegUnavailableError();
+  const extension = extname(tempPath);
+  const deadline = Date.now() + TRANSCODE_TIMEOUT_MS;
+  const pieces = ranges.map((_, index) => `${chunkPrefix}${index}${extension}`);
+  for (const [index, range] of ranges.entries()) {
+    const piece = pieces[index]!;
+    if (existsSync(piece)) continue;
+    const timeoutMs = deadline - Date.now();
+    if (timeoutMs <= 0) throw ffmpegBudgetError(index, ranges.length);
+    const pieceTemp = join(dirname(piece), `.tmp-${randomUUID()}-${basename(piece)}`);
+    try {
+      await encode(pieceTemp, timeoutMs, range);
+      renameSync(pieceTemp, piece);
+    } finally {
+      if (existsSync(pieceTemp)) unlinkSync(pieceTemp);
+    }
   }
-  const keepsAlpha = variant === "vp8";
+  const listDir = mkdtempSync(join(tmpdir(), "hf-proxy-join-"));
+  try {
+    const listPath = join(listDir, "pieces.txt");
+    writeFileSync(
+      listPath,
+      pieces
+        .map((piece) => `file '${piece.replace(/\\/g, "/").replace(/'/g, "'\\''")}'\n`)
+        .join(""),
+    );
+    await concat(listPath, tempPath);
+  } finally {
+    rmSync(listDir, { recursive: true, force: true });
+  }
+  for (const piece of pieces) if (existsSync(piece)) unlinkSync(piece);
+}
+
+// Fixed recipe; changing either array means bumping PROXY_PARAMS_VERSION.
+const H264_ARGS = [
+  "-c:v",
+  "libx264",
+  "-profile:v",
+  "high",
+  "-pix_fmt",
+  "yuv420p",
+  "-colorspace",
+  "bt709",
+  "-color_primaries",
+  "bt709",
+  "-color_trc",
+  "bt709",
+  "-crf",
+  "18",
+  "-preset",
+  "veryfast",
+  "-c:a",
+  "aac",
+  "-movflags",
+  "+faststart",
+];
+const VP8_ARGS = [
+  "-c:v",
+  "libvpx",
+  "-b:v",
+  "0",
+  "-crf",
+  "23",
+  "-deadline",
+  "good",
+  "-pix_fmt",
+  "yuva420p",
+  "-colorspace",
+  "bt709",
+  "-color_primaries",
+  "bt709",
+  "-color_trc",
+  "bt709",
+  "-cpu-used",
+  "4",
+  "-auto-alt-ref",
+  "0",
+  "-metadata:s:v:0",
+  "alpha_mode=1",
+  "-ac",
+  "2",
+  "-c:a",
+  "libopus",
+];
+
+async function buildVideoFilter(
+  ffmpegPath: string,
+  sourcePath: string,
+  metadata: Awaited<ReturnType<typeof probeMediaMetadata>>,
+  keepsAlpha: boolean,
+  box: PreviewProxyBox | undefined,
+): Promise<string> {
   const { hdrTransfer } = metadata.color;
   const toneMap = (hdrTransfer === "pq" || hdrTransfer === "hlg") && !keepsAlpha;
   if (toneMap) await ensureHdrFilters(ffmpegPath);
@@ -427,76 +564,90 @@ async function runFfmpeg(
   const evenScale = proxyScaleFilter(box);
   const pixelFormat = keepsAlpha ? "yuva420p" : "yuv420p";
   // The tone map ends in RGB; older ffmpeg (seen on 5.1) converts it with BT.601 unless the matrix is named.
-  const videoFilter = toneMap
+  return toneMap
     ? [
         hdrToSdrToneMapFilter(metadata.color, firstFrame),
         `${evenScale}:out_color_matrix=bt709:out_range=tv`,
         `format=${pixelFormat}`,
       ].join(",")
     : [evenScale, `format=${pixelFormat}`].join(",");
+}
 
+async function runFfmpeg(
+  sourcePath: string,
+  outputPath: string,
+  chunkPrefix: string,
+  variant: ProxyVariant,
+  box: PreviewProxyBox | undefined,
+  signal: AbortSignal,
+): Promise<void> {
+  const metadata = await probeMediaMetadata(sourcePath);
+  const ffmpegPath = findFfBinary("ffmpeg", { configuredMustExist: true });
+  if (!ffmpegPath) {
+    throw new FfmpegUnavailableError();
+  }
+  const keepsAlpha = variant === "vp8";
+  const videoFilter = await buildVideoFilter(ffmpegPath, sourcePath, metadata, keepsAlpha, box);
+  const alphaDecoder = keepsAlpha ? alphaDecoderFor(metadata.color.codecName) : null;
+  const decoderArgs = alphaDecoder ? ["-c:v", alphaDecoder] : [];
+  const encode: EncodeFn = (target, timeoutMs, range) =>
+    spawnFfmpeg(
+      ffmpegPath,
+      [
+        "-y",
+        ...(range ? ["-ss", String(range.startSeconds)] : []),
+        ...decoderArgs,
+        "-i",
+        sourcePath,
+        ...(range ? ["-t", String(range.lengthSeconds)] : []),
+        "-vf",
+        videoFilter,
+        ...(variant === "vp8" ? VP8_ARGS : H264_ARGS),
+        target,
+      ],
+      timeoutMs,
+      signal,
+    );
+  const ranges = chunkRanges(metadata.durationSeconds);
+  if (!ranges) return encode(outputPath, TRANSCODE_TIMEOUT_MS);
+  await encodeInChunks(ranges, chunkPrefix, outputPath, encode, (listPath, target) =>
+    spawnFfmpeg(ffmpegPath, concatArgs(listPath, target, variant), CONCAT_TIMEOUT_MS, signal),
+  );
+}
+
+function concatArgs(listPath: string, target: string, variant: ProxyVariant): string[] {
+  return [
+    "-y",
+    "-f",
+    "concat",
+    "-safe",
+    "0",
+    "-i",
+    listPath,
+    "-c",
+    "copy",
+    ...(variant === "h264" ? ["-movflags", "+faststart"] : []),
+    target,
+  ];
+}
+
+function spawnFfmpeg(
+  ffmpegPath: string,
+  args: string[],
+  timeoutMs: number,
+  signal: AbortSignal,
+): Promise<void> {
   return new Promise((resolvePromise, reject) => {
-    const commonArgs = ["-y", "-i", sourcePath, "-vf", videoFilter];
-    const h264Args = [
-      "-c:v",
-      "libx264",
-      "-profile:v",
-      "high",
-      "-pix_fmt",
-      "yuv420p",
-      "-colorspace",
-      "bt709",
-      "-color_primaries",
-      "bt709",
-      "-color_trc",
-      "bt709",
-      "-crf",
-      "18",
-      "-preset",
-      "veryfast",
-      "-c:a",
-      "aac",
-      "-movflags",
-      "+faststart",
-    ];
-    const vp8Args = [
-      "-c:v",
-      "libvpx",
-      "-b:v",
-      "0",
-      "-crf",
-      "23",
-      "-deadline",
-      "good",
-      "-pix_fmt",
-      "yuva420p",
-      "-colorspace",
-      "bt709",
-      "-color_primaries",
-      "bt709",
-      "-color_trc",
-      "bt709",
-      "-cpu-used",
-      "4",
-      "-auto-alt-ref",
-      "0",
-      "-metadata:s:v:0",
-      "alpha_mode=1",
-      "-ac",
-      "2",
-      "-c:a",
-      "libopus",
-    ];
-    const args = [...commonArgs, ...(variant === "vp8" ? vp8Args : h264Args), outputPath];
-
     // Hard ceiling so a hung ffmpeg can never permanently occupy one of the
     // global transcode slots: the child is killed and the slot released via
     // the caller's finally. Generous because long assets transcode at
     // roughly real time; a healthy encode of any authoring asset fits.
+    signal.throwIfAborted();
     const proc = spawn(ffmpegPath, args, {
       stdio: ["ignore", "ignore", "pipe"],
-      timeout: TRANSCODE_TIMEOUT_MS,
+      timeout: timeoutMs,
       killSignal: "SIGKILL",
+      signal,
       windowsHide: true,
     });
     let stderrTail = "";
@@ -504,6 +655,7 @@ async function runFfmpeg(
       stderrTail = (stderrTail + chunk.toString()).slice(-STDERR_TAIL_MAX_CHARS);
     });
     proc.on("error", (err) => {
+      if (signal.aborted) return;
       reject(new FfmpegUnavailableError(`failed to spawn ffmpeg: ${err.message}`, stderrTail));
     });
     proc.on("close", (code, signal) => {
@@ -512,7 +664,7 @@ async function runFfmpeg(
       } else if (signal) {
         reject(
           new ProxyTranscodeError(
-            `ffmpeg killed by ${signal} (timeout ${TRANSCODE_TIMEOUT_MS}ms or external kill)`,
+            `ffmpeg killed by ${signal} (timeout ${timeoutMs}ms or external kill)`,
             null,
             stderrTail,
           ),
@@ -547,7 +699,18 @@ async function transcodeToCache(
     mkdirWithinProject(projectDir, cacheDir);
     const tempPath = join(cacheDir, `.tmp-${randomUUID()}-${basename(cachePath)}`);
     try {
-      await runFfmpeg(absoluteSourcePath, tempPath, variant, box);
+      const chunkPrefix = join(
+        cacheDir,
+        `${CHUNK_PREFIX}${basename(cachePath, extname(cachePath))}-`,
+      );
+      await runFfmpeg(
+        absoluteSourcePath,
+        tempPath,
+        chunkPrefix,
+        variant,
+        box,
+        job.abandoned.signal,
+      );
       renameSync(tempPath, cachePath);
       maintainProxyCache(cacheDir);
       return cachePath;
@@ -615,6 +778,7 @@ export async function resolveProxy(
       cachePath,
       priority: options.priority === true,
       callers: 0,
+      abandoned: new AbortController(),
     };
     const promise = transcodeToCache(
       job,
@@ -625,7 +789,9 @@ export async function resolveProxy(
       box,
     )
       .catch((err: unknown) => {
-        if (!(err instanceof ProxyDroppedError)) rememberFailure(cachePath, err);
+        if (!(err instanceof ProxyDroppedError) && !job.abandoned.signal.aborted) {
+          rememberFailure(cachePath, err);
+        }
         throw err;
       })
       .finally(() => {
@@ -643,20 +809,32 @@ export async function resolveProxy(
  * flight (other callers can still fill the queue); each waits at most TRANSCODE_TIMEOUT_MS. */
 export async function resolveProxies(
   projectDir: string,
-  sources: ReadonlyArray<{ sourcePath: string; variant: ProxyVariant }>,
+  sources: ReadonlyArray<{ sourcePath: string; variant: ProxyVariant; box?: PreviewProxyBox }>,
+  onSettled: () => void = () => {},
 ): Promise<PromiseSettledResult<string>[]> {
+  const first = sources[0];
+  if (first) {
+    maintainProxyCache(
+      dirname(getProxyCachePath(projectDir, first.sourcePath, first.variant)),
+      Math.min(
+        Number(process.env.HYPERFRAMES_PROXY_CACHE_STALE_TEMP_MS) || UNTOUCHED_TEMP_IS_DEAD_MS,
+        UNTOUCHED_TEMP_IS_DEAD_MS,
+      ),
+    );
+  }
   const results: PromiseSettledResult<string>[] = [];
   let next = 0;
   const worker = async (): Promise<void> => {
     for (let index = next++; index < sources.length; index = next++) {
-      const { sourcePath, variant } = sources[index]!;
+      const { sourcePath, variant, box } = sources[index]!;
       results[index] = await waitForProxy(
-        resolveProxy(projectDir, sourcePath, variant),
+        resolveProxy(projectDir, sourcePath, variant, box),
         TRANSCODE_TIMEOUT_MS,
       ).then(
         (value) => ({ status: "fulfilled", value }),
         (reason: unknown) => ({ status: "rejected", reason }),
       );
+      onSettled();
     }
   };
   const workers = Math.min(MAX_CONCURRENT_TRANSCODES, sources.length);

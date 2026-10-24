@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { createRequire } from "node:module";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { initSandboxRuntimeModular, installAuthoredMediaCapture } from "./init";
 import type { RuntimeTimelineLike } from "./types";
@@ -25,12 +25,8 @@ vi.mock("./colorGrading", async (importOriginal) => {
   };
 });
 
-// The library itself, the repo's vendored 3.15.0, for what a stand-in would only assume.
-const vendoredGsap = () =>
-  join(
-    dirname(expect.getState().testPath!),
-    "../../../../skills/music-to-video/references/motion-primitives/assets/gsap.min.js",
-  );
+// The library itself, core's own gsap dependency, for what a stand-in would only assume.
+const vendoredGsap = () => createRequire(import.meta.url).resolve("gsap/dist/gsap.min.js");
 type RealGsap = {
   ticker: { sleep: () => void };
   getProperty: (target: Element, property: string) => unknown;

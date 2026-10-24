@@ -8,6 +8,21 @@ import { runEncodeStage, type EncodeStageInput } from "./encodeStage.js";
 
 const ffmpeg = (args: string[]) => spawnSync("ffmpeg", args);
 
+describe("GIF input path", () => {
+  it("doubles a % in the frames directory so ffmpeg reads it literally", () => {
+    const args = buildGifPalettegenArgs({
+      framesDir: "/tmp/x 12% Up",
+      framePattern: "frame_%06d.png",
+      palettePath: "/tmp/p.png",
+      outputPath: "/tmp/o.gif",
+      fps: { num: 25, den: 1 },
+      loop: 0,
+      preserveAlpha: false,
+    });
+    expect(args[args.indexOf("-i") + 1]).toBe("/tmp/x 12%% Up/frame_%06d.png");
+  });
+});
+
 describe("GIF encode of RGB frames among RGBA frames", () => {
   it("encodes every frame without rebuilding the filter graph", () => {
     const dir = mkdtempSync(join(tmpdir(), "hf-gif-mixed-"));

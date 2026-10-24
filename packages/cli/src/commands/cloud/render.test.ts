@@ -1,14 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, truncateSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 import {
+  assertArchiveFits,
   resolveAspectRatioForSubmit,
   validateDryRunSource,
-  validateResolutionFormatCombo,
   type ProjectInputSource,
 } from "./render.js";
 import { CliRuntimeError } from "../../utils/commandResult.js";
@@ -34,19 +34,6 @@ function writeComposition(width: number, height: number): string {
   );
   return dir;
 }
-
-describe("validateResolutionFormatCombo", () => {
-  it("rejects 4k + webm and 4k + mov", () => {
-    expect(() => validateResolutionFormatCombo("4k", "webm")).toThrow(CliRuntimeError);
-    expect(() => validateResolutionFormatCombo("4k", "mov")).toThrow(CliRuntimeError);
-  });
-
-  it("allows 4k + mp4 and 1080p + any format", () => {
-    expect(() => validateResolutionFormatCombo("4k", "mp4")).not.toThrow();
-    expect(() => validateResolutionFormatCombo("1080p", "webm")).not.toThrow();
-    expect(() => validateResolutionFormatCombo(undefined, undefined)).not.toThrow();
-  });
-});
 
 describe("validateDryRunSource", () => {
   it("accepts a local directory and rejects already-uploaded sources", () => {
@@ -113,6 +100,97 @@ describe("cloud render --dry-run", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("cloud render --dry-run with heavy media", () => {
+  it("plans the media as HeyGen asset uploads and leaves it out of the archive", () => {
+    const dir = writeComposition(1920, 1080);
+    writeFileSync(
+      join(dir, "index.html"),
+      `<!doctype html><html><body><div data-composition-id="main" data-width="1920" data-height="1080"><video src="clip.mp4"></video></div></body></html>`,
+      "utf-8",
+    );
+    writeFileSync(join(dir, "clip.mp4"), Buffer.alloc(6 * 1024 * 1024, 1));
+    const result = spawnSync(
+      "bun",
+      ["run", cliEntry, "cloud", "render", dir, "--dry-run", "--json"],
+      {
+        encoding: "utf-8",
+        timeout: 30_000,
+        env: {
+          ...process.env,
+          CI: "1",
+          HEYGEN_API_URL: "http://127.0.0.1:1",
+          HYPERFRAMES_NO_UPDATE_CHECK: "1",
+          HOME: dir,
+        },
+      },
+    );
+
+    expect(result.status).toBe(0);
+    const { archive } = JSON.parse(result.stdout) as {
+      archive: {
+        file_count: number;
+        size_bytes: number;
+        offloaded_media: Array<{ path: string; action: string; size_bytes: number }>;
+      };
+    };
+    expect(archive.offloaded_media).toEqual([
+      { path: "clip.mp4", action: "upload", size_bytes: 6 * 1024 * 1024 },
+    ]);
+    expect(archive.file_count).toBe(1);
+    expect(archive.size_bytes).toBeLessThan(64 * 1024);
+  });
+});
+
+describe("cloud render --dry-run with a file over 4 GiB left in the zip", () => {
+  it("reports it as over the limit without reading it", () => {
+    const dir = writeComposition(1920, 1080);
+    mkdirSync(join(dir, "raw"));
+    writeFileSync(join(dir, "raw", "take.mov"), "");
+    truncateSync(join(dir, "raw", "take.mov"), 2 ** 32 + 1);
+    const result = spawnSync(
+      "bun",
+      ["run", cliEntry, "cloud", "render", dir, "--dry-run", "--json"],
+      {
+        encoding: "utf-8",
+        timeout: 60_000,
+        env: {
+          ...process.env,
+          CI: "1",
+          HEYGEN_API_URL: "http://127.0.0.1:1",
+          HYPERFRAMES_NO_UPDATE_CHECK: "1",
+          HOME: dir,
+        },
+      },
+    );
+
+    expect(result.status).toBe(0);
+    const { archive } = JSON.parse(result.stdout) as {
+      archive: {
+        exceeds_upload_limit: boolean;
+        largest_files: Array<{ path: string; size_bytes: number }>;
+      };
+    };
+    expect(archive.exceeds_upload_limit).toBe(true);
+    expect(archive.largest_files[0]).toEqual({ path: "raw/take.mov", size_bytes: 2 ** 32 + 1 });
+  });
+});
+
+describe("assertArchiveFits", () => {
+  it("passes an archive at the limit and fails one over it, naming its largest files", () => {
+    expect(() => assertArchiveFits(200 * 1024 * 1024, [])).not.toThrow();
+    const errors = vi.mocked(console.error);
+    const logs = vi.mocked(console.log);
+    expect(() =>
+      assertArchiveFits(200 * 1024 * 1024 + 1, [
+        { path: "data/scan.tiff", size_bytes: 190 * 1024 * 1024 },
+      ]),
+    ).toThrow(CliRuntimeError);
+    expect([...errors.mock.calls, ...logs.mock.calls].flat().join("\n")).toContain(
+      "data/scan.tiff",
+    );
   });
 });
 

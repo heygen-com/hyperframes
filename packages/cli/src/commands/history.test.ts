@@ -1,6 +1,8 @@
 // @vitest-environment node
-import { spawn } from "node:child_process";
+import { spawn, type SpawnSyncOptionsWithStringEncoding } from "node:child_process";
 import {
+  chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -26,7 +28,7 @@ import { runCommand } from "citty";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { consumeCommandResult } from "../utils/commandResult.js";
-import { historyDeps, withOwner } from "../utils/historyOwner.js";
+import { historyDeps, withOwner, withReader } from "../utils/historyOwner.js";
 import historyCommand from "./history.js";
 
 /** History's clock, a day ahead of the file system's, so each write is dated by the mtime it is stamped with. */
@@ -34,6 +36,33 @@ const clock = { at: 0 };
 const advance = (ms: number) => void (clock.at += ms);
 
 const tracked = vi.hoisted(() => [] as Array<{ action: string; via: string }>);
+const outputRace = vi.hoisted(() => ({ enabled: false, replacements: 0 }));
+vi.mock("node:child_process", async (importOriginal) => {
+  const original = await importOriginal<typeof import("node:child_process")>();
+  const { renameSync, writeFileSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  return {
+    ...original,
+    spawnSync(
+      command: string,
+      args: readonly string[],
+      options: SpawnSyncOptionsWithStringEncoding,
+    ) {
+      const result = original.spawnSync(command, args, options);
+      if (
+        outputRace.enabled &&
+        command === "git" &&
+        args[0] === "diff" &&
+        typeof options.cwd === "string"
+      ) {
+        renameSync(join(options.cwd, "diff"), join(options.cwd, "written-diff"));
+        writeFileSync(join(options.cwd, "diff"), "replacement-file-content");
+        outputRace.replacements++;
+      }
+      return result;
+    },
+  };
+});
 vi.mock("../telemetry/events.js", () => ({
   trackHistoryAction: (props: { action: string; via: string }) => tracked.push(props),
 }));
@@ -154,6 +183,27 @@ describe.each(["direct", "preview"])("hyperframes history (%s)", (mode) => {
     return { ...p, personWrites };
   }
 
+  it("refuses an empty start restore with exit 2 and leaves files intact", async () => {
+    const p = project();
+    rmSync(join(p.dir, "index.html"));
+    rmSync(join(p.dir, "notes.html"));
+    const history = await openProjectHistory({
+      projectDir: p.dir,
+      historyRoot: historyDeps.historyRoot,
+      now: () => clock.at,
+    });
+    p.write("index.html", "A");
+    p.write("notes.html", "N");
+    await history.close();
+    if (mode === "preview") await preview(p.dir);
+    const result = await p.hf("restore", "start");
+    expect(result.code).toBe(2);
+    expect(result.err).toBe(
+      "Restoring this point would remove every file in this project, so nothing was changed.",
+    );
+    expect(p.files()).toEqual(["A", "N"]);
+  });
+
   it("an agent's labelled turn, a person's edit after it: --since shows both, undo of the turn keeps the edit", async () => {
     const { json, hf, turn, personWrites, files } = await setup();
     const startedAt = new Date(clock.at - 1).toISOString();
@@ -238,6 +288,37 @@ describe.each(["direct", "preview"])("hyperframes history (%s)", (mode) => {
     expect((await hf("show", entry.id)).out).toContain("M index.html");
     const diff = (await hf("show", entry.id.slice(0, 8), "--diff")).out;
     expect(diff).toMatch(/-A\n\\ No newline at end of file\n\+A2/);
+  });
+
+  it.each([false, true])("shows a large text diff completely (json=%s)", async (json) => {
+    const { hf, turn } = await setup();
+    const before = `before-${"a".repeat(600_000)}-end-before\n`;
+    const after = `after-${"b".repeat(600_000)}-end-after-🎬\n`;
+    await turn("claude", "Write notes", "notes.html", before);
+    const entry = await turn("claude", "Rewrite notes", "notes.html", after);
+
+    const result = await hf("show", entry.id, "--diff", ...(json ? ["--json"] : []));
+
+    expect(result.code, result.err).toBe(0);
+    const diff = json ? JSON.parse(result.out).diff : result.out;
+    expect(diff).toContain(`-${before}+${after.trimEnd()}`);
+  });
+
+  it("reads the written diff when its pathname is replaced after Git exits", async () => {
+    const { hf, turn } = await setup();
+    const entry = await turn("claude", "Retitle", "index.html", "A2");
+    outputRace.enabled = true;
+    outputRace.replacements = 0;
+    try {
+      const result = await hf("show", entry.id, "--diff", "--json");
+
+      expect(outputRace.replacements).toBe(1);
+      expect(result.code, result.err).toBe(0);
+      expect(JSON.parse(result.out).diff).toMatch(/-A\n\\ No newline at end of file\n\+A2/);
+      expect(result.out).not.toContain("replacement-file-content");
+    } finally {
+      outputRace.enabled = false;
+    }
   });
 
   it("peek reads a file as it was without writing, and restore puts every file back", async () => {
@@ -710,3 +791,126 @@ describe("hyperframes history, refusals", () => {
     expect([refused.code, refused.err]).toEqual([2, "That point is no longer kept"]);
   });
 });
+
+describe.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+  "hyperframes history, a history this run cannot write",
+  () => {
+    /** The project's history folder (or a folder in it) set to `mode` for the rest of the test. */
+    function lock(mode: number, ...parts: string[]) {
+      const [id] = readdirSync(historyDeps.historyRoot).filter((name) =>
+        existsSync(join(historyDeps.historyRoot, name, "log.jsonl")),
+      );
+      const path = join(historyDeps.historyRoot, id!, ...parts);
+      const dirs = [
+        path,
+        ...readdirSync(path, { recursive: true, withFileTypes: true })
+          .filter((entry) => entry.isDirectory())
+          .map((entry) => join(entry.parentPath, entry.name)),
+      ];
+      for (const dir of dirs.reverse()) chmodSync(dir, mode);
+      onTestFinished(() => dirs.forEach((dir) => chmodSync(dir, 0o755)));
+    }
+
+    it("lists the history as last recorded when its folder cannot be written, and says so", async () => {
+      const { hf, turn } = project();
+      await hf();
+      const entry = await turn("claude", "Retitle", "index.html", "A2");
+      lock(0o555);
+      const listed = await hf("--json");
+      expect(listed.code).toBe(0);
+      expect(JSON.parse(listed.out).entries.map((item: { id: string }) => item.id)).toContain(
+        entry.id,
+      );
+      expect(listed.err).toMatch(/could not write this project's history/i);
+    });
+
+    it("lists the history when its log can be read but not appended to", async () => {
+      const { hf, write, turn } = project();
+      await hf();
+      const entry = await turn("claude", "Retitle", "index.html", "A2");
+      const [id] = readdirSync(historyDeps.historyRoot).filter((name) =>
+        existsSync(join(historyDeps.historyRoot, name, "log.jsonl")),
+      );
+      const log = join(historyDeps.historyRoot, id!, "log.jsonl");
+      chmodSync(log, 0o444);
+      onTestFinished(() => chmodSync(log, 0o644));
+      write("notes.html", "N2");
+      const listed = await hf("--json");
+      expect(listed.code).toBe(0);
+      expect(JSON.parse(listed.out).entries.map((item: { id: string }) => item.id)).toContain(
+        entry.id,
+      );
+      expect(listed.err).toMatch(/could not write this project's history/i);
+    });
+
+    it("lists the history when only its stored file copies cannot be written", async () => {
+      const { hf, write, turn } = project();
+      await hf();
+      const entry = await turn("claude", "Retitle", "index.html", "A2");
+      lock(0o555, "blobs");
+      write("notes.html", "N2");
+      const listed = await hf("--json");
+      expect(listed.code).toBe(0);
+      expect(JSON.parse(listed.out).entries.map((item: { id: string }) => item.id)).toContain(
+        entry.id,
+      );
+    });
+
+    it("never runs a read twice: a write error after it started is the command's own", async () => {
+      const { dir, hf } = project();
+      await hf();
+      let runs = 0;
+      const unwritable = Object.assign(new Error("no space"), { code: "ENOSPC", syscall: "write" });
+      await expect(
+        withReader(dir, async () => {
+          runs += 1;
+          throw unwritable;
+        }),
+      ).rejects.toBe(unwritable);
+      expect(runs).toBe(1);
+    });
+
+    it("a folder it cannot read fails the read with that error, never as one it could not write", async () => {
+      const { hf, turn } = project();
+      await hf();
+      await turn("claude", "Retitle", "index.html", "A2");
+      lock(0o111, "blobs");
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        await expect(hf("--json")).rejects.toMatchObject({ code: "EACCES", syscall: "scandir" });
+        expect(error.mock.calls.flat().join(" ")).not.toMatch(/could not write/i);
+      } finally {
+        error.mockRestore();
+      }
+    });
+
+    it("an owner file it cannot read fails the read with that error, never as one it could not write", async () => {
+      const { hf, turn } = project();
+      await hf();
+      await turn("claude", "Retitle", "index.html", "A2");
+      const [id] = readdirSync(historyDeps.historyRoot).filter((name) =>
+        existsSync(join(historyDeps.historyRoot, name, "log.jsonl")),
+      );
+      const owner = join(historyDeps.historyRoot, id!, "owner.pid");
+      writeFileSync(owner, "999999999");
+      chmodSync(owner, 0o000);
+      onTestFinished(() => chmodSync(owner, 0o644));
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        await expect(hf("--json")).rejects.toMatchObject({ code: "EACCES", syscall: "open" });
+        expect(error.mock.calls.flat().join(" ")).not.toMatch(/could not write/i);
+      } finally {
+        error.mockRestore();
+      }
+    });
+
+    it("still fails an undo it cannot record, and leaves the files as they are", async () => {
+      const { hf, read, turn } = project();
+      await hf();
+      await turn("claude", "Retitle", "index.html", "A2");
+      lock(0o555);
+      await expect(hf("undo", "--who", "claude")).rejects.toMatchObject({ code: "EACCES" });
+      expect(read("index.html")).toBe("A2");
+    });
+  },
+);

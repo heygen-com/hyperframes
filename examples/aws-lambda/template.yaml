@@ -3,7 +3,7 @@ Transform: AWS::Serverless-2016-10-31
 Description: >-
   HyperFrames distributed rendering — Step Functions standard workflow with
   one Lambda function handling Plan, RenderChunk (fan-out via Map state),
-  and Assemble. One S3 bucket, alarms for runaway concurrency, Lambda
+  and Assemble, or Plan and RenderChunk on an optional arm64 image. One S3 bucket, alarms for runaway concurrency, Lambda
   errors, and Step Functions execution failures.
 
   Built from the handler ZIP at packages/aws-lambda/dist/handler.zip.
@@ -43,7 +43,8 @@ Parameters:
     Description: >-
       Lambda reserved concurrency cap. Set to a positive integer to bound
       simultaneous chunk renders (e.g. 50 to limit cost). -1 means
-      unreserved (account default).
+      unreserved: each render runs up to 90% of the account's unreserved
+      concurrency.
 
   ChromeSource:
     Type: String
@@ -63,29 +64,29 @@ Parameters:
       chunks than expected; an alarm at 10× the typical workload
       protects against billing surprises.
 
+  VideoImageUri:
+    Type: String
+    Default: ""
+    Description: >-
+      Optional arm64 image (`<ECR repository URI>@sha256:<digest>`) that runs the
+      plan and renders the chunks. Audio and assemble stay on the x86 render
+      function. Empty: one x86 function does it all.
+
 Conditions:
   HasReservedConcurrency: !Not [!Equals [!Ref ReservedConcurrency, -1]]
+  HasVideoFunction: !Not [!Equals [!Ref VideoImageUri, ""]]
 
 Globals:
   Function:
-    Runtime: nodejs22.x
     MemorySize: !Ref LambdaMemoryMb
     Timeout: !Ref LambdaTimeoutSec
-    # x86_64 is required for @sparticuz/chromium — its prebuilt
-    # Chromium ships x86_64-only. Adopters who switch to a custom
-    # ARM-built chrome-headless-shell can change this to `arm64`, but
-    # the default ZIP build will fail to launch on Graviton.
-    Architectures: [x86_64]
     # Lambda function-level X-Ray tracing. The state machine already
     # has Tracing.Enabled: true; without this, X-Ray traces would
     # terminate at the Step Functions → Lambda boundary instead of
     # following into per-function spans.
     Tracing: Active
-    # Cost-allocation tags. Setting these at the Globals level applies
-    # to every AWS::Serverless::Function in the template — there's
-    # only one today, but the contract is portable to multi-function
-    # variants. Bucket + state-machine carry the same tags resource-
-    # locally because Globals only covers functions.
+    # Cost-allocation tags for the render function. Bucket, state machine and
+    # video-function.yaml carry the same tags themselves; Globals covers only SAM functions.
     Tags:
       Project: !Ref ProjectName
       HyperFramesComponent: lambda-renderer
@@ -129,6 +130,11 @@ Resources:
             # Users keep the final mp4 (different key prefix); the rest
             # can age out after a week to keep storage costs flat.
             ExpirationInDays: 7
+          - Id: ExpireSharedContent
+            Status: Enabled
+            Prefix: cas/sha256/
+            # Project files and plan artifacts by SHA-256, shared across renders.
+            ExpirationInDays: 30
       Tags:
         - Key: Project
           Value: !Ref ProjectName
@@ -143,14 +149,18 @@ Resources:
       Description: >-
         HyperFrames distributed render handler. Dispatches on event.Action.
       Handler: handler.handler
+      Runtime: nodejs22.x
+      # The ZIP's @sparticuz/chromium ships x86_64 Chrome only; video-function.yaml runs chunks on arm64.
+      Architectures: [x86_64]
       # Local path is resolved by `sam build` + `sam deploy --resolve-s3`
       # (or `--s3-bucket`); the resulting CodeUri rewrites to s3://.
       CodeUri: ../../packages/aws-lambda/dist/handler.zip
       PackageType: Zip
+      # With a video function the chunks run there, so the reservation moves with them.
       ReservedConcurrentExecutions: !If
-        - HasReservedConcurrency
-        - !Ref ReservedConcurrency
+        - HasVideoFunction
         - !Ref AWS::NoValue
+        - !If [HasReservedConcurrency, !Ref ReservedConcurrency, !Ref AWS::NoValue]
       EphemeralStorage:
         Size: 10240
       Environment:
@@ -159,14 +169,45 @@ Resources:
           # clarity + so users can override during local SAM invoke.
           TMPDIR: /tmp
           HYPERFRAMES_RENDER_BUCKET: !Ref RenderBucket
+          HYPERFRAMES_LAMBDA_RESERVED_CONCURRENCY: !Ref ReservedConcurrency
       Policies:
         - S3CrudPolicy:
             BucketName: !Ref RenderBucket
+        - Statement:
+            - Effect: Allow
+              Action: s3:AbortMultipartUpload
+              Resource: !Sub "arn:${AWS::Partition}:s3:::${RenderBucket}/*"
+        # Plan sizes an unreserved render to the account's concurrency.
+        - Statement:
+            - Effect: Allow
+              Action: lambda:GetAccountSettings
+              Resource: "*"
       # CloudWatch Logs perms are covered by SAM's default
       # AWSLambdaBasicExecutionRole — explicit `CloudWatchLogsFullAccess`
       # would be overscope (`logs:*` on `*`, including DeleteLogGroup +
       # CreateExportTask). Reference templates shouldn't leak overbroad
       # IAM into adopters' accounts.
+
+  # ── Optional arm64 chunk renderer: the same handler as a container image ──
+  # Nested: `sam deploy` demands an image repository for any image function in this template.
+  VideoFunctionStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: HasVideoFunction
+    Properties:
+      TemplateURL: video-function.yaml
+      Parameters:
+        ProjectName: !Ref ProjectName
+        ImageUri: !Ref VideoImageUri
+        RenderBucket: !Ref RenderBucket
+        MemorySize: !Ref LambdaMemoryMb
+        Timeout: !Ref LambdaTimeoutSec
+        ReservedConcurrency: !Ref ReservedConcurrency
+        ChromeSource: !Ref ChromeSource
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: HyperFramesComponent
+          Value: lambda-renderer
 
   # ── CloudWatch log group for the state machine ──────────────────────────
   # SAM doesn't auto-create one when `LoggingConfiguration` is set, so we
@@ -213,6 +254,11 @@ Resources:
           SelectPlanProtocol:
             Type: Choice
             Choices:
+              # Only a stack with the arm64 video function has a cold x86 function to warm.
+              # Without one the compared value can never match.
+              - Variable: $.PlanProtocol
+                StringEquals: !If [HasVideoFunction, v2, v2-without-video-function]
+                Next: WarmRender
               - Variable: $.PlanProtocol
                 StringEquals: v2
                 Next: PlanV2
@@ -224,6 +270,23 @@ Resources:
                 Next: UnsupportedPlanProtocol
             Default: PlanV2
 
+          # The audio task runs on this function once the plan is done; starting its container now hides the cold start.
+          WarmRender:
+            Type: Task
+            Resource: arn:aws:states:::lambda:invoke
+            Parameters:
+              FunctionName: !GetAtt RenderFunction.Arn
+              InvocationType: Event
+              Payload:
+                Action: warm
+            ResultPath: null
+            Catch:
+              - ErrorEquals:
+                  - States.ALL
+                ResultPath: null
+                Next: PlanV2
+            Next: PlanV2
+
           UnsupportedPlanProtocol:
             Type: Fail
             Error: PLAN_PROTOCOL_UNSUPPORTED
@@ -233,7 +296,13 @@ Resources:
             Type: Task
             Resource: arn:aws:states:::lambda:invoke
             Parameters:
-              FunctionName: !GetAtt RenderFunction.Arn
+              # Chunks must run the ffmpeg build the plan records, so the plan runs where they do.
+              FunctionName:
+                !If [
+                  HasVideoFunction,
+                  !GetAtt VideoFunctionStack.Outputs.FunctionArn,
+                  !GetAtt RenderFunction.Arn,
+                ]
               Payload:
                 Action: plan
                 PlanProtocol: v1
@@ -245,6 +314,7 @@ Resources:
               PlanS3Uri.$: "$.Payload.PlanS3Uri"
               PlanHash.$: "$.Payload.PlanHash"
               ChunkCount.$: "$.Payload.ChunkCount"
+              MaxChunkConcurrency.$: "$.Payload.MaxChunkConcurrency"
               Format.$: "$.Payload.Format"
               HasAudio.$: "$.Payload.HasAudio"
               AudioS3Uri.$: "$.Payload.AudioS3Uri"
@@ -270,7 +340,16 @@ Resources:
                   - NotMediaPayloadError
                   - PLAN_ARTIFACT_DIGEST_MISMATCH
                   - FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED
+                  - CHUNK_EXCEEDS_WORKER_TIMEOUT
+                  - SITE_MANIFEST_INVALID
                 MaxAttempts: 0
+              # Another render on the same function can still take the reserved slots; wait minutes.
+              - ErrorEquals: [Lambda.TooManyRequestsException]
+                IntervalSeconds: 5
+                MaxAttempts: 10
+                BackoffRate: 2
+                MaxDelaySeconds: 60
+                JitterStrategy: FULL
               - ErrorEquals: [States.ALL]
                 IntervalSeconds: 2
                 MaxAttempts: 4
@@ -282,7 +361,12 @@ Resources:
             Type: Task
             Resource: arn:aws:states:::lambda:invoke
             Parameters:
-              FunctionName: !GetAtt RenderFunction.Arn
+              FunctionName:
+                !If [
+                  HasVideoFunction,
+                  !GetAtt VideoFunctionStack.Outputs.FunctionArn,
+                  !GetAtt RenderFunction.Arn,
+                ]
               Payload:
                 Action: plan
                 PlanProtocol: v2
@@ -295,8 +379,10 @@ Resources:
               PlanV2ArtifactS3Prefix.$: "$.Payload.PlanV2ArtifactS3Prefix"
               PlanHash.$: "$.Payload.PlanHash"
               ChunkCount.$: "$.Payload.ChunkCount"
+              MaxChunkConcurrency.$: "$.Payload.MaxChunkConcurrency"
               Format.$: "$.Payload.Format"
               HasAudio.$: "$.Payload.HasAudio"
+              SeparateAudio.$: "$.Payload.SeparateAudio"
             ResultPath: $.Plan
             Retry:
               - ErrorEquals:
@@ -317,8 +403,16 @@ Resources:
                   - PlanV2IntegrityError
                   - PLAN_ARTIFACT_DIGEST_MISMATCH
                   - FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED
+                  - CHUNK_EXCEEDS_WORKER_TIMEOUT
                   - ChromeBinaryUnavailableError
+                  - SITE_MANIFEST_INVALID
                 MaxAttempts: 0
+              - ErrorEquals: [Lambda.TooManyRequestsException]
+                IntervalSeconds: 5
+                MaxAttempts: 10
+                BackoffRate: 2
+                MaxDelaySeconds: 60
+                JitterStrategy: FULL
               - ErrorEquals: [States.ALL]
                 IntervalSeconds: 2
                 MaxAttempts: 4
@@ -360,11 +454,12 @@ Resources:
             Choices:
               - Variable: $.Plan.PlanProtocol
                 StringEquals: v2
-                Next: RenderChunksV2
+                Next: RenderV2
             Default: RenderChunks
 
           RenderChunks:
             Type: Map
+            Label: RenderChunks
             ItemsPath: $.Iterator.ChunkIndexes
             ItemSelector:
               ChunkIndex.$: "$$.Map.Item.Value"
@@ -372,24 +467,27 @@ Resources:
               PlanHash.$: "$.Plan.PlanHash"
               ChunkOutputS3Prefix.$: "$.PlanOutputS3Prefix"
               Format.$: "$.Plan.Format"
-            # Map fan-out cap derives from the Plan's chunkCount so
-            # caller-supplied `Config.maxParallelChunks` (which
-            # `plan()` honours when sizing the chunk list) is the
-            # single source of truth. A hardcoded value here would
-            # silently throttle adopters who scale up the chunk count
-            # in their event payload.
-            MaxConcurrencyPath: $.Plan.ChunkCount
+            # Chunks past the plan's concurrency queue here instead of being throttled by Lambda.
+            MaxConcurrencyPath: $.Plan.MaxChunkConcurrency
             ResultPath: $.Chunks
             ItemProcessor:
               ProcessorConfig:
-                Mode: INLINE
+                # Inline Map runs at most 40 iterations at once. STANDARD children
+                # because EXPRESS ones stop at 5 minutes and a chunk may run 15.
+                Mode: DISTRIBUTED
+                ExecutionType: STANDARD
               StartAt: RenderChunk
               States:
                 RenderChunk:
                   Type: Task
                   Resource: arn:aws:states:::lambda:invoke
                   Parameters:
-                    FunctionName: !GetAtt RenderFunction.Arn
+                    FunctionName:
+                      !If [
+                        HasVideoFunction,
+                        !GetAtt VideoFunctionStack.Outputs.FunctionArn,
+                        !GetAtt RenderFunction.Arn,
+                      ]
                     Payload:
                       Action: renderChunk
                       PlanProtocol: v1
@@ -402,6 +500,8 @@ Resources:
                     ChunkS3Uri.$: "$.Payload.ChunkS3Uri"
                     ChunkIndex.$: "$.Payload.ChunkIndex"
                     Sha256.$: "$.Payload.Sha256"
+                    FramesEncoded.$: "$.Payload.FramesEncoded"
+                    DurationMs.$: "$.Payload.DurationMs"
                   Retry:
                     - ErrorEquals:
                         - FFMPEG_VERSION_MISMATCH
@@ -414,6 +514,12 @@ Resources:
                         - INVALID_VIDEO_METADATA
                         - PLAN_ARTIFACT_DIGEST_MISMATCH
                       MaxAttempts: 0
+                    - ErrorEquals: [Lambda.TooManyRequestsException]
+                      IntervalSeconds: 5
+                      MaxAttempts: 10
+                      BackoffRate: 2
+                      MaxDelaySeconds: 60
+                      JitterStrategy: FULL
                     - ErrorEquals: [States.ALL]
                       IntervalSeconds: 2
                       MaxAttempts: 4
@@ -456,6 +562,12 @@ Resources:
                   - PlanProtocolUnsupportedError
                   - PLAN_ARTIFACT_DIGEST_MISMATCH
                 MaxAttempts: 0
+              - ErrorEquals: [Lambda.TooManyRequestsException]
+                IntervalSeconds: 5
+                MaxAttempts: 10
+                BackoffRate: 2
+                MaxDelaySeconds: 60
+                JitterStrategy: FULL
               - ErrorEquals: [States.ALL]
                 IntervalSeconds: 2
                 MaxAttempts: 4
@@ -463,63 +575,156 @@ Resources:
                 MaxDelaySeconds: 60
             End: true
 
-          RenderChunksV2:
-            Type: Map
-            ItemsPath: $.Iterator.ChunkIndexes
-            ItemSelector:
-              ChunkIndex.$: "$$.Map.Item.Value"
-              PlanV2ManifestS3Uri.$: "$.Plan.PlanV2ManifestS3Uri"
-              PlanV2ArtifactS3Prefix.$: "$.Plan.PlanV2ArtifactS3Prefix"
-              PlanHash.$: "$.Plan.PlanHash"
-              ChunkOutputS3Prefix.$: "$.PlanOutputS3Prefix"
-              Format.$: "$.Plan.Format"
-            MaxConcurrencyPath: $.Plan.ChunkCount
-            ResultPath: $.Chunks
-            ItemProcessor:
-              ProcessorConfig:
-                Mode: INLINE
-              StartAt: RenderChunkV2
-              States:
-                RenderChunkV2:
-                  Type: Task
-                  Resource: arn:aws:states:::lambda:invoke
-                  Parameters:
-                    FunctionName: !GetAtt RenderFunction.Arn
-                    Payload:
-                      Action: renderChunk
-                      PlanProtocol: v2
-                      ChunkIndex.$: "$.ChunkIndex"
-                      PlanV2ManifestS3Uri.$: "$.PlanV2ManifestS3Uri"
-                      PlanV2ArtifactS3Prefix.$: "$.PlanV2ArtifactS3Prefix"
-                      PlanHash.$: "$.PlanHash"
-                      ChunkOutputS3Prefix.$: "$.ChunkOutputS3Prefix"
-                      Format.$: "$.Format"
-                  ResultSelector:
-                    ChunkS3Uri.$: "$.Payload.ChunkS3Uri"
-                    ChunkIndex.$: "$.Payload.ChunkIndex"
-                    Sha256.$: "$.Payload.Sha256"
-                  Retry:
-                    - ErrorEquals:
-                        - FFMPEG_VERSION_MISMATCH
-                        - PLAN_HASH_MISMATCH
-                        - S3_URI_NOT_ALLOWED
-                        - BROWSER_GPU_NOT_SOFTWARE
-                        - PLAN_TOO_LARGE
-                        - PlanTooLargeError
-                        - PLAN_PROTOCOL_UNSUPPORTED
-                        - PlanProtocolUnsupportedError
-                        - PLAN_V2_INTEGRITY_UNRECOVERABLE
-                        - INVALID_VIDEO_METADATA
-                        - PlanV2IntegrityError
-                        - PLAN_ARTIFACT_DIGEST_MISMATCH
-                        - ChromeBinaryUnavailableError
-                      MaxAttempts: 0
-                    - ErrorEquals: [States.ALL]
-                      IntervalSeconds: 2
-                      MaxAttempts: 4
-                      BackoffRate: 2
-                      MaxDelaySeconds: 60
-                  End: true
+          RenderV2:
+            # Chunks render video only while the audio task mixes the track AssembleV2 stitches in.
+            Type: Parallel
+            Branches:
+              - StartAt: RenderChunksV2
+                States:
+                  RenderChunksV2:
+                    Type: Map
+                    Label: RenderChunksV2
+                    ItemsPath: $.Iterator.ChunkIndexes
+                    ItemSelector:
+                      ChunkIndex.$: "$$.Map.Item.Value"
+                      PlanV2ManifestS3Uri.$: "$.Plan.PlanV2ManifestS3Uri"
+                      PlanV2ArtifactS3Prefix.$: "$.Plan.PlanV2ArtifactS3Prefix"
+                      PlanHash.$: "$.Plan.PlanHash"
+                      ChunkOutputS3Prefix.$: "$.PlanOutputS3Prefix"
+                      Format.$: "$.Plan.Format"
+                    # Chunks past the plan's concurrency queue here instead of being throttled by Lambda.
+                    MaxConcurrencyPath: $.Plan.MaxChunkConcurrency
+                    ResultPath: $.Chunks
+                    ItemProcessor:
+                      ProcessorConfig:
+                        Mode: DISTRIBUTED
+                        ExecutionType: STANDARD
+                      StartAt: RenderChunkV2
+                      States:
+                        RenderChunkV2:
+                          Type: Task
+                          Resource: arn:aws:states:::lambda:invoke
+                          Parameters:
+                            FunctionName:
+                              !If [
+                                HasVideoFunction,
+                                !GetAtt VideoFunctionStack.Outputs.FunctionArn,
+                                !GetAtt RenderFunction.Arn,
+                              ]
+                            Payload:
+                              Action: renderChunk
+                              PlanProtocol: v2
+                              ChunkIndex.$: "$.ChunkIndex"
+                              PlanV2ManifestS3Uri.$: "$.PlanV2ManifestS3Uri"
+                              PlanV2ArtifactS3Prefix.$: "$.PlanV2ArtifactS3Prefix"
+                              PlanHash.$: "$.PlanHash"
+                              ChunkOutputS3Prefix.$: "$.ChunkOutputS3Prefix"
+                              Format.$: "$.Format"
+                          ResultSelector:
+                            ChunkS3Uri.$: "$.Payload.ChunkS3Uri"
+                            ChunkIndex.$: "$.Payload.ChunkIndex"
+                            Sha256.$: "$.Payload.Sha256"
+                            FramesEncoded.$: "$.Payload.FramesEncoded"
+                            DurationMs.$: "$.Payload.DurationMs"
+                          Retry:
+                            - ErrorEquals:
+                                - FFMPEG_VERSION_MISMATCH
+                                - PLAN_HASH_MISMATCH
+                                - S3_URI_NOT_ALLOWED
+                                - BROWSER_GPU_NOT_SOFTWARE
+                                - PLAN_TOO_LARGE
+                                - PlanTooLargeError
+                                - PLAN_PROTOCOL_UNSUPPORTED
+                                - PlanProtocolUnsupportedError
+                                - PLAN_V2_INTEGRITY_UNRECOVERABLE
+                                - INVALID_VIDEO_METADATA
+                                - PlanV2IntegrityError
+                                - PLAN_ARTIFACT_DIGEST_MISMATCH
+                                - ChromeBinaryUnavailableError
+                              MaxAttempts: 0
+                            - ErrorEquals: [Lambda.TooManyRequestsException]
+                              IntervalSeconds: 5
+                              MaxAttempts: 10
+                              BackoffRate: 2
+                              MaxDelaySeconds: 60
+                              JitterStrategy: FULL
+                            - ErrorEquals: [States.ALL]
+                              IntervalSeconds: 2
+                              MaxAttempts: 4
+                              BackoffRate: 2
+                              MaxDelaySeconds: 60
+                          End: true
+                    End: true
+              - StartAt: AudioNeeded
+                States:
+                  AudioNeeded:
+                    Type: Choice
+                    Choices:
+                      - Variable: $.Plan.SeparateAudio
+                        BooleanEquals: true
+                        Next: Audio
+                    Default: NoAudio
+                  NoAudio:
+                    Type: Pass
+                    Result:
+                      HasAudio: false
+                      AudioS3Uri: null
+                    ResultPath: $.Audio
+                    End: true
+                  Audio:
+                    # The plan left its audio out: mix it here while the chunks render.
+                    Type: Task
+                    Resource: arn:aws:states:::lambda:invoke
+                    Parameters:
+                      FunctionName: !GetAtt RenderFunction.Arn
+                      Payload:
+                        Action: audio
+                        ProjectS3Uri.$: "$.ProjectS3Uri"
+                        PlanOutputS3Prefix.$: "$.PlanOutputS3Prefix"
+                        Config.$: "$.Config"
+                    ResultSelector:
+                      HasAudio.$: "$.Payload.HasAudio"
+                      AudioS3Uri.$: "$.Payload.AudioS3Uri"
+                    ResultPath: $.Audio
+                    Retry:
+                      - ErrorEquals:
+                          - FFMPEG_VERSION_MISMATCH
+                          - PLAN_HASH_MISMATCH
+                          - S3_URI_NOT_ALLOWED
+                          - BROWSER_GPU_NOT_SOFTWARE
+                          - FONT_FETCH_FAILED
+                          - PLAN_TOO_LARGE
+                          - PlanTooLargeError
+                          - PLAN_PROTOCOL_UNSUPPORTED
+                          - PlanProtocolUnsupportedError
+                          - PLAN_V2_INTEGRITY_UNRECOVERABLE
+                          - VIDEO_SOURCE_UNRENDERABLE
+                          - INVALID_VIDEO_METADATA
+                          - NOT_MEDIA_PAYLOAD
+                          - NotMediaPayloadError
+                          - PlanV2IntegrityError
+                          - PLAN_ARTIFACT_DIGEST_MISMATCH
+                          - FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED
+                          - CHUNK_EXCEEDS_WORKER_TIMEOUT
+                          - ChromeBinaryUnavailableError
+                          - SITE_MANIFEST_INVALID
+                        MaxAttempts: 0
+                      - ErrorEquals: [Lambda.TooManyRequestsException]
+                        IntervalSeconds: 5
+                        MaxAttempts: 10
+                        BackoffRate: 2
+                        MaxDelaySeconds: 60
+                        JitterStrategy: FULL
+                      - ErrorEquals: [States.ALL]
+                        IntervalSeconds: 2
+                        MaxAttempts: 4
+                        BackoffRate: 2
+                        MaxDelaySeconds: 60
+                    End: true
+            ResultSelector:
+              Chunks.$: "$[0].Chunks"
+              Audio.$: "$[1].Audio"
+            ResultPath: $.Render
             Next: AssembleV2
 
           AssembleV2:
@@ -533,8 +738,8 @@ Resources:
                 PlanV2ManifestS3Uri.$: "$.Plan.PlanV2ManifestS3Uri"
                 PlanV2ArtifactS3Prefix.$: "$.Plan.PlanV2ArtifactS3Prefix"
                 PlanHash.$: "$.Plan.PlanHash"
-                ChunkS3Uris.$: "$.Chunks[*].ChunkS3Uri"
-                AudioS3Uri: null
+                ChunkS3Uris.$: "$.Render.Chunks[*].ChunkS3Uri"
+                AudioS3Uri.$: "$.Render.Audio.AudioS3Uri"
                 OutputS3Uri.$: "$.OutputS3Uri"
                 Format.$: "$.Plan.Format"
             ResultSelector:
@@ -557,6 +762,12 @@ Resources:
                   - PLAN_ARTIFACT_DIGEST_MISMATCH
                   - ChromeBinaryUnavailableError
                 MaxAttempts: 0
+              - ErrorEquals: [Lambda.TooManyRequestsException]
+                IntervalSeconds: 5
+                MaxAttempts: 10
+                BackoffRate: 2
+                MaxDelaySeconds: 60
+                JitterStrategy: FULL
               - ErrorEquals: [States.ALL]
                 IntervalSeconds: 2
                 MaxAttempts: 4
@@ -582,7 +793,27 @@ Resources:
             Statement:
               - Effect: Allow
                 Action: lambda:InvokeFunction
-                Resource: !GetAtt RenderFunction.Arn
+                Resource:
+                  - !GetAtt RenderFunction.Arn
+                  - !If [
+                      HasVideoFunction,
+                      !GetAtt VideoFunctionStack.Outputs.FunctionArn,
+                      !Ref AWS::NoValue,
+                    ]
+        # A Distributed Map runs each chunk as a child execution of this state machine.
+        # ARNs built by name: !Ref RenderStateMachine here would be a dependency cycle.
+        - PolicyName: RunDistributedMapChildren
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: states:StartExecution
+                Resource: !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${ProjectName}-render"
+              - Effect: Allow
+                Action:
+                  - states:DescribeExecution
+                  - states:StopExecution
+                Resource: !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:execution:${ProjectName}-render:*"
         - PolicyName: WriteCloudwatchLogs
           PolicyDocument:
             Version: "2012-10-17"
@@ -623,7 +854,12 @@ Resources:
       MetricName: Invocations
       Dimensions:
         - Name: FunctionName
-          Value: !Ref RenderFunction
+          Value:
+            !If [
+              HasVideoFunction,
+              !GetAtt VideoFunctionStack.Outputs.FunctionName,
+              !Ref RenderFunction,
+            ]
       Statistic: Sum
       Period: 3600
       EvaluationPeriods: 1
@@ -649,6 +885,25 @@ Resources:
       Dimensions:
         - Name: FunctionName
           Value: !Ref RenderFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+  VideoFunctionErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: HasVideoFunction
+    Properties:
+      AlarmName: !Sub "${ProjectName}-video-function-errors"
+      AlarmDescription: >-
+        Fires if the arm64 chunk Lambda reports any errors in a 5-minute window.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !GetAtt VideoFunctionStack.Outputs.FunctionName
       Statistic: Sum
       Period: 300
       EvaluationPeriods: 1
@@ -695,6 +950,11 @@ Outputs:
     Value: !GetAtt RenderFunction.Arn
     Export:
       Name: !Sub "${AWS::StackName}-RenderFunctionArn"
+
+  VideoFunctionArn:
+    Condition: HasVideoFunction
+    Description: ARN of the arm64 chunk-rendering function.
+    Value: !GetAtt VideoFunctionStack.Outputs.FunctionArn
 
   RenderStateMachineArn:
     Description: ARN of the Step Functions state machine. Pass to `aws stepfunctions start-execution`.

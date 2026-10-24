@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>perf fixture: heavy-16x1080</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #050714;
+        overflow: hidden;
+        font-family: system-ui, sans-serif;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      video {
+        position: absolute;
+        object-fit: cover;
+      }
+    </style>
+    <script src="/vendor/gsap.min.js"></script>
+    <script data-hyperframes-runtime="1" src="/vendor/hyperframe.runtime.iife.js"></script>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-width="1920"
+      data-height="1080"
+      data-duration="10"
+      data-fps="30"
+    ></div>
+    <script>
+      (function () {
+        var root = document.getElementById("root");
+        var tl = gsap.timeline({ paused: true });
+        function video(src, track, start, duration, css) {
+          var v = document.createElement("video");
+          v.setAttribute("data-start", String(start));
+          v.setAttribute("data-duration", String(duration));
+          v.setAttribute("data-track-index", String(track));
+          v.setAttribute("src", "../_media/" + src);
+          v.setAttribute("preload", "auto");
+          v.setAttribute("playsinline", "");
+          v.muted = true;
+          v.style.cssText = css;
+          root.appendChild(v);
+          return v;
+        }
+        // 16 simultaneous 1080p H.264 layers, each transformed every frame.
+        for (var i = 0; i < 16; i++) {
+          var x = (i % 4) * 480,
+            y = Math.floor(i / 4) * 270;
+          var v = video(
+            "h264-1080.mp4",
+            i,
+            0,
+            10,
+            "left:" + x + "px;top:" + y + "px;width:480px;height:270px;",
+          );
+          tl.fromTo(
+            v,
+            { rotation: -2, scale: 0.94 },
+            { rotation: 2, scale: 1, duration: 10, ease: "sine.inOut" },
+            0,
+          );
+        }
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+      })();
+    </script>
+  </body>
+</html>

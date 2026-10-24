@@ -23,17 +23,31 @@ import { gotoWhenSent } from "./navigateForCapture.js";
 
 const SHADER_TRANSITIONS_TIMEOUT_MS = 90_000;
 const CAPTURE_SETTLE_MS = 1500;
+const NETWORK_IDLE_MS = 100;
 const PREFERRED_SEEK_TARGET_WAIT_MS = 500;
 const DEFAULT_POST_SEEK_FONT_WAIT_MS = 500;
 
 // The audit-grade seek tuning shared by check and the deprecated inspect/layout:
-// bridge+timeline fallback, ordered double-rAF settle, bounded font wait, sleep.
+// bridge+timeline fallback, ordered double-rAF settle, bounded font wait.
 export const AUDIT_SEEK_OPTIONS = {
   fallbackToBridgeAndTimelines: true,
   animationFrameSettle: "double",
   waitForFontsMs: 500,
-  settleMs: 120,
 } as const;
+
+export const SCREENSHOT_IMAGE_WAIT_MS = 3_000;
+
+export const SCREENSHOT_SEEK_OPTIONS = {
+  ...AUDIT_SEEK_OPTIONS,
+  waitForImagesMs: SCREENSHOT_IMAGE_WAIT_MS,
+} as const;
+
+export interface UnsettledImages {
+  pending: string[];
+  failed: string[];
+}
+
+const ALL_IMAGES_SETTLED: UnsettledImages = { pending: [], failed: [] };
 
 // Geometry-only seek for the dense content_overlap grid: getBoundingClientRect is valid synchronously after setTime, so drop all post-seek waits (rAF/font/sleep) that would multiply across the dense grid.
 export const DENSE_GEOMETRY_SEEK_OPTIONS = {
@@ -52,18 +66,21 @@ export interface SeekCompositionTimelineOptions {
   animationFrameSettle?: "race" | "double" | "none";
   waitForFontsMs?: number;
   settleMs?: number;
+  waitForImagesMs?: number;
   waitForVideoFrames?: boolean;
   // Box-only reads: software GL spends about a second per frame on draws nothing here looks at.
   skipWebglDraws?: boolean;
 }
 
 type SeekBarrierOptions = { videoFrames: boolean };
+type FontWaitOptions = { ms: number; frames: number };
 
 type CompositionPageFunction =
   | string
   | (() => unknown)
   | ((value: number) => unknown)
   | ((barrier: SeekBarrierOptions) => unknown)
+  | ((wait: FontWaitOptions) => unknown)
   | ((
       value: number,
       fallbackToBridgeAndTimelines: boolean,
@@ -74,7 +91,7 @@ type CompositionPageFunction =
 export interface CompositionEvaluationPage {
   evaluate(
     pageFunction: CompositionPageFunction,
-    value?: number | SeekBarrierOptions,
+    value?: number | SeekBarrierOptions | FontWaitOptions,
     fallbackToBridgeAndTimelines?: boolean,
     exactTime?: boolean,
     skipWebglDraws?: boolean,
@@ -98,6 +115,7 @@ export interface OpenSettledCompositionPageOptions {
   navigationTimeoutMs?: number;
   renderReadyTimeoutMs: number;
   renderReadyWarningSuffix: string;
+  lateSubresourceTimeoutMs?: number;
   browserGpuMode?: BrowserGpuMode;
   signal?: AbortSignal;
   onBrowser?: (browser: Browser) => void;
@@ -106,6 +124,60 @@ export interface OpenSettledCompositionPageOptions {
   // Runs after the page exists but before page.goto, so console/pageerror/
   // request listeners can attach without missing load-time events.
   beforeNavigate?: (page: Page) => void | Promise<void>;
+  onLoaded?: () => void;
+  // Started before the project was bundled; used only if it was launched with the same arguments.
+  prelaunched?: PrelaunchedBrowser;
+}
+
+interface LaunchedBrowser {
+  browser: Browser;
+  softwareWebGpu: boolean;
+}
+
+export interface PrelaunchedBrowser {
+  launched: Promise<LaunchedBrowser | undefined>;
+  take(key: string): Promise<LaunchedBrowser | undefined>;
+  discard(): Promise<void>;
+}
+
+type LaunchOptions = Pick<
+  OpenSettledCompositionPageOptions,
+  "browserGpuMode" | "signal" | "onBrowser"
+>;
+
+function launchKey(html: string, noListen: boolean, options: LaunchOptions): string {
+  const viewport = resolveCompositionViewportFromHtml(html);
+  const gpuMode = options.browserGpuMode ?? resolveCliChromeGpuMode();
+  return JSON.stringify([viewport, compositionRequiresWebGpu(html), noListen, gpuMode]);
+}
+
+export function prelaunchCompositionBrowser(
+  html: string,
+  browserGpuMode?: BrowserGpuMode,
+): PrelaunchedBrowser {
+  const abort = new AbortController();
+  const options = { browserGpuMode, signal: abort.signal };
+  const key = launchKey(html, false, options);
+  const launched = launchCompositionBrowser(html, false, options).catch(() => undefined);
+  let taken = false;
+  const discard = async () => {
+    if (taken) return;
+    taken = true;
+    abort.abort();
+    await (await launched)?.browser.close().catch(() => undefined);
+  };
+  return {
+    launched,
+    take: async (wanted) => {
+      if (wanted !== key) return discard().then(() => undefined);
+      taken = true;
+      const result = await launched;
+      if (result?.browser.connected) return result;
+      await result?.browser.close().catch(() => undefined);
+      return undefined;
+    },
+    discard,
+  };
 }
 
 export interface FfmpegRunResult {
@@ -188,9 +260,46 @@ async function waitForCompositionSettle(
       console.warn(`   ${c.warn("⚠")} Shader transitions did not finish pre-rendering`);
     });
 
-  await page.evaluate(() => document.fonts.ready).catch(() => {});
-  await new Promise((resolveSettle) => setTimeout(resolveSettle, CAPTURE_SETTLE_MS));
+  await waitForLateSubresources(page, options.lateSubresourceTimeoutMs ?? CAPTURE_SETTLE_MS);
+  const { resolveConfig, waitForImagesReady } = await import("@hyperframes/engine");
+  const imageTimeoutMs = resolveConfig().playerReadyTimeout;
+  await waitForImagesReady(page, imageTimeoutMs, (sources) =>
+    console.warn(
+      `   ${c.warn("⚠")} Some images did not load within ${imageTimeoutMs}ms: ${sources}. They may show blank.`,
+    ),
+  );
   return runtimeReady;
+}
+
+async function waitForLateSubresources(page: Page, timeoutMs: number): Promise<void> {
+  let cap: ReturnType<typeof setTimeout> | undefined;
+  const deadline = Date.now() + timeoutMs;
+  const ready = (async () => {
+    await page.waitForFunction(() => document.readyState === "complete", {
+      timeout: timeoutMs,
+    });
+    await page.waitForNetworkIdle({
+      idleTime: NETWORK_IDLE_MS,
+      timeout: Math.max(1, deadline - Date.now()),
+    });
+    await page.evaluate(async () => {
+      await Promise.all(Array.from(document.images, (image) => image.decode().catch(() => {})));
+      await document.fonts.ready;
+    });
+  })();
+  try {
+    await Promise.race([
+      ready,
+      new Promise((resolveCap) => {
+        cap = setTimeout(resolveCap, timeoutMs);
+      }),
+    ]);
+  } catch {
+    await new Promise((resolveCap) => setTimeout(resolveCap, Math.max(0, deadline - Date.now())));
+  } finally {
+    clearTimeout(cap);
+    ready.catch(() => {});
+  }
 }
 
 // tsx/esbuild-style dev transpilers run with keepNames, which rewrites named
@@ -212,13 +321,47 @@ export async function openSettledCompositionPage(
   options: OpenSettledCompositionPageOptions,
 ): Promise<SettledCompositionPage> {
   const viewport = resolveCompositionViewportFromHtml(html);
+  const requiresWebGpu = compositionRequiresWebGpu(html);
+  // Nothing may listen (a sandbox refused it): DevTools over a pipe, one process, pages answered in-process.
+  const answer = (await import("../utils/staticProjectServer.js")).inProcessAnswer(url);
+  const noListen = answer !== undefined;
+  let chromeBrowser: Browser | undefined;
+  try {
+    const launched =
+      (await options.prelaunched?.take(launchKey(html, noListen, options))) ??
+      (await launchCompositionBrowser(html, noListen, options));
+    chromeBrowser = launched.browser;
+    const softwareWebGpu = launched.softwareWebGpu;
+    options.onBrowser?.(chromeBrowser);
+    options.onBrowserReady?.();
+    const page = await chromeBrowser.newPage();
+    await installPageFunctionGuard(page);
+    const { installMediaRenderIdBridge } = await import("@hyperframes/engine");
+    await installMediaRenderIdBridge(page);
+    await page.setViewport(viewport);
+    if (answer) await answerPageInProcess(page, url, answer);
+    await options.beforeNavigate?.(page);
+    await gotoWhenSent(page, url, pageNavigationTimeoutMs(options.navigationTimeoutMs));
+    await assertWebGpuAdapterAvailable(page, requiresWebGpu, softwareWebGpu);
+    options.onLoaded?.();
+    const renderReadyTimedOut = !(await waitForCompositionSettle(page, options));
+    return { browser: chromeBrowser, page, renderReadyTimedOut };
+  } catch (err) {
+    return rethrowAfterBrowserCleanup(chromeBrowser, err);
+  }
+}
+
+async function launchCompositionBrowser(
+  html: string,
+  noListen: boolean,
+  options: LaunchOptions,
+): Promise<LaunchedBrowser> {
+  const viewport = resolveCompositionViewportFromHtml(html);
   const { ensureBrowser, findSystemBrowser } = await import("../browser/manager.js");
   const browser = await ensureBrowser({ signal: options.signal });
   const puppeteer = await import("puppeteer-core");
   const { buildChromeArgs } = await import("@hyperframes/engine");
   const requestedGpuMode = options.browserGpuMode ?? resolveCliChromeGpuMode();
-  // Nothing may listen (a sandbox refused it): DevTools over a pipe, one process, pages answered in-process.
-  const answer = (await import("../utils/staticProjectServer.js")).inProcessAnswer(url);
   const requiresWebGpu = compositionRequiresWebGpu(html);
   let softwareWebGpu = false;
   const launch = async (executablePath: string): Promise<Browser> => {
@@ -226,7 +369,7 @@ export async function openSettledCompositionPage(
     const resolvedGpuMode = await resolveManagedGpuMode(requestedGpuMode, executablePath, {
       signal: options.signal,
       onBrowser: options.onBrowser,
-      noListen: answer !== undefined,
+      noListen,
     });
     options.signal?.throwIfAborted();
     const webGpu = resolveLocalWebGpu(resolvedGpuMode, requiresWebGpu);
@@ -239,57 +382,154 @@ export async function openSettledCompositionPage(
       headless: true,
       signal: options.signal,
       executablePath,
-      ...(answer ? oneProcessOverPipe({ args }) : { args }),
+      ...(noListen ? oneProcessOverPipe({ args }) : { args }),
     });
   };
 
-  let chromeBrowser: Browser | undefined;
+  let chromeBrowser: Browser;
   try {
-    try {
-      chromeBrowser = await launch(browser.executablePath);
-    } catch (launchError) {
-      const message = normalizeErrorMessage(launchError);
-      const remediation = windowsChromeCrashRemediation(message);
-      if (!remediation) throw launchError;
+    chromeBrowser = await launch(browser.executablePath);
+  } catch (launchError) {
+    const message = normalizeErrorMessage(launchError);
+    const remediation = windowsChromeCrashRemediation(message);
+    if (!remediation) throw launchError;
 
-      const systemBrowser =
-        browser.source === "cache" || browser.source === "download"
-          ? findSystemBrowser()
-          : undefined;
-      if (!systemBrowser || systemBrowser.executablePath === browser.executablePath) {
-        throw new Error(`${message}\n\n${remediation}`, { cause: launchError });
-      }
-
-      console.warn(
-        `[hyperframes] Managed chrome-headless-shell crashed at launch; retrying once with system Chrome at ${systemBrowser.executablePath}.`,
-      );
-      try {
-        chromeBrowser = await launch(systemBrowser.executablePath);
-      } catch (fallbackError) {
-        throw new Error(
-          `System Chrome fallback also failed: ${normalizeErrorMessage(fallbackError)}\n\n${remediation}`,
-          { cause: fallbackError },
-        );
-      }
+    const systemBrowser =
+      browser.source === "cache" || browser.source === "download" ? findSystemBrowser() : undefined;
+    if (!systemBrowser || systemBrowser.executablePath === browser.executablePath) {
+      throw new Error(`${message}\n\n${remediation}`, { cause: launchError });
     }
 
-    options.onBrowser?.(chromeBrowser);
-    options.onBrowserReady?.();
-    const page = await chromeBrowser.newPage();
-    await installPageFunctionGuard(page);
-    await page.setViewport(viewport);
-    if (answer) await answerPageInProcess(page, url, answer);
-    await options.beforeNavigate?.(page);
-    await gotoWhenSent(page, url, pageNavigationTimeoutMs(options.navigationTimeoutMs));
-    await assertWebGpuAdapterAvailable(page, requiresWebGpu, softwareWebGpu);
-    const renderReadyTimedOut = !(await waitForCompositionSettle(page, options));
-    return { browser: chromeBrowser, page, renderReadyTimedOut };
-  } catch (err) {
-    return rethrowAfterBrowserCleanup(chromeBrowser, err);
+    console.warn(
+      `[hyperframes] Managed chrome-headless-shell crashed at launch; retrying once with system Chrome at ${systemBrowser.executablePath}.`,
+    );
+    try {
+      chromeBrowser = await launch(systemBrowser.executablePath);
+    } catch (fallbackError) {
+      throw new Error(
+        `System Chrome fallback also failed: ${normalizeErrorMessage(fallbackError)}\n\n${remediation}`,
+        { cause: fallbackError },
+      );
+    }
   }
+  return { browser: chromeBrowser, softwareWebGpu };
+}
+
+// Serialized into the page; the seek-target cascade must stay one function.
+// fallow-ignore-next-line complexity
+export function seekInPage(
+  t: number,
+  fallbackToBridgeAndTimelines: boolean,
+  exactTime: boolean,
+  skipDraws: boolean,
+): void {
+  const getProperty = (target: unknown, key: string): unknown => {
+    if ((typeof target !== "object" || target === null) && typeof target !== "function") {
+      return undefined;
+    }
+    return Reflect.get(target, key);
+  };
+  const call = (fn: unknown, receiver: unknown, args: unknown[]): boolean => {
+    if (typeof fn !== "function") return false;
+    Reflect.apply(fn, receiver, args);
+    return true;
+  };
+
+  const player = Reflect.get(window, "__player");
+  if (!player && !fallbackToBridgeAndTimelines) return;
+
+  const safe = Math.max(0, Number(t) || 0);
+  const renderSeek = getProperty(player, "renderSeek");
+  const playerSeek = getProperty(player, "seek");
+  const hf = Reflect.get(window, "__hf");
+  const bridgeSeek = getProperty(hf, "seek");
+  const gsap = Reflect.get(window, "gsap");
+  const ticker = getProperty(gsap, "ticker");
+
+  // fallow-ignore-next-line complexity
+  const seekTo = (time: number): void => {
+    // Prefer renderSeek because it also runs the runtime's data-start/data-duration
+    // visibility sync; raw timeline seeks leave off-window clips visible to audits.
+    if (call(renderSeek, player, exactTime ? [time, { exact: true }] : [time])) {
+      // Preferred runtime target handled the seek.
+    } else if (fallbackToBridgeAndTimelines && call(bridgeSeek, hf, [time])) {
+      // Producer bridge handled the seek.
+    } else if (call(playerSeek, player, [time])) {
+      // Legacy player target handled the seek.
+    } else if (fallbackToBridgeAndTimelines) {
+      const timelines = Reflect.get(window, "__timelines");
+      if (typeof timelines === "object" && timelines !== null) {
+        for (const key of Object.keys(timelines)) {
+          const timeline = Reflect.get(timelines, key);
+          call(getProperty(timeline, "pause"), timeline, []);
+          call(getProperty(timeline, "seek"), timeline, [time]);
+        }
+      }
+    }
+    call(getProperty(ticker, "tick"), ticker, []);
+  };
+
+  const gateSlot = Symbol.for("hyperframes.webglDrawGate");
+  let gate = Reflect.get(window, gateSlot) as { skip: boolean; skipped: boolean } | undefined;
+  if (skipDraws && !gate) {
+    const installed = { skip: false, skipped: false };
+    for (const name of ["WebGLRenderingContext", "WebGL2RenderingContext"]) {
+      const proto = getProperty(Reflect.get(window, name), "prototype");
+      if (!proto) continue;
+      for (const method of [
+        "clear",
+        "drawArrays",
+        "drawElements",
+        "drawArraysInstanced",
+        "drawElementsInstanced",
+        "drawRangeElements",
+        "blitFramebuffer",
+      ]) {
+        const draw = getProperty(proto, method);
+        if (typeof draw !== "function") continue;
+        Reflect.set(proto, method, function (this: unknown, ...args: unknown[]) {
+          if (!installed.skip) return Reflect.apply(draw, this, args);
+          installed.skipped = true;
+          return undefined;
+        });
+      }
+    }
+    Reflect.set(window, gateSlot, installed);
+    gate = installed;
+  }
+  const seekWithoutDraws = (time: number): void => {
+    if (!gate) return seekTo(time);
+    gate.skip = true;
+    try {
+      seekTo(time);
+    } finally {
+      gate.skip = false;
+    }
+  };
+
+  if (skipDraws) {
+    seekWithoutDraws(safe);
+    return;
+  }
+  // A skipped draw left the canvas stale and a same-time seek redraws nothing: step off first.
+  if (gate?.skipped) {
+    seekWithoutDraws(safe >= 0.001 ? safe - 0.001 : safe + 0.001);
+    gate.skipped = false;
+  }
+  seekTo(safe);
 }
 
 export async function seekCompositionTimeline(
+  page: CompositionSeekPage,
+  timeSeconds: number,
+  options: SeekCompositionTimelineOptions = {},
+): Promise<void> {
+  await seekCompositionTimelineOnly(page, timeSeconds, options);
+  await settleCompositionSeek(page, options);
+}
+
+/** The seek alone; `settleCompositionSeek` must follow, which is what finishes a blurred frame. */
+export async function seekCompositionTimelineOnly(
   page: CompositionSeekPage,
   timeSeconds: number,
   options: SeekCompositionTimelineOptions = {},
@@ -299,110 +539,18 @@ export async function seekCompositionTimeline(
   }
 
   await page.evaluate(
-    // Serialized into the page; the seek-target cascade must stay one function.
-    // fallow-ignore-next-line complexity
-    (t: number, fallbackToBridgeAndTimelines: boolean, exactTime: boolean, skipDraws: boolean) => {
-      const getProperty = (target: unknown, key: string): unknown => {
-        if ((typeof target !== "object" || target === null) && typeof target !== "function") {
-          return undefined;
-        }
-        return Reflect.get(target, key);
-      };
-      const call = (fn: unknown, receiver: unknown, args: unknown[]): boolean => {
-        if (typeof fn !== "function") return false;
-        Reflect.apply(fn, receiver, args);
-        return true;
-      };
-
-      const player = Reflect.get(window, "__player");
-      if (!player && !fallbackToBridgeAndTimelines) return;
-
-      const safe = Math.max(0, Number(t) || 0);
-      const renderSeek = getProperty(player, "renderSeek");
-      const playerSeek = getProperty(player, "seek");
-      const hf = Reflect.get(window, "__hf");
-      const bridgeSeek = getProperty(hf, "seek");
-      const gsap = Reflect.get(window, "gsap");
-      const ticker = getProperty(gsap, "ticker");
-
-      // fallow-ignore-next-line complexity
-      const seekTo = (time: number): void => {
-        // Prefer renderSeek because it also runs the runtime's data-start/data-duration
-        // visibility sync; raw timeline seeks leave off-window clips visible to audits.
-        if (call(renderSeek, player, exactTime ? [time, { exact: true }] : [time])) {
-          // Preferred runtime target handled the seek.
-        } else if (fallbackToBridgeAndTimelines && call(bridgeSeek, hf, [time])) {
-          // Producer bridge handled the seek.
-        } else if (call(playerSeek, player, [time])) {
-          // Legacy player target handled the seek.
-        } else if (fallbackToBridgeAndTimelines) {
-          const timelines = Reflect.get(window, "__timelines");
-          if (typeof timelines === "object" && timelines !== null) {
-            for (const key of Object.keys(timelines)) {
-              const timeline = Reflect.get(timelines, key);
-              call(getProperty(timeline, "pause"), timeline, []);
-              call(getProperty(timeline, "seek"), timeline, [time]);
-            }
-          }
-        }
-        call(getProperty(ticker, "tick"), ticker, []);
-      };
-
-      const gateSlot = Symbol.for("hyperframes.webglDrawGate");
-      let gate = Reflect.get(window, gateSlot) as { skip: boolean; skipped: boolean } | undefined;
-      if (skipDraws && !gate) {
-        const installed = { skip: false, skipped: false };
-        for (const name of ["WebGLRenderingContext", "WebGL2RenderingContext"]) {
-          const proto = getProperty(Reflect.get(window, name), "prototype");
-          if (!proto) continue;
-          for (const method of [
-            "clear",
-            "drawArrays",
-            "drawElements",
-            "drawArraysInstanced",
-            "drawElementsInstanced",
-            "drawRangeElements",
-            "blitFramebuffer",
-          ]) {
-            const draw = getProperty(proto, method);
-            if (typeof draw !== "function") continue;
-            Reflect.set(proto, method, function (this: unknown, ...args: unknown[]) {
-              if (!installed.skip) return Reflect.apply(draw, this, args);
-              installed.skipped = true;
-              return undefined;
-            });
-          }
-        }
-        Reflect.set(window, gateSlot, installed);
-        gate = installed;
-      }
-      const seekWithoutDraws = (time: number): void => {
-        if (!gate) return seekTo(time);
-        gate.skip = true;
-        try {
-          seekTo(time);
-        } finally {
-          gate.skip = false;
-        }
-      };
-
-      if (skipDraws) {
-        seekWithoutDraws(safe);
-        return;
-      }
-      // A skipped draw left the canvas stale and a same-time seek redraws nothing: step off first.
-      if (gate?.skipped) {
-        seekWithoutDraws(safe >= 0.001 ? safe - 0.001 : safe + 0.001);
-        gate.skipped = false;
-      }
-      seekTo(safe);
-    },
+    seekInPage,
     timeSeconds,
     options.fallbackToBridgeAndTimelines === true,
     options.exactTime === true,
     options.skipWebglDraws === true,
   );
+}
 
+export async function settleCompositionSeek(
+  page: CompositionSeekPage,
+  options: SeekCompositionTimelineOptions = {},
+): Promise<UnsettledImages> {
   await page.evaluate(
     async (barrier: SeekBarrierOptions) => {
       const waitForCompletion = Reflect.get(window, "__hfWaitForSeekCompletion");
@@ -414,6 +562,7 @@ export async function seekCompositionTimeline(
   );
 
   const animationFrameSettle = options.animationFrameSettle ?? "race";
+  const waitForFontsMs = options.waitForFontsMs ?? DEFAULT_POST_SEEK_FONT_WAIT_MS;
   if (animationFrameSettle === "race") {
     await page.evaluate(`new Promise(function(r) {
       var settled = false;
@@ -421,7 +570,7 @@ export async function seekCompositionTimeline(
       window.setTimeout(finish, 100);
       requestAnimationFrame(function() { requestAnimationFrame(finish); });
     })`);
-  } else if (animationFrameSettle === "double") {
+  } else if (animationFrameSettle === "double" && !(waitForFontsMs > 0)) {
     await page.evaluate(
       () =>
         new Promise<void>((resolveFrame) =>
@@ -434,14 +583,17 @@ export async function seekCompositionTimeline(
   // check, compare, validate, layout) and a seek that reveals unrequested
   // glyphs must not screenshot before their font subsets load. Costs one
   // evaluate + one rAF when nothing is loading. Pass 0 to disable.
-  const waitForFontsMs = options.waitForFontsMs ?? DEFAULT_POST_SEEK_FONT_WAIT_MS;
   if (waitForFontsMs > 0) {
-    await waitForCompositionFonts(page, waitForFontsMs);
+    await waitForCompositionFonts(page, waitForFontsMs, animationFrameSettle === "double" ? 2 : 1);
   }
+  const images = options.waitForImagesMs
+    ? await waitForCompositionImages(page, options.waitForImagesMs)
+    : ALL_IMAGES_SETTLED;
   if (options.settleMs !== undefined) {
     const settleMs = Math.max(0, options.settleMs);
     await new Promise((resolveSettle) => setTimeout(resolveSettle, settleMs));
   }
+  return images;
 }
 
 export async function waitForPreferredSeekTarget(
@@ -469,40 +621,95 @@ export async function waitForPreferredSeekTarget(
   }
 }
 
+/** Waits, up to `timeoutMs`, for every visible image layer (<img>, SVG <image>, CSS background-image url) to decode. */
+async function waitForCompositionImages(
+  page: CompositionEvaluationPage,
+  timeoutMs: number,
+): Promise<UnsettledImages> {
+  const unsettled = await page.evaluate(
+    // fallow-ignore-next-line complexity
+    async (ms: number) => {
+      const layers = new Map<string, HTMLImageElement>();
+      const add = (src: string, image?: HTMLImageElement): void => {
+        if (src && !layers.has(src)) layers.set(src, image ?? Object.assign(new Image(), { src }));
+      };
+      const absolute = (href: string): string => new URL(href, document.baseURI).href;
+      for (const element of document.querySelectorAll("*")) {
+        const style = getComputedStyle(element);
+        if (style.display === "none" || style.visibility === "hidden") continue;
+        if (element instanceof HTMLImageElement) add(element.currentSrc || element.src, element);
+        if (element instanceof SVGImageElement && element.href.baseVal) {
+          add(absolute(element.href.baseVal));
+        }
+        for (const match of style.backgroundImage.matchAll(
+          /url\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*))\s*\)/g,
+        )) {
+          const href = match[1] ?? match[2] ?? match[3];
+          if (href) add(absolute(href));
+        }
+      }
+      const state = new Map<string, "pending" | "ready" | "failed">();
+      const decodes = [...layers].map(([src, image]) => {
+        state.set(src, "pending");
+        return image.decode().then(
+          () => void state.set(src, "ready"),
+          () => void state.set(src, "failed"),
+        );
+      });
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      await Promise.race([
+        Promise.all(decodes),
+        new Promise((resolveWait) => {
+          timer = setTimeout(resolveWait, ms);
+        }),
+      ]);
+      clearTimeout(timer);
+      const named = (want: string): string[] =>
+        [...state]
+          .filter(([, value]) => value === want)
+          .map(([src]) => (src.startsWith("data:") ? `${src.slice(0, 40)}...` : src));
+      return { pending: named("pending"), failed: named("failed") };
+    },
+    timeoutMs,
+  );
+  return unsettled as UnsettledImages;
+}
+
 export async function waitForCompositionFonts(
   page: CompositionEvaluationPage,
   timeoutMs: number,
+  frames = 1,
 ): Promise<void> {
   await page
-    .evaluate((ms: number) => {
-      const fonts = Reflect.get(document, "fonts");
-      if (typeof fonts !== "object" || fonts === null) return Promise.resolve();
-      // A seek can reveal glyphs whose font faces were never requested —
-      // CJK @font-face splits into unicode-range subsets that only load when
-      // first laid out. `fonts.ready` is already-resolved at that moment, so
-      // awaiting it immediately races the load request and screenshots blank
-      // glyphs (wild reports: Traditional Chinese / Microsoft YaHei check
-      // snapshots). Force a synchronous layout so pending subsets actually
-      // start loading, give the loader one frame to flip `fonts.status`,
-      // THEN await readiness.
-      void document.body?.offsetHeight;
-      return new Promise<void>((resolveWait) => {
-        const deadline = setTimeout(resolveWait, ms);
-        requestAnimationFrame(() => {
-          const status = Reflect.get(fonts, "status");
-          const ready = Reflect.get(fonts, "ready");
-          if (status !== "loading" || !ready) {
-            clearTimeout(deadline);
-            resolveWait();
-            return;
-          }
-          Promise.resolve(ready).then(() => {
-            clearTimeout(deadline);
-            resolveWait();
+    .evaluate(
+      ({ ms, frames: count }: FontWaitOptions) => {
+        const fonts = Reflect.get(document, "fonts");
+        // A seek can reveal glyphs whose unicode-range font subsets never loaded, and `fonts.ready`
+        // resolves before their load starts (blank CJK glyphs in snapshots). Force layout so they start,
+        // let the loader flip `fonts.status` over the given frames, then await readiness.
+        void document.body?.offsetHeight;
+        const afterFrames = (left: number, then: () => void): void => {
+          requestAnimationFrame(() => (left > 1 ? afterFrames(left - 1, then) : then()));
+        };
+        return new Promise<void>((resolveWait) => {
+          const deadline = setTimeout(resolveWait, ms);
+          afterFrames(count, () => {
+            const status = fonts ? Reflect.get(fonts, "status") : undefined;
+            const ready = fonts ? Reflect.get(fonts, "ready") : undefined;
+            if (status !== "loading" || !ready) {
+              clearTimeout(deadline);
+              resolveWait();
+              return;
+            }
+            Promise.resolve(ready).then(() => {
+              clearTimeout(deadline);
+              resolveWait();
+            });
           });
         });
-      });
-    }, timeoutMs)
+      },
+      { ms: timeoutMs, frames },
+    )
     .catch(() => {});
 }
 

@@ -84,12 +84,19 @@ function findPuppeteerCacheChrome(
   return undefined;
 }
 
-function browserVersion(
+export function browserVersion(
   executable: string,
-  run: (file: string) => string = (file) => execFileSync(file, ["--version"], { encoding: "utf8" }),
+  run: typeof execFileSync = execFileSync,
+  platform: NodeJS.Platform = process.platform,
 ): string | undefined {
+  const options = { encoding: "utf8" as const, timeout: 5_000, windowsHide: true };
+  const env = { ...process.env, HYPERFRAMES_CHROME_VERSION_PATH: executable };
+  const script =
+    "(Get-Item -LiteralPath $env:HYPERFRAMES_CHROME_VERSION_PATH).VersionInfo.ProductVersion";
   try {
-    return run(executable).trim() || undefined;
+    if (platform !== "win32") return run(executable, ["--version"], options).trim() || undefined;
+    const v = run("powershell.exe", ["-NoProfile", "-Command", script], { ...options, env }).trim();
+    return /^\d+(\.\d+){3}$/.test(v) ? `Chrome/${v}` : undefined;
   } catch {
     return undefined;
   }
@@ -110,7 +117,8 @@ export function findSystemChrome(
   env: NodeJS.ProcessEnv = process.env,
   pathExists: (path: string) => boolean = existsSync,
   platform: NodeJS.Platform = process.platform,
-  versionOf: (path: string) => string | undefined = browserVersion,
+  versionOf: (path: string) => string | undefined = (path) =>
+    browserVersion(path, undefined, platform),
   readDirectories: (path: string) => string[] = readdirSync,
 ): string | undefined {
   const override = [

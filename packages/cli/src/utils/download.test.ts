@@ -270,6 +270,24 @@ describe("redirect handling", () => {
     expect(readdirSync(dir)).toEqual([]);
   });
 
+  it("keeps a signed query out of the redirect-limit error", async () => {
+    mockGet.mockImplementation(httpsResponse(302, { location: "/loop" }));
+    const dir = mkdtempSync(join(tmpdir(), "hyperframes-download-redirect-"));
+    tempDirs.push(dir);
+
+    const error = await downloadFile(
+      "https://example.test/handler.zip?X-Amz-Signature=secret",
+      join(dir, "handler.zip"),
+    ).then(
+      () => {
+        throw new Error("expected the download to fail");
+      },
+      (caught: unknown) => caught as Error,
+    );
+    expect(error.message).toContain("https://example.test/handler.zip");
+    expect(error.message).not.toContain("secret");
+  });
+
   it.each([302, 404, 503])("closes rejected HTTP %s responses", async (status) => {
     const responses: IncomingMessage[] = [];
     mockGet.mockImplementation(

@@ -5,6 +5,12 @@
     <meta name="viewport" content="width=1920, height=1080" />
     <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
     <style>
+      /* Placeholders: replace all three with the film's own palette and display face. */
+      :root {
+        --ground: #6b6b6b;
+        --ink: #ffffff;
+        --font-display: sans-serif;
+      }
       * {
         margin: 0;
         padding: 0;
@@ -16,7 +22,7 @@
         width: 1920px;
         height: 1080px;
         overflow: hidden;
-        background: #0a0a0a;
+        background: var(--ground);
       }
       #root {
         width: 100%;
@@ -24,10 +30,10 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+        font-family: var(--font-display);
       }
       #title {
-        color: #f4f4f5;
+        color: var(--ink);
         font-size: 72px;
         font-weight: 600;
         letter-spacing: -0.03em;
@@ -47,7 +53,7 @@
     </div>
     <script>
       const tl = gsap.timeline({ paused: true });
-      // Example: tl.fromTo("#title", { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.6 }, 0);
+      // Example: tl.fromTo("#title", { opacity: 0, filter: "blur(8px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.18, ease: "power4.out" }, 0);
       window.__timelines["main"] = tl;
       tl.seek(0);
     </script>

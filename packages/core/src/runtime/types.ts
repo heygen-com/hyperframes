@@ -317,6 +317,7 @@ export type RuntimeTimelineLike = {
   seek: (timeSeconds?: number, suppressEvents?: boolean) => unknown;
   totalTime?: (timeSeconds?: number, suppressEvents?: boolean) => unknown;
   totalDuration?: () => number;
+  shiftChildren?: (amount: number) => unknown;
   progress?: (value?: number, suppressEvents?: boolean) => unknown;
   time: () => number;
   duration: () => number;

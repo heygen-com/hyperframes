@@ -84,6 +84,7 @@ if (process.env.HF_TEST_DISTINCT_PROFILES === "1") {
     const firstProfile = readFileSync(`${pidFile}.profile`, "utf8");
     const firstPid = first.process()?.pid;
     if (!firstPid) throw new Error("First browser has no process");
+    writeFileSync(`${pidFile}.first-pid`, String(firstPid));
     const second = await launchManagedBrowser(puppeteer, {
       ...options,
       args: [...options.args],
@@ -100,5 +101,6 @@ if (process.env.HF_TEST_DISTINCT_PROFILES === "1") {
   } finally {
     await closeManagedBrowser(first);
   }
+} else {
+  await import("../cli.js");
 }
-await import("../cli.js");

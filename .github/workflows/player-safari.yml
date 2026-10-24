@@ -1,0 +1,63 @@
+name: Player Safari perf
+
+permissions:
+  contents: read
+
+env:
+  HYPERFRAMES_NO_TELEMETRY: "1"
+
+on:
+  pull_request:
+    paths:
+      - "packages/player/**"
+      - "packages/core/src/runtime/**"
+      - ".github/workflows/player-safari.yml"
+  schedule:
+    - cron: "23 7 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: player-safari-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  heavy-films:
+    name: "Heavy films: Safari vs Chrome"
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - run: bun install --frozen-lockfile
+
+      # The bench serves packages/player/dist and packages/core/dist, as the Linux perf shards do.
+      - run: bun run build
+
+      - name: Generate heavy media
+        run: |
+          brew install ffmpeg
+          bash packages/player/tests/perf/browsers/make-media.sh
+
+      - name: Enable safaridriver
+        run: sudo safaridriver --enable
+
+      - name: Run heavy films in Safari and Chrome
+        working-directory: packages/player
+        run: |
+          sw_vers
+          CHROMEDRIVER="$CHROMEWEBDRIVER/chromedriver" bun run tests/perf/browsers/run.ts --browsers safari,chrome --runs 2
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: player-safari-heavy-films
+          path: packages/player/tests/perf/results/
+          if-no-files-found: warn
+          retention-days: 30

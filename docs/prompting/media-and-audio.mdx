@@ -162,7 +162,7 @@ for you. Naming the layout you want still helps.
 > Layer the headline *behind* the presenter so their silhouette occludes the text.
 
 <Note>
-  Two mechanics the workflow skills handle automatically, from the [Remove
+  Two mechanics the skills handle automatically, from the [Remove
   background guide](/guides/remove-background#compositing-patterns-and-pitfalls):
 
   - A cutout that reveals into view goes inside a non-timed `<div>`, and the
@@ -186,7 +186,8 @@ asset and builds a bounded H.264 proxy automatically, cached under
 
 `preview`, `play`, Studio, and published player pages use that proxy for
 playback. A render always decodes the original file, so nothing about final
-quality or color is touched.
+quality or color is touched. `snapshot` also reads frames from the original with
+FFmpeg, so it makes no proxy unless you pass `--proxy`.
 
 `hyperframes lint` also flags the asset at info level (`hevc_preview_codec`) so
 you know a proxy is in play. Proxying is optional. Pass `--no-proxy` per

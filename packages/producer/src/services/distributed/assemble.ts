@@ -26,7 +26,6 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
-  renameSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -40,6 +39,8 @@ import {
   muxVideoWithAudio,
   resolveConfig,
   runFfmpeg,
+  appendSoftwareEncoderThreadsArg,
+  renameWithRetry,
 } from "@hyperframes/engine";
 import { fpsToFfmpegArg } from "@hyperframes/core";
 import { defaultLogger, type ProducerLogger } from "../../logger.js";
@@ -52,6 +53,7 @@ import {
 import { encoderFailureError } from "../render/encoderInterruption.js";
 import type { ChunkSliceJson, LockedRenderConfig } from "../render/stages/freezePlan.js";
 import { DISTRIBUTED_RENDER_CAPABILITIES, readPlanProtocolV1 } from "./planProtocol.js";
+import { writeStitchedMp4 } from "./mp4Stitch.js";
 import { validatePlanV2MaterializedTarget } from "./planV2.js";
 import type { DistributedFormat } from "./shared.js";
 
@@ -82,6 +84,8 @@ interface PlanJsonForAssemble {
   };
 }
 
+export type AssembleChunkPaths = readonly (string | readonly string[])[];
+
 type CfrRateControlSource = Partial<Pick<LockedRenderConfig, "quality" | "crf" | "bitrate">>;
 
 export function cfrRateControlArgs(locked: CfrRateControlSource): string[] {
@@ -98,7 +102,8 @@ export function cfrRateControlArgs(locked: CfrRateControlSource): string[] {
  * @param planDir — absolute path to the planDir produced by `plan()`.
  * @param chunkPaths — ordered chunk outputs, length === `chunks.json` length.
  *   For mp4/mov each entry is a path to an encoded chunk file; for
- *   png-sequence each entry is a path to a directory of frames.
+ *   png-sequence each entry is a path to a directory of frames. An entry
+ *   may instead be the ordered parts of that chunk (see {@link AssembleChunkPaths}).
  * @param audioPath — `<planDir>/<MIXED_AUDIO_FILENAME>` for mux'd formats. Pass `null`
  *   when the composition has no audio (or `assemble` is being called for a
  *   format whose audio is muxed elsewhere). `assemble` always normalizes
@@ -109,7 +114,7 @@ export function cfrRateControlArgs(locked: CfrRateControlSource): string[] {
  */
 export async function assemble(
   planDir: string,
-  chunkPaths: readonly string[],
+  chunkOutputs: AssembleChunkPaths,
   audioPath: string | null,
   outputPath: string,
   options?: {
@@ -135,10 +140,22 @@ export async function assemble(
   const log = options?.logger ?? defaultLogger;
   const cfr = options?.cfr === true;
 
-  const plan = readAssemblePlan(planDir, chunkPaths);
+  const plan = readAssemblePlan(planDir, chunkOutputs);
+  const chunkPaths = chunkOutputs.flat();
   if (plan.dimensions.format === "png-sequence") {
     // ── 2a. png-sequence: merge frame directories with global re-numbering
     return mergePngFrameDirs(chunkPaths, outputPath, plan.totalFrames, audioPath, start);
+  }
+
+  if (chunksAreStitchedMp4(planDir, cfr)) {
+    const separateAudio = stitchesSeparateAudio(planDir) && audioPath !== null;
+    await writeStitchedMp4(chunkPaths, outputPath, separateAudio ? audioPath : undefined);
+    return {
+      outputPath,
+      durationMs: Date.now() - start,
+      framesEncoded: plan.totalFrames,
+      fileSize: statSync(outputPath).size,
+    };
   }
 
   // ── 2b. mp4 / mov / webm: join + audio mux + faststart in one pass ─────
@@ -155,9 +172,6 @@ export async function assemble(
     format,
     fps,
     fpsArg: fpsToFfmpegArg(fps),
-    chunkSeconds: chunksCarryAudio(planDir)
-      ? plan.chunks.map((chunk) => ((chunk.endFrame - chunk.startFrame) * fps.den) / fps.num)
-      : null,
     signal: options?.abortSignal,
     timeout: resolveConfig().ffmpegProcessTimeout,
     log,
@@ -174,7 +188,7 @@ export async function assemble(
     const finalPath = join(workDir, `output.${format}`);
     const audio = audioPath !== null && existsSync(audioPath) ? audioPath : null;
     await writeJoined(ctx, videoSources, audio, finalPath);
-    renameSync(finalPath, outputPath);
+    renameWithRetry(finalPath, outputPath);
     log.info("[assemble] stage timings", {
       ...stageMs,
       chunks: chunkPaths.length,
@@ -200,10 +214,7 @@ export async function assemble(
   };
 }
 
-function readAssemblePlan(
-  planDir: string,
-  chunkPaths: readonly string[],
-): PlanJsonForAssemble & { chunks: ChunkSliceJson[] } {
+function readAssemblePlan(planDir: string, chunkPaths: AssembleChunkPaths): PlanJsonForAssemble {
   // ── 1. Validate planDir manifest matches chunkPaths shape ──────────────
   const planJsonPath = join(planDir, "plan.json");
   const chunksJsonPath = join(planDir, "meta", "chunks.json");
@@ -224,13 +235,18 @@ function readAssemblePlan(
         `per chunk, ordered by index.`,
     );
   }
-  for (const path of chunkPaths) {
+  for (const [index, entry] of chunkPaths.entries()) {
+    if (typeof entry !== "string" && entry.length === 0) {
+      throw new Error(`[assemble] chunk ${index} has an empty list of parts`);
+    }
+  }
+  for (const path of chunkPaths.flat()) {
     if (!existsSync(path)) {
       throw new Error(`[assemble] chunk path does not exist: ${path}`);
     }
   }
 
-  return { ...plan, chunks };
+  return plan;
 }
 
 interface JoinContext {
@@ -242,7 +258,6 @@ interface JoinContext {
   timeout: number;
   log: ProducerLogger;
   timed: <T>(stage: string, run: () => Promise<T>) => Promise<T>;
-  chunkSeconds: number[] | null;
 }
 
 // A one-entry concat list ignores the input-side `-r` (observed `359/12` in the
@@ -250,7 +265,28 @@ interface JoinContext {
 function videoInputArgs(ctx: JoinContext, videoSources: readonly string[]): string[] {
   return videoSources.length === 1
     ? ["-i", videoSources[0]!]
-    : concatDemuxerInput(videoSources, ctx.workDir, ctx.fpsArg, ctx.chunkSeconds);
+    : concatDemuxerInput(videoSources, ctx.workDir, ctx.fpsArg);
+}
+
+export function cfrEncodeArgs(
+  inputArgs: string[],
+  encoder: CfrRateControlSource,
+  fpsArg: string,
+): string[] {
+  const args = [
+    ...inputArgs,
+    "-c:v",
+    "libx264",
+    ...cfrRateControlArgs(encoder),
+    "-pix_fmt",
+    "yuv420p",
+    "-fps_mode",
+    "cfr",
+    "-r",
+    fpsArg,
+  ];
+  appendSoftwareEncoderThreadsArg(args, "libx264");
+  return args;
 }
 
 // ── 2c. Optional exact-CFR re-encode ──────────────────────────────────
@@ -262,18 +298,7 @@ async function reencodeCfr(
   encoder: CfrRateControlSource,
 ): Promise<string> {
   const cfrOutputPath = join(ctx.workDir, `cfr.${ctx.format}`);
-  const cfrArgs = [
-    ...videoInputArgs(ctx, chunkPaths),
-    "-c:v",
-    "libx264",
-    ...cfrRateControlArgs(encoder),
-    "-pix_fmt",
-    "yuv420p",
-    "-fps_mode",
-    "cfr",
-    "-r",
-    ctx.fpsArg,
-  ];
+  const cfrArgs = cfrEncodeArgs(videoInputArgs(ctx, chunkPaths), encoder, ctx.fpsArg);
   appendRenderProvenanceArgs(cfrArgs, cfrOutputPath);
   cfrArgs.push("-y", cfrOutputPath);
   await ctx.timed("cfrMs", () =>
@@ -347,18 +372,11 @@ function concatDemuxerInput(
   chunkPaths: readonly string[],
   workDir: string,
   fpsArg: string,
-  chunkSeconds: readonly number[] | null,
 ): string[] {
   // ffmpeg's concat list escapes a single quote as `'\''`.
   const listPath = join(workDir, "concat-list.txt");
-  // Chunks that carry audio: read only their video (track 1), and end each chunk at its last frame
-  // rather than after its audio, which starts with the AAC priming and can run one packet longer.
-  const head = chunkSeconds ? ["stream", "exact_stream_id 1"] : [];
-  const body = chunkPaths.map((path, i) => {
-    const line = `file '${path.replace(/'/g, "'\\''")}'`;
-    return chunkSeconds ? `${line}\nduration ${chunkSeconds[i]!.toFixed(6)}` : line;
-  });
-  writeFileSync(listPath, `${[...head, ...body].join("\n")}\n`, "utf-8");
+  const body = chunkPaths.map((path) => `file '${path.replace(/'/g, "'\\''")}'`).join("\n");
+  writeFileSync(listPath, `${body}\n`, "utf-8");
   return ["-r", fpsArg, "-f", "concat", "-safe", "0", "-i", listPath];
 }
 
@@ -393,13 +411,32 @@ async function runAssembleFfmpeg(
   }
 }
 
-function chunksCarryAudio(planDir: string): boolean {
+/** Mp4 chunks carrying audio, or with it as a separate file, stitch under one index like S3's. */
+export function chunksAreStitchedMp4(planDir: string, cfr: boolean): boolean {
+  const { chunksCarryAudio, separateAudio } = lockedAudio(planDir);
+  if (!chunksCarryAudio && !separateAudio) return false;
+  if (planFormat(planDir) !== "mp4") return false;
+  if (cfr) {
+    throw new Error("[assemble] cfr=true cannot re-encode a plan whose mp4 chunks are stitched");
+  }
+  return true;
+}
+
+export function stitchesSeparateAudio(planDir: string): boolean {
+  return lockedAudio(planDir).separateAudio === true;
+}
+
+function planFormat(planDir: string): DistributedFormat {
+  const plan = JSON.parse(readFileSync(join(planDir, "plan.json"), "utf-8")) as PlanJsonForAssemble;
+  return plan.dimensions.format;
+}
+
+function lockedAudio(
+  planDir: string,
+): Pick<LockedRenderConfig, "chunksCarryAudio" | "separateAudio"> {
   const encoderJsonPath = join(planDir, "meta", "encoder.json");
-  if (!existsSync(encoderJsonPath)) return false;
-  return (
-    (JSON.parse(readFileSync(encoderJsonPath, "utf-8")) as LockedRenderConfig).chunksCarryAudio ===
-    true
-  );
+  if (!existsSync(encoderJsonPath)) return {};
+  return JSON.parse(readFileSync(encoderJsonPath, "utf-8")) as LockedRenderConfig;
 }
 
 /**

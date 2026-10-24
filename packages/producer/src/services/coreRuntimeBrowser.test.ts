@@ -320,52 +320,109 @@ describe("core runtime browser contract", () => {
     }
   }, 30_000);
 
-  it("paints no SVG filter output from a scene before its start or after its end", async () => {
-    // feTurbulence draws from nothing, so visibility:hidden alone left grain over earlier scenes.
-    const grain = (id: string, start: number) => `
+  const filterLayers: Record<string, (id: string, start: number) => string> = {
+    "an SVG rect": (id, start) => `
       <div class="clip" data-start="${start}" data-duration="1" style="position:absolute;inset:0">
         <svg width="320" height="180" style="position:absolute;inset:0;mix-blend-mode:overlay">
           <filter id="${id}"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="3" /></filter>
           <rect width="100%" height="100%" filter="url(#${id})" />
         </svg>
-      </div>`;
-    const grainPage = await browser.newPage();
-    try {
-      await grainPage.setViewport({ width: 320, height: 180 });
-      await grainPage.setContent(`<!doctype html>
+      </div>`,
+    "an HTML div inside the scene": (id, start) => `
+      <svg width="0" height="0" style="position:absolute"><filter id="${id}"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="3" /></filter></svg>
+      <div class="clip" data-start="${start}" data-duration="1" style="position:absolute;inset:0">
+        <div style="position:absolute;inset:0;filter:url(#${id});mix-blend-mode:overlay"></div>
+      </div>`,
+    "the scene itself": (id, start) => `
+      <svg width="0" height="0" style="position:absolute"><filter id="${id}"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="3" /></filter></svg>
+      <div class="clip" data-start="${start}" data-duration="1" style="position:absolute;inset:0;filter:url(#${id});mix-blend-mode:overlay"></div>`,
+    "a dimmed overlay layer in a late sub-composition": (id, start) => `
+      <svg width="0" height="0" style="position:absolute"><filter id="${id}"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="3" /></filter></svg>
+      <div data-composition-id="${id}-scene" class="clip" data-start="${start}" data-duration="1" style="position:absolute;inset:0">
+        <div style="position:absolute;inset:0;filter:url(#${id});mix-blend-mode:overlay;opacity:0.14"></div>
+      </div>`,
+    "a pseudo-element of the scene": (id, start) => `
+      <svg width="0" height="0" style="position:absolute"><filter id="${id}"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="3" /></filter></svg>
+      <style>.${id}::before { content: ""; position: absolute; inset: 0; filter: url(#${id}); mix-blend-mode: overlay; }</style>
+      <div class="clip ${id}" data-start="${start}" data-duration="1" style="position:absolute;inset:0"></div>`,
+    "a pseudo-element inside the scene": (id, start) => `
+      <svg width="0" height="0" style="position:absolute"><filter id="${id}"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="3" /></filter></svg>
+      <style>.${id}-layer::after { content: ""; position: absolute; inset: 0; filter: url(#${id}); mix-blend-mode: overlay; }</style>
+      <div class="clip" data-start="${start}" data-duration="1" style="position:absolute;inset:0">
+        <div class="${id}-layer" style="position:absolute;inset:0"></div>
+      </div>`,
+  };
+
+  it.each(Object.keys(filterLayers))(
+    "paints no SVG filter output from %s before its scene starts or after it ends",
+    async (layer) => {
+      // feTurbulence draws from nothing, so visibility:hidden alone left grain over earlier scenes.
+      const grain = filterLayers[layer]!;
+      const grainPage = await browser.newPage();
+      try {
+        await grainPage.setViewport({ width: 320, height: 180 });
+        await grainPage.setContent(`<!doctype html>
         <style>html, body { margin: 0; background: rgb(128, 128, 128); }</style>
         <div data-composition-id="root" data-start="0" data-duration="3" data-width="320" data-height="180"
           style="position:relative;width:320px;height:180px">
           ${grain("early", 0)}${grain("late", 2)}
         </div>`);
-      await grainPage.addScriptTag({ content: readFileSync(RUNTIME_PATH, "utf8") });
-      await grainPage.waitForFunction(() => window.__playerReady && window.__renderReady);
+        await grainPage.addScriptTag({ content: readFileSync(RUNTIME_PATH, "utf8") });
+        await grainPage.waitForFunction(() => window.__playerReady && window.__renderReady);
 
-      const redRangeAt = async (time: number) => {
-        await grainPage.evaluate((t) => window.__player!.renderSeek!(t), time);
-        const shot = await grainPage.screenshot({ encoding: "base64" });
-        return grainPage.evaluate(async (png) => {
-          const image = new Image();
-          image.src = `data:image/png;base64,${png}`;
-          await image.decode();
-          const context = new OffscreenCanvas(image.width, image.height).getContext("2d")!;
-          context.drawImage(image, 0, 0);
-          const { data } = context.getImageData(0, 0, image.width, image.height);
-          let min = 255;
-          let max = 0;
-          for (let i = 0; i < data.length; i += 4) {
-            min = Math.min(min, data[i]!);
-            max = Math.max(max, data[i]!);
-          }
-          return [min, max];
-        }, shot);
-      };
+        const redRangeAt = async (time: number) => {
+          await grainPage.evaluate((t) => window.__player!.renderSeek!(t), time);
+          const shot = await grainPage.screenshot({ encoding: "base64" });
+          return grainPage.evaluate(async (png) => {
+            const image = new Image();
+            image.src = `data:image/png;base64,${png}`;
+            await image.decode();
+            const context = new OffscreenCanvas(image.width, image.height).getContext("2d")!;
+            context.drawImage(image, 0, 0);
+            const { data } = context.getImageData(0, 0, image.width, image.height);
+            let min = 255;
+            let max = 0;
+            for (let i = 0; i < data.length; i += 4) {
+              min = Math.min(min, data[i]!);
+              max = Math.max(max, data[i]!);
+            }
+            return [min, max];
+          }, shot);
+        };
 
-      expect(await redRangeAt(1.5)).toEqual([128, 128]);
-      const [min, max] = await redRangeAt(2.5);
-      expect(max - min).toBeGreaterThan(20);
+        expect(await redRangeAt(1.5)).toEqual([128, 128]);
+        const [min, max] = await redRangeAt(2.5);
+        expect(max - min).toBeGreaterThan(2);
+      } finally {
+        await grainPage.close();
+      }
+    },
+    30_000,
+  );
+
+  it("ends a later scene's from-opacity fade at its authored opacity when frames step into it", async () => {
+    const fadePage = await browser.newPage();
+    try {
+      await fadePage.setContent(`<!doctype html>
+        <div data-composition-id="root" data-start="0" data-duration="3" data-width="320" data-height="180">
+          <div id="scene" class="clip" data-start="2" data-duration="1" style="position:absolute;inset:0"></div>
+        </div>`);
+      await fadePage.addScriptTag({
+        path: resolve(import.meta.dirname, "../../../core/node_modules/gsap/dist/gsap.min.js"),
+      });
+      await fadePage.addScriptTag({
+        content: `window.__timelines = {root:gsap.timeline({paused:true}).from("#scene",{opacity:0,duration:1,ease:"none",immediateRender:false,lazy:false},2)};`,
+      });
+      await fadePage.addScriptTag({ content: readFileSync(RUNTIME_PATH, "utf8") });
+      await fadePage.waitForFunction(() => window.__playerReady && window.__renderReady);
+
+      const opacity = await fadePage.evaluate(() => {
+        for (let frame = 0; frame <= 90; frame++) window.__player!.renderSeek!(frame / 30);
+        return getComputedStyle(document.getElementById("scene")!).opacity;
+      });
+      expect(opacity).toBe("1");
     } finally {
-      await grainPage.close();
+      await fadePage.close();
     }
   }, 30_000);
 

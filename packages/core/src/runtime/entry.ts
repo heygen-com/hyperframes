@@ -17,6 +17,7 @@ import { runScriptsAfterFonts } from "./afterFonts";
 import { AFTER_FONTS_SCRIPTS } from "../compiler/scriptRuns";
 import { hasFrameSources, registerFrameSource } from "./frameSources";
 import { createFilmBridge } from "./filmBridge";
+import { trackAcceleratedCanvases } from "./captureMotionBlur";
 
 type HyperframeWindow = Window & {
   __hyperframeRuntimeBootstrapped?: boolean;
@@ -43,6 +44,7 @@ type HyperframeWindow = Window & {
 installAuthoredOpacityCapture();
 installAuthoredMediaCapture();
 installFlatGsapTransforms();
+trackAcceleratedCanvases();
 window.__hfHasFrameSources = hasFrameSources;
 
 hideTimedClipsUntilFirstPass();

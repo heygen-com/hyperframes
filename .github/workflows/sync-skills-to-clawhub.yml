@@ -3,7 +3,8 @@ name: Sync skills to ClawHub
 # Publishes changed skills under skills/ to ClawHub (https://clawhub.ai/heygen-com)
 # whenever they land on main. `clawhub sync` only publishes skills whose content
 # changed vs. the registry, auto-bumping the patch version — unchanged skills are
-# a no-op, so this is safe to run on every push.
+# a no-op, so this is safe to run on every push. Skills listed in RETIRED_SKILLS
+# (packages/cli/src/utils/skillsManifest.ts) are hidden once, then left alone.
 
 on:
   push:
@@ -11,10 +12,12 @@ on:
     paths:
       - "skills/**"
       - "scripts/clawhub-sync.mjs"
+      - "scripts/clawhub-unlist-retired.mjs"
+      - "packages/cli/src/utils/skillsManifest.ts"
   workflow_dispatch:
     inputs:
       dry_run:
-        description: "Preview what would publish without publishing"
+        description: "Preview what would publish or be hidden, without changing ClawHub"
         type: boolean
         default: false
 
@@ -52,3 +55,8 @@ jobs:
         env:
           DRY_RUN: ${{ github.event.inputs.dry_run }}
         run: node scripts/clawhub-sync.mjs
+
+      - name: Hide retired skills
+        env:
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+        run: node scripts/clawhub-unlist-retired.mjs

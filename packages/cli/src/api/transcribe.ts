@@ -5,7 +5,7 @@ import {
   createRenderCancellationScope,
   stoppedByCancelSignal,
 } from "../utils/renderCancellation.js";
-import { DEFAULT_MODEL, isWhisperUnavailable } from "../whisper/manager.js";
+import { DEFAULT_MODEL, findWhisper, isWhisperUnavailable } from "../whisper/manager.js";
 import { initialModelForLanguage } from "../whisper/modelForLanguage.js";
 import {
   formatSrt,
@@ -60,6 +60,8 @@ export interface TranscribeEngineEvent {
   model: string;
   /** Set when auto mode gave up on Parakeet and this runner takes over. */
   fallbackReason?: string;
+  /** One line on why this runner was chosen over the one asked for. */
+  notice?: string;
 }
 
 export interface TranscribeOptions {
@@ -325,9 +327,17 @@ function pickRunner(
   engine: string,
   parakeet: () => ParakeetRunner | null,
   language?: string,
+  whisperForLanguage = false,
 ): TranscribeRunner {
-  if (engine === "whisper" || !parakeetSpeaks(language)) return "whisper";
+  if (engine === "whisper" || whisperForLanguage || !parakeetSpeaks(language)) return "whisper";
   return parakeet() ?? "whisper";
+}
+
+/** Parakeet picks its own language, so a non-English --language goes to an installed whisper. */
+function needsWhisperForLanguage(engine: string, language?: string): boolean {
+  const base = language?.trim().toLowerCase().split(/[-_]/, 1)[0];
+  if (engine === "whisper" || !base || base === "en" || !parakeetSpeaks(language)) return false;
+  return findWhisper() !== undefined;
 }
 
 /** When Parakeet fails, only auto falls back; an explicit parakeet engine fails with the error. */
@@ -372,8 +382,14 @@ async function transcribeAudio(
     );
   }
   const unsupported = sherpaUnsupportedReason();
-  let runner = pickRunner(engine, () => parakeetRunner({ unsupported }), options.language);
-  if (engine === "parakeet" && runner === "whisper") {
+  const whisperForLanguage = needsWhisperForLanguage(engine, options.language);
+  let runner = pickRunner(
+    engine,
+    () => parakeetRunner({ unsupported }),
+    options.language,
+    whisperForLanguage,
+  );
+  if (engine === "parakeet" && runner === "whisper" && !whisperForLanguage) {
     throw new TranscribeError(
       "parakeet_unavailable",
       !parakeetSpeaks(options.language)
@@ -385,7 +401,14 @@ async function transcribeAudio(
 
   const model = options.model ?? DEFAULT_MODEL;
   const whisperModel = initialModelForLanguage(model, options.language);
-  options.onEngine?.({ runner, engine: engineOf(runner), model: whisperModel });
+  options.onEngine?.({
+    runner,
+    engine: engineOf(runner),
+    model: whisperModel,
+    ...(whisperForLanguage && {
+      notice: `Parakeet chooses its own language, so whisper transcribes --language ${options.language}.`,
+    }),
+  });
   const { onStatus, onProgress } = options;
   const startScope = (): CancellationScope =>
     options.stopOnProcessSignals

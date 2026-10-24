@@ -37,6 +37,7 @@ function helperDir(): string {
 export function resolveRuntimePath(): string | null {
   const d = helperDir();
   const candidates = [
+    resolve(d, "hyperframe.runtime.iife.js"),
     resolve(d, "hyperframe-runtime.js"),
     resolve(d, "..", "hyperframe-runtime.js"),
     // Monorepo dev: src/<dir>/ → src/ → cli/ → packages/ then into core/dist/

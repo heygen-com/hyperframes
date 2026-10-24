@@ -1,5 +1,5 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { transcribe, type TranscribeProgress } from "./transcribe.js";
@@ -45,9 +45,15 @@ vi.mock("./manager.js", () => ({
     options: { onDownloadProgress?: (received: number, total: number | null) => void },
   ) => {
     options.onDownloadProgress?.(5, null);
-    return `ggml-${model}.bin`;
+    return join(dir, `ggml-${model}.bin`);
   },
   hasFFmpeg: () => true,
+  // sha256 of "abc".
+  pinnedWhisperModel: (model: string) => ({
+    name: `ggml-${model}.bin`,
+    bytes: 3,
+    sha256: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+  }),
 }));
 vi.mock("../browser/ffmpeg.js", () => ({
   findFFprobe: () => "ffprobe",
@@ -69,6 +75,7 @@ beforeEach(() => {
         ],
       });
     if (command !== "whisper-cli") throw new Error(`Unexpected executable: ${command}`);
+    if (args.includes("--version")) return "whisper.cpp version: 1.9.5\n";
     if (args.includes("--detect-language")) return "";
     const selected = args[args.indexOf("--language") + 1];
     let language = args.includes("--language") ? selected : "en";
@@ -240,19 +247,41 @@ it("installs the stop handling only once setup is done and whisper starts", asyn
   expect(order).toEqual(["runtime", "download", "stop handling"]);
 });
 
-it("keeps whisper's log out of the error message, leaving its last lines to the command", async () => {
+it("says how whisper-cli failed, which build and model ran, and its last lines without paths", async () => {
   const previous = native.exec.getMockImplementation()!;
   native.exec.mockImplementation((command: string, args: string[]) => {
-    if (command === "whisper-cli")
-      throw new Error("Command failed: whisper-cli\nload log\nbad model");
+    if (command === "whisper-cli" && !args.includes("--version"))
+      throw Object.assign(new Error(`Command failed: ${homedir()}/bin/whisper-cli --model x`), {
+        code: null,
+        signal: "SIGSEGV",
+      });
     return previous(command, args);
   });
-  native.printed.stderr = "load log\nbad model\n";
+  writeFileSync(join(dir, "ggml-small.bin"), "abd");
+  native.printed.stderr = `whisper_init_from_file_with_params_no_state: loading model from '${homedir()}/.cache/m/ggml-small.bin'\nggml_metal_init: found device\n`;
+
   const failure = await transcribe(join(dir, "audio.wav"), dir, { model: "small" }).catch((e) => e);
-  expect(failure).toMatchObject({
-    message: "Command failed: whisper-cli",
-    stderr: "load log\nbad model\n",
-  });
+
+  expect(failure.message).toBe(
+    [
+      "whisper-cli crashed (SIGSEGV).",
+      "whisper-cli 1.9.5 (env: whisper-cli)",
+      "model small: 3 bytes, sha256 a52d159f262b (damaged: expected 3 bytes, sha256 ba7816bf8f01; delete it and re-run)",
+      "whisper-cli said:",
+      "whisper_init_from_file_with_params_no_state: loading model from 'ggml-small.bin'",
+      "ggml_metal_init: found device",
+    ].join("\n"),
+  );
+  expect(failure.message).not.toContain(homedir());
+  expect(failure).not.toHaveProperty("stderr");
+});
+
+it("asks whisper-cli for no DTW alignment, whose timings no transcript reads", async () => {
+  await transcribe(join(dir, "audio.wav"), dir, { model: "large-v3-turbo", language: "fr" });
+  const run = native.exec.mock.calls.find(
+    ([command, args]) => command === "whisper-cli" && args.includes("--output-file"),
+  );
+  expect(run?.[1]).not.toContain("--dtw");
 });
 
 it("names the timeout knob when whisper outlives its own timeout", async () => {

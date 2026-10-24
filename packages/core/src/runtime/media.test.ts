@@ -442,10 +442,10 @@ describe("syncRuntimeMedia", () => {
       return seen;
     }
 
-    it("drives the transport gain from the lane, not from data-volume", () => {
+    it("drives the transport gain from the lane times data-volume", () => {
       const [held, ducked] = volumesAt([1, 5], DUCK);
-      expect(held).toBeCloseTo(0.8, 5);
-      expect(ducked).toBeCloseTo(0.1, 5);
+      expect(held).toBeCloseTo(0.8 * 0.55, 5);
+      expect(ducked).toBeCloseTo(0.1 * 0.55, 5);
     });
 
     it("keeps automation author-only while user volume remains a separate layer", () => {
@@ -461,15 +461,36 @@ describe("syncRuntimeMedia", () => {
         onElementVolume,
       });
 
-      expect(onElementVolume).toHaveBeenLastCalledWith(clip.el, 0.4, 0.8);
+      expect(onElementVolume).toHaveBeenLastCalledWith(
+        clip.el,
+        expect.closeTo(0.22, 5),
+        expect.closeTo(0.44, 5),
+        1,
+      );
+    });
+
+    it("leaves a routed clip's lane to the transport, sending data-volume as clip gain", () => {
+      const clip = createMockClip({ start: 0, end: 10, volume: 0.55 });
+      clip.el.setAttribute("data-automation", DUCK);
+      const onElementVolume = vi.fn();
+      syncRuntimeMedia({
+        clips: [clip],
+        timeSeconds: 5,
+        playing: true,
+        playbackRate: 1,
+        onElementVolume,
+        isWebAudioRouted: () => true,
+      });
+
+      expect(onElementVolume).toHaveBeenLastCalledWith(clip.el, 1, 1, 0.55);
     });
 
     it("ramps between points across ticks", () => {
       const [a, b, c] = volumesAt([2, 2.5, 3], DUCK);
-      expect(a).toBeCloseTo(0.8, 5);
-      expect(b).toBeGreaterThan(0.1);
-      expect(b).toBeLessThan(0.8);
-      expect(c).toBeCloseTo(0.1, 5);
+      expect(a).toBeCloseTo(0.8 * 0.55, 5);
+      expect(b).toBeGreaterThan(0.1 * 0.55);
+      expect(b).toBeLessThan(0.8 * 0.55);
+      expect(c).toBeCloseTo(0.1 * 0.55, 5);
     });
 
     it("falls back to data-volume when there is no lane", () => {
@@ -575,8 +596,8 @@ describe("syncRuntimeMedia", () => {
       // `data-media-start="30"` on a clip whose lane holds 0.8 until t=2 then
       // ducks to 0.1 by t=3. At media time the playhead is already 30 s past the
       // last point, so preview held 0.1 from the first frame and never ducked.
-      expect(trimmed(1)).toBeCloseTo(0.8, 5);
-      expect(trimmed(5)).toBeCloseTo(0.1, 5);
+      expect(trimmed(1)).toBeCloseTo(0.8 * 0.55, 5);
+      expect(trimmed(5)).toBeCloseTo(0.1 * 0.55, 5);
     });
 
     it("supersedes keyframes probed from the timeline", () => {
@@ -598,7 +619,7 @@ describe("syncRuntimeMedia", () => {
           seen = v;
         },
       });
-      expect(seen).toBeCloseTo(0.1, 5);
+      expect(seen).toBeCloseTo(0.1 * 0.55, 5);
     });
   });
 
@@ -1032,6 +1053,22 @@ describe("syncRuntimeMedia", () => {
     expect(clip.el.preload).toBe("auto");
   });
 
+  it("leaves a video the render replaces with extracted frames at preload none", () => {
+    const clip = createMockClip({ start: 0, end: 10 });
+    clip.el.id = "cut";
+    Object.defineProperty(clip.el, "preload", { value: "none", writable: true });
+    (
+      window as Window & { __HF_RENDER_FRAME_VIDEO_IDS?: readonly string[] }
+    ).__HF_RENDER_FRAME_VIDEO_IDS = ["cut"];
+    try {
+      syncRuntimeMedia({ clips: [clip], timeSeconds: 5, playing: false, playbackRate: 1 });
+      expect(clip.el.preload).toBe("none");
+    } finally {
+      delete (window as Window & { __HF_RENDER_FRAME_VIDEO_IDS?: readonly string[] })
+        .__HF_RENDER_FRAME_VIDEO_IDS;
+    }
+  });
+
   it("does not re-fire play() while a previous play() is in flight", () => {
     // Without a play-request dedup, the 50ms runtime poll would fire 20–40
     // spurious play() calls per element during the 1–2s initial buffer, each
@@ -1387,6 +1424,46 @@ describe("syncRuntimeMedia", () => {
     expect(clip.el.volume).toBe(0.5);
   });
 
+  it("writes volume and muted only when they change, not on every tick", () => {
+    const clip = createMockClip({ start: 0, end: 10, volume: 0.7 });
+    const writes = { volume: 0, muted: 0 };
+    for (const prop of ["volume", "muted"] as const) {
+      const native = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, prop)!;
+      Object.defineProperty(clip.el, prop, {
+        configurable: true,
+        get() {
+          return native.get!.call(this);
+        },
+        set(value) {
+          writes[prop]++;
+          native.set!.call(this, value);
+        },
+      });
+    }
+    for (const timeSeconds of [1, 1.04, 1.08, 1.12]) {
+      syncRuntimeMedia({
+        clips: [clip],
+        timeSeconds,
+        playing: false,
+        playbackRate: 1,
+        outputMuted: true,
+      });
+    }
+    expect(clip.el.volume).toBe(0.7);
+    expect(clip.el.muted).toBe(true);
+    expect(writes).toEqual({ volume: 0, muted: 1 });
+
+    clip.el.muted = false;
+    syncRuntimeMedia({
+      clips: [clip],
+      timeSeconds: 1.16,
+      playing: false,
+      playbackRate: 1,
+      outputMuted: true,
+    });
+    expect(clip.el.muted).toBe(true);
+  });
+
   it("reports effective and author-only volume to external audio transports", () => {
     const clip = createMockClip({ start: 0, end: 10, volume: 0 });
     const onElementVolume = vi.fn();
@@ -1408,7 +1485,7 @@ describe("syncRuntimeMedia", () => {
     });
 
     expect(clip.el.volume).toBeCloseTo(0.375);
-    expect(onElementVolume).toHaveBeenLastCalledWith(clip.el, 0.375, 0.75);
+    expect(onElementVolume).toHaveBeenLastCalledWith(clip.el, 0.375, 0.75, 1);
   });
 
   it("preserves author volume through user zero then restore", () => {
@@ -1431,8 +1508,8 @@ describe("syncRuntimeMedia", () => {
       onElementVolume,
     });
 
-    expect(onElementVolume.mock.calls.at(-2)).toEqual([clip.el, 0, 0.8]);
-    expect(onElementVolume.mock.calls.at(-1)).toEqual([clip.el, 0.4, 0.8]);
+    expect(onElementVolume.mock.calls.at(-2)).toEqual([clip.el, 0, 0.8, 1]);
+    expect(onElementVolume.mock.calls.at(-1)).toEqual([clip.el, 0.4, 0.8, 1]);
   });
 
   it("does not mistake routed upstream unity for an authored volume change", () => {
@@ -1449,7 +1526,7 @@ describe("syncRuntimeMedia", () => {
       onElementVolume,
     });
 
-    expect(onElementVolume).toHaveBeenLastCalledWith(clip.el, 0.4, 0.8);
+    expect(onElementVolume).toHaveBeenLastCalledWith(clip.el, 0.5, 1, 0.8);
   });
 
   describe("per-element mute (Web Audio ownership)", () => {

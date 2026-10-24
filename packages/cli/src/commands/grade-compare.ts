@@ -19,12 +19,12 @@ import {
 } from "@hyperframes/core";
 import { gsapCdnDist } from "@hyperframes/core/gsap-cdn";
 import { defineCommand } from "citty";
-import sharp from "sharp";
 import type { Example } from "./_examples.js";
 import { openSettledCompositionPage, runFfmpegOnce } from "../capture/captureCompositionFrame.js";
 import { findFFmpeg } from "../browser/ffmpeg.js";
 import { c } from "../ui/colors.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
+import { loadSharp } from "../utils/optionalPackages.js";
 import { displayPathFromBase, readOptionalString, resolveFromBase } from "../utils/pathArgs.js";
 import { trackCompareSheet } from "../telemetry/events.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
@@ -527,6 +527,7 @@ async function loadReferenceFrame(framePath: string): Promise<ReferenceFrame> {
     throw new Error(`Could not extract a frame from video: ${framePath}`);
   }
 
+  const sharp = await loadSharp("grade-compare");
   const metadata = await sharp(buffer).metadata();
   if (!metadata.width || !metadata.height) {
     throw new Error(`Could not read reference frame dimensions: ${framePath}`);

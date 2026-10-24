@@ -105,6 +105,31 @@ describe("bundleToSingleHtml", () => {
     }
   });
 
+  it("stops inlining a repeated asset once the bundle's inline budget is spent instead of overflowing the string", async () => {
+    // 300 references to one 1.9 MB image inline ~760M characters, past V8's
+    // maximum string length: without a bundle-wide budget this throws
+    // "Invalid string length".
+    const references = 300;
+    const dir = makeTempProject({
+      "index.html": `<html><body><main data-composition-id="root" data-width="320" data-height="180">${'<img src="unit.png">'.repeat(references)}</main></body></html>`,
+      "unit.png": "x".repeat(1_900_000),
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const bundled = await bundleToSingleHtml(dir);
+      const inlined = bundled.split("data:image/png;base64,").length - 1;
+      const relative = bundled.split('src="unit.png"').length - 1;
+      expect(inlined).toBeGreaterThan(0);
+      expect(relative).toBeGreaterThan(0);
+      expect(inlined + relative).toBe(references);
+      expect(bundled.length).toBeLessThan(300 * 1024 * 1024);
+      expect(warn.mock.calls.filter(([m]) => String(m).includes("inline")).length).toBe(1);
+    } finally {
+      warn.mockRestore();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("resolves encoded URL filenames once across asset, stylesheet and script consumers", async () => {
     const dir = makeTempProject({
       "index.html":
@@ -349,6 +374,37 @@ describe("bundleToSingleHtml", () => {
     const bundled = await bundleToSingleHtml(dir);
 
     expect(bundled).toContain('var __hfCompositionSrc = "compositions/blk/blk.html";');
+  });
+
+  it("bundles mounted import maps with blocked entries and object-property specifiers", async () => {
+    const dir = makeTempProject({
+      "index.html":
+        '<!doctype html><html><head></head><body><div data-composition-id="main" data-width="320" data-height="180"><div data-composition-id="blk" data-composition-src="blocks/blk.html" data-start="0" data-duration="2"></div></div></body></html>',
+      "blocks/ok.js": "export const VALUE = 1;",
+      "blocks/lib/witness.js": "export const WITNESS = 3;",
+      "blocks/scoped.js": "export const VALUE = 2;",
+      "blocks/blk.html":
+        '<div data-composition-id="blk" data-width="320" data-height="180"><script type="importmap">{"imports":{"ok":"./ok.js","blocked":null,"number":17,"constructor":"./ok.js","__proto__":"./ok.js"},"scopes":{"./lib/":{"ok":"./scoped.js","blocked":null}}}</script><script type="module">import "ok";</script></div>',
+    });
+    try {
+      const { document } = parseHTML(await bundleToSingleHtml(dir));
+      const map = document.querySelector('script[type="importmap"]');
+      expect(JSON.parse(map?.textContent || "null")).toEqual({
+        imports: Object.fromEntries([
+          ["ok", "./blocks/ok.js"],
+          ["blocked", null],
+          ["number", null],
+          ["constructor", "./blocks/ok.js"],
+          ["__proto__", "./blocks/ok.js"],
+        ]),
+        scopes: { "./blocks/lib/": { ok: "./blocks/scoped.js", blocked: null } },
+      });
+      expect(
+        document.querySelector(`script[type="${AFTER_FONTS_SCRIPT_TYPE}+module"]`),
+      ).not.toBeNull();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("keeps a mounted file's import map and module script as such, bound to that file", async () => {
@@ -2040,6 +2096,66 @@ describe("bundleToSingleHtml", () => {
     expect(bundled).toContain(`url('${inlinedAs("image/png", "fake-sprite")}?v=2#section')`);
   });
 
+  it.each([true, false])(
+    "preserves srcset URL commas with inlineAssets %s",
+    async (inlineAssets) => {
+      const srcset = `${inlinedAs("image/svg+xml", '<svg xmlns="http://www.w3.org/2000/svg"/>')} 1x, https://cdn.example/hero,blue.png 2x`;
+      const dir = makeTempProject({
+        "index.html": `<html><body><div data-composition-id="root" data-width="320" data-height="180" data-duration="1" data-no-timeline><img id="photo" srcset="${srcset}"></div></body></html>`,
+      });
+      try {
+        const bundled = await bundleToSingleHtml(dir, { inlineAssets });
+        const { document } = parseHTML(bundled);
+        expect(document.getElementById("photo")?.getAttribute("srcset")).toBe(srcset);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("inlines a comma-named srcset image beside an existing data URL", async () => {
+    const dataUrl = inlinedAs("image/svg+xml", '<svg xmlns="http://www.w3.org/2000/svg"/>');
+    const dir = makeTempProject({
+      "index.html": `<html><body><div data-composition-id="root" data-width="320" data-height="180" data-duration="1" data-no-timeline><img id="photo" srcset="${dataUrl} 1x, hero,blue.png 2x"></div></body></html>`,
+      "hero,blue.png": "blue-image-bytes",
+    });
+    try {
+      const bundled = await bundleToSingleHtml(dir);
+      const { document } = parseHTML(bundled);
+      expect(document.getElementById("photo")?.getAttribute("srcset")).toBe(
+        `${dataUrl} 1x, ${inlinedAs("image/png", "blue-image-bytes")} 2x`,
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it.each([true, false])(
+    "rebases complete picture srcset URLs with inlineAssets %s",
+    async (inlineAssets) => {
+      const dataUrl = inlinedAs("image/svg+xml", '<svg xmlns="http://www.w3.org/2000/svg"/>');
+      const dir = makeTempProject({
+        "scenes/scene.html": `<html><body><div data-composition-id="root" data-width="320" data-height="180" data-duration="1" data-no-timeline><picture><source id="photo" srcset="${dataUrl} 160w, hero,blue.png 320w"><img src="hero,blue.png"></picture></div></body></html>`,
+        "scenes/hero,blue.png": "blue-image-bytes",
+      });
+      try {
+        const bundled = await bundleToSingleHtml(dir, {
+          entryFile: "scenes/scene.html",
+          inlineAssets,
+        });
+        const { document } = parseHTML(bundled);
+        const image = inlineAssets
+          ? inlinedAs("image/png", "blue-image-bytes")
+          : "scenes/hero%2Cblue.png";
+        expect(document.getElementById("photo")?.getAttribute("srcset")).toBe(
+          `${dataUrl} 160w, ${image} 320w`,
+        );
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("inlines fonts, images and scripts so no relative asset reference survives", async () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html>
@@ -3644,5 +3760,36 @@ describe("stampHfIds", () => {
     const html = await bundleToSingleHtml(project(), { inlineAssets: false });
     expect(logo(html)).toContain("compositions/logo.png");
     expect(logo(html)).not.toContain("data-hf-id");
+  });
+});
+
+describe("emitRootCompositionVariableStyles — authored definitions", () => {
+  function emitted(authoredCss: string): string {
+    const { document } = parseHTML(
+      `<!doctype html><html><head><style>${authoredCss}</style></head>` +
+        `<body><div data-composition-id="card"></div></body></html>`,
+    );
+    emitRootCompositionVariableStyles(document, {
+      card: { accent: "blue", "accent-dark": "navy" },
+    });
+    return document.querySelector("style[data-hf-composition-variables]")?.textContent ?? "";
+  }
+
+  it("leaves a variable the stylesheet defines, whatever space sits before its colon", () => {
+    for (const authored of [
+      ":root{--accent:red}",
+      ":root { --accent : red }",
+      ":root {\n  --accent\n  : red }",
+    ]) {
+      const css = emitted(authored);
+      expect(css).not.toContain("--accent:");
+      expect(css).toContain("--accent-dark: navy");
+    }
+  });
+
+  it("still emits a variable whose name only begins a longer authored one, or is only read", () => {
+    const css = emitted(":root { --accent-dark: black; } .badge { color: var(--accent); }");
+    expect(css).toContain("--accent: blue");
+    expect(css).not.toContain("--accent-dark");
   });
 });

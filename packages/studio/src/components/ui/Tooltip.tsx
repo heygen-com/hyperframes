@@ -4,7 +4,14 @@
  */
 
 import { Tooltip as BaseTooltip } from "@base-ui/react/tooltip";
-import { cloneElement, useId, useRef, useState, type ReactElement } from "react";
+import {
+  cloneElement,
+  useId,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactElement,
+} from "react";
 import { cn } from "./cn";
 import { floatingMotion, POPUP_LAYER } from "./Menu";
 
@@ -16,6 +23,8 @@ interface TooltipProps {
   delay?: number;
   disabled?: boolean;
   side?: "top" | "bottom" | "left" | "right";
+  /** Wraps a long label at a reading width and cuts it at this many lines with an ellipsis. Unset, one line. */
+  lines?: number;
 }
 
 /** Matches the old bubble's gap from its trigger, and its viewport margin. */
@@ -28,6 +37,7 @@ export function Tooltip({
   delay = 400,
   side = "top",
   disabled = false,
+  lines,
 }: TooltipProps) {
   const [open, setOpen] = useState(false);
   const boxRef = useRef<HTMLSpanElement>(null);
@@ -52,11 +62,21 @@ export function Tooltip({
             id={tooltipId}
             role="tooltip"
             className={cn(
-              "pointer-events-none rounded-md border border-border-input bg-surface px-2 py-1 text-step-10 font-medium text-text-1 whitespace-nowrap shadow-menu",
+              "pointer-events-none rounded-md border border-border-input bg-surface px-2 py-1 text-step-10 font-medium text-text-1 shadow-menu",
+              lines ? "max-w-[300px] whitespace-normal break-words" : "whitespace-nowrap",
               floatingMotion("duration-tooltip"),
             )}
           >
-            {label}
+            {lines ? (
+              <span
+                className="line-clamp-(--tooltip-lines)"
+                style={{ "--tooltip-lines": lines } as CSSProperties}
+              >
+                {label}
+              </span>
+            ) : (
+              label
+            )}
           </BaseTooltip.Popup>
         </BaseTooltip.Positioner>
       </BaseTooltip.Portal>

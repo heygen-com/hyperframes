@@ -17,8 +17,9 @@
  * raw number.
  */
 
-/** On-demand Lambda price, us-east-1, x86_64, on-demand: USD per GB-second. */
-const LAMBDA_USD_PER_GB_SECOND = 0.0000166667;
+/** On-demand Lambda price, us-east-1: USD per GB-second, by function architecture. */
+const LAMBDA_USD_PER_GB_SECOND = { x86_64: 0.0000166667, arm64: 0.0000133334 } as const;
+export type LambdaArchitecture = keyof typeof LAMBDA_USD_PER_GB_SECOND;
 /** Step Functions Standard Workflows, us-east-1: USD per state transition. */
 const SFN_USD_PER_TRANSITION = 0.000025;
 
@@ -30,6 +31,8 @@ export interface BilledLambdaInvocation {
   memorySizeMb: number;
   /** `true` if the event payload did NOT carry a billed duration and we fell back to `Duration` or a constant. */
   estimated: boolean;
+  /** Architecture of the invoked function; x86_64 when omitted. */
+  architecture?: LambdaArchitecture;
 }
 
 /** Result of {@link computeRenderCost}. */
@@ -63,7 +66,7 @@ export function computeRenderCost(
   let anyEstimated = false;
   for (const inv of lambdaInvocations) {
     const gbSeconds = (inv.memorySizeMb / 1024) * (inv.billedDurationMs / 1000);
-    lambdaUsd += gbSeconds * LAMBDA_USD_PER_GB_SECOND;
+    lambdaUsd += gbSeconds * LAMBDA_USD_PER_GB_SECOND[inv.architecture ?? "x86_64"];
     if (inv.estimated) anyEstimated = true;
   }
   const stepFunctionsUsd = stateTransitions * SFN_USD_PER_TRANSITION;

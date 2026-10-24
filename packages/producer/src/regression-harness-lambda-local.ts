@@ -23,6 +23,7 @@
  */
 
 import {
+  type Dirent,
   createWriteStream,
   existsSync,
   mkdirSync,
@@ -45,6 +46,7 @@ import type {
   RenderChunkLambdaResult,
   SerializableDistributedRenderConfig,
 } from "@hyperframes/aws-lambda";
+import { listSiteFiles } from "./services/distributed/projectHash.js";
 
 export type {
   LambdaLocalRenderResult,
@@ -78,7 +80,7 @@ export async function runLambdaLocalRender(
   const projectKey = `sites/harness/${Date.now()}/project.tar.gz`;
   const projectS3Path = join(s3Root, projectKey);
   mkdirSync(dirname(projectS3Path), { recursive: true });
-  await tarDirectory(input.projectDir, projectS3Path);
+  await tarDirectory(input.projectDir, projectS3Path, listSiteFiles(input.projectDir));
 
   const fakeS3 = new FilesystemBackedFakeS3(s3Root);
   const deps: HandlerDeps = {
@@ -274,14 +276,20 @@ function requireV2PlanResult(
 // branches would make this small test-harness utility harder to audit.
 // fallow-ignore-next-line complexity
 function measureDirectoryBytes(path: string): number {
-  if (!existsSync(path)) return 0;
+  let entries: Dirent[];
+  try {
+    entries = readdirSync(path, { withFileTypes: true });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return 0;
+    throw err;
+  }
   let bytes = 0;
-  for (const entry of readdirSync(path, { withFileTypes: true })) {
+  for (const entry of entries) {
     const child = join(path, entry.name);
     if (entry.isDirectory()) {
       bytes += measureDirectoryBytes(child);
     } else if (entry.isFile()) {
-      bytes += statSync(child).size;
+      bytes += statSync(child, { throwIfNoEntry: false })?.size ?? 0;
     }
   }
   return bytes;

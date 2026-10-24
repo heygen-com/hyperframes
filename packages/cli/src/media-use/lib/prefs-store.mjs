@@ -15,7 +15,7 @@ import { globalMediaDir } from "./media-home.mjs";
  *   project files can't see each other, so the cross-project count has to live
  *   user-side.
  *
- * Consumption contract (brief-contract § 2, Remembered defaults): a remembered
+ * Consumption contract (media-use references/memory.md): a remembered
  * value becomes the recommended option with a receipt naming its source — it
  * never skips a question, and explicit request content always wins.
  */

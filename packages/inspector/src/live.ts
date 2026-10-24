@@ -14,7 +14,12 @@ import {
 } from "./engine";
 import { liveGenerationPage, type PageRunner } from "./pageQueries";
 import { assertGeneration, validateInspectRequest, validateTimelineRequest } from "./requests";
-import { Sources, authoredHtml, fingerprint, type AuthoredHtml } from "./sources";
+import {
+  Sources,
+  authoredHtml,
+  fingerprint as sourceFingerprint,
+  type AuthoredHtml,
+} from "./sources";
 import type { InspectRequest, Snippet } from "./types";
 
 export interface LiveInspection {
@@ -32,6 +37,7 @@ export function prepareLiveInspection(
   html: string,
   provenance: readonly BundleScriptProvenance[],
   sourceVersion: string,
+  reads?: readonly string[],
 ): LiveInspection {
   const project = realpathSync(projectDir);
   if (fingerprint(project) !== sourceVersion) throw new Error("source_changed_during_load");
@@ -50,7 +56,7 @@ export function prepareLiveInspection(
     pageGeneration: generation,
     sourceContext() {
       if (!context) {
-        const sources = new Sources(project);
+        const sources = new Sources(project, reads);
         context = { sources, map: sources.mapper(document, [...provenance]) };
       }
       return context;
@@ -103,7 +109,9 @@ export function previewGeneration(runner: PageRunner): Promise<string | null> {
   return runner.run(liveGenerationPage, undefined);
 }
 
-export { fingerprint } from "./sources";
+export function fingerprint(project: string) {
+  return sourceFingerprint(project, { ignoreHfIds: true });
+}
 export type {
   ComponentReport,
   ElementMapReport,

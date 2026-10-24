@@ -113,7 +113,9 @@ export function downloadFile(
               if (hops >= MAX_REDIRECTS) {
                 removePartialFile(tmp);
                 reject(
-                  new Error(`Download failed: more than ${MAX_REDIRECTS} redirects from ${url}`),
+                  new Error(
+                    `Download failed: more than ${MAX_REDIRECTS} redirects from ${url.split("?")[0]}`,
+                  ),
                 );
                 return;
               }

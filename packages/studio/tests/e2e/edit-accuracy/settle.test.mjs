@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   STILL_FRAMES,
+  backgroundRequest,
   heldStill,
   networkBusy,
   seekBound,
@@ -96,6 +97,18 @@ describe("settling on the page's network", () => {
     const now = { ...read(false, 0), net: networkBusy(ctx) };
     expect(now.net.busy).toBe(false);
     expect(unsettledBy(start, now)).toBe(true);
+  });
+
+  it("never waits on thumbnails, their blob images or background lint, which do not change the preview", () => {
+    const request = (url, type = "fetch") => ({ url: () => url, resourceType: () => type });
+    const api = "http://127.0.0.1:5910/api/projects/case";
+    expect(backgroundRequest(request(`${api}/lint`))).toBe(true);
+    expect(backgroundRequest(request(`${api}/thumbnail/index.html?t=3.00`))).toBe(true);
+    expect(backgroundRequest(request(`${api}/events`, "eventsource"))).toBe(true);
+    expect(backgroundRequest(request("blob:http://127.0.0.1:5910/7baf001f", "image"))).toBe(true);
+    expect(backgroundRequest(request(`${api}/preview`, "document"))).toBe(false);
+    expect(backgroundRequest(request(`${api}/files/index.html`))).toBe(false);
+    expect(backgroundRequest(request(`${api}/lint-rules`))).toBe(false);
   });
 
   it("waits for requests in live frames and for the server to announce each written file", () => {

@@ -64,3 +64,14 @@ describe("buildRenderPerfSummary host telemetry", () => {
     expect(summary.workers).toBe(4);
   });
 });
+
+describe("buildRenderPerfSummary drawElement gate reason", () => {
+  it("keeps the probe's gate when the workers that captured report none", () => {
+    const summary = buildRenderPerfSummary({
+      ...baseInput,
+      dedupPerfs: [{ captureMode: "screenshot" }, { captureMode: "screenshot" }],
+      drawElement: { probeGateReason: "css_effect:filter", selfVerifyFallback: false },
+    } as Parameters<typeof buildRenderPerfSummary>[0]);
+    expect(summary.drawElement?.gateReason).toBe("css_effect:filter");
+  });
+});

@@ -1,3 +1,8 @@
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { accurate, bankable, comment, flipped, gate, QUARANTINED } from "./ratchet.mjs";
 import { entry, score } from "./report.mjs";
@@ -188,5 +193,65 @@ describe("teleport in the gate", () => {
     };
     expect(accurate(entry(score({ id: "move-x" }, r)))).toBe(false);
     expect(accurate(entry(score({ id: "nudge-x" }, { ...r, teleport: null })))).toBe(true);
+  });
+});
+
+describe("gate command, as CI runs it", () => {
+  const script = fileURLToPath(new URL("./ratchet.mjs", import.meta.url));
+  /** Runs `gate --shards <shards>` over the given shard results; returns its exit code, comment and verdict. */
+  function runGate(shards, shardCases) {
+    const dir = mkdtempSync(join(tmpdir(), "edit-accuracy-gate-"));
+    const base = join(dir, "base.json");
+    writeFileSync(base, JSON.stringify(baseline({ a: good, b: good })));
+    const results = shardCases.map((cases, i) => {
+      const path = join(dir, `shard-${i}.json`);
+      writeFileSync(path, JSON.stringify({ meta: { grid: `pr shard ${i + 1}/${shards}` }, cases }));
+      return path;
+    });
+    const out = join(dir, "out");
+    const run = spawnSync(
+      process.execPath,
+      [script, "gate", "--shards", String(shards), base, base, out, ...results],
+      {
+        encoding: "utf8",
+      },
+    );
+    const report = JSON.parse(readFileSync(join(out, "gate.json"), "utf8"));
+    return {
+      code: run.status,
+      comment: readFileSync(join(out, "comment.md"), "utf8"),
+      verdict: report.verdict,
+    };
+  }
+
+  it("says the shards did not run when none reported results, never that accuracy fell", () => {
+    const g = runGate(5, []);
+    expect(g.code).toBe(2);
+    expect(g.verdict).toBe(
+      "Edit accuracy did not run: 0 of 5 shards reported results; see the shard jobs.",
+    );
+    expect(g.comment).toContain("0 of 5 shards reported results");
+    expect(g.comment).not.toMatch(/fell|accurate \d/);
+  });
+
+  it("says the shards did not all run when the cases that ran hold, so a missing shard is not a drop", () => {
+    const g = runGate(2, [[run("a")]]);
+    expect(g.code).toBe(2);
+    expect(g.verdict).toBe(
+      "Edit accuracy did not run: 1 of 2 shards reported results; see the shard jobs.",
+    );
+  });
+
+  it("still says accuracy fell when a case that ran regressed, even with a shard missing", () => {
+    const g = runGate(2, [[run("a", 9), run("a", 9), run("a", 9)]]);
+    expect(g.code).toBe(1);
+    expect(g.verdict).toBe("Edit accuracy fell against the base branch; see the PR comment.");
+    expect(g.comment).toContain("1 of 2 shards reported results");
+  });
+
+  it("passes when every shard reported and nothing fell", () => {
+    const g = runGate(2, [[run("a")], [run("b")]]);
+    expect(g.code).toBe(0);
+    expect(g.verdict).toBe("Edit accuracy holds against the base branch.");
   });
 });

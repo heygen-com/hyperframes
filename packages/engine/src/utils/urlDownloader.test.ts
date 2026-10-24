@@ -112,10 +112,10 @@ function isoBmffMediaBytes(marker: string): Buffer {
   return Buffer.concat([ftyp, Buffer.from(marker)]);
 }
 
-// Fake Date, and hold the 1_000 ms attempt deadline every test passes: on a slow runner one
+// Freeze Date, and hold the 1_000 ms attempt deadline every test passes: on a slow runner one
 // attempt (hash, fsync, refetch) can outlast it and throw "Download timeout". A test that
 // needs the deadline calls fireAttemptDeadline(). Other timers (cache-lock poll, test
-// delays) stay real.
+// delays) stay real. Not fake timers: vi.waitFor advances those, shortening the deadline.
 const ATTEMPT_DEADLINE_MS = 1_000;
 const heldDeadlines = new Map<ReturnType<typeof setTimeout>, () => void>();
 let realSetTimeout: typeof setTimeout;
@@ -129,7 +129,7 @@ function fireAttemptDeadline(): void {
 }
 
 beforeEach(() => {
-  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(Date.now());
   realSetTimeout = globalThis.setTimeout;
   vi.spyOn(globalThis, "setTimeout").mockImplementation(((
     handler: () => void,
@@ -1616,9 +1616,9 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
       kind: "cancelled",
       retryable: false,
     } satisfies Partial<UrlDownloadError>);
+    // Cancel the first caller's request in flight; the second caller's may already be sent too.
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
     firstController.abort();
-    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    fireAttemptDeadline();
 
     await firstRejected;
     const path = await second;

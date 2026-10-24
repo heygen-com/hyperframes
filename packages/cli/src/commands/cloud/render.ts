@@ -16,7 +16,7 @@ import { failCommand } from "../../utils/commandResult.js";
  *      `project: {type:"asset_id", asset_id}` shape.
  *   5. If `--no-wait`: print the `render_id` and exit immediately.
  *      Otherwise poll `GET /v3/hyperframes/renders/{id}` every
- *      `--poll-interval` (default 10s, max 60min). `--callback-url`
+ *      `--poll-interval` (default 2s, max 60min). `--callback-url`
  *      can be combined with either mode: the webhook always fires when
  *      the server-side render terminates, independent of whether the
  *      CLI is still polling.
@@ -25,7 +25,7 @@ import { failCommand } from "../../utils/commandResult.js";
  *
  * Auth comes from the existing `cli/src/auth/` chain via `cloud/auth.ts`.
  * The cloud HTTP client (`cloud/_gen/client.ts`) is generated from
- * `experiment-framework/openapi/external-api.json`; never hand-edit it.
+ * HeyGen's external API OpenAPI spec; never hand-edit it.
  */
 
 import { defineCommand } from "citty";
@@ -39,7 +39,10 @@ import { errorBox, formatBytes, formatDuration } from "../../ui/format.js";
 import { resolveProject, type ProjectDir } from "../../utils/project.js";
 import { normalizeErrorMessage } from "../../utils/errorMessage.js";
 import {
-  buildPublishFileMap,
+  readStaged,
+  type StagedFile,
+  stagedSize,
+  stagePublishFiles,
   type PublishArchiveResult,
   zipPublishFileMap,
 } from "../../utils/publishProject.js";
@@ -61,7 +64,14 @@ import {
 } from "../../cloud/index.js";
 import { reportApiError } from "../../cloud/errors.js";
 import { parseEnumFlag, parseIntFlag, parseNumericFlag } from "../../cloud/parsing.js";
-import { uploadZipViaDirectUpload } from "../../cloud/upload.js";
+import { uploadAssetViaDirectUpload, uploadZipViaDirectUpload } from "../../cloud/upload.js";
+import {
+  OFFLOAD_MIN_BYTES,
+  offloadHeavyMedia,
+  type OffloadedMedia,
+  type OffloadOptions,
+} from "../../cloud/offload.js";
+import { resolveCloudBaseUrl } from "../../cloud/auth.js";
 import { colorStatus } from "../../cloud/statusColor.js";
 import type {
   CreateHyperframesRenderRequest,
@@ -108,6 +118,11 @@ export default defineCommand({
     fps: { type: "string", description: "Frames per second (1-240). Default: 30." },
     quality: { type: "string", description: "draft | standard | high (default: standard)" },
     format: { type: "string", description: "mp4 | webm | mov (default: mp4)" },
+    "page-motion-blur": {
+      type: "string",
+      description:
+        "Set off to disable authored page motion blur. Omit to keep the current cloud behavior.",
+    },
     resolution: {
       type: "string",
       description: "Resolution tier: 1080p | 4k (default: 1080p; 4k is billed at 1.5x)",
@@ -204,6 +219,9 @@ export default defineCommand({
     const fps = parseIntFlag(args.fps, { flag: "--fps", min: 1, max: 240 });
     const quality = parseEnumFlag(args.quality, VALID_QUALITY, { flag: "--quality" });
     const format = parseEnumFlag(args.format, VALID_FORMAT, { flag: "--format" });
+    const pageMotionBlur = parseEnumFlag(args["page-motion-blur"], ["off"] as const, {
+      flag: "--page-motion-blur",
+    });
     const resolution = parseEnumFlag(args.resolution, VALID_RESOLUTION, {
       flag: "--resolution",
     });
@@ -224,10 +242,6 @@ export default defineCommand({
     });
     validateDryRunSource(project, args["dry-run"] ?? false);
 
-    // 4k supersampling runs through the alpha-incompatible screenshot path;
-    // reject the combination client-side instead of failing mid-render.
-    validateResolutionFormatCombo(resolution, format);
-
     // Aspect ratio is derived from the composition's authored dimensions: for
     // a local dir we parse the entry HTML and auto-detect, so the user rarely
     // needs --aspect-ratio at all. When they DO pass it, we validate it
@@ -244,7 +258,7 @@ export default defineCommand({
 
     if (args["dry-run"]) {
       if (project.kind !== "dir") throw new Error("Dry-run project must be a local directory");
-      reportDryRun(prepareLocalArchive(project, args.composition, asJson), asJson);
+      reportDryRun(await prepareLocalArchive(project, args.composition, asJson), asJson);
       return;
     }
 
@@ -257,7 +271,11 @@ export default defineCommand({
 
     const client = await createCloudClient();
     const preparedArchive =
-      project.kind === "dir" ? prepareLocalArchive(project, args.composition, asJson) : undefined;
+      project.kind === "dir"
+        ? await prepareLocalArchive(project, args.composition, asJson, (file) =>
+            uploadAssetViaDirectUpload({ client, ...file }),
+          )
+        : undefined;
 
     const upload = await maybeUploadProject(
       client,
@@ -272,6 +290,7 @@ export default defineCommand({
       quality,
       format,
       resolution,
+      pageMotionBlur,
       aspectRatio,
       composition: args.composition,
       variables,
@@ -484,25 +503,6 @@ export function resolveAspectRatioForSubmit(
   return detection.kind === "matched" ? detection.aspectRatio : undefined;
 }
 
-/**
- * 4k output is produced by supersampling through the screenshot capture path,
- * which doesn't support an alpha channel. webm/mov carry alpha, so the
- * combination can't be satisfied — reject it before upload.
- */
-export function validateResolutionFormatCombo(
-  resolution: "1080p" | "4k" | undefined,
-  format: "mp4" | "webm" | "mov" | undefined,
-): void {
-  if (resolution === "4k" && (format === "webm" || format === "mov")) {
-    errorBox(
-      "Unsupported combination",
-      `--resolution 4k cannot be combined with --format ${format}.`,
-      "The alpha (webm/mov) capture path doesn't support 4k supersampling. Render 4k as mp4, or render alpha at composition resolution.",
-    );
-    failCommand();
-  }
-}
-
 const ASPECT_FALLBACK_HINT =
   "server will default aspect_ratio to 16:9. Pass --aspect-ratio to override.";
 
@@ -562,37 +562,76 @@ interface UploadResult {
   projectInput: CreateHyperframesRenderRequest["project"];
 }
 
-interface ArchiveFileSummary {
+export interface ArchiveFileSummary {
   path: string;
   size_bytes: number;
 }
 
 interface PreparedLocalArchive {
   project: ProjectDir;
-  archive: PublishArchiveResult;
+  /** Absent when the files left on disk alone are over the upload limit: they are never read. */
+  archive?: PublishArchiveResult;
+  sizeBytes: number;
+  fileCount: number;
   largestFiles: ArchiveFileSummary[];
+  offloaded: OffloadedMedia[];
 }
 
-function summarizeLargestFiles(fileMap: Map<string, Buffer>): ArchiveFileSummary[] {
+function summarizeLargestFiles(fileMap: Map<string, StagedFile>): ArchiveFileSummary[] {
   return [...fileMap.entries()]
-    .map(([path, content]) => ({ path, size_bytes: content.byteLength }))
+    .map(([path, content]) => ({ path, size_bytes: stagedSize(content) }))
     .sort((a, b) => b.size_bytes - a.size_bytes || a.path.localeCompare(b.path))
     .slice(0, LARGEST_FILE_COUNT);
 }
 
-function prepareLocalArchive(
+async function prepareLocalArchive(
   source: ProjectInputSource,
   composition: string | undefined,
   asJson: boolean,
-): PreparedLocalArchive {
+  upload?: OffloadOptions["upload"],
+): Promise<PreparedLocalArchive> {
   const project = resolveProject(source.dir);
   if (!asJson) {
     console.log("");
     console.log(`${c.accent("◆")}  Zipping ${c.accent(project.name)}`);
   }
+  const { fileMap, entryPath } = stageProjectFiles(project, composition);
+  const offloaded = await offloadMedia(project, fileMap, entryPath, asJson, upload);
 
+  // Media left on disk barely compresses: past the limit, its size is the report and nothing is read.
+  const onDiskBytes = [...fileMap.values()]
+    .filter((file) => !Buffer.isBuffer(file))
+    .reduce((sum, file) => sum + stagedSize(file), 0);
+  const archive =
+    onDiskBytes > DIRECT_UPLOAD_LIMIT_BYTES
+      ? undefined
+      : zipPublishFileMap(new Map([...fileMap].map(([path, file]) => [path, readStaged(file)])));
+  const sizeBytes = archive?.buffer.byteLength ?? onDiskBytes;
+  if (!asJson) {
+    console.log(c.dim(`   ${fileMap.size} files · ${formatBytes(sizeBytes)}`));
+  }
+  const largestFiles = summarizeLargestFiles(fileMap);
+  const prepared = {
+    project,
+    archive,
+    sizeBytes,
+    fileCount: fileMap.size,
+    largestFiles,
+    offloaded,
+  };
+  if (upload) assertArchiveFits(sizeBytes, largestFiles);
+  if (!asJson && sizeBytes >= ARCHIVE_DIAGNOSTIC_THRESHOLD_BYTES) {
+    reportLargestFiles(prepared);
+  }
+  return prepared;
+}
+
+function stageProjectFiles(
+  project: ProjectDir,
+  composition: string | undefined,
+): { fileMap: Map<string, StagedFile>; entryPath: string } {
   try {
-    const fileMap = buildPublishFileMap(project.dir);
+    const fileMap = stagePublishFiles(project.dir, OFFLOAD_MIN_BYTES);
     const entryPath = relative(
       project.dir,
       resolvePath(project.dir, composition ?? "index.html"),
@@ -602,22 +641,70 @@ function prepareLocalArchive(
         `Composition "${composition ?? "index.html"}" is excluded from the archive. Check .hyperframesignore.`,
       );
     }
-    const archive = zipPublishFileMap(fileMap);
-    if (!asJson) {
-      console.log(
-        c.dim(`   ${archive.fileCount} files · ${formatBytes(archive.buffer.byteLength)}`),
-      );
-    }
-    const prepared = { project, archive, largestFiles: summarizeLargestFiles(fileMap) };
-    if (!asJson && archive.buffer.byteLength >= ARCHIVE_DIAGNOSTIC_THRESHOLD_BYTES) {
-      reportLargestFiles(prepared);
-    }
-    return prepared;
+    return { fileMap, entryPath };
   } catch (err) {
     const msg = normalizeErrorMessage(err);
     errorBox("Zip failed", msg, "Check the project and .hyperframesignore for missing files.");
     failCommand();
   }
+}
+
+async function offloadMedia(
+  project: ProjectDir,
+  fileMap: Map<string, StagedFile>,
+  entryPath: string,
+  asJson: boolean,
+  upload: OffloadOptions["upload"],
+): Promise<OffloadedMedia[]> {
+  let offloaded: OffloadedMedia[];
+  try {
+    offloaded = await offloadHeavyMedia(project.dir, fileMap, {
+      apiBaseUrl: resolveCloudBaseUrl(),
+      upload,
+      entryPath,
+      onFile: asJson
+        ? undefined
+        : (item) => console.log(c.dim(`   ${describeOffload(item, !upload)}`)),
+    });
+  } catch (err) {
+    reportApiError("Media upload failed", err);
+  }
+  if (!asJson) {
+    for (const item of offloaded.filter((entry) => entry.kept_in_archive)) {
+      console.log(
+        c.dim(
+          `   ${item.path} also stays in the zip: a script builds its path in a way that cannot be rewritten`,
+        ),
+      );
+    }
+  }
+  return offloaded;
+}
+
+export function assertArchiveFits(sizeBytes: number, largestFiles: ArchiveFileSummary[]): void {
+  if (sizeBytes <= DIRECT_UPLOAD_LIMIT_BYTES) return;
+  errorBox(
+    "Project too large for cloud render",
+    `The zip is ${formatBytes(sizeBytes)} after moving media to HeyGen assets, over the ${formatBytes(DIRECT_UPLOAD_LIMIT_BYTES)} upload limit. Largest files left in it:\n${largestFiles
+      .map((file) => `  ${formatBytes(file.size_bytes).padStart(9)}  ${file.path}`)
+      .join("\n")}`,
+    "Exclude files the render does not need with .hyperframesignore.",
+  );
+  failCommand();
+}
+
+function describeOffload(item: OffloadedMedia, dryRun: boolean): string {
+  const verb =
+    item.action === "cached"
+      ? "already uploaded"
+      : item.action === "reencode"
+        ? dryRun
+          ? "would re-encode and upload"
+          : "re-encoded and uploaded"
+        : dryRun
+          ? "would upload"
+          : "uploaded";
+  return `${formatBytes(item.size_bytes).padStart(9)}  ${item.path} · ${verb}`;
 }
 
 function reportLargestFiles(prepared: PreparedLocalArchive): void {
@@ -629,18 +716,19 @@ function reportLargestFiles(prepared: PreparedLocalArchive): void {
 }
 
 function reportDryRun(prepared: PreparedLocalArchive, asJson: boolean): void {
-  const sizeBytes = prepared.archive.buffer.byteLength;
+  const { sizeBytes } = prepared;
   if (asJson) {
     console.log(
       JSON.stringify(
         withMeta({
           archive: {
             project: prepared.project.name,
-            file_count: prepared.archive.fileCount,
+            file_count: prepared.fileCount,
             size_bytes: sizeBytes,
             upload_limit_bytes: DIRECT_UPLOAD_LIMIT_BYTES,
             exceeds_upload_limit: sizeBytes > DIRECT_UPLOAD_LIMIT_BYTES,
             largest_files: prepared.largestFiles,
+            offloaded_media: prepared.offloaded,
           },
         }),
         null,
@@ -675,6 +763,7 @@ async function maybeUploadProject(
 
   if (!preparedArchive) throw new Error("Local project archive was not prepared");
   const { project, archive } = preparedArchive;
+  if (!archive) throw new Error("Local project archive is over the upload limit");
 
   if (!asJson) {
     console.log("");
@@ -722,6 +811,7 @@ interface SubmitOptions {
   fps: number | undefined;
   quality: "draft" | "standard" | "high" | undefined;
   format: "mp4" | "webm" | "mov" | undefined;
+  pageMotionBlur: NonNullable<CreateHyperframesRenderRequest["page_motion_blur"]> | undefined;
   resolution: CreateHyperframesRenderRequest["resolution"] | undefined;
   aspectRatio: CreateHyperframesRenderRequest["aspect_ratio"] | undefined;
   composition: string | undefined;
@@ -750,6 +840,7 @@ function buildRenderBody(opts: SubmitOptions): CreateHyperframesRenderRequest {
   if (opts.fps !== undefined) body.fps = opts.fps;
   if (opts.quality !== undefined) body.quality = opts.quality;
   if (opts.format !== undefined) body.format = opts.format;
+  if (opts.pageMotionBlur !== undefined) body.page_motion_blur = opts.pageMotionBlur;
   if (opts.resolution !== undefined) body.resolution = opts.resolution;
   if (opts.aspectRatio !== undefined) body.aspect_ratio = opts.aspectRatio;
   if (opts.composition !== undefined) body.composition = opts.composition;

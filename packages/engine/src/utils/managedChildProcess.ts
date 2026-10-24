@@ -1,4 +1,6 @@
 import type { ChildProcess } from "node:child_process";
+import { StringDecoder } from "node:string_decoder";
+import { redactUrlQueryStrings } from "@hyperframes/core";
 
 export type ManagedProcessTerminationReason =
   | "exit"
@@ -28,6 +30,7 @@ export interface ManagedChildProcessOptions {
 
 const DEFAULT_TERMINATION_GRACE_MS = 2_000;
 const DEFAULT_STDERR_MAX_BYTES = 64 * 1024;
+const RAW_STDERR_SLACK_FACTOR = 2;
 
 /** Owns cancellation, escalation, stderr and reaping for one child process. */
 export class ManagedChildProcess {
@@ -37,7 +40,9 @@ export class ManagedChildProcess {
   private resolveOutcome!: (outcome: ManagedChildProcessOutcome) => void;
   private requestedReason: Exclude<ManagedProcessTerminationReason, "exit" | "spawn_error"> | null =
     null;
-  private stderrTail = Buffer.alloc(0);
+  private rawStderrTail = "";
+  private rawStderrTailCut = false;
+  private readonly stderrDecoder = new StringDecoder("utf8");
   private spawned = false;
   private settled = false;
   private deadlineTimer: NodeJS.Timeout | null = null;
@@ -83,13 +88,22 @@ export class ManagedChildProcess {
 
   private readonly onStderr = (data: Buffer | string): void => {
     const chunk = Buffer.isBuffer(data) ? data : Buffer.from(data);
-    const maxBytes = this.options.stderrMaxBytes ?? DEFAULT_STDERR_MAX_BYTES;
-    this.stderrTail = Buffer.concat([this.stderrTail, chunk]);
-    if (this.stderrTail.byteLength > maxBytes) {
-      this.stderrTail = this.stderrTail.subarray(this.stderrTail.byteLength - maxBytes);
-    }
+    const joined = this.rawStderrTail + this.stderrDecoder.write(chunk);
+    this.rawStderrTail = lastBytes(joined, RAW_STDERR_SLACK_FACTOR * this.maxBytes);
+    if (this.rawStderrTail !== joined) this.rawStderrTailCut = true;
     this.options.onStderr?.(chunk.toString());
   };
+
+  private get maxBytes(): number {
+    return this.options.stderrMaxBytes ?? DEFAULT_STDERR_MAX_BYTES;
+  }
+
+  private redactedStderrTail(): string {
+    const raw = this.rawStderrTailCut
+      ? withoutTokenSeveredByCut(this.rawStderrTail)
+      : this.rawStderrTail;
+    return lastBytes(redactUrlQueryStrings(raw), this.maxBytes);
+  }
 
   private readonly onSpawn = (): void => {
     this.spawned = true;
@@ -100,7 +114,7 @@ export class ManagedChildProcess {
       reason: this.requestedReason ?? "exit",
       exitCode,
       signal,
-      stderr: this.stderrTail.toString(),
+      stderr: this.redactedStderrTail(),
       durationMs: this.now() - this.startedAtMs,
     });
   };
@@ -111,7 +125,7 @@ export class ManagedChildProcess {
       reason: "spawn_error",
       exitCode: null,
       signal: null,
-      stderr: this.stderrTail.length > 0 ? this.stderrTail.toString() : error.message,
+      stderr: this.rawStderrTail.length > 0 ? this.redactedStderrTail() : error.message,
       durationMs: this.now() - this.startedAtMs,
       error,
     });
@@ -183,4 +197,15 @@ export class ManagedChildProcess {
     this.inactivityTimer = null;
     this.escalationTimer = null;
   }
+}
+
+function lastBytes(text: string, maxBytes: number): string {
+  return Buffer.byteLength(text) > maxBytes
+    ? Buffer.from(text).subarray(-maxBytes).toString()
+    : text;
+}
+
+function withoutTokenSeveredByCut(text: string): string {
+  const firstSpace = text.search(/\s/);
+  return firstSpace < 0 ? "" : text.slice(firstSpace);
 }

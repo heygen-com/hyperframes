@@ -29,6 +29,18 @@ const FIXED_INPUT = {
 };
 
 describe("buildDockerRunArgs", () => {
+  it("preserves an explicit page motion blur override inside Docker", () => {
+    const args = buildDockerRunArgs({
+      ...FIXED_INPUT,
+      options: { ...BASE, pageMotionBlur: "off" },
+    });
+    expect(
+      args.slice(args.indexOf("--page-motion-blur"), args.indexOf("--page-motion-blur") + 2),
+    ).toEqual(["--page-motion-blur", "off"]);
+    expect(buildDockerRunArgs({ ...FIXED_INPUT, options: BASE })).not.toContain(
+      "--page-motion-blur",
+    );
+  });
   it("matches snapshot for the default render", () => {
     expect(buildDockerRunArgs({ ...FIXED_INPUT, options: BASE })).toMatchInlineSnapshot(`
       [

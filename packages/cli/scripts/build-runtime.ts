@@ -14,6 +14,3 @@ const iifeFileName = manifest.artifacts?.iife ?? "hyperframe.runtime.iife.js";
 // produces output without the trailing newline, causing a checksum mismatch.
 copyFileSync(resolve(coreDistDir, "hyperframe.manifest.json"), "dist/hyperframe.manifest.json");
 copyFileSync(resolve(coreDistDir, iifeFileName), `dist/${iifeFileName}`);
-
-// Keep legacy name for backward compat (e.g. studio dev server)
-copyFileSync(resolve(coreDistDir, iifeFileName), "dist/hyperframe-runtime.js");

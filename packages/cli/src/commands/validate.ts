@@ -14,6 +14,7 @@ import { resolveProject, type ProjectDir } from "../utils/project.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import type { ProjectLintResult } from "../utils/lintProject.js";
 import { resolveCompositionViewportFromHtml } from "../utils/compositionViewport.js";
+import { resolveNaturalMediaTimelineDuration } from "@hyperframes/core";
 import { c } from "../ui/colors.js";
 import { decodeWellFormedEscapes } from "@hyperframes/studio-server";
 import { printDeprecationNotice, withMeta } from "../utils/updateCheck.js";
@@ -142,7 +143,7 @@ export function raceMediaReady(
  * can't see.
  */
 export async function auditClipDurations(
-  page: import("puppeteer-core").Page,
+  page: Pick<import("puppeteer-core").Page, "evaluate">,
   analyzeClipMediaFit: typeof import("@hyperframes/engine").analyzeClipMediaFit,
   extraWaitMs: number,
 ): Promise<ConsoleEntry[]> {
@@ -187,7 +188,7 @@ export async function auditClipDurations(
       id: string;
       kind: string;
       slot: number;
-      mediaStart: number;
+      attributes: Record<string, string | null>;
       duration: number;
       loop: boolean;
     }> = [];
@@ -198,7 +199,12 @@ export async function auditClipDurations(
         id: el.id || el.getAttribute("src") || `(${el.tagName.toLowerCase()})`,
         kind: el.tagName === "AUDIO" ? "Audio" : "Video",
         slot,
-        mediaStart: parseFloat(el.getAttribute("data-media-start") ?? "0") || 0,
+        attributes: {
+          "data-media-start": el.getAttribute("data-media-start"),
+          "data-playback-start": el.getAttribute("data-playback-start"),
+          "data-playback-rate": el.getAttribute("data-playback-rate"),
+          "data-automation": el.getAttribute("data-automation"),
+        },
         duration: el.duration,
         loop: el.loop || el.getAttribute("data-loop") === "true",
       });
@@ -215,7 +221,11 @@ export async function auditClipDurations(
       unreadable.push(clip.id);
       continue;
     }
-    const mediaSeconds = Math.max(0, clip.duration - clip.mediaStart);
+    const mediaSeconds = resolveNaturalMediaTimelineDuration(
+      { getAttribute: (name) => clip.attributes[name] ?? null },
+      clip.duration,
+    );
+    if (mediaSeconds === null) continue;
     const fit = analyzeClipMediaFit({ slotSeconds: clip.slot, mediaSeconds, loop: clip.loop });
     if (!fit) continue;
     warnings.push({

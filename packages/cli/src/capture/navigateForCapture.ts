@@ -1,5 +1,9 @@
-import { TimeoutError, type CDPSession, type HTTPResponse, type Page } from "puppeteer-core";
-import { isNavigationTimeoutError, withRemainingBudget } from "./captureTimeout.js";
+import type { CDPSession, HTTPResponse, Page } from "puppeteer-core";
+import {
+  isDegradableEvaluateTimeoutError,
+  isNavigationTimeoutError,
+  withRemainingBudget,
+} from "./captureTimeout.js";
 
 export { isNavigationTimeoutError };
 
@@ -63,6 +67,65 @@ export async function navigateForCapture<TResponse>(
   };
 }
 
+export interface PageReadyPage {
+  waitForNetworkIdle?(options: {
+    idleTime: number;
+    timeout: number;
+    concurrency?: number;
+  }): Promise<unknown>;
+  evaluate(fn: () => unknown): Promise<unknown>;
+}
+
+export interface WaitForPageReadyOptions {
+  timeoutMs?: number;
+  networkIdle?: "always" | "after-load";
+}
+
+export async function waitForPageReady(
+  page: PageReadyPage,
+  options: WaitForPageReadyOptions = {},
+): Promise<void> {
+  const { timeoutMs = 15_000, networkIdle = "always" } = options;
+  const deadline = Date.now() + timeoutMs;
+  const remaining = () => Math.max(0, deadline - Date.now());
+  const idle = async () => {
+    try {
+      await page.waitForNetworkIdle?.({
+        idleTime: 500,
+        timeout: remaining(),
+        concurrency: 2,
+      });
+    } catch {}
+  };
+
+  if (networkIdle === "always" && remaining() > 0) await idle();
+
+  let waitedOutLoad = false;
+  while (remaining() > 0) {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const loading = await Promise.race([
+      page
+        .evaluate(() => document.readyState === "loading")
+        .catch((err: unknown) => {
+          if (isDegradableEvaluateTimeoutError(err)) throw err;
+          return true;
+        }),
+      new Promise<true>((resolve) => {
+        timer = setTimeout(() => resolve(true), Math.max(1, remaining()));
+      }),
+    ]).finally(() => {
+      if (timer !== undefined) clearTimeout(timer);
+    });
+    if (loading !== true) break;
+    waitedOutLoad = true;
+    if (remaining() > 0) {
+      await new Promise((resolve) => setTimeout(resolve, Math.min(500, remaining())));
+    }
+  }
+
+  if (waitedOutLoad && remaining() > 0) await idle();
+}
+
 const PUPPETEER_LAUNCH_DEFAULT_TIMEOUT_MS = 30_000;
 const PAGE_LOAD_BLOCKING_TYPES = new Set(["Document", "Script", "Stylesheet"]);
 const NAMED_BLOCKING_REQUESTS = 3;
@@ -77,6 +140,7 @@ export async function gotoWhenSent(
   timeoutMs: number,
   coldChromeFirstRequestTimeoutMs = PUPPETEER_LAUNCH_DEFAULT_TIMEOUT_MS,
 ): Promise<HTTPResponse | null> {
+  const { TimeoutError } = await import("puppeteer-core");
   const cdp = await page.createCDPSession();
   try {
     await cdp.send("Network.enable");

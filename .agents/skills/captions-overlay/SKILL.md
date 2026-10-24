@@ -1,13 +1,13 @@
 ---
 name: captions-overlay
-description: Overlay doctrine for the embedded-captions workflow — the caption MODEL (drop / rail / embed) and the rule that captions are an OVERLAY composited on top of the film, never a reserved bottom band you shift content up to avoid. Load when adding captions/subtitles to a talking-head or launch video, when deciding whether a phrase should be dropped, ride the verbatim rail, or be promoted to a scarce embedded climax, when laying out a composition that will carry captions (do NOT reserve a keep-out band), or when centering a composition on the true frame center under captions. Quotes the rail+embed model from embedded-captions and constraint #13 (captions overlay, keep-out band retired) from the product-launch-video scene agent. Applies ON TOP of embedded-captions.
+description: Overlay doctrine for captions in HyperFrames videos — the caption MODEL (drop / rail / embed) and the rule that captions are an OVERLAY composited on top of the film, never a reserved bottom band you shift content up to avoid. Load when adding captions/subtitles to a talking-head or launch video, when deciding whether a phrase should be dropped, ride the verbatim rail, or be promoted to a scarce embedded climax, when laying out a composition that will carry captions (do NOT reserve a keep-out band), or when centering a composition on the true frame center under captions. Applies ON TOP of the `/hyperframes` skill's references/captions.md.
 metadata:
   internal: true
 ---
 
 # Captions Overlay Doctrine
 
-> **Overlay doctrine — supplements the upstream `embedded-captions` skill. Applies ON TOP of it; do not expect it folded into the upstream skill.**
+> **Overlay doctrine — supplements the upstream `/hyperframes` skill's `references/captions.md`. Applies ON TOP of it; do not expect it folded into the upstream skill.**
 
 Two ideas combine here. First, the **caption model** — every spoken phrase is `drop`,
 `rail`, or `embed`, and embed is the scarce earned peak, not the default. Second, the
@@ -19,7 +19,7 @@ frame and centers on the true vertical center.
 
 ## The caption model — drop / rail / embed
 
-Every spoken phrase is one of three things (verbatim from `embedded-captions`):
+Every spoken phrase is one of three things:
 
 |           | What                                             | How it's shown                                                                                                                                                    |
 | --------- | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -31,14 +31,12 @@ Every spoken phrase is one of three things (verbatim from `embedded-captions`):
 never two adjacent/co-visible, spaced ≥ a beat apart. A short clip → usually one embed;
 a long explainer → ~one per section. Embedding every word is the common mistake.
 
-This is the **Standard** mode shape (rail = the verbatim lower-third; embed = the climax
-composited behind the subject). **Cinematic** mode drops the rail and makes everything
-embed-style — use it only for pure-cinematic asks, never for explainer / voiceover where
-the words must read.
+This is the default shape (rail = the verbatim lower-third; embed = the climax
+composited behind the subject). A pure-cinematic treatment drops the rail and makes
+everything embed-style — use it only for pure-cinematic asks, never for explainer /
+voiceover where the words must read.
 
 ### Rail-first, embed-scarce (the load-bearing rules)
-
-Quoted from the `embedded-captions` non-negotiables:
 
 - **Rail-first for talking-head / explainer.** Don't embed the whole transcript — most
   text is the rail; embed only peaks. Embedding everything is the default mistake.
@@ -48,11 +46,10 @@ Quoted from the `embedded-captions` non-negotiables:
 
 ## The overlay law — captions are NOT a reserved band
 
-In a generated launch composition, when captions are enabled, finalize composites a
-**small, minimal word-by-word caption line** as an overlay layer ON TOP of the whole
-film (a single text line, bottom-centered, roughly the bottom ~5-8% of canvas height).
-It is an overlay, not a reserved zone (verbatim from constraint #13 of the
-product-launch-video scene agent):
+In a composed video with captions enabled, the caption line is a **small, minimal
+word-by-word line** composited as an overlay layer ON TOP of the whole film (a single
+text line, bottom-centered, roughly the bottom ~5-8% of canvas height). It is an
+overlay, not a reserved zone:
 
 - **Center the composition on the TRUE vertical center — y = H / 2** (landscape 540,
   portrait 960). Do not shift content up to "make room" for captions; a composition
@@ -64,7 +61,7 @@ product-launch-video scene agent):
   line sits — the overlay would fight it. Large imagery / cards / ambient content under
   the captions is fine; the caption skin is designed to read over content.
 - There is no machine keep-out gate (the old `captions.mjs keepout` check is retired).
-  Finalize snapshot QA judges caption-over-content legibility visually.
+  Snapshot review judges caption-over-content legibility visually.
 
 **When captions are disabled:** identical positioning freedom — the overlay simply
 doesn't exist.
@@ -74,8 +71,8 @@ doesn't exist.
 The model says the rail rides **in front** and an embed is a rare word composited
 **behind the subject** — both are layers added to footage that ships untouched. The
 overlay law says the caption line is a layer composited **on top** of the whole film,
-not a band carved out of the layout. So in both the captioning pipeline and the
-launch-video pipeline, captions are an overlay you add, not a zone you reserve:
+not a band carved out of the layout. So whether captions go over footage or over a
+composed film, they are an overlay you add, not a zone you reserve:
 
 - Keep the full frame; center on true center; let content run to the edges.
 - Make the rail (or the small overlay caption line) carry the verbatim words.

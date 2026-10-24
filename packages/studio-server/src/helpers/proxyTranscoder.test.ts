@@ -1,7 +1,8 @@
-import { execFileSync, spawnSync } from "node:child_process";
-import { EventEmitter } from "node:events";
+import { execFileSync, spawn as realSpawn, spawnSync, type ChildProcess } from "node:child_process";
+import { EventEmitter, once } from "node:events";
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   realpathSync,
@@ -23,13 +24,21 @@ const realFfmpegFilters = realFfmpeg
   : "";
 const canToneMapForReal =
   Boolean(findFfBinary("ffprobe")) && /\szscale\s/.test(realFfmpegFilters ?? "");
+const realFfmpegEncoders = realFfmpeg
+  ? spawnSync(realFfmpeg, ["-hide_banner", "-encoders"], { encoding: "utf8" }).stdout
+  : "";
+const canEncodeVpxAlphaForReal =
+  Boolean(findFfBinary("ffprobe")) &&
+  /\slibvpx\s/.test(realFfmpegEncoders ?? "") &&
+  /\slibvpx-vp9\s/.test(realFfmpegEncoders ?? "");
 
-function meanLuma(path: string, filters = ""): number {
+function meanLuma(path: string, filters = "", inputArgs: string[] = []): number {
   const stats = execFileSync(
     realFfmpeg!,
     [
       "-v",
       "error",
+      ...inputArgs,
       "-i",
       path,
       "-frames:v",
@@ -59,7 +68,7 @@ function createFakeProc(): FakeProc {
   return proc;
 }
 
-type SpawnOptions = { windowsHide?: boolean };
+type SpawnOptions = { windowsHide?: boolean; signal?: AbortSignal };
 type SpawnCall = { command: string; args: string[]; options?: SpawnOptions; proc: FakeProc };
 type SpawnImpl = (command: string, args: string[], options?: SpawnOptions) => FakeProc;
 
@@ -134,6 +143,8 @@ async function loadModule(
   ffmpegPath: string | undefined,
   isHdr = false,
   hdrTransfer: string | null = isHdr ? "pq" : null,
+  codecName?: string,
+  durationSeconds?: number,
 ): Promise<typeof import("./proxyTranscoder.js")> {
   vi.resetModules();
   vi.doMock("node:child_process", () => {
@@ -146,12 +157,75 @@ async function loadModule(
   vi.doMock("./mediaMetadata.js", () => ({
     probeMediaMetadata: async () => ({
       kind: "video",
-      color: { isHdr, hdrTransfer },
+      color: { isHdr, hdrTransfer, codecName },
+      durationSeconds,
     }),
     probeFirstFrameColour: async () => ({}),
   }));
   return import("./proxyTranscoder.js");
 }
+
+describe("resolveProxy on a long source", () => {
+  const startsOf = (calls: SpawnCall[]): string[] =>
+    calls
+      .filter((call) => call.args.includes("-ss"))
+      .map((call) => call.args[call.args.indexOf("-ss") + 1]!);
+
+  it("copies in pieces, and a stopped copy continues from its finished pieces", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    const { resolveProxy, getProxyCachePath, clearFailedTranscodesForTest } = await loadModule(
+      spawn,
+      FFMPEG_PATH,
+      false,
+      null,
+      undefined,
+      200,
+    );
+    const projectDir = tmpProject();
+    const sourcePath = join(projectDir, "long.mov");
+    writeFileSync(sourcePath, "source-bytes");
+    const cachePath = getProxyCachePath(projectDir, sourcePath);
+    const cacheDirectory = join(projectDir, ".transcode-cache");
+
+    const first = resolveProxy(projectDir, sourcePath).catch((error: unknown) => error);
+    await flush();
+    succeed(calls[0]!);
+    await flush(50);
+    calls[1]!.proc.emit("close", null, "SIGKILL");
+    expect(await first).toBeInstanceOf(Error);
+    expect(startsOf(calls)).toEqual(["0", "60"]);
+    expect(readdirSync(cacheDirectory)).toHaveLength(1);
+
+    clearFailedTranscodesForTest();
+    const second = resolveProxy(projectDir, sourcePath);
+    for (let answered = calls.length; ; answered = calls.length) {
+      await flush(50);
+      if (calls.length === answered) break;
+      calls.slice(answered).forEach((call) => succeed(call));
+    }
+
+    expect(await second).toBe(cachePath);
+    // Only the pieces that were missing were encoded again; the last one runs to the end.
+    expect(startsOf(calls)).toEqual(["0", "60", "60", "120"]);
+    expect(calls.at(-1)!.args).toEqual(expect.arrayContaining(["-f", "concat", "-c", "copy"]));
+    expect(readdirSync(cacheDirectory)).toEqual([cachePath.split("/").at(-1)]);
+  });
+
+  it("keeps a short source to one pass", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    const { resolveProxy } = await loadModule(spawn, FFMPEG_PATH, false, null, undefined, 80);
+    const projectDir = tmpProject();
+    const sourcePath = join(projectDir, "short.mov");
+    writeFileSync(sourcePath, "source-bytes");
+
+    const result = resolveProxy(projectDir, sourcePath);
+    await flush();
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.args).not.toContain("-ss");
+    succeed(calls[0]!);
+    await result;
+  });
+});
 
 describe("resolveProxy", () => {
   it("bounds a caller wait without cancelling the shared transcode promise", async () => {
@@ -266,6 +340,57 @@ describe("resolveProxy", () => {
     succeed(calls[0]!, "fake-vp8-bytes");
     await expect(resultPromise).resolves.toBe(vp8Path);
   });
+
+  it("decodes a VP9 alpha source with libvpx-vp9 so the VP8 proxy keeps its alpha", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    const { resolveProxy } = await loadModule(spawn, FFMPEG_PATH, false, null, "vp9");
+    const projectDir = tmpProject();
+    const sourcePath = join(projectDir, "cutout.webm");
+    writeFileSync(sourcePath, "source-bytes");
+
+    const vp8 = resolveProxy(projectDir, sourcePath, "vp8");
+    await flush();
+    const vp8Args = calls[0]!.args;
+    expect(vp8Args.slice(vp8Args.indexOf("-i") - 2, vp8Args.indexOf("-i"))).toEqual([
+      "-c:v",
+      "libvpx-vp9",
+    ]);
+    succeed(calls[0]!, "fake-vp8-bytes");
+    await vp8;
+
+    const h264 = resolveProxy(projectDir, sourcePath, "h264");
+    await flush();
+    expect(calls[1]!.args.slice(0, calls[1]!.args.indexOf("-i"))).not.toContain("-c:v");
+    succeed(calls[1]!);
+    await h264;
+  });
+
+  it.skipIf(!canEncodeVpxAlphaForReal)(
+    "keeps a real VP9 alpha webm transparent through probe, variant and transcode",
+    async () => {
+      vi.resetModules();
+      vi.doUnmock("./mediaMetadata.js");
+      const { resolveProxy } = await import("./proxyTranscoder.js");
+      const { probeAssetCodec, proxyVariantFor } = await import("./mediaCodecMap.js");
+      const projectDir = tmpProject();
+      const sourcePath = join(projectDir, "cutout.webm");
+      // Left half fully transparent, right half opaque: mean alpha 127.5.
+      execFileSync(realFfmpeg!, [
+        ...["-v", "error", "-f", "lavfi", "-i"],
+        "testsrc2=s=64x64:d=0.2,format=rgba,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='if(lt(X,32),0,255)'",
+        ...["-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p", "-auto-alt-ref", "0"],
+        ...["-metadata:s:v:0", "alpha_mode=1", sourcePath],
+      ]);
+
+      const facts = await probeAssetCodec(sourcePath);
+      expect(facts).toMatchObject({ codecName: "vp9", hasAlpha: true });
+      const proxyPath = await resolveProxy(projectDir, sourcePath, proxyVariantFor(facts!));
+      expect(proxyPath).toMatch(/\.webm$/);
+      const meanAlpha = meanLuma(proxyPath, "alphaextract,", ["-c:v", "libvpx"]);
+      expect(Math.abs(meanAlpha - 127.5)).toBeLessThan(8);
+    },
+    60_000,
+  );
 
   it("returns without spawning on a cache hit", async () => {
     const { spawn, calls } = createSpawnSpy();
@@ -578,11 +703,59 @@ describe("resolveProxy", () => {
     const projectDir = tmpProject();
     const sources = batchSources(projectDir);
 
-    const batch = resolveProxies(projectDir, sources);
+    let settled = 0;
+    const batch = resolveProxies(projectDir, sources, () => settled++);
     await answerUntilIdle(calls, (call) => succeed(call));
 
     const results = await batch;
     expect(results.map((result) => result.status)).toEqual(sources.map(() => "fulfilled"));
+    expect(settled).toBe(sources.length);
+  });
+
+  it("makes a batch's copy at the box it is given, under that box's own cache name", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    const { resolveProxies, getProxyCachePath } = await loadModule(spawn, FFMPEG_PATH);
+    const projectDir = tmpProject();
+    const sourcePath = join(projectDir, "clip.mov");
+    writeFileSync(sourcePath, "source");
+    const box = { width: 2048, height: 1448 };
+
+    const batch = resolveProxies(projectDir, [{ sourcePath, variant: "h264", box }]);
+    await answerUntilIdle(calls, (call) => succeed(call));
+
+    const [result] = await batch;
+    expect(result).toEqual({
+      status: "fulfilled",
+      value: getProxyCachePath(projectDir, sourcePath, "h264", box),
+    });
+    expect(result.status === "fulfilled" && result.value).not.toBe(
+      getProxyCachePath(projectDir, sourcePath, "h264"),
+    );
+  });
+
+  it("clears a partial copy left by a stopped process before it starts a batch, and keeps a live one", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    const { resolveProxies } = await loadModule(spawn, FFMPEG_PATH);
+    const projectDir = tmpProject();
+    const sourcePath = join(projectDir, "clip.mov");
+    writeFileSync(sourcePath, "source");
+    const cacheDir = join(projectDir, ".transcode-cache");
+    mkdirSync(cacheDir, { recursive: true });
+    const name = (id: string) => `.tmp-${id}-${"a".repeat(64)}.mp4`;
+    const dead = join(cacheDir, name("11111111-1111-1111-1111-111111111111"));
+    const live = join(cacheDir, name("22222222-2222-2222-2222-222222222222"));
+    writeFileSync(dead, "partial");
+    writeFileSync(live, "partial");
+    const minutesAgo = (m: number) => new Date(Date.now() - m * 60_000);
+    utimesSync(dead, minutesAgo(11), minutesAgo(11));
+    utimesSync(live, minutesAgo(1), minutesAgo(1));
+
+    const batch = resolveProxies(projectDir, [{ sourcePath, variant: "h264" }]);
+    await answerUntilIdle(calls, (call) => succeed(call));
+    await batch;
+
+    expect(existsSync(dead)).toBe(false);
+    expect(existsSync(live)).toBe(true);
   });
 
   it("settles each request of a batch on its own when one of them fails", async () => {
@@ -821,7 +994,7 @@ describe("resolveProxy", () => {
       await thumb;
     });
 
-    it("lets a caller leave a started copy without stopping it", async () => {
+    it("stops a started copy once its last caller leaves, and starts afresh on the next ask", async () => {
       const { calls, resolveProxy, projectDir } = await oneSlot();
       const clip = clips(projectDir, ["running"]);
 
@@ -829,11 +1002,51 @@ describe("resolveProxy", () => {
         resolveProxy(projectDir, clip.running!, "h264", undefined, { signal }),
       );
 
-      succeed(calls[0]!);
+      expect(calls[0]!.options?.signal?.aborted).toBe(true);
+      calls[0]!.proc.emit("close", null, "SIGKILL");
       await flush(12);
-      await expect(resolveProxy(projectDir, clip.running!)).resolves.toBeTruthy();
+      const again = resolveProxy(projectDir, clip.running!);
+      await flush();
+      expect(calls).toHaveLength(2);
+      succeed(calls[1]!);
+      await expect(again).resolves.toBeTruthy();
+    });
+
+    it("keeps a started copy while a caller without a signal still waits", async () => {
+      const { calls, resolveProxy, projectDir } = await oneSlot();
+      const clip = clips(projectDir, ["running"]);
+      const kept = resolveProxy(projectDir, clip.running!);
+
+      await askThenLeave((signal) =>
+        resolveProxy(projectDir, clip.running!, "h264", undefined, { signal }),
+      );
+
+      expect(calls[0]!.options?.signal?.aborted).not.toBe(true);
+      succeed(calls[0]!);
+      await expect(kept).resolves.toBeTruthy();
       expect(calls).toHaveLength(1);
     });
+
+    it.skipIf(process.platform === "win32")(
+      "kills the running ffmpeg when its last caller leaves",
+      async () => {
+        let child: ChildProcess | undefined;
+        const neverFinishes = (_command: string, _args: string[], options?: SpawnOptions) => {
+          child = realSpawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], options);
+          return child as unknown as FakeProc;
+        };
+        const { resolveProxy } = await loadModule(neverFinishes, FFMPEG_PATH);
+        const projectDir = tmpProject();
+        const clip = clips(projectDir, ["running"]);
+
+        await askThenLeave((signal) =>
+          resolveProxy(projectDir, clip.running!, "h264", undefined, { signal }),
+        );
+
+        const [, exitSignal] = child!.exitCode === null ? await once(child!, "exit") : [];
+        expect(exitSignal).toBe("SIGKILL");
+      },
+    );
   });
 
   it("honors bounded concurrency and queue environment overrides", async () => {

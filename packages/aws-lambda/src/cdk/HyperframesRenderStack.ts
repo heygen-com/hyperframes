@@ -23,12 +23,14 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Duration, RemovalPolicy, Size } from "aws-cdk-lib";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
+import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as sfn from "aws-cdk-lib/aws-stepfunctions";
 import * as tasks from "aws-cdk-lib/aws-stepfunctions-tasks";
 import { Construct } from "constructs";
+import { CONTENT_STORE_PREFIX, CONTENT_STORE_RETENTION_DAYS } from "../contentStore.js";
 
 /** Construction-time props for {@link HyperframesRenderStack}. */
 export interface HyperframesRenderStackProps {
@@ -92,6 +94,12 @@ export class HyperframesRenderStack extends Construct {
           prefix: "renders/",
           expiration: Duration.days(7),
         },
+        {
+          id: "ExpireSharedContent",
+          enabled: true,
+          prefix: `${CONTENT_STORE_PREFIX}/`,
+          expiration: Duration.days(CONTENT_STORE_RETENTION_DAYS),
+        },
       ],
     });
 
@@ -111,6 +119,7 @@ export class HyperframesRenderStack extends Construct {
         TMPDIR: "/tmp",
         HYPERFRAMES_LAMBDA_CHROME_SOURCE: chromeSource,
         HYPERFRAMES_RENDER_BUCKET: this.bucket.bucketName,
+        HYPERFRAMES_LAMBDA_RESERVED_CONCURRENCY: String(props.reservedConcurrency ?? -1),
       },
     });
 
@@ -119,6 +128,9 @@ export class HyperframesRenderStack extends Construct {
     // SAM's AWSLambdaBasicExecutionRole equivalent is included by the
     // default `new lambda.Function` execution role.
     this.bucket.grantReadWrite(this.renderFunction);
+    this.renderFunction.addToRolePolicy(
+      new iam.PolicyStatement({ actions: ["lambda:GetAccountSettings"], resources: ["*"] }),
+    );
 
     const stateMachineLogGroup = new logs.LogGroup(this, "RenderStateMachineLogGroup", {
       logGroupName: `/aws/states/${projectName}-render`,
@@ -211,7 +223,9 @@ export class HyperframesRenderStack extends Construct {
       "PlanV2IntegrityError",
       "PLAN_ARTIFACT_DIGEST_MISMATCH",
       "FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED",
+      "CHUNK_EXCEEDS_WORKER_TIMEOUT",
       "ChromeBinaryUnavailableError",
+      "SITE_MANIFEST_INVALID",
     ];
     const NON_RETRYABLE_CHUNK = [
       "FFMPEG_VERSION_MISMATCH",
@@ -243,6 +257,15 @@ export class HyperframesRenderStack extends Construct {
       "ChromeBinaryUnavailableError",
     ];
 
+    const THROTTLED_RETRY: sfn.RetryProps = {
+      errors: ["Lambda.TooManyRequestsException"],
+      interval: Duration.seconds(5),
+      maxAttempts: 10,
+      backoffRate: 2,
+      maxDelay: Duration.seconds(60),
+      jitterStrategy: sfn.JitterType.FULL,
+    };
+
     const plan = new tasks.LambdaInvoke(this, "Plan", {
       lambdaFunction: this.renderFunction,
       payload: sfn.TaskInput.fromObject({
@@ -257,6 +280,7 @@ export class HyperframesRenderStack extends Construct {
         "PlanS3Uri.$": "$.Payload.PlanS3Uri",
         "PlanHash.$": "$.Payload.PlanHash",
         "ChunkCount.$": "$.Payload.ChunkCount",
+        "MaxChunkConcurrency.$": "$.Payload.MaxChunkConcurrency",
         "Format.$": "$.Payload.Format",
         "HasAudio.$": "$.Payload.HasAudio",
         "AudioS3Uri.$": "$.Payload.AudioS3Uri",
@@ -267,6 +291,7 @@ export class HyperframesRenderStack extends Construct {
       errors: NON_RETRYABLE_PLAN,
       maxAttempts: 0,
     });
+    plan.addRetry(THROTTLED_RETRY);
     plan.addRetry({
       errors: ["States.ALL"],
       interval: Duration.seconds(2),
@@ -290,12 +315,15 @@ export class HyperframesRenderStack extends Construct {
         "PlanV2ArtifactS3Prefix.$": "$.Payload.PlanV2ArtifactS3Prefix",
         "PlanHash.$": "$.Payload.PlanHash",
         "ChunkCount.$": "$.Payload.ChunkCount",
+        "MaxChunkConcurrency.$": "$.Payload.MaxChunkConcurrency",
         "Format.$": "$.Payload.Format",
         "HasAudio.$": "$.Payload.HasAudio",
+        "SeparateAudio.$": "$.Payload.SeparateAudio",
       },
       resultPath: "$.Plan",
     });
     planV2.addRetry({ errors: NON_RETRYABLE_PLAN, maxAttempts: 0 });
+    planV2.addRetry(THROTTLED_RETRY);
     planV2.addRetry({
       errors: ["States.ALL"],
       interval: Duration.seconds(2),
@@ -331,12 +359,15 @@ export class HyperframesRenderStack extends Construct {
         "ChunkS3Uri.$": "$.Payload.ChunkS3Uri",
         "ChunkIndex.$": "$.Payload.ChunkIndex",
         "Sha256.$": "$.Payload.Sha256",
+        "FramesEncoded.$": "$.Payload.FramesEncoded",
+        "DurationMs.$": "$.Payload.DurationMs",
       },
     });
     renderChunkTask.addRetry({
       errors: NON_RETRYABLE_CHUNK,
       maxAttempts: 0,
     });
+    renderChunkTask.addRetry(THROTTLED_RETRY);
     renderChunkTask.addRetry({
       errors: ["States.ALL"],
       interval: Duration.seconds(2),
@@ -345,7 +376,10 @@ export class HyperframesRenderStack extends Construct {
       maxDelay: Duration.seconds(60),
     });
 
-    const renderChunks = new sfn.Map(this, "RenderChunks", {
+    const renderChunks = new sfn.DistributedMap(this, "RenderChunks", {
+      label: "RenderChunks",
+      // Standard-type children: express ones stop at 5 minutes and a chunk may run the Lambda's full 15.
+      mapExecutionType: sfn.StateMachineType.STANDARD,
       itemsPath: "$.Iterator.ChunkIndexes",
       itemSelector: {
         "ChunkIndex.$": "$$.Map.Item.Value",
@@ -354,7 +388,8 @@ export class HyperframesRenderStack extends Construct {
         "ChunkOutputS3Prefix.$": "$.PlanOutputS3Prefix",
         "Format.$": "$.Plan.Format",
       },
-      maxConcurrencyPath: "$.Plan.ChunkCount",
+      // Chunks past the plan's concurrency queue here instead of being throttled by Lambda.
+      maxConcurrencyPath: "$.Plan.MaxChunkConcurrency",
       resultPath: "$.Chunks",
     });
     renderChunks.itemProcessor(renderChunkTask);
@@ -381,6 +416,7 @@ export class HyperframesRenderStack extends Construct {
       errors: NON_RETRYABLE_ASSEMBLE,
       maxAttempts: 0,
     });
+    assemble.addRetry(THROTTLED_RETRY);
     assemble.addRetry({
       errors: ["States.ALL"],
       interval: Duration.seconds(2),
@@ -405,9 +441,12 @@ export class HyperframesRenderStack extends Construct {
         "ChunkS3Uri.$": "$.Payload.ChunkS3Uri",
         "ChunkIndex.$": "$.Payload.ChunkIndex",
         "Sha256.$": "$.Payload.Sha256",
+        "FramesEncoded.$": "$.Payload.FramesEncoded",
+        "DurationMs.$": "$.Payload.DurationMs",
       },
     });
     renderChunkV2Task.addRetry({ errors: NON_RETRYABLE_CHUNK, maxAttempts: 0 });
+    renderChunkV2Task.addRetry(THROTTLED_RETRY);
     renderChunkV2Task.addRetry({
       errors: ["States.ALL"],
       interval: Duration.seconds(2),
@@ -416,7 +455,9 @@ export class HyperframesRenderStack extends Construct {
       maxDelay: Duration.seconds(60),
     });
 
-    const renderChunksV2 = new sfn.Map(this, "RenderChunksV2", {
+    const renderChunksV2 = new sfn.DistributedMap(this, "RenderChunksV2", {
+      label: "RenderChunksV2",
+      mapExecutionType: sfn.StateMachineType.STANDARD,
       itemsPath: "$.Iterator.ChunkIndexes",
       itemSelector: {
         "ChunkIndex.$": "$$.Map.Item.Value",
@@ -426,7 +467,7 @@ export class HyperframesRenderStack extends Construct {
         "ChunkOutputS3Prefix.$": "$.PlanOutputS3Prefix",
         "Format.$": "$.Plan.Format",
       },
-      maxConcurrencyPath: "$.Plan.ChunkCount",
+      maxConcurrencyPath: "$.Plan.MaxChunkConcurrency",
       resultPath: "$.Chunks",
     });
     renderChunksV2.itemProcessor(renderChunkV2Task);
@@ -439,8 +480,8 @@ export class HyperframesRenderStack extends Construct {
         "PlanV2ManifestS3Uri.$": "$.Plan.PlanV2ManifestS3Uri",
         "PlanV2ArtifactS3Prefix.$": "$.Plan.PlanV2ArtifactS3Prefix",
         "PlanHash.$": "$.Plan.PlanHash",
-        "ChunkS3Uris.$": "$.Chunks[*].ChunkS3Uri",
-        AudioS3Uri: sfn.JsonPath.stringToJson("null"),
+        "ChunkS3Uris.$": "$.Render.Chunks[*].ChunkS3Uri",
+        "AudioS3Uri.$": "$.Render.Audio.AudioS3Uri",
         "OutputS3Uri.$": "$.OutputS3Uri",
         "Format.$": "$.Plan.Format",
       }),
@@ -452,6 +493,7 @@ export class HyperframesRenderStack extends Construct {
       resultPath: "$.Output",
     });
     assembleV2.addRetry({ errors: NON_RETRYABLE_ASSEMBLE, maxAttempts: 0 });
+    assembleV2.addRetry(THROTTLED_RETRY);
     assembleV2.addRetry({
       errors: ["States.ALL"],
       interval: Duration.seconds(2),
@@ -460,11 +502,47 @@ export class HyperframesRenderStack extends Construct {
       maxDelay: Duration.seconds(60),
     });
 
+    // The plan left its audio out: mix it while the chunks render.
+    const audio = new tasks.LambdaInvoke(this, "Audio", {
+      lambdaFunction: this.renderFunction,
+      payload: sfn.TaskInput.fromObject({
+        Action: "audio",
+        "ProjectS3Uri.$": "$.ProjectS3Uri",
+        "PlanOutputS3Prefix.$": "$.PlanOutputS3Prefix",
+        "Config.$": "$.Config",
+      }),
+      resultSelector: {
+        "HasAudio.$": "$.Payload.HasAudio",
+        "AudioS3Uri.$": "$.Payload.AudioS3Uri",
+      },
+      resultPath: "$.Audio",
+    });
+    audio.addRetry({ errors: NON_RETRYABLE_PLAN, maxAttempts: 0 });
+    audio.addRetry(THROTTLED_RETRY);
+    audio.addRetry({
+      errors: ["States.ALL"],
+      interval: Duration.seconds(2),
+      maxAttempts: 4,
+      backoffRate: 2,
+      maxDelay: Duration.seconds(60),
+    });
+    const audioNeeded = new sfn.Choice(this, "AudioNeeded")
+      .when(sfn.Condition.booleanEquals("$.Plan.SeparateAudio", true), audio)
+      .otherwise(
+        new sfn.Pass(this, "NoAudio", {
+          result: sfn.Result.fromObject({ HasAudio: false, AudioS3Uri: null }),
+          resultPath: "$.Audio",
+        }),
+      );
+    const renderV2 = new sfn.Parallel(this, "RenderV2", {
+      resultSelector: { "Chunks.$": "$[0].Chunks", "Audio.$": "$[1].Audio" },
+      resultPath: "$.Render",
+    })
+      .branch(renderChunksV2)
+      .branch(audioNeeded);
+
     const selectWorkerProtocol = new sfn.Choice(this, "SelectWorkerProtocol")
-      .when(
-        sfn.Condition.stringEquals("$.Plan.PlanProtocol", "v2"),
-        renderChunksV2.next(assembleV2),
-      )
+      .when(sfn.Condition.stringEquals("$.Plan.PlanProtocol", "v2"), renderV2.next(assembleV2))
       .otherwise(renderChunks.next(assemble));
     const assertChunkCount = new sfn.Choice(this, "AssertChunkCount")
       .when(sfn.Condition.numberGreaterThan("$.Plan.ChunkCount", 0), selectWorkerProtocol)

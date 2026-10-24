@@ -3,22 +3,22 @@
  * `assemble()` step's audio duration correction.
  *
  * The helper is split into:
- *   - `buildPadTrimAudioArgs(...)` — pure function, builds the ffmpeg argv
+ *   - `buildPadTrimAudioPlan(...)` — pure function, builds the steps
  *     and labels the operation. Fully unit-testable.
  *   - `padOrTrimAudioToVideoFrameCount(...)` — wrapper that probes the
  *     video for frame count + fps, probes the audio for current duration,
- *     and runs ffmpeg with the args from the pure helper. Tests inject
- *     stubs for the probes and the ffmpeg runner.
+ *     and runs the plan's steps. Tests inject stubs for the probes, the
+ *     ffmpeg runner and the AAC encoder.
  *
  * No real ffmpeg/ffprobe runs in these tests.
  */
 
-import { describe, expect, it, mock } from "bun:test";
+import { describe, expect, it, mock, spyOn } from "bun:test";
+import * as fs from "node:fs";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  buildPadTrimAudioArgs,
   buildPadTrimAudioPlan,
   padOrTrimAudioToVideoFrameCount,
   type AudioProbeInfo,
@@ -26,73 +26,55 @@ import {
   type ProbeVideoFrameInfo,
 } from "./audioPadTrim.js";
 
-describe("buildPadTrimAudioArgs", () => {
-  it("emits a decode/filter/re-encode pad plan when audio is shorter than target", () => {
+describe("buildPadTrimAudioPlan", () => {
+  const filterOf = (plan: ReturnType<typeof buildPadTrimAudioPlan>) => {
+    const step = plan.steps[0]!;
+    return step.kind === "copy" ? undefined : step.filter;
+  };
+
+  it("pads to the exact target when audio is shorter", () => {
     const plan = buildPadTrimAudioPlan("/tmp/in.aac", "/tmp/out.aac", 4.0, 5.0);
     expect(plan.operation).toBe("pad");
     expect(plan.steps).toHaveLength(1);
-    const args = plan.steps[0]!.args;
-    expect(args[args.indexOf("-i") + 1]).toBe("/tmp/in.aac");
-    expect(args[args.indexOf("-af") + 1]).toBe("apad,atrim=0:5.000000");
-    expect(args.join(" ")).not.toContain("whole_dur");
-    expect(args[args.indexOf("-t") + 1]).toBe("5.000000");
-    expect(args[args.indexOf("-c:a") + 1]).toBe("aac");
+    expect(plan.steps[0]!.kind).toBe("normalize");
+    expect(filterOf(plan)).toBe("apad,atrim=0:5.000000");
+    expect(filterOf(plan)).not.toContain("whole_dur");
     // The single-step filter plan has no intermediate artifacts to clean up.
     expect(plan.cleanupPaths).toEqual([]);
   });
 
-  it("keeps the legacy args helper on the first pad materialization step", () => {
-    const { args, operation } = buildPadTrimAudioArgs("/tmp/in.aac", "/tmp/out.aac", 4.0, 5.0);
-    expect(operation).toBe("pad");
-    expect(args).toContain("/tmp/in.aac");
-    expect(args[args.indexOf("-t") + 1]).toBe("5.000000");
-  });
-
-  it("filter-trims and re-encodes AAC packet padding beyond the target", () => {
-    const { args, operation } = buildPadTrimAudioArgs(
-      "/tmp/in.aac",
-      "/tmp/out.m4a",
-      15.018667,
-      15.0,
-    );
-    expect(operation).toBe("trim");
-    const filterIdx = args.indexOf("-af");
-    expect(args[filterIdx + 1]).toBe("atrim=duration=15.000000,asetpts=PTS-STARTPTS");
-    expect(args[args.indexOf("-t") + 1]).toBe("15.000000");
-    const codecIdx = args.indexOf("-c:a");
-    expect(args[codecIdx + 1]).toBe("aac");
-    expect(args[args.indexOf("-b:a") + 1]).toBe("192k");
-    expect(args.at(-1)).toBe("/tmp/out.m4a");
+  it("filter-trims AAC packet padding beyond the target", () => {
+    const plan = buildPadTrimAudioPlan("/tmp/in.aac", "/tmp/out.m4a", 15.018667, 15.0);
+    expect(plan.operation).toBe("trim");
+    expect(filterOf(plan)).toBe("atrim=duration=15.000000,asetpts=PTS-STARTPTS");
   });
 
   it("emits a plain copy when source duration matches target within ~1ms", () => {
-    const { args, operation } = buildPadTrimAudioArgs("/tmp/in.aac", "/tmp/out.aac", 5.0, 5.0);
-    expect(operation).toBe("copy");
-    expect(args.indexOf("-af")).toBe(-1);
-    expect(args.indexOf("-t")).toBe(-1);
-    const codecIdx = args.indexOf("-c:a");
-    expect(args[codecIdx + 1]).toBe("copy");
+    const plan = buildPadTrimAudioPlan("/tmp/in.aac", "/tmp/out.aac", 5.0, 5.0);
+    expect(plan.operation).toBe("copy");
+    expect(plan.steps).toEqual([
+      { kind: "copy", args: ["-i", "/tmp/in.aac", "-c:a", "copy", "-y", "/tmp/out.aac"] },
+    ]);
   });
 
   it("emits 6-decimal-place pad duration (no scientific notation)", () => {
     // 1.23ms — just over the AUDIO_DURATION_TOLERANCE_SECONDS=1ms threshold,
     // so we exercise the pad path with a tiny duration that would round to
     // exponent notation if we used `toString()` instead of `toFixed(6)`.
-    const { args, operation } = buildPadTrimAudioArgs("/tmp/in.aac", "/tmp/out.aac", 0.0, 0.00123);
-    expect(operation).toBe("pad");
-    const tIdx = args.indexOf("-t");
-    expect(args[tIdx + 1]).toBe("0.001230");
+    const plan = buildPadTrimAudioPlan("/tmp/in.aac", "/tmp/out.aac", 0.0, 0.00123);
+    expect(plan.operation).toBe("pad");
+    expect(filterOf(plan)).toBe("apad,atrim=0:0.001230");
   });
 
   it("flags ~1ms drift as a copy (below the tolerance threshold)", () => {
-    const close = buildPadTrimAudioArgs("/tmp/a.aac", "/tmp/o.aac", 5.0, 5.0005);
+    const close = buildPadTrimAudioPlan("/tmp/a.aac", "/tmp/o.aac", 5.0, 5.0005);
     expect(close.operation).toBe("copy");
   });
 
   it("flags >1ms drift in either direction as pad/trim", () => {
-    const padNeeded = buildPadTrimAudioArgs("/tmp/a.aac", "/tmp/o.aac", 5.0, 5.002);
+    const padNeeded = buildPadTrimAudioPlan("/tmp/a.aac", "/tmp/o.aac", 5.0, 5.002);
     expect(padNeeded.operation).toBe("pad");
-    const trimNeeded = buildPadTrimAudioArgs("/tmp/a.aac", "/tmp/o.aac", 5.002, 5.0);
+    const trimNeeded = buildPadTrimAudioPlan("/tmp/a.aac", "/tmp/o.aac", 5.002, 5.0);
     expect(trimNeeded.operation).toBe("trim");
   });
 
@@ -106,25 +88,21 @@ describe("buildPadTrimAudioArgs", () => {
       5.0,
     );
     expect(winPlan.operation).toBe("pad");
-    const args = winPlan.steps[0]!.args;
-    expect(args).toContain("-af");
-    expect(args[args.indexOf("-af") + 1]).toBe("apad,atrim=0:5.000000");
-    expect(args.join(" ")).not.toContain("whole_dur");
+    expect(filterOf(winPlan)).toBe("apad,atrim=0:5.000000");
   });
 });
 
 describe("padOrTrimAudioToVideoFrameCount", () => {
-  // Build a minimal harness that stubs out the duration probes and ffmpeg runner.
+  type StepResult = { success: boolean; error?: string; failureReason?: "external_interruption" };
+  type Encode = { durationSeconds: number; filter: string };
+  // Build a minimal harness that stubs out the duration probes, the ffmpeg runner and the encoder.
   function harness(opts: {
     video: ProbeVideoFrameInfo | "throw";
     audio: AudioProbeInfo | "throw";
-    ffmpeg?: (args: string[]) => Promise<{
-      success: boolean;
-      error?: string;
-      failureReason?: "external_interruption";
-    }>;
-  }): { input: PadTrimAudioInput; captured: { args: string[][] } } {
-    const captured = { args: [] as string[][] };
+    step?: () => Promise<StepResult>;
+  }): { input: PadTrimAudioInput; captured: { args: string[][]; encodes: Encode[] } } {
+    const captured = { args: [] as string[][], encodes: [] as Encode[] };
+    const step = opts.step ?? (async () => ({ success: true }));
     const input: PadTrimAudioInput = {
       videoPath: "/tmp/v.mp4",
       audioPath: "/tmp/a.aac",
@@ -137,12 +115,14 @@ describe("padOrTrimAudioToVideoFrameCount", () => {
         if (opts.audio === "throw") throw new Error("audio probe boom");
         return opts.audio;
       },
-      runFfmpeg:
-        opts.ffmpeg ??
-        (async (args) => {
-          captured.args.push(args);
-          return { success: true };
-        }),
+      runFfmpeg: async (args) => {
+        captured.args.push(args);
+        return step();
+      },
+      encodeAac: async (_input, _output, durationSeconds, filter) => {
+        captured.encodes.push({ durationSeconds, filter });
+        return step();
+      },
     };
     return { input, captured };
   }
@@ -175,10 +155,7 @@ describe("padOrTrimAudioToVideoFrameCount", () => {
     expect(result.operation).toBe("pad");
     expect(result.targetDurationSeconds).toBe(6);
     expect(result.sourceDurationSeconds).toBe(5.5);
-    expect(captured.args).toHaveLength(1);
-    const tIdx = captured.args[0]!.indexOf("-t");
-    expect(captured.args[0]![tIdx + 1]).toBe("6.000000");
-    expect(captured.args[0]![captured.args[0]!.indexOf("-c:a") + 1]).toBe("aac");
+    expect(captured.encodes).toEqual([{ durationSeconds: 6, filter: "apad,atrim=0:6.000000" }]);
   });
 
   it("trims a video of N=120 frames at 30/1 fps with longer audio", async () => {
@@ -190,9 +167,9 @@ describe("padOrTrimAudioToVideoFrameCount", () => {
     expect(result.success).toBe(true);
     expect(result.operation).toBe("trim");
     expect(result.targetDurationSeconds).toBe(4);
-    expect(captured.args).toHaveLength(1);
-    const filterIdx = captured.args[0]!.indexOf("-af");
-    expect(captured.args[0]![filterIdx + 1]).toBe("atrim=duration=4.000000,asetpts=PTS-STARTPTS");
+    expect(captured.encodes).toEqual([
+      { durationSeconds: 4, filter: "atrim=duration=4.000000,asetpts=PTS-STARTPTS" },
+    ]);
   });
 
   it("emits a copy when audio duration already equals frameCount/fps", async () => {
@@ -206,6 +183,7 @@ describe("padOrTrimAudioToVideoFrameCount", () => {
     expect(result.targetDurationSeconds).toBe(3);
     expect(captured.args[0]!.includes("-af")).toBe(false);
     expect(captured.args[0]!.includes("-t")).toBe(false);
+    expect(captured.encodes).toEqual([]);
   });
 
   it("handles NTSC fps (30000/1001) exactly", async () => {
@@ -218,8 +196,7 @@ describe("padOrTrimAudioToVideoFrameCount", () => {
     expect(result.success).toBe(true);
     expect(result.operation).toBe("pad");
     expect(result.targetDurationSeconds).toBeCloseTo((120 * 1001) / 30000, 9);
-    const tIdx = captured.args[0]!.indexOf("-t");
-    expect(captured.args[0]![tIdx + 1]).toBe("4.004000");
+    expect(captured.encodes[0]!.filter).toBe("apad,atrim=0:4.004000");
   });
 
   it("propagates video probe failure as success=false", async () => {
@@ -268,7 +245,7 @@ describe("padOrTrimAudioToVideoFrameCount", () => {
     const { input } = harness({
       video: { frameCount: 180, fpsNum: 30, fpsDen: 1 },
       audio: { durationSeconds: 5.0 },
-      ffmpeg: async () => ({ success: false, error: "synthetic ffmpeg failure" }),
+      step: async () => ({ success: false, error: "synthetic ffmpeg failure" }),
     });
     const result = await padOrTrimAudioToVideoFrameCount(input);
     expect(result.success).toBe(false);
@@ -281,7 +258,7 @@ describe("padOrTrimAudioToVideoFrameCount", () => {
     const { input } = harness({
       video: { frameCount: 180, fpsNum: 30, fpsDen: 1 },
       audio: { durationSeconds: 5.0 },
-      ffmpeg: async () => ({
+      step: async () => ({
         success: false,
         error: "synthetic interruption diagnostics",
         failureReason: "external_interruption",
@@ -311,14 +288,14 @@ describe("padOrTrimAudioToVideoFrameCount", () => {
   });
 
   it("attenuates the duration-normalized artifact with AAC correction headroom", async () => {
-    const calls: string[][] = [];
+    const calls: { durationSeconds: number; filter: string }[] = [];
     const { input } = harness({
       video: { frameCount: 90, fpsNum: 30, fpsDen: 1 },
       audio: { durationSeconds: 3.029333 },
     });
     input.probeAudioTruePeakDbfs = async () => 1.5;
-    input.runFfmpeg = async (args) => {
-      calls.push(args);
+    input.encodeAac = async (_input, _output, durationSeconds, filter) => {
+      calls.push({ durationSeconds, filter });
       return calls.length === 1
         ? { success: true }
         : { success: false, error: "synthetic correction stop" };
@@ -329,9 +306,44 @@ describe("padOrTrimAudioToVideoFrameCount", () => {
     expect(result.success).toBe(false);
     expect(result.error).toBe("synthetic correction stop");
     expect(calls).toHaveLength(2);
-    const correctionArgs = calls[1]!;
-    expect(correctionArgs[correctionArgs.indexOf("-af") + 1]).toBe("volume=-3.000dB");
-    expect(correctionArgs[correctionArgs.indexOf("-t") + 1]).toBe("3.000000");
+    expect(calls[1]).toEqual({
+      durationSeconds: 3,
+      filter: "volume=-3.000dB,apad,atrim=0:3.000000",
+    });
+  });
+
+  it("rides out a transient Windows file lock when the corrected AAC replaces the audio", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-peak-lock-"));
+    const outputPath = join(dir, "o.aac");
+    writeFileSync(outputPath, "original");
+    const { input } = harness({
+      video: { frameCount: 90, fpsNum: 30, fpsDen: 1 },
+      audio: { durationSeconds: 3 },
+    });
+    input.outputPath = outputPath;
+    let peaks = [1.5, -3];
+    input.probeAudioTruePeakDbfs = async () => peaks.shift()!;
+    input.encodeAac = async (_input, output) => {
+      writeFileSync(output, "corrected");
+      return { success: true };
+    };
+    const real = fs.renameSync;
+    let locked = 2;
+    const rename = spyOn(fs, "renameSync").mockImplementation(((from: string, to: string) => {
+      if (locked-- > 0) throw Object.assign(new Error("EPERM: rename"), { code: "EPERM" });
+      return real(from, to);
+    }) as typeof fs.renameSync);
+    const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+    Object.defineProperty(process, "platform", { value: "win32" });
+    try {
+      const result = await padOrTrimAudioToVideoFrameCount(input);
+      expect(result.success).toBe(true);
+      expect(fs.readFileSync(outputPath, "utf-8")).toBe("corrected");
+    } finally {
+      Object.defineProperty(process, "platform", platform);
+      rename.mockRestore();
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("keeps the end of a long correction failure, where ffmpeg says what went wrong", async () => {
@@ -343,7 +355,7 @@ describe("padOrTrimAudioToVideoFrameCount", () => {
     const cause = "Error while filtering: the real ffmpeg cause";
     let runs = 0;
     input.probeAudioTruePeakDbfs = async () => 1.5;
-    input.runFfmpeg = async () =>
+    input.encodeAac = async () =>
       ++runs === 1 ? { success: true } : { success: false, error: `[FFmpeg] ${banner}\n${cause}` };
 
     const result = await padOrTrimAudioToVideoFrameCount(input);
@@ -365,13 +377,13 @@ describe("padOrTrimAudioToVideoFrameCount", () => {
     input.audioPath = join(dir, "source.m4a");
     input.outputPath = join(dir, "normalized.m4a");
     input.probeAudioTruePeakDbfs = async () => attenuationDb * 0.4;
-    input.runFfmpeg = async (args) => {
-      const filter = args[args.indexOf("-af") + 1];
-      if (filter?.startsWith("volume=")) {
-        attenuationDb = Number(filter.slice("volume=".length, -2));
+    input.encodeAac = async (_input, output, _durationSeconds, filter) => {
+      const volume = /^volume=(-?[\d.]+)dB/.exec(filter);
+      if (volume) {
+        attenuationDb = Number(volume[1]);
         corrections.push(attenuationDb);
       }
-      writeFileSync(args.at(-1)!, "");
+      writeFileSync(output, "");
       return { success: true };
     };
 
@@ -379,8 +391,8 @@ describe("padOrTrimAudioToVideoFrameCount", () => {
       const result = await padOrTrimAudioToVideoFrameCount(input);
 
       expect(result.success, result.error).toBe(true);
-      expect(corrections).toEqual([-1.5, -2.4, -2.94]);
-      expect(result.audioLoweredDb).toBe(2.94);
+      expect(corrections).toEqual([-1.5, -2.9]);
+      expect(result.audioLoweredDb).toBe(2.9);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -400,8 +412,55 @@ describe("padOrTrimAudioToVideoFrameCount", () => {
     expect(result.success).toBe(false);
     expect(result.error).toContain("pass 0: 0.000 dBFS at 0.000 dB attenuation");
     expect(result.error).toContain("pass 1: -0.400 dBFS at -1.500 dB attenuation");
-    expect(result.error).toContain("pass 2: -0.600 dBFS at -2.600 dB attenuation");
-    expect(result.error).toContain("pass 3: -0.800 dBFS at -3.500 dB attenuation");
+    expect(result.error).toContain("pass 2: -0.600 dBFS at -3.100 dB attenuation");
+    expect(result.error).toContain("pass 3: -0.800 dBFS at -5.500 dB attenuation");
+  });
+
+  it("gets under the ceiling when the AAC peak stalls as attenuation grows", async () => {
+    // A failed render's measured peaks (pass 0..3), then the peak falling dB for dB again.
+    const stalled: [number, number][] = [
+      [0, 1.9],
+      [-3.4, -0.5],
+      [-4.4, -0.6],
+      [-5.3, -0.6],
+    ];
+    const peakAt = (db: number) => {
+      const i = stalled.findIndex(([at]) => at <= db);
+      if (i === -1) return -0.6 + (db + 5.3);
+      if (i === 0) return stalled[0]![1];
+      const [[a, pa], [b, pb]] = [stalled[i - 1]!, stalled[i]!];
+      return pa + ((pb - pa) * (db - a)) / (b - a);
+    };
+    const dir = mkdtempSync(join(tmpdir(), "hf-aac-stall-"));
+    const corrections: number[] = [];
+    let attenuationDb = 0;
+    const { input } = harness({
+      video: { frameCount: 90, fpsNum: 30, fpsDen: 1 },
+      audio: { durationSeconds: 3 },
+    });
+    input.videoPath = join(dir, "video.mp4");
+    input.audioPath = join(dir, "source.m4a");
+    input.outputPath = join(dir, "normalized.m4a");
+    input.probeAudioTruePeakDbfs = async () => peakAt(attenuationDb);
+    input.encodeAac = async (_input, output, _durationSeconds, filter) => {
+      const volume = /^volume=(-?[\d.]+)dB/.exec(filter);
+      if (volume) {
+        attenuationDb = Number(volume[1]);
+        corrections.push(attenuationDb);
+      }
+      writeFileSync(output, "");
+      return { success: true };
+    };
+
+    try {
+      const result = await padOrTrimAudioToVideoFrameCount(input);
+
+      expect(result.success, result.error).toBe(true);
+      expect(corrections).toEqual([-3.4, -4.9, -7.3]);
+      expect(result.audioLoweredDb).toBe(7.3);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

@@ -1,6 +1,7 @@
 // Shared "what counts as motion" classifier, injected before layout-audit.browser.js and motion-sample.browser.js.
 // The frozen-sweep guard (sweep_static) and keepsMoving liveness (motion_frozen) meet in one decision, so both
 // must count the same channels as motion; only quantization differs (liveness buckets 2px and 0.08 opacity).
+// Where both read still, check asks framesDiffer below, which compares the rendered frames.
 // A channel reader returns a string equal across samples iff it did not visibly change, "" when it does not apply.
 (function () {
   const IGNORE_TAGS = new Set(["SCRIPT", "STYLE", "TEMPLATE", "NOSCRIPT", "META", "LINK"]);
@@ -402,6 +403,57 @@
     parts.push(...counterParts(root, boxOwners), ...mediaTimeParts(root, quantize, "video"));
     return parts.join("|");
   }
+
+  // --- Rendered frames: the last word where DOM channels cannot see paint ------
+  // A frame moved when enough pixels changed by more than render noise (antialiasing, dither) on some channel.
+  // ponytail: fewer than FRAME_MIN_CHANGED_PIXELS changed pixels reads as still; lower it for tinier motion.
+  const FRAME_CHANNEL_NOISE = 24;
+  const FRAME_MIN_CHANGED_PIXELS = 16;
+  let reference = { png: "", pixels: null };
+
+  // Decoded in the page like the contrast pass, so no image library is needed.
+  async function framePixels(png) {
+    const image = new Image();
+    image.src = "data:image/png;base64," + png;
+    await image.decode();
+    const canvas = document.createElement("canvas");
+    canvas.width = image.naturalWidth;
+    canvas.height = image.naturalHeight;
+    const ctx2d = canvas.getContext("2d", { willReadFrequently: true });
+    ctx2d.drawImage(image, 0, 0);
+    return ctx2d.getImageData(0, 0, canvas.width, canvas.height);
+  }
+
+  function pixelChanged(a, b, i) {
+    return (
+      Math.abs(a[i] - b[i]) > FRAME_CHANNEL_NOISE ||
+      Math.abs(a[i + 1] - b[i + 1]) > FRAME_CHANNEL_NOISE ||
+      Math.abs(a[i + 2] - b[i + 2]) > FRAME_CHANNEL_NOISE ||
+      Math.abs(a[i + 3] - b[i + 3]) > FRAME_CHANNEL_NOISE
+    );
+  }
+
+  // Base64 PNG screenshots in, "did anything visible change" out. The first frame is usually a run's
+  // reference compared against many, so its decode is kept.
+  // fallow-ignore-next-line complexity
+  async function framesDiffer(first, second) {
+    if (first === second) return false;
+    if (!first || !second) return true;
+    if (reference.png !== first) reference = { png: first, pixels: await framePixels(first) };
+    return pixelsDiffer(reference.pixels, await framePixels(second));
+  }
+
+  // fallow-ignore-next-line complexity
+  function pixelsDiffer(a, b) {
+    if (a.width !== b.width || a.height !== b.height) return true;
+    let changed = 0;
+    for (let i = 0; i < a.data.length; i += 4) {
+      if (pixelChanged(a.data, b.data, i) && ++changed >= FRAME_MIN_CHANGED_PIXELS) return true;
+    }
+    return false;
+  }
+
+  window.__hyperframesFramesDiffer = framesDiffer;
 
   window.__hyperframesMotionSignature = {
     compositionRoot,

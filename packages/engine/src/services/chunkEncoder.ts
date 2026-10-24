@@ -6,6 +6,7 @@
  * Supports CPU (libx264) and GPU encoding.
  */
 
+import { frameSequencePath } from "./extractedFrameIndex.js";
 import {
   closeSync,
   copyFileSync,
@@ -46,6 +47,7 @@ import { extractAudioMetadata } from "../utils/ffprobe.js";
 import { type Fps, fpsToFfmpegArg, fpsToNumber } from "@hyperframes/core";
 import type { EncoderOptions, EncodeResult, MuxResult } from "./chunkEncoder.types.js";
 import { appendVp9CpuUsedArg } from "./vp9Options.js";
+import { appendSoftwareEncoderThreadsArg } from "./softwareEncoderThreads.js";
 import { appendRenderProvenanceArgs } from "../utils/renderProvenance.js";
 
 export type { EncoderOptions, EncodeResult, MuxResult } from "./chunkEncoder.types.js";
@@ -258,7 +260,8 @@ export function buildEncoderArgs(
     options = { ...options, hdr: undefined };
   }
 
-  const args: string[] = [...inputArgs, "-r", fpsToFfmpegArg(fps)];
+  // Without -xerror, ffmpeg ends the video at the first frame file it cannot read and still exits 0.
+  const args: string[] = ["-xerror", ...inputArgs, "-r", fpsToFfmpegArg(fps)];
   const shouldUseGpu = useGpu && gpuEncoder !== null;
 
   if (codec === "h264" || codec === "h265") {
@@ -324,6 +327,7 @@ export function buildEncoderArgs(
     } else {
       const encoderName = codec === "h264" ? "libx264" : "libx265";
       args.push("-c:v", encoderName, "-preset", preset);
+      appendSoftwareEncoderThreadsArg(args, encoderName);
       if (bitrate) args.push("-b:v", bitrate);
       else args.push("-crf", String(quality));
 
@@ -510,6 +514,25 @@ export function buildEncoderArgs(
 
 const framesReader = (onFrames?: (frames: number) => void) =>
   onFrames && ffmpegStatsReader(({ frames }) => frames !== undefined && onFrames(frames));
+
+/** ffmpeg's frame read error, which the encoder summary pushes out of the stderr tail, and where it stopped. */
+function frameReadFailure(
+  stderr: string,
+  framePattern: string,
+  startNumber: number,
+  framesRead: number,
+  frameCount: number,
+): string {
+  const lines = stderr.match(/^.*(?:Error during demuxing|Could not open file).*$/gm) ?? [];
+  const readError = [...new Set(lines.map((line) => line.trim()))].join("; ");
+  if (!readError) return "";
+  const name = framePattern.replace(/%0(\d+)d/, (_, width: string) =>
+    String(startNumber + framesRead).padStart(Number(width), "0"),
+  );
+  const at = framesRead < frameCount ? ` at ${name} (${framesRead} of ${frameCount} read)` : "";
+  return `[FFmpeg] could not read a frame${at}: ${readError}\n`;
+}
+
 const secondsReader = (onSeconds?: (seconds: number) => void) =>
   onSeconds && ffmpegStatsReader(({ seconds }) => seconds !== undefined && onSeconds(seconds));
 
@@ -546,14 +569,18 @@ export async function encodeFramesFromDir(
     gpuEncoder = await getCachedGpuEncoder();
   }
 
-  const inputPath = join(framesDir, framePattern);
+  const inputPath = frameSequencePath(framesDir, framePattern);
   const inputArgs = ["-framerate", fpsToFfmpegArg(options.fps), "-i", inputPath];
   const args = buildEncoderArgs(options, inputArgs, outputPath, gpuEncoder);
   const encodeTimeout = config?.ffmpegEncodeTimeout ?? DEFAULT_CONFIG.ffmpegEncodeTimeout;
+  let framesRead = 0;
   const result = await runFfmpeg(args, {
     signal,
     timeout: encodeTimeout,
-    onStderr: framesReader(onFramesEncoded),
+    onStderr: framesReader((frames) => {
+      framesRead = frames;
+      onFramesEncoded?.(frames);
+    }),
   });
   if (result.terminationReason === "abort") {
     return {
@@ -573,7 +600,8 @@ export async function encodeFramesFromDir(
       framesEncoded: 0,
       fileSize: 0,
       error: appendEncodeTimeoutMessage(
-        formatFfmpegError(result.exitCode, result.stderr),
+        frameReadFailure(result.stderr, framePattern, 0, framesRead, frameCount) +
+          formatFfmpegError(result.exitCode, result.stderr),
         result.terminationReason === "deadline",
         encodeTimeout,
       ),
@@ -706,7 +734,7 @@ export async function encodeFramesChunkedConcat(
         ? ".mov"
         : ".mp4";
     const chunkPath = join(chunkDir, `chunk_${String(i).padStart(4, "0")}${ext}`);
-    const inputPath = join(framesDir, framePattern);
+    const inputPath = frameSequencePath(framesDir, framePattern);
     const inputArgs = [
       "-framerate",
       fpsToFfmpegArg(options.fps),
@@ -721,19 +749,27 @@ export async function encodeFramesChunkedConcat(
     if (options.useGpu) gpuEncoder = await getCachedGpuEncoder();
     const args = buildEncoderArgs(options, inputArgs, chunkPath, gpuEncoder);
     const encodeTimeout = config?.ffmpegEncodeTimeout ?? DEFAULT_CONFIG.ffmpegEncodeTimeout;
+    let framesRead = 0;
     const processResult = await runFfmpeg(args, {
       signal,
       timeout: encodeTimeout,
-      onStderr: framesReader(
-        onFramesEncoded && ((frames) => onFramesEncoded(startNumber + frames)),
-      ),
+      onStderr: framesReader((frames) => {
+        framesRead = frames;
+        onFramesEncoded?.(startNumber + frames);
+      }),
     });
     const chunkResult = {
       success: processResult.success,
       error: processResult.success
         ? undefined
         : appendEncodeTimeoutMessage(
-            `Chunk ${i} encode failed: ${processResult.stderr.slice(-400)}`,
+            frameReadFailure(
+              processResult.stderr,
+              framePattern,
+              startNumber,
+              framesRead,
+              framesInChunk,
+            ) + `Chunk ${i} encode failed: ${processResult.stderr.slice(-400)}`,
             processResult.terminationReason === "deadline",
             encodeTimeout,
           ),

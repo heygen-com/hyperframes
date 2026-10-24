@@ -23,6 +23,7 @@ import { join, parse } from "node:path";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import {
   STUDIO_PREVIEW_ERRORS,
+  STUDIO_PREVIEW_CAPTURE_MODE,
   STUDIO_PREVIEW_MARK_META,
 } from "@hyperframes/core/studio-preview-mark";
 import { AFTER_FONTS_SCRIPT_TYPE } from "@hyperframes/core/compiler";
@@ -281,7 +282,7 @@ describe("registerPreviewRoutes", () => {
     expect(previewWindow[STUDIO_PREVIEW_ERRORS]).toEqual(["Uncaught Error: GSAP could not load"]);
   });
 
-  it("serves a later scene's image lazy, and captures every image eager with no mark", async () => {
+  it("serves a later scene's image lazy, and captures every image eager under a capture-mode mark", async () => {
     const projectDir = createProjectDir();
     const later =
       '<!DOCTYPE html><html><head></head><body><div data-start="5"><img src="b.png"></div></body></html>';
@@ -296,7 +297,10 @@ describe("registerPreviewRoutes", () => {
       expect(preview, path).toMatch(/<img loading="lazy" [^>]*src="b.png">/);
       expect(preview, path).toContain(STUDIO_PREVIEW_MARK_META);
       expect(capture, path).not.toContain("loading=");
-      expect(capture, path).not.toContain(STUDIO_PREVIEW_MARK_META);
+      expect(capture, path).toContain(
+        `<meta name="${STUDIO_PREVIEW_MARK_META}" content="${STUDIO_PREVIEW_CAPTURE_MODE}">`,
+      );
+      expect(preview, path).not.toContain(STUDIO_PREVIEW_CAPTURE_MODE);
       expect(capture, path).toContain("<script data-hf-gsap-fallback>");
     }
   });

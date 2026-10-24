@@ -13,6 +13,7 @@ export interface AudioElement {
   mediaStart: number;
   /** Normalized source-time multiplier: a constant, or the clip's `rate` lane. */
   playbackRate?: RateSpec;
+  loop?: boolean;
   layer: number;
   volume?: number;
   volumeKeyframes?: AudioVolumeKeyframe[];

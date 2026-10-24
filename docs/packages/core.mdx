@@ -129,6 +129,12 @@ const bundled = await bundleToSingleHtml("./project", {
 });
 ```
 
+Bundling preserves data URLs and commas inside image `srcset` URLs on `<img>`
+and `<source>` elements. Eligible local candidates are inlined by default; with
+`inlineAssets: false`, they stay as paths relative to the project root, including
+when the entry file is in a subdirectory. Width and density descriptors are
+preserved.
+
 The compiler also exposes lower-level timing helpers such as
 `compileTimingAttrs()`, `injectDurations()`, and `extractResolvedMedia()`.
 

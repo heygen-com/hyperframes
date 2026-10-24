@@ -10,6 +10,8 @@ import {
   createChunkVideoFrameInjectorFactory,
   createVerifiedDistributedCaptureSession,
   type ChunkResult,
+  MixedCaptureModesError,
+  observedChunkCaptureMode,
   runCaptureWithScreenshotFallback,
   shouldRetryChunkCaptureWithScreenshot,
 } from "./renderChunk.js";
@@ -123,6 +125,26 @@ describe("distributed session isolation", () => {
     expect(firstAttempt).not.toBeNull();
     expect(screenshotRetry).not.toBeNull();
     expect(screenshotRetry).not.toBe(firstAttempt);
+  });
+
+  it("holds a session's first injection until its frames are extracted", async () => {
+    let failExtraction: (error: Error) => void = () => {};
+    const lookup = new Promise<ReturnType<typeof createFrameLookupTable>>((_, reject) => {
+      failExtraction = reject;
+    });
+    const factory = createChunkVideoFrameInjectorFactory(lookup);
+    const hook = factory();
+    expect(hook).not.toBeNull();
+    expect(factory()).not.toBe(hook);
+
+    let settled = false;
+    const injection = hook!({} as Parameters<NonNullable<typeof hook>>[0], 0).finally(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    failExtraction(new Error("ffmpeg could not read the clip"));
+    await expect(injection).rejects.toThrow("ffmpeg could not read the clip");
   });
 });
 
@@ -249,5 +271,38 @@ describe("beginFrameSessionNeedsScreenshotFallback", () => {
       }),
     ).toBe(false);
     expect(probes).toBe(1);
+  });
+});
+
+describe("a chunk whose workers launched in different capture modes", () => {
+  const mixed = [{ captureMode: "beginframe" }, { captureMode: "screenshot" }];
+
+  it("fails with a typed error instead of being retried or mixed into one output", async () => {
+    expect(() => observedChunkCaptureMode(mixed)).toThrow(MixedCaptureModesError);
+    expect(
+      shouldRetryChunkCaptureWithScreenshot(
+        new MixedCaptureModesError(["beginframe", "screenshot"]),
+      ),
+    ).toBe(false);
+    let runs = 0;
+    await expect(
+      runCaptureWithScreenshotFallback({
+        forceScreenshot: false,
+        run: async () => {
+          runs++;
+          return observedChunkCaptureMode(mixed);
+        },
+        resetForScreenshotRetry: () => {},
+      }),
+    ).rejects.toThrow(MixedCaptureModesError);
+    expect(runs).toBe(1);
+  });
+
+  it("accepts one mode and still rejects a chunk with no workers or an unknown mode", () => {
+    expect(
+      observedChunkCaptureMode([{ captureMode: "beginframe" }, { captureMode: "beginframe" }]),
+    ).toBe("beginframe");
+    expect(() => observedChunkCaptureMode([])).toThrow(/invalid mode/);
+    expect(() => observedChunkCaptureMode([{ captureMode: "gpu" }])).toThrow(/invalid mode/);
   });
 });

@@ -15,12 +15,27 @@
  * inside the regression harness (`bun run --cwd packages/producer docker:test`).
  */
 
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it, mock } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { applyConcreteGpuScreenshotClamp, buildChromeArgs } from "@hyperframes/engine";
+import {
+  applyConcreteGpuScreenshotClamp,
+  buildChromeArgs,
+  FFMPEG_PATH_ENV,
+  getFfmpegBinary,
+  getFfprobeBinary,
+  encodeAac,
+} from "@hyperframes/engine";
 import { recomputePlanHashFromPlanDir } from "../render/stages/freezePlan.js";
 import { defaultLogger } from "../../logger.js";
 import { RenderQualityError } from "../renderOrchestrator.js";
@@ -28,19 +43,29 @@ import { CURRENT_PLAN_PROTOCOL } from "./planProtocol.js";
 import {
   applyDistributedAudioWarningPolicy,
   buildLocalExecutionPlan,
+  buildPlanAudio,
   buildChunkSlices,
   CHUNK_EXCEEDS_WORKER_TIMEOUT,
   ChunkExceedsWorkerTimeoutError,
   DEFAULT_CHUNK_SIZE,
   DEFAULT_MAX_PARALLEL_CHUNKS,
+  chunkSizingUsesFrameCost,
   estimateChunkSeconds,
   MIN_CHUNK_SIZE,
   plan,
   resolveDistributedEngineConfig,
   resolveChunkPlan,
+  planNeedsFrameCostMeasurement,
   resolveMaxParallelChunks,
 } from "./plan.js";
 import { buildSyntheticRenderJob } from "./shared.js";
+import { assemble } from "./assemble.js";
+import { constrainAacTruePeak } from "../render/audioPadTrim.js";
+
+function ffmpegOrThrow(args: string[]): void {
+  const ffmpeg = spawnSync(getFfmpegBinary(), ["-nostdin", "-loglevel", "error", ...args]);
+  if (ffmpeg.status !== 0) throw new Error(`ffmpeg fixture failed: ${ffmpeg.stderr?.toString()}`);
+}
 
 // Composition the tests render. `data-duration="1"` keeps the probe stage's
 // `needsBrowser` gate `false` so plan() completes without launching Chrome.
@@ -165,6 +190,17 @@ describe("distributed synthetic render job", () => {
     expect(job.config.variables).toEqual(variables);
   });
 
+  it("turns the page's capture motion blur off for the plan probe (R19)", () => {
+    const job = buildSyntheticRenderJob({
+      fps: { num: 30, den: 1 },
+      format: "mp4",
+      quality: "high",
+      hdrMode: "force-sdr",
+      entryFile: "index.html",
+    });
+    expect(job.config.pageMotionBlur).toBe("off");
+  });
+
   it("keeps the production software-GPU launch on BeginFrame control", () => {
     const cfg = resolveDistributedEngineConfig({
       fps: 30,
@@ -257,17 +293,59 @@ describe("resolveMaxParallelChunks", () => {
     expect(resolveMaxParallelChunks(worker, 3600, MP_1080P, log)).toBeLessThan(64);
   });
 
-  it("explicit chunking flags win and no worker inputs keeps the old default", () => {
+  it("explicit maxParallelChunks wins and no worker inputs keeps the old default", () => {
     const worker = { workerTimeoutSeconds: LAMBDA_LIMIT, workerConcurrency: 200 };
     const args = [THIRTY_MIN_30FPS, MP_1080P] as const;
     expect(resolveMaxParallelChunks({ ...worker, maxParallelChunks: 4 }, ...args)).toBe(4);
-    expect(resolveMaxParallelChunks({ ...worker, chunkSize: 240 }, ...args)).toBe(
-      DEFAULT_MAX_PARALLEL_CHUNKS,
-    );
-    expect(resolveMaxParallelChunks({ ...worker, targetChunkFrames: 300 }, ...args)).toBe(
-      DEFAULT_MAX_PARALLEL_CHUNKS,
-    );
     expect(resolveMaxParallelChunks({}, ...args)).toBe(DEFAULT_MAX_PARALLEL_CHUNKS);
+    expect(resolveMaxParallelChunks({ chunkSize: 240 }, ...args)).toBe(DEFAULT_MAX_PARALLEL_CHUNKS);
+  });
+
+  it("caps pinned chunking at one wave across the worker concurrency", () => {
+    const worker = { workerTimeoutSeconds: LAMBDA_LIMIT, workerConcurrency: 900 };
+    const maxParallel = resolveMaxParallelChunks({ ...worker, chunkSize: 30 }, 1800, MP_1080P);
+    expect(resolveChunkPlan(1800, 30, maxParallel).chunkCount).toBe(60);
+    const args = [THIRTY_MIN_30FPS, MP_1080P] as const;
+    expect(resolveMaxParallelChunks({ ...worker, targetChunkFrames: 300 }, ...args)).toBe(256);
+  });
+
+  it("sizes chunks from a measured frame cost so expensive frames fit the limit", () => {
+    // 45 s of 1080x1920 at 24 fps whose frames measured ~10.5 s each (a graded video on software GL).
+    const frames = 45 * 24;
+    const mp = (1080 * 1920) / 1e6;
+    const worker = { workerTimeoutSeconds: LAMBDA_LIMIT, workerConcurrency: 8 };
+    const { log } = recordingLog();
+    const priced = resolveChunkPlan(
+      frames,
+      undefined,
+      resolveMaxParallelChunks(worker, frames, mp),
+    );
+    expect(estimateChunkSeconds(priced.effectiveChunkSize, mp, 10.5)).toBeGreaterThan(LAMBDA_LIMIT);
+
+    const measured = resolveChunkPlan(
+      frames,
+      undefined,
+      resolveMaxParallelChunks(worker, frames, mp, log, 10.5),
+    );
+    expect(estimateChunkSeconds(measured.effectiveChunkSize, mp, 10.5)).toBeLessThanOrEqual(
+      LAMBDA_LIMIT * 0.75,
+    );
+    // A cheap measured frame keeps the per-pixel plan.
+    expect(resolveMaxParallelChunks(worker, frames, mp, log, 0.07)).toBe(
+      resolveMaxParallelChunks(worker, frames, mp, log),
+    );
+  });
+
+  it("measures frame cost only for graded media and only when sizing uses it", () => {
+    expect(planNeedsFrameCostMeasurement('<video data-color-grading=\'{"preset":"x"}\'>')).toBe(
+      true,
+    );
+    expect(planNeedsFrameCostMeasurement("<video src=a.mp4>")).toBe(false);
+    expect(chunkSizingUsesFrameCost({ workerTimeoutSeconds: LAMBDA_LIMIT })).toBe(true);
+    expect(chunkSizingUsesFrameCost({ workerTimeoutSeconds: LAMBDA_LIMIT, chunkSize: 48 })).toBe(
+      false,
+    );
+    expect(chunkSizingUsesFrameCost({})).toBe(false);
   });
 
   it("fails fast with a typed error when even 256 chunks cannot fit the limit", () => {
@@ -473,6 +551,28 @@ describe("resolveChunkPlan", () => {
   });
 });
 
+describe("plan() and page motion blur (R19)", () => {
+  const planCaptureMode = async (html: string, name: string) => {
+    const dir = join(runRoot, name);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "index.html"), html, "utf-8");
+    const planDir = join(runRoot, `${name}-plan`);
+    await plan(dir, { fps: 30, width: 320, height: 240, format: "mp4" }, planDir);
+    const meta = JSON.parse(readFileSync(join(planDir, "meta", "encoder.json"), "utf-8"));
+    return { captureMode: meta.captureMode ?? null, forceScreenshot: meta.forceScreenshot ?? null };
+  };
+
+  it("does not route a data-motion-blur composition through screenshot capture", async () => {
+    const blur = FIXTURE_HTML.replace(
+      'data-composition-id="root"',
+      'data-composition-id="root" data-motion-blur="on"',
+    );
+    const plain = await planCaptureMode(FIXTURE_HTML, "blur-plain");
+    const blurred = await planCaptureMode(blur, "blur-on");
+    expect(blurred).toEqual(plain);
+  }, 30_000);
+});
+
 describe("buildChunkSlices", () => {
   it("produces consecutive non-overlapping ranges covering all frames", () => {
     const slices = buildChunkSlices(700, 3, 240);
@@ -507,6 +607,38 @@ describe("plan() defaults", () => {
     );
     expect(fixed.chunkCount).toBe(3);
     expect(sized.chunkCount).toBe(1);
+  }, 30_000);
+
+  it("splits graded media into more chunks from its measured frame cost", async () => {
+    const measuredFor: string[] = [];
+    mock.module("./planFrameCost.js", () => ({
+      measurePlanSecondsPerFrame: async (input: { html: string }) => {
+        measuredFor.push(input.html);
+        return 10;
+      },
+    }));
+    const graded = join(runRoot, "project-graded");
+    mkdirSync(graded, { recursive: true });
+    writeFileSync(
+      join(graded, "index.html"),
+      FIXTURE_HTML.replace("<p>", `<p data-color-grading='{"exposure":0.2}'>`),
+      "utf-8",
+    );
+    const config = {
+      fps: 30,
+      width: 320,
+      height: 240,
+      format: "mp4",
+      workerTimeoutSeconds: 900,
+      workerConcurrency: 8,
+    } as const;
+    const cheap = await plan(projectDir, config, join(runRoot, "plan-cheap"));
+    expect(measuredFor).toHaveLength(0);
+    const costly = await plan(graded, config, join(runRoot, "plan-graded"));
+    expect(measuredFor).toHaveLength(1);
+    expect(cheap.chunkCount).toBe(1);
+    // 30 frames at 10 s each split as far as the 10-frame chunk floor allows.
+    expect(costly.chunkCount).toBe(3);
   }, 30_000);
 
   it("rejects at plan time when no chunk can finish inside the worker limit", async () => {
@@ -788,11 +920,7 @@ describe("plan() — golden planDir + planHash determinism", () => {
   // variant generates a 1s silent wav via `ffmpeg`, references it from
   // the composition, and runs plan() — exercising the audio-mix path
   // that produced the original bug.
-  const HAS_FFMPEG = spawnSync("ffmpeg", ["-version"]).status === 0;
-  const ffmpegOrThrow = (args: string[]) => {
-    const ffmpeg = spawnSync("ffmpeg", ["-nostdin", "-loglevel", "error", ...args]);
-    if (ffmpeg.status !== 0) throw new Error(`ffmpeg fixture failed: ${ffmpeg.stderr?.toString()}`);
-  };
+  const HAS_FFMPEG = spawnSync(getFfmpegBinary(), ["-version"]).status === 0;
 
   it.skipIf(!HAS_FFMPEG)(
     "plan.json.planHash matches recompute on an audio-bearing composition",
@@ -888,69 +1016,295 @@ describe("plan() — golden planDir + planHash determinism", () => {
   );
 });
 
-describe.skipIf(spawnSync("ffmpeg", ["-version"]).status !== 0)("stitched mp4 plans", () => {
-  function audioProject(name: string): string {
-    const dir = join(runRoot, name);
-    mkdirSync(dir, { recursive: true });
-    const tone = spawnSync("ffmpeg", [
-      "-nostdin",
-      "-v",
-      "error",
-      "-f",
-      "lavfi",
-      "-i",
-      "aevalsrc=0.99*sin(2*PI*440*t):s=48000:d=0.6",
-      "-c:a",
-      "pcm_s16le",
-      join(dir, "tone.wav"),
-    ]);
-    if (tone.status !== 0) throw new Error(`ffmpeg tone failed: ${tone.stderr}`);
-    writeFileSync(
-      join(dir, "index.html"),
-      `<!doctype html><html><head><meta charset="utf-8"></head><body>
-  <div data-composition-id="root" data-width="320" data-height="240" data-duration="1">
-    <audio data-composition-audio src="tone.wav"></audio>
-  </div></body></html>`,
-    );
-    return dir;
-  }
-
-  it("fits the audio length and peak and records the layout only for mp4 without cfr", async () => {
-    const project = audioProject("project-stitch");
-    const config = { fps: 30, width: 320, height: 240, format: "mp4" } as const;
-    const stitched = join(runRoot, "plan-stitch");
-    await buildLocalExecutionPlan(project, config, stitched, { chunksCarryAudio: true });
-    const encoder = JSON.parse(readFileSync(join(stitched, "meta", "encoder.json"), "utf-8"));
-    expect(encoder.chunksCarryAudio).toBe(true);
-    const probe = spawnSync(
-      "ffprobe",
-      [
+describe.skipIf(spawnSync(getFfmpegBinary(), ["-version"]).status !== 0)(
+  "stitched mp4 plans",
+  () => {
+    function audioProject(name: string, amplitude = 0.99, duration = 1): string {
+      const dir = join(runRoot, name);
+      mkdirSync(dir, { recursive: true });
+      const tone = spawnSync(getFfmpegBinary(), [
+        "-nostdin",
         "-v",
         "error",
-        "-show_entries",
-        "format=duration",
-        "-of",
-        "csv=p=0",
-        join(stitched, "audio.m4a"),
-      ],
-      { encoding: "utf-8" },
-    );
-    expect(Math.abs(Number(probe.stdout) - 1)).toBeLessThan(0.001);
-    const volume = spawnSync(
-      "ffmpeg",
-      ["-nostdin", "-i", join(stitched, "audio.m4a"), "-af", "volumedetect", "-f", "null", "-"],
-      { encoding: "utf-8" },
-    );
-    expect(Number(/max_volume: (-?[\d.]+) dB/.exec(volume.stderr)?.[1])).toBeLessThan(-1);
+        "-f",
+        "lavfi",
+        "-i",
+        `aevalsrc=${amplitude}*sin(2*PI*440*t):s=48000:d=0.6`,
+        "-c:a",
+        "pcm_s16le",
+        join(dir, "tone.wav"),
+      ]);
+      if (tone.status !== 0) throw new Error(`ffmpeg tone failed: ${tone.stderr}`);
+      writeFileSync(
+        join(dir, "index.html"),
+        `<!doctype html><html><head><meta charset="utf-8"></head><body>
+  <div data-composition-id="root" data-width="320" data-height="240" data-duration="${duration}">
+    <audio data-composition-audio src="tone.wav"></audio>
+  </div></body></html>`,
+      );
+      return dir;
+    }
 
-    const withCfr = join(runRoot, "plan-stitch-cfr");
-    await buildLocalExecutionPlan(project, { ...config, cfr: true }, withCfr, {
-      chunksCarryAudio: true,
-    });
-    const cfrEncoder = JSON.parse(readFileSync(join(withCfr, "meta", "encoder.json"), "utf-8"));
-    expect(cfrEncoder.chunksCarryAudio).toBeUndefined();
-  }, 60_000);
-});
+    it("fits the audio length and peak and records the layout only for mp4 without cfr", async () => {
+      const project = audioProject("project-stitch");
+      const config = { fps: 30, width: 320, height: 240, format: "mp4" } as const;
+      const stitched = join(runRoot, "plan-stitch");
+      await buildLocalExecutionPlan(project, config, stitched, { chunksCarryAudio: true });
+      const encoder = JSON.parse(readFileSync(join(stitched, "meta", "encoder.json"), "utf-8"));
+      expect(encoder.chunksCarryAudio).toBe(true);
+      const probe = spawnSync(
+        getFfprobeBinary(),
+        [
+          "-v",
+          "error",
+          "-show_entries",
+          "format=duration",
+          "-of",
+          "csv=p=0",
+          join(stitched, "audio.m4a"),
+        ],
+        { encoding: "utf-8" },
+      );
+      expect(Math.abs(Number(probe.stdout) - 1)).toBeLessThan(0.001);
+      const volume = spawnSync(
+        getFfmpegBinary(),
+        ["-nostdin", "-i", join(stitched, "audio.m4a"), "-af", "volumedetect", "-f", "null", "-"],
+        { encoding: "utf-8" },
+      );
+      expect(Number(/max_volume: (-?[\d.]+) dB/.exec(volume.stderr)?.[1])).toBeLessThan(-1);
+
+      const withCfr = join(runRoot, "plan-stitch-cfr");
+      await buildLocalExecutionPlan(project, { ...config, cfr: true }, withCfr, {
+        chunksCarryAudio: true,
+      });
+      const cfrEncoder = JSON.parse(readFileSync(join(withCfr, "meta", "encoder.json"), "utf-8"));
+      expect(cfrEncoder.chunksCarryAudio).toBeUndefined();
+    }, 60_000);
+
+    it("leaves the audio to buildPlanAudio, which makes the track the plan would", async () => {
+      // A hot tone, so the true-peak hold re-encodes as well.
+      const project = audioProject("project-separate-audio");
+      const config = { fps: 30, width: 320, height: 240, format: "mp4" } as const;
+      const carried = join(runRoot, "plan-carried-audio");
+      await buildLocalExecutionPlan(project, config, carried, { chunksCarryAudio: true });
+
+      const separate = join(runRoot, "plan-separate-audio");
+      await buildLocalExecutionPlan(project, config, separate, {
+        chunksCarryAudio: true,
+        deferAudio: true,
+      });
+      const encoder = JSON.parse(readFileSync(join(separate, "meta", "encoder.json"), "utf-8"));
+      expect([encoder.chunksCarryAudio, encoder.separateAudio]).toEqual([undefined, true]);
+      expect(existsSync(join(separate, "audio.m4a"))).toBe(false);
+
+      const work = join(runRoot, "separate-audio-work");
+      mkdirSync(work, { recursive: true });
+      const audio = join(work, "audio.m4a");
+      expect(await buildPlanAudio(project, config, work, audio)).toEqual({ hasAudio: true });
+      expect(readFileSync(audio).equals(readFileSync(join(carried, "audio.m4a")))).toBe(true);
+
+      const withCfr = join(runRoot, "plan-separate-audio-cfr");
+      await buildLocalExecutionPlan(project, { ...config, cfr: true }, withCfr, {
+        deferAudio: true,
+      });
+      const cfrEncoder = JSON.parse(readFileSync(join(withCfr, "meta", "encoder.json"), "utf-8"));
+      expect(cfrEncoder.separateAudio).toBeUndefined();
+      expect(existsSync(join(withCfr, "audio.m4a"))).toBe(true);
+    }, 60_000);
+
+    it("leaves webm and mov audio to buildPlanAudio too; png-sequence keeps its own", async () => {
+      const project = audioProject("project-separate-audio-formats");
+      const config = { fps: 30, width: 320, height: 240 } as const;
+      for (const [format, separate] of [
+        ["webm", true],
+        ["mov", true],
+        ["png-sequence", false],
+      ] as const) {
+        const dir = join(runRoot, `plan-separate-audio-${format}`);
+        await buildLocalExecutionPlan(project, { ...config, format }, dir, { deferAudio: true });
+        const encoder = JSON.parse(readFileSync(join(dir, "meta", "encoder.json"), "utf-8"));
+        expect({ format, separate: encoder.separateAudio === true }).toEqual({ format, separate });
+        expect({ format, mixed: existsSync(join(dir, "audio.m4a")) }).toEqual({
+          format,
+          mixed: !separate,
+        });
+      }
+    }, 60_000);
+
+    for (const slot of [
+      { name: "starts on the timeline", start: 0, duration: 1 },
+      { name: "starts before the timeline", start: -0.5, duration: 1.5 },
+    ]) {
+      it(`gives buildPlanAudio the sound of a video whose src the scene script sets and that ${slot.name}`, async () => {
+        const project = join(runRoot, `project-script-src-${slot.start}`);
+        mkdirSync(project, { recursive: true });
+        const clip = spawnSync(getFfmpegBinary(), [
+          "-nostdin",
+          "-v",
+          "error",
+          "-f",
+          "lavfi",
+          "-i",
+          "testsrc=s=320x240:r=30:d=1",
+          "-f",
+          "lavfi",
+          "-i",
+          "sine=frequency=440:sample_rate=48000:d=1",
+          "-c:v",
+          "libx264",
+          "-pix_fmt",
+          "yuv420p",
+          "-c:a",
+          "aac",
+          "-shortest",
+          join(project, "clip.mp4"),
+        ]);
+        if (clip.status !== 0) throw new Error(`ffmpeg clip failed: ${clip.stderr}`);
+        writeFileSync(
+          join(project, "index.html"),
+          `<!doctype html><html><head><meta charset="utf-8"></head><body>
+  <div data-composition-id="root" data-width="320" data-height="240" data-duration="1" data-no-timeline>
+    <video id="v" data-has-audio="true" data-start="${slot.start}" data-duration="${slot.duration}" playsinline></video>
+  </div>
+  <script>document.getElementById("v").src = "clip.mp4";</script></body></html>`,
+        );
+        const config = { fps: 30, width: 320, height: 240, format: "mp4" } as const;
+        const carried = join(runRoot, `plan-script-src-${slot.start}`);
+        await buildLocalExecutionPlan(project, config, carried, { chunksCarryAudio: true });
+        const work = join(runRoot, `script-src-work-${slot.start}`);
+        mkdirSync(work, { recursive: true });
+        const audio = join(work, "audio.m4a");
+        expect(await buildPlanAudio(project, config, work, audio)).toEqual({ hasAudio: true });
+        expect(readFileSync(audio).equals(readFileSync(join(carried, "audio.m4a")))).toBe(true);
+      }, 60_000);
+    }
+
+    it("keeps assembled loudness within 0.1 LUFS of the frame-fitted float delivery", async () => {
+      const project = audioProject("project-loudness-delivery", 0.3, 3.01);
+      ffmpegOrThrow([
+        "-f",
+        "lavfi",
+        "-i",
+        "anoisesrc=seed=2:amplitude=0.8:sample_rate=48000:duration=3.01",
+        "-af",
+        "pan=stereo|c0=c0|c1=c0",
+        "-c:a",
+        "pcm_f32le",
+        "-y",
+        join(project, "tone.wav"),
+      ]);
+      const video = join(runRoot, "loudness-video.mp4");
+      ffmpegOrThrow([
+        "-f",
+        "lavfi",
+        "-i",
+        "color=black:size=320x240:rate=30",
+        "-frames:v",
+        "91",
+        "-c:v",
+        "libx264",
+        "-pix_fmt",
+        "yuv420p",
+        "-y",
+        video,
+      ]);
+      const config = { fps: 30, width: 320, height: 240, format: "mp4", chunkSize: 1000 } as const;
+      const planDir = join(runRoot, "plan-loudness-delivery");
+      const planned = await buildLocalExecutionPlan(project, config, planDir);
+      expect(planned.totalFrames).toBe(91);
+      expect(planned.chunkCount).toBe(1);
+      const delivered = join(runRoot, "loudness-delivered.mp4");
+      await assemble(planDir, [video], join(planDir, "audio.m4a"), delivered);
+      const reference = join(runRoot, "loudness-reference.m4a");
+      const encoded = await encodeAac(join(project, "tone.wav"), reference, 91 / 30, {
+        timeout: 30_000,
+        filter: "apad,atrim=0:3.033333",
+      });
+      expect(encoded.success, encoded.stderr).toBe(true);
+      const held = await constrainAacTruePeak({
+        audioPath: reference,
+        sourcePath: join(project, "tone.wav"),
+        targetDurationSeconds: 91 / 30,
+      });
+      expect(held.success, held.error).toBe(true);
+      const measure = (path: string) => {
+        const result = spawnSync(
+          getFfmpegBinary(),
+          ["-nostdin", "-i", path, "-vn", "-af", "ebur128=peak=true", "-f", "null", "-"],
+          { encoding: "utf-8" },
+        );
+        expect(result.status, result.stderr).toBe(0);
+        const integrated = [...result.stderr.matchAll(/^\s*I:\s*([+-]?[\d.]+) LUFS$/gm)].at(
+          -1,
+        )?.[1];
+        const peak = [...result.stderr.matchAll(/^\s*Peak:\s*([+-]?[\d.]+) dBFS$/gm)].at(-1)?.[1];
+        if (integrated === undefined || peak === undefined)
+          throw new Error(`Missing loudness summary: ${result.stderr}`);
+        return { integratedTenths: Math.round(Number(integrated) * 10), peak: Number(peak) };
+      };
+      const actual = measure(delivered);
+      const expected = measure(reference);
+      expect(actual.peak).toBeLessThanOrEqual(-1);
+      // FFmpeg reports tenths of a LUFS. Compare those integer units without binary subtraction drift.
+      expect(Math.abs(actual.integratedTenths - expected.integratedTenths)).toBeLessThanOrEqual(1);
+    }, 60_000);
+
+    it.each([false, true])(
+      "encodes the audio once, at the frames' exact length (chunks carry audio: %s)",
+      async (chunksCarryAudio) => {
+        // 1.01 s at 30 fps is 31 frames: 49,600 samples, 48.4375 AAC frames of 1,024.
+        const project = audioProject(`project-one-encode-${chunksCarryAudio}`, 0.3, 1.01);
+        const shimDir = join(runRoot, `ffmpeg-shim-${chunksCarryAudio}`);
+        mkdirSync(shimDir, { recursive: true });
+        const shim = join(shimDir, "ffmpeg");
+        const calls = join(shimDir, "calls.txt");
+        writeFileSync(
+          shim,
+          `#!/bin/sh\necho "$*" >> "${calls}"\nexec "${getFfmpegBinary()}" "$@"\n`,
+        );
+        chmodSync(shim, 0o755);
+        const planDir = join(runRoot, `plan-one-encode-${chunksCarryAudio}`);
+        const previous = process.env[FFMPEG_PATH_ENV];
+        process.env[FFMPEG_PATH_ENV] = shim;
+        try {
+          await buildLocalExecutionPlan(
+            project,
+            { fps: 30, width: 320, height: 240, format: "mp4" },
+            planDir,
+            { chunksCarryAudio },
+          );
+        } finally {
+          if (previous === undefined) delete process.env[FFMPEG_PATH_ENV];
+          else process.env[FFMPEG_PATH_ENV] = previous;
+        }
+        const aacEncodes = readFileSync(calls, "utf-8")
+          .split("\n")
+          .filter((line) => / aac -b:a /.test(line));
+        expect(aacEncodes).toHaveLength(1);
+        const planAudio = join(planDir, "audio.m4a");
+        const shown = spawnSync(
+          getFfprobeBinary(),
+          [
+            "-v",
+            "error",
+            "-select_streams",
+            "a:0",
+            "-show_entries",
+            "stream=duration_ts",
+            "-of",
+            "csv=p=0",
+            "--",
+            planAudio,
+          ],
+          { encoding: "utf-8" },
+        );
+        // The edit list counts in ms, so 49,600 samples (1.0333 s) show as 1.033 s.
+        expect(Math.abs(Number(shown.stdout) - 49_600)).toBeLessThan(48);
+      },
+      60_000,
+    );
+  },
+);
 
 describe("plan() — codec knob", () => {
   const TIMEOUT_MS = 30_000;
@@ -1029,6 +1383,23 @@ describe("plan() — codec knob", () => {
     expect(caught).toBeInstanceOf(Error);
     expect((caught as Error).message).toMatch(/codec must be "h264" or "h265"/);
   });
+});
+
+describe("plan() motion blur intent", () => {
+  it("freezes explicit off into the plan identity while omission preserves the old plan", async () => {
+    const base = { fps: 30 as const, width: 320, height: 240, format: "mp4" as const };
+    const ordinaryDir = join(runRoot, "motion-blur-omitted");
+    const offDir = join(runRoot, "motion-blur-off");
+    mkdirSync(ordinaryDir, { recursive: true });
+    mkdirSync(offDir, { recursive: true });
+    const ordinary = await plan(projectDir, base, ordinaryDir);
+    const off = await plan(projectDir, { ...base, pageMotionBlur: "off" }, offDir);
+    const encoder = (dir: string) =>
+      JSON.parse(readFileSync(join(dir, "meta", "encoder.json"), "utf-8"));
+    expect(encoder(ordinaryDir)).not.toHaveProperty("pageMotionBlur");
+    expect(encoder(offDir).pageMotionBlur).toBe("off");
+    expect(off.planHash).not.toBe(ordinary.planHash);
+  }, 30_000);
 });
 
 describe("plan() — variables", () => {

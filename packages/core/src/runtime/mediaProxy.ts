@@ -156,7 +156,7 @@ function loadProxy(
  * render (the same check `syncRuntimeMedia`'s `skipForInjectedVideo` makes
  * in media.ts).
  */
-function isRenderMode(el: HTMLMediaElement): boolean {
+export function isRenderMode(el: HTMLMediaElement): boolean {
   if (window.__HF_EXPORT_RENDER_SEEK_CONFIG) return true;
   return isVideoElement(el) && !!findInjectedRenderFrame(el);
 }

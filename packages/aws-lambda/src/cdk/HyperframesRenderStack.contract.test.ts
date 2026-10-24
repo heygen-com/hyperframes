@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { App, Stack } from "aws-cdk-lib";
 import { Template } from "aws-cdk-lib/assertions";
+import { CONTENT_STORE_PREFIX, CONTENT_STORE_RETENTION_DAYS } from "../contentStore.js";
 import { HyperframesRenderStack } from "./HyperframesRenderStack.js";
 
 // CDK synth is slow on cold start and reached 32s under full-workspace CI
@@ -61,7 +62,7 @@ describe("HyperframesRenderStack — contract", () => {
     });
   });
 
-  it("provisions exactly one S3 bucket with PublicAccessBlockConfiguration and a 7-day intermediates lifecycle", () => {
+  it("provisions exactly one S3 bucket with PublicAccessBlockConfiguration and a 7-day intermediates and 30-day shared content lifecycle", () => {
     const t = DEFAULT_TEMPLATE;
     t.resourceCountIs("AWS::S3::Bucket", 1);
     t.hasResourceProperties("AWS::S3::Bucket", {
@@ -78,6 +79,12 @@ describe("HyperframesRenderStack — contract", () => {
             Status: "Enabled",
             Prefix: "renders/",
             ExpirationInDays: 7,
+          },
+          {
+            Id: "ExpireSharedContent",
+            Status: "Enabled",
+            Prefix: `${CONTENT_STORE_PREFIX}/`,
+            ExpirationInDays: CONTENT_STORE_RETENTION_DAYS,
           },
         ],
       },
