@@ -7,6 +7,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
 const SCANNABLE = new Set([".ts", ".tsx", ".mjs", ".js", ".css", ".py", ".md"]);
@@ -998,7 +999,7 @@ function proveGateCanFail() {
   process.exit(2);
 }
 
-if (process.argv[1] && import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const root = process.cwd();
   proveGateCanFail();
   const explicit = process.argv.slice(2);

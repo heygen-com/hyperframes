@@ -11,7 +11,9 @@ const ENTRY = resolve(here, "../packages/core/src/figma/sanitizeSvg.ts");
 const OUTFILE = resolve(here, "../packages/cli/src/media-use/lib/svg-sanitize.mjs");
 // scripts/ has no node_modules of its own (bun's per-consumer linking); reach into the one
 // package that already depends on esbuild rather than adding a root-level dependency.
-const { build } = await import(resolve(here, "../packages/core/node_modules/esbuild/lib/main.js"));
+const { build } = await import(
+  new URL("../packages/core/node_modules/esbuild/lib/main.js", import.meta.url).href
+);
 
 const HEADER = `// GENERATED — do not hand-edit. Source: packages/core/src/figma/sanitizeSvg.ts, bundled by
 // scripts/generate-media-use-svg-sanitize.mjs so media-use's zero-install \`node --test\` lane can
@@ -31,7 +33,7 @@ export async function generate() {
   return HEADER + result.outputFiles[0].text;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const code = await generate();
   writeFileSync(OUTFILE, code);
   console.log(`wrote ${OUTFILE} (${code.length} bytes)`);
