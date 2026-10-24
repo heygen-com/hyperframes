@@ -418,17 +418,21 @@ function proxyScaleFilter(box?: PreviewProxyBox): string {
   return `scale=${side("iw")}:${side("ih")}`;
 }
 
-const STDERR_ERROR_LINE = /error|invalid|denied|no space|not found|unknown/i;
+const STDERR_ERROR_LINE = /error|invalid|denied|no space|not found|unknown|no path between/i;
 
-/** ffmpeg ends most failures with "Conversion failed!"; the cause is the last error-looking line above it. */
+const STDERR_WRAPPER_LINE =
+  /Conversion failed|Error opening output files|Error while filtering|Generic error in an external library|Task finished with error|Terminating thread|Could not open encoder|Nothing was written/i;
+
+/** The last error-looking line that names a cause, not ffmpeg's wrap-up of it. */
 function stderrReason(stderrTail: string): string {
   const lines = stderrTail
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean);
   const errorLines = lines.filter((line) => STDERR_ERROR_LINE.test(line));
-  const line = errorLines.at(-1) ?? lines.at(-1);
-  return line ? `: ${line.replace(/[.!]+$/, "")}` : "";
+  const cause = errorLines.filter((line) => !STDERR_WRAPPER_LINE.test(line));
+  const line = cause.at(-1) ?? errorLines.at(-1) ?? lines.at(-1);
+  return line ? `: ${line.replace(/ @ 0x[0-9a-f]+/gi, "").replace(/[.!]+$/, "")}` : "";
 }
 
 interface ChunkRange {

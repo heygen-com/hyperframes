@@ -1145,6 +1145,32 @@ describe("resolveProxy", () => {
     expect(leftover).toEqual([]);
   });
 
+  it("names the filter error, not ffmpeg's 'Error opening output files' wrap-up", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    const { resolveProxy } = await loadModule(spawn, FFMPEG_PATH);
+    const projectDir = tmpProject();
+    const sourcePath = join(projectDir, "hdr.mov");
+    writeFileSync(sourcePath, "source-bytes");
+
+    const resultPromise = resolveProxy(projectDir, sourcePath);
+    await flush();
+    fail(
+      calls[0]!,
+      234,
+      [
+        "[Parsed_zscale_0 @ 0x6000020bc000] code 3074: no path between colorspaces",
+        "[vf#0:0 @ 0x107815c00] Error while filtering: Generic error in an external library",
+        "[vost#0:0/libx264 @ 0x106f04900] Could not open encoder before EOF",
+        "Error opening output files: Invalid argument",
+      ].join("\n"),
+    );
+
+    await expect(resultPromise).rejects.toMatchObject({
+      message:
+        "ffmpeg exited with code 234: [Parsed_zscale_0] code 3074: no path between colorspaces",
+    });
+  });
+
   it("remembers a failure per cache key: a second call rethrows without respawning ffmpeg", async () => {
     const { spawn, calls } = createSpawnSpy();
     const { resolveProxy, ProxyTranscodeError, clearFailedTranscodesForTest } = await loadModule(
