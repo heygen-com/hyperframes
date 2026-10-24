@@ -7,7 +7,7 @@ import { liveTime, usePlayerStore, type ZoomMode } from "../store/playerStore";
 import { useTimelinePlayhead } from "./useTimelinePlayhead";
 import { useTimelineScrollViewport } from "./useTimelineScrollViewport";
 import { useTimelineClipRenderWindow } from "./useTimelineClipRenderWindow";
-import { requestTimelineZoom, settleTimelineZoom } from "./timelineZoomInput";
+import { requestTimelineZoom, settleTimelineZoom, zoomTimelineStep } from "./timelineZoomInput";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
@@ -367,6 +367,28 @@ describe("useTimelinePlayhead wheel zoom", () => {
     expect(usePlayerStore.getState().manualZoomPercent).toBe(100);
     wheel(scroll, { metaKey: true });
     expect(usePlayerStore.getState().manualZoomPercent).toBeGreaterThan(100);
+  });
+
+  it("lands a Zoom button's glide on a plain wheel, so the wheel scrolls the landed zoom", () => {
+    // The glide times itself by performance.now().
+    vi.useFakeTimers({
+      toFake: [
+        "requestAnimationFrame",
+        "cancelAnimationFrame",
+        "setTimeout",
+        "clearTimeout",
+        "performance",
+      ],
+    });
+    const scroll = scrollBox(0);
+    mount({ scroll });
+    act(() => {
+      zoomTimelineStep("in");
+      vi.advanceTimersToNextFrame();
+    });
+    expect(usePlayerStore.getState().timelinePps).toBe(100);
+    previewWheel(scroll, {});
+    expect(usePlayerStore.getState().timelinePps).toBeCloseTo(200);
   });
 
   it("keeps previewing a pinch through a scroll, laying it out only at rest", () => {
