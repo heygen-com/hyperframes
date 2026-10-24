@@ -47,6 +47,15 @@ describe("studio UI preferences", () => {
     expect(readStudioUiPreferences(storage)).toEqual({});
   });
 
+  it("remembers the timeline track density and drops unknown values", () => {
+    const storage = createStorage();
+    writeStudioUiPreferences({ timelineTrackDensity: "compact" }, storage);
+    expect(readStudioUiPreferences(storage)).toEqual({ timelineTrackDensity: "compact" });
+
+    storage.setItem("hf-studio-ui-preferences", JSON.stringify({ timelineTrackDensity: "tiny" }));
+    expect(readStudioUiPreferences(storage)).toEqual({});
+  });
+
   it("keeps no preview zoom, so every project opens at Fit", () => {
     const storage = createStorage();
     storage.setItem(

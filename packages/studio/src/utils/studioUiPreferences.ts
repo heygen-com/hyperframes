@@ -3,6 +3,7 @@ import { parseDockLayout } from "../components/dock/dockLayoutSchema";
 
 export type TimelineTimeDisplayMode = "time" | "frame";
 export type StudioTheme = "light" | "dark";
+export type TimelineTrackDensity = "comfortable" | "compact";
 
 export interface StudioUiPreferences {
   timelineVisible?: boolean;
@@ -26,6 +27,7 @@ export interface StudioUiPreferences {
   rippleEditEnabled?: boolean;
   /** Transport + ruler readout mode: timecode or frame number. */
   timeDisplayMode?: TimelineTimeDisplayMode;
+  timelineTrackDensity?: TimelineTrackDensity;
   /**
    * Timeline zoom mode. Persisted so a zoom PINNED on the first edit survives the
    * post-edit iframe reload — otherwise the store reset to "fit" and the duration
@@ -135,6 +137,12 @@ function readStorage(storage: Storage | null, key: string): StudioUiPreferences 
     if (parsed.theme === "light" || parsed.theme === "dark") preferences.theme = parsed.theme;
     if (parsed.timeDisplayMode === "time" || parsed.timeDisplayMode === "frame") {
       preferences.timeDisplayMode = parsed.timeDisplayMode;
+    }
+    if (
+      parsed.timelineTrackDensity === "comfortable" ||
+      parsed.timelineTrackDensity === "compact"
+    ) {
+      preferences.timelineTrackDensity = parsed.timelineTrackDensity;
     }
     if (parsed.timelineZoomMode === "fit" || parsed.timelineZoomMode === "manual") {
       preferences.timelineZoomMode = parsed.timelineZoomMode;

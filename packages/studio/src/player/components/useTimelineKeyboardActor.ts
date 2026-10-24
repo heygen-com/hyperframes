@@ -1,6 +1,6 @@
 import { useCallback, useMemo, type FocusEvent, type KeyboardEvent, type RefObject } from "react";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
-import { RULER_H, TRACK_H, type TimelineRowGeometry } from "./timelineLayout";
+import { RULER_H, type TimelineRowGeometry } from "./timelineLayout";
 import {
   isTimelineNavigationKey,
   locateTimelineLogicalTarget,
@@ -88,8 +88,8 @@ export function scrollKeyboardInsertRow(
 ): void {
   const top = geometry.getRowTop(row);
   if (top < viewport.scrollTop + RULER_H) viewport.scrollTop = Math.max(0, top - RULER_H);
-  else if (top + TRACK_H > viewport.scrollTop + viewport.clientHeight)
-    viewport.scrollTop = top + TRACK_H - viewport.clientHeight;
+  else if (top + geometry.trackHeight > viewport.scrollTop + viewport.clientHeight)
+    viewport.scrollTop = top + geometry.trackHeight - viewport.clientHeight;
 }
 
 export function timelineKeyboardEventTarget(
