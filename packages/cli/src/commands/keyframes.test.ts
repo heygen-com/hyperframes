@@ -158,6 +158,81 @@ describe("keyframes composed-ancestor surfacing (nested elements)", () => {
     const { tweens } = surfaceComposition(html, "index.html", "index.html");
     expect(tweens.find((t) => t.target === "#core")?.composedWith).toBeUndefined();
   });
+
+  it.each(["template", "nested template"])(
+    "keeps the parent motion of a child authored in a %s",
+    (mode) => {
+      const content = `<div id="hero"><div id="core" class="clip"></div></div><script>
+        const tl = gsap.timeline({ paused: true });
+        tl.to("#hero", { keyframes: { "0%": { x: -300 }, "100%": { x: 300 } }, duration: 4 }, 0);
+        tl.to("#core", { keyframes: { "0%": { scale: 1 }, "100%": { scale: 1.5 } }, duration: 4 }, 0);
+        window.__timelines = { beat: tl };
+      </script>`;
+      const html =
+        mode === "template"
+          ? `<template>${content}</template>`
+          : `<template><div><template>${content}</template></div></template>`;
+      const { tweens } = surfaceComposition(html, "beat.html", "beat.html");
+      expect(tweens).toHaveLength(2);
+      expect(tweens.find((t) => t.target === "#core")?.composedWith).toEqual([
+        { selector: "#hero", summary: "x -300..300" },
+      ]);
+    },
+  );
+
+  it("keeps animated ancestors ordered from the parent to the outer group", () => {
+    const html = `<template><div id="stage"><div id="hero"><div id="core"></div></div></div><script>
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo("#stage", { y: 0 }, { y: 100, duration: 4 }, 0);
+      tl.fromTo("#hero", { x: 0 }, { x: 300, duration: 4 }, 0);
+      tl.fromTo("#core", { scale: 1 }, { scale: 1.5, duration: 4 }, 0);
+      window.__timelines = { beat: tl };
+    </script></template>`;
+    const { tweens } = surfaceComposition(html, "beat.html", "beat.html");
+    expect(tweens.find((t) => t.target === "#core")?.composedWith).toEqual([
+      { selector: "#hero", summary: "x 0..300" },
+      { selector: "#stage", summary: "y 0..100" },
+    ]);
+  });
+
+  it("keeps implicit parent starting values unresolved inside a template", () => {
+    const html = `<template><div id="hero"><div id="core"></div></div><script>
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#hero", { x: 300, duration: 4 }, 0);
+      tl.to("#core", { scale: 1.5, duration: 4 }, 0);
+      window.__timelines = { beat: tl };
+    </script></template>`;
+    const { tweens } = surfaceComposition(html, "beat.html", "beat.html");
+    const hero = tweens.find((t) => t.target === "#hero");
+    expect(hero?.keyframes[0]?.properties.x).toBeUndefined();
+    expect(hero?.unresolved).toContain("endpointProperties");
+    expect(tweens.find((t) => t.target === "#core")?.composedWith).toEqual([
+      { selector: "#hero", summary: "(no resolved variation; runtime verification required)" },
+    ]);
+  });
+
+  it("uses document matches before template matches for a repeated selector", () => {
+    const html = `<div id="core"></div><template><div id="hero"><div id="core"></div></div><script>
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#hero", { x: 300, duration: 4 }, 0);
+      tl.to("#core", { scale: 1.5, duration: 4 }, 0);
+      window.__timelines = { beat: tl };
+    </script></template>`;
+    const { tweens } = surfaceComposition(html, "beat.html", "beat.html");
+    expect(tweens.find((t) => t.target === "#core")?.composedWith).toBeUndefined();
+  });
+
+  it("does not treat an animated sibling as a template child's ancestor", () => {
+    const html = `<template><div id="hero"></div><div id="core"></div><script>
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#hero", { x: 300, duration: 4 }, 0);
+      tl.to("#core", { scale: 1.5, duration: 4 }, 0);
+      window.__timelines = { beat: tl };
+    </script></template>`;
+    const { tweens } = surfaceComposition(html, "beat.html", "beat.html");
+    expect(tweens).toHaveLength(2);
+    expect(tweens.every((tween) => tween.composedWith === undefined)).toBe(true);
+  });
 });
 
 describe("keyframes runtime surfacing", () => {
