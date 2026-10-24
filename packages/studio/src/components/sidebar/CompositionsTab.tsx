@@ -19,6 +19,7 @@ import { thumbnailRevisionOf } from "../../player/store/thumbnailSlice";
 import { encodePreviewPath } from "../../player/components/thumbnailUtils";
 import { TIMELINE_COMPOSITION_MIME } from "../../utils/timelineCompositionDrop";
 import { Tooltip } from "../ui/Tooltip";
+import { useDockLayoutStore } from "../dock/dockLayoutStore";
 
 interface CompositionsTabProps {
   projectId: string;
@@ -453,6 +454,22 @@ function CompCard({
   );
 }
 
+/** Guidance block pointing new users at the catalog's starter scenes. */
+function StarterScenesNudge({ sentence }: { sentence: string }) {
+  return (
+    <>
+      <p className="text-xs text-neutral-600 text-center">{sentence}</p>
+      <button
+        type="button"
+        onClick={() => useDockLayoutStore.getState().activatePanel("catalog")}
+        className="px-2.5 py-1 text-[11px] font-medium rounded-md bg-panel-input text-panel-text-3 hover:text-panel-text-1 active:scale-[0.98] transition-colors"
+      >
+        Browse starter scenes
+      </button>
+    </>
+  );
+}
+
 export const CompositionsTab = memo(function CompositionsTab({
   projectId,
   compositions,
@@ -468,8 +485,8 @@ export const CompositionsTab = memo(function CompositionsTab({
   const previewBooted = usePlayerStore((state) => state.previewBooted);
   if (compositions.length === 0) {
     return (
-      <div className="flex-1 flex items-center justify-center px-4">
-        <p className="text-xs text-neutral-600 text-center">No compositions found</p>
+      <div className="flex-1 flex flex-col items-center justify-center px-4 gap-2">
+        <StarterScenesNudge sentence="No compositions yet: a composition is an HTML scene in your project" />
       </div>
     );
   }
@@ -492,6 +509,13 @@ export const CompositionsTab = memo(function CompositionsTab({
           previewBooted={previewBooted}
         />
       ))}
+      {/* A fresh project has exactly one composition (the root index.html),
+          which the guidance above treats like an empty project. */}
+      {compositions.length === 1 && (
+        <div className="px-4 py-3 flex flex-col items-center gap-2 border-t border-neutral-800/60">
+          <StarterScenesNudge sentence="Only one composition so far: starter scenes are the fastest way to add more" />
+        </div>
+      )}
     </div>
   );
 });
