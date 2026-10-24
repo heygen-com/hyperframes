@@ -1612,6 +1612,7 @@ describe("core rules", () => {
       expect(finding).toBeDefined();
       expect(finding?.severity).toBe("error");
       expect(finding?.message).toContain("Missed semicolon");
+      expect(finding?.fixHint).toMatch(/reported line/);
     });
   });
 });

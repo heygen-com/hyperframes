@@ -727,6 +727,8 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
           code: "css_parse_error",
           severity: "error",
           message: `CSS parse error: ${error instanceof Error ? error.message : "unknown"}`,
+          fixHint:
+            "Check the CSS at the reported line for an unclosed brace, quote, or comment, or a missing semicolon between declarations.",
         });
         continue;
       }

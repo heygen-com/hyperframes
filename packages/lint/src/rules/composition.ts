@@ -463,6 +463,8 @@ function variablesDeclarationFindings(
         code: "invalid_composition_variables_declaration",
         severity: "error",
         message: `data-composition-variables entry [${i}] must be an object with id, type, label, and default.`,
+        fixHint:
+          'Replace the entry with an object such as {"id":"title","type":"string","label":"Title","default":"Hello"}.',
         snippet: truncateSnippet(tag.raw),
       });
       continue;
@@ -478,6 +480,7 @@ function variablesDeclarationFindings(
         code: "invalid_composition_variables_declaration",
         severity: "error",
         message: `data-composition-variables entry [${i}] is missing or has invalid: ${missing.join(", ")}. Type must be one of string, number, color, boolean, enum, font, image.`,
+        fixHint: `Give entry [${i}] a string id and label, a supported type, and a default, e.g. {"id":"title","type":"string","label":"Title","default":"Hello"}.`,
         snippet: truncateSnippet(tag.raw),
       });
       continue;

@@ -1259,6 +1259,7 @@ describe("composition rules", () => {
       expect(findings.length).toBe(1);
       expect(findings[0]?.message).toMatch(/\[1\]/);
       expect(findings[0]?.message).toMatch(/type|label|default/);
+      expect(findings[0]?.fixHint).toMatch(/entry \[1\]/);
     });
 
     it("warns when a declaration uses an unknown type", async () => {
@@ -1269,6 +1270,17 @@ describe("composition rules", () => {
       );
       expect(finding).toBeDefined();
       expect(finding?.message).toMatch(/type/);
+      expect(finding?.fixHint).toBeTruthy();
+    });
+
+    it("gives a fix hint when an entry is not an object", async () => {
+      const html = `<html data-composition-variables='["title"]'><body><div data-composition-id="x"></div></body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find(
+        (f) => f.code === "invalid_composition_variables_declaration",
+      );
+      expect(finding?.message).toMatch(/must be an object/);
+      expect(finding?.fixHint).toMatch(/"id":"title"/);
     });
 
     it("does not warn for a fully valid declarations array", async () => {
