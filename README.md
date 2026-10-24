@@ -61,6 +61,11 @@ npx skills add heygen-com/hyperframes
 >
 > `skills add` resolves the skills.sh registry blob, which can lag `main` by hours. `npx hyperframes skills update` installs from the current `main`, so reach for it when you need the newest copy of a skill.
 
+Run project-local installs from your video project's directory. From a HyperFrames
+checkout, use `npx hyperframes skills update` for a global install instead: a
+project-local installer target can overlap the tracked `skills/` source and
+overwrite uncommitted edits. See [contributor setup](CONTRIBUTING.md#getting-started).
+
 Try a prompt like:
 
 > Using `/hyperframes`, create a 10-second product intro with a fade-in title, a background video, and subtle background music.
