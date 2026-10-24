@@ -54,6 +54,7 @@ import {
 } from "../utils/lintProject.js";
 import { formatLintFindings } from "../utils/lintFormat.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
+import { describeSharpLoadFailure } from "../utils/sharpLoadFailure.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
 import { c } from "../ui/colors.js";
 import { writeCaptureFileSync } from "../capture/captureFile.js";
@@ -554,6 +555,7 @@ async function captureSnapshots(
   const server = await serveCapturePage(projectDir, html, opts.autoProxy);
 
   const savedPaths: string[] = [];
+  let pairSheetFailure: string | null = null;
 
   try {
     const {
@@ -617,7 +619,7 @@ async function captureSnapshots(
       });
 
       if (duration <= 0 && !opts.at?.length) {
-        return { paths: [], warnings };
+        return { paths: [], warnings, pairSheetsSkipped: false };
       }
 
       const readTiming = () =>
@@ -976,14 +978,24 @@ async function captureSnapshots(
             const refPath = join(snapshotDir, `ref-${slot}.png`);
             writeCaptureFileSync(refPath, refPng);
             const pairPath = join(snapshotDir, `pair-${slot}.jpg`);
-            const { createContactSheet } = await import("../capture/contactSheet.js");
-            await createContactSheet([framePath, refPath], pairPath, {
-              cols: 2,
-              maxImages: 2,
-              cellWidth: 960,
-              labelMode: "custom",
-              labels: ["render", "reference"],
-            });
+            if (!pairSheetFailure) {
+              try {
+                const { createContactSheet } = await import("../capture/contactSheet.js");
+                await createContactSheet([framePath, refPath], pairPath, {
+                  cols: 2,
+                  maxImages: 2,
+                  cellWidth: 960,
+                  labelMode: "custom",
+                  labels: ["render", "reference"],
+                });
+              } catch (err) {
+                pairSheetFailure = describeSharpLoadFailure(err);
+                if (!pairSheetFailure) throw err;
+                console.error(
+                  `   ${c.warn("⚠")} Reference pair sheets skipped: ${pairSheetFailure}`,
+                );
+              }
+            }
           }
         }
         // Only the capture itself is a "snapshot": the reference frame and the
@@ -1018,6 +1030,7 @@ async function captureSnapshots(
   return {
     paths: savedPaths,
     warnings,
+    pairSheetsSkipped: pairSheetFailure !== null,
     ...(review && reviewList
       ? {
           review: {
@@ -1037,6 +1050,8 @@ interface CapturedSnapshots {
   paths: string[];
   /** Why a frame may differ from the composition: shown on the console and in `--json`. */
   warnings: string[];
+  /** --against wrote no pair sheets because sharp could not load. */
+  pairSheetsSkipped: boolean;
   review?: { plan: ReviewPlan; frames: Array<ReviewFrame & { path: string }> };
 }
 
@@ -1388,7 +1403,9 @@ export default defineCommand({
         }
         if (against) {
           log(
-            `   ${c.dim("ref-*.png + pair-*.jpg")} beside each frame (reference frame, render | reference sheet)`,
+            captured.pairSheetsSkipped
+              ? `   ${c.dim("ref-*.png")} beside each frame (reference frame)`
+              : `   ${c.dim("ref-*.png + pair-*.jpg")} beside each frame (reference frame, render | reference sheet)`,
           );
         }
 
@@ -1422,7 +1439,7 @@ export default defineCommand({
           }
         } catch (err) {
           console.warn(
-            `   ${c.warn("⚠")} Contact sheet skipped: ${normalizeErrorMessage(err)}. Individual snapshot PNGs are still available.`,
+            `   ${c.warn("⚠")} Contact sheet skipped: ${describeSharpLoadFailure(err) ?? normalizeErrorMessage(err)}. Individual snapshot PNGs are still available.`,
           );
         }
 
@@ -1459,10 +1476,11 @@ export default defineCommand({
               // limit. Full 1920×1080 PNGs are typically 3-6 MB. Use sharp if it is
               // already there (never installed for this); otherwise skip files over the limit.
               let sharp: ReturnType<typeof loadInstalledSharp> = null;
+              let sharpFailure: string | null = null;
               try {
                 sharp = loadInstalledSharp("--describe");
-              } catch {
-                /* a copy that cannot load — fall back to size check */
+              } catch (err) {
+                sharpFailure = describeSharpLoadFailure(err);
               }
 
               const results = await Promise.allSettled(
@@ -1480,7 +1498,9 @@ export default defineCommand({
                     if (raw.length > 3_800_000)
                       return {
                         filename,
-                        desc: "file too large for Gemini — install sharp to enable auto-resize",
+                        desc: sharpFailure
+                          ? "file too large for Gemini — sharp failed to load, so it was not resized"
+                          : "file too large for Gemini — install sharp to enable auto-resize",
                       };
                     imageData = raw;
                   }
