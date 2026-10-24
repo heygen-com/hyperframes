@@ -10,6 +10,7 @@ import { canSplitElement } from "../utils/timelineElementSplit";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import { STUDIO_PLAIN_KEYS } from "../player/components/studioShortcuts";
 import { openAudioGainDialog } from "../player/components/audioGainDialogStore";
+import { zoomToSelectedClips } from "../player/components/timelineSelectionZoom";
 import type { LinkShortcutCallbacks } from "./linkShortcuts";
 
 // Extracted from useAppHotkeys.ts to keep it under the studio 600-line cap,
@@ -197,6 +198,12 @@ export function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCa
       event.preventDefault();
       return;
     }
+  }
+
+  if (key === STUDIO_PLAIN_KEYS.zoomToSelection && !event.shiftKey && !event.altKey) {
+    event.preventDefault();
+    void zoomToSelectedClips();
+    return;
   }
 
   if (key === "b" && !event.shiftKey && !event.altKey) {

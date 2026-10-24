@@ -344,6 +344,66 @@ describe("TimelineToolbar Fit", () => {
     expect(usePlayerStore.getState().userZoomCount).toBe(before + 1);
     act(() => root.unmount());
   });
+  describe("zoom to selected clips", () => {
+    const clips = [0, 40, 50].map((start, i) => ({
+      id: `c${i}`,
+      tag: "div",
+      start,
+      duration: 10,
+      track: i,
+    }));
+    let unregister = () => {};
+    beforeEach(() => {
+      unregister = mountTimelineViewport();
+      usePlayerStore.setState({
+        elements: clips,
+        selectedElementId: null,
+        selectedElementIds: new Set(),
+      });
+    });
+    afterEach(() => {
+      for (let i = 0; i < 40; i++) vi.advanceTimersToNextFrame();
+      unregister();
+      usePlayerStore.setState({
+        elements: [],
+        selectedElementId: null,
+        selectedElementIds: new Set(),
+      });
+    });
+
+    const button = (host: HTMLElement) =>
+      host.querySelector<HTMLButtonElement>('button[aria-label="Zoom to selected clips"]')!;
+
+    it("is disabled with nothing selected and enabled once a clip is", () => {
+      const { host, root } = renderToolbar();
+      expect(button(host).disabled).toBe(true);
+      act(() => usePlayerStore.getState().setSelection(["c1"], "c1"));
+      expect(button(host).disabled).toBe(false);
+      act(() => root.unmount());
+    });
+
+    it("zooms so the selected clips fill the timeline", () => {
+      const { host, root } = renderToolbar();
+      act(() => usePlayerStore.getState().setSelection(["c1", "c2"], "c1"));
+      act(() => button(host).dispatchEvent(new MouseEvent("click", { bubbles: true })));
+      for (let i = 0; i < 40; i++) act(() => vi.advanceTimersToNextFrame());
+      // 1080 - (32 + 24) - 24 = 1000px for the 20s from c1's start to c2's end.
+      expect(usePlayerStore.getState().timelinePps).toBeCloseTo(1000 / 20);
+      act(() => root.unmount());
+    });
+
+    it("does the same on Z, and leaves the zoom alone on Z with nothing selected", () => {
+      const z = () =>
+        dispatchPlainKey(new KeyboardEvent("keydown", { key: "z" }), "z", {} as HotkeyCallbacks);
+      z();
+      for (let i = 0; i < 40; i++) vi.advanceTimersToNextFrame();
+      expect(usePlayerStore.getState().zoomMode).toBe("fit");
+      usePlayerStore.getState().setSelection(["c0"], "c0");
+      z();
+      for (let i = 0; i < 40; i++) vi.advanceTimersToNextFrame();
+      expect(usePlayerStore.getState().timelinePps).toBeCloseTo(1000 / 10);
+    });
+  });
 });
 
 describe("TimelineToolbar audio meters", () => {
