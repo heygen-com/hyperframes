@@ -226,10 +226,14 @@ describe("ArtifactTransaction", () => {
   it("does not probe duration when the caller passes no expectation", async () => {
     const dir = tempDir();
     const destination = join(dir, "render.mp4");
-    const transaction = new ArtifactTransaction(destination, "file", undefined, neverCalled);
+    const debug = vi.fn();
+    const transaction = new ArtifactTransaction(destination, "file", undefined, neverCalled, {
+      debug,
+    });
     writeFileSync(transaction.stagingPath, "any-non-empty-bytes");
 
     await expect(transaction.validate()).resolves.toBeUndefined();
+    expect(debug).not.toHaveBeenCalled();
 
     transaction.rollback();
   });
@@ -346,16 +350,18 @@ describe("ArtifactTransaction", () => {
     }
   });
 
-  it.each([undefined, 0, -1, Number.NaN])(
-    "validates video duration quietly when the probe returns %s frames",
+  it.each([undefined, 0, -1, Number.NaN, Number.POSITIVE_INFINITY])(
+    "reports an unavailable frame-count check at debug level for %s frames",
     async (frames) => {
       const dir = tempDir();
       const probe: ArtifactDurationProbe = async () => ({ durationSeconds: 4, frames });
+      const debug = vi.fn();
       const transaction = new ArtifactTransaction(
         join(dir, "render.webm"),
         "file",
         undefined,
         probe,
+        { debug },
       );
       writeFileSync(transaction.stagingPath, "video");
       const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -364,9 +370,142 @@ describe("ArtifactTransaction", () => {
         await expect(
           transaction.validate({ expectedDurationSeconds: 4, fps: 30, expectedFrames: 120 }),
         ).resolves.toBeUndefined();
+        expect(debug).toHaveBeenCalledExactlyOnceWith(
+          "[Render] Frame-count validation skipped: no usable frame count was reported.",
+          {
+            event: "artifact_frame_count_unavailable",
+            artifact: transaction.destinationPath,
+            expectedFrames: 120,
+          },
+        );
         expect(warn).not.toHaveBeenCalled();
       } finally {
         warn.mockRestore();
+        transaction.rollback();
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("keeps stdout and stderr quiet when frame counts are unavailable with the default logger", async () => {
+    const dir = tempDir();
+    const probe: ArtifactDurationProbe = async () => ({ durationSeconds: 4 });
+    const transaction = new ArtifactTransaction(join(dir, "render.webm"), "file", undefined, probe);
+    writeFileSync(transaction.stagingPath, "video");
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const consoleWrites = (["log", "info", "debug", "warn", "error"] as const).map((method) =>
+      vi.spyOn(console, method).mockImplementation(() => {}),
+    );
+
+    try {
+      await expect(
+        transaction.validate({ expectedDurationSeconds: 4, fps: 30, expectedFrames: 120 }),
+      ).resolves.toBeUndefined();
+      expect(stdout).not.toHaveBeenCalled();
+      expect(stderr).not.toHaveBeenCalled();
+      for (const write of consoleWrites) expect(write).not.toHaveBeenCalled();
+    } finally {
+      stdout.mockRestore();
+      stderr.mockRestore();
+      for (const write of consoleWrites) write.mockRestore();
+      transaction.rollback();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not report unavailable frame counts when only duration is expected", async () => {
+    const dir = tempDir();
+    const probe: ArtifactDurationProbe = async () => ({ durationSeconds: 4 });
+    const debug = vi.fn();
+    const transaction = new ArtifactTransaction(
+      join(dir, "render.webm"),
+      "file",
+      undefined,
+      probe,
+      {
+        debug,
+      },
+    );
+    writeFileSync(transaction.stagingPath, "video");
+
+    try {
+      await expect(transaction.validate({ expectedDurationSeconds: 4 })).resolves.toBeUndefined();
+      expect(debug).not.toHaveBeenCalled();
+    } finally {
+      transaction.rollback();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it.each([120, 119, 90])(
+    "checks a reported count of %s without an unavailable-count event",
+    async (frames) => {
+      const dir = tempDir();
+      const probe: ArtifactDurationProbe = async () => ({ durationSeconds: 4, frames });
+      const debug = vi.fn();
+      const transaction = new ArtifactTransaction(
+        join(dir, "render.mp4"),
+        "file",
+        undefined,
+        probe,
+        {
+          debug,
+        },
+      );
+      writeFileSync(transaction.stagingPath, "video");
+
+      try {
+        const validation = transaction.validate({
+          expectedDurationSeconds: 4,
+          fps: 30,
+          expectedFrames: 120,
+        });
+        if (frames >= 119) await expect(validation).resolves.toBeUndefined();
+        else await expect(validation).rejects.toThrow(/truncated.*120 frames.*90 frames/);
+        expect(debug).not.toHaveBeenCalled();
+      } finally {
+        transaction.rollback();
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.each([1920, 1280])(
+    "preserves validation with a throwing logger and a probed width of %s",
+    async (width) => {
+      const dir = tempDir();
+      const probe: ArtifactDurationProbe = async () => ({
+        durationSeconds: 4,
+        width,
+        height: 1080,
+      });
+      const debug = vi.fn(() => {
+        throw new Error("debug sink unavailable");
+      });
+      const transaction = new ArtifactTransaction(
+        join(dir, "render.webm"),
+        "file",
+        undefined,
+        probe,
+        {
+          debug,
+        },
+      );
+      writeFileSync(transaction.stagingPath, "video");
+
+      try {
+        const validation = transaction.validate({
+          expectedDurationSeconds: 4,
+          fps: 30,
+          expectedFrames: 120,
+          expectedWidth: 1920,
+          expectedHeight: 1080,
+        });
+        if (width === 1920) await expect(validation).resolves.toBeUndefined();
+        else await expect(validation).rejects.toThrow("expected 1920x1080, probed 1280x1080");
+        expect(debug).toHaveBeenCalledOnce();
+      } finally {
         transaction.rollback();
         rmSync(dir, { recursive: true, force: true });
       }
@@ -383,7 +522,10 @@ describe("ArtifactTransaction", () => {
       expect(path).toBe(transaction.stagingPath);
       return { durationSeconds: 41.333 };
     };
-    const transaction = new ArtifactTransaction(destination, "file", undefined, probedShortfall);
+    const debug = vi.fn();
+    const transaction = new ArtifactTransaction(destination, "file", undefined, probedShortfall, {
+      debug,
+    });
     writeFileSync(transaction.stagingPath, "fake-mp4-bytes-that-are-non-empty");
 
     await expect(
@@ -393,6 +535,7 @@ describe("ArtifactTransaction", () => {
         expectedFrames: 1566,
       }),
     ).rejects.toThrow(/truncated/);
+    expect(debug).not.toHaveBeenCalled();
 
     transaction.rollback();
   });
@@ -518,12 +661,14 @@ describe("ArtifactTransaction", () => {
     const dir = tempDir();
     const destination = join(dir, "render.mp4");
     const probe: ArtifactDurationProbe = async () => ({ durationSeconds: 0 });
-    const transaction = new ArtifactTransaction(destination, "file", undefined, probe);
+    const debug = vi.fn();
+    const transaction = new ArtifactTransaction(destination, "file", undefined, probe, { debug });
     writeFileSync(transaction.stagingPath, "fake-mp4-bytes-that-are-non-empty");
 
-    await expect(transaction.validate({ expectedDurationSeconds: 10.0, fps: 30 })).rejects.toThrow(
-      /no usable duration/,
-    );
+    await expect(
+      transaction.validate({ expectedDurationSeconds: 10.0, fps: 30, expectedFrames: 300 }),
+    ).rejects.toThrow(/no usable duration/);
+    expect(debug).not.toHaveBeenCalled();
 
     transaction.rollback();
   });
@@ -587,11 +732,14 @@ describe("ArtifactTransaction", () => {
   // ffprobe reports `nb_frames=N/A` through the hls demuxer, so the frame
   // check is inert for a playlist probe. Assert it stays inert rather than
   // failing a package whose duration is correct.
-  it("passes an HLS package whose probe reports no frame count", async () => {
+  it("reports a skipped HLS frame-count check without rejecting the package", async () => {
     const dir = tempDir();
     const destination = join(dir, "render-hls");
     const probe: ArtifactDurationProbe = async () => ({ durationSeconds: 4.0 });
-    const transaction = new ArtifactTransaction(destination, "directory", undefined, probe);
+    const debug = vi.fn();
+    const transaction = new ArtifactTransaction(destination, "directory", undefined, probe, {
+      debug,
+    });
     stageHlsDirectory(transaction);
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
@@ -604,6 +752,10 @@ describe("ArtifactTransaction", () => {
           requiredFiles: ["master.m3u8"],
         }),
       ).resolves.toBeUndefined();
+      expect(debug).toHaveBeenCalledExactlyOnceWith(
+        "[Render] Frame-count validation skipped: no usable frame count was reported.",
+        { event: "artifact_frame_count_unavailable", artifact: destination, expectedFrames: 120 },
+      );
       expect(warn).not.toHaveBeenCalled();
     } finally {
       warn.mockRestore();

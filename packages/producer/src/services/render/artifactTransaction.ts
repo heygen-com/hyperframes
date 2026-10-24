@@ -1,6 +1,7 @@
 import { closeSync, existsSync, fstatSync, openSync, readSync, readdirSync, rmSync } from "node:fs";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { HLS_MASTER_PLAYLIST, HLS_VIDEO_PLAYLIST, renameWithRetry } from "@hyperframes/engine";
+import { defaultLogger, type ProducerLogger } from "../../logger.js";
 import { extractMediaMetadata } from "../../utils/ffprobe.js";
 import type { RenderOutputFormat } from "./renderFormat.js";
 import { TRANSACTION_BACKUP, createOwnedRenderDir } from "./renderDirOwner.js";
@@ -51,11 +52,9 @@ export type ArtifactDurationProbe = (path: string) => Promise<ArtifactDurationPr
 
 async function defaultArtifactDurationProbe(path: string): Promise<ArtifactDurationProbeResult> {
   const meta = await extractMediaMetadata(path);
-  // Forward the probed frame count when ffprobe reported one. The frame
-  // count check (#3395) catches the multi-worker encode mode where the
-  // container duration is reported correctly but the decoded stream is
-  // shorter. When the demuxer cannot determine frames, the frame-count check
-  // is skipped quietly and duration validation still applies.
+  // WebM and HLS can omit frame counts even when duration is available.
+  // Keep that absence visible to validation; duration alone cannot prove
+  // every expected frame is present.
   return {
     durationSeconds: meta.durationSeconds,
     frames: meta.frames,
@@ -224,13 +223,17 @@ function assertDurationWithinTolerance(
   );
 }
 
+function hasUsableFrameCount(frames: number | undefined): frames is number {
+  return frames !== undefined && Number.isFinite(frames) && frames > 0;
+}
+
 function assertFrameCountWithinTolerance(
   expectedFrames: number,
   probedFrames: number | undefined,
   stagingPath: string,
   toleranceFrames = 1,
 ): void {
-  if (probedFrames === undefined || !Number.isFinite(probedFrames) || probedFrames <= 0) {
+  if (!hasUsableFrameCount(probedFrames)) {
     return;
   }
   const shortfall = expectedFrames - probedFrames;
@@ -288,6 +291,7 @@ export class ArtifactTransaction {
     private readonly kind: ArtifactKind,
     private readonly fileSystem: ArtifactTransactionFileSystem = defaultFileSystem,
     durationProbe: ArtifactDurationProbe = defaultArtifactDurationProbe,
+    private readonly logger: Pick<ProducerLogger, "debug"> = defaultLogger,
   ) {
     this.destinationPath = resolve(destinationPath);
     this.transactionDirectory = createSiblingTransactionDirectory(this.destinationPath);
@@ -382,8 +386,20 @@ export class ArtifactTransaction {
     );
 
     if (expected.expectedFrames !== undefined) {
-      // ffprobe reports `nb_frames=N/A` through the hls demuxer, so a playlist
-      // without frame metadata relies on the duration check above.
+      if (!hasUsableFrameCount(probed.frames)) {
+        try {
+          this.logger.debug(
+            "[Render] Frame-count validation skipped: no usable frame count was reported.",
+            {
+              event: "artifact_frame_count_unavailable",
+              artifact: this.destinationPath,
+              expectedFrames: expected.expectedFrames,
+            },
+          );
+        } catch {
+          // A diagnostic sink failure must not change the validation result.
+        }
+      }
       assertFrameCountWithinTolerance(expected.expectedFrames, probed.frames, probePath);
     }
     assertSizeMatches(expected, probed, probePath);
