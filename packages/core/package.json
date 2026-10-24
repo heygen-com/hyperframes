@@ -381,6 +381,12 @@
       "import": "./src/runtime/clipWindow.ts",
       "types": "./src/runtime/clipWindow.ts"
     },
+    "./runtime/clip-reveal": {
+      "bun": "./src/runtime/clipReveal.ts",
+      "node": "./dist/runtime/clipReveal.js",
+      "import": "./src/runtime/clipReveal.ts",
+      "types": "./src/runtime/clipReveal.ts"
+    },
     "./runtime/stacking-context": {
       "bun": "./src/runtime/stackingContext.ts",
       "node": "./dist/runtime/stackingContext.js",
@@ -802,6 +808,10 @@
       "./runtime/clip-window": {
         "import": "./dist/runtime/clipWindow.js",
         "types": "./dist/runtime/clipWindow.d.ts"
+      },
+      "./runtime/clip-reveal": {
+        "import": "./dist/runtime/clipReveal.js",
+        "types": "./dist/runtime/clipReveal.d.ts"
       },
       "./runtime/stacking-context": {
         "import": "./dist/runtime/stackingContext.js",

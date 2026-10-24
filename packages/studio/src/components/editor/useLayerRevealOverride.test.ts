@@ -18,6 +18,7 @@ import {
   readTimelineElementZIndex,
 } from "../../player/lib/timelineElementHelpers";
 import { installReactActEnvironment } from "../../hooks/domSelectionTestHarness";
+import { CLIP_HIDDEN_ATTR } from "@hyperframes/core/runtime/clip-reveal";
 
 installReactActEnvironment();
 
@@ -146,6 +147,33 @@ describe("useLayerRevealOverride — delayed reveal ownership", () => {
     act(() => vi.advanceTimersByTime(150));
     expect(selected.style.zIndex).toBe("2");
     expect(other.style.zIndex).toBe("3");
+    act(() => root.unmount());
+  });
+
+  it("lifts the runtime's hidden-clip mark with the visibility it forces, and puts both back", () => {
+    const host = document.createElement("div");
+    const clip = makeEl("2", "absolute");
+    clip.style.visibility = "hidden";
+    clip.setAttribute(CLIP_HIDDEN_ATTR, "");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    let scheduleReveal: ((element: HTMLElement, delayMs: number) => void) | undefined;
+
+    function Harness({ isPlaying }: { isPlaying: boolean }) {
+      ({ scheduleReveal } = useLayerRevealOverride({ isPlaying, selectedElement: clip }));
+      return null;
+    }
+
+    act(() => root.render(React.createElement(Harness, { isPlaying: false })));
+    act(() => scheduleReveal!(clip, 0));
+    act(() => vi.advanceTimersByTime(0));
+    expect([clip.style.visibility, clip.hasAttribute(CLIP_HIDDEN_ATTR)]).toEqual([
+      "visible",
+      false,
+    ]);
+
+    act(() => root.render(React.createElement(Harness, { isPlaying: true })));
+    expect([clip.style.visibility, clip.hasAttribute(CLIP_HIDDEN_ATTR)]).toEqual(["hidden", true]);
     act(() => root.unmount());
   });
 

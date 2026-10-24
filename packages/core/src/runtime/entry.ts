@@ -7,7 +7,7 @@ import {
 } from "./init";
 import { installAuthoredOpacityCapture } from "./colorGrading";
 import { deferMediaUntilDue } from "./preloadMedia";
-import { hideTimedClipsUntilFirstPass } from "./timedClipHide";
+import { hideTimedClipsUntilFirstPass, keepInlineHideRulesForOlderShaders } from "./timedClipHide";
 import { fitTextFontSize } from "../text/fitTextFontSize";
 import { pretext } from "../text/pretext";
 import { assetUrl } from "./assetUrl";
@@ -71,6 +71,7 @@ function bootstrapHyperframeRuntime(): void {
     return;
   }
   win.__hyperframeRuntimeBootstrapped = true;
+  keepInlineHideRulesForOlderShaders();
   initSandboxRuntimeModular();
 }
 

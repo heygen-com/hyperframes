@@ -374,6 +374,12 @@
       "types": "./dist/runtime/clipWindow.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./runtime/clip-reveal": {
+      "source": "./src/runtime/clipReveal.ts",
+      "runtime": "./dist/runtime/clipReveal.js",
+      "types": "./dist/runtime/clipReveal.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./runtime/stacking-context": {
       "source": "./src/runtime/stackingContext.ts",
       "runtime": "./dist/runtime/stackingContext.js",

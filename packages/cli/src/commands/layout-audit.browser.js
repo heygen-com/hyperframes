@@ -713,7 +713,7 @@
     return colorAlpha(getComputedStyle(element).color) >= 0.35;
   }
 
-  const RUNTIME_HIDDEN_CLIP = '[data-hf-clip-hidden][style*="visibility: hidden"]';
+  const RUNTIME_HIDDEN_CLIP = "[data-hf-clip-hidden]";
 
   // Core's timedClipHide rule hides these clips' whole subtrees: skipping them bounds work by what is on screen.
   function elementsOnScreenScenes(root) {

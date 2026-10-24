@@ -599,9 +599,10 @@ describe("initSandboxRuntimeModular", () => {
         window.__player?.seek(1);
         const copy = document.getElementById("scene")!.cloneNode(true) as HTMLElement;
         document.body.append(copy);
-        // As showSceneAndClips forces a captured scene and its clips visible.
-        copy.style.setProperty("visibility", "visible", "important");
         expect(copy.hasAttribute("data-hf-clip-hidden")).toBe(true);
+        // As showSceneAndClips forces a captured scene and its clips visible and drops the mark.
+        copy.style.setProperty("visibility", "visible", "important");
+        copy.removeAttribute("data-hf-clip-hidden");
         const sheet = document.querySelector<HTMLStyleElement>(
           "style[data-hf-hidden-clip-contents]",
         )!.sheet!;

@@ -400,6 +400,192 @@ describe("core runtime browser contract", () => {
     30_000,
   );
 
+  const openFilm = async (body: string, head = "", script = "") => {
+    const filmPage = await browser.newPage();
+    await filmPage.setViewport({ width: 320, height: 180 });
+    await filmPage.setContent(`<!doctype html>${head}
+      <style>html, body { margin: 0; background: rgb(128, 128, 128); }</style>
+      <div data-composition-id="root" data-start="0" data-duration="3" data-width="320" data-height="180"
+        style="position:relative;width:320px;height:180px">${body}</div>`);
+    if (script) {
+      await filmPage.addScriptTag({
+        path: resolve(import.meta.dirname, "../../../core/node_modules/gsap/dist/gsap.min.js"),
+      });
+      await filmPage.addScriptTag({ content: script });
+    }
+    await filmPage.addScriptTag({ content: readFileSync(RUNTIME_PATH, "utf8") });
+    await filmPage.waitForFunction(() => window.__playerReady && window.__renderReady);
+    return filmPage;
+  };
+  const PREVIEW_HEAD = `<meta name="hyperframes-studio-preview">`;
+  const redPixels = (filmPage: Page) =>
+    filmPage.screenshot({ encoding: "base64" }).then((shot) =>
+      filmPage.evaluate(async (png) => {
+        const image = new Image();
+        image.src = `data:image/png;base64,${png}`;
+        await image.decode();
+        const context = new OffscreenCanvas(image.width, image.height).getContext("2d")!;
+        context.drawImage(image, 0, 0);
+        const { data } = context.getImageData(0, 0, image.width, image.height);
+        let red = 0;
+        for (let i = 0; i < data.length; i += 4) if (data[i]! > 200) red++;
+        return red;
+      }, shot),
+    );
+
+  it.each([
+    ["a render", ""],
+    ["a preview", PREVIEW_HEAD],
+  ])(
+    "restyles only the element an inline style write lands on in %s",
+    async (_, head) => {
+      const filmPage = await openFilm(
+        `<div class="clip" data-start="2" data-duration="1" style="position:absolute;inset:0"><img></div>
+       <div id="scene" class="clip" data-start="0" data-duration="2" style="position:absolute;inset:0">${"<i></i>".repeat(400)}</div>`,
+        head,
+      );
+      try {
+        await filmPage.evaluate(() => window.__player!.renderSeek!(1));
+        await filmPage.tracing.start({ categories: ["devtools.timeline"] });
+        const transforms = await filmPage.evaluate(() => {
+          const scene = document.getElementById("scene")!;
+          const read: string[] = [];
+          for (let frame = 1; frame <= 5; frame++) {
+            scene.style.transform = `translateX(${frame}px)`;
+            read.push(getComputedStyle(scene).transform);
+          }
+          return read;
+        });
+        const trace = JSON.parse(Buffer.from((await filmPage.tracing.stop())!).toString()) as {
+          traceEvents: { name: string; args?: { elementCount?: number } }[];
+        };
+        const restyled = trace.traceEvents
+          .filter((event) => event.name === "UpdateLayoutTree")
+          .map((event) => event.args?.elementCount ?? 0);
+        expect(transforms.at(-1)).toBe("matrix(1, 0, 0, 1, 5, 0)");
+        expect(restyled.length).toBeGreaterThanOrEqual(5);
+        expect(Math.max(...restyled)).toBeLessThan(10);
+      } finally {
+        await filmPage.close();
+      }
+    },
+    30_000,
+  );
+
+  it("paints nothing of a hidden scene, even a child or SVG shape set visible inline", async () => {
+    const filmPage = await openFilm(
+      `<div class="clip" data-start="2" data-duration="1" style="position:absolute;inset:0">
+        <div id="child" style="position:absolute;inset:0;background:rgb(255,0,0)"></div>
+        <div class="clip" data-start="2" data-duration="1" style="position:absolute;inset:0">
+          <svg width="320" height="180"><path id="shape" d="M0 0H320V180H0Z" fill="rgb(255,0,0)" /></svg>
+        </div>
+      </div>`,
+    );
+    try {
+      const redPixelsAt = async (time: number) => {
+        await filmPage.evaluate((t) => {
+          window.__player!.renderSeek!(t);
+          // What a rewound GSAP set writes on a scene's contents.
+          for (const id of ["child", "shape"])
+            document.getElementById(id)!.style.visibility = "visible";
+        }, time);
+        return redPixels(filmPage);
+      };
+      expect(await redPixelsAt(1.5)).toBe(0);
+      expect(await redPixelsAt(2.5)).toBe(320 * 180);
+    } finally {
+      await filmPage.close();
+    }
+  }, 30_000);
+
+  it.each([
+    ["an older shader build", 320 * 180, "window.HyperShader = {};"],
+    ["a current shader build", 0, "window.HyperShader = {}; window.__hfClipRevealAware = true;"],
+  ])(
+    "with %s on the page, a hidden scene's copy forced visible inline paints %i red pixels",
+    async (_, red, shaderBuild) => {
+      const filmPage = await openFilm(
+        `<div id="scene" class="clip" data-start="2" data-duration="1" style="position:absolute;inset:0">
+          <div style="position:absolute;inset:0;background:rgb(255,0,0)"></div>
+        </div>`,
+        "",
+        shaderBuild,
+      );
+      try {
+        await filmPage.evaluate(() => {
+          window.__player!.renderSeek!(1);
+          // How shader-transitions builds before revealClip show a scene's copy.
+          const copy = document.getElementById("scene")!.cloneNode(true) as HTMLElement;
+          copy.style.setProperty("visibility", "visible", "important");
+          document.getElementById("scene")!.after(copy);
+        });
+        expect(await redPixels(filmPage)).toBe(red);
+      } finally {
+        await filmPage.close();
+      }
+    },
+    30_000,
+  );
+
+  it("leaves a clip's contents to an engine layer mask that hides its host", async () => {
+    const filmPage = await openFilm(
+      `<div id="host" style="position:absolute;inset:0"><img id="logo" data-start="0" data-duration="3" style="position:absolute"></div>`,
+    );
+    try {
+      const logo = await filmPage.evaluate(() => {
+        window.__player!.renderSeek!(1);
+        document.getElementById("host")!.style.setProperty("visibility", "hidden", "important");
+        return getComputedStyle(document.getElementById("logo")!).visibility;
+      });
+      expect(logo).toBe("visible");
+    } finally {
+      await filmPage.close();
+    }
+  }, 30_000);
+
+  it("skips a preview's images in hidden scenes not due soon, until the scene shows", async () => {
+    const filmPage = await openFilm(
+      `<div id="soon" class="clip" data-start="1" data-duration="1" style="position:absolute;inset:0"><img></div>
+       <div id="later" class="clip" data-start="2.9" data-duration="0.1" style="position:absolute;inset:0"><div><img></div></div>`,
+      PREVIEW_HEAD,
+    );
+    try {
+      const skipped = await filmPage.evaluate(() => {
+        const skip = (id: string) =>
+          getComputedStyle(document.querySelector(`#${id} img`)!).display === "none";
+        window.__player!.seek(0);
+        const before = [skip("soon"), skip("later")];
+        window.__player!.seek(2.95);
+        return [...before, skip("later")];
+      });
+      expect(skipped).toEqual([false, true, false]);
+    } finally {
+      await filmPage.close();
+    }
+  }, 30_000);
+
+  it.each(["seek", "renderSeek"] as const)(
+    "shows a hidden scene's child again after a %s skipped past the GSAP set that hides it",
+    async (seek) => {
+      const filmPage = await openFilm(
+        `<div class="clip" data-start="1" data-duration="1" style="position:absolute;inset:0"><div id="words"></div></div>`,
+        "",
+        `window.__timelines = {root: gsap.timeline({paused: true}).set("#words", {visibility: "hidden"}, 1.9)};`,
+      );
+      try {
+        const words = await filmPage.evaluate((method) => {
+          window.__player![method]!(2.5);
+          window.__player![method]!(1.5);
+          return getComputedStyle(document.getElementById("words")!).visibility;
+        }, seek);
+        expect(words).toBe("visible");
+      } finally {
+        await filmPage.close();
+      }
+    },
+    30_000,
+  );
+
   it("ends a later scene's from-opacity fade at its authored opacity when frames step into it", async () => {
     const fadePage = await browser.newPage();
     try {

@@ -44,6 +44,7 @@
     "html2canvas": "^1.4.1"
   },
   "devDependencies": {
+    "@hyperframes/core": "workspace:*",
     "tsup": "^8.0.0",
     "typescript": "^5.0.0",
     "vitest": "^4.1.11"

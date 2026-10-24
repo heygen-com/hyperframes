@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
+import { revealClip } from "@hyperframes/core/runtime/clip-reveal";
 import {
   LAYER_REVEAL_PRIOR_POSITION_ATTR,
   LAYER_REVEAL_PRIOR_Z_ATTR,
@@ -15,6 +16,7 @@ interface RevealedNode {
   priors: { display: string; visibility: string; opacity: string };
   /** Values THIS override wrote — restore only while they are still in place. */
   applied: { display?: string; visibility?: string; opacity?: string };
+  putMarkBack?: () => void;
 }
 
 interface RevealLift {
@@ -158,10 +160,11 @@ function restoreIfOurs(
   property: "display" | "visibility" | "opacity",
   applied: string | undefined,
   prior: string,
-): void {
-  if (applied == null) return;
-  if (el.style.getPropertyValue(property) !== applied) return;
+): boolean {
+  if (applied == null) return false;
+  if (el.style.getPropertyValue(property) !== applied) return false;
   restoreInline(el, property, prior);
+  return true;
 }
 
 /** What hides this node at the current frame, per computed style. */
@@ -187,6 +190,7 @@ function revealNode(
     opacity: el.style.opacity,
   };
   const applied: RevealedNode["applied"] = {};
+  let putMarkBack: RevealedNode["putMarkBack"];
   if (needs.display) {
     // Prefer whatever the stylesheet says once the inline hide is lifted;
     // only force block when the sheet itself hides it.
@@ -195,14 +199,14 @@ function revealNode(
     applied.display = el.style.display;
   }
   if (needs.visibility) {
-    el.style.visibility = "visible";
+    putMarkBack = revealClip(el);
     applied.visibility = "visible";
   }
   if (needs.opacity) {
     el.style.opacity = "1";
     applied.opacity = "1";
   }
-  return { element: el, priors, applied };
+  return { element: el, priors, applied, putMarkBack };
 }
 
 /** Walk `element` → body, force-revealing every hiding node; returns the touched nodes. */
@@ -317,10 +321,11 @@ export function useLayerRevealOverride({
     const state = stateRef.current;
     stateRef.current = null;
     if (!state) return;
-    for (const { element, priors, applied } of state.nodes) {
+    for (const { element, priors, applied, putMarkBack } of state.nodes) {
       if (!element.isConnected) continue;
       restoreIfOurs(element, "display", applied.display, priors.display);
-      restoreIfOurs(element, "visibility", applied.visibility, priors.visibility);
+      if (restoreIfOurs(element, "visibility", applied.visibility, priors.visibility))
+        putMarkBack?.();
       restoreIfOurs(element, "opacity", applied.opacity, priors.opacity);
     }
     if (state.lift && state.base.isConnected) restoreLiftedElement(state.base, state.lift);
