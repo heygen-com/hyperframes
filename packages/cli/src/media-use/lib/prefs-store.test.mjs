@@ -1,6 +1,8 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import fs from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -37,6 +39,60 @@ function withSandbox(fn) {
     restoreEnv(savedEnv);
     rmSync(box.root, { recursive: true, force: true });
   }
+}
+
+for (const code of ["EPERM", "EBUSY"]) {
+  test(`temporary-file cleanup ${code} does not fail a successful preference record`, (t) => {
+    const remove = fs.rmSync;
+    t.mock.method(fs, "rmSync", (path, options) => {
+      if (path.endsWith(".tmp")) throw Object.assign(new Error("cleanup failed"), { code });
+      return remove(path, options);
+    });
+    syncBuiltinESMExports();
+    t.after(() => {
+      t.mock.restoreAll();
+      syncBuiltinESMExports();
+    });
+
+    withSandbox(({ projectA, projectB }) => {
+      recordPreference({ projectDir: projectA, key: "language", value: "en" });
+      const second = recordPreference({ projectDir: projectB, key: "language", value: "en" });
+      assert.equal(second.promoted, true);
+      for (const path of [
+        projectPrefsPath(projectA),
+        projectPrefsPath(projectB),
+        userPrefsPath(),
+      ]) {
+        assert.equal(JSON.parse(readFileSync(path, "utf8")).preferences.language.value, "en");
+      }
+    });
+  });
+
+  test(`temporary-file cleanup ${code} preserves the original preference write error`, (t) => {
+    const remove = fs.rmSync;
+    const write = fs.writeFileSync;
+    const writeError = Object.assign(new Error("disk full"), { code: "ENOSPC" });
+    t.mock.method(fs, "rmSync", (path, options) => {
+      if (path.endsWith(".tmp")) throw Object.assign(new Error("cleanup failed"), { code });
+      return remove(path, options);
+    });
+    t.mock.method(fs, "writeFileSync", (path, ...args) => {
+      if (path.endsWith(".tmp")) throw writeError;
+      return write(path, ...args);
+    });
+    syncBuiltinESMExports();
+    t.after(() => {
+      t.mock.restoreAll();
+      syncBuiltinESMExports();
+    });
+
+    withSandbox(({ projectA }) => {
+      assert.throws(
+        () => recordPreference({ projectDir: projectA, key: "language", value: "en" }),
+        (error) => error === writeError,
+      );
+    });
+  });
 }
 
 test("record writes the project tier and get merges it as source=project", () => {

@@ -53,6 +53,18 @@ make later revisions much easier for both people and agents.
 
 The original and prepared file should remain easy to distinguish.
 
+## Remember confirmed preferences
+
+The media-use skill records confirmed choices in `.media/preferences.json`.
+Concurrent records preserve each choice, including confirmations that promote a
+preference to your personal defaults after use in two projects.
+
+Add `.media/*.lock` to the project's `.gitignore`, while keeping
+`preferences.json` committed. If recording reports "Settings are locked…",
+confirm that no HyperFrames process is recording preferences before deleting
+the named lock file and retrying. A locked personal tier leaves the project
+record intact and postpones personal promotion until a later record.
+
 ## Check the final timeline
 
 Watch once from beginning to end and check:
