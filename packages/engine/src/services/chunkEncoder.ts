@@ -21,7 +21,7 @@ import {
   writeFileSync,
   writeSync,
 } from "fs";
-import { join, dirname, extname } from "path";
+import { join, dirname, extname, resolve } from "path";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import {
   type GpuEncoder,
@@ -637,7 +637,7 @@ let concatListSeq = 0;
 function writeConcatList(dir: string, inputPaths: readonly string[]): string {
   concatListSeq += 1;
   const listPath = join(dir, `concat-list-${process.pid}-${concatListSeq}.txt`);
-  const body = inputPaths.map((p) => `file '${p.replace(/'/g, "'\\''")}'`).join("\n");
+  const body = inputPaths.map((p) => `file '${resolve(p).replace(/'/g, "'\\''")}'`).join("\n");
   writeFileSync(listPath, body, "utf-8");
   return listPath;
 }
