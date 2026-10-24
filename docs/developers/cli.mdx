@@ -50,6 +50,17 @@ Google Cloud Run. Most commands take `--json` when you need to read the result f
 
 Start with the simple command, then open the [full reference](/packages/cli) for the exact options needed by automation or infrastructure.
 
+When embedding preview in another tool or sharing a machine with other browser
+automation, set `HYPERFRAMES_NO_ORPHAN_CLEANUP=1` in the calling environment
+to skip startup cleanup of detached headless Chrome processes:
+
+```bash
+HYPERFRAMES_NO_ORPHAN_CLEANUP=1 npx hyperframes preview ./my-video
+```
+
+Cleanup remains enabled by default. Disabling it leaves browsers from crashed
+HyperFrames sessions running until you stop them yourself.
+
 <Tip>
   Run `npx hyperframes <command> --help` for the installed version’s exact syntax.
 </Tip>

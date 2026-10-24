@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const child = vi.hoisted(() => ({ execFileSync: vi.fn(), execSync: vi.fn() }));
 const tree = vi.hoisted(() => ({ terminateProcessTree: vi.fn(async (_pid: number) => undefined) }));
@@ -14,7 +14,19 @@ vi.mock("./processTree.js", async (importOriginal) => ({
 const { killOrphanedProcesses } = await import("./orphanCleanup.js");
 
 describe.skipIf(process.platform === "win32")("killOrphanedProcesses scan", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubEnv("HYPERFRAMES_NO_ORPHAN_CLEANUP", undefined);
+  });
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("skips process enumeration and termination when cleanup is disabled", () => {
+    vi.stubEnv("HYPERFRAMES_NO_ORPHAN_CLEANUP", "1");
+
+    expect(killOrphanedProcesses()).toBe(0);
+    expect(child.execFileSync).not.toHaveBeenCalled();
+    expect(tree.terminateProcessTree).not.toHaveBeenCalled();
+  });
 
   it("finds orphaned browsers from one process-table read", () => {
     child.execFileSync.mockReturnValue(

@@ -12,7 +12,7 @@ export { windowsProcessTreeKillArgs };
  * processes are read. Returns the count of killed process trees.
  */
 export function killOrphanedProcesses(): number {
-  if (process.platform === "win32") return 0;
+  if (process.env.HYPERFRAMES_NO_ORPHAN_CLEANUP === "1" || process.platform === "win32") return 0;
 
   return killOrphansMatching([
     "chrome-headless-shell",
