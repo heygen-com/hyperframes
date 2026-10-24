@@ -185,6 +185,14 @@ describe("resolveProjectRelativeSrc — the one src resolver for lint and render
     );
   });
 
+  it("clamps a leading `../` before a root asset whose name begins with two dots", () => {
+    const projectDir = join(tmp, "project");
+    writeFileSync(join(projectDir, "..top.mp4"), "");
+    expect(resolveProjectRelativeSrc("../..top.mp4", projectDir)).toBe(
+      join(projectDir, "..top.mp4"),
+    );
+  });
+
   it("returns the (non-existent) base-dir path on miss so callers get a stable error message", () => {
     const projectDir = join(tmp, "project");
     expect(resolveProjectRelativeSrc("../assets/missing.mp4", projectDir)).toBe(
@@ -259,6 +267,12 @@ describe("isWithinProjectRoot", () => {
     const root = "C:\\project";
     const candidate = "D:\\secret.txt";
     expect(isWithinProjectRoot(root, candidate, win32)).toBe(false);
+  });
+
+  it("allows an asset name beginning with two dots under path.win32", () => {
+    const root = "C:\\project";
+    expect(isWithinProjectRoot(root, win32.join(root, "..intro.mp4"), win32)).toBe(true);
+    expect(isWithinProjectRoot(root, win32.join(root, "..assets\\a.png"), win32)).toBe(true);
   });
 
   it("allows a nested asset under path.win32", () => {
