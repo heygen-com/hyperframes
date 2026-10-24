@@ -18,10 +18,7 @@ export const examples: Example[] = [
   ["Start from an audio file", "hyperframes init my-video --audio track.mp3"],
   ["Scaffold with Tailwind CSS", "hyperframes init my-video --tailwind"],
   ["Non-interactive mode (for CI or AI agents)", "hyperframes init my-video --non-interactive"],
-  [
-    "Opt out of the GitHub skills check (CI/tests only)",
-    "HYPERFRAMES_SKIP_SKILLS=1 hyperframes init my-video --non-interactive",
-  ],
+  ["Skip installing AI skills", "hyperframes init my-video --skip-skills"],
 ];
 import {
   existsSync,
@@ -774,8 +771,7 @@ export default defineCommand({
     },
     "skip-skills": {
       type: "boolean",
-      description:
-        "[temporarily ignored] init always checks AI skills against GitHub while the skills.sh registry catches up; set HYPERFRAMES_SKIP_SKILLS=1 to opt out (CI/tests)",
+      description: "Skip installing missing core AI skills (also HYPERFRAMES_SKIP_SKILLS=1)",
     },
     tailwind: {
       type: "boolean",
