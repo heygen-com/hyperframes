@@ -26,6 +26,35 @@ function formatTimeAgo(timestamp: number): string {
   return `${Math.floor(diff / 3600000)}h ago`;
 }
 
+interface RenderArtifactActions {
+  isDirectory: boolean;
+  downloadSrc: string;
+  downloadName: string;
+  downloadLabel: string;
+  /** Appended to the age line, e.g. " · 90 frames". */
+  detail: string;
+}
+
+/** A directory render (PNG sequence) has no playable file; the route zips it on download. */
+function renderArtifactActions(job: RenderJob, fileSrc: string): RenderArtifactActions {
+  if (job.kind !== "directory") {
+    return {
+      isDirectory: false,
+      downloadSrc: fileSrc,
+      downloadName: job.filename,
+      downloadLabel: "Download",
+      detail: "",
+    };
+  }
+  return {
+    isDirectory: true,
+    downloadSrc: `/api/render/${encodeURIComponent(job.id)}/download`,
+    downloadName: `${job.id}.zip`,
+    downloadLabel: "Download as ZIP",
+    detail: job.frameCount === undefined ? "" : ` · ${job.frameCount} frames`,
+  };
+}
+
 /** Static frame extracted once via hidden video + canvas. */
 
 export const RenderQueueItem = memo(function RenderQueueItem({
@@ -40,6 +69,10 @@ export const RenderQueueItem = memo(function RenderQueueItem({
 
   // Direct file URL — serves from disk, survives server restarts
   const fileSrc = buildProjectApiPath(projectId, `/renders/file/${job.filename}`);
+  const { isDirectory, downloadSrc, downloadName, downloadLabel, detail } = renderArtifactActions(
+    job,
+    fileSrc,
+  );
 
   const handleOpen = useCallback(() => {
     window.open(fileSrc, "_blank");
@@ -49,15 +82,16 @@ export const RenderQueueItem = memo(function RenderQueueItem({
     (e: React.MouseEvent) => {
       e.stopPropagation();
       const a = document.createElement("a");
-      a.href = fileSrc;
-      a.download = job.filename;
+      a.href = downloadSrc;
+      a.download = downloadName;
       a.click();
     },
-    [fileSrc, job.filename],
+    [downloadSrc, downloadName],
   );
 
   const viewSrc = fileSrc;
   const isComplete = job.status === "complete";
+  const canOpen = isComplete && !isDirectory;
   const isRendering = job.status === "rendering";
 
   return (
@@ -75,16 +109,24 @@ export const RenderQueueItem = memo(function RenderQueueItem({
             A real button so keyboard users can open the render too. */}
         <button
           type="button"
-          onClick={isComplete ? handleOpen : undefined}
-          disabled={!isComplete}
-          aria-label={isComplete ? `Open ${job.filename} in a new tab` : undefined}
+          onClick={canOpen ? handleOpen : undefined}
+          disabled={!canOpen}
+          aria-label={canOpen ? `Open ${job.filename} in a new tab` : undefined}
           className={[
             "w-20 h-[45px] rounded-md overflow-hidden bg-input shrink-0 relative",
             "outline-hidden focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-accent",
-            isComplete ? "cursor-pointer" : "cursor-default",
+            canOpen ? "cursor-pointer" : "cursor-default",
           ].join(" ")}
         >
-          {isComplete && (
+          {isComplete && isDirectory && (
+            <div
+              data-testid="render-sequence-thumbnail"
+              className="w-full h-full flex items-center justify-center text-step-9 font-mono text-text-4"
+            >
+              PNG
+            </div>
+          )}
+          {canOpen && (
             <>
               {/* Live video — fades in over the static frame once it can play */}
               {hovered && (
@@ -166,7 +208,10 @@ export const RenderQueueItem = memo(function RenderQueueItem({
           )}
 
           {!isRendering && (
-            <span className="text-step-9 text-text-5">{formatTimeAgo(job.createdAt)}</span>
+            <span className="text-step-9 text-text-5">
+              {formatTimeAgo(job.createdAt)}
+              {detail}
+            </span>
           )}
         </div>
 
@@ -212,12 +257,12 @@ export const RenderQueueItem = memo(function RenderQueueItem({
               {/* The tooltip explains the control whether or not it is
                   reachable; `disabled:` on the shared Button keeps pointer
                   events alive precisely so a disabled one can still say why. */}
-              <Tooltip label={isComplete ? "Download" : "Available when the render finishes"}>
+              <Tooltip label={isComplete ? downloadLabel : "Available when the render finishes"}>
                 <IconButton
                   size="sm"
                   onClick={handleDownload}
                   disabled={!isComplete}
-                  aria-label={`Download ${job.filename}`}
+                  aria-label={`Download ${downloadName}`}
                   icon={
                     <svg
                       width="12"

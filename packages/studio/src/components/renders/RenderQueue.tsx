@@ -10,7 +10,12 @@ import { Select, type SelectOption } from "../ui/Select";
 import { Tooltip } from "../ui/Tooltip";
 import { resolveFloatingPanelPosition, type FloatingPosition } from "../editor/floatingPanel";
 import type { RenderJob, ResolutionPreset } from "./useRenderQueue";
-import { getPersistedRenderSettings, persistRenderSettings } from "./renderSettings";
+import {
+  getPersistedRenderSettings,
+  isStudioRenderFormat,
+  persistRenderSettings,
+  type StudioRenderFormat,
+} from "./renderSettings";
 import { GpuEncodingToggle } from "./GpuEncodingToggle";
 import { trackStudioEvent } from "../../utils/studioTelemetry";
 
@@ -20,7 +25,7 @@ export interface CompositionDimensions {
 }
 
 export type StartRenderHandler = (
-  format: "mp4" | "webm" | "mov",
+  format: StudioRenderFormat,
   quality: "draft" | "standard" | "high",
   resolution: ResolutionPreset | "auto",
   fps: 24 | 30 | 60,
@@ -136,7 +141,7 @@ function scaleOptionLabel(
   return base;
 }
 
-const FORMAT_INFO: Record<"mp4" | "webm" | "mov", { label: string; desc: string }> = {
+const FORMAT_INFO: Record<StudioRenderFormat, { label: string; desc: string }> = {
   mp4: { label: "MP4", desc: "Best for general use. Smallest file, universal playback." },
   mov: {
     label: "MOV (ProRes 4444)",
@@ -145,6 +150,10 @@ const FORMAT_INFO: Record<"mp4" | "webm" | "mov", { label: string; desc: string 
   webm: {
     label: "WebM (VP9)",
     desc: "Transparent video for web. Smaller than MOV but limited editor support.",
+  },
+  "png-sequence": {
+    label: "PNG sequence",
+    desc: "One lossless PNG per frame, plus audio. For compositing tools. Downloads as a ZIP.",
   },
 };
 
@@ -158,7 +167,7 @@ const FORMAT_PANEL_SIZE = { width: 208, height: 150 };
 // for the one-line ui/Tooltip primitive, so this stays a local popover.
 // It renders in a portal because the right panel is overflow-hidden: an
 // in-flow absolute panel gets clipped at the panel edge.
-function FormatInfoTooltip({ format }: { format: "mp4" | "webm" | "mov" }) {
+function FormatInfoTooltip({ format }: { format: StudioRenderFormat }) {
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState<FloatingPosition | null>(null);
   const triggerRef = useRef<HTMLDivElement>(null);
@@ -243,7 +252,7 @@ function FormatInfoTooltip({ format }: { format: "mp4" | "webm" | "mov" }) {
             <p className="text-step-10 font-semibold text-text-1 mb-0.5">{info.label}</p>
             <p className="text-step-9 text-text-3 leading-tight">{info.desc}</p>
             <div className="mt-1.5 pt-1.5 border-t border-border">
-              {(["mp4", "mov", "webm"] as const)
+              {(["mp4", "mov", "webm", "png-sequence"] as const)
                 .filter((f) => f !== format)
                 .map((f) => (
                   <p key={f} className="text-step-9 text-text-4 leading-relaxed">
@@ -264,7 +273,11 @@ const FORMAT_OPTIONS: SelectOption[] = [
   { value: "mp4", label: "MP4" },
   { value: "mov", label: "MOV (ProRes)" },
   { value: "webm", label: "WebM" },
+  { value: "png-sequence", label: "PNG sequence" },
 ];
+
+// MOV (ProRes) and PNG are fixed-quality — the quality selector has no effect.
+const FIXED_QUALITY_FORMATS = new Set<StudioRenderFormat>(["mov", "png-sequence"]);
 
 const QUALITY_OPTIONS: SelectOption[] = [
   { value: "draft", label: "Draft" },
@@ -301,7 +314,7 @@ function FormatExportButton({
   onRecheckFfmpeg: () => void;
 }) {
   const persisted = getPersistedRenderSettings();
-  const [format, setFormat] = useState<"mp4" | "webm" | "mov">(persisted.format);
+  const [format, setFormat] = useState<StudioRenderFormat>(persisted.format);
   const [quality, setQuality] = useState<"draft" | "standard" | "high">(persisted.quality);
   const [resolution, setResolution] = useState<RenderScale>("auto");
   const [fps, setFps] = useState<24 | 30 | 60>(persisted.fps);
@@ -313,8 +326,7 @@ function FormatExportButton({
   // boolean keeps the notice from re-testing what this line already decided.
   const missingFfmpeg = ffmpeg && !ffmpeg.ok ? ffmpeg : null;
 
-  // MOV (ProRes) is a fixed-quality codec — quality selector has no effect.
-  const showQuality = format !== "mov";
+  const showQuality = !FIXED_QUALITY_FORMATS.has(format);
 
   return (
     <div className="flex flex-col gap-3">
@@ -337,9 +349,9 @@ function FormatExportButton({
             options={FORMAT_OPTIONS}
             disabled={isRendering}
             onCommit={(next) => {
-              const v = next as "mp4" | "webm" | "mov";
-              setFormat(v);
-              persistRenderSettings(v, quality, fps);
+              if (!isStudioRenderFormat(next)) return;
+              setFormat(next);
+              persistRenderSettings(next, quality, fps);
             }}
           />
         </div>

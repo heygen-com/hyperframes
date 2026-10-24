@@ -10,7 +10,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import {
   createProjectSignature,
   fileContentVersion,
@@ -359,7 +359,9 @@ describe("createStudioServer shutdown", () => {
     const state = server.adapter.startRender(startRenderOpts("job-lowered", outputPath));
     await vi.waitFor(() => expect(state.status, state.error).toBe("complete"), { timeout: 5_000 });
     expect(state.audioLoweredDb).toBe(1.44);
-    const meta = JSON.parse(readFileSync(outputPath.replace(/\.mp4$/, ".meta.json"), "utf8"));
+    const meta = JSON.parse(
+      readFileSync(join(dirname(outputPath), "job-lowered.meta.json"), "utf8"),
+    );
     expect(meta.audioLoweredDb).toBe(1.44);
   });
 
@@ -406,6 +408,61 @@ describe("createStudioServer shutdown", () => {
       { requesterOptedIn: true, stopped: true },
     ]);
     rmSync(outDir, { recursive: true, force: true });
+  });
+
+  it("writes a PNG-sequence sidecar beside the directory, with its frame facts", async () => {
+    producerState.executeRenderJob = async (_job, _dir, outputPath) => {
+      mkdirSync(outputPath);
+      writeFileSync(join(outputPath, "frame_000000.png"), "aa");
+      writeFileSync(join(outputPath, "frame_000001.png"), "bbb");
+      writeFileSync(join(outputPath, "audio.m4a"), "c");
+    };
+    const rendersDir = mkdtempSync(join(tmpdir(), "hf-png-seq-"));
+    dirs.push(rendersDir);
+    const outputPath = join(rendersDir, "job-seq");
+    server = createStudioServer({ projectDir: tmpProject() });
+    const state = server.adapter.startRender({
+      ...startRenderOpts("job-seq", outputPath),
+      format: "png-sequence",
+    });
+    expect(state.kind).toBe("directory");
+    await vi.waitFor(() => expect(state.status, state.error).toBe("complete"), { timeout: 5_000 });
+    const meta = JSON.parse(readFileSync(join(rendersDir, "job-seq.meta.json"), "utf8"));
+    expect(meta).toMatchObject({ status: "complete", frameCount: 2, size: 6, audioSidecar: true });
+    expect(existsSync(join(outputPath, ".meta.json"))).toBe(false);
+  });
+
+  it("removes a committed PNG-sequence directory and its sidecar when cancel races completion", async () => {
+    let finish!: () => void;
+    let started!: () => void;
+    const startedPromise = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    producerState.executeRenderJob = (_job, _dir, outputPath) => {
+      started();
+      return new Promise<void>((resolve) => {
+        finish = () => {
+          mkdirSync(outputPath);
+          writeFileSync(join(outputPath, "frame_000000.png"), "aa");
+          resolve();
+        };
+      });
+    };
+    const rendersDir = mkdtempSync(join(tmpdir(), "hf-png-cancel-"));
+    dirs.push(rendersDir);
+    const outputPath = join(rendersDir, "job-cancel");
+    writeFileSync(join(rendersDir, "job-cancel.meta.json"), '{"status":"failed"}');
+    server = createStudioServer({ projectDir: tmpProject() });
+    const state = server.adapter.startRender({
+      ...startRenderOpts("job-cancel", outputPath),
+      format: "png-sequence",
+    });
+    await untilStarted(startedPromise, state);
+    state.cancel?.();
+    finish();
+    await vi.waitFor(() => expect(state.status).toBe("cancelled"), { timeout: 5_000 });
+    expect(existsSync(outputPath)).toBe(false);
+    expect(existsSync(join(rendersDir, "job-cancel.meta.json"))).toBe(false);
   });
 
   it("cancels an in-flight render's signal and waits for it before draining the browser pool", async () => {

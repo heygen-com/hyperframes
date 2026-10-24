@@ -205,6 +205,29 @@ describe("RenderQueue controls", () => {
     });
     expect(host.textContent).not.toContain("Use GPU encoding");
   });
+
+  it("offers PNG sequence, persists it, and exports it without quality or GPU controls", async () => {
+    const onStartRender: Mock<StartRenderHandler> = vi.fn();
+    const host = mountRenderQueue(onStartRender);
+
+    // MP4, MOV, WebM, PNG sequence.
+    await chooseByArrowing(triggerFor(host, "Format"), 3);
+
+    expect(getPersistedRenderSettings().format).toBe("png-sequence");
+    expect(host.querySelector('[role="combobox"][aria-label="Quality"]')).toBeNull();
+    expect(host.textContent).not.toContain("Use GPU encoding");
+    act(() => {
+      exportButtonIn(host).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(onStartRender).toHaveBeenCalledWith("png-sequence", "standard", "auto", 30, false);
+  });
+
+  it("restores a persisted PNG-sequence format and drops an unknown one", () => {
+    localStorage.setItem("hf-studio-render-settings", JSON.stringify({ format: "png-sequence" }));
+    expect(getPersistedRenderSettings().format).toBe("png-sequence");
+    localStorage.setItem("hf-studio-render-settings", JSON.stringify({ format: "gif" }));
+    expect(getPersistedRenderSettings().format).toBe("mp4");
+  });
 });
 
 describe("RenderQueue Export button", () => {

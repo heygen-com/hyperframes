@@ -1,9 +1,15 @@
+import { spawnSync } from "node:child_process";
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { VideoElement } from "../types.js";
+import { getFfmpegBinary } from "../utils/ffmpegBinaries.js";
 import { runFfmpeg } from "../utils/runFfmpeg.js";
+
+/** Same probe the ffmpeg-dependent suites use: ask the binary, don't assume it. */
+const HAS_FFMPEG = spawnSync(getFfmpegBinary(), ["-version"], { encoding: "utf-8" }).status === 0;
+const skipExtractorTests = process.platform === "win32" || !HAS_FFMPEG;
 
 // Each render gets its own copy of the clip: new path and mtime, same bytes.
 const source = vi.hoisted(() => ({ clip: "" }));
@@ -30,7 +36,7 @@ vi.mock("./extractionCache.js", async (importOriginal) => {
 
 const { extractAllVideoFrames } = await import("./videoFrameExtractor.js");
 
-describe.skipIf(process.platform === "win32")("extractAllVideoFrames downloaded sources", () => {
+describe.skipIf(skipExtractorTests)("extractAllVideoFrames downloaded sources", () => {
   const dir = mkdtempSync(join(tmpdir(), "hf-extract-render-owned-"));
   const cacheDir = join(dir, "cache");
   let red = "";

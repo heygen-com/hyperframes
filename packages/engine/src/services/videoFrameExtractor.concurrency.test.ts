@@ -7,6 +7,10 @@ import type { VideoElement } from "../types.js";
 import { FFMPEG_PATH_ENV, getFfmpegBinary } from "../utils/ffmpegBinaries.js";
 import { runFfmpeg } from "../utils/runFfmpeg.js";
 
+/** Same probe the ffmpeg-dependent suites use: ask the binary, don't assume it. */
+const HAS_FFMPEG = spawnSync(getFfmpegBinary(), ["-version"], { encoding: "utf-8" }).status === 0;
+const skipExtractorTests = process.platform === "win32" || !HAS_FFMPEG;
+
 // Two CPUs: the extractor runs at most one ffmpeg at a time.
 vi.mock("os", async (importOriginal) => ({
   ...(await importOriginal<typeof import("os")>()),
@@ -16,7 +20,7 @@ vi.mock("os", async (importOriginal) => ({
 const { extractAllVideoFrames, extractVideoFramesRange } = await import("./videoFrameExtractor.js");
 const { extractMediaMetadata } = await import("../utils/ffprobe.js");
 
-describe.skipIf(process.platform === "win32")("extractAllVideoFrames ffmpeg concurrency", () => {
+describe.skipIf(skipExtractorTests)("extractAllVideoFrames ffmpeg concurrency", () => {
   const dir = mkdtempSync(join(tmpdir(), "hf-extract-concurrency-"));
   const previousFfmpeg = process.env[FFMPEG_PATH_ENV];
   const shim = join(dir, "ffmpeg-shim.sh");

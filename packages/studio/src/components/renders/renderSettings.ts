@@ -1,7 +1,14 @@
 const RENDER_SETTINGS_KEY = "hf-studio-render-settings";
 
+export type StudioRenderFormat = "mp4" | "webm" | "mov" | "png-sequence";
+const STUDIO_RENDER_FORMATS: readonly StudioRenderFormat[] = ["mp4", "webm", "mov", "png-sequence"];
+
+export function isStudioRenderFormat(value: unknown): value is StudioRenderFormat {
+  return STUDIO_RENDER_FORMATS.some((format) => format === value);
+}
+
 export interface PersistedRenderSettings {
-  format: "mp4" | "webm" | "mov";
+  format: StudioRenderFormat;
   quality: "draft" | "standard" | "high";
   fps: 24 | 30 | 60;
   gpu: boolean;
@@ -13,7 +20,7 @@ export function getPersistedRenderSettings(): PersistedRenderSettings {
     if (raw) {
       const parsed = JSON.parse(raw);
       return {
-        format: ["mp4", "webm", "mov"].includes(parsed.format) ? parsed.format : "mp4",
+        format: isStudioRenderFormat(parsed.format) ? parsed.format : "mp4",
         quality: ["draft", "standard", "high"].includes(parsed.quality)
           ? parsed.quality
           : "standard",

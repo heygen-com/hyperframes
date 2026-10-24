@@ -1,14 +1,7 @@
 import { isValidProjectId } from "./src/utils/projectRouting";
 // Vite adapter that wires the shared Studio API to the local filesystem and build tools.
 
-import {
-  readFileSync,
-  readdirSync,
-  existsSync,
-  writeFileSync,
-  realpathSync,
-  unlinkSync,
-} from "node:fs";
+import { readFileSync, readdirSync, existsSync, writeFileSync, realpathSync } from "node:fs";
 import { basename, join, relative, resolve, isAbsolute, sep } from "node:path";
 import type { ViteDevServer } from "vite";
 import {
@@ -23,6 +16,9 @@ import {
   DEFAULT_HISTORY_ROOT,
   openProjectHistory,
   historyCache,
+  renderDirectoryMetadata,
+  renderMetadataPath,
+  removeRenderArtifacts,
 } from "@hyperframes/studio-server";
 import type { RegistryItem } from "@hyperframes/core/registry";
 import type { BundleOptions } from "@hyperframes/core/compiler";
@@ -315,24 +311,17 @@ export function createViteAdapter(
         status: "rendering",
         progress: 0,
         outputPath: opts.outputPath,
+        kind: opts.format === "png-sequence" ? "directory" : "file",
         cancel: () => abortController.abort(),
       };
 
       const startTime = Date.now();
+      const metaPath = renderMetadataPath(opts.outputPath, opts.jobId);
       const removeCancelledOutput = () => {
         // User-initiated cancel: not a failure. Remove any output so the
         // cancelled job doesn't resurrect in the render history.
         state.status = "cancelled";
-        for (const fp of [
-          opts.outputPath,
-          opts.outputPath.replace(/\.(mp4|webm|mov)$/, ".meta.json"),
-        ]) {
-          try {
-            if (existsSync(fp)) unlinkSync(fp);
-          } catch {
-            /* ignore */
-          }
-        }
+        removeRenderArtifacts([opts.outputPath, metaPath]);
       };
       // fallow-ignore-next-line complexity
       (async () => {
@@ -378,13 +367,13 @@ export function createViteAdapter(
           if (job.audioLoweredDb !== undefined) state.audioLoweredDb = job.audioLoweredDb;
           state.status = "complete";
           state.progress = 100;
-          const metaPath = opts.outputPath.replace(/\.(mp4|webm|mov)$/, ".meta.json");
           writeFileSync(
             metaPath,
             JSON.stringify({
               status: "complete",
               durationMs: Date.now() - startTime,
               ...(job.audioLoweredDb !== undefined ? { audioLoweredDb: job.audioLoweredDb } : {}),
+              ...renderDirectoryMetadata(opts.outputPath),
             }),
           );
         } catch (err) {
@@ -395,7 +384,6 @@ export function createViteAdapter(
           state.status = "failed";
           state.error = err instanceof Error ? err.message : String(err);
           try {
-            const metaPath = opts.outputPath.replace(/\.(mp4|webm|mov)$/, ".meta.json");
             writeFileSync(metaPath, JSON.stringify({ status: "failed" }));
           } catch {
             /* ignore */

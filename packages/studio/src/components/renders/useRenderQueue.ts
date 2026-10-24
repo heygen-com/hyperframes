@@ -9,6 +9,7 @@ import { readServerError } from "./serverError";
 import { ffmpegInstallMessage, useFfmpegStatus } from "./useFfmpegStatus";
 import { requestStudioFeedback, type FeedbackContext } from "../feedback/feedbackTrigger";
 import { studioApiFetch } from "../../utils/studioApiFetch";
+import type { StudioRenderFormat } from "./renderSettings";
 
 export interface RenderJob {
   id: string;
@@ -19,6 +20,9 @@ export interface RenderJob {
   filename: string;
   createdAt: number;
   durationMs?: number;
+  /** `"directory"` for PNG-sequence output: no inline preview, downloads as a ZIP. */
+  kind?: "file" | "directory";
+  frameCount?: number;
 }
 
 // The CLI consumes this same source through @hyperframes/core's re-export.
@@ -29,7 +33,7 @@ export type ResolutionPreset = CanvasResolution;
 export interface StartRenderOptions {
   fps?: number;
   quality?: "draft" | "standard" | "high";
-  format?: "mp4" | "webm" | "mov";
+  format?: StudioRenderFormat;
   /** `"auto"` (default) renders at the composition's authored dimensions. */
   resolution?: ResolutionPreset | "auto";
   gpu?: boolean;
@@ -149,6 +153,8 @@ export function useRenderQueue(
                 size: number;
                 status?: string;
                 durationMs?: number;
+                kind?: string;
+                frameCount?: number;
               }) => ({
                 id: r.id,
                 status: (r.status === "failed" ? "failed" : "complete") as "complete" | "failed",
@@ -156,6 +162,9 @@ export function useRenderQueue(
                 filename: r.filename,
                 createdAt: r.createdAt,
                 durationMs: r.durationMs,
+                ...(r.kind === "directory"
+                  ? { kind: "directory" as const, frameCount: r.frameCount }
+                  : {}),
               }),
             );
           return [...prev, ...fromServer];
@@ -304,14 +313,19 @@ export function useRenderQueue(
       }
       const { jobId } = await res.json();
 
-      const FORMAT_EXT: Record<string, string> = { mp4: ".mp4", webm: ".webm", mov: ".mov" };
-      const ext = FORMAT_EXT[format] ?? ".mp4";
+      const FORMAT_EXT: Record<StudioRenderFormat, string> = {
+        mp4: ".mp4",
+        webm: ".webm",
+        mov: ".mov",
+        "png-sequence": "",
+      };
       const job: RenderJob = {
         id: jobId,
         status: "rendering",
         progress: 0,
-        filename: `${jobId}${ext}`,
+        filename: `${jobId}${FORMAT_EXT[format]}`,
         createdAt: startTime,
+        ...(format === "png-sequence" ? { kind: "directory" as const } : {}),
       };
       addSessionJob(job, settings);
       activeJobRef.current = jobId;

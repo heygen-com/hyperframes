@@ -8,6 +8,7 @@ export default defineConfig({
     "helpers/proxyTranscoder": "src/helpers/proxyTranscoder.ts",
     "helpers/loudness": "src/helpers/loudness.ts",
     "helpers/mediaProxyPreview": "src/helpers/mediaProxyPreview.ts",
+    "helpers/renderDirectoryStats": "src/helpers/renderDirectoryStats.ts",
     "helpers/manualEditsRenderScript": "src/helpers/manualEditsRenderScript.ts",
     "helpers/studioMotionRenderScript": "src/helpers/studioMotionRenderScript.ts",
     "helpers/draftMarkers": "src/helpers/draftMarkers.ts",

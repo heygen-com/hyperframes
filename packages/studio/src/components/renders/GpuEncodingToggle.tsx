@@ -1,10 +1,12 @@
+import type { StudioRenderFormat } from "./renderSettings";
+
 export function GpuEncodingToggle({
   format,
   checked,
   disabled,
   onToggle,
 }: {
-  format: "mp4" | "webm" | "mov";
+  format: StudioRenderFormat;
   checked: boolean;
   disabled: boolean;
   onToggle: () => void;
