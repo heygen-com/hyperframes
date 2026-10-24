@@ -199,7 +199,8 @@ footage and gradients showed no meaningful change. Keep the default for
 footage-heavy videos.
 
 `444` supports SDR MP4 with the software encoder only. It is rejected with
-`--gpu`, `--hdr`, other formats, and distributed, Lambda or Cloud Run renders.
+`--gpu`, `--hdr` and other formats. Distributed renders (including Lambda and
+Cloud Run) encode 4:2:0 only and reject a `chromaSubsampling` of `"444"`.
 
 Many players cannot decode 4:4:4, so use it for masters and editing handoff,
 not for files you publish directly:

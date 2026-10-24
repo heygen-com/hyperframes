@@ -246,6 +246,16 @@ export function validateDistributedRenderConfig(
     );
   }
 
+  // Not a distributed config field, but a JS caller copying in-process RenderConfig keys
+  // would otherwise get a 4:2:0 file with no error.
+  const chromaSubsampling = (config as { chromaSubsampling?: unknown }).chromaSubsampling;
+  if (chromaSubsampling !== undefined && chromaSubsampling !== "420") {
+    throw new InvalidConfigError(
+      "config.chromaSubsampling",
+      `distributed mode encodes 4:2:0 only; got ${String(chromaSubsampling)}`,
+    );
+  }
+
   if (config.variables !== undefined) {
     validateVariablesPayload(config.variables);
   }
