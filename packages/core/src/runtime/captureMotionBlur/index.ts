@@ -527,7 +527,9 @@ function createInstance(host: CaptureMotionBlurHost, config: Config, form: HtmlI
             resolve();
           },
         };
-        if (pending.phase === "movers") isolate(pending);
+        // An engine frame isolates once armed: video frames are injected into the page until then,
+        // and the injector skips a sub-composition host that isolation would have hidden.
+        if (pending.phase === "movers" && !engineMode) isolate(pending);
         if (engineMode) return;
         startTimer();
         src.requestPaint();
@@ -576,6 +578,7 @@ function createInstance(host: CaptureMotionBlurHost, config: Config, form: HtmlI
     arm: () => {
       if (!pending || pending.armed) return;
       pending.armed = true;
+      if (pending.phase === "movers") isolate(pending);
       pending.startTimer();
       src.requestPaint();
     },

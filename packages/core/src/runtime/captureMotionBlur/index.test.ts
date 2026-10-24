@@ -705,6 +705,20 @@ describe("two-phase frames", () => {
     expect(el.hasAttribute(MOVER)).toBe(false);
   });
 
+  it("keeps the page visible until an engine frame is armed, so video frames inject into it", async () => {
+    installHtmlInCanvas();
+    const { root, h } = movingHost();
+    initCaptureMotionBlur(h);
+    const done = paintCaptureMotionBlur(0.5, { engineMode: true });
+    expect(root.hasAttribute(ONLY)).toBe(false);
+    releaseCaptureMotionBlurFrame();
+    expect(root.hasAttribute(ONLY)).toBe(true);
+    captureCanvas(root).dispatchEvent(new Event("paint"));
+    captureCanvas(root).dispatchEvent(new Event("paint"));
+    win.__hf_page_composite_resolve?.();
+    await done;
+  });
+
   it("shows plain DOM, not a half frame, when the engine's step runs before the background capture", async () => {
     installHtmlInCanvas();
     const { root, el, h } = movingHost();
