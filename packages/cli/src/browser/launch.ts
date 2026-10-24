@@ -1,4 +1,5 @@
 import type { Browser, LaunchOptions, PuppeteerNode } from "puppeteer-core";
+import { withHyperframesBrowserMarker } from "@hyperframes/core";
 import {
   resolveCaptureBrowserGpuMode,
   type BrowserGpuMode,
@@ -117,7 +118,14 @@ async function launchOwnedBrowser(
   const signal = options.signal ? AbortSignal.any([options.signal, abort.signal]) : abort.signal;
   const launchedAt = Date.now();
   const launch = untilLaunchOrAbort(
-    puppeteer.launch({ ...options, pipe: true, signal, handleSIGINT: false, handleSIGTERM: false }),
+    puppeteer.launch({
+      ...options,
+      args: withHyperframesBrowserMarker(options.args),
+      pipe: true,
+      signal,
+      handleSIGINT: false,
+      handleSIGTERM: false,
+    }),
     signal,
   );
   const limit = options.timeout ?? LAUNCH_TIMEOUT_MS;

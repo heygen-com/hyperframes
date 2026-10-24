@@ -443,3 +443,4 @@ export {
   PAGE_MOTION_BLUR_OFF_GLOBAL,
   acceleratedCanvasTrackerSource,
 } from "./pageMotionBlur.js";
+export { HYPERFRAMES_BROWSER_MARKER_ARG, withHyperframesBrowserMarker } from "./browserMarker.js";

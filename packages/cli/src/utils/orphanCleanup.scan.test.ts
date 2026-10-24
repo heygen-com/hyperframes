@@ -1,3 +1,4 @@
+import { HYPERFRAMES_BROWSER_MARKER_ARG } from "@hyperframes/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const child = vi.hoisted(() => ({ execFileSync: vi.fn(), execSync: vi.fn() }));
@@ -16,14 +17,17 @@ const { killOrphanedProcesses } = await import("./orphanCleanup.js");
 describe.skipIf(process.platform === "win32")("killOrphanedProcesses scan", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("finds orphaned browsers from one process-table read", () => {
+  it("kills only orphaned browsers HyperFrames marked, from one process-table read", () => {
     child.execFileSync.mockReturnValue(
       [
-        "  101     1 /opt/chrome-headless-shell --headless",
+        `  101     1 /opt/chrome-headless-shell --headless ${HYPERFRAMES_BROWSER_MARKER_ARG}`,
         "  102   101 /opt/chrome-headless-shell --type=renderer",
-        "  103     1 chrome --user-data-dir=/tmp/puppeteer_dev_chrome_profile-x",
-        "  104   900 chrome --user-data-dir=/tmp/puppeteer_dev_chrome_profile-y",
+        `  103     1 chrome --user-data-dir=/tmp/puppeteer_dev_chrome_profile-x ${HYPERFRAMES_BROWSER_MARKER_ARG} about:blank`,
+        `  104   900 chrome --user-data-dir=/tmp/puppeteer_dev_chrome_profile-y ${HYPERFRAMES_BROWSER_MARKER_ARG}`,
         "  105     1 /usr/bin/node server.js",
+        "  106     1 /opt/chrome-headless-shell --remote-debugging-port=0 about:blank",
+        "  107     1 chrome --user-data-dir=/tmp/puppeteer_dev_chrome_profile-z --headless",
+        `  108     1 chrome ${HYPERFRAMES_BROWSER_MARKER_ARG}-lookalike`,
       ].join("\n"),
     );
 
@@ -31,5 +35,14 @@ describe.skipIf(process.platform === "win32")("killOrphanedProcesses scan", () =
     expect(child.execFileSync).toHaveBeenCalledTimes(1);
     expect(child.execSync).not.toHaveBeenCalled();
     expect(tree.terminateProcessTree.mock.calls.map(([pid]) => pid)).toEqual([101, 103]);
+  });
+
+  it("leaves another tool's detached headless shell running", () => {
+    child.execFileSync.mockReturnValue(
+      "  201     1 /opt/chrome-headless-shell --remote-debugging-port=0 about:blank",
+    );
+
+    expect(killOrphanedProcesses()).toBe(0);
+    expect(tree.terminateProcessTree).not.toHaveBeenCalled();
   });
 });
