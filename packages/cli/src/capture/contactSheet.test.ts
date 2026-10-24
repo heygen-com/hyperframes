@@ -201,6 +201,56 @@ describe("createContactSheet", () => {
   );
 });
 
+describe("createAssetContactSheet", () => {
+  it.each(["png", "avif", "gif", "tiff"])(
+    "includes captured %s images without changing their original bytes",
+    async (format) => {
+      const dir = tempDir();
+      try {
+        const original = join(dir, `feature.${format}`);
+        const red = sharp({
+          create: { width: 8, height: 8, channels: 3, background: "red" },
+        });
+        let bytes: Buffer;
+        if (format === "avif") bytes = await red.avif().toBuffer();
+        else if (format === "tiff") bytes = await red.tiff().toBuffer();
+        else if (format === "gif") {
+          const frames = Buffer.alloc(8 * 16 * 3);
+          for (let i = 0; i < 128; i++) frames[i * 3 + (i < 64 ? 0 : 1)] = 255;
+          bytes = await sharp(frames, {
+            raw: { width: 8, height: 16, channels: 3, pageHeight: 8 },
+          })
+            .gif({ delay: [100, 100], loop: 0 })
+            .toBuffer();
+        } else bytes = await red.png().toBuffer();
+        writeFileSync(original, bytes);
+
+        const out = join(dir, "contact-sheet.jpg");
+        expect(await createAssetContactSheet(dir, out)).toEqual([out]);
+        const pixel = await sharp(out)
+          .extract({ left: 244, top: 270, width: 1, height: 1 })
+          .removeAlpha()
+          .raw()
+          .toBuffer();
+        expect(pixel[0]).toBeGreaterThan(220);
+        expect(pixel[1]).toBeLessThan(25);
+        expect(pixel[2]).toBeLessThan(25);
+        expect(readFileSync(original)).toEqual(bytes);
+      } finally {
+        // libvips caches GIF file handles, which prevent Windows fixture cleanup.
+        const cache = sharp.cache();
+        sharp.cache(false);
+        try {
+          rmSync(dir, { recursive: true, force: true });
+        } finally {
+          sharp.cache({ memory: cache.memory.max, files: cache.files.max, items: cache.items.max });
+        }
+      }
+    },
+    60_000,
+  );
+});
+
 describe("contact-sheet capture budget", () => {
   it("does not start another Sharp page after the budget is exhausted", async () => {
     const dir = tempDir();
