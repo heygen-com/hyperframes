@@ -10,6 +10,7 @@ import { defaultTimelineTheme } from "./timelineTheme";
 import { TRACK_H, getTimelineRowGeometry } from "./timelineLayout";
 import { createTimelineClipIndex } from "../lib/timelineClipIndex";
 import { buildTimelineLogicalRows } from "./timelineKeyboardNavigation";
+import { timelineClipFocusId } from "./timelineNavigationIdentity";
 import {
   usePlayerStore,
   type KeyframeCacheEntry,
@@ -90,9 +91,11 @@ interface RenderLanesOptions {
   snapGuide?: { time: number; type: "beat" | "clip-edge" | "playhead" } | null;
   withoutSelectHandler?: boolean;
   pps?: number;
+  rowsVirtualized?: boolean;
 }
 
 const lanePps = (options: RenderLanesOptions) => options.pps ?? 100;
+const lanesVirtualized = (options: RenderLanesOptions) => options.rowsVirtualized ?? false;
 
 const selectHandlerFor = (
   options: RenderLanesOptions,
@@ -138,7 +141,7 @@ function renderLanes(options: RenderLanesOptions = {}): {
           rowHeights={rowHeights}
           rowGeometry={getTimelineRowGeometry(rowHeights)}
           virtualRows={displayTrackOrder.map((_, index) => ({ index, rowKey: index }))}
-          rowsVirtualized={false}
+          rowsVirtualized={lanesVirtualized(next)}
           focusedTargetId={null}
           logicalRows={buildTimelineLogicalRows({
             tracks,
@@ -329,6 +332,29 @@ describe("TimelineLanes disclosure target", () => {
     expect(target?.querySelectorAll("[data-timeline-property-lane]").length).toBeGreaterThan(0);
     // Every region it names has to exist, or the caret points at nothing.
     expect(ariaControlsTargets(view.host).length).toBeGreaterThan(1);
+    expect(ariaControlsTargets(view.host).every(Boolean)).toBe(true);
+    act(() => view.root.unmount());
+  });
+
+  // At fit zoom a long track skips the clips hidden under its neighbours, and
+  // the keyframed one among them holds the lanes the caret names.
+  it("keeps the caret's target when the keyframed clip is a skipped sliver", () => {
+    const clips = Array.from({ length: 20 }, (_, i) => ({
+      ...element(`c${i}`, TRACK_A),
+      start: i * 0.5,
+      duration: 0.5,
+    }));
+    const view = renderLanes({
+      elements: clips,
+      animations: new Map([["c2", [positionTween("c2")]]]),
+      expandedClipIds: clips.map((clip) => clip.id),
+      pps: 1,
+      rowsVirtualized: true,
+    });
+
+    expect(view.host.querySelector('[data-el-id="c1"]')).toBeNull();
+    expect(view.host.querySelector('[data-el-id="c2"]')).not.toBeNull();
+    expect(ariaControlsTarget(view.host)).not.toBeNull();
     expect(ariaControlsTargets(view.host).every(Boolean)).toBe(true);
     act(() => view.root.unmount());
   });
@@ -541,6 +567,39 @@ describe("TimelineLanes selection", () => {
         ?.dispatchEvent(new MouseEvent("click", { bubbles: true, metaKey: true })),
     );
     expect(usePlayerStore.getState().selectedElementIds).toEqual(new Set(["clip-a", "clip-b"]));
+    act(() => view.root.unmount());
+  });
+});
+
+describe("TimelineLanes keyboard focus", () => {
+  // Arrow keys focus a clip without selecting it; Enter then selects it. If
+  // that selection swaps the button, focus falls to <body>, out of the arrows' reach.
+  it("keeps arrow navigation after Enter selects a focused frame-wide audio clip", () => {
+    const voice = (id: string, start: number): TimelineElement => ({
+      ...element(id, TRACK_A),
+      tag: "audio",
+      start,
+    });
+    const elements = [voice("clip-a", 0), voice("clip-b", 3)];
+    const view = renderLanes({ elements, pps: 5 });
+    const clipA = view.host.querySelector<HTMLButtonElement>('[data-el-id="clip-a"]')!;
+    expect(clipA.getAttribute("data-ladder")).toBe("frame");
+
+    act(() => clipA.focus());
+    act(() => clipA.click()); // Enter on a focused native button
+    expect(view.onSelectElement).toHaveBeenCalledWith(elements[0]);
+    view.rerender({ elements, pps: 5, selectedElementIds: new Set(["clip-a"]) });
+
+    expect(view.host.querySelector('[data-el-id="clip-a"]')).toBe(clipA);
+    expect(document.activeElement).toBe(clipA);
+    const arrow = new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      key: "ArrowRight",
+    });
+    act(() => document.activeElement?.dispatchEvent(arrow));
+    expect(arrow.defaultPrevented).toBe(true);
+    expect(usePlayerStore.getState().timelineFocus?.id).toBe(timelineClipFocusId("clip-b"));
     act(() => view.root.unmount());
   });
 });

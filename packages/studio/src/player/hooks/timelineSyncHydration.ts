@@ -10,6 +10,8 @@
  */
 
 import { createTimelineDomNodeResolver, findClipElementById } from "../lib/timelineElementHelpers";
+import { transitionLabelsForDocument } from "../lib/timelineTransitionMetadata";
+import { withSelectorIndexPass } from "../../utils/sourceScopedSelectorIndex";
 import { usePlayerStore } from "../store/playerStore";
 import type { TimelineElement, DomClipChild, SubCompositionHostState } from "../store/playerStore";
 import { resolveCssStackingContextId } from "@hyperframes/core/runtime/stacking-context";
@@ -202,16 +204,28 @@ export function buildTimelineElementsFromClips(
   clips: readonly ClipManifestClip[],
   iframeDoc: Document | null,
 ): TimelineElement[] {
-  const resolveHost = iframeDoc ? createTimelineDomNodeResolver(iframeDoc) : null;
-  return clips.map((clip, index) => {
-    const hostEl = resolveHost?.(clip, index) ?? null;
-    return createTimelineElementFromManifestClip({
-      clip,
-      fallbackIndex: index,
-      doc: iframeDoc,
-      hostEl,
-    });
-  });
+  if (!iframeDoc) {
+    return clips.map((clip, index) =>
+      createTimelineElementFromManifestClip({ clip, fallbackIndex: index, doc: null }),
+    );
+  }
+  const resolveHost = createTimelineDomNodeResolver(iframeDoc);
+  // Once per build, not per clip: both scan the whole document.
+  const transitionLabels = transitionLabelsForDocument(
+    iframeDoc,
+    (iframeDoc.defaultView as IframeWindow | null)?.__timelines,
+  );
+  return withSelectorIndexPass(iframeDoc, () =>
+    clips.map((clip, index) =>
+      createTimelineElementFromManifestClip({
+        clip,
+        fallbackIndex: index,
+        doc: iframeDoc,
+        hostEl: resolveHost(clip, index),
+        transitionLabels,
+      }),
+    ),
+  );
 }
 
 /**

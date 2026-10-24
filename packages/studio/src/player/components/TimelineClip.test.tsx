@@ -241,6 +241,21 @@ describe("TimelineClip", () => {
     act(() => root.unmount());
   });
 
+  it("greys a muted audio clip at any width, with or without its waveform", () => {
+    const muted = (pps: number, hidden: boolean) => {
+      const { host, root } = renderClip({
+        pps,
+        element: { id: "a", label: "Voice", tag: "audio", start: 0, duration: 1, track: 0, hidden },
+      });
+      const value = host.querySelector(".timeline-clip")?.getAttribute("data-audio-muted");
+      act(() => root.unmount());
+      return value;
+    };
+    expect(muted(4, true)).toBe("true"); // 4 px: the frame tier, no waveform
+    expect(muted(400, true)).toBe("true");
+    expect(muted(4, false)).toBeNull();
+  });
+
   it("applies selected styling when rendered as selected", () => {
     const { host, root } = renderClip({
       element: { id: "selected", label: "Selected", tag: "div", start: 0, duration: 1, track: 0 },
@@ -312,5 +327,86 @@ describe("TimelineClip", () => {
     act(() => clip.click());
     expect(onClick).toHaveBeenCalledOnce();
     act(() => root.unmount());
+  });
+
+  describe("keyboard focus on an audio clip", () => {
+    const voice: TimelineElement = {
+      id: "voice",
+      label: "Voice",
+      tag: "audio",
+      start: 0,
+      duration: 1,
+      track: 0,
+    };
+
+    function mountFocused(pps: number) {
+      const host = document.createElement("div");
+      document.body.append(host);
+      const root = createRoot(host);
+      const render = (next: { pps: number; isSelected: boolean }) =>
+        act(() => {
+          root.render(
+            <TimelineClip
+              el={voice}
+              pps={next.pps}
+              clipY={0}
+              isSelected={next.isSelected}
+              isHovered={false}
+              hasCustomContent={false}
+              capabilities={capabilities}
+              isComposition={false}
+              tabIndex={0}
+              onHoverStart={vi.fn()}
+              onHoverEnd={vi.fn()}
+              onClick={vi.fn()}
+              onDoubleClick={vi.fn()}
+            />,
+          );
+        });
+      render({ pps, isSelected: false });
+      const button = () => host.querySelector<HTMLButtonElement>(".timeline-clip")!;
+      const focused = button();
+      act(() => focused.focus());
+      expect(document.activeElement).toBe(focused);
+      return { root, render, button, focused };
+    }
+
+    // Arrow keys focus without selecting, then Enter selects the focused clip.
+    // A new button there would leave focus on <body>, where the arrows do nothing.
+    it("keeps the focused button when a frame-wide clip is selected", () => {
+      const view = mountFocused(10);
+      expect(view.focused.getAttribute("data-ladder")).toBe("frame");
+
+      view.render({ pps: 10, isSelected: true });
+
+      expect(view.button()).toBe(view.focused);
+      expect(document.activeElement).toBe(view.focused);
+      act(() => view.root.unmount());
+    });
+
+    it("keeps focus on the clip when a zoom moves it across the frame tier", () => {
+      const view = mountFocused(10);
+
+      view.render({ pps: 100, isSelected: false });
+      expect(view.button().getAttribute("data-ladder")).toBe("labeled");
+      expect(document.activeElement).toBe(view.button());
+
+      view.render({ pps: 10, isSelected: false });
+      expect(view.button().getAttribute("data-ladder")).toBe("frame");
+      expect(document.activeElement).toBe(view.button());
+      act(() => view.root.unmount());
+    });
+
+    it("leaves focus alone when the clip it moves across the tier was not focused", () => {
+      const view = mountFocused(10);
+      const elsewhere = document.createElement("button");
+      document.body.append(elsewhere);
+      act(() => elsewhere.focus());
+
+      view.render({ pps: 100, isSelected: false });
+
+      expect(document.activeElement).toBe(elsewhere);
+      act(() => view.root.unmount());
+    });
   });
 });

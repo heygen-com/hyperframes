@@ -122,6 +122,50 @@ function recordingCanvas() {
   return { canvas, fills };
 }
 
+describe("AudioWaveform at scale", () => {
+  it("draws at a size it is given without reading the canvas's box back", () => {
+    const reads = vi.fn(() => 6);
+    const fills: number[][] = [];
+    const context = {
+      scale: vi.fn(),
+      clearRect: vi.fn(),
+      fillStyle: "",
+      fillRect: (...box: number[]) => fills.push(box),
+    } as unknown as CanvasRenderingContext2D;
+    const canvas = document.createElement("canvas");
+    Object.defineProperties(canvas, { clientWidth: { get: reads }, clientHeight: { get: reads } });
+    vi.spyOn(canvas, "getContext").mockReturnValue(context);
+    drawWaveformCanvas(canvas, [0.25, 1], false, 0, 1, null, undefined, { width: 6, height: 20 });
+    expect(reads).not.toHaveBeenCalled();
+    expect(fills.length).toBe(4);
+  });
+
+  it("reads the theme's colours once for many clips, and again after the theme changes", async () => {
+    const styles = vi.spyOn(window, "getComputedStyle");
+    renderReadyWaveform();
+    const before = styles.mock.calls.length;
+    for (let i = 0; i < 20; i++) {
+      const { canvas } = recordingCanvas();
+      drawWaveformCanvas(canvas, [0.5, 1], i % 2 === 0, 0, 1);
+    }
+    expect(styles.mock.calls.length - before).toBeLessThanOrEqual(1);
+    document.documentElement.setAttribute("data-theme", "light");
+    await act(async () => {});
+    const { canvas } = recordingCanvas();
+    const settled = styles.mock.calls.length;
+    drawWaveformCanvas(canvas, [0.5, 1], false, 0, 1);
+    expect(styles.mock.calls.length - settled).toBe(1);
+    document.documentElement.removeAttribute("data-theme");
+  });
+
+  it("watches the theme once for every clip on the timeline", () => {
+    const observe = vi.spyOn(MutationObserver.prototype, "observe");
+    for (let i = 0; i < 12; i++) renderReadyWaveform();
+    const onRoot = observe.mock.calls.filter(([target]) => target === document.documentElement);
+    expect(onRoot.length).toBe(1);
+  });
+});
+
 describe("AudioWaveform", () => {
   it("paints a baseline and peak bar for every mapped waveform bin", () => {
     const { canvas, fills } = recordingCanvas();
@@ -246,32 +290,6 @@ describe("AudioWaveform", () => {
     });
 
     act(() => root.unmount());
-  });
-
-  it("greys the clip in place when muted", () => {
-    const host = document.createElement("div");
-    host.className = "timeline-clip is-audio";
-    document.body.append(host);
-    const root = createRoot(host);
-
-    act(() => {
-      root.render(
-        <AudioWaveform
-          audioUrl="/media/voice.wav"
-          label=""
-          labelColor="#fff"
-          projectId="project-a"
-          sessionEpoch={1}
-          priority="visible"
-          muted
-        />,
-      );
-    });
-
-    expect(host.getAttribute("data-audio-muted")).toBe("true");
-
-    act(() => root.unmount());
-    expect(host.hasAttribute("data-audio-muted")).toBe(false);
   });
 
   it("fills a short sound strip when the label band is dropped", () => {

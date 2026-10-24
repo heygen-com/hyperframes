@@ -161,7 +161,7 @@ function mountOverlayWithHeadline(initialLeft: number, observerDelayMs = 0): Ove
 }
 
 beforeEach(() => {
-  usePlayerStore.setState({ previewBooted: true });
+  usePlayerStore.setState({ previewBooted: true, isPlaying: false });
 });
 
 describe("off-canvas indicator refresh", () => {
@@ -199,6 +199,28 @@ describe("off-canvas indicator refresh", () => {
         expect(indicator).toBeTruthy();
         expect((indicator!.parentElement as HTMLElement).style.left).not.toEqual(leftBefore);
       });
+    } finally {
+      h.cleanup();
+    }
+  });
+
+  it("holds the rebuild while playing and makes it once playback stops", async () => {
+    const h = mountOverlayWithHeadline(760);
+    try {
+      await untilIndicator(h.host, (indicator) => expect(indicator).toBeTruthy());
+      act(() => usePlayerStore.setState({ isPlaying: true }));
+      act(() => {
+        h.movedElement.style.left = "120px";
+      });
+      for (let i = 0; i < 3; i++) {
+        await act(async () => {
+          await flushAnimationFrames();
+        });
+      }
+      expect(h.host.querySelector(INDICATOR)).toBeTruthy();
+
+      act(() => usePlayerStore.setState({ isPlaying: false }));
+      await untilIndicator(h.host, (indicator) => expect(indicator).toBeNull());
     } finally {
       h.cleanup();
     }

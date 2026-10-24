@@ -89,6 +89,22 @@ describe("media probe registry", () => {
     expect(getDurationFromMetadata).toHaveBeenCalledTimes(2);
   });
 
+  it("probes a source shared by many clips once and applies it to all of them in one call", async () => {
+    const apply = vi.fn();
+    const clips = Array.from({ length: 50 }, (_, index) => ({
+      id: `clip-${index}`,
+      tag: "video",
+      src: index % 2 ? "assets/b.mp4" : "assets/a.mp4",
+    }));
+    await probeMissingSourceDurations(clips, "project-a", apply);
+
+    expect(requestedSources).toHaveLength(2);
+    expect(apply).toHaveBeenCalledTimes(2);
+    expect(apply.mock.calls.flatMap(([keys]) => keys).sort()).toEqual(
+      clips.map((c) => c.id).sort(),
+    );
+  });
+
   it("probes a dropped clip's URL-spelled src at its own file", async () => {
     await probeMissingSourceDurations(
       [{ id: "clip", tag: "video", src: "assets/My%20clip%20%231.mp4" }],
@@ -118,7 +134,7 @@ describe("media probe registry", () => {
     expect(requestedSources).toEqual([
       `${window.location.origin}/api/projects/project-a/preview/assets/clip.mp4`,
     ]);
-    expect(apply).toHaveBeenCalledWith("clip", 5);
+    expect(apply).toHaveBeenCalledWith(["clip"], 5);
     expect(
       applyCachedSourceDurations(
         [

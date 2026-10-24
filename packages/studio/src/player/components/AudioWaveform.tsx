@@ -56,6 +56,43 @@ function paintWaveformBars(
   });
 }
 
+type WaveformColors = { bar: string; muted: string; baseline: string };
+
+let colors: WaveformColors | null = null;
+const waveformColors = (canvas: HTMLCanvasElement): WaveformColors => {
+  if (colors) return colors;
+  const style = getComputedStyle(canvas);
+  colors = {
+    bar: style.getPropertyValue("--timeline-waveform-bar-rgb"),
+    muted: style.getPropertyValue("--timeline-waveform-muted-rgb"),
+    baseline: style.getPropertyValue("--timeline-waveform-baseline-rgb"),
+  };
+  return colors;
+};
+
+const themeListeners = new Set<() => void>();
+let themeWatch: MutationObserver | null = null;
+function onThemeChange(listener: () => void): () => void {
+  themeListeners.add(listener);
+  if (!themeWatch && typeof MutationObserver !== "undefined") {
+    themeWatch = new MutationObserver(() => {
+      colors = null;
+      themeListeners.forEach((redraw) => redraw());
+    });
+    themeWatch.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class", "data-chrome", "data-theme", "style"],
+    });
+  }
+  return () => {
+    themeListeners.delete(listener);
+    if (themeListeners.size === 0) {
+      themeWatch?.disconnect();
+      themeWatch = null;
+    }
+  };
+}
+
 export function drawWaveformCanvas(
   canvas: HTMLCanvasElement,
   peaks: readonly number[],
@@ -64,9 +101,10 @@ export function drawWaveformCanvas(
   trimEndFraction: number,
   fades: ClipFadeShape | null = null,
   span: ClipSpan = WHOLE_CLIP,
+  size?: { width: number; height: number },
 ) {
-  const width = Math.max(1, canvas.clientWidth);
-  const height = Math.max(1, canvas.clientHeight);
+  const width = Math.max(1, size?.width ?? canvas.clientWidth);
+  const height = Math.max(1, size?.height ?? canvas.clientHeight);
   const scale = window.devicePixelRatio || 1;
   canvas.width = Math.ceil(width * scale);
   canvas.height = Math.ceil(height * scale);
@@ -89,12 +127,8 @@ export function drawWaveformCanvas(
     height: Math.max(3, amplitude * height),
     gain: fades ? fadeGain(clipFraction(index) * fades.duration, fades.duration, fades) : 1,
   }));
-  const channelToken = muted ? "--timeline-waveform-muted-rgb" : "--timeline-waveform-bar-rgb";
-  const waveformBarRgb = getComputedStyle(canvas).getPropertyValue(channelToken);
-  const waveformBaselineRgb = getComputedStyle(canvas).getPropertyValue(
-    "--timeline-waveform-baseline-rgb",
-  );
-  paintWaveformBars(context, bars, height, waveformBarRgb, waveformBaselineRgb, amplitudes);
+  const { bar, muted: mutedRgb, baseline } = waveformColors(canvas);
+  paintWaveformBars(context, bars, height, muted ? mutedRgb : bar, baseline, amplitudes);
 }
 
 function extractPeaks(channelData: Float32Array, barCount: number): number[] {
@@ -184,21 +218,13 @@ function useNearScreen(element: Element | null): boolean {
   return near;
 }
 
-export const AudioWaveform = memo(function AudioWaveform({
+function useWaveformPeaks({
   audioUrl,
   waveformUrl,
-  label,
-  labelColor,
-  trimStartFraction,
-  trimEndFraction,
   projectId,
   sessionEpoch,
   priority,
-  muted = false,
-  labelInset = 16,
 }: AudioWaveformProps) {
-  const [root, setRoot] = useState<HTMLDivElement | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const cacheKey = waveformUrl ?? audioUrl;
   const request = useMemo(
     () => ({
@@ -221,7 +247,15 @@ export const AudioWaveform = memo(function AudioWaveform({
   const snapshot = useThumbnailLease(cacheKey ? request : null);
   const peaks =
     snapshot.status === "ready" && snapshot.value.kind === "waveform" ? snapshot.value.peaks : null;
+  return { snapshot, peaks };
+}
 
+function useWaveformCanvas(
+  { trimStartFraction, trimEndFraction, muted = false, labelInset = 16 }: AudioWaveformProps,
+  peaks: readonly number[] | null,
+) {
+  const [root, setRoot] = useState<HTMLDivElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const fades = useContext(ClipFadesContext);
   const [strip, setStripRef, watchGap] = useThumbnailStripSize();
   const from = strip.width > 0 ? strip.inViewStart / strip.width : 0;
@@ -234,6 +268,10 @@ export const AudioWaveform = memo(function AudioWaveform({
     canvas.style.left = `${span.from * 100}%`;
     canvas.style.width = `${(span.to - span.from) * 100}%`;
     if (span.to <= span.from) return;
+    const size =
+      strip.width > 0 && strip.height > 0
+        ? { width: (span.to - span.from) * strip.width, height: strip.height - labelInset }
+        : undefined;
     drawWaveformCanvas(
       canvas,
       peaks,
@@ -242,30 +280,36 @@ export const AudioWaveform = memo(function AudioWaveform({
       trimEndFraction ?? 1,
       fades,
       span,
+      size,
     );
-  }, [fades, from, muted, peaks, to, trimEndFraction, trimStartFraction]);
+  }, [
+    fades,
+    from,
+    labelInset,
+    muted,
+    peaks,
+    strip.height,
+    strip.width,
+    to,
+    trimEndFraction,
+    trimStartFraction,
+  ]);
   const near = useNearScreen(root);
   useEffect(() => {
     if (near) draw();
   }, [draw, near, strip.width, strip.height]);
 
-  useEffect(() => {
-    const root = document.documentElement;
-    const observer = new MutationObserver(draw);
-    observer.observe(root, {
-      attributes: true,
-      attributeFilter: ["class", "data-chrome", "data-theme", "style"],
-    });
-    return () => observer.disconnect();
-  }, [draw]);
+  useEffect(() => (near ? onThemeChange(draw) : undefined), [draw, near]);
+  return { setRoot, canvasRef, setStripRef, watchGap, from, to, labelInset };
+}
 
-  useEffect(() => {
-    const clip = root?.closest(".timeline-clip");
-    if (!(clip instanceof HTMLElement)) return;
-    if (muted) clip.setAttribute("data-audio-muted", "true");
-    else clip.removeAttribute("data-audio-muted");
-    return () => clip.removeAttribute("data-audio-muted");
-  }, [muted, root]);
+export const AudioWaveform = memo(function AudioWaveform(props: AudioWaveformProps) {
+  const { label, labelColor } = props;
+  const { snapshot, peaks } = useWaveformPeaks(props);
+  const { setRoot, canvasRef, setStripRef, watchGap, from, to, labelInset } = useWaveformCanvas(
+    props,
+    peaks,
+  );
 
   return (
     <div ref={setRoot} className="absolute inset-0">

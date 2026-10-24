@@ -15,4 +15,10 @@ describe("rebuildDue", () => {
   it("never rebuilds when nothing changed", () => {
     expect(rebuildDue(false, Number.NEGATIVE_INFINITY, 1_000)).toBe(false);
   });
+
+  it("waits longer after a rebuild that took long, keeping its share of the thread", () => {
+    expect(rebuildDue(true, 0, 1_000, 150)).toBe(false);
+    expect(rebuildDue(true, 0, 1_500, 150)).toBe(true);
+    expect(rebuildDue(true, 0, RECOMPUTE_INTERVAL_MS, 2)).toBe(true);
+  });
 });

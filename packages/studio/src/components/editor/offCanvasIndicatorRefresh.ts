@@ -8,6 +8,7 @@ import {
 } from "./domEditLayerWalkCache";
 import { recomputeOffCanvasIndicators } from "./offCanvasIndicatorGeometry";
 import { requestOverlayFrames, subscribeOverlayFrame } from "./overlayFrameLoop";
+import { usePlayerStore } from "../../player/store/playerStore";
 
 interface OffCanvasIndicatorRefreshOptions {
   iframeRef: React.RefObject<HTMLIFrameElement | null>;
@@ -71,16 +72,22 @@ function observeDoc(
  */
 export const RECOMPUTE_INTERVAL_MS = 100;
 
+const MAX_REBUILD_SHARE = 0.1;
+
 /** Dirty, and far enough past the last rebuild to be worth paying for another. */
-export function rebuildDue(dirty: boolean, lastAt: number, now: number): boolean {
-  return dirty && now - lastAt >= RECOMPUTE_INTERVAL_MS;
+export function rebuildDue(dirty: boolean, lastAt: number, now: number, lastCostMs = 0): boolean {
+  return dirty && now - lastAt >= Math.max(RECOMPUTE_INTERVAL_MS, lastCostMs / MAX_REBUILD_SHARE);
 }
+
+const rebuildNow = (dirty: boolean, lastAt: number, now: number, lastCostMs: number) =>
+  !usePlayerStore.getState().isPlaying && rebuildDue(dirty, lastAt, now, lastCostMs);
 
 export function startOffCanvasIndicatorRefresh(
   options: OffCanvasIndicatorRefreshOptions,
 ): () => void {
   let lastCompSig = "";
   let lastRecomputeAt = Number.NEGATIVE_INFINITY;
+  let lastRecomputeCostMs = 0;
   const walkCache = createDomEditLayerWalkCache();
   const markDirty = () => {
     options.dirtyRef.current = true;
@@ -121,7 +128,7 @@ export function startOffCanvasIndicatorRefresh(
     }
     // Staying dirty while throttled is what makes the next eligible frame rebuild.
     const now = performance.now();
-    if (!rebuildDue(options.dirtyRef.current, lastRecomputeAt, now)) return;
+    if (!rebuildNow(options.dirtyRef.current, lastRecomputeAt, now, lastRecomputeCostMs)) return;
     lastRecomputeAt = now;
     options.dirtyRef.current = false;
     drainPendingLayerMutations(options.observerRef.current, walkCache);
@@ -136,10 +143,15 @@ export function startOffCanvasIndicatorRefresh(
       options.setRects,
       walkCache,
     );
+    lastRecomputeCostMs = performance.now() - now;
   };
   const unsubscribe = subscribeOverlayFrame(update);
+  const unsubscribePlaying = usePlayerStore.subscribe((now, before) => {
+    if (before.isPlaying && !now.isPlaying) requestOverlayFrames();
+  });
   return () => {
     unsubscribe();
+    unsubscribePlaying();
     options.observerRef.current?.disconnect();
     options.observerRef.current = null;
     options.observedDocRef.current = null;

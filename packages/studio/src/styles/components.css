@@ -203,7 +203,7 @@
   top: -21px;
   width: var(--timeline-transition-zone-width);
   height: 42px;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   overflow: hidden;
   background: var(--timeline-transition-zone);
   filter: blur(2.5px);
@@ -338,6 +338,12 @@
     0 8px 24px var(--timeline-clip-shadow-dragging);
 }
 
+/* A clip too narrow for a waveform (the frame tier) draws none; its content box, above any theme's pill
+   layer, fills in the bars' colour so a long film's sound still reads at fit zoom. */
+.timeline-clip.is-audio[data-ladder="frame"]:not([data-audio-muted]) .timeline-clip__content {
+  background-color: var(--timeline-waveform-frame-fill);
+}
+
 /* Mute greys the pill in place. Hot path: no transition. */
 .timeline-clip.is-audio[data-clip-hidden="true"],
 .timeline-clip.is-audio[data-audio-muted="true"] {
@@ -374,10 +380,10 @@
   max-width: calc(100% - 22px);
   overflow: hidden;
   padding: 1px 5px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: var(--timeline-clip-chip-bg);
   color: var(--timeline-clip-chip-text);
-  font-size: 10px;
+  font-size: var(--text-step-10);
   font-weight: 500;
   line-height: 16px;
   pointer-events: none;
@@ -442,7 +448,7 @@
   overflow: hidden;
   color: var(--timeline-tick-text);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: var(--text-step-9);
   font-variant-numeric: tabular-nums;
   line-height: 1;
   text-overflow: ellipsis;
@@ -466,7 +472,7 @@
 /* CodeMirror overrides */
 .cm-editor {
   height: 100%;
-  font-size: 13px;
+  font-size: var(--text-step-13);
 }
 
 .cm-editor .cm-scroller {

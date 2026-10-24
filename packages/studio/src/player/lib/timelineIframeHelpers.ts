@@ -475,6 +475,8 @@ function buildMissingCompositionEntry(params: {
   return attachCompositionSource(entry, element, compositionSrc);
 }
 
+const MEDIA_TAGS = new Set(["video", "audio", "img"]);
+
 /**
  * Scan the iframe DOM for composition hosts missing from the current
  * timeline elements and add them.  The CDN runtime often fails to resolve
@@ -496,7 +498,12 @@ export function buildMissingCompositionElements(
   const hosts = doc.querySelectorAll("[data-composition-id][data-start]");
   const missing: TimelineElement[] = [];
 
-  const resolveEnd = createReferenceEndResolver(createTimedElementLookup(doc), iframeWin);
+  let resolveEndOnce: ReturnType<typeof createReferenceEndResolver> | undefined;
+  const resolveEnd: ReturnType<typeof createReferenceEndResolver> = (refId, visiting) =>
+    (resolveEndOnce ??= createReferenceEndResolver(createTimedElementLookup(doc), iframeWin))(
+      refId,
+      visiting,
+    );
   const masterTime = createRuntimeStartTimeResolver({
     timelineRegistry: iframeWin.__timelines,
     includeAuthoredTimingAttrs: true,
@@ -523,9 +530,10 @@ export function buildMissingCompositionElements(
 
   // Patch existing elements that are missing compositionSrc
   let patched = false;
-  const findHost = previewElementFinder(doc);
+  let findHost: ReturnType<typeof previewElementFinder> | undefined;
   const updatedEls = (currentEls as TimelineElement[]).map((existing) => {
-    if (existing.compositionSrc) return existing;
+    if (existing.compositionSrc || MEDIA_TAGS.has(existing.tag.toLowerCase())) return existing;
+    findHost ??= previewElementFinder(doc);
     const host =
       findHost(existing) ?? doc.querySelector(`[data-composition-id="${CSS.escape(existing.id)}"]`);
     if (!host) return existing;

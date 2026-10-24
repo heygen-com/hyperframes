@@ -1,7 +1,8 @@
 import { memo, type CSSProperties, type RefObject } from "react";
 import type { TimelineElement } from "../store/playerStore";
 import type { ThumbnailPriority } from "../lib/thumbnailScheduler";
-import { TimelineClip, clipZoomKey } from "./TimelineClip";
+import { TimelineClip, clipWidthPx, clipZoomKey } from "./TimelineClip";
+import { clipWidthLadder } from "./timelineTheme";
 import { createClipGestureHandlers, type ClipGestureDeps } from "./timelineClipGestureHandlers";
 import { renderClipChildren } from "./timelineClipChildren";
 import type { TimelineEditCapabilities } from "./timelineEditCapabilities";
@@ -44,6 +45,19 @@ const sameCapabilities = (a: TimelineEditCapabilities, b: TimelineEditCapabiliti
   a.canTrimStart === b.canTrimStart &&
   a.canTrimEnd === b.canTrimEnd &&
   a.readOnly === b.readOnly;
+
+const NO_PICTURE: TimelineProps["renderClipContent"] = () => null;
+
+function contentRendererAtWidth(
+  renderClipContent: TimelineProps["renderClipContent"],
+  previewElement: TimelineElement,
+  pps: number,
+): TimelineProps["renderClipContent"] {
+  if (!renderClipContent) return renderClipContent;
+  return clipWidthLadder(clipWidthPx(previewElement, pps)) === "frame"
+    ? NO_PICTURE
+    : renderClipContent;
+}
 
 const zoomKey = (p: TimelineLaneClipProps) =>
   clipZoomKey(p.previewElement, p.pps, p.isSelected || p.isHovered);
@@ -118,10 +132,13 @@ export const TimelineLaneClip = memo(function TimelineLaneClip({
         if (isComposition) actions.current.onDrillDown?.(el);
       }}
     >
-      {renderClipChildren(previewElement, clipStyle, renderClipContent, renderClipOverlay, {
-        priority,
-        rich,
-      })}
+      {renderClipChildren(
+        previewElement,
+        clipStyle,
+        contentRendererAtWidth(renderClipContent, previewElement, pps),
+        renderClipOverlay,
+        { priority, rich },
+      )}
     </TimelineClip>
   );
 }, sameClip);
