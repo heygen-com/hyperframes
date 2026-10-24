@@ -316,7 +316,9 @@ export default defineCommand({
       try {
         const project = args.json ? resolveProjectOrThrow(args.dir) : resolveProject(args.dir);
         if (args.stop) {
-          const stopped = await stopBackgroundPreview(project.dir, startPort);
+          const stopped = await stopBackgroundPreview(project.dir, startPort, {
+            preferredPort: explicitPort,
+          });
           if (args.json) {
             writeLifecycleJson(
               lifecyclePayload(
@@ -335,7 +337,9 @@ export default defineCommand({
           }
           return;
         }
-        const status = await readBackgroundPreviewStatus(project.dir, startPort);
+        const status = await readBackgroundPreviewStatus(project.dir, startPort, {
+          preferredPort: explicitPort,
+        });
         if (!status) {
           if (args.json) {
             writeLifecycleJson(

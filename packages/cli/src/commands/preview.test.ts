@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { runCommand } from "citty";
 import { PreviewServerPortMismatchError } from "../utils/studioSelectionClient.js";
 import { PreviewPortUnavailableError } from "./previewLifecycle.js";
+import * as previewLifecycle from "./previewLifecycle.js";
 import {
   default as previewCommand,
   backgroundStartFailureCode,
@@ -56,6 +57,39 @@ function tempProject(): string {
   tempDirs.push(dir);
   return dir;
 }
+
+describe.each(["status", "stop"] as const)("preview --%s port scope", (operation) => {
+  it.each([undefined, 32521])("forwards the explicit port %s", async (port) => {
+    const dir = tempProject();
+    writeFileSync(join(dir, "index.html"), "<html></html>");
+    const readStatus = vi
+      .spyOn(previewLifecycle, "readBackgroundPreviewStatus")
+      .mockResolvedValue(null);
+    const stop = vi.spyOn(previewLifecycle, "stopBackgroundPreview").mockResolvedValue(false);
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const rawArgs = [
+      dir,
+      `--${operation}`,
+      "--json",
+      ...(port === undefined ? [] : ["--port", String(port)]),
+    ];
+    const previousArgv = process.argv;
+    process.argv = [process.execPath, "cli.js", "preview", ...rawArgs];
+    try {
+      await runCommand(previewCommand, { rawArgs });
+    } finally {
+      process.argv = previousArgv;
+    }
+
+    const call = operation === "status" ? readStatus : stop;
+    expect(call).toHaveBeenCalledOnce();
+    const [project, startPort, options] = call.mock.calls[0] ?? [];
+    expect(project).toBe(dir);
+    expect(startPort).toBe(port ?? 3002);
+    expect(options?.preferredPort).toBe(port);
+    expect(operation === "status" ? stop : readStatus).not.toHaveBeenCalled();
+  });
+});
 
 describe("Studio handoff URLs", () => {
   it("hands off the exact timeline project route", () => {

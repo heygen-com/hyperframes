@@ -78,6 +78,25 @@ Run `docker info`.
 
 Confirm Docker is installed, its daemon is running, your user has permission, and the first image download can reach the registry.
 
+### Preview checks an unexpected port range
+
+When starting a managed background preview, choose the discovery range with an explicit port:
+
+```bash
+npx hyperframes preview --background --port 4567
+```
+
+Discovery checks ports 4567–4666. If this project has a saved preview on another
+port outside that range, only that saved port is checked separately. When moving
+an existing managed preview to the requested port, add `--force-new` to stop and
+replace it. Without `--port`, discovery starts at the saved preview's port.
+
+`preview --status --port 4567` uses the same discovery range and checks an
+out-of-range saved port separately. `preview --stop` checks only this project's
+saved port when a session exists, even with an explicit `--port`. Without a saved
+session, `--stop --port 4567` discovers previews in ports 4567–4666. Shutdown waits
+check only the port being stopped.
+
 ## Media problems
 
 ### Video is black in preview but renders
