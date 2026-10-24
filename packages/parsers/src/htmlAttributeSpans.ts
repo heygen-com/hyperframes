@@ -71,15 +71,22 @@ function readOpeningTag(html: string, start: number, name: string, at: number): 
   };
 }
 
-export function scanHtmlOpeningTags(html: string): HtmlOpeningTagSpan[] {
+export function scanHtmlOpeningTags(
+  html: string,
+  onClosingTag?: (name: string, start: number) => void,
+): HtmlOpeningTagSpan[] {
   const tags: HtmlOpeningTagSpan[] = [];
-  const opening = /<!--[\s\S]*?(?:--!?>|$)|<([a-z][^\t\n\f\r />]*)/gi;
+  const opening = /<!--[\s\S]*?(?:--!?>|$)|<(\/?)([a-z][^\t\n\f\r />]*)/gi;
   let match: RegExpExecArray | null;
   while ((match = opening.exec(html)) !== null) {
-    if (!match[1]) continue;
-    const tag = readOpeningTag(html, match.index, match[1], opening.lastIndex);
-    tags.push(tag);
+    if (!match[2]) continue;
+    const tag = readOpeningTag(html, match.index, match[2], opening.lastIndex);
     opening.lastIndex = tag.end;
+    if (match[1]) {
+      onClosingTag?.(tag.name, tag.start);
+      continue;
+    }
+    tags.push(tag);
     if (
       [
         "script",

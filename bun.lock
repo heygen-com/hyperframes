@@ -375,6 +375,7 @@
         "dockview-react": "8.3.1",
         "gsap": "^3.13.0",
         "mediabunny": "^1.45.3",
+        "postcss": "^8.5.8",
       },
       "devDependencies": {
         "@hyperframes/producer": "workspace:*",

@@ -1,3 +1,4 @@
+import { rebindClipboardReferences } from "./clipboardReferences";
 import { COMPOSITION_ROOT_OPEN_TAG_RE } from "./compositionPatterns";
 
 const CLIPBOARD_MARKER = "hyperframes-clipboard:v1";
@@ -200,12 +201,15 @@ export const ID_ATTR_RE = /(?<=\s)id="([^"]+)"/;
 
 export function deduplicateIds(html: string, existingIds: string[]): string {
   const existingSet = new Set(existingIds);
-  return html.replace(new RegExp(ID_ATTR_RE.source, "g"), (full, id: string) => {
+  const renames = new Map<string, string>();
+  const deduped = html.replace(new RegExp(ID_ATTR_RE.source, "g"), (full, id: string) => {
     if (!existingSet.has(id)) return full;
     let counter = 2;
     while (existingSet.has(`${id}-${counter}`)) counter++;
     const newId = `${id}-${counter}`;
     existingSet.add(newId);
+    renames.set(id, newId);
     return `id="${newId}"`;
   });
+  return rebindClipboardReferences(deduped, renames);
 }

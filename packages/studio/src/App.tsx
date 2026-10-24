@@ -235,6 +235,7 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
   const deleteSelectedKeyframesRef = useRef<() => void>(() => {});
   const { handleCopy, handlePaste, handleCut, handleDuplicate, canPaste } = useClipboard({
     projectId,
+    readOnlyPreview,
     activeCompPath,
     domEditSelectionRef: domEditSelectionBridgeRef,
     showToast,

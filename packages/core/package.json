@@ -556,6 +556,18 @@
       "node": "./dist/timelineAssetId.js",
       "import": "./src/timelineAssetId.ts",
       "types": "./src/timelineAssetId.ts"
+    },
+    "./element-clipboard": {
+      "bun": "./src/elementClipboard.ts",
+      "node": "./dist/elementClipboard.js",
+      "import": "./src/elementClipboard.ts",
+      "types": "./src/elementClipboard.ts"
+    },
+    "./selector-id-tokens": {
+      "bun": "./src/compiler/selectorIdTokens.ts",
+      "node": "./dist/compiler/selectorIdTokens.js",
+      "import": "./src/compiler/selectorIdTokens.ts",
+      "types": "./src/compiler/selectorIdTokens.ts"
     }
   },
   "publishConfig": {
@@ -920,6 +932,14 @@
       "./timeline-asset-id": {
         "import": "./dist/timelineAssetId.js",
         "types": "./dist/timelineAssetId.d.ts"
+      },
+      "./element-clipboard": {
+        "import": "./dist/elementClipboard.js",
+        "types": "./dist/elementClipboard.d.ts"
+      },
+      "./selector-id-tokens": {
+        "import": "./dist/compiler/selectorIdTokens.js",
+        "types": "./dist/compiler/selectorIdTokens.d.ts"
       }
     },
     "main": "./dist/index.js",

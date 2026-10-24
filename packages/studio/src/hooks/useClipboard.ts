@@ -12,6 +12,10 @@ import {
   insertAsSibling,
 } from "../utils/clipboardPayload";
 import { carryLook, renamedIds } from "../utils/clipboardLook";
+import {
+  hoistElementClipboardStyles,
+  includeElementClipboardStyles,
+} from "../utils/elementClipboardStyles";
 import { collectHtmlIds } from "../utils/studioHelpers";
 import { insertTimelineAssetIntoSource } from "../utils/timelineAssetDrop";
 import { extendRootDurationInSource } from "../utils/rootDuration";
@@ -29,6 +33,8 @@ import {
   parseSavedSource,
 } from "../utils/authoredSource";
 import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
+
+import { readPastePayload, readSystemClipboardText } from "./elementClipboardPaste";
 
 type InPlace = { inPlace?: boolean };
 
@@ -58,6 +64,7 @@ interface RecordEditInput {
 
 export interface UseClipboardOptions {
   projectId: string | null;
+  readOnlyPreview?: boolean;
   activeCompPath: string | null;
   domEditSelectionRef: React.MutableRefObject<DomEditSelection | null>;
   showToast: (message: string, tone?: "error" | "info") => void;
@@ -111,9 +118,10 @@ function getSelectedDomElement(
 
 function savedMarkupElseLive(saved: Document, live: Element, sourceFile: string): string {
   const authored = findAuthoredElement(saved, live) ?? findAuthoredElementById(saved, live);
-  return authored
+  const html = authored
     ? authoredMarkup(authored, live, sourceFile)
     : liveMarkupWithoutPreviewMarks(live);
+  return includeElementClipboardStyles(saved, html);
 }
 
 async function readSavedMarkup(
@@ -184,13 +192,12 @@ export function pasteElementHtml(
 ): string {
   const reminted = remintHfIds(payload.html, new DOMParser(), hfIdsInFile(content));
   const deduped = deduplicateIds(reminted, collectHtmlIds(content));
-  const result = insertAsSibling(
-    content,
-    deduped,
-    payload.originSelector,
-    payload.originSelectorIndex,
+  const renames = renamedIds(reminted, deduped);
+  const result = hoistElementClipboardStyles(
+    insertAsSibling(content, deduped, payload.originSelector, payload.originSelectorIndex),
+    renames,
   );
-  return fromThisFile ? carryLook(result, renamedIds(reminted, deduped), 0) : result;
+  return fromThisFile ? carryLook(result, renames, 0) : result;
 }
 
 /** Shared insertion path for paste and duplicate, anchored at the playhead or the selection's end. Returns the
@@ -237,7 +244,10 @@ export function pasteTimelineClips(
       .replace(/data-start="[^"]*"/, `data-start="${formatTimelineAttributeNumber(newStart)}"`)
       .replace(/data-track-index="[^"]*"/, `data-track-index="${newTrack}"`);
     const withPatched = patchedRootTag + deduped.slice(rootTagEnd + 1);
-    result = insertTimelineAssetIntoSource(result, withPatched);
+    result = hoistElementClipboardStyles(
+      insertTimelineAssetIntoSource(result, withPatched, { preserveWhitespace: true }),
+      renamedIds(reminted, deduped),
+    );
     if (fromThisFile) {
       const authored = Number(rootTag.match(/data-start="([^"]*)"/)?.[1]);
       const authoredStart = Number.isFinite(authored) ? authored : clip.start;
@@ -252,6 +262,7 @@ export function pasteTimelineClips(
 
 export function useClipboard({
   projectId,
+  readOnlyPreview = false,
   activeCompPath,
   domEditSelectionRef,
   showToast,
@@ -264,13 +275,14 @@ export function useClipboard({
   waitForPendingDomEditSaves,
 }: UseClipboardOptions) {
   const clipboardRef = useRef<Promise<ClipboardPayload | null> | null>(null);
-  const projectIdRef = useRef(projectId);
-  projectIdRef.current = projectId;
+  const ignoredSystemText = useRef<Promise<string | null>>(Promise.resolve(null));
+  const projectIdRef = useRef({ id: projectId });
+  if (projectIdRef.current.id !== projectId) projectIdRef.current = { id: projectId };
 
   // After any save still in flight on the file, so a copy right after an edit takes the edit.
   const readSaved = useCallback(
     async (path: string): Promise<string> => {
-      const pid = projectIdRef.current;
+      const pid = projectIdRef.current.id;
       if (!pid) throw new Error("No project is open.");
       // Only the order matters here; a failed save already shows its own banner.
       await waitForPendingDomEditSaves().catch(() => {});
@@ -332,7 +344,7 @@ export function useClipboard({
         kind: "timeline-clip",
         clips,
         sourceFile,
-        projectId: projectIdRef.current ?? undefined,
+        projectId: projectIdRef.current.id ?? undefined,
         copiedInComposition: activeCompPath || "index.html",
       };
     });
@@ -352,7 +364,7 @@ export function useClipboard({
           kind: "dom-element",
           html: savedMarkupElseLive(parseSavedSource(content), live, sourceFile),
           sourceFile,
-          projectId: projectIdRef.current ?? undefined,
+          projectId: projectIdRef.current.id ?? undefined,
           originSelector: domSelection.selector,
           originSelectorIndex: domSelection.selectorIndex,
         };
@@ -373,6 +385,7 @@ export function useClipboard({
       return null;
     }
     if (!pending) return null;
+    ignoredSystemText.current = readSystemClipboardText();
     const own = pending.catch((error: unknown) => {
       showToast(error instanceof Error ? error.message : "Failed to copy", "error");
       return null;
@@ -392,12 +405,27 @@ export function useClipboard({
   // fallow-ignore-next-line complexity
   const handlePaste = useCallback(
     async (options?: InPlace) => {
-      const payload = await clipboardRef.current;
-      if (!payload) {
-        showToast("Nothing to paste.", "info");
-        return;
-      }
-      const pid = projectIdRef.current;
+      const project = projectIdRef.current;
+      const isCurrentProject = () => projectIdRef.current === project;
+      const pendingPayload = clipboardRef.current;
+      const payload = await readPastePayload(
+        {
+          projectId: project.id,
+          isCurrentProject,
+          activeCompPath,
+          readOnlyPreview,
+          writeProjectFile,
+          recordEdit,
+          reloadPreview,
+          showToast,
+          waitForPendingDomEditSaves,
+          ignoredText: ignoredSystemText.current,
+        },
+        pendingPayload,
+        pasteTimelineClips,
+      );
+      if (!payload) return;
+      const pid = project.id;
       if (!pid) return;
 
       const targetPath = activeCompPath || "index.html";
@@ -405,6 +433,7 @@ export function useClipboard({
         let pastedIds: string[] = [];
         const fromThisFile = payload.sourceFile === targetPath && payload.projectId === pid;
         const paste = (originalContent: string) => {
+          if (!isCurrentProject()) throw new Error("Project changed before paste completed.");
           if (payload.kind !== "timeline-clip")
             return pasteElementHtml(originalContent, payload, fromThisFile);
           const { currentTime, elements } = usePlayerStore.getState();
@@ -433,6 +462,7 @@ export function useClipboard({
           recordEdit,
         });
 
+        if (!isCurrentProject()) return;
         // CapCut: the pasted clip(s) become the selection; the playhead does not
         // move. reloadPreview is a bare refresh-key bump with no selection
         // snapshot of its own; calling setSelection before it is what makes the
@@ -447,7 +477,15 @@ export function useClipboard({
         showToast(message);
       }
     },
-    [activeCompPath, recordEdit, reloadPreview, showToast, writeProjectFile],
+    [
+      activeCompPath,
+      readOnlyPreview,
+      recordEdit,
+      reloadPreview,
+      showToast,
+      waitForPendingDomEditSaves,
+      writeProjectFile,
+    ],
   );
 
   // Duplicates the selection right after it, or with `inPlace` at its own time on a track of its own,
@@ -458,7 +496,7 @@ export function useClipboard({
     async (options?: InPlace): Promise<boolean> => {
       const targets = findSelectedClips();
       if (!targets) return false;
-      const pid = projectIdRef.current;
+      const pid = projectIdRef.current.id;
       if (!pid) return false;
 
       const { elements } = targets;
