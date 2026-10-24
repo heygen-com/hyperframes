@@ -43,6 +43,135 @@ export async function bench(cfg) {
         `${v.currentSrc.split("/").pop()}: ${v.error.code} ${v.error.message || ""}`.trim(),
       );
 
+  // Decoder counters only, no per-frame probe or wrappers: separates the probe's own cost from the player's.
+  if (cfg.countersOnly) {
+    // Odd-numbered videos ignore the runtime's rate steering, so both halves of one page can be compared.
+    const all = videos();
+    const unsteerable = new Set(all.filter((_, i) => i % 2 === 1));
+    const proto = win.HTMLMediaElement.prototype;
+    const rateDescriptor = Object.getOwnPropertyDescriptor(proto, "playbackRate");
+    Object.defineProperty(proto, "playbackRate", {
+      ...rateDescriptor,
+      set(value) {
+        if (!unsteerable.has(this)) rateDescriptor.set.call(this, value);
+      },
+    });
+    const frameReads = { videoFrameCallbacks: 0, videoDraws: 0 };
+    const videoProto = win.HTMLVideoElement.prototype;
+    if (videoProto.requestVideoFrameCallback) {
+      const request = videoProto.requestVideoFrameCallback;
+      videoProto.requestVideoFrameCallback = function (...args) {
+        frameReads.videoFrameCallbacks++;
+        return request.apply(this, args);
+      };
+    }
+    for (const Ctx of [
+      win.CanvasRenderingContext2D,
+      win.WebGLRenderingContext,
+      win.WebGL2RenderingContext,
+    ]) {
+      for (const method of ["drawImage", "texImage2D", "texSubImage2D"]) {
+        const original = Ctx?.prototype?.[method];
+        if (!original) continue;
+        Ctx.prototype[method] = function (...args) {
+          if (args.some((a) => a instanceof win.HTMLVideoElement)) frameReads.videoDraws++;
+          return original.apply(this, args);
+        };
+      }
+    }
+    const lag = () => all.map((v) => runtime.getTime() - v.currentTime);
+    // The player's parent-page media proxies: owner, count and state, and an option to empty them first.
+    const proxies = () => host._media?._entries ?? [];
+    if (cfg.emptyProxies) {
+      for (const entry of proxies()) {
+        entry.el.removeAttribute("src");
+        entry.el.load();
+      }
+    }
+    // Display scale 1 makes the runtime drop its below-1x raster hints (previewRasterHints.ts).
+    const rasterMarks = () =>
+      iframe.contentDocument.querySelectorAll("[data-hf-preview-raster]").length;
+    const marksBefore = rasterMarks();
+    if (cfg.fullRaster) {
+      win.postMessage(
+        { source: "hf-parent", type: "control", action: "set-display-scale", scale: 1 },
+        "*",
+      );
+      await sleep(300);
+    }
+    const marksAtPlay = rasterMarks();
+    // Animations still running in the player's own UI at play time, e.g. a loader overlay left mid-hide.
+    const loader = host.shadowRoot.querySelector(".hfp-shader-loader");
+    const uiState = {
+      runningAnimations: host.shadowRoot.getAnimations().filter((a) => a.playState === "running")
+        .length,
+      loaderVisible: loader?.classList.contains("hfp-visible") === true,
+      loaderHiding: loader?.classList.contains("hfp-hiding") === true,
+    };
+    if (cfg.removeLoader) loader?.remove();
+    const hostOps = { play: 0, seek: 0 };
+    const hostProto = window.HTMLMediaElement.prototype;
+    const hostPlay = hostProto.play;
+    hostProto.play = function (...args) {
+      hostOps.play++;
+      return hostPlay.apply(this, args);
+    };
+    const hostTime = Object.getOwnPropertyDescriptor(hostProto, "currentTime");
+    Object.defineProperty(hostProto, "currentTime", {
+      ...hostTime,
+      set(value) {
+        hostOps.seek++;
+        hostTime.set.call(this, value);
+      },
+    });
+    host.play();
+    await until(() => runtime.isPlaying(), 5_000, "isPlaying");
+    const before = decoded();
+    const quality = (v) => v.getVideoPlaybackQuality();
+    const startQuality = new Map(videos().map((v) => [v, quality(v)]));
+    const steeredTicks = new Map(videos().map((v) => [v, 0]));
+    let ticks = 0;
+    const rateSampler = setInterval(() => {
+      ticks++;
+      for (const v of videos())
+        if (Math.abs(v.playbackRate - 1) > 1e-6) steeredTicks.set(v, steeredTicks.get(v) + 1);
+    }, 100);
+    await sleep(1000);
+    const lagEarly = lag();
+    const proxyState = {
+      owner: host._media?._audioOwner === "parent" ? 1 : 0,
+      count: proxies().length,
+      playing: proxies().filter((e) => !e.el.paused).length,
+    };
+    await sleep(cfg.playMs - 1000);
+    const lagLate = lag();
+    clearInterval(rateSampler);
+    const after = decoded();
+    host.pause();
+    return {
+      countersOnly: true,
+      videoCount: videos().length,
+      decoded: { dropped: after.dropped - before.dropped, total: after.total - before.total },
+      frameReads,
+      proxyState,
+      rasterMarks: { before: marksBefore, atPlay: marksAtPlay },
+      uiState,
+      hostOps,
+      perVideo: all.map((v, i) => {
+        const a = startQuality.get(v);
+        const b = quality(v);
+        return {
+          dropped: b.droppedVideoFrames - a.droppedVideoFrames,
+          total: b.totalVideoFrames - a.totalVideoFrames,
+          steeredFraction: ticks ? steeredTicks.get(v) / ticks : 0,
+          rateBlocked: unsteerable.has(v),
+          lagEarly: lagEarly[i],
+          lagLate: lagLate[i],
+        };
+      }),
+    };
+  }
+
   // The composition's own rAF callbacks (the runtime tick) are timed, so work splits into script and rendering.
   let compositionScriptMs = 0;
   const compositionRaf = win.requestAnimationFrame.bind(win);
@@ -110,6 +239,41 @@ export async function bench(cfg) {
     proto[method] = function (...args) {
       if (countOps) mediaOps[method]++;
       return original.apply(this, args);
+    };
+  }
+  const mediaReads = {};
+  for (const prop of [
+    "currentTime",
+    "buffered",
+    "played",
+    "seekable",
+    "readyState",
+    "paused",
+    "duration",
+    "seeking",
+    "ended",
+    "volume",
+    "muted",
+    "playbackRate",
+    "networkState",
+    "error",
+  ]) {
+    const d = Object.getOwnPropertyDescriptor(proto, prop);
+    Object.defineProperty(proto, prop, {
+      ...d,
+      get() {
+        if (countOps) mediaReads[prop] = (mediaReads[prop] ?? 0) + 1;
+        return d.get.call(this);
+      },
+    });
+  }
+  let audioCaptures = 0;
+  const AudioCtx = win.AudioContext || win.webkitAudioContext;
+  if (AudioCtx) {
+    const capture = AudioCtx.prototype.createMediaElementSource;
+    AudioCtx.prototype.createMediaElementSource = function (el) {
+      audioCaptures++;
+      return capture.call(this, el);
     };
   }
 
@@ -190,6 +354,8 @@ export async function bench(cfg) {
     droppedTimeline,
     videoStates,
     mediaOps,
+    mediaReads,
+    audioCaptures,
     rateLog,
     seeks,
   };

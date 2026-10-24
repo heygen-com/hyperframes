@@ -19,7 +19,10 @@
   <body>
     <script>
       // ?media=<key>&n=&rate=, &tick=1 (per-frame media writes),
-      // &animate=scale|translate|css (ancestor transform every frame; css runs on the compositor).
+      // &animate=scale|translate|css (ancestor transform every frame; css runs on the compositor),
+      // &frame=plain|scaled (inside an iframe, scaled as the player scales it), &tiles=1 (the grid's tile styling),
+      // &reads=1 (reads every media state property of every video each frame), &probe=1 (the bench's rAF probe),
+      // &mixrate=<r> (odd-numbered videos play at r, so one page compares both rates under the same load).
       (async function () {
         var q = new URLSearchParams(location.search);
         var MEDIA = {
@@ -29,6 +32,29 @@
         };
         var src = MEDIA[q.get("media")];
         if (!src) throw new Error("unknown media " + q.get("media"));
+        var frame = q.get("frame");
+        if (frame === "plain" || frame === "scaled") {
+          var child = new URLSearchParams({
+            media: q.get("media"),
+            n: String(Number(q.get("n") || 1)),
+          });
+          for (var key of ["rate", "tick", "animate", "tiles", "reads", "probe", "mixrate"]) {
+            if (q.get(key)) child.set(key, q.get(key));
+          }
+          var f = document.createElement("iframe");
+          f.src = "index.html?" + child.toString();
+          f.style.cssText = "border:0;width:1920px;height:1080px;transform-origin:0 0;";
+          if (frame === "scaled") f.style.transform = "scale(0.5)";
+          document.body.appendChild(f);
+          await new Promise(function poll(resolve) {
+            var result = f.contentWindow && f.contentWindow.__control;
+            if (result) {
+              window.__control = result;
+              resolve();
+            } else setTimeout(() => poll(resolve), 200);
+          });
+          return;
+        }
         var videos = [];
         for (var i = 0; i < Number(q.get("n") || 1); i++) {
           var v = document.createElement("video");
@@ -36,7 +62,14 @@
           v.muted = true;
           v.playsInline = true;
           v.preload = "auto";
-          document.body.appendChild(v);
+          if (q.get("tiles")) {
+            var tile = document.createElement("div");
+            tile.style.cssText =
+              "display:inline-block;width:320px;height:180px;border-radius:12px;overflow:hidden;will-change:transform;";
+            v.style.cssText = "width:100%;height:100%;object-fit:cover;";
+            tile.appendChild(v);
+            document.body.appendChild(tile);
+          } else document.body.appendChild(v);
           videos.push(v);
         }
         await Promise.all(
@@ -57,6 +90,38 @@
           );
         await Promise.all(videos.map((v) => v.play()));
         videos.forEach((v) => (v.playbackRate = Number(q.get("rate") || 1)));
+        var mixrate = Number(q.get("mixrate"));
+        if (mixrate > 0) videos.forEach((v, i) => i % 2 && (v.playbackRate = mixrate));
+        var startQuality = videos.map((v) => v.getVideoPlaybackQuality());
+        if (q.get("probe")) {
+          var channel = new MessageChannel();
+          channel.port1.onmessage = function () {};
+          (function probe() {
+            channel.port2.postMessage(0);
+            requestAnimationFrame(probe);
+          })();
+        }
+        if (q.get("reads")) {
+          (function read() {
+            videos.forEach((v) => {
+              void [
+                v.currentTime,
+                v.readyState,
+                v.paused,
+                v.duration,
+                v.seeking,
+                v.ended,
+                v.networkState,
+              ];
+              void [
+                v.buffered.length && v.buffered.end(0),
+                v.played.length && v.played.end(0),
+                v.seekable.length,
+              ];
+            });
+            requestAnimationFrame(read);
+          })();
+        }
         if (q.get("tick")) {
           (function tick() {
             videos.forEach((v) => {
@@ -88,6 +153,14 @@
         await new Promise((r) => setTimeout(r, 8000));
         var after = decoded();
         window.__control = {
+          perVideo: videos.map((v, i) => {
+            var b = v.getVideoPlaybackQuality();
+            return {
+              dropped: b.droppedVideoFrames - startQuality[i].droppedVideoFrames,
+              total: b.totalVideoFrames - startQuality[i].totalVideoFrames,
+              rate: v.playbackRate,
+            };
+          }),
           dropped: after.dropped - before.dropped,
           total: after.total - before.total,
           presentedFps:

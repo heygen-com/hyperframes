@@ -47,11 +47,37 @@ jobs:
       - name: Enable safaridriver
         run: sudo safaridriver --enable
 
+      # Spotlight indexes the fresh checkout and generated media during the runs, taking 1 to 2 cores.
+      - name: Stop Spotlight indexing
+        run: sudo mdutil -a -i off || true
+
+      - name: Profile Safari while GSAP-heavy films play
+        continue-on-error: true
+        working-directory: packages/player
+        run: bun run tests/perf/browsers/profile.ts --seconds 6
+
+      - name: Upload the Safari profile
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: player-safari-profile
+          path: packages/player/tests/perf/results/profile/
+          if-no-files-found: warn
+          retention-days: 30
+
       - name: Run heavy films in Safari and Chrome
         working-directory: packages/player
         run: |
           sw_vers
           CHROMEDRIVER="$CHROMEWEBDRIVER/chromedriver" bun run tests/perf/browsers/run.ts --browsers safari,chrome --runs 2
+
+      - name: Record the screen while films play
+        if: always()
+        working-directory: packages/player
+        run: |
+          system_profiler SPDisplaysDataType | grep -i resolution || true
+          ffmpeg -hide_banner -f avfoundation -list_devices true -i "" 2>&1 | grep -i "screen" || true
+          CHROMEDRIVER="$CHROMEWEBDRIVER/chromedriver" bun run tests/perf/browsers/record.ts --browsers safari,chrome
 
       - name: Upload results
         if: always()

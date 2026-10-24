@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>control: a composition in a bare iframe, without the player element</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #000;
+      }
+      iframe {
+        border: 0;
+        width: 1920px;
+        height: 1080px;
+        transform-origin: 0 0;
+        transform: scale(0.5);
+      }
+    </style>
+  </head>
+  <body>
+    <script>
+      // ?film=<key> plays the bench's film through the runtime's own API, with no player element.
+      // Each flag adds one player behaviour: ticks, displayScale=<s>, attrs, shadow, messages.
+      (async function () {
+        var FILMS = {
+          "10-video-grid": "../10-video-grid/index.html",
+          "heavy-16x1080": "../heavy-16x1080/index.html",
+        };
+        var q = new URLSearchParams(location.search);
+        var src = FILMS[q.get("film")];
+        if (!src) throw new Error("unknown film");
+        var frame = document.createElement("iframe");
+        if (q.get("attrs")) {
+          frame.sandbox.add("allow-scripts", "allow-same-origin");
+          frame.allow = "autoplay; fullscreen";
+          frame.referrerPolicy = "no-referrer";
+        }
+        frame.src = src;
+        if (q.get("shadow")) {
+          var hostEl = document.createElement("div");
+          document.body.appendChild(hostEl);
+          var root = hostEl.attachShadow({ mode: "open" });
+          var style = document.createElement("style");
+          style.textContent =
+            "iframe { border: 0; width: 1920px; height: 1080px; transform-origin: 0 0; transform: scale(0.5); }";
+          root.append(style, frame);
+        } else document.body.appendChild(frame);
+        var control = (action, extra) =>
+          frame.contentWindow.postMessage(
+            Object.assign({ source: "hf-parent", type: "control", action }, extra),
+            "*",
+          );
+        var sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+        var player = null;
+        for (var i = 0; i < 300 && !player; i++) {
+          await sleep(100);
+          player = frame.contentWindow && frame.contentWindow.__player;
+        }
+        if (!player) throw new Error("runtime did not start");
+        var videos = Array.from(frame.contentDocument.querySelectorAll("video"));
+        await Promise.all(
+          videos.map((v) =>
+            v.readyState >= 4
+              ? null
+              : new Promise((r) => v.addEventListener("canplaythrough", r, { once: true })),
+          ),
+        );
+        var decoded = () =>
+          videos.reduce(
+            (a, v) => {
+              var p = v.getVideoPlaybackQuality();
+              return {
+                dropped: a.dropped + p.droppedVideoFrames,
+                total: a.total + p.totalVideoFrames,
+              };
+            },
+            { dropped: 0, total: 0 },
+          );
+        var timelineMoves = 0;
+        var main = frame.contentWindow.__timelines && frame.contentWindow.__timelines.main;
+        ["totalTime", "time", "seek", "progress", "totalProgress"].forEach((method) => {
+          var original = main && main[method];
+          if (!original) return;
+          main[method] = function () {
+            if (arguments.length) timelineMoves++;
+            return original.apply(this, arguments);
+          };
+        });
+        var displayScale = Number(q.get("displayScale"));
+        if (displayScale > 0) {
+          frame.contentWindow.postMessage(
+            {
+              source: "hf-parent",
+              type: "control",
+              action: "set-display-scale",
+              scale: displayScale,
+            },
+            "*",
+          );
+          await sleep(300);
+        }
+        var rasterMarks = frame.contentDocument.querySelectorAll("[data-hf-preview-raster]").length;
+        if (q.get("ticks")) {
+          (function tick() {
+            frame.contentWindow.postMessage(
+              { source: "hf-parent", type: "control", action: "tick" },
+              "*",
+            );
+            requestAnimationFrame(tick);
+          })();
+        }
+        if (q.get("messages")) {
+          control("set-muted", { muted: true });
+          control("set-volume", { volume: 1 });
+          control("set-playback-rate", { playbackRate: 1 });
+          control("set-native-media-sync-disabled", { disabled: false });
+          control("set-web-audio-media-disabled", { disabled: false });
+          control("set-idle-heartbeat", { slow: false });
+          control("set-display-scale", { scale: 0.5 });
+          await sleep(300);
+          control("play");
+          (function tick() {
+            control("tick");
+            requestAnimationFrame(tick);
+          })();
+        } else player.play();
+        for (var j = 0; j < 50 && !player.isPlaying(); j++) await sleep(100);
+        var before = decoded();
+        var movesBefore = timelineMoves;
+        await sleep(8000);
+        var after = decoded();
+        var moves = timelineMoves - movesBefore;
+        player.pause();
+        window.__control = {
+          timelineMovesPerSecond: Math.round(moves / 8),
+          rasterMarks: rasterMarks,
+          dropped: after.dropped - before.dropped,
+          total: after.total - before.total,
+          presentedFps:
+            Math.round(
+              ((after.total - before.total - (after.dropped - before.dropped)) /
+                videos.length /
+                8) *
+                10,
+            ) / 10,
+        };
+      })().catch((e) => (window.__control = { error: String(e) }));
+    </script>
+  </body>
+</html>
