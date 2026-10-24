@@ -81,6 +81,23 @@ async function hasSwiftCompiler(): Promise<boolean> {
 const firstLine = (error: unknown) =>
   ((error as { stderr?: string }).stderr || String(error)).trim().split("\n")[0];
 
+// The compiler's module cache sits beside the helper: the default one is outside an agent's sandbox.
+export function swiftcArgs(source: string, output: string): string[] {
+  return [
+    "--sdk",
+    "macosx",
+    "swiftc",
+    "-O",
+    "-swift-version",
+    "5",
+    "-module-cache-path",
+    join(helperDir(), "module-cache"),
+    source,
+    "-o",
+    output,
+  ];
+}
+
 const builds = new Map<string, Promise<string>>();
 
 /** The helper compiled from `source`, built once per source into the cache; Swift is never fetched. */
@@ -93,18 +110,7 @@ function compiled(name: string, source: string): Promise<string> {
       await mkdir(helperDir(), { recursive: true });
       const file = `${binary}.swift`;
       await writeFile(file, source);
-      // Through xcrun, so the compiler finds the SDK it belongs to.
-      const args = [
-        "--sdk",
-        "macosx",
-        "swiftc",
-        "-O",
-        "-swift-version",
-        "5",
-        file,
-        "-o",
-        `${binary}.tmp`,
-      ];
+      const args = swiftcArgs(file, `${binary}.tmp`);
       await runFile("xcrun", args, { timeout: 5 * 60_000 }).catch((error: unknown) => {
         throw new Error(`could not build the ${name} helper: ${firstLine(error)}`);
       });
