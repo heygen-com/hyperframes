@@ -71,7 +71,10 @@ function duplicateCssRulesForId(document: Document, originalId: string, newId: s
   }
 }
 
-function querySelectorAllWithTemplates(root: Document | Element, selector: string): Element[] {
+export function querySelectorAllWithTemplates(
+  root: Document | Element,
+  selector: string,
+): Element[] {
   const matches = Array.from(root.querySelectorAll(selector));
   if (matches.length > 0) return matches;
   // querySelectorAll doesn't traverse <template> content in linkedom.

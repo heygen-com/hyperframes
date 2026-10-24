@@ -406,6 +406,25 @@ describe("createPickerModule", () => {
       }
     });
 
+    it("a pick's selector matches only the picked element in its document, never the root", () => {
+      const picker = createPickerModule({ postMessage: createMockPostMessage() });
+      picker.installPickerApi();
+      document.body.innerHTML = `<div id="root" data-composition-id="main">
+        <div id="title" data-track-index="0">Title</div>
+        <div id="host" data-composition-id="broll" data-track-index="1"><div data-hf-inner-root="true">
+          <div class="shot"><div class="caption"><div class="label">B-roll</div></div></div>
+        </div></div>
+        <div data-track-index="1"><span>a</span><span>b</span></div>
+        <o:p><span>c</span></o:p><o:p><span>d</span></o:p>
+      </div>`;
+      const api = (window as any).__HF_PICKER_API;
+      const label = document.querySelector(".label")!;
+      expect(document.querySelector(api.describe(label).selector)).toBe(label);
+      for (const el of Array.from(document.body.querySelectorAll("*"))) {
+        expect(Array.from(document.querySelectorAll(api.describe(el).selector))).toEqual([el]);
+      }
+    });
+
     it("pickAtPoint returns null for invalid coords", () => {
       const picker = createPickerModule({ postMessage: createMockPostMessage() });
       picker.installPickerApi();

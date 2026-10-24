@@ -220,7 +220,34 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
     return `[data-composition-id="${CSS.escape(hostId)}"] > [data-hf-inner-root]`;
   }
 
+  function namesOnly(selector: string, el: Element): boolean {
+    const matches = el.ownerDocument.querySelectorAll(selector);
+    return matches.length === 1 && matches[0] === el;
+  }
+
   function buildElementSelector(el: Element): string {
+    const own = ownElementSelector(el);
+    if (namesOnly(own, el)) return own;
+    let path = siblingSelector(el);
+    for (let at = el.parentElement; at; at = at.parentElement) {
+      const anchor = ownElementSelector(at);
+      if (namesOnly(anchor, at)) return `${anchor} > ${path}`;
+      path = `${siblingSelector(at)} > ${path}`;
+    }
+    return path;
+  }
+
+  function siblingSelector(el: Element): string {
+    const tag = CSS.escape(el.tagName.toLowerCase());
+    const parent = el.parentElement;
+    if (!parent) return tag;
+    const siblings = Array.from(parent.children).filter(
+      (sibling) => sibling.tagName === el.tagName,
+    );
+    return siblings.length === 1 ? tag : `${tag}:nth-of-type(${siblings.indexOf(el) + 1})`;
+  }
+
+  function ownElementSelector(el: Element): string {
     const innerRoot = innerRootSelector(el);
     if (innerRoot) return innerRoot;
     const htmlEl = el as HTMLElement;
@@ -234,15 +261,7 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
     if (compositionSrc) return `[data-composition-src="${CSS.escape(compositionSrc)}"]`;
     const track = el.getAttribute("data-track-index");
     if (track) return `[data-track-index="${CSS.escape(track)}"]`;
-    const tag = el.tagName.toLowerCase();
-    const parent = el.parentElement;
-    if (!parent) return tag;
-    const siblings = parent.querySelectorAll(`:scope > ${tag}`);
-    if (siblings.length === 1) return tag;
-    for (let i = 0; i < siblings.length; i += 1) {
-      if (siblings[i] === el) return `${tag}:nth-of-type(${i + 1})`;
-    }
-    return tag;
+    return siblingSelector(el);
   }
 
   function buildElementLabel(el: Element): string {

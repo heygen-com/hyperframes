@@ -11,11 +11,12 @@ import {
   waitForPendingSeekCompletion,
 } from "../../../engine/src/services/frameCapture";
 
+const BROWSER_TEST_TIMEOUT_MS = 15_000;
 const RUNTIME_PATH = resolve(import.meta.dirname, "../../../core/dist/hyperframe.runtime.iife.js");
 const PNG_1PX =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==";
 
-describe("core runtime browser contract", () => {
+describe("core runtime browser contract", { timeout: BROWSER_TEST_TIMEOUT_MS }, () => {
   let browser: Browser;
   let page: Page;
 
@@ -1288,7 +1289,7 @@ window.__hyperframes.registerFrameSource({element:document.getElementById("scene
 </script></body></html>`;
 }
 
-describe("film bridge browser capture contract", () => {
+describe("film bridge browser capture contract", { timeout: BROWSER_TEST_TIMEOUT_MS }, () => {
   let browser: Browser;
   let html: string;
   beforeAll(async () => {

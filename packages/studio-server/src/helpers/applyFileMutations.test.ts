@@ -3,6 +3,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -11,6 +12,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
 import { applyFileMutations, FileChangedError } from "./applyFileMutations.js";
+import { snapshotBeforeWrite } from "./backupJournal.js";
 import { fileContentVersion, identifyFileWrite, resetFileWriteReceipts } from "./fileVersion.js";
 
 function expectStaleMutation(after: string, pinVersion = true): void {
@@ -38,6 +40,58 @@ function expectStaleMutation(after: string, pinVersion = true): void {
 }
 
 describe("applyFileMutations", () => {
+  it("refuses a mutation that removes the root composition and leaves the file untouched", () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-mutation-root-"));
+    const path = join(projectDir, "index.html");
+    const before = '<html><body><div data-composition-id="main"><p>hi</p></div></body></html>';
+    try {
+      writeFileSync(path, before, "utf8");
+      expect(() =>
+        applyFileMutations(projectDir, [
+          { sourceFile: "index.html", absPath: path, after: "<html><body></body></html>" },
+        ]),
+      ).toThrow(/remove its root composition/);
+      expect(readFileSync(path, "utf8")).toBe(before);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a batch whose later file loses its root composition before touching any backup", () => {
+    resetFileWriteReceipts();
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-mutation-root-batch-"));
+    const first = join(projectDir, "first.html");
+    const second = join(projectDir, "second.html");
+    const firstBefore = '<div data-composition-id="a" title="old"></div>';
+    const secondBefore = '<div data-composition-id="b"></div>';
+    const backupDir = join(projectDir, ".hyperframes", "backup");
+    const journal = () =>
+      readdirSync(backupDir).map((name) => [name, readFileSync(join(backupDir, name), "utf8")]);
+    try {
+      for (let i = 0; i < 10; i += 1) {
+        writeFileSync(first, `backup ${i}`, "utf8");
+        snapshotBeforeWrite(projectDir, first);
+      }
+      writeFileSync(first, firstBefore, "utf8");
+      writeFileSync(second, secondBefore, "utf8");
+      const journalBefore = journal();
+      const firstAfter = firstBefore.replace("old", "new");
+      expect(() =>
+        applyFileMutations(projectDir, [
+          { sourceFile: "first.html", absPath: first, after: firstAfter },
+          { sourceFile: "second.html", absPath: second, after: "<div></div>" },
+        ]),
+      ).toThrow(/second\.html.*remove its root composition/);
+      expect(readFileSync(first, "utf8")).toBe(firstBefore);
+      expect(readFileSync(second, "utf8")).toBe(secondBefore);
+      expect(identifyFileWrite(first, fileContentVersion(firstAfter))).toBeNull();
+      expect(journal()).toEqual(journalBefore);
+    } finally {
+      resetFileWriteReceipts();
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
   it("refuses a file whose version changed since the caller read it", () => {
     expectStaleMutation("after");
   });
