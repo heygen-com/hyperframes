@@ -1,0 +1,40 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "effect-grid",
+  "type": "hyperframes:block",
+  "title": "Effect Grid",
+  "description": "Side-by-side grid of one frame under several color grades and media effects, each cell independently graded via data-color-grading — for comparing looks in a single shot",
+  "tags": [
+    "color-grading",
+    "effects",
+    "grid",
+    "compare",
+    "halftone",
+    "ascii",
+    "bloom",
+    "pixelate",
+    "editorial"
+  ],
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 6,
+  "files": [
+    {
+      "path": "effect-grid.html",
+      "target": "compositions/effect-grid.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "variables": [
+    {
+      "id": "frameSrc",
+      "type": "string",
+      "role": "content",
+      "label": "Frame source",
+      "description": "Path or URL of the frame to grade in every cell. Defaults to the shipped monochrome placeholder.",
+      "default": ""
+    }
+  ]
+}

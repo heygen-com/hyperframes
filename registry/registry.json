@@ -284,6 +284,10 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "effect-grid",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "exploded-stack",
       "type": "hyperframes:block"
     },
