@@ -76,6 +76,17 @@ JSON file:
 npx hyperframes transcribe subtitles.srt
 ```
 
+## Keep the ending when cutting speech
+
+When asking the agent to remove fillers or cut spoken passages, supply the
+original audio or video along with its transcript. The source duration keeps
+footage and sound after the last spoken word, and lets you keep an explicit
+range in that ending. For example, removing a filler from a six-second clip
+whose last word ends at four seconds preserves the remaining two seconds.
+
+A plan made from a transcript alone ends at the last word. Include the source
+when reviewing the plan to account for the complete clip before encoding.
+
 ## Turn the transcript into captions
 
 1. Read the complete transcript.
