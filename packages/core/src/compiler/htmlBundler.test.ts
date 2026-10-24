@@ -1560,6 +1560,27 @@ describe("bundleToSingleHtml", () => {
     expect(styleText(bundled)).not.toContain("@import");
   });
 
+  it.each([false, true])(
+    "keeps repeated CSS imports under each media condition (nested: %s)",
+    async (nested) => {
+      const dir = makeTempProject({
+        "index.html": `<link rel="stylesheet" href="main.css"><div data-composition-id="root" data-width="320" data-height="180"></div>`,
+        "main.css": nested
+          ? '@import "first.css" print;\n@import "second.css" screen;'
+          : '@import "shared.css" print;\n@import "shared.css" screen;',
+        "first.css": '@import "shared.css";',
+        "second.css": '@import "shared.css";',
+        "shared.css": "#root { background: green; }",
+      });
+
+      const css = styleText(await bundleToSingleHtml(dir));
+
+      expect(css).toMatch(/@media print\s*\{\s*#root \{ background: green; \}\s*\}/);
+      expect(css).toMatch(/@media screen\s*\{\s*#root \{ background: green; \}\s*\}/);
+      expect(css).not.toContain("@import");
+    },
+  );
+
   describe("head style coalescing", () => {
     async function bundledHeadStyles(head: string, files: Record<string, string> = {}) {
       const dir = makeTempProject({
@@ -2355,7 +2376,7 @@ describe("bundleToSingleHtml", () => {
     warn.mockRestore();
   });
 
-  it("deduplicates diamond @import (same file imported by two parents)", async () => {
+  it("preserves cascade order when two CSS imports share a dependency", async () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html>
 <html><body>
@@ -2366,16 +2387,34 @@ describe("bundleToSingleHtml", () => {
       "styles/main.css": `@import url('./a.css');\n@import url('./b.css');`,
       "styles/a.css": `@import url('./shared.css');\n.a { color: red; }`,
       "styles/b.css": `@import url('./shared.css');\n.b { color: blue; }`,
-      "styles/shared.css": `:root { --shared: 1; }`,
+      "styles/shared.css": `.a { color: green; }`,
     });
 
     const bundled = await bundleToSingleHtml(dir);
 
-    const sharedCount = (bundled.match(/--shared: 1/g) || []).length;
-    expect(sharedCount).toBe(1);
-    expect(bundled).toContain(".a { color: red; }");
-    expect(bundled).toContain(".b { color: blue; }");
+    expect(styleText(bundled).match(/\.[ab] \{ color: \w+; \}/g)).toEqual([
+      ".a { color: green; }",
+      ".a { color: red; }",
+      ".a { color: green; }",
+      ".b { color: blue; }",
+    ]);
     expect(styleText(bundled)).not.toContain("@import");
+  });
+
+  it("cuts a CSS import cycle without repeating the entry stylesheet", async () => {
+    const dir = makeTempProject({
+      "index.html": `<link rel="stylesheet" href="main.css"><div data-composition-id="root" data-width="320" data-height="180"></div>`,
+      "main.css": '@import "child.css";\n.main { color: red; }',
+      "child.css": '@import "main.css";\n.child { color: green; }',
+    });
+
+    const css = styleText(await bundleToSingleHtml(dir));
+
+    expect(css.match(/\.(?:child|main) \{ color: \w+; \}/g)).toEqual([
+      ".child { color: green; }",
+      ".main { color: red; }",
+    ]);
+    expect(css).not.toContain("@import");
   });
 
   it("does not resolve @import inside CSS comments", async () => {
