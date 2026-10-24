@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { closeManagedBrowser, launchManagedBrowser } from "../browser/launch.js";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createServer, type Server, type ServerResponse } from "node:http";
@@ -153,11 +154,11 @@ describe.runIf(executablePath && hasFfmpeg)("text_occluded behind a <video> in C
     });
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-    browser = await puppeteer.launch({ executablePath, args: ["--no-sandbox"] });
+    browser = await launchManagedBrowser(puppeteer, { executablePath, args: ["--no-sandbox"] });
   });
 
   afterAll(async () => {
-    await browser?.close();
+    if (browser) await closeManagedBrowser(browser);
     await new Promise((resolve) => server?.close(resolve));
     if (clipDir) rmSync(clipDir, { recursive: true, force: true });
   });

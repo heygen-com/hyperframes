@@ -2,6 +2,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import sharp from "sharp";
 import { afterAll, beforeAll, expect, it } from "vitest";
+import { closeManagedBrowser } from "../browser/launch.js";
 import { openSettledCompositionPage } from "./captureCompositionFrame.js";
 
 // A red image added after load and served past the 1.5 s settle cap: render waits for it, so the
@@ -56,6 +57,6 @@ it("waits for an image that lands after the settle cap, as render does", async (
       (Math.floor(info.height / 2) * info.width + Math.floor(info.width / 2)) * info.channels;
     expect([...data.subarray(center, center + 3)]).toEqual([255, 0, 0]);
   } finally {
-    await browser.close();
+    await closeManagedBrowser(browser);
   }
 }, 90_000);

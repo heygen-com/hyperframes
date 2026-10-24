@@ -7,6 +7,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Browser, Page } from "puppeteer-core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { closeManagedBrowser, launchManagedBrowser } from "../browser/launch.js";
 import { findSystemBrowser } from "../browser/manager.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -61,7 +62,7 @@ describe.skipIf(!RUNS_CHROMIUM)("motion-signature.browser in Chromium", () => {
 
   beforeAll(async () => {
     const puppeteer = await import("puppeteer-core");
-    browser = await puppeteer.default.launch({
+    browser = await launchManagedBrowser(puppeteer.default, {
       headless: true,
       executablePath,
       args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
@@ -71,7 +72,7 @@ describe.skipIf(!RUNS_CHROMIUM)("motion-signature.browser in Chromium", () => {
   }, BROWSER_LAUNCH_TIMEOUT_MS);
 
   afterAll(async () => {
-    await browser?.close();
+    if (browser) await closeManagedBrowser(browser);
   });
 
   async function load(html: string): Promise<void> {

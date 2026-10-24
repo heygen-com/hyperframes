@@ -1,6 +1,7 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, expect, it } from "vitest";
+import { closeManagedBrowser } from "../browser/launch.js";
 import {
   openSettledCompositionPage,
   prelaunchCompositionBrowser,
@@ -46,8 +47,8 @@ it.each([
       expect(early?.connected).toBe(reused);
       expect(browser.connected).toBe(true);
     } finally {
-      await browser.close();
-      await early?.close().catch(() => undefined);
+      await closeManagedBrowser(browser);
+      if (early) await closeManagedBrowser(early).catch(() => undefined);
     }
   },
   90_000,

@@ -1,6 +1,7 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, expect, it } from "vitest";
+import { closeManagedBrowser } from "../browser/launch.js";
 import { openSettledCompositionPage } from "./captureCompositionFrame.js";
 
 // An image, then a fetched asset after the load event. The settle cap is lifted: a starved runner
@@ -60,6 +61,6 @@ it("returns only once images and fetched assets that land after DOMContentLoaded
       }),
     ).toEqual({ complete: true, width: 1, late: '"arrived"' });
   } finally {
-    await browser.close();
+    await closeManagedBrowser(browser);
   }
 }, 90_000);

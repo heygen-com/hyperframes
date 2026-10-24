@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { closeManagedBrowser, launchManagedBrowser } from "../browser/launch.js";
 import { readFileSync } from "node:fs";
 import puppeteer, { type Browser } from "puppeteer-core";
 import type { CraftFilm, CraftFrame } from "../utils/checkTypes.js";
@@ -33,10 +34,10 @@ const OPAQUE_IMAGE =
 describe.runIf(executablePath)("layout audit in Chromium", () => {
   let browser: Browser;
   beforeAll(async () => {
-    browser = await puppeteer.launch({ executablePath, args: ["--no-sandbox"] });
+    browser = await launchManagedBrowser(puppeteer, { executablePath, args: ["--no-sandbox"] });
   });
   afterAll(async () => {
-    await browser?.close();
+    if (browser) await closeManagedBrowser(browser);
   });
 
   async function auditCodes(body: string): Promise<string[]> {

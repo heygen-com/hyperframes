@@ -3,6 +3,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { afterAll, beforeAll, expect, it } from "vitest";
+import { closeManagedBrowser } from "../browser/launch.js";
 import { openSettledCompositionPage } from "../capture/captureCompositionFrame.js";
 
 const P = "position:absolute;margin:0;font:28px sans-serif;color:#9ab";
@@ -81,6 +82,6 @@ it("reads a backdrop from styles only where pixels would give the same contrast"
     });
     expect(styled.entries).toEqual((await finish(true)).entries);
   } finally {
-    await browser.close();
+    await closeManagedBrowser(browser);
   }
 }, 90_000);

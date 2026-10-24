@@ -2,6 +2,7 @@ import { fileURLToPath } from "node:url";
 import { buildSync } from "esbuild";
 import puppeteer, { type Browser, type Page } from "puppeteer-core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { closeManagedBrowser, launchManagedBrowser } from "./launch.js";
 import { HF_COLOR_GRADING_DETAIL_KEYS, HF_COLOR_GRADING_EFFECT_KEYS } from "@hyperframes/core";
 import { ensureBrowser } from "./manager.js";
 
@@ -103,7 +104,7 @@ const definedStages = (source: string) =>
 
 beforeAll(async () => {
   const { executablePath } = await ensureBrowser();
-  browser = await puppeteer.launch({
+  browser = await launchManagedBrowser(puppeteer, {
     executablePath,
     headless: true,
     args: [
@@ -119,7 +120,7 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
-  await browser?.close();
+  if (browser) await closeManagedBrowser(browser);
 });
 
 describe("color grading shader stages on software GL", () => {

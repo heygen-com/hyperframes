@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
+import { closeManagedBrowser } from "../browser/launch.js";
 import { openSettledCompositionPage } from "../capture/captureCompositionFrame.js";
 import { serveStaticProjectHtml } from "./staticProjectServer.js";
 
@@ -30,7 +31,7 @@ it("shows accented text as written when the page's meta charset is not in its he
         })),
       ).toEqual({ charset: "UTF-8", raw: "Café è ù ✓" });
     } finally {
-      await browser.close();
+      await closeManagedBrowser(browser);
     }
   } finally {
     await server.close();

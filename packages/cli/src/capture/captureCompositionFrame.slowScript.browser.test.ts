@@ -1,6 +1,7 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, expect, it } from "vitest";
+import { closeManagedBrowser } from "../browser/launch.js";
 import { openSettledCompositionPage } from "./captureCompositionFrame.js";
 
 // GSAP from a slow CDN: a parser-blocking script holds DOMContentLoaded back.
@@ -41,6 +42,6 @@ it("opens a composition whose parser-blocking script takes 15 s, as render does"
   try {
     expect(await page.evaluate(() => Reflect.get(window, "slowScriptRan"))).toBe(true);
   } finally {
-    await browser.close();
+    await closeManagedBrowser(browser);
   }
 }, 90_000);

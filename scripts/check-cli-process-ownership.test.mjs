@@ -6,6 +6,7 @@ import { describe, it } from "node:test";
 import {
   checkCliProcessOwnership,
   listDirectProcessTermination,
+  listUnmanagedTestBrowsers,
 } from "./check-cli-process-ownership.mjs";
 
 describe("CLI process ownership checker", () => {
@@ -29,6 +30,29 @@ describe("CLI process ownership checker", () => {
         "commands/example.ts",
       ),
       [],
+    );
+  });
+
+  it("reports a test that launches or closes its browser outside the CLI's owner", () => {
+    assert.deepEqual(
+      listUnmanagedTestBrowsers(
+        [
+          "const browser = await puppeteer.launch({});",
+          "const other = await puppeteer.default.launch({});",
+          "await browser?.close();",
+          "await early.browser.close();",
+          "await page.close();",
+          "server.close();",
+          "await closeManagedBrowser(browser);",
+        ].join("\n"),
+        "utils/a.test.ts",
+      ),
+      [
+        "utils/a.test.ts:1:23 calls puppeteer.launch(); use launchManagedBrowser/closeManagedBrowser",
+        "utils/a.test.ts:2:21 calls puppeteer.default.launch(); use launchManagedBrowser/closeManagedBrowser",
+        "utils/a.test.ts:3:7 calls browser.close(); use launchManagedBrowser/closeManagedBrowser",
+        "utils/a.test.ts:4:7 calls early.browser.close(); use launchManagedBrowser/closeManagedBrowser",
+      ],
     );
   });
 

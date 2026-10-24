@@ -3,6 +3,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { afterAll, beforeAll, expect, it } from "vitest";
+import { closeManagedBrowser } from "../browser/launch.js";
 import { openSettledCompositionPage } from "../capture/captureCompositionFrame.js";
 
 // Text over a two-tone backdrop, away from the origin: reading a clipped shot at the wrong offset picks the other tone.
@@ -69,6 +70,6 @@ it("measures the same contrast from a shot clipped to the text as from the full 
     expect(full[0]?.bg).not.toEqual(full[1]?.bg);
     expect(await measure(true)).toEqual(full);
   } finally {
-    await browser.close();
+    await closeManagedBrowser(browser);
   }
 }, 90_000);

@@ -3,6 +3,7 @@
 import { existsSync } from "node:fs";
 import type { Browser, Page } from "puppeteer-core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { closeManagedBrowser, launchManagedBrowser } from "../browser/launch.js";
 import { findSystemBrowser } from "../browser/manager.js";
 import { createPageDriver } from "./checkBrowser.js";
 import { DEFAULT_CHECK_OPTIONS, runAuditGrid } from "./checkPipeline.js";
@@ -84,7 +85,7 @@ describe.skipIf(!RUNS_CHROMIUM)("frozen-sweep guard in Chromium", () => {
 
   beforeAll(async () => {
     const puppeteer = await import("puppeteer-core");
-    browser = await puppeteer.default.launch({
+    browser = await launchManagedBrowser(puppeteer.default, {
       headless: true,
       executablePath,
       args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
@@ -92,7 +93,7 @@ describe.skipIf(!RUNS_CHROMIUM)("frozen-sweep guard in Chromium", () => {
   }, BROWSER_LAUNCH_TIMEOUT_MS);
 
   afterAll(async () => {
-    await browser?.close();
+    if (browser) await closeManagedBrowser(browser);
   });
 
   // A page per film: setContent keeps the window, so one film's globals would leak into the next.

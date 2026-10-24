@@ -6,6 +6,11 @@ import ts from "typescript";
 
 const ROOT = join(import.meta.dirname, "..");
 
+function at(sourceFile, node) {
+  const position = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+  return `${sourceFile.fileName}:${position.line + 1}:${position.character + 1}`;
+}
+
 export function listDirectProcessTermination(source, filename = "source.ts") {
   const sourceFile = ts.createSourceFile(filename, source, ts.ScriptTarget.Latest, true);
   const issues = [];
@@ -19,10 +24,32 @@ export function listDirectProcessTermination(source, filename = "source.ts") {
       node.expression.text === "process" &&
       (node.name.text === "exit" || node.name.text === "exitCode")
     ) {
-      const position = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
-      issues.push(
-        `${filename}:${position.line + 1}:${position.character + 1} uses process.${node.name.text}`,
-      );
+      issues.push(`${at(sourceFile, node)} uses process.${node.name.text}`);
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+  return issues;
+}
+
+// A bare close can wait out Puppeteer's protocol timeout; closeManagedBrowser is bounded.
+export function listUnmanagedTestBrowsers(source, filename = "source.test.ts") {
+  const sourceFile = ts.createSourceFile(filename, source, ts.ScriptTarget.Latest, true);
+  const issues = [];
+
+  function visit(node) {
+    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
+      const method = node.expression.name.text;
+      const receiver = node.expression.expression.getText(sourceFile);
+      if (
+        (method === "close" && /browser$/i.test(receiver)) ||
+        (method === "launch" && /^puppeteer(\.default)?$/.test(receiver))
+      ) {
+        issues.push(
+          `${at(sourceFile, node)} calls ${receiver}.${method}(); use launchManagedBrowser/closeManagedBrowser`,
+        );
+      }
     }
     ts.forEachChild(node, visit);
   }
@@ -34,15 +61,11 @@ export function listDirectProcessTermination(source, filename = "source.ts") {
 // Each is the root of its own process: the CLI, the warm check process, and the check client in bin.
 const PROCESS_ROOTS = ["cli.ts", "warmCheck.ts", "warmCheckClient.ts"];
 
-function listTypeScriptFiles(directory, roots) {
-  // fallow-ignore-next-line complexity
+function listTypeScriptFiles(directory) {
   return readdirSync(directory).flatMap((name) => {
     const path = join(directory, name);
-    if (statSync(path).isDirectory()) return listTypeScriptFiles(path, roots);
-    if (!path.endsWith(".ts") || /\.(test|fixture)\.ts$/.test(path) || roots.includes(path)) {
-      return [];
-    }
-    return [path];
+    if (statSync(path).isDirectory()) return listTypeScriptFiles(path);
+    return path.endsWith(".ts") ? [path] : [];
   });
 }
 
@@ -50,9 +73,12 @@ export function checkCliProcessOwnership(root = ROOT) {
   const sourceRoot = join(root, "packages/cli/src");
   if (!existsSync(sourceRoot)) return [];
   const roots = PROCESS_ROOTS.map((name) => join(sourceRoot, name));
-  return listTypeScriptFiles(sourceRoot, roots).flatMap((path) =>
-    listDirectProcessTermination(readFileSync(path, "utf8"), relative(root, path)),
-  );
+  const issues = (path, list) => list(readFileSync(path, "utf8"), relative(root, path));
+  return listTypeScriptFiles(sourceRoot).flatMap((path) => {
+    if (path.endsWith(".test.ts")) return issues(path, listUnmanagedTestBrowsers);
+    if (path.endsWith(".fixture.ts") || roots.includes(path)) return [];
+    return issues(path, listDirectProcessTermination);
+  });
 }
 
 function main() {
@@ -63,7 +89,9 @@ function main() {
     process.exitCode = 1;
     return;
   }
-  console.log("CLI process ownership verified: only process roots terminate the process.");
+  console.log(
+    "CLI process ownership verified: only process roots terminate the process, and tests own their browsers.",
+  );
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) main();

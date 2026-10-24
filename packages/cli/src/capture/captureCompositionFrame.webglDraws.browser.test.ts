@@ -1,5 +1,6 @@
 import puppeteer, { type Browser, type Page } from "puppeteer-core";
 import { afterAll, beforeAll, expect, it } from "vitest";
+import { closeManagedBrowser, launchManagedBrowser } from "../browser/launch.js";
 import { ensureBrowser } from "../browser/manager.js";
 import { DENSE_GEOMETRY_SEEK_OPTIONS, seekCompositionTimeline } from "./captureCompositionFrame.js";
 
@@ -37,7 +38,7 @@ let page: Page;
 
 beforeAll(async () => {
   const { executablePath } = await ensureBrowser();
-  browser = await puppeteer.launch({
+  browser = await launchManagedBrowser(puppeteer, {
     executablePath,
     headless: true,
     args: [
@@ -52,7 +53,7 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
-  await browser?.close();
+  if (browser) await closeManagedBrowser(browser);
 });
 
 const red = () => page.evaluate(() => Reflect.apply(Reflect.get(window, "red"), window, []));

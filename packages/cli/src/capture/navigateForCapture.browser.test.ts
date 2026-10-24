@@ -3,6 +3,7 @@ import { createServer, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import puppeteer, { type Browser } from "puppeteer-core";
 import { afterAll, beforeAll, expect, it } from "vitest";
+import { closeManagedBrowser, launchManagedBrowser } from "../browser/launch.js";
 import { ensureBrowser } from "../browser/manager.js";
 import { documentRequestSent, unfinishedPageLoadRequests } from "./navigateForCapture.js";
 
@@ -21,13 +22,17 @@ const server = createServer((req, res) => {
 beforeAll(async () => {
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const { executablePath } = await ensureBrowser();
-  browser = await puppeteer.launch({ executablePath, headless: true, args: ["--no-sandbox"] });
+  browser = await launchManagedBrowser(puppeteer, {
+    executablePath,
+    headless: true,
+    args: ["--no-sandbox"],
+  });
 }, 60_000);
 
 afterAll(async () => {
   const closed = once(server.close(), "close");
   server.closeAllConnections();
-  await Promise.all([browser?.close(), closed]);
+  await Promise.all([browser && closeManagedBrowser(browser), closed]);
 });
 
 it("settles when Chrome sends the document request, before the server answers", async () => {

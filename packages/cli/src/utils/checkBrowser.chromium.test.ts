@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { closeManagedBrowser, launchManagedBrowser } from "../browser/launch.js";
 import puppeteer, { type Browser, type Page } from "puppeteer-core";
 import { collectSeekClock } from "./checkBrowser.js";
 
@@ -70,10 +71,10 @@ describe.runIf(executablePath)("collectSeekClock in Chromium", () => {
   let browser: Browser;
   let page: Page;
   beforeAll(async () => {
-    browser = await puppeteer.launch({ executablePath, args: ["--no-sandbox"] });
+    browser = await launchManagedBrowser(puppeteer, { executablePath, args: ["--no-sandbox"] });
   });
   afterAll(async () => {
-    await browser?.close();
+    if (browser) await closeManagedBrowser(browser);
   });
 
   async function seekTo(time: number) {
