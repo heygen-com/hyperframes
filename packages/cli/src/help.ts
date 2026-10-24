@@ -58,6 +58,11 @@ const GROUPS: Group[] = [
         "Render candidate color grades onto a reference frame as one labeled comparison PNG",
       ],
       ["compare", "Render composition variants into one labeled comparison sheet"],
+      ["diff", "Score a render or a project against the original video, frame by frame"],
+      [
+        "measure",
+        "Measure a video file: clock, cuts, events, frames, motion, crops, boxes, eases, look",
+      ],
       ["info", "Print project metadata"],
       ["compositions", "List all compositions in a project"],
       ["timeline", "Print the project's tracks and clips"],
