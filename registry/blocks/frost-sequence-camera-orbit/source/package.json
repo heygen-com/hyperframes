@@ -6,7 +6,7 @@
     "build": "node build.mjs"
   },
   "devDependencies": {
-    "esbuild": "^0.24.0",
+    "esbuild": "^0.28.2",
     "opentype.js": "^2.0.0",
     "three": "0.185.1",
     "three-mesh-bvh": "0.9.14",

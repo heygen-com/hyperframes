@@ -69,7 +69,7 @@
     "@hyperframes/parsers": "workspace:*",
     "@jridgewell/trace-mapping": "^0.3.29",
     "acorn": "^8.17.0",
-    "esbuild": "^0.25.12",
+    "esbuild": "^0.28.2",
     "eslint-scope": "^9.1.2",
     "htmlparser2": "^10.1.0",
     "postcss": "^8.5.8",

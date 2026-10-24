@@ -74,7 +74,7 @@
     "@commitlint/config-conventional": "^20.5.0",
     "@hyperframes/player": "workspace:*",
     "@types/node": "^25.0.10",
-    "esbuild": "^0.25.12",
+    "esbuild": "^0.28.2",
     "fallow": "^3.34.1",
     "happy-dom": "^20.9.0",
     "knip": "^6.0.3",

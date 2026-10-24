@@ -122,7 +122,7 @@
     "@types/react-dom": "19",
     "@vitejs/plugin-react": "^4.0.0",
     "chokidar": "^4.0.3",
-    "esbuild": "^0.25.12",
+    "esbuild": "^0.28.2",
     "fake-indexeddb": "^6.2.5",
     "puppeteer-core": "^25.2.1",
     "tailwindcss": "^4.3.3",
