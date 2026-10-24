@@ -42,6 +42,10 @@ remains authoritative: run `npx hyperframes <command> --help`.
 
 `hyperframes timeline` also accepts agent editing verbs. Use `move`, `trim`, `split`, or `delete` with a row ref; add `--plan` to inspect the before/after rows and diff without writing, or `--json` for a machine-readable receipt. Time values accept seconds, relative offsets, frames, and anchors such as `after:#intro`.
 
+For scripts, `npx hyperframes keyframes --runtime css --json` writes one JSON
+result to stdout. Use `--runtime anime` for Anime.js. The static authoring
+notice appears only in human-readable output.
+
 ## Rendering and automation
 
 The CLI also renders in batches and from variables, writes image sequences and

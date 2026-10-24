@@ -9,7 +9,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { beforeAll, describe, expect, it, onTestFinished } from "vitest";
+import { beforeAll, describe, expect, it, onTestFinished, vi } from "vitest";
+import { runCommand } from "citty";
 import type { ArgsDef } from "citty";
 import { ensureDOMParser } from "../utils/dom.js";
 import keyframesCommand from "./keyframes.js";
@@ -37,6 +38,27 @@ beforeAll(() => ensureDOMParser());
 
 const wrap = (script: string) =>
   `<!doctype html><html><body><div id="root" data-composition-id="main" data-duration="4"><div id="dot" class="clip"></div></div><script>${script}</script></body></html>`;
+
+describe("keyframes JSON output", () => {
+  it.each(["css", "anime"])("emits parseable JSON with --runtime %s", async (runtime) => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-keyframes-json-"));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+    const source = join(dir, "index.html");
+    writeFileSync(source, wrap(""));
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    onTestFinished(() => log.mockRestore());
+
+    await runCommand(keyframesCommand, { rawArgs: [source, "--runtime", runtime, "--json"] });
+
+    const output = log.mock.calls.map((args) => args.join(" ")).join("\n");
+    const result: unknown = JSON.parse(output);
+    expect(result).toMatchObject({
+      project: "index.html",
+      runtime,
+      compositions: [{ composition: "index.html", tweens: [], cssKeyframes: [], anime: [] }],
+    });
+  });
+});
 
 describe("keyframes direct composition scope", () => {
   it("keeps the project root and passes the nested HTML entry to --shot", () => {

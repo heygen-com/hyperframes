@@ -1085,14 +1085,6 @@ function createKeyframesCommand(options: Partial<KeyframesCommandOptions> = {}) 
     async run({ args }) {
       ensureDOMParser();
       const runtime = normalizeRuntime(args.runtime, commandOptions.defaultRuntime);
-      if (runtime === "css" || runtime === "anime") {
-        console.log(
-          c.dim(
-            `${commandOptions.name}: ${runtime} output is a static authoring surface; use validate/render/snapshot to verify runtime adapter seekability.`,
-          ),
-        );
-        console.log();
-      }
       const { comps: rawComps, allComps, projectName, projectDir, entryFile } = resolveScope(args);
       const comps = filterCompositionsByRuntime(rawComps, runtime);
 
@@ -1105,6 +1097,15 @@ function createKeyframesCommand(options: Partial<KeyframesCommandOptions> = {}) 
           JSON.stringify(withMeta({ project: projectName, runtime, compositions: comps }), null, 2),
         );
         return;
+      }
+
+      if (runtime === "css" || runtime === "anime") {
+        console.log(
+          c.dim(
+            `${commandOptions.name}: ${runtime} output is a static authoring surface; use validate/render/snapshot to verify runtime adapter seekability.`,
+          ),
+        );
+        console.log();
       }
 
       const total = comps.reduce(
