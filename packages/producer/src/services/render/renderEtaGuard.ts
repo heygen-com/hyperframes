@@ -20,7 +20,10 @@ interface RenderEtaInput {
 
 export class RenderTooSlowError extends Error {
   readonly code = RENDER_TOO_SLOW;
+  // The producer server reads these off the error for the wire envelope.
+  // fallow-ignore-next-line unused-class-member
   readonly owner = "user" as const;
+  // fallow-ignore-next-line unused-class-member
   readonly retryable = false as const;
   readonly publicMetadata: Readonly<Record<string, unknown>>;
 
