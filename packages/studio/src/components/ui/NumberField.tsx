@@ -5,6 +5,7 @@
 
 import { NumberField as BaseNumberField } from "@base-ui/react/number-field";
 import { useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { cn } from "./cn";
 import { fieldBase, fieldText } from "./Input";
 import type { PreviewState } from "./Button";
@@ -62,17 +63,25 @@ export function NumberField({
       setInvalid(true);
       return;
     }
+    // Conflicting bounds resolve to max.
+    const bounded = Math.min(max ?? Infinity, Math.max(min ?? -Infinity, next));
+    setDraft(bounded);
     setInvalid(false);
-    if (next === committedRef.current) return;
-    committedRef.current = next;
-    onCommit(next);
+    if (bounded === committedRef.current) return;
+    committedRef.current = bounded;
+    onCommit(bounded);
     onTrack?.();
   };
 
-  /** Enter commits what is on screen, which Base UI has not parsed for us yet. */
+  /** Base UI keeps focused text while editing; normalize it at the Enter boundary. */
   const commitFromText = () => {
-    const text = inputRef.current?.value.trim() ?? "";
-    commit(text === "" ? null : Number(text));
+    const input = inputRef.current;
+    const text = input?.value.trim() ?? "";
+    const next = text === "" ? null : Number(text);
+    flushSync(() => commit(next));
+    if (input && next !== null && Number.isFinite(next)) {
+      input.value = String(committedRef.current);
+    }
   };
 
   return (

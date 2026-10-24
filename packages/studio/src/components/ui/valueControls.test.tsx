@@ -301,6 +301,71 @@ describe("Slider", () => {
 });
 
 describe("NumberField", () => {
+  it.each([
+    { label: "above the maximum", value: 24, min: 0, max: 100, text: "150", expected: 100 },
+    { label: "below the minimum", value: 24, min: 10, max: 100, text: "5", expected: 10 },
+    { label: "a zero maximum", value: -24, min: -100, max: 0, text: "10", expected: 0 },
+    { label: "a minimum only", value: 24, min: 10, max: undefined, text: "5", expected: 10 },
+    { label: "a maximum only", value: 24, min: undefined, max: 30, text: "48", expected: 30 },
+  ])("bounds an Enter commit with $label", ({ value, min, max, text, expected }) => {
+    const commits: number[] = [];
+    const host = render(
+      <NumberField
+        label="Size"
+        value={value}
+        min={min}
+        max={max}
+        onCommit={(n) => commits.push(n)}
+        onTrack={track("metric")}
+      />,
+    );
+    const input = host.querySelector("input")!;
+
+    act(() => input.focus());
+    type(input, text);
+    expect(commits).toEqual([]);
+    fire(input, "keydown", { key: "Enter" });
+
+    expect(input.value).toBe(String(expected));
+    expect(document.activeElement).toBe(input);
+    expect(commits).toEqual([expected]);
+    expect(designInputCalls()).toHaveLength(1);
+
+    act(() => input.blur());
+    expect(input.value).toBe(String(expected));
+    expect(commits).toEqual([expected]);
+    expect(designInputCalls()).toHaveLength(1);
+  });
+
+  it("does not commit again when Enter clamps back to the committed bound", () => {
+    const commits: number[] = [];
+    const host = render(
+      <NumberField
+        label="Size"
+        value={100}
+        min={0}
+        max={100}
+        onCommit={(n) => commits.push(n)}
+        onTrack={track("metric")}
+      />,
+    );
+    const input = host.querySelector("input")!;
+
+    act(() => input.focus());
+    type(input, "150");
+    fire(input, "keydown", { key: "Enter" });
+
+    expect(input.value).toBe("100");
+    expect(document.activeElement).toBe(input);
+    expect(commits).toEqual([]);
+    expect(designInputCalls()).toHaveLength(0);
+
+    act(() => input.blur());
+    expect(input.value).toBe("100");
+    expect(commits).toEqual([]);
+    expect(designInputCalls()).toHaveLength(0);
+  });
+
   it("commits a typed number on Enter and keeps the unit", () => {
     const commits: number[] = [];
     const host = render(
