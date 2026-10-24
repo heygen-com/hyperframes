@@ -542,7 +542,9 @@ function localizeHtmlEntry(ctx: ExternalAssetContext, entryPath: string, content
   const referrerAbsDir = resolve(ctx.absProjectDir, dirname(entryPath));
   const { document } = parseHTML(content.toString("utf-8"));
   const resolveTarget: HtmlAttributeResolver = (val, dir) => tryResolveExternal(ctx, val, dir);
-  const attrsChanged = rewriteHtmlAttributes(document, referrerAbsDir, entryPath, resolveTarget);
+  const attrsChanged = rewriteHtmlAttributes(document, referrerAbsDir, entryPath, resolveTarget, {
+    attrs: ["src", "href", "poster"],
+  });
   const stylesChanged = rewriteStyleBlocks(document, referrerAbsDir, entryPath, resolveTarget);
   if (attrsChanged || stylesChanged) {
     ctx.fileContents.set(entryPath, Buffer.from(document.toString(), "utf-8"));
