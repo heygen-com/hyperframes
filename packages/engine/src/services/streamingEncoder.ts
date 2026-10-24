@@ -37,6 +37,7 @@ import {
   isExternalFfmpegInterruption,
 } from "../utils/runFfmpeg.js";
 import { getFfmpegBinary } from "../utils/ffmpegBinaries.js";
+import { retrySpawnWhileLocked } from "../utils/spawnLockRetry.js";
 import { getHdrEncoderColorParams, hdrFrameTagsFilter } from "../utils/hdr.js";
 import { withEvenDimensionPad } from "../utils/evenDimensions.js";
 import {
@@ -470,7 +471,18 @@ export function buildStreamingArgs(
 /**
  * Spawn a streaming FFmpeg encoder that accepts frame buffers on stdin.
  */
-export async function spawnStreamingEncoder(
+export function spawnStreamingEncoder(
+  outputPath: string,
+  options: StreamingEncoderOptions,
+  signal?: AbortSignal,
+  config?: Partial<Pick<EngineConfig, "ffmpegStreamingTimeout">>,
+): Promise<StreamingEncoder> {
+  return retrySpawnWhileLocked(getFfmpegBinary(), () =>
+    spawnStreamingEncoderOnce(outputPath, options, signal, config),
+  );
+}
+
+async function spawnStreamingEncoderOnce(
   outputPath: string,
   options: StreamingEncoderOptions,
   signal?: AbortSignal,

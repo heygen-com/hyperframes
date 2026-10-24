@@ -10,6 +10,7 @@ import { spawn } from "child_process";
 import { getFfmpegBinary } from "./ffmpegBinaries.js";
 import { ManagedChildProcess } from "./managedChildProcess.js";
 import { trackChildProcess } from "./processTracker.js";
+import { retrySpawnWhileLocked } from "./spawnLockRetry.js";
 
 export type ConcreteGpuEncoder = "nvenc" | "videotoolbox" | "vaapi" | "qsv" | "amf";
 export type GpuEncoder = ConcreteGpuEncoder | null;
@@ -61,7 +62,11 @@ export async function selectUsableGpuEncoder(
   return null;
 }
 
-export async function detectGpuEncoder(): Promise<GpuEncoder> {
+export function detectGpuEncoder(): Promise<GpuEncoder> {
+  return retrySpawnWhileLocked(getFfmpegBinary(), detectGpuEncoderOnce);
+}
+
+async function detectGpuEncoderOnce(): Promise<GpuEncoder> {
   const ffmpeg = spawn(getFfmpegBinary(), ["-encoders"], {
     stdio: ["pipe", "pipe", "pipe"],
     // See runFfmpeg.ts: keeps a console window off the user's desktop on Windows.
@@ -176,7 +181,11 @@ export function getProbeArgs(encoder: ConcreteGpuEncoder): string[] {
   return args;
 }
 
-async function canUseGpuEncoder(encoder: ConcreteGpuEncoder): Promise<boolean> {
+function canUseGpuEncoder(encoder: ConcreteGpuEncoder): Promise<boolean> {
+  return retrySpawnWhileLocked(getFfmpegBinary(), () => canUseGpuEncoderOnce(encoder));
+}
+
+async function canUseGpuEncoderOnce(encoder: ConcreteGpuEncoder): Promise<boolean> {
   const ffmpeg = spawn(getFfmpegBinary(), getProbeArgs(encoder), {
     stdio: ["ignore", "ignore", "pipe"],
     windowsHide: true,

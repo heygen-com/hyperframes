@@ -9,6 +9,7 @@
 import { spawn, type ChildProcess } from "child_process";
 import { getFfmpegBinary } from "./ffmpegBinaries.js";
 import { trackChildProcess } from "./processTracker.js";
+import { retrySpawnWhileLocked } from "./spawnLockRetry.js";
 import {
   ManagedChildProcess,
   type ManagedChildProcessOutcome,
@@ -201,26 +202,29 @@ const ABORTED_BEFORE_START: RunFfmpegResult = {
 };
 
 export async function runFfmpeg(args: string[], opts?: RunFfmpegOptions): Promise<RunFfmpegResult> {
-  if (opts?.signal?.aborted) return { ...ABORTED_BEFORE_START };
+  const timeout = opts?.timeout ?? DEFAULT_TIMEOUT;
   const stallTimeout = opts?.stallTimeout;
-  let framesWritten = 0;
-  const readStats = ffmpegStatsReader(({ frames }) => {
-    if (frames === undefined || frames <= framesWritten) return;
-    framesWritten = frames;
-    managed.markActivity();
+  return retrySpawnWhileLocked(getFfmpegBinary(), async () => {
+    if (opts?.signal?.aborted) return { ...ABORTED_BEFORE_START };
+    let framesWritten = 0;
+    const readStats = ffmpegStatsReader(({ frames }) => {
+      if (frames === undefined || frames <= framesWritten) return;
+      framesWritten = frames;
+      managed.markActivity();
+    });
+    const managed = new ManagedChildProcess(spawnFfmpeg(args), {
+      signal: opts?.signal,
+      ...(stallTimeout === undefined
+        ? { deadlineAtMs: Date.now() + timeout }
+        : { inactivityTimeoutMs: stallTimeout }),
+      onStderr:
+        stallTimeout === undefined
+          ? opts?.onStderr
+          : (chunk) => {
+              readStats(chunk);
+              opts?.onStderr?.(chunk);
+            },
+    });
+    return toResult(await managed.wait());
   });
-  const managed = new ManagedChildProcess(spawnFfmpeg(args), {
-    signal: opts?.signal,
-    ...(stallTimeout === undefined
-      ? { deadlineAtMs: Date.now() + (opts?.timeout ?? DEFAULT_TIMEOUT) }
-      : { inactivityTimeoutMs: stallTimeout }),
-    onStderr:
-      stallTimeout === undefined
-        ? opts?.onStderr
-        : (chunk) => {
-            readStats(chunk);
-            opts?.onStderr?.(chunk);
-          },
-  });
-  return toResult(await managed.wait());
 }

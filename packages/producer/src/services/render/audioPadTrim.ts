@@ -29,6 +29,7 @@ import {
   extractAudioMetadata,
   getFfprobeBinary,
   ManagedChildProcess,
+  retrySpawnWhileLocked,
   runFfmpeg,
   trackChildProcess,
   type AudioMetadata,
@@ -611,7 +612,11 @@ function toStepResult(result: RunFfmpegResult, timeoutMs: number): StepResult {
 
 // ── ffprobe JSON runner (shared between fast/slow video probe paths) ─────
 
-export async function runFfprobeJson<T>(args: string[], signal?: AbortSignal): Promise<T> {
+export function runFfprobeJson<T>(args: string[], signal?: AbortSignal): Promise<T> {
+  return retrySpawnWhileLocked(getFfprobeBinary(), () => runFfprobeJsonOnce<T>(args, signal));
+}
+
+async function runFfprobeJsonOnce<T>(args: string[], signal?: AbortSignal): Promise<T> {
   // Callers bake the input path into `args` (terminated with "--"), so this
   // helper cannot add the terminator itself — assert they did rather than
   // let a dash-prefixed path silently reach ffprobe as an option.

@@ -13,6 +13,7 @@ import { type Fps, type RateSpec } from "@hyperframes/core";
 import {
   getFfmpegBinary,
   MIXED_AUDIO_FILENAME,
+  retrySpawnWhileLocked,
   type VideoElement,
   type VideoFrameFormat,
   type VideoMetadata,
@@ -385,11 +386,13 @@ export async function readFfmpegVersion(): Promise<string> {
   if (cached !== undefined) return cached;
   let stdout: string;
   try {
-    ({ stdout } = await execFile(binary, ["-version"], {
-      maxBuffer: 1024 * 1024,
-      // See runFfmpeg.ts: keeps a console window off the user's desktop on Windows.
-      windowsHide: true,
-    }));
+    ({ stdout } = await retrySpawnWhileLocked(binary, () =>
+      execFile(binary, ["-version"], {
+        maxBuffer: 1024 * 1024,
+        // See runFfmpeg.ts: keeps a console window off the user's desktop on Windows.
+        windowsHide: true,
+      }),
+    ));
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     throw Object.assign(

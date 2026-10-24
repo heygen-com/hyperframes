@@ -657,6 +657,29 @@ describe("spawnStreamingEncoder lifecycle and cleanup", () => {
     else process.env.PATH = originalPath;
   });
 
+  it("starts once the ffmpeg executable stops being locked (Windows spawn EBUSY)", async () => {
+    const { spawn: unlockedSpawn, calls } = createSpawnSpy();
+    let attempts = 0;
+    const spawn = (command: string, args: readonly string[]): FakeProc => {
+      attempts += 1;
+      if (attempts === 1) {
+        throw Object.assign(new Error("spawn EBUSY"), { code: "EBUSY", syscall: "spawn" });
+      }
+      return unlockedSpawn(command, args);
+    };
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { spawnStreamingEncoder } = await import("./streamingEncoder.js");
+    const dir = mkdtempSync(join(tmpdir(), "se-locked-"));
+    await spawnStreamingEncoder(join(dir, "out.mp4"), baseOptions);
+
+    expect(attempts).toBe(2);
+    expect(calls).toHaveLength(1);
+    vi.restoreAllMocks();
+  });
+
   it("returns a success result when ffmpeg exits cleanly after close()", async () => {
     const { spawn, calls } = createSpawnSpy();
     vi.resetModules();

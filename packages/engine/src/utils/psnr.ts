@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { getFfmpegBinary } from "./ffmpegBinaries.js";
+import { retrySpawnWhileLocked } from "./spawnLockRetry.js";
 
 /**
  * PSNR (average, dB) between two same-dimension encoded images via ffmpeg.
@@ -21,10 +22,12 @@ export async function psnrDb(a: Buffer, b: Buffer): Promise<number> {
     const pa = join(dir, "a.jpg");
     const pb = join(dir, "b.jpg");
     await Promise.all([writeFile(pa, a), writeFile(pb, b)]);
-    const { stderr } = await execFileP(
-      getFfmpegBinary(),
-      ["-hide_banner", "-i", pa, "-i", pb, "-lavfi", "psnr", "-f", "null", "-"],
-      { maxBuffer: 4 * 1024 * 1024, windowsHide: true },
+    const binary = getFfmpegBinary();
+    const { stderr } = await retrySpawnWhileLocked(binary, () =>
+      execFileP(binary, ["-hide_banner", "-i", pa, "-i", pb, "-lavfi", "psnr", "-f", "null", "-"], {
+        maxBuffer: 4 * 1024 * 1024,
+        windowsHide: true,
+      }),
     );
     const m = /average:(inf|[\d.]+)/.exec(stderr);
     if (!m) throw new Error(`psnr parse failed: ${stderr.slice(-300)}`);

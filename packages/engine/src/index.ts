@@ -382,6 +382,7 @@ export {
 } from "./utils/ffmpegBinaries.js";
 
 export { trackChildProcess, killTrackedProcesses } from "./utils/processTracker.js";
+export { retrySpawnWhileLocked } from "./utils/spawnLockRetry.js";
 
 // drawElement self-verify comparison — shared by the streaming drain
 // (producer) and the parallel disk-path verify (parallelCoordinator).
