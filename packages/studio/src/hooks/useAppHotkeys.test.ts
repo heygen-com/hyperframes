@@ -500,6 +500,44 @@ describe("dispatchPlainKey — G opens Audio Gain", () => {
     expect(event.defaultPrevented).toBe(true);
   });
 
+  it("Z zooms when a clip is selected and does not take the key otherwise", () => {
+    usePlayerStore.setState({
+      elements: [bgmElement],
+      selectedElementId: "bgm",
+      selectedElementIds: new Set(["bgm"]),
+    });
+    const event = press("z");
+    dispatchPlainKey(event, "z", callbacks());
+    expect(event.defaultPrevented).toBe(true);
+
+    usePlayerStore.setState({ selectedElementId: null, selectedElementIds: new Set() });
+    const idle = press("z");
+    dispatchPlainKey(idle, "z", callbacks());
+    expect(idle.defaultPrevented).toBe(false);
+
+    const shifted = new KeyboardEvent("keydown", { key: "z", shiftKey: true, bubbles: true });
+    dispatchPlainKey(shifted, "z", callbacks());
+    expect(shifted.defaultPrevented).toBe(false);
+
+    usePlayerStore.setState({
+      elements: [bgmElement],
+      selectedElementId: "scene.html#child",
+      selectedElementIds: new Set(["scene.html#child"]),
+    });
+    const child = press("z");
+    dispatchPlainKey(child, "z", callbacks());
+    expect(child.defaultPrevented).toBe(false);
+
+    usePlayerStore.setState({
+      elements: [{ ...bgmElement, duration: 0 }],
+      selectedElementId: "bgm",
+      selectedElementIds: new Set(["bgm"]),
+    });
+    const zero = press("z");
+    dispatchPlainKey(zero, "z", callbacks());
+    expect(zero.defaultPrevented).toBe(false);
+  });
+
   it("leaves G to the grid toggle when nothing selected has sound", () => {
     usePlayerStore.setState({ elements: [video], selectedElementId: "b-roll" });
     const event = press("g");

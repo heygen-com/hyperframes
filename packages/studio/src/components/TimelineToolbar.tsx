@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef, type ReactNode } from "react";
 import {
   ArrowsOutLineHorizontal,
+  FrameCorners,
   Image,
   Magnet,
   MagnifyingGlassMinus,
@@ -19,8 +20,10 @@ import {
 } from "../player/components/timelineZoom";
 import { useTimelineZoom } from "../player/components/useTimelineZoom";
 import {
+  canZoomToSelectedClips,
   useShownTimelineZoomPercent,
   zoomTimelineStep,
+  zoomTimelineToSelectedClips,
 } from "../player/components/timelineZoomInput";
 import { usePlayerStore, type TimelineElement } from "../player";
 import { Tooltip } from "./ui";
@@ -37,7 +40,10 @@ import { LinkedSelectionToggle } from "./LinkedSelectionToggle";
 import { useProjectHasAudio } from "../utils/audioMeterMath";
 import { canAddBeatAt, addBeatAtCompositionTime } from "../utils/beatEditActions";
 import { isTypingTarget } from "../utils/typingTarget";
-import { SPLIT_SHORTCUT_HINT } from "../player/components/studioShortcuts";
+import {
+  SPLIT_SHORTCUT_HINT,
+  ZOOM_SELECTION_SHORTCUT_HINT,
+} from "../player/components/studioShortcuts";
 import type { TimelineProps } from "../player/components/TimelineTypes";
 
 interface DomEditSessionSlice extends EnableKeyframesSession {
@@ -174,7 +180,13 @@ export const TimelineToolbar = memo(function TimelineToolbar({
   const beatAnalysisReady = usePlayerStore((s) => s.beatAnalysis !== null);
   // Subscribed, so the split button follows the selection, not only playhead ticks.
   const selectedElementId = usePlayerStore((s) => s.selectedElementId);
+  const selectedElementIds = usePlayerStore((s) => s.selectedElementIds);
   const elements = usePlayerStore((s) => s.elements);
+  const canZoomSelection = canZoomToSelectedClips({
+    elements,
+    selectedElementId,
+    selectedElementIds,
+  });
   const timelineFitPps = usePlayerStore((s) => s.timelineFitPps);
   const { zoomMode, setZoomMode, setManualZoomPercent } = useTimelineZoom();
   const displayedTimelineZoomPercent = useShownTimelineZoomPercent();
@@ -485,6 +497,25 @@ export const TimelineToolbar = memo(function TimelineToolbar({
               }`}
             >
               <Image size={16} aria-hidden="true" />
+            </button>
+          </Tooltip>
+          <Tooltip
+            label={
+              canZoomSelection
+                ? `Zoom to selected clips (${ZOOM_SELECTION_SHORTCUT_HINT})`
+                : "Select a clip to zoom the timeline"
+            }
+          >
+            <button
+              type="button"
+              disabled={!canZoomSelection}
+              aria-label={
+                canZoomSelection ? "Zoom to selected clips" : "Select a clip to zoom the timeline"
+              }
+              onClick={() => zoomTimelineToSelectedClips()}
+              className={canZoomSelection ? flatIdle : flatDisabled}
+            >
+              <FrameCorners size={16} aria-hidden="true" />
             </button>
           </Tooltip>
           <Tooltip label="Fit timeline to width">

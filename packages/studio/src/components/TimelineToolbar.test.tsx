@@ -271,11 +271,18 @@ describe("TimelineToolbar Fit", () => {
       timelineFitPps: 10,
       timelinePps: 10,
     });
-    return registerTimelineZoomViewport({ scroll, contentOrigin: 32, publishScroll: () => {} });
+    return {
+      scroll,
+      unregister: registerTimelineZoomViewport({
+        scroll,
+        contentOrigin: 32,
+        publishScroll: () => {},
+      }),
+    };
   }
 
   it("moves the slider and its readout with a zoom while it is previewed", () => {
-    const unregister = mountTimelineViewport();
+    const { unregister } = mountTimelineViewport();
     const { host, root } = renderToolbar();
     const slider = host.querySelector<HTMLInputElement>('input[aria-label="Timeline zoom"]')!;
     const before = slider.value;
@@ -296,7 +303,7 @@ describe("TimelineToolbar Fit", () => {
   });
 
   it("keeps Fit when it is picked while a zoom waits to be laid out", () => {
-    const unregister = mountTimelineViewport();
+    const { unregister } = mountTimelineViewport();
     const { host, root } = renderToolbar();
     act(() =>
       host
@@ -311,6 +318,113 @@ describe("TimelineToolbar Fit", () => {
     );
     act(() => vi.advanceTimersByTime(1000));
     expect(usePlayerStore.getState().zoomMode).toBe("fit");
+    act(() => root.unmount());
+    act(() => unregister());
+  });
+
+  it("disables zoom-to-selection until a clip is selected", () => {
+    usePlayerStore.setState({ selectedElementId: null, selectedElementIds: new Set() });
+    const { host, root } = renderToolbar();
+    const button = host.querySelector<HTMLButtonElement>(
+      'button[aria-label="Select a clip to zoom the timeline"]',
+    );
+    expect(button?.disabled).toBe(true);
+    act(() => root.unmount());
+  });
+
+  it("disables zoom-to-selection when the selection is not a timeline clip", () => {
+    usePlayerStore.setState({
+      elements: [{ id: "a", key: "a", tag: "div", start: 0, duration: 4, track: 0 }],
+      selectedElementId: "scene.html#child",
+      selectedElementIds: new Set(["scene.html#child"]),
+    });
+    const { host, root } = renderToolbar();
+    expect(
+      host.querySelector<HTMLButtonElement>(
+        'button[aria-label="Select a clip to zoom the timeline"]',
+      )?.disabled,
+    ).toBe(true);
+    act(() => root.unmount());
+  });
+
+  it("disables zoom-to-selection when every selected clip has no duration", () => {
+    usePlayerStore.setState({
+      elements: [{ id: "a", key: "a", tag: "div", start: 2, duration: 0, track: 0 }],
+      selectedElementId: "a",
+      selectedElementIds: new Set(["a"]),
+    });
+    const { host, root } = renderToolbar();
+    expect(
+      host.querySelector<HTMLButtonElement>(
+        'button[aria-label="Select a clip to zoom the timeline"]',
+      )?.disabled,
+    ).toBe(true);
+    act(() => root.unmount());
+  });
+
+  function clickZoom(host: HTMLElement) {
+    act(() => {
+      host
+        .querySelector('button[aria-label="Zoom to selected clips"]')
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    act(() => {
+      for (let i = 0; i < 30; i++) vi.advanceTimersToNextFrame();
+    });
+  }
+
+  it("zooms the mounted timeline so the selected clips fill the width between the margins", () => {
+    const { scroll, unregister } = mountTimelineViewport();
+    usePlayerStore.setState({
+      elements: [{ id: "a", key: "a", tag: "div", start: 10, duration: 20, track: 0 }],
+      selectedElementId: "a",
+      selectedElementIds: new Set(["a"]),
+    });
+    const { host, root } = renderToolbar();
+    clickZoom(host);
+    const pps = usePlayerStore.getState().timelinePps;
+    expect(pps).toBeCloseTo(50);
+    expect(32 + 10 * pps - scroll.scrollLeft).toBeCloseTo(56);
+    expect(32 + 30 * pps - scroll.scrollLeft).toBeCloseTo(1056);
+    act(() => root.unmount());
+    act(() => unregister());
+    usePlayerStore.setState({
+      elements: [],
+      selectedElementId: null,
+      selectedElementIds: new Set(),
+    });
+  });
+
+  it("keeps a clip at the start on screen without scrolling past zero", () => {
+    const { scroll, unregister } = mountTimelineViewport();
+    usePlayerStore.setState({
+      elements: [{ id: "a", key: "a", tag: "div", start: 0, duration: 10, track: 0 }],
+      selectedElementId: "a",
+      selectedElementIds: new Set(["a"]),
+    });
+    const { host, root } = renderToolbar();
+    clickZoom(host);
+    expect(scroll.scrollLeft).toBe(0);
+    const pps = usePlayerStore.getState().timelinePps;
+    expect(32 + 10 * pps).toBeLessThanOrEqual(1080);
+    act(() => root.unmount());
+    act(() => unregister());
+  });
+
+  it("keeps a clip at the end of the fit span inside the viewport", () => {
+    const end = (1080 - 32 - 2) / 10;
+    const { scroll, unregister } = mountTimelineViewport();
+    usePlayerStore.setState({
+      elements: [{ id: "a", key: "a", tag: "div", start: end - 10, duration: 10, track: 0 }],
+      selectedElementId: "a",
+      selectedElementIds: new Set(["a"]),
+    });
+    const { host, root } = renderToolbar();
+    clickZoom(host);
+    const pps = usePlayerStore.getState().timelinePps;
+    expect(scroll.scrollLeft).toBeGreaterThan(0);
+    expect(32 + (end - 10) * pps - scroll.scrollLeft).toBeGreaterThanOrEqual(0);
+    expect(32 + end * pps - scroll.scrollLeft).toBeLessThanOrEqual(1080);
     act(() => root.unmount());
     act(() => unregister());
   });
