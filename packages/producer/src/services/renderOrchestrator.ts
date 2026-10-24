@@ -333,51 +333,40 @@ export interface RenderConfig {
   /** Segmented capture: keep renders/.hf-segments/<planHash> after a successful render. */
   keepSegments?: boolean;
   /**
-   * Output container format. Defaults to `"mp4"`; existing renders are
-   * unaffected unless this field is set explicitly.
+   * Output container format. Defaults to `"mp4"`; set explicitly for other formats.
    *
-   * - `"mp4"`: H.264 by default, or H.265 + HDR10 when HDR auto-detect
-   *   engages or `hdrMode: "force-hdr"` is set. Opaque. The
-   *   default streaming/social deliverable. Faststart is applied so the
-   *   `moov` atom sits at the file start and the file plays from a
-   *   partial download.
-   * - `"webm"`: VP9 + `yuva420p` pixel format → **true alpha channel**, no
-   *   chroma key. Plays in Chrome, Edge, and Firefox; Safari support for
-   *   alpha-WebM is incomplete. Use this when the output should drop
-   *   straight into a `<video>` over a colored background on the web.
-   *   Audio is muxed as Opus.
-   * - `"mov"`: ProRes 4444 + `yuva444p10le` → **true alpha channel +
-   *   10-bit color**. Sized for editor ingest (Premiere, Final Cut Pro,
-   *   DaVinci Resolve), not direct web playback. Audio is muxed as AAC.
-   * - `"gif"`: animated GIF encoded from captured RGBA frames with a two-pass
-   *   FFmpeg palette (`palettegen` + `paletteuse`). Use for PRs, READMEs,
-   *   and docs where inline autoplay matters more than file size. No audio
-   *   stream; transparency is binary because GIF has no partial alpha.
-   * - `"png-sequence"`: a directory of zero-padded RGBA PNGs
-   *   (`frame_000001.png` …). Lossless alpha, largest on disk, no muxed
-   *   audio (an `audio.m4a` sidecar is written alongside the PNGs when
-   *   the composition has audio elements). Use for After Effects / Nuke
-   *   / Fusion ingest, or when frames need post-processing before
-   *   encoding. `outputPath` is treated as a directory; it is created if
-   *   it doesn't exist.
-   * - `"hls"`: HLS VOD package — the same opaque H.264 + AAC encode as
-   *   `"mp4"`, stream-copied (no re-encode) into a directory of MPEG-TS
-   *   segments: `master.m3u8`, `video.m3u8` + `video_%05d.ts`, and
-   *   `audio.m3u8` + `audio_%05d.ts` when the composition has audio.
-   *   Segments are fixed-length (see {@link RenderConfig.hlsSegmentSeconds})
-   *   and every one starts on an IDR frame, because the encoder's GOP is
-   *   locked to `hlsSegmentSeconds × fps`. Like `"png-sequence"`,
-   *   `outputPath` is treated as a directory. SDR only, software encoder
-   *   only, and not available in distributed / Lambda / Cloud Run mode.
+   * - `"mp4"`: opaque H.264, or H.265 + HDR10 with HDR auto-detection or
+   *   `hdrMode: "force-hdr"`. For streaming/social delivery; faststart puts the
+   *   `moov` atom first so playback can begin during a partial download.
+   * - `"webm"`: VP9 + `yuva420p` with true alpha (no chroma key) and Opus audio.
+   *   For `<video>` overlays in Chrome, Edge and Firefox; Safari's alpha-WebM
+   *   support is incomplete.
+   * - `"mov"`: ProRes 4444 + `yuva444p10le` with true alpha and AAC audio.
+   *   Chrome captures 8-bit RGBA; encoding it as 10-bit ProRes does not add
+   *   capture precision. For editor ingest (Premiere, Final Cut Pro, DaVinci
+   *   Resolve), rather than direct web playback.
+   * - `"gif"`: animated GIF from RGBA captures, using FFmpeg's two-pass
+   *   `palettegen` + `paletteuse`. For inline autoplay in PRs, READMEs and docs
+   *   when file size matters less. No audio; transparency is binary, not partial.
+   * - `"png-sequence"`: zero-padded RGBA PNGs (`frame_000001.png` ...), with
+   *   lossless alpha and the largest disk footprint. No muxed audio; an
+   *   `audio.m4a` sidecar is written when the composition contains audio.
+   *   For After Effects / Nuke / Fusion or post-processing before encoding.
+   *   `outputPath` is a directory, created if it does not exist.
+   * - `"hls"`: HLS VOD using the opaque H.264 + AAC encode from `"mp4"`,
+   *   stream-copied without re-encoding into MPEG-TS in the `outputPath` directory:
+   *   `master.m3u8`, `video.m3u8` + `video_%05d.ts`, and `audio.m3u8` +
+   *   `audio_%05d.ts` when the composition contains audio. Segment length is
+   *   {@link RenderConfig.hlsSegmentSeconds}; the encoder's GOP is locked to
+   *   that length in frames, so each segment starts on an IDR frame.
+   *   SDR and software encoders only; unavailable in distributed rendering,
+   *   including Lambda and Cloud Run.
    *
-   * Alpha output (`"webm"`, `"mov"`, `"png-sequence"`, `"gif"`) automatically
-   * forces screenshot capture (Chrome's BeginFrame compositor does not
-   * preserve alpha on Linux headless-shell) and disables HDR — HDR +
-   * alpha is not a supported combination, a warning is logged and HDR
-   * falls back to SDR. The transparent-background CSS is injected by
-   * the engine's `initTransparentBackground` helper, so authors should
-   * not paint a fullscreen `body` / `#root` background in their
-   * compositions when targeting alpha output.
+   * Alpha formats (`"webm"`, `"mov"`, `"png-sequence"`, `"gif"`) force screenshot
+   * capture because BeginFrame does not preserve alpha on Linux headless-shell.
+   * HDR + alpha is unsupported: a warning is logged and output falls back to SDR.
+   * The engine's `initTransparentBackground` injects transparent-background CSS;
+   * avoid painting a fullscreen `body` / `#root` background for alpha output.
    */
   format?: RenderOutputFormat;
   /** GIF Netscape loop count. 0 means infinite looping. Only used with `format: "gif"`. */
