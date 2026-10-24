@@ -84,6 +84,12 @@ describe("validateDistributedRenderConfig", () => {
     ).toThrow(/force-sdr/);
   });
 
+  it("rejects chromaSubsampling 444", () => {
+    expect(() =>
+      validateDistributedRenderConfig({ ...base(), chromaSubsampling: "444" } as never),
+    ).toThrow(/4:2:0 only/);
+  });
+
   it("rejects an over-cap chunkSize", () => {
     expect(() => validateDistributedRenderConfig({ ...base(), chunkSize: 5000 } as never)).toThrow(
       /<= 3600/,
