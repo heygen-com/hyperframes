@@ -93,6 +93,7 @@ export interface PublicHttpsTextOptions {
   signal?: AbortSignal;
 }
 
+export type PublicHttpsBytesOptions = PublicHttpsTextOptions;
 export interface SafeDownloadUrlIdentity {
   urlFingerprint: string;
   host?: string;
@@ -529,17 +530,21 @@ async function fetchWithValidatedRedirects(
   }
 }
 
-/** Fetch bounded UTF-8 text while applying the downloader's redirect and SSRF policy to every hop. */
 // fallow-ignore-next-line complexity
-export async function fetchPublicHttpsText(
+async function fetchPublicHttpsBody(
   url: string,
   options: PublicHttpsTextOptions,
-): Promise<string> {
+  label: string,
+): Promise<Uint8Array> {
   const timeoutMs = options.timeoutMs ?? 15_000;
   if (!Number.isSafeInteger(options.maxBytes) || options.maxBytes <= 0) {
     throw new RangeError("maxBytes must be a positive safe integer");
   }
-  assertPublicHttpsUrl(url);
+  try {
+    assertPublicHttpsUrl(url);
+  } catch {
+    throw new UrlDownloadError("http_rejected", false, `${label} URL is not permitted`);
+  }
 
   const controller = new AbortController();
   let timedOut = false;
@@ -556,14 +561,14 @@ export async function fetchPublicHttpsText(
 
   try {
     if (callerAborted) {
-      throw new UrlDownloadError("cancelled", false, "Text fetch cancelled");
+      throw new UrlDownloadError("cancelled", false, `${label} fetch cancelled`);
     }
     const { response } = await fetchWithValidatedRedirects(url, controller);
     if (!response.ok) {
       await cancelResponseBody(response);
       throw classifyHttpFailure(response.status);
     }
-    if (!response.body) return "";
+    if (!response.body) return new Uint8Array();
 
     let declaredLength: number | undefined;
     try {
@@ -580,7 +585,7 @@ export async function fetchPublicHttpsText(
       throw new UrlDownloadError(
         "length_mismatch",
         false,
-        "Text response exceeded the configured byte limit",
+        `${label} response exceeded the configured byte limit`,
         response.status,
       );
     }
@@ -597,7 +602,7 @@ export async function fetchPublicHttpsText(
         throw new UrlDownloadError(
           "length_mismatch",
           false,
-          "Text response exceeded the configured byte limit",
+          `${label} response exceeded the configured byte limit`,
           response.status,
           { receivedBytes },
         );
@@ -608,18 +613,22 @@ export async function fetchPublicHttpsText(
       throw new UrlDownloadError(
         "length_mismatch",
         true,
-        "Text response byte count did not match its declared length",
+        `${label} response byte count did not match its declared length`,
         response.status,
         { expectedBytes, receivedBytes },
       );
     }
-    return new TextDecoder().decode(Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))));
+    return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)));
   } catch (error) {
     if (callerAborted) {
-      throw new UrlDownloadError("cancelled", false, "Text fetch cancelled");
+      throw new UrlDownloadError("cancelled", false, `${label} fetch cancelled`);
     }
     if (timedOut) {
-      throw new UrlDownloadError("timeout", true, `Text fetch timeout after ${timeoutMs / 1000}s`);
+      throw new UrlDownloadError(
+        "timeout",
+        true,
+        `${label} fetch timeout after ${timeoutMs / 1000}s`,
+      );
     }
     throw classifyDownloadFailure(error);
   } finally {
@@ -627,6 +636,23 @@ export async function fetchPublicHttpsText(
     options.signal?.removeEventListener("abort", onCallerAbort);
     controller.abort();
   }
+}
+
+/** Fetch bounded UTF-8 text while applying the downloader's redirect and SSRF policy to every hop. */
+export async function fetchPublicHttpsText(
+  url: string,
+  options: PublicHttpsTextOptions,
+): Promise<string> {
+  const bytes = await fetchPublicHttpsBody(url, options, "Text");
+  return new TextDecoder().decode(bytes);
+}
+
+/** Same redirect and SSRF policy as the text fetch, for callers that hash the exact bytes. */
+export async function fetchPublicHttpsBytes(
+  url: string,
+  options: PublicHttpsBytesOptions,
+): Promise<Uint8Array> {
+  return fetchPublicHttpsBody(url, options, "Binary");
 }
 
 interface PartialIntegrity {
