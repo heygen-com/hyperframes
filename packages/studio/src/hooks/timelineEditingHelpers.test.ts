@@ -10,6 +10,7 @@ import {
   patchIframeDomTiming,
   persistElementAttribute,
   persistTimelineBatchEdit,
+  persistTimelineEdit,
   type PersistTimelineBatchChange,
 } from "./timelineEditingHelpers";
 import type { TimelineElement } from "../player/store/playerStore";
@@ -305,6 +306,44 @@ describe("buildTimelineResizeTimingPatch — source in-point read as playback re
     });
     const video = host.querySelector("#a")!;
     expect(readMediaOffsetSeconds((name) => video.getAttribute(name))).toBe(expected);
+  });
+});
+
+describe("persistTimelineEdit", () => {
+  // The root already ends where the clip does, so only the clip's own start could change.
+  const SOURCE = `<div data-composition-id="c" data-duration="4.23"><div id="a" class="clip" data-start="1.23" data-duration="3"></div></div>`;
+
+  function moveTo(id: string, start: number, writes: Array<[string, string]>) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true, json: async () => ({ content: SOURCE }) })),
+    );
+    return persistTimelineEdit({
+      projectId: "p1",
+      element: el({ id, tag: "div", domId: id, start: 1.23, duration: 3 }),
+      activeCompPath: "index.html",
+      label: "Move timeline clip",
+      buildPatches: (original, target) => buildTimelineMoveTimingPatch(original, target, start, 3),
+      writeProjectFile: async (path, content) => void writes.push([path, content]),
+      recordEdit: async () => {},
+      pendingTimelineEditPathRef: { current: new Set<string>() },
+    });
+  }
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("a move that rounds to the start already written is saved as it stands, not refused", async () => {
+    const writes: Array<[string, string]> = [];
+    await expect(moveTo("a", 1.2349, writes)).resolves.toBeUndefined();
+    expect(writes).toEqual([]);
+  });
+
+  it("a clip whose tag is not in the file is still refused, by name", async () => {
+    const writes: Array<[string, string]> = [];
+    await expect(moveTo("ghost", 2, writes)).rejects.toThrow(
+      "Unable to patch timeline element ghost in index.html",
+    );
+    expect(writes).toEqual([]);
   });
 });
 

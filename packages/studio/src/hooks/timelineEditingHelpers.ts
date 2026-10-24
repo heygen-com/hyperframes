@@ -358,12 +358,12 @@ export async function persistTimelineEdit(input: PersistTimelineEditInput): Prom
     coalesceKey: input.coalesceKey,
     coalesceMs: input.coalesceMs,
     files: {
+      // An edit that rounds to what is already written is saved as it stands; only a missing clip is refused.
       [targetPath]: (current) => {
-        const patched = input.buildPatches(current, patchTarget);
-        if (patched === current) {
+        if (!findTagByTarget(current, patchTarget)) {
           throw new Error(`Unable to patch timeline element ${input.element.id} in ${targetPath}`);
         }
-        return patched;
+        return input.buildPatches(current, patchTarget);
       },
     },
     readFile: (path) => readFileContent(input.projectId, path),
