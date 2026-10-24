@@ -4,6 +4,7 @@
  */
 
 import type { AudioAnalysisProvider, AudioCapability } from "./audioAnalysisLadder";
+import { finish, type Steps } from "./audioSteps";
 import { fft } from "./fft";
 import { rhythm } from "./audioRhythm";
 import { sections, type SectionOptions } from "./audioSections";
@@ -124,14 +125,24 @@ export const signalDuration = (signal: AudioSignal): number =>
 
 /** Per-sample energy. Channels are squared first, so a reversed channel stays audible. */
 export function energyMix(signal: AudioSignal): Float32Array {
+  return finish(energyMixSteps(signal));
+}
+
+const MIX_SAMPLES_PER_STEP = 65536;
+
+export function* energyMixSteps(signal: AudioSignal): Steps<Float32Array> {
   const [first, ...rest] = signal.channels;
   if (!first) return new Float32Array(0);
   if (!rest.length) return first;
   const mixed = new Float32Array(first.length);
-  for (const channel of signal.channels)
-    for (let i = 0; i < mixed.length; i++) mixed[i]! += channel[i]! * channel[i]!;
   const scale = 1 / signal.channels.length;
-  for (let i = 0; i < mixed.length; i++) mixed[i] = Math.sqrt(mixed[i]! * scale);
+  for (let start = 0; start < mixed.length; start += MIX_SAMPLES_PER_STEP) {
+    const end = Math.min(mixed.length, start + MIX_SAMPLES_PER_STEP);
+    for (const channel of signal.channels)
+      for (let i = start; i < end; i++) mixed[i]! += channel[i]! * channel[i]!;
+    for (let i = start; i < end; i++) mixed[i] = Math.sqrt(mixed[i]! * scale);
+    yield;
+  }
   return mixed;
 }
 
