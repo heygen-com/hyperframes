@@ -1,16 +1,41 @@
 ---
-title: "Export your video"
+title: "Export a video"
 description: "Render a finished video file from the HyperFrames Studio app and find it in your Downloads folder."
+sidebarTitle: "Export"
 ---
+
+import { DocsVideo } from "/snippets/docs-video.jsx";
 
 When the video is ready, choose **Export** in the project's top bar. The **Export** panel opens beside the picture.
 
-<Frame caption="The Export panel with quality, format, and frame rate.">
-  <img
-    src="/public/images/studio-app/export.jpg"
-    alt="The Export panel in the HyperFrames Studio app with Quality, Format and Frame rate choices and a Render 1080p MP4 button"
-  />
-</Frame>
+<DocsVideo
+  title="Exporting a 1080p MP4 from the Studio app"
+  src="https://static.heygen.ai/hyperframes-oss/docs/studio-demos/studio-export-demo-v2.mp4"
+  poster="/public/images/studio-app/studio-export-demo-v2.jpg"
+  aspect="16 / 10"
+  autoPlay
+  loop
+/>
+
+*Export, Change, 1080p, Render. The wait plays at 2×: this 12-second video took about 16 seconds on a MacBook.*
+
+## This Mac or the cloud
+
+Exports render on **This Mac** unless you pick the cloud. Under the render button, **Render in the cloud** opens
+**Cloud rendering**, which compares the two and lets you **Add API key**. Once a key is saved, **Render on** in Export
+picks **This Mac** or **Cloud**.
+
+| | This Mac | Cloud |
+| --- | --- | --- |
+| Cost | Free | Paid per minute of video from your HeyGen API balance. Export shows the price before you start; 4K costs about twice as much as 1080p. |
+| Your computer | Busy until it finishes | Free. Keep working while it renders. |
+| Your files | Stay on your computer | The project is uploaded to HeyGen to render |
+| Limits | Any shape and length | 16:9, 9:16 or 1:1, at 24, 25, 30 or 60 fps, project up to 200 MB |
+
+The key can also go in **Settings** > **HeyGen API key**. If the project is over 200 MB,
+choose **Ask Framey to do it** under **Make it fit the cloud**: Framey moves your big videos and images to your
+HeyGen assets. Either way, the video lands in your Downloads folder. A cloud render that has started can't be
+stopped: **Cancel** stops waiting, but the cloud may still finish it and charge your balance.
 
 ## Choose the file
 
@@ -18,15 +43,15 @@ When the video is ready, choose **Export** in the project's top bar. The **Expor
 | --- | --- | --- |
 | **Quality** | **1080p** or **Project size**, plus **4K** when the project fits it | 1080p |
 | **Format** | **MP4**, **WebM**, **MOV** | MP4 |
-| **Frame rate** | 24, 30, 60 | 30 |
+| **Frame rate** | 24, 25, 30, 50, 60, or **Custom…** | 30 |
 
 MP4 is the right choice for sharing and uploading. Pick another format only when the place you are sending it asks
 for one.
 
 ## Render
 
-Choose the render button, for example **Render 1080p MP4**. The panel shows **Getting ready**, then **Rendering**
-with the frames done so far, then **Finishing the file**. You can close the panel and keep working; the render
+Choose the render button, for example **Render 1080p MP4**. The panel shows **Preparing**, **Drawing frames**,
+**Encoding the video**, **Assembling** and **Saving to Downloads**. You can close the panel and keep working; the render
 continues. Choose **Cancel** to stop it.
 
 **Export** is unavailable while the agent is building the project. Wait for the run to finish.
@@ -37,7 +62,7 @@ The video is saved to your **Downloads** folder, named after the project with th
 `Spring Launch 2026-05-04 10.30.mp4`. When it is done, the panel shows **Export ready** with the file size:
 
 - **Open video** plays it.
-- **Show in Finder** (**Show in folder** on Linux) opens the folder.
+- **Show in Finder** (**Show in File Explorer** on Windows, **Show in folder** on Linux) opens the folder.
 
 Watch the exported file once from start to end before you send it.
 
@@ -52,5 +77,5 @@ Watch the exported file once from start to end before you send it.
 
 ## Related topics
 
-- [Change your video with the agent](/studio-app/edit-with-the-agent)
-- [Updates and troubleshooting](/studio-app/troubleshooting)
+- [Edit a video with the agent](/studio-app/edit-with-the-agent)
+- [Troubleshooting](/studio-app/troubleshooting)

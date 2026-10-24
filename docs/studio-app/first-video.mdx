@@ -1,10 +1,58 @@
 ---
-title: "Make your first video"
-description: "Pick four parts, add your website or idea, and let the agent build your first video in the HyperFrames Studio app."
+title: "Make your first video in the Studio app"
+sidebarTitle: "First video"
+description: "Describe a video in one sentence, answer the agent's questions, approve a storyboard, and get your first video in the HyperFrames Studio app."
 ---
 
-The **Create your first video** card on Home builds a launch video from four parts, each taken from a real launch
-video. You pick the parts, add your website or an idea, and the agent builds one video from them.
+import { HoverVideo } from "/snippets/hover-video.jsx";
+
+import { DocsVideo } from "/snippets/docs-video.jsx";
+
+Type one sentence on Home and choose **Let's go**. The agent may ask a question or two, shows you the video as stills,
+and builds it when you approve.
+
+<DocsVideo
+  title="A first video in the Studio app: one sentence, two questions, a storyboard, the finished film"
+  src="https://static.heygen.ai/hyperframes-oss/docs/studio-demos/first-video-demo-v2.mp4"
+  poster="/public/images/studio-app/first-video-demo-v2.jpg"
+  aspect="16 / 10"
+  autoPlay
+  loop
+/>
+
+*Recorded with Claude Code as the agent. The waits play fast: the storyboard took 29 minutes and the
+build 10.*
+
+## What happens
+
+<HoverVideo className="hf-aside hf-spot" src="https://static.heygen.ai/hyperframes-oss/docs/studio-demos/storyboard-tab-v2.mp4" poster="/public/images/studio-app/spots/storyboard-tab-v2.jpg" hasAudio={false} label="The Storyboard tab above the preview" />
+
+<Steps>
+  <Step title="Say what you want">
+    In **Make something**, describe the video ("A 12-second launch teaser for Lumen, a running shoe that glows at
+    night"). Add files with **+**, or start from a video you like in **Reference**.
+  </Step>
+  <Step title="Answer its questions">
+    When something matters and you didn't say it, the agent asks with a card: which of three concepts, how the
+    product should look, or whether to use your own image. Pick one (the agent marks the one it recommends), or choose
+    **Something else…** and type, then **Send answer**.
+  </Step>
+  <Step title="Approve the storyboard">
+    With **Start with a storyboard** on (the default), you see every shot as a still with its timing in the
+    **Storyboard** tab. Tell it which frame to change, or choose **Build the video**.
+  </Step>
+  <Step title="Watch, then change it">
+    The finished video plays in **Preview**. Change anything by saying it, pointing at it or drawing on it:
+    [edit a video with the agent](/studio-app/edit-with-the-agent).
+  </Step>
+</Steps>
+
+If you aren't signed in or have no agent yet, the app walks you through that first and then sends your request.
+
+## Or take the step by step
+
+**Take the step by step**, next to **Remix from inspiration** on Home, builds a launch video from four parts taken
+from real launch videos. It also opens by itself the very first time.
 
 <Frame caption="The first-video card: four parts, then your website or idea.">
   <img
@@ -20,37 +68,11 @@ video. You pick the parts, add your website or an idea, and the agent builds one
 | **Turn** | Flip from problem to answer |
 | **Call to action** | Land the brand and the ask |
 
-## Build it
-
-<Steps>
-  <Step title="Pick the four parts">
-    The card starts with one clip in each part. Use the shuffle button beside them for a new set, or hover a part to
-    shuffle it or browse the others.
-  </Step>
-  <Step title="Add your website or idea">
-    Type your website, such as `yourcompany.com`, or describe your idea. A website gives the agent your fonts, colors
-    and logo.
-  </Step>
-  <Step title="Choose Use this cut">
-    The request goes straight to the agent. If you are not signed in or have no agent yet, the app walks you through
-    that first, then sends it.
-  </Step>
-</Steps>
-
-## What should happen
-
-The app creates a project for your video and the agent starts building it. On your first video, a short tour
-replays how a launch video was made while yours builds, then Framey takes you to your project. In the project, the
-chat shows what the agent is doing, such as **Reading files** or **Editing files**.
-
-When the agent finishes, the video is ready to play, change, and export.
-
-## Start from your own words instead
-
-You do not need the card. Choose **Back to home**, type what you want in the prompt box, and press Enter. Type `@` to add files, other
-projects, or media. To open the card again later, choose **Take the step by step** next to **Get inspired**.
+Shuffle the parts until you like them, type your website (it gives the agent your fonts, colors and logo) or an idea,
+and choose **Use this cut**.
 
 ## Related topics
 
-- [Change your video with the agent](/studio-app/edit-with-the-agent)
+- [Edit a video with the agent](/studio-app/edit-with-the-agent)
+- [Use your brand kit](/studio-app/brand-kits)
 - [Connect your agent](/studio-app/connect-your-agent)

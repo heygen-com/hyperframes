@@ -1,18 +1,26 @@
 ---
-title: "Get the HyperFrames Studio app"
-sidebarTitle: "Get the app"
+title: "Install the Studio app"
+sidebarTitle: "Install"
 description: "Download the HyperFrames Studio app for Mac or Linux, open it for the first time, and sign in with your HeyGen account."
 ---
+
+import { HoverVideo } from "/snippets/hover-video.jsx";
 
 The HyperFrames Studio app for Mac and Linux is the easiest way to make a video with HyperFrames. You describe the video, an
 agent on your computer builds it, and you change it by typing, pointing at the picture, drawing, or commenting.
 You do not need to write code. Framey, the small
 green guide, points you to the next step along the way.
 
-<Frame caption="Home: the prompt box, your projects on the left, and Get inspired below.">
+- **Free.** You sign in with a free HeyGen account. HeyGen media (avatars, generated clips, HeyGen voices) uses
+  HeyGen credits only when you ask for it, and your own agent bills its own plan, or nothing with OpenCode.
+- **Mac:** Apple Silicon or Intel. **Linux:** 64-bit Intel and AMD, as a .deb or an AppImage.
+- **Windows:** coming soon. Until then, make videos with [your AI agent](/quickstart#with-your-agent) or in
+  [Claude.ai or ChatGPT](/guides/mcp).
+
+<Frame caption="Home: the Make something box with its Make, Reference and Script tabs, and Remix from inspiration beside it.">
   <img
     src="/public/images/studio-app/home.jpg"
-    alt="The HyperFrames Studio app's Home screen with the Make something prompt box and one project named Spring Launch"
+    alt="The HyperFrames Studio app's Home screen: the Make something box and the Remix from inspiration feed"
   />
 </Frame>
 
@@ -22,7 +30,7 @@ green guide, points you to the next step along the way.
   <Tab title="Mac">
     <Steps>
       <Step title="Download">
-        Go to [hyperframes.dev/studio](https://hyperframes.dev/studio) and choose **Download for macOS**.
+        Go to [hyperframes.dev/studio](https://hyperframes.dev/studio) and choose **Download for macOS** (in Safari or Firefox the button is **Apple Silicon**, with an **Intel** link next to it).
       </Step>
       <Step title="Install">
         Open the downloaded disk image and double-click **Install HyperFrames**. The installer copies the app into
@@ -68,7 +76,7 @@ green guide, points you to the next step along the way.
 ## First launch
 
 1. A short survey asks what you want to make and which agent you use. Every answer is optional, and **Skip all**
-   counts as an answer. What you make decides where **Get inspired** opens. The agent you name starts your first
+   counts as an answer. What you pick decides where **Build your video** opens. The agent you name starts your first
    chat if it is already set up.
 2. Home opens with the **Create your first video** card. See
    [Make your first video](/studio-app/first-video).
@@ -80,15 +88,32 @@ A notice also explains what usage data the app records. Choose **Got it** to dis
 On first launch, the app asks you to sign in the first time you click something after the survey.
 
 1. Choose **Continue with HeyGen**. Your browser opens hyperframes.dev.
-2. Sign in there within two minutes. The browser sends you back to the app, which shows **You're in!** and carries
+2. Sign in there within 10 minutes. The browser sends you back to the app, which shows **You're in!** and carries
    on with what you clicked.
 
 If the sign-in runs out of time, choose **Continue with HeyGen** again. If you choose **Not now**, the app asks
 again on your next click.
 You can sign in or out at any time from **Settings** > **Account**.
 
+## Updates
+
+<HoverVideo className="hf-aside hf-spot" src="https://static.heygen.ai/hyperframes-oss/docs/studio-demos/settings-updates-v2.mp4" poster="/public/images/studio-app/spots/settings-updates-v2.jpg" hasAudio={false} label="Settings, Updates: Check for updates" />
+
+The app updates itself. When a new version is ready, a round button appears in the bottom-right corner; click it and
+the app restarts as soon as nothing is running, reopening the project you had open. To check by hand, use
+**Settings** > **Updates** > **Check for updates**. If an update stalls, click the button again and choose **Try
+again**, or **Download it instead**.
+
+## Where your work is kept
+
+- **Projects**: the hidden `.hyperframes-studio` folder in your home folder, or the folder you imported them from.
+  Each one is a normal HyperFrames project, so it also opens in the [browser editor](/studio/index) and the
+  [command line](/developers/cli).
+- **Exported videos**: your Downloads folder.
+- **Settings and sign-in**: `~/Library/Application Support/HyperFrames` on a Mac, `~/.config/HyperFrames` on Linux.
+
 ## Related topics
 
 - [Connect your agent](/studio-app/connect-your-agent)
 - [Make your first video](/studio-app/first-video)
-- [Updates and troubleshooting](/studio-app/troubleshooting)
+- [Troubleshooting](/studio-app/troubleshooting)

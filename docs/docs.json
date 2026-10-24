@@ -253,23 +253,19 @@
         "icon": "laptop",
         "groups": [
           {
-            "group": "Get started",
+            "group": "Studio app",
             "pages": [
               "studio-app/index",
-              "studio-app/connect-your-agent"
-            ]
-          },
-          {
-            "group": "Make videos",
-            "pages": [
               "studio-app/first-video",
+              "studio-app/existing-project",
+              "studio-app/reference-video",
+              "studio-app/brand-kits",
+              "studio-app/video-clips",
               "studio-app/edit-with-the-agent",
-              "studio-app/export"
-            ]
-          },
-          {
-            "group": "Help",
-            "pages": [
+              "studio-app/workspace",
+              "studio-app/connect-your-agent",
+              "studio-app/export",
+              "studio-app/share",
               "studio-app/troubleshooting"
             ]
           }

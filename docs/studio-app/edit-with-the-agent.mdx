@@ -1,28 +1,39 @@
 ---
-title: "Change your video with the agent"
+title: "Edit a video with the agent"
 description: "Type a change, point at the picture, draw, or comment, then send several edits to the agent at once."
+sidebarTitle: "Edit with the agent"
 ---
+
+import { HoverVideo } from "/snippets/hover-video.jsx";
+
+import { DocsVideo } from "/snippets/docs-video.jsx";
 
 Every change starts the same way: show the agent where, say what, and send. You can type, point at something in
 the picture, draw over it, or leave a comment at a moment in the video.
 
-<Frame caption="A project: the chat on the left, the picture with its tools in the middle, and the timeline below.">
-  <img
-    src="/public/images/studio-app/project.jpg"
-    alt="The Spring Launch project open in the HyperFrames Studio app with the chat, the picture, and the timeline"
-  />
-</Frame>
+<DocsVideo
+  title="Circle the bag, say what to change, send"
+  src="https://static.heygen.ai/hyperframes-oss/docs/studio-demos/studio-draw-demo-v2.mp4"
+  poster="/public/images/studio-app/studio-draw-demo-v2.jpg"
+  aspect="16 / 10"
+  autoPlay
+  loop
+/>
+
+*Draw a circle, type the change, send. The agent's work is cut short here: this edit took 1 minute 52 seconds.*
 
 ## Type a change
 
-Type in the chat box, which says **Describe a change**, and press Enter. Type `@` to add moments, media, files, or
-other projects to your message.
+Type in the chat box at the bottom of the chat (it names your agent, for example **Text to Claude Code**) and press Enter. Type `@` to add moments, media, files, or
+other projects to your message, and `#` for tools such as **Storyboard** ([every menu and panel](/studio-app/workspace)).
 
-While the agent is working, Enter queues your message to run next. To change that, open **Settings** > **Agent**
-and switch **While Framey works, Send** from **Queue** to **Steer**, which stops the run and starts again with your
-words. Picks and files always queue.
+While the agent is working, Enter steers the run: it stops and starts again with your words. Ctrl+Enter does the
+other thing and queues your message to run next. To swap them, change **While Framey works, Send** in **Settings** >
+**Agent**. Picks and files always queue.
 
 ## Point, draw, or comment on the picture
+
+<HoverVideo className="hf-aside hf-spot" src="https://static.heygen.ai/hyperframes-oss/docs/studio-demos/comment-tool-v2.mp4" poster="/public/images/studio-app/spots/comment-tool-v2.jpg" hasAudio={false} label="Where Comment is, under the preview" />
 
 The tools under the picture, on the left:
 
@@ -32,8 +43,8 @@ The tools under the picture, on the left:
 | **Draw** (D) | Circle or mark a spot and say what should change. Several strokes become one drawing. |
 | **Comment** (C) | Pin a comment to a spot and moment: **What should change here?** |
 
-The picture opens with **Draw**. Press Escape to go back to **Select**. Right-click an element for quick actions
-such as **Ask Framey**, **Hide**, **Bring to front**, **Replace with**, and **Delete**.
+The picture opens with **Select**. Press Escape to go back to it from another tool. Right-click an element for quick actions
+such as **Ask Framey**, **Hide**, **Bring to front**, **Replace with**, **Cut out object here** (on footage) and **Delete**.
 
 You can also draw across the timeline to talk about a stretch of the video, such as "tighten this part".
 
@@ -41,29 +52,35 @@ You can also draw across the timeline to talk about a stretch of the video, such
 
 Picks, drawings, and comments do not run on their own. Each one becomes a row in **Pending video edits**, up to 10.
 Check them, add a note for all of them, then send them as one request with the send button, for example
-**Send 3 edits to Claude Code**. Choose **Edit note** to change a row's words, or **Delete** to drop it.
+**Send 3 edits to Claude Code** (or **Queue 3 edits** while a run is working). Choose **Edit note** to change a row's words, or **Delete** to drop it.
 
 ## Change the timeline yourself
 
-Some changes are faster by hand. Hover a clip on the timeline to **Split** it at the playhead, **Delete** it, or
-open **Quick edit** to change a video or audio clip's **Speed**, **Volume**, and **Fade**. Drag clips to move or trim
+<HoverVideo className="hf-aside hf-spot" src="https://static.heygen.ai/hyperframes-oss/docs/studio-demos/show-timeline-v2.mp4" poster="/public/images/studio-app/spots/show-timeline-v2.jpg" hasAudio={false} label="Show timeline opens the timeline under the preview" />
+
+Some changes are faster by hand. Show the timeline with the button under the preview. Hover a clip to **Split** it at the playhead, **Delete** it,
+open **Quick edit** to change a video or audio clip's **Speed**, **Volume**, and **Fade**, or ask the agent about it,
+remove its background or add a transition. Drag clips to move or trim
 them.
 
-Right-click an empty gap for **Close gap**, or to ask what should fill it. The app suggests ideas that fit what
-plays around the gap.
+Right-click an empty gap for **Close gap** or **Close all gaps**.
 
 ## Get inspired
 
-**Get inspired** is a library of short example moments from real videos: **Motion graphics**, **A-roll Cuts**,
-and **Mobile Ads**. Find it on Home, in a new project's empty chat, and in the **Inspirations** tab beside your files.
-Choose **Add** or **Use** to put a moment in your message as a reference, then say how to use it and send.
+<HoverVideo className="hf-aside hf-spot" src="https://static.heygen.ai/hyperframes-oss/docs/studio-demos/inspirations-panel-v2.mp4" poster="/public/images/studio-app/spots/inspirations-panel-v2.jpg" hasAudio={false} label="The Inspirations panel on the right" />
+
+Home's **Remix from inspiration** feed and a project's **Inspirations** tab hold short example moments from real
+videos (**Motion graphics**, **A-roll Cuts**, **Mobile Ads**). Choose **Add as inspiration** on Home, or **Use** in the
+tab, to put a moment in your message as a reference, then say how to use it and send.
 
 ## Undo
 
-Press Cmd+Z to undo and Cmd+Shift+Z to redo (Ctrl+Z and Ctrl+Shift+Z on Linux). Each agent run in the chat also has its own **Undo** button.
+<HoverVideo className="hf-aside hf-spot" src="https://static.heygen.ai/hyperframes-oss/docs/studio-demos/go-back-v2.mp4" poster="/public/images/studio-app/spots/go-back-v2.jpg" hasAudio={false} label="Go back to before this, under each finished run" />
+
+Press Cmd+Z to undo and Cmd+Shift+Z to redo (Ctrl+Z and Ctrl+Shift+Z, or Ctrl+Y, on Windows and Linux). Each agent run in the chat also has its own **Undo** button.
 
 ## Related topics
 
-- [Export and share](/studio-app/export)
+- [Export a video](/studio-app/export)
 - [Make your first video](/studio-app/first-video)
-- [Updates and troubleshooting](/studio-app/troubleshooting)
+- [Troubleshooting](/studio-app/troubleshooting)

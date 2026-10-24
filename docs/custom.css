@@ -1334,3 +1334,35 @@ header.is-frame ~ #body-content #content-area {
     padding-right: 2.5rem;
   }
 }
+
+/* An image set beside the text it explains (magazine style); full width on narrow screens. */
+.hf-aside {
+  float: right;
+  width: 46%;
+  margin: 0.25rem 0 1rem 1.5rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgb(0 0 0 / 0.08);
+}
+.dark .hf-aside {
+  border-color: rgb(255 255 255 / 0.1);
+}
+@media (max-width: 640px) {
+  .hf-aside {
+    float: none;
+    width: 100%;
+    margin: 0.5rem 0 1rem;
+  }
+}
+
+/* A row of portrait films with a caption under each (explainer styles and similar) */
+.hf-shelf { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; margin: 1.25rem 0 2rem; }
+.hf-shelf p { margin: 0.5rem 0 0; font-size: 0.875rem; line-height: 1.45; }
+@media (max-width: 640px) { .hf-shelf { grid-template-columns: minmax(0, 1fr); } }
+
+/* Short looping clips that show where a control is, floated beside the text that names it */
+.hf-spot { aspect-ratio: 16 / 10; object-fit: cover; border-radius: 0.6rem; background: rgb(0 0 0 / 0.06);
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.08); margin: 0.25rem 0 1rem 1.25rem; }
+.dark .hf-spot { box-shadow: 0 0 0 1px rgb(255 255 255 / 0.1); }
+h2 { clear: both; }
+
+.hf-spot.hf-spot-inline { width: 100%; margin: 0; }

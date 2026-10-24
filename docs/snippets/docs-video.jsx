@@ -5,6 +5,7 @@ export const DocsVideo = ({
   autoPlay = false,
   loop = false,
   portrait = false,
+  aspect, // e.g. "16 / 10" for app recordings; the frame is 16 / 9 otherwise
 }) => {
   const videoRef = useRef(null);
   const playerRef = useRef(null);
@@ -13,10 +14,30 @@ export const DocsVideo = ({
   const [enhanced, setEnhanced] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [waiting, setWaiting] = useState(false);
-  const [muted, setMuted] = useState(false);
+  // Browsers only autoplay muted video, so an autoplaying player starts muted; the sound button unmutes it.
+  const [muted, setMuted] = useState(autoPlay);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [playbackRate, setPlaybackRate] = useState(1);
+  // Lazy, like ShowcaseWall's: a reduce-motion visitor's first render must not autoplay. The controls still play it.
+  const [reduced, setReduced] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+  );
+  useEffect(() => {
+    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const onChange = (event) => setReduced(event.matches);
+    query.addEventListener("change", onChange);
+    return () => query.removeEventListener("change", onChange);
+  }, []);
+  // Turning Reduce Motion on mid-visit must stop an autoplaying loop for real: React props can't pause it or drop
+  // its file. The play button loads it again (togglePlayback).
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!reduced || !autoPlay || !video) return;
+    video.pause();
+    video.removeAttribute("src");
+    video.load();
+  }, [reduced, autoPlay]);
   const [controlsVisible, setControlsVisible] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [fullscreenSupported, setFullscreenSupported] = useState(false);
@@ -49,6 +70,7 @@ export const DocsVideo = ({
     const video = videoRef.current;
     if (!video) return;
     if (video.paused || video.ended) {
+      if (!video.getAttribute("src")) video.src = src; // dropped when Reduce Motion stopped the loop
       if (video.ended) video.currentTime = 0;
       setWaiting(true);
       try {
@@ -191,6 +213,7 @@ export const DocsVideo = ({
       <div
         ref={playerRef}
         className="hf-docs-video"
+        style={aspect ? { aspectRatio: aspect } : undefined}
         role="region"
         aria-label={title}
         tabIndex={0}
@@ -207,7 +230,8 @@ export const DocsVideo = ({
           aria-label={title}
           src={src}
           poster={poster}
-          autoPlay={autoPlay}
+          autoPlay={autoPlay && !reduced}
+          muted={autoPlay}
           loop={loop}
           playsInline
           preload="metadata"

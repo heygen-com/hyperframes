@@ -1,0 +1,89 @@
+---
+title: "Reference any video to recreate its style"
+sidebarTitle: "Reference a video"
+description: "Give the Studio app a video you like, from a link, a file or the inspiration feed. It copies the cuts, captions and effects, and you swap in your own people, words and brand."
+---
+
+import { DocsVideo } from "/snippets/docs-video.jsx";
+
+Found a video whose editing you love? Give it to the Studio app. Your video gets its cuts, captions and effects, with
+your own people, words and brand in it. Showing a video once is faster than describing it, and a video you only half
+like is still a better start than a blank page.
+
+<DocsVideo
+  title="Reference any video: copy its editing style, choose who's on camera, say what it's about"
+  src="https://static.heygen.ai/hyperframes-oss/docs/studio-demos/reference-demo-v2.mp4"
+  poster="/public/images/studio-app/reference-demo-v2.jpg"
+  aspect="16 / 10"
+  autoPlay
+  loop
+/>
+
+*Pick a reference from the feed: it's a person talking to camera, so the app goes to **Copy editing style**. Choose who's
+on camera, then say what the video should talk about.*
+
+Reference uses your HeyGen API key: the app watches the video through HeyGen, which uses your API balance. Add the
+key in **Settings** > **HeyGen API key**, or when the app asks.
+
+## 1. Pick the video
+
+On Home, open **Reference**. Then:
+
+- **Paste any URL**, then **Use link**. One public video from YouTube (a video or a Short), TikTok, Instagram or X, up to 30 minutes, or a
+  published HyperFrames project.
+- **Upload your reference**: drop a file from your computer.
+- **Pick a reference** from the feed beside it, videos made to be remixed (also on Home as **Remix from inspiration**).
+
+## 2. The app reads it and picks the way
+
+The app watches the reference and decides how to remake it:
+
+- **A person talking to camera** becomes **Copy editing style**: your video gets its cuts, captions and effects, with
+  your footage or an AI avatar.
+- **Graphics and animation with nobody on camera** becomes a **Video brief**: it recreates the motion with your topic
+  and files.
+
+If it can't tell, it asks you to choose between those two, then **Continue**.
+
+## 3. Say what it's about
+
+For **Copy editing style**, the app asks **Who's on camera?**
+
+- **Upload your own takes.** Add **Editing instructions** if you want, for example "Cut the pauses, keep it under 30
+  seconds".
+- **An AI avatar:** your photo or a HeyGen presenter. Say what the avatar should say; a sentence or two is enough.
+
+For a **Video brief**, write **What will your video talk about** (a sentence or two), and add your own pictures or
+clips with **Upload assets**.
+
+## 4. Swap what should be yours
+
+**What to swap** lists the parts the app found in the reference, each with where it appears, for example "Your
+opening question 0:00-0:02" or "Your website URL 0:02-0:05". Choose how to fill each:
+
+| Choice | What happens |
+| --- | --- |
+| **Framey writes it** / **Framey decides** | Framey fills it to fit your topic |
+| **Type yours** | Write the exact words |
+| **Upload** | Use your own file |
+| **Generate** | Make a picture or clip. Its price shows under the row once you pick it |
+
+Choose a brand kit for the video, or **No brand kit**. Your workspace default stays as you set it. Then **Continue**;
+Framey may ask a question or two about anything the video leaves open.
+
+## 5. Compare with the original
+
+While Framey builds, **Show original** at the top of the preview plays the reference over the picture. When the
+build is done, the same button sets the two side by side, on one clock, so you can see what matches and what doesn't.
+Then [edit the result](/studio-app/edit-with-the-agent) like any other video.
+
+## Use other people's videos fairly
+
+The app copies the editing style, not the footage: your video is built from your own takes, avatar, words and
+media. Don't reuse the original's footage, music or logos unless you have the rights to them.
+
+## Related topics
+
+- [What to make](/workflows)
+- [Edit a video with the agent](/studio-app/edit-with-the-agent)
+- [Add a brand kit](/studio-app/brand-kits)

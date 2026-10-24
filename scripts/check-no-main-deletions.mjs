@@ -742,6 +742,14 @@ const FALLOW_PRUNE_REASON =
 
 export const ALLOWED_DELETIONS = new Map([
   [
+    "docs/public/images/studio-app/export.jpg",
+    "the Studio app docs show Export as a recorded demo with its own poster; nothing links this still any more",
+  ],
+  [
+    "docs/public/images/studio-app/project.jpg",
+    "the project screen page is built from recorded clips and posters; nothing links this still any more",
+  ],
+  [
     "packages/studio/src/components/renders/useRenderQueueMotionBlur.test.tsx",
     "Studio no longer sends previewMotionBlur with renders: blur picks its tier from the page, so the test of that field goes with it",
   ],
