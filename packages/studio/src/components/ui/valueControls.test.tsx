@@ -362,6 +362,91 @@ describe("NumberField", () => {
 });
 
 describe("Input", () => {
+  it.each(["Enter", "Escape"])("leaves %s to the active IME composition", (key) => {
+    const commits: string[] = [];
+    const trackCommit = vi.fn(track("text"));
+    const host = render(
+      <Input
+        value="hello"
+        aria-label="Name"
+        onCommit={(value) => commits.push(value)}
+        onTrack={trackCommit}
+      />,
+    );
+    const input = host.querySelector("input");
+    if (!input) throw new Error("Input did not render");
+
+    act(() => input.focus());
+    act(
+      () => void input.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true })),
+    );
+    type(input, "中");
+    const composingKey = new KeyboardEvent("keydown", {
+      key,
+      bubbles: true,
+      cancelable: true,
+      isComposing: true,
+    });
+    act(() => void input.dispatchEvent(composingKey));
+
+    expect(composingKey.defaultPrevented).toBe(false);
+    expect(document.activeElement).toBe(input);
+    expect(input.value).toBe("中");
+    expect(commits).toEqual([]);
+    expect(trackCommit).not.toHaveBeenCalled();
+    expect(designInputCalls()).toHaveLength(0);
+
+    act(() => void input.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true })));
+    type(input, "中文");
+    fire(input, "keydown", { key: "Enter" });
+    expect(commits).toEqual(["中文"]);
+    expect(trackCommit).toHaveBeenCalledTimes(1);
+    expect(designInputCalls()).toHaveLength(1);
+  });
+
+  it.each(["Enter", "Escape"])("does not commit the draft again on blur after %s", (key) => {
+    const commits: string[] = [];
+    const trackCommit = vi.fn(track("text"));
+    const host = render(
+      <Input
+        value="hello"
+        aria-label="Name"
+        onCommit={(value) => commits.push(value)}
+        onTrack={trackCommit}
+      />,
+    );
+    const input = host.querySelector("input");
+    if (!input) throw new Error("Input did not render");
+
+    act(() => input.focus());
+    type(input, "world");
+    fire(input, "keydown", { key });
+    act(() => input.blur());
+
+    expect(commits).toEqual(key === "Enter" ? ["world"] : []);
+    expect(input.value).toBe(key === "Enter" ? "world" : "hello");
+    expect(trackCommit).toHaveBeenCalledTimes(key === "Enter" ? 1 : 0);
+    expect(designInputCalls()).toHaveLength(key === "Enter" ? 1 : 0);
+  });
+
+  it("commits a changed draft on blur without Enter", () => {
+    const commits: string[] = [];
+    const trackCommit = vi.fn(track("text"));
+    const host = render(
+      <Input value="hello" onCommit={(value) => commits.push(value)} onTrack={trackCommit} />,
+    );
+    const input = host.querySelector("input");
+    if (!input) throw new Error("Input did not render");
+
+    act(() => input.focus());
+    type(input, "world");
+    act(() => input.blur());
+
+    expect(commits).toEqual(["world"]);
+    expect(trackCommit).toHaveBeenCalledTimes(1);
+    expect(designInputCalls()).toHaveLength(1);
+  });
+
   it("commits a typed value on Enter, once, and not per keystroke", () => {
     const commits: string[] = [];
     const host = render(

@@ -92,8 +92,11 @@ export function Input({
           dirtyRef.current = true;
           setDraft(next);
         }}
-        onBlur={() => commit(draft)}
+        onBlur={() => {
+          if (dirtyRef.current) commit(draft);
+        }}
         onKeyDown={(event) => {
+          if (event.nativeEvent.isComposing) return;
           if (event.key === "Enter") {
             event.preventDefault();
             commit(draft);
