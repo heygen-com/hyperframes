@@ -3,11 +3,13 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { HF_COLOR_GRADING_ATTR, serializeHfColorGrading } from "@hyperframes/core";
+import sharp from "sharp";
 import { describe, expect, it, vi } from "vitest";
 import {
   buildGradeCompareHtml,
   buildGradeCompareSuccessPayload,
   capCandidateCells,
+  loadReferenceFrame,
   parseGradeCompareArgs,
   parseGradesFile,
   prepareGradeCompareTempProject,
@@ -130,6 +132,69 @@ describe("buildGradeCompareHtml", () => {
     expect(html).toContain("warm &lt;daylight&gt;");
     for (const cell of cells) {
       expect(html).toContain(`${HF_COLOR_GRADING_ATTR}='${serializeHfColorGrading(cell.grading)}'`);
+    }
+  });
+});
+
+describe("loadReferenceFrame", () => {
+  it.each([
+    { orientation: 1, width: 160, height: 80 },
+    { orientation: 2, width: 160, height: 80 },
+    { orientation: 3, width: 160, height: 80 },
+    { orientation: 4, width: 160, height: 80 },
+    { orientation: 5, width: 80, height: 160 },
+    { orientation: 6, width: 80, height: 160 },
+    { orientation: 7, width: 80, height: 160 },
+    { orientation: 8, width: 80, height: 160 },
+  ])("uses displayed dimensions for JPEG orientation $orientation", async (expected) => {
+    const dir = tempDir();
+    try {
+      const framePath = join(dir, "phone.jpg");
+      const buffer = await sharp({
+        create: { width: 160, height: 80, channels: 3, background: "red" },
+      })
+        .jpeg()
+        .withMetadata({ orientation: expected.orientation })
+        .toBuffer();
+      writeFileSync(framePath, buffer);
+
+      const frame = await loadReferenceFrame(framePath);
+
+      expect(frame).toMatchObject({ width: expected.width, height: expected.height });
+      expect(frame.buffer).toEqual(buffer);
+      expect(readFileSync(framePath)).toEqual(buffer);
+      const html = buildGradeCompareHtml({
+        cells: [{ label: "warm", grading: { preset: "warm-daylight" } }],
+        frameSrc: frame.stagedName,
+        frameWidth: frame.width,
+        frameHeight: frame.height,
+      });
+      const sheetHeight = expected.width === 80 ? 1184 : 344;
+      expect(html).toContain(`data-height="${sheetHeight}"`);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps the dimensions and bytes of a PNG without orientation metadata", async () => {
+    const dir = tempDir();
+    try {
+      const framePath = join(dir, "frame.png");
+      const buffer = await sharp({
+        create: { width: 160, height: 80, channels: 3, background: "red" },
+      })
+        .png()
+        .toBuffer();
+      writeFileSync(framePath, buffer);
+
+      expect(await loadReferenceFrame(framePath)).toEqual({
+        buffer,
+        width: 160,
+        height: 80,
+        stagedName: "frame.png",
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 });
