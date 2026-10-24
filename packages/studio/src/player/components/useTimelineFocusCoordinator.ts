@@ -205,7 +205,7 @@ export function useTimelineFocusCoordinator({
       unresolvedFocusAttemptsRef.current = { id: -1, count: 0 };
     }
     if (resolution.target.id !== request.id) {
-      usePlayerStore.getState().requestTimelineFocus(resolution.target.id);
+      usePlayerStore.getState().requestTimelineFocus(resolution.target.id, request.reveal);
       return;
     }
     if (
@@ -217,6 +217,7 @@ export function useTimelineFocusCoordinator({
     const container = scrollRef.current;
     if (!container) return;
     if (
+      request.reveal &&
       scrollToTarget(
         container,
         resolution,

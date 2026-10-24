@@ -94,7 +94,7 @@ describe("timeline performance fixture", () => {
     usePlayerStore.setState({
       isPlaying: true,
       requestedSeekTime: 42,
-      timelineFocus: { id: "stale", projectId: null, sessionEpoch: 0, nonce: 7 },
+      timelineFocus: { id: "stale", projectId: null, sessionEpoch: 0, nonce: 7, reveal: true },
       clipManifest: [],
       lintFindingsByElement: new Map([["stale", { count: 1, messages: ["stale"] }]]),
     });

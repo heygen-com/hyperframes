@@ -80,7 +80,12 @@ function Harness({
     onDrillDown,
   });
   return (
-    <div ref={scrollRef} onFocus={keyboard.onFocus} onKeyDown={keyboard.onKeyDown}>
+    <div
+      ref={scrollRef}
+      onFocus={keyboard.onFocus}
+      onKeyDown={keyboard.onKeyDown}
+      onPointerDownCapture={keyboard.onPointerDownCapture}
+    >
       {logicalRows
         .flatMap((row) => [row, ...row.items])
         .map((target) =>
@@ -146,6 +151,20 @@ describe("useTimelineKeyboardActor", () => {
     const target = host.querySelector<HTMLElement>('[data-timeline-focus-id="track-3"]')!;
     act(() => target.focus());
     expect(usePlayerStore.getState().timelineFocus?.id).toBe("track-3");
+    act(() => root.unmount());
+  });
+
+  it("a pressed clip's focus asks for no reveal scroll; keyboard focus does", () => {
+    const { host, root } = renderHarness({ focusedTargetId: "clip-1" });
+    const pressed = host.querySelector<HTMLElement>('[data-timeline-focus-id="clip-2"]')!;
+    act(() => {
+      pressed.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+      pressed.focus();
+    });
+    expect(usePlayerStore.getState().timelineFocus).toMatchObject({ id: "clip-2", reveal: false });
+    const tabbed = host.querySelector<HTMLElement>('[data-timeline-focus-id="track-3"]')!;
+    act(() => tabbed.focus());
+    expect(usePlayerStore.getState().timelineFocus).toMatchObject({ id: "track-3", reveal: true });
     act(() => root.unmount());
   });
 

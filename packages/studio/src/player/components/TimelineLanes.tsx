@@ -174,6 +174,7 @@ export function TimelineLanes({
       aria-colcount={2}
       onFocus={keyboard.onFocus}
       onKeyDown={keyboard.onKeyDown}
+      onPointerDownCapture={keyboard.onPointerDownCapture}
       className={rowsVirtualized ? "absolute inset-0" : undefined}
     >
       {

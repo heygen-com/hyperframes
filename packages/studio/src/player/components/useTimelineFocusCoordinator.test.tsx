@@ -117,6 +117,14 @@ describe("useTimelineFocusCoordinator", () => {
     expect(usePlayerStore.getState().timelineFocus?.nonce).toBe((firstNonce ?? 0) + 1);
   });
 
+  it("a focus a pointer press gave moves focus without scrolling the view", async () => {
+    usePlayerStore.getState().requestTimelineFocus(clipId, false);
+    await act(async () => root.render(<Harness mountedId={clipId} />));
+    const scroll = host.firstElementChild as HTMLDivElement;
+    expect(scroll.scrollLeft).toBe(0);
+    expect(document.activeElement?.getAttribute("data-timeline-focus-id")).toBe(clipId);
+  });
+
   it("focuses the latest request when it replaces an unmounted request", async () => {
     usePlayerStore.getState().requestTimelineFocus(rowId);
     usePlayerStore.getState().requestTimelineFocus(clipId);

@@ -182,7 +182,7 @@ interface PlayerState extends PlayerStoreSlices {
 
   timelineFocus: TimelineFocusRequest | null;
   timelineFocusNonce: number;
-  requestTimelineFocus: (id: string) => void;
+  requestTimelineFocus: (id: string, reveal?: boolean) => void;
   clearTimelineFocus: (nonce: number) => void;
 
   lintFindingsByElement: Map<string, { count: number; messages: string[] }>;
@@ -344,7 +344,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   timelineFocus: null,
   timelineFocusNonce: 0,
-  requestTimelineFocus: (id) =>
+  requestTimelineFocus: (id, reveal = true) =>
     set((s) => {
       const nonce = s.timelineFocusNonce + 1;
       return {
@@ -354,6 +354,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
           s.timelineProjectId,
           s.timelineSessionEpoch,
           nonce,
+          reveal,
         ),
       };
     }),

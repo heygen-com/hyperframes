@@ -3,6 +3,7 @@ export interface TimelineFocusRequest {
   projectId: string | null;
   sessionEpoch: number;
   nonce: number;
+  reveal: boolean;
 }
 
 export function createTimelineFocusRequest(
@@ -10,6 +11,7 @@ export function createTimelineFocusRequest(
   projectId: string | null,
   sessionEpoch: number,
   nonce: number,
+  reveal = true,
 ): TimelineFocusRequest {
-  return { id, projectId, sessionEpoch, nonce };
+  return { id, projectId, sessionEpoch, nonce, reveal };
 }

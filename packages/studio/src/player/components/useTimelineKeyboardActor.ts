@@ -1,4 +1,11 @@
-import { useCallback, useMemo, type FocusEvent, type KeyboardEvent, type RefObject } from "react";
+import {
+  useCallback,
+  useMemo,
+  useRef,
+  type FocusEvent,
+  type KeyboardEvent,
+  type RefObject,
+} from "react";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { RULER_H, TRACK_H, type TimelineRowGeometry } from "./timelineLayout";
 import {
@@ -163,11 +170,18 @@ export function useTimelineKeyboardActor({
     return counts;
   }, [logicalRows]);
 
+  const pressedThisTask = useRef(false);
+  const onPointerDownCapture = useCallback(() => {
+    pressedThisTask.current = true;
+    setTimeout(() => (pressedThisTask.current = false));
+  }, []);
   const onFocus = useCallback(
     (event: FocusEvent<HTMLElement>) => {
+      const reveal = !pressedThisTask.current;
+      pressedThisTask.current = false;
       const id = timelineKeyboardEventTarget(event.target, event.currentTarget)?.dataset
         .timelineFocusId;
-      if (id && id !== focusedTargetId) usePlayerStore.getState().requestTimelineFocus(id);
+      if (id && id !== focusedTargetId) usePlayerStore.getState().requestTimelineFocus(id, reveal);
     },
     // ponytail: This closure must see the current id or coordinator-driven focus bumps the nonce twice.
     [focusedTargetId],
@@ -230,5 +244,5 @@ export function useTimelineKeyboardActor({
     [logicalRowCountByTrack, logicalRows, onDrillDown, onToggleRow, rowGeometry, scrollRef],
   );
 
-  return { rovingTargetId, onFocus, onKeyDown };
+  return { rovingTargetId, onFocus, onKeyDown, onPointerDownCapture };
 }
