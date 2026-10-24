@@ -224,8 +224,8 @@ describe("getElementTimings — relative data-start references", () => {
 
   it("resolves a colliding bare id to the TOP-LEVEL match, not a same-scope sibling", async () => {
     // Bare ids have no scope syntax — resolveScoped's bare-id rule prefers the
-    // canonical top-level match when one exists, same as the runtime's own (also
-    // global, not scope-aware) resolver. Both the outer document AND the sub-comp
+    // canonical top-level match when one exists. The runtime's `id` lookup prefers
+    // the clip's own composition instead. Both the outer document AND the sub-comp
     // author an element with the SAME bare id "hf-intro" — a genuine collision.
     const html = `
       <!DOCTYPE html><html><body>
