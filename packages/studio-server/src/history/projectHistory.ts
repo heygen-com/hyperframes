@@ -1122,6 +1122,9 @@ class Engine {
     this.windows.push(group);
     try {
       for (const [path, hash] of changes) await this.writeProjectFile(path, hash);
+      await this.blobs.release(
+        changes.flatMap(([path, hash]) => (hash ? [[hash, path] as const] : [])),
+      );
       await this.sweep();
     } finally {
       this.windows = this.windows.filter((open) => open !== group);
@@ -1138,6 +1141,9 @@ class Engine {
       const version = hash === null ? DELETED_VERSION : hashVersion(hash);
       recordFileWriteReceipt(absPath, { path, version, writeToken });
     }
+    const standing = lstatSync(absPath, { throwIfNoEntry: false });
+    if (standing?.isFile() && isUncopied(path, standing.size))
+      await this.blobs.keep(path, absPath, hash === null);
     if (hash === null) {
       this.assertWritable();
       rmSync(absPath, { force: true });

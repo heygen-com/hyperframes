@@ -16,6 +16,8 @@ export interface BlobStore {
   writeTo(hash: string, absPath: string, beforeReplace?: () => void): Promise<void>;
   bytes(): number;
   size(hash: string): number;
+  keep(path: string, absPath: string, remove: boolean): Promise<void>;
+  release(held: Iterable<readonly [hash: string, path: string]>): Promise<void>;
   prune(keep: ReadonlySet<string>): Promise<void>;
   drop(hashes: Iterable<string>): Promise<void>;
 }
@@ -58,14 +60,45 @@ async function cloneOrCopy(from: string, to: string, beforeReplace?: () => void)
   }
 }
 
+const listDir = (path: string) =>
+  readdir(path, { withFileTypes: true }).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT") return [];
+    throw error;
+  });
+
 export async function openBlobStore(dir: string): Promise<BlobStore> {
   const sizes = new Map<string, number>();
+  const asideDir = join(dirname(dir), "aside");
+  const asideSizes = new Map<string, number>();
+  // The project paths still counting on each set-aside copy; it goes when the last one has its file back.
+  const holds = new Map<string, Set<string>>();
   await mkdir(dir, { recursive: true });
-  for (const shard of await readdir(dir))
-    for (const hash of await readdir(join(dir, shard)).catch(() => []))
-      sizes.set(hash, (await stat(join(dir, shard, hash))).size);
-  const pathOf = (hash: string) => blobPath(dir, hash);
+  for (const [root, found] of [
+    [dir, sizes],
+    [asideDir, asideSizes],
+  ] as const)
+    for (const shard of await listDir(root)) {
+      if (!shard.isDirectory()) {
+        // A crash mid-copy leaves its unpublished temp file beside the shards.
+        if (shard.name.startsWith("incoming-")) await rm(join(root, shard.name), { force: true });
+        continue;
+      }
+      for (const hash of await listDir(join(root, shard.name)))
+        found.set(hash.name, (await stat(join(root, shard.name, hash.name))).size);
+    }
+  for (const hash of asideSizes.keys()) holds.set(hash, new Set(["*"]));
+  const pathOf = (hash: string) => blobPath(sizes.has(hash) ? dir : asideDir, hash);
   let total = [...sizes.values()].reduce((sum, size) => sum + size, 0);
+  const forget = async (hash: string) => {
+    await rm(blobPath(dir, hash), { force: true });
+    total -= sizes.get(hash) ?? 0;
+    sizes.delete(hash);
+  };
+  const forgetAside = async (hash: string) => {
+    await rm(blobPath(asideDir, hash), { force: true });
+    asideSizes.delete(hash);
+    holds.delete(hash);
+  };
 
   return {
     async put(absPath) {
@@ -82,36 +115,58 @@ export async function openBlobStore(dir: string): Promise<BlobStore> {
         await rm(temp, { force: true });
         return hash;
       }
-      await mkdir(dirname(pathOf(hash)), { recursive: true });
+      await mkdir(dirname(blobPath(dir, hash)), { recursive: true });
       const size = (await stat(temp)).size;
-      await rename(temp, pathOf(hash));
+      await rename(temp, blobPath(dir, hash));
       sizes.set(hash, size);
       total += size;
       return hash;
     },
     reference: (absPath) => hashFile(absPath),
-    has: (hash) => sizes.has(hash),
-    read: async (hash) => readBlob(dir, hash),
+    has: (hash) => sizes.has(hash) || asideSizes.has(hash),
+    read: (hash) => readFile(pathOf(hash)),
     writeTo: async (hash, absPath, beforeReplace) =>
       cloneOrCopy(pathOf(hash), absPath, beforeReplace),
+    async release(held) {
+      for (const [hash, path] of held) {
+        holds.get(hash)?.delete(path);
+        if (holds.get(hash)?.size === 0) await forgetAside(hash);
+      }
+    },
+    async keep(path, absPath, remove) {
+      const hash = await hashFile(absPath);
+      if (sizes.has(hash)) return;
+      if (asideSizes.has(hash)) {
+        holds.get(hash)!.add(path);
+        return;
+      }
+      const to = blobPath(asideDir, hash);
+      await mkdir(dirname(to), { recursive: true });
+      const moved =
+        remove &&
+        (await rename(absPath, to).then(
+          () => true,
+          () => false,
+        ));
+      if (!moved) {
+        const temp = join(asideDir, `incoming-${randomUUID()}`);
+        await cloneOrStream(absPath, temp).catch(async (error) => {
+          await rm(temp, { force: true });
+          throw error;
+        });
+        await rename(temp, to);
+      }
+      asideSizes.set(hash, (await stat(to)).size);
+      holds.set(hash, new Set([path]));
+    },
     bytes: () => total,
     size: (hash) => sizes.get(hash) ?? 0,
     async drop(hashes) {
-      for (const hash of hashes) {
-        const size = sizes.get(hash);
-        if (size === undefined) continue;
-        await rm(pathOf(hash), { force: true });
-        sizes.delete(hash);
-        total -= size;
-      }
+      for (const hash of hashes) if (sizes.has(hash)) await forget(hash);
     },
     async prune(keep) {
-      for (const [hash, size] of sizes) {
-        if (keep.has(hash)) continue;
-        await rm(pathOf(hash), { force: true });
-        sizes.delete(hash);
-        total -= size;
-      }
+      for (const hash of [...sizes.keys()]) if (!keep.has(hash)) await forget(hash);
+      for (const hash of [...asideSizes.keys()]) if (!keep.has(hash)) await forgetAside(hash);
     },
   };
 }
