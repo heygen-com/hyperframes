@@ -1242,10 +1242,11 @@ window.__timelines.a = tl;`;
 
   it("puts the swapped scene's CSS animations under the playhead", async () => {
     const { root } = trackingRoot();
-    // jsdom has no CSSAnimation; the CSS adapter seeks only its instances, read live document-wide.
+    // jsdom has no CSSAnimation; model the browser's animation name and target.
     class CSSAnimation {}
     vi.stubGlobal("CSSAnimation", CSSAnimation);
     const animation = Object.assign(new CSSAnimation(), {
+      animationName: "spin",
       currentTime: null as number | null,
       pause: vi.fn(),
       play: vi.fn(),
@@ -1265,7 +1266,7 @@ window.__timelines.a = tl;`;
         body: '<p style="animation-name: spin; animation-duration: 2s">A two</p>',
       };
       await window.__hfSwapScenes!(preview([animated, B]).html);
-      // The CSS adapter's seek to 1 s into scene a, hosted at 1; WAAPI alone would leave 0.
+      // Scene a starts at 1 s, so the CSS adapter must seek 1 s into its animation.
       expect(animation.currentTime).toBe(1000);
       expect(animation.pause).toHaveBeenCalled();
     } finally {

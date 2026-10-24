@@ -2,13 +2,20 @@ import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { createCssAdapter } from "./css";
 import { PendingPauseAnimation } from "./pendingPauseAnimation.test-helpers";
 
-// jsdom has no Animation subclasses; the adapter tells them apart with instanceof CSSAnimation.
+const nativeGetComputedStyle = window.getComputedStyle.bind(window);
+
+// jsdom has no Animation subclasses; CSS animations expose their authored name.
 class FakeAnimation {}
-class FakeCSSAnimation extends FakeAnimation {}
+class FakeCSSAnimation extends FakeAnimation {
+  animationName = "slide";
+}
 class FakeCSSTransition extends FakeAnimation {}
 
 const makeAnimation = (target: Element, kind: typeof FakeAnimation = FakeCSSAnimation) =>
   Object.assign(new kind(), {
+    ...(kind === FakeCSSAnimation
+      ? { animationName: window.getComputedStyle(target).animationName }
+      : {}),
     currentTime: 0,
     pause: vi.fn(),
     play: vi.fn(),
@@ -32,9 +39,13 @@ describe("css adapter", () => {
   beforeEach(() => {
     vi.stubGlobal("CSSAnimation", FakeCSSAnimation);
     vi.stubGlobal("CSSTransition", FakeCSSTransition);
+    vi.spyOn(window, "getComputedStyle").mockImplementation((target, pseudo) =>
+      pseudo ? document.createElement("div").style : nativeGetComputedStyle(target),
+    );
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     Reflect.deleteProperty(document, "getAnimations");
     vi.unstubAllGlobals();
   });
@@ -63,9 +74,8 @@ describe("css adapter", () => {
     document.body.appendChild(el);
 
     // We need to mock getComputedStyle since jsdom doesn't compute animations
-    const origGetComputedStyle = window.getComputedStyle;
     vi.spyOn(window, "getComputedStyle").mockImplementation((target) => {
-      const real = origGetComputedStyle(target);
+      const real = nativeGetComputedStyle(target);
       return {
         ...real,
         animationName: target === el ? "slide" : "none",
@@ -206,7 +216,9 @@ describe("css adapter", () => {
 
     it("holds the sought time on the first frame of a running CSS animation", () => {
       vi.stubGlobal("CSSAnimation", PendingPauseAnimation);
-      const animation = new PendingPauseAnimation({ target: el });
+      const animation = Object.assign(new PendingPauseAnimation({ target: el }), {
+        animationName: "slide",
+      });
       const { adapter } = setup([animation as unknown as Animation]);
 
       adapter.seek({ time: 2 });

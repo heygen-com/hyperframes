@@ -1,11 +1,19 @@
 import type { RuntimeDeterministicAdapter } from "../types";
 import { swallow } from "../diagnostics";
-import { isHtmlElement } from "../domRealm";
 import { holdAnimationAt } from "./_holdAnimationAt";
+import {
+  type AuthoredCssAnimations,
+  createAuthoredCssAnimations,
+  isCssAnimation,
+  isKeyframeEffect,
+  splitNames,
+} from "./cssAnimation";
 
 export function createCssAdapter(params?: {
   resolveStartSeconds?: (element: Element) => number;
+  authored?: AuthoredCssAnimations;
 }): RuntimeDeterministicAdapter {
+  const authored = params?.authored ?? createAuthoredCssAnimations();
   let entries: Array<{
     el: HTMLElement;
     baseDelay: string;
@@ -32,12 +40,12 @@ export function createCssAdapter(params?: {
     if (entries.length === 0) return byElement;
     const canTellCss = typeof CSSAnimation !== "undefined";
     for (const animation of safeGetAnimations(document, pageAnimations)) {
-      if (canTellCss && !(animation instanceof CSSAnimation)) continue;
-      const effect = animation.effect as KeyframeEffect | null;
-      if (!effect?.target || effect.pseudoElement) continue;
-      const list = byElement.get(effect.target);
-      if (list) list.push(animation);
-      else byElement.set(effect.target, [animation]);
+      if (canTellCss && !isCssAnimation(animation)) continue;
+      const effect = animation.effect;
+      if (!isKeyframeEffect(effect) || !effect.target || effect.pseudoElement) continue;
+      const list = byElement.get(effect.target) ?? [];
+      byElement.set(effect.target, list);
+      if (!canTellCss || authored.drivenByCssAdapter(animation)) list.push(animation);
     }
     return byElement;
   };
@@ -63,7 +71,7 @@ export function createCssAdapter(params?: {
         .map((v) => Number.parseFloat(v) / (v.trim().endsWith("ms") ? 1000 : 1));
     const durations = seconds(style.animationDuration);
     const delays = seconds(style.animationDelay);
-    const names = style.animationName.split(",");
+    const names = splitNames(style.animationName);
     let cycleSeconds = 0;
     names.forEach((name, i) => {
       if (name.trim() === "none") return;
@@ -150,19 +158,15 @@ export function createCssAdapter(params?: {
       for (const entry of entries) restoreInlineStyles(entry);
       const known = new Map(entries.map((entry) => [entry.el, entry.handles]));
       entries = [];
-      const all = document.querySelectorAll("*");
-      for (const rawEl of all) {
-        if (!isHtmlElement(rawEl)) continue;
-        const style = window.getComputedStyle(rawEl);
-        if (!style.animationName || style.animationName === "none") continue;
+      authored.discover((el, style) => {
         entries.push({
-          el: rawEl,
-          baseDelay: rawEl.style.animationDelay || "",
-          basePlayState: rawEl.style.animationPlayState || "",
+          el,
+          baseDelay: el.style.animationDelay || "",
+          basePlayState: el.style.animationPlayState || "",
           ...readAnimationTimes(style),
-          handles: known.get(rawEl),
+          handles: known.get(el),
         });
-      }
+      });
     },
     getAnimationCycleEndSeconds: () => {
       let end = 0;
@@ -197,9 +201,9 @@ export function createCssAdapter(params?: {
         if (!entry.el.isConnected) continue;
         const start = resolveEntryStartSeconds(entry.el);
         const localTimeMs = Math.max(0, time - start) * 1000;
-        if (entry.handles?.length) {
+        if (entry.handles?.length || live.has(entry.el)) {
           if (entry.el.style.animationDelay !== entry.baseDelay) restoreInlineStyles(entry);
-          seekAnimations(entry.handles, localTimeMs);
+          seekAnimations(entry.handles ?? [], localTimeMs);
           continue;
         }
 

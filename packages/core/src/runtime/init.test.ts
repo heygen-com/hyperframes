@@ -4452,7 +4452,7 @@ describe("initSandboxRuntimeModular", () => {
     expect(window.__player?.getDuration()).toBe(0);
   });
 
-  it("reads document animations once per seek pass across the WAAPI and CSS adapters", () => {
+  it("reads document and nested shadow animations once per seek pass across adapters", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");
     root.setAttribute("data-root", "true");
@@ -4465,19 +4465,26 @@ describe("initSandboxRuntimeModular", () => {
     const animated = document.createElement("div");
     animated.setAttribute("data-start", "1");
     root.appendChild(animated);
+    const shadow = animated.attachShadow({ mode: "open" });
+    const nestedHost = document.createElement("div");
+    shadow.appendChild(nestedHost);
+    const nested = nestedHost.attachShadow({ mode: "open" });
+    const shadowAnimated = document.createElement("div");
+    nested.appendChild(shadowAnimated);
 
     vi.spyOn(window, "getComputedStyle").mockImplementation((target) => {
       const real =
         Object.getPrototypeOf(window).getComputedStyle ?? (() => ({}) as CSSStyleDeclaration);
       return {
         ...real,
-        animationName: target === animated ? "slide" : "none",
+        animationName: target === animated || target === shadowAnimated ? "slide" : "none",
       } as CSSStyleDeclaration;
     });
-    // jsdom has no CSSAnimation; the CSS adapter seeks only its instances.
+    // jsdom has no CSSAnimation; model the browser's animation name and target.
     class CSSAnimation {}
     vi.stubGlobal("CSSAnimation", CSSAnimation);
     const animation = Object.assign(new CSSAnimation(), {
+      animationName: "slide",
       currentTime: 0,
       pause: vi.fn(),
       play: vi.fn(),
@@ -4486,26 +4493,33 @@ describe("initSandboxRuntimeModular", () => {
     }) as unknown as Animation;
     const getAnimations = vi.fn(() => [animation]);
     document.getAnimations = getAnimations;
+    const shadowAnimation = Object.assign({}, animation, { effect: { target: shadowAnimated } });
+    const getShadowAnimations = vi.fn(() => []);
+    const getNestedAnimations = vi.fn(() => [shadowAnimation]);
+    shadow.getAnimations = getShadowAnimations;
+    nested.getAnimations = getNestedAnimations;
+    const readers = [getAnimations, getShadowAnimations, getNestedAnimations];
     window.__timelines = {};
 
     try {
       initSandboxRuntimeModular();
 
-      getAnimations.mockClear();
+      for (const read of readers) read.mockClear();
       window.__player!.renderSeek(2);
-      expect(getAnimations).toHaveBeenCalledTimes(1);
-      // The WAAPI adapter writes 2000; only the CSS adapter, reading the same list, writes clip time.
+      for (const read of readers) expect(read).toHaveBeenCalledTimes(1);
+      // Only the CSS adapter drives this handle, using clip time.
       expect(animation.currentTime).toBe(1000);
+      expect(shadowAnimation.currentTime).toBe(1000);
 
-      getAnimations.mockClear();
+      for (const read of readers) read.mockClear();
       window.__player!.seek(3);
-      expect(getAnimations).toHaveBeenCalledTimes(1);
+      for (const read of readers) expect(read).toHaveBeenCalledTimes(1);
 
       // Each pass reads afresh: the runtime can show a clip between two seeks.
-      getAnimations.mockClear();
+      for (const read of readers) read.mockClear();
       window.__player!.seek(4);
       window.__player!.seek(5);
-      expect(getAnimations).toHaveBeenCalledTimes(2);
+      for (const read of readers) expect(read).toHaveBeenCalledTimes(2);
     } finally {
       vi.unstubAllGlobals();
       Reflect.deleteProperty(document, "getAnimations");
@@ -4540,6 +4554,7 @@ describe("initSandboxRuntimeModular", () => {
     class CSSAnimation {}
     vi.stubGlobal("CSSAnimation", CSSAnimation);
     const animation = Object.assign(new CSSAnimation(), {
+      animationName: "slide",
       currentTime: 0,
       pause: vi.fn(),
       play: vi.fn(),
