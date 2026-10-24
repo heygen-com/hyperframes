@@ -104,6 +104,9 @@ Every finding code — its severity, what it catches, and how to fix it — is d
 
 Detected issues include:
 
+- Invalid inline JavaScript syntax. GLSL data blocks with `type="x-shader/x-fragment"`,
+  `type="x-shader/x-vertex"`, or `type="text/glsl"` skip JavaScript syntax checks and
+  still receive shader warnings.
 - Missing timeline registration (`window.__timelines`)
 - A timed `<video>` that declares neither `muted` (silent footage) nor `data-has-audio="true"` (has sound) — `video_missing_muted`
 - Missing `class="clip"` on timed visible elements

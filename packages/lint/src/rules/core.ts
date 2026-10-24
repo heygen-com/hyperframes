@@ -1,6 +1,7 @@
 import type { LintContext, HyperframeLintFinding } from "../context";
 import postcss from "postcss";
 import selectorParser from "postcss-selector-parser";
+import { GLSL_SCRIPT_TYPES } from "../shaderDomains";
 import {
   HTML_BODY_CSS_WIDTH_FIRST_RE,
   HTML_BODY_CSS_HEIGHT_FIRST_RE,
@@ -28,6 +29,7 @@ const SCRIPT_SYNTAX_EXEMPT_TYPES = new Set([
   "application/hyperframes-slideshow+json",
   "importmap",
   "module",
+  ...GLSL_SCRIPT_TYPES,
 ]);
 
 function repeatedDescendantId(selector: string): string | null {

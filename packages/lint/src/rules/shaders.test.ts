@@ -60,13 +60,29 @@ describe("shader numeric domains", () => {
     expect(result.map((finding) => finding.line)).toEqual([3, 8]);
   });
 
-  it("checks native GLSL script blocks", async () => {
+  it.each(["x-shader/x-fragment", "x-shader/x-vertex", "text/glsl"])(
+    "accepts %s shader source without parsing it as JavaScript",
+    async (type) => {
+      const result = await lintHyperframeHtml(`<!doctype html><html><body>
+        <div id="root" data-composition-id="shader-demo" data-width="1920" data-height="1080"
+          data-duration="1" data-no-timeline></div>
+        <script type="${type}">precision mediump float; void main() {}</script>
+        <script>window.__timelines = {};</script>
+      </body></html>`);
+      expect(result.findings).toEqual([]);
+    },
+  );
+
+  it("checks numeric domains in native GLSL without JavaScript syntax errors", async () => {
     const result = await lintHyperframeHtml(
       `<script type="x-shader/x-fragment">${shader(unsafe)}</script>`,
     );
     expect(
       result.findings.filter((finding) => finding.code === "shader_unbounded_cosine_pow"),
     ).toHaveLength(1);
+    expect(result.findings.map((finding) => finding.code)).not.toContain(
+      "invalid_inline_script_syntax",
+    );
   });
 
   it("checks escaped static strings without claiming unmapped source coordinates", async () => {

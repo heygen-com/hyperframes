@@ -1,5 +1,5 @@
 import type { LintContext, HyperframeLintFinding } from "../context";
-import { shaderDomainOffsets } from "../shaderDomains";
+import { GLSL_SCRIPT_TYPES, shaderDomainOffsets } from "../shaderDomains";
 import { readAttr } from "../utils";
 
 export function shaderDomainWarning(): HyperframeLintFinding {
@@ -19,7 +19,7 @@ export const shaderRules = [
       const tag = `<script ${script.attrs}>`;
       if (readAttr(tag, "src") !== null) return [];
       const type = readAttr(tag, "type") ?? "";
-      const glsl = /^(?:x-shader\/x-(?:fragment|vertex)|text\/glsl)$/i.test(type);
+      const glsl = GLSL_SCRIPT_TYPES.has(type.toLowerCase());
       if (type && !glsl && !/^(?:module|(?:text|application)\/javascript)$/i.test(type)) return [];
       return shaderDomainOffsets(script.content, glsl).map((offset) => ({
         ...shaderDomainWarning(),
