@@ -12,6 +12,7 @@ import { fitTextFontSize } from "../text/fitTextFontSize";
 import { pretext } from "../text/pretext";
 import { assetUrl } from "./assetUrl";
 import { getVariables } from "./getVariables";
+import { installEarlyTextBindings } from "./applyVariableBindings";
 import { clearRuntimeData, registerRuntimeDataHandler, setRuntimeData } from "./runtimeData";
 import { runScriptsAfterFonts } from "./afterFonts";
 import { AFTER_FONTS_SCRIPTS } from "../compiler/scriptRuns";
@@ -42,6 +43,7 @@ type HyperframeWindow = Window & {
 // composition's animation scripts (and the grading hide) mutate it — must run
 // at script evaluation time, while the document is still parsing.
 installAuthoredOpacityCapture();
+installEarlyTextBindings();
 installAuthoredMediaCapture();
 installFlatGsapTransforms();
 trackAcceleratedCanvases();

@@ -19,6 +19,7 @@ import {
   namespaceCollidingSvgIds,
   rewriteSvgIdReferencesInCss,
 } from "../compiler/svgIdNamespacing";
+import { forgetBoundText } from "./applyVariableBindings";
 import { waitForFonts } from "./afterFonts";
 import { parseLayoutDimension } from "./compositionDimension";
 import { markFlattenedInnerRoot } from "./flattenedRoot";
@@ -211,6 +212,7 @@ const waitForExternalScriptLoad = (
   });
 
 function resetCompositionHost(host: Element) {
+  forgetBoundText(host);
   while (host.firstChild) {
     host.removeChild(host.firstChild);
   }

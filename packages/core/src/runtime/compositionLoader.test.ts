@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, afterEach, beforeAll } from "vitest";
+import { applyVariableBindings } from "./applyVariableBindings";
+import { getVariables } from "./getVariables";
 import { loadCompositions } from "./compositionLoader";
 
 type LoaderParams = Parameters<typeof loadCompositions>[0];
@@ -1898,5 +1900,36 @@ describe("namespaceMountedSvgIds", () => {
     const outerG = [...host("outer").querySelectorAll("g")].find((g) => !inner.contains(g))!;
     const outerClip = clipTarget(outerG);
     expect(host("outer").contains(outerClip) && !inner.contains(outerClip)).toBe(true);
+  });
+});
+
+describe("variable-bound composition hosts", () => {
+  afterEach(() => {
+    document.documentElement.removeAttribute("data-composition-variables");
+    document.body.innerHTML = "";
+    Reflect.deleteProperty(window, "__hyperframes");
+  });
+
+  it("restores a host's bound text after mounting its composition clears the host", async () => {
+    Reflect.set(window, "__hyperframes", { getVariables });
+    document.documentElement.setAttribute(
+      "data-composition-variables",
+      JSON.stringify([{ id: "title", type: "string", label: "Title", default: "Bound" }]),
+    );
+    document.body.innerHTML = `
+      <div data-hf-root data-composition-id="root">
+        <div id="host" data-composition-id="scene" data-var-text="title"></div>
+        <template id="scene-template">
+          <div data-composition-id="scene"><span>child</span></div>
+        </template>
+      </div>`;
+    applyVariableBindings(document);
+
+    await loadFixture();
+    applyVariableBindings(document);
+
+    const host = document.getElementById("host")!;
+    expect(host.textContent).toContain("Bound");
+    expect(host.textContent).toContain("child");
   });
 });

@@ -2,7 +2,8 @@ import { afterAll, beforeAll, describe, expect, it, onTestFailed } from "vitest"
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { bundleToSingleHtml } from "@hyperframes/core/compiler";
-import { resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import puppeteer, { type Browser, type Page } from "puppeteer";
 import type {} from "../../../core/src/runtime/window";
 import { openComposition } from "../../../sdk/src/session";
@@ -459,6 +460,82 @@ describe("core runtime browser contract", () => {
     },
     30_000,
   );
+
+  it.each([
+    [undefined, "Launch day is here"],
+    [{ title: "Doors open at nine" }, "Doors open at nine"],
+  ])(
+    "shows a bound title once when the composition splits it into words (overrides %j)",
+    async (overrides, expected) => {
+      // A navigation, not setContent: document.write runs scripts with no microtask checkpoint before them.
+      const file = join(mkdtempSync(join(tmpdir(), "hf-split-title-")), "index.html");
+      writeFileSync(
+        file,
+        `<!doctype html>
+        <html data-composition-variables='[{"id":"title","type":"string","label":"Title","default":"Launch day is here"}]'>
+        <head>
+          <script>window.__hfVariables = ${JSON.stringify(overrides ?? {})};</script>
+          <script>${readFileSync(RUNTIME_PATH, "utf8")}</script>
+        </head>
+        <body>
+          <div data-composition-id="root" data-start="0" data-duration="1" data-width="320" data-height="180">
+            <h1><span id="title" data-var-text="title">Launch day is here</span></h1>
+          </div>
+          <script>
+            const title = document.getElementById("title");
+            const words = title.textContent.trim().split(" ");
+            title.textContent = "";
+            for (const word of words) title.append(Object.assign(document.createElement("span"), { textContent: word + " " }));
+          </script>
+        </body></html>`,
+      );
+      const splitPage = await browser.newPage();
+      try {
+        await splitPage.goto(pathToFileURL(file).href);
+        await splitPage.waitForFunction(() => window.__playerReady);
+
+        const shown = await splitPage.evaluate(() => ({
+          text: document.getElementById("title")!.textContent!.trim(),
+          words: document.querySelectorAll("#title span").length,
+        }));
+        expect(shown).toEqual({ text: expected, words: expected.split(" ").length });
+      } finally {
+        await splitPage.close();
+        rmSync(dirname(file), { recursive: true, force: true });
+      }
+    },
+    30_000,
+  );
+
+  it("shows only the bound title when the parser adds text after an inert script inside it", async () => {
+    const file = join(mkdtempSync(join(tmpdir(), "hf-inert-title-")), "index.html");
+    writeFileSync(
+      file,
+      `<!doctype html>
+      <html data-composition-variables='[{"id":"title","type":"string","label":"Title","default":"Bound"}]'>
+      <head><script>${readFileSync(RUNTIME_PATH, "utf8")}</script></head>
+      <body>
+        <div data-composition-id="root" data-start="0" data-duration="1" data-width="320" data-height="180">
+          <h1 id="title" data-var-text="title">Fallback<script type="application/json">{}</script> suffix</h1>
+        </div>
+      </body></html>`,
+    );
+    const inertPage = await browser.newPage();
+    try {
+      await inertPage.goto(pathToFileURL(file).href);
+      await inertPage.waitForFunction(() => window.__playerReady);
+      const shown = await inertPage.evaluate(() =>
+        [...document.getElementById("title")!.childNodes]
+          .filter((node) => node.nodeType === Node.TEXT_NODE)
+          .map((node) => node.nodeValue)
+          .join(""),
+      );
+      expect(shown).toBe("Bound");
+    } finally {
+      await inertPage.close();
+      rmSync(dirname(file), { recursive: true, force: true });
+    }
+  }, 30_000);
 
   it("renders a later clip's authored lazy image as it is: laid out at setup, fetched before any seek", async () => {
     // A chunked render starts a worker straight at a later clip, so its image must already be loaded.

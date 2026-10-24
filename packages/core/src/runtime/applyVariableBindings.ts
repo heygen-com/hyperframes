@@ -32,7 +32,7 @@ import {
   isScalarVariableValue as isScalar,
   isSafeMediaUrl,
 } from "@hyperframes/parsers/composition";
-import { isHtmlElement } from "./domRealm";
+import { isElementNode, isHtmlElement } from "./domRealm";
 import { unproxiedSrc } from "./proxySrc";
 
 // data-var-src only rebinds media `src` on media elements. A user-controlled
@@ -101,20 +101,19 @@ function valuesForElement(el: Element, cache: ScopeValuesCache): Record<string, 
  * clips, animation-target spans). Mirrors the SDK's setOwnText: write the
  * first direct text node, clear the others; append when none exists.
  */
-function setOwnTextPreservingChildren(el: Element, text: string): void {
+/** Returns the text node now holding `text`, if any. */
+function setOwnTextPreservingChildren(el: Element, text: string): Node | null {
   if (el.childElementCount === 0) {
     el.textContent = text;
-    return;
+    return el.firstChild;
   }
-  let written = false;
+  let written: Node | null = null;
   for (const node of Array.from(el.childNodes)) {
     if (node.nodeType !== Node.TEXT_NODE) continue;
     node.nodeValue = written ? "" : text;
-    written = true;
+    written ??= node;
   }
-  if (!written) {
-    el.insertBefore(el.ownerDocument.createTextNode(text), el.firstChild);
-  }
+  return written ?? el.insertBefore(el.ownerDocument.createTextNode(text), el.firstChild);
 }
 
 /**
@@ -186,10 +185,47 @@ export function applyVariableBindings(doc: Document, within?: Element): void {
     if (url !== null && unproxiedSrc(el) !== url) el.setAttribute("src", url);
   }
 
-  for (const el of all("[data-var-text]")) {
-    const id = el.getAttribute("data-var-text")?.trim();
-    if (!id) continue;
-    const value = valuesForElement(el, cache)[id];
-    if (isScalar(value)) setOwnTextPreservingChildren(el, String(value));
-  }
+  for (const el of all("[data-var-text]")) bindText(el, cache);
+}
+
+const boundText = new WeakMap<Element, { text: string; node: Node | null }>();
+
+/** The runtime emptied `el` (a composition host remount), so its bound text must be written again. */
+export function forgetBoundText(el: Element): void {
+  boundText.delete(el);
+}
+
+function bindText(el: Element, cache: ScopeValuesCache): void {
+  const id = el.getAttribute("data-var-text")?.trim();
+  if (!id) return;
+  const value = valuesForElement(el, cache)[id];
+  if (!isScalar(value)) return;
+  const text = String(value);
+  const prior = boundText.get(el);
+  const scriptOwnsText =
+    prior?.text === text &&
+    prior.node !== null &&
+    !(prior.node.parentNode === el && prior.node.nodeValue === text);
+  // A composition script split the text it was given into word spans; writing it again would show it twice.
+  if (scriptOwnsText) return;
+  boundText.set(el, { text, node: setOwnTextPreservingChildren(el, text) });
+}
+
+/** Binds text as the page parses, so composition scripts that split it see the variable's value. */
+export function installEarlyTextBindings(): void {
+  if (typeof MutationObserver === "undefined" || typeof document === "undefined") return;
+  const root = document.documentElement;
+  if (!root) return;
+  const scan = (node: Node): void => {
+    if (!isElementNode(node)) return;
+    const cache: ScopeValuesCache = new Map();
+    if (node.matches("[data-var-text]")) bindText(node, cache);
+    for (const el of node.querySelectorAll("[data-var-text]")) bindText(el, cache);
+  };
+  scan(root);
+  const observer = new MutationObserver((mutations) => {
+    for (const mutation of mutations) for (const node of mutation.addedNodes) scan(node);
+  });
+  observer.observe(root, { childList: true, subtree: true });
+  document.addEventListener("DOMContentLoaded", () => observer.disconnect(), { once: true });
 }

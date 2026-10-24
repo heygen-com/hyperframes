@@ -55,6 +55,23 @@ describe("applyVariableBindings", () => {
     expect(document.querySelector("img")?.getAttribute("src")).toBe("keep.jpg");
   });
 
+  it("does not write a bound text again after a script split it into word spans", () => {
+    setDeclared([{ id: "title", type: "string", label: "Title", default: "Launch day is here" }]);
+    document.body.innerHTML = `<div data-hf-root><h1 data-var-text="title">Launch day is here</h1></div>`;
+    applyVariableBindings(document);
+    const h1 = document.querySelector("h1")!;
+    const words = h1.textContent!.split(" ");
+    h1.replaceChildren(
+      ...words.map((word) =>
+        Object.assign(document.createElement("span"), { textContent: `${word} ` }),
+      ),
+    );
+
+    applyVariableBindings(document);
+
+    expect(h1.textContent!.trim()).toBe("Launch day is here");
+  });
+
   it("sets text content from a scalar via data-var-text", () => {
     setDeclared([{ id: "title", type: "string", label: "Title", default: "Hello" }]);
     win.__hfVariables = { title: "Overridden" };
