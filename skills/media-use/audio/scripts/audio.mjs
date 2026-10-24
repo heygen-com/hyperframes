@@ -172,6 +172,12 @@ if (only.has("tts") && lines.length) {
       anomalies.push(`line ${id}: bad voice duration — omitted`);
       return null;
     }
+    // Empty: the transcription failed (e.g. no whisper-cpp/Parakeet) or found no words, or the
+    // provider (heygen) returned no usable word_timestamps.
+    if (!wordArr?.length)
+      anomalies.push(
+        `line ${id}: no word timings — transcription failed or found no words (run \`npx hyperframes transcribe ${rel}\` to see why)`,
+      );
     return { id, path: rel, duration_s: r3(dur), words: withWordIds(wordArr) };
   };
   const results = await mapWithConcurrency(lines, ttsConcurrency, synthLine);
