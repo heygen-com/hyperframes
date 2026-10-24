@@ -315,6 +315,11 @@ const MIN_NATIVE_PLAYBACK_RATE = 1 / 16;
 // A playing video is steered back by rate, not seeked (a seek resets its decoder).
 // Its rate is written only when steering starts or stops: every write costs a frame.
 const VIDEO_STEER = 0.03;
+// A video that starts a cut late closes its lag over one clip at 3%; a bigger lag steers harder, in steps so the rate is written rarely.
+const VIDEO_STEER_STEPS: readonly (readonly [lag: number, steer: number])[] = [
+  [0.3, 0.25],
+  [0.1, 0.1],
+];
 const VIDEO_STEER_RELEASE_SECONDS = 0.01;
 
 /** Direction (+1 fast, -1 slow) a video is being steered in; absent when it plays at its authored rate. */
@@ -329,7 +334,9 @@ function steeredVideoRate(el: HTMLMediaElement, offset: number, baseRate: number
     videoSteering.delete(el);
     return baseRate;
   }
-  return baseRate * (1 + direction * VIDEO_STEER);
+  const lag = Math.abs(offset);
+  const steer = VIDEO_STEER_STEPS.find(([from]) => lag > from)?.[1] ?? VIDEO_STEER;
+  return baseRate * (1 + direction * steer);
 }
 
 // fallow-ignore-next-line complexity

@@ -1992,7 +1992,7 @@ describe("syncRuntimeMedia", () => {
     });
 
     it("runs a video that is ahead 3% slow", () => {
-      const clip = playingVideoAt(5.3);
+      const clip = playingVideoAt(5.06);
       tick(clip, 5);
       tick(clip, 5);
       expect(clip.el.playbackRate).toBeCloseTo(0.97, 9);
@@ -2074,6 +2074,26 @@ describe("syncRuntimeMedia", () => {
       });
       for (let i = 0; i < 5; i++) tick(clip, 5);
       expect(writes).toBe(1);
+    });
+
+    it("steers a video that is far behind harder, in steps", () => {
+      const clip = playingVideoAt(4.85);
+      tick(clip, 5);
+      tick(clip, 5);
+      expect(clip.el.playbackRate).toBeCloseTo(1.1, 9);
+      clip.el.currentTime = 4.6;
+      tick(clip, 5);
+      expect(clip.el.playbackRate).toBeCloseTo(1.25, 9);
+      clip.el.currentTime = 4.93;
+      tick(clip, 5);
+      expect(clip.el.playbackRate).toBeCloseTo(1.03, 9);
+    });
+
+    it("steers a video that is far ahead slower, by the same steps", () => {
+      const clip = playingVideoAt(5.2);
+      tick(clip, 5);
+      tick(clip, 5);
+      expect(clip.el.playbackRate).toBeCloseTo(0.9, 9);
     });
 
     it("scales the steer with the transport rate", () => {
