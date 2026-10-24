@@ -6,6 +6,7 @@
  * launch args, pooled browser acquisition/release.
  */
 
+import { withHyperframesBrowserMarker } from "@hyperframes/core";
 import { scanHtmlOpeningTags } from "@hyperframes/parsers/html-attribute-spans";
 import type { Browser, LaunchOptions, Page, PuppeteerNode } from "puppeteer-core";
 import { execSync } from "child_process";
@@ -111,7 +112,7 @@ async function probeHardwareWebGlInfo(
     const launchOptions: LaunchOptions = {
       ...sigintLaunchOptions(),
       headless: true,
-      args: options.args,
+      args: withHyperframesBrowserMarker(options.args),
       defaultViewport: { width: 64, height: 64 },
       executablePath: options.executablePath,
       env: options.env,
@@ -854,7 +855,7 @@ async function launchBrowser(
     browser = await ppt.launch({
       ...sigintLaunchOptions(),
       headless: true,
-      args: [...fingerprint.args],
+      args: withHyperframesBrowserMarker(fingerprint.args),
       defaultViewport: null,
       executablePath: fingerprint.executablePath,
       env,
@@ -887,7 +888,7 @@ async function launchBrowser(
         browser = await ppt.launch({
           ...sigintLaunchOptions(),
           headless: true,
-          args: stripBeginFrameFlags([...fingerprint.args]),
+          args: withHyperframesBrowserMarker(stripBeginFrameFlags([...fingerprint.args])),
           defaultViewport: null,
           executablePath: fingerprint.executablePath,
           env,

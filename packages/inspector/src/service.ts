@@ -1,4 +1,5 @@
 import type { TimelineRequest } from "../../core/src/runtime/timelineInspection";
+import { withHyperframesBrowserMarker } from "../../core/src/browserMarker";
 import {
   inspectComponents,
   inspectElementMap,
@@ -176,12 +177,12 @@ export class Inspector {
         this.browser = await puppeteer.launch({
           executablePath: this.options.executablePath ?? chromePath(),
           headless: true,
-          args: [
+          args: withHyperframesBrowserMarker([
             "--disable-dev-shm-usage",
             "--enable-webgl",
             "--use-gl=angle",
             "--use-angle=swiftshader",
-          ],
+          ]),
         });
         this.stats.browserStarts++;
       }

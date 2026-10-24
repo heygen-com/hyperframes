@@ -6,6 +6,7 @@ import {
   type PuppeteerNode,
 } from "puppeteer-core";
 import { TargetCloseError } from "puppeteer-core/internal/common/Errors.js";
+import { HYPERFRAMES_BROWSER_MARKER_ARG } from "@hyperframes/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { launchManagedBrowser } from "./launch.js";
 
@@ -66,7 +67,12 @@ describe("a browser inside an agent's macOS seatbelt", () => {
     expect(launches).toHaveLength(1);
     expect(launches[0]).toMatchObject({
       pipe: true,
-      args: ["--headless", "--single-process", "--disable-gpu-compositing"],
+      args: [
+        "--headless",
+        "--single-process",
+        "--disable-gpu-compositing",
+        HYPERFRAMES_BROWSER_MARKER_ARG,
+      ],
     });
   });
 
@@ -75,11 +81,12 @@ describe("a browser inside an agent's macOS seatbelt", () => {
     const { puppeteer, launches } = recordingPuppeteer([SEATBELT_LAUNCH_FAILURE]);
     await expect(launchManagedBrowser(puppeteer, { args: ["--headless"] })).resolves.toBeDefined();
     expect(launches.map((options) => options.pipe ?? false)).toEqual([true, true]);
-    expect(launches[0]!.args).toEqual(["--headless"]);
+    expect(launches[0]!.args).toEqual(["--headless", HYPERFRAMES_BROWSER_MARKER_ARG]);
     expect(launches[1]!.args).toEqual([
       "--headless",
       "--single-process",
       "--disable-gpu-compositing",
+      HYPERFRAMES_BROWSER_MARKER_ARG,
     ]);
   });
   it("relaunches as one process when an unnamed sandbox closes a pipe launch before its first targets", async () => {
@@ -90,8 +97,13 @@ describe("a browser inside an agent's macOS seatbelt", () => {
     ]);
     await expect(launchManagedBrowser(puppeteer, { args: ["--headless"] })).resolves.toBeDefined();
     expect(launches.map((options) => options.args)).toEqual([
-      ["--headless"],
-      ["--headless", "--single-process", "--disable-gpu-compositing"],
+      ["--headless", HYPERFRAMES_BROWSER_MARKER_ARG],
+      [
+        "--headless",
+        "--single-process",
+        "--disable-gpu-compositing",
+        HYPERFRAMES_BROWSER_MARKER_ARG,
+      ],
     ]);
   });
 
