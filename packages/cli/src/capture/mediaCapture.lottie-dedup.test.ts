@@ -4,6 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { saveLottieAnimations } from "./mediaCapture.js";
+import { publicRequest } from "./publicNetwork.js";
+
+vi.mock("./publicNetwork.js", () => ({ publicRequest: vi.fn() }));
 
 function iconAnimation(color: number[]) {
   return {
@@ -43,7 +46,7 @@ function iconAnimation(color: number[]) {
   };
 }
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => vi.mocked(publicRequest).mockReset());
 
 describe("Lottie content deduplication", () => {
   it.each(["intercepted", "json", "archive"])(
@@ -55,16 +58,13 @@ describe("Lottie content deduplication", () => {
       expect(sources[0]?.slice(0, 200)).toBe(sources[1]?.slice(0, 200));
       const extension = mode === "archive" ? "lottie" : "json";
       const urls = [0, 1, 0].map((index, n) => `https://icons.example/${index}-${n}.${extension}`);
-      vi.stubGlobal(
-        "fetch",
-        vi.fn(async (url: string) => {
-          const source = sources[url.includes("/1-") ? 1 : 0] ?? "";
-          if (mode !== "archive") return new Response(source);
-          const zip = new AdmZip();
-          zip.addFile("a/icon.json", Buffer.from(source));
-          return new Response(new Uint8Array(zip.toBuffer()));
-        }),
-      );
+      vi.mocked(publicRequest).mockImplementation(async (url: string | URL) => {
+        const source = sources[String(url).includes("/1-") ? 1 : 0] ?? "";
+        if (mode !== "archive") return new Response(source);
+        const zip = new AdmZip();
+        zip.addFile("a/icon.json", Buffer.from(source));
+        return new Response(new Uint8Array(zip.toBuffer()));
+      });
 
       try {
         const discovered = urls.map((url, n) => ({
