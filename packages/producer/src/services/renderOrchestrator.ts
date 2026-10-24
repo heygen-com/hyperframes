@@ -154,6 +154,11 @@ import {
   type CaptureRouting,
 } from "./render/capturePlan.js";
 import { runCaptureSegmentedStage } from "./render/stages/captureSegmentedStage.js";
+import {
+  RenderTooSlowError,
+  checkRenderEta,
+  startRenderEtaGuard,
+} from "./render/renderEtaGuard.js";
 import { resolveSegmentFrames } from "./render/segmentPlan.js";
 import { resolveSegmentBrowserRecycle } from "./render/segmentRecycle.js";
 import {
@@ -400,6 +405,8 @@ export interface RenderConfig {
   motionBlur?: MotionBlurOptions;
   pageMotionBlur?: "off";
   workers?: number;
+  /** Wall-time budget in ms for the whole render. Absent or 0 disables the ETA guard. */
+  maxRenderMs?: number;
   useGpu?: boolean;
   debug?: boolean;
   /** Strict rejects correctness warnings; best-effort returns a qualified outcome. */
@@ -2864,7 +2871,11 @@ async function executeRenderPipeline(input: {
   const log = execution.logger;
   const eventPublisher = execution.events;
   const onProgress = execution.onProgress;
-  const executionSignal = execution.signal;
+  const tooSlow = new AbortController();
+  let tooSlowError: RenderTooSlowError | undefined;
+  const executionSignal = job.config.maxRenderMs
+    ? AbortSignal.any([tooSlow.signal, ...(execution.signal ? [execution.signal] : [])])
+    : execution.signal;
   let fileServer: FileServerHandle | null = null;
   let probeSession: CaptureSession | null = null;
   let lastBrowserConsole: string[] = [];
@@ -4024,6 +4035,30 @@ async function executeRenderPipeline(input: {
       deWorkerInversion: deWorkerInversion ?? "none",
       deParallelRouter: deParallelRouter ?? "none",
     });
+
+    // No calibration estimate (explicit workers, short or forced-screenshot renders) skips the
+    // pre-capture check; the measured-rate guard below still covers capture.
+    const calibratedTooSlow = checkRenderEta("capture_calibration", {
+      maxRenderMs: job.config.maxRenderMs,
+      elapsedMs: Date.now() - pipelineStart,
+      framesCompleted: 0,
+      totalFrames,
+      msPerFrame: (captureCalibration?.estimate.p95Ms ?? 0) / workerCount,
+    });
+    if (calibratedTooSlow) throw calibratedTooSlow;
+    execution.defer(
+      "stop render ETA guard",
+      startRenderEtaGuard({
+        maxRenderMs: job.config.maxRenderMs,
+        job,
+        totalFrames,
+        pipelineStartMs: pipelineStart,
+        onTooSlow: (error) => {
+          tooSlowError = error;
+          tooSlow.abort(error);
+        },
+      }),
+    );
 
     // Streaming encode pipes captured frames through ffmpeg's stdin to produce
     // a single video file. Keep the default enabled for sequential capture, but
@@ -5223,8 +5258,9 @@ async function executeRenderPipeline(input: {
     job.outputPath = outputPath;
     updateJobStatus(job, "complete", "Render complete", 100, onProgress);
     await eventPublisher.flush();
-  } catch (error) {
-    if (error instanceof RenderCancelledError || executionSignal?.aborted) {
+  } catch (caught) {
+    const error = tooSlowError ?? caught;
+    if (!tooSlowError && (error instanceof RenderCancelledError || executionSignal?.aborted)) {
       job.error = error instanceof Error ? error.message : "render_cancelled";
       updateJobStatus(job, "cancelled", "Render cancelled", job.progress, onProgress);
       await eventPublisher.flush();

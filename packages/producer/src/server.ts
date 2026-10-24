@@ -87,6 +87,7 @@ interface RenderInput {
   pageMotionBlur?: RenderConfig["pageMotionBlur"];
   outputDynamicRange?: "auto" | "hdr" | "sdr";
   workers?: number;
+  maxRenderMs?: number;
   crf?: number;
   videoBitrate?: string;
   useGpu: boolean;
@@ -129,6 +130,7 @@ const SAFE_RENDER_ERROR_CODES = new Set<string>([
   "VIDEO_SOURCE_UNRENDERABLE",
   "VIDEO_EXTRACTION_FAILED",
   "ENCODER_INTERRUPTED",
+  "RENDER_TOO_SLOW",
 ]);
 
 /**
@@ -223,6 +225,7 @@ export function parseRenderOptions(body: Record<string, unknown>): Omit<RenderIn
   const fps = parseServerFps(body.fps);
   const quality = parseServerQuality(body.quality);
   const workers = typeof body.workers === "number" ? body.workers : undefined;
+  const maxRenderMs = typeof body.maxRenderMs === "number" ? body.maxRenderMs : undefined;
   const useGpu = body.gpu === true;
   const debug = body.debug === true;
   // Preserve the pre-structured-warning HTTP contract for callers that do
@@ -247,6 +250,7 @@ export function parseRenderOptions(body: Record<string, unknown>): Omit<RenderIn
     fps,
     quality,
     workers,
+    maxRenderMs,
     crf,
     videoBitrate,
     useGpu,
@@ -308,6 +312,7 @@ function buildRenderJobConfig(input: RenderInput, outputPath: string, log: Produ
       quality: input.quality,
       format: input.format ?? "mp4",
       workers: input.workers,
+      maxRenderMs: input.maxRenderMs,
       crf: input.crf,
       videoBitrate: input.videoBitrate,
       useGpu: input.useGpu,
@@ -351,6 +356,14 @@ function resolvePreparedRenderOutput(
 function validateRenderOverrides(body: Record<string, unknown>): string | undefined {
   const encoder = parseEncoderOptions(body, parseServerFormat(body.format) ?? "mp4");
   if (!encoder.ok) return encoder.error;
+  if (
+    body.maxRenderMs !== undefined &&
+    (typeof body.maxRenderMs !== "number" ||
+      !Number.isInteger(body.maxRenderMs) ||
+      body.maxRenderMs < 0)
+  ) {
+    return "maxRenderMs must be a non-negative integer number of milliseconds";
+  }
   if (body.variables !== undefined && !isPlainObject(body.variables)) {
     return 'variables must be a JSON object keyed by variable id (e.g. {"title":"Hello"})';
   }
