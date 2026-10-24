@@ -147,6 +147,19 @@ export function mergePercentageKeyframes(
   return [...byPercentage.values()].sort((a, b) => a.percentage - b.percentage);
 }
 
+export function distributeArrayKeyframes(
+  channels: ReadonlyMap<string, readonly (number | string)[]>,
+): GsapPercentageKeyframe[] {
+  return mergePercentageKeyframes(
+    [...channels].flatMap(([key, values]) =>
+      values.map((value, index) => ({
+        percentage: values.length > 1 ? Math.round((index / (values.length - 1)) * 100) : 0,
+        properties: { [key]: value },
+      })),
+    ),
+  );
+}
+
 export type GsapKeyframeFormat = "percentage" | "object-array" | "simple-array";
 
 export interface GsapKeyframesData<K extends GsapPercentageKeyframe = GsapPercentageKeyframe> {

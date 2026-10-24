@@ -22,6 +22,7 @@ import {
   safeJsKey as safeKey,
   resolveConversionProps,
   mergePercentageKeyframes,
+  distributeArrayKeyframes,
   authorsKeyframes,
   plainPercentKey,
 } from "./gsapSerialize";
@@ -922,22 +923,9 @@ function parseSimpleArrayKeyframes(node: AstNode, scope: ScopeBindings): GsapKey
     }
   }
 
-  // Zip arrays into percentage keyframes (evenly spaced).
-  const maxLen = Math.max(...[...arrayProps.values()].map((a) => a.length), 0);
-  const keyframes: GsapPercentageKeyframe[] = [];
-
-  for (let i = 0; i < maxLen; i++) {
-    const percentage = maxLen > 1 ? Math.round((i / (maxLen - 1)) * 100) : 0;
-    const properties: Record<string, number | string> = {};
-    for (const [key, values] of arrayProps) {
-      if (i < values.length) properties[key] = values[i]!;
-    }
-    keyframes.push({ percentage, properties });
-  }
-
   return {
     format: "simple-array",
-    keyframes,
+    keyframes: distributeArrayKeyframes(arrayProps),
     ...(ease ? { ease } : {}),
     ...(easeEach ? { easeEach } : {}),
   };
