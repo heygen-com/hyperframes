@@ -1,11 +1,5 @@
-// Windows refuses to start an executable while another process holds it open
-// for writing or without sharing (antivirus scanning it, an installer still
-// writing it), and Node throws that from spawn() synchronously as EBUSY; the
-// POSIX equivalent is ETXTBSY. Node only routes EACCES, EAGAIN, EMFILE, ENFILE
-// and ENOENT through the 'error' event, so a ManagedChildProcess "spawn_error"
-// outcome never sees this:
-// https://github.com/nodejs/node/blob/v24.x/lib/internal/child_process.js
-// Nothing has started when it throws, so running the caller again is safe.
+// Windows throws EBUSY (POSIX: ETXTBSY) from spawn() itself while another process holds the
+// executable open, e.g. antivirus; nothing has started, so running the caller again is safe.
 const LOCKED_EXECUTABLE_CODES = new Set(["EBUSY", "ETXTBSY"]);
 const RETRY_DELAYS_MS = [250, 500];
 

@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import { setTimeout as realSleep } from "node:timers/promises";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -53,13 +54,29 @@ function execFileLockedOnce(result: { stdout?: string; stderr?: string }) {
   return Object.assign(vi.fn(), { [promisify.custom]: run, run });
 }
 
+/** Steps the fake clock past the retry delays, yielding to real I/O, until `result` settles. */
+async function afterRetries<T>(result: Promise<T>): Promise<T> {
+  let settled = false;
+  result.then(
+    () => (settled = true),
+    () => (settled = true),
+  );
+  for (let step = 0; step < 400 && !settled; step++) {
+    await vi.advanceTimersByTimeAsync(250);
+    await realSleep(5);
+  }
+  return result;
+}
+
 describe("managed binary call sites retry a locked executable", () => {
   beforeEach(() => {
     vi.resetModules();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     vi.spyOn(console, "warn").mockImplementation(() => {});
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.doUnmock("child_process");
     vi.doUnmock("node:child_process");
     vi.restoreAllMocks();
@@ -70,7 +87,7 @@ describe("managed binary call sites retry a locked executable", () => {
     vi.doMock("child_process", () => ({ spawn }));
     const { runFfmpeg } = await import("./runFfmpeg.js");
 
-    const result = await runFfmpeg(["-version"]);
+    const result = await afterRetries(runFfmpeg(["-version"]));
 
     expect(result.success).toBe(true);
     expect(spawn).toHaveBeenCalledTimes(2);
@@ -85,7 +102,10 @@ describe("managed binary call sites retry a locked executable", () => {
     const result = runFfmpeg(["-version"], { signal: controller.signal });
     controller.abort();
 
-    await expect(result).resolves.toMatchObject({ success: false, terminationReason: "abort" });
+    await expect(afterRetries(result)).resolves.toMatchObject({
+      success: false,
+      terminationReason: "abort",
+    });
     expect(spawn).toHaveBeenCalledTimes(1);
   });
 
@@ -98,7 +118,7 @@ describe("managed binary call sites retry a locked executable", () => {
     vi.doMock("child_process", () => ({ spawn }));
     const { extractAudioMetadata } = await import("./ffprobe.js");
 
-    const meta = await extractAudioMetadata("/tmp/locked-ffprobe.wav");
+    const meta = await afterRetries(extractAudioMetadata("/tmp/locked-ffprobe.wav"));
 
     expect(meta.durationSeconds).toBe(1.25);
   });
@@ -109,7 +129,7 @@ describe("managed binary call sites retry a locked executable", () => {
     vi.doMock("child_process", () => ({ spawn }));
     const { detectGpuEncoder } = await import("./gpuEncoder.js");
 
-    await expect(detectGpuEncoder()).resolves.toBe("nvenc");
+    await expect(afterRetries(detectGpuEncoder())).resolves.toBe("nvenc");
     expect(spawn).toHaveBeenCalledTimes(4);
   });
 
@@ -118,7 +138,7 @@ describe("managed binary call sites retry a locked executable", () => {
     vi.doMock("node:child_process", () => ({ execFile }));
     const { isPsnrFilterAvailable } = await import("./psnrFilterAvailability.js");
 
-    await expect(isPsnrFilterAvailable()).resolves.toBe(true);
+    await expect(afterRetries(isPsnrFilterAvailable())).resolves.toBe(true);
     expect(execFile.run).toHaveBeenCalledTimes(2);
   });
 
@@ -127,7 +147,7 @@ describe("managed binary call sites retry a locked executable", () => {
     vi.doMock("node:child_process", () => ({ execFile }));
     const { psnrDb } = await import("./psnr.js");
 
-    await expect(psnrDb(Buffer.from("a"), Buffer.from("b"))).resolves.toBe(42.5);
+    await expect(afterRetries(psnrDb(Buffer.from("a"), Buffer.from("b")))).resolves.toBe(42.5);
     expect(execFile.run).toHaveBeenCalledTimes(2);
   });
 });

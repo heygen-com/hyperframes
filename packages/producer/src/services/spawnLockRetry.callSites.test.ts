@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import { setTimeout as realSleep } from "node:timers/promises";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -38,17 +39,33 @@ function spawnLockedOnce(stdout = "") {
   });
 }
 
+/** Steps the fake clock past the retry delays, yielding to real I/O, until `result` settles. */
+async function afterRetries<T>(result: Promise<T>): Promise<T> {
+  let settled = false;
+  result.then(
+    () => (settled = true),
+    () => (settled = true),
+  );
+  for (let step = 0; step < 400 && !settled; step++) {
+    await vi.advanceTimersByTimeAsync(250);
+    await realSleep(5);
+  }
+  return result;
+}
+
 describe("producer call sites retry a locked executable", () => {
   let dir: string;
 
   beforeEach(() => {
     vi.resetModules();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.spyOn(console, "log").mockImplementation(() => {});
     dir = mkdtempSync(join(tmpdir(), "hf-locked-spawn-"));
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.doUnmock("node:child_process");
     vi.restoreAllMocks();
     rmSync(dir, { recursive: true, force: true });
@@ -61,13 +78,15 @@ describe("producer call sites retry a locked executable", () => {
     vi.doMock("node:child_process", () => ({ spawn }));
     const { padOrTrimAudioToVideoFrameCount } = await import("./render/audioPadTrim.js");
 
-    const result = await padOrTrimAudioToVideoFrameCount({
-      videoPath: join(dir, "v.mp4"),
-      audioPath: join(dir, "a.aac"),
-      outputPath: join(dir, "o.aac"),
-      probeAudioInfo: () => Promise.resolve({ durationSeconds: 1 }),
-      runFfmpeg: () => Promise.resolve({ success: true }),
-    });
+    const result = await afterRetries(
+      padOrTrimAudioToVideoFrameCount({
+        videoPath: join(dir, "v.mp4"),
+        audioPath: join(dir, "a.aac"),
+        outputPath: join(dir, "o.aac"),
+        probeAudioInfo: () => Promise.resolve({ durationSeconds: 1 }),
+        runFfmpeg: () => Promise.resolve({ success: true }),
+      }),
+    );
 
     expect(result.error).toBeUndefined();
     expect(spawn).toHaveBeenCalledTimes(2);
@@ -88,7 +107,7 @@ describe("producer call sites retry a locked executable", () => {
     vi.doMock("node:child_process", () => ({ execFile }));
     const { readFfmpegVersion } = await import("./distributed/shared.js");
 
-    await expect(readFfmpegVersion()).resolves.toBe("ffmpeg version 9.0.2");
+    await expect(afterRetries(readFfmpegVersion())).resolves.toBe("ffmpeg version 9.0.2");
     expect(run).toHaveBeenCalledTimes(2);
   });
 });
