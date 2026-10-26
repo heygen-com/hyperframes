@@ -293,10 +293,7 @@ function resolveHfEnvOverrides(): readonly string[] {
     .slice(0, MAX_REPORTED_ENV_OVERRIDES);
 }
 
-/**
- * `--chroma-subsampling`. 4:4:4 needs SDR MP4 from the software encoder; any other
- * pairing would come back 4:2:0, so refuse it here (the producer refuses it too).
- */
+/** 4:4:4 needs SDR MP4 from the software encoder; the producer refuses other pairings too. */
 function parseChromaSubsamplingArg(
   args: RenderCommandArgs,
   format: RenderFormat,

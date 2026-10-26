@@ -310,10 +310,10 @@ export function distributedConfigFromRequest(
   if (options.hdrMode === "force-hdr") {
     throw new Error("Distributed render does not support force-hdr");
   }
-  // Chunk workers lock a 4:2:0 encoder triple into the plan and the CFR assemble
-  // re-encodes yuv420p, so a 4:4:4 request would come back 4:2:0.
   if (options.chromaSubsampling === "444") {
-    throw new Error("Distributed render does not support chromaSubsampling 444");
+    throw new Error(
+      "Distributed render does not support chromaSubsampling 444: chunk workers and the assemble encode 4:2:0",
+    );
   }
   return {
     fps: distributedFps(options.fps),

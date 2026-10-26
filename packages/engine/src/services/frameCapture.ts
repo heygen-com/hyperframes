@@ -978,23 +978,7 @@ async function waitForCloseWithTimeout(promise: Promise<unknown>): Promise<boole
   return !timedOut;
 }
 
-const DE_GATE_MESSAGES: Record<DrawElementGateReason, string> = {
-  swiftshader:
-    "SwiftShader (software rasterizer, no GPU egress to skip, drawElement is " +
-    "parity-or-slower; see fast-capture-limitations.md)",
-  webgl_unavailable:
-    "WebGL is unavailable (no GPU behind this browser, so it rasterizes in software and " +
-    "drawElement has no GPU egress to skip)",
-  beginframe_no_self_verify:
-    "this browser was launched for BeginFrame capture, whose self-verify truth page has no " +
-    "BeginFrame driver, so drawElement frames could not be checked",
-};
-
-/**
- * Whether capture clears the page background for a real alpha channel. PNG capture
- * is transparent by default; lossless opaque capture (4:4:4 MP4) opts out with
- * `transparentBackground: false` so its frames keep the page background.
- */
+/** PNG capture clears the page background unless `transparentBackground: false` (opaque 4:4:4). */
 export function wantsTransparentBackground(
   options: Pick<CaptureOptions, "format" | "transparentBackground">,
 ): boolean {
@@ -1044,9 +1028,7 @@ async function initDrawElementOrTransparentBackground(
   // help, and the safety-net blank guard also stands down under it so diagnostic
   // frames arrive unmodified.
   const forceDE = process.env.HF_FORCE_DRAWELEMENT === "1";
-  // drawElement's self-verification and worker-encode drain are JPEG-only, and its
-  // PNG path is built for transparent output; lossless opaque PNG uses the
-  // launch-mode capture instead.
+  // drawElement verification and worker-encode are JPEG-only; its PNG path is for alpha.
   const opaquePng =
     session.options.format === "png" && !wantsTransparentBackground(session.options);
   const useDrawElement =

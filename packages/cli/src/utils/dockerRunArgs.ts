@@ -56,7 +56,6 @@ export interface DockerRenderOptions {
   maxBitrate?: string;
   bufferSize?: string;
   videoFrameFormat?: "auto" | "jpg" | "png";
-  /** Forwarded as `--chroma-subsampling 444`; the 4:2:0 default adds no flag. */
   chromaSubsampling?: "420" | "444";
   pageMotionBlur?: "off";
   quiet: boolean;
