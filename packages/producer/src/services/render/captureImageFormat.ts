@@ -33,24 +33,17 @@ export function resolveCaptureJpegQuality(quality: EngineConfig["quality"]): num
 }
 
 /**
- * The capture fields every session of a render shares: format, JPEG quality and whether
- * the page background is cleared. The probe session is reused for capture, so the probe
- * and the main capture options both spread this rather than re-deriving it.
- *
- * Only 4:4:4 without alpha opts out of the transparent background: its PNG frames are
- * opaque MP4 input, and clearing html/body would turn an unstyled page black. Alpha
- * output and motion blur keep the engine default (transparent PNG).
+ * The capture fields every session of a render shares. The probe session is reused for
+ * capture, so the probe and the main capture options both spread this.
  */
 export function resolveCaptureSurface(
   input: Parameters<typeof resolveCaptureImageFormat>[0],
   quality: EngineConfig["quality"],
-): { format: "jpeg" | "png"; quality: number | undefined; transparentBackground?: false } {
+): { format: "jpeg" | "png"; quality: number | undefined; transparent: boolean } {
   const format = resolveCaptureImageFormat(input);
   return {
     format,
     quality: format === "png" ? undefined : resolveCaptureJpegQuality(quality),
-    ...(input.chromaSubsampling === "444" && !input.needsAlpha
-      ? { transparentBackground: false as const }
-      : {}),
+    transparent: input.needsAlpha,
   };
 }

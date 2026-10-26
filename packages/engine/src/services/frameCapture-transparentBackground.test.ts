@@ -1,24 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import {
-  createStaticVerificationPage,
-  wantsTransparentBackground,
-  type CaptureSession,
-} from "./frameCapture.js";
-
-describe("wantsTransparentBackground", () => {
-  it("keeps PNG capture transparent by default (alpha output, motion blur)", () => {
-    expect(wantsTransparentBackground({ format: "png" })).toBe(true);
-  });
-
-  it("keeps JPEG capture opaque by default", () => {
-    expect(wantsTransparentBackground({ format: "jpeg" })).toBe(false);
-    expect(wantsTransparentBackground({})).toBe(false);
-  });
-
-  it("lets lossless opaque PNG capture opt out of the transparent background", () => {
-    expect(wantsTransparentBackground({ format: "png", transparentBackground: false })).toBe(false);
-  });
-});
+import { createStaticVerificationPage, type CaptureSession } from "./frameCapture.js";
 
 describe("createStaticVerificationPage background", () => {
   function makeSession(options: Record<string, unknown>) {
@@ -58,7 +39,7 @@ describe("createStaticVerificationPage background", () => {
   });
 
   it("keeps the page background for lossless opaque PNG capture", async () => {
-    const { session, send } = makeSession({ format: "png", transparentBackground: false });
+    const { session, send } = makeSession({ format: "png", transparent: false });
     await createStaticVerificationPage(session);
     expect(clearsBackground(send)).toBe(false);
   });
