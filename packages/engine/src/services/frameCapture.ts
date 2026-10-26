@@ -981,13 +981,6 @@ async function waitForCloseWithTimeout(promise: Promise<unknown>): Promise<boole
   return !timedOut;
 }
 
-/** PNG capture clears the page background unless `transparentBackground: false` (opaque 4:4:4). */
-export function wantsTransparentBackground(
-  options: Pick<CaptureOptions, "format" | "transparentBackground">,
-): boolean {
-  return options.transparentBackground ?? options.format === "png";
-}
-
 /**
  * Post-readiness capture-surface init, shared by the screenshot and BeginFrame
  * init paths (called after the page is fully ready). When `useDrawElement` is
@@ -1032,8 +1025,7 @@ async function initDrawElementOrTransparentBackground(
   // frames arrive unmodified.
   const forceDE = process.env.HF_FORCE_DRAWELEMENT === "1";
   // drawElement verification and worker-encode are JPEG-only; its PNG path is for alpha.
-  const opaquePng =
-    session.options.format === "png" && !wantsTransparentBackground(session.options);
+  const opaquePng = session.options.format === "png" && !capturesAlpha(session.options);
   const useDrawElement =
     ((session.config?.useDrawElement ?? false) || forceDE) &&
     !supersampling &&
@@ -1042,7 +1034,7 @@ async function initDrawElementOrTransparentBackground(
   if ((session.config?.useDrawElement ?? false) && !supersampling && opaquePng) {
     session.deGateReason = "opaque_png";
     session.deFallbackTrigger = "opaque_png";
-    console.log(
+    console.error(
       "[engine] fast capture disabled for this render: lossless opaque PNG capture " +
         "uses the launch-mode capture path.",
     );
@@ -1067,7 +1059,7 @@ async function initDrawElementOrTransparentBackground(
     const gpuBackend = await detectGpuBackend(page);
     session.isSwiftShader = gpuBackend.isSwiftShader;
     session.gpuRenderer = classifyGpuRenderer(gpuBackend.renderer);
-    const transparent = wantsTransparentBackground(session.options);
+    const transparent = capturesAlpha(session.options);
     async function routeToFallback(): Promise<void> {
       session.captureMode = session.launchCaptureMode;
       if (transparent) {
@@ -1325,7 +1317,7 @@ async function initDrawElementOrTransparentBackground(
       }
       await finalizeDrawElementInit(session, page, logInitPhase, { transparent, forceDE });
     }
-  } else if (wantsTransparentBackground(session.options)) {
+  } else if (capturesAlpha(session.options)) {
     await initTransparentBackground(session.page);
   }
 }
@@ -1335,6 +1327,7 @@ function drawElementWorkerEncodeEligible(session: CaptureSession, transparent: b
   return (
     (session.config?.enableDrawElementWorkerEncode ?? false) &&
     !transparent &&
+    session.options.format !== "png" &&
     session.beginFrameTimeTicks === 0
   );
 }
@@ -1436,13 +1429,9 @@ async function finalizeDrawElementInit(
     }
   }
   // Worker-encode pipeline: macOS hardware GPU path only (syncToPaintEvent=true,
-  // beginFrameTimeTicks=0). Skip for BeginFrame (Linux/Docker), transparent output
-  // and any PNG capture: the drain only writes JPEG.
-  const workerEncodeEnabled =
-    (session.config?.enableDrawElementWorkerEncode ?? false) &&
-    !transparent &&
-    session.options.format !== "png" &&
-    session.beginFrameTimeTicks === 0;
+  // beginFrameTimeTicks=0). Skip for BeginFrame (Linux/Docker) and transparent
+  // (PNG) output — those use the existing synchronous path unchanged.
+  const workerEncodeEnabled = drawElementWorkerEncodeEligible(session, transparent);
   if (workerEncodeEnabled) {
     await initDrawElementWorkerEncode(page);
     session.workerEncodeEnabled = true;
@@ -1461,7 +1450,7 @@ export async function completeDeferredDrawElementInit(session: CaptureSession): 
   const logInitPhase = (phase: string) =>
     console.error(`[initSession:${session.captureMode}] ${phase} (deferred drawElement init)`);
   await finalizeDrawElementInit(session, page, logInitPhase, {
-    transparent: wantsTransparentBackground(session.options),
+    transparent: capturesAlpha(session.options),
     forceDE: process.env.HF_FORCE_DRAWELEMENT === "1",
   });
   session.deInitDeferred = false;
@@ -1505,7 +1494,7 @@ export async function createCaptureSession(
   const isLinux = process.platform === "linux";
   const forceScreenshot = config?.forceScreenshot ?? DEFAULT_CONFIG.forceScreenshot;
   const useDrawElement = config?.useDrawElement ?? false;
-  const drawElementTransparent = useDrawElement && wantsTransparentBackground(options);
+  const drawElementTransparent = useDrawElement && capturesAlpha(options);
   // drawElement and page-side shader compositing are mutually incompatible
   // capture strategies: drawElement reads the composition root's paint records
   // directly and skips the prepare→micro-screenshot→resolve protocol (the
@@ -4143,7 +4132,7 @@ export async function createStaticVerificationPage(session: CaptureSession): Pro
       page.evaluate(`document.fonts?.ready`),
       waitForOptionalTailwindReady(page, pageReadyTimeout),
     ]);
-    if (wantsTransparentBackground(session.options)) await initTransparentBackground(page);
+    if (capturesAlpha(session.options)) await initTransparentBackground(page);
     return page;
   } catch (error) {
     await page.close().catch(() => {});
