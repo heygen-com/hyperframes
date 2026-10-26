@@ -52,32 +52,35 @@ describe("resolveCaptureImageFormat", () => {
 describe("resolveCaptureSurface", () => {
   const base = { needsAlpha: false, motionBlur: undefined };
 
-  it("keeps the ordinary render on JPEG at the resolved quality with the engine background", () => {
-    expect(resolveCaptureSurface(base, "standard")).toEqual({ format: "jpeg", quality: 100 });
-    expect(resolveCaptureSurface(base, "draft")).toEqual({ format: "jpeg", quality: 80 });
-  });
-
-  it("captures 4:4:4 as opaque PNG so an unstyled page does not turn black", () => {
-    expect(resolveCaptureSurface({ ...base, chromaSubsampling: "444" }, "draft")).toEqual({
-      format: "png",
-      quality: undefined,
-      transparentBackground: false,
+  it("keeps the ordinary render on opaque JPEG at the resolved quality", () => {
+    expect(resolveCaptureSurface(base, "standard")).toEqual({
+      format: "jpeg",
+      quality: 100,
+      transparent: false,
+    });
+    expect(resolveCaptureSurface(base, "draft")).toEqual({
+      format: "jpeg",
+      quality: 80,
+      transparent: false,
     });
   });
 
-  it("leaves alpha output and motion blur on the transparent PNG default", () => {
-    // No transparentBackground key means the engine falls back to format === "png".
-    expect(resolveCaptureSurface({ ...base, needsAlpha: true }, "standard")).toEqual({
-      format: "png",
-      quality: undefined,
-    });
-    expect(resolveCaptureSurface({ ...base, motionBlur: {} }, "standard")).toEqual({
-      format: "png",
-      quality: undefined,
-    });
+  it("captures 4:4:4 and motion blur as opaque PNG so the page background stays", () => {
+    const opaquePng = { format: "png", quality: undefined, transparent: false };
+    expect(resolveCaptureSurface({ ...base, chromaSubsampling: "444" }, "draft")).toEqual(
+      opaquePng,
+    );
+    expect(resolveCaptureSurface({ ...base, motionBlur: {} }, "standard")).toEqual(opaquePng);
+  });
+
+  it("captures alpha output as transparent PNG", () => {
+    const transparentPng = { format: "png", quality: undefined, transparent: true };
+    expect(resolveCaptureSurface({ ...base, needsAlpha: true }, "standard")).toEqual(
+      transparentPng,
+    );
     expect(
       resolveCaptureSurface({ ...base, needsAlpha: true, chromaSubsampling: "444" }, "standard"),
-    ).toEqual({ format: "png", quality: undefined });
+    ).toEqual(transparentPng);
   });
 });
 
