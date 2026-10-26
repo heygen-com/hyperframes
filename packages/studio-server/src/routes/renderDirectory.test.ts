@@ -287,6 +287,28 @@ describe("directory (PNG-sequence) renders", () => {
       expect(existsSync(join(rendersDir, `${jobId}.mp4`))).toBe(true);
     });
 
+    it("never deletes the renders directory through dot or empty job ids", async () => {
+      const { app, rendersDir } = fixture();
+      const { jobId } = await (await post(app, { format: "png-sequence" })).json();
+
+      // `.`/`..`/empty are normalized away by the router (404); forms that
+      // reach the handler decoded (`../`, `..\`) are refused there (403).
+      // Whichever layer answers, the renders directory must survive.
+      for (const path of [
+        "/render/.",
+        "/render/..",
+        "/render/",
+        "/render/%2e",
+        "/render/%2e%2e",
+        "/render/%2e%2e%2f",
+        "/render/%2e%2e%5c",
+      ]) {
+        expect([403, 404]).toContain((await app.request(path, { method: "DELETE" })).status);
+      }
+      expect(existsSync(rendersDir)).toBe(true);
+      expect(existsSync(join(rendersDir, jobId, "frame_000000.png"))).toBe(true);
+    });
+
     it("returns 409 while the render is in flight, so it cannot commit and reappear", async () => {
       let state: RenderJobState | undefined;
       const { app, rendersDir } = fixture((opts) => {

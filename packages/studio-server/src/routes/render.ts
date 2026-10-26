@@ -104,6 +104,11 @@ function resolveRenderArtifacts(
             name: `${jobId}${extension}`,
           }));
     for (const { kind, name } of names) {
+      // Defense in depth: a candidate always names an entry inside the
+      // directory — never the directory itself or its parent — so a delete
+      // can never remove `renders/` wholesale, whatever the route allowed
+      // through.
+      if (name === "" || name === "." || name === "..") return null;
       const path = resolveWithinProject(directory, name);
       if (!path) return null;
       artifacts.push({ kind, path, candidatePath: join(directory, name) });
@@ -449,7 +454,18 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
   // Delete render
   api.delete("/render/:jobId", async (c) => {
     const { jobId } = c.req.param();
-    if (jobId.includes("/") || jobId.includes("\\") || jobId.includes("\0")) {
+    // `.` and `..` would name the renders directory itself (or its parent)
+    // as the directory candidate, and an empty id has no artifact; refuse
+    // them before any candidate path is built. The router normalizes the
+    // raw forms away, but the handler must not trust that.
+    if (
+      jobId === "" ||
+      jobId === "." ||
+      jobId === ".." ||
+      jobId.includes("/") ||
+      jobId.includes("\\") ||
+      jobId.includes("\0")
+    ) {
       return c.json({ error: "forbidden" }, 403);
     }
     // While rendering, the producer writes to a hidden staging sibling and
