@@ -1,8 +1,4 @@
-/**
- * Fail-fast gates for `chromaSubsampling: "444"`. Every stage must keep full-resolution colour:
- * the capture (PNG, see `resolveCaptureSurface`) and the encode (libx264 yuv444p). A stage that
- * quietly dropped back to 4:2:0 would ship a "4:4:4" master carrying 4:2:0 colour.
- */
+/** Fail-fast gates for `chromaSubsampling: "444"`: refuse what would ship 4:2:0 colour. */
 
 import type { ChromaSubsampling } from "@hyperframes/engine";
 

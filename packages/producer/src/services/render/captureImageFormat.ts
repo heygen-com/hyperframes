@@ -9,9 +9,7 @@ import type { ChromaSubsampling, EngineConfig, MotionBlurOptions } from "@hyperf
  * - the output container keeps alpha, which JPEG cannot carry;
  * - motion blur is on, because the sub-frame samples are averaged pixel by pixel and
  *   JPEG samples would be averaged after a lossy quantization;
- * - 4:4:4 output, because Chrome's quality-100 JPEG is already chroma-subsampled 4:2:0
- *   on beginFrame and screenshot capture, and drawElement can fall back to screenshot
- *   mid-render, so PNG is the only capture that keeps full-resolution colour.
+ * - 4:4:4 output, because Chrome's JPEG capture is already 4:2:0.
  *
  * Every consumer of "is this render PNG" reads the resolved capture format rather than
  * re-deriving it from one of the reasons.

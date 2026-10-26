@@ -1,8 +1,5 @@
-// `chromaSubsampling` reaches both halves of the real orchestrator: a "444" render is encoded
-// yuv444p and captured at full chroma resolution, and the default stays yuv420p. The helper tests
-// can't catch the option being dropped before the encoder preset or the capture surface; a JPEG
-// capture would still encode as yuv444p but carry 4:2:0 colour. Needs Chrome + ffmpeg:
-// integration lane.
+// A "444" render reaches both the encoder (yuv444p) and the capture (full-resolution chroma)
+// through the real orchestrator. Needs Chrome + ffmpeg: integration lane.
 
 import { spawnSync } from "node:child_process";
 import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
