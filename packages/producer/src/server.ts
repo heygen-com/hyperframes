@@ -431,8 +431,6 @@ function validateRenderOverrides(body: Record<string, unknown>): string | undefi
   ) {
     return "outputDynamicRange and legacy hdrMode must describe the same output policy";
   }
-  // parseEncoderOptions only sees the legacy hdrMode; HDR requested through
-  // outputDynamicRange would otherwise pass and fail later in the render.
   if (body.chromaSubsampling === "444" && outputDynamicRange === "hdr") {
     return 'chromaSubsampling "444" is SDR only, not outputDynamicRange "hdr"';
   }
