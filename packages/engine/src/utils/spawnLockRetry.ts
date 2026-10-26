@@ -9,9 +9,14 @@
 const LOCKED_EXECUTABLE_CODES = new Set(["EBUSY", "ETXTBSY"]);
 const RETRY_DELAYS_MS = [250, 500];
 
+// Errors this module has already given up on. An outer retry wrapper must not
+// treat them as a fresh lock, or nested wrappers multiply the attempts.
+const exhaustedErrors = new WeakSet<object>();
+
 function isLockedExecutableSpawn(error: unknown): error is NodeJS.ErrnoException {
   return (
     error instanceof Error &&
+    !exhaustedErrors.has(error) &&
     "syscall" in error &&
     error.syscall === "spawn" &&
     "code" in error &&
@@ -29,7 +34,7 @@ export async function retrySpawnWhileLocked<T>(binary: string, run: () => Promis
       if (!isLockedExecutableSpawn(error)) throw error;
       const delayMs = RETRY_DELAYS_MS[attempt];
       if (delayMs === undefined) {
-        throw Object.assign(
+        const exhausted = Object.assign(
           new Error(
             `[FFmpeg] Could not start "${binary}" (${error.code}) after ${attempt + 1} attempts: ` +
               "another process kept the executable open, often antivirus scanning it.",
@@ -37,6 +42,8 @@ export async function retrySpawnWhileLocked<T>(binary: string, run: () => Promis
           ),
           { code: error.code, errno: error.errno, syscall: error.syscall },
         );
+        exhaustedErrors.add(exhausted);
+        throw exhausted;
       }
       console.warn(
         `[FFmpeg] "${binary}" is locked (${error.code}); retrying in ${delayMs} ms (attempt ${attempt + 2}).`,

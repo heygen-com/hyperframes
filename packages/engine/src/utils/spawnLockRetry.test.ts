@@ -68,6 +68,25 @@ describe("retrySpawnWhileLocked", () => {
     expect(run).toHaveBeenCalledTimes(3);
   });
 
+  it("does not restart an inner retry that already gave up", async () => {
+    const inner = vi.fn(async (): Promise<string> => {
+      throw spawnError("EBUSY");
+    });
+    const outer = vi.fn(() =>
+      retrySpawnWhileLocked("C:/ff/ffmpeg.exe", () =>
+        retrySpawnWhileLocked("C:/ff/ffprobe.exe", inner),
+      ),
+    );
+
+    const result = outer();
+    const settled = expect(result).rejects.toMatchObject({ code: "EBUSY" });
+    await vi.runAllTimersAsync();
+
+    await settled;
+    expect(inner).toHaveBeenCalledTimes(3);
+    expect(outer).toHaveBeenCalledTimes(1);
+  });
+
   it.each([
     ["EPERM, which an ACL that denies execute also raises", spawnError("EPERM")],
     ["ENOENT", spawnError("ENOENT")],
