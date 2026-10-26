@@ -104,6 +104,12 @@
       "node": "./dist/helpers/encoderOptions.js",
       "import": "./src/helpers/encoderOptions.ts",
       "types": "./src/helpers/encoderOptions.ts"
+    },
+    "./media-range": {
+      "bun": "./src/helpers/mediaRange.ts",
+      "node": "./dist/helpers/mediaRange.js",
+      "import": "./src/helpers/mediaRange.ts",
+      "types": "./src/helpers/mediaRange.ts"
     }
   },
   "publishConfig": {
@@ -169,6 +175,10 @@
       "./encoder-options": {
         "import": "./dist/helpers/encoderOptions.js",
         "types": "./dist/helpers/encoderOptions.d.ts"
+      },
+      "./media-range": {
+        "import": "./dist/helpers/mediaRange.js",
+        "types": "./dist/helpers/mediaRange.d.ts"
       }
     },
     "main": "./dist/index.js",
