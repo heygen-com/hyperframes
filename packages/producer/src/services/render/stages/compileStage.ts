@@ -154,11 +154,8 @@ function adaptAspectAgnosticResolution(
 }
 
 /**
- * 4:4:4 output captures lossless opaque PNG. drawElement's self-verification and
- * worker-encode drain are JPEG-only and its PNG path is built for transparent
- * output, so the render uses the platform's baseline capture instead. No R&D bypass:
- * a drawElement JPEG fallback would ship 4:2:0 colour in a 4:4:4 file.
- * Returns the compile gate that applies after this check.
+ * 4:4:4 captures opaque PNG, which drawElement cannot verify or worker-encode (JPEG-only), so it
+ * turns drawElement off. Returns the compile gate that applies after this check.
  */
 function applyChroma444Gate(
   cfg: EngineConfig,

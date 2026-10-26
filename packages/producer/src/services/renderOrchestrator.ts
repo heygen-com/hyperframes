@@ -444,14 +444,7 @@ export interface RenderConfig {
   maxBitrate?: string;
   /** Rate-cap buffer; defaults to twice `maxBitrate`. */
   bufferSize?: string;
-  /**
-   * Chroma subsampling of the MP4 output. Defaults to `"420"` (unchanged behavior).
-   * `"444"` encodes libx264 yuv444p (High 4:4:4 Predictive) and captures every frame
-   * as PNG, because Chrome's quality-100 JPEG is already 4:2:0 on beginFrame and
-   * screenshot capture; drawElement is turned off for the render. SDR MP4 with the
-   * software encoder only, and many players cannot decode 4:4:4. Distributed renders
-   * reject it.
-   */
+  /** MP4 chroma, default `"420"`. `"444"` captures PNG and encodes yuv444p (SDR, software). */
   chromaSubsampling?: ChromaSubsampling;
   /**
    * Source-video frame extraction format. Defaults to `"auto"`, which preserves
