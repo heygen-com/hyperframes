@@ -222,31 +222,69 @@ describe("directory (PNG-sequence) renders", () => {
       const outside = mkdtempSync(join(tmpdir(), "hf-render-outside-"));
       roots.push(outside);
       writeFileSync(join(outside, "keep.txt"), "keep");
-      writeFileSync(join(rendersDir, "evil.meta.json"), "{}");
+      // Only a job the server knows to be a directory render resolves the
+      // bare directory candidate, so the symlink must sit on a posted one.
+      const { jobId } = await (await post(app, { format: "png-sequence" })).json();
+      rmSync(join(rendersDir, jobId), { recursive: true, force: true });
       try {
-        symlinkSync(outside, join(rendersDir, "evil"), "dir");
+        symlinkSync(outside, join(rendersDir, jobId), "dir");
       } catch {
         context.skip();
         return;
       }
+      writeFileSync(join(rendersDir, `${jobId}.meta.json`), "{}");
 
-      expect((await app.request("/render/evil", { method: "DELETE" })).status).toBe(403);
+      expect((await app.request(`/render/${jobId}`, { method: "DELETE" })).status).toBe(403);
       expect(readFileSync(join(outside, "keep.txt"), "utf-8")).toBe("keep");
-      expect(existsSync(join(rendersDir, "evil.meta.json"))).toBe(true);
+      expect(existsSync(join(rendersDir, `${jobId}.meta.json`))).toBe(true);
     });
 
     it("does not follow an in-project symlinked directory into a recursive delete", async (context) => {
       const { app, rendersDir } = fixture();
+      const { jobId } = await (await post(app, { format: "png-sequence" })).json();
+      rmSync(join(rendersDir, jobId), { recursive: true, force: true });
       const target = join(rendersDir, "real");
       writeSequence(target);
       try {
-        symlinkSync(target, join(rendersDir, "alias"), "dir");
+        symlinkSync(target, join(rendersDir, jobId), "dir");
       } catch {
         context.skip();
         return;
       }
-      expect((await app.request("/render/alias", { method: "DELETE" })).status).toBe(200);
+      expect((await app.request(`/render/${jobId}`, { method: "DELETE" })).status).toBe(200);
       expect(existsSync(join(target, "frame_000000.png"))).toBe(true);
+    });
+
+    it("deletes a file render without touching a same-stemmed directory render", async () => {
+      const { app, rendersDir } = fixture((opts) => {
+        writeFileSync(opts.outputPath, "mp4");
+        return {
+          id: opts.jobId,
+          status: "complete",
+          progress: 100,
+          outputPath: opts.outputPath,
+        };
+      });
+      const { jobId } = await (await post(app, { format: "mp4" })).json();
+      // A same-stemmed directory render (e.g. a CLI PNG sequence named the
+      // same) must not lose its frames when the file render is deleted.
+      writeSequence(join(rendersDir, jobId));
+      writeFileSync(join(rendersDir, `${jobId}.meta.json`), '{"status":"complete"}');
+
+      expect((await app.request(`/render/${jobId}`, { method: "DELETE" })).status).toBe(200);
+      expect(existsSync(join(rendersDir, `${jobId}.mp4`))).toBe(false);
+      expect(existsSync(join(rendersDir, `${jobId}.meta.json`))).toBe(false);
+      expect(existsSync(join(rendersDir, jobId, "frame_000000.png"))).toBe(true);
+    });
+
+    it("deletes a directory render without touching a same-stemmed file render", async () => {
+      const { app, rendersDir } = fixture();
+      const { jobId } = await (await post(app, { format: "png-sequence" })).json();
+      writeFileSync(join(rendersDir, `${jobId}.mp4`), "mp4");
+
+      expect((await app.request(`/render/${jobId}`, { method: "DELETE" })).status).toBe(200);
+      expect(existsSync(join(rendersDir, jobId))).toBe(false);
+      expect(existsSync(join(rendersDir, `${jobId}.mp4`))).toBe(true);
     });
 
     it("returns 409 while the render is in flight, so it cannot commit and reappear", async () => {

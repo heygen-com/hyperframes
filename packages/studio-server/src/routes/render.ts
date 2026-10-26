@@ -83,17 +83,26 @@ interface RenderArtifact {
 function resolveRenderArtifacts(
   directories: readonly string[],
   jobId: string,
+  kind: RenderArtifactKind,
 ): RenderArtifact[] | null {
   const artifacts: RenderArtifact[] = [];
   for (const directory of new Set(directories)) {
     if (!existsSync(directory)) continue;
-    const names: Array<{ kind: RenderArtifactKind; name: string }> = [
-      { kind: "directory", name: jobId },
-      ...RENDER_ARTIFACT_EXTENSIONS.map((extension) => ({
-        kind: "file" as const,
-        name: `${jobId}${extension}`,
-      })),
-    ];
+    // A job only ever owns artifacts of its own kind. The bare job-id entry is
+    // a candidate only for a directory render — a same-stemmed directory
+    // beside a file render (`intro/` next to `intro.mp4`) is another render's
+    // frames — and a directory render has no suffixed outputs, so those
+    // candidates are dropped for it.
+    const names: Array<{ kind: RenderArtifactKind; name: string }> =
+      kind === "directory"
+        ? [
+            { kind: "directory", name: jobId },
+            { kind: "file", name: `${jobId}.meta.json` },
+          ]
+        : RENDER_ARTIFACT_EXTENSIONS.map((extension) => ({
+            kind: "file" as const,
+            name: `${jobId}${extension}`,
+          }));
     for (const { kind, name } of names) {
       const path = resolveWithinProject(directory, name);
       if (!path) return null;
@@ -449,8 +458,13 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     if (renderJobs.get(jobId)?.status === "rendering") {
       return c.json({ error: "render in progress; cancel it first" }, 409);
     }
+    // Only a directory render owns the bare job-id directory; every other
+    // job — including one the server has never seen — resolves file
+    // candidates only, so an unknown id can never trigger a recursive
+    // removal.
+    const kind: RenderArtifactKind = renderJobs.get(jobId)?.kind ?? "file";
     const directories = await renderDirectories(jobId);
-    const artifacts = resolveRenderArtifacts(directories, jobId);
+    const artifacts = resolveRenderArtifacts(directories, jobId, kind);
     if (!artifacts) return c.json({ error: "forbidden" }, 403);
 
     for (const artifact of artifacts) deleteRenderArtifact(artifact);
