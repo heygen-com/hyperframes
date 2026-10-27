@@ -1264,7 +1264,14 @@ describe("system-primary font normalization", () => {
 </html>`,
     );
 
-    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    const compiled = await compileForRender(
+      projectDir,
+      join(projectDir, "index.html"),
+      projectDir,
+      {
+        allowSystemFontCapture: false,
+      },
+    );
 
     expect(() => validateNoSystemFonts(compiled.html)).not.toThrow();
     const compact = compiled.html.replace(/\s+/g, "");
@@ -1308,12 +1315,36 @@ describe("system-primary font normalization", () => {
 </html>`,
     );
 
-    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    const compiled = await compileForRender(
+      projectDir,
+      join(projectDir, "index.html"),
+      projectDir,
+      {
+        allowSystemFontCapture: false,
+      },
+    );
 
     expect(() => validateNoSystemFonts(compiled.html)).not.toThrow();
     expect(compiled.html.replace(/\s+/g, "")).toContain(
       'font-family:var(--font-display,Inter,-apple-system,BlinkMacSystemFont,"HelveticaNeue",Arial,sans-serif)',
     );
+  });
+
+  it("keeps a system primary stack in a local render, where host fonts are captured as in the preview", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-local-system-font-"));
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!doctype html><html><head><style>.n { font-family: system-ui, -apple-system, sans-serif; }</style></head>
+<body><div data-composition-id="root" data-width="640" data-height="360" data-duration="1"
+  style="font-family: -apple-system, sans-serif"><span class="n">1,234.5</span></div></body></html>`,
+    );
+
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+
+    const compact = compiled.html.replace(/\s+/g, "");
+    expect(compact).toContain("font-family:system-ui,-apple-system,sans-serif");
+    expect(compact).toContain("font-family:-apple-system,sans-serif");
+    expect(compact).not.toContain("Inter,");
   });
 });
 

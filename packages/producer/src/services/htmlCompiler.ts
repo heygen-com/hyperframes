@@ -2102,11 +2102,13 @@ export async function compileForRender(
   const usesThreeDTransforms = detectThreeDTransformUsage(sanitizedHtml);
   const hasAncestorBackgroundImage = detectAncestorBackgroundImage(sanitizedHtml);
 
-  const normalizedFontHtml = normalizeSystemFontPrimaryFamilies(
-    injectTextRenderingRule(
-      coalesceHeadStylesAndBodyScripts(promoteCssImportsToLinkTags(sanitizedHtml)),
-    ),
+  const fontHtml = injectTextRenderingRule(
+    coalesceHeadStylesAndBodyScripts(promoteCssImportsToLinkTags(sanitizedHtml)),
   );
+  const hostFontsMissing = options.allowSystemFontCapture === false;
+  const normalizedFontHtml = hostFontsMissing
+    ? normalizeSystemFontPrimaryFamilies(fontHtml)
+    : fontHtml;
 
   const coalescedHtml = await injectDeterministicFontFaces(normalizedFontHtml, {
     logger: defaultLogger,

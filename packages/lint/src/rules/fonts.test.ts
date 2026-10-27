@@ -125,6 +125,33 @@ describe("font rules", () => {
     });
   });
 
+  describe("system_font_inter_in_cloud", () => {
+    it("says a system font stack renders in Inter in the cloud, on local lint too", async () => {
+      const findings = await findByCode(
+        `<div data-composition-id="test"><style>
+        .n { font-family: system-ui, -apple-system, sans-serif; }
+      </style></div>`,
+        "system_font_inter_in_cloud",
+      );
+      expect(findings).toHaveLength(1);
+      expect(findings[0]?.severity).toBe("warning");
+      expect(findings[0]?.message).toContain("system-ui, -apple-system, sans-serif");
+      expect(findings[0]?.message).toContain("Inter on cloud renders");
+      expect(findings[0]?.line).toBe(2);
+    });
+
+    it.each(['"Montserrat", system-ui, sans-serif', "inherit"])(
+      "stays quiet when the first family is not a system font: %s",
+      async (stack) => {
+        const findings = await findByCode(
+          `<div data-composition-id="test"><style>.n { font-family: ${stack}; }</style></div>`,
+          "system_font_inter_in_cloud",
+        );
+        expect(findings).toHaveLength(0);
+      },
+    );
+  });
+
   describe("font_family_without_font_face", () => {
     it.each([
       ':root { --font-family: "Brand Heading"; } h1 { font-family: var(--font-family); }',
