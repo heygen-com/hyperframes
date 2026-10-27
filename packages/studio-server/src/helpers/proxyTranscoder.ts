@@ -1103,7 +1103,7 @@ export async function resolveProxies(
 
 const stillsInFlight = new Map<string, Promise<string>>();
 
-/** One JPEG of the source at `atSeconds` (to a tenth) sized like the copy's box: what the preview shows while the copy is made. */
+/** One JPEG of the source at a time (to a tenth of a second), sized like the copy's box. */
 export function resolveStill(
   projectDir: string,
   absoluteSourcePath: string,
