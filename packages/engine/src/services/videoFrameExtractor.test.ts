@@ -2371,6 +2371,31 @@ describe.skipIf(!HAS_FFMPEG)("frame sampling at the output frame rate", () => {
     30_000,
   );
 
+  it.each([
+    { name: "one keyframe", keyint: "infinite", processes: 1 },
+    { name: "a keyframe every second", keyint: "10", processes: 2 },
+  ])(
+    "runs $processes ffmpeg process(es) for a range past one segment ($name)",
+    async ({ keyint, processes }) => {
+      const source = join(FIXTURE_DIR, `long-gop-${keyint}.mp4`);
+      const synth = await runFfmpeg([
+        ...["-y", "-hide_banner", "-loglevel", "error", "-f", "lavfi"],
+        ...["-i", `testsrc=s=${WIDTH}x${HEIGHT}:r=10:d=260`, "-pix_fmt", "yuv420p"],
+        ...["-x264-params", `keyint=${keyint}:scenecut=0`, source],
+      ]);
+      if (!synth.success) throw new Error(`long gop fixture synthesis failed: ${synth.stderr}`);
+      vi.mocked(runFfmpeg).mockClear();
+      const extracted = await extractVideoFramesRange(source, `segments-${keyint}`, 125, 130, {
+        fps: 1,
+        outputDir: FIXTURE_DIR,
+        format: "png",
+      });
+      expect(extracted.totalFrames).toBe(130);
+      expect(vi.mocked(runFfmpeg)).toHaveBeenCalledTimes(processes);
+    },
+    60_000,
+  );
+
   it("stops a run that writes no new frame for the stall timeout", async () => {
     // stdin stays open and empty, so ffmpeg waits for its first frame forever.
     const stalled = await runFfmpeg(
