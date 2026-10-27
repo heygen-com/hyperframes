@@ -116,11 +116,23 @@ function noteRead(filePath: string): void {
   bundleReads.getStore()?.(filePath);
 }
 
+/** A project file's text as a browser reads it: a byte order mark names its encoding. Windows PowerShell 5.1 writes
+ * redirected and Set-Content files as UTF-16LE with one; read as UTF-8 that text is half NUL bytes. */
+function readText(filePath: string): string {
+  const bytes = readFileSync(filePath);
+  if (bytes[0] === 0xff && bytes[1] === 0xfe) return bytes.subarray(2).toString("utf16le");
+  if (bytes[0] === 0xfe && bytes[1] === 0xff)
+    return Buffer.from(bytes.subarray(2, bytes.length - (bytes.length % 2)))
+      .swap16()
+      .toString("utf16le");
+  return bytes.toString("utf-8").replace(/^\uFEFF/, "");
+}
+
 function safeReadFile(filePath: string): string | null {
   noteRead(filePath);
   if (!existsSync(filePath)) return null;
   try {
-    return readFileSync(filePath, "utf-8");
+    return readText(filePath);
   } catch {
     return null;
   }
@@ -1069,7 +1081,7 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     throw new Error(`${entryFile} not found in project directory`);
   }
   noteRead(indexPath);
-  const entryHtml = readFileSync(indexPath, "utf-8");
+  const entryHtml = readText(indexPath);
   const mountedShell = readMountedSceneShell(projectDir, entryFile, entryHtml);
   const sourceDir = mountedShell ? projectDir : dirname(indexPath);
   // Every mount of a sub-composition asks again for each of its url()s; isSafePath realpaths the whole chain.
