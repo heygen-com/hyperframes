@@ -35,7 +35,6 @@ import { audioFailureDiagnostics } from "@hyperframes/engine";
 import {
   existsSync,
   mkdirSync,
-  readFileSync,
   readdirSync,
   rmSync,
   statSync,
@@ -60,6 +59,7 @@ import {
 import { HF_AUDIO_GROUP_TAG } from "@hyperframes/core/audio-groups";
 import { extractStandaloneEntryFromIndex, isTemplateEntry } from "@hyperframes/core/compiler";
 import { HTML_BODY_CSS_HEIGHT_FIRST_RE, HTML_BODY_CSS_WIDTH_FIRST_RE } from "@hyperframes/parsers";
+import { readTextFile } from "@hyperframes/parsers/asset-resolution";
 import {
   type EngineConfig,
   extractMediaMetadata,
@@ -3213,7 +3213,7 @@ async function executeRenderPipeline(input: {
     // If entryFile is a sub-composition (<template> wrapper), reuse the real
     // index.html shell and isolate the matching host instead of fabricating
     // a new standalone document.
-    const rawEntry = readFileSync(htmlPath, "utf-8");
+    const rawEntry = readTextFile(htmlPath);
     if (entryFile !== "index.html" && isTemplateEntry(rawEntry)) {
       const wrapperPath = join(workDir, "standalone-entry.html");
       const projectIndexPath = join(projectDir, "index.html");
@@ -3223,7 +3223,7 @@ async function executeRenderPipeline(input: {
         );
       }
       const standaloneHtml = extractStandaloneEntryFromIndex(
-        readFileSync(projectIndexPath, "utf-8"),
+        readTextFile(projectIndexPath),
         entryFile,
         rawEntry,
       );
