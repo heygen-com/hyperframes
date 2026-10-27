@@ -1477,6 +1477,12 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       variant?: "h264" | "vp8",
       box?: { width: number; height: number },
     ) => Promise<string>;
+    resolveStillImpl?: (
+      projectDir: string,
+      absoluteSourcePath: string,
+      at: number,
+      box?: { width: number; height: number },
+    ) => Promise<string>;
     scanMapImpl?: ScanMapImpl;
     probeAssetCodecImpl?: () => Promise<{
       codecName: string;
@@ -1502,6 +1508,11 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       );
     vi.doMock("../helpers/proxyTranscoder.js", () => ({
       resolveProxy,
+      resolveStill:
+        opts.resolveStillImpl ??
+        (async () => {
+          throw new Error("no resolveStill impl configured for this test");
+        }),
       waitForProxy,
       ProxyWaitTimeoutError,
       PROXY_PENDING_RETRY_AFTER_SECONDS,
@@ -1645,6 +1656,41 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
         undefined,
         { priority: true },
       );
+    });
+
+    it("serves one frame of the video as a JPEG while its copy is made, behind the same gate", async () => {
+      const projectDir = createProjectDir();
+      writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
+      const resolveStillMock = vi.fn(async () => {
+        const stillPath = join(projectDir, "still.jpg");
+        writeFileSync(stillPath, "jpegbytes");
+        return stillPath;
+      });
+      const { registerPreviewRoutes: register } = await loadPreviewModule({
+        resolveStillImpl: resolveStillMock,
+      });
+      const app = new Hono();
+      register(app, createAdapter(projectDir));
+      const url = "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264";
+
+      const still = await app.request(`${url}&hf-proxy-still=12.34`);
+      expect(still.status).toBe(200);
+      expect(still.headers.get("Content-Type")).toBe("image/jpeg");
+      expect(await still.text()).toBe("jpegbytes");
+      expect(resolveStillMock).toHaveBeenCalledWith(
+        projectDir,
+        join(projectDir, "clip.mp4"),
+        12.34,
+        undefined,
+      );
+
+      expect((await app.request(`${url}&hf-proxy-still=-1`)).status).toBe(404);
+      expect((await app.request(`${url}&hf-proxy-still=abc`)).status).toBe(404);
+      expect(
+        (await app.request("http://localhost/projects/demo/preview/clip.mp4?hf-proxy-still=1"))
+          .status,
+      ).toBe(404);
+      expect(resolveStillMock).toHaveBeenCalledTimes(1);
     });
 
     it("honors If-None-Match on a repeat request with a 304, without re-invoking resolveProxy", async () => {

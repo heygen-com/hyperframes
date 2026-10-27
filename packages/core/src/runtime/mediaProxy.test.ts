@@ -651,6 +651,39 @@ describe("waiting for the proxy copy", () => {
     );
   });
 
+  it("stands in the video's own frame as its poster while the copy is made, then drops it", async () => {
+    vi.useFakeTimers();
+    stubProxyRoute(202, 202, 206);
+    const active = createVideo("/active.mp4");
+    const idle = createVideo("/idle.mp4");
+    const clip = (el: HTMLVideoElement) => ({
+      el,
+      start: 0,
+      mediaStart: 4,
+      duration: 10,
+      end: 10,
+      volume: null,
+      playbackRate: 1,
+      loop: false,
+      sourceDuration: null,
+    });
+    syncRuntimeMedia({ clips: [clip(active)], timeSeconds: 1, playing: false, playbackRate: 1 });
+    swapToProxy(active, HEVC_ENTRY, "proactive");
+    swapToProxy(idle, HEVC_ENTRY, "proactive");
+    await vi.advanceTimersByTimeAsync(0);
+
+    const poster = new URL(active.getAttribute("poster")!, document.baseURI);
+    expect(poster.pathname).toBe("/active.mp4");
+    expect(poster.searchParams.get("hf-proxy")).toBe("h264");
+    expect(poster.searchParams.get("hf-proxy-still")).toBe("5.0");
+    expect(idle.hasAttribute("poster")).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    active.dispatchEvent(new Event("loadeddata"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(active.hasAttribute("poster")).toBe(false);
+  });
+
   it("ignores the original's own metadata and error while the copy is being made", async () => {
     vi.useFakeTimers();
     window.__HF_MEDIA_CODEC_MAP__ = {};

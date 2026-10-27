@@ -1101,6 +1101,57 @@ export async function resolveProxies(
   return results;
 }
 
+const stillsInFlight = new Map<string, Promise<string>>();
+
+/** One JPEG of the source at `atSeconds` (to a tenth) sized like the copy's box: what the preview shows while the copy is made. */
+export function resolveStill(
+  projectDir: string,
+  absoluteSourcePath: string,
+  atSeconds: number,
+  box?: PreviewProxyBox,
+): Promise<string> {
+  const source = canonicalizeProxySource(projectDir, absoluteSourcePath);
+  const at = Math.max(0, Math.round(atSeconds * 10) / 10);
+  const key = fastCopyKey(source.sourcePath, PROXY_PARAMS_VERSION, `still@${at}`, box);
+  const cachePath = join(source.projectDir, CACHE_DIR_NAME, `${key}.jpg`);
+  if (existsSync(cachePath)) return Promise.resolve(cachePath);
+  const shared = stillsInFlight.get(cachePath);
+  if (shared) return shared;
+  const made = makeStill(source, at, box, cachePath).finally(() =>
+    stillsInFlight.delete(cachePath),
+  );
+  stillsInFlight.set(cachePath, made);
+  return made;
+}
+
+async function makeStill(
+  source: CanonicalProxySource,
+  at: number,
+  box: PreviewProxyBox | undefined,
+  cachePath: string,
+): Promise<string> {
+  const ffmpegPath = findFfBinary("ffmpeg", { configuredMustExist: true });
+  if (!ffmpegPath) throw new FfmpegUnavailableError();
+  const filter = await buildVideoFilter(
+    ffmpegPath,
+    source.sourcePath,
+    await probeMediaMetadata(source.sourcePath),
+    false,
+    box,
+  );
+  mkdirWithinProject(source.projectDir, dirname(cachePath));
+  const tempPath = join(dirname(cachePath), `.tmp-${randomUUID()}-${basename(cachePath)}`);
+  try {
+    const args = ["-y", "-ss", String(at), "-i", source.sourcePath, "-map", "0:V:0"];
+    args.push("-frames:v", "1", "-vf", filter, "-pix_fmt", "yuvj420p", "-q:v", "3", tempPath);
+    await spawnFfmpeg(ffmpegPath, args, TRANSCODE_STALL_MS, new AbortController().signal);
+    renameSync(tempPath, cachePath);
+  } finally {
+    rmSync(tempPath, { force: true });
+  }
+  return cachePath;
+}
+
 export interface ResolveProxyOptions {
   priority?: boolean;
   background?: boolean;

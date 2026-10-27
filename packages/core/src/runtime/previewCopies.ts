@@ -1,6 +1,11 @@
 import { postRuntimeMessage } from "./bridge";
 
-type CopyState = { state: "making" | "ready" | "failed"; progress: number | null };
+type CopyState = {
+  state: "making" | "ready" | "failed";
+  progress: number | null;
+  /** A lighter copy of a file that plays; false for the copy a file cannot play without. */
+  light: boolean;
+};
 
 const REPORT_EVERY_MS = 1000;
 const copies = new Map<HTMLMediaElement, CopyState>();
@@ -12,7 +17,7 @@ let dirtyWhileWaiting = false;
 function report(): boolean {
   for (const el of copies.keys()) if (!el.isConnected) copies.delete(el);
   const states = [...copies.values()];
-  const wanted = reporting && states.length > 0;
+  const wanted = states.length > 0;
   if (!wanted && !reportedAny) return false;
   reportedAny = wanted;
   const made = states.reduce(
@@ -50,9 +55,9 @@ function scheduleReport(): void {
   }, REPORT_EVERY_MS);
 }
 
-/** Starts counting the copies wanted at a level; at full quality none are wanted. */
+/** Starts counting the lighter copies wanted at a level; at full quality none are wanted. */
 export function setCopyReportingLevel(level: number): void {
-  copies.clear();
+  for (const [el, copy] of copies) if (copy.light) copies.delete(el);
   reporting = level < 1;
   clearTimeout(timer);
   timer = undefined;
@@ -64,9 +69,10 @@ export function noteCopy(
   el: HTMLMediaElement,
   state: CopyState["state"],
   progress: number | null = null,
+  light = true,
 ): void {
-  if (!reporting) return;
-  copies.set(el, { state, progress });
+  if (light && !reporting) return;
+  copies.set(el, { state, progress, light });
   scheduleReport();
 }
 
@@ -76,5 +82,5 @@ export function failedCopyElements(): HTMLMediaElement[] {
 
 /** True when every lighter copy wanted at this level is ready; true when none are wanted. */
 export function copiesReady(): boolean {
-  return [...copies.values()].every((copy) => copy.state === "ready");
+  return [...copies.values()].every((copy) => !copy.light || copy.state === "ready");
 }
