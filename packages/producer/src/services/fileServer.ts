@@ -312,17 +312,89 @@ export function buildVirtualTimeShim(options: VirtualTimeShimOptions): string {
     ? window.cancelAnimationFrame.bind(window)
     : null;
 ${seededRandomBlock}
-  function flushAnimationFrame() {
-    if (!rafQueue.length) return;
-    var current = rafQueue.slice();
-    rafQueue.length = 0;
+  var seekEpoch = 0;
+  var activeEntry = null;
+  var RAF_DRAIN_MAX_TURNS = 64;
+  var RAF_DRAIN_MAX_CALLBACKS = 2048;
+  var RAF_DRAIN_MAX_RERUNS = 16;
+  var seekRanCallbacks = new Set();
+  var prevSeekRanCallbacks = new Set();
+  var drainRunCounts = new Map();
+  var lastDrainStats = { turns: 0, ran: 0, pending: 0 };
+  var seekCycleArmed = false;
+  var registrationEdges = new WeakMap();
+  // A seek boundary: the incoming epoch starts and the ran-callback sets roll.
+  // __hf.seek arms it through beginSeek BEFORE renderSeek so callbacks queued
+  // by seek hooks (e.g. a timeline onUpdate deferring a DOM update) carry the
+  // incoming epoch; seekers with no renderSeek step (same-origin child frames
+  // driven straight through seekToTime) roll the boundary inside seekToTime.
+  function rollSeekBoundary() {
+    prevSeekRanCallbacks = seekRanCallbacks;
+    seekRanCallbacks = new Set();
+    seekEpoch++;
+  }
+  function runRafEntries(current, viaDrain) {
+    var ran = 0;
     for (var i = 0; i < current.length; i++) {
       var entry = current[i];
       if (entry.cancelled) continue;
+      var prevActive = activeEntry;
+      activeEntry = entry;
       try {
         entry.callback(virtualNowMs);
       } catch {}
+      activeEntry = prevActive;
+      seekRanCallbacks.add(entry.callback);
+      if (viaDrain) drainRunCounts.set(entry.callback, (drainRunCounts.get(entry.callback) || 0) + 1);
+      ran++;
     }
+    return ran;
+  }
+  // One rAF turn: every queued callback runs exactly once. seekToTime calls
+  // only this, so a self-rescheduling callback still advances one turn per
+  // rendered frame, identical to a real frame boundary.
+  function flushAnimationFrame() {
+    var current = rafQueue.slice();
+    rafQueue.length = 0;
+    var ran = runRafEntries(current, false);
+    lastDrainStats = { turns: ran ? 1 : 0, ran: ran, pending: rafQueue.length };
+  }
+  // An entry is deferred (left queued for the next frame) when the drain
+  // cannot safely settle it early: a registration-cycle member at epoch 0
+  // (a page-load self/mutual loop keeps its one-turn-per-seek rate exactly),
+  // a callback that already ran in the previous seek (established loops), or
+  // a callback that spent its lifetime drain allowance. Anything else is
+  // fresh deferred work and runs to quiescence at the current virtual time.
+  function isDeferred(entry) {
+    if (entry.epoch < 1) return true;
+    if (prevSeekRanCallbacks.has(entry.callback)) return true;
+    return (drainRunCounts.get(entry.callback) || 0) >= RAF_DRAIN_MAX_RERUNS;
+  }
+  // The capture path's drain, called after the seek's own flush. A deferred
+  // DOM update can legitimately chain through several rAF turns at one
+  // authored time, so fresh work runs to quiescence here while the
+  // turn/execution caps bound queues that never converge.
+  function drainAnimationFrames(maxTurns, maxCallbacks) {
+    var turnCap = Math.max(0, Math.floor(Number(maxTurns))) || RAF_DRAIN_MAX_TURNS;
+    var ranCap = Math.max(0, Math.floor(Number(maxCallbacks))) || RAF_DRAIN_MAX_CALLBACKS;
+    var turns = 0;
+    var ran = 0;
+    while (rafQueue.length > 0 && turns < turnCap && ran < ranCap) {
+      var width = Math.min(rafQueue.length, ranCap - ran);
+      var current = rafQueue.splice(0, width);
+      var due = [];
+      for (var i = 0; i < current.length; i++) {
+        var entry = current[i];
+        if (entry.cancelled) continue;
+        if (isDeferred(entry)) rafQueue.push(entry);
+        else due.push(entry);
+      }
+      if (!due.length) break;
+      ran += runRafEntries(due, true);
+      turns++;
+    }
+    lastDrainStats = { turns: turns, ran: ran, pending: rafQueue.length };
+    return lastDrainStats;
   }
 
   function VirtualDate() {
@@ -358,9 +430,42 @@ ${seededRandomBlock}
     } catch {}
   }
 
+  // Registration epoch decides what the drain may settle. Outside callbacks
+  // the current epoch applies. Inside a running callback the edge is read
+  // like a graph: re-registering the callback itself or one of its ancestors
+  // closes a registration cycle (a perpetual loop) and inherits that
+  // ancestor's epoch; an edge the same parent registered before rides the
+  // parent's epoch; a genuinely new edge is spawned work (a perpetual driver
+  // like a tween ticker deferring DOM updates mid-seek) and gets the epoch
+  // of the seek in progress so the drain can settle it.
+  function registrationEpoch(callback) {
+    var parent = activeEntry;
+    if (!parent) return seekEpoch;
+    var node = parent;
+    var hops = 0;
+    while (node && hops++ <= RAF_DRAIN_MAX_TURNS) {
+      if (node.callback === callback) return node.epoch;
+      node = node.parent;
+    }
+    var seen = registrationEdges.get(parent.callback);
+    if (seen && seen.has(callback)) return parent.epoch;
+    if (!seen) {
+      seen = new WeakSet();
+      registrationEdges.set(parent.callback, seen);
+    }
+    seen.add(callback);
+    return seekEpoch;
+  }
+
   window.requestAnimationFrame = function(callback) {
     if (typeof callback !== "function") return 0;
-    var entry = { id: rafId++, callback: callback, cancelled: false };
+    var entry = {
+      id: rafId++,
+      callback: callback,
+      cancelled: false,
+      epoch: registrationEpoch(callback),
+      parent: activeEntry,
+    };
     rafQueue.push(entry);
     return entry.id;
   };
@@ -436,11 +541,24 @@ ${seededRandomBlock}
 
   function seekToTime(nextTimeMs) {
     var safeTimeMs = Math.max(0, Number(nextTimeMs) || 0);
+    // One seek boundary per top-level seek: __hf.seek arms it through beginSeek
+    // before renderSeek so callbacks queued by seek hooks (e.g. a timeline
+    // onUpdate deferring a DOM update) carry the incoming epoch, while seekers
+    // with no renderSeek step (same-origin child frames driven straight through
+    // seekToTime) roll it here, before any timer or rAF callback runs at this
+    // seek. runSeek recursion (first-frame pre-pass) skips this so a
+    // pre-pass plus its main flush stay one seek epoch.
+    if (seekCycleArmed) seekCycleArmed = false;
+    else rollSeekBoundary();
+    return runSeek(safeTimeMs);
+  }
+
+  function runSeek(safeTimeMs) {
     if (!rendering && window.__renderReady === true) {
       rendering = true;
       // A worker whose first frame is past the start plays the film's first frame first, so timers the
       // page starts there keep the schedule a one-worker render gives them.
-      if (safeTimeMs > 0) seekToTime(0);
+      if (safeTimeMs > 0) runSeek(0);
     }
     ${seekToTimeReseedCall}fireDueTimers(safeTimeMs);
     virtualNowMs = safeTimeMs;
@@ -455,6 +573,20 @@ ${seededRandomBlock}
     originalClearInterval: originalClearInterval,
     originalRequestAnimationFrame: originalRequestAnimationFrame,
     originalCancelAnimationFrame: originalCancelAnimationFrame,
+    // Stats for the most recent rAF step (the seek's flush or an explicit
+    // drain), so the capture path can tell whether deferred work ran at the
+    // current virtual time.
+    get lastDrain() {
+      return lastDrainStats;
+    },
+    drainAnimationFrames: function(maxTurns, maxCallbacks) {
+      return drainAnimationFrames(maxTurns, maxCallbacks);
+    },
+    beginSeek: function() {
+      if (seekCycleArmed) return;
+      seekCycleArmed = true;
+      rollSeekBoundary();
+    },
     seekToTime: seekToTime,
     getTime: function() {
       return virtualNowMs;
@@ -734,10 +866,12 @@ const HF_BRIDGE_SCRIPT = `(function() {
       },
     });
     hf.seek = function(t, options) {
+      var vtm = window.__HF_VIRTUAL_TIME__;
+      if (vtm && typeof vtm.beginSeek === "function") vtm.beginSeek();
       p.renderSeek(t, options);
       var nextTimeMs = (Math.max(0, Number(t) || 0)) * 1000;
-      if (window.__HF_VIRTUAL_TIME__ && typeof window.__HF_VIRTUAL_TIME__.seekToTime === "function") {
-        window.__HF_VIRTUAL_TIME__.seekToTime(nextTimeMs);
+      if (vtm && typeof vtm.seekToTime === "function") {
+        vtm.seekToTime(nextTimeMs);
       }
       seekSameOriginChildFrames(window, nextTimeMs);
     };
