@@ -3,7 +3,6 @@ import { postRuntimeMessage } from "./bridge";
 type CopyState = {
   state: "making" | "ready" | "failed";
   progress: number | null;
-  /** A lighter copy of a file that plays; false for the copy a file cannot play without. */
   light: boolean;
 };
 
