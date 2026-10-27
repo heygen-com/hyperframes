@@ -2372,11 +2372,12 @@ describe.skipIf(!HAS_FFMPEG)("frame sampling at the output frame rate", () => {
   );
 
   it.each([
-    { name: "one keyframe", keyint: "infinite", processes: 1 },
-    { name: "a keyframe every second", keyint: "10", processes: 2 },
+    { name: "one keyframe", keyint: "infinite", start: 125, processes: 1 },
+    { name: "one keyframe, range from its start", keyint: "infinite", start: 0, processes: 1 },
+    { name: "a keyframe every second", keyint: "10", start: 125, processes: 2 },
   ])(
     "runs $processes ffmpeg process(es) for a range past one segment ($name)",
-    async ({ keyint, processes }) => {
+    async ({ keyint, start, processes }) => {
       const source = join(FIXTURE_DIR, `long-gop-${keyint}.mp4`);
       const synth = await runFfmpeg([
         ...["-y", "-hide_banner", "-loglevel", "error", "-f", "lavfi"],
@@ -2385,11 +2386,17 @@ describe.skipIf(!HAS_FFMPEG)("frame sampling at the output frame rate", () => {
       ]);
       if (!synth.success) throw new Error(`long gop fixture synthesis failed: ${synth.stderr}`);
       vi.mocked(runFfmpeg).mockClear();
-      const extracted = await extractVideoFramesRange(source, `segments-${keyint}`, 125, 130, {
-        fps: 1,
-        outputDir: FIXTURE_DIR,
-        format: "png",
-      });
+      const extracted = await extractVideoFramesRange(
+        source,
+        `segments-${keyint}-${start}`,
+        start,
+        130,
+        {
+          fps: 1,
+          outputDir: FIXTURE_DIR,
+          format: "png",
+        },
+      );
       expect(extracted.totalFrames).toBe(130);
       expect(vi.mocked(runFfmpeg)).toHaveBeenCalledTimes(processes);
     },

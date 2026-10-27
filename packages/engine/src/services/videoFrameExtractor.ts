@@ -1398,12 +1398,16 @@ async function extractVideoFramesRangeUnredacted(
   const leadInSeconds = options.finalFrameOnly
     ? startTime
     : await leadInSecondsUnlessAborted(videoPath, startTime, signal);
-  // Every segment seeks back to the same keyframe and decodes the lead-in again, so a lead-in
-  // as long as a segment costs more than the parallelism buys; one process decodes it once.
+  const secondSegmentLeadInSeconds =
+    totalFrames > segmentFrames && !options.finalFrameOnly
+      ? await leadInSecondsUnlessAborted(videoPath, startTime + EXTRACTION_SEGMENT_SECONDS, signal)
+      : 0;
+  const leadInCostsMoreThanASegment =
+    Math.max(leadInSeconds, secondSegmentLeadInSeconds) >= EXTRACTION_SEGMENT_SECONDS;
   const splitsIntoSegments =
     options.frameRanges ||
     boundVfrFrameCount ||
-    (totalFrames > segmentFrames && leadInSeconds < EXTRACTION_SEGMENT_SECONDS);
+    (totalFrames > segmentFrames && !leadInCostsMoreThanASegment);
   const extract = (hwaccel: string[]) =>
     sampleAtOutputFps && splitsIntoSegments
       ? runSegmentedExtraction({
