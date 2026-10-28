@@ -10,6 +10,7 @@ const probe = vi.hoisted(() => ({ liveness: undefined as undefined | (() => Prom
 const stage = vi.hoisted(() => ({
   calls: [] as {
     screenshot: boolean;
+    workers: number;
     verify: ((session: unknown) => Promise<void>) | undefined;
   }[],
   run: undefined as
@@ -24,11 +25,15 @@ vi.mock("@hyperframes/engine", async (importOriginal) => ({
 vi.mock("../render/stages/captureStage.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../render/stages/captureStage.js")>()),
   runCaptureStage: (input: {
-    plan: { forceScreenshot: boolean };
+    plan: { forceScreenshot: boolean; workerCount: number };
     dedupPerfs: { captureMode: string }[];
     verifyFirstSession?: (session: unknown) => Promise<void>;
   }) => {
-    stage.calls.push({ screenshot: input.plan.forceScreenshot, verify: input.verifyFirstSession });
+    stage.calls.push({
+      screenshot: input.plan.forceScreenshot,
+      workers: input.plan.workerCount,
+      verify: input.verifyFirstSession,
+    });
     return stage.run?.(stage.calls.length, input) ?? Promise.reject(new Error("no stage"));
   },
 }));
@@ -151,4 +156,19 @@ it("a BeginFrame failure before the check retries the chunk in screenshot mode a
   expect(stage.calls.map((call) => call.screenshot)).toEqual([false, true]);
   expect(outcome).toBeInstanceOf(Error);
   expect(outcome).not.toBe(STOP);
+});
+
+it("a part of a chunk captures with the browsers its whole chunk would", async () => {
+  stage.run = async () => {
+    throw STOP;
+  };
+  await render().catch(() => {});
+  const part = { startFrame: 100, endFrame: 120 };
+  await renderChunk(planDir, 0, join(planDir, "part.mp4"), {
+    maxCaptureWorkers: 4,
+    frameRange: part,
+  }).catch(() => {});
+  const [whole, ofPart] = stage.calls.map((call) => call.workers);
+  expect(whole).toBeGreaterThan(1);
+  expect(ofPart).toBe(whole);
 });

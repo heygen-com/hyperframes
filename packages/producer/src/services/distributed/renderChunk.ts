@@ -749,7 +749,8 @@ export async function renderChunk(
     // `PlanJson` doesn't carry the compiled hints needed to call it
     // directly. The existing adaptive-retry path reduces workers if
     // compositor contention surfaces as CDP timeouts.
-    const captureFrames = effectiveChunkFrames(framesInChunk, slice.captureCost);
+    const wholeChunkFrames = slice.endFrame - slice.startFrame;
+    const captureFrames = effectiveChunkFrames(wholeChunkFrames, slice.captureCost);
     const chunkWorkerCount = resolveChunkCaptureWorkers(
       captureFrames,
       calculateOptimalWorkers(captureFrames, undefined, cfg),
