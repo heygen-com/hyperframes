@@ -357,7 +357,7 @@ ${seededRandomBlock}
   // cannot safely settle it early: its registration lineage was born in an
   // earlier seek (an established loop keeps its one-turn-per-seek rate), or
   // the lineage spent its drain allowance. A lineage is per registration,
-  // not per callback — a function re-requested in a later seek opens a fresh
+  // not per callback: a function re-requested in a later seek opens a fresh
   // lineage and settles; everything else is fresh deferred work and runs to
   // quiescence at the current virtual time.
   function isDeferred(entry) {
@@ -425,8 +425,8 @@ ${seededRandomBlock}
   }
 
   // Registration lineage decides what the drain may settle. Each entry
-  // carries its lineage — {epoch, drainRuns}, shared by every link of one
-  // invocation — plus a bounded, callback-deduped list of ancestor records
+  // carries its lineage ({epoch, drainRuns}, shared by every link of one
+  // invocation) plus a bounded, callback-deduped list of ancestor records
   // for cycle detection (a queued entry retains at most
   // RAF_LINEAGE_MAX_ANCESTORS records, not the whole history of seeks).
   // Outside callbacks the registration opens a fresh lineage born at the
