@@ -6,10 +6,10 @@
  * once, so a deferred DOM update chained through several rAF turns lands one
  * rendered frame late per turn and early frames of each worker capture a
  * pre-settled DOM. The drain lives in the capture path — `seekToTime` keeps
- * its single flush — and only settles fresh work: a callback that ran in an
- * earlier seek, or whose lineage was queued before the first seek, keeps its
- * one-turn-per-seek rate, so a perpetual self-rescheduling loop still ends
- * at 24 runs over 24 frames.
+ * its single flush — and only settles fresh work. Deferral is keyed on
+ * registration lineage, not callback identity: a lineage born in an earlier
+ * seek (a perpetual loop) keeps its one-turn-per-seek rate, while the same
+ * function re-requested in a later seek opens a fresh lineage and settles.
  *
  * `hf.seek` calls `beginSeek()` before `renderSeek`, which is where timeline
  * hooks like GSAP onUpdate queue the deferred work a seek must settle; tests
@@ -27,7 +27,7 @@ import { buildVirtualTimeShim } from "./fileServer.js";
 function runShim(shimSource: string): {
   run: <T = unknown>(code: string) => T;
 } {
-  const context = createContext({});
+  const context = createContext({ gc: () => Bun.gc(true) });
   new Script(`
     globalThis.window = globalThis;
     globalThis.setTimeout = (cb, ms) => 0;
@@ -317,5 +317,107 @@ describe("virtual-time shim capture-path rAF drain", () => {
       return runs;
     })()`);
     expect(ran).toBe(0);
+  });
+
+  it("settles the same finite callback re-requested on consecutive seeks", () => {
+    // The review repro: one reusable `reveal` fn, each renderSeek resets a
+    // five-turn reveal and requests it anew. Deferral by callback identity
+    // left turns 2-5 pending from the second seek on (first screenshot green,
+    // the rest red). Lineage is per registration: the re-request opens a
+    // fresh lineage and settles all five turns every seek.
+    const { run } = runShim(buildVirtualTimeShim({ seedRandomFromFrame: false }));
+    const state = run<{ perSeek: number[]; visible: boolean[] }>(`(() => {
+      var el = { visibility: "hidden" };
+      var pending = 0, calls = 0;
+      function reveal() {
+        calls++;
+        if (--pending > 0) requestAnimationFrame(reveal);
+        else el.visibility = "visible";
+      }
+      var perSeek = [], visible = [];
+      for (var s = 0; s < 3; s++) {
+        window.__HF_VIRTUAL_TIME__.beginSeek();
+        el.visibility = "hidden";
+        pending = 5;
+        calls = 0;
+        requestAnimationFrame(reveal);
+        window.__HF_VIRTUAL_TIME__.seekToTime(s * 41);
+        window.__HF_VIRTUAL_TIME__.drainAnimationFrames();
+        perSeek.push(calls);
+        visible.push(el.visibility === "visible");
+      }
+      return { perSeek: perSeek, visible: visible };
+    })()`);
+    expect(state.perSeek).toEqual([5, 5, 5]);
+    expect(state.visible).toEqual([true, true, true]);
+  });
+
+  it("settles a finite callback a loop driver re-spawns on consecutive seeks", () => {
+    // Sibling path through a persistent driver: a page-load ticker requests
+    // the same reveal each seek. A repeated spawn edge is a fresh invocation
+    // each time, not loop membership — it must still settle every seek.
+    const { run } = runShim(buildVirtualTimeShim({ seedRandomFromFrame: false }));
+    const state = run<{ perSeek: number[]; visible: boolean[] }>(`(() => {
+      var el = { visibility: "hidden" };
+      var pending = 0, calls = 0;
+      function reveal() {
+        calls++;
+        if (--pending > 0) requestAnimationFrame(reveal);
+        else el.visibility = "visible";
+      }
+      function ticker() {
+        pending = 5;
+        requestAnimationFrame(reveal);
+        requestAnimationFrame(ticker);
+      }
+      requestAnimationFrame(ticker);
+      var perSeek = [], visible = [];
+      for (var s = 0; s < 3; s++) {
+        window.__HF_VIRTUAL_TIME__.beginSeek();
+        el.visibility = "hidden";
+        calls = 0;
+        window.__HF_VIRTUAL_TIME__.seekToTime(s * 41);
+        window.__HF_VIRTUAL_TIME__.drainAnimationFrames();
+        perSeek.push(calls);
+        visible.push(el.visibility === "visible");
+      }
+      return { perSeek: perSeek, visible: visible };
+    })()`);
+    expect(state.perSeek).toEqual([5, 5, 5]);
+    expect(state.visible).toEqual([true, true, true]);
+  });
+
+  it("releases a completed invocation's bookkeeping across many seeks", () => {
+    // Retention control: run accounting lives on the lineage object and dies
+    // with its last entry, so 200 completed two-turn invocations leave their
+    // callbacks collectible after a forced GC. The queued ancestor history
+    // is likewise bounded at RAF_LINEAGE_MAX_ANCESTORS records per entry,
+    // not the whole history of seeks.
+    const { run } = runShim(buildVirtualTimeShim({ seedRandomFromFrame: false }));
+    const state = run<{ alive: number; total: number }>(`(() => {
+      var refs = [];
+      for (var s = 0; s < 200; s++) {
+        var step = (function() {
+          var left = 2;
+          return function step() { if (--left > 0) requestAnimationFrame(step); };
+        })();
+        refs.push(new WeakRef(step));
+        window.__HF_VIRTUAL_TIME__.beginSeek();
+        requestAnimationFrame(step);
+        window.__HF_VIRTUAL_TIME__.seekToTime(s * 41);
+        window.__HF_VIRTUAL_TIME__.drainAnimationFrames();
+      }
+      step = null;
+      gc();
+      gc();
+      var alive = 0;
+      for (var i = 0; i < refs.length; i++) if (refs[i].deref()) alive++;
+      return { alive: alive, total: refs.length };
+    })()`);
+    expect(state.total).toBe(200);
+    // A handful of survivors is conservative-scanner noise (dead stack slots
+    // keep random indices alive for a job); the prior per-callback accounting
+    // deterministically retained all 200.
+    expect(state.alive).toBeLessThanOrEqual(8);
   });
 });
