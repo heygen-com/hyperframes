@@ -15,11 +15,12 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } fr
 import { availableParallelism, tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { GetAccountSettingsCommand, InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
-import { S3Client } from "@aws-sdk/client-s3";
+import { ListObjectsV2Command, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import {
   assemble,
   buildPlanAudio,
   chunksAreStitchedMp4,
+  type ChunkSliceJson,
   plansSeparateAudio,
   stitchesSeparateAudio,
   type AssembleResult,
@@ -42,6 +43,7 @@ import {
   readPlanV2Manifest,
   type RemoteProjectFile,
   renderChunk,
+  writeStitchedMp4,
 } from "@hyperframes/producer/distributed";
 import { resolveChromeExecutablePath } from "./chromium.js";
 import { type StitchHelper, sendRangeParts, stitchMp4InS3 } from "./s3Stitch.js";
@@ -70,6 +72,7 @@ import {
   mapConcurrent,
   parseS3Uri,
   presignVerifiedS3GetUrl,
+  sha256File,
   tarDirectory,
   untarDirectory,
   uploadFileToS3,
@@ -110,6 +113,8 @@ export interface HandlerDeps {
   tmpRoot?: string;
   /** Skip Chrome resolution (used by handler dispatch tests that mock renderChunk). */
   skipChromeResolution?: boolean;
+  /** Stands in for this container's cold Chrome unpack time. */
+  coldChromeMs?: number;
   /**
    * The Lambda runtime's `Context` arrives as this second argument and supplies it. Plan
    * and chunk share one function, so its remaining time at plan start is the chunk limit.
@@ -567,9 +572,10 @@ async function handlePlanV2(
  * Points the engine at the bundled Chrome (unpacked into /tmp once per container) before any stage
  * launches it; a caller-set PRODUCER_HEADLESS_SHELL_PATH, such as the SAM-local smoke's, wins.
  */
-async function ensureChromePath(deps?: HandlerDeps): Promise<void> {
-  if (deps?.skipChromeResolution || process.env.PRODUCER_HEADLESS_SHELL_PATH) return;
+async function ensureChromePath(deps?: HandlerDeps): Promise<boolean> {
+  if (deps?.skipChromeResolution || process.env.PRODUCER_HEADLESS_SHELL_PATH) return false;
   process.env.PRODUCER_HEADLESS_SHELL_PATH = await resolveChromeExecutablePath();
+  return true;
 }
 
 // ── Audio ───────────────────────────────────────────────────────────────────
@@ -703,8 +709,10 @@ async function handleRenderChunkV2(
   const s3 = deps?.s3 ?? getS3Client();
   const primitive = deps?.primitives?.renderChunk ?? renderChunk;
   const chromeStarted = Date.now();
-  await ensureChromePath(deps);
+  const unpacked = await ensureChromePath(deps);
   const chromeMs = Date.now() - chromeStarted;
+  const coldChromeMs = deps?.coldChromeMs ?? (unpacked ? chromeMs : undefined);
+  const helper = chunkHelper(deps?.lambda);
   const work = mkdtempSync(join(deps?.tmpRoot ?? tmpdir(), "hf-lambda-chunk-v2-"));
   try {
     const { planDir } = await downloadAndMaterializePlanV2(
@@ -719,16 +727,34 @@ async function handleRenderChunkV2(
         ? `chunk-${pad(event.ChunkIndex)}`
         : `chunk-${pad(event.ChunkIndex)}${formatExtension(event.Format)}`,
     );
+    const halves =
+      helper && coldChromeMs !== undefined && !event.FrameRange && event.Format === "mp4"
+        ? splitChunk(planDir, event.ChunkIndex)
+        : undefined;
+    const split =
+      halves && (await onSlowHost(s3, event.ChunkOutputS3Prefix, event.ChunkIndex, coldChromeMs!))
+        ? halves
+        : undefined;
     const primitiveStarted = Date.now();
-    const result = await primitive(planDir, event.ChunkIndex, chunkOutputBase, {
-      maxCaptureWorkers: lambdaMaxCaptureWorkers(),
-      interleaveCapture: true,
-    });
+    const options = { maxCaptureWorkers: lambdaMaxCaptureWorkers(), interleaveCapture: true };
+    const result = split
+      ? await renderSplitChunk(s3, helper!, event, planDir, chunkOutputBase, split, (range, out) =>
+          primitive(planDir, event.ChunkIndex, out, { ...options, frameRange: range }),
+        )
+      : await primitive(planDir, event.ChunkIndex, chunkOutputBase, {
+          ...options,
+          frameRange: event.FrameRange && {
+            startFrame: event.FrameRange.StartFrame,
+            endFrame: event.FrameRange.EndFrame,
+          },
+        });
     logEvent({
       event: "chunk_capture",
       chunkIndex: event.ChunkIndex,
       workers: result.workers,
       captureMode: result.captureMode,
+      split: split !== undefined,
+      ...(event.FrameRange && { frameRange: event.FrameRange }),
       ...chunkStageTimings(result, primitiveStarted - started, chromeMs),
     });
     const chunkUri = await uploadChunkOutput(
@@ -736,6 +762,7 @@ async function handleRenderChunkV2(
       result,
       event.ChunkOutputS3Prefix,
       event.ChunkIndex,
+      event.FrameRange && `.${event.FrameRange.StartFrame}-${event.FrameRange.EndFrame}`,
     );
     return {
       Action: "renderChunk",
@@ -769,11 +796,12 @@ async function uploadChunkOutput(
   result: ChunkResult,
   prefix: string,
   chunkIndex: number,
+  part = "",
 ): Promise<string> {
   const trimmed = trimTrailingSlash(prefix);
   if (result.outputKind === "file") {
     const ext = result.outputPath.slice(result.outputPath.lastIndexOf("."));
-    const uri = `${trimmed}/chunks/${pad(chunkIndex)}${ext}`;
+    const uri = `${trimmed}/chunks/${pad(chunkIndex)}${part}${ext}`;
     await uploadFileToS3(s3, result.outputPath, uri);
     return uri;
   }
@@ -785,6 +813,123 @@ async function uploadChunkOutput(
   const uri = `${trimmed}/chunks/${pad(chunkIndex)}.tar.gz`;
   await uploadFileToS3(s3, tarball, uri, "application/gzip");
   return uri;
+}
+
+// ── Slow hosts ──────────────────────────────────────────────────────────────
+
+// A host ~30% slower than its peers is ~30% slower at Chrome's cold unpack too, 1.5 s in.
+const SLOW_HOST_RATIO = 1.15;
+// Chunks start ~75/s, so even the first sees ~15 peers by the end of its own unpack.
+const MIN_PEER_PROBES = 8;
+// ponytail: fixed floor; below it a helper's ~4 s boot outweighs half the chunk.
+const MIN_SPLIT_FRAMES = 60;
+
+/** Posts this chunk's Chrome unpack time beside its peers' and compares it with their median. */
+export async function onSlowHost(
+  s3: S3Client,
+  chunkPrefix: string,
+  chunkIndex: number,
+  coldChromeMs: number,
+): Promise<boolean> {
+  try {
+    const { bucket, key } = parseS3Uri(`${trimTrailingSlash(chunkPrefix)}/host-probes/`);
+    const ms = Math.round(coldChromeMs);
+    await s3.send(
+      new PutObjectCommand({ Bucket: bucket, Key: `${key}${ms}-${chunkIndex}`, Body: "" }),
+    );
+    const { Contents = [] } = await s3.send(
+      new ListObjectsV2Command({ Bucket: bucket, Prefix: key }),
+    );
+    if (Contents.length >= MIN_PEER_PROBES) {
+      const peers = Contents.map((o) => Number.parseInt(o.Key!.slice(key.length), 10)).sort(
+        (a, b) => a - b,
+      );
+      return ms > SLOW_HOST_RATIO * peers[peers.length >> 1]!;
+    }
+  } catch (error) {
+    logEvent({ event: "host_probe_failed", chunkIndex, error: String(error) });
+  }
+  return false;
+}
+
+type FrameRange = { startFrame: number; endFrame: number };
+
+/** The chunk's frames as two halves, or undefined when it is too short or not stitchable. */
+function splitChunk(planDir: string, chunkIndex: number): [FrameRange, FrameRange] | undefined {
+  if (!chunksAreStitchedMp4(planDir, false)) return undefined;
+  const slices = JSON.parse(
+    readFileSync(join(planDir, "meta", "chunks.json"), "utf-8"),
+  ) as ChunkSliceJson[];
+  const slice = slices.find((s) => s.index === chunkIndex);
+  if (!slice || slice.endFrame - slice.startFrame < MIN_SPLIT_FRAMES) return undefined;
+  const mid = slice.startFrame + Math.floor((slice.endFrame - slice.startFrame) / 2);
+  return [
+    { startFrame: slice.startFrame, endFrame: mid },
+    { startFrame: mid, endFrame: slice.endFrame },
+  ];
+}
+
+/**
+ * Renders the first half here while a helper on another host renders the second, then joins them
+ * into the chunk. A failed helper's half is rendered here after the first.
+ */
+async function renderSplitChunk(
+  s3: S3Client,
+  helper: ChunkHelper,
+  event: RenderChunkV2Event,
+  planDir: string,
+  outputPath: string,
+  [own, rest]: [FrameRange, FrameRange],
+  render: (range: FrameRange, out: string) => Promise<ChunkResult>,
+): Promise<ChunkResult> {
+  const ownPath = `${outputPath}.own.mp4`;
+  const restPath = `${outputPath}.rest.mp4`;
+  const helped = helper(event, rest).then(
+    async (part) => {
+      await downloadS3ObjectToFile(s3, part.ChunkS3Uri, restPath);
+      return part.FramesEncoded;
+    },
+    (error: unknown) => error as Error,
+  );
+  const ownResult = await render(own, ownPath);
+  let restFrames = await helped;
+  if (restFrames instanceof Error) {
+    logEvent({
+      event: "chunk_split_fallback",
+      chunkIndex: event.ChunkIndex,
+      error: String(restFrames),
+    });
+    restFrames = (await render(rest, restPath)).framesEncoded;
+  }
+  await writeStitchedMp4([ownPath, restPath], outputPath);
+  return {
+    ...ownResult,
+    outputPath,
+    framesEncoded: ownResult.framesEncoded + restFrames,
+    sha256: await sha256File(outputPath),
+  };
+}
+
+type ChunkHelper = (
+  event: RenderChunkV2Event,
+  range: FrameRange,
+) => Promise<RenderChunkLambdaResult>;
+
+/** Hands a range of the chunk to the stack's helper function, as the chunk's own event. */
+export function chunkHelper(lambda?: LambdaClient): ChunkHelper | undefined {
+  const functionName = helperFunctionName();
+  if (!functionName) return undefined;
+  return (event, range) => {
+    const part: RenderChunkV2Event = {
+      ...event,
+      FrameRange: { StartFrame: range.startFrame, EndFrame: range.endFrame },
+    };
+    return invokeHelper<RenderChunkLambdaResult>(
+      lambda ?? new LambdaClient({}),
+      functionName,
+      part,
+    );
+  };
 }
 
 // ── Assemble ────────────────────────────────────────────────────────────────
@@ -1115,7 +1260,7 @@ function getEventS3Uris(
  * and each invocation brings its own network link.
  */
 export function stitchHelper(lambda?: LambdaClient): StitchHelper | undefined {
-  const functionName = process.env.HYPERFRAMES_STITCH_FUNCTION?.trim();
+  const functionName = helperFunctionName();
   if (!functionName) return undefined;
   const client = lambda ?? new LambdaClient({});
   // This assemble may hold one slot of the reservation itself.
@@ -1123,25 +1268,36 @@ export function stitchHelper(lambda?: LambdaClient): StitchHelper | undefined {
   const maxInvocations = reserved ? Math.max(1, reserved - 1) : Infinity;
   const send: StitchHelper["send"] = async (target, parts) => {
     const event: StitchPartsEvent = { Action: "stitchParts", ...target, Parts: parts };
-    const response = await client.send(
-      new InvokeCommand({ FunctionName: functionName, Payload: JSON.stringify(event) }),
-    );
-    const body = JSON.parse(
-      new TextDecoder().decode(response.Payload),
-    ) as StitchPartsLambdaResult & {
-      errorMessage?: string;
-      errorType?: string;
-    };
-    if (response.FunctionError) {
-      const error = new Error(
-        `[handler] stitchParts on ${functionName} failed: ${body.errorMessage ?? response.FunctionError}`,
-      );
-      if (body.errorType) error.name = body.errorType;
-      throw error;
-    }
-    return body.ETags;
+    return (await invokeHelper<StitchPartsLambdaResult>(client, functionName, event)).ETags;
   };
   return { send, maxInvocations };
+}
+
+/** The function this stack hands extra work to: the one that runs its chunks. */
+function helperFunctionName(): string | undefined {
+  return process.env.HYPERFRAMES_STITCH_FUNCTION?.trim() || undefined;
+}
+
+async function invokeHelper<T>(
+  client: LambdaClient,
+  functionName: string,
+  event: { Action: string },
+): Promise<T> {
+  const response = await client.send(
+    new InvokeCommand({ FunctionName: functionName, Payload: JSON.stringify(event) }),
+  );
+  const body = JSON.parse(new TextDecoder().decode(response.Payload)) as T & {
+    errorMessage?: string;
+    errorType?: string;
+  };
+  if (response.FunctionError) {
+    const error = new Error(
+      `[handler] ${event.Action} on ${functionName} failed: ${body.errorMessage ?? response.FunctionError}`,
+    );
+    if (body.errorType) error.name = body.errorType;
+    throw error;
+  }
+  return body;
 }
 
 async function handleStitchParts(

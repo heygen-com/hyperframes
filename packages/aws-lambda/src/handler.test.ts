@@ -45,7 +45,7 @@ import type {
   RenderChunkEvent,
   StitchPartsEvent,
 } from "./events.js";
-import { handler as handleEvent, stitchHelper, unwrapEvent } from "./handler.js";
+import { handler as handleEvent, onSlowHost, stitchHelper, unwrapEvent } from "./handler.js";
 import { S3PlanV2ArtifactPublisher } from "./s3PlanV2Publisher.js";
 
 interface FakeS3Op {
@@ -128,6 +128,13 @@ class FakeS3Client {
       const checksum = (command as { input: { ChecksumSHA256?: string } }).input.ChecksumSHA256;
       if (checksum) this.checksums.set(uri, checksum);
       return {};
+    }
+    if (cmdName === "ListObjectsV2Command") {
+      const prefix = `s3://${op.input.Bucket}/${(command as { input: { Prefix: string } }).input.Prefix}`;
+      const keys = [...this.objects.keys()].filter((key) => key.startsWith(prefix));
+      return {
+        Contents: keys.map((key) => ({ Key: key.slice(`s3://${op.input.Bucket}/`.length) })),
+      };
     }
     if (cmdName === "CreateMultipartUploadCommand") return { UploadId: "upload-1" };
     if (cmdName === "UploadPartCommand") {
@@ -1726,6 +1733,237 @@ describe("handler — stitch helpers", () => {
   });
 });
 
+describe.skipIf(spawnSync("ffmpeg", ["-version"]).status !== 0)("handler — slow-host split", () => {
+  const PROBES = "s3://bucket/renders/s/host-probes/";
+  const ffprobe = (bytes: Buffer, entries: string) => {
+    const path = join(makeTmpRoot(), "probe.mp4");
+    writeFileSync(path, bytes);
+    const run = spawnSync("ffprobe", [
+      ...["-v", "error", "-select_streams", "v:0", "-show_entries", entries],
+      ...["-of", "csv=p=0", path],
+    ]);
+    return String(run.stdout).trim().split("\n");
+  };
+
+  async function chunkOnHost(coldChromeMs: number, helperFails = false) {
+    const tmpRoot = makeTmpRoot();
+    const s3 = new FakeS3Client();
+    s3.objects.set("s3://bucket/project.tar.gz", await makeMinimalProjectTar());
+    for (let peer = 0; peer < 8; peer++)
+      s3.objects.set(`${PROBES}1000-${peer + 10}`, Buffer.alloc(0));
+    const rendered: ({ startFrame: number; endFrame: number } | undefined)[] = [];
+    const renderChunkMock = mock(
+      async (
+        _planDir: string,
+        _index: number,
+        outputPath: string,
+        options?: { frameRange?: { startFrame: number; endFrame: number } },
+      ): Promise<ChunkResult> => {
+        rendered.push(options?.frameRange);
+        const frames = options?.frameRange
+          ? options.frameRange.endFrame - options.frameRange.startFrame
+          : 120;
+        const run = spawnSync("ffmpeg", [
+          ...["-nostdin", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=size=64x48:rate=30"],
+          ...["-frames:v", String(frames), "-c:v", "libx264", "-bf", "0", "-y", outputPath],
+        ]);
+        if (run.status !== 0) throw new Error(String(run.stderr));
+        return {
+          outputPath,
+          outputKind: "file",
+          framesEncoded: frames,
+          sha256: "b".repeat(64),
+          durationMs: 1,
+          planHashMs: 0,
+          sessionBootMs: 0,
+          captureStageMs: 1,
+          encodeStageMs: 0,
+          workers: 1,
+          captureMode: "beginframe",
+          perfPath: `${outputPath}.perf.json`,
+        };
+      },
+    );
+    const invoked: unknown[] = [];
+    const deps = {
+      s3: s3 as unknown as S3Client,
+      primitives: {
+        planV2WithPublisher: (async (
+          _dir: string,
+          _config: unknown,
+          publisher: PlanV2ArtifactPublisher,
+        ) => {
+          const v1Dir = join(tmpRoot, "v1");
+          makeMinimalV1PlanDir(v1Dir, false, {
+            chunkCount: 2,
+            separateAudio: true,
+            chunkFrames: 120,
+          });
+          return publishPlanV2FromExecutionPlan(v1Dir, publisher);
+        }) as unknown as typeof import("@hyperframes/producer/distributed").planV2WithPublisher,
+        renderChunk:
+          renderChunkMock as unknown as typeof import("@hyperframes/producer/distributed").renderChunk,
+      } as unknown as NonNullable<Parameters<typeof handleEvent>[1]>["primitives"],
+      tmpRoot,
+      skipChromeResolution: true,
+      coldChromeMs,
+      lambda: {
+        send: async (command: { input: { Payload: string } }) => {
+          const sent = JSON.parse(command.input.Payload) as LambdaEvent;
+          invoked.push(sent);
+          if (helperFails) {
+            const payload = JSON.stringify({
+              errorMessage: "Rate exceeded",
+              errorType: "TooManyRequestsException",
+            });
+            return { FunctionError: "Unhandled", Payload: new TextEncoder().encode(payload) };
+          }
+          const out = await handler(sent, deps);
+          return { Payload: new TextEncoder().encode(JSON.stringify(out)) };
+        },
+      } as unknown as LambdaClient,
+    };
+    const planned = await handler(
+      {
+        Action: "plan",
+        ProjectS3Uri: "s3://bucket/project.tar.gz",
+        PlanOutputS3Prefix: "s3://bucket/renders/s/",
+        Config: { fps: 30, width: 640, height: 360, format: "mp4" },
+      },
+      { ...deps, lambda: accountUnreadable },
+    );
+    if (!("PlanProtocol" in planned) || planned.PlanProtocol !== "v2")
+      throw new Error("expected v2");
+    const prev = process.env.HYPERFRAMES_STITCH_FUNCTION;
+    process.env.HYPERFRAMES_STITCH_FUNCTION = "proj-video";
+    const logged: string[] = [];
+    const logSpy = spyOn(console, "log").mockImplementation((line: string) => {
+      logged.push(line);
+    });
+    try {
+      const chunk = (index: number) =>
+        handler(
+          {
+            Action: "renderChunk",
+            PlanV2ManifestS3Uri: planned.PlanV2ManifestS3Uri,
+            PlanV2ArtifactS3Prefix: planned.PlanV2ArtifactS3Prefix,
+            PlanHash: planned.PlanHash,
+            ChunkIndex: index,
+            ChunkOutputS3Prefix: "s3://bucket/renders/s/",
+            Format: "mp4",
+          },
+          deps,
+        );
+      const result = await chunk(0);
+      if (result.Action !== "renderChunk") throw new Error("expected chunk result");
+      return { s3, result, rendered, invoked, logged, planned, deps, chunk };
+    } finally {
+      logSpy.mockRestore();
+      if (prev === undefined) delete process.env.HYPERFRAMES_STITCH_FUNCTION;
+      else process.env.HYPERFRAMES_STITCH_FUNCTION = prev;
+    }
+  }
+
+  it("a chunk on a slow host renders half its frames and a helper the rest, joined into one chunk", async () => {
+    const { s3, result, rendered, invoked, planned, deps } = await chunkOnHost(1500);
+    expect(rendered).toEqual([
+      { startFrame: 0, endFrame: 60 },
+      { startFrame: 60, endFrame: 120 },
+    ]);
+    expect(invoked).toEqual([
+      expect.objectContaining({ ChunkIndex: 0, FrameRange: { StartFrame: 60, EndFrame: 120 } }),
+    ]);
+    expect(s3.objects.has("s3://bucket/renders/s/chunks/0000.60-120.mp4")).toBe(true);
+    const joined = s3.objects.get(result.ChunkS3Uri)!;
+    expect(result.ChunkS3Uri).toBe("s3://bucket/renders/s/chunks/0000.mp4");
+    expect(result.FramesEncoded).toBe(120);
+    expect(result.Sha256).toBe(createHash("sha256").update(joined).digest("hex"));
+    expect(ffprobe(joined, "packet=flags")).toHaveLength(120);
+    expect(ffprobe(joined, "packet=flags").filter((f) => f.startsWith("K"))).toHaveLength(2);
+
+    // The joined chunk stitches like any other.
+    const second = join(makeTmpRoot(), "second.mp4");
+    spawnSync("ffmpeg", [
+      ...["-nostdin", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=size=64x48:rate=30"],
+      ...["-frames:v", "120", "-c:v", "libx264", "-bf", "0", "-y", second],
+    ]);
+    s3.objects.set("s3://bucket/renders/s/chunks/0001.mp4", readFileSync(second));
+    await handler(
+      {
+        Action: "assemble",
+        PlanV2ManifestS3Uri: planned.PlanV2ManifestS3Uri,
+        PlanV2ArtifactS3Prefix: planned.PlanV2ArtifactS3Prefix,
+        PlanHash: planned.PlanHash,
+        ChunkS3Uris: [result.ChunkS3Uri, "s3://bucket/renders/s/chunks/0001.mp4"],
+        AudioS3Uri: null,
+        OutputS3Uri: "s3://bucket/renders/s/output.mp4",
+        Format: "mp4",
+      },
+      { ...deps, lambda: accountUnreadable },
+    );
+    expect(
+      ffprobe(s3.objects.get("s3://bucket/renders/s/output.mp4")!, "packet=flags"),
+    ).toHaveLength(240);
+  });
+
+  it("a chunk on a host as fast as its peers renders whole and invokes nothing", async () => {
+    const { result, rendered, invoked } = await chunkOnHost(1100);
+    expect(rendered).toEqual([undefined]);
+    expect(invoked).toEqual([]);
+    expect(result.FramesEncoded).toBe(120);
+  });
+
+  it("renders the helper's half itself when the helper fails", async () => {
+    const { s3, result, rendered, logged } = await chunkOnHost(1500, true);
+    expect(rendered).toEqual([
+      { startFrame: 0, endFrame: 60 },
+      { startFrame: 60, endFrame: 120 },
+    ]);
+    expect(logged.some((line) => line.includes('"chunk_split_fallback"'))).toBe(true);
+    expect(result.FramesEncoded).toBe(120);
+    expect(ffprobe(s3.objects.get(result.ChunkS3Uri)!, "packet=flags")).toHaveLength(120);
+  });
+});
+
+describe("onSlowHost", () => {
+  const probe = (s3: FakeS3Client, ms: number) =>
+    onSlowHost(s3 as unknown as S3Client, "s3://bucket/r/", 3, ms);
+  const peers = (s3: FakeS3Client, times: number[]) =>
+    times.forEach((ms, i) =>
+      s3.objects.set(`s3://bucket/r/host-probes/${ms}-${i + 10}`, Buffer.alloc(0)),
+    );
+
+  it("compares this chunk with the median of its peers, itself included", async () => {
+    const s3 = new FakeS3Client();
+    peers(s3, [900, 1000, 1000, 1000, 1000, 1600, 1600]);
+    expect(await probe(s3, 1151)).toBe(true);
+    expect(s3.objects.has("s3://bucket/r/host-probes/1151-3")).toBe(true);
+    const even = new FakeS3Client();
+    peers(even, [900, 1000, 1000, 1000, 1000, 1600, 1600]);
+    expect(await probe(even, 1150)).toBe(false);
+  });
+
+  it("does not split without enough peers", async () => {
+    const s3 = new FakeS3Client();
+    peers(s3, [1000, 1000, 1000, 1000, 1000, 1000]);
+    expect(await probe(s3, 2000)).toBe(false);
+    peers(s3, [1000, 1000, 1000, 1000, 1000, 1000, 1000]);
+    expect(await probe(s3, 2000)).toBe(true);
+  });
+
+  it("an S3 failure only skips the split", async () => {
+    const failing = { send: async () => Promise.reject(new Error("AccessDenied")) };
+    const spy = spyOn(console, "log").mockImplementation(() => {});
+    try {
+      expect(await onSlowHost(failing as unknown as S3Client, "s3://bucket/r/", 3, 5000)).toBe(
+        false,
+      );
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
+
 // ── helpers ─────────────────────────────────────────────────────────────────
 
 /**
@@ -1782,16 +2020,18 @@ function makeMinimalV1PlanDir(
     separateAudio?: boolean;
     withDeferredVideo?: boolean;
     format?: string;
+    chunkFrames?: number;
   } = {},
 ): void {
   const chunkCount = options.chunkCount ?? 1;
+  const chunkFrames = options.chunkFrames ?? 30;
   mkdirSync(join(dir, "meta"), { recursive: true });
   mkdirSync(join(dir, "compiled"), { recursive: true });
   writeFileSync(join(dir, "compiled", "index.html"), "<html>aws v2 fixture</html>");
   const planJson = {
     planHash: "a".repeat(64),
     chunkCount,
-    totalFrames: 30 * chunkCount,
+    totalFrames: chunkFrames * chunkCount,
     dimensions: {
       fpsNum: 30,
       fpsDen: 1,
@@ -1809,8 +2049,8 @@ function makeMinimalV1PlanDir(
     JSON.stringify(
       Array.from({ length: chunkCount }, (_, index) => ({
         index,
-        startFrame: index * 30,
-        endFrame: (index + 1) * 30,
+        startFrame: index * chunkFrames,
+        endFrame: (index + 1) * chunkFrames,
       })),
     ),
   );

@@ -125,6 +125,7 @@ export { muxChunkWithAudio } from "./services/distributed/chunkAudio.js";
 export {
   buildStitchedHeader,
   readMp4Layout,
+  writeStitchedMp4,
   type Mp4Layout,
   type ReadRange,
 } from "./services/distributed/mp4Stitch.js";

@@ -127,6 +127,7 @@ export interface RenderChunkV2Event extends RenderChunkEventBase {
   PlanProtocol?: "v2";
   PlanV2ManifestS3Uri: string;
   PlanV2ArtifactS3Prefix: string;
+  FrameRange?: { StartFrame: number; EndFrame: number };
 }
 
 export type RenderChunkEvent = RenderChunkV1Event | RenderChunkV2Event;
