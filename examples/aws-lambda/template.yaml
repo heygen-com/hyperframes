@@ -266,38 +266,16 @@ Resources:
           SelectPlanProtocol:
             Type: Choice
             Choices:
-              # Only a stack with the arm64 video function has a cold x86 function to warm.
-              # Without one the compared value can never match.
-              - Variable: $.PlanProtocol
-                StringEquals: !If [HasVideoFunction, v2, v2-without-video-function]
-                Next: WarmRender
               - Variable: $.PlanProtocol
                 StringEquals: v2
-                Next: PlanV2
+                Next: RenderV2
               - Variable: $.PlanProtocol
                 StringEquals: v1
                 Next: Plan
               - Variable: $.PlanProtocol
                 IsPresent: true
                 Next: UnsupportedPlanProtocol
-            Default: PlanV2
-
-          # The audio task runs on this function once the plan is done; starting its container now hides the cold start.
-          WarmRender:
-            Type: Task
-            Resource: arn:aws:states:::lambda:invoke
-            Parameters:
-              FunctionName: !GetAtt RenderFunction.Arn
-              InvocationType: Event
-              Payload:
-                Action: warm
-            ResultPath: null
-            Catch:
-              - ErrorEquals:
-                  - States.ALL
-                ResultPath: null
-                Next: PlanV2
-            Next: PlanV2
+            Default: RenderV2
 
           UnsupportedPlanProtocol:
             Type: Fail
@@ -369,69 +347,6 @@ Resources:
                 MaxDelaySeconds: 60
             Next: BuildChunkList
 
-          PlanV2:
-            Type: Task
-            Resource: arn:aws:states:::lambda:invoke
-            Parameters:
-              FunctionName:
-                !If [
-                  HasVideoFunction,
-                  !GetAtt VideoFunctionStack.Outputs.FunctionArn,
-                  !GetAtt RenderFunction.Arn,
-                ]
-              Payload:
-                Action: plan
-                PlanProtocol: v2
-                ProjectS3Uri.$: "$.ProjectS3Uri"
-                PlanOutputS3Prefix.$: "$.PlanOutputS3Prefix"
-                Config.$: "$.Config"
-            ResultSelector:
-              PlanProtocol: v2
-              PlanV2ManifestS3Uri.$: "$.Payload.PlanV2ManifestS3Uri"
-              PlanV2ArtifactS3Prefix.$: "$.Payload.PlanV2ArtifactS3Prefix"
-              PlanHash.$: "$.Payload.PlanHash"
-              ChunkCount.$: "$.Payload.ChunkCount"
-              MaxChunkConcurrency.$: "$.Payload.MaxChunkConcurrency"
-              Format.$: "$.Payload.Format"
-              HasAudio.$: "$.Payload.HasAudio"
-              SeparateAudio.$: "$.Payload.SeparateAudio"
-            ResultPath: $.Plan
-            Retry:
-              - ErrorEquals:
-                  - FFMPEG_VERSION_MISMATCH
-                  - PLAN_HASH_MISMATCH
-                  - S3_URI_NOT_ALLOWED
-                  - BROWSER_GPU_NOT_SOFTWARE
-                  - FONT_FETCH_FAILED
-                  - PLAN_TOO_LARGE
-                  - PlanTooLargeError
-                  - PLAN_PROTOCOL_UNSUPPORTED
-                  - PlanProtocolUnsupportedError
-                  - PLAN_V2_INTEGRITY_UNRECOVERABLE
-                  - VIDEO_SOURCE_UNRENDERABLE
-                  - INVALID_VIDEO_METADATA
-                  - NOT_MEDIA_PAYLOAD
-                  - NotMediaPayloadError
-                  - PlanV2IntegrityError
-                  - PLAN_ARTIFACT_DIGEST_MISMATCH
-                  - FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED
-                  - CHUNK_EXCEEDS_WORKER_TIMEOUT
-                  - ChromeBinaryUnavailableError
-                  - SITE_MANIFEST_INVALID
-                MaxAttempts: 0
-              - ErrorEquals: [Lambda.TooManyRequestsException]
-                IntervalSeconds: 5
-                MaxAttempts: 10
-                BackoffRate: 2
-                MaxDelaySeconds: 60
-                JitterStrategy: FULL
-              - ErrorEquals: [States.ALL]
-                IntervalSeconds: 2
-                MaxAttempts: 4
-                BackoffRate: 2
-                MaxDelaySeconds: 60
-            Next: BuildChunkList
-
           BuildChunkList:
             # Translate ChunkCount into an array `[0, 1, ..., N-1]` so the
             # Map state below has something to iterate. Range is the
@@ -453,21 +368,13 @@ Resources:
             Choices:
               - Variable: $.Plan.ChunkCount
                 NumericGreaterThan: 0
-                Next: SelectWorkerProtocol
+                Next: RenderChunks
             Default: PlanProducedZeroChunks
 
           PlanProducedZeroChunks:
             Type: Fail
             Error: PLAN_TOO_LARGE
             Cause: Plan returned ChunkCount=0 — non-retryable producer-side invariant violation.
-
-          SelectWorkerProtocol:
-            Type: Choice
-            Choices:
-              - Variable: $.Plan.PlanProtocol
-                StringEquals: v2
-                Next: RenderV2
-            Default: RenderChunks
 
           RenderChunks:
             Type: Map
@@ -588,11 +495,95 @@ Resources:
             End: true
 
           RenderV2:
-            # Chunks render video only while the audio task mixes the track AssembleV2 stitches in.
+            # The plan and the audio task start together: the audio mix does not need the plan, only its
+            # verdict on whether the plan left the audio out (checked after both finish).
             Type: Parallel
             Branches:
-              - StartAt: RenderChunksV2
+              - StartAt: PlanV2
                 States:
+                  PlanV2:
+                    Type: Task
+                    Resource: arn:aws:states:::lambda:invoke
+                    Parameters:
+                      FunctionName:
+                        !If [
+                          HasVideoFunction,
+                          !GetAtt VideoFunctionStack.Outputs.FunctionArn,
+                          !GetAtt RenderFunction.Arn,
+                        ]
+                      Payload:
+                        Action: plan
+                        PlanProtocol: v2
+                        ProjectS3Uri.$: "$.ProjectS3Uri"
+                        PlanOutputS3Prefix.$: "$.PlanOutputS3Prefix"
+                        Config.$: "$.Config"
+                    ResultSelector:
+                      PlanProtocol: v2
+                      PlanV2ManifestS3Uri.$: "$.Payload.PlanV2ManifestS3Uri"
+                      PlanV2ArtifactS3Prefix.$: "$.Payload.PlanV2ArtifactS3Prefix"
+                      PlanHash.$: "$.Payload.PlanHash"
+                      ChunkCount.$: "$.Payload.ChunkCount"
+                      MaxChunkConcurrency.$: "$.Payload.MaxChunkConcurrency"
+                      Format.$: "$.Payload.Format"
+                      HasAudio.$: "$.Payload.HasAudio"
+                      SeparateAudio.$: "$.Payload.SeparateAudio"
+                    ResultPath: $.Plan
+                    Retry:
+                      - ErrorEquals:
+                          - FFMPEG_VERSION_MISMATCH
+                          - PLAN_HASH_MISMATCH
+                          - S3_URI_NOT_ALLOWED
+                          - BROWSER_GPU_NOT_SOFTWARE
+                          - FONT_FETCH_FAILED
+                          - PLAN_TOO_LARGE
+                          - PlanTooLargeError
+                          - PLAN_PROTOCOL_UNSUPPORTED
+                          - PlanProtocolUnsupportedError
+                          - PLAN_V2_INTEGRITY_UNRECOVERABLE
+                          - VIDEO_SOURCE_UNRENDERABLE
+                          - INVALID_VIDEO_METADATA
+                          - NOT_MEDIA_PAYLOAD
+                          - NotMediaPayloadError
+                          - PlanV2IntegrityError
+                          - PLAN_ARTIFACT_DIGEST_MISMATCH
+                          - FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED
+                          - CHUNK_EXCEEDS_WORKER_TIMEOUT
+                          - ChromeBinaryUnavailableError
+                          - SITE_MANIFEST_INVALID
+                        MaxAttempts: 0
+                      - ErrorEquals: [Lambda.TooManyRequestsException]
+                        IntervalSeconds: 5
+                        MaxAttempts: 10
+                        BackoffRate: 2
+                        MaxDelaySeconds: 60
+                        JitterStrategy: FULL
+                      - ErrorEquals: [States.ALL]
+                        IntervalSeconds: 2
+                        MaxAttempts: 4
+                        BackoffRate: 2
+                        MaxDelaySeconds: 60
+                    Next: BuildChunkListV2
+
+                  BuildChunkListV2:
+                    Type: Pass
+                    Parameters:
+                      ChunkIndexes.$: "States.ArrayRange(0, States.MathAdd($.Plan.ChunkCount, -1), 1)"
+                    ResultPath: $.Iterator
+                    Next: AssertChunkCountV2
+
+                  AssertChunkCountV2:
+                    Type: Choice
+                    Choices:
+                      - Variable: $.Plan.ChunkCount
+                        NumericGreaterThan: 0
+                        Next: RenderChunksV2
+                    Default: PlanProducedZeroChunksV2
+
+                  PlanProducedZeroChunksV2:
+                    Type: Fail
+                    Error: PLAN_TOO_LARGE
+                    Cause: Plan returned ChunkCount=0 — non-retryable producer-side invariant violation.
+
                   RenderChunksV2:
                     Type: Map
                     Label: RenderChunksV2
@@ -667,22 +658,8 @@ Resources:
                               MaxDelaySeconds: 60
                           End: true
                     End: true
-              - StartAt: AudioNeeded
+              - StartAt: Audio
                 States:
-                  AudioNeeded:
-                    Type: Choice
-                    Choices:
-                      - Variable: $.Plan.SeparateAudio
-                        BooleanEquals: true
-                        Next: Audio
-                    Default: NoAudio
-                  NoAudio:
-                    Type: Pass
-                    Result:
-                      HasAudio: false
-                      AudioS3Uri: null
-                    ResultPath: $.Audio
-                    End: true
                   Audio:
                     # The plan left its audio out: mix it here while the chunks render.
                     Type: Task
@@ -734,9 +711,27 @@ Resources:
                         MaxDelaySeconds: 60
                     End: true
             ResultSelector:
+              Plan.$: "$[0].Plan"
               Chunks.$: "$[0].Chunks"
               Audio.$: "$[1].Audio"
             ResultPath: $.Render
+            Next: AudioForAssemble
+
+          AudioForAssemble:
+            # A plan with one worker keeps its audio, and the audio task's mix goes unused.
+            Type: Choice
+            Choices:
+              - Variable: $.Render.Plan.SeparateAudio
+                BooleanEquals: true
+                Next: AssembleV2
+            Default: PlanKeptAudio
+
+          PlanKeptAudio:
+            Type: Pass
+            Result:
+              HasAudio: false
+              AudioS3Uri: null
+            ResultPath: $.Render.Audio
             Next: AssembleV2
 
           AssembleV2:
@@ -747,13 +742,13 @@ Resources:
               Payload:
                 Action: assemble
                 PlanProtocol: v2
-                PlanV2ManifestS3Uri.$: "$.Plan.PlanV2ManifestS3Uri"
-                PlanV2ArtifactS3Prefix.$: "$.Plan.PlanV2ArtifactS3Prefix"
-                PlanHash.$: "$.Plan.PlanHash"
+                PlanV2ManifestS3Uri.$: "$.Render.Plan.PlanV2ManifestS3Uri"
+                PlanV2ArtifactS3Prefix.$: "$.Render.Plan.PlanV2ArtifactS3Prefix"
+                PlanHash.$: "$.Render.Plan.PlanHash"
                 ChunkS3Uris.$: "$.Render.Chunks[*].ChunkS3Uri"
                 AudioS3Uri.$: "$.Render.Audio.AudioS3Uri"
                 OutputS3Uri.$: "$.OutputS3Uri"
-                Format.$: "$.Plan.Format"
+                Format.$: "$.Render.Plan.Format"
             ResultSelector:
               OutputS3Uri.$: "$.Payload.OutputS3Uri"
               FramesEncoded.$: "$.Payload.FramesEncoded"

@@ -490,13 +490,13 @@ export class HyperframesRenderStack extends Construct {
       payload: sfn.TaskInput.fromObject({
         Action: "assemble",
         PlanProtocol: "v2",
-        "PlanV2ManifestS3Uri.$": "$.Plan.PlanV2ManifestS3Uri",
-        "PlanV2ArtifactS3Prefix.$": "$.Plan.PlanV2ArtifactS3Prefix",
-        "PlanHash.$": "$.Plan.PlanHash",
+        "PlanV2ManifestS3Uri.$": "$.Render.Plan.PlanV2ManifestS3Uri",
+        "PlanV2ArtifactS3Prefix.$": "$.Render.Plan.PlanV2ArtifactS3Prefix",
+        "PlanHash.$": "$.Render.Plan.PlanHash",
         "ChunkS3Uris.$": "$.Render.Chunks[*].ChunkS3Uri",
         "AudioS3Uri.$": "$.Render.Audio.AudioS3Uri",
         "OutputS3Uri.$": "$.OutputS3Uri",
-        "Format.$": "$.Plan.Format",
+        "Format.$": "$.Render.Plan.Format",
       }),
       resultSelector: {
         "OutputS3Uri.$": "$.Payload.OutputS3Uri",
@@ -515,7 +515,7 @@ export class HyperframesRenderStack extends Construct {
       maxDelay: Duration.seconds(60),
     });
 
-    // The plan left its audio out: mix it while the chunks render.
+    // Mixes the audio while the plan and chunks run; assemble uses it only if the plan left its audio out.
     const audio = new tasks.LambdaInvoke(this, "Audio", {
       lambdaFunction: this.renderFunction,
       payload: sfn.TaskInput.fromObject({
@@ -539,30 +539,42 @@ export class HyperframesRenderStack extends Construct {
       backoffRate: 2,
       maxDelay: Duration.seconds(60),
     });
-    const audioNeeded = new sfn.Choice(this, "AudioNeeded")
-      .when(sfn.Condition.booleanEquals("$.Plan.SeparateAudio", true), audio)
+    const buildChunkListV2 = new sfn.Pass(this, "BuildChunkListV2", {
+      parameters: {
+        "ChunkIndexes.$": "States.ArrayRange(0, States.MathAdd($.Plan.ChunkCount, -1), 1)",
+      },
+      resultPath: "$.Iterator",
+    });
+    const assertChunkCountV2 = new sfn.Choice(this, "AssertChunkCountV2")
+      .when(sfn.Condition.numberGreaterThan("$.Plan.ChunkCount", 0), renderChunksV2)
       .otherwise(
-        new sfn.Pass(this, "NoAudio", {
-          result: sfn.Result.fromObject({ HasAudio: false, AudioS3Uri: null }),
-          resultPath: "$.Audio",
+        new sfn.Fail(this, "PlanProducedZeroChunksV2", {
+          error: "PLAN_TOO_LARGE",
+          cause: "Plan returned ChunkCount=0 — non-retryable producer-side invariant violation.",
         }),
       );
     const renderV2 = new sfn.Parallel(this, "RenderV2", {
-      resultSelector: { "Chunks.$": "$[0].Chunks", "Audio.$": "$[1].Audio" },
+      resultSelector: { "Plan.$": "$[0].Plan", "Chunks.$": "$[0].Chunks", "Audio.$": "$[1].Audio" },
       resultPath: "$.Render",
     })
-      .branch(renderChunksV2)
-      .branch(audioNeeded);
+      .branch(planV2.next(buildChunkListV2).next(assertChunkCountV2))
+      .branch(audio);
+    // A plan with one worker keeps its audio, and the audio task's mix goes unused.
+    renderV2.next(
+      new sfn.Choice(this, "AudioForAssemble")
+        .when(sfn.Condition.booleanEquals("$.Render.Plan.SeparateAudio", true), assembleV2)
+        .otherwise(
+          new sfn.Pass(this, "PlanKeptAudio", {
+            result: sfn.Result.fromObject({ HasAudio: false, AudioS3Uri: null }),
+            resultPath: "$.Render.Audio",
+          }).next(assembleV2),
+        ),
+    );
 
-    const selectWorkerProtocol = new sfn.Choice(this, "SelectWorkerProtocol")
-      .when(sfn.Condition.stringEquals("$.Plan.PlanProtocol", "v2"), renderV2.next(assembleV2))
-      .otherwise(renderChunks.next(assemble));
     const assertChunkCount = new sfn.Choice(this, "AssertChunkCount")
-      .when(sfn.Condition.numberGreaterThan("$.Plan.ChunkCount", 0), selectWorkerProtocol)
+      .when(sfn.Condition.numberGreaterThan("$.Plan.ChunkCount", 0), renderChunks.next(assemble))
       .otherwise(planProducedZero);
-
     plan.next(buildChunkList);
-    planV2.next(buildChunkList);
     buildChunkList.next(assertChunkCount);
 
     const unsupportedPlanProtocol = new sfn.Fail(this, "UnsupportedPlanProtocol", {
@@ -570,10 +582,10 @@ export class HyperframesRenderStack extends Construct {
       cause: 'PlanProtocol must be "v1", "v2", or absent (defaults to v2).',
     });
     return new sfn.Choice(this, "SelectPlanProtocol")
-      .when(sfn.Condition.stringEquals("$.PlanProtocol", "v2"), planV2)
+      .when(sfn.Condition.stringEquals("$.PlanProtocol", "v2"), renderV2)
       .when(sfn.Condition.stringEquals("$.PlanProtocol", "v1"), plan)
       .when(sfn.Condition.isPresent("$.PlanProtocol"), unsupportedPlanProtocol)
-      .otherwise(planV2);
+      .otherwise(renderV2);
   }
 }
 
