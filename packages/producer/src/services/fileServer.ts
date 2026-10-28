@@ -317,20 +317,15 @@ ${seededRandomBlock}
   var RAF_DRAIN_MAX_TURNS = 64;
   var RAF_DRAIN_MAX_CALLBACKS = 2048;
   var RAF_DRAIN_MAX_RERUNS = 16;
-  var seekRanCallbacks = new Set();
-  var prevSeekRanCallbacks = new Set();
-  var drainRunCounts = new Map();
+  var RAF_LINEAGE_MAX_ANCESTORS = 64;
   var lastDrainStats = { turns: 0, ran: 0, pending: 0 };
   var seekCycleArmed = false;
-  var registrationEdges = new WeakMap();
-  // A seek boundary: the incoming epoch starts and the ran-callback sets roll.
-  // __hf.seek arms it through beginSeek BEFORE renderSeek so callbacks queued
-  // by seek hooks (e.g. a timeline onUpdate deferring a DOM update) carry the
-  // incoming epoch; seekers with no renderSeek step (same-origin child frames
-  // driven straight through seekToTime) roll the boundary inside seekToTime.
+  // A seek boundary: the incoming epoch starts. __hf.seek arms it through
+  // beginSeek BEFORE renderSeek so callbacks queued by seek hooks (e.g. a
+  // timeline onUpdate deferring a DOM update) carry the incoming epoch;
+  // seekers with no renderSeek step (same-origin child frames driven
+  // straight through seekToTime) roll the boundary inside seekToTime.
   function rollSeekBoundary() {
-    prevSeekRanCallbacks = seekRanCallbacks;
-    seekRanCallbacks = new Set();
     seekEpoch++;
   }
   function runRafEntries(current, viaDrain) {
@@ -344,8 +339,7 @@ ${seededRandomBlock}
         entry.callback(virtualNowMs);
       } catch {}
       activeEntry = prevActive;
-      seekRanCallbacks.add(entry.callback);
-      if (viaDrain) drainRunCounts.set(entry.callback, (drainRunCounts.get(entry.callback) || 0) + 1);
+      if (viaDrain) entry.lineage.drainRuns++;
       ran++;
     }
     return ran;
@@ -360,15 +354,15 @@ ${seededRandomBlock}
     lastDrainStats = { turns: ran ? 1 : 0, ran: ran, pending: rafQueue.length };
   }
   // An entry is deferred (left queued for the next frame) when the drain
-  // cannot safely settle it early: a registration-cycle member at epoch 0
-  // (a page-load self/mutual loop keeps its one-turn-per-seek rate exactly),
-  // a callback that already ran in the previous seek (established loops), or
-  // a callback that spent its lifetime drain allowance. Anything else is
-  // fresh deferred work and runs to quiescence at the current virtual time.
+  // cannot safely settle it early: its registration lineage was born in an
+  // earlier seek (an established loop keeps its one-turn-per-seek rate), or
+  // the lineage spent its drain allowance. A lineage is per registration,
+  // not per callback — a function re-requested in a later seek opens a fresh
+  // lineage and settles; everything else is fresh deferred work and runs to
+  // quiescence at the current virtual time.
   function isDeferred(entry) {
-    if (entry.epoch < 1) return true;
-    if (prevSeekRanCallbacks.has(entry.callback)) return true;
-    return (drainRunCounts.get(entry.callback) || 0) >= RAF_DRAIN_MAX_RERUNS;
+    var lineage = entry.lineage;
+    return lineage.epoch < seekEpoch || lineage.drainRuns >= RAF_DRAIN_MAX_RERUNS;
   }
   // The capture path's drain, called after the seek's own flush. A deferred
   // DOM update can legitimately chain through several rAF turns at one
@@ -430,41 +424,59 @@ ${seededRandomBlock}
     } catch {}
   }
 
-  // Registration epoch decides what the drain may settle. Outside callbacks
-  // the current epoch applies. Inside a running callback the edge is read
-  // like a graph: re-registering the callback itself or one of its ancestors
-  // closes a registration cycle (a perpetual loop) and inherits that
-  // ancestor's epoch; an edge the same parent registered before rides the
-  // parent's epoch; a genuinely new edge is spawned work (a perpetual driver
-  // like a tween ticker deferring DOM updates mid-seek) and gets the epoch
-  // of the seek in progress so the drain can settle it.
-  function registrationEpoch(callback) {
+  // Registration lineage decides what the drain may settle. Each entry
+  // carries its lineage — {epoch, drainRuns}, shared by every link of one
+  // invocation — plus a bounded, callback-deduped list of ancestor records
+  // for cycle detection (a queued entry retains at most
+  // RAF_LINEAGE_MAX_ANCESTORS records, not the whole history of seeks).
+  // Outside callbacks the registration opens a fresh lineage born at the
+  // seek it first runs in: the current epoch when the boundary is armed
+  // (beginSeek ran), the incoming epoch between seeks, or epoch 0 before
+  // any seek so page-load work keeps its deferred pace. Inside a running
+  // callback the edge is read like a graph: re-registering an ancestor
+  // closes a registration cycle (a perpetual loop) and the new link joins
+  // the loop's lineage; anything else is spawned work (a perpetual driver
+  // like a tween ticker deferring DOM updates mid-seek) and opens a fresh
+  // lineage at the seek in progress so the drain can settle it.
+  function registrationContext(callback) {
     var parent = activeEntry;
-    if (!parent) return seekEpoch;
-    var node = parent;
-    var hops = 0;
-    while (node && hops++ <= RAF_DRAIN_MAX_TURNS) {
-      if (node.callback === callback) return node.epoch;
-      node = node.parent;
+    if (!parent) {
+      var epoch = seekEpoch;
+      if (epoch > 0 && !seekCycleArmed) epoch = seekEpoch + 1;
+      return { lineage: { epoch: epoch, drainRuns: 0 }, ancestors: null };
     }
-    var seen = registrationEdges.get(parent.callback);
-    if (seen && seen.has(callback)) return parent.epoch;
-    if (!seen) {
-      seen = new WeakSet();
-      registrationEdges.set(parent.callback, seen);
+    var records = parent.ancestors;
+    var last = records[records.length - 1];
+    if (last.callback === callback) {
+      var earlier = false;
+      for (var j = 0; j < records.length - 1; j++) {
+        if (records[j].callback === callback) { earlier = true; break; }
+      }
+      if (!earlier) return { lineage: last.lineage, ancestors: records };
     }
-    seen.add(callback);
-    return seekEpoch;
+    var lineage = null;
+    var next = [];
+    var first = records.length - (RAF_LINEAGE_MAX_ANCESTORS - 1);
+    if (first < 0) first = 0;
+    for (var i = first; i < records.length; i++) {
+      var record = records[i];
+      if (record.callback === callback) lineage = record.lineage;
+      else next.push(record);
+    }
+    if (!lineage) lineage = { epoch: seekEpoch, drainRuns: 0 };
+    next.push({ callback: callback, lineage: lineage });
+    return { lineage: lineage, ancestors: next };
   }
 
   window.requestAnimationFrame = function(callback) {
     if (typeof callback !== "function") return 0;
+    var context = registrationContext(callback);
     var entry = {
       id: rafId++,
       callback: callback,
       cancelled: false,
-      epoch: registrationEpoch(callback),
-      parent: activeEntry,
+      lineage: context.lineage,
+      ancestors: context.ancestors || [{ callback: callback, lineage: context.lineage }],
     };
     rafQueue.push(entry);
     return entry.id;
