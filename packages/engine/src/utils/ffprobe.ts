@@ -245,6 +245,8 @@ export interface AudioMetadata {
   /** Seconds after the file's media time 0 at which its last audio or video stream starts. */
   latestStreamLeadSeconds?: number;
   audioStreamLeadSeconds?: number;
+  /** As on VideoMetadata: how far the browser's media time runs ahead of the file's. */
+  mediaTimeOffsetSeconds?: number;
   audioStreamCount?: number;
   /** The track read for these facts and for the mix, by its place among the audio streams (decodableAudioStream). */
   audioStream: number;
@@ -1267,6 +1269,7 @@ async function probeAudioMetadata(filePath: string, signal?: AbortSignal): Promi
     bitrate: output.format.bit_rate ? parseInt(output.format.bit_rate) : undefined,
     latestStreamLeadSeconds: latestStreamLeadSeconds(output),
     audioStreamLeadSeconds: streamLeadSeconds(output, audioStream),
+    mediaTimeOffsetSeconds: mediaTimeOffsetSeconds(output),
     audioStreamCount: audioStreams.length,
     audioStream: audioStreamIndex,
   };

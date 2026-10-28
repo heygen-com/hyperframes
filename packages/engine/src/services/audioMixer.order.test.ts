@@ -23,7 +23,8 @@ vi.mock("./aacEncode.js", async (importOriginal) => ({
   encodeAac: vi.fn(async () => ({ success: true, durationMs: 1, stderr: "", exitCode: 0 })),
 }));
 
-vi.mock("../utils/ffprobe.js", () => ({
+vi.mock("../utils/ffprobe.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../utils/ffprobe.js")>()),
   extractAudioMetadata: vi.fn(async () => ({ durationSeconds: 1, channels: 2, audioStream: 0 })),
 }));
 

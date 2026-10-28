@@ -5,7 +5,7 @@ import { renameWithRetry } from "@hyperframes/core/rename-retry";
 import { removeScratch } from "@hyperframes/core/remove-scratch";
 import { join, dirname, isAbsolute, relative } from "path";
 import { parseHTML } from "linkedom";
-import { extractAudioMetadata, type AudioMetadata } from "../utils/ffprobe.js";
+import { extractAudioMetadata, ffmpegSeekSeconds, type AudioMetadata } from "../utils/ffprobe.js";
 import { isNotMediaPayload } from "../utils/notMediaPayload.js";
 import { urlInputArgs } from "../utils/urlInput.js";
 import { clampAudioGain, clipGain } from "@hyperframes/core/audio-gain";
@@ -769,13 +769,14 @@ async function extractAudioSegment(
       removeScratch(cycleDir);
     }
   }
-  const inputSeek = mediaStart >= (metadata?.latestStreamLeadSeconds ?? 0);
-  const start = formatFilterNumber(mediaStart);
+  const ffmpegStart = ffmpegSeekSeconds(metadata ?? {}, mediaStart);
+  const inputSeek = ffmpegStart >= (metadata?.latestStreamLeadSeconds ?? 0);
+  const start = formatFilterNumber(ffmpegStart);
   const timestampTrim = inputSeek
     ? null
-    : `atrim=start=${start}:end=${formatFilterNumber(mediaStart + sourceDuration)},asetpts=PTS-${start}/TB,aresample=async=1:first_pts=0`;
+    : `atrim=start=${start}:end=${formatFilterNumber(ffmpegStart + sourceDuration)},asetpts=PTS-${start}/TB,aresample=async=1:first_pts=0`;
   const fromSidecar = audioSidecarUrl !== undefined && inputSeek && normalizedPlaybackRate === 1;
-  const warmUp = fromSidecar ? Math.min(SIDECAR_WARM_UP_SECONDS, mediaStart) : 0;
+  const warmUp = fromSidecar ? Math.min(SIDECAR_WARM_UP_SECONDS, ffmpegStart) : 0;
   const outputArgs = preparedAudioOutputArgs(
     metadata,
     normalizedPlaybackRate,
@@ -794,7 +795,7 @@ async function extractAudioSegment(
     ...(readsUrl ? FAIL_ON_READ_ERROR_INSTEAD_OF_ENDING_THERE : []),
     ...urlInputArgs(readFrom),
     ...(inputSeek
-      ? ["-ss", String(mediaStart - warmUp), "-t", String(sourceDuration + warmUp)]
+      ? ["-ss", String(ffmpegStart - warmUp), "-t", String(sourceDuration + warmUp)]
       : []),
     "-i",
     readFrom,

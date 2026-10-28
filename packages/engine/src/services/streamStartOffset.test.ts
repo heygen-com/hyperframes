@@ -19,6 +19,7 @@ const SAMPLE_RATE = 48_000;
 const LEAD_SECONDS = 7;
 const CLIP_SECONDS = 12;
 const PICTURE_SECONDS = 20;
+const BOTH_LATE_SECONDS = 2;
 
 function ffmpeg(args: string[]): void {
   const result = spawnSync(FFMPEG, ["-nostdin", "-v", "error", "-y", ...args], {
@@ -89,6 +90,17 @@ describe.skipIf(!HAS_FFMPEG)(
       const mux = ["-map", "0:v", "-map", "1:a", "-c", "copy"];
       ffmpeg(["-itsoffset", lead, "-i", picture, "-i", steps, ...mux, join(dir, "video-late.mp4")]);
       ffmpeg(["-i", picture, "-itsoffset", lead, "-i", steps, ...mux, join(dir, "audio-late.mp4")]);
+      const both = String(BOTH_LATE_SECONDS);
+      ffmpeg([
+        "-i",
+        picture,
+        "-i",
+        steps,
+        ...mux,
+        "-output_ts_offset",
+        both,
+        join(dir, "both-late.mp4"),
+      ]);
       // MPEG-TS starts its clock at 1.4 s, so no stream starts at 0.
       ffmpeg(["-i", join(dir, "video-late.mp4"), "-c", "copy", join(dir, "video-late.ts")]);
     }, 60_000);
@@ -111,6 +123,9 @@ describe.skipIf(!HAS_FFMPEG)(
       { source: "audio-late.mp4", audioLead: LEAD_SECONDS, type: "video", mediaStart: 0 },
       { source: "audio-late.mp4", audioLead: LEAD_SECONDS, type: "video", mediaStart: 3 },
       { source: "audio-late.mp4", audioLead: LEAD_SECONDS, type: "audio", mediaStart: 0 },
+      { source: "both-late.mp4", audioLead: BOTH_LATE_SECONDS, type: "audio", mediaStart: 0 },
+      { source: "both-late.mp4", audioLead: BOTH_LATE_SECONDS, type: "video", mediaStart: 1 },
+      { source: "both-late.mp4", audioLead: BOTH_LATE_SECONDS, type: "audio", mediaStart: 3 },
       {
         source: "audio-late.mp4",
         audioLead: LEAD_SECONDS,
