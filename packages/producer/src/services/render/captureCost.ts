@@ -139,7 +139,7 @@ export function buildHeapAdvisoryWarning(
 export function resolveRenderWorkerCount(
   totalFrames: number,
   requestedWorkers: number | undefined,
-  cfg: EngineConfig & Pick<WorkerSizingConfig, "appleGpuDiskCapture">,
+  cfg: EngineConfig & Pick<WorkerSizingConfig, "appleGpuDiskCapture" | "diskCapture">,
   compiled: Pick<CompiledComposition, "hasShaderTransitions" | "renderModeHints">,
   log: ProducerLogger = defaultLogger,
   measuredCaptureCost?: CaptureCostEstimate,

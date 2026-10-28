@@ -4,6 +4,7 @@ import {
   _resetCgroupLimitCacheForTests,
   isLowMemorySystem,
   LOW_MEMORY_TOTAL_MB_THRESHOLD,
+  parseCgroupCpuLimit,
   parseCgroupLimitMb,
 } from "./systemMemory.js";
 
@@ -155,6 +156,26 @@ describe("parseCgroupLimitMb", () => {
   });
 });
 
+describe("parseCgroupCpuLimit", () => {
+  it.each([
+    { v2: "600000 100000", expected: 6 },
+    { v2: "150000 100000\n", expected: 1 },
+    { v2: "50000 100000", expected: 1 },
+    { v2: "max 100000", expected: null },
+    { v2: "", expected: null },
+  ])("reads cgroup v2 cpu.max $v2", ({ v2, expected }) => {
+    expect(parseCgroupCpuLimit(v2, null, null)).toBe(expected);
+  });
+
+  it.each([
+    { quota: "1200000", period: "100000", expected: 12 },
+    { quota: "-1", period: "100000", expected: null },
+    { quota: null, period: null, expected: null },
+  ])("reads cgroup v1 quota $quota over period $period", ({ quota, period, expected }) => {
+    expect(parseCgroupCpuLimit(null, quota, period)).toBe(expected);
+  });
+});
+
 describe("getCgroupMemoryLimitMb", () => {
   it("returns only an actual cgroup limit and never host RAM", async () => {
     await withSystemMemoryMocks(
@@ -269,9 +290,7 @@ describe("getSystemTotalMb", () => {
         expect(getSystemTotalMb()).toBe(32768);
         expect(isLowMemorySystem()).toBe(false);
         expect(warn).toHaveBeenCalledTimes(1);
-        expect(warn.mock.calls[0]?.[0]).toContain(
-          "[SystemMemory] Unable to read cgroup memory limit",
-        );
+        expect(warn.mock.calls[0]?.[0]).toContain("[SystemMemory] Unable to read cgroup limit");
         expect(warn.mock.calls[0]?.[0]).toContain("EACCES");
       },
     );

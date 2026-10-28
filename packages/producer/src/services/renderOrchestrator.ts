@@ -2798,18 +2798,17 @@ export function shouldSegmentCapture(args: {
 }
 
 /** Worker sizing's Apple-GPU budget fits only frames written to disk by screenshot workers. */
+function isDiskCapture(args: { layered: boolean; parallelStream: boolean }): boolean {
+  return !args.layered && !args.parallelStream;
+}
+
 export function isAppleGpuDiskCapture(args: {
   platform: NodeJS.Platform;
   browserGpuMode: "software" | "hardware";
   layered: boolean;
   parallelStream: boolean;
 }): boolean {
-  return (
-    args.platform === "darwin" &&
-    args.browserGpuMode === "hardware" &&
-    !args.layered &&
-    !args.parallelStream
-  );
+  return args.platform === "darwin" && args.browserGpuMode === "hardware" && isDiskCapture(args);
 }
 
 export function shouldStreamParallelCapture(args: {
@@ -4052,9 +4051,7 @@ async function executeRenderPipeline(input: {
 
     // Low-memory safe-mode's single-worker pin lives inside
     // resolveRenderWorkerCount so its "why workers=N" logging stays coherent.
-    const appleGpuDiskCapture = isAppleGpuDiskCapture({
-      platform: process.platform,
-      browserGpuMode: resolvedBrowserGpuMode,
+    const capturePathFacts = {
       layered: shouldUseLayeredComposite({
         hasHdrContent,
         hasShaderTransitions: compiled.hasShaderTransitions && !isGif,
@@ -4069,11 +4066,16 @@ async function executeRenderPipeline(input: {
           deviceScaleFactor: captureOptions.deviceScaleFactor,
         }),
       ),
+    };
+    const appleGpuDiskCapture = isAppleGpuDiskCapture({
+      platform: process.platform,
+      browserGpuMode: resolvedBrowserGpuMode,
+      ...capturePathFacts,
     });
     workerCount = resolveRenderWorkerCount(
       totalFrames,
       job.config.workers,
-      { ...cfg, appleGpuDiskCapture },
+      { ...cfg, diskCapture: isDiskCapture(capturePathFacts), appleGpuDiskCapture },
       compiled,
       log,
       captureCalibration?.estimate,

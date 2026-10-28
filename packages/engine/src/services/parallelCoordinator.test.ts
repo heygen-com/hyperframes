@@ -1,6 +1,7 @@
 import { cpus, totalmem } from "os";
 import { getHeapStatistics } from "v8";
 import { afterEach, describe, it, expect, vi } from "vitest";
+import { getAvailableCpuCount } from "./systemMemory.js";
 import {
   calculateOptimalWorkers,
   computeWorkerSizing,
@@ -132,7 +133,13 @@ describe("calculateOptimalWorkers", () => {
 
 vi.mock("os", async (importOriginal) => {
   const os = await importOriginal<typeof import("os")>();
-  return { ...os, default: os, cpus: vi.fn(os.cpus), totalmem: vi.fn(os.totalmem) };
+  const cpus = vi.fn(os.cpus);
+  const availableParallelism = () => cpus().length;
+  return { ...os, default: os, cpus, availableParallelism, totalmem: vi.fn(os.totalmem) };
+});
+vi.mock("./systemMemory.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./systemMemory.js")>();
+  return { ...actual, getAvailableCpuCount: vi.fn(actual.getAvailableCpuCount) };
 });
 vi.mock("v8", async (importOriginal) => {
   const v8 = await importOriginal<typeof import("v8")>();
@@ -144,6 +151,7 @@ describe("computeWorkerSizing", () => {
     vi.mocked(cpus).mockRestore();
     vi.mocked(totalmem).mockRestore();
     vi.mocked(getHeapStatistics).mockRestore();
+    vi.mocked(getAvailableCpuCount).mockRestore();
   });
 
   // The field case: a 24GB 14-core Mac, Node's default ~4GB heap, a long 1080x1920 project.
@@ -165,6 +173,43 @@ describe("computeWorkerSizing", () => {
       heap_size_limit: 8192 * 1024 ** 2,
     } as ReturnType<typeof getHeapStatistics>);
     expect(computeWorkerSizing(1300, undefined, { concurrency: "auto" }).workers).toBe(5);
+  });
+
+  // A container on a 32-core host with a 6-CPU quota and Node's default heap.
+  it("sizes by the container's CPU quota, not the host's cores", () => {
+    vi.mocked(cpus).mockReturnValue(
+      Array.from({ length: 32 }, () => ({}) as ReturnType<typeof cpus>[number]),
+    );
+    vi.mocked(getAvailableCpuCount).mockReturnValue(6);
+    vi.mocked(totalmem).mockReturnValue(24 * 1024 ** 3);
+    vi.mocked(getHeapStatistics).mockReturnValue({
+      heap_size_limit: 4144 * 1024 ** 2,
+    } as ReturnType<typeof getHeapStatistics>);
+    const disk = { concurrency: "auto" as const, diskCapture: true };
+    const sizing = computeWorkerSizing(1300, undefined, disk);
+    expect(sizing.cpuCount).toBe(6);
+    expect(sizing.cpuBasedWorkers).toBe(4);
+    expect(sizing.workers).toBe(2);
+    expect(sizing.boundBy).toBe("contention");
+    vi.mocked(getAvailableCpuCount).mockReturnValue(12);
+    expect(computeWorkerSizing(1300, undefined, disk).workers).toBe(4);
+  });
+
+  it("budgets disk capture's parent heap by what disk capture uses", () => {
+    vi.mocked(cpus).mockReturnValue(
+      Array.from({ length: 14 }, () => ({}) as ReturnType<typeof cpus>[number]),
+    );
+    vi.mocked(totalmem).mockReturnValue(24 * 1024 ** 3);
+    vi.mocked(getHeapStatistics).mockReturnValue({
+      heap_size_limit: 4192 * 1024 ** 2,
+    } as ReturnType<typeof getHeapStatistics>);
+    const sizing = computeWorkerSizing(1300, undefined, {
+      concurrency: "auto",
+      diskCapture: true,
+    });
+    expect(sizing.heapBasedWorkers).toBe(24);
+    expect(sizing.boundBy).toBe("contention");
+    expect(sizing.workers).toBe(5);
   });
 
   it("sizes Apple-GPU disk capture by its own heap and core budget", () => {

@@ -1,16 +1,17 @@
 /**
- * System-memory probing for memory-adaptive render behaviour.
+ * System memory and CPU probing for resource-adaptive render behaviour.
  *
  * The render pipeline tunes itself to the host's RAM in several places —
  * frame-cache sizes (`config.ts`), Chrome heap + GPU budget flags
  * (`browserManager.ts`), and worker count (`parallelCoordinator.ts`).
  * They all need the same "how much memory does this box have" reading, so
- * it lives here once instead of being re-derived inline.
+ * it lives here once instead of being re-derived inline. The CPU count gets
+ * the same treatment: a container's CPU quota, not the host's cores.
  */
 
 import { execSync } from "child_process";
 import { readFileSync } from "fs";
-import { freemem, platform, totalmem } from "os";
+import { availableParallelism, freemem, platform, totalmem } from "os";
 
 const BYTES_PER_MIB = 1024 * 1024;
 const BYTES_PER_MIB_BIGINT = BigInt(BYTES_PER_MIB);
@@ -23,10 +24,14 @@ const BYTES_PER_MIB_BIGINT = BigInt(BYTES_PER_MIB);
 // detection, and chasing nested slices adds fragility for no container gain.
 const CGROUP_V2_MEMORY_MAX_PATH = "/sys/fs/cgroup/memory.max";
 const CGROUP_V1_MEMORY_LIMIT_PATH = "/sys/fs/cgroup/memory/memory.limit_in_bytes";
+const CGROUP_V2_CPU_MAX_PATH = "/sys/fs/cgroup/cpu.max";
+const CGROUP_V1_CPU_QUOTA_PATH = "/sys/fs/cgroup/cpu/cpu.cfs_quota_us";
+const CGROUP_V1_CPU_PERIOD_PATH = "/sys/fs/cgroup/cpu/cpu.cfs_period_us";
 // Kernel no-limit sentinel is page-rounded 2^63-1 (~9223372036854771712); >= 2^60 is implausible as a real limit.
 const CGROUP_V1_NO_LIMIT_CUTOFF_BYTES = 2n ** 60n;
 
 let _cachedCgroupLimitMb: number | null | undefined;
+let _cachedCgroupCpuLimit: number | null | undefined;
 let _warnedCgroupReadFailure = false;
 
 /** Parse cgroup v2/v1 memory limits from sysfs file contents into MiB. */
@@ -75,9 +80,45 @@ function parsePositiveByteLimitMb(content: string, noLimitCutoffBytes?: bigint):
   return Number(bytes / BYTES_PER_MIB_BIGINT);
 }
 
-/** Test-only: reset the cached cgroup memory probe. */
+/**
+ * Whole CPUs a cgroup v2 `cpu.max` or v1 `cfs_quota_us`/`cfs_period_us` quota grants, at least 1,
+ * or null when there is no quota.
+ */
+export function parseCgroupCpuLimit(
+  v2Content: string | null,
+  v1Quota: string | null,
+  v1Period: string | null,
+): number | null {
+  const [quota, period] =
+    v2Content !== null ? v2Content.trim().split(/\s+/) : [v1Quota?.trim(), v1Period?.trim()];
+  if (!quota || !period || !/^\d+$/.test(quota) || !/^\d+$/.test(period)) return null;
+  const cpusGranted = Number(quota) / Number(period);
+  return cpusGranted > 0 ? Math.max(1, Math.floor(cpusGranted)) : null;
+}
+
+/** CPUs this process can run on: the host's cores, capped by a container's CPU quota. */
+export function getAvailableCpuCount(): number {
+  if (_cachedCgroupCpuLimit === undefined) {
+    const v2Content = process.platform === "linux" ? readCgroupFile(CGROUP_V2_CPU_MAX_PATH) : null;
+    _cachedCgroupCpuLimit =
+      process.platform !== "linux"
+        ? null
+        : v2Content !== null
+          ? parseCgroupCpuLimit(v2Content, null, null)
+          : parseCgroupCpuLimit(
+              null,
+              readCgroupFile(CGROUP_V1_CPU_QUOTA_PATH),
+              readCgroupFile(CGROUP_V1_CPU_PERIOD_PATH),
+            );
+  }
+  const hostCpus = Math.max(1, availableParallelism());
+  return _cachedCgroupCpuLimit === null ? hostCpus : Math.min(hostCpus, _cachedCgroupCpuLimit);
+}
+
+/** Test-only: reset the cached cgroup memory and CPU probes. */
 export function _resetCgroupLimitCacheForTests(): void {
   _cachedCgroupLimitMb = undefined;
+  _cachedCgroupCpuLimit = undefined;
   _warnedCgroupReadFailure = false;
 }
 
@@ -139,8 +180,8 @@ function warnCgroupReadFailure(path: string, error: unknown): void {
   if (_warnedCgroupReadFailure) return;
   _warnedCgroupReadFailure = true;
   console.warn(
-    `[SystemMemory] Unable to read cgroup memory limit at ${path} ` +
-      `(${formatCgroupReadError(error)}); falling back to host RAM.`,
+    `[SystemMemory] Unable to read cgroup limit at ${path} ` +
+      `(${formatCgroupReadError(error)}); falling back to the host's RAM and CPUs.`,
   );
 }
 

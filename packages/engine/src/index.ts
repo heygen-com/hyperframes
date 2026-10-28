@@ -74,6 +74,7 @@ export {
 } from "./services/vp9Options.js";
 export {
   getCgroupMemoryLimitMb,
+  getAvailableCpuCount,
   getSystemTotalMb,
   isLowMemorySystem,
   LOW_MEMORY_TOTAL_MB_THRESHOLD,

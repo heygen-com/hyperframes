@@ -37,7 +37,6 @@
 import { chunkGopFrames } from "../render/deliveryEncoder.js";
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { cpus } from "node:os";
 import { join } from "node:path";
 import {
   assertSwiftShader,
@@ -53,6 +52,7 @@ import {
   createFrameLookupTable,
   deriveBeginFrameProbeTimeTicks,
   type EngineConfig,
+  getAvailableCpuCount,
   getEncoderPreset,
   initializeSession,
   measureVideoShownBoxes,
@@ -1029,7 +1029,11 @@ export async function renderChunk(
           const captureSession = session;
           session = null;
           verifyStarted = Date.now();
-          overlap.current = canEncodeWhileCapturing(encodeInput, chunkWorkerCount, cpus().length)
+          overlap.current = canEncodeWhileCapturing(
+            encodeInput,
+            chunkWorkerCount,
+            getAvailableCpuCount(),
+          )
             ? encodeWhileCapturing(encodeInput, framesInChunk)
             : null;
           await observeRenderStage(

@@ -5,7 +5,7 @@
  * Auto-detects optimal worker count based on CPU/memory.
  */
 
-import { cpus, freemem } from "os";
+import { freemem } from "os";
 import { existsSync, mkdirSync, readdirSync } from "fs";
 import { copyFile, readFile } from "fs/promises";
 import { renameWithRetryAsync } from "@hyperframes/core/rename-retry";
@@ -31,7 +31,7 @@ import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { assertSwiftShader } from "../utils/assertSwiftShader.js";
 import { readWebGlVendorInfoFromCanvas } from "../utils/readWebGlVendorInfoFromCanvas.js";
 import { resolveHeadlessShellPath } from "./browserManager.js";
-import { getSystemTotalMb } from "./systemMemory.js";
+import { getAvailableCpuCount, getSystemTotalMb } from "./systemMemory.js";
 import {
   CaptureFailure,
   classifyCaptureFailure,
@@ -131,7 +131,8 @@ export interface WorkerSizingConfig extends Partial<
    * than a plain DOM screenshot. Explicit --workers requests ignore this hint.
    */
   captureCostMultiplier?: number;
-  /** macOS, hardware GPU, screenshot frames written to disk (not streamed through this process). */
+  /** Screenshot frames written to disk, not streamed through this process. */
+  diskCapture?: boolean;
   appleGpuDiskCapture?: boolean;
 }
 
@@ -153,8 +154,8 @@ const HEAP_RESERVED_MB = 1024;
 // default heap ⇒ >~500MB/worker + base. Caps auto sizing; an explicit
 // `--workers N` is still the operator's call.
 const HEAP_PER_WORKER_MB = 640;
-// Apple-GPU disk capture measured ~15-25 MB parent heap per worker; 14 cores kept gaining to 8.
-const APPLE_DISK_HEAP_PER_WORKER_MB = 128;
+// Disk capture measured ~15-25 MB parent heap per worker on Apple GPUs and Linux alike.
+const DISK_CAPTURE_HEAP_PER_WORKER_MB = 128;
 const APPLE_DISK_CORES_PER_WORKER = 1.75;
 const APPLE_DISK_MAX_WORKERS = 8;
 const MIN_WORKERS = 1;
@@ -174,7 +175,7 @@ const ABSOLUTE_MAX_WORKERS = 24;
 // worker's SwiftShader compositor + the shader-blend thread pool, both of
 // which are themselves CPU-heavy.
 function defaultSafeMaxWorkers(): number {
-  return Math.max(6, Math.min(16, Math.floor(cpus().length / 8)));
+  return Math.max(6, Math.min(16, Math.floor(getAvailableCpuCount() / 8)));
 }
 const MIN_FRAMES_PER_WORKER = 30;
 
@@ -321,7 +322,7 @@ export function computeWorkerSizing(
   requested?: number,
   config?: WorkerSizingConfig,
 ): WorkerSizing {
-  const cpuCount = cpus().length;
+  const cpuCount = getAvailableCpuCount();
   // Use total memory instead of free memory — macOS reports misleadingly low
   // freemem() because it aggressively caches files in "inactive" memory that
   // is immediately reclaimable.
@@ -332,7 +333,9 @@ export function computeWorkerSizing(
     1,
     Math.floor(
       (heapLimitMb - HEAP_RESERVED_MB) /
-        (appleDisk ? APPLE_DISK_HEAP_PER_WORKER_MB : HEAP_PER_WORKER_MB),
+        (appleDisk || config?.diskCapture === true
+          ? DISK_CAPTURE_HEAP_PER_WORKER_MB
+          : HEAP_PER_WORKER_MB),
     ),
   );
   const cpuBasedWorkers = Math.max(1, cpuCount - 2);
@@ -1275,7 +1278,7 @@ export function getSystemResources(): {
   recommendedWorkers: number;
 } {
   return {
-    cpuCores: cpus().length,
+    cpuCores: getAvailableCpuCount(),
     totalMemoryMB: getSystemTotalMb(),
     freeMemoryMB: Math.round(freemem() / (1024 * 1024)),
     recommendedWorkers: calculateOptimalWorkers(1000),
