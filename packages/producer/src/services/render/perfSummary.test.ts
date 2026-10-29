@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildRenderPerfSummary, capturedBeyondViewport, roundDb } from "./perfSummary.js";
+import {
+  buildRenderPerfSummary,
+  capturedBeyondViewport,
+  roundDb,
+  withCapturedBeyondViewport,
+} from "./perfSummary.js";
 import type { CapturePerfSummary } from "@hyperframes/engine";
 import type { RenderJob } from "../renderOrchestrator.js";
 
@@ -115,5 +120,27 @@ describe("capturedBeyondViewport", () => {
   it("keeps the stage's value when no worker reported one", () => {
     expect(capturedBeyondViewport([perf()], true)).toBe(true);
     expect(capturedBeyondViewport([], undefined)).toBeUndefined();
+  });
+});
+
+describe("withCapturedBeyondViewport", () => {
+  const perf = (captureBeyondViewport?: boolean) =>
+    ({ captureBeyondViewport }) as CapturePerfSummary;
+
+  it("replaces the requested value with the one the sessions used", () => {
+    const capture = {
+      forceScreenshot: true,
+      captureMode: "screenshot" as const,
+      captureBeyondViewport: true,
+    };
+    expect(withCapturedBeyondViewport(capture, [perf(false), perf(false)])).toEqual({
+      ...capture,
+      captureBeyondViewport: false,
+    });
+  });
+
+  it("leaves the facts as they are when no session reported", () => {
+    const capture = { forceScreenshot: true, captureMode: "screenshot" as const };
+    expect(withCapturedBeyondViewport(capture, [])).toBe(capture);
   });
 });

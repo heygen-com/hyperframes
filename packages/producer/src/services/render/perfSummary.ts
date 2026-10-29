@@ -19,7 +19,7 @@ import type {
   RenderPerfSummary,
 } from "../renderOrchestrator.js";
 import { type HdrPerfCollector, finalizeHdrPerf } from "./hdrPerf.js";
-import type { RenderObservabilitySummary } from "./observability.js";
+import type { RenderCaptureObservability, RenderObservabilitySummary } from "./observability.js";
 
 /**
  * Worst sub-composition timeline wait outcome across sessions: script_failure
@@ -61,6 +61,15 @@ export function capturedBeyondViewport(
 ): boolean | undefined {
   const used = perfs.flatMap((perf) => perf.captureBeyondViewport ?? []);
   return used.length > 0 ? used.includes(true) : fallback;
+}
+
+/** The capture facts with beyond-viewport capture as the sessions used it, on every capture path. */
+export function withCapturedBeyondViewport(
+  capture: RenderCaptureObservability,
+  perfs: ReadonlyArray<CapturePerfSummary>,
+): RenderCaptureObservability {
+  const used = capturedBeyondViewport(perfs, capture.captureBeyondViewport);
+  return used === undefined ? capture : { ...capture, captureBeyondViewport: used };
 }
 
 /** Adds each worker's page-error console lines to `sink`, once per distinct line. */
