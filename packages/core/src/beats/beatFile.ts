@@ -105,13 +105,25 @@ function isMusicSourceTag(tag: HtmlOpeningTagSpan): boolean {
   return tag.closed && (tag.name === "audio" || (tag.name === "video" && isSoundingVideoTag(tag)));
 }
 
+/** The `<audio>` elements with a src and no role: music candidates nothing has marked. */
+export function unmarkedAudioSources(html: string): { id: string | null; src: string }[] {
+  return scanHtmlOpeningTags(html).flatMap((tag) => {
+    const src =
+      tag.closed && tag.name === "audio" && !attr(tag, "data-timeline-role")
+        ? attr(tag, "src")
+        : null;
+    return src ? [{ id: attr(tag, "id"), src }] : [];
+  });
+}
+
 /**
  * Find the music track's src in composition HTML, applying the SAME rules as the
  * Studio's `isMusicTrack` so the CLI and Studio agree on which clip is music:
  * the FIRST `<audio>`, or `<video data-has-audio="true">` without `muted` (in
  * document order) where data-timeline-role="music", or —
  * when no role is set — whose id matches the music regex. An explicit non-music
- * role excludes the element. Returns the decoded src attribute, or null.
+ * role excludes the element. When none is marked, the only unmarked `<audio>` is
+ * the music track. Returns the decoded src attribute, or null.
  */
 export function findMusicAudioSrc(html: string): string | null {
   for (const tag of scanHtmlOpeningTags(html)) {
@@ -126,5 +138,6 @@ export function findMusicAudioSrc(html: string): string | null {
     const id = attr(tag, "id");
     if (id && MUSIC_ID_RE.test(id)) return src;
   }
-  return null;
+  const unmarked = unmarkedAudioSources(html);
+  return unmarked.length === 1 ? unmarked[0]!.src : null;
 }

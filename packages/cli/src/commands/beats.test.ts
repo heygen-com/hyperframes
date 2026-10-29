@@ -132,6 +132,37 @@ describe.skipIf(!canDecode)("hyperframes beats", () => {
     expect(out).toMatch(/No music track found/);
   });
 
+  it("uses the only <audio> even when nothing marks it as music", async () => {
+    const dir = project("only-audio", 120);
+    writeFileSync(
+      join(dir, "index.html"),
+      `<div data-composition-id="main"><audio src="assets/song.wav"></audio></div>`,
+    );
+    const { exitCode, out } = await runBeats(dir);
+    expect(exitCode).toBe(0);
+    expect(JSON.parse(out).file).toBe("beats/assets/song.wav.json");
+    expect(existsSync(join(dir, "beats", "assets", "song.wav.json"))).toBe(true);
+  });
+
+  it.each([true, false])(
+    "lists the unmarked <audio> elements and how to mark one (json %s)",
+    async (json) => {
+      const dir = project(`two-audio-${json}`, 120);
+      writeFileSync(
+        join(dir, "index.html"),
+        `<div data-composition-id="main"><audio id="a" src="assets/song.wav"></audio>` +
+          `<audio src="assets/voice.wav"></audio></div>`,
+      );
+      const { exitCode, out } = await runBeats(dir, json);
+      expect(exitCode).toBe(1);
+      expect(out).toContain("2 <audio> elements and none is marked as music");
+      expect(out).toContain("#a assets/song.wav");
+      expect(out).toContain("assets/voice.wav");
+      expect(out).toContain('data-timeline-role="music"');
+      expect(existsSync(join(dir, "beats"))).toBe(false);
+    },
+  );
+
   it("writes nothing for a track with no steady beat", async () => {
     const dir = project("silent", null);
     const { exitCode, out } = await runBeats(dir);

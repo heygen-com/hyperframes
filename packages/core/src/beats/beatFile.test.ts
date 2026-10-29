@@ -3,6 +3,7 @@ import {
   audioRelPathForSrc,
   beatFilePathForSrc,
   findMusicAudioSrc,
+  unmarkedAudioSources,
   parseBeats,
   serializeBeats,
 } from "./beatFile";
@@ -148,5 +149,31 @@ describe("serializeBeats", () => {
       )}\n`,
     );
     expect(parseBeats(text)).toEqual({ times: [0.312, 0.938], strengths: [0.877, 1] });
+  });
+});
+
+describe("an unmarked <audio>", () => {
+  it("is the music track when it is the only one", () => {
+    expect(findMusicAudioSrc('<audio id="clip" src="assets/song.wav"></audio>')).toBe(
+      "assets/song.wav",
+    );
+  });
+
+  it("is not guessed among several, and each is listed", () => {
+    const html = '<audio id="a" src="one.wav"></audio><audio src="two.wav"></audio>';
+    expect(findMusicAudioSrc(html)).toBeNull();
+    expect(unmarkedAudioSources(html)).toEqual([
+      { id: "a", src: "one.wav" },
+      { id: null, src: "two.wav" },
+    ]);
+  });
+
+  it("is not the music track when its role says otherwise", () => {
+    expect(findMusicAudioSrc('<audio data-timeline-role="sfx" src="hit.wav"></audio>')).toBeNull();
+  });
+
+  it("gives way to a marked music track", () => {
+    const html = '<audio src="voice.wav"></audio><audio id="bgm" src="bed.wav"></audio>';
+    expect(findMusicAudioSrc(html)).toBe("bed.wav");
   });
 });

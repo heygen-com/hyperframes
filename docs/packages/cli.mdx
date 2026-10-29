@@ -726,7 +726,8 @@ Given an audio or video file instead of a folder, `beats` analyses that file
 with the same tracker and prints the result; it writes nothing.
 
 `beats` finds the music track — an `<audio>` element with
-`data-timeline-role="music"`, or an id like `music`, `bgm`, or `soundtrack` —
+`data-timeline-role="music"`, an id like `music`, `bgm`, or `soundtrack`, or the
+composition's only `<audio>` —
 decodes it with ffmpeg, runs the same beat tracker Studio uses, and writes
 `beats/<audio-path>.json`:
 

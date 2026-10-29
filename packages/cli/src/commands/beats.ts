@@ -7,6 +7,7 @@ import {
   audioRelPathForSrc,
   findMusicAudioSrc,
   serializeBeats,
+  unmarkedAudioSources,
   type MusicBeatAnalysis,
 } from "@hyperframes/core/beats";
 import { parseHTMLContent } from "@hyperframes/core/compiler";
@@ -36,7 +37,8 @@ function mediaSrc(element: Element): string | null {
   );
 }
 
-function findMusicSrc(html: string): string | null {
+/** The composition HTML with a `<source>` child's src lifted onto its media element. */
+function withSourceAttributes(html: string): string {
   const document = parseHTMLContent(html);
   walkCompositionDescendants(document, (element) => {
     const tag = element.tagName.toLowerCase();
@@ -47,17 +49,27 @@ function findMusicSrc(html: string): string | null {
     const src = sources.find((value) => !/^https?:\/\//i.test(value)) ?? sources[0];
     if (src) element.setAttribute("src", src);
   });
-  return findMusicAudioSrc(document.toString());
+  return document.toString();
 }
 
-const NO_MUSIC_TRACK =
-  'No music track found. Add data-timeline-role="music" to the <audio> element, or to a ' +
-  '<video data-has-audio="true"> whose own sound is the music ' +
-  "(or give it an id like music/bgm/soundtrack).";
+const MARK_MUSIC =
+  'Add data-timeline-role="music" to the <audio> element, or to a <video data-has-audio="true"> ' +
+  "whose own sound is the music (or give it an id like music/bgm/soundtrack).";
+
+/** Why no music track was found; with several unmarked <audio> elements, names each one. */
+export function noMusicTrackMessage(html: string): string {
+  const audio = unmarkedAudioSources(html);
+  if (audio.length < 2) return `No music track found. ${MARK_MUSIC}`;
+  const list = audio.map(({ id, src }) => `  ${id ? `#${id} ` : ""}${src}`).join("\n");
+  return `No music track found: ${audio.length} <audio> elements and none is marked as music:\n${list}\n${MARK_MUSIC}`;
+}
 
 /** Locate the music track + its on-disk audio: null when the composition has none, or fail with a clear message. */
-function resolveMusicTarget(project: ProjectDir): { rel: string; audioPath: string } | null {
-  const src = findMusicSrc(readFileSync(project.indexPath, "utf-8"));
+function resolveMusicTarget(
+  project: ProjectDir,
+  html: string,
+): { rel: string; audioPath: string } | null {
+  const src = findMusicAudioSrc(html);
   if (!src) return null;
   const rel = audioRelPathForSrc(src); // same derivation the Studio uses
   if (!rel) fail(`Cannot derive a beat-file path for music src: ${src}`);
@@ -67,8 +79,9 @@ function resolveMusicTarget(project: ProjectDir): { rel: string; audioPath: stri
   return { rel, audioPath };
 }
 
-function answerNoTrack(json: boolean): void {
-  if (!json) fail(NO_MUSIC_TRACK);
+function answerNoTrack(json: boolean, html: string): void {
+  // Several unmarked <audio> elements is an ambiguity to fix, not a composition without music.
+  if (!json || unmarkedAudioSources(html).length > 1) fail(noMusicTrackMessage(html));
   console.log(JSON.stringify({ ok: true, track: null, file: null, count: 0, bpm: null }, null, 2));
 }
 
@@ -146,8 +159,9 @@ export default defineCommand({
       return await analyzeFile(resolve(args.dir), Boolean(args.json));
     }
     const project = resolveProject(args.dir);
-    const target = resolveMusicTarget(project);
-    if (!target) return answerNoTrack(Boolean(args.json));
+    const html = withSourceAttributes(readFileSync(project.indexPath, "utf-8"));
+    const target = resolveMusicTarget(project, html);
+    if (!target) return answerNoTrack(Boolean(args.json), html);
     const { rel, audioPath } = target;
     if (!args.json) console.log(c.dim(`Analyzing ${rel}…`));
 
