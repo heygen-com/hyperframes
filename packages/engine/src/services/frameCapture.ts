@@ -5590,6 +5590,7 @@ export function getCapturePerfSummary(session: CaptureSession): CapturePerfSumma
     avgSeekMs: Math.round(session.capturePerf.seekMs / frames),
     avgBeforeCaptureMs: Math.round(session.capturePerf.beforeCaptureMs / frames),
     avgScreenshotMs: Math.round(session.capturePerf.screenshotMs / frames),
+    captureBeyondViewport: session.options.captureBeyondViewport,
     p50TotalMs: medianOf(session.capturePerf.frameMs),
     p95TotalMs: percentileOf(session.capturePerf.frameMs, 0.95),
     p99TotalMs: percentileOf(session.capturePerf.frameMs, 0.99),

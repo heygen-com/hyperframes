@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildRenderPerfSummary, roundDb } from "./perfSummary.js";
+import { buildRenderPerfSummary, capturedBeyondViewport, roundDb } from "./perfSummary.js";
+import type { CapturePerfSummary } from "@hyperframes/engine";
 import type { RenderJob } from "../renderOrchestrator.js";
 
 describe("roundDb", () => {
@@ -96,5 +97,23 @@ describe("buildRenderPerfSummary capture phases", () => {
     const summary = buildRenderPerfSummary(baseInput);
     expect(summary.captureSeekAvgMs).toBeUndefined();
     expect(summary.encoderWaitAvgMs).toBeUndefined();
+  });
+});
+
+describe("capturedBeyondViewport", () => {
+  const perf = (captureBeyondViewport?: boolean) =>
+    ({ captureBeyondViewport }) as CapturePerfSummary;
+
+  it("reports off when every worker's session turned the requested capture off", () => {
+    expect(capturedBeyondViewport([perf(false), perf(false)], true)).toBe(false);
+  });
+
+  it("reports on when any worker kept it", () => {
+    expect(capturedBeyondViewport([perf(false), perf(true)], false)).toBe(true);
+  });
+
+  it("keeps the stage's value when no worker reported one", () => {
+    expect(capturedBeyondViewport([perf()], true)).toBe(true);
+    expect(capturedBeyondViewport([], undefined)).toBeUndefined();
   });
 });

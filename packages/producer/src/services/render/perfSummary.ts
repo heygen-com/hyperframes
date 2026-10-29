@@ -54,6 +54,15 @@ export function pushWorkerDedupPerfs(
   }
 }
 
+/** Beyond-viewport capture as the workers' sessions used it: on if any kept it, `fallback` when none reported. */
+export function capturedBeyondViewport(
+  perfs: ReadonlyArray<CapturePerfSummary>,
+  fallback: boolean | undefined,
+): boolean | undefined {
+  const used = perfs.flatMap((perf) => perf.captureBeyondViewport ?? []);
+  return used.length > 0 ? used.includes(true) : fallback;
+}
+
 /** Adds each worker's page-error console lines to `sink`, once per distinct line. */
 export function pushWorkerPageErrors(
   results: ReadonlyArray<{ pageErrorLines?: string[] }>,

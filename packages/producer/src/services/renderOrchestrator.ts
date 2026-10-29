@@ -183,6 +183,7 @@ import { formatCaptureFrameName } from "../utils/paths.js";
 import { findRenderHdrAutoPromotionTrigger, resolveEffectiveHdrMode } from "./render/hdrMode.js";
 import {
   buildRenderPerfSummary,
+  capturedBeyondViewport,
   pushWorkerDedupPerfs,
   pushWorkerPageErrors,
   roundDb,
@@ -5189,10 +5190,12 @@ async function executeRenderPipeline(input: {
           deDrainStats = streamingRes.deDrainStats;
           workerCount = streamingRes.workerCount;
           updateCaptureObservability({ workerCount });
-          if (streamingRes.captureBeyondViewport !== undefined) {
-            updateCaptureObservability({
-              captureBeyondViewport: streamingRes.captureBeyondViewport,
-            });
+          const usedBeyondViewport = capturedBeyondViewport(
+            dedupPerfs,
+            streamingRes.captureBeyondViewport,
+          );
+          if (usedBeyondViewport !== undefined) {
+            updateCaptureObservability({ captureBeyondViewport: usedBeyondViewport });
           }
           probeSession = streamingRes.probeSession;
           lastBrowserConsole = streamingRes.lastBrowserConsole;
@@ -5377,10 +5380,12 @@ async function executeRenderPipeline(input: {
         const captureFrameMs = Date.now() - captureFrameStart;
         workerCount = captureRes.workerCount;
         updateCaptureObservability({ workerCount });
-        if (captureRes.captureBeyondViewport !== undefined) {
-          updateCaptureObservability({
-            captureBeyondViewport: captureRes.captureBeyondViewport,
-          });
+        const usedBeyondViewport = capturedBeyondViewport(
+          dedupPerfs,
+          captureRes.captureBeyondViewport,
+        );
+        if (usedBeyondViewport !== undefined) {
+          updateCaptureObservability({ captureBeyondViewport: usedBeyondViewport });
         }
         probeSession = captureRes.probeSession;
         lastBrowserConsole = captureRes.lastBrowserConsole;
