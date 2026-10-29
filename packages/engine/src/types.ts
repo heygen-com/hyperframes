@@ -273,7 +273,6 @@ export interface CapturePerfSummary {
   avgSeekMs: number;
   avgBeforeCaptureMs: number;
   avgScreenshotMs: number;
-  /** Whether the session captured beyond the viewport, after init turned the request off for a page that fits. */
   captureBeyondViewport?: boolean;
   /**
    * Median per-frame capture time — warmup-robust, unlike `avgTotalMs`
