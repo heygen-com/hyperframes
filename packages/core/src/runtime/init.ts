@@ -5740,13 +5740,6 @@ export function initSandboxRuntimeModular(): void {
 
       const t = clock.now();
       state.currentTime = t;
-      const notReady = mediaNotReadyAt(t);
-      if (clock.isPlaying() && notReady.length > 0) {
-        bufferingFor = notReady;
-        haltPlayback();
-      } else if (bufferingFor.length > 0 && !notReady.some((el) => bufferingFor.includes(el))) {
-        transport.play();
-      }
       if (!window.__HF_EXPORT_RENDER_SEEK_CONFIG) {
         notePlaybackFrame({
           nowMs: performance.now(),
@@ -5824,6 +5817,14 @@ export function initSandboxRuntimeModular(): void {
         // exactly the one to stop.
         lastSyncedMediaTimeSeconds = null;
         syncMediaForCurrentState(timingRevision);
+      }
+      // After media sync, so a clip that just fell due was asked to play, and fetch, before it holds.
+      const notReady = mediaNotReadyAt(state.currentTime);
+      if (clock.isPlaying() && notReady.length > 0) {
+        bufferingFor = notReady;
+        haltPlayback();
+      } else if (bufferingFor.length > 0 && !notReady.some((el) => bufferingFor.includes(el))) {
+        transport.play();
       }
       postState(false);
     } finally {

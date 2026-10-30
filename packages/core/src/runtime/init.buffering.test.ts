@@ -22,12 +22,12 @@ function audio(id: string, duration: number, readyState: { value: number }) {
   return el;
 }
 
-function playPodcast() {
+function playPodcast(voiceStart = 0) {
   resetRuntimeFixtureDom();
   document.body.innerHTML =
     '<div data-composition-id="main" data-root="true" data-duration="10">' +
     '<audio id="music" data-start="0" data-duration="10" src="/music.m4a"></audio>' +
-    '<audio id="voice" data-start="0" data-duration="4" src="/voice.m4a"></audio>' +
+    `<audio id="voice" data-start="${voiceStart}" data-duration="4" src="/voice.m4a"></audio>` +
     "</div>";
   const voiceReady = { value: 1 };
   const music = audio("music", 10, { value: 4 });
@@ -73,6 +73,16 @@ it("a track not ready pauses everything with Buffering, and resumes when it can 
   expect(music.paused).toBe(false);
   expect(voice.paused).toBe(false);
   expect(states.at(-1)).toEqual({ isPlaying: true, buffering: false });
+});
+
+it("asks a clip that falls due without data to play, so it fetches, before holding for it", () => {
+  const { voice, states, playFor } = playPodcast(0.5);
+
+  playFor(1);
+  expect(window.__player!.getTime()).toBeGreaterThanOrEqual(0.5);
+  expect(window.__player!.getTime()).toBeLessThan(0.6);
+  expect(voice.play).toHaveBeenCalled();
+  expect(states.at(-1)).toEqual({ isPlaying: true, buffering: true });
 });
 
 it("a pause while buffering stays paused once the track is ready", () => {
