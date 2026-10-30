@@ -893,14 +893,13 @@ describe("Studio file-change SSE", () => {
 
   it("leaves no timer behind once the tab disconnects, so a stopping CLI can exit", async () => {
     server = createStudioServer({ projectDir: tmpProject() });
-    const timers = () => process.getActiveResourcesInfo().filter((r) => r === "Timeout").length;
-    const before = timers();
+    const timeouts = vi.spyOn(globalThis, "setTimeout");
     const [stream] = await subscribe(1);
-
     await stream!.cancel();
-    await new Promise((resolve) => setImmediate(resolve));
 
-    expect(timers()).toBe(before);
+    const keepAlive = timeouts.mock.calls.filter(([, ms]) => (ms ?? 0) >= 30_000);
+    timeouts.mockRestore();
+    expect(keepAlive).toEqual([]);
   });
 
   it("marks a notes write as not affecting the preview, so the tab does not reload", async () => {
