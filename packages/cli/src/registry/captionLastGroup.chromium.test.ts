@@ -54,7 +54,7 @@ describe.runIf(executablePath)("caption-highlight last group in Chromium", () =>
         const timeline = (
           window as unknown as { __timelines: Record<string, { seek(t: number): void }> }
         ).__timelines["caption-highlight"];
-        timeline.seek(t);
+        timeline!.seek(t);
         const groups = document.querySelectorAll(".hl-group");
         const style = getComputedStyle(groups[groups.length - 1]!);
         return style.visibility !== "hidden" && Number(style.opacity) > 0;
