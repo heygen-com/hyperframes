@@ -222,9 +222,13 @@
     return before || after ? hashFields([before, after]) : "";
   }
 
+  function unreadableMedia(element) {
+    return "x" + (element.currentSrc || element.getAttribute("src") || "");
+  }
+
   // Pixel-only media motion (canvas repaint, playing video, same-size <img> swap) is invisible to DOM channels,
   // so fold in a downsample: fine for liveness (a small sprite moving), coarse for the frozen-sweep guard,
-  // which a wall-clock repaint between seeks would fool. Unreadable media hashes to a constant.
+  // which a wall-clock repaint between seeks would fool. Unreadable media hashes to its source.
   // fallow-ignore-next-line complexity
   function mediaPixelChannel(element, ctx) {
     if (!MEDIA_TAGS.has(element.tagName)) return "";
@@ -232,13 +236,13 @@
       const rect = element.getBoundingClientRect();
       const sourceWidth = element.videoWidth || element.width || rect.width;
       const sourceHeight = element.videoHeight || element.height || rect.height;
-      if (!sourceWidth || !sourceHeight) return "x";
+      if (!sourceWidth || !sourceHeight) return unreadableMedia(element);
       const off = document.createElement("canvas");
       const side = ctx && ctx.quantize ? LIVENESS_MEDIA_SAMPLE_SIDE : COARSE_MEDIA_SAMPLE_SIDE;
       off.width = side;
       off.height = side;
       const ctx2d = off.getContext("2d");
-      if (!ctx2d) return "x";
+      if (!ctx2d) return unreadableMedia(element);
       if (side === LIVENESS_MEDIA_SAMPLE_SIDE) ctx2d.imageSmoothingQuality = "high";
       ctx2d.drawImage(element, 0, 0, side, side);
       const data = ctx2d.getImageData(0, 0, side, side).data;
@@ -246,7 +250,7 @@
       for (let i = 0; i < data.length; i++) hash = (hash * 31 + data[i]) >>> 0;
       return String(hash);
     } catch {
-      return "x";
+      return unreadableMedia(element);
     }
   }
 
