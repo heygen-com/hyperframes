@@ -93,7 +93,9 @@ it("reads no scroll position for a new geometry that places every row where it w
   reads = 0;
   for (let i = 0; i < 3; i += 1) act(() => root.render(<Probe geometry={rows()} />));
   expect(reads, "no layout read for the same rows").toBe(0);
-  act(() => root.render(<Probe geometry={createTimelineRowGeometry([0, 9, 1, 2], [48, 48, 48, 48])} />));
+  act(() =>
+    root.render(<Probe geometry={createTimelineRowGeometry([0, 9, 1, 2], [48, 48, 48, 48])} />),
+  );
   expect(reads, "a row added still keeps the view anchored").toBeGreaterThan(0);
   act(() => root.unmount());
 });

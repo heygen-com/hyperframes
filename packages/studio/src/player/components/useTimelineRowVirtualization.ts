@@ -8,11 +8,9 @@ import {
   type RefObject,
 } from "react";
 import type { TimelineElement } from "../store/playerStore";
+import { sameData } from "../../utils/sameData";
 import { resolveTimelineFocusIdentity } from "./timelineFocusIdentity";
-import {
-  getTimelineScrollTopForGeometryChange,
-  sameTimelineRowTops,
-} from "./timelineViewportGeometry";
+import { getTimelineScrollTopForGeometryChange } from "./timelineViewportGeometry";
 import type { TimelineRowGeometry } from "./timelineLayout";
 import type { TimelineScrollViewportSnapshot } from "./useTimelineScrollViewport";
 import { STUDIO_TIMELINE_ROW_VIRTUALIZATION_ENABLED } from "./timelineRowVirtualizationFlag";
@@ -41,6 +39,8 @@ function getFocusedTimelineRowKey(target: EventTarget | null): number | undefine
   const rowKey = Number(value);
   return Number.isFinite(rowKey) ? rowKey : undefined;
 }
+
+const rowTops = (g: TimelineRowGeometry) => [g.rowKeys, g.rowOffsets, g.padding.top];
 
 export function useTimelineRowVirtualization({
   scrollRef,
@@ -119,11 +119,7 @@ export function useTimelineRowVirtualization({
         scroll.scrollTop = 0;
         syncScrollViewport(scroll);
       }
-    } else if (
-      scroll &&
-      previousGeometry !== rowGeometry &&
-      !sameTimelineRowTops(previousGeometry, rowGeometry)
-    ) {
+    } else if (scroll && !sameData(rowTops(previousGeometry), rowTops(rowGeometry))) {
       const nextScrollTop = getTimelineScrollTopForGeometryChange(
         previousGeometry,
         rowGeometry,
