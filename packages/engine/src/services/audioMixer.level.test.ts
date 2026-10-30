@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { getFfmpegBinary } from "../utils/ffmpegBinaries.js";
-import { MIXED_AUDIO_FILENAME, processCompositionAudio } from "./audioMixer.js";
+import { MIXED_AUDIO_FILENAME, parseAudioElements, processCompositionAudio } from "./audioMixer.js";
 
 const HAS_FFMPEG = spawnSync(getFfmpegBinary(), ["-version"], { encoding: "utf-8" }).status === 0;
 const tempDirs: string[] = [];
@@ -166,6 +166,160 @@ describe.skipIf(!HAS_FFMPEG)(
       expect(result.success).toBe(true);
       expect(firstAudibleSeconds(outputPath)).toBeCloseTo(2, 2);
     });
+
+    it.each([
+      { loop: false, ramped: false },
+      { loop: true, ramped: false },
+      { loop: false, ramped: true },
+      { loop: true, ramped: true },
+    ])(
+      "preserves the normalized surround mix level (loop=$loop, ramped=$ramped)",
+      async ({ loop, ramped }) => {
+        const dir = mkdtempSync(join(tmpdir(), "hf-surround-level-"));
+        tempDirs.push(dir);
+        const sourcePath = join(dir, "surround.wav");
+        const setup = spawnSync(getFfmpegBinary(), [
+          "-nostdin",
+          "-v",
+          "error",
+          "-f",
+          "lavfi",
+          "-i",
+          "aevalsrc=0.3*sin(2*PI*1000*t)|0.2*sin(2*PI*700*t)|0.1*sin(2*PI*400*t)|0|0|0:c=5.1:s=48000:d=1",
+          "-c:a",
+          "pcm_s16le",
+          sourcePath,
+        ]);
+        expect(setup.status, setup.stderr.toString()).toBe(0);
+        const control = spawnSync(getFfmpegBinary(), [
+          "-nostdin",
+          "-v",
+          "error",
+          "-i",
+          sourcePath,
+          "-ac",
+          "2",
+          "-c:a",
+          "pcm_s16le",
+          join(dir, "stereo.wav"),
+        ]);
+        expect(control.status, control.stderr.toString()).toBe(0);
+
+        const duration = loop ? 2 : 1;
+        const levels: number[] = [];
+        for (const name of ["surround", "stereo"]) {
+          const outputPath = join(dir, `${name}.m4a`);
+          const elements = parseAudioElements(
+            `<audio id="tone" src="${name}.wav" data-start="0" data-duration="${duration}" ${loop ? "loop" : ""}></audio>`,
+          );
+          if (ramped) {
+            for (const element of elements) {
+              element.playbackRate = {
+                target: "rate",
+                points: [
+                  { t: 0, v: 0.7 },
+                  { t: duration, v: 1.2 },
+                ],
+              };
+            }
+          }
+          const result = await processCompositionAudio(
+            elements,
+            dir,
+            join(dir, name),
+            outputPath,
+            duration,
+          );
+          expect(result.success, result.error).toBe(true);
+          levels.push(meanVolumeDb(outputPath));
+        }
+        const [surround, stereo] = levels;
+        if (surround === undefined || stereo === undefined)
+          throw new Error("Both mixes need levels");
+        expect(Math.abs(surround - stereo)).toBeLessThan(0.2);
+      },
+    );
+
+    it.each([false, true])(
+      "preserves a boosted clip's waveform through a unity volume lane (loop=%s)",
+      async (loop) => {
+        const dir = mkdtempSync(join(tmpdir(), "hf-envelope-headroom-"));
+        tempDirs.push(dir);
+        const setup = spawnSync(getFfmpegBinary(), [
+          "-nostdin",
+          "-v",
+          "error",
+          "-f",
+          "lavfi",
+          "-i",
+          "aevalsrc=0.6*sin(2*PI*1000*t):s=48000:d=1",
+          "-c:a",
+          "pcm_s16le",
+          join(dir, "tone.wav"),
+        ]);
+        expect(setup.status, setup.stderr.toString()).toBe(0);
+
+        const duration = loop ? 2 : 1;
+        const lane = JSON.stringify({
+          version: 1,
+          lanes: [
+            {
+              target: "volume",
+              points: [
+                { t: 0, v: 1 },
+                { t: duration, v: 1 },
+              ],
+            },
+          ],
+        });
+        const decoded: Buffer[] = [];
+        for (const automated of [false, true]) {
+          const name = automated ? "automated" : "static";
+          const outputPath = join(dir, `${name}.m4a`);
+          const elements = parseAudioElements(`
+            <hf-audio-group id="bus" data-volume="0.5"></hf-audio-group>
+            <audio id="tone" src="tone.wav" data-start="0" data-duration="${duration}"
+              data-volume="2" data-audio-group="bus" ${loop ? "loop" : ""}
+              ${automated ? `data-automation='${lane}'` : ""}></audio>
+          `);
+          const result = await processCompositionAudio(
+            elements,
+            dir,
+            join(dir, name),
+            outputPath,
+            duration,
+          );
+          expect(result.success, result.error).toBe(true);
+          const pcm = spawnSync(getFfmpegBinary(), [
+            "-nostdin",
+            "-v",
+            "error",
+            "-i",
+            outputPath,
+            "-af",
+            "pan=mono|c0=c0",
+            "-f",
+            "f32le",
+            "-",
+          ]);
+          expect(pcm.status, pcm.stderr.toString()).toBe(0);
+          decoded.push(pcm.stdout);
+        }
+
+        const [control, automated] = decoded;
+        if (!control || !automated) throw new Error("Both mixes must decode");
+        let errorEnergy = 0;
+        let signalEnergy = 0;
+        for (let i = 12_000; i < (duration - 0.25) * 48_000; i += 1) {
+          const sample = control.readFloatLE(i * 4);
+          const difference = automated.readFloatLE(i * 4) - sample;
+          errorEnergy += difference * difference;
+          signalEnergy += sample * sample;
+        }
+        expect(Math.sqrt(signalEnergy)).toBeGreaterThan(1);
+        expect(Math.sqrt(errorEnergy / signalEnergy)).toBeLessThan(0.005);
+      },
+    );
   },
   60_000,
 );
