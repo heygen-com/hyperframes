@@ -763,12 +763,13 @@ describe("findBrowser — cache resolution", () => {
           writeStagedInstall(cacheDir, buildId, "fresh"),
       });
       try {
-        const { ensureBrowser, sweepKilledInstalls } = await import("./manager.js");
+        const { ensureBrowser, sweepKilledInstalls, clearBrowser } = await import("./manager.js");
         mkdirSync(held, { recursive: true });
         await expect(sweepKilledInstalls()).resolves.toBeUndefined();
         await expect(ensureBrowser({ force: true })).resolves.toMatchObject({ source: "download" });
         await ensureBrowser({ force: true });
         expect(existsSync(held)).toBe(true);
+        expect(() => clearBrowser()).toThrow(code);
       } finally {
         rmSync(home, { recursive: true, force: true });
       }
