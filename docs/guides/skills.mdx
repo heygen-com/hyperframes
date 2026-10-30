@@ -112,6 +112,19 @@ bob
 Ask Bob to use `/hyperframes` for the first request. Running the update again
 refreshes the same global skill bundles without changing the project format.
 
+## Use the skills in Pi
+
+Run `npx hyperframes skills update`, then open Pi in the project folder. Pi reads
+the skills from the shared `~/.agents/skills` folder in every project, and loads
+one with `/skill:hyperframes`:
+
+```text
+/skill:hyperframes make a 10-second product intro for https://example.com.
+```
+
+See [Make videos with Pi](/guides/with-pi) for the project-local install and
+what to check when Pi does not list the skill.
+
 ## What the skills cover
 
 Make any video by asking for it; the `/hyperframes` skill carries the contract and the references (each kind of film, story, motion, look, sound, review, captions, overlays).
