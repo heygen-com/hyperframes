@@ -273,6 +273,7 @@ export interface CapturePerfSummary {
   avgSeekMs: number;
   avgBeforeCaptureMs: number;
   avgScreenshotMs: number;
+  captureBeyondViewport?: boolean;
   /**
    * Median per-frame capture time — warmup-robust, unlike `avgTotalMs`
    * (first frames pay font/image decode + GC that swamps short renders'

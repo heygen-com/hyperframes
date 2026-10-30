@@ -185,6 +185,7 @@ import {
   buildRenderPerfSummary,
   pushWorkerDedupPerfs,
   pushWorkerPageErrors,
+  withCapturedBeyondViewport,
   roundDb,
   worstSubTimelineWaitOutcome,
 } from "./render/perfSummary.js";
@@ -5475,7 +5476,7 @@ async function executeRenderPipeline(input: {
     observability.checkpoint("pipeline", "artifact validated", { totalElapsedMs: totalElapsed });
     const observabilitySummary = observability.summary({
       lastBrowserConsole,
-      capture: captureObservability,
+      capture: withCapturedBeyondViewport(captureObservability, dedupPerfs),
       initFallback: mergeWorkerInitObservability(dedupPerfs),
       extraction: extractionObservability,
       compositionHash,
@@ -5667,7 +5668,7 @@ async function executeRenderPipeline(input: {
     const failedStage = job.currentStage || "pipeline";
     const observabilitySummary = observability.summary({
       lastBrowserConsole,
-      capture: captureObservability,
+      capture: withCapturedBeyondViewport(captureObservability, dedupPerfs),
       initFallback: mergeWorkerInitObservability(dedupPerfs),
       extraction: extractionObservability,
       compositionHash,
