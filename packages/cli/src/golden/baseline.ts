@@ -10,7 +10,7 @@
  */
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { isAbsolute, join, relative } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import type { BrowserGpuMode } from "../browser/gpuPolicy.js";
 import {
   openSettledCompositionPage,
@@ -28,6 +28,7 @@ import {
 const GOLDEN_DIR_NAME = "golden";
 const GOLDEN_DIFF_DIR_NAME = "golden-diff";
 const GOLDEN_MANIFEST_NAME = "golden.json";
+const SAFE_COMPOSITION_ID_PATTERN = /^[A-Za-z0-9_][\w .-]{0,127}$/;
 
 /** Frames captured when neither a manifest nor existing baselines pick the times. */
 const DEFAULT_GOLDEN_FRAMES = 5;
@@ -105,8 +106,32 @@ export function parseGoldenTimeFileName(fileName: string): number | null {
   return match ? Number.parseInt(match[1]!, 10) : null;
 }
 
+export function assertSafeCompositionId(compositionId: string): string {
+  if (!SAFE_COMPOSITION_ID_PATTERN.test(compositionId)) {
+    throw new Error(
+      `Composition id ${JSON.stringify(compositionId)} cannot be used as a golden folder name. ` +
+        "Use letters, digits, spaces, '.', '_' or '-', starting with a letter, digit or '_'.",
+    );
+  }
+  return compositionId;
+}
+
+function compositionSubdir(projectDir: string, root: string, compositionId: string): string {
+  const base = resolve(projectDir, root);
+  const dir = resolve(base, assertSafeCompositionId(compositionId));
+  const rel = relative(base, dir);
+  if (!rel || rel.startsWith("..") || isAbsolute(rel)) {
+    throw new Error(`Golden folder for "${compositionId}" resolves outside ${root}/.`);
+  }
+  return dir;
+}
+
 function goldenCompositionDir(projectDir: string, compositionId: string): string {
-  return join(projectDir, GOLDEN_DIR_NAME, compositionId);
+  return compositionSubdir(projectDir, GOLDEN_DIR_NAME, compositionId);
+}
+
+function goldenDiffDir(projectDir: string, compositionId: string): string {
+  return compositionSubdir(projectDir, GOLDEN_DIFF_DIR_NAME, compositionId);
 }
 
 export function goldenBaselinePath(
@@ -317,7 +342,7 @@ async function captureGoldenFrames(
         };
       });
 
-      const compositionId = meta.id || project.name;
+      const compositionId = assertSafeCompositionId(meta.id || project.name);
       const manifest = readGoldenManifest(project.dir, compositionId);
       const baselineTimesMs = listGoldenBaselineTimesMs(project.dir, compositionId);
 
@@ -396,13 +421,13 @@ export function writeGoldenBaselines(
   };
 }
 
-async function compareAgainstBaselines(
+export async function compareAgainstBaselines(
   project: ProjectDir,
   captured: CapturedComposition,
   opts: GoldenGateOptions,
 ): Promise<GoldenSummary> {
   const config = resolveGoldenConfig(captured.manifest, { threshold: opts.threshold });
-  const diffDir = join(project.dir, GOLDEN_DIFF_DIR_NAME, captured.compositionId);
+  const diffDir = goldenDiffDir(project.dir, captured.compositionId);
   rmSync(diffDir, { recursive: true, force: true });
 
   const failed: GoldenFailure[] = [];

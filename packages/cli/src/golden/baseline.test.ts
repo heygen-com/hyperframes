@@ -1,8 +1,10 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  assertSafeCompositionId,
+  compareAgainstBaselines,
   evaluateGoldenDiff,
   goldenBaselinePath,
   goldenTimeFileName,
@@ -232,4 +234,60 @@ describe("evaluateGoldenDiff", () => {
     expect(evaluateGoldenDiff(diffResult({ diffRatio: 0.0011 }), 0.001)).toBe("pixel-diff");
     expect(evaluateGoldenDiff(diffResult({ diffRatio: 0.0001 }), 0)).toBe("pixel-diff");
   });
+});
+
+describe("composition id path safety", () => {
+  it("accepts ordinary ids and rejects path-like ones", () => {
+    for (const id of ["intro", "scene_2", "My Video.v2", "a-b"]) {
+      expect(assertSafeCompositionId(id)).toBe(id);
+    }
+    for (const id of [
+      "",
+      ".",
+      "..",
+      "../x",
+      "../..",
+      "a/b",
+      "a\\b",
+      "/abs",
+      ".hidden",
+      "x".repeat(200),
+    ]) {
+      expect(() => assertSafeCompositionId(id)).toThrow(/cannot be used as a golden folder name/);
+    }
+  });
+
+  it.each(["../x", "../../x"])(
+    "refuses to write or delete through id %s",
+    async (compositionId) => {
+      const root = mkdtempSync(join(tmpdir(), "hf-golden-escape-"));
+      const dir = join(root, "project");
+      const project = { dir, name: "project", indexPath: join(dir, "index.html") };
+      const outside = join(root, "x");
+      try {
+        mkdirSync(dir, { recursive: true });
+        mkdirSync(outside, { recursive: true });
+        writeFileSync(join(outside, "1000.png"), "keep");
+        const captured = {
+          compositionId,
+          times: [1],
+          captures: [{ time: 1, timeMs: 1000, png: Buffer.from("new") }],
+          manifest: null,
+        };
+
+        expect(() => writeGoldenBaselines(project, captured, {})).toThrow(/golden folder name/);
+        await expect(compareAgainstBaselines(project, captured, {})).rejects.toThrow(
+          /golden folder name/,
+        );
+
+        expect(readFileSync(join(outside, "1000.png"), "utf8")).toBe("keep");
+        expect(existsSync(join(outside, "golden.json"))).toBe(false);
+        expect(existsSync(outside)).toBe(true);
+        expect(existsSync(join(dir, "golden"))).toBe(false);
+        expect(existsSync(join(dir, "golden-diff"))).toBe(false);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+  );
 });
