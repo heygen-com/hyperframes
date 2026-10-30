@@ -37,7 +37,7 @@ export const ErrInvalidStore = (detail: string) =>
   new AuthError(
     "INVALID_STORE",
     `Credential file is unreadable: ${detail}`,
-    "Delete ~/.heygen/credentials and run `hyperframes auth login` to re-create it.",
+    "Delete ~/.hyperframes/credentials and run `hyperframes auth login` to re-create it.",
   );
 
 export const ErrUnauthenticated = (detail?: string) =>

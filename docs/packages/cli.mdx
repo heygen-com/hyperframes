@@ -687,10 +687,11 @@ and are copied to `~/.media/` so other projects can reuse them. Sound effects
 under CC BY get their credit written to `.media/audio/sfx/CREDITS.md`.
 
 **What needs an account, and what can cost money.** The HeyGen sources run
-through the separate `heygen` CLI, signed in with `heygen auth login --oauth`.
-Searching the music, image, and icon catalogs is free. Text to speech and avatar
-video draw on a free allowance when you are signed in with OAuth, then on your
-HeyGen billing, so an agent should ask before generating them. When a
+through the separate `heygen` executable using the login selected by
+`hyperframes auth login`. It receives a temporary access-token credential and
+cannot read the separate HeyGen login or refresh a HyperFrames grant.
+The server decides feature eligibility and charges. An explicit API-key credential
+uses API-key billing. When a
 host app sets `HEYGEN_API_BASE` and `HEYGEN_API_KEY`, HeyGen calls go through that
 host instead and are charged to its key. The `codex` image fallback uses your
 ChatGPT subscription. Openverse, theSVG, GitHub, favicons, color grades, and the
@@ -2188,16 +2189,16 @@ it is anonymous until you sign in. Nothing calls it by hand.
 
 ## hyperframes auth
 
-Sign in to HeyGen and manage credentials. They live in `~/.heygen/credentials`
-(mode `0600`) and are **shared with the `heygen` CLI** — sign in with one and
-the other picks up the session.
+Sign into your HeyGen account through the dedicated HyperFrames OAuth client.
+Credentials live in `~/.hyperframes/credentials` (mode `0600`), independently
+of the `heygen` CLI. A previous shared login requires a fresh HyperFrames sign-in.
 
 First match wins:
 
 1. `HEYGEN_API_KEY`
 2. `HYPERFRAMES_API_KEY` (a HyperFrames alias for the same thing)
 3. `HEYGEN_ACCESS_TOKEN` (an OAuth token a host app injects; never refreshed or saved)
-4. `~/.heygen/credentials`
+4. `~/.hyperframes/credentials`
 
 ### `auth login`
 
@@ -2257,7 +2258,9 @@ hyperframes auth logout --yes            # no prompt
 | `HYPERFRAMES_API_KEY` | Alias for `HEYGEN_API_KEY`.                      |
 | `HEYGEN_ACCESS_TOKEN` | OAuth token from a host app; never refreshed.    |
 | `HEYGEN_API_URL`      | API base URL (default `https://api.heygen.com`). |
-| `HEYGEN_CONFIG_DIR`   | Credentials directory (default `~/.heygen`).     |
+| `HYPERFRAMES_CONFIG_DIR` | Credentials root (default `~/.hyperframes`). |
+| `HYPERFRAMES_ENV` | `prod` (default) or `dev`; selects matching OAuth/API hosts and a separate dev credential directory. |
+| `HYPERFRAMES_OAUTH_CLIENT_ID` | Override the selected public OAuth client. |
 
 For the keys other capabilities use — ElevenLabs and Gemini for voice and music
 fallback, OpenRouter and Gemini for capture — and how the skills prioritize

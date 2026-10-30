@@ -12,8 +12,19 @@ vi.mock("../utils/publishProject.js", async (importOriginal) => ({
 
 import publishCommand, { examples, parseUpdateTarget } from "./publish.js";
 import { ensureProjectId } from "../utils/projectLink.js";
-import { writeStore } from "../auth/store.js";
+import { writeStore as writeUnboundStore, type Credentials } from "../auth/store.js";
+import { oauthIdentity } from "../auth/config.js";
 import { consumeCommandResult } from "../utils/commandResult.js";
+
+async function writeStore(credentials: Credentials, path?: string): Promise<void> {
+  await writeUnboundStore(
+    {
+      ...credentials,
+      ...(credentials.oauth ? { oauth: { ...oauthIdentity(), ...credentials.oauth } } : {}),
+    },
+    path,
+  );
+}
 
 const VISIBLE_INDEX = `<html><body><div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="5"><div class="clip" data-start="0" data-duration="5">Visible</div></div></body></html>`;
 
@@ -193,7 +204,7 @@ describe("publish --update / --space ownership preflight", () => {
     const project = mkdtempSync(join(tmpdir(), "hf-publish-owner-"));
     const config = mkdtempSync(join(tmpdir(), "hf-publish-owner-config-"));
     writeFileSync(join(project, "index.html"), VISIBLE_INDEX);
-    vi.stubEnv("HEYGEN_CONFIG_DIR", config);
+    vi.stubEnv("HYPERFRAMES_CONFIG_DIR", config);
     vi.stubEnv("HEYGEN_API_KEY", credentials.env ?? "");
     vi.stubEnv("HYPERFRAMES_API_KEY", "");
     if (credentials.stored) await writeStore(credentials.stored, join(config, "credentials"));
@@ -352,7 +363,7 @@ describe("publish --update / --space ownership preflight", () => {
 
       expect(stored?.credentials.oauth).toMatchObject(loginB);
       expect(stored?.credentials.user?.email).toBe("b@example.com");
-      expect(fetchMock.mock.calls.map(([url]) => url)).toEqual(["https://auth.test/token"]);
+      expect(fetchMock).not.toHaveBeenCalled();
       expect(exitCode).toBe(1);
       expect(errors.join("\n")).toContain("Your login changed during publish. Run publish again.");
     } finally {

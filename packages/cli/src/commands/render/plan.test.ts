@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join, resolve } from "node:path";
+import { basename, dirname, join, parse, resolve } from "node:path";
 import { CliUsageError } from "../../utils/commandResult.js";
 import { createRenderPlan } from "./plan.js";
 
@@ -196,8 +196,15 @@ describe("createRenderPlan", () => {
     expect(plan.format).toBe("hls");
     expect(plan.hlsSegmentSeconds).toBe(4);
     // No extension: outputPath is the directory the playlists are written into.
-    expect(plan.outputPath.startsWith(resolve("renders", plan.project.name))).toBe(true);
+    expect(plan.outputPath.startsWith(join(projectDir, "renders", plan.project.name))).toBe(true);
     expect(basename(plan.outputPath)).not.toContain(".");
+  });
+
+  it("writes the default output under the project's renders folder whatever the cwd is", () => {
+    vi.spyOn(process, "cwd").mockReturnValue(parse(projectDir).root);
+    const plan = createRenderPlan({ dir: projectDir });
+
+    expect(dirname(plan.outputPath)).toBe(join(projectDir, "renders"));
   });
 
   it("carries an explicit --hls-segment-seconds and rejects a fractional one", () => {

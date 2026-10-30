@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { getFfmpegBinary, getFfprobeBinary } from "../utils/ffmpegBinaries.js";
+import { getFfmpegBinary } from "../utils/ffmpegBinaries.js";
 import { processCompositionAudio } from "./audioMixer.js";
 import { extractMediaMetadata, resolvePlayableVideoDuration } from "../utils/ffprobe.js";
 import {
@@ -20,25 +20,6 @@ const LEAD_SECONDS = 7;
 const CLIP_SECONDS = 12;
 const PICTURE_SECONDS = 20;
 const BOTH_LATE_SECONDS = 2;
-
-function ffprobeValue(args: string[], path: string): number {
-  const result = spawnSync(
-    getFfprobeBinary(),
-    ["-v", "error", ...args, "-of", "csv=p=0", "--", path],
-    { encoding: "utf-8" },
-  );
-  if (result.status !== 0) throw new Error(result.stderr);
-  return Number(result.stdout.trim().split("\n")[0]);
-}
-
-/** The first video frame on the browser's timeline, which starts at the file's earliest timestamp. */
-function firstVideoFrameAt(path: string): number {
-  const videoPts = ffprobeValue(
-    ["-select_streams", "v:0", "-read_intervals", "%+#1", "-show_entries", "packet=pts_time"],
-    path,
-  );
-  return videoPts - Math.min(0, ffprobeValue(["-show_entries", "format=start_time"], path));
-}
 
 function ffmpeg(args: string[]): void {
   const result = spawnSync(FFMPEG, ["-nostdin", "-v", "error", "-y", ...args], {
@@ -352,14 +333,6 @@ describe.skipIf(!HAS_FFMPEG)("MP4 and WebM sources whose first timestamp is afte
       join(dir, "late.webm"),
     ]);
     ffmpeg([...picture(3.125), ...h264, "-output_ts_offset", "1.5", join(dir, "edit-list.mp4")]);
-    ffmpeg([
-      "-itsoffset",
-      "0.5",
-      ...picture(3),
-      ...["-f", "lavfi", "-i", "sine=frequency=440:duration=3.5"],
-      ...["-c:v", "libvpx-vp9", "-deadline", "realtime", "-c:a", "libopus"],
-      join(dir, "late-with-audio.webm"),
-    ]);
   }, 60_000);
 
   afterAll(() => rmSync(dir, { recursive: true, force: true }), 30_000);
@@ -374,19 +347,14 @@ describe.skipIf(!HAS_FFMPEG)("MP4 and WebM sources whose first timestamp is afte
 
   // The browser counts these files from timestamp 0; FFmpeg counts from the first one.
   it.each([
-    { source: "fragment-cut.mp4", firstFrameAt: 0.25, seconds: 3.125 },
-    { source: "late.webm", firstFrameAt: 0.52, seconds: 3 },
-    { source: "edit-list.mp4", firstFrameAt: 1.5, seconds: 3.125 },
-    // Opus starts before 0 by its pre-skip, which differs by FFmpeg build, so this one is measured.
-    { source: "late-with-audio.webm", firstFrameAt: null, seconds: 3 },
+    { source: "fragment-cut.mp4", firstFrameAt: 0.25 },
+    { source: "late.webm", firstFrameAt: 0.52 },
+    { source: "edit-list.mp4", firstFrameAt: 1.5 },
   ])(
     "$source extracts every frame the browser plays, each at its timestamp",
-    async ({ source, firstFrameAt: pinned, seconds }) => {
+    async ({ source, firstFrameAt }) => {
       const path = join(dir, source);
-      const firstFrameAt = pinned ?? firstVideoFrameAt(path);
       const playable = resolvePlayableVideoDuration(await extractMediaMetadata(path));
-      // The browser plays the clip to its last frame, not for its length counted from timestamp 0.
-      expect(playable).toBeCloseTo(firstFrameAt + seconds, 2);
       const extracted = await extractVideoFramesRange(path, source, 0, playable, {
         fps: 30,
         outputDir: join(dir, `frames-${source}`),

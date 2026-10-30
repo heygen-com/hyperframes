@@ -6,8 +6,11 @@ command. Instead it points you at the right local tool (decision OP1). Run the
 tool, then register the output with `resolve --from <output> --type <type>` so the
 result lands in the ledger and the global cache like any other asset.
 
-All tools below are local and free. ffmpeg is assumed present (it backs the
-engine already).
+The ffmpeg and local-model operations below run locally. Direct `heygen` recipes
+use the HeyGen CLI's own login and HeyGen/API billing; they do not inherit a
+HyperFrames subscription. Use those recipes only when that separate payer was
+selected. `hyperframes media-use resolve` uses the HyperFrames-selected credential.
+ffmpeg is assumed present (it backs the engine already).
 
 ## Cut / trim: keep a slice
 
@@ -238,21 +241,19 @@ GENERATES. Two paths, best-for-the-machine picked automatically:
 ## Generate: video (`resolve --type video`, HeyGen avatar first)
 
 `resolve --type video "<intent>"` is the default path. It generates a
-script-driven HeyGen avatar video first (the free-usage allowance — OAuth
-sessions ride the web-plan free avatar-video quota where eligible, API keys
-follow normal API billing), falling back to local generative LTX only when
+script-driven HeyGen avatar video first using the HyperFrames-selected credential
+(the server decides eligibility and charges; explicit API keys use API billing), falling back to local generative LTX only when
 HeyGen is unavailable, uncredentialed, or `--local-only` is passed. The two
 are non-substitutable outputs (a real presenter vs. a generic generative
 clip), so treat the fallback as "HeyGen wasn't reachable," not "upgrade the
 quality":
 
-- **HeyGen avatar video (default, free for new API users):**
+- **HeyGen avatar video (default):**
   The CLI-bundled provider shells the
   `heygen` CLI — never the raw API — auto-picking a public avatar and a
   starfish voice (override with `--avatar-id`/`--voice-id`, threaded through
   as `ctx.avatarId`/`ctx.voiceId`). If the CLI reports `not_authenticated`,
-  the provider prints an onboarding recommendation (avatar video is free for
-  new API users — sign in) to stderr and falls through to LTX instead of
+  the provider prints a HyperFrames sign-in recommendation to stderr and falls through to LTX instead of
   hard-failing.
 - **Local fallback: LTX 2.3 on MLX** via `dgrauet/ltx-2-mlx`, the `videogen`
   ladder bundled in the HyperFrames CLI. Generative clips
@@ -268,7 +269,8 @@ Read-only discovery (`avatar list`, `voice list`) doesn't need it.
 For structured bodies `resolve --type video` doesn't expose yet (a specific
 `avatar_id`/`voice_id` combination beyond the ctx overrides, or a
 pre-recorded `audio_url` instead of a script), the raw `heygen video create`
-recipe below remains the escape hatch:
+recipe below remains the escape hatch. This direct command uses the separate
+HeyGen CLI credential and HeyGen/API billing, not the HyperFrames subscription:
 
 ```bash
 # discover an avatar + a starfish voice, then create + wait

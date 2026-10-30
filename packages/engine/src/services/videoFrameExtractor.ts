@@ -1351,7 +1351,7 @@ async function extractVideoFramesRangeUnredacted(
     const expectedAtFps = extractionFrameCountForDuration(duration, normalizedFps, metadata.isVFR);
     if (expectedAtFps > 0 && framePaths.size <= expectedAtFps * 0.6) {
       const correctedStreamDuration =
-        startTime + framePaths.size / fps - videoStartOnMediaTimeline(metadata);
+        startTime + framePaths.size / fps - (metadata.videoStreamLeadSeconds ?? 0);
       if (correctedStreamDuration < metadata.videoStreamDurationSeconds) {
         metadata.videoStreamDurationSeconds = correctedStreamDuration;
       }
@@ -1620,6 +1620,7 @@ export async function resolveFinalFrameExtractionWindow(
 ): Promise<TimelineExtractionWindow> {
   if (!window.ensureFinalFrame) return window;
   const playableDuration = resolvePlayableVideoDuration(metadata);
+  const videoStreamLead = metadata.videoStreamLeadSeconds ?? 0;
   const lastInstantTheBrowserPlays = playableDuration - FINAL_FRAME_LOGICAL_DURATION_SECONDS;
   const finalFrameTimestamp = Math.min(
     lastInstantTheBrowserPlays,
@@ -1627,7 +1628,7 @@ export async function resolveFinalFrameExtractionWindow(
       (await extractFinalVideoFrameTimestamp(
         videoPath,
         {
-          videoStreamDurationSeconds: playableDuration - videoStartOnMediaTimeline(metadata),
+          videoStreamDurationSeconds: playableDuration - videoStreamLead,
           videoStreamStartSeconds: metadata.videoStreamStartSeconds,
         },
         signal,

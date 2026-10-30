@@ -28,8 +28,8 @@ export const examples: Example[] = [
 const HELP = `
 ${c.bold("hyperframes auth")} ${c.dim("<subcommand> [args]")}
 
-Manage HeyGen credentials. Credentials live in
-${c.accent("~/.heygen/credentials")} and are shared with heygen-cli.
+Manage HyperFrames credentials. Credentials live in
+${c.accent("~/.hyperframes/credentials")}, independently of heygen-cli.
 
 ${c.bold("SUBCOMMANDS:")}
   ${c.accent("login")}    ${c.dim("Sign in via browser, --device for SSH, or --api-key for a long-lived key.")}
@@ -42,7 +42,8 @@ ${c.bold("ENV VARS:")}
   ${c.accent("HYPERFRAMES_API_KEY")}         Alias for HEYGEN_API_KEY.
   ${c.accent("HEYGEN_ACCESS_TOKEN")}         OAuth token from a host app; used after the API keys, never refreshed or saved.
   ${c.accent("HEYGEN_API_URL")}              Override the API base URL (default https://api.heygen.com).
-  ${c.accent("HEYGEN_CONFIG_DIR")}           Override the credentials directory (default ~/.heygen).
+  ${c.accent("HYPERFRAMES_ENV")}           prod (default) or dev; selects OAuth/API hosts together.
+  ${c.accent("HYPERFRAMES_CONFIG_DIR")}           Override the credentials directory (default ~/.hyperframes).
   ${c.accent("HYPERFRAMES_OAUTH_CLIENT_ID")} Override the OAuth client_id (for dev/test).
   ${c.accent("HYPERFRAMES_OAUTH_DEVICE_URL")} Override the RFC 8628 device endpoint (for dev/test).
 `;

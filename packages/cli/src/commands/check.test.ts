@@ -2841,6 +2841,20 @@ describe("check pipeline", () => {
       expect(checkExitCode(strict.report)).toBe(0);
     });
 
+    it("seeks each craft frame with WebGL draws on, so a redrawn canvas reads as moving", async () => {
+      const driver = craftDriver();
+      await runScenario(driver);
+      const painted = new Set(
+        vi
+          .mocked(driver.seekGeometry)
+          .mock.calls.flatMap(([time, seek]) => (seek?.draws ? [time] : [])),
+      );
+      const sampled = vi.mocked(driver.collectCraftFrame!).mock.calls.map(([time]) => time);
+
+      expect(sampled.length).toBeGreaterThan(0);
+      expect(sampled.every((time) => painted.has(time))).toBe(true);
+    });
+
     it("re-measures a short line between dense samples before judging it", async () => {
       const driver = craftDriver();
       const { report } = await runScenario(driver);

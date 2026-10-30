@@ -540,10 +540,14 @@ export function absoluteLoudnessPlan(
     ["gain-ceiling", MAX_AUDIO_GAIN_DB],
     ["true-peak", peakRoomDb],
   ];
-  const [limitedBy, appliedGainDb] = limits.reduce((lowest, candidate) =>
+  const [limitedBy, limitedGainDb] = limits.reduce((lowest, candidate) =>
     candidate[1] < lowest[1] - 1e-9 ? candidate : lowest,
   );
   const previousGainDb = track.volume > 0 ? gainDb(track.volume) : 0;
+  const limitCannotCutAWantedBoost = wantedGainDb > previousGainDb;
+  const appliedGainDb = limitCannotCutAWantedBoost
+    ? Math.max(limitedGainDb, previousGainDb)
+    : limitedGainDb;
   return {
     targetId: track.id,
     targetLufs,
@@ -556,4 +560,11 @@ export function absoluteLoudnessPlan(
     projectedTruePeakDbfs: track.truePeakDbfs + appliedGainDb,
     limitedBy,
   };
+}
+
+export type AbsoluteOutcome = "matched" | "held" | "change";
+
+export function absoluteOutcome(plan: AbsoluteLoudnessPlan, tolerance: number): AbsoluteOutcome {
+  if (Math.abs(plan.changeDb) > tolerance) return "change";
+  return Math.abs(plan.projectedLufs - plan.targetLufs) <= tolerance ? "matched" : "held";
 }

@@ -3,8 +3,8 @@ import { fetchMedia } from "../../../scripts/lib/media-fetch.mjs";
 // pipeline. The credential resolver matches the hyperframes CLI auth: first
 // usable source wins — a host gateway ($HEYGEN_API_BASE with its own
 // $HEYGEN_API_KEY) → a host-injected OAuth $HEYGEN_ACCESS_TOKEN (Bearer) →
-// $HEYGEN_API_KEY / $HYPERFRAMES_API_KEY → a nearby .env → ~/.heygen/
-// credentials (oauth → Bearer, else api_key → X-Api-Key; $HEYGEN_CONFIG_DIR
+// $HEYGEN_API_KEY / $HYPERFRAMES_API_KEY → a nearby .env → ~/.hyperframes/
+// credentials (OAuth never falls back to an API key; $HYPERFRAMES_CONFIG_DIR
 // overrides the dir). $HEYGEN_API_BASE moves every request to that host, as it
 // does for the heygen CLI; plain HTTP needs $HEYGEN_ALLOW_HTTP=1, as there.
 // Vendored so the skill ships standalone. Pure node.
@@ -20,7 +20,8 @@ export const HEYGEN_BASE = "https://api.heygen.com/v3";
 // in the clear, so it needs $HEYGEN_ALLOW_HTTP=1, the heygen CLI's own rule.
 export function heygenBase() {
   const host = process.env.HEYGEN_API_BASE?.trim().replace(/\/+$/, "");
-  if (!host) return HEYGEN_BASE;
+  if (!host)
+    return process.env.HYPERFRAMES_ENV === "dev" ? "https://api.dev.heygen.com/v3" : HEYGEN_BASE;
   if (host.startsWith("http://") && process.env.HEYGEN_ALLOW_HTTP !== "1")
     throw new Error(
       `HEYGEN_API_BASE (${host}) uses HTTP, which sends the key in plaintext. Set HEYGEN_ALLOW_HTTP=1 to allow it.`,
@@ -104,7 +105,7 @@ export function heygenCredential() {
 }
 
 // heygenCredential's answer, or { unreadable: { file, code } } when the credentials path exists but cannot be read
-// (a folder, a locked ~/.heygen), so heygenAuthHeaders can say to fix that path: logging in again would fail there too.
+// (a folder, a locked ~/.hyperframes), so heygenAuthHeaders can say to fix that path: logging in again would fail there too.
 // Read without checking first, so the file cannot change between a check and the read.
 function resolveCredential() {
   const gatewayKey = hostGatewayKey();
@@ -116,7 +117,8 @@ function resolveCredential() {
   const envKey = process.env.HEYGEN_API_KEY || process.env.HYPERFRAMES_API_KEY;
   if (envKey) return { headers: { "X-Api-Key": envKey } };
 
-  const file = join(process.env.HEYGEN_CONFIG_DIR || join(homedir(), ".heygen"), "credentials");
+  const root = process.env.HYPERFRAMES_CONFIG_DIR || join(homedir(), ".hyperframes");
+  const file = join(root, ...(process.env.HYPERFRAMES_ENV === "dev" ? ["dev"] : []), "credentials");
   let raw;
   try {
     raw = readFileSync(file, "utf8").trim();
@@ -136,9 +138,23 @@ function resolveCredential() {
   }
   const oauth = cred.oauth;
   if (oauth?.access_token) {
+    const expectedClient =
+      process.env.HYPERFRAMES_OAUTH_CLIENT_ID ||
+      (process.env.HYPERFRAMES_ENV === "dev"
+        ? "9QoaiwCZov9O0cAkC4OZbR4p"
+        : "Zg3LF4FCLoeJoGs2YqMtZ17g");
+    const expectedTokenEndpoint =
+      process.env.HYPERFRAMES_OAUTH_TOKEN_URL ||
+      `https://api2.${process.env.HYPERFRAMES_ENV === "dev" ? "dev." : ""}heygen.com/v1/oauth/token`;
+    if (
+      !expectedClient ||
+      oauth.client_id !== expectedClient ||
+      oauth.token_endpoint !== expectedTokenEndpoint
+    )
+      return { expired: true };
     const expired = oauth.expires_at && new Date(oauth.expires_at).getTime() - 60_000 < Date.now();
     if (!expired) return { headers: { Authorization: `Bearer ${oauth.access_token}` } };
-    if (!cred.api_key) return { expired: true };
+    return { expired: true };
   }
   if (cred.api_key) return { headers: { "X-Api-Key": cred.api_key } };
   return null;
@@ -176,7 +192,7 @@ export function heygenAuthHeaders() {
       "HeyGen OAuth token expired — run `npx hyperframes auth refresh` (or `npx hyperframes auth login`)",
     );
   throw new Error(
-    "no HeyGen credentials — set $HEYGEN_API_KEY, or run `npx hyperframes auth login` (writes ~/.heygen/credentials)",
+    "no HyperFrames credentials — set $HEYGEN_API_KEY, or run `npx hyperframes auth login` (writes ~/.hyperframes/credentials)",
   );
 }
 

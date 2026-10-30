@@ -759,7 +759,7 @@ async function collectMotionOverlapSamples(
     const craftTimes = buildCraftSampleTimes(grid.duration).filter((time) => time < grid.duration);
     for (const [index, time] of craftTimes.entries()) {
       progress(`craft frame at ${time}s`);
-      await driver.seekGeometry(time);
+      await driver.seekGeometry(time, { draws: true });
       collected.craftFrames.push(...(await collectCraftFrame(driver, time)));
       progress();
       report("craft", index + 1, craftTimes.length);
@@ -1583,7 +1583,7 @@ export async function runAuditGrid(
             noTimeline || sweepFindings.length > 0 || wholeCompositionKeepsMoving(plan.assertions),
         },
         async (time) => {
-          await driver.seekGeometry(time);
+          await driver.seekGeometry(time, { draws: true });
           if (!driver.collectCraftFrame) throw new Error("craft sampling unavailable");
           return driver.collectCraftFrame(time);
         },

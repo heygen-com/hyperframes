@@ -498,14 +498,14 @@ export async function buildProbeFactsText(filePath: string, signal?: AbortSignal
     const window = resolveStreamWindow(filePath, {
       videoStreamStartSeconds: metadata.videoStreamStartSeconds,
       videoStreamDurationSeconds:
-        resolvePlayableVideoDuration(metadata) - videoStartOnMediaTimeline(metadata),
+        resolvePlayableVideoDuration(metadata) - (metadata.videoStreamLeadSeconds ?? 0),
     });
     if (window.videoStreamDurationSeconds > 0) {
       facts.finalFrame = {
         streamStart: window.videoStreamStartSeconds,
         streamDuration: window.videoStreamDurationSeconds,
         seconds: await extractFinalVideoFrameTimestamp(filePath, window, signal),
-        lastPacketSeconds: (await extractFinalPacket(filePath, window, signal))?.durationSeconds,
+        lastPacketSeconds: await extractFinalPacketDuration(filePath, window, signal),
       };
     }
   } catch {
@@ -527,11 +527,10 @@ export function ffmpegSeekSeconds(
   return mediaTime - (metadata.mediaTimeOffsetSeconds ?? 0);
 }
 
-/** Where the video's last frame ends on the browser's media timeline, which starts at timestamp 0. */
 export function resolvePlayableVideoDuration(metadata: VideoMetadata): number {
   return Number.isFinite(metadata.videoStreamDurationSeconds) &&
     metadata.videoStreamDurationSeconds > 0
-    ? videoStartOnMediaTimeline(metadata) + metadata.videoStreamDurationSeconds
+    ? (metadata.videoStreamLeadSeconds ?? 0) + metadata.videoStreamDurationSeconds
     : metadata.durationSeconds;
 }
 
@@ -1014,26 +1013,13 @@ export async function extractMediaMetadata(filePath: string): Promise<VideoMetad
     } else {
       effectiveStreamDuration = containerDuration;
     }
-    const startOffsets = {
-      videoStreamLeadSeconds: streamLeadSeconds(output, videoStream),
-      mediaTimeOffsetSeconds: mediaTimeOffsetSeconds(output),
-    };
-    // ffprobe's durations do not all run from the first frame (Matroska, fragmented MP4), so a
-    // video that starts late is measured to the end of its last packet. If that read fails,
-    // ffprobe's duration stands.
-    if (videoStartOnMediaTimeline(startOffsets) > 0) {
-      const last = await extractFinalPacket(filePath, {
-        videoStreamStartSeconds: streamStart,
-        videoStreamDurationSeconds: effectiveStreamDuration,
-      }).catch(() => undefined);
-      if (last) effectiveStreamDuration = last.ptsSeconds + last.durationSeconds - streamStart;
-    }
 
     return {
       durationSeconds: containerDuration,
       videoStreamDurationSeconds: effectiveStreamDuration,
       videoStreamStartSeconds: streamStart,
-      ...startOffsets,
+      videoStreamLeadSeconds: streamLeadSeconds(output, videoStream),
+      mediaTimeOffsetSeconds: mediaTimeOffsetSeconds(output),
       width: videoStream.width || stillImage()?.width || 0,
       height: videoStream.height || stillImage()?.height || 0,
       fps,
@@ -1091,14 +1077,14 @@ export function readStoredFinalFrame(
 }
 
 /**
- * `pts_time` and `duration_time` of the stream's last packet (by presentation time), read from the
- * window's final second to the end of the file; undefined when ffprobe reports none.
+ * `duration_time` of the stream's last packet (by presentation time), read from the same final
+ * second the final-frame probe reads; undefined when ffprobe reports none.
  */
-async function extractFinalPacket(
+async function extractFinalPacketDuration(
   filePath: string,
   window: { videoStreamStartSeconds: number; videoStreamDurationSeconds: number },
   signal?: AbortSignal,
-): Promise<{ ptsSeconds: number; durationSeconds: number } | undefined> {
+): Promise<number | undefined> {
   const streamEnd = window.videoStreamStartSeconds + window.videoStreamDurationSeconds;
   const intervalStart = Math.max(window.videoStreamStartSeconds, streamEnd - 1);
   const stdout = await runFfprobe(
@@ -1107,7 +1093,7 @@ async function extractFinalPacket(
       "-select_streams",
       "v:0",
       "-read_intervals",
-      `${intervalStart}%`,
+      `${intervalStart}%${streamEnd}`,
       "-show_entries",
       "packet=pts_time,duration_time",
       "-of",
@@ -1124,7 +1110,7 @@ async function extractFinalPacket(
     (best, packet) => (!best || packet[0]! > best[0]! ? packet : best),
     undefined,
   );
-  return last && { ptsSeconds: last[0]!, durationSeconds: last[1]! };
+  return last?.[1];
 }
 
 /**

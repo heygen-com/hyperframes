@@ -457,7 +457,7 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
         )
       : 1;
 
-  const rendersDir = resolve("renders");
+  const rendersDir = join(project.dir, "renders");
   const ext = FORMAT_EXT[format];
   const timestamp = formatRenderOutputTimestamp(now);
   const batchOutputTemplate = args.output

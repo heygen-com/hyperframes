@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { finishCommand } from "../utils/commandResult.js";
+import { withMediaAuthEnvironment } from "../auth/media-environment.js";
 
 const MEDIA_USE_ARGS = {
   type: { type: "string" },
@@ -68,18 +69,17 @@ export function mediaUseVerbFlags(verb: MediaUseVerb): string[] {
   return verb === "resolve" ? [] : [`--${verb}`];
 }
 
-type InvokeMediaUse = (verb: MediaUseVerb) => never;
+type InvokeMediaUse = (verb: MediaUseVerb) => never | Promise<never>;
 
-function invokeEngine(verb: MediaUseVerb): never {
+async function invokeEngine(verb: MediaUseVerb): Promise<never> {
   const here = dirname(fileURLToPath(import.meta.url));
   const passed = mediaUsePassthroughArgs(process.argv);
   const flag = mediaUseVerbFlags(verb);
-  const result = spawnSync(
-    process.execPath,
-    [resolveMediaUseEnginePath(here), ...flag, ...passed],
-    {
+  const result = await withMediaAuthEnvironment((env) =>
+    spawnSync(process.execPath, [resolveMediaUseEnginePath(here), ...flag, ...passed], {
       stdio: "inherit",
-    },
+      env,
+    }),
   );
   if (result.error) throw result.error;
   finishCommand(result.status ?? 1);

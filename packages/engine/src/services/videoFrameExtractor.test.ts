@@ -53,7 +53,6 @@ describe("parseVideoElements strict literal timing", () => {
 import {
   extractFinalVideoFrameTimestamp,
   extractVideoMetadata,
-  resolvePlayableVideoDuration,
   type VideoMetadata,
 } from "../utils/ffprobe.js";
 import { ffmpegStatsReader, runFfmpeg, type RunFfmpegOptions } from "../utils/runFfmpeg.js";
@@ -2567,7 +2566,7 @@ describe.skipIf(!HAS_FFMPEG)("held tails on sparse-timestamp sources", () => {
       expect(result.extracted).toHaveLength(1);
       expect(result.extracted[0]?.totalFrames).toBe(1);
       expect(video).toMatchObject({ start: 0, end: 5, loop: false });
-      expect(video.mediaStart).toBeCloseTo(resolvePlayableVideoDuration(metadata) - 0.000001, 7);
+      expect(video.mediaStart).toBeCloseTo(metadata.videoStreamDurationSeconds - 0.000001, 7);
     },
     30_000,
   );

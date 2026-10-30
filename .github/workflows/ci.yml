@@ -238,7 +238,7 @@ jobs:
               - "packages/cli/src/{background-removal,registry,telemetry}/**"
               - "packages/cli/src/capture/{captureCompositionFrame,captureTimeout,navigateForCapture,readBoundedResponse}.ts"
               - "packages/cli/src/media-use/lib/config-lock.mjs"
-              - "packages/cli/src/auth/{paths,telemetryIdentity}.ts"
+              - "packages/cli/src/auth/{config,errors,paths,telemetryIdentity}.ts"
               - "packages/cli/scripts/**"
               - "packages/core/stubs/**"
               - "packages/engine/src/**"

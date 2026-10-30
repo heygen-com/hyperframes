@@ -969,9 +969,12 @@ export function createPageDriver(
         screenshotFollows ? SCREENSHOT_SEEK_OPTIONS : AUDIT_SEEK_OPTIONS,
       );
     },
-    seekGeometry: async (time) => {
+    seekGeometry: async (time, { draws = false } = {}) => {
       clock.at(time);
-      await seekCompositionTimeline(page, time, DENSE_GEOMETRY_SEEK_OPTIONS);
+      const options = draws
+        ? { ...DENSE_GEOMETRY_SEEK_OPTIONS, skipWebglDraws: false }
+        : DENSE_GEOMETRY_SEEK_OPTIONS;
+      await seekCompositionTimeline(page, time, options);
     },
     collectLayout: (time, tolerance, layout) => collectLayout(page, time, tolerance, layout),
     collectOverlap: (time) => collectOverlap(page, time),

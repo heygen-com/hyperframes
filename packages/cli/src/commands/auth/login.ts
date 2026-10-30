@@ -6,7 +6,7 @@ import { envFlagEnabled, isAttendedTerminal } from "../../utils/attendedTerminal
  * Default: OAuth 2.0 + PKCE via a loopback callback. The CLI opens
  * the user's browser, captures the authorization code on an
  * ephemeral 127.0.0.1 port, exchanges it for tokens, and persists
- * them to `~/.heygen/credentials`.
+ * them to `~/.hyperframes/credentials`.
  *
  * `--api-key`: opts into the legacy long-lived API-key path.
  *
