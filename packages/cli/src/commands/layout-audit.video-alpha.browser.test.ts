@@ -256,6 +256,18 @@ describe("layout-audit.browser text behind a <video>", () => {
     });
   });
 
+  it("shifts the window by an anonymous host and its in-point, and cuts it to the host slot", () => {
+    installVideoScene({
+      text: SHIP,
+      textAttrs: 'data-start="0.2" data-duration="1"',
+      lineAttrs:
+        'data-composition-src="beat.html" data-start="2" data-media-start="0.5" data-duration="3"',
+    });
+    expect(occlusionOf(runAudit(), "ship")).toMatchObject({
+      lifetime: { start: 2, end: 2.7 },
+    });
+  });
+
   it("keeps a fully opaque frame occluding like any raster", () => {
     installVideoScene({ text: SHIP });
     expect(occlusionOf(runAudit(), "ship")).toMatchObject({
