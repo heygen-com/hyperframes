@@ -16,6 +16,7 @@ import {
   matchComponentFindings,
   captureOverviewShot,
   keepBrokenImageAborts,
+  keepFailedNetworkChanges,
   preResolveHostileMediaProxies,
   dropFailedProxyEchoes,
   runBrowserCheck,
@@ -1086,6 +1087,25 @@ describe("collectSeekClock", () => {
     const clocks = await collectSeekClock(seekPage);
 
     expect(clocks.map((clock) => clock.time)).toEqual([3]);
+  });
+});
+
+describe("keepFailedNetworkChanges", () => {
+  const draft = (url: string, networkChanged: boolean) => ({
+    code: "request_failed",
+    severity: "error" as const,
+    message: `Failed to load ${url}`,
+    time: 31,
+    url,
+    networkChanged,
+  });
+
+  it("drops a request the network change cut when the file loads again, and keeps every other failure", () => {
+    const cut = draft("http://h/assets/clip.mp4", true);
+    const gone = draft("http://h/assets/gone.mp4", true);
+    const refused = draft("http://h/assets/refused.mp4", false);
+    const kept = keepFailedNetworkChanges([cut, gone, refused], new Set(["http://h/assets/gone.mp4"]));
+    expect(kept).toEqual([gone, refused]);
   });
 });
 
