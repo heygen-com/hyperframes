@@ -54,7 +54,19 @@ describe("synthesis script cache", () => {
     fs.rmSync(paths.home, { recursive: true, force: true });
   });
 
-  it("runs the synthesis process without a foreign PYTHONPATH", async () => {
+  it("runs the synthesis process in the environment the packages imported under", async () => {
+    vi.mocked(execFileSync).mockImplementation((_cmd, args, options) => {
+      const importing = String(args?.[0]) === "-c";
+      const env = (options as { env?: NodeJS.ProcessEnv }).env;
+      if (importing && env?.PYTHONPATH !== undefined) throw new Error("ModuleNotFoundError");
+      fs.writeFileSync(outputPath, "stub audio");
+      return JSON.stringify({
+        outputPath,
+        sampleRate: 24000,
+        durationSeconds: 1,
+        langApplied: true,
+      });
+    });
     vi.stubEnv("PYTHONPATH", "/other/python/site-packages");
     const { synthesize } = await import("./synthesize.js");
     await synthesize("Hello", outputPath);
