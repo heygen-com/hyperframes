@@ -541,6 +541,32 @@ describe("sub-composition stylesheet links", () => {
     ).toEqual([]);
   });
 
+  it("counts a font the root's linked stylesheet declares for a sub-composition that only uses it", async () => {
+    const project = makeProject(
+      validHtml().replace(
+        "<body>",
+        '<head><link rel="stylesheet" href="assets/fonts.css"></head><body>',
+      ),
+    );
+    mkdirSync(join(project, "assets"), { recursive: true });
+    writeFileSync(
+      join(project, "assets", "fonts.css"),
+      "@font-face{font-family:'Repro';src:local('Repro')}",
+    );
+    mkdirSync(join(project, "compositions"), { recursive: true });
+    const scene = (family: string) => `<template>
+  <style>#scene-title{font-family:'${family}'}</style>
+  <div id="root" data-composition-id="scene" data-width="1920" data-height="1080" data-duration="1">
+    <h1 id="scene-title">Hello</h1>
+  </div>
+  <script>window.__timelines["scene"] = gsap.timeline({ paused: true });</script>
+</template>`;
+    writeFileSync(join(project, "compositions", "scene.html"), scene("Repro"));
+    expect(await fontFaceFindings(project)).toEqual([]);
+    writeFileSync(join(project, "compositions", "scene.html"), scene("Nowhere"));
+    expect(await fontFaceFindings(project)).toHaveLength(1);
+  });
+
   it("reads the stylesheet next to the sub-composition when both exist", async () => {
     const project = projectWithSharedFonts("compositions/frames", "fonts.css");
     writeFileSync(join(project, "fonts.css"), "@font-face{font-family:'Other';src:local('Other')}");
