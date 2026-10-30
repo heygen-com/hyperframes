@@ -1104,7 +1104,10 @@ describe("keepFailedNetworkChanges", () => {
     const cut = draft("http://h/assets/clip.mp4", true);
     const gone = draft("http://h/assets/gone.mp4", true);
     const refused = draft("http://h/assets/refused.mp4", false);
-    const kept = keepFailedNetworkChanges([cut, gone, refused], new Set(["http://h/assets/gone.mp4"]));
+    const kept = keepFailedNetworkChanges(
+      [cut, gone, refused],
+      new Set(["http://h/assets/gone.mp4"]),
+    );
     expect(kept).toEqual([gone, refused]);
   });
 });

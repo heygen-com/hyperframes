@@ -818,7 +818,10 @@ function wireRuntimeListeners(page: Page, drafts: RuntimeDraft[], clock: Runtime
 
 /** Chrome drops the requests in flight when the machine's network changes (a Wi-Fi hop, a VPN): that failed the
  * connection, not the file. Such a request is a finding only if the file still fails when asked again. */
-export function keepFailedNetworkChanges(drafts: RuntimeDraft[], failing: Set<string>): RuntimeDraft[] {
+export function keepFailedNetworkChanges(
+  drafts: RuntimeDraft[],
+  failing: Set<string>,
+): RuntimeDraft[] {
   return drafts.filter((draft) => !draft.networkChanged || failing.has(draft.url ?? ""));
 }
 
@@ -868,11 +871,16 @@ function decodedPath(url: URL | undefined): string | undefined {
 const IMAGE_DECODE_CAP_MS = 5000;
 
 export async function networkChangesStillFailing(drafts: RuntimeDraft[]): Promise<Set<string>> {
-  const urls = [...new Set(drafts.filter((draft) => draft.networkChanged).map((draft) => draft.url ?? ""))];
+  const urls = [
+    ...new Set(drafts.filter((draft) => draft.networkChanged).map((draft) => draft.url ?? "")),
+  ];
   const failing = await Promise.all(
     urls.map(async (url) => {
       try {
-        const response = await fetch(url, { headers: { Range: "bytes=0-0" }, signal: AbortSignal.timeout(5000) });
+        const response = await fetch(url, {
+          headers: { Range: "bytes=0-0" },
+          signal: AbortSignal.timeout(5000),
+        });
         await response.body?.cancel();
         return response.status >= 400;
       } catch {
