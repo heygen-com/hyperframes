@@ -170,8 +170,7 @@ async function plannedNormalization(
   if (options.reference === undefined) {
     const targetTag = byId(tags, options.target, "Target");
     const plan = await measuredAbsolutePlan(projectDir, targetTag, parsedLufs(options.lufs));
-    const withinTolerance =
-      targetTag.volume > 0 && absoluteOutcome(plan, tolerance) === "matched";
+    const withinTolerance = targetTag.volume > 0 && absoluteOutcome(plan, tolerance) === "matched";
     return { targetTag, withinTolerance, plan: { mode: "absolute", ...plan } };
   }
   const { referenceTag, targetTag } = selectedTags(tags, options.reference, options.target);
@@ -192,9 +191,7 @@ async function normalizeAudio(options: NormalizeAudioOptions): Promise<Normalize
   );
   const filePath = resolve(project.dir, targetTag.file);
   const heldByLimit =
-    plan.mode === "absolute" &&
-    targetTag.volume > 0 &&
-    absoluteOutcome(plan, tolerance) === "held";
+    plan.mode === "absolute" && targetTag.volume > 0 && absoluteOutcome(plan, tolerance) === "held";
   const wrote = options.write && !withinTolerance && !heldByLimit;
   if (wrote) {
     writeAtomically(
@@ -234,7 +231,11 @@ function printHumanResult(result: NormalizeAudioResult): void {
     return;
   }
 
-  if (result.mode === "absolute" && result.previousVolume > 0 && result.changeDb === 0) {
+  if (
+    result.mode === "absolute" &&
+    result.previousVolume > 0 &&
+    absoluteOutcome(result, result.tolerance) === "held"
+  ) {
     console.log(c.dim("Cannot get closer to the target; the gain is unchanged."));
     return;
   }
