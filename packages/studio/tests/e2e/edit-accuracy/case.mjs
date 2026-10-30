@@ -986,11 +986,6 @@ export async function serveFixtureAssetsLocally(page) {
 }
 
 /**
- * Studio open on the case in a fresh browser context, snapping off, at the case's zoom, target selected;
- * `drive` measures the rest. A failure keeps a screenshot, and the context always closes.
- */
-// fallow-ignore-next-line complexity
-/**
  * Takes evidence screenshots into `evidence.shots` only when `shots` is on (the gate's confirmation re-runs); an
  * error screen is always kept. Studio fills the viewport; capturing beyond it makes Chrome resize the page.
  */
@@ -1007,6 +1002,11 @@ export function shooter(page, evidence, shots) {
   };
 }
 
+/**
+ * Studio open on the case in a fresh browser context, snapping off, at the case's zoom, target selected;
+ * `drive` measures the rest. A failure keeps a screenshot, and the context always closes.
+ */
+// fallow-ignore-next-line complexity
 export async function inStudio({ browser, spec, dir, files, url, evidence, shots = true }, drive) {
   const context = await browser.createBrowserContext();
   const page = await context.newPage();
