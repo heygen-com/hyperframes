@@ -907,6 +907,12 @@ Source: the project lint pass in `packages/lint/src/project.ts`, `packages/lint/
 
 **Fix:** Add the missing mask file(s) to the project, or update the `mask-image` URL.
 
+### `missing_stylesheet_asset`
+
+**Warning.** A `url()` in a linked local stylesheet does not resolve beside that stylesheet. Browsers resolve `url()` from the stylesheet's own folder, so the font or image 404s and the render falls back silently. When the file exists in a parent folder, the fix hint names the working path.
+
+**Fix:** Change the `url()` to be relative to the stylesheet (for example `../assets/fonts/x.ttf` from `styles/main.css`), or add the file.
+
 ### `inaccessible_media_url`
 
 **Error.** A remote media URL did not answer a `HEAD` request with a 2xx status (or the request failed or timed out), so the media cannot load. Reported only by the async `lintMediaUrls()` export of `@hyperframes/lint`; `hyperframes lint` and `hyperframes check` do not run it.

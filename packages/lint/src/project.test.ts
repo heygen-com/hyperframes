@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { ChildProcess, execFile } from "node:child_process";
 import { mkdirSync, mkdtempSync, writeFileSync, rmSync, symlinkSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import type { HyperframeLintFinding } from "./types.js";
 import { lintProject } from "./project.js";
@@ -396,6 +396,60 @@ describe("missing_or_empty_sub_composition", () => {
     expect(totalErrors).toBeGreaterThan(0);
     expect(finding).toBeDefined();
     expect(finding?.message).toContain("compositions/does-not-exist.html");
+  });
+});
+
+describe("missing_stylesheet_asset", () => {
+  const lintLinked = async (css: string, files: Record<string, string> = {}) => {
+    const project = makeProject(
+      validHtml().replace(
+        "<body>",
+        '<head><link rel="stylesheet" href="styles/main.css"></head><body>',
+      ),
+    );
+    mkdirSync(join(project, "styles"), { recursive: true });
+    writeFileSync(join(project, "styles/main.css"), css);
+    for (const [name, body] of Object.entries(files)) {
+      mkdirSync(dirname(join(project, name)), { recursive: true });
+      writeFileSync(join(project, name), body);
+    }
+    const { results } = await lintProject(project);
+    return results
+      .flatMap((entry) => entry.result.findings)
+      .filter((finding) => finding.code === "missing_stylesheet_asset");
+  };
+
+  it("names the path that exists when a url() is relative to the wrong folder", async () => {
+    const findings = await lintLinked('@font-face{font-family:X;src:url("assets/fonts/x.ttf")}', {
+      "assets/fonts/x.ttf": "font",
+    });
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({ severity: "warning" });
+    expect(findings[0]?.message).toContain("assets/fonts/x.ttf");
+    expect(findings[0]?.fixHint).toContain("../assets/fonts/x.ttf");
+  });
+
+  it("asks for the file when it exists nowhere", async () => {
+    const findings = await lintLinked(".a{background:url(nope.png)}");
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.fixHint).toContain("Add");
+  });
+
+  it("stays quiet for urls that resolve beside the stylesheet, remote, data and placeholder urls", async () => {
+    const css = [
+      '@font-face{src:url("../assets/fonts/x.ttf")}',
+      ".a{background:url(img/a.png)} .b{background:url(https://cdn.example/b.png)}",
+      ".c{background:url(data:image/png;base64,AAAA)} .d{background:url(#frag)}",
+      ".e{background:url(${asset})}",
+    ].join("\n");
+    const findings = await lintLinked(css, {
+      "assets/fonts/x.ttf": "font",
+      "styles/img/a.png": "png",
+    });
+
+    expect(findings).toEqual([]);
   });
 });
 
