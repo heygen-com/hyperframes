@@ -180,6 +180,14 @@ describe("absoluteLoudnessPlan", () => {
     expect(plan.limitedBy).toBe("true-peak");
   });
 
+  it("never cuts a clip that is below the target because its peak is already past the ceiling", () => {
+    const plan = absoluteLoudnessPlan(track(-17.1, -0.5));
+    expect(plan.gainDb).toBeCloseTo(0, 6);
+    expect(plan.changeDb).toBeCloseTo(0, 6);
+    expect(plan.projectedLufs).toBeCloseTo(-17.1, 6);
+    expect(plan.limitedBy).toBe("true-peak");
+  });
+
   it("attenuates a clip that is too loud", () => {
     const plan = absoluteLoudnessPlan(track(-10, 0));
     expect(plan.gainDb).toBeCloseTo(-6, 6);
