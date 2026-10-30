@@ -45,6 +45,8 @@ interface VideoScene {
   textAttrs?: string;
   /** Size each text element to its first word's box instead of the whole frame. */
   sizedText?: boolean;
+  /** Attributes on the timed wrapper around the text. */
+  lineAttrs?: string;
 }
 
 function domRect({ left, top, width, height }: Box): DOMRect {
@@ -90,7 +92,7 @@ function installVideoScene(scene: VideoScene): { getImageData: ReturnType<typeof
     .join("");
   document.body.innerHTML = `
     <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
-      <div id="line">${spans}</div>
+      <div id="line" ${scene.lineAttrs ?? ""}>${spans}</div>
       <video id="clip"></video>
     </div>`;
 
@@ -241,6 +243,17 @@ describe("layout-audit.browser text behind a <video>", () => {
   it("still calls a fully opaque frame over buried content a cover of the canvas", () => {
     installVideoScene({ text: SHIP, sizedText: true });
     expect(coverOf(runAudit())).toMatchObject({ severity: "error", selector: "#clip" });
+  });
+
+  it("reports the word's own clip window, shifted only by composition hosts", () => {
+    installVideoScene({
+      text: SHIP,
+      textAttrs: 'data-start="2.4" data-duration="0.4"',
+      lineAttrs: 'data-start="2" data-duration="5"',
+    });
+    expect(occlusionOf(runAudit(), "ship")).toMatchObject({
+      lifetime: { start: 2.4, end: 2.8 },
+    });
   });
 
   it("keeps a fully opaque frame occluding like any raster", () => {

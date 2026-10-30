@@ -1606,23 +1606,21 @@
   }
 
   // The global window [start, end) the element's own timed clip is on screen, or null when any timing
-  // up the chain is not a plain number.
+  // up the chain is not a plain number. Only composition hosts shift their children's clock.
   function clipLifetime(element) {
+    const own = element.closest("[data-start]");
+    if (!own) return null;
+    const start = Number(own.getAttribute("data-start"));
+    const duration = Number(own.getAttribute("data-duration"));
+    if (!Number.isFinite(start) || !(duration > 0)) return null;
     let offset = 0;
-    let own = null;
-    for (let current = element; current; current = current.parentElement) {
-      if (!current.hasAttribute("data-start")) continue;
-      const start = Number(current.getAttribute("data-start"));
-      if (!Number.isFinite(start)) return null;
-      if (own === null) {
-        const duration = Number(current.getAttribute("data-duration"));
-        if (!(duration > 0)) return null;
-        own = { start, end: start + duration };
-      } else {
-        offset += start;
-      }
+    for (let host = own.parentElement; host; host = host.parentElement) {
+      if (!host.hasAttribute("data-composition-id") || !host.hasAttribute("data-start")) continue;
+      const hostStart = Number(host.getAttribute("data-start"));
+      if (!Number.isFinite(hostStart)) return null;
+      offset += hostStart;
     }
-    return own && { start: own.start + offset, end: own.end + offset };
+    return { start: start + offset, end: start + duration + offset };
   }
 
   // text_occluded: atomic labels flag at any hit; prose needs coveredFraction >= proseCoverageFloor (default 0.15).
