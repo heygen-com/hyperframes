@@ -19,7 +19,6 @@ export interface PlannedFrame extends FrameWant {
 }
 
 interface FrameBankDeps {
-  /** `horizon` is the latest time asked of this clip in the batch, so its packets are read once for all of them. */
   probe: (
     path: string,
     time: number,

@@ -401,7 +401,6 @@ export async function remoteVideoInput(url: string, download = downloadToTemp): 
   }
 }
 
-/** What probing one clip learned, kept so the next time asked of it spawns no process for the same answer. */
 export interface SourceProbeCache {
   streams: Map<string, Promise<Record<string, unknown> | null>>;
   packets: Map<string, { end: number; data: Promise<Record<string, unknown> | null> }>;
@@ -414,9 +413,7 @@ export const createSourceProbeCache = (): SourceProbeCache => ({
   landings: new Map(),
 });
 
-/** Keyframe seek plus the decoded-time threshold that selects the frame containing `time`, or null.
- * With a `cache`, a clip's stream, its packets up to `horizon` (the latest time asked of it) and each seek landing
- * are probed once however many times are asked. */
+/** Keyframe seek plus the decoded-time threshold that selects the frame containing `time`, or null. */
 export async function probeContainingSourceFrameSeek(
   videoPath: string,
   time: number,
