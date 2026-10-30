@@ -15,7 +15,13 @@ vi.mock("node:child_process", async (importOriginal) => {
   return { ...actual, execFileSync: execFileSyncMock };
 });
 
-const { findPython, describeRejectedPythonOverride } = await import("./python.js");
+const {
+  findPython,
+  describeRejectedPythonOverride,
+  hasPythonPackage,
+  hasPythonModules,
+  pythonEnv,
+} = await import("./python.js");
 
 describe("findPython / describeRejectedPythonOverride", () => {
   beforeEach(() => {
@@ -74,5 +80,34 @@ describe("findPython / describeRejectedPythonOverride", () => {
     execFileSyncMock.mockReturnValue("Python 3.11.0");
     expect(findPython()).toBe("/opt/venv/bin/python");
     expect(execFileSyncMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("a foreign PYTHONPATH", () => {
+  afterEach(() => {
+    delete process.env.PYTHONPATH;
+    delete process.env.HYPERFRAMES_PYTHON;
+  });
+
+  it("never reaches the Python that probes for packages", () => {
+    process.env.PYTHONPATH = "/other/python/site-packages";
+    process.env.HYPERFRAMES_PYTHON = "/opt/venv/bin/python";
+    execFileSyncMock.mockReset();
+    execFileSyncMock.mockReturnValue("Python 3.11.0");
+
+    hasPythonPackage("/opt/venv/bin/python", "kokoro_onnx");
+    hasPythonModules(["kokoro_onnx"]);
+
+    const probes = execFileSyncMock.mock.calls.filter(([, args]) => args[0] === "-c");
+    expect(probes).toHaveLength(2);
+    for (const [, , options] of probes) expect(options.env).not.toHaveProperty("PYTHONPATH");
+  });
+
+  it("is dropped while the rest of the environment and extras pass through", () => {
+    process.env.PYTHONPATH = "/other/python/site-packages";
+    const env = pythonEnv({ ORT_DISABLE_TELEMETRY: "1" });
+    expect(env).not.toHaveProperty("PYTHONPATH");
+    expect(env.PATH).toBe(process.env.PATH);
+    expect(env.ORT_DISABLE_TELEMETRY).toBe("1");
   });
 });

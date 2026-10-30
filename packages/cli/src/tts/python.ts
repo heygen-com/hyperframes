@@ -77,12 +77,19 @@ export function describeRejectedPythonOverride(): string | null {
   return `HYPERFRAMES_PYTHON="${override}" was rejected: ${validation.reason}`;
 }
 
+/** The environment for every Python the CLI runs: a foreign PYTHONPATH would make it import another interpreter's packages. */
+export function pythonEnv(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+  const { PYTHONPATH: _foreign, ...env } = process.env;
+  return { ...env, ...extra };
+}
+
 /** True if `import <pkg>` succeeds — actually executes the module. */
 export function hasPythonPackage(python: string, pkg: string): boolean {
   try {
     execFileSync(python, ["-c", `import ${pkg}`], {
       stdio: ["pipe", "pipe", "pipe"],
       timeout: 10_000,
+      env: pythonEnv(),
     });
     return true;
   } catch {
@@ -104,6 +111,7 @@ export function hasPythonModules(modules: string[]): boolean {
     execFileSync(python, ["-c", probe], {
       stdio: ["pipe", "pipe", "pipe"],
       timeout: 10_000,
+      env: pythonEnv(),
     });
     return true;
   } catch {

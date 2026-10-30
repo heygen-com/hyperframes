@@ -14,7 +14,8 @@ vi.mock("node:fs", async (importOriginal) => {
   return { ...original, existsSync: vi.fn(original.existsSync) };
 });
 vi.mock("node:child_process", () => ({ execFileSync: vi.fn() }));
-vi.mock("./python.js", () => ({
+vi.mock("./python.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./python.js")>()),
   findPython: () => "test-python",
   hasPythonPackage: () => true,
 }));
@@ -51,6 +52,16 @@ describe("synthesis script cache", () => {
   afterEach(() => {
     expect(fs.readdirSync(cacheDir).filter((name) => name.startsWith(".hf-create-"))).toEqual([]);
     fs.rmSync(paths.home, { recursive: true, force: true });
+  });
+
+  it("runs the synthesis process without a foreign PYTHONPATH", async () => {
+    vi.stubEnv("PYTHONPATH", "/other/python/site-packages");
+    const { synthesize } = await import("./synthesize.js");
+    await synthesize("Hello", outputPath);
+
+    const options = vi.mocked(execFileSync).mock.calls.at(-1)?.[2];
+    expect(options?.env).not.toHaveProperty("PYTHONPATH");
+    vi.unstubAllEnvs();
   });
 
   it("turns off onnxruntime telemetry for the synthesis process", async () => {

@@ -10,7 +10,7 @@ import {
   inferLangFromVoiceId,
   type SupportedLang,
 } from "./manager.js";
-import { findPython, hasPythonPackage } from "./python.js";
+import { findPython, hasPythonPackage, pythonEnv } from "./python.js";
 import { writeNewFileSync } from "../utils/writeNewFile.js";
 
 // ---------------------------------------------------------------------------
@@ -222,7 +222,7 @@ export async function synthesize(
         encoding: "utf-8",
         timeout: 300_000,
         stdio: ["pipe", "pipe", "pipe"],
-        env: { ...process.env, ORT_DISABLE_TELEMETRY: "1" },
+        env: pythonEnv({ ORT_DISABLE_TELEMETRY: "1" }),
       },
     );
 
