@@ -4417,3 +4417,59 @@ describe("parseVideoElements hidden flag", () => {
     ]);
   });
 });
+
+describe.skipIf(!HAS_FFMPEG)("a clip stored on a non-square pixel grid", () => {
+  const FIXTURE_DIR = mkdtempSync(join(tmpdir(), "hf-sar-"));
+  const SOURCE = join(FIXTURE_DIR, "anamorphic.mp4");
+
+  beforeAll(async () => {
+    const result = await runFfmpeg([
+      "-y",
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=red:s=64x64:d=1:r=10",
+      "-vf",
+      "setsar=1/2",
+      "-c:v",
+      "libx264",
+      "-pix_fmt",
+      "yuv420p",
+      SOURCE,
+    ]);
+    if (!result.success) throw new Error(`fixture synthesis failed: ${result.stderr.slice(-400)}`);
+  }, 30_000);
+
+  afterAll(() => rmSync(FIXTURE_DIR, { recursive: true, force: true }), 30_000);
+
+  it("extracts frames at the shape Chrome displays, not the stored grid", async () => {
+    const outDir = join(FIXTURE_DIR, "out");
+    mkdirSync(outDir, { recursive: true });
+    const video: VideoElement = {
+      id: "v",
+      src: SOURCE,
+      start: 0,
+      end: 1,
+      mediaStart: 0,
+      loop: false,
+      hasAudio: false,
+    };
+    const result = await extractAllVideoFrames([video], FIXTURE_DIR, {
+      fps: 10,
+      outputDir: outDir,
+    });
+    expect(result.errors).toEqual([]);
+    const probe = spawnSync("ffprobe", [
+      "-v",
+      "error",
+      "-show_entries",
+      "stream=width,height",
+      "-of",
+      "csv=p=0",
+      result.extracted[0]!.framePaths.get(0)!,
+    ]);
+    expect(probe.stdout.toString().trim()).toBe("32,64");
+  });
+});

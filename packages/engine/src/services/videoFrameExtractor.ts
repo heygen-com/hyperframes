@@ -1188,6 +1188,10 @@ async function extractVideoFramesRangeUnredacted(
     vfFilters.push("format=nv12");
   }
   const samplingAt = vfFilters.length;
+  // A frame is stored on a non-square pixel grid; Chrome shows it at its display shape, the extracted image must too.
+  if (metadata.sampleAspectRatio) {
+    vfFilters.push(`scale=trunc(iw*${metadata.sampleAspectRatio}/2)*2:ih`, "setsar=1");
+  }
   // Each slot takes the last frame starting at or before its time. Ticks of 2 ms or finer
   // first shift half a tick, absorbing container rounding (WebM/MKV use whole ms).
   const samplingFilters = (seek: number): string[] =>

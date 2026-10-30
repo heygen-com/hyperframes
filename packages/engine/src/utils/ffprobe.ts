@@ -224,6 +224,8 @@ export interface VideoMetadata {
   colorSpace: VideoColorSpace | null;
   colorRange?: string;
   pixelFormat?: string;
+  /** Width over height of one stored pixel when the stream is not square-pixel (ffprobe `sample_aspect_ratio`). */
+  sampleAspectRatio?: number;
   /** Decoded frame count from the video stream's `nb_frames`. Omitted when the
    * container does not surface a reliable count (still images, malformed
    * streams, or muxes that require `-count_packets` to populate). Callers
@@ -263,6 +265,7 @@ interface FFProbeStream {
   nb_frames?: string;
   nb_read_packets?: string;
   pix_fmt?: string;
+  sample_aspect_ratio?: string;
   r_frame_rate?: string;
   avg_frame_rate?: string;
   sample_rate?: string;
@@ -806,6 +809,14 @@ export function readTagCI(
  *    ~1/30-second clip. Kept as 0 is wrong too, so they are floored to the
  *    smallest representable 2dp rate instead.
  */
+/** "9:16" -> 0.5625; undefined for square pixels, "0:1", "N/A" or anything unreadable. */
+export function parseSampleAspectRatio(value: string | undefined): number | undefined {
+  const [num, den] = (value ?? "").split(":").map(Number);
+  if (!num || !den || !Number.isFinite(num) || !Number.isFinite(den)) return undefined;
+  const ratio = num / den;
+  return Math.abs(ratio - 1) < 1e-3 ? undefined : ratio;
+}
+
 export function parseFrameRate(frameRateStr: string | undefined): number {
   if (!frameRateStr) return 0;
 
@@ -977,6 +988,7 @@ export async function extractMediaMetadata(filePath: string): Promise<VideoMetad
     const colorSpace =
       merged.colorTransfer || merged.colorPrimaries || merged.colorSpace ? merged : null;
     const pixelFormat = videoStream.pix_fmt || "";
+    const sampleAspectRatio = parseSampleAspectRatio(videoStream.sample_aspect_ratio);
     const hasAlpha = videoStreamHasAlpha(videoStream);
     const alphaDecoder = hasAlpha ? null : alphaDecoderFor(videoStream.codec_name);
     const alphaPlaneDecoded = alphaDecoder
@@ -1031,6 +1043,7 @@ export async function extractMediaMetadata(filePath: string): Promise<VideoMetad
       colorSpace,
       colorRange: videoStream.color_range,
       pixelFormat,
+      ...(sampleAspectRatio === undefined ? {} : { sampleAspectRatio }),
       frames,
     };
   })();
