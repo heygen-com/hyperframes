@@ -8,8 +8,13 @@ export { FFMPEG_PATH_ENV, FFPROBE_PATH_ENV } from "@hyperframes/parsers/ff-binar
 export type H264EncoderMode = "software" | "gpu";
 
 export class H264EncoderUnavailableError extends Error {
-  constructor(readonly hevcEncoderAvailable = false) {
-    super("This FFmpeg build has no libx264 and no GPU H.264 encoder that works on this machine.");
+  constructor(
+    readonly hevcEncoderAvailable = false,
+    ffmpegPath?: string,
+  ) {
+    super(
+      `${ffmpegPath ?? "This FFmpeg build"} has no libx264 and no GPU H.264 encoder that works on this machine.`,
+    );
     this.name = "H264EncoderUnavailableError";
   }
 }
@@ -25,11 +30,12 @@ export function resolveH264EncoderMode(
   ffmpegEncodersOutput: string,
   gpuRequested: boolean,
   usableGpu: boolean,
+  ffmpegPath?: string,
 ): H264EncoderMode {
   if (gpuRequested && usableGpu) return "gpu";
   if (hasLibx264(ffmpegEncodersOutput)) return "software";
   if (usableGpu) return "gpu";
-  throw new H264EncoderUnavailableError(/\blibx265\b/.test(ffmpegEncodersOutput));
+  throw new H264EncoderUnavailableError(/\blibx265\b/.test(ffmpegEncodersOutput), ffmpegPath);
 }
 
 function hasLibx264(ffmpegEncodersOutput: string): boolean {
@@ -48,7 +54,7 @@ export async function detectH264EncoderModeForRender(
   });
   const needsGpu = gpuRequested || !hasLibx264(result.stdout);
   const usableGpu = needsGpu && (await probeGpu()) !== null;
-  return resolveH264EncoderMode(result.stdout, gpuRequested, usableGpu);
+  return resolveH264EncoderMode(result.stdout, gpuRequested, usableGpu, ffmpegPath);
 }
 
 // `configuredMustExist`: the CLI surfaces an install hint when a binary is

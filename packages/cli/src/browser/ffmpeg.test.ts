@@ -121,6 +121,10 @@ describe("resolveH264EncoderMode", () => {
     ).rejects.toThrow(H264EncoderUnavailableError);
     expect(probeGpu).toHaveBeenCalledOnce();
 
+    await expect(
+      detectH264EncoderModeForRender("/custom/ffmpeg", true, signal, probeGpu),
+    ).rejects.toThrow("/custom/ffmpeg has no libx264");
+
     mockRun.mockResolvedValue({ stdout: " V....D h264_nvenc H.264\n" } as never);
     expect(await detectH264EncoderModeForRender("/custom/ffmpeg", true, signal)).toBe("gpu");
     expect(gpuProbes.shared).toHaveBeenCalledOnce();

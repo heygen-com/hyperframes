@@ -122,6 +122,7 @@ import {
 import { runEnvironmentChecks } from "../browser/preflight.js";
 import {
   detectH264EncoderModeForRender,
+  FFMPEG_PATH_ENV,
   getFFmpegInstallHint,
   H264EncoderUnavailableError,
   type H264EncoderMode,
@@ -1061,7 +1062,7 @@ async function executeLocalRender(
         errorBox(
           `${isHls ? "HLS" : "MP4"} H.264 encoder unavailable`,
           error.message,
-          `Install an FFmpeg build with libx264 support (${getFFmpegInstallHint()})` +
+          `Install an FFmpeg build with libx264 support (${getFFmpegInstallHint()}), or point ${FFMPEG_PATH_ENV} at one` +
             (isHls
               ? "."
               : ", or render WebM instead: hyperframes render --format webm --output output.webm"),
