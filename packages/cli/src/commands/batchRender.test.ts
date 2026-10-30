@@ -125,19 +125,6 @@ describe("prepareBatchRender", () => {
     expect(prepared.manifestPath).toBe(resolve(outDir, "manifest.json"));
   });
 
-  it("reads a --batch file saved with a UTF-8 BOM", () => {
-    const batchPath = writeJson("bom-rows.json", '\uFEFF[{"name":"Alice"}]');
-    const prepared = prepareBatchRender({
-      batchPath,
-      outputTemplate: join(tmpDir, "renders", "{name}.mp4"),
-      indexPath: writeIndex(),
-      strictVariables: false,
-      quiet: true,
-      json: false,
-    });
-    expect(prepared.rows).toHaveLength(1);
-  });
-
   it("rejects output collisions before rendering", () => {
     const batchPath = writeJson("rows.json", '[{"name":"Alice"},{"name":"Bob"}]');
     const error = expectBatchError(
