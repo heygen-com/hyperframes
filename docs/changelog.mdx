@@ -9,6 +9,23 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.220"
+  description="Released - 2026-10-30"
+  tags={["Release", "Core"]}
+>
+Playback no longer stalls at a cut while the next clip has not started, which removes a stutter at every cut. Text-to-speech also finds its voice package when your shell sets a PYTHONPATH.
+
+## Fixes
+
+- **Core:** The playhead keeps moving at a cut while the incoming take has not started ([471d60a8a](https://github.com/heygen-com/hyperframes/commit/471d60a8ac5f5a9824c5dde6c8d487bd0e436174), [#6768](https://github.com/heygen-com/hyperframes/pull/6768)).
+- **Core:** A still sub-composition's data-no-timeline on its template root skips the timeline wait ([c5a52037c](https://github.com/heygen-com/hyperframes/commit/c5a52037c92), [#6762](https://github.com/heygen-com/hyperframes/pull/6762)).
+- **CLI:** Check flags caption words hidden behind a cut-out and ignores a mostly transparent cover ([f523ee2fc](https://github.com/heygen-com/hyperframes/commit/f523ee2fcac), [#6770](https://github.com/heygen-com/hyperframes/pull/6770)).
+- **CLI:** Text-to-speech ignores a foreign PYTHONPATH when it looks for kokoro-onnx ([d1c059371](https://github.com/heygen-com/hyperframes/commit/d1c0593717d50fe4cd374775f8519df22b6ed517), [#6769](https://github.com/heygen-com/hyperframes/pull/6769)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.219...v0.8.220).
+</Update>
+
+<Update
   label="HyperFrames v0.8.219"
   description="Released - 2026-10-30"
   tags={["Release", "CLI"]}
