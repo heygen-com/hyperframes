@@ -129,6 +129,7 @@ export interface CaptureHdrStageResult {
   captureDurationMs: number;
   /** ffmpeg-reported encode duration; overlapped with capture. */
   encodeMs: number;
+  encoderDrainWaitMs?: number;
   warnings: CaptureWarning[];
 }
 
@@ -174,6 +175,7 @@ export async function runCaptureHdrStage(
   let lastBrowserConsole: string[] = [];
   let captureDurationMs = 0;
   let encodeMs = 0;
+  let encoderDrainWaitMs: number | undefined;
   const nativeHdrIds = new Set([...nativeHdrVideoIds, ...nativeHdrImageIds]);
 
   log.info(
@@ -446,6 +448,7 @@ export async function runCaptureHdrStage(
     reportEncodeProgress(job, totalFrames, totalFrames, onProgress, encodeFrom);
     captureDurationMs = Date.now() - stageStart;
     encodeMs = hdrEncodeResult.durationMs;
+    encoderDrainWaitMs = hdrEncodeResult.drainWaitMs;
   } catch (error) {
     lastBrowserConsole = domSession.browserConsoleBuffer;
     throw wrapCaptureStageError(error, lastBrowserConsole);
@@ -479,6 +482,7 @@ export async function runCaptureHdrStage(
     hdrPerf,
     captureDurationMs,
     encodeMs,
+    encoderDrainWaitMs,
     warnings: cloneCaptureWarnings(domSession.warnings),
   };
 }
