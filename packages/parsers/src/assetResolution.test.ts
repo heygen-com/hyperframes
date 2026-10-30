@@ -9,6 +9,7 @@ import {
   isWithinProjectRoot,
   maskNonScannableRanges,
   readProjectFile,
+  readTextFile,
   resolveProjectRelativeSrc,
 } from "./assetResolution.js";
 
@@ -315,5 +316,23 @@ describe("readProjectFile", () => {
   it.skipIf(process.platform === "win32")("reports a named pipe without blocking on it", () => {
     execFileSync("mkfifo", [join(dir, "pipe.html")]);
     expect(readProjectFile(join(dir, "pipe.html"))).toEqual({ kind: "folder" });
+  });
+});
+
+describe("readTextFile and readProjectFile read a byte order mark as browsers do", () => {
+  const text = "<h1>Café</h1>";
+  const saved: Array<[string, Buffer]> = [
+    ["UTF-16LE", Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(text, "utf16le")])],
+    ["UTF-16BE", Buffer.concat([Buffer.from([0xfe, 0xff]), Buffer.from(text, "utf16le").swap16()])],
+    ["UTF-8 with a mark", Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(text)])],
+    ["UTF-8", Buffer.from(text)],
+  ];
+  it.each(saved)("%s", (_name, bytes) => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-text-"));
+    const path = join(dir, "page.html");
+    writeFileSync(path, bytes);
+    expect(readTextFile(path)).toBe(text);
+    expect(readProjectFile(path)).toEqual({ kind: "file", text });
+    rmSync(dir, { recursive: true, force: true });
   });
 });

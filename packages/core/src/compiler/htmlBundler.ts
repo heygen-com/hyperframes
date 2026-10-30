@@ -72,6 +72,7 @@ import {
 } from "./inlineSubCompositions";
 import { isSafePath, resolveWithinProject } from "../safePath.js";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
+import { readTextFile } from "@hyperframes/parsers/asset-resolution";
 import { HF_COLOR_GRADING_ATTR } from "../colorGrading";
 import { assignMediaRenderIds } from "./mediaRenderIds";
 
@@ -120,7 +121,7 @@ function safeReadFile(filePath: string): string | null {
   noteRead(filePath);
   if (!existsSync(filePath)) return null;
   try {
-    return readFileSync(filePath, "utf-8");
+    return readTextFile(filePath);
   } catch {
     return null;
   }
@@ -1069,7 +1070,7 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     throw new Error(`${entryFile} not found in project directory`);
   }
   noteRead(indexPath);
-  const entryHtml = readFileSync(indexPath, "utf-8");
+  const entryHtml = readTextFile(indexPath);
   const mountedShell = readMountedSceneShell(projectDir, entryFile, entryHtml);
   const sourceDir = mountedShell ? projectDir : dirname(indexPath);
   // Every mount of a sub-composition asks again for each of its url()s; isSafePath realpaths the whole chain.

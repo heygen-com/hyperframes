@@ -1273,3 +1273,23 @@ describe("a media file whose own name holds # or ?", () => {
     expect(finding?.fixHint).toContain("Add the file");
   });
 });
+
+describe("a page saved as UTF-16", () => {
+  it("lints as the same page saved as UTF-8", async () => {
+    const page = `<!doctype html><html><body>
+  <div data-composition-id="root" data-width="1920" data-height="1080" data-start="0" data-duration="5">
+    <h1>Café</h1>
+  </div>
+  <script>window.__timelines["root"] = gsap.timeline({ paused: true });</script>
+</body></html>`;
+    const utf8 = makeProject(page);
+    const utf16 = makeProject(page);
+    writeFileSync(
+      join(utf16, "index.html"),
+      Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(page, "utf16le")]),
+    );
+    const codes = async (dir: string) =>
+      (await lintProject(dir)).results.flatMap((r) => r.result.findings.map((f) => f.code)).sort();
+    expect(await codes(utf16)).toEqual(await codes(utf8));
+  });
+});

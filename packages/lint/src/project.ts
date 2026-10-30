@@ -1,6 +1,6 @@
 export { shouldBlockRender } from "./shouldBlockRender.js";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { dirname, extname, join, relative, resolve } from "node:path";
 import { rewriteAssetPath } from "@hyperframes/parsers/asset-paths";
 import { spansOverlap } from "@hyperframes/parsers/time-spans";
@@ -32,6 +32,7 @@ import {
   resolveExistingLocalAsset,
   resolveLocalAssetCandidates,
   resolveProjectRelativeSrc,
+  readTextFile,
 } from "@hyperframes/parsers/asset-resolution";
 import { encodeUrlPath } from "@hyperframes/parsers";
 import {
@@ -214,7 +215,7 @@ export async function lintProject(
   let totalWarnings = 0;
   let totalInfos = 0;
 
-  const rootHtml = readFileSync(indexPath, "utf-8");
+  const rootHtml = readTextFile(indexPath);
   const rootResult = await lintHyperframeHtml(rootHtml, {
     ...hostOptions,
     filePath: indexPath,
@@ -248,7 +249,7 @@ export async function lintProject(
     const files = collectHtmlFiles(compositionsDir, "").sort();
     for (const file of files) {
       const filePath = join(compositionsDir, file);
-      const html = readFileSync(filePath, "utf-8");
+      const html = readTextFile(filePath);
       const compSrcPath = `compositions/${file}`;
       allHtmlSources.push({ html, compSrcPath });
       // Mountable fragments (figma component imports, registry snippets) are
@@ -584,7 +585,7 @@ function lintMultipleRootCompositions(projectDir: string): HyperframeLintFinding
     const rootCompositions: string[] = [];
     for (const file of rootHtmlFiles) {
       if (file === "caption-skin.html") continue;
-      const content = readFileSync(join(projectDir, file), "utf-8");
+      const content = readTextFile(join(projectDir, file));
       if (/data-composition-id/i.test(content)) {
         rootCompositions.push(file);
       }

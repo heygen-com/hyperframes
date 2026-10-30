@@ -12,7 +12,7 @@ import { decodedUrlPath } from "@hyperframes/parsers/asset-paths";
  */
 
 import { createHash } from "node:crypto";
-import { createReadStream, existsSync, mkdirSync, readFileSync } from "fs";
+import { createReadStream, existsSync, mkdirSync } from "fs";
 import { join, dirname, resolve, basename, relative } from "path";
 import { parseHTML } from "linkedom";
 import {
@@ -71,6 +71,7 @@ import {
 import {
   isUnresolvedAssetPlaceholder,
   readProjectFile,
+  readTextFile,
 } from "@hyperframes/parsers/asset-resolution";
 import { extractMediaMetadata, extractAudioMetadata } from "../utils/ffprobe.js";
 import { isPathInside, toExternalAssetKey } from "../utils/paths.js";
@@ -2037,11 +2038,7 @@ export async function compileForRender(
   downloadDir: string,
   options: CompileForRenderOptions = {},
 ): Promise<CompiledComposition> {
-  const entryHtml = rebaseDirectEntryAssetPaths(
-    readFileSync(htmlPath, "utf-8"),
-    projectDir,
-    htmlPath,
-  );
+  const entryHtml = rebaseDirectEntryAssetPaths(readTextFile(htmlPath), projectDir, htmlPath);
   const rawHtml = rewriteUnresolvableGsapToCdn(entryHtml, projectDir);
 
   // Pre-flight: every data-composition-src reference must resolve to a
