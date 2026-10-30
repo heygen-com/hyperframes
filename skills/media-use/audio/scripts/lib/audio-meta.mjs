@@ -37,3 +37,21 @@ export function openAudioMeta(path) {
     },
   };
 }
+
+// A TTS run that re-voices only some lines must not drop the others. Voices merge by id: an
+// unrequested voice stays in place, a re-voiced line replaces its entry and a new line is appended.
+// A requested line that failed keeps its earlier entry only while that file exists, so the list
+// never names a missing file. When every earlier id is requested, `fresh` is the whole result.
+export function mergeVoices(previous, fresh, { requested, exists }) {
+  const asked = new Set(requested);
+  if (previous.every((voice) => asked.has(voice.id))) return fresh;
+  const freshById = new Map(fresh.map((voice) => [voice.id, voice]));
+  const merged = previous.flatMap((voice) => {
+    if (!asked.has(voice.id)) return [voice];
+    const next = freshById.get(voice.id);
+    freshById.delete(voice.id);
+    if (next) return [next];
+    return exists(voice.path) ? [voice] : [];
+  });
+  return [...merged, ...freshById.values()];
+}

@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { openAudioMeta } from "./audio-meta.mjs";
+import { mergeVoices, openAudioMeta } from "./audio-meta.mjs";
 
 function fixture(t) {
   const dir = mkdtempSync(join(tmpdir(), "audio-meta-"));
@@ -133,4 +133,32 @@ test("CLI partial run retains unselected voices, BGM and SFX", (t) => {
   assert.equal(result.status, 0, result.stderr);
   const actual = JSON.parse(readFileSync(path, "utf8"));
   for (const key of Object.keys(previous)) assert.deepEqual(actual[key], previous[key]);
+});
+
+const voice = (id, duration_s = 1) => ({ id, path: `assets/voice/${id}.wav`, duration_s });
+const [a, b, c] = ["a", "b", "c"].map((id) => voice(id));
+const noFiles = () => false;
+
+test("mergeVoices keeps unrequested voices and replaces a re-voiced line in place", () => {
+  const b2 = voice("b", 2);
+  assert.deepEqual(mergeVoices([a, b, c], [b2], { requested: ["b"], exists: noFiles }), [a, b2, c]);
+});
+
+test("mergeVoices appends a line that had no voice yet", () => {
+  const d = voice("d");
+  assert.deepEqual(mergeVoices([a, b], [d], { requested: ["d"], exists: noFiles }), [a, b, d]);
+});
+
+test("mergeVoices keeps a failed line's voice only while its file exists", () => {
+  const onlyB = (path) => path === b.path;
+  assert.deepEqual(mergeVoices([a, b, c], [], { requested: ["b"], exists: noFiles }), [a, c]);
+  assert.deepEqual(mergeVoices([a, b, c], [], { requested: ["b"], exists: onlyB }), [a, b, c]);
+});
+
+test("mergeVoices returns a full run as synthesized, in request order", () => {
+  const fresh = [voice("c", 3), voice("a", 4), voice("b", 5)];
+  const requested = ["c", "a", "b"];
+  assert.equal(mergeVoices([a, b, c], fresh, { requested, exists: () => true }), fresh);
+  const failedB = mergeVoices([a, b], [fresh[1]], { requested: ["a", "b"], exists: () => true });
+  assert.deepEqual(failedB, [fresh[1]]);
 });

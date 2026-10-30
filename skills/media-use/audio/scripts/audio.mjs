@@ -34,9 +34,11 @@
 //     total_duration_s }
 //
 // --only tts,bgm,sfx  runs a subset and MERGES into an existing --out (so a
-// caller can do TTS+BGM early, then SFX later once cues exist). When BGM uses
-// the generate path it is spawned detached (bgm_pending:true) — run wait-bgm.mjs
-// before assembling.
+// caller can do TTS+BGM early, then SFX later once cues exist). With --only,
+// voices merge by id: a request that lists only some lines re-voices those and
+// keeps the rest. Without --only, the voices are replaced, as before.
+// When BGM uses the generate path it is spawned detached (bgm_pending:true) —
+// run wait-bgm.mjs before assembling.
 
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -53,7 +55,7 @@ import {
 import { generateBgmDetached, inferBgmPrompt, retrieveBgm } from "./lib/bgm.mjs";
 import { BUNDLED_SFX_DIR, resolveSfx } from "./lib/sfx.mjs";
 import { mapWithConcurrency } from "./lib/concurrency.mjs";
-import { openAudioMeta } from "./lib/audio-meta.mjs";
+import { mergeVoices, openAudioMeta } from "./lib/audio-meta.mjs";
 import { recordInManifest, voicePaths, writtenAssets } from "./lib/media-record.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -124,6 +126,7 @@ const anomalies = [];
 
 // ── TTS ───────────────────────────────────────────────────────────────────────
 let voices = prev.voices ?? [];
+let freshVoices = [];
 let ttsProvider = prev.tts_provider ?? null;
 let voiceId = prev.voice_id ?? null;
 if (only.has("tts") && lines.length) {
@@ -175,9 +178,15 @@ if (only.has("tts") && lines.length) {
     return { id, path: rel, duration_s: r3(dur), words: withWordIds(wordArr) };
   };
   const results = await mapWithConcurrency(lines, ttsConcurrency, synthLine);
-  voices = results.filter(Boolean);
-  for (const v of voices)
+  freshVoices = results.filter(Boolean);
+  for (const v of freshVoices)
     console.error(`  voice ${v.id}: ${v.path} (${v.duration_s}s, ${v.words.length} words)`);
+  voices = has("only")
+    ? mergeVoices(voices, freshVoices, {
+        requested: lines.map((line) => String(line.id)),
+        exists: (rel) => existsSync(join(hyperframesDir, rel)),
+      })
+    : freshVoices;
 }
 const hasVoice = voices.length > 0;
 const totalDuration = r3(voices.reduce((a, v) => a + (v.duration_s || 0), 0));
@@ -295,7 +304,15 @@ const meta = {
 };
 mkdirSync(dirname(outPath), { recursive: true });
 audioMeta.write(meta);
-const written = writtenAssets({ only, lines, voices, ttsProvider, bgm, bgmFields, sfx });
+const written = writtenAssets({
+  only,
+  lines,
+  voices: freshVoices,
+  ttsProvider,
+  bgm,
+  bgmFields,
+  sfx,
+});
 anomalies.push(...recordInManifest(hyperframesDir, written));
 
 console.log(`✓ audio engine → ${outPath}`);
