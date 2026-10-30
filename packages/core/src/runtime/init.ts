@@ -2948,12 +2948,25 @@ export function initSandboxRuntimeModular(): void {
   // A clip's first visible style pass is slow; playing, each hidden clip gets it once just before its start.
   const clipsNeverStyledVisible = new Set<StylableElement>();
   const clipsStyledVisible = new WeakSet<Element>();
-  const styleClipsDueVisibleOnce = (t: number) => {
+  // Starts of those clips, resolved once per timing revision: resolving every one on every tick built a
+  // resolver and walked each ancestor chain per clip, which at thousands of clips filled the main thread.
+  let neverStyledStarts = { revision: -1, starts: new Map<StylableElement, number>() };
+  const neverStyledStart = (el: StylableElement, revision: number): number => {
+    if (neverStyledStarts.revision !== revision)
+      neverStyledStarts = { revision, starts: new Map() };
+    let start = neverStyledStarts.starts.get(el);
+    if (start === undefined) {
+      start = resolveStartForElement(el, Number.NaN);
+      neverStyledStarts.starts.set(el, start);
+    }
+    return start;
+  };
+  const styleClipsDueVisibleOnce = (t: number, revision: number) => {
     if (clipsNeverStyledVisible.size === 0 || !clock.isPlaying()) return;
     const clips: StylableElement[] = [];
     for (const el of clipsNeverStyledVisible) {
-      const start = resolveStartForElement(el, Number.NaN);
-      if (el.isConnected && el.hasAttribute(CLIP_HIDDEN_ATTR) && !(start <= t + LOOKAHEAD_SECONDS))
+      const start = neverStyledStart(el, revision);
+      if (!(start <= t + LOOKAHEAD_SECONDS) && el.isConnected && el.hasAttribute(CLIP_HIDDEN_ATTR))
         continue;
       clipsNeverStyledVisible.delete(el);
       if (el.isConnected && el.hasAttribute(CLIP_HIDDEN_ATTR) && start > t) clips.push(el);
@@ -5286,7 +5299,7 @@ export function initSandboxRuntimeModular(): void {
     const revision = opts?.revision ?? readCompositionTimingRevision();
     if (revision !== tweensRenderedThrough.revision)
       tweensRenderedThrough = { revision, time: Number.NEGATIVE_INFINITY };
-    styleClipsDueVisibleOnce(t);
+    styleClipsDueVisibleOnce(t, revision);
     const firstRenders = t > tweensRenderedThrough.time;
     // Only clips holding a tween that renders for the first time on this seek need their authored style read.
     const firstRendered =
