@@ -11,7 +11,7 @@ import { parseArgs } from "node:util";
 import { execSync, spawn } from "node:child_process";
 import puppeteer from "puppeteer-core";
 import { resolveHeadlessShellPath } from "../../../../engine/src/index.ts";
-import { buildGrid, writeFixture } from "./grid.mjs";
+import { buildGrid, shardCases, writeFixture } from "./grid.mjs";
 import { killServers, runCase, startServer, stopServer } from "./case.mjs";
 import { runSequence } from "./sequences.mjs";
 import { METRICS, SLOW_RUNNER, score, slowRunner, writeReport } from "./report.mjs";
@@ -37,7 +37,11 @@ const { values: opt } = parseArgs({
 });
 const [shard, shards] = opt.shard.split("/").map(Number);
 const filter = new RegExp(opt.filter);
-const cases = buildGrid(opt.grid).filter((c, i) => filter.test(c.id) && i % shards === shard - 1);
+const cases = shardCases(
+  buildGrid(opt.grid).filter((c) => filter.test(c.id)),
+  shard,
+  shards,
+);
 const runId = new Date().toISOString().replace(/[:.]/g, "-");
 const out = resolve(opt.out ?? join(HERE, "../evidence/edit-accuracy", runId));
 const chrome = resolveHeadlessShellPath();

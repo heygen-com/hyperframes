@@ -76,6 +76,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:edit-accuracy": "bun tests/e2e/edit-accuracy/run.mjs",
+    "test:edit-accuracy:timings": "node tests/e2e/edit-accuracy/timings.mjs",
     "test:filmstrip-controls": "node tests/e2e/filmstrip-controls.mjs",
     "test:webmcp-edit-loop": "node tests/e2e/webmcp-edit-loop.mjs",
     "test:thumbnail-save": "node tests/e2e/thumbnail-save.mjs",

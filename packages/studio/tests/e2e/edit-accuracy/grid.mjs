@@ -1,6 +1,6 @@
 // The edit accuracy grid: one flat-coloured element in a generated project, crossed with one gesture.
 // Projects are written to a tmp dir per case; nothing checked in is edited.
-import { mkdirSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { dragCases } from "./drags.mjs";
@@ -254,6 +254,24 @@ function subHtml(spec) {
   </div>
 </template>
 `;
+}
+
+const TIMINGS = JSON.parse(readFileSync(new URL("timings.json", import.meta.url), "utf8"));
+
+/**
+ * Shard `shard` of `shards`, packed longest first by each case's measured seconds (timings.json, from timings.mjs) so
+ * the shards finish together; a case with no timing counts as the slowest. Returned longest first.
+ */
+export function shardCases(cases, shard, shards, timings = TIMINGS) {
+  const unknown = Math.max(0, ...Object.values(timings));
+  const cost = (c) => timings[c.id] ?? unknown;
+  const bins = Array.from({ length: shards }, () => ({ cases: [], seconds: 0 }));
+  for (const c of [...cases].sort((a, b) => cost(b) - cost(a) || a.id.localeCompare(b.id))) {
+    const lightest = bins.reduce((min, bin) => (bin.seconds < min.seconds ? bin : min));
+    lightest.cases.push(c);
+    lightest.seconds += cost(c);
+  }
+  return bins[shard - 1].cases;
 }
 
 /** Writes the case's project into `dir` and returns the files a gesture may rewrite. */
