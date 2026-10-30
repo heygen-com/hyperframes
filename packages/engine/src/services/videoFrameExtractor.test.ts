@@ -4482,6 +4482,7 @@ describe.skipIf(!HAS_FFMPEG)("a clip stored on a non-square pixel grid", () => {
       "stream=width,height",
       "-of",
       "csv=p=0",
+      "--",
       result.extracted[0]!.framePaths.get(0)!,
     ]);
     expect(probe.stdout.toString().trim()).toBe("128,64");
@@ -4511,6 +4512,7 @@ describe.skipIf(!HAS_FFMPEG)("a clip stored on a non-square pixel grid", () => {
       "stream=width,height",
       "-of",
       "csv=p=0",
+      "--",
       result.extracted[0]!.framePaths.get(0)!,
     ]);
     expect(probe.stdout.toString().trim()).toBe("32,64");
