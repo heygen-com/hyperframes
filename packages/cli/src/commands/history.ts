@@ -197,7 +197,6 @@ function print(json: boolean, data: object, text: string): void {
 async function textDiff(reader: Reader, entry: HistoryEntry): Promise<string> {
   const out: string[] = [];
   for (const file of entry.files) {
-    // The history only hashes video and audio: there are no bytes to read, only that it changed.
     if (isUncopiedMedia(file.path)) {
       out.push(`Media ${file.path} changed, not kept in history`);
       continue;

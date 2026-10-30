@@ -20,7 +20,6 @@ const MEDIA_EXTENSIONS = new Set([
 ]);
 const COPY_NOTHING_ABOVE_BYTES = 64 * 1024 ** 2;
 
-/** Video and audio, whatever their size, are hashed in place, never copied into history. */
 export const isUncopiedMedia = (path: string): boolean =>
   MEDIA_EXTENSIONS.has(extname(path).toLowerCase());
 
