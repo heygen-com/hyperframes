@@ -36,6 +36,18 @@ export function getTimelineVisibleTimeRange(
   return { start: Math.min(start, duration), end };
 }
 
+/** Whether two geometries place every row at the same top: a new geometry with the same rows moves nothing, so no
+ * scroll position needs reading (each read forces a layout of the whole timeline). */
+export function sameTimelineRowTops(a: TimelineRowGeometry, b: TimelineRowGeometry): boolean {
+  return (
+    a.rowKeys.length === b.rowKeys.length &&
+    a.rowKeys.every((key, row) => key === b.rowKeys[row]) &&
+    a.rowOffsets.length === b.rowOffsets.length &&
+    a.rowOffsets.every((top, row) => top === b.rowOffsets[row]) &&
+    a.padding.top === b.padding.top
+  );
+}
+
 export function getTimelineScrollTopForGeometryChange(
   previous: TimelineRowGeometry,
   next: TimelineRowGeometry,

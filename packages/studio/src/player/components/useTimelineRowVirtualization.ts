@@ -9,7 +9,10 @@ import {
 } from "react";
 import type { TimelineElement } from "../store/playerStore";
 import { resolveTimelineFocusIdentity } from "./timelineFocusIdentity";
-import { getTimelineScrollTopForGeometryChange } from "./timelineViewportGeometry";
+import {
+  getTimelineScrollTopForGeometryChange,
+  sameTimelineRowTops,
+} from "./timelineViewportGeometry";
 import type { TimelineRowGeometry } from "./timelineLayout";
 import type { TimelineScrollViewportSnapshot } from "./useTimelineScrollViewport";
 import { STUDIO_TIMELINE_ROW_VIRTUALIZATION_ENABLED } from "./timelineRowVirtualizationFlag";
@@ -116,7 +119,11 @@ export function useTimelineRowVirtualization({
         scroll.scrollTop = 0;
         syncScrollViewport(scroll);
       }
-    } else if (scroll && previousGeometry !== rowGeometry) {
+    } else if (
+      scroll &&
+      previousGeometry !== rowGeometry &&
+      !sameTimelineRowTops(previousGeometry, rowGeometry)
+    ) {
       const nextScrollTop = getTimelineScrollTopForGeometryChange(
         previousGeometry,
         rowGeometry,

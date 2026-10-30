@@ -3,12 +3,16 @@ import { TIMELINE_SCROLL_SETTLE_MS } from "./useTimelineScrollViewport";
 
 // The timeline viewport's scrollLeft once a scroll settles, or null while it is scrolling. Readers
 // re-render twice per gesture, never per frame: per-frame work cost 2-3x the viewport gate's budget
-// on a large unvirtualized timeline.
+// on a large unvirtualized timeline. The settled value is read when a scroll settles, never in the
+// snapshot: React calls that after every commit, and each read forced a layout of the timeline.
 export function useSettledScrollLeft(scrollRef: RefObject<HTMLDivElement | null>): number | null {
   const scrollingRef = useRef(false);
+  const settledRef = useRef(0);
   const subscribe = useCallback(
     (onChange: () => void) => {
       const el = scrollRef.current;
+      settledRef.current = el?.scrollLeft ?? 0;
+      onChange(); // the first render read before the element was there
       let settle: ReturnType<typeof setTimeout> | undefined;
       const onScroll = () => {
         if (!scrollingRef.current) {
@@ -18,6 +22,7 @@ export function useSettledScrollLeft(scrollRef: RefObject<HTMLDivElement | null>
         clearTimeout(settle);
         settle = setTimeout(() => {
           scrollingRef.current = false;
+          settledRef.current = el?.scrollLeft ?? 0;
           onChange();
         }, TIMELINE_SCROLL_SETTLE_MS);
       };
@@ -32,7 +37,7 @@ export function useSettledScrollLeft(scrollRef: RefObject<HTMLDivElement | null>
   );
   return useSyncExternalStore(
     subscribe,
-    () => (scrollingRef.current ? null : (scrollRef.current?.scrollLeft ?? 0)),
+    () => (scrollingRef.current ? null : settledRef.current),
     () => null,
   );
 }
