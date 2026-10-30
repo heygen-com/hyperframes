@@ -53,11 +53,12 @@ async function captureTarget(
   try {
     return await settle(run(false));
   } catch (err) {
-    if (!(err instanceof NavigationDeadlineError) || watchdog.expired() || !err.webglObserved) {
-      throw err;
-    }
-    onProgress?.("warn", "Navigation timed out; retrying once with WebGL disabled");
-    state.warnings.push("Navigation timed out; retrying once with WebGL disabled");
+    const navigationStalled = err instanceof NavigationDeadlineError && err.webglObserved;
+    if (!(navigationStalled || state.webglStalled) || watchdog.expired()) throw err;
+    const why = navigationStalled ? "Navigation timed out" : "The page stopped answering";
+    state.webglStalled = false;
+    onProgress?.("warn", `${why}; retrying once with WebGL disabled`);
+    state.warnings.push(`${why}; retrying once with WebGL disabled`);
     opts.onPhase?.({
       schema: CAPTURE_PHASE_SCHEMA,
       phase: "navigation",

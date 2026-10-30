@@ -27,6 +27,8 @@ export interface PartialCaptureState {
   assets: CaptureResult["assets"];
   dropped: CaptureResult["dropped"];
   warnings: string[];
+  /** The page stopped answering while it held a WebGL context; the next attempt runs without WebGL. */
+  webglStalled: boolean;
 }
 
 export function createPartialCaptureState(opts: CaptureOptions): PartialCaptureState {
@@ -65,6 +67,7 @@ export function createPartialCaptureState(opts: CaptureOptions): PartialCaptureS
     assets: [],
     dropped: noDrops(),
     warnings: [],
+    webglStalled: false,
   };
 }
 
