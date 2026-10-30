@@ -1357,17 +1357,17 @@ describe("openProjectHistory", () => {
       write(path, text);
       utimesSync(join(projectDir, path), at / 1000, at / 1000);
     };
-    const turn = (id: string, lastWriteAt: number) => ({
-      closedWindow: { id, who: agent, label: "Turn", startedAt: 1, lastWriteAt, idleMs: 400 },
+    const turn = (id: string, lastWriteAt: number, idleMs = 400) => ({
+      closedWindow: { id, who: agent, label: "Turn", startedAt: 1, lastWriteAt, idleMs },
     });
 
     // b.html comes first in time though not by name: taken in order, both are the window's.
     write("b.html", "b2");
-    const first = statSync(join(projectDir, "b.html")).ctimeMs - 350;
-    await pause(100);
+    const first = statSync(join(projectDir, "b.html")).ctimeMs - 9_990;
+    await pause(20);
     write("a.html", "a2"); // past the limit from the window's last write, so it counts only after b.html
     const lastWrite = statSync(join(projectDir, "a.html")).ctimeMs;
-    const reopened = await open(projectDir, historyRoot, turn("turn-1", first));
+    const reopened = await open(projectDir, historyRoot, turn("turn-1", first, 10_000));
     const [kept] = reopened.list();
     expect(kept?.files.map((file) => file.path)).toEqual(["a.html", "b.html"]);
     expect(Math.abs(kept!.endedAt - lastWrite), "ends at its last write").toBeLessThan(2);
