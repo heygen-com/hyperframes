@@ -1177,6 +1177,7 @@ async function executeLocalRender(
       resumeSegments: options.resumeSegments,
       keepSegments: options.keepSegments,
       strictness: options.bestEffort === false ? "strict" : "best-effort",
+      // plan() takes the film's own size; these only satisfy the request shape.
       distributed: options.range ? { width: 1920, height: 1080 } : undefined,
     },
   });

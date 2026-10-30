@@ -5,6 +5,7 @@ import type { ChunkSliceJson } from "../render/stages/freezePlan.js";
 import { writeStitchedMp4 } from "./mp4Stitch.js";
 import { plan, type DistributedRenderConfig } from "./plan.js";
 import { renderChunk } from "./renderChunk.js";
+import { RenderCancelledError } from "../renderOrchestrator.js";
 
 export interface RenderSpanResult {
   startFrame: number;
@@ -40,6 +41,10 @@ export function spanFrameRange(
 }
 
 /** Renders `[startSeconds, endSeconds)` as a standalone mp4 from 0, with that span's audio, by chunk sub-ranges. */
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) throw new RenderCancelledError("render_cancelled", "user_cancelled");
+}
+
 export async function renderSpan(
   projectDir: string,
   config: DistributedRenderConfig,
@@ -59,7 +64,13 @@ export async function renderSpan(
     const planDir = join(workDir, "plan");
     const partsDir = join(workDir, "parts");
     mkdirSync(partsDir, { recursive: true });
-    const planned = await plan(projectDir, config, planDir, { chunksCarryAudio: true });
+    // The span captures here in the browser a full render uses, so the container-only font guards do not apply.
+    const planned = await plan(
+      projectDir,
+      { ...config, rejectOnSystemFonts: false, failClosedFontFetch: false },
+      planDir,
+      { chunksCarryAudio: true },
+    );
     const { startFrame, endFrame } = spanFrameRange(
       span.startSeconds,
       span.endSeconds,
@@ -76,10 +87,12 @@ export async function renderSpan(
         endFrame: Math.min(slice.endFrame, endFrame),
       };
       if (range.endFrame <= range.startFrame) continue;
+      throwIfAborted(config.abortSignal);
       const part = join(partsDir, `part-${String(parts.length).padStart(4, "0")}.mp4`);
       await renderChunk(planDir, slice.index, part, { frameRange: range });
       parts.push(part);
     }
+    throwIfAborted(config.abortSignal);
     await writeStitchedMp4(parts, outputPath);
     return { startFrame, endFrame, framesEncoded: endFrame - startFrame };
   } finally {
