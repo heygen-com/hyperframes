@@ -1011,8 +1011,14 @@ export async function inStudio({ browser, spec, dir, files, url, evidence }, dri
       m.text().startsWith("[hf-reload]") && traceBench("reload", { line: m.text().slice(0, 400) }),
   );
   evidence.shots = {};
+  // Studio fills the viewport; capturing beyond it makes Chrome resize the page for every shot.
   const shoot = async (name) =>
-    (evidence.shots[name] = await page.screenshot({ type: "jpeg", quality: 70 }));
+    (evidence.shots[name] = await page.screenshot({
+      type: "jpeg",
+      quality: 70,
+      captureBeyondViewport: false,
+      optimizeForSpeed: true,
+    }));
   try {
     await page.setViewport(VIEWPORT);
     if (process.env.HF_WRITE_TRACE)
