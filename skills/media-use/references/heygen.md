@@ -4,7 +4,7 @@
 
 ## Signing in
 
-`npx hyperframes auth status` says what is signed in. The credential is read in this order: `HEYGEN_API_KEY`, `HYPERFRAMES_API_KEY`, a host app's `HEYGEN_ACCESS_TOKEN`, then `~/.heygen/credentials`, which `npx hyperframes auth login` and `heygen auth login` both write.
+`npx hyperframes auth status` says what is signed in. The credential is read in this order: `HEYGEN_API_KEY`, `HYPERFRAMES_API_KEY`, a host app's `HEYGEN_ACCESS_TOKEN`, then `~/.hyperframes/credentials`, which `npx hyperframes auth login` writes. `heygen auth login` is a separate sign-in that only the `heygen` CLI reads.
 
 | Credential                 | Pays with                                    | Covers                                                                                 |
 | -------------------------- | -------------------------------------------- | -------------------------------------------------------------------------------------- |
@@ -47,7 +47,7 @@ The file lands at `--out` and the media ledger records it as generated, with the
 | music  | lyria-3-pro                                              | $0.08 a track                                                                                                                                                          |
 | voice  | the voice's engine                                       | charged per character, not priced ahead                                                                                                                                |
 
-`--plan`'s `usd` is what an API key is charged (HeyGen rounds up to units of $1/60); its `credits` is what a HyperFrames plan charges, from the list price, with no such rounding. Voice ids come from `heygen voice list` or `npx hyperframes media-use resolve --type voice`; a cloned voice from `heygen voice clone create` (`operations.md`).
+`--plan`'s `usd` is what an API key is charged (HeyGen rounds up to units of $1/60); its `credits` is what a HyperFrames plan charges, on the plan's own rates: a video shot's seconds and guide seconds, plus each picture past the first two. Voice ids come from `heygen voice list` or `npx hyperframes media-use resolve --type voice`; a cloned voice from `heygen voice clone create` (`operations.md`).
 
 ## Transcription: `transcribe --engine heygen`
 

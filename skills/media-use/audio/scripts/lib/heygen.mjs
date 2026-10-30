@@ -214,11 +214,6 @@ export async function heygenJSON(path, { method = "GET", headers = {}, body } = 
   return text ? JSON.parse(text) : {};
 }
 
-// Where a refused HyperFrames-plan call sends the person. The plans and credits pages are not live yet;
-// override with $HYPERFRAMES_PLANS_URL / $HYPERFRAMES_CREDITS_URL until they are.
-const PLANS_URL = () => process.env.HYPERFRAMES_PLANS_URL || "https://hyperframes.studio/";
-const CREDITS_URL = () => process.env.HYPERFRAMES_CREDITS_URL || PLANS_URL();
-
 function errorCode(body) {
   try {
     const parsed = JSON.parse(body);
@@ -233,9 +228,9 @@ function errorCode(body) {
 export function billingRefusal(e) {
   const code = e?.body ? errorCode(e.body) : null;
   if (code === "hf_subscription_required")
-    return `This needs a HyperFrames plan. Subscribe: ${PLANS_URL()}`;
+    return "This needs a HyperFrames plan. Run `npx hyperframes billing subscribe`: it opens the page and waits.";
   if (code === "hf_usage_exhausted")
-    return `Out of HyperFrames credits. Add credits: ${CREDITS_URL()}`;
+    return "Out of HyperFrames credits. Run `npx hyperframes billing top-up`: it opens the page and waits.";
   if (code === "api_key_required")
     return "This HeyGen feature isn't available with this sign-in yet. Nothing was charged. Use a HeyGen API key, or wait for HyperFrames billing in the CLI.";
   return null;

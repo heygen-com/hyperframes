@@ -279,6 +279,10 @@ export function writeImage(path: string, px: Uint8Array, w: number, h: number, g
 
 export const round = (n: number, d = 3) => Math.round(n * 10 ** d) / 10 ** d;
 
+/** Yours over the reference; two values under `floor` are both nothing, and nothing matches nothing. */
+export const ratioOf = (yours: number, ref: number, floor: number): number =>
+  yours < floor && ref < floor ? 1 : yours / (ref || 1e-9);
+
 /** "1,2.5,4" as numbers. */
 export function parseNumbers(text: unknown, flag: string): number[] {
   const out = String(text ?? "")

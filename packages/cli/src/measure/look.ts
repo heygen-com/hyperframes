@@ -1,7 +1,10 @@
 // The look of a stretch of film as numbers, ported from the Studio's look-stats.mjs: mean luma and contrast
 // (0–255), mean saturation (0–1, HSV), the share of black-and-white frames (under 2% of mid-tone pixels carry
 // colour, so a colour face in a white room is not black and white) and warmth (mean R − B, negative is cool).
-import { readClip, round, type Clip, type Roi } from "./media.js";
+import { ratioOf, readClip, round, type Clip, type Roi } from "./media.js";
+
+// Under these a frame has no light, contrast or colour to speak of, on the scales above.
+const LOOK_FLOOR = { luma: 1, contrast: 1, saturation: 0.01 };
 
 export interface Look {
   frames: number;
@@ -62,7 +65,8 @@ export interface LookComparison {
 
 /** Yours over the reference's: ratios near 1 and differences near 0 are the same look. */
 export function compareLook(ref: Look, yours: Look): LookComparison {
-  const ratio = (k: "luma" | "contrast" | "saturation") => round(yours[k] / (ref[k] || 1e-9), 2);
+  const ratio = (k: "luma" | "contrast" | "saturation") =>
+    round(ratioOf(yours[k], ref[k], LOOK_FLOOR[k]), 2);
   return {
     luma_ratio: ratio("luma"),
     contrast_ratio: ratio("contrast"),

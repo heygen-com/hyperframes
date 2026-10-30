@@ -1,8 +1,10 @@
 // Body and camera motion where the pixels differ (a regenerated shot, another person, another room), ported from
 // the Studio's motion-energy.mjs. Both clips share one 12 fps grid, as mixed 24/30 fps skews per-frame differences.
-import { meanAbsDiff, pearson, readClip, round, type Clip, type Roi } from "./media.js";
+import { meanAbsDiff, pearson, ratioOf, readClip, round, type Clip, type Roi } from "./media.js";
 
 const ENERGY_RATE = 12;
+// Mean grey levels a frame changes by: below this a still shot differs only by encoder noise.
+const STILL = 0.1;
 
 export function energyCurve(clip: Clip, roi?: Roi): number[] {
   const { frames } = readClip(clip, { fps: ENERGY_RATE, width: 270, gray: true, roi });
@@ -34,7 +36,7 @@ export function compareEnergy(ref: number[], yours: number[]): EnergyComparison 
   return {
     r: round(best[0] === -2 ? 0 : best[0]),
     lag_s: round(best[1] / ENERGY_RATE, 2),
-    peak_ratio: round(Math.max(...yours, 0) / (Math.max(...ref, 0) || 1e-9), 2),
-    mean_ratio: round(mean(yours) / (mean(ref) || 1e-9), 2),
+    peak_ratio: round(ratioOf(Math.max(...yours, 0), Math.max(...ref, 0), STILL), 2),
+    mean_ratio: round(ratioOf(mean(yours), mean(ref), STILL), 2),
   };
 }

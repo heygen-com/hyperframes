@@ -10,6 +10,8 @@ vi.mock("../cloud/auth.js", () => ({
   resolveCloudBaseUrl: () => "https://api.test",
 }));
 
+vi.stubEnv("HEYGEN_API_KEY", "k");
+
 const { checkRequest, generate, parseMask, urlOf } = await import("./generate.js");
 const { checkLimit, creditsOf, priceOf } = await import("./pricing.js");
 const ffmpeg = findFFmpeg();
@@ -350,13 +352,14 @@ describe("generate", () => {
 
   it("prices only a request the real call would accept", () => {
     // --plan runs the same checks as the real call, so it never prices a request the call would refuse.
-    const shot = {
-      type: "video" as const,
-      out: "a.mp4",
-      references: ["plate.png"],
-      audio: "voice.m4a",
-    };
+    const [plate, voice] = [join(project, "plate.png"), join(project, "voice.m4a")];
+    writeFileSync(plate, "");
+    writeFileSync(voice, "");
+    const shot = { type: "video" as const, out: "a.mp4", references: [plate], audio: voice };
     expect(() => checkRequest(shot)).toThrow("--prompt is required for this type");
+    expect(() =>
+      checkRequest({ ...shot, prompt: "x", audio: join(project, "missing.m4a") }),
+    ).toThrow("no file at");
     expect(() => checkRequest({ ...shot, prompt: "she talks to the camera" })).not.toThrow();
     expect(() => checkRequest({ ...shot, prompt: "x", firstFrame: "f.png" })).toThrow(
       "--first-frame cannot be used",
@@ -369,12 +372,26 @@ describe("generate", () => {
     );
   });
 
+  it("charges a reference shot's pictures after the first two", () => {
+    const shot = (pictures: number) => ({
+      type: "video" as const,
+      out: "a.mp4",
+      seconds: 5,
+      references: Array.from({ length: pictures }, (_, i) => `${i}.png`),
+    });
+    const credits = [1, 2, 3, 9].map((n) => creditsOf(priceOf(shot(n))));
+    expect(credits).toEqual([167, 167, 180, 260]);
+    expect(priceOf(shot(9)).list).toBeCloseTo(0.39);
+    expect(() => checkLimit(credits[3]!, 250)).toThrow("about 260 credits, over --max-credits 250");
+    expect(() => checkLimit(credits[3]!, 260)).not.toThrow();
+  });
+
   it("keeps a call under the person's credit limit, or refuses it before sending", () => {
     const shot = creditsOf(priceOf({ type: "video", out: "a.mp4", seconds: 6 }));
-    expect(shot).toBe(108);
+    expect(shot).toBe(72);
     expect(creditsOf(priceOf({ type: "image", out: "a.png" }))).toBe(67);
-    expect(() => checkLimit(shot, 108)).not.toThrow();
-    expect(() => checkLimit(shot, 30)).toThrow("about 108 credits, over --max-credits 30");
+    expect(() => checkLimit(shot, 72)).not.toThrow();
+    expect(() => checkLimit(shot, 30)).toThrow("about 72 credits, over --max-credits 30");
     expect(() => checkLimit(null, 30)).toThrow("cannot be priced ahead");
     expect(() => checkLimit(null, undefined)).not.toThrow();
   });

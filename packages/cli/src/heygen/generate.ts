@@ -213,14 +213,18 @@ export function urlOf(job: Job, paths: string[]): string | null {
   return null;
 }
 
+function needFile(path: string): void {
+  if (!existsSync(path))
+    throw new Fix(`no file at ${path}`, "pass a picture or sound from the project");
+}
+
 /**
  * A picture or a sound as the routes take it inline, pictures shrunk to 2048 px so the body stays small, a motion
  * clip with its masks blanked.
  */
 function inline(work: string, masks: Mask[] = []): Media {
   return (path, kind) => {
-    if (!existsSync(path))
-      throw new Fix(`no file at ${path}`, "pass a picture or sound from the project");
+    needFile(path);
     const out = join(
       work,
       `in-${Math.random().toString(36).slice(2)}.${{ image: "jpg", audio: "mp3", video: "mp4" }[kind]}`,
@@ -304,7 +308,10 @@ export function checkRequest(r: GenerateRequest): void {
     throw new Fix(`--out ${r.out} does not fit a ${r.type}`, `--out assets/name${route.ext[0]}`);
   if (r.masks?.length && !r.motion)
     throw new Fix("--mask blanks regions of the --motion clip", "pass --motion with --mask");
-  route.body(r, () => ({ type: "base64", media_type: "", data: "" }));
+  route.body(r, (path) => {
+    needFile(path);
+    return { type: "base64", media_type: "", data: "" };
+  });
   checkGuide(r);
 }
 

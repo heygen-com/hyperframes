@@ -351,49 +351,33 @@ test("a base that isn't HeyGen's gets no stored or host OAuth credential, only a
   });
 });
 
-test("a refused HyperFrames-plan call becomes one line with the plans or credits link", () => {
+test("a refused HyperFrames-plan call becomes one line with the billing command", () => {
   const refused = (code) => ({
     status: 402,
     body: JSON.stringify({ error: { code, message: "raw" } }),
   });
-  const prev = {
-    plans: process.env.HYPERFRAMES_PLANS_URL,
-    credits: process.env.HYPERFRAMES_CREDITS_URL,
-  };
-  try {
-    process.env.HYPERFRAMES_PLANS_URL = "https://example.test/plans";
-    process.env.HYPERFRAMES_CREDITS_URL = "https://example.test/credits";
-    assert.equal(
-      heygenMessage(refused("hf_subscription_required")),
-      "This needs a HyperFrames plan. Subscribe: https://example.test/plans",
-    );
-    assert.equal(
-      heygenMessage(refused("hf_usage_exhausted")),
-      "Out of HyperFrames credits. Add credits: https://example.test/credits",
-    );
-    assert.match(
-      heygenMessage({ status: 403, body: JSON.stringify({ error: { code: "api_key_required" } }) }),
-      /Nothing was charged/,
-    );
-    // Every other failure keeps HeyGen's own words.
-    assert.equal(
-      billingRefusal({
-        status: 400,
-        body: JSON.stringify({ error: { code: "invalid_parameter", message: "bad voice" } }),
-      }),
-      null,
-    );
-    assert.equal(
-      heygenMessage({ status: 400, body: JSON.stringify({ error: { message: "bad voice" } }) }),
-      "bad voice",
-    );
-  } finally {
-    for (const [k, v] of [
-      ["HYPERFRAMES_PLANS_URL", prev.plans],
-      ["HYPERFRAMES_CREDITS_URL", prev.credits],
-    ]) {
-      if (v === undefined) delete process.env[k];
-      else process.env[k] = v;
-    }
-  }
+  assert.equal(
+    heygenMessage(refused("hf_subscription_required")),
+    "This needs a HyperFrames plan. Run `npx hyperframes billing subscribe`: it opens the page and waits.",
+  );
+  assert.equal(
+    heygenMessage(refused("hf_usage_exhausted")),
+    "Out of HyperFrames credits. Run `npx hyperframes billing top-up`: it opens the page and waits.",
+  );
+  assert.match(
+    heygenMessage({ status: 403, body: JSON.stringify({ error: { code: "api_key_required" } }) }),
+    /Nothing was charged/,
+  );
+  // Every other failure keeps HeyGen's own words.
+  assert.equal(
+    billingRefusal({
+      status: 400,
+      body: JSON.stringify({ error: { code: "invalid_parameter", message: "bad voice" } }),
+    }),
+    null,
+  );
+  assert.equal(
+    heygenMessage({ status: 400, body: JSON.stringify({ error: { message: "bad voice" } }) }),
+    "bad voice",
+  );
 });

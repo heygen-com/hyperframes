@@ -5,6 +5,8 @@ import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { configDir } from "../auth/paths.js";
+import { resolveCredential } from "../auth/resolver.js";
+import { readStore } from "../auth/store.js";
 import { resolveCloudAuthHeaders, resolveCloudBaseUrl } from "../cloud/auth.js";
 import { Fix } from "../measure/media.js";
 import { pageUrl } from "./plan.js";
@@ -28,23 +30,42 @@ export function idempotencyKey(route: string, parts: readonly (string | Buffer)[
   return `hf-${h.digest("hex").slice(0, 40)}`;
 }
 
-class Refused extends Fix {}
+class Refused extends Fix {
+  status = 0;
+}
+
+/** Refusals that say nothing about the job: a lost answer may have started it, so a retry keeps its key. */
+const KEEPS_KEY = new Set([401, 403, 408, 409, 425, 429]);
 
 const failedKeysFile = () => join(configDir(), "heygen-failed-keys");
 
-function failedKeys(): Set<string> {
-  const file = failedKeysFile();
-  return new Set(existsSync(file) ? readFileSync(file, "utf8").split("\n").filter(Boolean) : []);
+/** Who a failure belongs to: this API and this payer, so one account's refusal cannot move another's key. */
+async function payerScope(): Promise<string> {
+  const credential = await resolveCredential().catch(() => undefined);
+  const user = credential?.type === "oauth" ? (await readStore()).credentials.user : undefined;
+  const who = credential?.type === "api_key" ? credential.key : (user?.email ?? user?.username);
+  return createHash("sha256")
+    .update(`${resolveCloudBaseUrl()}\0${who ?? ""}`)
+    .digest("hex")
+    .slice(0, 16);
 }
 
-function markFailed(key: string): void {
+function failedKeys(scope: string): Set<string> {
+  const file = failedKeysFile();
+  const lines = existsSync(file) ? readFileSync(file, "utf8").split("\n") : [];
+  return new Set(
+    lines.filter((l) => l.startsWith(`${scope} `)).map((l) => l.slice(scope.length + 1)),
+  );
+}
+
+function markFailed(key: string, scope: string): void {
   mkdirSync(configDir(), { recursive: true });
-  appendFileSync(failedKeysFile(), `${key}\n`);
+  appendFileSync(failedKeysFile(), `${scope} ${key}\n`);
 }
 
 /** The key to send: `key` itself, or past every key whose job failed or was refused, so a retry is a new job. */
-function liveKey(key: string): string {
-  const failed = failedKeys();
+function liveKey(key: string, scope: string): string {
+  const failed = failedKeys(scope);
   let sent = key;
   for (let n = 1; failed.has(sent); n++) sent = `${key}-${n}`;
   return sent;
@@ -53,7 +74,7 @@ function liveKey(key: string): string {
 /** A refused call says what to do: sign in, subscribe, add credits, or change the request. `estimate` is the
  *  caller's own price for the call (what `--plan` prints), named when HeyGen does not say what the step needs. */
 // fallow-ignore-next-line complexity
-function refusal(status: number, body: unknown, estimate?: number): Fix {
+function refusal(status: number, body: unknown, estimate?: number): Refused {
   const err = isRecord(body) && isRecord(body.error) ? body.error : isRecord(body) ? body : {};
   const code = String(err.code ?? err.failure_code ?? "");
   const message = String(err.message ?? err.failure_message ?? "").slice(0, 300);
@@ -135,7 +156,11 @@ async function call(
       `HeyGen ${res.status} for ${route} with no readable answer`,
       "run the same command again: it resumes the same job",
     );
-  if (!res.ok) throw refusal(res.status, value, estimate);
+  if (!res.ok) {
+    const refused = refusal(res.status, value, estimate);
+    refused.status = res.status;
+    throw refused;
+  }
   const data = isRecord(value) && isRecord(value.data) ? value.data : value;
   if (!isRecord(data))
     throw new Fix(`HeyGen answered ${route} with no job`, "run the same command again");
@@ -183,12 +208,13 @@ export async function runJob(
   opts: RunOptions = {},
 ): Promise<Job> {
   const started = Date.now();
-  const sent = liveKey(key);
+  const scope = await payerScope();
+  const sent = liveKey(key, scope);
   let job: Job;
   try {
     job = await call("POST", route, body, sent, opts.credits);
   } catch (err) {
-    if (err instanceof Refused) markFailed(sent);
+    if (err instanceof Refused && !KEEPS_KEY.has(err.status)) markFailed(sent, scope);
     throw err;
   }
   if (opts.log) log(opts.log, { route, id: job.id, key: sent, status: job.status });
@@ -204,7 +230,7 @@ export async function runJob(
   }
   if (opts.log) log(opts.log, { route, id: job.id, key: sent, status: job.status });
   if (!/^(completed|succeeded|success|done)$/i.test(job.status)) {
-    markFailed(sent);
+    markFailed(sent, scope);
     throw refusal(422, {
       error: { code: job.failure_code ?? job.status, message: job.failure_message ?? "" },
     });

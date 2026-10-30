@@ -1,6 +1,6 @@
 # Re-shooting a person
 
-Every person on screen, speaking or not, is re-shot with HeyGen so the original's face and the text burned over it never ship. What makes a re-shot person match is the original's own clip driving the motion, and one generated shot per original shot. Without a HeyGen key, cut them on their own box instead and say the burned-in text came along.
+Every person on screen, speaking or not, is re-shot with HeyGen so the original's face and the text burned over it never ship. What makes a re-shot person match is the original's own clip driving the motion, and one generated shot per original shot. The HyperFrames sign-in is enough; no API key is needed. Only when the person says not to use HeyGen, cut them on their own box instead and say the burned-in text came along.
 
 ## The recipe
 

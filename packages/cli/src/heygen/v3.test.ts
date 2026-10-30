@@ -1,4 +1,7 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../cloud/auth.js", () => ({
   resolveCloudAuthHeaders: async () => ({ "x-api-key": "k" }),
@@ -10,7 +13,13 @@ const { idempotencyKey, runJob } = await import("./v3.js");
 const reply = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
-afterEach(() => vi.unstubAllGlobals());
+beforeEach(() => {
+  vi.stubEnv("HYPERFRAMES_CONFIG_DIR", mkdtempSync(join(tmpdir(), "hf-v3-test-")));
+});
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
+});
 
 describe("runJob", () => {
   it("sends the key, polls until the job ends and returns it", async () => {
@@ -120,6 +129,41 @@ describe("runJob", () => {
     ).rejects.toThrow("out of HyperFrames credits");
     await run("hf-broke", done());
     expect(keys).toEqual(["hf-broke", "hf-broke-1"]);
+  });
+
+  it.each([401, 403, 408, 409, 425, 429])(
+    "keeps the key after a %i, which says nothing about the job",
+    async (status) => {
+      const key = `hf-lost-${status}`;
+      const keys: (string | null)[] = [];
+      const answers = [
+        reply(status, { message: "no" }),
+        reply(200, { data: { id: "j", status: "completed" } }),
+      ];
+      vi.stubGlobal("fetch", async (_url: string, init: RequestInit) => {
+        keys.push(new Headers(init.headers).get("Idempotency-Key"));
+        return answers.shift()!;
+      });
+      await expect(runJob("/v3/x", {}, key, (id) => id)).rejects.toThrow();
+      await runJob("/v3/x", {}, key, (id) => id);
+      expect(keys).toEqual([key, key]);
+    },
+  );
+
+  it("does not let one account's failure move another account's key", async () => {
+    const keys: (string | null)[] = [];
+    const run = (answers: Response[]) => {
+      vi.stubGlobal("fetch", async (_url: string, init: RequestInit) => {
+        keys.push(new Headers(init.headers).get("Idempotency-Key"));
+        return answers.shift()!;
+      });
+      return runJob("/v3/x", {}, "hf-shared", (id) => id);
+    };
+    vi.stubEnv("HEYGEN_API_KEY", "payer-a");
+    await expect(run([reply(402, { code: "hf_usage_exhausted" })])).rejects.toThrow();
+    vi.stubEnv("HEYGEN_API_KEY", "payer-b");
+    await run([reply(200, { data: { id: "j", status: "completed" } })]);
+    expect(keys).toEqual(["hf-shared", "hf-shared"]);
   });
 
   it("keys the same request the same way", () => {
