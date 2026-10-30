@@ -1,3 +1,4 @@
+import { isVideoElement } from "./domRealm";
 import { mediaSourceTimeAt } from "./media";
 import type { RuntimeMediaClip } from "./types";
 
@@ -24,7 +25,7 @@ export function hasFrozenPicture(clips: readonly RuntimeMediaClip[], filmTime: n
   let frozen = false;
   for (const clip of clips) {
     const el = clip.el;
-    if (!(el instanceof HTMLVideoElement)) continue;
+    if (!isVideoElement(el)) continue;
     const look = looks.get(el);
     if (!look || filmTime < look.film) {
       looks.set(el, { film: filmTime, time: el.currentTime });
