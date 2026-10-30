@@ -7,6 +7,7 @@ import { findFFmpeg } from "../browser/ffmpeg.js";
 
 vi.mock("../cloud/auth.js", () => ({
   resolveCloudAuthHeaders: async () => ({ "x-api-key": "k" }),
+  refreshIfNeeded: async <T>(credential: T) => credential,
   resolveCloudBaseUrl: () => "https://api.test",
 }));
 

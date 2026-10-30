@@ -1,10 +1,11 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../cloud/auth.js", () => ({
   resolveCloudAuthHeaders: async () => ({ "x-api-key": "k" }),
+  refreshIfNeeded: async <T>(credential: T) => credential,
   resolveCloudBaseUrl: () => "https://api.test",
 }));
 
@@ -15,6 +16,7 @@ const reply = (status: number, body: unknown) =>
 
 beforeEach(() => {
   vi.stubEnv("HYPERFRAMES_CONFIG_DIR", mkdtempSync(join(tmpdir(), "hf-v3-test-")));
+  vi.stubEnv("HEYGEN_API_KEY", "payer");
 });
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -164,6 +166,84 @@ describe("runJob", () => {
     vi.stubEnv("HEYGEN_API_KEY", "payer-b");
     await run([reply(200, { data: { id: "j", status: "completed" } })]);
     expect(keys).toEqual(["hf-shared", "hf-shared"]);
+  });
+
+  describe("with a host's sign-in token", () => {
+    const signIn = (token: string) => {
+      vi.stubEnv("HEYGEN_API_KEY", "");
+      vi.stubEnv("HEYGEN_ACCESS_TOKEN", token);
+    };
+    const done = () => reply(200, { data: { id: "j", status: "completed" } });
+    const failed = () =>
+      reply(200, { data: { id: "j", status: "failed", failure_code: "generation_failed" } });
+    /** Answers `/v3/users/me` with `accounts`, and each POST with the next of `answers`. */
+    const server = (accounts: Record<string, Response | (() => Response)>, answers: Response[]) => {
+      const keys: (string | null)[] = [];
+      vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
+        if (!url.endsWith("/v3/users/me")) {
+          keys.push(new Headers(init.headers).get("Idempotency-Key"));
+          return answers.shift()!;
+        }
+        const token = new Headers(init.headers).get("authorization")?.replace("Bearer ", "");
+        const account = accounts[token!]!;
+        return typeof account === "function" ? account() : account.clone();
+      });
+      return keys;
+    };
+    const accounts = {
+      a: reply(200, { data: { email: "a@test" } }),
+      b: reply(200, { data: { email: "b@test" } }),
+    };
+
+    it.each([
+      ["no local user", null],
+      ["someone else's local user", { user: { email: "stale@test" } }],
+    ])("gives each account its own failures, with %s", async (_name, stored) => {
+      if (stored)
+        writeFileSync(
+          join(process.env["HYPERFRAMES_CONFIG_DIR"]!, "credentials"),
+          JSON.stringify(stored),
+        );
+      const keys = server(accounts, [
+        done(),
+        reply(402, { error: { code: "hf_usage_exhausted" } }),
+        done(),
+      ]);
+      signIn("a");
+      await runJob("/v3/x", {}, "hf-host", (id) => id);
+      signIn("b");
+      await expect(runJob("/v3/x", {}, "hf-host", (id) => id)).rejects.toThrow();
+      signIn("a");
+      await runJob("/v3/x", {}, "hf-host", (id) => id);
+      expect(keys).toEqual(["hf-host", "hf-host", "hf-host"]);
+    });
+
+    it("records nothing when the account cannot be told", async () => {
+      const keys = server({ a: () => reply(503, {}) }, [
+        reply(402, { error: { code: "hf_usage_exhausted" } }),
+        done(),
+      ]);
+      signIn("a");
+      await expect(runJob("/v3/x", {}, "hf-unknown", (id) => id)).rejects.toThrow();
+      await runJob("/v3/x", {}, "hf-unknown", (id) => id);
+      expect(keys).toEqual(["hf-unknown", "hf-unknown"]);
+    });
+
+    it("sends a job that failed for this account as a new one", async () => {
+      const keys = server(accounts, [failed(), done()]);
+      signIn("a");
+      await expect(runJob("/v3/x", {}, "hf-own", (id) => id)).rejects.toThrow();
+      await runJob("/v3/x", {}, "hf-own", (id) => id);
+      expect(keys).toEqual(["hf-own", "hf-own-1"]);
+    });
+
+    it("keeps the key through a lost answer, then a new sign-in", async () => {
+      const keys = server(accounts, [reply(401, { message: "expired" }), done()]);
+      signIn("a");
+      await expect(runJob("/v3/x", {}, "hf-resigned", (id) => id)).rejects.toThrow();
+      await runJob("/v3/x", {}, "hf-resigned", (id) => id);
+      expect(keys).toEqual(["hf-resigned", "hf-resigned"]);
+    });
   });
 
   it("keys the same request the same way", () => {

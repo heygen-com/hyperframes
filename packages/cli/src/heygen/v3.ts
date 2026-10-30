@@ -5,9 +5,9 @@ import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { configDir } from "../auth/paths.js";
+import { AuthClient } from "../auth/client.js";
 import { resolveCredential } from "../auth/resolver.js";
-import { readStore } from "../auth/store.js";
-import { resolveCloudAuthHeaders, resolveCloudBaseUrl } from "../cloud/auth.js";
+import { refreshIfNeeded, resolveCloudAuthHeaders, resolveCloudBaseUrl } from "../cloud/auth.js";
 import { Fix } from "../measure/media.js";
 import { pageUrl } from "./plan.js";
 
@@ -39,15 +39,21 @@ const KEEPS_KEY = new Set([401, 403, 408, 409, 425, 429]);
 
 const failedKeysFile = () => join(configDir(), "heygen-failed-keys");
 
-/** Who a failure belongs to: this API and this payer, so one account's refusal cannot move another's key. */
-async function payerScope(): Promise<string> {
-  const credential = await resolveCredential().catch(() => undefined);
-  const user = credential?.type === "oauth" ? (await readStore()).credentials.user : undefined;
-  const who = credential?.type === "api_key" ? credential.key : (user?.email ?? user?.username);
-  return createHash("sha256")
-    .update(`${resolveCloudBaseUrl()}\0${who ?? ""}`)
-    .digest("hex")
-    .slice(0, 16);
+/** Who a failure belongs to: this API and the account behind the credential; null when that cannot be told. */
+async function payerScope(): Promise<string | null> {
+  const credential = await resolveCredential()
+    .then(refreshIfNeeded)
+    .catch(() => null);
+  if (!credential) return null;
+  const who =
+    credential.type === "api_key"
+      ? credential.key
+      : await new AuthClient().getCurrentUser(credential).then(
+          (user) => user.email ?? user.username,
+          () => undefined,
+        );
+  if (!who) return null;
+  return createHash("sha256").update(`${resolveCloudBaseUrl()}\0${who}`).digest("hex").slice(0, 16);
 }
 
 function failedKeys(scope: string): Set<string> {
@@ -58,14 +64,18 @@ function failedKeys(scope: string): Set<string> {
   );
 }
 
-function markFailed(key: string, scope: string): void {
+async function markFailed(key: string): Promise<void> {
+  const scope = await payerScope();
+  if (!scope) return;
   mkdirSync(configDir(), { recursive: true });
   appendFileSync(failedKeysFile(), `${scope} ${key}\n`);
 }
 
 /** The key to send: `key` itself, or past every key whose job failed or was refused, so a retry is a new job. */
-function liveKey(key: string, scope: string): string {
-  const failed = failedKeys(scope);
+async function liveKey(key: string): Promise<string> {
+  if (!existsSync(failedKeysFile())) return key;
+  const scope = await payerScope();
+  const failed = scope ? failedKeys(scope) : new Set<string>();
   let sent = key;
   for (let n = 1; failed.has(sent); n++) sent = `${key}-${n}`;
   return sent;
@@ -208,13 +218,12 @@ export async function runJob(
   opts: RunOptions = {},
 ): Promise<Job> {
   const started = Date.now();
-  const scope = await payerScope();
-  const sent = liveKey(key, scope);
+  const sent = await liveKey(key);
   let job: Job;
   try {
     job = await call("POST", route, body, sent, opts.credits);
   } catch (err) {
-    if (err instanceof Refused && !KEEPS_KEY.has(err.status)) markFailed(sent, scope);
+    if (err instanceof Refused && !KEEPS_KEY.has(err.status)) await markFailed(sent);
     throw err;
   }
   if (opts.log) log(opts.log, { route, id: job.id, key: sent, status: job.status });
@@ -230,7 +239,7 @@ export async function runJob(
   }
   if (opts.log) log(opts.log, { route, id: job.id, key: sent, status: job.status });
   if (!/^(completed|succeeded|success|done)$/i.test(job.status)) {
-    markFailed(sent, scope);
+    await markFailed(sent);
     throw refusal(422, {
       error: { code: job.failure_code ?? job.status, message: job.failure_message ?? "" },
     });
