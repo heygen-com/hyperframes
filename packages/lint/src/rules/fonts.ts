@@ -167,7 +167,7 @@ function extractGoogleFontFamiliesFromUrl(rawUrl: string): string[] {
   return families;
 }
 
-function collectGoogleFontFamilies(
+export function collectGoogleFontFamilies(
   source: string,
   styles: Array<{ content: string }>,
 ): Set<string> {

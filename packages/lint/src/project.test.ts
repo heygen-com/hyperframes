@@ -567,6 +567,51 @@ describe("sub-composition stylesheet links", () => {
     expect(await fontFaceFindings(project)).toHaveLength(1);
   });
 
+  it("counts a Google Fonts link in the root for a sub-composition that uses the family", async () => {
+    const project = makeProject(
+      validHtml().replace(
+        "<body>",
+        '<head><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lobster+Two"></head><body>',
+      ),
+      {
+        "scene.html": `<template>
+  <style>#scene-title{font-family:'Lobster Two'}</style>
+  <div id="root" data-composition-id="scene" data-width="1920" data-height="1080" data-duration="1"><h1 id="scene-title">Hello</h1></div>
+  <script>window.__timelines["scene"] = gsap.timeline({ paused: true });</script>
+</template>`,
+      },
+    );
+    expect(await fontFaceFindings(project)).toEqual([]);
+  });
+
+  it("counts a font a mounted composition declares, and ignores one only an unmounted file declares", async () => {
+    const mount = (file: string) =>
+      `<div id="${file}" data-composition-id="${file}" data-composition-src="compositions/${file}.html" data-start="0" data-duration="1"></div>`;
+    const composition = (id: string, css: string) => `<template>
+  <style>${css}</style>
+  <div id="root" data-composition-id="${id}" data-width="1920" data-height="1080" data-duration="1"><h1 id="${id}-title">Hello</h1></div>
+  <script>window.__timelines["${id}"] = gsap.timeline({ paused: true });</script>
+</template>`;
+    const files = (declaring: string) => ({
+      "scene.html": composition("scene", "#scene-title{font-family:'Repro'}"),
+      [`${declaring}.html`]: composition(
+        declaring,
+        "@font-face{font-family:'Repro';src:local('Repro')}",
+      ),
+    });
+    const withHosts = (...hosts: string[]) =>
+      validHtml().replace("</body>", `${hosts.join("")}</body>`);
+
+    expect(
+      await fontFaceFindings(
+        makeProject(withHosts(mount("scene"), mount("fonts")), files("fonts")),
+      ),
+    ).toEqual([]);
+    expect(
+      await fontFaceFindings(makeProject(withHosts(mount("scene")), files("unused"))),
+    ).toHaveLength(1);
+  });
+
   it("reads the stylesheet next to the sub-composition when both exist", async () => {
     const project = projectWithSharedFonts("compositions/frames", "fonts.css");
     writeFileSync(join(project, "fonts.css"), "@font-face{font-family:'Other';src:local('Other')}");

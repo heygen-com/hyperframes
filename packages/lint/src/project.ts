@@ -40,7 +40,7 @@ import {
   lintVideoMediaStartPastEof,
 } from "./hevcPreviewLint.js";
 import { lintHyperframeHtml } from "./hyperframeLinter.js";
-import { extractFontFaceFamilies } from "./rules/fonts.js";
+import { collectGoogleFontFamilies, extractFontFaceFamilies } from "./rules/fonts.js";
 import { lintProjectShaderScripts } from "./projectShaders.js";
 import type {
   HyperframeLintFinding,
@@ -199,24 +199,30 @@ function resolveCssAssetCandidates(
   return resolveLocalAssetCandidates(projectDir, url);
 }
 
-function collectHtmlFiles(compositionsDir: string): string[] {
-  const walk = (dir: string, rel: string): string[] => {
-    const out: string[] = [];
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      const relPath = rel ? `${rel}/${entry.name}` : entry.name;
-      if (entry.isDirectory()) {
-        // Registry components are source snippets, not independently mounted
-        // sub-compositions. Linting every installed template here makes an
-        // unused component fail the assembled project check.
-        if (!rel && entry.name === "components") continue;
-        out.push(...walk(join(dir, entry.name), relPath));
-      } else if (entry.isFile() && entry.name.endsWith(".html") && !entry.name.startsWith("._")) {
-        out.push(relPath);
-      }
+function mountedSources(
+  projectDir: string,
+  rootHtml: string,
+  rootCompSrcPath?: string,
+): HtmlSource[] {
+  const sources: HtmlSource[] = [{ html: rootHtml, compSrcPath: rootCompSrcPath }];
+  const seen = new Set<string>();
+  for (const source of sources) {
+    const { document } = parseHTML(source.html);
+    for (const host of querySelectorAllIncludingTemplates(document, "[data-composition-src]")) {
+      const src = host.getAttribute("data-composition-src")?.trim();
+      if (!src || isUnresolvedAssetPlaceholder(src) || isRemoteOrInlineUrl(src)) continue;
+      const path = resolve(projectDir, src);
+      if (seen.has(path) || !isWithinProjectRoot(projectDir, path)) continue;
+      seen.add(path);
+      const read = readProjectFile(path);
+      if (read.kind !== "file") continue;
+      sources.push({
+        html: read.text,
+        compSrcPath: relative(resolve(projectDir), path).replace(/\\/g, "/"),
+      });
     }
-    return out;
-  };
-  return walk(compositionsDir, "").sort();
+  }
+  return sources;
 }
 
 function declaredProjectFontFamilies(projectDir: string, sources: HtmlSource[]): string[] {
@@ -230,6 +236,7 @@ function declaredProjectFontFamilies(projectDir: string, sources: HtmlSource[]):
       ...collectLocalStylesheets(projectDir, document, compSrcPath),
     ];
     for (const family of extractFontFaceFamilies(styles)) families.add(family);
+    for (const family of collectGoogleFontFamilies(html, styles)) families.add(family);
   }
   return [...families];
 }
@@ -251,16 +258,10 @@ export async function lintProject(
   let totalInfos = 0;
 
   const rootHtml = readFileSync(indexPath, "utf-8");
-  const compositionsDir = resolve(projectDir, "compositions");
-  const compositionFiles =
-    !entryFile && existsSync(compositionsDir) ? collectHtmlFiles(compositionsDir) : [];
-  const projectFontFamilies = declaredProjectFontFamilies(projectDir, [
-    { html: rootHtml, compSrcPath: rootCompSrcPath },
-    ...compositionFiles.map((file) => ({
-      html: readFileSync(join(compositionsDir, file), "utf-8"),
-      compSrcPath: `compositions/${file}`,
-    })),
-  ]);
+  const projectFontFamilies = declaredProjectFontFamilies(
+    projectDir,
+    mountedSources(projectDir, rootHtml, rootCompSrcPath),
+  );
   const rootResult = await lintHyperframeHtml(rootHtml, {
     ...hostOptions,
     filePath: indexPath,
@@ -274,8 +275,25 @@ export async function lintProject(
   totalInfos += rootResult.infoCount;
 
   const allHtmlSources: HtmlSource[] = [{ html: rootHtml, compSrcPath: rootCompSrcPath }];
-  if (compositionFiles.length > 0) {
-    const files = compositionFiles;
+  const compositionsDir = resolve(projectDir, "compositions");
+  if (!entryFile && existsSync(compositionsDir)) {
+    const collectHtmlFiles = (dir: string, rel: string): string[] => {
+      const out: string[] = [];
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const relPath = rel ? `${rel}/${entry.name}` : entry.name;
+        if (entry.isDirectory()) {
+          // Registry components are source snippets, not independently mounted
+          // sub-compositions. Linting every installed template here makes an
+          // unused component fail the assembled project check.
+          if (!rel && entry.name === "components") continue;
+          out.push(...collectHtmlFiles(join(dir, entry.name), relPath));
+        } else if (entry.isFile() && entry.name.endsWith(".html") && !entry.name.startsWith("._")) {
+          out.push(relPath);
+        }
+      }
+      return out;
+    };
+    const files = collectHtmlFiles(compositionsDir, "").sort();
     for (const file of files) {
       const filePath = join(compositionsDir, file);
       const html = readFileSync(filePath, "utf-8");
