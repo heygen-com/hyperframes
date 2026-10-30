@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 // Edit accuracy bench: real gestures in the built CLI Studio (build core, parsers, lint, studio-server first).
 // bun run --cwd packages/studio test:edit-accuracy -- --grid full|pr --jobs N [--shard i/n] [--filter re]
-//   [--lock path: the suite lock, taken per chunk] [--rerun: a confirmation run for the gate]
+//   [--lock path: the suite lock, taken per chunk] [--rerun: a confirmation run for the gate, with screenshots]
+//   [--shots: screenshots on a first run too]
 import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { loadavg, tmpdir } from "node:os";
@@ -33,6 +34,7 @@ const { values: opt } = parseArgs({
     lock: { type: "string" },
     // Marks a confirmation run of cases that regressed, so the gate keeps it out of the banked baseline.
     rerun: { type: "boolean", default: false },
+    shots: { type: "boolean", default: false },
   },
 });
 const [shard, shards] = opt.shard.split("/").map(Number);
@@ -121,6 +123,7 @@ async function runOne(spec, browser, decoder, port) {
       files,
       url: `http://127.0.0.1:${served.port}/#project/case`,
       evidence,
+      shots: opt.rerun || opt.shots,
     });
     await stopServer(server);
     server = null;
