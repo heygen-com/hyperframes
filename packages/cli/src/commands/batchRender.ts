@@ -442,8 +442,6 @@ export async function runBatchRender(options: RunBatchRenderOptions): Promise<Ba
   return manifest;
 }
 
-// Called through render.ts's lazy batch module; static reachability cannot see it.
-// fallow-ignore-next-line unused-export
 export function exitBatchRenderInputError(error: unknown): never {
   if (error instanceof BatchRenderInputError) {
     errorBox(error.title, error.message, error.hint);
