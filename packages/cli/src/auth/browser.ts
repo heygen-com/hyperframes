@@ -1,10 +1,9 @@
 /**
- * Open a URL in the user's default browser. Falls back to printing the URL when no browser is openable
- * (SSH session, CI, `BROWSER=none`, or `open` rejects). ponytail: `HF_BROWSER_LOG` is a test seam for
- * scripted journeys: the URL goes to that file, and a harness plays the person in its own browser.
+ * Open a URL in the user's default browser. Falls back to printing the
+ * URL when no browser is openable (SSH session, CI, `BROWSER=none`,
+ * or `open` rejects).
  */
 
-import { appendFileSync } from "node:fs";
 import { c } from "../ui/colors.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 
@@ -14,11 +13,6 @@ export interface OpenBrowserResult {
 }
 
 export async function openBrowser(url: string): Promise<OpenBrowserResult> {
-  const log = process.env["HF_BROWSER_LOG"];
-  if (log) {
-    appendFileSync(log, `${url}\n`);
-    return { opened: true };
-  }
   if (process.env["BROWSER"] === "none" || process.env["HF_NO_BROWSER"] === "1") {
     printManualInstructions(url);
     return { opened: false };

@@ -474,9 +474,7 @@ function buildAuthorizeUrl(args: {
     code_challenge: args.challenge,
     code_challenge_method: "S256",
   });
-  const urlWithEndpointQuery = new URL(authorizeEndpoint());
-  for (const [key, value] of params) urlWithEndpointQuery.searchParams.set(key, value);
-  return urlWithEndpointQuery.toString();
+  return `${authorizeEndpoint()}?${params.toString()}`;
 }
 
 async function exchangeCodeForTokens(args: {

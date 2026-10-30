@@ -1660,13 +1660,13 @@ describe("preResolveHostileMediaProxies", () => {
     expect(mocks.resolveProxy).not.toHaveBeenCalled();
   });
 
-  it("pre-resolves an alpha asset through the Chromium-compatible VP8 proxy", async () => {
+  it("pre-resolves an alpha VP9 asset through the Chromium-compatible VP8 proxy", async () => {
     const projectDir = mkProjectDir();
     mocks.scanProjectMediaCodecMap.mockResolvedValue({
-      "/alpha.mov": {
-        codecName: "prores",
+      "/alpha.webm": {
+        codecName: "vp9",
         browserHostile: true,
-        representativeMime: null,
+        representativeMime: 'video/webm; codecs="vp09.00.10.08"',
         hasAlpha: true,
       },
     });
@@ -1676,31 +1676,9 @@ describe("preResolveHostileMediaProxies", () => {
     expect(mocks.resolveProxy).toHaveBeenCalledTimes(1);
     expect(mocks.resolveProxy).toHaveBeenCalledWith(
       projectDir,
-      join(projectDir, "alpha.mov"),
+      join(projectDir, "alpha.webm"),
       "vp8",
     );
-  });
-
-  it("does not copy VP9 or AV1 videos, which Chrome plays (alpha included)", async () => {
-    const projectDir = mkProjectDir();
-    mocks.scanProjectMediaCodecMap.mockResolvedValue({
-      "/cutout.webm": {
-        codecName: "vp9",
-        browserHostile: true,
-        representativeMime: 'video/webm; codecs="vp09.00.10.08"',
-        hasAlpha: true,
-      },
-      "/clip.mp4": {
-        codecName: "av1",
-        browserHostile: true,
-        representativeMime: 'video/mp4; codecs="av01.0.08M.08"',
-        hasAlpha: false,
-      },
-    });
-
-    await preResolveHostileMediaProxies(projectDir, "<html></html>");
-
-    expect(mocks.resolveProxy).not.toHaveBeenCalled();
   });
 
   it("is a no-op when the codec map has no hostile entries", async () => {

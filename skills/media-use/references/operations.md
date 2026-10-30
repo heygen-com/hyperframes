@@ -52,15 +52,12 @@ These have a local option AND a higher-quality HeyGen-CLI option. Run the local
 one for free/offline; use the HeyGen CLI when quality matters. Showing the user
 a **side-by-side** (local vs HeyGen) is the honest way to let them choose.
 
-| Op                      | Local (free)                                       | HeyGen CLI (quality)        |
-| ----------------------- | -------------------------------------------------- | --------------------------- |
-| Background removal      | `hyperframes remove-background in.png` (u2net)     | `heygen background-removal` |
-| Upscale                 | `realesrgan-ncnn-vulkan -i in.png -o out.png -s 4` | n/a                         |
-| Lipsync (dub)           | n/a                                                | `heygen lipsync`            |
-| Translate               | n/a                                                | `heygen video-translate`    |
-| Clone a voice           | n/a                                                | `heygen voice clone create` |
-| Text to video           | n/a                                                | `heygen video-agent create` |
-| Clips from a long video | n/a                                                | `heygen ai-clipping`        |
+| Op                 | Local (free)                                       | HeyGen CLI (quality)        |
+| ------------------ | -------------------------------------------------- | --------------------------- |
+| Background removal | `hyperframes remove-background in.png` (u2net)     | `heygen background-removal` |
+| Upscale            | `realesrgan-ncnn-vulkan -i in.png -o out.png -s 4` | n/a                         |
+| Lipsync (dub)      | n/a                                                | `heygen lipsync`            |
+| Translate          | n/a                                                | `heygen video-translate`    |
 
 After any op: `resolve --from out.ext --type <type>` to register the derived
 asset (it records provenance and auto-promotes to the global cache).

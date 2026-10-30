@@ -43,7 +43,7 @@ cd remotion-src && npm install && npm run render
 cd ../hf-src && npx hyperframes render --output ../hf.mp4
 
 # 4. Compare
-npx hyperframes diff ../remotion-src/out/baseline.mp4 ../hf.mp4 --out ../diff
+../../../scripts/render_diff.sh ./remotion-src/out/baseline.mp4 ./hf.mp4 ./diff
 ```
 
 ## Why threshold 0.95?

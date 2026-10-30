@@ -51,7 +51,6 @@ import {
   decideMediaProxyEligibility,
   proxyVariantFor,
   scanProjectMediaCodecMap,
-  shouldPrewarmProxy,
 } from "@hyperframes/studio-server/media-codec-map";
 import {
   FfmpegUnavailableError,
@@ -220,7 +219,7 @@ export async function preResolveHostileMediaProxies(
     return none;
   }
   const hostileEntries = Object.entries(codecMap).filter(
-    ([, facts]) => decideMediaProxyEligibility(facts).eligible && shouldPrewarmProxy(facts),
+    ([, facts]) => decideMediaProxyEligibility(facts).eligible,
   );
   if (hostileEntries.length === 0) return none;
 

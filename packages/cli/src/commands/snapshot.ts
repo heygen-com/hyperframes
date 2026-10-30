@@ -881,7 +881,7 @@ export function serveCapturePage(projectDir: string, html: string, proxy: boolea
  * Render key frames from a composition as PNG screenshots.
  * The agent can Read these to verify its output visually.
  */
-export async function captureSnapshots(
+async function captureSnapshots(
   projectDir: string,
   opts: {
     frames?: number;
@@ -904,17 +904,13 @@ export async function captureSnapshots(
     review?: boolean;
     /** Progress lines; `--json` sends them to stderr so stdout stays one envelope. */
     log?: (message: string) => void;
-    record?: boolean;
   },
 ): Promise<CapturedSnapshots> {
   const startedAt = performance.now();
   const log = opts.log ?? ((message: string) => console.log(message));
   const { bundleWithLocalizedFonts } = await import("../utils/bundleWithLocalizedFonts.js");
 
-  const capture =
-    opts.record === false
-      ? undefined
-      : await captureArtifactRevision(projectDir).catch(warnSnapshotsNotRecorded);
+  const capture = await captureArtifactRevision(projectDir).catch(warnSnapshotsNotRecorded);
   const invocation = randomUUID();
   const artifacts: Array<{
     id: string;
@@ -1447,7 +1443,7 @@ export async function captureSnapshots(
           log,
         )
       : false;
-    if (!recorded && opts.record !== false) {
+    if (!recorded) {
       const paths = [...replaced, ...artifacts.map((artifact) => artifact.image)];
       if (paths.length > 0) await forgetRecordedArtifacts(projectDir, paths).catch(() => undefined);
     }

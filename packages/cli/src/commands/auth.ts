@@ -42,7 +42,7 @@ ${c.bold("ENV VARS:")}
   ${c.accent("HYPERFRAMES_API_KEY")}         Alias for HEYGEN_API_KEY.
   ${c.accent("HEYGEN_ACCESS_TOKEN")}         OAuth token from a host app; used after the API keys, never refreshed or saved.
   ${c.accent("HEYGEN_API_URL")}              Override the API base URL (default https://api.heygen.com).
-  ${c.accent("HYPERFRAMES_ENV")}           prod (default) or dev; selects OAuth, API and plans-page hosts together.
+  ${c.accent("HYPERFRAMES_ENV")}           prod (default) or dev; selects OAuth/API hosts together.
   ${c.accent("HYPERFRAMES_CONFIG_DIR")}           Override the credentials directory (default ~/.hyperframes).
   ${c.accent("HYPERFRAMES_OAUTH_CLIENT_ID")} Override the OAuth client_id (for dev/test).
   ${c.accent("HYPERFRAMES_OAUTH_DEVICE_URL")} Override the RFC 8628 device endpoint (for dev/test).

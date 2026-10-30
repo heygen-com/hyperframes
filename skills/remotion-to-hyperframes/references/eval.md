@@ -1,17 +1,17 @@
 # Eval: how to validate a translation end-to-end
 
-Every translation should be measured. The skill ships a source linter and
-a tiered test corpus; the CLI's `diff` command scores the result. Together
-they gate translation quality.
+Every translation should be measured. The skill ships three scripts and
+a tiered test corpus that, together, gate translation quality.
 
-## The tools
+## The three scripts
 
-| Tool                       | Input                       | Output                                                                        |
-| -------------------------- | --------------------------- | ----------------------------------------------------------------------------- |
-| `scripts/lint_source.py`   | Remotion source dir or file | JSON findings + exit code (0 clean, 1 has blockers)                           |
-| `npx hyperframes diff A B` | original MP4, HF MP4        | per-frame SSIM, worst cell per frame, cuts, `worst.jpg` sheet; exit 1 on fail |
+| Script                   | Input                       | Output                                                              |
+| ------------------------ | --------------------------- | ------------------------------------------------------------------- |
+| `scripts/lint_source.py` | Remotion source dir or file | JSON findings + exit code (0 clean, 1 has blockers)                 |
+| `scripts/render_diff.sh` | two MP4 paths               | per-frame SSIM + JSON summary (`mean`, `min`, `p05`, `p95`, `pass`) |
+| `scripts/frame_strip.sh` | two MP4 paths               | side-by-side comparison strip PNG for visual debugging              |
 
-Run them in this order: **lint → render → diff → (if fail) read the sheet**.
+Run them in this order: **lint → render → diff → (if fail) strip**.
 
 ## Per-fixture flow
 
@@ -30,38 +30,83 @@ cd remotion-src && npm install && npm run render
 cd .. && node ../../../packages/cli/dist/cli.js render hf-src/ --output hf.mp4
 # -> hf.mp4
 
-# 5. SSIM diff, gated on the tier's mean threshold only
-mkdir -p diff && node ../../../packages/cli/dist/cli.js diff ./remotion-src/out/baseline.mp4 ./hf.mp4 \
-  --min-mean 0.95 --min-p05 0 --min-cell 0 --out ./diff --json > diff/summary.json
-# -> diff/summary.json, diff/worst.jpg, diff/ssim.log
-```
+# 5. SSIM diff
+../../scripts/render_diff.sh ./remotion-src/out/baseline.mp4 ./hf.mp4 ./diff
+# -> diff/summary.json
 
-Before rendering, `npx hyperframes diff <baseline.mp4> hf-src --at 0.5,2,4.1`
-scores the project at chosen times with no render.
+# 6. If diff fails, generate frame strip for visual inspection
+../../scripts/frame_strip.sh ./remotion-src/out/baseline.mp4 ./hf.mp4 ./strip 8
+# -> strip/strip.png
+```
 
 ## Reading `diff/summary.json`
 
 ```json
 {
-  "pass": true,
-  "ssim": { "frames": 90, "mean": 0.974, "p05": 0.972, "min": 0.971, "cell_p05": 0.93 },
-  "worst": [
-    { "t": 1.2, "frame": 36, "ssim": 0.971, "cell": { "roi": [480, 270, 480, 270], "ssim": 0.88 } }
-  ],
-  "cuts": { "reference": [1.5], "yours": [1.5], "missing": [], "extra": [], "pass": true },
-  "duration": { "reference": 3, "yours": 3, "pass": true },
-  "sheet": "diff/worst.jpg"
+  "frame_count": 90,
+  "mean": 0.974,
+  "min": 0.972,
+  "max": 0.999,
+  "p05": 0.972,
+  "p95": 0.983,
+  "threshold": 0.95,
+  "pass": true
 }
 ```
 
-| Field           | What it tells you                                                                |
-| --------------- | -------------------------------------------------------------------------------- |
-| `ssim.mean`     | average SSIM across all frames; the headline number                              |
-| `ssim.p05`      | 5th percentile: most frames sit above it                                         |
-| `ssim.cell_p05` | each frame's worst cell of a 4x4 grid; a wrong element shows here, not in `mean` |
-| `worst`         | the lowest-scoring moments, each with the cell (in original pixels) that failed  |
-| `cuts`          | hard cuts on both sides; a missing or extra one is a sequencing problem          |
-| `pass`          | every gate held: `--min-mean`, `--min-p05`, `--min-cell`, cuts and duration      |
+| Field         | What it tells you                                                           |
+| ------------- | --------------------------------------------------------------------------- |
+| `mean`        | average SSIM across all frames; the headline number                         |
+| `min`         | worst frame; below threshold means at least one frame is structurally wrong |
+| `p05` / `p95` | 5th / 95th percentile — most frames sit between these                       |
+| `threshold`   | from `R2HF_SSIM_THRESHOLD` env var (default 0.85)                           |
+| `pass`        | whether `mean >= threshold`                                                 |
+
+## Validated tier thresholds
+
+Calibrated against actual Remotion + HF renders:
+
+| Tier | Composition shape                           | Mean  | Threshold | Margin |
+| ---- | ------------------------------------------- | ----- | --------- | ------ |
+| T1   | single-element fade-in                      | 0.974 | 0.95      | +0.022 |
+| T2   | multi-scene + spring + audio + image        | 0.985 | 0.95      | +0.016 |
+| T3   | data-driven, custom subcomponents, count-up | 0.953 | 0.90      | +0.038 |
+
+Each fixture's `expected.json` carries:
+
+- `ssim_threshold` — the gate for `pass`
+- `validation` — the actual measured numbers from the calibration run
+- `translation_notes` — what's lossy and why
+
+## Critical: encoder config
+
+Both Remotion and HF must output the same pixel format for SSIM to be
+meaningful. Remotion's default JPEG output writes `yuvj420p` (full-range);
+HF outputs `yuv420p` (limited-range). The mismatch costs ~0.05 SSIM.
+
+Every fixture's `remotion.config.ts` sets:
+
+```ts
+Config.setVideoImageFormat("png");
+Config.setColorSpace("bt709");
+```
+
+If the user's source doesn't have these, add them in the translation
+step — otherwise the diff measures encoder differences, not translation
+fidelity.
+
+## What the noise floor looks like
+
+The dominant non-translation noise is **system font fallback divergence**.
+Remotion's bundled Chromium and HF's `chrome-headless-shell` interpret
+`font-weight: 800` differently when there's no real font installed:
+
+- Remotion HELLO at 160px: medium-weight stroke
+- HF HELLO at 160px: heavy-weight stroke
+
+This costs ~0.025 mean SSIM. Visible in T1's frame strip.
+[fonts.md](fonts.md) covers how to mitigate (use Inter, load explicit
+Google Fonts).
 
 ## Threshold rule of thumb
 
@@ -76,8 +121,8 @@ re-rendered on different hardware will drift.
 
 ## When the diff fails
 
-1. **Look at `diff/worst.jpg` first.** The worst moments side by side, each
-   with its failing cell boxed, show whether the failure is structural
+1. **Look at `frame_strip.sh` output first.** A side-by-side strip at 6–10
+   evenly-spaced timestamps shows whether the failure is structural
    (wrong scene durations, missing element) or cosmetic (different font
    weight, slight timing skew).
 2. **Check `diff/ssim.log`.** Per-frame SSIM tells you _which_ frames

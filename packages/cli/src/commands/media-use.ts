@@ -94,17 +94,13 @@ function subcommand(name: MediaUseVerb, invoke: InvokeMediaUse) {
 }
 
 export function createMediaUseCommand(invoke: InvokeMediaUse = invokeEngine) {
-  const subCommands = {
-    ...Object.fromEntries(MEDIA_USE_VERBS.map((name) => [name, () => subcommand(name, invoke)])),
-    generate: () => import("./media-use/generate.js").then((m) => m.default),
-  };
+  const subCommands = Object.fromEntries(
+    MEDIA_USE_VERBS.map((name) => [name, () => subcommand(name, invoke)]),
+  );
   return defineCommand({
     meta: { name: "media-use", description: "Resolve and operate on project media" },
     subCommands,
-    run: ({ args }) => {
-      if (!args._?.[0])
-        console.log("Run `hyperframes media-use <resolve|generate|doctor|stats|...> --help`");
-    },
+    run: () => console.log("Run `hyperframes media-use <resolve|doctor|stats|...> --help`"),
   });
 }
 

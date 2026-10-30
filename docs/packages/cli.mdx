@@ -28,12 +28,11 @@ npm install -g hyperframes
 | Bring in source material | [`capture`](#capture), [`media-use`](#media-use), [`transcribe`](#transcribe), [`tts`](#tts), [`remove-background`](#remove-background), [`media-treatment`](#media-treatment), [`beats`](#beats), [`audio`](#audio), [`normalize-audio`](#normalize-audio), [`models`](#models) |
 | Look at it, or share it  | [`preview`](#preview), [`present`](#present-and-play), [`play`](#present-and-play), [`publish`](#publish), [`open`](#open-and-catch-up), [`catch-up`](#open-and-catch-up)                                                        |
 | Find problems            | [`lint`](#lint), [`check`](#check), [`snapshot`](#snapshot), [`keyframes`](#keyframes), [`compare`](#compare-and-grade-compare), [`grade-compare`](#compare-and-grade-compare)                                                   |
-| Rebuild a video          | [`measure`](#measure), [`diff`](#diff)                                                                                                                                                                                            |
 | Edit from the terminal   | [`timeline`](#timeline), [`history`](#history)                                                                                                                                                                                   |
 | Make a file              | [`render`](#render), [`benchmark`](#benchmark)                                                                                                                                                                                   |
 | Render somewhere else    | [`cloud`](#hyperframes-cloud), [`lambda`](#hyperframes-lambda), [`cloudrun`](#hyperframes-cloudrun)                                                                                                                              |
 | Fix your setup           | [`doctor`](#doctor), [`browser`](#browser), [`upgrade`](#upgrade), [`docs`](#docs), [`info`](#info-and-compositions), [`compositions`](#info-and-compositions), [`clean`](#clean)                                                                   |
-| Connect other tools      | [`auth`](#hyperframes-auth), [`billing`](#billing), [`skills`](#skills), [`usage`](#usage), [`figma`](#figma-and-events), [`events`](#figma-and-events), [`telemetry`](#telemetry), [`feedback`](#feedback)                                                                            |
+| Connect other tools      | [`auth`](#hyperframes-auth), [`skills`](#skills), [`usage`](#usage), [`figma`](#figma-and-events), [`events`](#figma-and-events), [`telemetry`](#telemetry), [`feedback`](#feedback)                                                                            |
 
 `validate`, `inspect`, and `layout` still work but are
 [deprecated](#deprecated-validate-inspect-and-layout). Use `check` instead.
@@ -1505,59 +1504,6 @@ session, and it is where new work should go. Their flags are unchanged — run
 `npx hyperframes inspect --help` if you are maintaining automation that still
 calls them.
 
-## Rebuild an existing video
-
-These commands serve the `reverse-any-video` skill: measure a video, have HeyGen
-draft its timeline, then score your rebuild against it.
-
-### `measure`
-
-Measures a video file and prints JSON. Each measurement is a subcommand; run
-`npx hyperframes measure <subcommand> --help` for its flags.
-
-```bash
-npx hyperframes measure probe ref.mp4
-npx hyperframes measure cuts ref.mp4
-npx hyperframes measure frames ref.mp4 --events
-npx hyperframes measure face ref.mp4 --start 1 --end 2.5
-```
-
-| Subcommand   | What it reports                                                                         |
-| ------------ | --------------------------------------------------------------------------------------- |
-| `probe`      | Displayed size, frame rate, duration, sound, and what to fix before rebuilding          |
-| `cuts`       | Hard cuts from the frame-to-frame difference, and the shots between them                |
-| `events`     | Cuts, flashes, appears, disappears and holds; `--map` adds the sound's hits             |
-| `frames`     | Frames as pictures: chosen moments, an overview sheet, a range, or strips around events |
-| `extract`    | A still or a clip cut from the video, cropped to a region, as project media             |
-| `curve`      | Each move of one element: start, duration, overshoot and the closest GSAP ease          |
-| `energy`     | How much two clips move, and whether at the same moments                                |
-| `look`       | Brightness, contrast, saturation and warmth, alone or against another video             |
-| `face`       | The face's size and position over a window                                              |
-| `sync`       | The lag between mouth motion and the voice                                              |
-
-### `diff`
-
-Scores a render, or a project folder without rendering it, against the original
-video frame by frame: SSIM, the worst moments, missed and extra cuts, duration
-and the sound's offset. It exits non-zero when the scores fall under the bar.
-
-```bash
-npx hyperframes diff original.mp4 renders/final.mp4
-npx hyperframes diff original.mp4 . --at 0.5,2.4,3.1
-npx hyperframes diff original.mp4 renders/final.mp4 --segments segments.md --sbs
-```
-
-| Flag                                      | Description                                                          |
-| ----------------------------------------- | -------------------------------------------------------------------- |
-| `--at`                                    | Compare only these seconds                                           |
-| `--range`                                 | Compare every frame of `start,end` seconds                           |
-| `--segments`                              | A verdict per `## S01 · a–b s` segment of a file                     |
-| `--drawn`                                 | Score one drawn element's box `x,y,w,h[,a-b]` by itself (repeatable) |
-| `--min-mean` / `--min-p05` / `--min-cell` | The SSIM bars to pass                                                |
-| `--sbs`                                   | Also write an original-beside-yours video                            |
-| `--out`                                   | Folder for the sheet and log (default `.hyperframes/diff/<yours>`)   |
-| `--json`                                  | Print one JSON result                                                |
-
 ## Edit from the command line
 
 ### `timeline`
@@ -2230,24 +2176,6 @@ It never refreshes or rewrites that login and never prints the token. The token
 goes only to that provider's own usage endpoint. The command sends no telemetry
 and skips the update check. The numbers are a snapshot: they do not reserve
 allowance or estimate what the next video will cost.
-
-### `billing`
-
-Opens the HyperFrames plans or credits page in the browser, then waits until the
-account shows the change, so an agent's run carries on by itself. The page is on
-the web app for `HYPERFRAMES_ENV`: hyperframes.studio, or dev.hyperframes.dev
-with `HYPERFRAMES_ENV=dev`.
-
-```bash
-npx hyperframes billing subscribe
-npx hyperframes billing top-up --needed 180
-```
-
-| Flag        | Description                                                                |
-| ----------- | -------------------------------------------------------------------------- |
-| `--needed`  | Credits the waiting step needs; `top-up` waits until the balance covers it |
-| `--tool`    | The step that is waiting, shown on the page                                |
-| `--timeout` | Seconds to wait (default 600)                                              |
 
 ### `figma` and `events`
 

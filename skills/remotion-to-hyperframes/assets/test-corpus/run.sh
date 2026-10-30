@@ -19,7 +19,7 @@
 #
 # Output:
 #   <fixture>/diff/summary.json   per-fixture SSIM summary
-#   <fixture>/diff/worst.jpg      per-fixture sheet of the worst moments
+#   <fixture>/strip/strip.png     per-fixture comparison strip (only on fail)
 #   ./run-report.json             aggregate report
 
 set -euo pipefail
@@ -29,6 +29,8 @@ SKILL_DIR="$(cd "$THIS_DIR/../.." && pwd)"
 REPO_ROOT="$(cd "$SKILL_DIR/../.." && pwd)"
 
 LINT="$SKILL_DIR/scripts/lint_source.py"
+DIFF="$SKILL_DIR/scripts/render_diff.sh"
+STRIP="$SKILL_DIR/scripts/frame_strip.sh"
 HF_CLI="$REPO_ROOT/packages/cli/dist/cli.js"
 REPORT="$THIS_DIR/run-report.json"
 
@@ -144,21 +146,22 @@ run_render_tier() {
     return 0
   fi
 
-  # Gate on the tier's mean threshold only, as the calibration runs did; the
-  # worst-moment sheet lands in diff/worst.jpg either way.
-  mkdir -p "$fixture_dir/diff"
-  local mean
-  if node "$HF_CLI" diff \
+  if R2HF_SSIM_THRESHOLD="$threshold" "$DIFF" \
       "$fixture_dir/remotion-src/out/baseline.mp4" \
       "$fixture_dir/hf.mp4" \
-      --min-mean "$threshold" --min-p05 0 --min-cell 0 \
-      --out "$fixture_dir/diff" --json >"$fixture_dir/diff/summary.json" 2>/dev/null; then
-    mean=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['ssim']['mean'])" "$fixture_dir/diff/summary.json")
+      "$fixture_dir/diff" >/dev/null; then
+    local mean
+    mean=$(read_json_value "$fixture_dir/diff/summary.json" "mean")
     echo "    ✓ pass (mean SSIM $mean, threshold $threshold)"
     write_result "$fixture_name" "pass" mean_ssim "$mean" threshold "$threshold"
   else
-    mean=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('ssim', {}).get('mean', ''))" "$fixture_dir/diff/summary.json")
-    echo "    ✗ fail (mean SSIM $mean, threshold $threshold; sheet $fixture_dir/diff/worst.jpg)"
+    local mean
+    mean=$(read_json_value "$fixture_dir/diff/summary.json" "mean")
+    echo "    ✗ fail (mean SSIM $mean, threshold $threshold)"
+    "$STRIP" \
+      "$fixture_dir/remotion-src/out/baseline.mp4" \
+      "$fixture_dir/hf.mp4" \
+      "$fixture_dir/strip" 8 >/dev/null
     write_result "$fixture_name" "fail" stage "ssim" mean_ssim "$mean" threshold "$threshold"
   fi
 }

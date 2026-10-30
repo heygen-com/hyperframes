@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -13,15 +13,6 @@ import {
 
 test("the repo's core skills pass", () => {
   assert.deepEqual(checkCoreSkills(), []);
-});
-
-test("the skills teach the direct sign-in, not the old key and executable rules", () => {
-  const read = (path) => readFileSync(new URL(`../skills/${path}`, import.meta.url), "utf8");
-  assert.doesNotMatch(read("reverse-any-video/references/people.md"), /Without a HeyGen key/);
-  assert.doesNotMatch(read("media-use/SKILL.md"), /HeyGen calls also need/);
-  const heygen = read("media-use/references/heygen.md");
-  assert.match(heygen, /~\/\.hyperframes\/credentials/);
-  assert.doesNotMatch(heygen, /~\/\.heygen\/credentials/);
 });
 
 test("reads the registered commands, quoted or not", () => {

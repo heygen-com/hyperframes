@@ -31,7 +31,6 @@ import {
 } from "../../auth/index.js";
 import { getSystemMeta } from "../../telemetry/system.js";
 import { c } from "../../ui/colors.js";
-import { pageUrl, readPlan, type Plan } from "../../heygen/plan.js";
 import { resolveMusic, resolveVoice } from "../../audio/providers.js";
 import {
   buildUnconfiguredJson,
@@ -62,8 +61,6 @@ interface VerifiedStatus {
    */
   persistedUser: StoredUserInfo | null;
   apiError: string | null;
-  /** The HyperFrames plan and credits, when the server (or the mock) answers. */
-  plan?: Plan | null;
 }
 
 /** True for credentials resolved from the HyperFrames store (not env). */
@@ -109,10 +106,7 @@ export default defineCommand({
  */
 function detectUnconfiguredContext(): UnconfiguredContext {
   const sys = getSystemMeta();
-  return {
-    interactive: !sys.is_ci && (sys.is_tty || sys.agent_runtime !== null),
-    agent: !sys.is_ci && sys.agent_runtime !== null,
-  };
+  return { interactive: !sys.is_ci && (sys.is_tty || sys.agent_runtime !== null) };
 }
 
 /**
@@ -170,7 +164,7 @@ async function verify(credential: ResolvedCredential): Promise<VerifiedStatus> {
   const persistedUser = await loadPersistedUser(credential);
   try {
     const user = await client.getCurrentUser(credential);
-    return { credential, user, persistedUser, apiError: null, plan: await readPlan() };
+    return { credential, user, persistedUser, apiError: null };
   } catch (err) {
     if (!isAuthError(err)) throw err;
     return {
@@ -211,17 +205,13 @@ function printJsonStatus(s: VerifiedStatus): void {
     // unchanged. Lets callers read identity offline / on an API blip.
     persisted_user: persistedUserJson(s.persistedUser),
     api_error: s.apiError,
-    hyperframes: s.plan ?? null,
   };
   if (s.credential.type === "oauth") {
     payload["hyperframes_balance"] = null;
-    // With the plan read, `hyperframes` above holds the plan and credits, so there is no notice to give.
-    if (product !== "hyperframes")
-      payload["billing_notice"] =
-        "OAuth billing product is not verified here; user billing fields describe the HeyGen account.";
-    else if (!s.plan)
-      payload["billing_notice"] =
-        "HyperFrames balance is unavailable here; user billing fields describe the HeyGen account.";
+    payload["billing_notice"] =
+      product === "hyperframes"
+        ? "HyperFrames balance is unavailable here; user billing fields describe the HeyGen account."
+        : "OAuth billing product is not verified here; user billing fields describe the HeyGen account.";
     payload["expires_at"] = s.credential.expires_at?.toISOString() ?? null;
     payload["refreshable"] = s.credential.refreshable;
     payload["scope"] = s.credential.scope ?? null;
@@ -267,17 +257,7 @@ function collectStatusRows(s: VerifiedStatus): [string, string][] {
     if (cached) rows.push(["Account:", `${cached} ${c.dim("(cached)")}`]);
     return rows;
   }
-  if (s.user) rows.push(...identityRows(s.user, billingProduct(s.credential), !!s.plan));
-  const plan = s.plan;
-  if (plan) {
-    const tag = plan.mock ? ` ${c.dim("(mock)")}` : "";
-    rows.push([
-      "HyperFrames:",
-      plan.plan === "none"
-        ? `Free · Upgrade to Pro: ${pageUrl("plans")}${tag}`
-        : `${plan.plan} plan, ${plan.credits.toLocaleString("en-US")} credits${tag}`,
-    ]);
-  }
+  if (s.user) rows.push(...identityRows(s.user, billingProduct(s.credential)));
   return rows;
 }
 
@@ -294,21 +274,14 @@ function oauthRows(credential: Extract<ResolvedCredential, { type: "oauth" }>): 
   return rows;
 }
 
-/** `hasPlan`: the HyperFrames line below shows the plan and credits, so no "unavailable" balance above it. */
-function identityRows(
-  user: UserInfo,
-  product: BillingProduct,
-  hasPlan = false,
-): [string, string][] {
+function identityRows(user: UserInfo, product: BillingProduct): [string, string][] {
   const identity = user.email ?? user.username ?? "(unknown user)";
   const rows: [string, string][] = [["Account:", identity]];
   if (product === "hyperframes")
     return [
       ...rows,
       ["Billing:", "HyperFrames"],
-      ...(hasPlan
-        ? []
-        : [["Balance:", "HyperFrames balance unavailable here."] as [string, string]]),
+      ["Balance:", "HyperFrames balance unavailable here."],
     ];
   if (product === "unknown")
     return [

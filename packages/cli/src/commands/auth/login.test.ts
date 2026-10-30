@@ -109,8 +109,6 @@ describe("auth login", () => {
         "REMOTE_CONTAINERS",
         "GITPOD_WORKSPACE_ID",
         "container",
-        "CLAUDECODE",
-        "CLAUDE_CODE_ENTRYPOINT",
       ].map((key) => [key, process.env[key]]),
     );
     for (const key of Object.keys(runtimeEnv)) delete process.env[key];
@@ -132,7 +130,6 @@ describe("auth login", () => {
     for (const token of Object.keys(usersByToken)) delete usersByToken[token];
     for (const fn of Object.values(telemetry)) fn.mockClear();
     for (const fn of Object.values(deviceAuth)) fn.mockClear();
-    for (const fn of Object.values(browserAuth)) fn.mockClear();
     vi.spyOn(console, "log").mockImplementation(() => {});
     vi.spyOn(console, "error").mockImplementation(() => {});
   });
@@ -318,21 +315,6 @@ describe("auth login", () => {
     process.env[name] = "true";
     await expect(runCommand({})).rejects.toThrow(/Invalid command usage/);
     expect(deviceAuth.start).not.toHaveBeenCalled();
-  });
-
-  it("lets a coding agent on this machine open the browser sign-in without a terminal", async () => {
-    process.env["CLAUDECODE"] = "1";
-    Object.defineProperty(process.stdout, "isTTY", { configurable: true, value: undefined });
-    await runCommand({});
-    expect(browserAuth.start).toHaveBeenCalledOnce();
-  });
-
-  it("keeps a coding agent in CI off the browser sign-in", async () => {
-    process.env["CLAUDECODE"] = "1";
-    process.env["CI"] = "true";
-    Object.defineProperty(process.stdout, "isTTY", { configurable: true, value: undefined });
-    await expect(runCommand({})).rejects.toThrow(/Invalid command usage/);
-    expect(browserAuth.start).not.toHaveBeenCalled();
   });
 
   it("opens verification_uri_complete without asking the user to re-enter the code", async () => {
