@@ -39,11 +39,7 @@ export function spanFrameRange(
   return { startFrame, endFrame };
 }
 
-/**
- * Renders only `[startSeconds, endSeconds)` of a composition as a standalone mp4 that starts at 0,
- * with the audio of that span. It plans the whole composition, renders just the frames of the span
- * (a chunk's sub-range renders as a chunk of its own, at the frames' absolute times), and joins them.
- */
+/** Renders `[startSeconds, endSeconds)` as a standalone mp4 from 0, with that span's audio, by chunk sub-ranges. */
 export async function renderSpan(
   projectDir: string,
   config: DistributedRenderConfig,
