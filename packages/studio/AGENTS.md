@@ -147,7 +147,7 @@ bun run --cwd packages/studio test:edit-accuracy -- --grid pr --filter '^resize-
   pass, commit the `baseline.json` from the `edit-accuracy-gate` artifact.
 - Shards are packed by each case's seconds in `timings.json`. When the grid or case
   costs change a lot, regenerate it with `test:edit-accuracy:timings` from the
-  `run1/results.json` files of a few merge-queue shard artifacts.
+  first-run results in a few merge-queue runs' shard artifacts.
 
 ## Gates that will fail your PR
 

@@ -1,6 +1,6 @@
 // The edit accuracy grid: one flat-coloured element in a generated project, crossed with one gesture.
 // Projects are written to a tmp dir per case; nothing checked in is edited.
-import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, statSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { dragCases } from "./drags.mjs";
@@ -256,7 +256,7 @@ function subHtml(spec) {
 `;
 }
 
-const TIMINGS = JSON.parse(readFileSync(new URL("timings.json", import.meta.url), "utf8"));
+const TIMINGS = require("./timings.json");
 
 /**
  * Shard `shard` of `shards`, packed longest first by each case's measured seconds (timings.json, from timings.mjs) so
