@@ -8,6 +8,10 @@
 
 export const COMPOSITION_CONTRACT_VERSION = 1 as const;
 
+/** The least a split leaves on either side of its cut, in seconds. Timing is written to the millisecond, so a cut closer
+ * than this to an edge (a second split at the same playhead) would write a half with no length. */
+export const SPLIT_BOUNDARY_EPSILON_S = 0.03;
+
 export const COMPOSITION_ATTRIBUTES = Object.freeze({
   start: "data-start",
   duration: "data-duration",

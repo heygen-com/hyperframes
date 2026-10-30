@@ -12,7 +12,11 @@ import {
   mintHfId,
   walkCompositionDescendants,
 } from "@hyperframes/parsers/hf-ids";
-import { readClipTiming, writeClipTiming } from "@hyperframes/core/composition-contract";
+import {
+  readClipTiming,
+  SPLIT_BOUNDARY_EPSILON_S,
+  writeClipTiming,
+} from "@hyperframes/core/composition-contract";
 import { relinkSplitHalves } from "@hyperframes/core/media-link";
 import { parseStyleDecls, patchStyleAttrString } from "./sourceStyleMutation.js";
 
@@ -455,7 +459,13 @@ export function splitElementInHtml(
     start = fallbackTiming.start;
     duration = fallbackTiming.duration;
   }
-  if (duration <= 0 || splitTime <= start || splitTime >= start + duration) {
+  // The same margin Studio's timeline checks, held here where the file is cut: the client's copy of the clip can be a
+  // split behind, and a cut a hair inside an edge rounds to a half with no length.
+  if (
+    duration <= 0 ||
+    splitTime < start + SPLIT_BOUNDARY_EPSILON_S ||
+    splitTime > start + duration - SPLIT_BOUNDARY_EPSILON_S
+  ) {
     return { html: source, matched: false, newId: null };
   }
 
