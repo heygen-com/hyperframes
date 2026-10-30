@@ -1306,7 +1306,11 @@
   // A mask changes painting, not hit-testing, and its alpha is not modelled: a masked layer is never proven opaque.
   // A mask on an ancestor of both the layer and `covered` masks them alike, so the walk stops there.
   function hasMaskImage(layer, covered) {
-    for (let current = layer; current && !current.contains(covered); current = current.parentElement) {
+    for (
+      let current = layer;
+      current && !current.contains(covered);
+      current = current.parentElement
+    ) {
       const style = getComputedStyle(current);
       if ((style.maskImage || style.webkitMaskImage || "none") !== "none") return true;
     }
