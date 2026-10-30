@@ -1610,6 +1610,11 @@
   // The global window [start, end) the element's own timed clip is on screen, or null when any timing
   // up the chain is not a plain number. Each timed composition host moves its children's clock to its
   // start minus its in-point, and an in-point host cuts them to its own slot (startResolver.ts).
+  function nonNegativeNumber(value) {
+    const number = value === null || value.trim() === "" ? NaN : Number(value);
+    return Number.isFinite(number) && number >= 0 ? number : null;
+  }
+
   function clipLifetime(element) {
     const own = element.closest("[data-start]");
     if (!own) return null;
@@ -1626,13 +1631,13 @@
     for (const host of hosts) {
       const hostStart = Number(host.getAttribute("data-start"));
       if (!Number.isFinite(hostStart)) return null;
-      const inPoint = Math.max(
-        0,
-        Number(host.getAttribute("data-playback-start") ?? host.getAttribute("data-media-start")) ||
-          0,
-      );
+      const inPoint =
+        nonNegativeNumber(host.getAttribute("data-playback-start")) ??
+        nonNegativeNumber(host.getAttribute("data-media-start")) ??
+        0;
       if (inPoint > 0) {
-        const hostDuration = Number(host.getAttribute("data-duration"));
+        const hostEnd = Number(host.getAttribute("data-end"));
+        const hostDuration = Number(host.getAttribute("data-duration")) || hostEnd - hostStart;
         cutStart = Math.max(cutStart, offset + hostStart);
         if (hostDuration > 0) cutEnd = Math.min(cutEnd, offset + hostStart + hostDuration);
       }

@@ -268,6 +268,18 @@ describe("layout-audit.browser text behind a <video>", () => {
     });
   });
 
+  it("reads an invalid playback-start as absent and cuts to a host that ends with data-end", () => {
+    installVideoScene({
+      text: SHIP,
+      textAttrs: 'data-start="0.2" data-duration="5"',
+      lineAttrs:
+        'data-composition-src="beat.html" data-start="2" data-playback-start="-1" data-media-start="0.5" data-end="3"',
+    });
+    expect(occlusionOf(runAudit(), "ship")).toMatchObject({
+      lifetime: { start: 2, end: 3 },
+    });
+  });
+
   it("keeps a fully opaque frame occluding like any raster", () => {
     installVideoScene({ text: SHIP });
     expect(occlusionOf(runAudit(), "ship")).toMatchObject({
