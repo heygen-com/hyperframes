@@ -1303,10 +1303,20 @@
     }
   }
 
+  // A mask changes painting, not hit-testing, and its alpha is not modelled: a masked layer is never proven opaque.
+  function hasMaskImage(element) {
+    for (let current = element; current; current = current.parentElement) {
+      const style = getComputedStyle(current);
+      if ((style.maskImage || style.webkitMaskImage || "none") !== "none") return true;
+    }
+    return false;
+  }
+
   function isOpaqueOccluder(element, x, y) {
     const opacity = opacityChain(element);
     if (opacity < OCCLUDING_ALPHA) return false;
     if (IGNORE_TAGS.has(element.tagName)) return false;
+    if (hasMaskImage(element)) return false;
     if (element.tagName === "IMG") {
       const alpha = imageAlphaAt(element, x, y);
       if (alpha !== null) return alpha * opacity >= OCCLUDING_ALPHA;
