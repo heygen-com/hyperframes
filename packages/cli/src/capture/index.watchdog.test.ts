@@ -101,7 +101,7 @@ describe("capture navigation retry launch", () => {
   it("retries once without WebGL when the page stopped answering", async () => {
     const options: CaptureOptions = {
       url: "https://example.com",
-      outputDir: "/tmp/hf-capture-test-stall",
+      outputDir: "capture-test-stall-out",
     };
     const finished = {
       ...(await import("./partialCapture.js")).createPartialCaptureState(options),
@@ -155,7 +155,7 @@ describe("capture navigation retry launch", () => {
 
     const { captureWebsite } = await import("./index.js");
     await expect(
-      captureWebsite({ url: "https://example.com", outputDir: "/tmp/hf-capture-test-stall2" }),
+      captureWebsite({ url: "https://example.com", outputDir: "capture-test-stall-out-2" }),
     ).rejects.toThrow("Connection closed");
     expect(captureWebsiteAttemptMock).toHaveBeenCalledOnce();
   });
