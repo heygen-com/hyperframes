@@ -399,7 +399,7 @@ export async function runBrowserCheck(
     const rootAnchor = await resolveRootAnchor(page);
     deadline?.keepPartial(() => ({
       runtimeFindings: dropFailedProxyEchoes(
-        keepBrokenImageAborts(drafts, new Set()),
+        keepFailedNetworkChanges(keepBrokenImageAborts(drafts, new Set()), new Set()),
         failedPaths,
       ).map((draft) => runtimeFinding(draft, rootAnchor)),
     }));

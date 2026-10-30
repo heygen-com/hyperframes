@@ -1110,6 +1110,12 @@ describe("keepFailedNetworkChanges", () => {
     );
     expect(kept).toEqual([gone, refused]);
   });
+
+  it("drops every cut request when nothing is re-asked, as a check out of time reports", () => {
+    const cut = draft("http://h/assets/clip.mp4", true);
+    const refused = draft("http://h/assets/refused.mp4", false);
+    expect(keepFailedNetworkChanges([cut, refused], new Set())).toEqual([refused]);
+  });
 });
 
 describe("keepBrokenImageAborts", () => {
