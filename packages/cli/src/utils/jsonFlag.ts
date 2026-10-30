@@ -61,7 +61,8 @@ export function readJsonFlag(flag: string, value: string, io?: Partial<JsonFlagI
     text = readJsonFlagText(value, io);
   } catch (error: unknown) {
     if (!(error instanceof JsonFlagReadError)) throw error;
-    throw new Error(`Could not read ${flag}: ${error.message}`);
+    const hint = value.includes(":") ? ` (${inlineJsonHint(flag)})` : "";
+    throw new Error(`Could not read ${flag}: ${error.message}${hint}`);
   }
   try {
     return JSON.parse(text);
