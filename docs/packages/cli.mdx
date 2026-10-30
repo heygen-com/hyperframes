@@ -33,7 +33,7 @@ npm install -g hyperframes
 | Make a file              | [`render`](#render), [`benchmark`](#benchmark)                                                                                                                                                                                   |
 | Render somewhere else    | [`cloud`](#hyperframes-cloud), [`lambda`](#hyperframes-lambda), [`cloudrun`](#hyperframes-cloudrun)                                                                                                                              |
 | Fix your setup           | [`doctor`](#doctor), [`browser`](#browser), [`upgrade`](#upgrade), [`docs`](#docs), [`info`](#info-and-compositions), [`compositions`](#info-and-compositions), [`clean`](#clean)                                                                   |
-| Connect other tools      | [`auth`](#hyperframes-auth), [`billing`](#billing), [`skills`](#skills), [`usage`](#usage), [`figma`](#figma-and-events), [`events`](#figma-and-events), [`telemetry`](#telemetry), [`feedback`](#feedback)                                                                            |
+| Connect other tools      | [`auth`](#hyperframes-auth), [`billing`](#billing), [`templates`](#templates), [`skills`](#skills), [`usage`](#usage), [`figma`](#figma-and-events), [`events`](#figma-and-events), [`telemetry`](#telemetry), [`feedback`](#feedback)                                                                            |
 
 `validate`, `inspect`, and `layout` still work but are
 [deprecated](#deprecated-validate-inspect-and-layout). Use `check` instead.
@@ -2248,6 +2248,20 @@ npx hyperframes billing top-up --needed 180
 | `--needed`  | Credits the waiting step needs; `top-up` waits until the balance covers it |
 | `--tool`    | The step that is waiting, shown on the page                                |
 | `--timeout` | Seconds to wait (default 600)                                              |
+
+### `templates`
+
+Pulls a creator template into the project's `templates/<slug>/`, for a HyperFrames
+Pro account. The server checks the plan and hands over a link that lasts five
+minutes; a pull costs no credits, and a template already there is left alone.
+
+```bash
+npx hyperframes templates pull vox-america-explained
+```
+
+| Flag    | Description                                     |
+| ------- | ----------------------------------------------- |
+| `--dir` | Project folder (default: the current folder)    |
 
 ### `figma` and `events`
 

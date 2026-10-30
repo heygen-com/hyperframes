@@ -178,6 +178,7 @@ const commandLoaders = {
   diff: () => import("./commands/diff.js").then((m) => m.default),
   measure: () => import("./commands/measure.js").then((m) => m.default),
   billing: () => import("./commands/billing.js").then((m) => m.default),
+  templates: () => import("./commands/templates.js").then((m) => m.default),
   capture: () => import("./commands/capture.js").then((m) => m.default),
   lambda: () => import("./commands/lambda.js").then((m) => m.default),
   cloudrun: () => import("./commands/cloudrun.js").then((m) => m.default),

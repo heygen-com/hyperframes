@@ -23,7 +23,7 @@ function mockPlan(): Plan | null {
 }
 
 // Payment routes live on api2, beside the OAuth ones; the v3 generation routes stay on api.
-const billingBaseUrl = () => resolveCloudBaseUrl().replace("://api.", "://api2.");
+export const billingBaseUrl = () => resolveCloudBaseUrl().replace("://api.", "://api2.");
 
 export async function readPlan(): Promise<Plan | null> {
   try {
