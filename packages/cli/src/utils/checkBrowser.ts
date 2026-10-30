@@ -816,8 +816,6 @@ function wireRuntimeListeners(page: Page, drafts: RuntimeDraft[], clock: Runtime
   wireNetworkListeners(page, drafts, clock);
 }
 
-/** Chrome drops the requests in flight when the machine's network changes (a Wi-Fi hop, a VPN): that failed the
- * connection, not the file. Such a request is a finding only if the file still fails when asked again. */
 export function keepFailedNetworkChanges(
   drafts: RuntimeDraft[],
   failing: Set<string>,
