@@ -19,7 +19,13 @@ export interface PlannedFrame extends FrameWant {
 }
 
 interface FrameBankDeps {
-  probe: (path: string, time: number, holdLastFrame: boolean) => Promise<SeekPlan | null>;
+  /** `horizon` is the latest time asked of this clip in the batch, so its packets are read once for all of them. */
+  probe: (
+    path: string,
+    time: number,
+    holdLastFrame: boolean,
+    horizon: number,
+  ) => Promise<SeekPlan | null>;
   /** One ffmpeg pass over `frames`, which share a displayed size; throws when the pass fails. */
   decode: (path: string, frames: PlannedFrame[]) => Promise<Buffer[]>;
 }
@@ -62,8 +68,9 @@ async function probeFrames(
   wants: FrameWant[],
 ): Promise<PlannedFrame[]> {
   try {
+    const horizon = Math.max(...wants.map((want) => want.time));
     const plans = await Promise.all(
-      wants.map((want) => probe(path, want.time, want.holdLastFrame)),
+      wants.map((want) => probe(path, want.time, want.holdLastFrame, horizon)),
     );
     return plans.flatMap((plan, i) =>
       plan?.seek !== undefined && plan.select !== undefined
