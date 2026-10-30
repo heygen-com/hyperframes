@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { readJsonFlag } from "./jsonFlag.js";
+import { readJsonFileText, readJsonFlag } from "./jsonFlag.js";
 
 const io = {
   readFile: (path: string) => {
@@ -50,6 +50,8 @@ describe("readJsonFlag file encodings", () => {
       writeFileSync(join(dir, "u16.json"), Buffer.from('\uFEFF{"a":2}', "utf16le"));
       expect(readJsonFlag("--grading", join(dir, "bom.json"))).toEqual({ a: 1 });
       expect(readJsonFlag("--grading", join(dir, "u16.json"))).toEqual({ a: 2 });
+      expect(JSON.parse(readJsonFileText(join(dir, "bom.json")))).toEqual({ a: 1 });
+      expect(JSON.parse(readJsonFileText(join(dir, "u16.json")))).toEqual({ a: 2 });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

@@ -19,6 +19,9 @@ const defaultIO: JsonFlagIO = {
   readStdin: () => decodeJsonText(readFileSync(0)),
 };
 
+export const readJsonFileText = (path: string): string => defaultIO.readFile(path);
+export const readJsonStdinText = (): string => defaultIO.readStdin();
+
 export class JsonFlagReadError extends Error {
   constructor(
     readonly path: string,
