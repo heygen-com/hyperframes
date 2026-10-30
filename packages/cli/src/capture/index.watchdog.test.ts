@@ -36,7 +36,7 @@ describe("capture navigation retry launch", () => {
   it("retries a WebGL navigation deadline and carries the degradation warning into the result", async () => {
     const options: CaptureOptions = {
       url: "https://example.com",
-      outputDir: "/tmp/hf-capture-test",
+      outputDir: "/nonexistent/hf-capture-test",
     };
     const partial = createPartialCaptureState(options);
     const result: CaptureResult = {
@@ -85,7 +85,7 @@ describe("capture navigation retry launch", () => {
   it("does not retry a navigation deadline without observed WebGL", async () => {
     const options: CaptureOptions = {
       url: "https://example.com",
-      outputDir: "/tmp/hf-capture-test-no-webgl",
+      outputDir: "/nonexistent/hf-capture-test-no-webgl",
     };
     captureWebsiteAttemptMock.mockReset();
     captureWebsiteAttemptMock.mockRejectedValueOnce(
