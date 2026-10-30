@@ -40,11 +40,11 @@ export function spanFrameRange(
   return { startFrame, endFrame };
 }
 
-/** Renders `[startSeconds, endSeconds)` as a standalone mp4 from 0, with that span's audio, by chunk sub-ranges. */
 function throwIfAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted) throw new RenderCancelledError("render_cancelled", "user_cancelled");
 }
 
+/** Renders `[startSeconds, endSeconds)` as a standalone mp4 from 0, with that span's audio, by chunk sub-ranges. */
 export async function renderSpan(
   projectDir: string,
   config: DistributedRenderConfig,
