@@ -430,6 +430,15 @@ describe("missing_stylesheet_asset", () => {
     expect(findings[0]?.fixHint).toContain("../assets/fonts/x.ttf");
   });
 
+  it("hints the encoded url when the encoded file is in a parent folder", async () => {
+    const findings = await lintLinked('@font-face{src:url("fonts/Open%20Sans.ttf")}', {
+      "fonts/Open Sans.ttf": "font",
+    });
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.fixHint).toContain("../fonts/Open%20Sans.ttf");
+  });
+
   it("asks for the file when it exists nowhere", async () => {
     const findings = await lintLinked(".a{background:url(nope.png)}");
 
@@ -443,10 +452,12 @@ describe("missing_stylesheet_asset", () => {
       ".a{background:url(img/a.png)} .b{background:url(https://cdn.example/b.png)}",
       ".c{background:url(data:image/png;base64,AAAA)} .d{background:url(#frag)}",
       ".e{background:url(${asset})}",
+      '@font-face{src:url("fonts/Open%20Sans.ttf")}',
     ].join("\n");
     const findings = await lintLinked(css, {
       "assets/fonts/x.ttf": "font",
       "styles/img/a.png": "png",
+      "styles/fonts/Open Sans.ttf": "font",
     });
 
     expect(findings).toEqual([]);

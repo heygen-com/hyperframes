@@ -629,7 +629,7 @@ function nearestAncestorMatch(projectDir: string, cssRootRelativePath: string, u
   const root = resolve(projectDir);
   for (let dir = resolve(root, dirname(cssRootRelativePath), ".."); ; dir = dirname(dir)) {
     if (!isWithinProjectRoot(projectDir, dir)) return null;
-    if (existsSync(join(dir, url))) {
+    if (resolveLocalAssetCandidates(projectDir, relative(root, join(dir, url))).some(existsSync)) {
       return relative(dirname(resolve(root, cssRootRelativePath)), join(dir, url)).replace(
         /\\/g,
         "/",
@@ -665,7 +665,10 @@ function lintLinkedStylesheetAssets(
           if (isUnresolvedAssetPlaceholder(rawUrl)) continue;
           const url = cleanAssetUrl(rawUrl);
           if (!url || isRemoteOrInlineUrl(url) || url.startsWith("/")) continue;
-          if (existsSync(join(projectDir, dirname(rootRelativePath), url))) continue;
+          if (
+            resolveCssAssetCandidates(projectDir, url, undefined, rootRelativePath).some(existsSync)
+          )
+            continue;
           const key = `${rootRelativePath}\0${url}`;
           if (seen.has(key)) continue;
           seen.add(key);
