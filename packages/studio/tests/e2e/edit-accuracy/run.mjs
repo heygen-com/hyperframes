@@ -11,7 +11,7 @@ import { parseArgs } from "node:util";
 import { execSync, spawn } from "node:child_process";
 import puppeteer from "puppeteer-core";
 import { resolveHeadlessShellPath } from "../../../../engine/src/index.ts";
-import { buildGrid, shardCases, writeFixture } from "./grid.mjs";
+import { buildGrid, expectedSeconds, shardCases, writeFixture } from "./grid.mjs";
 import { killServers, runCase, startServer, stopServer } from "./case.mjs";
 import { runSequence } from "./sequences.mjs";
 import { METRICS, SLOW_RUNNER, score, slowRunner, writeReport } from "./report.mjs";
@@ -176,7 +176,7 @@ async function runChunks(queue, browsers, decoders, results) {
         browsers.map(async (browser, i) => {
           for (let spec = chunk.shift(); spec && slow === null; spec = chunk.shift()) {
             results.push(await runOne(spec, browser, decoders[i], Number(opt.port) + i));
-            slow = slowRunner(results.map((r) => r.seconds));
+            slow = slowRunner(results, expectedSeconds);
           }
         }),
       );
@@ -243,13 +243,14 @@ try {
 }
 // CI reads slow-runner.json to re-run the shard once on a fresh runner.
 if (slow !== null) {
-  const seconds = results.slice(0, SLOW_RUNNER.cases).map((r) => r.seconds);
+  const first = results.slice(0, SLOW_RUNNER.cases);
+  const seconds = Object.fromEntries(first.map((r) => [r.id, [r.seconds, expectedSeconds(r)]]));
   writeFileSync(
     join(out, "slow-runner.json"),
     JSON.stringify({ seconds, median: slow, ...SLOW_RUNNER }),
   );
   console.error(
-    `runner too slow: the first ${SLOW_RUNNER.cases} cases took a median ${slow.toFixed(1)}s, over ${SLOW_RUNNER.medianSeconds}s; stopping`,
+    `runner too slow: the first ${SLOW_RUNNER.cases} cases took a median ${slow.toFixed(2)}x their usual seconds, over ${SLOW_RUNNER.multiple}x; stopping`,
   );
   process.exit(75);
 }

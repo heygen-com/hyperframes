@@ -3,7 +3,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import timings from "./timings.json" with { type: "json" };
-import { FIXTURE_CDN, buildGrid, localAsset, shardCases, writeFixture } from "./grid.mjs";
+import {
+  FIXTURE_CDN,
+  buildGrid,
+  expectedSeconds,
+  localAsset,
+  shardCases,
+  writeFixture,
+} from "./grid.mjs";
+import { slowRunner } from "./report.mjs";
 
 function fixtureUrls(spec) {
   const dir = mkdtempSync(join(tmpdir(), "edit-bench-urls-"));
@@ -44,7 +52,7 @@ describe("shards", () => {
 
   it.each([
     ["full", 20],
-    ["pr", 5],
+    ["pr", 15],
   ])(
     "put each %s case in one of %i shards, all within one case's time of each other",
     (grid, shards) => {
@@ -59,6 +67,26 @@ describe("shards", () => {
       const times = split.map(seconds);
       const slowestCase = Math.max(...cases.map((c) => timings[c.id] ?? 0));
       expect(Math.max(...times) - Math.min(...times)).toBeLessThanOrEqual(slowestCase);
+    },
+  );
+
+  // Each shard starts with its slowest cases; 1.68x is the slowest runner seen across 100 merge-queue shards.
+  it.each([
+    ["full", 20],
+    ["pr", 15],
+  ])(
+    "let every %s shard of %i start its slowest cases on a 1.68x runner without a slow stop",
+    (grid, shards) => {
+      const cases = buildGrid(grid);
+      for (let i = 1; i <= shards; i++) {
+        const first = shardCases(cases, i, shards).map((c) => ({
+          id: c.id,
+          seconds: 1.68 * expectedSeconds(c),
+        }));
+        expect(slowRunner(first, expectedSeconds)).toBeNull();
+        const slow = first.map((r) => ({ ...r, seconds: r.seconds * 2 }));
+        expect(slowRunner(slow, expectedSeconds)).not.toBeNull();
+      }
     },
   );
 
