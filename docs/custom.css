@@ -605,6 +605,59 @@ samp {
   color: var(--hf-heading);
 }
 
+/*
+ * Web launch (web-launch.js). The Web Studio tab and the Sign up button stay hidden until the homepage's
+ * `hyperframes-signup-cta` flag turns on and the page gets `hf-web-launch`. Then Sign up is the main button, right
+ * of Download, and Download becomes the outlined one, as on the homepage. They are found by link, so a relabel in
+ * docs.json keeps working, and the hide rules cover the phone menus too, which sit outside #navbar.
+ */
+html:not(.hf-web-launch) a[href^="https://hyperframes.studio/agent"],
+html:not(.hf-web-launch) li:has(> a[href^="https://hyperframes.studio/api/auth/login"]) {
+  display: none !important;
+}
+
+html.hf-web-launch #navbar a.nav-tabs-item[href^="https://hyperframes.studio/agent"]::after {
+  content: "New";
+  padding: 3px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, #17c392 14%, transparent);
+  color: #0d8a66;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+html.hf-web-launch.dark #navbar a.nav-tabs-item[href^="https://hyperframes.studio/agent"]::after {
+  color: #3ce6ac;
+}
+
+@media (min-width: 1024px) {
+  /* Last in the row, so right of Download; the theme toggle sits outside this list. */
+  html.hf-web-launch #navbar li:has(> a[href*="/api/auth/login"]) {
+    order: 1;
+  }
+
+  html.hf-web-launch #navbar a[href*="/api/auth/login"] {
+    padding: 6px 16px;
+    border-radius: 999px;
+    background: var(--hf-heading);
+    color: var(--hf-background);
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  html.hf-web-launch #navbar a.group > span.bg-primary-dark {
+    background: transparent !important;
+    box-shadow: inset 0 0 0 1px var(--hf-border-color-light);
+  }
+
+  html.hf-web-launch #navbar a.group:has(> span.bg-primary-dark),
+  html.hf-web-launch #navbar a.group:has(> span.bg-primary-dark) span:not(.bg-primary-dark),
+  html.hf-web-launch #navbar a.group:has(> span.bg-primary-dark) svg {
+    color: var(--hf-heading) !important;
+  }
+}
+
 /* Every structural hairline (header bottom, content rules, footer) is the palette's line,
  * never a light gray that would draw a pale stripe on the paper. */
 [class*="border-gray-200"],
