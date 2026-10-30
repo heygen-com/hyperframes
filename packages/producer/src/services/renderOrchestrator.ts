@@ -2294,6 +2294,17 @@ export function shouldPreferSingleWorkerDrawElement(args: {
   );
 }
 
+/** Why drawElement is off before capture; the compile stage's content gates are not config refusals. */
+export function initialDeClampReason(args: {
+  useDrawElement: boolean;
+  deCompileGate: string | undefined;
+  config: Parameters<typeof explainDrawElementDisabled>[0];
+}): string | undefined {
+  if (args.useDrawElement) return undefined;
+  if (args.deCompileGate) return "compile_gate";
+  return explainDrawElementDisabled(args.config);
+}
+
 /**
  * The session kept drawElement but left some frames to a screenshot session. Only the
  * single-worker streaming capture hands those over, so parallel drawElement must not be chosen.
@@ -3273,14 +3284,16 @@ async function executeRenderPipeline(input: {
     // "Why not drawElement", explaining nothing). Re-derived from the same
     // inputs `resolveConfig` used, so it cannot disagree with the decision.
     // Later clamps overwrite this: a more specific reason always wins.
-    let deClampReason: string | undefined = cfg.useDrawElement
-      ? undefined
-      : explainDrawElementDisabled({
-          platform: process.platform,
-          browserGpuMode: cfg.browserGpuMode,
-          workerEncode: cfg.enableDrawElementWorkerEncode,
-          chromeCeiling: chromeMajorCeiling(),
-        });
+    let deClampReason = initialDeClampReason({
+      useDrawElement: cfg.useDrawElement,
+      deCompileGate,
+      config: {
+        platform: process.platform,
+        browserGpuMode: cfg.browserGpuMode,
+        workerEncode: cfg.enableDrawElementWorkerEncode,
+        chromeCeiling: chromeMajorCeiling(),
+      },
+    });
     // "inverted" = fired and held; "reverted" = fired but the self-verify
     // retry rolled back to the parallel path; undefined = never fired.
     let deWorkerInversion: "inverted" | "reverted" | undefined;
