@@ -76,7 +76,6 @@ export class TransportClock {
       }
     }
 
-    // Monotonic fallback
     this._applyStallCorrection();
     const elapsed = (this._nowMs() - this._playStartMs) / 1000;
     const t = this._baseTime + elapsed * this._rate;
@@ -89,7 +88,6 @@ export class TransportClock {
   ): number | null {
     const { el, compositionStart, mediaStart, rate } = source;
     if (el.paused || !Number.isFinite(el.currentTime)) return null;
-    // WebKit leaves a just-played or just-seeked element's time put; waiting on it stops the picture at a cut.
     if (el.seeking) return null;
     const spec = rate ?? 1;
     const time = timeAtSourceTime(spec, el.currentTime - mediaStart) + compositionStart;
