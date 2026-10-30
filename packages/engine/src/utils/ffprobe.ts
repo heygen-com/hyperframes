@@ -224,7 +224,6 @@ export interface VideoMetadata {
   colorSpace: VideoColorSpace | null;
   colorRange?: string;
   pixelFormat?: string;
-  /** Width over height of one stored pixel when the stream is not square-pixel (ffprobe `sample_aspect_ratio`). */
   sampleAspectRatio?: number;
   /** Decoded frame count from the video stream's `nb_frames`. Omitted when the
    * container does not surface a reliable count (still images, malformed
@@ -809,7 +808,6 @@ export function readTagCI(
  *    ~1/30-second clip. Kept as 0 is wrong too, so they are floored to the
  *    smallest representable 2dp rate instead.
  */
-/** "9:16" -> 0.5625; undefined for square pixels, "0:1", "N/A" or anything unreadable. */
 export function parseSampleAspectRatio(value: string | undefined): number | undefined {
   const [num, den] = (value ?? "").split(":").map(Number);
   if (!num || !den || !Number.isFinite(num) || !Number.isFinite(den)) return undefined;

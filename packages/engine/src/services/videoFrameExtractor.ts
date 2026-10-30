@@ -1188,7 +1188,6 @@ async function extractVideoFramesRangeUnredacted(
     vfFilters.push("format=nv12");
   }
   const samplingAt = vfFilters.length;
-  // A frame is stored on a non-square pixel grid; Chrome shows it at its display shape, the extracted image must too.
   if (metadata.sampleAspectRatio) {
     vfFilters.push(`scale=trunc(iw*${metadata.sampleAspectRatio}/2)*2:ih`, "setsar=1");
   }
