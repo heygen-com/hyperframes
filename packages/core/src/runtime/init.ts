@@ -5412,6 +5412,7 @@ export function initSandboxRuntimeModular(): void {
    */
   const canParkTransport = (): boolean =>
     !clock.isPlaying() &&
+    bufferingFor.length === 0 &&
     !isExportRenderDrivingFrames() &&
     // Without MutationObserver nothing can PUSH a DOM change: neither the
     // composition-timing watcher nor the gesture watch attaches, and both fall
