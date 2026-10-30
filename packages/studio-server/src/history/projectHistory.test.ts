@@ -1362,10 +1362,9 @@ describe("openProjectHistory", () => {
     });
 
     // b.html comes first in time though not by name: taken in order, both are the window's.
-    const first = Date.now();
-    await pause(300);
     write("b.html", "b2");
-    await pause(300);
+    const first = statSync(join(projectDir, "b.html")).ctimeMs - 350;
+    await pause(100);
     write("a.html", "a2"); // past the limit from the window's last write, so it counts only after b.html
     const lastWrite = statSync(join(projectDir, "a.html")).ctimeMs;
     const reopened = await open(projectDir, historyRoot, turn("turn-1", first));
