@@ -311,7 +311,7 @@ jobs:
     name: Build
     needs: changes
     # A skipped required check passes, so a broken change detection must fail it instead.
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.code == 'true' || needs.changes.outputs.cli_bundle == 'true' || needs.changes.outputs.edit_accuracy == 'true' || needs.changes.outputs.release_only == 'true') }}
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.code == 'true' || needs.changes.outputs.cli_bundle == 'true' || needs.changes.outputs.release_only == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -344,9 +344,26 @@ jobs:
           if-no-files-found: error
           retention-days: 7
       - run: bun run check:cli-lazy-deps
-      - name: Share the built CLI with the edit accuracy shards
-        if: needs.changes.outputs.edit_accuracy == 'true'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+
+  # The shards need only the built CLI; building it apart keeps them from waiting on Build's packing checks.
+  edit-accuracy-cli:
+    name: "Studio: edit accuracy CLI build"
+    needs: changes
+    if: needs.changes.outputs.edit_accuracy == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          lfs: true
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - uses: ./.github/actions/prepare-ffmpeg-bin
+      - run: bash scripts/ci/install-workspace-dependencies.sh
+      - run: bun run build
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: edit-accuracy-cli
           path: packages/cli/dist
@@ -1183,7 +1200,7 @@ jobs:
   # The gate job below repeats both shard counts.
   studio-edit-accuracy:
     name: "Studio: edit accuracy (${{ matrix.shard }}/${{ strategy.job-total }})"
-    needs: [changes, build]
+    needs: [changes, edit-accuracy-cli]
     if: needs.changes.outputs.edit_accuracy == 'true'
     runs-on: ubuntu-latest
     # Healthy shards take 6-9 min; 25 leaves a cancelled shard's fresh re-run inside the queue's 60 min check wait.
@@ -1255,7 +1272,7 @@ jobs:
   # Each marked shard runs once more on a fresh runner and replaces its evidence before the gate reads it.
   studio-edit-accuracy-retry:
     name: "Studio: edit accuracy retry (${{ matrix.shard }})"
-    needs: [changes, build, studio-edit-accuracy-retry-plan]
+    needs: [changes, edit-accuracy-cli, studio-edit-accuracy-retry-plan]
     if: ${{ !cancelled() && needs.studio-edit-accuracy-retry-plan.outputs.shards != '[]' && needs.studio-edit-accuracy-retry-plan.outputs.shards != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
