@@ -191,6 +191,8 @@ export interface StreamingEncoderResult {
   error?: string;
   /** Stable machine-readable cause for failures safe to retry on a fresh host. */
   failureReason?: "external_interruption";
+  /** Total time `writeFrame` waited for FFmpeg to drain its stdin pipe. */
+  drainWaitMs?: number;
 }
 
 export interface StreamingEncoder {
@@ -585,6 +587,7 @@ export async function spawnStreamingEncoder(
   };
 
   let inputFrameIndex = 0;
+  let drainWaitMs = 0;
   const encoder: StreamingEncoder = {
     writeFrame: async (buffer: Buffer): Promise<boolean> => {
       const stdin = ffmpeg.stdin;
@@ -626,7 +629,9 @@ export async function spawnStreamingEncoder(
         return true;
       }
 
+      const drainStart = Date.now();
       const drainResult = await waitForDrainOrExit(stdin);
+      drainWaitMs += Date.now() - drainStart;
       if (drainResult !== "drain" || exitStatus !== "running") {
         return false;
       }
@@ -692,7 +697,7 @@ export async function spawnStreamingEncoder(
 
       const fileSize = existsSync(outputPath) ? statSync(outputPath).size : 0;
 
-      return { success: true, durationMs, fileSize };
+      return { success: true, durationMs, fileSize, drainWaitMs };
     },
 
     getExitStatus: () => exitStatus,

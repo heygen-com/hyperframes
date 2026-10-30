@@ -316,6 +316,7 @@ export type CaptureStreamingStageResult =
       success: true;
       /** Wall-clock ms for the encode phase (overlapped with capture; from the encoder's own report). */
       encodeMs: number;
+      encoderDrainWaitMs?: number;
       probeSession: CaptureSession | null;
       lastBrowserConsole: string[];
       workerCount: number;
@@ -1132,6 +1133,7 @@ export async function runCaptureStreamingStage(
     return {
       success: true,
       encodeMs: encodeResult.durationMs,
+      encoderDrainWaitMs: encodeResult.drainWaitMs,
       probeSession,
       lastBrowserConsole,
       workerCount,
