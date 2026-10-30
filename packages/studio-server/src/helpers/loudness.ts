@@ -544,9 +544,10 @@ export function absoluteLoudnessPlan(
     candidate[1] < lowest[1] - 1e-9 ? candidate : lowest,
   );
   const previousGainDb = track.volume > 0 ? gainDb(track.volume) : 0;
-  // A limit may stop a boost short, never turn it into a cut away from the target.
-  const appliedGainDb =
-    wantedGainDb > previousGainDb ? Math.max(limitedGainDb, previousGainDb) : limitedGainDb;
+  const limitCannotCutAWantedBoost = wantedGainDb > previousGainDb;
+  const appliedGainDb = limitCannotCutAWantedBoost
+    ? Math.max(limitedGainDb, previousGainDb)
+    : limitedGainDb;
   return {
     targetId: track.id,
     targetLufs,
