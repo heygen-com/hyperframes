@@ -16,12 +16,7 @@ import {
 const DNS_TIMEOUT_MS = 10_000;
 const CARES_TIMEOUT_MS = 5_000;
 
-/**
- * IPv4-only: an IPv6 answer fails closed. Which IPv4 ranges are special-use is the engine's list
- * (`isBlockedNetworkHost`), so capture and asset downloads agree on one list. 192.0.0.0/24 and
- * 192.0.2.0/24 are reserved; the rest of 192.0/16 is ordinary public space (192.0.64.0/18 is
- * WordPress VIP, which serves nasa.gov among others).
- */
+/** IPv4-only (IPv6 fails closed), on the engine's special-use list so capture and downloads agree. */
 export function isPublicIPv4(address: string): boolean {
   return isIP(address) === 4 && !isBlockedNetworkHost(address);
 }
