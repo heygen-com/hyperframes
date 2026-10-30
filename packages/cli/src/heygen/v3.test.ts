@@ -176,13 +176,17 @@ describe("runJob", () => {
     const done = () => reply(200, { data: { id: "j", status: "completed" } });
     const failed = () =>
       reply(200, { data: { id: "j", status: "failed", failure_code: "generation_failed" } });
-    /** Answers `/v3/users/me` with `accounts`, and each POST with the next of `answers`. */
-    const server = (accounts: Record<string, Response | (() => Response)>, answers: Response[]) => {
+    /** Answers `/v3/users/me` with `accounts`, and each job call with the next of `answers`. */
+    const server = (
+      accounts: Record<string, Response | (() => Response)>,
+      answers: (Response | (() => Response))[],
+    ) => {
       const keys: (string | null)[] = [];
       vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
         if (!url.endsWith("/v3/users/me")) {
-          keys.push(new Headers(init.headers).get("Idempotency-Key"));
-          return answers.shift()!;
+          if (init.method === "POST") keys.push(new Headers(init.headers).get("Idempotency-Key"));
+          const answer = answers.shift()!;
+          return typeof answer === "function" ? answer() : answer;
         }
         const token = new Headers(init.headers).get("authorization")?.replace("Bearer ", "");
         const account = accounts[token!]!;
@@ -191,8 +195,8 @@ describe("runJob", () => {
       return keys;
     };
     const accounts = {
-      a: reply(200, { data: { email: "a@test" } }),
-      b: reply(200, { data: { email: "b@test" } }),
+      a: reply(200, { data: { username: "a", email: "same@test" } }),
+      b: reply(200, { data: { username: "b", email: "same@test" } }),
     };
 
     it.each([
@@ -216,6 +220,45 @@ describe("runJob", () => {
       signIn("a");
       await runJob("/v3/x", {}, "hf-host", (id) => id);
       expect(keys).toEqual(["hf-host", "hf-host", "hf-host"]);
+    });
+
+    it("holds a failure to the account that sent the job, whoever signs in during it", async () => {
+      const keys = server(accounts, [
+        done(),
+        reply(200, { data: { id: "j", status: "pending" } }),
+        () => {
+          signIn("b");
+          return failed();
+        },
+        done(),
+        done(),
+      ]);
+      signIn("b");
+      await runJob("/v3/x", {}, "hf-switch", (id) => id);
+      signIn("a");
+      await expect(
+        runJob("/v3/x", {}, "hf-switch", (id) => id, { intervalMs: 1 }),
+      ).rejects.toThrow();
+      await runJob("/v3/x", {}, "hf-switch", (id) => id);
+      signIn("a");
+      await runJob("/v3/x", {}, "hf-switch", (id) => id);
+      expect(keys).toEqual(["hf-switch", "hf-switch", "hf-switch", "hf-switch-1"]);
+    });
+
+    it("sends the job with the credential it looked up", async () => {
+      const seen: (string | null)[] = [];
+      const me = accounts.a;
+      vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
+        if (url.endsWith("/v3/users/me")) {
+          signIn("b");
+          return me.clone();
+        }
+        seen.push(new Headers(init.headers).get("authorization"));
+        return done();
+      });
+      signIn("a");
+      await runJob("/v3/x", {}, "hf-window", (id) => id);
+      expect(seen).toEqual(["Bearer a"]);
     });
 
     it("records nothing when the account cannot be told", async () => {

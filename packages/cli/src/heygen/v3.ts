@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { configDir } from "../auth/paths.js";
-import { AuthClient } from "../auth/client.js";
+import { AuthClient, buildAuthHeaders } from "../auth/client.js";
 import { resolveCredential } from "../auth/resolver.js";
 import { refreshIfNeeded, resolveCloudAuthHeaders, resolveCloudBaseUrl } from "../cloud/auth.js";
 import { Fix } from "../measure/media.js";
@@ -39,21 +39,30 @@ const KEEPS_KEY = new Set([401, 403, 408, 409, 425, 429]);
 
 const failedKeysFile = () => join(configDir(), "heygen-failed-keys");
 
-/** Who a failure belongs to: this API and the account behind the credential; null when that cannot be told. */
-async function payerScope(): Promise<string | null> {
-  const credential = await resolveCredential()
-    .then(refreshIfNeeded)
-    .catch(() => null);
-  if (!credential) return null;
+const noSignIn = (): never => {
+  throw new Fix("no HeyGen sign-in on this machine", "npx hyperframes auth login");
+};
+
+interface Sender {
+  auth: Record<string, string>;
+  /** Who failures belong to: this API and this account; null when the account cannot be told. */
+  scope: string | null;
+}
+
+/** Fixed when a job starts: a sign-in during it must not send the job or own its failure. */
+async function jobSender(): Promise<Sender> {
+  const credential = await resolveCredential().then(refreshIfNeeded).catch(noSignIn);
   const who =
     credential.type === "api_key"
       ? credential.key
       : await new AuthClient().getCurrentUser(credential).then(
-          (user) => user.email ?? user.username,
+          (user) => user.username ?? user.email,
           () => undefined,
         );
-  if (!who) return null;
-  return createHash("sha256").update(`${resolveCloudBaseUrl()}\0${who}`).digest("hex").slice(0, 16);
+  const scope = who
+    ? createHash("sha256").update(`${resolveCloudBaseUrl()}\0${who}`).digest("hex").slice(0, 16)
+    : null;
+  return { auth: buildAuthHeaders(credential), scope };
 }
 
 function failedKeys(scope: string): Set<string> {
@@ -64,17 +73,14 @@ function failedKeys(scope: string): Set<string> {
   );
 }
 
-async function markFailed(key: string): Promise<void> {
-  const scope = await payerScope();
+function markFailed(key: string, scope: string | null): void {
   if (!scope) return;
   mkdirSync(configDir(), { recursive: true });
   appendFileSync(failedKeysFile(), `${scope} ${key}\n`);
 }
 
 /** The key to send: `key` itself, or past every key whose job failed or was refused, so a retry is a new job. */
-async function liveKey(key: string): Promise<string> {
-  if (!existsSync(failedKeysFile())) return key;
-  const scope = await payerScope();
+function liveKey(key: string, scope: string | null): string {
   const failed = scope ? failedKeys(scope) : new Set<string>();
   let sent = key;
   for (let n = 1; failed.has(sent); n++) sent = `${key}-${n}`;
@@ -137,11 +143,10 @@ async function call(
   body?: unknown,
   key?: string,
   estimate?: number,
+  auth?: Record<string, string>,
 ): Promise<Job> {
   const headers: Record<string, string> = {
-    ...(await resolveCloudAuthHeaders().catch(() => {
-      throw new Fix("no HeyGen sign-in on this machine", "npx hyperframes auth login");
-    })),
+    ...(auth ?? (await resolveCloudAuthHeaders().catch(noSignIn))),
     accept: "application/json",
   };
   if (body !== undefined) headers["content-type"] = "application/json";
@@ -218,12 +223,13 @@ export async function runJob(
   opts: RunOptions = {},
 ): Promise<Job> {
   const started = Date.now();
-  const sent = await liveKey(key);
+  const { auth, scope } = await jobSender();
+  const sent = liveKey(key, scope);
   let job: Job;
   try {
-    job = await call("POST", route, body, sent, opts.credits);
+    job = await call("POST", route, body, sent, opts.credits, auth);
   } catch (err) {
-    if (err instanceof Refused && !KEEPS_KEY.has(err.status)) await markFailed(sent);
+    if (err instanceof Refused && !KEEPS_KEY.has(err.status)) markFailed(sent, scope);
     throw err;
   }
   if (opts.log) log(opts.log, { route, id: job.id, key: sent, status: job.status });
@@ -239,7 +245,7 @@ export async function runJob(
   }
   if (opts.log) log(opts.log, { route, id: job.id, key: sent, status: job.status });
   if (!/^(completed|succeeded|success|done)$/i.test(job.status)) {
-    await markFailed(sent);
+    markFailed(sent, scope);
     throw refusal(422, {
       error: { code: job.failure_code ?? job.status, message: job.failure_message ?? "" },
     });
