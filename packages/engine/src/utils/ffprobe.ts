@@ -808,13 +808,6 @@ export function readTagCI(
  *    ~1/30-second clip. Kept as 0 is wrong too, so they are floored to the
  *    smallest representable 2dp rate instead.
  */
-export function parseSampleAspectRatio(value: string | undefined): number | undefined {
-  const [num, den] = (value ?? "").split(":").map(Number);
-  if (!num || !den || !Number.isFinite(num) || !Number.isFinite(den)) return undefined;
-  const ratio = num / den;
-  return Math.abs(ratio - 1) < 1e-3 ? undefined : ratio;
-}
-
 export function parseFrameRate(frameRateStr: string | undefined): number {
   if (!frameRateStr) return 0;
 
@@ -850,6 +843,13 @@ export function parseFrameRate(frameRateStr: string | undefined): number {
   // A real but very slow rate must not collapse to 0 and inherit the
   // caller's 30fps default.
   return rounded > 0 ? rounded : 0.01;
+}
+
+export function parseSampleAspectRatio(value: string | undefined): number | undefined {
+  const [num, den] = (value ?? "").split(":").map(Number);
+  if (!num || !den || !Number.isFinite(num) || !Number.isFinite(den)) return undefined;
+  const ratio = num / den;
+  return Math.abs(ratio - 1) < 1e-3 ? undefined : ratio;
 }
 
 /**

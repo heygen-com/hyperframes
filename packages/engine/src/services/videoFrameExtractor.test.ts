@@ -4444,6 +4444,49 @@ describe.skipIf(!HAS_FFMPEG)("a clip stored on a non-square pixel grid", () => {
 
   afterAll(() => rmSync(FIXTURE_DIR, { recursive: true, force: true }), 30_000);
 
+  it("keeps the display shape of a rotated clip, whose autorotate swaps the pixel aspect", async () => {
+    const rotated = join(FIXTURE_DIR, "rotated.mp4");
+    const synth = await runFfmpeg([
+      "-y",
+      "-v",
+      "error",
+      "-display_rotation:v:0",
+      "90",
+      "-i",
+      SOURCE,
+      "-c",
+      "copy",
+      rotated,
+    ]);
+    expect(synth.success).toBe(true);
+    const outDir = join(FIXTURE_DIR, "out-rot");
+    mkdirSync(outDir, { recursive: true });
+    const video: VideoElement = {
+      id: "r",
+      src: rotated,
+      start: 0,
+      end: 1,
+      mediaStart: 0,
+      loop: false,
+      hasAudio: false,
+    };
+    const result = await extractAllVideoFrames([video], FIXTURE_DIR, {
+      fps: 10,
+      outputDir: outDir,
+    });
+    expect(result.errors).toEqual([]);
+    const probe = spawnSync("ffprobe", [
+      "-v",
+      "error",
+      "-show_entries",
+      "stream=width,height",
+      "-of",
+      "csv=p=0",
+      result.extracted[0]!.framePaths.get(0)!,
+    ]);
+    expect(probe.stdout.toString().trim()).toBe("128,64");
+  });
+
   it("extracts frames at the shape Chrome displays, not the stored grid", async () => {
     const outDir = join(FIXTURE_DIR, "out");
     mkdirSync(outDir, { recursive: true });
