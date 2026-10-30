@@ -1,0 +1,92 @@
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import type { ChunkSliceJson } from "../render/stages/freezePlan.js";
+import { writeStitchedMp4 } from "./mp4Stitch.js";
+import { plan, type DistributedRenderConfig } from "./plan.js";
+import { renderChunk } from "./renderChunk.js";
+
+export interface RenderSpanResult {
+  startFrame: number;
+  endFrame: number;
+  framesEncoded: number;
+}
+
+export class RenderSpanUnsupportedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RenderSpanUnsupportedError";
+  }
+}
+
+/** The frames `[startFrame, endFrame)` of a `totalFrames` timeline that `[startSeconds, endSeconds)` covers. */
+export function spanFrameRange(
+  startSeconds: number,
+  endSeconds: number | undefined,
+  fps: number,
+  totalFrames: number,
+): { startFrame: number; endFrame: number } {
+  const startFrame = Math.round(startSeconds * fps);
+  const endFrame = Math.min(
+    endSeconds === undefined ? totalFrames : Math.round(endSeconds * fps),
+    totalFrames,
+  );
+  if (!(endFrame > startFrame)) {
+    throw new RenderSpanUnsupportedError(
+      `The range ${startSeconds}s to ${endSeconds ?? "the end"}s holds no frame: the composition has ${totalFrames} frames at ${fps} fps (${totalFrames / fps}s).`,
+    );
+  }
+  return { startFrame, endFrame };
+}
+
+/**
+ * Renders only `[startSeconds, endSeconds)` of a composition as a standalone mp4 that starts at 0,
+ * with the audio of that span. It plans the whole composition, renders just the frames of the span
+ * (a chunk's sub-range renders as a chunk of its own, at the frames' absolute times), and joins them.
+ */
+export async function renderSpan(
+  projectDir: string,
+  config: DistributedRenderConfig,
+  span: { startSeconds: number; endSeconds?: number },
+  outputPath: string,
+): Promise<RenderSpanResult> {
+  if (config.format !== "mp4") {
+    throw new RenderSpanUnsupportedError(
+      `--start/--end render mp4 only; ${config.format} is not supported for a range.`,
+    );
+  }
+  if (config.cfr === true) {
+    throw new RenderSpanUnsupportedError("--start/--end cannot be combined with a cfr re-encode.");
+  }
+  const workDir = mkdtempSync(join(tmpdir(), "hf-render-span-"));
+  try {
+    const planDir = join(workDir, "plan");
+    const partsDir = join(workDir, "parts");
+    mkdirSync(partsDir, { recursive: true });
+    const planned = await plan(projectDir, config, planDir, { chunksCarryAudio: true });
+    const { startFrame, endFrame } = spanFrameRange(
+      span.startSeconds,
+      span.endSeconds,
+      config.fps,
+      planned.totalFrames,
+    );
+    const slices = JSON.parse(
+      readFileSync(join(planDir, "meta", "chunks.json"), "utf-8"),
+    ) as ChunkSliceJson[];
+    const parts: string[] = [];
+    for (const slice of slices) {
+      const range = {
+        startFrame: Math.max(slice.startFrame, startFrame),
+        endFrame: Math.min(slice.endFrame, endFrame),
+      };
+      if (range.endFrame <= range.startFrame) continue;
+      const part = join(partsDir, `part-${String(parts.length).padStart(4, "0")}.mp4`);
+      await renderChunk(planDir, slice.index, part, { frameRange: range });
+      parts.push(part);
+    }
+    await writeStitchedMp4(parts, outputPath);
+    return { startFrame, endFrame, framesEncoded: endFrame - startFrame };
+  } finally {
+    rmSync(workDir, { recursive: true, force: true });
+  }
+}
