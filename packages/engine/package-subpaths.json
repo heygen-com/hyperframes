@@ -48,6 +48,12 @@
       "runtime": "./package.json",
       "types": null,
       "environments": ["browser", "bun", "node"]
+    },
+    "./network-policy": {
+      "source": "./src/utils/networkPolicy.ts",
+      "runtime": "./dist/utils/networkPolicy.js",
+      "types": "./dist/utils/networkPolicy.d.ts",
+      "environments": ["bun", "node"]
     }
   }
 }

@@ -5,7 +5,7 @@ import { isIP, type Socket } from "node:net";
 import { request as httpRequest, type IncomingMessage, type ClientRequest } from "node:http";
 import { request as httpsRequest, type RequestOptions } from "node:https";
 import { connect as tlsConnect } from "node:tls";
-import { isBlockedNetworkHost } from "@hyperframes/engine";
+import { isBlockedNetworkHost } from "@hyperframes/engine/network-policy";
 import {
   captureUpstreamProxy,
   connectAuthority,
