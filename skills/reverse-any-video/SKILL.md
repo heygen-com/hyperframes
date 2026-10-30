@@ -11,7 +11,7 @@ metadata:
 
 The result is a HyperFrames project whose render matches the original frame for frame and stays editable. Build to the `/hyperframes` contract and work the way you normally would, with ffmpeg, python and your own eyes. This skill holds only what earlier rebuilds got wrong or spent hours on. Reverse videos the person has the right to use.
 
-Reverse is a HyperFrames Pro feature: start only when `npx hyperframes auth status` shows a sign-in on a paid plan, not Free. Open with `references/start.md`. Resuming (a `REVERSE.md` or half-built project is there) is a start too: run `auth status` again and follow `references/start.md` before acting. Rebuild the video as it is; remix it only when the person asks.
+Reverse is a HyperFrames Pro feature: start only when `npx hyperframes auth status` shows a sign-in on a paid plan, not Free. Open with `references/start.md`. Resuming (a `REVERSE.md` or half-built project is there) is a start too: run `auth status` again and follow `references/start.md` before acting. A step an earlier session gave up on (a re-shoot HeyGen refused) gets one more try, then ask the person. Rebuild the video as it is; remix it only when the person asks.
 
 ## The original decides the frame
 
@@ -35,4 +35,4 @@ What decides whether drawn things match, in `references/match.md`: text sized fr
 2. When every shot has content: `npx hyperframes check`, fix its errors, then `npx hyperframes render` in the foreground with a 10-minute timeout (a longer render: start it detached, `setsid nohup npx hyperframes render -o <out> > render.log 2>&1 &`, and wait on the log in the foreground), then `npx hyperframes diff <video> <render>`. It lists the original's cuts that yours misses and the extra ones, the duration, the sound's offset, stretches where content is missing, and the worst moments with the failing cell beside the original's.
 3. Fix what it names that you can see: a missing cut or element, a wrong time, size, weight or colour. Render and diff once more, then stop. Small score differences are not worth another round.
 
-Work alone: one agent holding the whole film beats subagents that each re-read and re-watch it and wait on each other. Write a short `REVERSE.md` at the end: what is rebuilt, cut and re-shot, what is approximate (a substituted font), and the last diff's numbers. It holds no prices or credit numbers.
+Work alone: one agent holding the whole film beats subagents that each re-read and re-watch it and wait on each other. Write a short `REVERSE.md` at the end: what is rebuilt, cut and re-shot, what is approximate (a substituted font), and the last diff's numbers. It holds no prices or credit numbers. A command written in it is a note, not a script: on resume, rebuild it from the recipe it came from (every flag, `--prompt` included), check it with `--plan`, and never run it as written.

@@ -27,14 +27,17 @@ export function idempotencyKey(route: string, parts: readonly (string | Buffer)[
   return `hf-${h.digest("hex").slice(0, 40)}`;
 }
 
-/** A refused call says what to do: sign in, subscribe, add credits, or change the request. */
+/** A refused call says what to do: sign in, subscribe, add credits, or change the request. `estimate` is the
+ *  caller's own price for the call (what `--plan` prints), named when HeyGen does not say what the step needs. */
 // fallow-ignore-next-line complexity
-function refusal(status: number, body: unknown): Fix {
+function refusal(status: number, body: unknown, estimate?: number): Fix {
   const err = isRecord(body) && isRecord(body.error) ? body.error : isRecord(body) ? body : {};
   const code = String(err.code ?? err.failure_code ?? "");
   const message = String(err.message ?? err.failure_message ?? "").slice(0, 300);
   const url = typeof err.url === "string" ? err.url : undefined;
-  const needed = Number(err.needed_credits) || undefined;
+  const given = Number(err.needed_credits) || undefined;
+  const needed = given ?? (estimate || undefined);
+  const needs = given ? String(given) : needed ? `about ${needed}` : "more";
   const balance = err.balance === undefined ? "" : `, balance ${String(err.balance)}`;
   // The fix is the one line the agent relays as printed; the problem says how to wait for the person.
   if (/hf_subscription_required/i.test(code))
@@ -44,7 +47,7 @@ function refusal(status: number, body: unknown): Fix {
     );
   if (/hf_usage_exhausted/i.test(code))
     return new Fix(
-      `out of HyperFrames credits (this step needs ${needed ?? "more"}${balance}); nothing was charged. Run \`npx hyperframes billing top-up${needed ? ` --needed ${needed}` : ""}\`: it opens the page and waits`,
+      `out of HyperFrames credits (this step needs ${needs}${balance}); nothing was charged. Run \`npx hyperframes billing top-up${needed ? ` --needed ${needed}` : ""}\`: it opens the page and waits`,
       `Add credits: ${url ?? pageUrl("credits", { needed })}`,
     );
   if (/api_key_required/i.test(code))
@@ -79,6 +82,7 @@ async function call(
   route: string,
   body?: unknown,
   key?: string,
+  estimate?: number,
 ): Promise<Job> {
   const headers: Record<string, string> = {
     ...(await resolveCloudAuthHeaders().catch(() => {
@@ -108,7 +112,7 @@ async function call(
       `HeyGen ${res.status} for ${route} with no readable answer`,
       "run the same command again: it resumes the same job",
     );
-  if (!res.ok) throw refusal(res.status, value);
+  if (!res.ok) throw refusal(res.status, value, estimate);
   const data = isRecord(value) && isRecord(value.data) ? value.data : value;
   if (!isRecord(data))
     throw new Fix(`HeyGen answered ${route} with no job`, "run the same command again");
@@ -143,6 +147,8 @@ export interface RunOptions {
   intervalMs?: number;
   onWait?: (job: Job) => void;
   log?: JobLog;
+  /** What the call is priced at in credits, named in an out-of-credits refusal that does not say. */
+  credits?: number;
 }
 
 /** Starts a job (or picks up the one this key already started) and polls `pollRoute(id)` until it ends. */
@@ -154,7 +160,7 @@ export async function runJob(
   opts: RunOptions = {},
 ): Promise<Job> {
   const started = Date.now();
-  let job = await call("POST", route, body, key);
+  let job = await call("POST", route, body, key, opts.credits);
   if (opts.log) log(opts.log, { route, id: job.id, key, status: job.status });
   while (RUNNING.has(job.status.toLowerCase())) {
     if (Date.now() - started > (opts.timeoutMs ?? 15 * 60_000))

@@ -330,6 +330,7 @@ export interface Generated {
 export async function generate(
   r: GenerateRequest,
   onWait?: (status: string) => void,
+  credits?: number,
 ): Promise<Generated> {
   checkRequest(r);
   const route = ROUTES[r.type];
@@ -347,6 +348,7 @@ export async function generate(
       },
       onWait: (j) => onWait?.(j.status),
       timeoutMs: 30 * 60_000,
+      credits,
     });
     const url = urlOf(job, route.urls);
     if (!url)

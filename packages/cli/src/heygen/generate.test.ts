@@ -317,6 +317,22 @@ describe("generate", () => {
     expect(r.job).toBe("v1");
   });
 
+  it("names its own price when HeyGen refuses for credits without saying how many", async () => {
+    vi.stubGlobal(
+      "fetch",
+      async () =>
+        new Response(JSON.stringify({ error: { code: "hf_usage_exhausted" } }), { status: 402 }),
+    );
+    const request = {
+      type: "image",
+      out: join(project, "assets/broke.png"),
+      prompt: "a desk",
+    } as const;
+    await expect(
+      generate(request, undefined, creditsOf(priceOf(request)) ?? undefined),
+    ).rejects.toThrow("this step needs about 67");
+  });
+
   it("prices before making", () => {
     expect(priceOf({ type: "video", out: "a.mp4", seconds: 6 }).usd).toBe(0.12);
     expect(priceOf({ type: "music", out: "a.mp3" }).usd).toBe(0.09);

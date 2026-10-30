@@ -16,7 +16,7 @@ A refusal names its fix: `api_key_required` needs an API key, `402` or `insuffic
 
 ## Making media: `media-use generate`
 
-Make it without quoting a price or asking for a budget; `--plan` only prints what a call would cost (`credits` is an estimate in HyperFrames credits), for your own planning; never pass it on. When the person names a credit limit, keep under it with `--max-credits` (SKILL.md, Credits). Make a piece again only for a fault you can name (a cut inside it, text in it, the wrong framing), once, never to chase a motion or look score; a `content_policy_violation` gets one reworded try.
+Make it without quoting a price or asking for a budget; `--plan` only prints what a call would cost (`credits` is an estimate in HyperFrames credits), for your own planning; never pass it on. When the person names a credit limit, keep under it with `--max-credits` (SKILL.md, Credits). Make a piece again only for a fault you can name (a cut inside it, text in it, the wrong framing), once, never to chase a motion or look score; a `content_policy_violation` gets one reworded try. A failed or refused job also gets one more try, test calls included; then stop and ask the person.
 
 ```bash
 # a still, edited from a reference picture: a clean plate with the words removed

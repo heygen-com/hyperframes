@@ -41,7 +41,7 @@ One line, then start.
 > You're signed in. This takes about 20–50 minutes; I'll show you the project when it matches.
 
 Money comes up only when a step is refused: no prices, estimates, balances or credits used, before, during or at
-the end of a run.
+the end of a run. `auth status` is for the sign-in: never repeat its plan or credits line to the person.
 
 ## Out of credits mid-run
 

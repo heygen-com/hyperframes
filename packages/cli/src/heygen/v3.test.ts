@@ -67,6 +67,27 @@ describe("runJob", () => {
     });
   });
 
+  it("names what an out-of-credits step needs, from the call's own price when HeyGen does not say", async () => {
+    vi.stubGlobal("fetch", async () => reply(402, { error: { code: "hf_usage_exhausted" } }));
+    await expect(runJob("/v3/x", {}, "k", (id) => id, { credits: 782 })).rejects.toMatchObject({
+      message: expect.stringContaining("this step needs about 782"),
+    });
+    await expect(runJob("/v3/x", {}, "k", (id) => id, { credits: 782 })).rejects.toMatchObject({
+      message: expect.stringContaining("billing top-up --needed 782"),
+      fix: expect.stringContaining("needed_credits=782"),
+    });
+    vi.stubGlobal("fetch", async () =>
+      reply(402, { error: { code: "hf_usage_exhausted", needed_credits: 180, balance: 30 } }),
+    );
+    await expect(runJob("/v3/x", {}, "k", (id) => id, { credits: 782 })).rejects.toMatchObject({
+      message: expect.stringContaining("this step needs 180, balance 30"),
+    });
+    vi.stubGlobal("fetch", async () => reply(402, { error: { code: "hf_usage_exhausted" } }));
+    await expect(runJob("/v3/x", {}, "k", (id) => id)).rejects.toMatchObject({
+      message: expect.stringContaining("this step needs more"),
+    });
+  });
+
   it("keys the same request the same way", () => {
     expect(idempotencyKey("/v3/x", ["a", Buffer.from("b")])).toBe(
       idempotencyKey("/v3/x", ["a", Buffer.from("b")]),

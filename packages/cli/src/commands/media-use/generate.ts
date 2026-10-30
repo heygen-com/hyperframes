@@ -151,7 +151,11 @@ export default defineCommand({
         };
       }
       checkLimit(credits, num(args["max-credits"], "--max-credits"));
-      const made = await generate(request, (status) => console.error(`generate: ${status}…`));
+      const made = await generate(
+        request,
+        (status) => console.error(`generate: ${status}…`),
+        credits ?? undefined,
+      );
       return { ...made, price, credits };
     });
   },
