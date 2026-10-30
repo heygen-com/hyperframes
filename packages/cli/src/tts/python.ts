@@ -77,7 +77,6 @@ export function describeRejectedPythonOverride(): string | null {
   return `HYPERFRAMES_PYTHON="${override}" was rejected: ${validation.reason}`;
 }
 
-/** The environment without PYTHONPATH, which can load another interpreter's packages. */
 function withoutPythonPath(): NodeJS.ProcessEnv {
   const { PYTHONPATH: _foreign, ...env } = process.env;
   return env;
@@ -92,12 +91,10 @@ function runs(python: string, code: string, env: NodeJS.ProcessEnv): boolean {
   }
 }
 
-/** The inherited environment if `code` runs under it, else the one without PYTHONPATH, else null. */
 function environmentThatRuns(python: string, code: string): NodeJS.ProcessEnv | null {
   return [process.env, withoutPythonPath()].find((env) => runs(python, code, env)) ?? null;
 }
 
-/** The environment (plus `extra`) under which every module imports; null when none does. */
 export function workingPythonEnv(
   python: string,
   modules: string[],
