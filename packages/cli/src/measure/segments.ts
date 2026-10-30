@@ -1,4 +1,4 @@
-// The segments of a REVERSE.md: `## S01 · 0.00–2.40 s · title` headings, each with optional lines
+// A segments file: `## S01 · 0.00–2.40 s · title` headings, each with optional lines
 // `Pixels: rebuilt | reused | regenerated`, `Regenerated: x, y, w, h` (source pixels, or shares of the frame when
 // all are ≤ 1), `Drawn: x, y, w, h` with an optional `a–b s`, and `Copy:` quoting a string; see `Segment`.
 import { existsSync, readFileSync } from "node:fs";
@@ -73,12 +73,12 @@ export function parseSegments(markdown: string): Segment[] {
 
 export function readSegments(path: string): Segment[] {
   if (!existsSync(path))
-    throw new Fix(`no segments file at ${path}`, "pass the project's REVERSE.md");
+    throw new Fix(`no segments file at ${path}`, "pass a file of `## S01 · a–b s` segments");
   const segments = parseSegments(readFileSync(path, "utf8"));
   if (!segments.length)
     throw new Fix(
       `${path} has no "## S01 · 0.00–2.40 s · title" segment headings`,
-      "write one heading per segment, as the reverse-any-video spec shows",
+      "write one `## S01 · a–b s · title` heading per segment",
     );
   return segments;
 }

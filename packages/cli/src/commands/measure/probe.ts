@@ -20,7 +20,7 @@ export const examples: Example[] = [
   ],
   [
     "Make a constant-rate SDR working copy of a phone or HDR video",
-    "hyperframes measure probe ref.mp4 --normalize .reverse/source.mp4",
+    "hyperframes measure probe ref.mp4 --normalize original.mp4",
   ],
 ];
 

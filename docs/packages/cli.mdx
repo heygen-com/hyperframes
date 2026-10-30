@@ -28,7 +28,7 @@ npm install -g hyperframes
 | Bring in source material | [`capture`](#capture), [`media-use`](#media-use), [`transcribe`](#transcribe), [`tts`](#tts), [`remove-background`](#remove-background), [`media-treatment`](#media-treatment), [`beats`](#beats), [`audio`](#audio), [`normalize-audio`](#normalize-audio), [`models`](#models) |
 | Look at it, or share it  | [`preview`](#preview), [`present`](#present-and-play), [`play`](#present-and-play), [`publish`](#publish), [`open`](#open-and-catch-up), [`catch-up`](#open-and-catch-up)                                                        |
 | Find problems            | [`lint`](#lint), [`check`](#check), [`snapshot`](#snapshot), [`keyframes`](#keyframes), [`compare`](#compare-and-grade-compare), [`grade-compare`](#compare-and-grade-compare)                                                   |
-| Rebuild a video          | [`measure`](#measure), [`analyze`](#analyze), [`diff`](#diff)                                                                                                                                                                    |
+| Rebuild a video          | [`measure`](#measure), [`diff`](#diff)                                                                                                                                                                                            |
 | Edit from the terminal   | [`timeline`](#timeline), [`history`](#history)                                                                                                                                                                                   |
 | Make a file              | [`render`](#render), [`benchmark`](#benchmark)                                                                                                                                                                                   |
 | Render somewhere else    | [`cloud`](#hyperframes-cloud), [`lambda`](#hyperframes-lambda), [`cloudrun`](#hyperframes-cloudrun)                                                                                                                              |
@@ -1518,7 +1518,7 @@ Measures a video file and prints JSON. Each measurement is a subcommand; run
 npx hyperframes measure probe ref.mp4
 npx hyperframes measure cuts ref.mp4
 npx hyperframes measure frames ref.mp4 --events
-npx hyperframes measure box ref.mp4 --start 1 --end 2.5 --roi 200,300,600,200 --track
+npx hyperframes measure face ref.mp4 --start 1 --end 2.5
 ```
 
 | Subcommand   | What it reports                                                                         |
@@ -1527,40 +1527,12 @@ npx hyperframes measure box ref.mp4 --start 1 --end 2.5 --roi 200,300,600,200 --
 | `cuts`       | Hard cuts from the frame-to-frame difference, and the shots between them                |
 | `events`     | Cuts, flashes, appears, disappears and holds; `--map` adds the sound's hits             |
 | `frames`     | Frames as pictures: chosen moments, an overview sheet, a range, or strips around events |
-| `trail`      | An onion skin of a window's frames, the moving part's path, and a heat map              |
 | `extract`    | A still or a clip cut from the video, cropped to a region, as project media             |
-| `box`        | One graphic's box, ink, colours, text lines and cap height; over a range, its moves     |
-| `ink`        | Where text ink sits in a region, for timing and font size                               |
 | `curve`      | Each move of one element: start, duration, overshoot and the closest GSAP ease          |
-| `rhythm`     | Moving share, holds, update rate, cuts, and each shot's zoom, pan or handheld           |
-| `objects`    | Separate elements at one time: count, sizes and arrangement                             |
 | `energy`     | How much two clips move, and whether at the same moments                                |
 | `look`       | Brightness, contrast, saturation and warmth, alone or against another video             |
-| `track`      | One textured thing followed frame by frame from its box                                 |
-| `flow`       | One element's motion from optical flow inside its box                                   |
 | `face`       | The face's size and position over a window                                              |
 | `sync`       | The lag between mouth motion and the voice                                              |
-| `continuity` | Seams your rebuild has and the original does not                                        |
-
-### `analyze`
-
-HeyGen's video model watches a video and returns JSON: with `--preset reverse`
-(the default) a draft timeline, with `--prompt` an answer to your question and
-the moments it cites. It uploads the video and needs a HeyGen sign-in or API key.
-
-```bash
-npx hyperframes analyze .reverse/source.mp4 --preset reverse
-npx hyperframes analyze clip.mp4 --prompt "Does the logo animate in or cut in?"
-```
-
-| Flag                | Description                                                         |
-| ------------------- | ------------------------------------------------------------------- |
-| `--preset`          | `reverse`: the draft of a reverse spec (default)                    |
-| `--prompt`          | Ask your own question instead                                       |
-| `--start` / `--end` | The window in seconds (default: the whole video)                    |
-| `--fps`             | Frames a second the model sees (default 6; long parts get fewer)    |
-| `--model`           | HeyGen's analysis model                                             |
-| `--out`             | Where to write the draft (default `.reverse/<video>-analysis.json`) |
 
 ### `diff`
 
@@ -1569,20 +1541,19 @@ video frame by frame: SSIM, the worst moments, missed and extra cuts, duration
 and the sound's offset. It exits non-zero when the scores fall under the bar.
 
 ```bash
-npx hyperframes diff .reverse/source.mp4 renders/final.mp4
-npx hyperframes diff .reverse/source.mp4 . --at 0.5,2.4,3.1
-npx hyperframes diff .reverse/source.mp4 renders/final.mp4 --segments REVERSE.md --sbs
+npx hyperframes diff original.mp4 renders/final.mp4
+npx hyperframes diff original.mp4 . --at 0.5,2.4,3.1
+npx hyperframes diff original.mp4 renders/final.mp4 --segments segments.md --sbs
 ```
 
 | Flag                                      | Description                                                          |
 | ----------------------------------------- | -------------------------------------------------------------------- |
 | `--at`                                    | Compare only these seconds                                           |
 | `--range`                                 | Compare every frame of `start,end` seconds                           |
-| `--segments`                              | A verdict per `## S01 · a–b s` segment of a `REVERSE.md`             |
+| `--segments`                              | A verdict per `## S01 · a–b s` segment of a file                     |
 | `--drawn`                                 | Score one drawn element's box `x,y,w,h[,a-b]` by itself (repeatable) |
 | `--min-mean` / `--min-p05` / `--min-cell` | The SSIM bars to pass                                                |
 | `--sbs`                                   | Also write an original-beside-yours video                            |
-| `--explain`                               | Ask HeyGen's video model what differs in each failing element        |
 | `--out`                                   | Folder for the sheet and log (default `.hyperframes/diff/<yours>`)   |
 | `--json`                                  | Print one JSON result                                                |
 

@@ -64,7 +64,6 @@ const GROUPS: Group[] = [
         "measure",
         "Measure a video file: clock, cuts, events, frames, motion, crops, boxes, eases, look",
       ],
-      ["analyze", "HeyGen watches a video and drafts its timeline as JSON (uploads the video)"],
       ["billing", "Open the HyperFrames plans or credits page and wait until it is done"],
       ["info", "Print project metadata"],
       ["compositions", "List all compositions in a project"],

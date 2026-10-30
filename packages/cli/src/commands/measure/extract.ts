@@ -12,15 +12,15 @@ import { Fix, frameAt, round, runFfmpeg, type Roi, type VideoInfo } from "../../
 export const examples: Example[] = [
   [
     "A photo from the original at 3.2 s, cropped to its box",
-    "hyperframes measure extract .reverse/source.mp4 --at 3.2 --roi 120,340,840,620 --out assets/photo.png",
+    "hyperframes measure extract original.mp4 --at 3.2 --roi 120,340,840,620 --out assets/photo.png",
   ],
   [
     "The original's whole soundtrack",
-    "hyperframes measure extract .reverse/source.mp4 --out assets/sound.m4a",
+    "hyperframes measure extract original.mp4 --out assets/sound.m4a",
   ],
   [
     "The talking head from 4.0 s to 9.5 s with its sound",
-    "hyperframes measure extract .reverse/source.mp4 --from 4 --to 9.5 --roi 0,0,1080,1350 --audio --out assets/presenter.mp4",
+    "hyperframes measure extract original.mp4 --from 4 --to 9.5 --roi 0,0,1080,1350 --audio --out assets/presenter.mp4",
   ],
 ];
 

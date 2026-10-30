@@ -15,7 +15,7 @@ import { checkLimit, creditsOf, priceOf } from "../../heygen/pricing.js";
 export const examples: Example[] = [
   [
     "Price a clean plate of a frame, then make it",
-    'hyperframes media-use generate --type image --reference .reverse/f120.png --prompt "the same shot with no text" --out assets/plate.png --plan',
+    'hyperframes media-use generate --type image --reference f120.png --prompt "the same shot with no text" --out assets/plate.png --plan',
   ],
   [
     "A 6 s shot that starts from the original's first frame",

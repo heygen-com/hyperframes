@@ -1,4 +1,3 @@
-import { statSync } from "node:fs";
 import { basename, extname, join, resolve } from "node:path";
 import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
@@ -14,38 +13,31 @@ import {
   findLedger,
   type DiffResult,
 } from "../measure/diff.js";
-import { Fix, formatJson, outDir, parseNumbers, parseRange, probeVideo } from "../measure/media.js";
+import { Fix, formatJson, outDir, parseNumbers, parseRange } from "../measure/media.js";
 import { readSegments } from "../measure/segments.js";
-import { tryResolveCredential } from "../auth/resolver.js";
-import { attachDiagnoses, explainTargets, targetsOf } from "../heygen/explain.js";
-import { projectHere } from "./analyze.js";
 import { repeated } from "./media-use/generate.js";
 import { parseMask } from "../heygen/generate.js";
 
 export const examples: Example[] = [
   [
     "Score a render against the original, frame by frame",
-    "hyperframes diff .reverse/source.mp4 renders/final.mp4",
+    "hyperframes diff original.mp4 renders/final.mp4",
   ],
   [
     "Score one segment of a project without rendering it",
-    "hyperframes diff .reverse/source.mp4 . --range 2.1,4.5",
+    "hyperframes diff original.mp4 . --range 2.1,4.5",
   ],
   [
     "Score chosen moments of a project without rendering it",
-    "hyperframes diff .reverse/source.mp4 . --at 0.5,2.4,3.1",
+    "hyperframes diff original.mp4 . --at 0.5,2.4,3.1",
   ],
   [
     "Score one drawn element (a title's box) by itself at chosen moments of a project",
-    "hyperframes diff .reverse/source.mp4 . --at 1,1.5,2 --drawn 120,670,485,115",
+    "hyperframes diff original.mp4 . --at 1,1.5,2 --drawn 120,670,485,115",
   ],
   [
-    "Judge each REVERSE.md segment of the final render and write a side-by-side",
-    "hyperframes diff .reverse/source.mp4 renders/final.mp4 --segments REVERSE.md --sbs",
-  ],
-  [
-    "Also ask HeyGen's video model what differs in each failing drawn element (a lead, not a verdict)",
-    "hyperframes diff .reverse/source.mp4 renders/final.mp4 --segments REVERSE.md --explain",
+    "Judge each segment of the final render and write a side-by-side",
+    "hyperframes diff original.mp4 renders/final.mp4 --segments segments.md --sbs",
   ],
 ];
 
@@ -151,15 +143,6 @@ function printHuman(r: DiffResult) {
       `   ${state} ${d.id} ${d.box.join(",")} ${d.window[0]}–${d.window[1]} s: ${detail}`,
     );
   }
-  for (const s of r.segments ?? [])
-    for (const [id, d] of [
-      ...(s.drawn ?? []).map((e) => [e.id, e.diagnosis] as const),
-      [s.id, s.worst_cell?.diagnosis] as const,
-    ])
-      if (d)
-        console.log(
-          `   ${c.dim("?")} ${id} ${d.window.map(([a, b]) => `${a}–${b} s`).join(", ")} (unverified): ${d.matches ? "matches" : d.differences.map((x) => `${x.aspect}: original ${x.original}; yours ${x.yours}`).join(" · ") || "no answer"}`,
-        );
   for (const w of r.warnings) console.log(`   ${c.warn("⚠")} ${w}`);
   if (r.sheet) console.log(`   sheet ${r.sheet}`);
   if (r.sbs) console.log(`   side by side ${r.sbs}`);
@@ -184,7 +167,7 @@ export default defineCommand({
     segments: {
       type: "string",
       description:
-        "REVERSE.md: a verdict per `## S01 · a–b s` segment (Pixels: regenerated compares motion and look)",
+        "A file of `## S01 · a–b s` segments: a verdict per segment (Pixels: regenerated compares motion and look)",
     },
     ledger: {
       type: "string",
@@ -219,17 +202,6 @@ export default defineCommand({
       type: "string",
       description: "Render-ready timeout in ms for a project folder (default 5000)",
     },
-    explain: {
-      type: "boolean",
-      description:
-        "Ask HeyGen's video model what differs in each failing drawn element (and failing segment's worst cell); experimental, needs a HeyGen API key; an unverified lead",
-      default: false,
-    },
-    "explain-only": {
-      type: "string",
-      description:
-        "Ask about these element or segment ids instead, passing or not, e.g. S02.D6,S04",
-    },
     drawn: {
       type: "string",
       description:
@@ -246,25 +218,6 @@ export default defineCommand({
       const yours = resolve(String(args.yours));
       const stem = basename(yours, extname(yours)) || "project";
       const segmentsFile = args.segments === undefined ? undefined : resolve(String(args.segments));
-      const only =
-        args["explain-only"] === undefined
-          ? undefined
-          : String(args["explain-only"])
-              .split(",")
-              .map((id) => id.trim())
-              .filter(Boolean);
-      const explain = args.explain === true || only !== undefined;
-      const credential = explain ? await tryResolveCredential() : undefined;
-      if (explain && !credential)
-        throw new Fix(
-          "--explain needs a HeyGen sign-in",
-          "set HEYGEN_API_KEY, or diff without --explain and look at the failing boxes' frames",
-        );
-      if (explain && (segmentsFile === undefined || statSync(yours).isDirectory()))
-        throw new Fix(
-          "--explain reads a render's failing elements",
-          "diff a rendered video with --segments REVERSE.md --explain",
-        );
       const result = await diffVideos({
         reference: resolve(String(args.reference)),
         yours,
@@ -288,20 +241,6 @@ export default defineCommand({
         timeoutMs: number(args.timeout, "--timeout"),
         log: (message) => console.error(message),
       });
-      if (explain) {
-        const targets = targetsOf(result, only);
-        console.error(`diff: asking HeyGen about ${targets.length} elements`);
-        attachDiagnoses(
-          result,
-          await explainTargets(targets, {
-            reference: probeVideo(result.reference),
-            yours: probeVideo(result.yours),
-            oauth: credential!.type === "oauth",
-            project: projectHere(),
-            log: (message) => console.error(message),
-          }),
-        );
-      }
       if (json) console.log(formatJson(withMeta({ ok: true, ...result })));
       else printHuman(result);
       if (!result.pass) setCommandExitCode(1);

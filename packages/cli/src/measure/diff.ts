@@ -49,7 +49,6 @@ import {
   type PersonVerdict,
 } from "./person.js";
 import type { Segment } from "./segments.js";
-import type { Diagnosis } from "../heygen/explain.js";
 
 // To be calibrated on the reverse bench; light-reverse's rebuilt moments scored 0.885–0.958 mean SSIM.
 export const DEFAULT_MIN_MEAN = 0.92;
@@ -164,9 +163,9 @@ export interface SegmentVerdict {
    */
   person?: PersonVerdict & { energy?: EnergyComparison; look?: LookComparison };
   /** Each `Drawn:` element over the regenerated person, scored by itself (drawn.ts), in the order written. */
-  drawn?: (DrawnVerdict & { id: string; diagnosis?: Diagnosis })[];
+  drawn?: (DrawnVerdict & { id: string })[];
   /** A segment scored by SSIM: the 4x4 cell with the lowest mean over it, and the moment it is lowest. */
-  worst_cell?: { roi: Roi; ssim: number; t: number; diagnosis?: Diagnosis };
+  worst_cell?: { roi: Roi; ssim: number; t: number };
   note?: string;
 }
 
@@ -906,7 +905,7 @@ function cellDiffs(a: Uint8Array, b: Uint8Array, w: number, h: number): number[]
   });
 }
 
-/** The ledger beside a project or its REVERSE.md (the grade keeps a copy as media-manifest.jsonl). */
+/** The ledger beside a project or its segments file (a copy may be named media-manifest.jsonl). */
 export function findLedger(yours: string, segmentsFile?: string): string | undefined {
   const dirs = [
     ...(existsSync(yours) && statSync(yours).isDirectory() ? [yours] : []),
@@ -1335,7 +1334,7 @@ export async function diffVideos(options: DiffOptions): Promise<DiffResult> {
         }
     } else if (reuse?.spans.length && !opts.segments)
       warnings.push(
-        `${Math.round(reuse.share * 100)}% of frames play the original's whole frame: pass --segments REVERSE.md to tell footage from copied drawings`,
+        `${Math.round(reuse.share * 100)}% of frames play the original's whole frame: pass --segments <file> to tell footage from copied drawings`,
       );
     const sound =
       yoursInfo && pick.kind === "all"

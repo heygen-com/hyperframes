@@ -6,8 +6,6 @@ vi.mock("../cloud/auth.js", () => ({
 }));
 
 const { idempotencyKey, runJob } = await import("./v3.js");
-const { partsOf, slowBy } = await import("../commands/analyze.js");
-const { mergeDrafts, toFilmTime } = await import("./reverseDraft.js");
 
 const reply = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -129,49 +127,5 @@ describe("runJob", () => {
       idempotencyKey("/v3/x", ["a", Buffer.from("b")]),
     );
     expect(idempotencyKey("/v3/x", ["a"])).not.toBe(idempotencyKey("/v3/y", ["a"]));
-  });
-});
-
-describe("analyze helpers", () => {
-  it("splits at cuts into parts of at most 30 s", () => {
-    expect(partsOf(20, [5])).toEqual([[0, 20]]);
-    expect(partsOf(70, [12, 27, 41, 58])).toEqual([
-      [0, 27],
-      [27, 41],
-      [41, 70],
-    ]);
-    expect(partsOf(65, [])).toEqual([
-      [0, 30],
-      [30, 60],
-      [60, 65],
-    ]);
-  });
-
-  it("slows a part so 2 fps sees the asked rate, within 90 s", () => {
-    expect(slowBy(6, 10)).toBe(3);
-    expect(slowBy(6, 60)).toBe(1.5);
-    expect(slowBy(1, 10)).toBe(1);
-  });
-
-  it("maps answer times back to the film and joins parts", () => {
-    const a = toFilmTime(
-      { segments: [{ id: "S01", start: 0, end: 30, actions: [{ start: 3, end: 6, what: "x" }] }] },
-      3,
-      0,
-    );
-    const b = toFilmTime(
-      {
-        segments: [{ id: "S01", start: 0, end: 15 }],
-        questions: [{ segment: "S01", start: 3, question: "q" }],
-      },
-      3,
-      10,
-    );
-    const draft = mergeDrafts([a, b]);
-    expect(draft.segments).toEqual([
-      { id: "S01", start: 0, end: 10, actions: [{ start: 1, end: 2, what: "x" }] },
-      { id: "S02", start: 10, end: 15 },
-    ]);
-    expect(draft.questions).toEqual([{ segment: "S02", start: 11, question: "q" }]);
   });
 });

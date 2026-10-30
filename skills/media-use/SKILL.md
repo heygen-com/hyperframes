@@ -55,7 +55,7 @@ When you build or review a piece, scan once for concrete gaps (on-screen text wi
 | Cut, reframe or transform media; direct `heygen` recipes | `references/operations.md` |
 | Treatments, realtime effects, overlays, reveals | `references/media-treatments.md` |
 | Install, sign-in, credentials, `--provider`, `--local-only`, RAM ladders | `references/setup-providers.md` |
-| `media-use generate`, HeyGen transcription and video analysis, prices | `references/heygen.md` |
+| `media-use generate`, HeyGen transcription, prices | `references/heygen.md` |
 | Fades, gain, ducking, automation, effects, buses on placed tracks | `references/mixing.md` |
 | Local commands: grade, cutout, loudness, beats | `references/local.md` |
 | Remembered preferences | `references/memory.md` |

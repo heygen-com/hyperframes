@@ -9,7 +9,7 @@ export type Prop = "x" | "y" | "w" | "h" | "ink";
 const PROPS: Prop[] = ["x", "y", "w", "h", "ink"];
 
 /** One frame of an element: its box centre and size (video pixels) and ink; x and y are null when it is absent. */
-export interface Row {
+interface Row {
   t: number;
   x: number | null;
   y: number | null;
@@ -34,7 +34,7 @@ const elastic = (p: number): Ease => [
   (u) => (u <= 0 ? 0 : u >= 1 ? 1 : 2 ** (-10 * u) * Math.sin(((u - p / 4) * 2 * Math.PI) / p) + 1),
 ];
 /** GSAP's named eases as functions of normalized time. */
-export const EASES: Ease[] = [
+const EASES: Ease[] = [
   ["none", (u) => u],
   ...[1, 2, 3, 4].flatMap((k) => [pw(k), pwo(k), pwio(k)]),
   ["sine.out", (u) => Math.sin((u * Math.PI) / 2)],
@@ -179,7 +179,7 @@ function fit(
 /** Every move of one property: stretches of change separated by holds of 0.15 s or more (shorter stills are the
  * turn at an overshoot's peak). A stretch that returns to where it began is a pulse (peak and length, no ease). */
 // fallow-ignore-next-line complexity
-export function fitMoves(
+function fitMoves(
   rows: readonly Row[],
   prop: Prop,
   fps: number,

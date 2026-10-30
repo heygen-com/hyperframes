@@ -1,16 +1,16 @@
 # HeyGen from the HyperFrames CLI
 
-`media-use generate`, `transcribe --engine heygen` and `analyze` call HeyGen directly with the HyperFrames sign-in; they need no `heygen` CLI. Every paid call carries a key derived from what it asks, so running the same command again picks up the same job instead of paying twice (a failed or refused one is sent as a new job), and each job is logged in the project's `.hyperframes/heygen-jobs.jsonl`.
+`media-use generate` and `transcribe --engine heygen` call HeyGen directly with the HyperFrames sign-in; they need no `heygen` CLI. Every paid call carries a key derived from what it asks, so running the same command again picks up the same job instead of paying twice (a failed or refused one is sent as a new job), and each job is logged in the project's `.hyperframes/heygen-jobs.jsonl`.
 
 ## Signing in
 
 `npx hyperframes auth status` says what is signed in. The credential is read in this order: `HEYGEN_API_KEY`, `HYPERFRAMES_API_KEY`, a host app's `HEYGEN_ACCESS_TOKEN`, then `~/.heygen/credentials`, which `npx hyperframes auth login` and `heygen auth login` both write.
 
-| Credential                 | Pays with                                    | Covers                                                                                                 |
-| -------------------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| API key                    | API credits                                  | everything below                                                                                       |
-| Sign-in (OAuth)            | the plan's allowance on subscription credits | avatar videos, video shots, images and voices; music, transcription and video analysis take an API key |
-| Inside the HyperFrames app | the app                                      | whatever the app allows; nothing to set up                                                             |
+| Credential                 | Pays with                                    | Covers                                                                                 |
+| -------------------------- | -------------------------------------------- | -------------------------------------------------------------------------------------- |
+| API key                    | API credits                                  | everything below                                                                       |
+| Sign-in (OAuth)            | the plan's allowance on subscription credits | avatar videos, video shots, images and voices; music and transcription take an API key |
+| Inside the HyperFrames app | the app                                      | whatever the app allows; nothing to set up                                             |
 
 A refusal names its fix: `api_key_required` needs an API key, `402` or `insufficient_credit` needs a top-up, `hf_usage_exhausted` means the plan's allowance is used up.
 
@@ -56,12 +56,3 @@ npx hyperframes transcribe interview.mp4 --engine heygen --speakers
 ```
 
 Word times from HeyGen's speech model, each word with its speaker under `--speakers`, in the same `transcript.json` local engines write. It takes an API key. The local engines (`--engine auto`) are free and good for one clear voice; HeyGen is the better choice for several speakers, noise or music under the voice.
-
-## Watching a video: `analyze`
-
-```bash
-npx hyperframes analyze .reverse/source.mp4 --preset reverse
-npx hyperframes analyze clip.mp4 --prompt "Does the logo animate in or cut in?"
-```
-
-HeyGen's video model watches the video and returns JSON: with `--preset reverse`, a draft timeline (segments, copy, actions with times, recurring elements, media boxes, questions to settle on frames); with `--prompt`, an answer with the moments it cites. It uploads the video, so say so first. The route reads at most 2 frames a second, so long videos go in parts slowed down to about 6 frames a second; times are mapped back to the video's clock and are good to a few frames. It takes an API key.

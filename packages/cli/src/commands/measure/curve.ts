@@ -16,11 +16,11 @@ import { Fix, parseRoi, probeVideo } from "../../measure/media.js";
 export const examples: Example[] = [
   [
     "The ease, duration and overshoot of one element's move",
-    "hyperframes measure curve .reverse/source.mp4 --start 2.1 --end 3 --roi 240,280,600,540",
+    "hyperframes measure curve original.mp4 --start 2.1 --end 3 --roi 240,280,600,540",
   ],
   [
     "The same move in your render, paired with the original's",
-    "hyperframes measure curve .reverse/source.mp4 --start 2.1 --end 3 --roi 240,280,600,540 --compare renders/final.mp4 --compare-start 2.1",
+    "hyperframes measure curve original.mp4 --start 2.1 --end 3 --roi 240,280,600,540 --compare renders/final.mp4 --compare-start 2.1",
   ],
 ];
 
