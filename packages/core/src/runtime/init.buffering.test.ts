@@ -14,7 +14,10 @@ function audio(id: string, duration: number, readyState: { value: number }) {
     paused = false;
     return Promise.resolve();
   });
-  el.pause = vi.fn(() => void (paused = true));
+  el.pause = vi.fn(() => {
+    if (!paused) el.dispatchEvent(new Event("pause"));
+    paused = true;
+  });
   el.load = vi.fn();
   return el;
 }
