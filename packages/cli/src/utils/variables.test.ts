@@ -2,9 +2,10 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 describe("parseVariablesArg", () => {
   let parseVariablesArg: typeof import("./variables.js").parseVariablesArg;
+  let variablesErrorMessage: typeof import("./variables.js").variablesErrorMessage;
 
   beforeAll(async () => {
-    ({ parseVariablesArg } = await import("./variables.js"));
+    ({ parseVariablesArg, variablesErrorMessage } = await import("./variables.js"));
   });
 
   function expectErr<T extends { kind: string }>(
@@ -84,6 +85,15 @@ describe("parseVariablesArg", () => {
     expect(err.kind).toBe("read-error");
     expect(err.path).toBe("missing.json");
     expect(err.cause).toMatch(/ENOENT/);
+  });
+
+  it("points a brace-stripped --variables value at the file and stdin forms", () => {
+    const err = expectErr<import("./variables.js").VariablesParseError>(
+      parseVariablesArg("title:Hello", undefined, () => {
+        throw new Error("ENOENT: no such file");
+      }),
+    );
+    expect(variablesErrorMessage(err).message).toMatch(/ENOENT.*PowerShell.*--variables -/);
   });
 });
 

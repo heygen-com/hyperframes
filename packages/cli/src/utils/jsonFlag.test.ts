@@ -31,6 +31,10 @@ describe("readJsonFlag", () => {
     );
   });
 
+  it("does not call a missing Windows drive path inline JSON", () => {
+    expect(() => readJsonFlag("--grading", "C:\\clips\\grade.json", io)).toThrow(/no such file$/);
+  });
+
   it("names the flag and path when the file cannot be read", () => {
     expect(() => readJsonFlag("--grading", "missing.json", io)).toThrow(
       /Could not read --grading: missing\.json: ENOENT/,
