@@ -1304,19 +1304,20 @@
   }
 
   // A mask changes painting, not hit-testing, and its alpha is not modelled: a masked layer is never proven opaque.
-  function hasMaskImage(element) {
-    for (let current = element; current; current = current.parentElement) {
+  // A mask on an ancestor of both the layer and `covered` masks them alike, so the walk stops there.
+  function hasMaskImage(layer, covered) {
+    for (let current = layer; current && !current.contains(covered); current = current.parentElement) {
       const style = getComputedStyle(current);
       if ((style.maskImage || style.webkitMaskImage || "none") !== "none") return true;
     }
     return false;
   }
 
-  function isOpaqueOccluder(element, x, y) {
+  function isOpaqueOccluder(element, x, y, covered) {
     const opacity = opacityChain(element);
     if (opacity < OCCLUDING_ALPHA) return false;
     if (IGNORE_TAGS.has(element.tagName)) return false;
-    if (hasMaskImage(element)) return false;
+    if (hasMaskImage(element, covered)) return false;
     if (element.tagName === "IMG") {
       const alpha = imageAlphaAt(element, x, y);
       if (alpha !== null) return alpha * opacity >= OCCLUDING_ALPHA;
@@ -1398,7 +1399,7 @@
       if (isCrossSceneTransitionOverlap(element, hit)) continue;
       const matte = seenMattes && matteFrameFor(hit);
       if (matte && !seenMattes.has(matte)) seenMattes.set(matte, hit);
-      if (isOpaqueOccluder(hit, x, y)) return hit;
+      if (isOpaqueOccluder(hit, x, y, element)) return hit;
     }
     return null;
   }
@@ -1763,7 +1764,7 @@
       const matte = matteFrameFor(cover);
       if (matte && matteCoverage([rootRect], [matte]) < COVER_CANVAS_SHARE) continue;
       const rect = toRect(cover.getBoundingClientRect());
-      if (!isOpaqueOccluder(cover, rect.left + rect.width / 2, rect.top + rect.height / 2))
+      if (!isOpaqueOccluder(cover, rect.left + rect.width / 2, rect.top + rect.height / 2, root))
         continue;
       return {
         code: "canvas_covered",

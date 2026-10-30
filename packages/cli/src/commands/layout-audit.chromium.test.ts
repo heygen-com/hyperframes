@@ -304,6 +304,9 @@ describe.runIf(executablePath)("layout audit in Chromium", () => {
     expect(await auditCodes(stage(text + cover(maskedAway)))).not.toContain("text_occluded");
     const wrapped = `<div style="position:absolute;inset:0;${maskedAway}">${cover("")}</div>`;
     expect(await auditCodes(stage(text + wrapped))).not.toContain("text_occluded");
+    const fade = "mask-image:linear-gradient(black,black)";
+    const sharedMask = `<div style="position:absolute;inset:0;${fade}">${text}${cover("")}</div>`;
+    expect(await auditCodes(stage(sharedMask))).toContain("text_occluded");
   });
 
   it("reports text positioned outside the ancestor background", async () => {
