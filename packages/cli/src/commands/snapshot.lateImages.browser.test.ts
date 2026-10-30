@@ -87,7 +87,9 @@ async function snapshotAt(dir: string, time: string) {
         },
       } as never);
     } catch (error) {
-      throw new Error(`snapshot failed: ${said.join(" | ")}`, { cause: error });
+      throw new Error(`snapshot failed: ${[...said, ...log.mock.calls.flat()].join(" | ")}`, {
+        cause: error,
+      });
     }
     const envelope = JSON.parse(String(log.mock.calls.at(-1)?.[0]));
     return { envelope, output };
