@@ -5722,13 +5722,7 @@ export function initSandboxRuntimeModular(): void {
           waiting: mediaClipsInWindow.some(
             ({ el }) => el.tagName === "VIDEO" && !el.paused && el.readyState < 3,
           ),
-          frozen: hasFrozenPicture(
-            mediaClipsInWindow.flatMap(({ el }) =>
-              el.tagName === "VIDEO" ? [el as HTMLVideoElement] : [],
-            ),
-            t,
-            state.playbackRate,
-          ),
+          frozen: hasFrozenPicture(mediaClipsInWindow, t),
           layoutKey: `${window.innerWidth}x${window.innerHeight}@${window.devicePixelRatio}`,
         });
       }
