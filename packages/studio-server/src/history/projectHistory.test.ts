@@ -1066,17 +1066,20 @@ describe("openProjectHistory", () => {
     });
   });
 
-  it("leaves the project record alone when opening a folder it already records, so a read writes nothing", async () => {
+  it("keeps the project record's file when opening a folder it already records, and counts the open as a use", async () => {
     const { history, projectDir, historyRoot } = await project({ "index.html": "v1" });
     await history.close();
     const record = join(historyRoot, history.projectId, "project.json");
+    const old = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    utimesSync(record, old, old);
     const before = statSync(record);
 
     const again = await open(projectDir, historyRoot);
     await again.close();
 
     const after = statSync(record);
-    expect([after.ino, after.mtimeMs]).toEqual([before.ino, before.mtimeMs]);
+    expect(after.ino).toBe(before.ino);
+    expect(after.mtimeMs).toBeGreaterThan(before.mtimeMs + 29 * 24 * 60 * 60 * 1000);
   });
 
   describe("a history 0.8.78 wrote", () => {
