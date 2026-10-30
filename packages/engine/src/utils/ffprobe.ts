@@ -224,6 +224,7 @@ export interface VideoMetadata {
   colorSpace: VideoColorSpace | null;
   colorRange?: string;
   pixelFormat?: string;
+  sampleAspectRatio?: number;
   /** Decoded frame count from the video stream's `nb_frames`. Omitted when the
    * container does not surface a reliable count (still images, malformed
    * streams, or muxes that require `-count_packets` to populate). Callers
@@ -263,6 +264,7 @@ interface FFProbeStream {
   nb_frames?: string;
   nb_read_packets?: string;
   pix_fmt?: string;
+  sample_aspect_ratio?: string;
   r_frame_rate?: string;
   avg_frame_rate?: string;
   sample_rate?: string;
@@ -843,6 +845,13 @@ export function parseFrameRate(frameRateStr: string | undefined): number {
   return rounded > 0 ? rounded : 0.01;
 }
 
+export function parseSampleAspectRatio(value: string | undefined): number | undefined {
+  const [num, den] = (value ?? "").split(":").map(Number);
+  if (!num || !den || !Number.isFinite(num) || !Number.isFinite(den)) return undefined;
+  const ratio = num / den;
+  return Math.abs(ratio - 1) < 1e-3 ? undefined : ratio;
+}
+
 /**
  * Whether the first frame decoded with `decoder` (alpha-aware) has an alpha pixel format; undefined on any
  * failure. ffprobe cannot pick a decoder, so ffmpeg writes the frame as rawvideo, which keeps its pix_fmt.
@@ -977,6 +986,7 @@ export async function extractMediaMetadata(filePath: string): Promise<VideoMetad
     const colorSpace =
       merged.colorTransfer || merged.colorPrimaries || merged.colorSpace ? merged : null;
     const pixelFormat = videoStream.pix_fmt || "";
+    const sampleAspectRatio = parseSampleAspectRatio(videoStream.sample_aspect_ratio);
     const hasAlpha = videoStreamHasAlpha(videoStream);
     const alphaDecoder = hasAlpha ? null : alphaDecoderFor(videoStream.codec_name);
     const alphaPlaneDecoded = alphaDecoder
@@ -1031,6 +1041,7 @@ export async function extractMediaMetadata(filePath: string): Promise<VideoMetad
       colorSpace,
       colorRange: videoStream.color_range,
       pixelFormat,
+      ...(sampleAspectRatio === undefined ? {} : { sampleAspectRatio }),
       frames,
     };
   })();

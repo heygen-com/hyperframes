@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { accessSync, constants, existsSync } from "node:fs";
+import { accessSync, closeSync, constants, existsSync, openSync, readSync } from "node:fs";
 import { createRequire } from "node:module";
 import { delimiter, dirname, join, resolve } from "node:path";
 
@@ -41,11 +41,48 @@ function chooseBestPathCandidate(
   );
 }
 
+const MACHO_CPU_X86_64 = 0x01000007;
+const ROSETTA_RUNTIME = "/Library/Apple/usr/libexec/oah/libRosettaRuntime";
+
+// A Mach-O built only for x86_64 (some npm packages ship one under darwin/arm64). A universal
+// binary or an unreadable file is not one.
+export function isX86OnlyMachO(file: string): boolean {
+  const header = Buffer.alloc(8);
+  try {
+    const fd = openSync(file, "r");
+    try {
+      readSync(fd, header, 0, 8, 0);
+    } finally {
+      closeSync(fd);
+    }
+  } catch {
+    return false;
+  }
+  return header.readUInt32LE(0) === 0xfeedfacf && header.readUInt32LE(4) === MACHO_CPU_X86_64;
+}
+
+// Without Rosetta an Apple Silicon Mac cannot run an x86_64 binary, so it must not be chosen.
+function runsOnThisMac(candidate: string): boolean {
+  if (process.platform !== "darwin" || process.arch !== "arm64" || existsSync(ROSETTA_RUNTIME)) {
+    return true;
+  }
+  if (!isX86OnlyMachO(candidate)) return true;
+  skippedX86Binary ??= candidate;
+  return false;
+}
+
+let skippedX86Binary: string | undefined;
+
+/** The first x86_64-only binary skipped on this Mac, for naming in the "not found" hint. */
+export function getSkippedX86Binary(): string | undefined {
+  return skippedX86Binary;
+}
+
 function isExecutablePathCandidate(candidate: string): boolean {
   if (process.platform === "win32") return existsSync(candidate);
   try {
     accessSync(candidate, constants.X_OK);
-    return true;
+    return runsOnThisMac(candidate);
   } catch {
     return false;
   }
@@ -95,7 +132,7 @@ const COMMON_BIN_DIRS =
 function findInCommonDirsOrInstallerPackage(name: FfBinaryName): string | undefined {
   for (const dir of COMMON_BIN_DIRS) {
     const candidate = `${dir}/${name}`;
-    if (existsSync(candidate)) return candidate;
+    if (existsSync(candidate) && runsOnThisMac(candidate)) return candidate;
   }
   return findInInstallerPackage(name);
 }
@@ -205,4 +242,5 @@ export function findFfBinary(
 export function clearFfBinaryLookupCache(): void {
   pathLookupCache.clear();
   lastMissAt.clear();
+  skippedX86Binary = undefined;
 }

@@ -2948,12 +2948,23 @@ export function initSandboxRuntimeModular(): void {
   // A clip's first visible style pass is slow; playing, each hidden clip gets it once just before its start.
   const clipsNeverStyledVisible = new Set<StylableElement>();
   const clipsStyledVisible = new WeakSet<Element>();
-  const styleClipsDueVisibleOnce = (t: number) => {
+  let neverStyledStarts = { revision: -1, starts: new Map<StylableElement, number>() };
+  const neverStyledStart = (el: StylableElement, revision: number): number => {
+    if (neverStyledStarts.revision !== revision)
+      neverStyledStarts = { revision, starts: new Map() };
+    let start = neverStyledStarts.starts.get(el);
+    if (start === undefined) {
+      start = resolveStartForElement(el, Number.NaN);
+      neverStyledStarts.starts.set(el, start);
+    }
+    return start;
+  };
+  const styleClipsDueVisibleOnce = (t: number, revision: number) => {
     if (clipsNeverStyledVisible.size === 0 || !clock.isPlaying()) return;
     const clips: StylableElement[] = [];
     for (const el of clipsNeverStyledVisible) {
-      const start = resolveStartForElement(el, Number.NaN);
-      if (el.isConnected && el.hasAttribute(CLIP_HIDDEN_ATTR) && !(start <= t + LOOKAHEAD_SECONDS))
+      const start = neverStyledStart(el, revision);
+      if (!(start <= t + LOOKAHEAD_SECONDS) && el.isConnected && el.hasAttribute(CLIP_HIDDEN_ATTR))
         continue;
       clipsNeverStyledVisible.delete(el);
       if (el.isConnected && el.hasAttribute(CLIP_HIDDEN_ATTR) && start > t) clips.push(el);
@@ -5163,6 +5174,15 @@ export function initSandboxRuntimeModular(): void {
       return false;
     }
   };
+  const sceneTimelines = () => {
+    const timelines = (window.__timelines ?? {}) as Record<string, RuntimeTimelineLike | undefined>;
+    const rootCompositionId =
+      resolveRootCompositionElement()?.getAttribute("data-composition-id") ?? null;
+    return Object.entries(timelines).filter(
+      (entry): entry is [string, RuntimeTimelineLike] =>
+        !!entry[1] && typeof entry[1] === "object" && entry[0] !== rootCompositionId,
+    );
+  };
   const seekStandaloneRegisteredTimelines = (
     timeSeconds: number,
     revision: number,
@@ -5172,12 +5192,7 @@ export function initSandboxRuntimeModular(): void {
       sceneClocks = new WeakMap();
       sceneClocksRevision = revision;
     }
-    const timelines = (window.__timelines ?? {}) as Record<string, RuntimeTimelineLike | undefined>;
-    const rootCompositionId =
-      resolveRootCompositionElement()?.getAttribute("data-composition-id") ?? null;
-    for (const [compositionId, timeline] of Object.entries(timelines)) {
-      if (!timeline || typeof timeline !== "object" || compositionId === rootCompositionId)
-        continue;
+    for (const [compositionId, timeline] of sceneTimelines()) {
       const scene = sceneClockOf(compositionId, timeline);
       if (!scene) continue;
       const sourceTime =
@@ -5286,14 +5301,14 @@ export function initSandboxRuntimeModular(): void {
     const revision = opts?.revision ?? readCompositionTimingRevision();
     if (revision !== tweensRenderedThrough.revision)
       tweensRenderedThrough = { revision, time: Number.NEGATIVE_INFINITY };
-    styleClipsDueVisibleOnce(t);
+    styleClipsDueVisibleOnce(t, revision);
     const firstRenders = t > tweensRenderedThrough.time;
     // Only clips holding a tween that renders for the first time on this seek need their authored style read.
     const firstRendered =
       firstRenders && tl ? clipsFirstRenderedIn(tl, tweensRenderedThrough.time, t) : null;
-    // An empty set means no tween draws for the first time: nothing to show, so no page-wide query.
+    // An empty set, or a page with no timeline, means no tween draws for the first time: no page-wide query.
     const hideClipsAgain =
-      firstRenders && firstRendered?.size !== 0
+      firstRenders && firstRendered?.size !== 0 && (tl || sceneTimelines().length > 0)
         ? showHiddenClips(firstRendered ? (el) => firstRendered.has(el) : undefined)
         : null;
     // Scenes first, each paused on its own clock, so the root's pass skips them and its later

@@ -10,7 +10,7 @@ import {
   inferLangFromVoiceId,
   type SupportedLang,
 } from "./manager.js";
-import { findPython, hasPythonPackage } from "./python.js";
+import { findPython, hasPythonPackage, workingPythonEnv } from "./python.js";
 import { writeNewFileSync } from "../utils/writeNewFile.js";
 
 // ---------------------------------------------------------------------------
@@ -189,13 +189,15 @@ export async function synthesize(
     );
   }
 
-  if (!hasPythonPackage(python, "kokoro_onnx")) {
-    throw new Error(
-      "The kokoro-onnx package is not installed. Run: pip install kokoro-onnx soundfile (or point HYPERFRAMES_PYTHON at a venv python that has them)",
-    );
-  }
-
-  if (!hasPythonPackage(python, "soundfile")) {
+  const pythonEnv = workingPythonEnv(python, ["kokoro_onnx", "soundfile"], {
+    ORT_DISABLE_TELEMETRY: "1",
+  });
+  if (!pythonEnv) {
+    if (!hasPythonPackage(python, "kokoro_onnx")) {
+      throw new Error(
+        "The kokoro-onnx package is not installed. Run: pip install kokoro-onnx soundfile (or point HYPERFRAMES_PYTHON at a venv python that has them)",
+      );
+    }
     throw new Error("The soundfile package is not installed. Run: pip install soundfile");
   }
 
@@ -222,7 +224,7 @@ export async function synthesize(
         encoding: "utf-8",
         timeout: 300_000,
         stdio: ["pipe", "pipe", "pipe"],
-        env: { ...process.env, ORT_DISABLE_TELEMETRY: "1" },
+        env: pythonEnv,
       },
     );
 

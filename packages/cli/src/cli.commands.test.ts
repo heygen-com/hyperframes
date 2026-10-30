@@ -19,6 +19,7 @@ function commandLoaderBlock(): string {
 
 // Vite cannot resolve a template-string import, so each listed top-level command is named here.
 const LIST_COMMANDS: Record<string, () => Promise<{ default: unknown }>> = {
+  add: () => import("./commands/add.js"),
   audio: () => import("./commands/audio.js"),
   catalog: () => import("./commands/catalog.js"),
   compare: () => import("./commands/compare.js"),

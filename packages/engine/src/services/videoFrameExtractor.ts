@@ -1188,6 +1188,9 @@ async function extractVideoFramesRangeUnredacted(
     vfFilters.push("format=nv12");
   }
   const samplingAt = vfFilters.length;
+  if (metadata.sampleAspectRatio) {
+    vfFilters.push("scale=trunc(iw*sar/2)*2:ih", "setsar=1");
+  }
   // Each slot takes the last frame starting at or before its time. Ticks of 2 ms or finer
   // first shift half a tick, absorbing container rounding (WebM/MKV use whole ms).
   const samplingFilters = (seek: number): string[] =>

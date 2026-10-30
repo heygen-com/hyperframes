@@ -17,7 +17,6 @@ import addCommand, {
   tagAddJson,
 } from "./add.js";
 import { trackRegistryItemAdded } from "../telemetry/events.js";
-import { CliUsageError } from "../utils/commandResult.js";
 import { trackCommandFailures } from "../utils/command-failure-tracking.js";
 
 // Assert the emitted payload rather than the transport: `shouldTrack()` is
@@ -525,17 +524,17 @@ describe("variable values in the snippet", () => {
   });
 });
 
-describe("add command run() — extra positional arguments", () => {
+describe("add command run() — several names", () => {
   let dir: string;
-  let errorSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     dir = tmp();
-    errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    writeRegistryConfig(dir);
+    mockFetch();
   });
 
   afterEach(() => {
-    errorSpy.mockRestore();
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
     rmSync(dir, { recursive: true, force: true });
   });
@@ -545,22 +544,35 @@ describe("add command run() — extra positional arguments", () => {
     await runCittyCommand(cmd, { rawArgs });
   }
 
-  it("rejects `add a --dir <dir> b c` through the CLI wrapper, before any registry call", async () => {
-    const fetchSpy = vi.fn();
-    vi.stubGlobal("fetch", fetchSpy);
+  it("installs every name in one call and reports them together", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
 
-    await expect(runWrapped(["a", "--dir", dir, "b", "c"])).rejects.toThrow(CliUsageError);
-    expect(fetchSpy).not.toHaveBeenCalled();
-    expect(errorSpy.mock.calls.flat().join(" ")).toContain(
-      "Unexpected extra arguments for hyperframes add: b, c",
-    );
-    expect(errorSpy.mock.calls.flat().join(" ")).toContain("Run add once per item");
+    await runWrapped(["my-block", "--dir", dir, "deprecated-block", "--no-clipboard", "--json"]);
+
+    expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toEqual({
+      ok: true,
+      installed: ["my-block", "deprecated-block"],
+      warnings: expect.any(Array),
+      errors: [],
+    });
+    expect(existsSync(join(dir, "compositions", "my-block.html"))).toBe(true);
+    expect(existsSync(join(dir, "compositions", "deprecated-block.html"))).toBe(true);
   });
 
-  it("does not fire on a normal single-item invocation", async () => {
-    mockFetch();
-    writeRegistryConfig(dir);
+  it("keeps the installs that worked when one name is unknown, and fails the call", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
 
+    await expect(
+      runWrapped(["my-block", "no-such-block", "--dir", dir, "--no-clipboard", "--json"]),
+    ).rejects.toMatchObject({ result: { exitCode: 1 } });
+
+    const out = JSON.parse(String(log.mock.calls[0]?.[0]));
+    expect(out).toMatchObject({ ok: false, installed: ["my-block"] });
+    expect(out.errors).toEqual([{ name: "no-such-block", error: expect.any(String) }]);
+    expect(existsSync(join(dir, "compositions", "my-block.html"))).toBe(true);
+  });
+
+  it("still installs a single name the way it did", async () => {
     await expect(
       runWrapped(["my-block", "--dir", dir, "--no-clipboard", "--json"]),
     ).resolves.toBeUndefined();

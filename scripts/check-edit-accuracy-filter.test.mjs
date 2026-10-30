@@ -204,7 +204,7 @@ const cliCommands = (texts) =>
 function benchInputs() {
   const closure = new Closure();
   const steps = [
-    "build",
+    "edit-accuracy-cli",
     "studio-edit-accuracy",
     "studio-edit-accuracy-retry",
     "studio-edit-accuracy-gate",

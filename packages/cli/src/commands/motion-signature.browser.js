@@ -6,6 +6,8 @@
 (function () {
   const IGNORE_TAGS = new Set(["SCRIPT", "STYLE", "TEMPLATE", "NOSCRIPT", "META", "LINK"]);
   const MEDIA_TAGS = new Set(["CANVAS", "VIDEO", "IMG"]);
+  const COARSE_MEDIA_SAMPLE_SIDE = 8;
+  const LIVENESS_MEDIA_SAMPLE_SIDE = 32;
   const FNV_OFFSET_BASIS = 2166136261;
   const FNV_PRIME = 16777619;
   const LIVENESS_POSITION_BUCKET_PX = 2;
@@ -221,9 +223,10 @@
   }
 
   // Pixel-only media motion (canvas repaint, playing video, same-size <img> swap) is invisible to DOM channels,
-  // so fold in an 8x8 downsample. Unreadable media hashes to a constant; iframe media is a separate document.
+  // so fold in a downsample: fine for liveness (a small sprite moving), coarse for the frozen-sweep guard,
+  // which a wall-clock repaint between seeks would fool. Unreadable media hashes to a constant.
   // fallow-ignore-next-line complexity
-  function mediaPixelChannel(element) {
+  function mediaPixelChannel(element, ctx) {
     if (!MEDIA_TAGS.has(element.tagName)) return "";
     try {
       const rect = element.getBoundingClientRect();
@@ -231,12 +234,14 @@
       const sourceHeight = element.videoHeight || element.height || rect.height;
       if (!sourceWidth || !sourceHeight) return "x";
       const off = document.createElement("canvas");
-      off.width = 8;
-      off.height = 8;
+      const side = ctx && ctx.quantize ? LIVENESS_MEDIA_SAMPLE_SIDE : COARSE_MEDIA_SAMPLE_SIDE;
+      off.width = side;
+      off.height = side;
       const ctx2d = off.getContext("2d");
       if (!ctx2d) return "x";
-      ctx2d.drawImage(element, 0, 0, 8, 8);
-      const data = ctx2d.getImageData(0, 0, 8, 8).data;
+      if (side === LIVENESS_MEDIA_SAMPLE_SIDE) ctx2d.imageSmoothingQuality = "high";
+      ctx2d.drawImage(element, 0, 0, side, side);
+      const data = ctx2d.getImageData(0, 0, side, side).data;
       let hash = 0;
       for (let i = 0; i < data.length; i++) hash = (hash * 31 + data[i]) >>> 0;
       return String(hash);

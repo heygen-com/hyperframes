@@ -54,6 +54,7 @@ import { runRenderSetupWorker } from "../utils/cancellableProcess.js";
 import { formatLintStartupMessage } from "../utils/lintFormat.js";
 import {
   activeServerOnPort,
+  closeServer,
   findPortAndServe,
   scanActiveServers,
   killActiveServers,
@@ -1743,7 +1744,7 @@ export async function runEmbeddedMode(
         .catch(() => {})
         .finally(() => {
           watcher.close();
-          result.server.close(() => resolveRun());
+          void closeServer(result.server).then(resolveRun);
         });
     };
     // `on`, not `once`: a repeat Ctrl+C/SIGTERM while shutdown is running must

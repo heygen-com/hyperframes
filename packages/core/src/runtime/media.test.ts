@@ -2070,6 +2070,83 @@ describe("syncRuntimeMedia", () => {
       expect(el.play).not.toHaveBeenCalled();
     });
 
+    describe("where the browser reports presented frames", () => {
+      // A playing 24 fps video whose presented frames the test hands to the runtime's frame callback.
+      const reportingVideo = () => {
+        const clip = videoClip({ start: 0, end: 10, mediaStart: 0 });
+        const el = clip.el as HTMLVideoElement;
+        Object.defineProperty(el, "paused", { value: false, writable: true, configurable: true });
+        el.pause = vi.fn(() =>
+          Object.defineProperty(el, "paused", { value: true, writable: true, configurable: true }),
+        );
+        const pending: VideoFrameRequestCallback[] = [];
+        el.requestVideoFrameCallback = vi.fn((callback: VideoFrameRequestCallback) => {
+          pending.push(callback);
+          return pending.length;
+        });
+        const present = (mediaTime: number) => {
+          el.currentTime = mediaTime;
+          const frame = { mediaTime } as VideoFrameCallbackMetadata;
+          pending.splice(0).forEach((callback) => callback(0, frame));
+        };
+        return { clip, el, present };
+      };
+
+      it("plays a video in step with the playhead up to the last frame before its out-point", () => {
+        const { clip, el, present } = reportingVideo();
+        el.currentTime = 9.6;
+        tick(clip, 9.6);
+        present(9.9167);
+        el.currentTime = 9.97; // within one sync tolerance of the out-point, its frame not shown yet
+        tick(clip, 9.965);
+        expect(el.pause).not.toHaveBeenCalled();
+        present(9.9583); // the next frame, at 10, is the out-point's
+        expect(el.pause).toHaveBeenCalledTimes(1);
+        tick(clip, 9.99);
+        expect(el.play).not.toHaveBeenCalled();
+      });
+
+      it("holds a video on its last frame before the out-point when that frame is dropped", () => {
+        const { clip, el, present } = reportingVideo();
+        el.currentTime = 9.6;
+        tick(clip, 9.6);
+        present(9.875);
+        present(9.9167); // the frame at 9.9583 is dropped; the next one would be the out-point's
+        expect(el.pause).not.toHaveBeenCalled();
+        el.currentTime = 9.975;
+        tick(clip, 9.975);
+        expect(el.pause).toHaveBeenCalledTimes(1);
+      });
+
+      it("holds a video with an uneven cadence before a long step crosses the out-point", () => {
+        const { clip, el, present } = reportingVideo();
+        el.currentTime = 9.6;
+        tick(clip, 9.6);
+        present(9.8);
+        present(9.8833);
+        present(9.925); // a step as long as the earlier one would land past 10
+        expect(el.pause).toHaveBeenCalledTimes(1);
+      });
+
+      it("plays a held video again once a seek takes the playhead back", () => {
+        const { clip, el, present } = reportingVideo();
+        el.currentTime = 9.6;
+        tick(clip, 9.6);
+        present(9.9167);
+        present(9.9583);
+        expect(el.pause).toHaveBeenCalledTimes(1);
+        el.play = vi.fn(() => {
+          Object.defineProperty(el, "paused", { value: false, writable: true, configurable: true });
+          return Promise.resolve();
+        });
+        tick(clip, 2);
+        expect(el.currentTime).toBe(mediaElementTime(2));
+        expect(el.play).toHaveBeenCalledTimes(1);
+        tick(clip, 2.016);
+        expect(el.pause).toHaveBeenCalledTimes(1);
+      });
+    });
+
     it("keeps a looping video playing when the playhead wraps a lap before it", () => {
       const clip = videoClip({ start: 0, end: 10, mediaStart: 0, loop: true, sourceDuration: 0.4 });
       const el = clip.el;

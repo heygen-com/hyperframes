@@ -67,6 +67,8 @@ export interface LayoutIssue {
   /** `text_occluded` only (0-1): probe-grid share hit by an opaque occluder, or behind a
    * transparent video the most covered word's share under its alpha (layout-audit.browser.js). */
   coveredFraction?: number;
+  /** `text_occluded` only: the global window the element's own clip is on screen. */
+  lifetime?: { start: number; end: number };
   fixHint?: string;
 }
 
@@ -225,6 +227,7 @@ const TEXT_AGNOSTIC_KEY_CODES: ReadonlySet<LayoutIssueCode> = new Set([
 export function collapseStaticLayoutIssues(
   issues: LayoutIssue[],
   totalSampleCount?: number,
+  sampleTimes?: readonly number[],
 ): LayoutIssue[] {
   const groups = new Map<
     string,
@@ -275,6 +278,7 @@ export function collapseStaticLayoutIssues(
       },
       multiSampleRun,
       sampleCount,
+      sampleTimes,
     ),
   );
 }
@@ -305,9 +309,22 @@ function coverTier(issue: LayoutIssue, sampleCount: number): LayoutIssue {
   return (issue.occurrences ?? 1) * 2 >= sampleCount ? issue : { ...issue, severity: "info" };
 }
 
-function tierIssue(issue: LayoutIssue, multiSampleRun: boolean, sampleCount: number): LayoutIssue {
+function tierIssue(
+  issue: LayoutIssue,
+  multiSampleRun: boolean,
+  sampleCount: number,
+  sampleTimes?: readonly number[],
+): LayoutIssue {
   if (multiSampleRun && issue.code === "canvas_covered") return coverTier(issue, sampleCount);
-  return applyPersistenceTier(issue, multiSampleRun);
+  return applyPersistenceTier(issue, multiSampleRun, sampleTimes);
+}
+
+/** An element whose clip spans no more samples than it was caught at was caught for its whole life. */
+function caughtForWholeLifetime(issue: LayoutIssue, sampleTimes?: readonly number[]): boolean {
+  if (!issue.lifetime || !sampleTimes) return false;
+  const { start, end } = issue.lifetime;
+  const sampled = sampleTimes.filter((time) => time >= start && time < end).length;
+  return (issue.occurrences ?? 1) >= sampled;
 }
 
 /**
@@ -322,7 +339,11 @@ function tierIssue(issue: LayoutIssue, multiSampleRun: boolean, sampleCount: num
  * is a parked entrance, not drift. Codes without a promotion rule are left
  * untouched when held — persistence, not the code, decides their tier.
  */
-function applyPersistenceTier(issue: LayoutIssue, multiSampleRun: boolean): LayoutIssue {
+function applyPersistenceTier(
+  issue: LayoutIssue,
+  multiSampleRun: boolean,
+  sampleTimes?: readonly number[],
+): LayoutIssue {
   if (!multiSampleRun) return issue;
   if (!PERSISTENCE_TIERED_CODES.has(issue.code)) return issue;
 
@@ -331,7 +352,7 @@ function applyPersistenceTier(issue: LayoutIssue, multiSampleRun: boolean): Layo
   // lastSeen) — always under the ignore floor, so occurrences <= 1 is a
   // complete (not approximate) test for "held under 250ms".
   if (occurrences <= 1) {
-    return { ...issue, severity: "info" };
+    return caughtForWholeLifetime(issue, sampleTimes) ? issue : { ...issue, severity: "info" };
   }
   if (issue.code === "content_overlap" && isContentOverlapHeldLongEnough(issue, occurrences)) {
     return { ...issue, severity: "error" };

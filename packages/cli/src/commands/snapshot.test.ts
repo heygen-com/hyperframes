@@ -22,6 +22,19 @@ const snapshotState = vi.hoisted(() => ({
   noFfmpeg: false,
 }));
 
+const spawned = vi.hoisted(() => ({ files: [] as string[] }));
+
+vi.mock("../utils/cancellableProcess.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../utils/cancellableProcess.js")>();
+  return {
+    ...actual,
+    runCancellableProcess: (...args: Parameters<typeof actual.runCancellableProcess>) => {
+      spawned.files.push(String(args[0]));
+      return actual.runCancellableProcess(...args);
+    },
+  };
+});
+
 vi.mock("../browser/ffmpeg.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../browser/ffmpeg.js")>();
   return {
@@ -64,6 +77,7 @@ import snapshotCommand, {
   decodeFramesInOnePass,
   extractVideoFrameOrWarn,
   probeContainingSourceFrameSeek,
+  createSourceProbeCache,
   containingSourceFrameIndex,
   computeSnapshotTimes,
   formatSnapshotTimestamp,
@@ -702,6 +716,47 @@ describe("extractVideoFrameToBuffer", () => {
           expect(samePixels(together[i]!, alone!), `the frame at ${time}s`).toBe(true);
         }
         expect(new Set(together.map((png) => png.toString("base64"))).size).toBe(times.length);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.skipIf(noProbe)(
+    "probes a clip once for all the times asked of it, and plans each time as it would alone",
+    async () => {
+      const dir = mkdtempSync(join(tmpdir(), "hf-snapshot-probe-cache-"));
+      try {
+        const clip = join(dir, "clip.mp4");
+        execFileSync(ffmpeg!, [
+          ...["-hide_banner", "-loglevel", "error", "-f", "lavfi"],
+          ...["-i", "testsrc2=d=20:r=25:s=320x180", "-c:v", "libx264", "-g", "50"],
+          ...["-pix_fmt", "yuv420p", clip],
+        ]);
+        const times = Array.from({ length: 40 }, (_, i) => 0.4 + i * 0.47);
+        spawned.files.length = 0;
+        const alone = [];
+        for (const time of times)
+          alone.push(await probeContainingSourceFrameSeek(clip, time, false));
+        const spawnedAlone = spawned.files.length;
+
+        spawned.files.length = 0;
+        const cache = createSourceProbeCache();
+        const horizon = times.at(-1)!;
+        const cached = await Promise.all(
+          times.map((time) =>
+            probeContainingSourceFrameSeek(clip, time, false, { cache, horizon }),
+          ),
+        );
+        expect(cached).toEqual(alone);
+        const probes = spawned.files.filter((file) => file === ffprobe).length;
+        const landings = spawned.files.length - probes;
+        // One stream read and one packet read; a seek landing per keyframe (a keyframe every 2 s), not per time.
+        expect(probes).toBe(2);
+        expect(landings).toBeLessThanOrEqual(2 * Math.ceil(20 / 2));
+        expect(spawned.files.length * 3, "far fewer processes than a probe per time").toBeLessThan(
+          spawnedAlone,
+        );
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }
