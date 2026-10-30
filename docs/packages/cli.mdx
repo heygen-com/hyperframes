@@ -28,6 +28,7 @@ npm install -g hyperframes
 | Bring in source material | [`capture`](#capture), [`media-use`](#media-use), [`transcribe`](#transcribe), [`tts`](#tts), [`remove-background`](#remove-background), [`media-treatment`](#media-treatment), [`beats`](#beats), [`audio`](#audio), [`normalize-audio`](#normalize-audio), [`models`](#models) |
 | Look at it, or share it  | [`preview`](#preview), [`present`](#present-and-play), [`play`](#present-and-play), [`publish`](#publish), [`open`](#open-and-catch-up), [`catch-up`](#open-and-catch-up)                                                        |
 | Find problems            | [`lint`](#lint), [`check`](#check), [`snapshot`](#snapshot), [`keyframes`](#keyframes), [`compare`](#compare-and-grade-compare), [`grade-compare`](#compare-and-grade-compare)                                                   |
+| Measure a video          | [`measure`](#measure), [`diff`](#diff)                                                                                                                                                                                           |
 | Edit from the terminal   | [`timeline`](#timeline), [`history`](#history)                                                                                                                                                                                   |
 | Make a file              | [`render`](#render), [`benchmark`](#benchmark)                                                                                                                                                                                   |
 | Render somewhere else    | [`cloud`](#hyperframes-cloud), [`lambda`](#hyperframes-lambda), [`cloudrun`](#hyperframes-cloudrun)                                                                                                                              |
@@ -1493,6 +1494,66 @@ npx hyperframes grade-compare --for frame.png --luts warm.cube,cool.cube
 | `--baseline` / `--no-baseline` | Include the ungraded frame as an `original` cell (on)    |
 | `--timeout`                    | Render-ready timeout (default 5000 ms)                   |
 | `--json`                       | Machine-readable results                                 |
+
+### `measure`
+
+`measure` reads a video file as numbers: each subcommand prints one JSON
+answer. Use it to see what an original does before rebuilding it, and to compare
+your render with it.
+
+```bash
+npx hyperframes measure events ref.mp4 --map
+npx hyperframes measure box ref.mp4 --start 1 --end 2.4 --roi 300,200,640,400 --track
+```
+
+| Subcommand   | What it measures                                                                     |
+| ------------ | ------------------------------------------------------------------------------------ |
+| `probe`      | Size, frame rate, duration and sound; `--normalize` writes a constant-rate copy      |
+| `cuts`       | Hard cuts and the shots between them                                                 |
+| `events`     | Cuts, flashes, appears, disappears and holds; `--map` adds the sound's onsets        |
+| `frames`     | Frames as pictures: moments, an overview sheet, a range or strips around events      |
+| `trail`      | A window's motion in one picture: onion skin, path and heat map                      |
+| `extract`    | A still or clip cut from the video, cropped to a region, as project media            |
+| `box`        | Where one graphic sits, found by its colour; with `--track`, its moves and eases     |
+| `ink`        | Where text sits in a region, and its height for font size                            |
+| `curve`      | Each move of one element on a flat background, with the closest GSAP ease            |
+| `rhythm`     | Moving share, holds, update rate and each shot's camera                              |
+| `objects`    | Separate elements at one moment and how they are arranged                            |
+| `energy`     | How much two clips move and whether at the same moments                              |
+| `look`       | Brightness, contrast, saturation and warmth, or the ratios against another video     |
+| `track`      | One textured thing (a cursor, a hand) followed frame by frame                        |
+| `flow`       | One element's motion from optical flow, as tweens or against another video           |
+| `face`       | The face's size and place over a window                                              |
+| `sync`       | The lag between a speaker's mouth and their voice                                    |
+| `continuity` | Jumps, flicker and stray shapes your render has and the original does not           |
+
+Every subcommand takes `--help`, with an example that runs as written.
+OpenCV-based subcommands (`track`, `flow`, `face`) download opencv.js once into
+`~/.cache/hyperframes/opencv/`.
+
+### `diff`
+
+`diff` scores a render, or a project captured at the original's frame times,
+against the original frame by frame: SSIM for the whole frame and a 4×4 grid,
+the worst moments as a contact sheet, cuts, duration and sound.
+
+```bash
+npx hyperframes diff ref.mp4 renders/final.mp4 --at 1.2,4.8
+npx hyperframes diff ref.mp4 . --range 2,6
+```
+
+| Flag                                  | Description                                                        |
+| ------------------------------------- | ------------------------------------------------------------------ |
+| `--at`                                | Compare only these seconds                                         |
+| `--range`                             | Compare every frame of `start,end` seconds                         |
+| `--segments`                          | A REVERSE.md with `## S01 · a–b s` sections: a verdict per segment |
+| `--min-mean`, `--min-p05`, `--min-cell` | Pass thresholds (defaults 0.92, 0.85, 0.75)                      |
+| `--worst`                             | Worst moments to show (default 4)                                  |
+| `--sbs`                               | Also write an original \| yours side-by-side video                |
+| `--out`                               | Folder for the sheet and log                                       |
+| `--json`                              | Print one JSON result                                              |
+
+It exits 1 when the comparison does not pass.
 
 ### Deprecated: `validate`, `inspect`, and `layout`
 
