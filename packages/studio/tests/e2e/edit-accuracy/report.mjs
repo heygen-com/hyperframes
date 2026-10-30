@@ -13,7 +13,7 @@ const DROPPED_FRAME_MS = 25;
 const WORK_MS = 8;
 /** A runner whose first cases take a median of over 3x their usual seconds is too slow to measure on. */
 export const SLOW_RUNNER = { cases: 4, multiple: 3 };
-/** The first cases' median multiple of `expected` seconds when it marks a slow runner, else null; the blank-page control misses it. */
+/** First cases' median multiple of `expected` seconds if it marks a slow runner, else null; the control misses it. */
 export function slowRunner(results, expected) {
   if (results.length < SLOW_RUNNER.cases) return null;
   const multiples = results.slice(0, SLOW_RUNNER.cases).map((r) => r.seconds / expected(r));
