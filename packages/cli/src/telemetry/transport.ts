@@ -194,6 +194,8 @@ export function flushSync(): void {
     try {
       unlinkSync(file);
     } catch {}
-    diag.warn(`hyperframes: telemetry was not sent (${error instanceof Error ? error.message : error})`);
+    diag.warn(
+      `hyperframes: telemetry was not sent (${error instanceof Error ? error.message : error})`,
+    );
   }
 }
