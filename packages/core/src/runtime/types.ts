@@ -62,6 +62,7 @@ export type RuntimeStateMessage = {
   currentTime: number;
   ended: boolean;
   isPlaying: boolean;
+  buffering: boolean;
   muted: boolean;
   playbackRate: number;
 };
