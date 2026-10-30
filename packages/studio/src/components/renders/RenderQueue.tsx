@@ -20,6 +20,7 @@ import {
   resolveRenderFormat,
   startConfiguredRender,
   isRenderExportBlocked,
+  type StudioRenderFormat,
 } from "./renderSettings";
 import { GpuEncodingToggle } from "./GpuEncodingToggle";
 import { GifLoopInput, isInvalidGifLoop } from "./GifLoopInput";
@@ -31,7 +32,7 @@ export interface CompositionDimensions {
 }
 
 export type StartRenderHandler = (
-  format: "mp4" | "webm" | "mov" | "gif",
+  format: StudioRenderFormat,
   quality: "draft" | "standard" | "high",
   resolution: ResolutionPreset | "auto",
   fps: 24 | 30 | 60,
@@ -158,7 +159,7 @@ const FORMAT_PANEL_SIZE = { width: 208, height: 210 };
 // for the one-line ui/Tooltip primitive, so this stays a local popover.
 // It renders in a portal because the right panel is overflow-hidden: an
 // in-flow absolute panel gets clipped at the panel edge.
-function FormatInfoTooltip({ format }: { format: "mp4" | "webm" | "mov" | "gif" }) {
+function FormatInfoTooltip({ format }: { format: StudioRenderFormat }) {
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState<FloatingPosition | null>(null);
   const triggerRef = useRef<HTMLDivElement>(null);
@@ -243,7 +244,7 @@ function FormatInfoTooltip({ format }: { format: "mp4" | "webm" | "mov" | "gif" 
             <p className="text-step-10 font-semibold text-text-1 mb-0.5">{info.label}</p>
             <p className="text-step-9 text-text-3 leading-tight">{info.desc}</p>
             <div className="mt-1.5 pt-1.5 border-t border-border">
-              {(["mp4", "mov", "webm", "gif"] as const)
+              {(["mp4", "mov", "webm", "gif", "png-sequence"] as const)
                 .filter((f) => f !== format)
                 .map((f) => (
                   <p key={f} className="text-step-9 text-text-4 leading-relaxed">
@@ -265,7 +266,11 @@ const FORMAT_OPTIONS: SelectOption[] = [
   { value: "mov", label: "MOV (ProRes)" },
   { value: "webm", label: "WebM" },
   { value: "gif", label: "GIF" },
+  { value: "png-sequence", label: "PNG sequence" },
 ];
+
+// MOV (ProRes) and PNG are fixed-quality — the quality selector has no effect.
+const FIXED_QUALITY_FORMATS = new Set<StudioRenderFormat>(["mov", "png-sequence"]);
 
 const QUALITY_OPTIONS: SelectOption[] = [
   { value: "draft", label: "Draft" },
@@ -291,7 +296,7 @@ function FormatExportButton({
   onRecheckFfmpeg: () => void;
 }) {
   const persisted = getPersistedRenderSettings();
-  const [format, setFormat] = useState<"mp4" | "webm" | "mov" | "gif">(persisted.format);
+  const [format, setFormat] = useState<StudioRenderFormat>(persisted.format);
   const [quality, setQuality] = useState<"draft" | "standard" | "high">(persisted.quality);
   const [resolution, setResolution] = useState<RenderScale>("auto");
   const [requestedFps, setFps] = useState<24 | 30 | 60>(persisted.fps);
@@ -308,8 +313,7 @@ function FormatExportButton({
   const missingFfmpeg = ffmpeg && !ffmpeg.ok ? ffmpeg : null;
   const exportBlocked = isRenderExportBlocked(isRendering, missingFfmpeg !== null, invalidGifLoop);
 
-  // MOV (ProRes) is a fixed-quality codec — quality selector has no effect.
-  const showQuality = format !== "mov";
+  const showQuality = !FIXED_QUALITY_FORMATS.has(format);
 
   return (
     <div className="flex flex-col gap-3">

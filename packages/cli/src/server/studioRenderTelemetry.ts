@@ -21,7 +21,8 @@ import type { RenderCpuTelemetryPayload } from "../telemetry/renderCpu.js";
 export interface StudioRenderOpts {
   fps: Fps;
   quality: string;
-  format?: "mp4" | "webm" | "mov" | "gif";
+  /** Output format; Studio requests are constrained to these five. */
+  format?: "mp4" | "webm" | "mov" | "gif" | "png-sequence";
   /** Named canvas preset the Studio request asked for; undefined renders at the composition's native dimensions. */
   outputResolution?: CanvasResolution;
   useGpu?: boolean;

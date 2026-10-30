@@ -104,6 +104,12 @@
       "node": "./dist/helpers/encoderOptions.js",
       "import": "./src/helpers/encoderOptions.ts",
       "types": "./src/helpers/encoderOptions.ts"
+    },
+    "./render-directory-stats": {
+      "bun": "./src/helpers/renderDirectoryStats.ts",
+      "node": "./dist/helpers/renderDirectoryStats.js",
+      "import": "./src/helpers/renderDirectoryStats.ts",
+      "types": "./src/helpers/renderDirectoryStats.ts"
     }
   },
   "publishConfig": {
@@ -169,6 +175,10 @@
       "./encoder-options": {
         "import": "./dist/helpers/encoderOptions.js",
         "types": "./dist/helpers/encoderOptions.d.ts"
+      },
+      "./render-directory-stats": {
+        "import": "./dist/helpers/renderDirectoryStats.js",
+        "types": "./dist/helpers/renderDirectoryStats.d.ts"
       }
     },
     "main": "./dist/index.js",
