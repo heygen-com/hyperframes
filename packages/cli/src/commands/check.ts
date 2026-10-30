@@ -430,9 +430,9 @@ async function executeCheck(
   args: Record<string, unknown>,
   asJson: boolean,
 ): Promise<void> {
-  const project = dependencies.resolveProject(typeof args.dir === "string" ? args.dir : undefined);
   const options = parseCheckOptions(args);
   const goldenOptions = parseGoldenGateArgs(args, options);
+  const project = dependencies.resolveProject(typeof args.dir === "string" ? args.dir : undefined);
   if (!asJson) {
     console.log(`${c.accent("◆")}  Checking ${c.accent(project.name)}`);
   }
