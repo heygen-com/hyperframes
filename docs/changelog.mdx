@@ -9,6 +9,22 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.219"
+  description="Released - 2026-10-30"
+  tags={["Release", "CLI"]}
+>
+On Windows, check, snapshot and render no longer stop with an error about a locked Chrome log file. Render with no output path now saves into the project folder, and normalize-audio no longer makes a quiet clip quieter.
+
+## Fixes
+
+- **CLI:** A locked Chrome debug.log on Windows no longer fails check, snapshot or render ([6874cc289](https://github.com/heygen-com/hyperframes/commit/6874cc289012f31a0c9441d7fff12a277080c077), [#6771](https://github.com/heygen-com/hyperframes/pull/6771)).
+- **CLI:** Normalize-audio never cuts a clip that is quieter than the target ([9c01e2e12](https://github.com/heygen-com/hyperframes/commit/9c01e2e1213f89451b7f19c4883f60899aa8910d), [#6767](https://github.com/heygen-com/hyperframes/pull/6767)).
+- **CLI:** Render with no -o writes to the project's renders folder from any directory ([aa094f385](https://github.com/heygen-com/hyperframes/commit/aa094f385838cbaca4f85036a6cbe5905c88f2ee), [#6766](https://github.com/heygen-com/hyperframes/pull/6766)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.218...v0.8.219).
+</Update>
+
+<Update
   label="HyperFrames v0.8.218"
   description="Released - 2026-10-29"
   tags={["Release", "CLI"]}
