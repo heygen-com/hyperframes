@@ -561,3 +561,11 @@ export function absoluteLoudnessPlan(
     limitedBy,
   };
 }
+
+export type AbsoluteOutcome = "matched" | "held" | "change";
+
+/** What an absolute plan means for the clip: already at the target, stuck short of it by a limit, or worth writing. */
+export function absoluteOutcome(plan: AbsoluteLoudnessPlan, tolerance: number): AbsoluteOutcome {
+  if (Math.abs(plan.changeDb) > tolerance) return "change";
+  return Math.abs(plan.projectedLufs - plan.targetLufs) <= tolerance ? "matched" : "held";
+}

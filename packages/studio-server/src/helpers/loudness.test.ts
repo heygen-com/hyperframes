@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   absoluteLoudnessPlan,
+  absoluteOutcome,
   audioTags,
   loudnessMeasureArgs,
   updateAudioVolume,
@@ -221,5 +222,21 @@ describe("audioTags on hostile markup", () => {
   it("still reads tags written with spaces around the slash and name", () => {
     const html = `< audio id="vo" src="vo.mp3">< / audio><a_b></a_b>`;
     expect(audioTags(html).map((t) => t.id)).toEqual(["vo"]);
+  });
+});
+
+describe("absoluteOutcome", () => {
+  it("calls a clip at the target matched", () => {
+    expect(absoluteOutcome(absoluteLoudnessPlan(track(-16, -6, 1)), 1)).toBe("matched");
+  });
+
+  it("calls a clip a limit cannot move held, not matched", () => {
+    const plan = absoluteLoudnessPlan(track(-25, -0.5), -16);
+    expect(plan.limitedBy).toBe("true-peak");
+    expect(absoluteOutcome(plan, 1)).toBe("held");
+  });
+
+  it("calls a clip that needs a different gain a change", () => {
+    expect(absoluteOutcome(absoluteLoudnessPlan(track(-19.2, -8)), 1)).toBe("change");
   });
 });
