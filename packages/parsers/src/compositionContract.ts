@@ -8,8 +8,7 @@
 
 export const COMPOSITION_CONTRACT_VERSION = 1 as const;
 
-/** The least a split leaves on either side of its cut, in seconds. Timing is written to the millisecond, so a cut
- * closer than this to an edge (a second split at the same playhead) would write a half with no length. */
+/** Least a split leaves either side of its cut (s); timing is written to the ms, so less rounds to a 0-length half. */
 export const SPLIT_BOUNDARY_EPSILON_S = 0.03;
 
 export const COMPOSITION_ATTRIBUTES = Object.freeze({
@@ -226,11 +225,8 @@ function derivedEndsAreConsistent(parsedEnd: number, canonicalEnd: number): bool
 //
 // The compiler (`compileTimingAttrs` in @hyperframes/core) writes
 // `data-end = data-start + data-duration` into the bundled HTML so the runtime
-// can key off a single attribute. That derived attribute is legitimate — it is
-// not a legacy authoring shape. Treating it as `deprecated-end` here made the
-// linter fire `deprecated_data_end` on the compiler's own output whenever
-// StaticGuard re-validated a bundled composition, producing a false-positive
-// cluster reported in the field (n=25+ across cli-feedback crons 61-68).
+// can key off a single attribute. That derived attribute is not a legacy
+// authoring shape, so the compiler's own output is never flagged.
 //
 // We keep `deprecated-end` for the truly legacy shape (see `readLegacyEnd` —
 // `data-end` present without `data-duration`) and for the *conflicting* case
