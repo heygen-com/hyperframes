@@ -51,7 +51,7 @@ describe("shards", () => {
   const seconds = (cases) => cases.reduce((sum, c) => sum + (timings[c.id] ?? 0), 0);
 
   it.each([
-    ["full", 20],
+    ["full", 30],
     ["pr", 15],
   ])(
     "put each %s case in one of %i shards, all within one case's time of each other",
@@ -72,7 +72,7 @@ describe("shards", () => {
 
   // Each shard starts with its slowest cases; 1.68x is the slowest runner seen across 100 merge-queue shards.
   it.each([
-    ["full", 20],
+    ["full", 30],
     ["pr", 15],
   ])(
     "let every %s shard of %i start its slowest cases on a 1.68x runner without a slow stop",
