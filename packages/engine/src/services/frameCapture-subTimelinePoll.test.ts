@@ -294,6 +294,17 @@ describe("authorScriptsMayRegisterTimelines", () => {
     ).toBe(true);
   });
 
+  it("waits on a sub-composition mounted twice, whose hosts carry the authored id", async () => {
+    const html = `<body><div data-composition-id="main"><div data-composition-id="lt__hf1" data-hf-original-composition-id="lt"></div><div data-composition-id="lt__hf2" data-hf-original-composition-id="lt"></div></div><script>window.__timelines["main"] = tl</script><script>fetch("d.json").then(function(){ window.__timelines["lt"] = tl; })</script></body>`;
+    expect(await scan(html, {}, ["main"])).toBe(true);
+  });
+
+  it("answers true for a template-literal registration key", async () => {
+    const html =
+      '<body><div data-composition-id="still"></div><script>var id = "still"; setTimeout(function(){ window.__timelines[`${id}`] = tl; })</script></body>';
+    expect(await scan(html)).toBe(true);
+  });
+
   it("does not wait on a host that opted out or is in the skipped list", async () => {
     const html = `<body><div data-composition-id="x" data-no-timeline></div><script>window.__timelines["x"] = tl</script></body>`;
     expect(await scan(html)).toBe(false);

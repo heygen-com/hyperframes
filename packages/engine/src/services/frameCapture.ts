@@ -2095,8 +2095,7 @@ export async function authorScriptsMayRegisterTimelines(
       if (mayImport(code)) scan.opaque = true;
       if (!code.includes("__timelines")) return;
       scan.mentions = true;
-      const literalKey =
-        /__timelines\s*(?:\[\s*(["'`])((?:(?!\1).)+)\1\s*\]|\.([A-Za-z_$][\w$]*))/g;
+      const literalKey = /__timelines\s*(?:\[\s*(["'])((?:(?!\1).)+)\1\s*\]|\.([A-Za-z_$][\w$]*))/g;
       const rest = code
         .replace(/__timelines\s*=\s*(?:window\.__timelines\s*\|\|\s*)?\{\s*\}/g, "")
         .replace(literalKey, (_m, _q, bracketId, dotId) => {
@@ -2136,12 +2135,13 @@ export async function authorScriptsMayRegisterTimelines(
   const timelines = (window as { __timelines?: Record<string, unknown> }).__timelines ?? {};
   return Array.from(document.querySelectorAll("[data-composition-id]")).some((host) => {
     const id = host.getAttribute("data-composition-id");
+    const authoredId = host.getAttribute("data-hf-original-composition-id") ?? id;
     return (
       id &&
       !host.hasAttribute("data-no-timeline") &&
       !timelines[id] &&
       !skipIds.includes(id) &&
-      ids.includes(id)
+      ids.includes(authoredId ?? id)
     );
   });
 }
