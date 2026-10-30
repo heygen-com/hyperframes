@@ -48,7 +48,10 @@ export function readJsonFlagText(value: string, partialIo: Partial<JsonFlagIO> =
   if (trimmed.startsWith("{") || trimmed.startsWith("[") || isJsonScalar(trimmed)) return value;
   const source = trimmed === "-" ? "stdin" : value;
   try {
-    return trimmed === "-" ? io.readStdin() : io.readFile(value);
+    if (trimmed !== "-") return io.readFile(value);
+    const piped = io.readStdin();
+    if (!piped.trim()) throw new Error("nothing was piped in");
+    return piped;
   } catch (error: unknown) {
     throw new JsonFlagReadError(source, errorText(error));
   }

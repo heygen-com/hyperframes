@@ -35,6 +35,12 @@ describe("readJsonFlag", () => {
     expect(() => readJsonFlag("--grading", "C:\\clips\\grade.json", io)).toThrow(/no such file$/);
   });
 
+  it("says stdin was empty instead of a JSON parse error", () => {
+    expect(() => readJsonFlag("--grading", "-", { ...io, readStdin: () => "\n" })).toThrow(
+      /Could not read --grading: stdin: nothing was piped in/,
+    );
+  });
+
   it("names the flag and path when the file cannot be read", () => {
     expect(() => readJsonFlag("--grading", "missing.json", io)).toThrow(
       /Could not read --grading: missing\.json: ENOENT/,
