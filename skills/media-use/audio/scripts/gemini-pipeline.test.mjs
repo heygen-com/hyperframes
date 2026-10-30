@@ -129,3 +129,138 @@ fs.writeFileSync(path.join(args[args.indexOf('--dir')+1], 'transcript.json'), JS
     });
   }
 }
+
+test("Gemini engine reports a failed transcription instead of silently writing no words", (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "hf-gemini-pipeline-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const bin = join(dir, "bin");
+  mkdirSync(bin);
+  const preload = join(dir, "fetch.mjs");
+  writeFileSync(
+    preload,
+    `
+globalThis.fetch = async () => {
+  const bytes = Buffer.alloc(48);
+  bytes.write('RIFF'); bytes.write('WAVE', 8);
+  return Response.json({status:'completed', steps:[{type:'model_output', content:[
+    {type:'audio', mime_type:'audio/wav', data:bytes.toString('base64')}
+  ]}]});
+};
+`,
+  );
+  // `hyperframes transcribe` without an ASR engine: prints a skip notice and exits 1.
+  writeFileSync(
+    join(bin, "npx"),
+    `#!${process.execPath}\nconsole.error('Captions skipped — whisper-cpp not found');\nprocess.exit(1);\n`,
+    { mode: 0o755 },
+  );
+  writeFileSync(join(bin, "ffprobe"), "#!/bin/sh\necho 1.25\n", { mode: 0o755 });
+  writeFileSync(join(dir, ".env"), "");
+  writeFileSync(
+    join(dir, "audio_request.json"),
+    JSON.stringify({
+      provider: "gemini",
+      lines: [{ id: "intro", text: "Hello there." }],
+      bgm: { mode: "none" },
+    }),
+  );
+  const result = spawnSync(
+    process.execPath,
+    [
+      "--import",
+      preload,
+      new URL("./audio.mjs", import.meta.url).pathname,
+      "--hyperframes",
+      dir,
+      "--only",
+      "tts",
+    ],
+    {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        HEYGEN_CONFIG_DIR: join(dir, "heygen"),
+        HEYGEN_API_KEY: "",
+        HYPERFRAMES_API_KEY: "",
+        GEMINI_API_KEY: "fixture-key",
+        PATH: `${bin}:${process.env.PATH}`,
+      },
+    },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  const meta = JSON.parse(readFileSync(join(dir, "audio_meta.json"), "utf8"));
+  assert.deepEqual(meta.voices[0].words, []);
+  assert.match(
+    result.stdout,
+    /anomalies \(non-fatal\):\n\s+- line intro: no word timings — transcription failed/,
+  );
+});
+
+test("HeyGen engine reports a response without word timings instead of silently writing no words", (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "hf-heygen-pipeline-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const bin = join(dir, "bin");
+  mkdirSync(bin);
+  const preload = join(dir, "fetch.mjs");
+  writeFileSync(
+    preload,
+    `
+globalThis.fetch = async (url) => {
+  if (String(url).endsWith('/voices/speech'))
+    return Response.json({data:{audio_url:'https://media.example.test/a.mp3'}});
+  return new Response(Buffer.alloc(48), {status: 200, headers: {'content-type': 'audio/mpeg'}});
+};
+`,
+  );
+  // The response above has no word_timestamps; the transcription fallback has no ASR engine.
+  writeFileSync(
+    join(bin, "npx"),
+    `#!${process.execPath}\nconsole.error('Captions skipped — whisper-cpp not found');\nprocess.exit(1);\n`,
+    { mode: 0o755 },
+  );
+  writeFileSync(
+    join(bin, "ffmpeg"),
+    `#!${process.execPath}\nrequire('node:fs').writeFileSync(process.argv[process.argv.length - 1], 'wav');\n`,
+    { mode: 0o755 },
+  );
+  writeFileSync(join(bin, "ffprobe"), "#!/bin/sh\necho 1.25\n", { mode: 0o755 });
+  writeFileSync(join(dir, ".env"), "");
+  writeFileSync(
+    join(dir, "audio_request.json"),
+    JSON.stringify({
+      provider: "heygen",
+      lines: [{ id: "intro", text: "Hello there." }],
+      bgm: { mode: "none" },
+    }),
+  );
+  const result = spawnSync(
+    process.execPath,
+    [
+      "--import",
+      preload,
+      new URL("./audio.mjs", import.meta.url).pathname,
+      "--hyperframes",
+      dir,
+      "--only",
+      "tts",
+    ],
+    {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        HEYGEN_CONFIG_DIR: join(dir, "heygen"),
+        HEYGEN_API_BASE: "",
+        HEYGEN_API_KEY: "fixture-key",
+        HYPERFRAMES_API_KEY: "",
+        PATH: `${bin}:${process.env.PATH}`,
+      },
+    },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  const meta = JSON.parse(readFileSync(join(dir, "audio_meta.json"), "utf8"));
+  assert.deepEqual(meta.voices[0].words, []);
+  assert.match(
+    result.stdout,
+    /anomalies \(non-fatal\):\n\s+- line intro: no word timings — transcription failed/,
+  );
+});
