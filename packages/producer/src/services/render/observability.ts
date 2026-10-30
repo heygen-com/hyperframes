@@ -613,9 +613,7 @@ export interface StageStallRule {
   complete?: () => boolean;
   /** Allowed silence once `complete()` holds; defaults to `noProgressMs`. */
   tailMs?: number;
-  /** Where the stage was waiting, appended to the stall message. */
   detail?: () => string | undefined;
-  /** Called as each capture attempt opens, so `detail` never describes an earlier attempt. */
   attemptOpened?: () => void;
 }
 
@@ -645,6 +643,7 @@ const STALL_POLL_MS = 5_000;
 // A trip aborts the open attempt and gives the stage one more window to retry or settle; a trip with
 // no live attempt fails the stage.
 function watchStall(phase: string, rule: StageStallRule) {
+  const detail = rule.detail ?? (() => undefined);
   let last = rule.progress();
   let budgetMs = rule.firstProgressMs;
   let lastChangeAt = Date.now();
@@ -666,7 +665,7 @@ function watchStall(phase: string, rule: StageStallRule) {
         }
         if (current !== last) return restartWindow(rule.noProgressMs);
         if (Date.now() - lastChangeAt < budgetMs) return;
-        const error = new RenderStageStalledError(phase, budgetMs, current, rule.detail?.());
+        const error = new RenderStageStalledError(phase, budgetMs, current, detail());
         if (attempt && !attempt.signal.aborted) {
           attempt.abort(error);
           return restartWindow(rule.noProgressMs);
