@@ -27,7 +27,7 @@ function clip(
   return { clip: made, facts };
 }
 
-/** Plays `seconds` of film in 60 Hz ticks, the video's own clock following the clip's timing; returns the ticks that read frozen. */
+/** Plays `seconds` of film in 60 Hz ticks, the video's clock following its clip's timing; counts the frozen ticks. */
 function playFollowing(made: ReturnType<typeof clip>, from: number, seconds: number) {
   let frozen = 0;
   for (let t = from; t <= from + seconds; t += 1 / 60) {
