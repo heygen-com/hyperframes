@@ -62,13 +62,16 @@ export function mdxStringAttribute(name: string, value: string): string {
  * Text as the plain child of an HTML element in MDX, escaped through character
  * references like mdxStringAttribute: `<`, `{` and `}` would otherwise open
  * markup or an expression, and `&` goes first so its own references survive.
+ * MDX still reads that text as inline markdown, so `\`, backtick, `*`, `_`, `[`,
+ * `]` and `~` become references too: "@_blue_sweater_" stays literal, not italic.
  */
 export function mdxText(value: string): string {
   return value
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/\{/g, "&#123;")
-    .replace(/\}/g, "&#125;");
+    .replace(/\}/g, "&#125;")
+    .replace(/[\\`*_[\]~]/g, (c) => `&#${c.charCodeAt(0)};`);
 }
 
 function payloadPath(kind: ItemKind, name: string): string {
