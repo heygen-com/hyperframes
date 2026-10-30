@@ -278,6 +278,8 @@ export type RuntimePreviewHealthMessage = {
     worstFrameMs: number;
     skippedShare: number;
     waitingShare: number;
+    /** The share of the window a video on screen showed no picture or its clock stood still. */
+    frozenShare: number;
     gapP50Ms: number;
     gapP95Ms: number;
     mode: "play";
