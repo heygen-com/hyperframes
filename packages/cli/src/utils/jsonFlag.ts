@@ -40,7 +40,6 @@ function isJsonScalar(text: string): boolean {
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 export function readJsonFlagText(value: string, partialIo: Partial<JsonFlagIO> = {}): string {
-  // A reader left undefined by the caller must keep its default; a plain spread would let it replace the default.
   const io: JsonFlagIO = {
     readFile: partialIo.readFile ?? defaultIO.readFile,
     readStdin: partialIo.readStdin ?? defaultIO.readStdin,
