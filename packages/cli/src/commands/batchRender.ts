@@ -1,10 +1,10 @@
 import { failCommand } from "../utils/commandResult.js";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { readJsonFileText } from "../utils/jsonFlag.js";
 import { dirname, join, resolve, sep } from "node:path";
 import { c } from "../ui/colors.js";
 import { errorBox } from "../ui/format.js";
 import { normalizeErrorMessage as errorMessage } from "../utils/errorMessage.js";
-import { decodeJsonText } from "../utils/jsonFlag.js";
 import {
   loadProjectVariableSchema,
   reportVariableIssues,
@@ -242,7 +242,7 @@ function reportBatchVariableIssues(
 
 export function prepareBatchRender(options: PrepareBatchRenderOptions): PreparedBatchRender {
   const batchPath = resolve(options.batchPath);
-  const read = options.readFile ?? ((path: string) => decodeJsonText(readFileSync(path)));
+  const read = options.readFile ?? readJsonFileText;
   let raw: string;
   try {
     raw = read(batchPath);
