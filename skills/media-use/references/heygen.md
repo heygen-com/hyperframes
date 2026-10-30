@@ -1,6 +1,6 @@
 # HeyGen from the HyperFrames CLI
 
-`media-use generate`, `transcribe --engine heygen` and `analyze` call HeyGen directly with the HyperFrames sign-in; they need no `heygen` CLI. Every paid call carries a key derived from what it asks, so running the same command again picks up the same job instead of paying twice, and each job is logged in the project's `.hyperframes/heygen-jobs.jsonl`.
+`media-use generate`, `transcribe --engine heygen` and `analyze` call HeyGen directly with the HyperFrames sign-in; they need no `heygen` CLI. Every paid call carries a key derived from what it asks, so running the same command again picks up the same job instead of paying twice (a failed or refused one is sent as a new job), and each job is logged in the project's `.hyperframes/heygen-jobs.jsonl`.
 
 ## Signing in
 

@@ -88,6 +88,42 @@ describe("runJob", () => {
     });
   });
 
+  it("sends a failed or refused job again as a new one, and picks a finished one up", async () => {
+    const keys: (string | null)[] = [];
+    const run = (key: string, answers: Response[]) => {
+      vi.stubGlobal("fetch", async (_url: string, init: RequestInit) => {
+        if (init.method === "POST") keys.push(new Headers(init.headers).get("Idempotency-Key"));
+        return answers.shift()!;
+      });
+      return runJob("/v3/x", {}, key, (id) => `/v3/x/${id}`, { intervalMs: 1 });
+    };
+    const failed = () => [
+      reply(200, { data: { id: "j", status: "pending" } }),
+      reply(200, { data: { id: "j", status: "failed", failure_code: "generation_failed" } }),
+    ];
+    const done = () => [reply(200, { data: { id: "j", status: "completed" } })];
+
+    await expect(run("hf-fails", failed())).rejects.toMatchObject({
+      fix: "fix the request it names, then run again",
+    });
+    await expect(run("hf-fails", failed())).rejects.toThrow("generation_failed");
+    await run("hf-fails", done());
+    await run("hf-fails", done());
+    expect(keys).toEqual(["hf-fails", "hf-fails-1", "hf-fails-2", "hf-fails-2"]);
+
+    keys.length = 0;
+    await run("hf-works", done());
+    await run("hf-works", done());
+    expect(keys).toEqual(["hf-works", "hf-works"]);
+
+    keys.length = 0;
+    await expect(
+      run("hf-broke", [reply(402, { error: { code: "hf_usage_exhausted" } })]),
+    ).rejects.toThrow("out of HyperFrames credits");
+    await run("hf-broke", done());
+    expect(keys).toEqual(["hf-broke", "hf-broke-1"]);
+  });
+
   it("keys the same request the same way", () => {
     expect(idempotencyKey("/v3/x", ["a", Buffer.from("b")])).toBe(
       idempotencyKey("/v3/x", ["a", Buffer.from("b")]),

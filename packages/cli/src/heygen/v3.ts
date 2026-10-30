@@ -1,9 +1,10 @@
 // HeyGen's v3 job routes through the hyperframes credential chain (API key, host token or OAuth, refreshed). A paid
-// call carries an Idempotency-Key derived from what it asks for, so running the same command again picks up the
-// same job instead of paying for a second one; every job is logged to .hyperframes/heygen-jobs.jsonl.
+// call carries an Idempotency-Key derived from what it asks for, so the same command again picks up the same job
+// rather than paying twice; a failed job is asked again. Every job is logged to .hyperframes/heygen-jobs.jsonl.
 import { createHash } from "node:crypto";
-import { appendFileSync, mkdirSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { configDir } from "../auth/paths.js";
 import { resolveCloudAuthHeaders, resolveCloudBaseUrl } from "../cloud/auth.js";
 import { Fix } from "../measure/media.js";
 import { pageUrl } from "./plan.js";
@@ -27,6 +28,28 @@ export function idempotencyKey(route: string, parts: readonly (string | Buffer)[
   return `hf-${h.digest("hex").slice(0, 40)}`;
 }
 
+class Refused extends Fix {}
+
+const failedKeysFile = () => join(configDir(), "heygen-failed-keys");
+
+function failedKeys(): Set<string> {
+  const file = failedKeysFile();
+  return new Set(existsSync(file) ? readFileSync(file, "utf8").split("\n").filter(Boolean) : []);
+}
+
+function markFailed(key: string): void {
+  mkdirSync(configDir(), { recursive: true });
+  appendFileSync(failedKeysFile(), `${key}\n`);
+}
+
+/** The key to send: `key` itself, or past every key whose job failed or was refused, so a retry is a new job. */
+function liveKey(key: string): string {
+  const failed = failedKeys();
+  let sent = key;
+  for (let n = 1; failed.has(sent); n++) sent = `${key}-${n}`;
+  return sent;
+}
+
 /** A refused call says what to do: sign in, subscribe, add credits, or change the request. `estimate` is the
  *  caller's own price for the call (what `--plan` prints), named when HeyGen does not say what the step needs. */
 // fallow-ignore-next-line complexity
@@ -41,36 +64,36 @@ function refusal(status: number, body: unknown, estimate?: number): Fix {
   const balance = err.balance === undefined ? "" : `, balance ${String(err.balance)}`;
   // The fix is the one line the agent relays as printed; the problem says how to wait for the person.
   if (/hf_subscription_required/i.test(code))
-    return new Fix(
+    return new Refused(
       `this is a HyperFrames Pro feature; nothing was charged. Run \`npx hyperframes billing subscribe\`: it opens the page and waits`,
       `Subscribe: ${url ?? pageUrl("plans", { needed })}`,
     );
   if (/hf_usage_exhausted/i.test(code))
-    return new Fix(
+    return new Refused(
       `out of HyperFrames credits (this step needs ${needs}${balance}); nothing was charged. Run \`npx hyperframes billing top-up${needed ? ` --needed ${needed}` : ""}\`: it opens the page and waits`,
       `Add credits: ${url ?? pageUrl("credits", { needed })}`,
     );
   if (/api_key_required/i.test(code))
-    return new Fix(
+    return new Refused(
       "this HeyGen feature is not available with this sign-in yet; nothing was charged",
       "continue without this step",
     );
   if (status === 401 || status === 403)
-    return new Fix(
+    return new Refused(
       `HeyGen refused the credential (${status}${message ? `: ${message}` : ""})`,
       "npx hyperframes auth login",
     );
   if (status === 402 || /insufficient|credit|usage_exhausted|quota/i.test(code))
-    return new Fix(
+    return new Refused(
       `HeyGen says there is not enough credit (${code || status})`,
       "top up at https://app.heygen.com, or sign in with npx hyperframes auth login to use the plan's allowance",
     );
   if (/content_policy/i.test(code))
-    return new Fix(
+    return new Refused(
       `HeyGen declined the content: ${message || code}`,
       "reword the prompt once without the flagged part",
     );
-  return new Fix(
+  return new Refused(
     `HeyGen ${status}${code ? ` ${code}` : ""}: ${message || "request refused"}`,
     "fix the request it names, then run again",
   );
@@ -160,8 +183,15 @@ export async function runJob(
   opts: RunOptions = {},
 ): Promise<Job> {
   const started = Date.now();
-  let job = await call("POST", route, body, key, opts.credits);
-  if (opts.log) log(opts.log, { route, id: job.id, key, status: job.status });
+  const sent = liveKey(key);
+  let job: Job;
+  try {
+    job = await call("POST", route, body, sent, opts.credits);
+  } catch (err) {
+    if (err instanceof Refused) markFailed(sent);
+    throw err;
+  }
+  if (opts.log) log(opts.log, { route, id: job.id, key: sent, status: job.status });
   while (RUNNING.has(job.status.toLowerCase())) {
     if (Date.now() - started > (opts.timeoutMs ?? 15 * 60_000))
       throw new Fix(
@@ -172,10 +202,12 @@ export async function runJob(
     await new Promise((r) => setTimeout(r, opts.intervalMs ?? 5000));
     job = await call("GET", pollRoute(job.id));
   }
-  if (opts.log) log(opts.log, { route, id: job.id, key, status: job.status });
-  if (!/^(completed|succeeded|success|done)$/i.test(job.status))
+  if (opts.log) log(opts.log, { route, id: job.id, key: sent, status: job.status });
+  if (!/^(completed|succeeded|success|done)$/i.test(job.status)) {
+    markFailed(sent);
     throw refusal(422, {
       error: { code: job.failure_code ?? job.status, message: job.failure_message ?? "" },
     });
+  }
   return job;
 }
