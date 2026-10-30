@@ -1066,6 +1066,19 @@ describe("openProjectHistory", () => {
     });
   });
 
+  it("leaves the project record alone when opening a folder it already records, so a read writes nothing", async () => {
+    const { history, projectDir, historyRoot } = await project({ "index.html": "v1" });
+    await history.close();
+    const record = join(historyRoot, history.projectId, "project.json");
+    const before = statSync(record);
+
+    const again = await open(projectDir, historyRoot);
+    await again.close();
+
+    const after = statSync(record);
+    expect([after.ino, after.mtimeMs]).toEqual([before.ino, before.mtimeMs]);
+  });
+
   describe("a history 0.8.78 wrote", () => {
     const fixture = join(import.meta.dirname, "__fixtures__", "history-0.8.78");
     const fixtureId = readFileSync(join(fixture, "history-id"), "utf-8").trim();
