@@ -906,7 +906,7 @@ function moveStagedInstallIntoCache(
     if (replaced) renameSync(aside, target);
     throw err;
   }
-  if (replaced) rmSync(aside, { recursive: true, force: true });
+  if (replaced) removeLeftover(aside);
   return join(target, relative(staged.path, staged.executablePath));
 }
 
@@ -926,9 +926,17 @@ function removeInstallLeftovers(): boolean {
     throw err;
   }
   const leftovers = names.filter(isInstallLeftover);
-  for (const name of leftovers)
-    rmSync(join(CACHE_ROOT_DIR, name), { recursive: true, force: true });
+  for (const name of leftovers) removeLeftover(join(CACHE_ROOT_DIR, name));
   return leftovers.length > 0;
+}
+
+// A running Chrome keeps its debug.log open and Windows refuses to unlink it; the next sweep retries.
+function removeLeftover(path: string): void {
+  try {
+    rmSync(path, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+  } catch (err) {
+    if (!isErrno(err, "EBUSY") && !isErrno(err, "EPERM")) throw err;
+  }
 }
 
 export async function sweepKilledInstalls(): Promise<void> {

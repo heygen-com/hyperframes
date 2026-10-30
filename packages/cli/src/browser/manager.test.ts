@@ -739,6 +739,38 @@ describe("findBrowser — cache resolution", () => {
     }
   });
 
+  it("does not fail a run when Windows holds a leftover's debug.log", async () => {
+    const home = useRealCacheHome();
+    const root = join(home, ".cache", "hyperframes");
+    const held = join(root, ".chrome-replaced-dead");
+    vi.doMock("node:fs", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("node:fs")>();
+      return {
+        ...actual,
+        rmSync: (path: string, options?: Parameters<typeof actual.rmSync>[1]) => {
+          if (!String(path).includes(".chrome-replaced-")) return actual.rmSync(path, options);
+          throw Object.assign(
+            new Error(`EBUSY: resource busy or locked, unlink '${path}/debug.log'`),
+            { code: "EBUSY" },
+          );
+        },
+      };
+    });
+    installPuppeteerBrowsersMock({
+      installImpl: async ({ cacheDir, buildId }) => writeStagedInstall(cacheDir, buildId, "fresh"),
+    });
+    try {
+      const { ensureBrowser, sweepKilledInstalls } = await import("./manager.js");
+      mkdirSync(held, { recursive: true });
+      await expect(sweepKilledInstalls()).resolves.toBeUndefined();
+      await expect(ensureBrowser({ force: true })).resolves.toMatchObject({ source: "download" });
+      await ensureBrowser({ force: true });
+      expect(existsSync(held)).toBe(true);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
   it("serializes concurrent force downloads so they never install at the same time", async () => {
     const downloadedBinary = join(HF_CACHE, "chrome-headless-shell", "force-downloaded");
     const paths = installFsMocks({
