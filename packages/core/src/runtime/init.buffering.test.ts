@@ -48,15 +48,16 @@ function playPodcast(voiceStart = 0) {
 
   initSandboxRuntimeModular();
   window.__player!.play();
-  const playFor = (seconds: number) => {
-    for (let ms = 0; ms < seconds * 1000; ms += 1000 / 60) {
-      now += 1000 / 60;
-      const due = [...frames.values()];
-      frames.clear();
-      for (const cb of due) cb(now);
-    }
+  const step = (ms: number) => {
+    now += ms;
+    const due = [...frames.values()];
+    frames.clear();
+    for (const cb of due) cb(now);
   };
-  return { music, voice, voiceReady, states, playFor };
+  const playFor = (seconds: number) => {
+    for (let ms = 0; ms < seconds * 1000; ms += 1000 / 60) step(1000 / 60);
+  };
+  return { music, voice, voiceReady, states, playFor, step };
 }
 
 it("a track not ready pauses everything with Buffering, and resumes when it can play", () => {
@@ -75,12 +76,12 @@ it("a track not ready pauses everything with Buffering, and resumes when it can 
   expect(states.at(-1)).toEqual({ isPlaying: true, buffering: false });
 });
 
-it("asks a clip that falls due without data to play, so it fetches, before holding for it", () => {
-  const { voice, states, playFor } = playPodcast(0.5);
+it("holds on the frame a slow tick skips into a clip with no data, after asking it to play", () => {
+  const { voice, states, playFor, step } = playPodcast(0.5);
 
-  playFor(1);
-  expect(window.__player!.getTime()).toBeGreaterThanOrEqual(0.5);
-  expect(window.__player!.getTime()).toBeLessThan(0.6);
+  playFor(0.4);
+  expect(voice.play).not.toHaveBeenCalled();
+  step(250);
   expect(voice.play).toHaveBeenCalled();
   expect(states.at(-1)).toEqual({ isPlaying: true, buffering: true });
 });
