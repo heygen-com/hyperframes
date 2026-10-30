@@ -737,7 +737,8 @@ function lintMultipleRootCompositions(projectDir: string): HyperframeLintFinding
     );
     const rootCompositions: string[] = [];
     for (const file of rootHtmlFiles) {
-      if (file === "caption-skin.html") continue;
+      // Companion pages an app opens on their own beside index.html; never mounted, never rendered.
+      if (file === "caption-skin.html" || file === "podcast-lanes.html") continue;
       const content = readFileSync(join(projectDir, file), "utf-8");
       if (/data-composition-id/i.test(content)) {
         rootCompositions.push(file);
