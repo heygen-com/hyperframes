@@ -391,7 +391,7 @@ export async function captionImagesWithGemini(
         ai = new GoogleGenAI({
           vertexai: true,
           project: vertexProject,
-          location: process.env.HYPERFRAMES_VERTEX_LOCATION || "us-central1",
+          location: process.env.HYPERFRAMES_VERTEX_LOCATION || "global",
           googleAuthOptions: { credentials },
         });
       } else {

@@ -524,7 +524,7 @@ describe("captionImagesWithGemini — Vertex AI provider", () => {
     expect(clientOptions[0]).toMatchObject({
       vertexai: true,
       project: "prefab-kit-000000",
-      location: "us-central1",
+      location: "global",
       googleAuthOptions: { credentials: JSON.parse(SERVICE_ACCOUNT) },
     });
     expect(clientOptions[0]).not.toHaveProperty("apiKey");
