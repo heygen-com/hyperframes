@@ -29,6 +29,26 @@ const FIXED_INPUT = {
 };
 
 describe("buildDockerRunArgs", () => {
+  it.each([
+    [true, "true"],
+    [false, "false"],
+    [undefined, undefined],
+  ] as const)("forwards low-memory override %s as a Docker env value", (value, expected) => {
+    const args = buildDockerRunArgs({
+      ...FIXED_INPUT,
+      options: { ...BASE, lowMemoryMode: value },
+    });
+    const envValue = expected && `PRODUCER_LOW_MEMORY_MODE=${expected}`;
+
+    if (!envValue) {
+      expect(args.some((arg) => arg.startsWith("PRODUCER_LOW_MEMORY_MODE="))).toBe(false);
+      return;
+    }
+    const index = args.indexOf(envValue);
+    expect(args.slice(index - 1, index + 1)).toEqual(["-e", envValue]);
+    expect(index).toBeLessThan(args.indexOf(FIXED_INPUT.imageTag));
+  });
+
   it("preserves an explicit page motion blur override inside Docker", () => {
     const args = buildDockerRunArgs({
       ...FIXED_INPUT,

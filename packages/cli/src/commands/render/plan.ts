@@ -174,6 +174,7 @@ export interface RenderPlan {
   hdrMode: HdrMode;
   pageSideCompositing: boolean;
   experimentalFastCapture: boolean;
+  lowMemoryMode?: boolean;
   variablesArg?: string;
   variablesFileArg?: string;
   strictVariables: boolean;
@@ -214,6 +215,25 @@ function positiveInteger(raw: string, title: string, message: string, min = 1): 
     failUsage();
   }
   return parsed;
+}
+
+function resolveLowMemoryModeOverride(
+  explicit: boolean | undefined,
+  envValue = process.env.PRODUCER_LOW_MEMORY_MODE,
+): boolean | undefined {
+  if (explicit !== undefined) return explicit;
+  switch (envValue?.toLowerCase()) {
+    case "true":
+    case "on":
+    case "1":
+      return true;
+    case "false":
+    case "off":
+    case "0":
+      return false;
+    default:
+      return undefined;
+  }
 }
 
 const HF_ENV_OVERRIDE_RE = /^(HF|HYPERFRAMES)_/;
@@ -398,6 +418,7 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
       : undefined;
 
   const environment: Record<string, string> = {};
+  const lowMemoryMode = resolveLowMemoryModeOverride(args["low-memory-mode"]);
   if (args["page-side-compositing"] === false) environment.HF_PAGE_SIDE_COMPOSITING = "false";
   if (args["low-memory-mode"] != null) {
     environment.PRODUCER_LOW_MEMORY_MODE = args["low-memory-mode"] ? "true" : "false";
@@ -595,6 +616,7 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
     hdrMode: args.sdr ? "force-sdr" : args.hdr ? "force-hdr" : "auto",
     pageSideCompositing: args["page-side-compositing"] !== false,
     experimentalFastCapture: args["experimental-fast-capture"] === true,
+    lowMemoryMode,
     variablesArg: args.variables,
     variablesFileArg: args["variables-file"],
     strictVariables: args["strict-variables"] ?? false,

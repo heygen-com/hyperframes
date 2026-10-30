@@ -550,6 +550,7 @@ export interface RenderOptions {
   pageSideCompositing?: boolean;
   /** EXPERIMENTAL. drawElementImage frame capture (--experimental-fast-capture). */
   experimentalFastCapture?: boolean;
+  lowMemoryMode?: boolean;
   /**
    * Puppeteer `page.goto()` timeout for the entry HTML, in milliseconds.
    * When omitted, the engine default (60s) applies. Surfaced as
@@ -806,8 +807,59 @@ async function registerRenderOutputOrWarn(projectDir: string, outputPath: string
   );
 }
 
-// Inherited minor finding (CRAP 37.1, cyclomatic 11). This PR only added
-// `pageNavigationTimeoutMs` to the options forwarded to `buildDockerRunArgs`.
+export function buildDockerArgsForRender(input: {
+  projectDir: string;
+  outputPath: string;
+  options: RenderOptions;
+  imageTag: string;
+  platform: string;
+  hostStdoutIsTty?: boolean;
+}): string[] {
+  const { projectDir, outputPath, options, imageTag, platform, hostStdoutIsTty } = input;
+  const outputDir = dirname(outputPath);
+  const outputFilename = basename(outputPath);
+  return buildDockerRunArgs({
+    imageTag,
+    projectDir: resolve(projectDir),
+    outputDir: resolve(outputDir),
+    outputFilename,
+    platform,
+    hostStdoutIsTty,
+    options: {
+      fps: options.fps,
+      quality: options.quality,
+      format: options.format,
+      gifLoop: options.gifLoop,
+      hlsSegmentSeconds: options.hlsSegmentSeconds,
+      workers: options.workers,
+      gpu: options.gpu,
+      browserGpu: options.browserGpuMode === "hardware",
+      hdrMode: options.hdrMode,
+      crf: options.crf,
+      vp9CpuUsed: options.vp9CpuUsed,
+      videoBitrate: options.videoBitrate,
+      keyframeIntervalSeconds: options.keyframeIntervalSeconds,
+      proresProfile: options.proresProfile,
+      maxBitrate: options.maxBitrate,
+      bufferSize: options.bufferSize,
+      videoFrameFormat: options.videoFrameFormat,
+      pageMotionBlur: options.pageMotionBlur,
+      quiet: options.quiet,
+      variables: options.variables,
+      entryFile: options.entryFile,
+      outputResolution: options.outputResolutionRaw ?? options.outputResolution,
+      pageSideCompositing: options.pageSideCompositing,
+      debug: options.debug,
+      bestEffort: options.bestEffort,
+      experimentalFastCapture: options.experimentalFastCapture,
+      lowMemoryMode: options.lowMemoryMode,
+      pageNavigationTimeoutMs: options.pageNavigationTimeoutMs,
+      protocolTimeoutMs: options.protocolTimeout,
+      playerReadyTimeoutMs: options.playerReadyTimeout,
+    },
+  });
+}
+
 // fallow-ignore-next-line complexity
 async function renderDocker(
   projectDir: string,
@@ -837,46 +889,13 @@ async function renderDocker(
     failCommand();
   }
 
-  const outputDir = dirname(outputPath);
-  const outputFilename = basename(outputPath);
-  const dockerArgs = buildDockerRunArgs({
+  const dockerArgs = buildDockerArgsForRender({
+    projectDir,
+    outputPath,
+    options,
     imageTag,
-    projectDir: resolve(projectDir),
-    outputDir: resolve(outputDir),
-    outputFilename,
     platform,
     hostStdoutIsTty: process.stdout.isTTY === true,
-    options: {
-      fps: options.fps,
-      quality: options.quality,
-      format: options.format,
-      gifLoop: options.gifLoop,
-      hlsSegmentSeconds: options.hlsSegmentSeconds,
-      workers: options.workers,
-      gpu: options.gpu,
-      browserGpu: options.browserGpuMode === "hardware",
-      hdrMode: options.hdrMode,
-      crf: options.crf,
-      vp9CpuUsed: options.vp9CpuUsed,
-      videoBitrate: options.videoBitrate,
-      keyframeIntervalSeconds: options.keyframeIntervalSeconds,
-      proresProfile: options.proresProfile,
-      maxBitrate: options.maxBitrate,
-      bufferSize: options.bufferSize,
-      videoFrameFormat: options.videoFrameFormat,
-      pageMotionBlur: options.pageMotionBlur,
-      quiet: options.quiet,
-      variables: options.variables,
-      entryFile: options.entryFile,
-      outputResolution: options.outputResolutionRaw ?? options.outputResolution,
-      pageSideCompositing: options.pageSideCompositing,
-      debug: options.debug,
-      bestEffort: options.bestEffort,
-      experimentalFastCapture: options.experimentalFastCapture,
-      pageNavigationTimeoutMs: options.pageNavigationTimeoutMs,
-      protocolTimeoutMs: options.protocolTimeout,
-      playerReadyTimeoutMs: options.playerReadyTimeout,
-    },
   });
 
   if (!options.quiet) {

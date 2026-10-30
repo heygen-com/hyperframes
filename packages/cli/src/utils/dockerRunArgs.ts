@@ -66,6 +66,7 @@ export interface DockerRenderOptions {
   pageSideCompositing?: boolean;
   /** EXPERIMENTAL. drawElementImage frame capture; forwarded as `--experimental-fast-capture`. */
   experimentalFastCapture?: boolean;
+  lowMemoryMode?: boolean;
   /**
    * Puppeteer page-navigation timeout, in milliseconds. Forwarded to the
    * in-container CLI as `--browser-timeout <seconds>` (the CLI takes
@@ -129,6 +130,9 @@ export function buildDockerRunArgs(input: DockerRunArgsInput): string[] {
     // `.debug` at dirname(PRODUCER_RENDERS_DIR), so `/output/renders` maps to
     // `/output/.debug/<job id>` instead of a disposable container path.
     ...(options.debug ? ["-e", "PRODUCER_RENDERS_DIR=/output/renders"] : []),
+    ...(options.lowMemoryMode !== undefined
+      ? ["-e", `PRODUCER_LOW_MEMORY_MODE=${String(options.lowMemoryMode)}`]
+      : []),
     imageTag,
     "/project",
     "--output",

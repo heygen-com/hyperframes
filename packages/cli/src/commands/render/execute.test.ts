@@ -6,7 +6,7 @@ import { createRenderPlan } from "./plan.js";
 import { batchRowRenderOptions, executeRenderPlan, renderOptionsFromPlan } from "./execute.js";
 import * as manager from "../../browser/manager.js";
 import * as system from "../../telemetry/system.js";
-import { wantsDesktopHint } from "../render.js";
+import { buildDockerArgsForRender, wantsDesktopHint } from "../render.js";
 
 describe("renderOptionsFromPlan", () => {
   let projectDir: string;
@@ -22,8 +22,45 @@ describe("renderOptionsFromPlan", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
     rmSync(projectDir, { recursive: true, force: true });
   });
+
+  it.each([
+    ["explicit enabled", true, undefined, true],
+    ["explicit disabled", false, undefined, false],
+    ["omitted", undefined, undefined, undefined],
+    ["environment fallback", undefined, "on", true],
+    ["explicit flag precedence", false, "true", false],
+  ] as const)(
+    "carries %s low-memory configuration through single and batch Docker argv",
+    (_label, flagValue, envValue, expected) => {
+      vi.stubEnv("PRODUCER_LOW_MEMORY_MODE", envValue);
+      const plan = createRenderPlan({
+        dir: projectDir,
+        docker: true,
+        "low-memory-mode": flagValue,
+      });
+
+      const optionSets = [
+        renderOptionsFromPlan(plan, undefined, undefined),
+        batchRowRenderOptions(plan, undefined),
+      ];
+      for (const options of optionSets) {
+        expect(options.lowMemoryMode).toBe(expected);
+        const dockerArgs = buildDockerArgsForRender({
+          projectDir,
+          outputPath: join(projectDir, "out.mp4"),
+          options,
+          imageTag: "hyperframes-renderer:test",
+          platform: "linux/amd64",
+        });
+        expect(dockerArgs.filter((arg) => arg.startsWith("PRODUCER_LOW_MEMORY_MODE="))).toEqual(
+          expected === undefined ? [] : [`PRODUCER_LOW_MEMORY_MODE=${String(expected)}`],
+        );
+      }
+    },
+  );
 
   it.each([undefined, "off"] as const)(
     "preserves page motion blur %s for single and batch renders",

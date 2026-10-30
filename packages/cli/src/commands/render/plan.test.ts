@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, parse, resolve } from "node:path";
 import { CliUsageError } from "../../utils/commandResult.js";
-import { createRenderPlan } from "./plan.js";
+import { applyRenderEnvironment, createRenderPlan } from "./plan.js";
 
 describe("createRenderPlan", () => {
   let projectDir: string;
@@ -19,6 +19,7 @@ describe("createRenderPlan", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
     rmSync(projectDir, { recursive: true, force: true });
   });
 
@@ -260,17 +261,60 @@ describe("createRenderPlan", () => {
     ).toThrow(CliUsageError);
   });
 
-  it("keeps environment changes declarative until execution", () => {
-    const previous = process.env.PRODUCER_LOW_MEMORY_MODE;
-    delete process.env.PRODUCER_LOW_MEMORY_MODE;
-    try {
-      const plan = createRenderPlan({ dir: projectDir, "low-memory-mode": true });
-      expect(plan.environment).toEqual({ PRODUCER_LOW_MEMORY_MODE: "true" });
+  it.each([true, false])(
+    "keeps an explicit low-memory override of %s declarative until execution",
+    (value) => {
+      vi.stubEnv("PRODUCER_LOW_MEMORY_MODE", undefined);
+      const plan = createRenderPlan({ dir: projectDir, "low-memory-mode": value });
+
+      expect(plan.lowMemoryMode).toBe(value);
+      expect(plan.environment).toEqual({ PRODUCER_LOW_MEMORY_MODE: String(value) });
       expect(process.env.PRODUCER_LOW_MEMORY_MODE).toBeUndefined();
-    } finally {
-      if (previous === undefined) delete process.env.PRODUCER_LOW_MEMORY_MODE;
-      else process.env.PRODUCER_LOW_MEMORY_MODE = previous;
-    }
+    },
+  );
+
+  it.each([true, false])("keeps local low-memory override %s in process env", (value) => {
+    vi.stubEnv("PRODUCER_LOW_MEMORY_MODE", undefined);
+    const plan = createRenderPlan({
+      dir: projectDir,
+      docker: false,
+      "low-memory-mode": value,
+    });
+
+    applyRenderEnvironment(plan);
+
+    expect(process.env.PRODUCER_LOW_MEMORY_MODE).toBe(String(value));
+  });
+
+  it("leaves low-memory mode automatic when neither the flag nor env is set", () => {
+    vi.stubEnv("PRODUCER_LOW_MEMORY_MODE", undefined);
+    const plan = createRenderPlan({ dir: projectDir });
+
+    expect(plan.lowMemoryMode).toBeUndefined();
+    expect(plan.environment).not.toHaveProperty("PRODUCER_LOW_MEMORY_MODE");
+  });
+
+  it.each([
+    ["true", true],
+    ["false", false],
+  ] as const)("captures PRODUCER_LOW_MEMORY_MODE=%s as %s", (envValue, expected) => {
+    vi.stubEnv("PRODUCER_LOW_MEMORY_MODE", envValue);
+
+    expect(createRenderPlan({ dir: projectDir }).lowMemoryMode).toBe(expected);
+  });
+
+  it("leaves an unrecognized low-memory environment value to automatic detection", () => {
+    vi.stubEnv("PRODUCER_LOW_MEMORY_MODE", "sometimes");
+
+    expect(createRenderPlan({ dir: projectDir }).lowMemoryMode).toBeUndefined();
+  });
+
+  it("gives an explicit low-memory flag precedence over the environment", () => {
+    vi.stubEnv("PRODUCER_LOW_MEMORY_MODE", "true");
+
+    expect(createRenderPlan({ dir: projectDir, "low-memory-mode": false }).lowMemoryMode).toBe(
+      false,
+    );
   });
 
   it("resolves a relative frame-cache directory into the execution environment", () => {
