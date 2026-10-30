@@ -8,7 +8,7 @@ export interface JsonFlagIO {
 }
 
 // PowerShell 5.1 writes redirected files as UTF-16LE with a BOM and pipes UTF-8 with one.
-export function decodeJsonText(bytes: Buffer): string {
+function decodeJsonText(bytes: Buffer): string {
   if (bytes[0] === 0xff && bytes[1] === 0xfe)
     return bytes.toString("utf16le").replace(/^\uFEFF/, "");
   return bytes.toString("utf8").replace(/^\uFEFF/, "");
