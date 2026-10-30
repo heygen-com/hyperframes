@@ -69,7 +69,7 @@ import {
   UrlDownloadError,
   writeUrlDownloadTelemetry,
 } from "../utils/urlDownloader.js";
-import { runFfmpeg, type RunFfmpegResult } from "../utils/runFfmpeg.js";
+import { ffmpegStatsReader, runFfmpeg, type RunFfmpegResult } from "../utils/runFfmpeg.js";
 import {
   isFfmpegFilterAvailable,
   isFfmpegHwaccelAvailable,
@@ -292,6 +292,7 @@ export interface ExtractionOptions {
   collectProbeFailures?: boolean;
   /** Extract only these runs of output frames, named as a full extraction names them. CFR only. */
   frameRanges?: readonly FrameRange[];
+  onProgress?: (progress: { planned?: number; done?: number }) => void;
   /** A short decode of a remote source, only to count its frames: it waits on the network, so it runs wider. */
   tailProbe?: boolean;
   /**
@@ -990,6 +991,18 @@ interface SegmentedExtraction {
   segments: readonly FrameRange[];
   gate: typeof inExtractionSlot;
   runOptions: { signal?: AbortSignal; timeout: number };
+  onProgress?: ExtractionOptions["onProgress"];
+}
+
+function framesWrittenReader(onProgress: ExtractionOptions["onProgress"]) {
+  if (!onProgress) return undefined;
+  let seen = 0;
+  const read = ffmpegStatsReader(({ frames }) => {
+    if (frames === undefined || frames <= seen) return;
+    onProgress({ done: frames - seen });
+    seen = frames;
+  });
+  return (chunk: string) => read(chunk);
 }
 
 /** Split runs so no single ffmpeg process extracts more than `segmentFrames` frames. */
@@ -1044,6 +1057,7 @@ async function runSegmentedExtraction(job: SegmentedExtraction): Promise<RunFfmp
             {
               ...job.runOptions,
               signal,
+              onStderr: framesWrittenReader(job.onProgress),
               timeout: stallTimeoutMs(
                 job.runOptions.timeout,
                 await leadInSecondsUnlessAborted(videoPath, seek, signal),
@@ -1258,11 +1272,13 @@ async function extractVideoFramesRangeUnredacted(
             segmentFrames,
           ),
           runOptions,
+          onProgress: options.onProgress,
         })
       : inExtractionSlot(
           async () =>
             runFfmpeg([...hwaccel, ...args, ...filterArgsFor(startTime), ...encodeArgs], {
               ...runOptions,
+              onStderr: framesWrittenReader(options.onProgress),
               timeout: stallTimeoutMs(
                 ffmpegProcessTimeout,
                 options.finalFrameOnly
@@ -1273,6 +1289,11 @@ async function extractVideoFramesRangeUnredacted(
             }),
           signal,
         );
+  options.onProgress?.({
+    planned: options.frameRanges
+      ? options.frameRanges.reduce((sum, range) => sum + range.frames, 0)
+      : totalFrames,
+  });
   let processResult = await extract(decodeWithVideoToolbox ? ["-hwaccel", "videotoolbox"] : []);
   const ffmpegExitedFailing =
     processResult.terminationReason === "exit" &&

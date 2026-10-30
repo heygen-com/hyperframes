@@ -319,6 +319,29 @@ export function reportFrameProgress(
   });
 }
 
+const lastExtractReportAt = new WeakMap<RenderJob, number>();
+
+/** Frames ffmpeg has written for the source videos, 10% to 20%. */
+export function reportExtractProgress(
+  job: RenderJob,
+  done: number,
+  total: number,
+  onProgress: ProgressCallback | undefined,
+): void {
+  if (total <= 0) return;
+  const frames = Math.min(done, total);
+  reportThrottled(
+    lastExtractReportAt,
+    job,
+    "Extracting video frames",
+    10 + (10 * frames) / total,
+    onProgress,
+    frames === total,
+    { code: "extract_video", done: frames, total },
+    "preprocessing",
+  );
+}
+
 const lastEncodeReportAt = new WeakMap<RenderJob, number>();
 
 /** Frames ffmpeg has encoded, from where capture left the bar up to 90%; same cadence as capture. */

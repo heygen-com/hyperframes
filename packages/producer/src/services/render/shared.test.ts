@@ -6,6 +6,7 @@ import {
   forgetWorkerPhases,
   reportAssembleProgress,
   reportEncodeProgress,
+  reportExtractProgress,
   reportFrameProgress,
   reportWorkerStartup,
   resolveBrowserMediaEnd,
@@ -103,6 +104,23 @@ describe("stage progress for machines", () => {
     reportFrameProgress(j, "Capturing frame 3/3", 70, onProgress, 3, 3);
     expect(seen).toEqual([
       { stage: "Capturing frame 3/3", progress: 70, code: "capture", done: 3, total: 3 },
+    ]);
+  });
+
+  it("moves extract_video from 10 to 20 by frames done", () => {
+    const j = job();
+    const { seen, onProgress } = heard(j);
+    reportExtractProgress(j, 0, 40, onProgress);
+    reportExtractProgress(j, 40, 40, onProgress);
+    expect(seen).toEqual([
+      { stage: "Extracting video frames", progress: 10, code: "extract_video", done: 0, total: 40 },
+      {
+        stage: "Extracting video frames",
+        progress: 20,
+        code: "extract_video",
+        done: 40,
+        total: 40,
+      },
     ]);
   });
 

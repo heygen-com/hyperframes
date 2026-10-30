@@ -3472,6 +3472,7 @@ async function executeRenderPipeline(input: {
           assertNotAborted,
           // Local staging can use links; distributed plan() alone requires real copies.
           materializeSymlinks: false,
+          onProgress,
         }),
     );
     const {
