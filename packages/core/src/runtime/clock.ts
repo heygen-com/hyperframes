@@ -89,13 +89,11 @@ export class TransportClock {
   ): number | null {
     const { el, compositionStart, mediaStart, rate } = source;
     if (el.paused || !Number.isFinite(el.currentTime)) return null;
-    // WebKit leaves a just-played or just-seeked element's time where it was for a while. Holding the
-    // playhead on it, then seeking it, stops the picture at every cut; steering owns a lagging element.
+    // WebKit leaves a just-played or just-seeked element's time put; waiting on it stops the picture at a cut.
     if (el.seeking) return null;
     const spec = rate ?? 1;
     const time = timeAtSourceTime(spec, el.currentTime - mediaStart) + compositionStart;
     if (time >= this._lastNow) return time;
-    // Only a starved element holds the playhead; a lag steering can close is not a reason to stop.
     const wrapped = el.loop && this._lastNow - time > timeAtSourceTime(spec, el.duration) / 2;
     return !wrapped && el.readyState < HAVE_FUTURE_DATA ? this._lastNow : null;
   }

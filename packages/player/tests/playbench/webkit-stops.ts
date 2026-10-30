@@ -120,7 +120,8 @@ const cuts = edit.takes.slice(1).map((t) => t.start);
 const origin = `http://127.0.0.1:${server.port}`;
 
 async function drivePlaywright() {
-  const { webkit } = await import("playwright-core");
+  const name = "playwright-core"; // not a dependency: installed by hand, so kept out of the type check
+  const { webkit } = (await import(name)) as { webkit: any }; // oxlint-disable-line no-explicit-any
   const browser = await webkit.launch();
   console.log(`WebKit ${browser.version()}`);
   for (let i = 0; i < RUNS; i++) {
