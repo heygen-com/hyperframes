@@ -77,7 +77,7 @@ export function describeRejectedPythonOverride(): string | null {
   return `HYPERFRAMES_PYTHON="${override}" was rejected: ${validation.reason}`;
 }
 
-/** The environment for every Python the CLI runs: a foreign PYTHONPATH would make it import another interpreter's packages. */
+/** Environment for the Python the CLI runs: a foreign PYTHONPATH would load another interpreter's packages. */
 export function pythonEnv(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   const { PYTHONPATH: _foreign, ...env } = process.env;
   return { ...env, ...extra };
