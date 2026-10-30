@@ -127,6 +127,29 @@ describe("motionContextToDocs", () => {
     expect(opacity?.times).toEqual([0, 0.0686, 0.2273, 1]);
   });
 
+  it("does not read a short key from inside a longer property name", () => {
+    const snippet =
+      '<motion.div initial={{ opacity: 0, y: 120, }} animate={{ opacity: [0, 0, 1, 1], y: [120, 120, 0, 0], }} transition={{ opacity: { duration: 4.5, times: [0, 0.0444, 0.1333, 1], ease: ["linear", "easeOut", "linear"], repeat: Infinity }, y: { duration: 4.5, times: [0, 0.0444, 0.2222, 1], ease: ["linear", "easeOut", "linear"], repeat: Infinity }, }} />';
+    const out = motionContextToDocs(
+      {
+        nodes: [
+          {
+            nodeId: "1:2",
+            nodeName: "Box",
+            codeSnippets: { motionDev: snippet },
+          },
+        ],
+      },
+      { selectorFor: () => "#box" },
+    );
+    const y = out[0]?.tracks.find((t) => t.property === "y");
+    const opacity = out[0]?.tracks.find((t) => t.property === "opacity");
+    expect(y?.values).toEqual([120, 120, 0, 0]);
+    expect(y?.times).toEqual([0, 0.0444, 0.2222, 1]);
+    expect(opacity?.values).toEqual([0, 0, 1, 1]);
+    expect(opacity?.times).toEqual([0, 0.0444, 0.1333, 1]);
+  });
+
   it("preserves bezier easing arrays and applies the requested repeat", () => {
     const knob = docs(2)[4]?.tracks[0];
     expect(knob?.ease[0]).toEqual([0.539, 0, 0.312, 0.995]);

@@ -64,11 +64,25 @@ function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/** Index of `marker` that is not the tail of a longer identifier.
+ * `y: {` must not hit the `y` in `opacity: {`. */
+function indexOfMarker(src: string, marker: string): number {
+  let from = 0;
+  while (from < src.length) {
+    const at = src.indexOf(marker, from);
+    if (at === -1) return -1;
+    const prev = at === 0 ? "" : src[at - 1];
+    if (!prev || !/[\w$]/.test(prev)) return at;
+    from = at + 1;
+  }
+  return -1;
+}
+
 /** Extract the balanced `{...}` body following `marker` in `src`. Brace
  * counting does not skip string literals — sound for motion.dev output
  * (numeric arrays + named eases, never arbitrary strings containing `}`). */
 function balancedBlock(src: string, marker: string): string | null {
-  const at = src.indexOf(marker);
+  const at = indexOfMarker(src, marker);
   if (at === -1) return null;
   const start = src.indexOf("{", at + marker.length - 1);
   if (start === -1) return null;
@@ -85,7 +99,7 @@ function balancedBlock(src: string, marker: string): string | null {
 
 /** Extract a balanced `[...]` immediately after `key:` inside `src`. */
 function arrayAfterKey(src: string, key: string): string | null {
-  const re = new RegExp(`${escapeRegExp(key)}\\s*:\\s*\\[`);
+  const re = new RegExp(`(?<![\\w$])${escapeRegExp(key)}\\s*:\\s*\\[`);
   const m = re.exec(src);
   if (!m) return null;
   const start = m.index + m[0].length - 1;
@@ -101,7 +115,7 @@ function arrayAfterKey(src: string, key: string): string | null {
 }
 
 function scalarAfterKey(src: string, key: string): string | null {
-  const m = new RegExp(`${escapeRegExp(key)}\\s*:\\s*("[^"]*"|[\\w.]+)`).exec(src);
+  const m = new RegExp(`(?<![\\w$])${escapeRegExp(key)}\\s*:\\s*("[^"]*"|[\\w.]+)`).exec(src);
   return m?.[1] ?? null;
 }
 
