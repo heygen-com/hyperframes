@@ -18,7 +18,6 @@ export type PlaybackHealthInput = {
   hidden: boolean;
   /** A playing video is waiting for data. */
   waiting: boolean;
-  /** A video on screen shows no picture, or its clock stands still while the film's runs (frozenPicture.ts). */
   frozen?: boolean;
   /** Anything that changes how heavy a frame is to draw (window size, zoom). */
   layoutKey: string;
