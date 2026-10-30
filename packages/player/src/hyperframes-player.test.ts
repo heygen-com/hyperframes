@@ -4237,7 +4237,10 @@ describe("HyperframesPlayer asset-ready gate", () => {
   });
 
   it("shows Buffering while the runtime holds playback for a track, and hides it on resume", async () => {
-    const player = await createConnectedPlayer();
+    const player = (await createConnectedPlayer()) as PlayerInternal & {
+      _onMessage: (event: MessageEvent) => void;
+      paused: boolean;
+    };
     const showSpy = vi.spyOn(player.shaderLoader, "showAssetsLoading");
     const post = (buffering: boolean) =>
       player._onMessage(
