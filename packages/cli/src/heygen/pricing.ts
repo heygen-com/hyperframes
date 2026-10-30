@@ -16,7 +16,6 @@ export interface Price {
 const UNIT = 1 / 60;
 const charged = (usd: number) => Math.ceil(usd / UNIT - 1e-9) * UNIT;
 const cents = (usd: number) => Math.ceil(charged(usd) * 100 - 1e-9) / 100;
-// HyperFrames rows are mostly 1,000 credits per list dollar; video has its own rows (HF_VIDEO_* below).
 const HF_CREDITS_PER_USD = 1000;
 const at = (list: number, basis: string, credits = list * HF_CREDITS_PER_USD): Price => ({
   usd: cents(list),

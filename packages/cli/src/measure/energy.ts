@@ -3,8 +3,7 @@
 import { meanAbsDiff, pearson, ratioOf, readClip, round, type Clip, type Roi } from "./media.js";
 
 const ENERGY_RATE = 12;
-// Mean grey levels a frame changes by: below this a still shot differs only by encoder noise.
-const STILL = 0.1;
+const STILL_SHOT_GREY_LEVELS = 0.1;
 
 export function energyCurve(clip: Clip, roi?: Roi): number[] {
   const { frames } = readClip(clip, { fps: ENERGY_RATE, width: 270, gray: true, roi });
@@ -36,7 +35,10 @@ export function compareEnergy(ref: number[], yours: number[]): EnergyComparison 
   return {
     r: round(best[0] === -2 ? 0 : best[0]),
     lag_s: round(best[1] / ENERGY_RATE, 2),
-    peak_ratio: round(ratioOf(Math.max(...yours, 0), Math.max(...ref, 0), STILL), 2),
-    mean_ratio: round(ratioOf(mean(yours), mean(ref), STILL), 2),
+    peak_ratio: round(
+      ratioOf(Math.max(...yours, 0), Math.max(...ref, 0), STILL_SHOT_GREY_LEVELS),
+      2,
+    ),
+    mean_ratio: round(ratioOf(mean(yours), mean(ref), STILL_SHOT_GREY_LEVELS), 2),
   };
 }
