@@ -37,6 +37,18 @@ describe("createRenderPlan", () => {
     expect(Object.isFrozen(plan.environment)).toBe(true);
   });
 
+  it("reads variables from --variables-file and from a path given to --variables", async () => {
+    const { resolveVariablesArg } = await import("../../utils/variables.js");
+    const file = join(projectDir, "vars.json");
+    writeFileSync(file, '{"title":"Hello"}');
+    for (const args of [{ "variables-file": file }, { variables: file }]) {
+      const plan = createRenderPlan({ dir: projectDir, ...args });
+      expect(resolveVariablesArg(plan.variablesArg, plan.variablesFileArg)).toEqual({
+        title: "Hello",
+      });
+    }
+  });
+
   // GIF's Netscape frame-delay field is stored in centiseconds, so fps above
   // 30 rounds to visually-indistinguishable delay values. createRenderPlan
   // clamps and flags it so both the CLI console warning (present.ts) and
