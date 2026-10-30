@@ -95,7 +95,7 @@ export class TransportClock {
     const spec = rate ?? 1;
     const time = timeAtSourceTime(spec, el.currentTime - mediaStart) + compositionStart;
     if (time >= this._lastNow) return time;
-    // Only a starved element holds the playhead (a lag it can steer out is not a reason to stop); a wrapped loop is not behind.
+    // Only a starved element holds the playhead; a lag steering can close is not a reason to stop.
     const wrapped = el.loop && this._lastNow - time > timeAtSourceTime(spec, el.duration) / 2;
     return !wrapped && el.readyState < HAVE_FUTURE_DATA ? this._lastNow : null;
   }
