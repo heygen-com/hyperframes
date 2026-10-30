@@ -9,6 +9,40 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.221"
+  description="Released - 2026-10-30"
+  tags={["Release", "CLI", "Studio", "Registry"]}
+>
+Snapshots of video projects take less time because each clip is read once for all the times you ask for. Preview now stops at once when you press Ctrl+C.
+
+## Fixes
+
+- **CLI:** Snapshot probes each video clip once for all the times it is asked for ([b3c47a36a](https://github.com/heygen-com/hyperframes/commit/b3c47a36a2bd8dff5bbf3753e3e6fe97d013c42b), [#6798](https://github.com/heygen-com/hyperframes/pull/6798)).
+- **CLI:** Preview stops at once on Ctrl+C after Studio was open ([3e795ece0](https://github.com/heygen-com/hyperframes/commit/3e795ece0fec8ef5331058566893f85a50605070), [#6782](https://github.com/heygen-com/hyperframes/pull/6782)).
+- **CLI:** Add takes several names in one call, and adopted audio is labelled voice or sfx ([7f7a4af7c](https://github.com/heygen-com/hyperframes/commit/7f7a4af7c48b736fb678d83047ab76af7ca7983a), [#6791](https://github.com/heygen-com/hyperframes/pull/6791)).
+- **CLI:** Check no longer flags a hidden scene child or a small animated sprite ([8c36f3254](https://github.com/heygen-com/hyperframes/commit/8c36f3254f0b98aa097f9b02d229d69596a592c2), [#6783](https://github.com/heygen-com/hyperframes/pull/6783)).
+- **Core:** Long cut-list edits play every cut without dropped or late frames ([9fd90d23c](https://github.com/heygen-com/hyperframes/commit/9fd90d23c4cc1208965c2179cd25a6d871246df9), [#6785](https://github.com/heygen-com/hyperframes/pull/6785)).
+- **CLI:** Hyperframes docs motion-blur shows the motion blur guide ([21eefcd00](https://github.com/heygen-com/hyperframes/commit/21eefcd006f895ee41641de65392b56c7b7e6c0a), [#6779](https://github.com/heygen-com/hyperframes/pull/6779)).
+
+## Docs & Examples
+
+- **Studio App:** Pending video edits have no cap of 10 ([f43bec76e](https://github.com/heygen-com/hyperframes/commit/f43bec76e7ceef13e65b930496f7e1f66779250b), [#6797](https://github.com/heygen-com/hyperframes/pull/6797)).
+
+## Catalog
+
+- **CLI:** A missing registry item names the closest ones, and a blocked browser says how to allow it ([47a1a9206](https://github.com/heygen-com/hyperframes/commit/47a1a92064cef4cf6602199ece1b32b8c16a22ae), [#6799](https://github.com/heygen-com/hyperframes/pull/6799)).
+- **Registry:** Caption components keep the last phrase until its last word ends ([32c01c99a](https://github.com/heygen-com/hyperframes/commit/32c01c99a1bbe12e329c4d5812995b07600a1a8a), [#6792](https://github.com/heygen-com/hyperframes/pull/6792)).
+
+## Internal
+
+- **Studio:** Edit accuracy screenshots are viewport-only and taken in the confirmation re-runs ([36cf990d9](https://github.com/heygen-com/hyperframes/commit/36cf990d99a6c585c2d28219823134b5743e5ee1), [#6795](https://github.com/heygen-com/hyperframes/pull/6795)).
+- **CLI:** A failed late-image snapshot reports why it failed ([27e16becb](https://github.com/heygen-com/hyperframes/commit/27e16becb1e9888a83df0b664a4fcdb932ce4c71), [#6793](https://github.com/heygen-com/hyperframes/pull/6793)).
+- **Studio:** Split edit accuracy into 15 PR shards packed by measured case time ([2a9dd0598](https://github.com/heygen-com/hyperframes/commit/2a9dd059830437403c755c49fd465b570b8c6d6b), [#6784](https://github.com/heygen-com/hyperframes/pull/6784)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.220...v0.8.221).
+</Update>
+
+<Update
   label="HyperFrames v0.8.220"
   description="Released - 2026-10-30"
   tags={["Release", "Core"]}
