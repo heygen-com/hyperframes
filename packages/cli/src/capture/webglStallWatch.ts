@@ -4,11 +4,7 @@ const PROBE_EVERY_MS = 4_000;
 const PROBE_TIMEOUT_MS = 8_000;
 const MISSES = 2;
 
-/**
- * Software GL can starve a page after it loaded, so each of the capture's evaluates then waits out the protocol
- * timeout. Probe the page from outside; two probes in a row that go unanswered call `onStall` once. An error still
- * counts as an answer: only a silent page is stalled.
- */
+/** Calls `onStall` once when two probes in a row get no answer from the page; an error still counts as an answer. */
 export function watchWebglStall(
   cdp: CDPSession,
   onStall: () => void,
