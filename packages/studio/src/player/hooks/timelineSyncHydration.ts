@@ -225,8 +225,6 @@ export function buildTimelineElementsFromClips(
         hostEl,
       });
     });
-  // One occurrence index per selector for the whole walk: per clip, each lookup queried the document and
-  // resolved the source file of every match, which is quadratic in clips sharing a class.
   return iframeDoc ? withSelectorIndexPass(iframeDoc, build) : build();
 }
 

@@ -236,7 +236,6 @@ export function parseTimelineFromDOM(
   rootDuration: number,
   timelines?: Readonly<Record<string, TimelineLike>>,
 ): TimelineElement[] {
-  // One occurrence index per selector for the whole scan; see buildTimelineElementsFromClips.
   return withSelectorIndexPass(doc, () => scanTimelineFromDOM(doc, rootDuration, timelines));
 }
 

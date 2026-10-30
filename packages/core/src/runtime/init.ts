@@ -2948,8 +2948,6 @@ export function initSandboxRuntimeModular(): void {
   // A clip's first visible style pass is slow; playing, each hidden clip gets it once just before its start.
   const clipsNeverStyledVisible = new Set<StylableElement>();
   const clipsStyledVisible = new WeakSet<Element>();
-  // Starts of those clips, resolved once per timing revision: resolving every one on every tick built a
-  // resolver and walked each ancestor chain per clip, which at thousands of clips filled the main thread.
   let neverStyledStarts = { revision: -1, starts: new Map<StylableElement, number>() };
   const neverStyledStart = (el: StylableElement, revision: number): number => {
     if (neverStyledStarts.revision !== revision)
