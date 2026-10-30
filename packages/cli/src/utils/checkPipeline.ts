@@ -2124,7 +2124,7 @@ function shapeLayoutSection(
   browser: CheckBrowserResult,
   options: CheckOptions,
 ): CheckReport["layout"] {
-  const shaped = shapeLayoutFindings(issues, options, browser.layoutSamples.length);
+  const shaped = shapeLayoutFindings(issues, options, browser.layoutSamples);
   return {
     ...section(shaped.findings),
     duration: browser.duration,
@@ -2140,11 +2140,11 @@ function shapeLayoutSection(
 function shapeLayoutFindings(
   issues: AnchoredLayoutIssue[],
   options: CheckOptions,
-  totalSampleCount?: number,
+  sampleTimes?: readonly number[],
 ): { findings: AnchoredLayoutIssue[]; totalIssueCount: number; truncated: boolean } {
   const deduped = dedupeLayoutIssues(issues);
   const all = options.collapseStatic
-    ? collapseStaticLayoutIssues(deduped, totalSampleCount)
+    ? collapseStaticLayoutIssues(deduped, sampleTimes?.length, sampleTimes)
     : deduped;
   const anchored = all.map(ensureAnchoredLayoutIssue);
   let grouped = anchored;

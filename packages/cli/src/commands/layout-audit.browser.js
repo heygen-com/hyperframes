@@ -1605,6 +1605,26 @@
     return false;
   }
 
+  // The global window [start, end) the element's own timed clip is on screen, or null when any timing
+  // up the chain is not a plain number.
+  function clipLifetime(element) {
+    let offset = 0;
+    let own = null;
+    for (let current = element; current; current = current.parentElement) {
+      if (!current.hasAttribute("data-start")) continue;
+      const start = Number(current.getAttribute("data-start"));
+      if (!Number.isFinite(start)) return null;
+      if (own === null) {
+        const duration = Number(current.getAttribute("data-duration"));
+        if (!(duration > 0)) return null;
+        own = { start, end: start + duration };
+      } else {
+        offset += start;
+      }
+    }
+    return own && { start: own.start + offset, end: own.end + offset };
+  }
+
   // text_occluded: atomic labels flag at any hit; prose needs coveredFraction >= proseCoverageFloor (default 0.15).
   function occludedTextIssue(element, time, proseCoverageFloor, matteResults) {
     if (hasAllowOcclusionFlag(element)) return null;
@@ -1708,6 +1728,8 @@
       )
         continue;
       // Last: an opaque check reads a video's frame, which a backdrop under its content never needs.
+      const matte = matteFrameFor(cover);
+      if (matte && matteCoverage([rootRect], [matte]) < COVER_CANVAS_SHARE) continue;
       const rect = toRect(cover.getBoundingClientRect());
       if (!isOpaqueOccluder(cover, rect.left + rect.width / 2, rect.top + rect.height / 2))
         continue;
@@ -2550,7 +2572,11 @@
         if (clipped) issues.push(clipped);
         issues.push(...textOverflowIssues(element, root, rootRect, time, tolerance, clipped));
         const occluded = occludedTextIssue(element, time, proseCoverageFloor, matteResults);
-        if (occluded) issues.push(occluded);
+        if (occluded) {
+          const lifetime = clipLifetime(element);
+          if (lifetime) occluded.lifetime = lifetime;
+          issues.push(occluded);
+        }
         const invisible = invisibleTextIssue(element, time);
         if (invisible) issues.push(invisible);
       }

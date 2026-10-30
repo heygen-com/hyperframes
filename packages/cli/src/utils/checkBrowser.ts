@@ -2006,6 +2006,10 @@ function assignOptionalLayoutFields(issue: LayoutIssue, value: Record<string, un
   if (overflow) issue.overflow = overflow;
   const coveredFraction = numberValue(value, "coveredFraction");
   if (coveredFraction !== null) issue.coveredFraction = coveredFraction;
+  const lifetime = recordField(value, "lifetime");
+  const start = lifetime ? numberValue(lifetime, "start") : null;
+  const end = lifetime ? numberValue(lifetime, "end") : null;
+  if (start !== null && end !== null) issue.lifetime = { start, end };
 }
 
 function recordField(value: unknown, key: string): Record<string, unknown> | null {

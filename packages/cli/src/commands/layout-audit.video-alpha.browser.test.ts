@@ -43,6 +43,8 @@ interface VideoScene {
   /** Report each element's text as one line box, as Chromium does, rather than one per word. */
   wholeLine?: boolean;
   textAttrs?: string;
+  /** Size each text element to its first word's box instead of the whole frame. */
+  sizedText?: boolean;
 }
 
 function domRect({ left, top, width, height }: Box): DOMRect {
@@ -109,6 +111,18 @@ function installVideoScene(scene: VideoScene): { getImageData: ReturnType<typeof
   );
   for (const element of Array.from(document.querySelectorAll("*"))) {
     vi.spyOn(element, "getBoundingClientRect").mockReturnValue(domRect(FRAME));
+  }
+
+  if (scene.sizedText) {
+    for (const [id, words] of Object.entries(scene.text)) {
+      const first = words[0];
+      const element = document.getElementById(id);
+      if (first && element) {
+        vi.spyOn(element, "getBoundingClientRect").mockReturnValue(
+          domRect(wordBox(first.left, first.width)),
+        );
+      }
+    }
   }
 
   const wordRect = (node: Node | null, start: number, end: number): DOMRect[] => {
@@ -202,6 +216,8 @@ function runAudit(): AuditIssue[] {
 const occlusionOf = (issues: AuditIssue[], id: string) =>
   issues.find((issue) => issue.code === "text_occluded" && issue.selector === `#${id}`);
 
+const coverOf = (issues: AuditIssue[]) => issues.find((issue) => issue.code === "canvas_covered");
+
 const SHIP = { ship: [{ word: "SHIP", left: 800, width: 200 }] };
 const subjectLeftOf = (edge: number) => (x: number) => (x < edge ? 255 : 0);
 
@@ -211,6 +227,20 @@ describe("layout-audit.browser text behind a <video>", () => {
     document.body.innerHTML = "";
     Reflect.deleteProperty(document, "elementsFromPoint");
     Reflect.deleteProperty(window, "__hyperframesLayoutAudit");
+  });
+
+  it("does not call a cutout that is mostly transparent a cover of the canvas", () => {
+    installVideoScene({
+      text: SHIP,
+      sizedText: true,
+      alphaAt: (x) => (x >= 640 && x < 1280 ? 255 : 0),
+    });
+    expect(coverOf(runAudit())).toBeUndefined();
+  });
+
+  it("still calls a fully opaque frame over buried content a cover of the canvas", () => {
+    installVideoScene({ text: SHIP, sizedText: true });
+    expect(coverOf(runAudit())).toMatchObject({ severity: "error", selector: "#clip" });
   });
 
   it("keeps a fully opaque frame occluding like any raster", () => {
