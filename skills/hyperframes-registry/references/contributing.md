@@ -120,7 +120,7 @@ hyperframes render -o preview.mp4
 # Snapshot for visual QA
 hyperframes snapshot --at "1.0,3.0,5.0,7.0"
 
-# Publish to hyperframes.dev for review
+# Publish to hyperframes.studio for review
 npx hyperframes publish
 ```
 
@@ -152,7 +152,7 @@ npx tsx scripts/generate-registry-items.ts
 # 4. Generate catalog docs page
 npx tsx scripts/generate-catalog-pages.ts
 
-# 5. Publish to hyperframes.dev so reviewers can preview
+# 5. Publish to hyperframes.studio so reviewers can preview
 npx hyperframes publish
 
 # 6. Stage everything
@@ -161,9 +161,9 @@ git add registry/{kind}/{name}/ registry/registry.json docs/catalog/
 # 7. Commit
 git commit -m "feat(registry): add {name} — {one sentence}"
 
-# 8. Push and open PR with hyperframes.dev link
+# 8. Push and open PR with hyperframes.studio link
 git push origin feat/registry-{name}
-gh pr create --title "feat(registry): {name}" --body "preview: {hyperframes.dev-url}"
+gh pr create --title "feat(registry): {name}" --body "preview: {hyperframes.studio-url}"
 ```
 
 **If you don't have a GitHub account:** you need one to open a PR. Sign up at https://github.com/signup, then run `gh auth login`.

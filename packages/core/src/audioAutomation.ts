@@ -12,7 +12,7 @@
  */
 
 import { getAudioFxDef, type HfAudioFxChain } from "./audioFx.js";
-import { MAX_AUDIO_GAIN } from "./audioGain.js";
+import { clampAudioGain, gainTimesLane, MAX_AUDIO_GAIN } from "./audioGain.js";
 import { MAX_PLAYBACK_RATE, MIN_PLAYBACK_RATE } from "./playbackRateBounds.js";
 
 export const HF_AUDIO_AUTOMATION_ATTR = "data-automation";
@@ -174,6 +174,55 @@ export const VOLUME_RANGE: AutomationRange = {
   scale: "linear",
   default: 1,
 };
+
+/** Bounded sampling for volume curves drawn as straight pieces by the PCM baker. */
+export function volumeSegmentSampleCount(duration: number): number {
+  return Math.min(4096, Math.max(2, Math.ceil(duration * 30)));
+}
+
+/** Whether the segment leaving `point` bends: by `curve`, or through a `viaX`/`viaY` point. */
+export function isBentSegment(point: Pick<HfAutomationPoint, "curve" | "viaX" | "viaY">): boolean {
+  return Boolean(point.curve) || (point.viaX !== undefined && point.viaY !== undefined);
+}
+
+// With gain played upstream, leave only the lane's share of the capped product here.
+export function gainedVolume(v: number, gain: number, gainAhead = false): number {
+  const g = clampAudioGain(gain);
+  const product = gainTimesLane(g, v);
+  return gainAhead && g > 0 ? product / g : product;
+}
+
+// Split straight segments where their product reaches the ceiling; sample bent crossings.
+export function gainedVolumePoints(
+  lane: HfAutomationLane,
+  gain: number,
+  gainAhead = false,
+): HfAutomationPoint[] {
+  const out: HfAutomationPoint[] = [];
+  const points = lane.points;
+  const g = clampAudioGain(gain);
+  for (let i = 0; i < points.length; i += 1) {
+    const a = points[i]!;
+    const b = points[i + 1];
+    const crosses = b !== undefined && (g * a.v - MAX_AUDIO_GAIN) * (g * b.v - MAX_AUDIO_GAIN) < 0;
+    if (!crosses) {
+      out.push({ ...a, v: gainedVolume(a.v, gain, gainAhead) });
+      continue;
+    }
+    out.push({ t: a.t, v: gainedVolume(a.v, gain, gainAhead) });
+    if (isBentSegment(a)) {
+      const steps = volumeSegmentSampleCount(b.t - a.t);
+      for (let k = 1; k < steps; k += 1) {
+        const t = a.t + ((b.t - a.t) * k) / steps;
+        out.push({ t, v: gainedVolume(sampleAutomationLane(lane, t), gain, gainAhead) });
+      }
+    } else {
+      const t = a.t + ((MAX_AUDIO_GAIN / g - a.v) / (b.v - a.v)) * (b.t - a.t);
+      out.push({ t, v: gainedVolume(MAX_AUDIO_GAIN / g, g, gainAhead) });
+    }
+  }
+  return out;
+}
 
 export const RATE_RANGE: AutomationRange = {
   min: MIN_PLAYBACK_RATE,

@@ -167,6 +167,94 @@ describe("fetchRegistryManifest", () => {
 });
 
 describe("fetchItemManifest", () => {
+  it("refreshes a fresh item cache when skipCache is requested", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(ok(ITEM));
+    await fetchItemManifest("count-up", "hyperframes:component");
+    const updated = {
+      ...ITEM,
+      title: "Updated counter",
+      files: [{ path: "updated.html", target: "updated.html", type: "hyperframes:snippet" }],
+    };
+    fetchSpy.mockResolvedValue(ok(updated)).mockClear();
+
+    await expect(
+      fetchItemManifest("count-up", "hyperframes:component", DEFAULT_REGISTRY_URL, {
+        skipCache: true,
+      }),
+    ).resolves.toEqual(updated);
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    await expect(fetchItemManifest("count-up", "hyperframes:component")).resolves.toEqual(updated);
+    expect(fetchSpy).toHaveBeenCalledOnce();
+  });
+
+  it("keeps using a fresh item cache without skipCache", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(ok(ITEM));
+    await fetchItemManifest("count-up", "hyperframes:component");
+    fetchSpy.mockResolvedValue(ok({ ...ITEM, title: "Updated counter" })).mockClear();
+
+    await expect(fetchItemManifest("count-up", "hyperframes:component")).resolves.toEqual(ITEM);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it.each([0, ONE_DAY_MS + 60_000])(
+    "keeps refresh requests offline in cache-only mode with cache age %d",
+    async (age) => {
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(ok(ITEM));
+      await fetchItemManifest("count-up", "hyperframes:component");
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(Date.now() + age));
+      fetchSpy.mockRejectedValue(new Error("offline")).mockClear();
+
+      await expect(
+        fetchItemManifest("count-up", "hyperframes:component", DEFAULT_REGISTRY_URL, {
+          skipCache: true,
+          cacheOnly: true,
+        }),
+      ).resolves.toEqual(ITEM);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    },
+  );
+
+  it("does not refresh an uncached item in cache-only mode", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(ok(ITEM));
+
+    await expect(
+      fetchItemManifest("count-up", "hyperframes:component", DEFAULT_REGISTRY_URL, {
+        skipCache: true,
+        cacheOnly: true,
+      }),
+    ).rejects.toThrow("not fetched after an earlier registry timeout");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("serves the cached item when a forced refresh fails", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(ok(ITEM));
+    await fetchItemManifest("count-up", "hyperframes:component");
+    fetchSpy.mockRejectedValue(new Error("HTTP 503")).mockClear();
+
+    await expect(
+      fetchItemManifest("count-up", "hyperframes:component", DEFAULT_REGISTRY_URL, {
+        skipCache: true,
+      }),
+    ).resolves.toEqual(ITEM);
+    expect(fetchSpy).toHaveBeenCalledOnce();
+  });
+
+  it("keeps a valid cached item when a forced refresh returns invalid data", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(ok(ITEM));
+    await fetchItemManifest("count-up", "hyperframes:component");
+    fetchSpy.mockResolvedValue(ok({ ...ITEM, name: "different-item" })).mockClear();
+
+    await expect(
+      fetchItemManifest("count-up", "hyperframes:component", DEFAULT_REGISTRY_URL, {
+        skipCache: true,
+      }),
+    ).resolves.toEqual(ITEM);
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    await expect(fetchItemManifest("count-up", "hyperframes:component")).resolves.toEqual(ITEM);
+    expect(fetchSpy).toHaveBeenCalledOnce();
+  });
+
   it("rejects a cache escape name before fetching", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch");
     await expect(

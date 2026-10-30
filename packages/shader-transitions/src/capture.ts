@@ -1,3 +1,4 @@
+import { revealClip } from "@hyperframes/core/runtime/clip-reveal";
 import html2canvas from "html2canvas";
 import { DEFAULT_WIDTH, DEFAULT_HEIGHT } from "./webgl.js";
 
@@ -51,10 +52,8 @@ export interface CaptureSceneOptions {
 
 function showSceneAndClips(scene: HTMLElement): void {
   scene.style.opacity = "1";
-  scene.style.setProperty("visibility", "visible", "important");
-  scene.querySelectorAll<HTMLElement>("[data-start]").forEach((el) => {
-    el.style.setProperty("visibility", "visible", "important");
-  });
+  revealClip(scene, "important");
+  scene.querySelectorAll<HTMLElement>("[data-start]").forEach((el) => revealClip(el, "important"));
 }
 
 export function forceSceneVisibleInClone(source: HTMLElement, cloneDoc: Document): void {

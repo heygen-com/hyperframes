@@ -125,6 +125,8 @@ export interface StudioApiAdapter {
   getProjectSignature?: (projectDir: string) => string;
   invalidateProjectSignature?: (projectDir: string) => void;
 
+  loadSharp?: () => Promise<typeof import("sharp").default>;
+
   /** Lint a single HTML string. */
   lint(
     html: string,
@@ -140,6 +142,8 @@ export interface StudioApiAdapter {
 
   /** URL to the hyperframe runtime JS (injected into preview HTML). */
   runtimeUrl: string;
+
+  gsapLocalRoot?: `/${string}`;
 
   /**
    * Optional: post-process preview HTML before Studio augments it.
@@ -161,7 +165,7 @@ export interface StudioApiAdapter {
   startRender(opts: {
     project: ResolvedProject;
     outputPath: string;
-    format: "mp4" | "webm" | "mov";
+    format: "mp4" | "webm" | "mov" | "gif";
     /**
      * Frame rate as an exact rational. The HTTP layer (POST
      * `/projects/:id/render`) accepts either a JSON number (integer fps,
@@ -171,10 +175,15 @@ export interface StudioApiAdapter {
      */
     fps: import("@hyperframes/core").Fps;
     quality: string;
+    gifLoop?: number;
     crf?: number;
     videoBitrate?: string;
+    keyframeIntervalSeconds?: number;
+    maxBitrate?: string;
+    bufferSize?: string;
     videoFrameFormat?: "auto" | "jpg" | "png";
     hdrMode?: "auto" | "force-hdr" | "force-sdr";
+    proresProfile?: "4444" | "hq" | "422" | "lt" | "proxy";
     jobId: string;
     /**
      * The triggering browser profile has telemetry disabled (localStorage
@@ -183,6 +192,7 @@ export interface StudioApiAdapter {
      * for a user who had opted out, under the CLI's own policy.
      */
     telemetryOptOut?: boolean;
+    pageMotionBlur?: "off";
     /**
      * Optional output resolution preset. See `resolveDeviceScaleFactor` in
      * the producer for the integer-scale + aspect + HDR constraints.

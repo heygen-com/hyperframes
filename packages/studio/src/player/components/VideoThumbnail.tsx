@@ -3,10 +3,13 @@ import { useThumbnailLease } from "../../hooks/useThumbnailLease";
 import { useThumbnailStripSize } from "../../hooks/useThumbnailStripSize";
 import {
   createThumbnailKey,
+  thumbnailScheduler,
   type ThumbnailPriority,
   type ThumbnailSnapshot,
 } from "../lib/thumbnailScheduler";
+import { bindThumbnailPlaybackHold } from "../lib/thumbnailPlaybackHold";
 import { decodeVideoThumbnail } from "../lib/thumbnailVideoDecoder";
+import { usePlayerStore } from "../store/playerStore";
 import { ThumbnailTiles } from "./ThumbnailTiles";
 import {
   computeThumbnailStrip,
@@ -14,6 +17,9 @@ import {
   thumbnailFrameForTile,
 } from "./thumbnailUtils";
 import { useValueAtRest } from "./timelineMotion";
+
+const unbindPlaybackHold = bindThumbnailPlaybackHold(usePlayerStore, thumbnailScheduler);
+import.meta.hot?.dispose(unbindPlaybackHold);
 
 interface VideoThumbnailProps {
   videoSrc: string;

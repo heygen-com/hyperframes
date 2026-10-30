@@ -1,11 +1,14 @@
 // fallow-ignore-file complexity code-duplication
 import { isSelfOrAncestorHidden, memberGroupKey, isMemberGroupHidden } from "./mediaHidden.js";
 import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, rmSync, writeFileSync } from "fs";
+import { renameWithRetry } from "@hyperframes/core/rename-retry";
+import { removeScratch } from "@hyperframes/core/remove-scratch";
 import { join, dirname, isAbsolute, relative } from "path";
 import { parseHTML } from "linkedom";
-import { extractAudioMetadata, type AudioMetadata } from "../utils/ffprobe.js";
+import { extractAudioMetadata, ffmpegSeekSeconds, type AudioMetadata } from "../utils/ffprobe.js";
 import { isNotMediaPayload } from "../utils/notMediaPayload.js";
-import { clampAudioGain } from "@hyperframes/core/audio-gain";
+import { urlInputArgs } from "../utils/urlInput.js";
+import { clampAudioGain, clipGain } from "@hyperframes/core/audio-gain";
 import { clampFadesToDuration, readElementFades } from "@hyperframes/core/audio-fade";
 import {
   downloadToTemp,
@@ -14,8 +17,10 @@ import {
   writeUrlDownloadTelemetry,
 } from "../utils/urlDownloader.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
-import { formatFfmpegError, runFfmpeg, type RunFfmpegResult } from "../utils/runFfmpeg.js";
-import { AAC_ARGS, aacSegmentCount, encodeAac } from "./aacEncode.js";
+import { describeFfmpegFailure, runFfmpeg, type RunFfmpegResult } from "../utils/runFfmpeg.js";
+import { cpus } from "node:os";
+import { createConcurrencyLimit } from "../utils/concurrencyLimit.js";
+import { encodeAac } from "./aacEncode.js";
 import { audioSubprocessEvidence } from "./audioFailureDiagnostic.js";
 import { unwrapTemplate } from "../utils/htmlTemplate.js";
 import { resolveMediaElementSrc, resolveProjectRelativeSrc } from "./videoFrameExtractor.js";
@@ -30,12 +35,17 @@ import type {
 } from "./audioMixer.types.js";
 import { applyVolumeEnvelopeToWav } from "./audioVolumeEnvelope.js";
 import {
+  enabledAudioFxNodes,
   HF_AUDIO_FX_ATTR,
   parseAudioFxChain,
   type HfAudioFxChain,
 } from "@hyperframes/core/audio-fx";
 import {
+  gainedVolume,
+  gainedVolumePoints,
   HF_AUDIO_AUTOMATION_ATTR,
+  isBentSegment,
+  volumeSegmentSampleCount,
   parseAutomation,
   resolveAutomation,
   sampleAutomationLane,
@@ -120,11 +130,12 @@ function buildRampFilterComplex(
   duration: number,
   headFilter: string | null,
   tailFilter: string | null,
+  input: string,
 ): string {
   const slices = Math.min(MAX_RAMP_SLICES, Math.max(1, Math.ceil(duration / RAMP_SLICE_SECONDS)));
   const step = duration / slices;
   const split = Array.from({ length: slices }, (_, i) => `[s${i}]`).join("");
-  const parts = [`[0:a]${headFilter ? `${headFilter},` : ""}asplit=${slices}${split}`];
+  const parts = [`[${input}]${headFilter ? `${headFilter},` : ""}asplit=${slices}${split}`];
   for (let i = 0; i < slices; i += 1) {
     const from = sourceTimeAt(lane, i * step);
     const to = sourceTimeAt(lane, (i + 1) * step);
@@ -150,16 +161,23 @@ function preparedAudioOutputArgs(
   playbackRate: RateSpec,
   duration: number,
   headFilter: string | null,
+  stream: string | null,
 ): string[] {
   const channelFilter = metadata?.channels === 1 ? STEREO_CHANNEL_FILTER : null;
   const outputArgs = channelFilter ? [] : ["-ac", "2"];
   if (typeof playbackRate === "object") {
-    const graph = buildRampFilterComplex(playbackRate, duration, headFilter, channelFilter);
+    const graph = buildRampFilterComplex(
+      playbackRate,
+      duration,
+      headFilter,
+      channelFilter,
+      stream ?? "0:a",
+    );
     return ["-filter_complex", graph, "-map", "[out]", ...outputArgs];
   }
   const filters = [headFilter, channelFilter, buildAtempoFilter(playbackRate)].filter(Boolean);
   if (filters.length > 0) outputArgs.push("-af", filters.join(","));
-  return outputArgs;
+  return [...(stream ? ["-map", stream] : []), ...outputArgs];
 }
 
 function escapeExpressionCommas(expression: string): string {
@@ -184,6 +202,11 @@ function legacyFilterScriptOptionIsUnsupported(stderr: string): boolean {
  * no audio). 32 segments keeps a wide safety margin and is far more resolution
  * than a piecewise-linear volume envelope needs.
  */
+// Caps the ffmpeg runs that prepare clips; all of a long mix's clips at once starved the host (200 clips, 200 ffmpeg).
+const inPrepareSlot = createConcurrencyLimit(Math.max(2, Math.floor(cpus().length / 2)));
+// A clip read from a URL spends its time waiting on the network, so it needs no CPU-sized limit.
+const inRemotePrepareSlot = createConcurrencyLimit(16);
+
 const MAX_VOLUME_SEGMENTS = 32;
 
 /**
@@ -377,7 +400,11 @@ function boundedDetail(message: string, maxLength = 2_000): string {
       /(^|[\s"'(])\/.+?(?=:\s[A-Z]|\s(?:ENOENT|EACCES|EPERM)\b|\r?$)/gm,
       "$1<redacted-path>",
     );
-  return redacted.length <= maxLength ? redacted : `${redacted.slice(0, maxLength - 1)}…`;
+  // Keep both ends: the head names the failure, the tail holds ffmpeg's last words.
+  const head = Math.floor(maxLength / 4);
+  return redacted.length <= maxLength
+    ? redacted
+    : `${redacted.slice(0, head)}…${redacted.slice(-(maxLength - head - 1))}`;
 }
 
 function probeFailure(message: string, elementId: string): AudioProcessingFailure {
@@ -431,6 +458,7 @@ function downloadFailure(error: unknown, elementId: string): AudioProcessingFail
 function ffmpegFailure(
   stage: Extract<AudioFailureStage, "extract" | "prepare" | "mix" | "silence">,
   result: RunFfmpegResult,
+  timeoutMs: number,
   elementId?: string,
 ): AudioProcessingFailure {
   const stderr = result.stderr ?? "";
@@ -444,7 +472,7 @@ function ffmpegFailure(
   } else if (result.terminationReason === "abort") {
     reason = "cancelled";
     owner = "user";
-  } else if (result.terminationReason === "deadline" || result.terminationReason === "inactivity") {
+  } else if (result.terminationReason === "inactivity") {
     reason = "ffmpeg_timeout";
     retryable = true;
   } else if (result.terminationReason === "spawn_error") {
@@ -470,15 +498,13 @@ function ffmpegFailure(
     elementId,
     subprocess: audioSubprocessEvidence(result),
     detail: boundedDetail(
-      result.error?.message
-        ? `${formatFfmpegError(result.exitCode, stderr)}: ${result.error.message}`
-        : formatFfmpegError(result.exitCode, stderr),
+      `(ran ${result.durationMs} ms, limit ${timeoutMs} ms) ` +
+        (result.error?.message
+          ? `${describeFfmpegFailure(result, timeoutMs)}: ${result.error.message}`
+          : describeFfmpegFailure(result, timeoutMs)),
     ),
   };
 }
-
-/** Extra samples per second inside a segment the baker cannot draw straight. */
-const CURVED_SEGMENT_SAMPLES_PER_SEC = 30;
 
 /**
  * A volume lane as keyframes for the PCM baker.
@@ -488,15 +514,19 @@ const CURVED_SEGMENT_SAMPLES_PER_SEC = 30;
  * sampled, or the bake would quietly straighten it.
  *
  * Times come out in composition seconds, which is what the baker subtracts the
- * track start from. Returns null when the track has no volume lane.
+ * track start from. Values are `gainedVolume` of the track's `data-volume`.
+ * Returns null when the track has no volume lane.
  */
 export function volumeLaneKeyframes(
   automation: { lanes: HfAutomationLane[] },
   trackStart: number,
   duration: number,
+  gain: number,
+  gainAhead = false,
 ): AudioVolumeKeyframe[] | null {
   const lane = automation.lanes.find((l) => l.target === VOLUME_TARGET);
   if (!lane || lane.points.length === 0) return null;
+  const points = gainedVolumePoints(lane, gain, gainAhead);
 
   const out: AudioVolumeKeyframe[] = [];
   const push = (t: number, v: number): void => {
@@ -505,24 +535,24 @@ export function volumeLaneKeyframes(
 
   // The envelope holds its first value before the first point, rather than
   // falling back to `data-volume`.
-  const first = lane.points[0]!;
+  const first = points[0]!;
   if (first.t > 0) push(0, first.v);
 
-  for (let i = 0; i < lane.points.length; i += 1) {
-    const a = lane.points[i]!;
+  for (let i = 0; i < points.length; i += 1) {
+    const a = points[i]!;
     push(a.t, a.v);
-    const b = lane.points[i + 1];
-    if (!b || !a.curve) continue;
-    const steps = Math.max(2, Math.ceil((b.t - a.t) * CURVED_SEGMENT_SAMPLES_PER_SEC));
+    const b = points[i + 1];
+    if (!b || !isBentSegment(a)) continue;
+    const steps = volumeSegmentSampleCount(b.t - a.t);
     for (let k = 1; k < steps; k += 1) {
       const t = a.t + ((b.t - a.t) * k) / steps;
-      push(t, sampleAutomationLane(lane, t));
+      push(t, gainedVolume(sampleAutomationLane(lane, t), gain, gainAhead));
     }
   }
 
   // Hold the last value to the clip's end, so the baker does not ramp away
   // from it toward whatever it would otherwise assume.
-  const last = lane.points[lane.points.length - 1]!;
+  const last = points[points.length - 1]!;
   if (duration > last.t) push(duration, last.v);
   return out;
 }
@@ -534,6 +564,10 @@ export function volumeLaneKeyframes(
  */
 export function parseMasterFxChain(html: string): string | undefined {
   return readMasterFxChain(parseHTML(unwrapTemplate(html)).document);
+}
+
+export function videoAudioId(videoId: string): string {
+  return `${videoId}-audio`;
 }
 
 export function parseAudioElements(html: string): AudioElement[] {
@@ -553,11 +587,12 @@ export function parseAudioElements(html: string): AudioElement[] {
   const visiting = new Set<RefResolverEl>();
   const resolveStart = (el: RefResolverEl): number =>
     el.getAttribute("data-start") ? resolveReferencedStart(document, el, startCache, visiting) : 0;
-  // `end` stays a plain numeric read (the mixer derives the real segment length
-  // from data-duration / natural media downstream); guard NaN so a malformed
-  // value never poisons the mix instead of falling back to 0.
-  const parseEnd = (raw: string | null): number => {
-    return parseStrictFiniteTimingNumber(raw) ?? 0;
+  // Same rule as core's compileTimingAttrs: data-end, else start + data-duration, else 0 (unknown).
+  const resolveEnd = (el: RefResolverEl): number => {
+    const end = parseStrictFiniteTimingNumber(el.getAttribute("data-end"));
+    if (end != null) return end;
+    const duration = parseStrictFiniteTimingNumber(el.getAttribute("data-duration"));
+    return duration != null && duration > 0 ? resolveStart(el) + duration : 0;
   };
   const isHidden = isSelfOrAncestorHidden;
 
@@ -590,9 +625,10 @@ export function parseAudioElements(html: string): AudioElement[] {
       id,
       src,
       start: resolveStart(el),
-      end: parseEnd(el.getAttribute("data-end")),
+      end: resolveEnd(el),
       mediaStart: readMediaStart(el),
       playbackRate: readElementRateSpec(el),
+      loop: el.getAttribute("loop") !== null,
       layer: layerAttr ? parseInt(layerAttr) : 0,
       volume: volumeAttr ? parseFloat(volumeAttr) : 1.0,
       ...(fades.fadeIn > 0 ? { fadeIn: fades.fadeIn } : {}),
@@ -633,11 +669,14 @@ export function parseAudioElements(html: string): AudioElement[] {
     const src = resolveMediaElementSrc(el);
     if (!id || !src || isHidden(el) || memberGroupHidden(el)) continue;
     if (isKnownInactiveTimelineWindow(el, resolveStart(el))) continue;
-    elements.push(build(el, `${id}-audio`, src, "video", true));
+    elements.push(build(el, videoAudioId(id), src, "video", true));
   }
 
   return elements;
 }
+
+const FAIL_ON_READ_ERROR_INSTEAD_OF_ENDING_THERE = ["-xerror"];
+const SIDECAR_WARM_UP_SECONDS = 1;
 
 /** Decode `duration` s of audio from `mediaStart` in Chrome's media time. Until every stream has
  * started, an input seek snaps audio to the video's first keyframe, so read by timestamp instead. */
@@ -650,31 +689,119 @@ async function extractAudioSegment(
   playbackRate: RateSpec = 1,
   signal?: AbortSignal,
   config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout">>,
+  audioSidecarUrl?: string,
+  options?: { loop?: boolean; padToDuration?: boolean },
 ): Promise<ExtractResult> {
   const ffmpegProcessTimeout = config?.ffmpegProcessTimeout ?? DEFAULT_CONFIG.ffmpegProcessTimeout;
   const outputDir = dirname(outputPath);
   if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
   const normalizedPlaybackRate = normalizeRateSpec(playbackRate);
   const sourceDuration = sourceTimeAt(normalizedPlaybackRate, duration);
-  // A failed probe keeps FFmpeg's default channel conversion and the input seek.
-  const metadata = await extractAudioMetadata(srcPath).catch(() => null);
-  const inputSeek = mediaStart >= (metadata?.latestStreamLeadSeconds ?? 0);
-  const start = formatFilterNumber(mediaStart);
+  // A failed non-looping local probe keeps FFmpeg's channel conversion and input seek; a URL probe
+  // is retried once, then fails: a blip must not change how the next, successful read is mixed.
+  const readsUrl = isHttpUrl(srcPath);
+  const metadata = readsUrl
+    ? await extractAudioMetadata(srcPath, { signal }).catch((error: unknown) => {
+        if (signal?.aborted) throw error;
+        return extractAudioMetadata(srcPath, { signal });
+      })
+    : await extractAudioMetadata(srcPath).catch((error: unknown) => {
+        if (options?.loop) throw error;
+        return null;
+      });
+  const loopDuration = (metadata?.durationSeconds ?? 0) - mediaStart;
+  if (options?.loop && loopDuration > 0 && sourceDuration > loopDuration) {
+    const cycleDir = mkdtempSync(join(outputDir, ".audio-loop-"));
+    const cyclePath = join(cycleDir, "cycle.wav");
+    try {
+      const cycle = await extractAudioSegment(
+        srcPath,
+        cyclePath,
+        stage,
+        mediaStart,
+        loopDuration,
+        1,
+        signal,
+        config,
+        audioSidecarUrl,
+        { padToDuration: true },
+      );
+      if (!cycle.success) return { ...cycle, outputPath };
+      const outputArgs = preparedAudioOutputArgs(
+        metadata,
+        normalizedPlaybackRate,
+        duration,
+        null,
+        null,
+      );
+      const result = await runFfmpeg(
+        [
+          "-stream_loop",
+          "-1",
+          "-t",
+          String(sourceDuration),
+          "-i",
+          cyclePath,
+          "-vn",
+          "-acodec",
+          "pcm_s16le",
+          "-ar",
+          "48000",
+          ...outputArgs,
+          "-t",
+          String(duration),
+          "-y",
+          outputPath,
+        ],
+        { signal, timeout: ffmpegProcessTimeout },
+      );
+      const failure = result.success
+        ? undefined
+        : ffmpegFailure(stage, result, ffmpegProcessTimeout);
+      return {
+        success: result.success,
+        outputPath,
+        durationMs: cycle.durationMs + result.durationMs,
+        error: failure?.detail,
+        failure,
+      };
+    } finally {
+      removeScratch(cycleDir);
+    }
+  }
+  const ffmpegStart = ffmpegSeekSeconds(metadata ?? {}, mediaStart);
+  const inputSeek = ffmpegStart >= (metadata?.latestStreamLeadSeconds ?? 0);
+  const start = formatFilterNumber(ffmpegStart);
   const timestampTrim = inputSeek
     ? null
-    : `atrim=start=${start}:end=${formatFilterNumber(mediaStart + sourceDuration)},asetpts=PTS-${start}/TB,aresample=async=1:first_pts=0`;
+    : `atrim=start=${start}:end=${formatFilterNumber(ffmpegStart + sourceDuration)},asetpts=PTS-${start}/TB,aresample=async=1:first_pts=0`;
+  const fromSidecar = audioSidecarUrl !== undefined && inputSeek && normalizedPlaybackRate === 1;
+  const warmUp = fromSidecar ? Math.min(SIDECAR_WARM_UP_SECONDS, ffmpegStart) : 0;
   const outputArgs = preparedAudioOutputArgs(
     metadata,
     normalizedPlaybackRate,
     duration,
-    timestampTrim,
+    [
+      warmUp > 0 ? `atrim=start=${warmUp},asetpts=PTS-STARTPTS` : timestampTrim,
+      ...(options?.padToDuration ? ["apad"] : []),
+    ]
+      .filter(Boolean)
+      .join(",") || null,
+    metadata ? `0:a:${metadata.audioStream}` : null,
   );
+  const readFrom = fromSidecar ? audioSidecarUrl : srcPath;
 
-  const args = inputSeek
-    ? ["-ss", String(mediaStart), "-t", String(sourceDuration), "-i", srcPath]
-    : ["-i", srcPath];
+  const args = [
+    ...(readsUrl ? FAIL_ON_READ_ERROR_INSTEAD_OF_ENDING_THERE : []),
+    ...urlInputArgs(readFrom),
+    ...(inputSeek
+      ? ["-ss", String(ffmpegStart - warmUp), "-t", String(sourceDuration + warmUp)]
+      : []),
+    "-i",
+    readFrom,
+  ];
   args.push("-vn", "-acodec", "pcm_s16le", "-ar", "48000", ...outputArgs);
-  if (normalizedPlaybackRate !== 1) args.push("-t", String(duration));
+  if (normalizedPlaybackRate !== 1 || options?.padToDuration) args.push("-t", String(duration));
   args.push("-y", outputPath);
 
   const result = await runFfmpeg(args, { signal, timeout: ffmpegProcessTimeout });
@@ -695,7 +822,12 @@ async function extractAudioSegment(
       failure,
     };
   }
-  const failure = !result.success ? ffmpegFailure(stage, result) : undefined;
+  let failure = result.success ? undefined : ffmpegFailure(stage, result, ffmpegProcessTimeout);
+  const probedLinkFailedToRead =
+    readsUrl && (failure?.reason === "invalid_media" || failure?.reason === "ffmpeg_failed");
+  if (failure && probedLinkFailedToRead) {
+    failure = { ...failure, reason: "download_failed", owner: "system", retryable: true };
+  }
   return {
     success: result.success,
     outputPath,
@@ -703,6 +835,23 @@ async function extractAudioSegment(
     error: failure?.detail,
     failure,
   };
+}
+
+function isRemoteElement(
+  element: { src: string },
+  baseDir: string,
+  compiledDir: string | undefined,
+  config?: { urlByAbsentLocalPath?: ReadonlyMap<string, string> },
+): boolean {
+  if (isHttpUrl(element.src)) return true;
+  if (!config?.urlByAbsentLocalPath?.size) return false;
+  try {
+    return config.urlByAbsentLocalPath.has(
+      resolveProjectRelativeSrc(element.src, baseDir, compiledDir),
+    );
+  } catch {
+    return false;
+  }
 }
 
 async function generateSilence(
@@ -746,7 +895,9 @@ async function generateSilence(
       failure,
     };
   }
-  const failure = !result.success ? ffmpegFailure("silence", result) : undefined;
+  const failure = !result.success
+    ? ffmpegFailure("silence", result, ffmpegProcessTimeout)
+    : undefined;
   return {
     success: result.success,
     outputPath,
@@ -756,13 +907,12 @@ async function generateSilence(
   };
 }
 
-async function mixAudioTracks(
+async function mixAudioTracksFlat(
   tracks: AudioTrack[],
   outputPath: string,
   totalDuration: number,
   signal?: AbortSignal,
   config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout" | "audioGain">>,
-  floatWav = false,
 ): Promise<MixResult> {
   const ffmpegProcessTimeout = config?.ffmpegProcessTimeout ?? DEFAULT_CONFIG.ffmpegProcessTimeout;
   const masterOutputGain = config?.audioGain ?? DEFAULT_CONFIG.audioGain;
@@ -828,7 +978,10 @@ async function mixAudioTracks(
       scriptPath,
       "-map",
       "[out]",
-      ...(floatWav ? ["-acodec", "pcm_f32le", "-ar", "48000"] : AAC_ARGS),
+      "-acodec",
+      "pcm_f32le",
+      "-ar",
+      "48000",
       "-t",
       String(totalDuration),
       "-y",
@@ -843,7 +996,7 @@ async function mixAudioTracks(
       currentArgs[currentArgs.indexOf("-filter_complex_script")] = "-/filter_complex";
       return await runFfmpeg(currentArgs, { signal, timeout: ffmpegProcessTimeout });
     } finally {
-      rmSync(scriptDir, { recursive: true, force: true });
+      removeScratch(scriptDir);
     }
   };
 
@@ -898,7 +1051,7 @@ async function mixAudioTracks(
     };
   }
   if (!result.success) {
-    const failure = ffmpegFailure("mix", result);
+    const failure = ffmpegFailure("mix", result, ffmpegProcessTimeout);
     return {
       success: false,
       outputPath,
@@ -950,7 +1103,7 @@ function groupNormalizeOptionUnsupported(stderr: string): boolean {
  * compensation at all and is preferred; the manual per-own-count fallback
  * only runs when this ffmpeg build's `amix` rejects the option.
  */
-async function mixGroupMembers(
+async function mixGroupMembersFlat(
   memberTracks: AudioTrack[],
   outputPath: string,
   totalDuration: number,
@@ -964,10 +1117,10 @@ async function mixGroupMembers(
   const outputDir = dirname(outputPath);
   if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
 
-  const buildInputFilters = (ignoreKeyframes: boolean) =>
+  const buildInputFilters = (ignoreKeyframes: boolean, padMembers: boolean) =>
     memberTracks.map((track, i) => {
       const volumeFilter = buildVolumeExpression(track, ignoreKeyframes);
-      return buildTrackInputFilter(track, i, volumeFilter, totalDuration);
+      return buildTrackInputFilter(track, i, volumeFilter, totalDuration, padMembers);
     });
   const mixInputs = memberTracks.map((_, i) => `[a${i}]`).join("");
 
@@ -975,9 +1128,10 @@ async function mixGroupMembers(
     useNormalize: boolean,
     ignoreKeyframes = false,
   ): Promise<RunFfmpegResult> => {
-    const inputFilters = buildInputFilters(ignoreKeyframes);
+    const inputFilters = buildInputFilters(ignoreKeyframes, !useNormalize);
+    const padUnitySumOnceToFilm = `[mixed];[mixed]apad,asetpts=N/SR/TB,atrim=0:${formatFilterNumber(totalDuration)}`;
     const mixFilter = useNormalize
-      ? `${mixInputs}amix=inputs=${memberTracks.length}:duration=longest:dropout_transition=0:normalize=0[out]`
+      ? `${mixInputs}amix=inputs=${memberTracks.length}:duration=longest:dropout_transition=0:normalize=0${padUnitySumOnceToFilm}[out]`
       : // Every member is padded and trimmed to totalDuration above, and
         // dropout_transition=0 keeps all N inputs active for that whole span.
         // amix's default normalize therefore divides by exactly N throughout;
@@ -1026,7 +1180,7 @@ async function mixGroupMembers(
       currentArgs[currentArgs.indexOf("-filter_complex_script")] = "-/filter_complex";
       return await runFfmpeg(currentArgs, { signal, timeout: ffmpegProcessTimeout });
     } finally {
-      rmSync(scriptDir, { recursive: true, force: true });
+      removeScratch(scriptDir);
     }
   };
 
@@ -1053,10 +1207,139 @@ async function mixGroupMembers(
   }
 
   if (signal?.aborted || !result.success) {
-    const failure = ffmpegFailure("mix", result);
+    const failure = ffmpegFailure("mix", result, ffmpegProcessTimeout);
     return { success: false, error: failure.detail, failure };
   }
   return { success: true, degradedAutomation };
+}
+
+/** Tracks per ffmpeg graph; a larger mix is summed in stages, so there is no cap on the total. */
+export const MAX_MIX_INPUTS = 96;
+
+type GroupMixResult =
+  | { success: true; degradedAutomation?: boolean }
+  | { success: false; error: string; failure: AudioProcessingFailure };
+
+/** Unity-sum `tracks` (the group gain law) slice by slice into one float WAV, with few full-length files at once. */
+async function sumInSlices(
+  tracks: AudioTrack[],
+  scratchDir: string,
+  totalDuration: number,
+  signal?: AbortSignal,
+  config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout">>,
+): Promise<
+  | { success: true; track: AudioTrack; degradedAutomation: boolean }
+  | Extract<GroupMixResult, { success: false }>
+> {
+  const wavTrack = (id: string, srcPath: string): AudioTrack => ({
+    id,
+    srcPath,
+    start: 0,
+    end: totalDuration,
+    mediaStart: 0,
+    duration: totalDuration,
+    volume: 1,
+  });
+  let running: AudioTrack | null = null;
+  let degradedAutomation = false;
+  for (let at = 0; at < tracks.length; at += MAX_MIX_INPUTS) {
+    const id = `sum-${at / MAX_MIX_INPUTS}`;
+    const slicePath = join(scratchDir, `${id}-slice.wav`);
+    const slice = await mixGroupMembersFlat(
+      tracks.slice(at, at + MAX_MIX_INPUTS),
+      slicePath,
+      totalDuration,
+      signal,
+      config,
+    );
+    if (!slice.success) return slice;
+    degradedAutomation ||= slice.degradedAutomation === true;
+    if (!running) {
+      running = wavTrack(id, slicePath);
+      continue;
+    }
+    const foldedPath = join(scratchDir, `${id}.wav`);
+    const folded = await mixGroupMembersFlat(
+      [running, wavTrack(`${id}-slice`, slicePath)],
+      foldedPath,
+      totalDuration,
+      signal,
+      config,
+    );
+    removeScratch(running.srcPath);
+    removeScratch(slicePath);
+    if (!folded.success) return folded;
+    running = wavTrack(id, foldedPath);
+  }
+  if (!running) throw new Error("[audioMixer] sumInSlices needs at least one track");
+  return { success: true, track: running, degradedAutomation };
+}
+
+async function mixGroupMembers(
+  memberTracks: AudioTrack[],
+  outputPath: string,
+  totalDuration: number,
+  signal?: AbortSignal,
+  config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout">>,
+): Promise<GroupMixResult> {
+  if (memberTracks.length <= MAX_MIX_INPUTS) {
+    return mixGroupMembersFlat(memberTracks, outputPath, totalDuration, signal, config);
+  }
+  mkdirSync(dirname(outputPath), { recursive: true });
+  const scratchDir = mkdtempSync(join(dirname(outputPath), ".mix-batches-"));
+  try {
+    const summed = await sumInSlices(memberTracks, scratchDir, totalDuration, signal, config);
+    if (!summed.success) return summed;
+    renameWithRetry(summed.track.srcPath, outputPath, { copyFallback: true });
+    return { success: true, degradedAutomation: summed.degradedAutomation };
+  } finally {
+    removeScratch(scratchDir);
+  }
+}
+
+async function mixAudioTracks(
+  tracks: AudioTrack[],
+  outputPath: string,
+  totalDuration: number,
+  signal?: AbortSignal,
+  config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout" | "audioGain">>,
+): Promise<MixResult> {
+  if (tracks.length <= MAX_MIX_INPUTS) {
+    return mixAudioTracksFlat(tracks, outputPath, totalDuration, signal, config);
+  }
+  mkdirSync(dirname(outputPath), { recursive: true });
+  const scratchDir = mkdtempSync(join(dirname(outputPath), ".mix-batches-"));
+  try {
+    const summed = await sumInSlices(tracks, scratchDir, totalDuration, signal, config);
+    if (!summed.success) {
+      return {
+        success: false,
+        outputPath,
+        durationMs: 0,
+        tracksProcessed: 0,
+        error: summed.error,
+        failures: [summed.failure],
+      };
+    }
+    const mixed = await mixAudioTracksFlat(
+      [summed.track],
+      outputPath,
+      totalDuration,
+      signal,
+      config,
+    );
+    return mixed.success
+      ? {
+          ...mixed,
+          tracksProcessed: tracks.length,
+          error: summed.degradedAutomation
+            ? "Volume automation exceeded this ffmpeg build's expression limits; rendered at base volume"
+            : mixed.error,
+        }
+      : mixed;
+  } finally {
+    removeScratch(scratchDir);
+  }
 }
 
 /**
@@ -1070,12 +1353,16 @@ async function mixThroughFloatSum(
   workDir: string,
   totalDuration: number,
   signal?: AbortSignal,
-  config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout" | "audioGain">>,
+  config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout" | "audioGain">> & {
+    keepEncoderInputAt?: string;
+  },
 ): Promise<MixResult> {
   const sumPath = join(workDir, "master-sum.wav");
-  const sum = await mixAudioTracks(tracks, sumPath, totalDuration, signal, config, true);
+  const mixStart = Date.now();
+  const sum = await mixAudioTracks(tracks, sumPath, totalDuration, signal, config);
   if (!sum.success) return { ...sum, outputPath };
 
+  const masterStart = Date.now();
   const encoderInput = masterChain
     ? (
         await applyAudioFxChain(sumPath, masterChain, join(workDir, "master-fx.wav"), {
@@ -1084,12 +1371,17 @@ async function mixThroughFloatSum(
         })
       ).path
     : sumPath;
+  const encodeStart = Date.now();
   const encoded = await encodeAac(encoderInput, outputPath, totalDuration, {
     signal,
     timeout: config?.ffmpegProcessTimeout ?? DEFAULT_CONFIG.ffmpegProcessTimeout,
   });
   if (!encoded.success) {
-    const failure = ffmpegFailure("mix", encoded);
+    const failure = ffmpegFailure(
+      "mix",
+      encoded,
+      config?.ffmpegProcessTimeout ?? DEFAULT_CONFIG.ffmpegProcessTimeout,
+    );
     return {
       success: false,
       outputPath,
@@ -1099,7 +1391,18 @@ async function mixThroughFloatSum(
       failures: [failure],
     };
   }
-  return { ...sum, outputPath, durationMs: sum.durationMs + encoded.durationMs };
+  if (config?.keepEncoderInputAt)
+    renameWithRetry(encoderInput, config.keepEncoderInputAt, { copyFallback: true });
+  return {
+    ...sum,
+    outputPath,
+    durationMs: sum.durationMs + encoded.durationMs,
+    phaseMs: {
+      mix: masterStart - mixStart,
+      master: encodeStart - masterStart,
+      encode: Date.now() - encodeStart,
+    },
+  };
 }
 
 export async function processCompositionAudio(
@@ -1112,6 +1415,9 @@ export async function processCompositionAudio(
   config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout" | "audioGain">> & {
     /** Serialised master bus chain, from `parseMasterFxChain`. */
     masterFxChain?: string;
+    urlByAbsentLocalPath?: ReadonlyMap<string, string>;
+    audioSidecarUrlByLocalPath?: ReadonlyMap<string, string>;
+    keepEncoderInputAt?: string;
   },
   compiledDir?: string,
 ): Promise<MixResult> {
@@ -1149,259 +1455,269 @@ export async function processCompositionAudio(
   }
 
   await Promise.all(
-    elements.map(async (element, index) => {
-      if (effectiveSignal.aborted) {
-        failures.push({
-          stage: "cancelled",
-          reason: "cancelled",
-          owner: "user",
-          retryable: false,
-          elementId: element.id,
-          detail: boundedDetail(`Cancelled audio element ${element.id}`),
-        });
-        return;
-      }
-      try {
-        let srcPath = element.src;
-        if (!isHttpUrl(srcPath)) {
-          // Same browser-URL path semantics as videos.
-          srcPath = resolveProjectRelativeSrc(element.src, baseDir, compiledDir);
-        }
-
-        if (isHttpUrl(srcPath)) {
-          try {
-            srcPath = await downloadToTemp(
-              srcPath,
-              workDir,
-              undefined,
-              effectiveSignal,
-              undefined,
-              {
-                onTelemetry: writeUrlDownloadTelemetry,
-              },
-            );
-          } catch (err: unknown) {
-            failures.push(downloadFailure(err, element.id));
-            return;
-          }
-        }
-
-        if (!existsSync(srcPath)) {
+    elements.map((element, index) =>
+      (isRemoteElement(element, baseDir, compiledDir, config)
+        ? inRemotePrepareSlot
+        : inPrepareSlot)(async () => {
+        if (effectiveSignal.aborted) {
           failures.push({
-            stage: "source",
-            reason: "source_not_found",
+            stage: "cancelled",
+            reason: "cancelled",
             owner: "user",
             retryable: false,
             elementId: element.id,
-            detail: boundedDetail(missingSourceMessage(element.id, element.src, baseDir, srcPath)),
+            detail: boundedDetail(`Cancelled audio element ${element.id}`),
           });
           return;
         }
+        try {
+          let srcPath = element.src;
+          let readInPlace = false;
+          let audioSidecarUrl: string | undefined;
+          if (!isHttpUrl(srcPath)) {
+            // Same browser-URL path semantics as videos.
+            srcPath = resolveProjectRelativeSrc(element.src, baseDir, compiledDir);
+            const remoteUrl = config?.urlByAbsentLocalPath?.get(srcPath);
+            if (remoteUrl) {
+              audioSidecarUrl = config?.audioSidecarUrlByLocalPath?.get(srcPath);
+              srcPath = remoteUrl;
+              readInPlace = true;
+            }
+          }
 
-        // STUDIO-5433: an audio src that resolved to a text document (an
-        // unresolved nested-composition preview URL, or a 403/404 body served
-        // with a 200) never reaches the probe below when the element carries an
-        // authored duration or `loop`. It then fails inside ffmpeg as
-        // `prepare/ffmpeg_failed` with owner "system" — an authoring bug paged
-        // as a platform fault, after every frame has already been captured.
-        if (await isNotMediaPayload(srcPath)) {
+          if (isHttpUrl(srcPath) && !readInPlace) {
+            try {
+              srcPath = await downloadToTemp(
+                srcPath,
+                workDir,
+                undefined,
+                effectiveSignal,
+                undefined,
+                {
+                  onTelemetry: writeUrlDownloadTelemetry,
+                },
+              );
+            } catch (err: unknown) {
+              failures.push(downloadFailure(err, element.id));
+              return;
+            }
+          }
+
+          if (!readInPlace && !existsSync(srcPath)) {
+            failures.push({
+              stage: "source",
+              reason: "source_not_found",
+              owner: "user",
+              retryable: false,
+              elementId: element.id,
+              detail: boundedDetail(
+                missingSourceMessage(element.id, element.src, baseDir, srcPath),
+              ),
+            });
+            return;
+          }
+
+          // A src that resolved to a text document is an authoring error, not an ffmpeg failure.
+          if (await isNotMediaPayload(srcPath)) {
+            failures.push({
+              stage: "source",
+              reason: "invalid_media",
+              owner: "user",
+              retryable: false,
+              elementId: element.id,
+              detail: boundedDetail(
+                `Audio element ${element.id} source is a text document (HTML/XML/JSON), not media`,
+              ),
+            });
+            return;
+          }
+
+          // Fallback: if no duration was specified, probe the actual file
+          if (element.end - element.start <= 0) {
+            console.warn(
+              `[audioMixer] ${element.id} has no data-duration or data-end; its length is unknown, so it plays to the end of its source`,
+            );
+            let metadata;
+            try {
+              metadata = await extractAudioMetadata(
+                srcPath,
+                readInPlace ? { signal: effectiveSignal } : undefined,
+              );
+            } catch (err: unknown) {
+              failures.push(
+                probeFailure(err instanceof Error ? err.message : String(err), element.id),
+              );
+              return;
+            }
+            const effectiveDuration = timeAtSourceTime(
+              normalizeRateSpec(element.playbackRate),
+              metadata.durationSeconds - element.mediaStart,
+            );
+            element.end =
+              element.start +
+              (effectiveDuration > 0 ? effectiveDuration : metadata.durationSeconds);
+          }
+
+          let audioSrcPath = srcPath;
+          if (element.type === "video") {
+            const extractedPath = join(workDir, `${element.id}-extracted.wav`);
+            const extractResult = await extractAudioSegment(
+              srcPath,
+              extractedPath,
+              "extract",
+              element.mediaStart,
+              element.end - element.start,
+              element.playbackRate,
+              effectiveSignal,
+              config,
+              audioSidecarUrl,
+              { loop: element.loop },
+            );
+            if (!extractResult.success) {
+              failures.push(
+                extractResult.failure
+                  ? { ...extractResult.failure, elementId: element.id }
+                  : {
+                      stage: "extract",
+                      reason: "ffmpeg_failed",
+                      owner: "system",
+                      retryable: false,
+                      elementId: element.id,
+                      detail: boundedDetail(`Audio extract failed for element ${element.id}`),
+                    },
+              );
+              return;
+            }
+            audioSrcPath = extractedPath;
+          } else {
+            const trimmedPath = join(workDir, `${element.id}-trimmed.wav`);
+            const prepResult = await extractAudioSegment(
+              srcPath,
+              trimmedPath,
+              "prepare",
+              element.mediaStart,
+              element.end - element.start,
+              element.playbackRate,
+              effectiveSignal,
+              config,
+              undefined,
+              { loop: element.loop },
+            );
+            if (!prepResult.success) {
+              failures.push(
+                prepResult.failure
+                  ? { ...prepResult.failure, elementId: element.id }
+                  : {
+                      stage: "prepare",
+                      reason: "ffmpeg_failed",
+                      owner: "system",
+                      retryable: false,
+                      elementId: element.id,
+                      detail: boundedDetail(`Audio prepare failed for element ${element.id}`),
+                    },
+              );
+              return;
+            }
+            audioSrcPath = trimmedPath;
+          }
+
+          // The FX chain runs on the dry trimmed audio, before the envelope. A broken chain fails the mix.
+          const chain = element.fxChain ? parseAudioFxChain(element.fxChain) : undefined;
+          const automation = element.automation
+            ? resolveAutomation(parseAutomation(element.automation), chain)
+            : null;
+
+          // Computed before the chain so the FX pass bakes the envelope in ahead of the ±1 clamp.
+          // A volume lane supersedes probed keyframes. With clip gain ahead of the chain, the lane
+          // carries its share of the capped product.
+          const gainBeforeFx = chain !== undefined && enabledAudioFxNodes(chain).length > 0;
+          const laneKeyframes = automation
+            ? volumeLaneKeyframes(
+                automation,
+                element.start,
+                element.end - element.start,
+                element.volume ?? 1,
+                gainBeforeFx,
+              )
+            : null;
+          const tweened = !laneKeyframes && (element.volumeKeyframes?.length ?? 0) > 0;
+          const envelopeKeyframes = laneKeyframes ?? element.volumeKeyframes;
+          const envelope =
+            envelopeKeyframes && envelopeKeyframes.length > 0
+              ? {
+                  keyframes: envelopeKeyframes,
+                  trackStart: element.start,
+                  baseVolume: element.volume ?? 1.0,
+                }
+              : null;
+
+          let bakedEnvelope = false;
+          let tailSeconds = 0;
+          if (chain) {
+            // The rendered WAV is longer than the input by the chain's tail; the mix lets it through.
+            tailSeconds = chainTailSeconds(chain, automation ?? undefined);
+            const fxResult = await applyAudioFxChain(
+              audioSrcPath,
+              chain,
+              join(workDir, `${element.id}-fx.wav`),
+              {
+                trackId: element.id,
+                signal: effectiveSignal,
+                ...(automation ? { automation } : {}),
+                ...(envelope ? { envelope } : {}),
+                ...(gainBeforeFx ? { inputGain: clipGain(element.volume ?? 1, tweened) } : {}),
+              },
+            );
+            audioSrcPath = fxResult.path;
+            bakedEnvelope = fxResult.envelopeBaked;
+          }
+
+          // Bake the envelope into the PCM samples; a non-16-bit WAV falls back to the ffmpeg expression.
+          if (envelope && !bakedEnvelope) {
+            bakedEnvelope = applyVolumeEnvelopeToWav(
+              audioSrcPath,
+              envelope.keyframes,
+              envelope.trackStart,
+              envelope.baseVolume,
+            );
+          }
+          const track: AudioTrack = {
+            id: element.id,
+            srcPath: audioSrcPath,
+            start: element.start,
+            end: element.end,
+            mediaStart: element.mediaStart,
+            duration: element.end - element.start,
+            // Gain is already in the samples when baked, so mix at unity.
+            volume: bakedEnvelope || (gainBeforeFx && !tweened) ? 1.0 : (element.volume ?? 1.0),
+            volumeKeyframes: bakedEnvelope ? undefined : (envelopeKeyframes ?? undefined),
+            ...(element.fadeIn ? { fadeIn: element.fadeIn } : {}),
+            ...(element.fadeOut ? { fadeOut: element.fadeOut } : {}),
+            ...(tailSeconds > 0 ? { tailSeconds } : {}),
+          };
+
+          preparedTracks[index] = track;
+        } catch (err: unknown) {
+          // An FX failure is fatal for the whole mix. Every other failure mode
+          // degrades gracefully — the track drops and siblings continue — but
+          // substituting the dry signal for a processed one ships a render that
+          // sounds plausible and is not what was authored.
+          if (err instanceof AudioFxRenderError) throw err;
           failures.push({
-            stage: "source",
-            reason: "invalid_media",
-            owner: "user",
+            stage: "internal",
+            reason: "internal",
+            owner: "system",
             retryable: false,
             elementId: element.id,
             detail: boundedDetail(
-              `Audio element ${element.id} source is a text document (HTML/XML/JSON), not media`,
+              `Audio processing failed for element ${element.id}: ${
+                err instanceof Error ? err.message : String(err)
+              }`,
             ),
           });
-          return;
         }
-
-        // Fallback: if no duration was specified, probe the actual file
-        if (element.end - element.start <= 0) {
-          let metadata;
-          try {
-            metadata = await extractAudioMetadata(srcPath);
-          } catch (err: unknown) {
-            failures.push(
-              probeFailure(err instanceof Error ? err.message : String(err), element.id),
-            );
-            return;
-          }
-          const effectiveDuration = timeAtSourceTime(
-            normalizeRateSpec(element.playbackRate),
-            metadata.durationSeconds - element.mediaStart,
-          );
-          element.end =
-            element.start + (effectiveDuration > 0 ? effectiveDuration : metadata.durationSeconds);
-        }
-
-        let audioSrcPath = srcPath;
-        if (element.type === "video") {
-          const extractedPath = join(workDir, `${element.id}-extracted.wav`);
-          const extractResult = await extractAudioSegment(
-            srcPath,
-            extractedPath,
-            "extract",
-            element.mediaStart,
-            element.end - element.start,
-            element.playbackRate,
-            effectiveSignal,
-            config,
-          );
-          if (!extractResult.success) {
-            failures.push(
-              extractResult.failure
-                ? { ...extractResult.failure, elementId: element.id }
-                : {
-                    stage: "extract",
-                    reason: "ffmpeg_failed",
-                    owner: "system",
-                    retryable: false,
-                    elementId: element.id,
-                    detail: boundedDetail(`Audio extract failed for element ${element.id}`),
-                  },
-            );
-            return;
-          }
-          audioSrcPath = extractedPath;
-        } else {
-          const trimmedPath = join(workDir, `${element.id}-trimmed.wav`);
-          const prepResult = await extractAudioSegment(
-            srcPath,
-            trimmedPath,
-            "prepare",
-            element.mediaStart,
-            element.end - element.start,
-            element.playbackRate,
-            effectiveSignal,
-            config,
-          );
-          if (!prepResult.success) {
-            failures.push(
-              prepResult.failure
-                ? { ...prepResult.failure, elementId: element.id }
-                : {
-                    stage: "prepare",
-                    reason: "ffmpeg_failed",
-                    owner: "system",
-                    retryable: false,
-                    elementId: element.id,
-                    detail: boundedDetail(`Audio prepare failed for element ${element.id}`),
-                  },
-            );
-            return;
-          }
-          audioSrcPath = trimmedPath;
-        }
-
-        // Apply the track's FX chain to the dry, trimmed audio, before volume
-        // automation is baked in: effects should see the raw signal, and the
-        // envelope belongs on their output. A missing or broken chain is fatal
-        // for the whole mix rather than a per-track warning — quietly rendering
-        // the dry signal ships a mix that sounds plausible and is wrong.
-        const automation = element.automation
-          ? resolveAutomation(
-              parseAutomation(element.automation),
-              element.fxChain ? parseAudioFxChain(element.fxChain) : undefined,
-            )
-          : null;
-
-        // Computed before the chain runs, not after: the FX pass bakes the
-        // envelope into its float output so the duck lands before the ±1 clamp
-        // in writeWav, instead of after it.
-        //
-        // A volume lane supersedes keyframes probed from the timeline: the two
-        // would fight, and the lane is the explicit one. `lint` warns when a
-        // track carries both.
-        const laneKeyframes = automation
-          ? volumeLaneKeyframes(automation, element.start, element.end - element.start)
-          : null;
-        const envelopeKeyframes = laneKeyframes ?? element.volumeKeyframes;
-        const envelope =
-          envelopeKeyframes && envelopeKeyframes.length > 0
-            ? {
-                keyframes: envelopeKeyframes,
-                trackStart: element.start,
-                baseVolume: element.volume ?? 1.0,
-              }
-            : null;
-
-        let bakedEnvelope = false;
-        let tailSeconds = 0;
-        if (element.fxChain) {
-          // The chain is serialised into the attribute, the same way colour
-          // grading carries its config, so there is no side-car file to find,
-          // resolve or lose.
-          const chain = parseAudioFxChain(element.fxChain);
-          // The rendered WAV is longer than the input by exactly this much, so
-          // the mix has to be told to let it through.
-          tailSeconds = chainTailSeconds(chain, automation ?? undefined);
-          const fxResult = await applyAudioFxChain(
-            audioSrcPath,
-            chain,
-            join(workDir, `${element.id}-fx.wav`),
-            {
-              trackId: element.id,
-              signal: effectiveSignal,
-              ...(automation ? { automation } : {}),
-              ...(envelope ? { envelope } : {}),
-            },
-          );
-          audioSrcPath = fxResult.path;
-          bakedEnvelope = fxResult.envelopeBaked;
-        }
-
-        // Primary volume-automation path for a track the FX pass did not bake:
-        // multiply the envelope into the PCM samples (sample-accurate, no
-        // keyframe ceiling). If the WAV isn't the expected 16-bit PCM, fall
-        // back to the ffmpeg expression path by leaving the keyframes on the
-        // track for buildVolumeExpression to handle.
-        if (envelope && !bakedEnvelope) {
-          bakedEnvelope = applyVolumeEnvelopeToWav(
-            audioSrcPath,
-            envelope.keyframes,
-            envelope.trackStart,
-            envelope.baseVolume,
-          );
-        }
-        const track: AudioTrack = {
-          id: element.id,
-          srcPath: audioSrcPath,
-          start: element.start,
-          end: element.end,
-          mediaStart: element.mediaStart,
-          duration: element.end - element.start,
-          // Gain is already in the samples when baked, so mix at unity.
-          volume: bakedEnvelope ? 1.0 : (element.volume ?? 1.0),
-          volumeKeyframes: bakedEnvelope ? undefined : (envelopeKeyframes ?? undefined),
-          ...(element.fadeIn ? { fadeIn: element.fadeIn } : {}),
-          ...(element.fadeOut ? { fadeOut: element.fadeOut } : {}),
-          ...(tailSeconds > 0 ? { tailSeconds } : {}),
-        };
-
-        preparedTracks[index] = track;
-      } catch (err: unknown) {
-        // An FX failure is fatal for the whole mix. Every other failure mode
-        // degrades gracefully — the track drops and siblings continue — but
-        // substituting the dry signal for a processed one ships a render that
-        // sounds plausible and is not what was authored.
-        if (err instanceof AudioFxRenderError) throw err;
-        failures.push({
-          stage: "internal",
-          reason: "internal",
-          owner: "system",
-          retryable: false,
-          elementId: element.id,
-          detail: boundedDetail(
-            `Audio processing failed for element ${element.id}: ${
-              err instanceof Error ? err.message : String(err)
-            }`,
-          ),
-        });
-      }
-    }),
+      }, effectiveSignal),
+    ),
   ).catch((err: unknown) => {
     // Promise.all rejected on the first fatal failure without waiting for its
     // siblings; abort them so their ffmpeg stops before workDir disappears.
@@ -1459,6 +1775,7 @@ export async function processCompositionAudio(
       failures,
     };
   };
+  const prepareMs = Date.now() - startMs;
   if (failures.length > 0) return bail();
 
   // Parsed before any group is mixed, so a malformed master chain fails fast and
@@ -1532,7 +1849,9 @@ export async function processCompositionAudio(
             meta.fxChain ? parseAudioFxChain(meta.fxChain) : undefined,
           )
         : null;
-      const laneKeyframes = automation ? volumeLaneKeyframes(automation, 0, totalDuration) : null;
+      const laneKeyframes = automation
+        ? volumeLaneKeyframes(automation, 0, totalDuration, meta.volume)
+        : null;
       const envelope =
         laneKeyframes && laneKeyframes.length > 0
           ? { keyframes: laneKeyframes, trackStart: 0, baseVolume: meta.volume }
@@ -1604,10 +1923,11 @@ export async function processCompositionAudio(
   }
   if (failures.length > 0) return bail();
 
+  const groupsMs = Date.now() - startMs - prepareMs;
   let mixResult: MixResult;
   try {
     mixResult =
-      (masterChain || aacSegmentCount(totalDuration) > 1) && tracks.length > 0
+      tracks.length > 0
         ? await mixThroughFloatSum(
             tracks,
             masterChain,
@@ -1633,6 +1953,7 @@ export async function processCompositionAudio(
   return {
     ...mixResult,
     durationMs: Date.now() - startMs,
+    phaseMs: { prepare: prepareMs, groups: groupsMs, ...mixResult.phaseMs },
     // Both, when both degraded. `mixResult.error ?? degradedNote` reported only
     // the outer mix and dropped the one that names which GROUPS lost their
     // members' automation — two different losses, and the operator needs to

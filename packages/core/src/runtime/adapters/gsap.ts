@@ -86,15 +86,150 @@ function gsapNeverRendered(timeline: RuntimeTimelineLike): boolean {
   return rendered !== undefined && !rendered._initted;
 }
 
+const lastRenderSeek = new WeakMap<object, number>();
+const sharedPropertySpans = new WeakMap<object, { version: string; spans: [number, number][] }>();
+const NOT_PROPERTIES = new Set([
+  "duration",
+  "ease",
+  "delay",
+  "repeat",
+  "repeatDelay",
+  "yoyo",
+  "yoyoEase",
+  "repeatRefresh",
+  "stagger",
+  "overwrite",
+  "immediateRender",
+  "lazy",
+  "id",
+  "paused",
+  "reversed",
+  "callbackScope",
+  "runBackwards",
+  "data",
+  "inherit",
+  "defaults",
+]);
+const EVERY_PROPERTY = new Set(["keyframes", "startAt", "transform"]);
+const SAME_PROPERTY: Record<string, string> = {
+  scaleX: "scale",
+  scaleY: "scale",
+  autoAlpha: "opacity",
+  rotate: "rotation",
+};
+
+type PlacedTween = GsapPlaced & {
+  vars?: Record<string, unknown>;
+  targets?: () => object[];
+};
+type PropertyWrite = { start: number; end: number; properties: Set<string> | null };
+
+function propertiesWritten(vars: Record<string, unknown>): Set<string> | null {
+  const properties = new Set<string>();
+  for (const key of Object.keys(vars)) {
+    if (EVERY_PROPERTY.has(key)) return null;
+    if (!key.startsWith("on") && !NOT_PROPERTIES.has(key))
+      properties.add(SAME_PROPERTY[key] ?? key);
+  }
+  return properties;
+}
+
+function spanOnParent(
+  [start, length]: [number, number],
+  parent: GsapPlaced,
+): [number, number] | null {
+  const speed = Number(parent._ts);
+  if (!speed) return null;
+  const [from, span] =
+    parent._repeat || speed < 0
+      ? [0, Number(parent.totalDuration?.() ?? Infinity)]
+      : [start, length];
+  return [Number(parent._start) + from / Math.abs(speed), span / Math.abs(speed)];
+}
+
+function writeOf(tween: PlacedTween, timeline: RuntimeTimelineLike): PropertyWrite | null {
+  let span: [number, number] | null = [Number(tween._start), Number(tween.totalDuration?.() ?? 0)];
+  for (let parent = tween.parent; span && parent && parent !== timeline; parent = parent.parent) {
+    span = spanOnParent(span, parent);
+  }
+  return (
+    span && {
+      start: span[0],
+      end: span[0] + span[1],
+      properties: propertiesWritten(tween.vars ?? {}),
+    }
+  );
+}
+
+function spansWhereTweensShareAProperty(timeline: RuntimeTimelineLike): [number, number][] {
+  const writes = new Map<object, PropertyWrite[]>();
+  for (const child of timeline.getChildren?.(true, true, false) ?? []) {
+    const tween = child as PlacedTween;
+    const write = writeOf(tween, timeline);
+    if (!write) continue;
+    for (const target of tween.targets?.() ?? [])
+      writes.set(target, [...(writes.get(target) ?? []), write]);
+  }
+  return [...writes.values()].flatMap(overlapsOnOneTarget);
+}
+
+function sharesAProperty(a: PropertyWrite, b: PropertyWrite): boolean {
+  return !a.properties || !b.properties || [...a.properties].some((p) => b.properties!.has(p));
+}
+
+function overlapsOnOneTarget(writes: PropertyWrite[]): [number, number][] {
+  const spans: [number, number][] = [];
+  writes.sort((x, y) => x.start - y.start);
+  writes.forEach((first, i) => {
+    for (const second of writes.slice(i + 1)) {
+      if (second.start >= first.end) break;
+      if (sharesAProperty(first, second))
+        spans.push([second.start, Math.min(first.end, second.end)]);
+    }
+  });
+  return spans;
+}
+
+function framesSkippedSinceLastSeek(
+  timeline: RuntimeTimelineLike,
+  t: number,
+  fps: number,
+  version = "",
+): number[] {
+  const last = lastRenderSeek.get(timeline);
+  lastRenderSeek.set(timeline, t);
+  const skipped =
+    last === undefined ? Math.floor(t * fps + 1e-6) : Math.ceil((t - last) * fps - 1e-6) - 1;
+  if (skipped < 1) return [];
+  let cached = sharedPropertySpans.get(timeline);
+  if (cached?.version !== version) {
+    cached = { version, spans: spansWhereTweensShareAProperty(timeline) };
+    sharedPropertySpans.set(timeline, cached);
+  }
+  const replay = new Set<number>();
+  for (const [from, to] of cached.spans) {
+    const nearest = Math.max(1, Math.ceil((t - to) * fps - 1e-6) - 1);
+    const farthest = Math.min(skipped, Math.floor((t - from) * fps + 1e-6) + 1);
+    for (let back = nearest; back <= farthest; back++) replay.add(back);
+  }
+  return [...replay].sort((x, y) => y - x).map((back) => t - back / fps);
+}
+
 export function seekGsapTimeline(
   timeline: RuntimeTimelineLike,
   t: number,
   suppressEvents: boolean,
   structure?: GsapStructureKey,
+  renderFps?: number,
 ): boolean {
   if (typeof timeline.totalTime !== "function") {
-    timeline.seek(t, suppressEvents);
+    if (typeof timeline.seek === "function") timeline.seek(t, suppressEvents);
     return false;
+  }
+  if (renderFps) {
+    for (const time of framesSkippedSinceLastSeek(timeline, t, renderFps, structure?.version)) {
+      timeline.totalTime(time, suppressEvents);
+    }
   }
   const from = Number(timeline.totalTime());
   timeline.totalTime(t, suppressEvents);
@@ -175,6 +310,7 @@ type GsapPlaced = {
   _repeat?: number;
   parent?: GsapPlaced | null;
   getChildren?: unknown;
+  totalDuration?: () => number;
 };
 
 function startOnOwner(child: GsapPlaced, owner: object): number | null {

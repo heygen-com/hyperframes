@@ -17,7 +17,7 @@
  * is a feature rather than a fix.
  */
 
-import type { MotionBlurOptions } from "@hyperframes/engine";
+import type { MotionBlurOptions, PageMotionBlurOff } from "@hyperframes/engine";
 import type { CapturePlan } from "./capturePlan.js";
 
 /** Why a capture route cannot honour motion blur, or null when it can. */
@@ -53,4 +53,18 @@ export function assertMotionBlurSupported(
   throw new Error(
     `[MotionBlur] sub-frame motion blur is not supported on the "${route}" capture route: ${reason}`,
   );
+}
+
+/**
+ * Why the page's own capture blur (`data-motion-blur="on"`) must stand down on this route, or
+ * undefined when it can run. The layered compositor screenshots each DOM layer after hiding the
+ * others; blur draws the whole composition into a canvas that those hides do not reach, so a
+ * layer comes out wrong (HDR: backgrounds and overlays lost).
+ */
+export function pageMotionBlurForRoute(route: {
+  hasHdrContent: boolean;
+  useLayeredComposite: boolean;
+}): PageMotionBlurOff | undefined {
+  if (route.hasHdrContent) return "hdr-render";
+  return route.useLayeredComposite ? "layered-composite" : undefined;
 }

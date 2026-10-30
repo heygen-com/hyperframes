@@ -12,7 +12,7 @@ import { consumeCommandResult } from "../utils/commandResult.js";
 const lintProjectMock = vi.fn();
 
 vi.mock("../utils/project.js", () => ({
-  resolveProject: (dir?: string) => ({ dir: dir ?? "/proj", name: "proj" }),
+  resolveLintTarget: (dir?: string) => ({ project: { dir: dir ?? "/proj", name: "proj" } }),
 }));
 vi.mock("../utils/lintProject.js", () => ({
   lintProject: (...args: unknown[]) => lintProjectMock(...args),

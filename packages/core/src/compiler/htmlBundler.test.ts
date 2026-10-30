@@ -105,6 +105,31 @@ describe("bundleToSingleHtml", () => {
     }
   });
 
+  it("stops inlining a repeated asset once the bundle's inline budget is spent instead of overflowing the string", async () => {
+    // 300 references to one 1.9 MB image inline ~760M characters, past V8's
+    // maximum string length: without a bundle-wide budget this throws
+    // "Invalid string length".
+    const references = 300;
+    const dir = makeTempProject({
+      "index.html": `<html><body><main data-composition-id="root" data-width="320" data-height="180">${'<img src="unit.png">'.repeat(references)}</main></body></html>`,
+      "unit.png": "x".repeat(1_900_000),
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const bundled = await bundleToSingleHtml(dir);
+      const inlined = bundled.split("data:image/png;base64,").length - 1;
+      const relative = bundled.split('src="unit.png"').length - 1;
+      expect(inlined).toBeGreaterThan(0);
+      expect(relative).toBeGreaterThan(0);
+      expect(inlined + relative).toBe(references);
+      expect(bundled.length).toBeLessThan(300 * 1024 * 1024);
+      expect(warn.mock.calls.filter(([m]) => String(m).includes("inline")).length).toBe(1);
+    } finally {
+      warn.mockRestore();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("resolves encoded URL filenames once across asset, stylesheet and script consumers", async () => {
     const dir = makeTempProject({
       "index.html":
@@ -192,31 +217,34 @@ describe("bundleToSingleHtml", () => {
     expect(bundled).toContain(".direct-scene { color: rgb(1, 2, 3); }");
   });
 
-  it("bundles a template scene entry inside the index that mounts it", async () => {
-    const dir = makeTempProject({
-      "index.html": `<!doctype html><html><head><script src="vendor/gsap.js"></script></head><body>
+  it.each(["", "<!-- Scene author notes -->\n"])(
+    "bundles a template scene entry with prefix %j inside the index that mounts it",
+    async (prefix) => {
+      const dir = makeTempProject({
+        "index.html": `<!doctype html><html><head><script src="vendor/gsap.js"></script></head><body>
         <div data-composition-id="root" data-width="320" data-height="180" data-duration="9">
           <div data-composition-id="intro" data-composition-src="compositions/intro.html" data-start="0" data-duration="3"></div>
           <div data-composition-id="scene" data-composition-src="./compositions/scene.html" data-start="3" data-duration="6"></div>
         </div>
       </body></html>`,
-      "vendor/gsap.js": "window.ROOT_GSAP_LOADED = true;",
-      "compositions/intro.html": `<template><div data-composition-id="intro">intro scene</div></template>`,
-      "compositions/scene.html": `<template><div data-composition-id="scene" data-duration="6">
+        "vendor/gsap.js": "window.ROOT_GSAP_LOADED = true;",
+        "compositions/intro.html": `<template><div data-composition-id="intro">intro scene</div></template>`,
+        "compositions/scene.html": `${prefix}<template><div data-composition-id="scene" data-duration="6">
         <h1 id="title">mounted scene</h1></div></template>`,
-    });
+      });
 
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const bundled = await bundleToSingleHtml(dir, { entryFile: "compositions/scene.html" });
-    const guardWarnings = warn.mock.calls.filter(([m]) => String(m).includes("[StaticGuard]"));
-    warn.mockRestore();
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const bundled = await bundleToSingleHtml(dir, { entryFile: "compositions/scene.html" });
+      const guardWarnings = warn.mock.calls.filter(([m]) => String(m).includes("[StaticGuard]"));
+      warn.mockRestore();
 
-    expect(guardWarnings).toEqual([]);
-    expect(bundled).toContain("window.ROOT_GSAP_LOADED = true;");
-    expect(bundled).toContain('data-composition-id="root"');
-    expect(bundled).toContain("mounted scene");
-    expect(bundled).not.toContain("intro scene");
-  });
+      expect(guardWarnings).toEqual([]);
+      expect(bundled).toContain("window.ROOT_GSAP_LOADED = true;");
+      expect(bundled).toContain('data-composition-id="root"');
+      expect(bundled).toContain("mounted scene");
+      expect(bundled).not.toContain("intro scene");
+    },
+  );
 
   it("rebases direct-entry authored asset paths before inlining", async () => {
     const spriteSvg = '<svg xmlns="http://www.w3.org/2000/svg"><circle r="4"/></svg>';
@@ -349,6 +377,37 @@ describe("bundleToSingleHtml", () => {
     const bundled = await bundleToSingleHtml(dir);
 
     expect(bundled).toContain('var __hfCompositionSrc = "compositions/blk/blk.html";');
+  });
+
+  it("bundles mounted import maps with blocked entries and object-property specifiers", async () => {
+    const dir = makeTempProject({
+      "index.html":
+        '<!doctype html><html><head></head><body><div data-composition-id="main" data-width="320" data-height="180"><div data-composition-id="blk" data-composition-src="blocks/blk.html" data-start="0" data-duration="2"></div></div></body></html>',
+      "blocks/ok.js": "export const VALUE = 1;",
+      "blocks/lib/witness.js": "export const WITNESS = 3;",
+      "blocks/scoped.js": "export const VALUE = 2;",
+      "blocks/blk.html":
+        '<div data-composition-id="blk" data-width="320" data-height="180"><script type="importmap">{"imports":{"ok":"./ok.js","blocked":null,"number":17,"constructor":"./ok.js","__proto__":"./ok.js"},"scopes":{"./lib/":{"ok":"./scoped.js","blocked":null}}}</script><script type="module">import "ok";</script></div>',
+    });
+    try {
+      const { document } = parseHTML(await bundleToSingleHtml(dir));
+      const map = document.querySelector('script[type="importmap"]');
+      expect(JSON.parse(map?.textContent || "null")).toEqual({
+        imports: Object.fromEntries([
+          ["ok", "./blocks/ok.js"],
+          ["blocked", null],
+          ["number", null],
+          ["constructor", "./blocks/ok.js"],
+          ["__proto__", "./blocks/ok.js"],
+        ]),
+        scopes: { "./blocks/lib/": { ok: "./blocks/scoped.js", blocked: null } },
+      });
+      expect(
+        document.querySelector(`script[type="${AFTER_FONTS_SCRIPT_TYPE}+module"]`),
+      ).not.toBeNull();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("keeps a mounted file's import map and module script as such, bound to that file", async () => {
@@ -1166,6 +1225,14 @@ describe("bundleToSingleHtml", () => {
     const bundled = await bundleToSingleHtml(dir);
 
     expect(bundled).toMatch(/__hfVariablesByComp = Object\.assign\([^;]*assets\/blk\/one\.jpg/);
+    const { document } = parseHTML(bundled);
+    const tables = [...document.querySelectorAll("script")].filter((s) =>
+      s.textContent?.includes("__hfVariablesByComp = Object.assign"),
+    );
+    // In <head>, so the runtime binds each instance's text before the composition scripts, which wait for fonts.
+    expect(tables.map((s) => [s.parentElement?.tagName, s.getAttribute("type")])).toEqual([
+      ["HEAD", null],
+    ]);
   });
 
   it("emits per-instance scoped variables for bundled sub-compositions", async () => {
@@ -1503,6 +1570,27 @@ describe("bundleToSingleHtml", () => {
     expect(bundled).toContain("display: block");
     expect(styleText(bundled)).not.toContain("@import");
   });
+
+  it.each([false, true])(
+    "keeps repeated CSS imports under each media condition (nested: %s)",
+    async (nested) => {
+      const dir = makeTempProject({
+        "index.html": `<link rel="stylesheet" href="main.css"><div data-composition-id="root" data-width="320" data-height="180"></div>`,
+        "main.css": nested
+          ? '@import "first.css" print;\n@import "second.css" screen;'
+          : '@import "shared.css" print;\n@import "shared.css" screen;',
+        "first.css": '@import "shared.css";',
+        "second.css": '@import "shared.css";',
+        "shared.css": "#root { background: green; }",
+      });
+
+      const css = styleText(await bundleToSingleHtml(dir));
+
+      expect(css).toMatch(/@media print\s*\{\s*#root \{ background: green; \}\s*\}/);
+      expect(css).toMatch(/@media screen\s*\{\s*#root \{ background: green; \}\s*\}/);
+      expect(css).not.toContain("@import");
+    },
+  );
 
   describe("head style coalescing", () => {
     async function bundledHeadStyles(head: string, files: Record<string, string> = {}) {
@@ -2022,23 +2110,158 @@ describe("bundleToSingleHtml", () => {
     expect(bundled).toContain(`url('${inlinedAs("image/png", "fake")}')`);
   });
 
-  it("preserves url() query strings and hash fragments during rebasing", async () => {
-    const dir = makeTempProject({
-      "index.html": `<!doctype html>
+  it.each([true, false])(
+    "handles CSS asset suffixes with inlineAssets %s",
+    async (inlineAssets) => {
+      const dir = makeTempProject({
+        "index.html": `<!doctype html>
 <html><body>
   <link rel="stylesheet" href="styles/icons.css">
   <div data-composition-id="root" data-width="320" data-height="180"></div>
   <script>window.__timelines = window.__timelines || {}; window.__timelines.root = {}</script>
 </body></html>`,
-      "styles/icons.css": `.icon { background: url('./sprite.png?v=2#section'); }`,
-      "styles/sprite.png": "fake-sprite",
+        "styles/icons.css": `.icon { background: url('./sprite.png?v=2#section'); }`,
+        "styles/sprite.png": "fake-sprite",
+      });
+
+      try {
+        const bundled = await bundleToSingleHtml(dir, { inlineAssets });
+        const assetUrl = inlineAssets
+          ? `${inlinedAs("image/png", "fake-sprite")}#section`
+          : "styles/sprite.png?v=2#section";
+        expect(styleText(bundled)).toContain(`url('${assetUrl}')`);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("inlines a BT.709-tagged PNG without its tag, so the file's own values show", async () => {
+    const tagged = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAABGNJQ1ABAQABlXPCVgAAAAxJREFUeJxj0NfXBwABHgCOTp25kgAAAABJRU5ErkJggg==",
+      "base64",
+    );
+    const dir = makeTempProject({
+      "index.html": `<div data-composition-id="root" data-width="320" data-height="180"><img id="photo" src="tagged.png"></div>`,
     });
-
-    const bundled = await bundleToSingleHtml(dir);
-
-    // The query/hash suffix rides along onto the inlined data URL.
-    expect(bundled).toContain(`url('${inlinedAs("image/png", "fake-sprite")}?v=2#section')`);
+    writeFileSync(join(dir, "tagged.png"), tagged);
+    try {
+      const { document } = parseHTML(await bundleToSingleHtml(dir));
+      const src = document.getElementById("photo")?.getAttribute("src") ?? "";
+      const inlined = Buffer.from(src.slice(src.indexOf(",") + 1), "base64");
+      expect(inlined.includes("cICP")).toBe(false);
+      expect(inlined.includes("IDAT")).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
+
+  it.each(["?v=2", "#sprite", "?v=2#sprite"])(
+    "keeps inlined image bytes decodable with suffix %s",
+    async (suffix) => {
+      const png = Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAHUlEQVR4AdzKMREAAACCQI/+nbWB7sL6yH00+gABAAD//9z6uLQAAAAGSURBVAMAa8EQAfftxdwAAAAASUVORK5CYII=",
+        "base64",
+      );
+      const dir = makeTempProject({
+        "index.html": `<div data-composition-id="root" data-width="320" data-height="180"><img id="photo" src="green.png${suffix}"></div>`,
+      });
+      writeFileSync(join(dir, "green.png"), png);
+      try {
+        const bundled = await bundleToSingleHtml(dir);
+        const { document } = parseHTML(bundled);
+        const src = document.getElementById("photo")?.getAttribute("src");
+        expect(src).toBe(
+          `data:image/png;base64,${png.toString("base64")}${suffix.includes("#") ? "#sprite" : ""}`,
+        );
+        const response = await fetch(src ?? "");
+        expect(response.headers.get("content-type")).toBe("image/png");
+        expect(Buffer.from(await response.arrayBuffer())).toEqual(png);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.each([true, false])(
+    "handles font query strings with inlineAssets %s",
+    async (inlineAssets) => {
+      const dir = makeTempProject({
+        "index.html": `<style>@font-face { font-family: Icon; src: url('icon.woff2?v=4.7.0'); }</style><div data-composition-id="root" data-width="320" data-height="180"></div>`,
+        "icon.woff2": "font-bytes",
+      });
+      try {
+        const bundled = await bundleToSingleHtml(dir, { inlineAssets });
+        const fontUrl = inlineAssets ? inlinedAs("font/woff2", "font-bytes") : "icon.woff2?v=4.7.0";
+        expect(styleText(bundled)).toContain(`url('${fontUrl}')`);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.each([true, false])(
+    "preserves srcset URL commas with inlineAssets %s",
+    async (inlineAssets) => {
+      const srcset = `${inlinedAs("image/svg+xml", '<svg xmlns="http://www.w3.org/2000/svg"/>')} 1x, https://cdn.example/hero,blue.png 2x`;
+      const dir = makeTempProject({
+        "index.html": `<html><body><div data-composition-id="root" data-width="320" data-height="180" data-duration="1" data-no-timeline><img id="photo" srcset="${srcset}"></div></body></html>`,
+      });
+      try {
+        const bundled = await bundleToSingleHtml(dir, { inlineAssets });
+        const { document } = parseHTML(bundled);
+        expect(document.getElementById("photo")?.getAttribute("srcset")).toBe(srcset);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("inlines a comma-named srcset image beside an existing data URL", async () => {
+    const dataUrl = inlinedAs("image/svg+xml", '<svg xmlns="http://www.w3.org/2000/svg"/>');
+    const dir = makeTempProject({
+      "index.html": `<html><body><div data-composition-id="root" data-width="320" data-height="180" data-duration="1" data-no-timeline><img id="photo" srcset="${dataUrl} 1x, hero,blue.png 2x"></div></body></html>`,
+      "hero,blue.png": "blue-image-bytes",
+    });
+    try {
+      const bundled = await bundleToSingleHtml(dir);
+      const { document } = parseHTML(bundled);
+      expect(document.getElementById("photo")?.getAttribute("srcset")).toBe(
+        `${dataUrl} 1x, ${inlinedAs("image/png", "blue-image-bytes")} 2x`,
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it.each([true, false])(
+    "rebases complete picture srcset URLs with inlineAssets %s",
+    async (inlineAssets) => {
+      const dataUrl = inlinedAs("image/svg+xml", '<svg xmlns="http://www.w3.org/2000/svg"/>');
+      const dir = makeTempProject({
+        "scenes/scene.html": `<html><body><div data-composition-id="root" data-width="320" data-height="180" data-duration="1" data-no-timeline><picture><source id="photo" srcset="${dataUrl} 160w, hero,blue.png?v=2#sprite 320w"><img id="fallback" src="hero,blue.png" srcset="hero,blue.png?v=2 1x"></picture></div></body></html>`,
+        "scenes/hero,blue.png": "blue-image-bytes",
+      });
+      try {
+        const bundled = await bundleToSingleHtml(dir, {
+          entryFile: "scenes/scene.html",
+          inlineAssets,
+        });
+        const { document } = parseHTML(bundled);
+        const image = inlineAssets
+          ? inlinedAs("image/png", "blue-image-bytes")
+          : "scenes/hero%2Cblue.png";
+        expect(document.getElementById("photo")?.getAttribute("srcset")).toBe(
+          `${dataUrl} 160w, ${image}${inlineAssets ? "#sprite" : "?v=2#sprite"} 320w`,
+        );
+        expect(document.getElementById("fallback")?.getAttribute("srcset")).toBe(
+          `${image}${inlineAssets ? "" : "?v=2"} 1x`,
+        );
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("inlines fonts, images and scripts so no relative asset reference survives", async () => {
     const dir = makeTempProject({
@@ -2239,7 +2462,7 @@ describe("bundleToSingleHtml", () => {
     warn.mockRestore();
   });
 
-  it("deduplicates diamond @import (same file imported by two parents)", async () => {
+  it("preserves cascade order when two CSS imports share a dependency", async () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html>
 <html><body>
@@ -2250,16 +2473,34 @@ describe("bundleToSingleHtml", () => {
       "styles/main.css": `@import url('./a.css');\n@import url('./b.css');`,
       "styles/a.css": `@import url('./shared.css');\n.a { color: red; }`,
       "styles/b.css": `@import url('./shared.css');\n.b { color: blue; }`,
-      "styles/shared.css": `:root { --shared: 1; }`,
+      "styles/shared.css": `.a { color: green; }`,
     });
 
     const bundled = await bundleToSingleHtml(dir);
 
-    const sharedCount = (bundled.match(/--shared: 1/g) || []).length;
-    expect(sharedCount).toBe(1);
-    expect(bundled).toContain(".a { color: red; }");
-    expect(bundled).toContain(".b { color: blue; }");
+    expect(styleText(bundled).match(/\.[ab] \{ color: \w+; \}/g)).toEqual([
+      ".a { color: green; }",
+      ".a { color: red; }",
+      ".a { color: green; }",
+      ".b { color: blue; }",
+    ]);
     expect(styleText(bundled)).not.toContain("@import");
+  });
+
+  it("cuts a CSS import cycle without repeating the entry stylesheet", async () => {
+    const dir = makeTempProject({
+      "index.html": `<link rel="stylesheet" href="main.css"><div data-composition-id="root" data-width="320" data-height="180"></div>`,
+      "main.css": '@import "child.css";\n.main { color: red; }',
+      "child.css": '@import "main.css";\n.child { color: green; }',
+    });
+
+    const css = styleText(await bundleToSingleHtml(dir));
+
+    expect(css.match(/\.(?:child|main) \{ color: \w+; \}/g)).toEqual([
+      ".child { color: green; }",
+      ".main { color: red; }",
+    ]);
+    expect(css).not.toContain("@import");
   });
 
   it("does not resolve @import inside CSS comments", async () => {
@@ -2343,6 +2584,26 @@ describe("bundleToSingleHtml", () => {
         .map((call) => String(call[0] ?? ""))
         .filter((line) => line.includes("[StaticGuard]"));
       expect(staticGuardWarnings).toEqual([]);
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it("reads a font declared in a linked stylesheet, as hyperframes lint does", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><head><link rel="stylesheet" href="fonts.css"><style>#root { font-family: 'Hiragino Sans'; }</style></head><body>
+  <div id="root" data-composition-id="root" data-width="320" data-height="180" data-duration="1"></div>
+  <script>window.__timelines = {};</script>
+</body></html>`,
+      "fonts.css": `@font-face { font-family: 'Hiragino Sans'; src: local('Hiragino Sans W3'); }`,
+    });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await bundleToSingleHtml(dir);
+      const guard = warnSpy.mock.calls
+        .map((call) => String(call[0] ?? ""))
+        .filter((line) => line.includes("[StaticGuard]"));
+      expect(guard).toEqual([]);
     } finally {
       warnSpy.mockRestore();
     }
@@ -2489,7 +2750,7 @@ describe("bundleToSingleHtml unknown enum values", () => {
     const bundled = await bundleToSingleHtml(makeSubCompProject('{"accent":"orange"}'));
 
     expect(bundled).toContain("window.__hfVariablesByComp = Object.assign({}, ");
-    expect(bundled).toContain('{ "card": { "accent": "orange" } }');
+    expect(bundled).toContain('{"card":{"accent":"orange"}}');
     expect(bundled).toMatch(/\[data-composition-id="card"\]\s*\{[^}]*--accent:\s*orange/);
     expect(bundled).not.toContain("--accent: green");
   });
@@ -3346,9 +3607,8 @@ describe("bundleToSingleHtml sceneParts", () => {
       "its script uses addEventListener",
     );
     expect(host("b")?.hasAttribute("data-hf-scene-no-swap")).toBe(false);
-    expect(host("c")?.getAttribute("data-hf-scene-no-swap")).toBe(
-      "it runs a script that is not a known library",
-    );
+    // A project file is read and held to the rules of an inline script.
+    expect(host("c")?.getAttribute("data-hf-scene-no-swap")).toBe("its script uses .animate(");
     // The root loading the same URL does not make a scene's own initializer a library.
     expect(host("d")?.getAttribute("data-hf-scene-no-swap")).toBe(
       "it runs a script that is not a known library",
@@ -3362,6 +3622,179 @@ describe("bundleToSingleHtml sceneParts", () => {
     );
     const rendered = await bundleToSingleHtml(dir);
     expect(parseHTML(rendered).document.querySelector("[data-hf-scene-no-swap]")).toBeNull();
+  });
+
+  it("lets a scene load a project helper and wait for fonts, and refuses anything else either leaves pending", async () => {
+    const scenes: Record<string, string> = {
+      helper: `<script src="../lib/helper.js"></script><script>window.__timelines.helper = window.build("helper");</script>`,
+      fontsThen: `<script>document.fonts.ready.then(() => window.fit("fontsThen"));</script>`,
+      fontsAwait: `<script>(async () => { await document.fonts.ready; window.fit("fontsAwait"); })();</script>`,
+      timerHelper: `<script src="../lib/ticker.js"></script>`,
+      missingHelper: `<script src="../lib/gone.js"></script>`,
+      fetchThen: `<script>fetch("data.json").then((r) => r.json());</script>`,
+      otherAwait: `<script>(async () => { await document.fonts.ready; await window.load(); })();</script>`,
+      promise: `<script>new Promise((done) => done()).then(() => {});</script>`,
+    };
+    const names = Object.keys(scenes);
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><head></head><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-duration="2">
+    ${names.map((n) => `<div data-composition-id="${n}" data-composition-src="compositions/${n}.html" data-start="0" data-duration="2"></div>`).join("\n")}
+  </div></body></html>`,
+      "lib/helper.js": `window.build = function (id) { var tl = gsap.timeline({ paused: true }); tl.to(document.querySelector('[data-composition-id="' + id + '"] p'), { x: 1 }); return tl; };`,
+      "lib/ticker.js": `setInterval(function () {}, 100);`,
+      ...Object.fromEntries(
+        names.map((n) => [
+          `compositions/${n}.html`,
+          `<template id="${n}-template"><div data-composition-id="${n}"><p>${n}</p>${scenes[n]}</div></template>`,
+        ]),
+      ),
+    });
+    const doc = parseHTML(await bundleToSingleHtml(dir, { sceneParts: true })).document;
+    const refusals = Object.fromEntries(
+      names.map((n) => [
+        n,
+        doc.querySelector(`div[data-hf-scene="${n}"]`)?.getAttribute("data-hf-scene-no-swap") ??
+          null,
+      ]),
+    );
+    expect(refusals).toEqual({
+      helper: null,
+      fontsThen: null,
+      fontsAwait: null,
+      timerHelper: "its script uses setInterval",
+      missingHelper: "it runs a script that is not a known library",
+      fetchThen: "its script uses fetch",
+      otherAwait: "its script uses async",
+      promise: "its script uses Promise",
+    });
+  });
+
+  it("runs a helper scenes share once for the film, so a scene mounts without the one that loaded it first", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><head></head><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-duration="4">
+    <div data-composition-id="late" data-composition-src="compositions/late.html" data-start="2" data-duration="2"></div>
+    <div data-composition-id="early" data-composition-src="compositions/early.html" data-start="0" data-duration="2"></div>
+  </div></body></html>`,
+      "lib/kit.js": `window.Kit = { build: function (id) { return id; } };`,
+      "lib/own.js": `window.Own = 1;`,
+      "compositions/late.html": `<template id="late-template"><div data-composition-id="late"><p>late</p><script src="../lib/kit.js"></script><script src="../lib/own.js"></script><script>window.Kit.build("late");</script></div></template>`,
+      "compositions/early.html": `<template id="early-template"><div data-composition-id="early"><p>early</p><script src="../lib/kit.js"></script><script>window.Kit.build("early");</script></div></template>`,
+    });
+    const doc = parseHTML(await bundleToSingleHtml(dir, { sceneParts: true })).document;
+    const texts = (selector: string) =>
+      [...doc.querySelectorAll(selector)].map((el) => el.textContent ?? "").join("\n");
+    const film = texts("script:not([data-hf-scene])");
+    expect(film.match(/window\.Kit =/g)).toHaveLength(1);
+    expect(texts('script[data-hf-scene="late"]')).toContain("window.Own = 1");
+    expect(texts("script[data-hf-scene]")).not.toContain("window.Kit =");
+    const rendered = parseHTML(await bundleToSingleHtml(dir)).document.documentElement.outerHTML;
+    expect(rendered.match(/window\.Kit =/g)).toHaveLength(1);
+  });
+
+  it("treats a GSAP file copied into the project as the library, at the root and in a scene, and no other file", async () => {
+    const gsapCopy = `/*!\n * GSAP 3.14.2\n * https://gsap.com\n */\nwindow.gsap = { all: "*" }; requestAnimationFrame(() => {});`;
+    const project = (file: string) =>
+      makeTempProject({
+        "index.html": `<!doctype html><html><head><script src="vendor/${file}"></script></head><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-duration="2">
+    <div data-composition-id="a" data-composition-src="compositions/a.html" data-start="0" data-duration="1"></div>
+    <div data-composition-id="b" data-composition-src="compositions/b.html" data-start="1" data-duration="1"></div>
+  </div></body></html>`,
+        [`vendor/${file}`]:
+          file === "gsap.min.js" ? gsapCopy : gsapCopy.replace("GSAP 3.14.2", "Helpers 1.0.0"),
+        "compositions/a.html": `<template id="a-template"><div data-composition-id="a"><p>A</p><script src="../vendor/${file}"></script></div></template>`,
+        "compositions/b.html": `<template id="b-template"><div data-composition-id="b"><p>B</p></div></template>`,
+      });
+    const marks = async (dir: string) => {
+      const doc = parseHTML(await bundleToSingleHtml(dir, { sceneParts: true })).document;
+      return ["a", "b"].map(
+        (id) =>
+          doc.querySelector(`div[data-hf-scene="${id}"]`)?.getAttribute("data-hf-scene-no-swap") ??
+          null,
+      );
+    };
+    expect(await marks(project("gsap.min.js"))).toEqual([null, null]);
+    expect(await marks(project("helpers.js"))).toEqual([
+      "its script uses requestAnimationFrame",
+      "a script outside the scene selects *",
+    ]);
+  });
+
+  it("lets a scene measure text on an unattached canvas, chain a timeline into the registry, call its own animate and wait on font loads, and nothing more", async () => {
+    const measure = `let ctx = null; window.measure = (s) => { if (!ctx) { ctx = document.createElement("canvas").getContext("2d"); } ctx.font = "800 46px Outfit"; return ctx.measureText(s).width; };`;
+    const scenes: Record<string, string> = {
+      measureCanvas: `<script>${measure}</script>`,
+      ownAnimate: `<script>const built = { animate(t) { return t; } }; window.step = (t) => built.animate(t);</script>`,
+      fontLoads: `<script>Promise.all([document.fonts.load("800 46px Outfit"), document.fonts.load('112px "Gochi Hand"')]).then(window.build, window.build);</script>`,
+      fontLoadThen: `<script>document.fonts.load("700 30px Outfit").then(() => window.fit("fontLoadThen"));</script>`,
+      fontLoadAwait: `<script>(async () => { await document.fonts.load("700 30px Outfit"); window.fit("fontLoadAwait"); })();</script>`,
+      namedCanvas: `<script>const c = document.createElement("canvas"); c.getContext("2d");</script>`,
+      canvasBack: `<script>const x = document.createElement("canvas").getContext("2d"); window.keep = x.canvas;</script>`,
+      drawOnStage: `<script>const g = document.querySelector("canvas").getContext('2d'); g.fillRect(0, 0, 4, 4);</script>`,
+      registeredChain: `<script>const clock = { t: 0 }; window.__timelines["registeredChain"] = gsap.timeline({ paused: true, onUpdate: () => draw(clock.t) }).to(clock, { t: 2, duration: 2, ease: "none" });</script>`,
+      registeredChainByKey: `<script>const clock = { t: 0 }; __timelines[doc.scene_id] = gsap.timeline({ paused: true }).to(clock, { t: 2 });</script>`,
+      unregisteredChain: `<script>gsap.timeline().to(window.__sharedState, { x: 1 });</script>`,
+      chainKeptAside: `<script>const tl = gsap.timeline({ paused: true }).to({ t: 0 }, { t: 1 }); window.__timelines["chainKeptAside"] = tl;</script>`,
+      registeredChainAndTween: `<script>window.__timelines["registeredChainAndTween"] = gsap.timeline().to({}, { x: 1 }); gsap.to(window.__shared, { x: 1 });</script>`,
+      webglCanvas: `<script>document.createElement("canvas").getContext("webgl");</script>`,
+      webgl2Canvas: `<script>document.querySelector("canvas").getContext("webgl2");</script>`,
+      experimentalWebgl: `<script>document.querySelector("canvas").getContext("experimental-webgl");</script>`,
+      webgpuCanvas: `<script>document.querySelector("canvas").getContext("webgpu");</script>`,
+      bitmapCanvas: `<script>document.querySelector("canvas").getContext("bitmaprenderer");</script>`,
+      dynamicContext: `<script>document.querySelector("canvas").getContext(window.kind);</script>`,
+      browserAnimate: `<script>document.querySelector("p").animate([{ opacity: 0 }], { duration: 1000 });</script>`,
+      spreadAnimate: `<script>document.querySelector("p").animate(...window.frames);</script>`,
+      otherPromise: `<script>Promise.all([fetch("a.json")]).then(() => {});</script>`,
+      dynamicFontLoad: `<script>document.fonts.load(window.face).then(() => {});</script>`,
+    };
+    const names = Object.keys(scenes);
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><head></head><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-duration="2">
+    ${names.map((n) => `<div data-composition-id="${n}" data-composition-src="compositions/${n}.html" data-start="0" data-duration="2"></div>`).join("\n")}
+  </div></body></html>`,
+      ...Object.fromEntries(
+        names.map((n) => [
+          `compositions/${n}.html`,
+          `<template id="${n}-template"><div data-composition-id="${n}"><p>${n}</p><canvas></canvas>${scenes[n]}</div></template>`,
+        ]),
+      ),
+    });
+    const doc = parseHTML(await bundleToSingleHtml(dir, { sceneParts: true })).document;
+    const refusals = Object.fromEntries(
+      names.map((n) => [
+        n,
+        doc.querySelector(`div[data-hf-scene="${n}"]`)?.getAttribute("data-hf-scene-no-swap") ??
+          null,
+      ]),
+    );
+    expect(refusals).toEqual({
+      measureCanvas: null,
+      ownAnimate: null,
+      fontLoads: null,
+      fontLoadThen: null,
+      fontLoadAwait: null,
+      namedCanvas: "its script uses getContext",
+      canvasBack: "its script uses getContext",
+      drawOnStage: "its script uses getContext",
+      registeredChain: null,
+      registeredChainByKey: null,
+      unregisteredChain: "its script uses gsap.timeline().to(",
+      chainKeptAside: "its script uses gsap.timeline({ paused: true }).to(",
+      registeredChainAndTween: "its script uses gsap.to(",
+      webglCanvas: "its script uses getContext",
+      webgl2Canvas: "its script uses getContext",
+      experimentalWebgl: "its script uses getContext",
+      webgpuCanvas: "its script uses getContext",
+      bitmapCanvas: "its script uses getContext",
+      dynamicContext: "its script uses getContext",
+      browserAnimate: "its script uses .animate(",
+      spreadAnimate: "its script uses .animate(",
+      otherPromise: "its script uses Promise",
+      dynamicFontLoad: "its script uses .then(",
+    });
   });
 
   const rootProject = (root: string, extra: Record<string, string> = {}) =>
@@ -3644,5 +4077,36 @@ describe("stampHfIds", () => {
     const html = await bundleToSingleHtml(project(), { inlineAssets: false });
     expect(logo(html)).toContain("compositions/logo.png");
     expect(logo(html)).not.toContain("data-hf-id");
+  });
+});
+
+describe("emitRootCompositionVariableStyles — authored definitions", () => {
+  function emitted(authoredCss: string): string {
+    const { document } = parseHTML(
+      `<!doctype html><html><head><style>${authoredCss}</style></head>` +
+        `<body><div data-composition-id="card"></div></body></html>`,
+    );
+    emitRootCompositionVariableStyles(document, {
+      card: { accent: "blue", "accent-dark": "navy" },
+    });
+    return document.querySelector("style[data-hf-composition-variables]")?.textContent ?? "";
+  }
+
+  it("leaves a variable the stylesheet defines, whatever space sits before its colon", () => {
+    for (const authored of [
+      ":root{--accent:red}",
+      ":root { --accent : red }",
+      ":root {\n  --accent\n  : red }",
+    ]) {
+      const css = emitted(authored);
+      expect(css).not.toContain("--accent:");
+      expect(css).toContain("--accent-dark: navy");
+    }
+  });
+
+  it("still emits a variable whose name only begins a longer authored one, or is only read", () => {
+    const css = emitted(":root { --accent-dark: black; } .badge { color: var(--accent); }");
+    expect(css).toContain("--accent: blue");
+    expect(css).not.toContain("--accent-dark");
   });
 });

@@ -8,8 +8,9 @@
  * it lives here once instead of being re-derived inline.
  */
 
+import { execSync } from "child_process";
 import { readFileSync } from "fs";
-import { totalmem } from "os";
+import { freemem, platform, totalmem } from "os";
 
 const BYTES_PER_MIB = 1024 * 1024;
 const BYTES_PER_MIB_BIGINT = BigInt(BYTES_PER_MIB);
@@ -25,7 +26,12 @@ const CGROUP_V1_MEMORY_LIMIT_PATH = "/sys/fs/cgroup/memory/memory.limit_in_bytes
 // Kernel no-limit sentinel is page-rounded 2^63-1 (~9223372036854771712); >= 2^60 is implausible as a real limit.
 const CGROUP_V1_NO_LIMIT_CUTOFF_BYTES = 2n ** 60n;
 
+const CGROUP_V2_CPU_MAX_PATH = "/sys/fs/cgroup/cpu.max";
+const CGROUP_V1_CPU_QUOTA_PATH = "/sys/fs/cgroup/cpu/cpu.cfs_quota_us";
+const CGROUP_V1_CPU_PERIOD_PATH = "/sys/fs/cgroup/cpu/cpu.cfs_period_us";
+
 let _cachedCgroupLimitMb: number | null | undefined;
+let _cachedCgroupCpus: number | null | undefined;
 let _warnedCgroupReadFailure = false;
 
 /** Parse cgroup v2/v1 memory limits from sysfs file contents into MiB. */
@@ -74,10 +80,46 @@ function parsePositiveByteLimitMb(content: string, noLimitCutoffBytes?: bigint):
   return Number(bytes / BYTES_PER_MIB_BIGINT);
 }
 
+/** The CPUs a cgroup quota allows (v2 `cpu.max`, else v1 quota over period), or null when it sets none. */
+export function parseCgroupCpus(
+  v2Content: string | null,
+  v1Quota: string | null,
+  v1Period: string | null,
+): number | null {
+  if (v2Content !== null) {
+    const [quota, period] = v2Content.trim().split(/\s+/);
+    return quotaCpus(quota, period);
+  }
+  return quotaCpus(v1Quota?.trim(), v1Period?.trim());
+}
+
+function quotaCpus(quota: string | undefined, period: string | undefined): number | null {
+  if (!quota || !period || !/^\d+$/.test(quota) || !/^\d+$/.test(period)) return null;
+  const [q, p] = [Number(quota), Number(period)];
+  return q > 0 && p > 0 ? q / p : null;
+}
+
 /** Test-only: reset the cached cgroup memory probe. */
 export function _resetCgroupLimitCacheForTests(): void {
   _cachedCgroupLimitMb = undefined;
+  _cachedCgroupCpus = undefined;
   _warnedCgroupReadFailure = false;
+}
+
+/** The CPUs this process's cgroup may use (docker `--cpus`), or null off Linux or without a quota. */
+export function getCgroupCpuLimit(): number | null {
+  if (_cachedCgroupCpus !== undefined) return _cachedCgroupCpus;
+  if (process.platform !== "linux") return (_cachedCgroupCpus = null);
+  const v2 = readCgroupFile(CGROUP_V2_CPU_MAX_PATH);
+  _cachedCgroupCpus =
+    v2 !== null
+      ? parseCgroupCpus(v2, null, null)
+      : parseCgroupCpus(
+          null,
+          readCgroupFile(CGROUP_V1_CPU_QUOTA_PATH),
+          readCgroupFile(CGROUP_V1_CPU_PERIOD_PATH),
+        );
+  return _cachedCgroupCpus;
 }
 
 /**
@@ -184,4 +226,46 @@ export const LOW_MEMORY_TOTAL_MB_THRESHOLD = 8192;
  */
 export function isLowMemorySystem(totalMb: number = getSystemTotalMb()): boolean {
   return totalMb <= LOW_MEMORY_TOTAL_MB_THRESHOLD;
+}
+
+/** Memory available in MiB: on macOS and Linux, counting pages the OS reclaims on demand. */
+export function getAvailableMemoryMb(): number {
+  const fallback = Math.trunc(freemem() / BYTES_PER_MIB);
+
+  if (platform() === "darwin") {
+    try {
+      const raw = execSync("vm_stat", { encoding: "utf-8", timeout: 5000 });
+      const pageSize = parseInt(raw.match(/page size of (\d+)/)?.[1] ?? "0", 10);
+      if (!pageSize) return fallback;
+
+      const pages = (key: string) =>
+        parseInt(raw.match(new RegExp(`${key}:\\s+(\\d+)`))?.[1] ?? "0", 10);
+
+      const available =
+        (pages("Pages free") +
+          pages("Pages inactive") +
+          pages("Pages purgeable") +
+          pages("Pages speculative")) *
+        pageSize;
+
+      return available > 0 ? Math.trunc(available / BYTES_PER_MIB) : fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+  if (platform() === "linux") {
+    try {
+      const meminfo = readFileSync("/proc/meminfo", "utf-8");
+      const match = meminfo.match(/MemAvailable:\s+(\d+)\s+kB/);
+      if (match) {
+        return Math.trunc(parseInt(match[1]!, 10) / 1024);
+      }
+      return fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+  return fallback;
 }

@@ -1,6 +1,6 @@
 // packages/core/src/slideshow/parseSlideshow.test.ts
 import { describe, it, expect } from "vitest";
-import { parseSlideshowManifest, resolveSlideshow } from "./parseSlideshow";
+import { parseSlideshowManifest, resolveSlideshow, slideshowIslandRegex } from "./parseSlideshow";
 
 const ISLAND = `<!doctype html><html><body>
 <script type="application/hyperframes-slideshow+json">
@@ -28,6 +28,21 @@ describe("parseSlideshowManifest", () => {
     const m = parseSlideshowManifest(ISLAND);
     expect(m?.slides.length).toBe(2);
     expect(m?.slideSequences?.[0].id).toBe("deep");
+  });
+
+  it.each([
+    'type = "application/hyperframes-slideshow+json"',
+    "type\t=\t'application/hyperframes-slideshow+json'",
+    'type\n =\r\n "application/hyperframes-slideshow+json"',
+    'type\f=\f"application/hyperframes-slideshow+json"',
+  ])("reads a slideshow island with HTML whitespace in %s", (attribute) => {
+    const manifest = { slides: [{ sceneId: "a" }, { sceneId: "b" }] };
+    const json = JSON.stringify(manifest);
+    const island = `<script id="deck" ${attribute}>${json}</script>`;
+    const html = `<html><body>${island}</body></html>`;
+    expect(parseSlideshowManifest(html)).toEqual(manifest);
+    expect(slideshowIslandRegex("i").exec(html)?.[1]).toBe(json);
+    expect((island + island).replace(slideshowIslandRegex("gi"), "")).toBe("");
   });
 
   it("throws when slideSequences is present but not an array", () => {

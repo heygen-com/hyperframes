@@ -1,19 +1,14 @@
 // @vitest-environment node
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const REPO_ROOT = join(fileURLToPath(new URL(".", import.meta.url)), "..", "..", "..", "..");
 const read = (...parts: string[]): string => readFileSync(join(REPO_ROOT, ...parts), "utf8");
-const skillTextFiles = (dir: string): string[] =>
-  readdirSync(dir, { recursive: true, withFileTypes: true })
-    .filter((entry) => entry.isFile() && /\.(md|mjs|cjs|js|ts|json|html)$/.test(entry.name))
-    .map((entry) => join(entry.parentPath, entry.name));
-
-describe("hyperframes-core contract docs", () => {
-  it("keeps a runnable root in the minimal composition skeleton", () => {
-    const minimal = read("skills", "hyperframes-core", "references", "minimal-composition.md");
+describe("hyperframes contract docs", () => {
+  it("keeps a runnable root in the format reference's skeleton", () => {
+    const minimal = read("skills", "hyperframes", "references", "format.md");
 
     // Structural pin: the skeleton must still declare a root the runtime can find
     // and size. The prose around it is deliberately not pinned: asserting exact
@@ -26,18 +21,17 @@ describe("hyperframes-core contract docs", () => {
   });
 
   it("teaches check as the canonical quality gate", () => {
-    const skill = read("skills", "hyperframes-core", "SKILL.md");
-    const brief = read("skills", "hyperframes", "references", "brief-contract.md");
+    const skill = read("skills", "hyperframes", "SKILL.md");
 
-    expect(skill).toContain("`npx hyperframes check`");
-    expect(brief).toContain("`hyperframes check`");
-    expect(brief).not.toContain("`lint` / `validate` / `inspect`");
+    expect(skill).toContain("`npx hyperframes check --json`");
+    expect(skill).not.toContain("`lint` / `validate` / `inspect`");
   });
 
   it("requires actionable reproduction packets in CLI defect feedback", () => {
-    const skill = read("skills", "hyperframes-cli", "SKILL.md");
+    const skill = read("skills", "hyperframes-cli", "references", "feedback.md");
     const renderReference = read("skills", "hyperframes-cli", "references", "preview-render.md");
 
+    expect(read("skills", "hyperframes-cli", "SKILL.md")).toContain("`references/feedback.md`");
     expect(skill).toContain("reproduction packet");
     expect(renderReference).toContain("REPRO COMMAND:");
     expect(renderReference).toContain("EXPECTED / ACTUAL:");
@@ -47,7 +41,7 @@ describe("hyperframes-core contract docs", () => {
   });
 
   it("sends missing features and host-app friction as ratingless comments", () => {
-    const skill = read("skills", "hyperframes-cli", "SKILL.md");
+    const skill = read("skills", "hyperframes-cli", "references", "feedback.md");
 
     expect(skill).toContain(
       'npx hyperframes feedback --comment "MISSING FEATURE: <what the person asked for, in their words, with names, clients, figures and paths left out> | WORKAROUND:',
@@ -56,7 +50,7 @@ describe("hyperframes-core contract docs", () => {
   });
 
   it("mandates a composition-structure block for visual-defect feedback", () => {
-    const skill = read("skills", "hyperframes-cli", "SKILL.md");
+    const skill = read("skills", "hyperframes-cli", "references", "feedback.md");
     const renderReference = read("skills", "hyperframes-cli", "references", "preview-render.md");
 
     // Skill teaches the mandate at a high level.
@@ -70,7 +64,7 @@ describe("hyperframes-core contract docs", () => {
   });
 
   it("teaches safe cloud archive size remediation", () => {
-    const skill = read("skills", "hyperframes-cli", "SKILL.md");
+    const skill = read("skills", "hyperframes-cli", "references", "conventions.md");
     const cloudReference = read("skills", "hyperframes-cli", "references", "cloud.md");
 
     expect(skill).toContain("cloud render --dry-run --json");
@@ -99,10 +93,10 @@ describe("media treatment routing documentation", () => {
     const mediaUse = read("skills", "media-use", "SKILL.md");
     const treatments = read("skills", "media-use", "references", "media-treatments.md");
 
-    expect(router).toContain("dark/flat/boring footage");
-    expect(router).toContain("`/media-use`");
+    expect(router).toContain("`npx hyperframes media-treatment` (`/media-use`), never CSS filters");
+    expect(mediaUse).toContain("footage is dark, flat or dull");
     expect(mediaUse).toContain("references/media-treatments.md");
-    expect(mediaUse).toContain("`hyperframes media-treatment`");
+    expect(mediaUse).toContain("`npx hyperframes media-treatment`");
     expect(treatments).toContain("Persist pixel settings with `hyperframes media-treatment`");
     expect(treatments).toContain("apply to the entire selected real `<img>` or");
     expect(treatments).toContain("external segmentation/tracking tool");
@@ -145,41 +139,11 @@ describe("media treatment routing documentation", () => {
     }
   });
 
-  it("makes the motion-graphics build path run a live catalog search, not read a snapshot", () => {
-    // The failure this pins: a user inside /motion-graphics asked for "CRT scanlines
-    // and glitch effects" and the agent hand-authored both, while `caption-glitch-rgb`
-    // ("RGB chromatic aberration with CRT scanline overlay") ranks first for that exact
-    // query on either tier. Every reuse instruction in the workflow pointed at
-    // catalog-map.md, a hand-maintained snapshot, and none named the search. The search
-    // needs nothing installed, so "I forgot to install the components" was never the cause.
+  it("routes every skill that builds visuals through the live catalog search", () => {
+    // The search instruction once lived only in hyperframes-cli and
+    // hyperframes-registry, both loaded on demand, so an agent that never thought
+    // to search could not reach the doc telling it to search.
     for (const file of [
-      ["skills", "motion-graphics", "catalog-map.md"],
-      ["skills", "motion-graphics", "agents", "director.md"],
-      ["skills", "motion-graphics", "agents", "builder.md"],
-    ]) {
-      expect(read(...file)).toContain("npx hyperframes catalog --query");
-    }
-    // And it must say the search stands alone, or the next reader re-derives the
-    // creator's wrong diagnosis: that a catalog you have not installed cannot be searched.
-    expect(read("skills", "motion-graphics", "catalog-map.md")).toContain(
-      "needs nothing installed",
-    );
-  });
-
-  it("routes every authoring workflow through the live catalog search, or documents why not", () => {
-    // The same failure one layer up. The search instruction lived only in
-    // hyperframes-cli and hyperframes-registry, both loaded on demand, and the
-    // registry skill's own trigger named the command ("use when running
-    // hyperframes catalog") — circular, because the agent that never thought to
-    // search could not reach the doc telling it to search. All ten workflow
-    // skills carried zero mentions of the command.
-    for (const file of [
-      ["skills", "motion-graphics", "agents", "director.md"],
-      ["skills", "product-launch-video", "SKILL.md"],
-      ["skills", "faceless-explainer", "SKILL.md"],
-      ["skills", "pr-to-video", "SKILL.md"],
-      ["skills", "music-to-video", "SKILL.md"],
-      ["skills", "general-video", "SKILL.md"],
       ["skills", "slideshow", "SKILL.md"],
       ["skills", "remotion-to-hyperframes", "SKILL.md"],
     ]) {
@@ -189,33 +153,14 @@ describe("media treatment routing documentation", () => {
       // hid this bug. Every copy of the instruction has to kill it on the spot.
       expect(doc, file.join("/")).toContain("nothing installed");
     }
-
-    // The two workflows that deliberately do NOT search. Both compile their
-    // output through a closed authoring vocabulary (embedded-captions' locked
-    // caption engines, talking-head-recut's `data-anim` card kinds), and a
-    // registry item is a standalone composition with no place to mount. The
-    // exemption is written into each skill so the next reader does not close
-    // the gap with an instruction that would be false there.
-    for (const skill of ["embedded-captions", "talking-head-recut"]) {
-      expect(read("skills", skill, "SKILL.md"), skill).toContain(
-        "does not search the HyperFrames component registry",
-      );
-      // The exemption is a capability claim, so pin the capability and not only
-      // the sentence: the day either skill gains a way to install a registry item,
-      // this fails and the exemption has to be reconsidered. `data-composition-src`
-      // is deliberately not the signal; talking-head-recut mounts its own chapters
-      // with it, which is not a registry item.
-      for (const file of skillTextFiles(join(REPO_ROOT, "skills", skill))) {
-        expect(readFileSync(file, "utf8"), file).not.toMatch(
-          /hyperframes add\b|registry\/(blocks|components)\//,
-        );
-      }
-    }
+    expect(read("skills", "hyperframes", "SKILL.md")).toContain(
+      "search the registry (`/hyperframes-registry`)",
+    );
 
     // The symptom-triggered description is the other half of the fix: the skill
     // has to be reachable from the user naming an effect, not from the command.
     const registrySkill = read("skills", "hyperframes-registry", "SKILL.md");
-    expect(registrySkill).toContain("Use BEFORE hand-building any named visual");
+    expect(registrySkill).toContain("Use it before hand-building any named visual");
     expect(registrySkill).toContain("CRT scanlines");
   });
 

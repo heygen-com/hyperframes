@@ -89,6 +89,10 @@ export interface CompileStageInput {
   allowSystemFontCapture?: boolean;
   /** Render-time variable overrides (`--variables`); see CompileForRenderOptions.variables. */
   variables?: Record<string, unknown>;
+  /** Absolute project paths not on disk, readable at these URLs instead. */
+  urlByAbsentLocalPath?: ReadonlyMap<string, string>;
+  /** See RenderConfig.pageMotionBlur; decides whether the page renders through screenshots. */
+  pageMotionBlur?: "off";
 }
 
 export interface CompileStageResult {
@@ -109,7 +113,7 @@ export interface CompileStageResult {
    */
   forceScreenshot: boolean;
   /** Low-cardinality compile-time gate that disabled default drawElement:
-   * `3d` | `mix_blend_mode` | `shader_transitions`. Undefined when none fired. */
+   * `3d` | `ancestor_background_image` | `shader_transitions`. Undefined when none fired. */
   deCompileGate?: string;
 }
 
@@ -171,6 +175,8 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
     allowSystemFontCapture,
     abortSignal,
     variables: input.variables,
+    urlByAbsentLocalPath: input.urlByAbsentLocalPath,
+    pageMotionBlur: input.pageMotionBlur,
     animatedGifCacheDir: cfg.extractCacheDir
       ? join(cfg.extractCacheDir, "animated-gif")
       : undefined,
@@ -220,24 +226,6 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
     log.info(
       "[Render] Fast capture: composition uses a CSS 3D rendering context " +
         "(perspective / preserve-3d / backface-visibility), so disabling drawElementImage " +
-        "for this render. Capture uses the platform's baseline route.",
-    );
-  }
-  // Fast-capture mix-blend-mode gate, same shape as the 3D gate above.
-  // drawElementImage captures each element's paint records before the
-  // compositor resolves blend equations — blended layers render as if
-  // mix-blend-mode were absent, producing saturated/damaged composites
-  // (measured: 42 dB min vs 53 dB floor on real blend+filter comps, macOS GPU).
-  // HF_FAST_CAPTURE_BLEND=true bypasses for R&D.
-  if (
-    cfg.useDrawElement &&
-    process.env.HF_FAST_CAPTURE_BLEND !== "true" &&
-    compiled.usesMixBlendMode
-  ) {
-    cfg.useDrawElement = false;
-    deCompileGate = "mix_blend_mode";
-    log.info(
-      "[Render] Fast capture: composition uses mix-blend-mode, so disabling drawElementImage " +
         "for this render. Capture uses the platform's baseline route.",
     );
   }

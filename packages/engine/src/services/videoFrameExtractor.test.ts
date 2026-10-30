@@ -55,7 +55,7 @@ import {
   extractVideoMetadata,
   type VideoMetadata,
 } from "../utils/ffprobe.js";
-import { runFfmpeg } from "../utils/runFfmpeg.js";
+import { ffmpegStatsReader, runFfmpeg, type RunFfmpegOptions } from "../utils/runFfmpeg.js";
 
 // Pass-through, so a test can tell whether extraction ran ffmpeg.
 vi.mock("../utils/runFfmpeg.js", async (importOriginal) => {
@@ -77,6 +77,13 @@ const HAS_FFMPEG = spawnSync("ffmpeg", ["-version"]).status === 0;
 const HAS_ZSCALE =
   HAS_FFMPEG &&
   /\szscale\s/.test(spawnSync("ffmpeg", ["-hide_banner", "-filters"]).stdout.toString());
+const FFMPEG_ENCODERS = HAS_FFMPEG
+  ? spawnSync("ffmpeg", ["-hide_banner", "-encoders"]).stdout.toString()
+  : "";
+// Homebrew's ffmpeg has libsvtav1 but not libaom-av1. Either one writes an untagged AV1 stream.
+const AV1_ENCODER = ["libaom-av1", "libsvtav1"].find((name) =>
+  new RegExp(`\\s${name}\\s`).test(FFMPEG_ENCODERS),
+);
 
 describe("resolveVideoExtractionDuration", () => {
   const metadata = (
@@ -686,6 +693,48 @@ describe("resolveFrameFormat", () => {
     expect(resolveFrameFormat(metadata({ hasAlpha: true }), "jpg")).toBe("png");
     expect(resolveFrameFormat(metadata({ videoCodec: "vp9" }), "jpg")).toBe("png");
   });
+
+  it("keeps ProRes without an alpha plane on jpg and ProRes with one on png", () => {
+    expect(resolveFrameFormat(metadata({ videoCodec: "prores" }), undefined)).toBe("jpg");
+    expect(resolveFrameFormat(metadata({ videoCodec: "prores", hasAlpha: true }), "jpg")).toBe(
+      "png",
+    );
+  });
+
+  type FormatCase = Pick<VideoMetadata, "videoCodec" | "hasAlpha" | "alphaPlaneDecoded"> & {
+    requested: "auto" | "jpg" | "png";
+  };
+  const formatCases: FormatCase[] = ["vp9", "vp8", "h264", "prores"].flatMap((videoCodec) =>
+    [true, false].flatMap((hasAlpha) =>
+      [true, false, undefined].flatMap((alphaPlaneDecoded) =>
+        (["auto", "jpg", "png"] as const).map((requested) => ({
+          videoCodec,
+          hasAlpha,
+          alphaPlaneDecoded,
+          requested,
+        })),
+      ),
+    ),
+  );
+  function expectedFormat({ videoCodec, hasAlpha, alphaPlaneDecoded, requested }: FormatCase) {
+    const sidecar = videoCodec === "vp9" || videoCodec === "vp8";
+    const keepsPng = hasAlpha || (sidecar && alphaPlaneDecoded !== false);
+    return keepsPng || requested === "png" ? "png" : "jpg";
+  }
+
+  it("lets VP8/VP9 leave png only when a decode probe found no alpha plane", () => {
+    expect(formatCases).toHaveLength(72);
+    for (const { requested, ...fields } of formatCases) {
+      const actual = resolveFrameFormat(metadata(fields), requested);
+      expect(actual, JSON.stringify(fields)).toBe(expectedFormat({ requested, ...fields }));
+    }
+    expect(resolveFrameFormat(metadata({ videoCodec: "vp9", alphaPlaneDecoded: false }))).toBe(
+      "jpg",
+    );
+    expect(resolveFrameFormat(metadata({ videoCodec: "vp8", alphaPlaneDecoded: false }))).toBe(
+      "jpg",
+    );
+  });
 });
 
 describe("parseVideoElements", () => {
@@ -870,6 +919,21 @@ describe("parseVideoElements", () => {
     );
     // intro: start 2, end 9 -> duration 7 -> main starts at 9.
     expect(videos.find((v) => v.id === "main")?.start).toBe(9);
+  });
+
+  it("resolves a reference inside its own composition when another composition reuses the id", () => {
+    const videos = parseVideoElements(
+      '<div data-composition-id="main">' +
+        '<div data-composition-id="scene-a" data-start="0" data-duration="4">' +
+        '<div id="intro" data-start="0" data-duration="2"></div>' +
+        "</div>" +
+        '<div data-composition-id="scene-b" data-start="4" data-duration="4">' +
+        '<div id="intro" data-start="0" data-duration="3"></div>' +
+        '<video id="clip" src="b.mp4" data-start="intro" data-duration="1"></video>' +
+        "</div>" +
+        "</div>",
+    );
+    expect(videos.find((v) => v.id === "clip")?.start).toBe(3);
   });
 
   it("falls back to 0 (never NaN) for an unknown reference target", () => {
@@ -1388,6 +1452,19 @@ describe.skipIf(!HAS_FFMPEG)("video frame extraction format", () => {
     };
   }
 
+  it("extracts into a work directory whose name holds a printf code", async () => {
+    const outDir = join(FIXTURE_DIR, "x 12% Up");
+    mkdirSync(outDir, { recursive: true });
+    const result = await extractAllVideoFrames([fixtureVideo()], FIXTURE_DIR, {
+      fps: 1,
+      outputDir: outDir,
+    });
+    expect(result.errors).toEqual([]);
+    const frame = result.extracted[0]!.framePaths.get(0)!;
+    expect(frame.startsWith(outDir)).toBe(true);
+    expect(existsSync(frame)).toBe(true);
+  });
+
   it("keeps the rightmost 8 columns of a 1080-wide (16n + 8) jpg extraction", async () => {
     const source = join(FIXTURE_DIR, "white-1080.mp4");
     const synth = await runFfmpeg([
@@ -1440,6 +1517,58 @@ describe.skipIf(!HAS_FFMPEG)("video frame extraction format", () => {
     expect(delivered).toHaveLength(8);
     for (const [i, v] of delivered.entries())
       expect(Math.abs(v - expected[i]!)).toBeLessThanOrEqual(5);
+  }, 60_000);
+
+  async function proresFrame(name: string, pixFmt: string, profile: string, source: string) {
+    const clip = join(FIXTURE_DIR, `${name}.mov`);
+    const synth = await runFfmpeg(
+      ["-y", "-loglevel", "error", "-f", "lavfi", "-i", source].concat([
+        "-c:v",
+        "prores_ks",
+        "-profile:v",
+        profile,
+        "-pix_fmt",
+        pixFmt,
+        clip,
+      ]),
+    );
+    expect(synth.success).toBe(true);
+    const outDir = join(FIXTURE_DIR, `out-${name}`);
+    mkdirSync(outDir, { recursive: true });
+    const result = await extractAllVideoFrames(
+      [{ ...fixtureVideo(), id: name, src: clip }],
+      FIXTURE_DIR,
+      { fps: 1, outputDir: outDir },
+    );
+    expect(result.errors).toEqual([]);
+    return result.extracted[0]!.framePaths.get(0)!;
+  }
+
+  it("extracts ProRes without an alpha plane to jpg", async () => {
+    const frame = await proresFrame("prores422", "yuv422p10le", "2", "testsrc2=s=320x180:d=1:r=1");
+    expect(frame.endsWith(".jpg")).toBe(true);
+  }, 60_000);
+
+  it("keeps the alpha of ProRes 4444 exact in png frames", async () => {
+    const frame = await proresFrame(
+      "prores4444",
+      "yuva444p10le",
+      "4",
+      "color=c=0x00ff00@0.5:s=320x180:d=1:r=1,format=yuva444p10le",
+    );
+    expect(frame.endsWith(".png")).toBe(true);
+    const alpha = spawnSync("ffmpeg", [
+      "-v",
+      "error",
+      "-i",
+      frame,
+      "-vf",
+      "alphaextract,crop=1:1:10:10",
+      "-f",
+      "rawvideo",
+      "-",
+    ]);
+    expect(Math.abs(alpha.stdout[0]! - 128)).toBeLessThanOrEqual(1);
   }, 60_000);
 
   it("keeps color-sensitive UI reds closer to source when extraction is forced to png", async () => {
@@ -1588,7 +1717,9 @@ describe.skipIf(!HAS_FFMPEG)("video frame extraction format", () => {
     { codec: "libx264", height: 720, matrix: "bt709", format: "png" },
     { codec: "libx264", height: 720, matrix: "bt709", format: "jpg" },
     { codec: "libvpx-vp9", height: 720, matrix: "bt601", format: "png" },
-    { codec: "libaom-av1", height: 720, matrix: "bt601", format: "png" },
+    ...(AV1_ENCODER
+      ? [{ codec: AV1_ENCODER, height: 720, matrix: "bt601", format: "png" } as const]
+      : []),
   ] as const)(
     "reads an untagged $height-line $codec source as $matrix like Chrome's own playback ($format)",
     async ({ codec, height, matrix, format }) => {
@@ -1652,6 +1783,101 @@ describe.skipIf(!HAS_FFMPEG)("video frame extraction format", () => {
     },
     60_000,
   );
+
+  it("samples a 29.97 fps source with millisecond timestamps at 30 fps without skipping a frame", async () => {
+    // Each frame writes its index as eight black or white blocks; the mp4 keeps 1/1000 s ticks.
+    const fixture = join(FIXTURE_DIR, "ntsc-ms-ticks.mp4");
+    const synth = await runFfmpeg([
+      ...["-y", "-v", "error", "-f", "lavfi", "-i"],
+      "color=c=black:s=64x8:r=30000/1001:d=2,format=yuv420p,geq=lum='if(mod(floor(N/pow(2\\,floor(X/8)))\\,2)\\,235\\,16)':cb=128:cr=128",
+      ...["-c:v", "libx264", "-qp", "0", "-g", "30", "-bf", "0", "-video_track_timescale", "1000"],
+      fixture,
+    ]);
+    if (!synth.success) throw new Error(`fixture synthesis failed: ${synth.stderr.slice(-400)}`);
+
+    const result = await extractVideoFramesRange(fixture, "ntsc-ms-ticks", 0, 1.5, {
+      fps: 30,
+      outputDir: join(FIXTURE_DIR, "out-ntsc-ms"),
+      format: "png",
+    });
+    const indexOf = (file: string): number => {
+      const row = spawnSync("ffmpeg", [
+        "-v",
+        "error",
+        "-i",
+        file,
+        "-vf",
+        "format=gray,crop=64:1:0:4",
+        "-f",
+        "rawvideo",
+        "-",
+      ]).stdout;
+      return [...Array(8).keys()].reduce(
+        (n, bit) => n + (row[bit * 8 + 4]! > 128 ? 1 << bit : 0),
+        0,
+      );
+    };
+    const shown = [...result.framePaths.keys()]
+      .sort((a, b) => a - b)
+      .map((i) => indexOf(result.framePaths.get(i)!));
+    const steps = shown.slice(1).map((n, i) => n - shown[i]!);
+
+    expect(shown.length).toBeGreaterThanOrEqual(44);
+    expect(
+      steps.filter((step) => step > 1),
+      `source frames ${shown.join(",")}`,
+    ).toEqual([]);
+    expect(steps.filter((step) => step === 0).length).toBeLessThanOrEqual(1);
+  }, 60_000);
+
+  it("samples a millisecond-tick 29.97 fps source the same in segments as in one pass", async () => {
+    const fixture = join(FIXTURE_DIR, "ntsc-ms-ticks-8s.mp4");
+    const synth = await runFfmpeg([
+      ...["-y", "-v", "error", "-f", "lavfi", "-i"],
+      "color=c=black:s=64x8:r=30000/1001:d=8,format=yuv420p,geq=lum='if(mod(floor(N/pow(2\\,floor(X/8)))\\,2)\\,235\\,16)':cb=128:cr=128",
+      ...["-c:v", "libx264", "-qp", "0", "-g", "30", "-bf", "0", "-video_track_timescale", "1000"],
+      fixture,
+    ]);
+    if (!synth.success) throw new Error(`fixture synthesis failed: ${synth.stderr.slice(-400)}`);
+    const indexOf = (file: string): number => {
+      const row = spawnSync("ffmpeg", [
+        "-v",
+        "error",
+        "-i",
+        file,
+        "-vf",
+        "format=gray,crop=64:1:0:4",
+        "-f",
+        "rawvideo",
+        "-",
+      ]).stdout;
+      return [...Array(8).keys()].reduce(
+        (n, bit) => n + (row[bit * 8 + 4]! > 128 ? 1 << bit : 0),
+        0,
+      );
+    };
+    const options = {
+      fps: 30,
+      outputDir: join(FIXTURE_DIR, "out-ntsc-seams"),
+      format: "png" as const,
+    };
+    const single = await extractVideoFramesRange(fixture, "ntsc-single", 0, 7.5, options);
+
+    const seams = [4, 17, 29, 41, 58, 73, 90, 107, 121, 139, 156, 170, 188, 201];
+    const differing: string[] = [];
+    for (const firstFrame of seams) {
+      const segment = await extractVideoFramesRange(fixture, `ntsc-seam-${firstFrame}`, 0, 7.5, {
+        ...options,
+        frameRanges: [{ firstFrame, frames: 12 }],
+      });
+      for (const [slot, path] of segment.framePaths) {
+        const expected = indexOf(single.framePaths.get(slot)!);
+        const shown = indexOf(path);
+        if (shown !== expected) differing.push(`slot ${slot}: ${shown} vs ${expected}`);
+      }
+    }
+    expect(differing).toEqual([]);
+  }, 120_000);
 
   // ffmpeg < 6.1 drops frame durations from CFR resampling once any -vf is set, so the colour
   // filters would cut the still that ends this window short.
@@ -1987,6 +2213,95 @@ describe.skipIf(!HAS_FFMPEG)("frame sampling at the output frame rate", () => {
     60_000,
   );
 
+  it("stops extraction only on a stall, and its ffmpeg reports each frame it writes", async () => {
+    const source = join(FIXTURE_DIR, "paced-2s.mp4");
+    const synth = await runFfmpeg([
+      ...["-y", "-hide_banner", "-loglevel", "error", "-f", "lavfi"],
+      ...["-i", `testsrc=s=${WIDTH}x${HEIGHT}:r=30:d=2`, "-pix_fmt", "yuv420p", source],
+    ]);
+    if (!synth.success) throw new Error(`paced fixture synthesis failed: ${synth.stderr}`);
+    const { runFfmpeg: real } =
+      await vi.importActual<typeof import("../utils/runFfmpeg.js")>("../utils/runFfmpeg.js");
+    let requested: RunFfmpegOptions | undefined;
+    const reported: number[] = [];
+    const readStats = ffmpegStatsReader(({ frames }) => {
+      if (frames) reported.push(frames);
+    });
+    // Real-time pacing spreads the stats over the run. The stall clock itself is runFfmpeg's to
+    // test; here it is lifted so a starved runner cannot race it.
+    vi.mocked(runFfmpeg).mockImplementation((args, opts) => {
+      requested = opts;
+      return real(["-stats_period", "0.1", "-re", ...args], {
+        ...opts,
+        timeout: 60_000,
+        onStderr: readStats,
+      });
+    });
+    try {
+      const extracted = await extractVideoFramesRange(
+        source,
+        "paced-stall-only",
+        0,
+        2,
+        { fps: 10, outputDir: FIXTURE_DIR, format: "png" },
+        undefined,
+        { ffmpegProcessTimeout: 2000 },
+      );
+      expect(extracted.totalFrames).toBe(20);
+      expect(requested).toMatchObject({ timeout: 2000 });
+      expect(new Set(reported).size).toBeGreaterThan(1);
+    } finally {
+      vi.mocked(runFfmpeg).mockImplementation(real);
+    }
+  }, 30_000);
+
+  it.each([
+    { name: "one keyframe", keyint: "infinite", gapSeconds: 8 },
+    { name: "a keyframe every second", keyint: "30", gapSeconds: 0 },
+  ])(
+    "gives the stall clock the time to decode up to the seek point ($name)",
+    async ({ keyint, gapSeconds }) => {
+      const source = join(FIXTURE_DIR, `gop-${keyint}.mp4`);
+      const synth = await runFfmpeg([
+        ...["-y", "-hide_banner", "-loglevel", "error", "-f", "lavfi"],
+        ...["-i", `testsrc=s=${WIDTH}x${HEIGHT}:r=30:d=10`, "-pix_fmt", "yuv420p"],
+        ...["-x264-params", `keyint=${keyint}:scenecut=0`, source],
+      ]);
+      if (!synth.success) throw new Error(`gop fixture synthesis failed: ${synth.stderr}`);
+      const { runFfmpeg: real } =
+        await vi.importActual<typeof import("../utils/runFfmpeg.js")>("../utils/runFfmpeg.js");
+      let requested: RunFfmpegOptions | undefined;
+      vi.mocked(runFfmpeg).mockImplementation((args, opts) => {
+        requested = opts;
+        return real(args, opts);
+      });
+      try {
+        await extractVideoFramesRange(
+          source,
+          `stall-seek-${keyint}`,
+          8,
+          1,
+          { fps: 10, outputDir: FIXTURE_DIR, format: "png" },
+          undefined,
+          { ffmpegProcessTimeout: 2000 },
+        );
+        expect(requested?.timeout).toBe(2000 + gapSeconds * 1000);
+      } finally {
+        vi.mocked(runFfmpeg).mockImplementation(real);
+      }
+    },
+    30_000,
+  );
+
+  it("stops a run that writes no new frame for the stall timeout", async () => {
+    // stdin stays open and empty, so ffmpeg waits for its first frame forever.
+    const stalled = await runFfmpeg(
+      ["-f", "rawvideo", "-pix_fmt", "gray", "-s", "2x2", "-i", "pipe:0", "-f", "null", "-"],
+      { timeout: 500 },
+    );
+    expect(stalled.terminationReason).toBe("inactivity");
+  }, 30_000);
+
   // A distributed chunk extracts only the frames it renders; they must be the full extraction's.
   describe("partial extraction", () => {
     const gopSource = join(FIXTURE_DIR, "gop-30fps.mp4");
@@ -2091,6 +2406,38 @@ describe.skipIf(!HAS_FFMPEG)("frame sampling at the output frame rate", () => {
       },
       60_000,
     );
+
+    it("halves frames while they still cover the box a video is shown in", async () => {
+      const firstFrameSize = async (
+        videoId: string,
+        shownBox: { width: number; height: number },
+      ) => {
+        const result = await extractVideoFramesRange(gopSource, videoId, 0, 1, {
+          fps: 30,
+          outputDir: FIXTURE_DIR,
+          format: "jpg",
+          frameRanges: [{ firstFrame: 0, frames: 1 }],
+          shownBox,
+        });
+        const [frame] = result.framePaths.values();
+        return spawnSync("ffprobe", [
+          "-v",
+          "error",
+          "-show_entries",
+          "stream=width,height",
+          "-of",
+          "csv=p=0",
+          "--",
+          frame!,
+        ])
+          .stdout.toString()
+          .trim();
+      };
+      // 64x36 source: halved as often as the box allows (even sides round up); never below the box.
+      expect(await firstFrameSize("shown-quarter", { width: 16, height: 9 })).toBe("16,10");
+      expect(await firstFrameSize("shown-third", { width: 20, height: 12 })).toBe("32,18");
+      expect(await firstFrameSize("shown-near-full", { width: 40, height: 20 })).toBe("64,36");
+    }, 30_000);
   });
 });
 
@@ -2111,7 +2458,7 @@ describe.skipIf(!HAS_FFMPEG)("held tails on sparse-timestamp sources", () => {
       {
         path: vfrFixture,
         input: "testsrc2=s=64x64:d=10:rate=1/2",
-        filters: ["-vf", "select='eq(n,0)+eq(n,2)'", "-vsync", "vfr"],
+        filters: ["-vf", "select='eq(n,0)+eq(n,2)'", "-fps_mode", "vfr"],
       },
       {
         path: nonZeroStartFixture,
@@ -2283,7 +2630,7 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
 
   beforeAll(async () => {
     // 10s testsrc2 at 60fps, ~40% of frames dropped via select filter and
-    // encoded with -vsync vfr so timestamps are irregular. Declared fps 60,
+    // encoded with -fps_mode vfr so timestamps are irregular. Declared fps 60,
     // actual average ~36 — well over the 10% threshold used by isVFR.
     // The select expression drops four 1-second windows (frames 30-89,
     // 180-239, 330-389, 480-539) to simulate static segments in a screen
@@ -2301,7 +2648,7 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
       "testsrc2=s=320x180:d=10:rate=60",
       "-vf",
       "select='not(between(n\\,30\\,89))*not(between(n\\,180\\,239))*not(between(n\\,330\\,389))*not(between(n\\,480\\,539))'",
-      "-vsync",
+      "-fps_mode",
       "vfr",
       "-c:v",
       "libx264",
@@ -2936,6 +3283,22 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
     ).toBe(false);
   }, 60_000);
 
+  it("leaves SDR clips alone in a mixed timeline that tone-maps to SDR", async () => {
+    const SDR = await synthCfrClip("sdr-tonemap-peer.mp4", 1);
+    const HDR = await synthHdrTaggedClip("hdr-tonemap-peer.mp4", 1);
+    const outputDir = join(FIXTURE_DIR, "out-hdr-tonemap-mixed");
+    mkdirSync(outputDir, { recursive: true });
+
+    const result = await extractAllVideoFrames(
+      [cfrClipElement("sdr", SDR, 1), { ...cfrClipElement("hdr", HDR, 1), start: 1, end: 2 }],
+      FIXTURE_DIR,
+      { fps: 30, outputDir, toneMapHdrToSdr: true },
+    );
+
+    expect(result.errors).toEqual([]);
+    expect(result.phaseBreakdown.hdrPreflightCount).toBe(0);
+  }, 60_000);
+
   it("keeps a finite SDR past-EOF slot in a mixed HDR timeline", async () => {
     const SDR_SHORT = await synthCfrClip("sdr-past-eof.mp4", 1);
     const HDR_SHORT = await synthHdrTaggedClip("hdr-past-eof-peer.mp4", 1);
@@ -3533,6 +3896,60 @@ describe.skipIf(!HAS_ZSCALE)("forced-SDR HDR extraction", () => {
     60_000,
   );
 
+  it("probes each source's first frame once, however many cuts of it extract together", async () => {
+    const sources = ["a", "b"].map((name) => join(fixtureDir, `cuts-${name}.mp4`));
+    for (const source of sources) await synthesizeHlgClip(source);
+    const probes = () =>
+      vi.mocked(runFfmpeg).mock.calls.filter(([args]) => args.includes("showinfo")).length;
+    const before = probes();
+    await Promise.all(
+      Array.from({ length: 12 }, (_, cut) =>
+        extractVideoFramesRange(sources[cut % 2]!, `cut-${cut}`, 0, 1, {
+          fps: 1,
+          outputDir: join(fixtureDir, "cuts"),
+          format: "png",
+          toneMapHdrToSdr: true,
+        }),
+      ),
+    );
+    expect(probes() - before).toBe(2);
+  }, 60_000);
+
+  it("probes a source again after its first-frame probe failed", async () => {
+    const source = join(fixtureDir, "probe-retry.mp4");
+    await synthesizeHlgClip(source);
+    const probes = () =>
+      vi.mocked(runFfmpeg).mock.calls.filter(([args]) => args.includes("showinfo")).length;
+    const { runFfmpeg: real } =
+      await vi.importActual<typeof import("../utils/runFfmpeg.js")>("../utils/runFfmpeg.js");
+    vi.mocked(runFfmpeg).mockImplementation((args, opts) =>
+      args.includes("showinfo")
+        ? Promise.resolve({
+            success: false,
+            exitCode: 1,
+            stderr: "",
+            durationMs: 0,
+            terminationReason: "exit",
+          })
+        : real(args, opts),
+    );
+    const extract = (id: string) =>
+      extractVideoFramesRange(source, id, 0, 1, {
+        fps: 1,
+        outputDir: join(fixtureDir, "retry"),
+        format: "png",
+        toneMapHdrToSdr: true,
+      });
+    const before = probes();
+    try {
+      await extract("retry-failed");
+    } finally {
+      vi.mocked(runFfmpeg).mockImplementation(real);
+    }
+    await extract("retry-again");
+    expect(probes() - before).toBe(2);
+  }, 60_000);
+
   // One stream with HLG frames, then PQ frames: each is tone-mapped with its own transfer.
   it("tone-maps each frame of a mixed HLG and PQ stream with its own transfer", async () => {
     const segment = async (name: string, transfer: number) => {
@@ -3952,6 +4369,14 @@ describe("getFrameAtTime — IEEE 754 boundary precision", () => {
     const extracted = makeExtracted(25, 10);
     const frame = getFrameAtTime(extracted, 0.28, 0);
     expect(frame).toBe("frame-7.jpg");
+  });
+
+  it("picks the frame the preview shows when a clip starts a hair after a frame instant", () => {
+    // 449/30 written with six decimals starts the clip a third of a microsecond late. The preview's
+    // <video> still shows the take's second frame at output frame 450, so the render must too.
+    const extracted = makeExtracted(30, 100);
+    expect(getFrameAtTime(extracted, 450 / 30, 14.966667, false, 4.3)).toBe("frame-1.jpg");
+    expect(getFrameAtTime(extracted, 460 / 30, 14.966667, false, 4.3)).toBe("frame-11.jpg");
   });
 
   it("mediaStart does not offset frame index (extractor handles trim via -ss)", () => {

@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/inspector",
-  "version": "0.8.170",
+  "version": "0.8.218",
   "repository": {
     "type": "git",
     "url": "https://github.com/heygen-com/hyperframes",
@@ -61,6 +61,7 @@
     "test:timeline": "bun tests/timeline.ts",
     "test:timeline-compositions": "bun tests/timelineCompositions.ts",
     "test:live": "bun run build && bun tests/live.ts",
+    "test:live-scenes": "bun run build && bun tests/liveScenes.ts",
     "test:source-release": "bun tests/sourceRelease.ts",
     "serve:node": "node dist/server.js"
   },
@@ -69,8 +70,9 @@
     "@hyperframes/parsers": "workspace:*",
     "@jridgewell/trace-mapping": "^0.3.29",
     "acorn": "^8.17.0",
-    "esbuild": "^0.25.12",
+    "esbuild": "^0.28.2",
     "eslint-scope": "^9.1.2",
+    "htmlparser2": "^10.1.0",
     "postcss": "^8.5.8",
     "puppeteer-core": "^25.8.0"
   },

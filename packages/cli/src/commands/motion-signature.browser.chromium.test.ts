@@ -65,6 +65,7 @@ describe.skipIf(!RUNS_CHROMIUM)("motion-signature.browser in Chromium", () => {
       headless: true,
       executablePath,
       args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
+      timeout: BROWSER_LAUNCH_TIMEOUT_MS,
     });
     page = await browser.newPage();
     await page.setViewport({ width: 640, height: 360 });

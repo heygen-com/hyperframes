@@ -148,31 +148,41 @@ export function pathToKey(path: string): string | null {
   return null;
 }
 
-/**
- * Inverse of pathToKey — maps an override-set key back to its RFC 6902 path.
- * Used to replay a stored override-set onto a fresh base document (T3 init).
- */
-// Exhaustive key-family dispatcher — same shape as apply-patches.ts parsePath.
+// Exhaustive element-key dispatch keeps both ID grammars on the same path rules.
 // fallow-ignore-next-line complexity
+function elementKeyToPath(key: string, allowDots = false): string | null {
+  const separator = /\.(style|attr|timing|hold)\./.exec(key);
+  if (!separator) {
+    const id = key.endsWith(".text") ? key.slice(0, -5) : "";
+    return id && (allowDots || !id.includes(".")) ? textPath(id) : null;
+  }
+
+  const id = key.slice(0, separator.index);
+  const prop = key.slice(separator.index + separator[0].length);
+  if (!id || !prop || (!allowDots && id.includes("."))) return null;
+
+  switch (separator[1]) {
+    case "style":
+      return stylePath(id, prop);
+    case "attr":
+      // Attribute names are already RFC 6902-encoded by pathToKey.
+      return `/elements/${escapeIdForPath(id)}/attributes/${prop}`;
+    case "timing":
+      if (prop === "start" || prop === "end" || prop === "duration" || prop === "trackIndex")
+        return timingPath(id, prop);
+      return null;
+    case "hold":
+      if (prop === "start" || prop === "end" || prop === "fill") return holdPath(id, prop);
+      return null;
+    default:
+      return null;
+  }
+}
+
+/** Map a stored override key to its RFC 6902 path when reopening a base document. */
 export function keyToPath(key: string): string | null {
-  const style = /^([^.]+)\.style\.(.+)$/.exec(key);
-  if (style?.[1] && style[2]) return stylePath(style[1], style[2]);
-
-  const text = /^([^.]+)\.text$/.exec(key);
-  if (text?.[1]) return textPath(text[1]);
-
-  const attr = /^([^.]+)\.attr\.(.+)$/.exec(key);
-  // The attr name segment in the key is already RFC 6902-encoded (pathToKey stored it verbatim).
-  // The id may be a scoped id (contains "/") so we must escape it, but must NOT re-escape
-  // the already-encoded attr segment. Reconstruct manually.
-  if (attr?.[1] && attr[2]) return `/elements/${escapeIdForPath(attr[1])}/attributes/${attr[2]}`;
-
-  const timing = /^([^.]+)\.timing\.(start|end|duration|trackIndex)$/.exec(key);
-  if (timing?.[1])
-    return timingPath(timing[1], timing[2] as "start" | "end" | "duration" | "trackIndex");
-
-  const hold = /^([^.]+)\.hold\.(start|end|fill)$/.exec(key);
-  if (hold?.[1]) return holdPath(hold[1], hold[2] as "start" | "end" | "fill");
+  const element = elementKeyToPath(key);
+  if (element) return element;
 
   const varDecl = /^varDecl\.(.+)$/.exec(key);
   if (varDecl?.[1]) return variableDeclPath(varDecl[1]);
@@ -186,10 +196,8 @@ export function keyToPath(key: string): string | null {
   if (key === "script.gsap") return gsapScriptPath();
   if (key === "style.css") return styleSheetPath();
 
-  // Bare element id — removal marker key.
-  if (!key.includes(".")) return elementPath(key);
-
-  return null;
+  // Existing namespaces keep precedence over the dotted-ID fallback.
+  return elementKeyToPath(key, true) ?? elementPath(key);
 }
 
 // ─── Patch event builder ──────────────────────────────────────────────────────

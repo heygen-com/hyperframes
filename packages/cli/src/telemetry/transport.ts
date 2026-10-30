@@ -35,7 +35,8 @@ export type EventPropertyValue =
   | null
   | undefined
   | readonly string[]
-  | Readonly<Record<string, number>>;
+  | Readonly<Record<string, number>>
+  | Readonly<Record<string, string>>;
 
 export interface EventProperties {
   [key: string]: EventPropertyValue;

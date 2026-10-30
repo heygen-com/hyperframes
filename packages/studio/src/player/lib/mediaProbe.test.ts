@@ -8,16 +8,22 @@ import {
   probeMissingSourceDurations,
   resetMediaProbeRegistry,
 } from "./mediaProbe";
+import { MediaFetchError } from "./mediaFetch";
 
 const dispose = vi.fn();
 const getDurationFromMetadata = vi.fn(async () => 5);
 const requestedSources: string[] = [];
+const sourceRetryRules: string[] = [];
 
 vi.mock("mediabunny", () => ({
   ALL_FORMATS: {},
   UrlSource: class {
-    constructor(readonly url: string) {
+    constructor(
+      readonly url: string,
+      readonly options?: { getRetryDelay?: unknown },
+    ) {
       requestedSources.push(url);
+      sourceRetryRules.push(typeof options?.getRetryDelay);
     }
   },
   Input: class {
@@ -32,6 +38,7 @@ beforeEach(() => {
   resetMediaProbeRegistry();
   vi.clearAllMocks();
   requestedSources.length = 0;
+  sourceRetryRules.length = 0;
   getDurationFromMetadata.mockResolvedValue(5);
 });
 
@@ -40,6 +47,19 @@ afterEach(() => {
 });
 
 describe("media probe registry", () => {
+  it("reports a failed range fetch as one typed line and records the probe as failed", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const failure = new MediaFetchError("probe", 403, null);
+    getDurationFromMetadata.mockRejectedValue(failure);
+
+    await expect(probeMediaUrl("/locked.mp4")).resolves.toBeNull();
+    expect(sourceRetryRules).toEqual(["function"]);
+    expect(warn.mock.calls).toEqual([
+      ["[Studio] probe range fetch failed: HTTP 403 after 0 retries"],
+    ]);
+    warn.mockRestore();
+  });
+
   it("deduplicates and caches successful probes", async () => {
     const [first, second] = await Promise.all([
       probeMediaUrl("/video.mp4"),

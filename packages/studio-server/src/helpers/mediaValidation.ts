@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { FFPROBE_PATH_ENV, findFfBinary } from "@hyperframes/parsers/ff-binaries";
+import { decodableAudioStream, type FfprobeStreamCodec } from "@hyperframes/parsers/media-streams";
 
 const VIDEO_EXT = /\.(mp4|webm|mov|mkv|avi|m4v|mxf|mts|m2ts|ts)$/i;
 const AUDIO_EXT = /\.(mp3|wav|ogg|m4a|aac|flac)$/i;
@@ -38,7 +39,7 @@ export function validateUploadedMedia(
   if (!ffprobe) return { ok: true, unchecked: FFPROBE_MISSING };
   const result = runner(
     ffprobe,
-    ["-v", "error", "-show_entries", "stream=codec_type", "-of", "json", "--", filePath],
+    ["-v", "error", "-show_entries", "stream=codec_type,codec_name", "-of", "json", "--", filePath],
     { windowsHide: true },
   );
 
@@ -60,10 +61,10 @@ export function validateUploadedMedia(
 
 function checkStreams(stdout: string, isVideo: boolean, isAudio: boolean): MediaCheck {
   try {
-    const parsed = JSON.parse(stdout) as { streams?: Array<{ codec_type?: string }> };
+    const parsed = JSON.parse(stdout) as { streams?: FfprobeStreamCodec[] };
     const streams = parsed.streams ?? [];
     const hasVideo = streams.some((stream) => stream.codec_type === "video");
-    const hasAudio = streams.some((stream) => stream.codec_type === "audio");
+    const hasAudio = decodableAudioStream(streams) !== null;
 
     if (isVideo && !hasVideo) {
       return { ok: false, reason: "no supported video stream found" };

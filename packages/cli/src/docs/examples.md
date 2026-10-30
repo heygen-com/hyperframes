@@ -1,18 +1,42 @@
-# Templates
+# Examples
 
-Built-in templates available via `npx hyperframes init --example <name>`.
+Examples available via `npx hyperframes init <name> --example <example>`.
 
 ## blank
 
-Centered Inter stage, paused GSAP timeline. Default `hyperframes init` scaffold.
+Centered Inter stage, paused GSAP timeline. Default `hyperframes init` scaffold, and the only example that works offline.
 
-## title-card
+## decision-tree
 
-Animated title and subtitle with GSAP fade-in/out. Good for intro cards.
+Animated flowchart with branching paths.
 
-## video-edit
+## kinetic-type
 
-Video element with trimming, audio, and track controls. Starting point for video editing.
+Bold kinetic typography promo.
+
+## nyt-graph
+
+Animated data chart in print editorial style.
+
+## play-mode
+
+Playful elastic animations.
+
+## product-promo
+
+Multi-scene product showcase with SVG assets.
+
+## swiss-grid
+
+Structured grid layout.
+
+## vignelli
+
+Bold typography with red accents.
+
+## warm-grain
+
+Cream aesthetic with grain texture.
 
 ## Custom Templates
 

@@ -107,6 +107,14 @@ function logHdrResolution(
   );
 }
 
+function formatCarriesHdr(format: NonNullable<RenderConfig["format"]>): boolean {
+  return format === "mp4";
+}
+
+export function rendersSdrOnly(config: Pick<RenderConfig, "hdrMode" | "format">): boolean {
+  return config.hdrMode === "force-sdr" || !formatCarriesHdr(config.format ?? "mp4");
+}
+
 export function resolveEffectiveHdrMode(input: HdrModeInput): EffectiveHdr {
   const hdrMode = input.hdrMode ?? "auto";
   const videoColorSpaces = (input.extractionResult?.extracted ?? []).map(
@@ -131,7 +139,7 @@ export function resolveEffectiveHdrMode(input: HdrModeInput): EffectiveHdr {
     effectiveHdr = { transfer: info.dominantTransfer };
   }
 
-  if (effectiveHdr && input.outputFormat !== "mp4") {
+  if (effectiveHdr && !formatCarriesHdr(input.outputFormat)) {
     input.log.warn(formatDowngradeWarning(input.outputFormat, forcedHdrWithoutSources));
     effectiveHdr = undefined;
   }

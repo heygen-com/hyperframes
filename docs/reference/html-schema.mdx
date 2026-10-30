@@ -97,12 +97,12 @@ unbounded animation, and timeline-free compositions need an explicit duration.
 | `id` | Yes | Stable identifier for timing, editing, and animation |
 | `data-start` | Yes | Start in seconds or a relative timing expression |
 | `data-duration` | Yes for DOM and nested-composition clips; optional for image (3 s default), video and audio (source length) | Visible slot length in seconds |
-| `data-track-index` | No | Studio timeline lane, display only. The render never reads it and it does not prevent overlap |
+| `data-track-index` | No | browser editor timeline lane, display only. The render never reads it and it does not prevent overlap |
 | `class="clip"` | Recommended for authored timed DOM and image elements | Layout and tooling convention. Visibility is keyed off `data-start`, but the shared `.clip` rule supplies the full-frame box |
 
 `data-track-index` does not control paint order. Use CSS `z-index` for
 front-to-back layering. Two clips on the same track may overlap in time; the
-lane is a Studio display row, not a scheduling constraint.
+lane is a browser editor display row, not a scheduling constraint.
 
 Negative `z-index` values are valid CSS, but an opaque ancestor background can
 cover the clip if its parent does not create a stacking context. Add
@@ -131,10 +131,10 @@ Audio has no visual lifecycle.
 
 | Attribute | Applies to | Meaning |
 | --- | --- | --- |
-| `data-media-start` / `data-playback-start` | Video, audio, nested composition | Offset into the source file, used by trim and split. Two groups of readers disagree, so the right name depends on the element. **Read only `data-media-start`:** the timing compiler, the HTML parser, `hyperframes validate` (which only inspects `<audio>`), and the engine's audio mixer (which feeds ffmpeg `-ss`). **Read `data-playback-start` first, falling back to `data-media-start`:** the runtime player, Studio (which also writes it), and `hyperframes snapshot`. Because the audio mixer reads only `data-media-start`, a `<video>` authored with just `data-playback-start` renders a trimmed picture over untrimmed audio. Set the name by kind: **`<video>` / `<audio>` → `data-media-start`**; **nested composition → `data-playback-start`** — composition hosts are inspected only by the playback-start-first readers (the media-start-only ones are all `<video>`/`<audio>`-scoped). `data-media-start` still works there as a fallback, but `data-playback-start` is the canonical name Studio writes and normalises to for new composition hosts, so the other name works until an edit rewrites it (it is the [child-timeline offset](/concepts/compositions)). |
+| `data-media-start` / `data-playback-start` | Video, audio, nested composition | Offset into the source file, used by trim and split. Two groups of readers disagree, so the right name depends on the element. **Read only `data-media-start`:** the timing compiler, the HTML parser, `hyperframes validate` (which only inspects `<audio>`), and the engine's audio mixer (which feeds ffmpeg `-ss`). **Read `data-playback-start` first, falling back to `data-media-start`:** the runtime player, the browser editor (which also writes it), and `hyperframes snapshot`. Because the audio mixer reads only `data-media-start`, a `<video>` authored with just `data-playback-start` renders a trimmed picture over untrimmed audio. Set the name by kind: **`<video>` / `<audio>` → `data-media-start`**; **nested composition → `data-playback-start`** — composition hosts are inspected only by the playback-start-first readers (the media-start-only ones are all `<video>`/`<audio>`-scoped). `data-media-start` still works there as a fallback, but `data-playback-start` is the canonical name the browser editor writes and normalises to for new composition hosts, so the other name works until an edit rewrites it (it is the [child-timeline offset](/concepts/compositions)). |
 | `data-playback-rate` | Video, audio, nested composition | Playback multiplier from `0.1` to `10`. A `rate` lane in `data-automation` overrides it; see [Speed ramps](/reference/speed-ramps) |
-| `data-volume` | Video and audio | Static gain. `1` is 0 dB, `0` is silence, and values above `1` boost up to `3.98` (+12 dB) |
-| `data-fade-in` / `data-fade-out` | Video and audio | Clip-edge fades in seconds: gain rises 0 → 1 over the first `data-fade-in` seconds and falls 1 → 0 over the last `data-fade-out` seconds of the clip. Linear, anchored to the clip's own edges (a fade-out follows a later trim), and multiplied on top of `data-volume` and any volume lane. Fades that together exceed the clip are scaled to meet inside it. Studio drags them from the dots at an audio clip's top corners or types them in the inspector's Fade rows |
+| `data-volume` | Video and audio | Static gain. `1` is 0 dB, `0` is silence, and values above `1` boost up to `3.98` (+12 dB). Multiplies any volume lane, and on a clip it applies ahead of the clip's audio effects |
+| `data-fade-in` / `data-fade-out` | Video and audio | Clip-edge fades in seconds: gain rises 0 → 1 over the first `data-fade-in` seconds and falls 1 → 0 over the last `data-fade-out` seconds of the clip. Linear, anchored to the clip's own edges (a fade-out follows a later trim), and multiplied on top of `data-volume` and any volume lane. Fades that together exceed the clip are scaled to meet inside it. The browser editor drags them from the dots at an audio clip's top corners or types them in the inspector's Fade rows |
 | `data-has-audio="true"` | Video | Declares that the video contributes audio |
 
 Video and audio may omit `data-duration` when their intrinsic duration is known
@@ -148,7 +148,7 @@ the assembled project because render-time frame injection targets those IDs.
 
 ## Color grading and media effects
 
-Studio and the CLI store color correction, grading, finishing controls, LUTs,
+The browser editor and the CLI store color correction, grading, finishing controls, LUTs,
 and media effects on an image or video with `data-color-grading`:
 
 ```html
@@ -172,9 +172,9 @@ art treatments. Run
 machine-readable surface instead of hard-coding an old effect list.
 
 The grading pipeline applies to real `<img>` and `<video>` elements. It does
-not grade a complete HTML scene. Use Studio or
+not grade a complete HTML scene. Use the browser editor or
 [`media-treatment`](/packages/cli#media-treatment) for normal authoring; see
-[Color Grading](/guides/color-grading) and [Media Effects](/guides/media-effects)
+[Color Grading](/guides/media-effects#fix-and-grade-the-color) and [Media Effects](/guides/media-effects)
 for the workflow and current SDR/HDR boundary.
 
 ## Relative timing

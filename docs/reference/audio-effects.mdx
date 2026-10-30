@@ -4,11 +4,11 @@ sidebarTitle: "Audio effects"
 description: "The four audio attributes, every effect and parameter, automation targets, the voiceover carve, audio groups, and how preview and render stay identical."
 ---
 
-Use this reference when Studio controls are not enough: you need to write a mix
+Use this reference when browser editor controls are not enough: you need to write a mix
 into HTML, know a parameter's exact range, automate a knob, or understand why
 something behaves differently in the render than in preview. For everyday use
 start with [Mix audio and apply effects](/studio/audio-effects), and for what to
-ask an agent for, [Audio effects and mixing](/prompting/audio-effects).
+ask an agent for, [Audio effects and mixing](/prompting/media-and-audio#mix-it).
 
 A composition carries its whole mix in the HTML. There is no session file and
 nothing to load beside the markup.
@@ -30,7 +30,7 @@ can also sit on an `<hf-audio-group>`, where they apply to the group's whole bus
 **Write the JSON attributes double-quoted, escaping the JSON's own quotes as
 `&quot;` and `&` as `&amp;`** — as every example on this page does. The browser
 reads them through `getAttribute` and does not mind either way, but
-`scripts/carve.mjs` finds them with a `name="..."` regex, so a single-quoted
+`carve.mjs` finds them with a `name="..."` regex, so a single-quoted
 attribute is invisible to it: a carve reports no existing chain and overwrites
 work it could not see.
 
@@ -66,7 +66,7 @@ labelled Reduce Mud, and a bypassed limiter.
   read, so a chain that parses is always safe to realise.
 - `id` is a stable handle. Automation addresses nodes by id, never by position,
   so reordering a chain cannot re-point a lane at a different effect. A node
-  with no id loads fine but cannot be automated. Studio hands out the first free
+  with no id loads fine but cannot be automated. The browser editor hands out the first free
   `n1`, `n2`, …
 - `label` replaces the effect's own name in the rack. Write one whenever a node
   is doing a named job — two `peaking` nodes otherwise show the same row twice
@@ -115,6 +115,14 @@ Preview and render agree on both clocks.
 which is about `3.981` — the same ceiling `data-volume` uses. A lane that boosts
 above unity is valid and will play; `1` is unity, not the maximum.
 
+The lane multiplies `data-volume`, the way clip gain offsets volume keyframes in
+an editor: `data-volume="0.5"` under a lane at `1` plays at `0.5`. The product
+shares the same +12 dB ceiling. This holds on clips and on groups.
+
+On a clip, `data-volume` is applied **ahead of** its effects, so a compressor or
+limiter in its `data-fx-chain` reacts to it; the lane comes after them. A group's
+`data-volume` stays after its effects, like a track fader.
+
 A lane holds its first value backwards to the start of its clip and its last
 value forward to the end. **A bed that begins before the voice therefore needs an
 explicit "no cut" point at `t: 0`, or it starts out already ducked.** Maximum 512
@@ -124,6 +132,24 @@ out of the chain rather than assuming what was minted.
 
 A `volume` lane and a GSAP tween on `volume` conflict: the lane wins and the
 tween is ignored. The linter reports that as `audio_volume_double_automation`.
+
+### Tracks add up; nothing averages them
+
+The render sums every track at unity. A track at `data-volume="1"` sits in the
+mix at its source level whether it plays alone or beside twenty others, and a
+clip ending does not raise the ones still playing. Adding a track never turns
+the others down.
+
+- `data-volume`, a `volume` lane, fades and a group fader each scale only their
+  own track or group. Doubling a voice moves the voice +6 dB; how much the whole
+  mix moves depends on what else is playing at that moment.
+- Nothing limits the sum. Loud tracks that overlap can pass 0 dBFS and clip in
+  the exported AAC. Leave headroom, or put a `limiter` or `truepeak` on the
+  [master bus](#the-master-bus-data-fx-chain-on-the-composition-root).
+- The render's master gain, `PRODUCER_AUDIO_GAIN` (default `1`), multiplies the
+  finished sum once, before the master bus chain.
+- To check a level, compare the export against its source scaled by the
+  `data-volume` you wrote, in a window where only that track plays.
 
 ### `data-fx-carve`
 
@@ -175,9 +201,11 @@ dangles.
   `data-audio-group` is ignored. Groups do not nest.
 - `data-audio-group=""` is no group at all.
 - The element must be inert. The runtime injects
-  `hf-audio-group{display:none!important}` so an unknown custom element cannot
-  take a flex gap or shift `:nth-child` — but author the rule yourself so a bare
-  preview never lays it out.
+  `hf-audio-group{display:contents!important}` so an unknown custom element cannot
+  take a flex gap, while anything inside it still renders unless the group is
+  muted (`data-hidden` hides it as before) — but author the rule
+  yourself so a bare preview never lays it out. Close it with
+  `</hf-audio-group>`: HTML ignores `/>` on a custom element.
 - Group ids and element ids share one namespace.
 
 ### The master bus: `data-fx-chain` on the composition root
@@ -445,8 +473,10 @@ effect and lane you built by hand exactly where it was.
 
 ### From the command line
 
+The script ships with the `media-use` skill; `<SKILL_DIR>` is that skill's folder.
+
 ```bash
-node <SKILL_DIR>/scripts/carve.mjs --comp index.html
+node <SKILL_DIR>/audio/scripts/carve.mjs --comp index.html
 ```
 
 That is the whole command — it finds the voice and the bed itself and prints what
@@ -473,31 +503,22 @@ member classified voice or unknown that this run did not analyse is *not* a
 reason to fall back: picking up a clip that starts playing later is the whole
 point of naming the group.
 
-Track choice is by name first, using the same classifier Studio's picker uses, so
+Track choice is by name first, using the same classifier the browser editor's picker uses, so
 the two cannot disagree: an id or filename that looks like music (`music`, `bgm`,
 `bed`, `score`…) is the bed, and everything else playing over it that is not
 SFX-shaped is a voice. Needs `ffmpeg` on `PATH` and `@hyperframes/core`
 installed in the project.
 
-## Groups, mute, and solo
+## Groups and mute
 
 A group sums its members through one bus, and the bus carries the group's own
 volume, FX chain, and automation. In the render each group is sub-mixed into a
 single track at full composition length before entering the main mix, so a
 group-level effect hears the sum rather than each member separately.
 
-**Mute and solo are not symmetric, on purpose.**
-
 | Control | Where it lives | Reaches the export |
 | --- | --- | --- |
 | Mute | `data-hidden` on the group element or the clip | **Yes** — muted members are dropped from the rendered mix |
-| Solo ("hear only this") | Studio session state | **No** — it never reaches the engine |
-
-Solo is a listening tool. An element is audible while any solo is active only if
-it is itself soloed or its own group is soloed; a group bus is never itself
-attenuated by solo, so a soloed member's path out stays open. A group that is not
-soloed while one of its members is shows as half-lit — the display-only signal
-that some of what is under it still plays.
 
 ## Preview and render
 

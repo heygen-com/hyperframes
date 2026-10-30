@@ -68,6 +68,8 @@ const MIME_TYPES: Record<string, string> = {
   ".webp": "image/webp",
   ".mp4": "video/mp4",
   ".webm": "video/webm",
+  ".mov": "video/quicktime",
+  ".m4a": "audio/mp4",
   ".mp3": "audio/mpeg",
 };
 
@@ -87,7 +89,7 @@ function buildHostHtml(fixtureName: string, width: number, height: number): stri
     <title>player perf host: ${fixtureName}</title>
     <style>
       html, body { margin: 0; padding: 0; background: #000; }
-      hyperframes-player { display: block; }
+      hyperframes-player { width: ${width}px; }
     </style>
   </head>
   <body>
@@ -111,6 +113,10 @@ function buildHostHtml(fixtureName: string, width: number, height: number): stri
       });
       const player = document.getElementById("player");
       player.addEventListener("ready", function (event) {
+        // A player with an empty box shows nothing, and Safari counts frames it never shows as dropped.
+        if (!player.offsetWidth || !player.offsetHeight) {
+          window.__playerError = "player box is empty, so the composition is not on screen";
+        }
         window.__playerReady = true;
         window.__playerReadyAt = performance.timeOrigin + performance.now();
         window.__playerDuration = (event.detail && event.detail.duration) || 0;

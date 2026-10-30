@@ -23,7 +23,8 @@ export type RightPanelTab =
   | "renders"
   | "block-params"
   | "slideshow"
-  | "variables";
+  | "variables"
+  | "motionBlur";
 export interface AgentModalAnchorPoint {
   x: number;
   y: number;

@@ -1,4 +1,4 @@
-import { defineCommand } from "citty";
+import { defineCommand } from "../utils/defineCommand.js";
 import { existsSync, readFileSync } from "node:fs";
 import { readProjectFile } from "@hyperframes/parsers/asset-resolution";
 import { resolve, dirname, basename, join, relative, sep } from "node:path";
@@ -112,7 +112,7 @@ interface SurfacedComposition {
 // in discovery order — NOT strict source order when a file mixes top-level and
 // template scripts. Spec-conformant sub-compositions keep everything in one
 // template, so mixed files only need to parse, not preserve interleaving.
-function queryIncludingTemplates(html: string, selector: string): Element[] {
+function compositionRoots(html: string): Array<{ querySelectorAll(s: string): Iterable<Element> }> {
   const doc = new DOMParser().parseFromString(html, "text/html");
   const roots: Array<{ querySelectorAll(s: string): Iterable<Element> }> = [doc];
   const queue = Array.from(doc.querySelectorAll("template")) as HTMLTemplateElement[];
@@ -122,7 +122,11 @@ function queryIncludingTemplates(html: string, selector: string): Element[] {
     roots.push(content);
     queue.push(...(Array.from(content.querySelectorAll("template")) as HTMLTemplateElement[]));
   }
-  return roots.flatMap((root) => Array.from(root.querySelectorAll(selector)));
+  return roots;
+}
+
+function queryIncludingTemplates(html: string, selector: string): Element[] {
+  return compositionRoots(html).flatMap((root) => Array.from(root.querySelectorAll(selector)));
 }
 
 function inlineScriptText(html: string): string {
@@ -589,9 +593,9 @@ function surfaceAnime(script: string): SurfacedAnimeAnimation[] {
 function attachComposedAncestors(tweens: SurfacedTween[], html: string): void {
   const animated = [...new Set(tweens.filter((t) => t.method !== "set").map((t) => t.target))];
   if (animated.length < 2) return; // need ≥2 distinct animated elements to compose
-  const doc = new DOMParser().parseFromString(html, "text/html");
+  const roots = compositionRoots(html);
   for (const t of tweens) {
-    const ancestors = animatedAncestors(doc, t.target, animated);
+    const ancestors = animatedAncestors(roots, t.target, animated);
     if (ancestors.length) {
       t.composedWith = ancestors.map((sel) => ({
         selector: sel,
@@ -609,14 +613,28 @@ const safeMatches = (el: Element, sel: string): boolean => {
   }
 };
 
-// Animated-target selectors of `target`'s DOM ancestors (in order, parent-first).
-function animatedAncestors(doc: Document, target: string, animated: string[]): string[] {
-  let el: Element | null = null;
+function firstCompositionMatch(
+  roots: ReturnType<typeof compositionRoots>,
+  selector: string,
+): Element | null {
   try {
-    el = doc.querySelector(target);
+    for (const root of roots) {
+      const el = Array.from(root.querySelectorAll(selector))[0];
+      if (el) return el;
+    }
   } catch {
-    return [];
+    return null;
   }
+  return null;
+}
+
+// Animated-target selectors of `target`'s DOM ancestors (in order, parent-first).
+function animatedAncestors(
+  roots: ReturnType<typeof compositionRoots>,
+  target: string,
+  animated: string[],
+): string[] {
+  const el = firstCompositionMatch(roots, target);
   const out: string[] = [];
   for (let n = el?.parentElement ?? null; n; n = n.parentElement) {
     for (const sel of animated) {
@@ -1085,14 +1103,6 @@ function createKeyframesCommand(options: Partial<KeyframesCommandOptions> = {}) 
     async run({ args }) {
       ensureDOMParser();
       const runtime = normalizeRuntime(args.runtime, commandOptions.defaultRuntime);
-      if (runtime === "css" || runtime === "anime") {
-        console.log(
-          c.dim(
-            `${commandOptions.name}: ${runtime} output is a static authoring surface; use validate/render/snapshot to verify runtime adapter seekability.`,
-          ),
-        );
-        console.log();
-      }
       const { comps: rawComps, allComps, projectName, projectDir, entryFile } = resolveScope(args);
       const comps = filterCompositionsByRuntime(rawComps, runtime);
 
@@ -1105,6 +1115,15 @@ function createKeyframesCommand(options: Partial<KeyframesCommandOptions> = {}) 
           JSON.stringify(withMeta({ project: projectName, runtime, compositions: comps }), null, 2),
         );
         return;
+      }
+
+      if (runtime === "css" || runtime === "anime") {
+        console.log(
+          c.dim(
+            `${commandOptions.name}: ${runtime} output is a static authoring surface; use validate/render/snapshot to verify runtime adapter seekability.`,
+          ),
+        );
+        console.log();
       }
 
       const total = comps.reduce(

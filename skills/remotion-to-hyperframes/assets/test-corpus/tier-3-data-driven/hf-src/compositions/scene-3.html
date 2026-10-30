@@ -26,7 +26,6 @@
         height: 6px;
         background: #fbbf24;
         border-radius: 3px;
-        transform: scaleX(0);
         transform-origin: left center;
       }
     </style>
@@ -43,8 +42,9 @@
       tl.set(scene, { opacity: 1 }, 0);
       tl.to(scene.querySelector(".outro-wrap"), { opacity: 1, duration: 0.4, ease: "none" }, 0);
       // interpolate(frame, [10,40], [0,1]) for the underline -> starts 0.333s, 1s long
-      tl.to(
+      tl.fromTo(
         scene.querySelector(".outro-underline"),
+        { scaleX: 0 },
         { scaleX: 1, duration: 1.0, ease: "none" },
         0.333,
       );

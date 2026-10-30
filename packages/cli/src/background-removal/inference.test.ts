@@ -136,19 +136,127 @@ describe("background-removal/inference — missing optional native modules", () 
 
   it("createSession asks the optional-package loader for onnxruntime-node and surfaces its error", async () => {
     const loadOptionalPackage = vi.fn().mockRejectedValue(new Error("run npm install it yourself"));
-    vi.doMock("../utils/optionalPackages.js", () => ({ loadOptionalPackage }));
+    vi.doMock("../utils/optionalPackages.js", () => ({
+      loadOptionalPackage,
+      loadSharp: async () => ({}),
+    }));
     const { createSession } = await import("./inference.js");
     await expect(createSession()).rejects.toThrow("run npm install it yourself");
     expect(loadOptionalPackage).toHaveBeenCalledWith("onnxruntime-node", "background removal");
     vi.doUnmock("../utils/optionalPackages.js");
   });
 
-  it("createSession throws an actionable error when sharp can't load", async () => {
-    vi.doMock("sharp", () => {
-      throw new Error("Could not load the sharp module");
-    });
+  it("createSession asks the loader for sharp first and surfaces its error", async () => {
+    const loadSharp = vi.fn().mockRejectedValue(new Error("remove-background needs sharp"));
+    const loadOptionalPackage = vi.fn();
+    vi.doMock("../utils/optionalPackages.js", () => ({ loadOptionalPackage, loadSharp }));
     const { createSession } = await import("./inference.js");
-    await expect(createSession()).rejects.toThrow(/sharp.*isn't available[\s\S]*npm i sharp/);
-    vi.doUnmock("sharp");
+    await expect(createSession()).rejects.toThrow("remove-background needs sharp");
+    expect(loadSharp).toHaveBeenCalledWith("remove-background");
+    expect(loadOptionalPackage).not.toHaveBeenCalled();
+    vi.doUnmock("../utils/optionalPackages.js");
+  });
+});
+
+// A provider that loads and then fails on a frame (CoreML's "Unable to compute the prediction" on a long run) must
+// not end the whole run: the session moves to CPU and that frame runs again, once.
+describe("background-removal/inference — a provider failing on a frame", () => {
+  const COREML_ERROR =
+    "Non-zero status code returned while running CoreML node. Unable to compute the prediction using a neural network model";
+
+  async function sessionWith(providers: string[], label: string, runs: Array<() => unknown>) {
+    vi.resetModules();
+    const sharp = () => {
+      let w = 320;
+      let h = 320;
+      let channels = 3;
+      const api = {
+        resize: (nextW: number, nextH: number) => {
+          w = nextW;
+          h = nextH;
+          return api;
+        },
+        raw: () => api,
+        toColourspace: () => {
+          channels = 1;
+          return api;
+        },
+        toBuffer: async () => Buffer.alloc(w * h * channels),
+      };
+      return api;
+    };
+    const created: string[][] = [];
+    const released: number[] = [];
+    const create = vi.fn(async (_path: string, options: { executionProviders: string[] }) => {
+      created.push(options.executionProviders);
+      const run = runs[created.length - 1];
+      return {
+        inputNames: ["in"],
+        outputNames: ["out"],
+        run: async () => run?.(),
+        release: async () => void released.push(created.length),
+      };
+    });
+    class Tensor {
+      constructor(
+        public type: string,
+        public data: Float32Array,
+        public dims: number[],
+      ) {}
+    }
+    vi.doMock("../utils/optionalPackages.js", () => ({
+      loadSharp: vi.fn().mockResolvedValue(sharp),
+      loadOptionalPackage: vi.fn().mockResolvedValue({ InferenceSession: { create }, Tensor }),
+    }));
+    vi.doMock("./manager.js", () => ({
+      ensureModel: vi.fn().mockResolvedValue("/model.onnx"),
+      selectProviders: () => ({ providers, label }),
+    }));
+    const { createSession } = await import("./inference.js");
+    const messages: string[] = [];
+    const session = await createSession({ onProgress: (message) => void messages.push(message) });
+    return { session, created, released, messages };
+  }
+
+  const answer = () => ({ out: { data: new Float32Array(320 * 320) } });
+  const failing = () => {
+    throw new Error(COREML_ERROR);
+  };
+
+  it("recreates the session on CPU, retries that frame once, and stays on CPU", async () => {
+    const { session, created, released, messages } = await sessionWith(
+      ["coreml", "cpu"],
+      "CoreML",
+      [failing, answer],
+    );
+    expect(session.provider).toBe("CoreML");
+
+    const frame = await session.process(Buffer.alloc(4 * 2 * 3), 4, 2);
+    expect(frame.fg.length).toBe(4 * 2 * 4);
+    expect(created).toEqual([["coreml", "cpu"], ["cpu"]]);
+    expect(released).toEqual([1]);
+    expect(session.provider).toBe("CPU");
+    expect(messages.at(-1)).toContain("continuing on CPU");
+
+    await session.process(Buffer.alloc(4 * 2 * 3), 4, 2);
+    expect(created).toHaveLength(2);
+    vi.doUnmock("../utils/optionalPackages.js");
+    vi.doUnmock("./manager.js");
+  });
+
+  it("does not retry on CPU: a CPU failure is the frame's own", async () => {
+    const { session, created } = await sessionWith(["cpu"], "CPU", [failing]);
+    await expect(session.process(Buffer.alloc(4 * 2 * 3), 4, 2)).rejects.toThrow("CoreML node");
+    expect(created).toEqual([["cpu"]]);
+    vi.doUnmock("../utils/optionalPackages.js");
+    vi.doUnmock("./manager.js");
+  });
+
+  it("falls back once per session: the CPU session failing too ends the run", async () => {
+    const { session, created } = await sessionWith(["coreml", "cpu"], "CoreML", [failing, failing]);
+    await expect(session.process(Buffer.alloc(4 * 2 * 3), 4, 2)).rejects.toThrow("CoreML node");
+    expect(created).toEqual([["coreml", "cpu"], ["cpu"]]);
+    vi.doUnmock("../utils/optionalPackages.js");
+    vi.doUnmock("./manager.js");
   });
 });

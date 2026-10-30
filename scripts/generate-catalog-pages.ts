@@ -71,7 +71,9 @@ function hasPayload(kind: ItemKind, name: string): boolean {
 function unsupportedFlag(kind: ItemKind, name: string): string | null {
   const path = payloadPath(kind, name);
   if (!existsSync(path)) return null;
-  const payload = JSON.parse(readFileSync(path, "utf-8")) as { unsupported?: string };
+  const payload = JSON.parse(readFileSync(path, "utf-8")) as {
+    unsupported?: string;
+  };
   return payload.unsupported ?? null;
 }
 
@@ -199,8 +201,8 @@ const RELATED_TOPICS: readonly string[] = [
   "## Related topics",
   "",
   "- [Browse the complete Catalog](/catalog)",
-  "- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)",
-  "- [Build a richer composition](/go-further)",
+  "- [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)",
+  "- [Put blocks together into one video](/concepts/compositions)",
   "",
 ];
 
@@ -1010,7 +1012,11 @@ function detailMeta(kind: ItemKind, manifest: RegistryItem, file: { source: stri
     duration: "duration" in manifest ? manifest.duration : undefined,
     width,
     height,
-    category: groupForItem({ name: manifest.name, type: kind, tags: manifest.tags ?? [] }),
+    category: groupForItem({
+      name: manifest.name,
+      type: kind,
+      tags: manifest.tags ?? [],
+    }),
     badge: stabilityBadge(manifest as RegistryItem & SourceMetadata),
     codeLines: file?.source.split("\n").length,
   };
@@ -1271,9 +1277,15 @@ function main(): void {
   // openable sections, and keeps every existing shelf name intact underneath.
   const SECTIONS: { section: string; groups: string[] }[] = [
     { section: "3D", groups: ["3D motion", "3D objects"] },
-    { section: "Text & captions", groups: ["Captions", "Typography & Text", "Lower Thirds"] },
+    {
+      section: "Text & captions",
+      groups: ["Captions", "Typography & Text", "Lower Thirds"],
+    },
     { section: "Code", groups: ["Code Animations", "Code Snippets"] },
-    { section: "Transitions", groups: ["Shader Transitions", "CSS Transitions"] },
+    {
+      section: "Transitions",
+      groups: ["Shader Transitions", "CSS Transitions"],
+    },
     { section: "Data & charts", groups: ["Data"] },
     {
       section: "Scenes & demos",
@@ -1285,7 +1297,10 @@ function main(): void {
     // sections on their own, and pulling it out takes the largest section in
     // the catalog from 120 items down to 95.
     { section: "Carousels", groups: ["Carousels"] },
-    { section: "Motion & effects", groups: ["Motion Primitives", "Effects", "Camera"] },
+    {
+      section: "Motion & effects",
+      groups: ["Motion Primitives", "Effects", "Camera"],
+    },
     { section: "Surfaces", groups: ["Texture", "HTML-in-Canvas"] },
     { section: "Blocks", groups: ["Blocks"] },
   ];

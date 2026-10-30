@@ -9,26 +9,20 @@
     {
       "name": "hyperframes",
       "source": "./",
-      "description": "Recommended: all published HyperFrames skills in one versioned bundle. Create and render videos from HTML; load workflows on demand without installing newer standalone skills.",
+      "description": "Recommended: all published HyperFrames skills in one versioned bundle. Create and render videos from HTML: the contract, film, captions, overlays, motion and look references, the CLI, the registry, media, Figma, slideshows and Remotion ports.",
       "homepage": "https://hyperframes.heygen.com",
       "license": "Apache-2.0"
     },
     {
       "name": "core-skills",
       "source": "./",
-      "description": "Legacy core-only installation. For release-managed bundled workflows, install hyperframes@hyperframes and then uninstall core-skills@hyperframes.",
+      "description": "Legacy core-only installation. For the release-managed bundle of every skill, install hyperframes@hyperframes and then uninstall core-skills@hyperframes.",
       "homepage": "https://hyperframes.heygen.com",
       "license": "Apache-2.0",
       "skills": [
         "./skills/hyperframes",
-        "./skills/hyperframes-animation",
-        "./skills/hyperframes-audio",
         "./skills/hyperframes-cli",
-        "./skills/hyperframes-core",
-        "./skills/hyperframes-creative",
-        "./skills/hyperframes-keyframes",
         "./skills/hyperframes-registry",
-        "./skills/hyperframes-studio",
         "./skills/media-use"
       ]
     }

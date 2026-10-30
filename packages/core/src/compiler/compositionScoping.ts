@@ -161,41 +161,127 @@ function isNestedInsideAnotherRule(rule: Rule): boolean {
   return false;
 }
 
+type ScopeOptions = { compoundAuthoredRoot?: boolean; scopeRootSelectors?: boolean };
+
 export function scopeCssToComposition(
   css: string,
   compositionId: string,
   scopeSelectorOverride?: string,
   authoredRootId?: string | null,
-  options?: { compoundAuthoredRoot?: boolean; scopeRootSelectors?: boolean },
+  options?: ScopeOptions,
 ): string {
   const trimmedCompositionId = compositionId.trim();
   if (!css || !trimmedCompositionId) return css;
   const scope =
     scopeSelectorOverride ||
     `[data-composition-id="${escapeCssAttributeValue(trimmedCompositionId)}"]`;
-  let root: postcss.Root;
-  try {
-    root = postcss.parse(css);
-  } catch {
-    return "";
-  }
+  const root = parseCss(css);
+  return root ? scopeParsedCss(root, scope, trimmedCompositionId, authoredRootId, options) : "";
+}
 
+function parseCss(css: string): postcss.Root | null {
+  try {
+    return postcss.parse(css);
+  } catch {
+    return null;
+  }
+}
+
+function forEachScopedRule(root: postcss.Root, visit: (rule: Rule) => void): void {
   root.walkRules((rule) => {
     if (isInsideGlobalAtRule(rule)) return;
     if (isNestedInsideAnotherRule(rule)) return;
+    visit(rule);
+  });
+}
+
+function scopeParsedCss(
+  root: postcss.Root,
+  scope: string,
+  compositionId: string,
+  authoredRootId: string | null | undefined,
+  options: ScopeOptions | undefined,
+): string {
+  forEachScopedRule(root, (rule) => {
     rule.selectors = rule.selectors.map((selector) =>
       scopeSelector(
         selector,
         scope,
-        trimmedCompositionId,
+        compositionId,
         authoredRootId,
         options?.compoundAuthoredRoot,
         options?.scopeRootSelectors,
       ),
     );
   });
-
   return root.toResult({ map: false }).css;
+}
+
+// Shaped like every scope it stands in for, so each selector test treats the two alike; its only `[` is
+// its first character, so no occurrence of it overlaps another or the text around it.
+const PLACEHOLDER_ID = "hf-scope-placeholder";
+const PLACEHOLDER_SCOPE = `[data-composition-id="${PLACEHOLDER_ID}"]`;
+// No quote, bracket, backslash, space or `$` (a String.replace pattern): such a scope lands verbatim.
+const PLAIN_ID = /^[\w.:-]+$/;
+const PLAIN_SCOPE = /^\[data-composition-id="([\w.:-]+)"\]$/;
+
+/** `scopeCssToComposition` for sheets mounted many times: each sheet is scoped once around a
+ * placeholder scope, which each mount's own scope then replaces. */
+export function createCompositionCssScoper(): typeof scopeCssToComposition {
+  const templates = new Map<string, string | null>();
+  return (css, compositionId, scopeSelectorOverride, authoredRootId, options) => {
+    const trimmedId = compositionId.trim();
+    const scope = scopeSelectorOverride ?? "";
+    const scopeId = PLAIN_SCOPE.exec(scope)?.[1];
+    if (
+      !scopeId ||
+      scopeId === trimmedId ||
+      !PLAIN_ID.test(trimmedId) ||
+      trimmedId === PLACEHOLDER_ID
+    )
+      return scopeCssToComposition(
+        css,
+        compositionId,
+        scopeSelectorOverride,
+        authoredRootId,
+        options,
+      );
+    const key = JSON.stringify([
+      trimmedId,
+      authoredRootId ?? null,
+      Boolean(options?.compoundAuthoredRoot),
+      Boolean(options?.scopeRootSelectors),
+      css,
+    ]);
+    let template = templates.get(key);
+    if (template === undefined) {
+      template = scopeTemplate(css, trimmedId, authoredRootId, options);
+      templates.set(key, template);
+    }
+    return template === null
+      ? scopeCssToComposition(css, compositionId, scopeSelectorOverride, authoredRootId, options)
+      : template.split(PLACEHOLDER_SCOPE).join(scope);
+  };
+}
+
+/** Null when the placeholder is already in the sheet, or a selector keeps its raw text (it holds a comment). */
+function scopeTemplate(
+  css: string,
+  compositionId: string,
+  authoredRootId: string | null | undefined,
+  options: ScopeOptions | undefined,
+): string | null {
+  if (css.includes(PLACEHOLDER_SCOPE)) return null;
+  if (!css) return css;
+  const root = parseCss(css);
+  if (!root) return "";
+  let rawSelector = false;
+  forEachScopedRule(root, (rule) => {
+    rawSelector ||= Boolean(rule.raws.selector);
+  });
+  return rawSelector
+    ? null
+    : scopeParsedCss(root, PLACEHOLDER_SCOPE, compositionId, authoredRootId, options);
 }
 
 function isFontFaceAtRule(node: { type: string; name?: string }): node is AtRule {
@@ -289,6 +375,9 @@ const SCOPED_HYPERFRAMES_EXPRESSION = `!__hfBaseHyperframes
         },
       })`;
 
+export const AUTHORED_SOURCE_BEGIN = "/*hf-authored-begin*/";
+export const AUTHORED_SOURCE_END = "/*hf-authored-end*/";
+
 export function scopedModulePrelude(
   timelineCompositionId: string,
   compositionSrc?: string | null,
@@ -318,6 +407,9 @@ export function wrapScopedCompositionScript(
   const rootSelectorPatternLiteral = jsonScriptLiteral(
     String.raw`\[\s*data-composition-id\s*=\s*(?:"${escapedCompositionId}"|'${escapedCompositionId}')\s*\]`,
   );
+  const timelineRootSelectorPatternLiteral = jsonScriptLiteral(
+    String.raw`\[\s*data-composition-id\s*=\s*(?:"${escapeRegExp(timelineCompositionId)}"|'${escapeRegExp(timelineCompositionId)}')\s*\]`,
+  );
   const timingSelectorPatternLiteral = jsonScriptLiteral(
     String.raw`\s*\[\s*data-(?:start|duration)\s*=\s*(?:"[^"]*"|'[^']*')\s*\]`,
   );
@@ -338,6 +430,7 @@ export function wrapScopedCompositionScript(
     : "");
   var __hfRoot = null;
   var __hfRootSelectorPattern = ${rootSelectorPatternLiteral};
+  var __hfTimelineRootSelectorPattern = ${timelineRootSelectorPatternLiteral};
   var __hfTimingSelectorPattern = ${timingSelectorPatternLiteral};
   var __hfAuthoredRootSelector = __hfAuthoredRootId
     ? "[" + __hfAuthoredRootAttr + '="' + __hfEscapeAttr(__hfAuthoredRootId) + '"]'
@@ -349,7 +442,11 @@ export function wrapScopedCompositionScript(
     if (!__hfCompId || typeof selector !== "string") return selector;
     var normalized = selector
       .replace(new RegExp(__hfRootSelectorPattern + '(?:' + __hfTimingSelectorPattern + ')+', 'g'), __hfRootSelector)
-      .replace(new RegExp('(?:' + __hfTimingSelectorPattern + ')+' + __hfRootSelectorPattern, 'g'), __hfRootSelector);
+      .replace(new RegExp('(?:' + __hfTimingSelectorPattern + ')+' + __hfRootSelectorPattern, 'g'), __hfRootSelector)
+      .replace(new RegExp(__hfRootSelectorPattern, 'g'), __hfRootSelector);
+    if (__hfTimelineCompId !== __hfCompId) {
+      normalized = normalized.replace(new RegExp(__hfTimelineRootSelectorPattern, 'g'), __hfRootSelector);
+    }
     return window.__hfSvgSelectorAliases.rewrite(normalized, __hfAuthoredRootEntries);
   };
   var __hfFindRoot = function() {
@@ -493,16 +590,22 @@ export function wrapScopedCompositionScript(
       })
     : window;
   var __hfResolveGsapTarget = function(target) {
-    if (typeof target === "string") return __hfQueryAll(target);
-    if (!Array.isArray(target)) return target;
-    return target.reduce(function(resolved, item) {
+    if (typeof target !== "string" && !Array.isArray(target)) return target;
+    var resolved = typeof target === "string" ? __hfQueryAll(target) : target.reduce(function(resolved, item) {
       if (typeof item === "string") {
         return resolved.concat(Array.prototype.slice.call(__hfQueryAll(item)));
       }
       resolved.push(item);
       return resolved;
     }, []);
-
+    if (!resolved.length) {
+      // GSAP warns "GSAP target " + targets + " not found"; a bare empty match list prints an
+      // empty name. Keep the authored selector as the text while still targeting nothing here.
+      var originalTarget = String(target);
+      resolved = [];
+      resolved.toString = function() { return originalTarget; };
+    }
+    return resolved;
   };
   var __hfScopeTimeline = function(timeline) {
     if (!timeline || timeline.__hfScopedCompositionRoot === __hfFindRoot()) return timeline;
@@ -585,7 +688,9 @@ export function wrapScopedCompositionScript(
     if (typeof report === "function") report("start", __hfCompositionSrc || "index.html");
     try {
       (function(document, gsap, window, __hyperframes) {
+${AUTHORED_SOURCE_BEGIN}
 ${source.replace(/<\/(script)/gi, "<\\/$1")}
+${AUTHORED_SOURCE_END}
       }).call(window, __hfScopedDocument, __hfScopedGsap, __hfScopedWindow, __hfScopedHyperframes);
     } catch (_err) {
       console.error(__hfErrorLabel, __hfCompId, _err);
@@ -650,4 +755,16 @@ export function buildVariablesByCompScript(
   if (!variablesByComp || Object.keys(variablesByComp).length === 0) return null;
   const json = jsonScriptLiteral(variablesByComp);
   return `window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {}, ${json});`;
+}
+
+/** Writes the table in <head>, so it exists before the composition scripts, which wait for web fonts. */
+export function emitVariablesByCompScript(
+  document: Document,
+  variablesByComp: Record<string, Record<string, unknown>>,
+): void {
+  const text = buildVariablesByCompScript(variablesByComp);
+  if (!text || !document.head) return;
+  const script = document.createElement("script");
+  script.textContent = text;
+  document.head.appendChild(script);
 }

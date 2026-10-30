@@ -910,3 +910,72 @@ describe("updateLocalModelConsent fails closed to the answer on disk", () => {
     expect(lockTakes).toHaveLength(1);
   });
 });
+
+describe("router latch release", () => {
+  let readConfig: typeof import("./config.js").readConfig;
+  let readConfigFresh: typeof import("./config.js").readConfigFresh;
+  let writeConfig: typeof import("./config.js").writeConfig;
+  let releaseDeParallelRouterLatch: typeof import("./config.js").releaseDeParallelRouterLatch;
+  let STATE_PATH: typeof import("./config.js").STATE_PATH;
+  let CONFIG_PATH: typeof import("./config.js").CONFIG_PATH;
+
+  beforeEach(async () => {
+    fsState.files.clear();
+    vi.resetModules();
+    ({
+      readConfig,
+      readConfigFresh,
+      writeConfig,
+      releaseDeParallelRouterLatch,
+      STATE_PATH,
+      CONFIG_PATH,
+    } = await import("./config.js"));
+  });
+
+  const trip = {
+    reason: "psnr",
+    at: "2026-10-01T00:00:00.000Z",
+    version: "1.0.0",
+    atRender: 2,
+    cleanRenders: 0,
+  };
+
+  it("clears the latch in config.json and install-state, and the next write does not bring it back", () => {
+    const config = readConfig();
+    config.deParallelRouterTrialFired = true;
+    config.deParallelRouterBreaker = { trip };
+    writeConfig(config);
+    expect(JSON.parse(fsState.files.get(STATE_PATH) as string)).toMatchObject({
+      deParallelRouterTrialFired: true,
+    });
+
+    releaseDeParallelRouterLatch();
+    const after = readConfigFresh();
+    expect(after.deParallelRouterTrialFired).toBeUndefined();
+    writeConfig({ ...after, commandCount: after.commandCount + 1 });
+    expect(readConfigFresh().deParallelRouterTrialFired).toBeUndefined();
+    expect(JSON.parse(fsState.files.get(STATE_PATH) as string)).not.toHaveProperty(
+      "deParallelRouterTrialFired",
+    );
+  });
+
+  it("keeps the install's bucket seed when the latch is released", () => {
+    const config = readConfig();
+    config.deParallelRouterTrialFired = true;
+    writeConfig(config);
+    releaseDeParallelRouterLatch();
+    expect(readConfigFresh().bucketSeed).toBe(config.bucketSeed);
+  });
+
+  it("reads back the stored breaker record and drops a malformed one", () => {
+    const config = readConfig();
+    config.deParallelRouterBreaker = { trip };
+    writeConfig(config);
+    expect(readConfigFresh().deParallelRouterBreaker).toEqual({ trip });
+
+    const raw = JSON.parse(fsState.files.get(CONFIG_PATH) as string);
+    raw.deParallelRouterBreaker = { trip: { reason: 7 } };
+    fsState.files.set(CONFIG_PATH, JSON.stringify(raw));
+    expect(readConfigFresh().deParallelRouterBreaker).toBeUndefined();
+  });
+});

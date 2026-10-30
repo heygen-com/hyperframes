@@ -36,7 +36,7 @@
 #      is newer than the built bundle (so your capture edits are never tested stale).
 #   3. Creates a fresh WORKSPACE ROOT under /tmp/skills-fresh-<timestamp>/ with a
 #      package.json (`file:` CLI dep). It does NOT init a hyperframes project here
-#      — the video workflows run `npx hyperframes init` inside their own subdirs.
+#      — the agent runs `npx hyperframes init` inside its own subdirs.
 #   4. Runs npm install (file: dep), then installs the CLI into a sandbox-private
 #      npm global prefix ($TEST_DIR/.npm-global). npx checks that prefix before its
 #      ~/.npm/_npx cache, so `npx hyperframes` resolves to the LOCAL build from any
@@ -45,7 +45,7 @@
 #   5. Installs the full skills tree from the LOCAL repo via `npx skills add
 #      --agent <agent>`, then prunes the internal _meta/ authoring skills so the
 #      installed set matches what an end user gets.
-#   6. Verifies the router + 10 workflows + 6 domain skills landed.
+#   6. Verifies the 7 published skills landed.
 #   7. Prints the command to start the agent + example prompts to try.
 #
 # Iterate after editing:
@@ -175,7 +175,7 @@ mkdir -p "$TEST_PARENT"
 cd "$TEST_PARENT"
 [[ -e "$TEST_NAME" ]] && fail "$TEST_DIR already exists. Wait 1s and re-run."
 
-# WORKSPACE ROOT, not a hyperframes project: the video workflows run
+# WORKSPACE ROOT, not a hyperframes project: the agent runs
 # `npx hyperframes init` inside their own subdirs, so a project at the root would
 # make a skill find a stray composition here. We only need a package.json with the
 # `file:` CLI dep so `npx hyperframes` (and the skills' init/render calls from
@@ -253,22 +253,17 @@ fi
 # --------- step 6: verify the skills landed ---------
 say "Verifying skill installation..."
 
-ROUTER="hyperframes"
-WORKFLOWS=(product-launch-video faceless-explainer embedded-captions \
-           talking-head-recut pr-to-video motion-graphics general-video \
-           remotion-to-hyperframes slideshow)
-DOMAIN=(hyperframes-core hyperframes-creative hyperframes-animation hyperframes-cli media-use hyperframes-registry)
+SKILLS=(hyperframes hyperframes-cli hyperframes-registry media-use \
+        figma slideshow remotion-to-hyperframes)
 
 MISSING=()
 check_skill() { if [[ -d "$SKILLS_DIR/$1" ]]; then ok "$SKILLS_DIR/$1/"; else MISSING+=("$1"); fi; }
 
-check_skill "$ROUTER"
-for s in "${WORKFLOWS[@]}"; do check_skill "$s"; done
-for s in "${DOMAIN[@]}"; do check_skill "$s"; done
+for s in "${SKILLS[@]}"; do check_skill "$s"; done
 
 if [[ ${#MISSING[@]} -gt 0 ]]; then
   warn "Missing skill(s): ${MISSING[*]}"
-  warn "Check skills/ in the repo and re-run — routing / dispatch will break without these."
+  warn "Check skills/ in the repo and re-run."
 fi
 
 INSTALLED_COUNT=$(find "$SKILLS_DIR" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')
@@ -291,12 +286,11 @@ echo ""
 printf "  \033[1;37mcd %s\033[0m\n" "$TEST_DIR"
 printf "  \033[1;37mnpm_config_prefix=\"%s\" PATH=\"%s/bin:\$PATH\" %s\033[0m\n" "$NPM_GLOBAL_PREFIX" "$NPM_GLOBAL_PREFIX" "$LAUNCH"
 echo ""
-echo "Then type any request you want to test — the agent routes it to a workflow. e.g.:"
-echo "  • \"make a product launch video for https://your-site.com/\"      → product-launch-video (exercises capture)"
-echo "  • \"explain how transformers work as a faceless explainer video\" → faceless-explainer"
-echo "  • \"make a video from this PR: owner/repo#123\"                    → pr-to-video"
-echo "  • \"add lower-thirds / overlay cards to ./clip.mp4\"               → talking-head-recut"
-echo "  • \"add captions/subtitles to ./clip.mp4\"                         → embedded-captions"
-echo "  • \"turn https://your-site.com/ into a site tour video\"           → product-launch-video"
-echo "  • \"a logo reveal / title card / data montage\"                    → general-video"
+echo "Then type any request you want to test — /hyperframes picks it up. e.g.:"
+echo "  • \"make a product launch video for https://your-site.com/\"      (exercises capture)"
+echo "  • \"explain how transformers work as a faceless explainer video\""
+echo "  • \"make a video from this PR: owner/repo#123\""
+echo "  • \"add lower-thirds / overlay cards to ./clip.mp4\""
+echo "  • \"add captions/subtitles to ./clip.mp4\""
+echo "  • \"a logo reveal / title card / data montage\""
 echo ""

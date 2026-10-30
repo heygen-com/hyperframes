@@ -7,8 +7,9 @@
  * and every reused segment is re-validated on disk before it is skipped.
  */
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { renameWithRetry } from "@hyperframes/engine";
 
 export interface SegmentManifestEntry {
   index: number;
@@ -39,6 +40,9 @@ export interface SegmentPlanHashInput {
   preset: string;
   quality: number | undefined;
   bitrate: string | undefined;
+  maxBitrate: string | undefined;
+  bufferSize: string | undefined;
+  gopSize: number | undefined;
   pixelFormat: string | undefined;
   imageFormat: string;
   /** Hardware encoder or not: h264_nvenc and libx264 both report codec "h264" but produce different bytes. */
@@ -48,6 +52,7 @@ export interface SegmentPlanHashInput {
   outputHeight: number;
   /** Serialised motion-blur options, or "" when off; sample count and shutter change every pixel. */
   motionBlur: string;
+  pageMotionBlur: "off" | undefined;
   captureQuality: number | undefined;
 }
 
@@ -71,9 +76,12 @@ export function computeSegmentPlanHash(input: SegmentPlanHashInput): string {
     input.useGpu ? "gpu" : "cpu",
     `${input.outputWidth}x${input.outputHeight}`,
     input.motionBlur,
+    input.pageMotionBlur ?? "",
     input.captureQuality === undefined ? "" : String(input.captureQuality),
-  ].join(" ");
-  return createHash("sha256").update(ordered).digest("hex").slice(0, 16);
+  ];
+  const delivery = [input.maxBitrate, input.bufferSize, input.gopSize].map((v) => v ?? "");
+  if (delivery.some((v) => v !== "")) ordered.push(...delivery.map(String));
+  return createHash("sha256").update(ordered.join(" ")).digest("hex").slice(0, 16);
 }
 
 export function segmentDirFor(projectRendersDir: string, planHash: string): string {
@@ -131,7 +139,7 @@ export function writeSegmentManifest(segmentDir: string, manifest: SegmentManife
   mkdirSync(segmentDir, { recursive: true });
   const tmp = join(segmentDir, `${MANIFEST_FILENAME}.${process.pid}.tmp`);
   writeFileSync(tmp, JSON.stringify(manifest, null, 2), "utf-8");
-  renameSync(tmp, join(segmentDir, MANIFEST_FILENAME));
+  renameWithRetry(tmp, join(segmentDir, MANIFEST_FILENAME));
 }
 
 /**

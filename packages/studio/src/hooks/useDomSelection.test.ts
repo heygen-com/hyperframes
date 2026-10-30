@@ -326,6 +326,68 @@ describe("useDomSelection", () => {
     harness.cleanup();
   });
 
+  describe("a save's resync after the user moved on", () => {
+    function selectHeadlineInPreview() {
+      const doc = document.implementation.createHTMLDocument("");
+      const element = doc.body.appendChild(
+        Object.assign(doc.createElement("div"), { id: "headline" }),
+      );
+      const headline = makeSelection("Headline", element);
+      const harness = renderHarness(
+        { activeCompPath: "index.html", projectId: "project-1", refreshKey: 0 },
+        { previewDoc: doc },
+      );
+      act(() => harness.current().applyDomSelection(headline));
+      return { headline, harness };
+    }
+
+    it("keeps a deselect made while the save was in flight", async () => {
+      const { headline, harness } = selectHeadlineInPreview();
+      // Escape after a crop's release, before its save returns.
+      act(() => harness.current().applyDomSelection(null, { revealPanel: false }));
+
+      await act(() => harness.current().refreshDomEditSelectionFromPreview(headline));
+
+      expect(harness.current().domEditSelection).toBeNull();
+      harness.cleanup();
+    });
+
+    it.each([
+      ["still in", false],
+      ["gone from", true],
+    ])(
+      "keeps a different pick made while the save was in flight, the saved element %s the preview",
+      async (_, removed) => {
+        const { headline, harness } = selectHeadlineInPreview();
+        const card = makeSelection(
+          "Card",
+          Object.assign(document.createElement("div"), { id: "card" }),
+        );
+        act(() => harness.current().applyDomSelection(card));
+        if (removed) headline.element.remove();
+
+        await act(() => harness.current().refreshDomEditSelectionFromPreview(headline));
+
+        expect(harness.current().domEditSelection).toBe(card);
+        harness.cleanup();
+      },
+    );
+
+    it("keeps a deselect made while the resync was rebuilding the selection", async () => {
+      const { headline, harness } = selectHeadlineInPreview();
+      let resync!: Promise<void>;
+      act(() => {
+        resync = harness.current().refreshDomEditSelectionFromPreview(headline);
+      });
+      act(() => harness.current().applyDomSelection(null, { revealPanel: false }));
+
+      await act(() => resync);
+
+      expect(harness.current().domEditSelection).toBeNull();
+      harness.cleanup();
+    });
+  });
+
   it("clears a committed selection when the active composition path changes", () => {
     const { selection, harness } = setupSelectedHarness();
     expect(harness.current().domEditSelection).toBe(selection);

@@ -16,7 +16,7 @@ You are here because SKILL.md told you to read this file before writing animatio
 
 **Emphasis words always break the pattern.** When a word is flagged as emphasis (emotional keyword, ALL CAPS, brand name), give it a stronger animation than surrounding words (larger scale, accent color, overshoot ease). This creates contrast.
 
-**Marker highlight modes add a visual layer on top of karaoke.** For emphasis words that need more than color/scale, add a marker-style effect: highlight sweep, circle, burst, scribble, or sketchout. See `hyperframes-animation/rules/css-marker-patterns.md` for implementation details. Match mode to energy: burst for hype, circle for key terms, highlight for standard, scribble for subtle.
+**Marker highlight modes add a visual layer on top of karaoke.** For emphasis words that need more than color/scale, add a marker-style effect: highlight sweep, circle, burst, scribble, or sketchout (search the registry, `/hyperframes-registry`). Match mode to energy: burst for hype, circle for key terms, highlight for standard, scribble for subtle.
 
 ## Audio-Reactive Captions (Mandatory for Music)
 
@@ -69,7 +69,7 @@ Keep audio reactivity subtle — 3-6% scale variation and soft glow. Heavy pulsi
 To generate the audio data file:
 
 ```bash
-python3 skills/hyperframes-creative/scripts/extract-audio-data.py audio.mp3 --fps 30 --bands 8 -o audio-data.json
+python3 <SKILL_DIR>/audio/scripts/extract-audio-data.py audio.mp3 --fps 30 --bands 8 -o audio-data.json
 ```
 
 ## Combining Techniques
@@ -82,6 +82,6 @@ Don't use the same highlight animation on every group — cycle through styles u
 
 Caption motion uses standard HyperFrames runtime APIs. Use the canonical sources:
 
-- **GSAP timeline + tween syntax** — `hyperframes-animation/adapters/gsap.md` (eases, position parameter, performance)
-- **`window.__hyperframes.fitTextFontSize` / `pretext`** — `hyperframes-core/references/determinism-rules.md` → Layout Contract (overflow prevention, per-frame text measurement)
-- **Audio data extraction** — generate via `python3 skills/hyperframes-creative/scripts/extract-audio-data.py audio.mp3 --fps 30 --bands 8 -o audio-data.json`, then load inline as shown in "Audio-Reactive Captions" above
+- **GSAP timeline + tween syntax** — `/hyperframes` → `references/runtimes.md` and `references/motion.md`
+- **Fitting caption text** — `/hyperframes` → `references/captions.md`
+- **Audio data extraction** — generate via `python3 <SKILL_DIR>/audio/scripts/extract-audio-data.py audio.mp3 --fps 30 --bands 8 -o audio-data.json`, then load inline as shown in "Audio-Reactive Captions" above

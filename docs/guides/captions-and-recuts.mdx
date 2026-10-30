@@ -1,11 +1,13 @@
 ---
-title: "Add captions or repackage talking-head footage"
-sidebarTitle: "Captions and talking head"
-description: "Add captions, add designed overlays, or change the spoken edit."
+title: "Add captions to a video with AI"
+sidebarTitle: "Captions"
+description: "Give it your talking-head clip and get captions, designed cards, or a tighter cut with the long pauses removed."
 ---
 
 import { DocsVideo } from "/snippets/docs-video.jsx";
 
+Give it your talking-head, interview or podcast clip. You get captions timed to the words, designed cards (titles,
+quotes, numbers, lower thirds), or a tighter cut with the long pauses removed.
 
 <DocsVideo
   title="Five caption treatments on the same untouched clip"
@@ -17,45 +19,112 @@ A verbatim rail, an embedded climax word, kinetic emphasis, a lower third and a
 pull-quote. The footage underneath is never re-edited — the overlays carry all
 of it.
 
-## Make the request
+## Make it
 
-Name the file and the change you want:
+Add the clip in **Make something** and say what you want:
 
 ```text
-Using /hyperframes, add clear animated captions to assets/interview.mp4.
-Keep the footage and its spoken edit unchanged.
+Add clear animated captions to this interview. Keep the footage and its spoken edit unchanged.
 ```
 
-Ask for designed information cards instead when the footage needs titles,
-quotes, statistics, lower thirds, or picture-in-picture.
+**Like the captions in someone else's video?** Paste its link too and say "captions like this". With your own agent instead of the app, start the message with `/hyperframes`.
 
-## What should change?
+## Ask for one of three things
 
-This page covers two workflows. `/hyperframes` picks between them from what you
-ask for, and you can name one directly if you already know which you want.
+- **Captions:** the spoken words on screen, timed to the voice. A clean line under the speaker for most videos, or
+  big words set behind the speaker for a cinematic look.
+- **Designed cards:** titles, pull-quotes, number callouts, lower thirds, or the speaker shrunk into a corner while a
+  card holds, all synced to what's said.
+- **A tighter cut:** remove long pauses or stretches you name. Ask for it first, then caption the cut, so the
+  captions follow the final timing:
 
-- **Words on screen** — `/embedded-captions`. Readable, timed words over the clip.
-  Plain subtitles, or cinematic captions set behind the subject.
-- **Designed cards on screen** — `/talking-head-recut`. Titles, pull-quotes, data
-  callouts, lower thirds, picture-in-picture, synced to the transcript.
-- **Change the footage itself** — neither of these. Use
-  [General Video](/guides/general-video) when pauses, selected moments, or the
-  spoken order must change.
+```text
+cut the pauses longer than 0.8 s out of assets/interview.mp4, then add clean
+captions to the tighter cut.
+```
 
-Both leave the clip and its audio untouched: the first adds words, the second adds
-graphics, and the footage plays the same underneath either way.
+To reorder the story or pick the best moments from a long recording, describe the video you want as a
+[custom video](/guides/general-video).
 
-Captions and designed overlays work best on a clear, single-subject clip with audible speech. Both keep the original footage and audio intact.
+Tell the agent any names or terms the transcript may miss, and where the speaker's face and any on-screen text are,
+so graphics stay clear of them.
 
-If you need to remove pauses, choose different moments, or reorder the speech, use [General Video](/guides/general-video).
+<Card title="Practice it: Edit your own footage" icon="graduation-cap" href="https://hyperframes.heygen.com/lessons/edit-your-footage">
+  Free 20-minute lesson with a short video, a quiz and a brief to try. A footage brief is the goal, where it plays, two or three edits and the exact title words.
+</Card>
 
-## Before it builds
+## Prompts that work
 
-Confirm:
+Two words help: the **rail** is the line of captions that carries the spoken words; an **embed** is one big word set
+behind the speaker for the strongest moment.
 
-- **Captions:** the intended format and any names or terms the transcript may miss. HyperFrames can recommend a visual treatment after it sees the clip.
-- **Designed overlays:** the format, layout, visual style, and how often a title, quote, statistic, or side panel should appear.
-- **Either path:** where the speaker, existing text, and important action leave safe room for graphics.
+> Add captions to ./interview.mp4. Clean verbatim rail carrying the spoken words, readable lower-third. Promote the single hardest-hitting word to an embed behind the speaker; highlight one key word in each rail line. Keep the source aspect ratio. Footage stays untouched.
+
+<DocsVideo
+  title="Captions anchor rail"
+  src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/captions-anchor-rail-v2.mp4#t=0.1"
+  loop
+/>
+*Made from the prompt above on generated presenter footage: one embed behind the speaker, everything else on the rail.*
+
+
+The rail carries most of the text; an **embed** is the scarce, earned peak — one big word matted behind the subject at the climax, never every line. Embedding the whole transcript is the most common mistake.
+
+### Designed cards
+
+> Package ./founder-clip.mp4 with designed graphic overlay cards synced to the transcript. 9:16 portrait, warm-paper style. Open with a fullscreen kicker + title hook, drop a lower-third when she names the company, a data callout card counting up the "200+ teams / $1.2M ARR" stat, and a pull-quote card for the strongest line. Speaker stays full-bleed under the cards; shrink her into a corner PiP while the data card holds. The clip plays untouched underneath.
+
+You describe the *cards* — their content, timing, and how the speaker shares the canvas with them (full-bleed, split, PiP, or glass overlay). The agent designs and writes each card; there's no fixed archetype list, so the overlays follow what the transcript actually says.
+
+### Say these when they matter
+
+**Look and tone (captions).** Describe the look by content: explainer / interview / must-read words → a clean readable rail; poetic / social / cinematic → hero typography behind the speaker; hype → bolder, punchier type. Unsure → a clean rail: the words read and the scene stays safe. Ready-made caption styles are in the [captions catalog](/prompting/captions-catalog).
+
+**Verbatim rail vs climax embed.** The rail is the default and carries most of the text. An embed is a promotion — one peak word matted behind the subject, scarce and spaced (roughly one per beat, never two co-visible, at most one apex). Tell the agent *which* lines earn the embed; leave the rest on the rail.
+
+**Style, layout, and canvas (overlay cards).** Name a style (warm paper, clinical, …), a layout (split / stack / PiP / overlay), and a canvas ratio. Matching the source ratio is the safe default, but you choose — 16:9 for desktop / YouTube, 9:16 for Reels / Shorts, 4:5 for feed.
+
+**Keyword highlighting.** On the caption rail, a punch word can carry an inline `emphasis` — an accent-color or active-word pop — without leaving the rail. Ask for "highlight the key word in each line" and it stays readable.
+
+### Variants
+
+<AccordionGroup>
+  <Accordion title="Cinematic caption embed (mood over verbatim)">
+    > Cinematic captions on ./poem.mp4 — no rail, lowercase-italic hero typography composited behind the speaker, words accumulating as a column. One apex word per thought, air between them. 4:5. Never grade the footage.
+
+    Dropping the rail and setting everything behind the speaker suits poetic / social / "cinematic" asks where mood beats strict readability, never on an explainer where the words must read.
+  </Accordion>
+  <Accordion title="Bright-scene captions">
+    > Add verbatim captions to ./outdoor-vlog.mp4. It's a bright daylight scene, so use near-black type printed onto the surface — not a light-on-bright look that washes out. Keep it a readable rail. 16:9.
+
+    Light, screen-blended type washes out over bright backdrops (brightness above ~180); dark, opaque type holds. Match the look to the scene.
+  </Accordion>
+  <Accordion title="VFX-grade themed captions">
+    > Bring the energy on ./hype-clip.mp4 — I want the captions to hit hard: a stamped verbatim rail with a detonation apex. Rail carries the verbatim; the payoff line is the setpiece. 9:16.
+
+    Name the treatment — stamped type, a detonation on the payoff line — instead of "make it explode". The a-roll is still never graded.
+  </Accordion>
+  <Accordion title="Landscape data recut">
+    > Recut ./analyst-interview.mp4 as a 16:9 explainer with a clinical style. Split layout: speaker on the right, data cards on the left. Cards for each claim — a count-up for the headline number, a swiss-grid comparison for the two options, a terminal-style callout for the technical bit. Auto-pace the card count for a 5-minute clip. Footage untouched.
+
+    Layout (split / stack / pip / overlay) sets how speaker and cards share the canvas; left unstated, card density follows the clip's length — roughly one card every 12–20 seconds on a 5-minute clip.
+  </Accordion>
+</AccordionGroup>
+
+### Common mistakes
+
+**Captioning before cutting.** Captions are timed to the clip as it is. Cut first, then caption, or the captions
+drift off the words.
+- **Avoid:** `add captions, then remove the pauses`
+- **Instead:** `remove the pauses, then add captions to the cut`
+
+**Embedding every word.** On a talking head the rail is the verbatim default; matting every caption behind the subject buries the words and spends the climax on nothing.
+- **Avoid:** `composite every caption behind the speaker for a cinematic look` (on an explainer)
+- **Instead:** `verbatim rail; promote only the two payoff lines to an embed`
+
+**Multi-subject clips.** Text behind the speaker is matted against one person; two speakers or hard cuts make it flicker.
+- **Avoid:** `caption this two-person podcast in one pass`
+- **Instead:** `split the clip per shot / per speaker first, then caption each` — or use a single-subject cut.
 
 ## Review what matters
 
@@ -65,17 +134,14 @@ Confirm:
 - The video works with sound and muted.
 - The final caption or graphic clears before the video ends.
 
-For direct placement changes, use [Captions in Studio](/studio/captions) to
-inspect synchronization and save position, scale, or rotation corrections. Ask
-the agent or edit the caption source for corrected words and durable timing or
-style changes.
+Then [change it](/studio-app/edit-with-the-agent): ask the agent for corrected words or timing, or move a caption by hand
+in the editor.
 
-<Card title="Finish and share" icon="circle-check" href="/guides/export-and-share">
-  Review the chosen caption, overlay, or recut path, then render and watch the final file.
-</Card>
+To import corrected words from a transcript file, run `hyperframes transcribe transcript.json --dir ./my-video`.
+It replaces the full transcript in the existing captions and keeps the caption code around it.
 
 ## Related topics
 
-- [Edit captions in Studio](/studio/captions)
+- [Edit captions in the browser editor](/studio/assets-and-blocks#edit-captions)
 - [Work with voice, music, sound, and captions](/guides/voice-and-audio)
-- [Change the spoken edit with a custom video workflow](/guides/general-video)
+- [Change the spoken edit with a custom video](/guides/general-video)

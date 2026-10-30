@@ -6,12 +6,14 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { usePlaybackKeyboard } from "./usePlaybackKeyboard";
 import { usePlayerStore } from "../store/playerStore";
+import { useLinkedClipPreferences } from "../../utils/linkedClipPreferences";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 afterEach(() => {
   document.body.innerHTML = "";
   usePlayerStore.getState().reset();
+  useLinkedClipPreferences.getState().setCompositionFps(30);
 });
 
 interface Spies {
@@ -302,5 +304,22 @@ describe("usePlaybackKeyboard — a focused native player owns its keys", () => 
     Object.defineProperty(event, "target", { value: video });
     dispatch(event);
     expect(event.defaultPrevented).toBe(true);
+  });
+});
+
+describe("usePlaybackKeyboard — frame step", () => {
+  it.each([
+    [25, 3],
+    [30_000 / 1_001, 3],
+  ])("ArrowRight at %s fps steps one frame of the composition", (fps, frame) => {
+    const { dispatch, spies } = setupHook();
+    useLinkedClipPreferences.getState().setCompositionFps(fps);
+    usePlayerStore.setState({ currentTime: frame / fps });
+
+    act(() => {
+      dispatch(keydown({ code: "ArrowRight", key: "ArrowRight" }));
+    });
+
+    expect(spies.seek).toHaveBeenCalledWith((frame + 1) / fps);
   });
 });

@@ -62,6 +62,24 @@ describe.each(ROUTES)("POST %s — encoder options", (path) => {
     expect(capturedRenderConfigs).toHaveLength(0);
   }
 
+  it("preserves explicit page motion blur off in the render config", async () => {
+    const response = await requestRender(path, { pageMotionBlur: "off" });
+    expect(response.status).toBe(200);
+    expect(capturedRenderConfigs[0]?.pageMotionBlur).toBe("off");
+  });
+
+  it("keeps page motion blur unspecified when omitted", async () => {
+    await requestRender(path, {});
+    expect(capturedRenderConfigs[0]).not.toHaveProperty("pageMotionBlur");
+  });
+
+  it.each(["on", "", true, false, null, 0])(
+    "rejects invalid page motion blur %j",
+    async (value) => {
+      await expectRejected({ pageMotionBlur: value }, "pageMotionBlur must be off when supplied");
+    },
+  );
+
   it("sends no encoder overrides when none are requested", async () => {
     const response = await requestRender(path, { quality: "high" });
 

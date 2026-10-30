@@ -67,9 +67,9 @@
             container-type: size;
             isolation: isolate;
             overflow: hidden;
-            background: var(--bg);
-            color: var(--fg);
-            font-family: var(--font-body);
+            background: var(--bg, #070a12);
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-body, Inter, system-ui, sans-serif);
           }
 
           .tc-clip {
@@ -89,10 +89,10 @@
             gap: min(4.6cqw, 4.6cqh);
             padding: min(6.5cqw, 6.5cqh);
             overflow: hidden;
-            border: 0.16cqh solid var(--border);
-            border-radius: var(--radius);
-            background: var(--surface);
-            box-shadow: 0 3cqh 8cqh color-mix(in srgb, var(--bg) 68%, transparent);
+            border: 0.16cqh solid var(--border, #34405a);
+            border-radius: var(--radius, 28px);
+            background: var(--surface, #151c2c);
+            box-shadow: 0 3cqh 8cqh color-mix(in srgb, var(--bg, #070a12) 68%, transparent);
           }
 
           .tc-proof {
@@ -106,8 +106,8 @@
             align-items: center;
             gap: min(2cqw, 2cqh);
             width: max-content;
-            color: var(--muted);
-            font-family: var(--font-mono);
+            color: var(--muted, #a8b3c7);
+            font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
             font-size: min(2.4cqw, 2.4cqh);
             font-weight: 650;
             line-height: 1;
@@ -116,7 +116,7 @@
           .tc-stars {
             position: relative;
             display: inline-block;
-            color: var(--muted);
+            color: var(--muted, #a8b3c7);
             font-size: min(3.4cqw, 3.4cqh);
             letter-spacing: 0.18em;
             line-height: 1;
@@ -130,14 +130,14 @@
             overflow: hidden;
             /* The earned portion of the rating is the data. Flat ink over the
                muted track says it by value, with no second hue. */
-            color: var(--fg);
+            color: var(--fg, #f8fafc);
             white-space: nowrap;
           }
 
           .tc-quote {
             margin: 0;
-            color: var(--fg);
-            font-family: var(--font-display);
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
             font-size: min(5.2cqw, 5.2cqh);
             font-weight: 650;
             line-height: 1.23;
@@ -160,13 +160,13 @@
             place-items: center;
             width: min(8.4cqw, 8.4cqh);
             aspect-ratio: 1;
-            border: 0.16cqh solid color-mix(in srgb, var(--fg) 20%, transparent);
+            border: 0.16cqh solid color-mix(in srgb, var(--fg, #f8fafc) 20%, transparent);
             border-radius: 50%;
             /* Placeholder person: a single (front) avatar circle at L1, with
                the initials knocked out in the ground colour. */
-            background: color-mix(in srgb, var(--fg) 72%, var(--surface));
-            color: var(--bg);
-            font-family: var(--font-display);
+            background: color-mix(in srgb, var(--fg, #f8fafc) 72%, var(--surface, #151c2c));
+            color: var(--bg, #070a12);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
             font-size: min(2.65cqw, 2.65cqh);
             font-weight: 780;
             letter-spacing: 0.03em;
@@ -175,8 +175,8 @@
           .tc-author {
             min-width: 0;
             align-self: end;
-            color: var(--fg);
-            font-family: var(--font-display);
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
             font-size: min(3.2cqw, 3.2cqh);
             font-weight: 700;
             line-height: 1.08;
@@ -185,7 +185,7 @@
           .tc-handle {
             min-width: 0;
             align-self: start;
-            color: var(--muted);
+            color: var(--muted, #a8b3c7);
             font-size: min(2.35cqw, 2.35cqh);
             line-height: 1.15;
           }

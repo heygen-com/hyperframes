@@ -1,3 +1,4 @@
+import { DEFAULT_CONFIG, resolvePageNavigationTimeout } from "@hyperframes/engine";
 import { failUsage } from "./commandResult.js";
 /**
  * Pure parsers for `hyperframes render` argv that aren't already shared
@@ -10,8 +11,8 @@ import { failUsage } from "./commandResult.js";
  * `timeout: 0` footguns at the rate of "one per missing branch".
  */
 
-import { readFileSync, type Stats } from "node:fs";
-import { resolve, sep } from "node:path";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { parseFps } from "@hyperframes/core";
 import { errorBox } from "../ui/format.js";
 import { readCompositionFps } from "./compositionFps.js";
@@ -118,134 +119,13 @@ export function resolveBrowserTimeoutMsArg(raw: string | undefined): number | un
   return result.value;
 }
 
-/**
- * Navigation budget shared by snapshot/check/inspect browser diagnostics.
- *
- * The environment variable remains the historical global override. Callers
- * with their own timeout knob can supply a minimum without shortening that
- * override or the existing 10-second default.
- */
-export function resolveDiagnosticNavigationTimeoutMs(
-  env: Record<string, string | undefined> = process.env,
-  minimumTimeoutMs = 0,
-): number {
-  const parsed = Number(env.PRODUCER_PAGE_NAVIGATION_TIMEOUT_MS);
-  const configured = Number.isFinite(parsed) && parsed > 0 ? parsed : 10_000;
-  return Math.max(configured, minimumTimeoutMs);
-}
-
-// ── --composition ──────────────────────────────────────────────────────
-
-export type CompositionEntryParseError =
-  | { kind: "outside-project"; entryFile: string }
-  | { kind: "not-found"; entryFile: string }
-  | { kind: "not-a-file"; entryFile: string };
-
-export type CompositionEntryParseResult =
-  | { ok: true; value: string | undefined }
-  | { ok: false; error: CompositionEntryParseError };
-
-function normalizeCompositionEntryArg(raw: string | undefined): string | undefined {
-  const trimmed = raw?.trim().replace(/^\.\//, "") || undefined;
-  return !trimmed || trimmed === "." ? undefined : trimmed;
-}
-
-export function hasExplicitCompositionArg(raw: string | undefined): boolean {
-  return normalizeCompositionEntryArg(raw) !== undefined;
-}
-
-/**
- * Parse and validate `--composition <path>` into a project-relative
- * entry file (or `undefined` for the index.html default).
- *
- *   - `undefined` / `""` / `"."` / `"./"` → undefined (defaults to
- *     index.html). Issue #1199: the prior code threaded `.` straight
- *     through and the producer's `readFileSync` blew up with
- *     `EISDIR: illegal operation on a directory, read`.
- *   - Other strings are resolved against `projectDir`, checked for
- *     containment, existence, and isFile() via the injected `stat`
- *     adapter. The adapter shape lets unit tests inject fixtures
- *     without touching the filesystem.
- */
-export function parseCompositionEntryArg(
-  raw: string | undefined,
-  projectDir: string,
-  stat: (path: string) => Stats,
-): CompositionEntryParseResult {
-  const trimmed = normalizeCompositionEntryArg(raw);
-  // Normalize the project-root shorthands to "no entry override" so the
-  // producer falls back to index.html instead of statSync-ing the dir
-  // and later blowing up with EISDIR inside readFileSync().
-  if (!trimmed) return { ok: true, value: undefined };
-
-  const absProjectDir = resolve(projectDir);
-  const entryPath = resolve(absProjectDir, trimmed);
-  // Trailing-separator guard: `startsWith` alone treats `/proj` as a
-  // prefix of `/proj-evil`, letting a sibling-directory escape through.
-  // Allow the resolved path to BE the project dir (already covered by
-  // the trimmed === "." branch above) or to live beneath it with a
-  // path separator.
-  if (entryPath !== absProjectDir && !entryPath.startsWith(absProjectDir + sep)) {
-    return { ok: false, error: { kind: "outside-project", entryFile: trimmed } };
-  }
-
-  let entryStat: Stats;
-  try {
-    entryStat = stat(entryPath);
-  } catch {
-    return { ok: false, error: { kind: "not-found", entryFile: trimmed } };
-  }
-  if (!entryStat.isFile()) {
-    // Directory paths slip past existsSync downstream and explode with
-    // `EISDIR: illegal operation on a directory, read` inside the
-    // producer's readFileSync. Reject here with an actionable message.
-    return { ok: false, error: { kind: "not-a-file", entryFile: trimmed } };
-  }
-  return { ok: true, value: trimmed };
-}
-
-function compositionEntryErrorMessage(error: CompositionEntryParseError): {
-  title: string;
-  message: string;
-  hint?: string;
-} {
-  switch (error.kind) {
-    case "outside-project":
-      return {
-        title: "Invalid composition path",
-        message: `Entry file must stay inside the project directory: ${error.entryFile}`,
-      };
-    case "not-found":
-      return {
-        title: "Composition not found",
-        message: `"${error.entryFile}" does not exist in the project directory.`,
-        hint: "Pass a path to a .html file relative to the project root (e.g. compositions/intro.html).",
-      };
-    case "not-a-file":
-      return {
-        title: "Invalid composition path",
-        message: `"${error.entryFile}" is a directory, not an .html file.`,
-        hint: "Pass a path to a .html file (e.g. compositions/intro.html), or omit --composition to render index.html.",
-      };
-  }
-}
-
-/**
- * Side-effecting wrapper around `parseCompositionEntryArg`. Exits the
- * process with a friendly error box on validation failure.
- */
-export function resolveCompositionEntryArg(
-  raw: string | undefined,
-  projectDir: string,
-  stat: (path: string) => Stats,
-): string | undefined {
-  const result = parseCompositionEntryArg(raw, projectDir, stat);
-  if (!result.ok) {
-    const { title, message, hint } = compositionEntryErrorMessage(result.error);
-    errorBox(title, message, hint);
-    failUsage();
-  }
-  return result.value;
+/** The page-load budget render uses, raised to a command's own longer `--timeout`. */
+export function pageNavigationTimeoutMs(minimumTimeoutMs = 0): number {
+  const configured = resolvePageNavigationTimeout();
+  return Math.max(
+    configured > 0 ? configured : DEFAULT_CONFIG.pageNavigationTimeout,
+    minimumTimeoutMs,
+  );
 }
 
 // ── default fps ────────────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/producer",
-  "version": "0.8.170",
+  "version": "0.8.218",
   "description": "HTML-to-video rendering engine using Chrome's BeginFrame API",
   "repository": {
     "type": "git",
@@ -84,14 +84,14 @@
     "hono": "^4.6.0",
     "linkedom": "^0.18.12",
     "postcss": "^8.4.0",
-    "puppeteer": "^25.2.1",
-    "puppeteer-core": "^25.2.1"
+    "puppeteer": "~25.11.0",
+    "puppeteer-core": "^25.11.0"
   },
   "devDependencies": {
     "@hyperframes/aws-lambda": "workspace:*",
     "@types/node": "^25.0.10",
     "@webgpu/types": "^0.1.69",
-    "esbuild": "^0.25.12",
+    "esbuild": "^0.28.2",
     "tsx": "^4.21.0",
     "typescript": "^5.7.2",
     "vitest": "^4.1.11"

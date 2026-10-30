@@ -618,6 +618,89 @@ describe("tagAddJson", () => {
       tag: "lower-thirds",
       installed: ["a", "b"],
       warnings: ["b: no id"],
+      errors: [],
     });
+  });
+});
+
+describe("tag installation failures", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = tmp();
+    writeRegistryConfig(dir);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it.each([
+    { names: ["my-block"], failed: ["my-block"], installed: [], json: true },
+    {
+      names: ["my-block", "deprecated-block"],
+      failed: ["my-block"],
+      installed: ["deprecated-block"],
+      json: true,
+    },
+    { names: ["my-block"], failed: [], installed: ["my-block"], json: true },
+    { names: ["my-block"], failed: ["my-block"], installed: [], json: false },
+    { names: ["my-block"], failed: [], installed: ["my-block"], json: false },
+  ])("reports failed downloads and keeps successful installs: %j", async (scenario) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL) => {
+        const url = new URL(input);
+        if (url.pathname.endsWith("/registry.json")) {
+          return Response.json({
+            ...MANIFEST,
+            items: MANIFEST.items.filter((item) => scenario.names.includes(item.name)),
+          });
+        }
+        const name = scenario.names.find((item) => url.pathname.includes(`/blocks/${item}/`));
+        if (!name) return new Response("not found", { status: 404 });
+        if (url.pathname.endsWith("/registry-item.json")) {
+          return Response.json({ ...ITEM_BY_NAME[name], tags: ["test-tag"] });
+        }
+        if (scenario.failed.includes(name)) return new Response("not found", { status: 404 });
+        return new Response(FILE_BODIES[`${name}.html`]);
+      }),
+    );
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const run = runCittyCommand(addCommand, {
+      rawArgs: ["test-tag", "--dir", dir, "--no-clipboard", ...(scenario.json ? ["--json"] : [])],
+    });
+    if (scenario.failed.length > 0) {
+      await expect(run).rejects.toMatchObject({ result: { exitCode: 1, presented: true } });
+    } else {
+      await expect(run).resolves.toBeDefined();
+    }
+
+    if (scenario.json) {
+      expect(log).toHaveBeenCalledTimes(1);
+      expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({
+        ok: scenario.failed.length === 0,
+        tag: "test-tag",
+        installed: scenario.installed,
+        errors: scenario.failed.map((name) => ({
+          name,
+          error: expect.stringContaining("HTTP 404"),
+        })),
+      });
+    } else {
+      expect(log).toHaveBeenLastCalledWith(
+        `${scenario.failed.length > 0 ? "✗" : "✓"} Installed ${scenario.installed.length}/${scenario.names.length} blocks`,
+      );
+      if (scenario.failed.length > 0) {
+        expect(log.mock.calls.flat().join(" ")).toContain("HTTP 404");
+      }
+    }
+    for (const name of scenario.names) {
+      expect(existsSync(join(dir, "compositions", `${name}.html`))).toBe(
+        scenario.installed.includes(name),
+      );
+    }
   });
 });

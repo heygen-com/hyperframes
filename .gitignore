@@ -3,6 +3,7 @@ node_modules/
 
 # Build output
 dist/
+packages/aws-lambda/prebuilt/
 *.tsbuildinfo
 
 # Environment
@@ -45,6 +46,7 @@ packages/producer/tests/parity/fixtures/hyperframe.runtime.iife.js
 
 # Player perf test results (generated each run, attached as CI artifact)
 packages/player/tests/perf/results/
+packages/player/tests/perf/fixtures/_media/
 
 # Rendered output (not test fixtures — those use git LFS)
 output/
@@ -195,3 +197,7 @@ chrome/
 # Hosted catalog item files are generated output the docs host serves; the rules above match their folder names
 !docs/public/catalog/items/**/compositions/
 !docs/public/catalog/items/*-ad/
+
+# Python bytecode from running skill scripts
+__pycache__/
+*.pyc

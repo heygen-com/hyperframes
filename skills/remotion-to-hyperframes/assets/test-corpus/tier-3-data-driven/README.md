@@ -44,10 +44,10 @@ value from `useCurrentFrame()` + a manual `1 - (1 - t)^3` ease.
    exactly — costs ~0.03 mean SSIM per spring instance.
 
 2. **Count-up easing**: `AnimatedNumber` uses `1 - (1 - t)^3` (cubic ease-out)
-   manually computed in the component. GSAP's `power3.out` is the same curve
-   shape — should match closely. The displayed integer is rounded each frame
-   in both renderers; minor mismatches occur when the rounded value flips
-   between two numbers on a sub-frame timing difference.
+   manually computed in the component. GSAP's `power2.out` matches that cubic curve
+   exactly (`power3.out` is quartic). Compare the rounded integers at matching
+   frame times in both renderers; matching final values alone does not validate
+   the easing curve.
 
 3. **Font rendering**: same caveat as T1/T2. System Helvetica/Arial fallback
    produces minor anti-aliasing differences between renderers. Affects the
@@ -55,8 +55,9 @@ value from `useCurrentFrame()` + a manual `1 - (1 - t)^3` ease.
 
 A mean SSIM below 0.90 in T3 indicates a _structural_ mismatch (wrong scene
 durations, wrong stagger timing, missing prop wiring), not approximation
-drift. That's the failure signal we care about. The calibrated mean against
-Remotion @ 4.0 with PNG/BT.709 output is 0.953.
+drift. That's the failure signal we care about. The September 18 measurement
+against Remotion @ 4.0 with PNG/BT.709 output was 0.953 for the quartic
+translation; it does not measure the corrected cubic count-up.
 
 ## Translation walk-through (skill cheat sheet)
 
@@ -65,7 +66,7 @@ Remotion @ 4.0 with PNG/BT.709 output is 0.953.
 | `<Composition schema={z.object({...})} defaultProps={...} />`               | data-\* attributes on root `#stage` div                                               |
 | nested array prop (`stats[]`)                                               | repeated HTML markup with per-instance `data-*` attrs                                 |
 | custom React subcomponent                                                   | inline repeated HTML using the component's prop interface as the template             |
-| `<AnimatedNumber from={0} to={value} dur={45} />` (cubic ease-out count-up) | tween on `{ v: 0 }` object with `onUpdate` rewriting `textContent`, ease `power3.out` |
+| `<AnimatedNumber from={0} to={value} dur={45} />` (cubic ease-out count-up) | tween on `{ v: 0 }` object with `onUpdate` rewriting `textContent`, ease `power2.out` |
 | `spring({damping:12, stiffness:100})`                                       | `back.out(1.4)` over ~0.7 s                                                           |
 | `spring({damping:14, stiffness:90})`                                        | `back.out(1.2)` over ~0.7 s                                                           |
 | `delayInFrames={i * 12}` (per-instance)                                     | GSAP timeline offset `(i * 0.4)` s                                                    |

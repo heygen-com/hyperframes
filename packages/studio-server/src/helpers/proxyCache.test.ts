@@ -115,6 +115,33 @@ describe("cleanupProxyCache", () => {
     expect(existsSync(inFlight)).toBe(true);
   });
 
+  it("sweeps stale pieces of a stopped long copy, but not while its copy runs or within the hour", () => {
+    const cache = cacheDir();
+    const now = 1_800_000_000_000;
+    const hour = 60 * 60 * 1000;
+    const key = basename(proxy(cache, "long"), ".mp4");
+    const runningKey = basename(proxy(cache, "running"), ".mp4");
+    const stalePiece = join(cache, `.part-${key}-0.mp4`);
+    const stalePieceTemp = join(cache, `.tmp-${randomUUID()}-.part-${key}-1.mp4`);
+    const freshPiece = join(cache, `.part-${key}-2.mp4`);
+    const runningPiece = join(cache, `.part-${runningKey}-0.mp4`);
+    writeEntry(stalePiece, 3, now - 2 * hour);
+    writeEntry(stalePieceTemp, 3, now - 2 * hour);
+    writeEntry(freshPiece, 3, now - 11 * 60 * 1000);
+    writeEntry(runningPiece, 3, now - 2 * hour);
+
+    const result = cleanupProxyCache(cache, {
+      now,
+      staleTempMs: 10 * 60 * 1000,
+      minSweepIntervalMs: 0,
+      protectedPaths: new Set([join(cache, `${runningKey}.mp4`)]),
+    });
+
+    expect(result.removed.sort()).toEqual([stalePiece, stalePieceTemp].sort());
+    expect(existsSync(freshPiece)).toBe(true);
+    expect(existsSync(runningPiece)).toBe(true);
+  });
+
   it("never removes a file the transcoder did not name, even from an idle cache over budget", () => {
     const cache = cacheDir();
     const now = 1_800_000_000_000;

@@ -6,15 +6,16 @@
 
 import type { ItemType, RegistryItem, RegistryManifestEntry } from "@hyperframes/core";
 import { fetchItemManifest, fetchRegistryManifest, DEFAULT_REGISTRY_URL } from "./remote.js";
+import { runWithConcurrencyLimit } from "../utils/concurrency.js";
 
 export interface ResolveOptions {
   baseUrl?: string;
   /** Bypass the 24h manifest cache and fetch fresh data from the registry. */
   skipCache?: boolean;
   /**
-   * Called once per item that fails to load inside `loadAllItems`. Defaults
-   * to writing a diagnostic line to stderr. Pass a quieter implementation
-   * when rendering structured output (clack prompts, JSON, etc.).
+   * Called once with a summary when items fail to load inside `loadAllItems`.
+   * Defaults to writing a diagnostic line to stderr. Pass a quieter
+   * implementation when rendering structured output (clack prompts, JSON, etc.).
    */
   onWarn?: (message: string) => void;
 }
@@ -38,11 +39,13 @@ export async function listRegistryItems(
   return manifest.items.filter((item) => item.type === filter.type);
 }
 
+// Hundreds of item manifests sharing one slow link all started their timeouts at once.
+const ITEM_FETCH_CONCURRENCY = 32;
+
 /**
- * Load every item's full manifest in parallel. Used by the interactive init
- * picker to populate titles/descriptions for all examples at once. Items that
- * fail to load are skipped with a warning so one missing manifest doesn't
- * break the picker.
+ * Load every item's full manifest, a bounded number at a time. Items that fail
+ * to load are skipped with one summary warning so one missing manifest doesn't
+ * break the picker; after a timeout the rest come from cache only.
  */
 export async function loadAllItems(
   entries: RegistryManifestEntry[],
@@ -50,19 +53,28 @@ export async function loadAllItems(
 ): Promise<RegistryItem[]> {
   const baseUrl = options.baseUrl ?? DEFAULT_REGISTRY_URL;
   const warn = options.onWarn ?? defaultWarn;
-  const results = await Promise.allSettled(
-    entries.map((e) => fetchItemManifest(e.name, e.type, baseUrl)),
-  );
-  const items: RegistryItem[] = [];
-  results.forEach((r, i) => {
-    if (r.status === "fulfilled") {
-      items.push(r.value);
-    } else {
-      const name = entries[i]?.name ?? "<unknown>";
-      warn(`skipped item "${name}": ${String(r.reason)}`);
+  const skipped: string[] = [];
+  let firstReason = "";
+  let timedOut = false;
+  const loaded = await runWithConcurrencyLimit(entries, ITEM_FETCH_CONCURRENCY, async (e) => {
+    try {
+      return await fetchItemManifest(e.name, e.type, baseUrl, {
+        skipCache: options.skipCache,
+        cacheOnly: timedOut,
+      });
+    } catch (err) {
+      if (err instanceof Error && err.name === "TimeoutError") timedOut = true;
+      skipped.push(`"${e.name}"`);
+      firstReason ||= String(err);
+      return undefined;
     }
   });
-  return items;
+  if (skipped.length === 1) warn(`skipped item ${skipped[0]}: ${firstReason}`);
+  else if (skipped.length > 1)
+    warn(
+      `skipped ${skipped.length} items (${skipped.slice(0, 3).join(", ")}${skipped.length > 3 ? ", ..." : ""}): ${firstReason}`,
+    );
+  return loaded.filter((item): item is RegistryItem => item !== undefined);
 }
 
 /**
@@ -164,7 +176,9 @@ export async function resolveItemWithDependencies(
       );
     }
 
-    const pending = fetchItemManifest(registryEntry.name, registryEntry.type, options.baseUrl);
+    const pending = fetchItemManifest(registryEntry.name, registryEntry.type, options.baseUrl, {
+      skipCache: options.skipCache,
+    });
     itemCache.set(itemName, pending);
     return pending;
   };

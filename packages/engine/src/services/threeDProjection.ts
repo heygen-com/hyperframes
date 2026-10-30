@@ -921,6 +921,24 @@ export async function initThreeDProjection(page: Page): Promise<ThreeDProjection
  * Returns the first matched effect name (for logging) or null.
  */
 export async function detectCssEffectRisk(page: Page): Promise<string | null> {
+  return (await scanCssEffects(page, false)).reason;
+}
+
+/** What {@link scanCssEffects} found. */
+export interface CssEffectScan {
+  /** First effect matched, in scan order (computed, stylesheet, tween vars, WebGL), or null. */
+  reason: string | null;
+  /** False when a match is not tied to an element (unmatched rule, CSS animation, WebGL). */
+  bounded: boolean;
+  /** Seconds at which the first timeline callback can fire; the effect can show anywhere after. */
+  callbackFrom: number | null;
+}
+
+/**
+ * Which CSS effects drawElementImage cannot reproduce. `collect: true` scans past the first match
+ * and leaves the elements carrying an effect in `window.__hfCssFxTargets`.
+ */
+export async function scanCssEffects(page: Page, collect: boolean): Promise<CssEffectScan> {
   try {
     // MUST NOT seek the timeline here. Driving `window.__hf.seek` to sample
     // frames renders GSAP `.from()` / overlapping tweens out of forward order and
@@ -931,13 +949,24 @@ export async function detectCssEffectRisk(page: Page): Promise<string | null> {
     // 1e5a1165: the Pong scene's scale/rotation tween lands wrong, 19.8 dB / 27
     // damaged frames; the fix restored it to baseline parity, 43 dB / 0). So we
     // detect the same effects seek-free, four ways:
-    return await page.evaluate(() => {
+    return await page.evaluate((collectAll: boolean): CssEffectScan => {
       const root = document.querySelector("[data-composition-id]");
-      if (!root) return null;
+      if (!root) return { reason: null, bounded: true, callbackFrom: null };
+
+      let reason: string | null = null;
+      let bounded = true;
+      const targets = new Set<Element>();
+      // A match on `els` (null: not tied to any element). Returns true to stop the scan.
+      const hit = (name: string, els: ArrayLike<Element> | null): boolean => {
+        reason = reason ?? name;
+        if (els && els.length > 0) for (const el of Array.from(els)) targets.add(el);
+        else bounded = false;
+        return !collectAll;
+      };
 
       // (1) Computed styles at the current (init/t0) state — effects present in
       // the base render.
-      const scanComputed = (): string | null => {
+      const scanComputed = (): boolean => {
         const els = [root, ...Array.from(root.querySelectorAll("*"))];
         for (const el of els) {
           const cs = getComputedStyle(el as Element) as CSSStyleDeclaration & {
@@ -946,24 +975,59 @@ export async function detectCssEffectRisk(page: Page): Promise<string | null> {
             mixBlendMode?: string;
           };
           const bf = cs.backdropFilter || cs.webkitBackdropFilter || "";
-          if (bf && bf !== "none") return "backdrop-filter";
+          if (bf && bf !== "none" && hit("backdrop-filter", [el])) return true;
           const f = cs.filter || "";
-          if (f && f !== "none" && f.indexOf("blur(") !== -1) return "filter:blur";
-          if (f && f !== "none" && f.indexOf("drop-shadow(") !== -1) return "filter:drop-shadow";
+          if (f && f !== "none" && f.indexOf("blur(") !== -1 && hit("filter:blur", [el])) {
+            return true;
+          }
+          if (
+            f &&
+            f !== "none" &&
+            f.indexOf("drop-shadow(") !== -1 &&
+            hit("filter:drop-shadow", [el])
+          ) {
+            return true;
+          }
           const mbm = cs.mixBlendMode || "";
-          if (mbm && mbm !== "normal") return "mix-blend-mode";
+          if (mbm && mbm !== "normal" && hit("mix-blend-mode", [el])) return true;
           const an = cs.animationName || "";
           const ad = cs.animationDuration || "0s";
-          if (an && an !== "none" && ad !== "0s" && parseFloat(ad) > 0) return "css-animation";
+          if (
+            an &&
+            an !== "none" &&
+            ad !== "0s" &&
+            parseFloat(ad) > 0 &&
+            hit("css-animation", null)
+          ) {
+            return true;
+          }
         }
-        return null;
+        return false;
       };
 
       // (2) Stylesheet rules — an effect applied later via a class swap won't be
       // computed at t0, but the rule that declares it exists up front. This
       // replaces the old per-frame scrub scan seek-free (conservative: a declared
       // rule ⇒ gate, even if applied only mid-timeline).
-      const scanStyleSheets = (): string | null => {
+      const scanStyleSheets = (): boolean => {
+        // The elements a style rule can apply to now; a pseudo-element's effect shows only while
+        // its owner does. Empty when the rule is not a plain style rule or matches nothing yet.
+        const ruleTargets = (rule: CSSRule): Element[] => {
+          const selector = (rule as CSSStyleRule).selectorText;
+          if (!selector) return [];
+          try {
+            return Array.from(
+              root.querySelectorAll(
+                selector.replace(
+                  /::?(before|after|first-line|first-letter|marker|placeholder|selection|backdrop)/g,
+                  "",
+                ),
+              ),
+            );
+          } catch {
+            return [];
+          }
+        };
         for (const sheet of Array.from(document.styleSheets)) {
           let rules: CSSRuleList | null = null;
           try {
@@ -973,61 +1037,100 @@ export async function detectCssEffectRisk(page: Page): Promise<string | null> {
           }
           for (const rule of Array.from(rules ?? [])) {
             const txt = (rule as CSSRule).cssText || "";
-            if (/backdrop-filter\s*:\s*(?!none)/i.test(txt)) return "backdrop-filter";
-            if (/(?:^|[^-])filter\s*:[^;{}]*blur\(/i.test(txt)) return "filter:blur";
-            if (/(?:^|[^-])filter\s*:[^;{}]*drop-shadow\(/i.test(txt)) {
-              return "filter:drop-shadow";
-            }
-            if (/mix-blend-mode\s*:\s*(?!normal)/i.test(txt)) return "mix-blend-mode";
+            let name: string | null = null;
+            if (/backdrop-filter\s*:\s*(?!none)/i.test(txt)) name = "backdrop-filter";
+            else if (/(?:^|[^-])filter\s*:[^;{}]*blur\(/i.test(txt)) name = "filter:blur";
+            else if (/(?:^|[^-])filter\s*:[^;{}]*drop-shadow\(/i.test(txt)) {
+              name = "filter:drop-shadow";
+            } else if (/mix-blend-mode\s*:\s*(?!normal)/i.test(txt)) name = "mix-blend-mode";
+            if (name && hit(name, ruleTargets(rule as CSSRule))) return true;
           }
         }
-        return null;
+        return false;
       };
 
       // (3) GSAP tween vars — effects animated by GSAP writing inline
       // filter / backdropFilter / mixBlendMode (never present in a stylesheet).
-      const scanTweenVars = (): string | null => {
+      const scanTweenVars = (): boolean => {
         type AnyTween = {
           vars?: Record<string, unknown>;
+          targets?: () => unknown[];
           getChildren?: (n: boolean, t: boolean, l: boolean) => AnyTween[];
         };
-        const walk = (tl: AnyTween): string | null => {
-          if (typeof tl.getChildren !== "function") return null;
+        const walk = (tl: AnyTween): boolean => {
+          if (typeof tl.getChildren !== "function") return false;
           for (const c of tl.getChildren(false, true, true)) {
-            const sub = walk(c);
-            if (sub) return sub;
+            if (walk(c)) return true;
             const vars = c.vars || {};
             for (const k of Object.keys(vars)) {
               const kl = k.toLowerCase();
-              if (kl.includes("blend")) return "mix-blend-mode";
-              if (kl.includes("backdrop")) return "backdrop-filter";
-              if (kl === "filter" && /blur\(/i.test(String(vars[k] ?? ""))) return "filter:blur";
-              if (kl === "filter" && /drop-shadow\(/i.test(String(vars[k] ?? ""))) {
-                return "filter:drop-shadow";
+              let name: string | null = null;
+              if (kl.includes("blend")) name = "mix-blend-mode";
+              else if (kl.includes("backdrop")) name = "backdrop-filter";
+              else if (kl === "filter" && /blur\(/i.test(String(vars[k] ?? ""))) {
+                name = "filter:blur";
+              } else if (kl === "filter" && /drop-shadow\(/i.test(String(vars[k] ?? ""))) {
+                name = "filter:drop-shadow";
               }
+              if (!name) continue;
+              const els = (typeof c.targets === "function" ? c.targets() : []).filter(
+                (t): t is Element => t instanceof Element,
+              );
+              if (hit(name, els)) return true;
             }
           }
-          return null;
+          return false;
         };
         const tls =
           (window as unknown as { __timelines?: Record<string, AnyTween> }).__timelines || {};
         for (const tl of Object.values(tls)) {
-          const r = walk(tl);
-          if (r) return r;
+          if (walk(tl)) return true;
         }
-        return null;
+        return false;
       };
 
       // (4) WebGL context — seek-invariant, recorded at context creation.
-      const scanWebgl = (): string | null => {
+      const scanWebgl = (): boolean => {
         const aw = window as Window & { __hf_accel_canvases?: HTMLCanvasElement[] };
         const accel = (aw.__hf_accel_canvases ?? []).filter((c) => root.contains(c));
-        return accel.length > 0 ? "webgl-context" : null;
+        return accel.length > 0 && hit("webgl-context", null);
       };
 
-      return scanComputed() || scanStyleSheets() || scanTweenVars() || scanWebgl();
-    });
+      for (const scan of [scanComputed, scanStyleSheets, scanTweenVars, scanWebgl]) {
+        if (scan()) break;
+      }
+
+      // A timeline callback can add an effect's class to any element, so from the first callback
+      // on, the elements found now are not the only ones the effect can reach.
+      type CallbackNode = {
+        vars?: Record<string, unknown>;
+        startTime?: () => number;
+        getChildren?: (n: boolean, t: boolean, l: boolean) => CallbackNode[];
+      };
+      const calls = ["onStart", "onUpdate", "onComplete", "onRepeat", "onReverseComplete"];
+      const firstCallback = (node: CallbackNode, offset: number): number => {
+        const start = offset + (typeof node.startTime === "function" ? node.startTime() : 0);
+        let first = calls.some((k) => typeof node.vars?.[k] === "function") ? start : Infinity;
+        if (typeof node.getChildren === "function") {
+          for (const child of node.getChildren(false, true, true)) {
+            first = Math.min(first, firstCallback(child, start));
+          }
+        }
+        return first;
+      };
+      const timelines = (window as unknown as { __timelines?: Record<string, CallbackNode> })
+        .__timelines;
+      const callbackStart = reason
+        ? Math.min(Infinity, ...Object.values(timelines ?? {}).map((tl) => firstCallback(tl, 0)))
+        : Infinity;
+      (window as unknown as { __hfCssFxTargets?: Element[] }).__hfCssFxTargets = [...targets];
+      return {
+        reason,
+        bounded,
+        callbackFrom: Number.isFinite(callbackStart) ? callbackStart : null,
+      };
+    }, collect);
   } catch {
-    return null;
+    return { reason: null, bounded: true, callbackFrom: null };
   }
 }

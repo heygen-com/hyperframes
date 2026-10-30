@@ -13,6 +13,7 @@ export interface AudioElement {
   mediaStart: number;
   /** Normalized source-time multiplier: a constant, or the clip's `rate` lane. */
   playbackRate?: RateSpec;
+  loop?: boolean;
   layer: number;
   volume?: number;
   volumeKeyframes?: AudioVolumeKeyframe[];
@@ -112,4 +113,5 @@ export interface MixResult {
   tracksProcessed: number;
   error?: string;
   failures?: AudioProcessingFailure[];
+  phaseMs?: Partial<Record<"prepare" | "groups" | "mix" | "master" | "encode", number>>;
 }

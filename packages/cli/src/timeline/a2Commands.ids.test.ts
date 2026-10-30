@@ -37,15 +37,16 @@ describe("timeline ids", () => {
       hooks.minting = undefined;
       writeFileSync(indexPath, save);
     };
-    vi.spyOn(console, "log").mockImplementation(() => {});
-    const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
+    const stdout = vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
 
     await runIds({ dir, json: true });
 
     expect(readFileSync(indexPath, "utf-8")).toBe(save);
     expect(consumeCommandResult().exitCode).toBe(2);
-    expect(JSON.parse(String(stderr.mock.calls[0]?.[0]))).toMatchObject({
+    expect(JSON.parse(String(stdout.mock.calls.at(-1)?.[0]))).toMatchObject({
       ok: false,
+      error: { code: "refused", message: "file changed since the timeline was read" },
       reason: "file changed since the timeline was read",
     });
   });

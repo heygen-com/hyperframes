@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach } from "vitest";
 import { writeFileSync, readFileSync, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { Script } from "node:vm";
 import { Window } from "happy-dom";
 import {
   loadTranscript,
@@ -591,6 +592,89 @@ describe("whisper-cpp fragment merging", () => {
   });
 });
 
+describe("whisper-cpp CJK tokens", () => {
+  const token = (text: string, from: number, to: number) => ({ text, offsets: { from, to } });
+
+  // Shaped like whisper-cli --output-json-full on Mandarin speech: no token
+  // carries a leading space, not even the first one of a segment.
+  function chineseTranscript(): string {
+    return tmpFile(
+      "transcript.json",
+      JSON.stringify({
+        transcription: [
+          {
+            offsets: { from: 0, to: 3990 },
+            text: "大家好,今天用AI剪輯。",
+            tokens: [
+              token("[_BEG_]", 0, 0),
+              token("大家好", 10, 730),
+              token(",", 1110, 1290),
+              token("今天", 1360, 1680),
+              token("用", 1680, 2010),
+              token("AI", 2010, 2500),
+              token("剪", 2970, 3460),
+              token("輯", 3460, 3830),
+              token("。", 3830, 3990),
+            ],
+          },
+          {
+            offsets: { from: 4000, to: 5600 },
+            text: "謝謝觀看。",
+            tokens: [
+              token("謝謝", 4000, 4500),
+              token("觀", 4500, 4900),
+              token("看", 4900, 5300),
+              token("。", 5300, 5600),
+              token("[_TT_280]", 5600, 5600),
+            ],
+          },
+        ],
+      }),
+    );
+  }
+
+  it("keeps each CJK token as its own timed word", () => {
+    const { words } = loadTranscript(chineseTranscript());
+    expect(words.map((w) => [w.text, w.start, w.end])).toEqual([
+      ["大家好,", 0.01, 1.29],
+      ["今天", 1.36, 1.68],
+      ["用", 1.68, 2.01],
+      ["AI", 2.01, 2.5],
+      ["剪", 2.97, 3.46],
+      ["輯。", 3.46, 3.99],
+      ["謝謝", 4, 4.5],
+      ["觀", 4.5, 4.9],
+      ["看。", 4.9, 5.6],
+    ]);
+  });
+
+  it("splits Japanese kana tokens and merges full-width punctuation", () => {
+    const path = tmpFile(
+      "transcript.json",
+      JSON.stringify({
+        transcription: [
+          {
+            tokens: [
+              token("こんにち", 0, 400),
+              token("は", 400, 600),
+              token("、", 600, 700),
+              token("世界", 700, 1200),
+              token("！", 1200, 1300),
+            ],
+          },
+        ],
+      }),
+    );
+    const { words } = loadTranscript(path);
+    expect(words.map((w) => w.text)).toEqual(["こんにち", "は、", "世界！"]);
+  });
+
+  it("ends a cue at a CJK sentence mark", () => {
+    const { words } = loadTranscript(chineseTranscript());
+    expect(wordsToCues(words).map((c) => c.text)).toEqual(["大家好,今天用AI剪輯。", "謝謝觀看。"]);
+  });
+});
+
 describe("whisper-cpp zero-duration interpolation", () => {
   it("interpolates a cluster of zero-duration words", () => {
     const path = tmpFile(
@@ -651,6 +735,28 @@ describe("whisper-cpp zero-duration interpolation", () => {
 });
 
 describe("patchCaptionHtml", () => {
+  it.each(["script", "TRANSCRIPT"])(
+    "replaces the complete %s array when old caption text contains an array terminator",
+    (name) => {
+      const dir = mkdtempSync(join(tmpdir(), "hf-patch-test-"));
+      dirs.push(dir);
+      const file = join(dir, "captions.html");
+      const oldWords = [{ text: "items[i];", start: 0, end: 1 }];
+      const prefix = `const ${name} = `;
+      const suffix = ";\nconst sentinel = true;";
+      writeFileSync(file, `<script>${prefix}${JSON.stringify(oldWords)}${suffix}</script>`);
+      const words = [{ id: "w0", text: "Replacement caption", start: 0, end: 1 }];
+
+      patchCaptionHtml(dir, words);
+
+      const html = readFileSync(file, "utf8");
+      const source = html.slice("<script>".length, -"</script>".length);
+      expect(() => new Script(source)).not.toThrow();
+      expect(source.endsWith(suffix)).toBe(true);
+      expect(JSON.parse(source.slice(prefix.length, -suffix.length))).toEqual(words);
+    },
+  );
+
   it.each([
     "</ScRiPt><span data-unexpected>caption</span>",
     "</script\t><span data-unexpected>caption</span>",

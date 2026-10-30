@@ -1,6 +1,7 @@
 // fallow-ignore-file code-duplication complexity
-import { beforeEach, describe, it, expect, vi } from "vitest";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { MAX_AUDIO_GAIN } from "../audioGain.js";
+import { mediaElementTime } from "./mediaClock";
 import { WebAudioTransport } from "./webAudioTransport";
 
 function createMockAudioContext(currentTime = 100) {
@@ -42,7 +43,12 @@ function createMockAudioContext(currentTime = 100) {
     suspend: vi.fn(() => Promise.resolve()),
     createBufferSource: vi.fn(() => sourceNode),
     createMediaElementSource: vi.fn(() => mediaElementSourceNode),
-    createGain: vi.fn(() => gainNode),
+    // The element gain is the first one a schedule creates; its lane and clip gains get their own.
+    createGain: vi.fn(() =>
+      ctx.createGain.mock.calls.length === 1
+        ? gainNode
+        : { gain: { value: 1 }, connect: vi.fn(), disconnect: vi.fn() },
+    ),
     destination: {},
     close: vi.fn(),
   };
@@ -65,6 +71,7 @@ const mockEl = {
   volume: 0.4,
   paused: true,
   addEventListener: () => {},
+  removeEventListener: () => {},
   getAttribute: (name: string) => (name === "data-playback-rate" ? "1" : null),
 } as unknown as HTMLMediaElement;
 
@@ -76,7 +83,9 @@ describe("WebAudioTransport author gain vs user volume", () => {
     // they schedule ramps onto the param directly and never pass through here.
     const { transport, mock } = setupTransport();
     const el = { muted: false } as HTMLMediaElement;
-    transport["_activeSources"] = [{ el, gainNode: mock.gainNode, sourceKind: "buffer" }] as never;
+    transport["_activeSources"] = [
+      { el, gainNode: mock.gainNode, clipGainNode: { gain: { value: 1 } }, sourceKind: "buffer" },
+    ] as never;
 
     transport.setElementVolume(el, 1.949845);
 
@@ -86,7 +95,9 @@ describe("WebAudioTransport author gain vs user volume", () => {
   it("still refuses a gain beyond the shared ceiling", () => {
     const { transport, mock } = setupTransport();
     const el = { muted: false } as HTMLMediaElement;
-    transport["_activeSources"] = [{ el, gainNode: mock.gainNode, sourceKind: "buffer" }] as never;
+    transport["_activeSources"] = [
+      { el, gainNode: mock.gainNode, clipGainNode: { gain: { value: 1 } }, sourceKind: "buffer" },
+    ] as never;
 
     transport.setElementVolume(el, 99);
 
@@ -151,6 +162,39 @@ describe("WebAudioTransport", () => {
       expect(transport.routesElement(mockEl)).toBe(false);
     });
 
+    it("stops what plays from media gone from the page without sending it to the destination", async () => {
+      const { transport, mock, gen } = setupTransport(100);
+      const nodes: Array<{
+        connect: ReturnType<typeof vi.fn>;
+        disconnect: ReturnType<typeof vi.fn>;
+      }> = [];
+      mock.ctx.createMediaElementSource = vi.fn(() => {
+        nodes.push({ connect: vi.fn(), disconnect: vi.fn() });
+        return nodes.at(-1)!;
+      }) as never;
+      const media = () =>
+        ({ ...mockEl, isConnected: true }) as HTMLMediaElement & { isConnected: boolean };
+      const [gone, kept] = [media(), media()];
+      for (const el of [gone, kept])
+        await transport.scheduleMediaElementPlayback(el, 0, 0, 0, 1, gen, 1);
+      for (const node of nodes) {
+        node.connect.mockClear();
+        node.disconnect.mockClear();
+      }
+      gone.isConnected = false;
+      transport.releaseDetached();
+
+      const touched = nodes.map((n) => [
+        n.disconnect.mock.calls.length > 0,
+        n.connect.mock.calls.length > 0,
+      ]);
+      expect(touched).toEqual([
+        [true, false],
+        [false, false],
+      ]);
+      expect([transport.routesElement(gone), transport.routesElement(kept)]).toEqual([false, true]);
+    });
+
     it("creates one MediaElementAudioSourceNode per element and context", async () => {
       const { transport, mock } = setupTransport(100);
 
@@ -163,17 +207,12 @@ describe("WebAudioTransport", () => {
       expect(mock.ctx.createMediaElementSource).toHaveBeenCalledTimes(1);
     });
 
-    it("re-aims FX automation on a global-rate change without resampling the native source", async () => {
+    it("does not resample the native source on a global-rate change", async () => {
       const { transport, mock, gen } = setupTransport(100);
       await transport.scheduleMediaElementPlayback(mockEl, 0, 0, 0, 1, gen, 1);
-      const active = (transport as unknown as { _activeSources: { fx?: unknown }[] })
-        ._activeSources;
-      const setRate = vi.fn();
-      active[0]!.fx = { dispose: vi.fn(), setRate };
 
       transport.setRate(2);
 
-      expect(setRate).toHaveBeenCalledWith(2);
       expect(mock.ctx.createBufferSource).not.toHaveBeenCalled();
     });
 
@@ -890,15 +929,388 @@ describe("WebAudioTransport", () => {
       document.body.innerHTML = "";
     });
 
+    it.each([
+      [
+        "decoded",
+        (t: WebAudioTransport, el: HTMLMediaElement, gen: number) =>
+          t.schedulePlayback(el, mockBuffer, 0, 0, () => 0, 1, gen),
+      ],
+      [
+        "media-element",
+        (t: WebAudioTransport, el: HTMLMediaElement, gen: number) =>
+          t.scheduleMediaElementPlayback(el, 0, 0, 0, 1, gen),
+      ],
+    ])(
+      "keeps a %s clip's volume lane off the gain each tick rewrites",
+      async (_route, schedule) => {
+        const { transport, mock, gen } = setupGroupTransport();
+        const el = groupedAudioEl("voice");
+        const points = [
+          { t: 0, v: 0 },
+          { t: 3, v: 1 },
+          { t: 6, v: 0 },
+        ];
+        el.setAttribute(
+          "data-automation",
+          JSON.stringify({ version: 1, lanes: [{ target: "volume", points }] }),
+        );
+
+        expect(await schedule(transport, el, gen)).not.toBeNull();
+        type Ramps = { linearRampToValueAtTime: ReturnType<typeof vi.fn> };
+        const laneGains = mock.gainNodes.filter(
+          (node) => (node.gain as unknown as Ramps).linearRampToValueAtTime.mock.calls.length > 0,
+        );
+        expect(laneGains).toHaveLength(1);
+        const laneValue = laneGains[0]!.gain.value;
+
+        transport.setElementVolume(el, 0.5);
+
+        expect(laneGains[0]!.gain.value).toBe(laneValue);
+        expect(mock.gainNodes.filter((node) => node.gain.value === 0.5)).toHaveLength(1);
+      },
+    );
+
+    describe("volume lanes follow the transport mid-play", () => {
+      const lane = (points: { t: number; v: number }[]) =>
+        JSON.stringify({ version: 1, lanes: [{ target: "volume", points }] });
+      const FADE = lane([
+        { t: 0, v: 0 },
+        { t: 3, v: 1 },
+        { t: 6, v: 0 },
+      ]);
+      type Param = Record<
+        "linearRampToValueAtTime" | "cancelScheduledValues",
+        ReturnType<typeof vi.fn>
+      >;
+      const param = (node: { gain: unknown }) => node.gain as Param;
+      const rampsAfter = (node: { gain: unknown }, from: number) =>
+        param(node).linearRampToValueAtTime.mock.calls.slice(from);
+      /** Let the MutationObserver's microtask run. */
+      const settle = () => new Promise((r) => setTimeout(r, 0));
+
+      // An unbounded media-element clip: the runtime does not stopAll and reschedule it on a rate change.
+      // Its gains in creation order: element gain, seek dip, lane, clip gain (then fades, when it has them).
+      async function playBed(automation?: string, volume?: string) {
+        const setup = setupGroupTransport();
+        const el = groupedAudioEl("bed");
+        if (automation) el.setAttribute("data-automation", automation);
+        if (volume) el.setAttribute("data-volume", volume);
+        await setup.transport.scheduleMediaElementPlayback(el, 0, 0, 0, 1, setup.gen);
+        expect(setup.transport.hasBoundedActiveSources()).toBe(false);
+        return { ...setup, el, laneGain: setup.mock.gainNodes[2]! };
+      }
+
+      // Gain 2 times a 0 -> 3 ramp crosses the ceiling at 6.635 s; the product holds there after.
+      const CROSSING = lane([
+        { t: 0, v: 0 },
+        { t: 10, v: 3 },
+      ]);
+      const crossAt = 100 + (MAX_AUDIO_GAIN / 2 / 3) * 10;
+
+      it("caps the routed graph's product when gain 2 and a constant lane 3 would make 6", async () => {
+        const { transport, el, mock, laneGain } = await playBed(lane([{ t: 0, v: 3 }]), "2");
+        transport.setElementVolume(el, 1, 2);
+        const booked = (laneGain.gain as unknown as { setValueAtTime: ReturnType<typeof vi.fn> })
+          .setValueAtTime.mock.calls;
+        expect(mock.gainNodes[3]!.gain.value * booked[0]![0]).toBeCloseTo(MAX_AUDIO_GAIN, 9);
+      });
+
+      it("holds a clip's gain times its lane under the ceiling, with data-volume played ahead", async () => {
+        const { laneGain } = await playBed(CROSSING, "2");
+        expect(rampsAfter(laneGain, 0)).toContainEqual([
+          expect.closeTo(MAX_AUDIO_GAIN / 2, 6),
+          expect.closeTo(crossAt, 6),
+        ]);
+        expect(rampsAfter(laneGain, 0)).toContainEqual([
+          expect.closeTo(MAX_AUDIO_GAIN / 2, 6),
+          110,
+        ]);
+      });
+
+      it("re-books a clip's lane when its data-volume changes", async () => {
+        const { el, laneGain } = await playBed(CROSSING, "2");
+        const before = param(laneGain).linearRampToValueAtTime.mock.calls.length;
+
+        el.setAttribute("data-volume", "1");
+        await settle();
+
+        expect(rampsAfter(laneGain, before)).toContainEqual([3, 110]);
+      });
+
+      it("restores unity after a playing clip's volume lane is removed", async () => {
+        const { el, laneGain, transport, mock } = await playBed(lane([{ t: 0, v: 0.25 }]), "2");
+        transport.setElementVolume(el, 1, 2);
+
+        el.removeAttribute("data-automation");
+        await Promise.resolve();
+
+        const booked = (laneGain.gain as unknown as { setValueAtTime: ReturnType<typeof vi.fn> })
+          .setValueAtTime.mock.calls;
+        expect(booked.at(-1)).toEqual([1, 100]);
+        expect(mock.gainNodes[3]!.gain.value * booked.at(-1)![0]).toBe(2);
+      });
+
+      it("restores the static group gain after its playing volume lane is removed", async () => {
+        document.body.innerHTML = `<hf-audio-group id="vo" data-volume="2"></hf-audio-group>`;
+        const group = document.getElementById("vo")!;
+        group.setAttribute("data-automation", lane([{ t: 0, v: 0.25 }]));
+        const { transport, mock, gen } = setupGroupTransport();
+        await scheduleGrouped(transport, gen, "a", "vo");
+        const fader = mock.gainNodes[4]!;
+
+        group.removeAttribute("data-automation");
+        await Promise.resolve();
+
+        const booked = (fader.gain as unknown as { setValueAtTime: ReturnType<typeof vi.fn> })
+          .setValueAtTime.mock.calls;
+        expect(booked.at(-1)).toEqual([2, 100]);
+      });
+
+      it("holds a group's gain times its lane under the ceiling, through a ramp", async () => {
+        document.body.innerHTML = `<hf-audio-group id="vo" data-volume="2"></hf-audio-group>`;
+        document.getElementById("vo")!.setAttribute("data-automation", CROSSING);
+        const { transport, mock, gen } = setupGroupTransport();
+        await scheduleGrouped(transport, gen, "a", "vo");
+        const fader = mock.gainNodes[4]!;
+        expect(rampsAfter(fader, 0)).toContainEqual([
+          expect.closeTo(MAX_AUDIO_GAIN, 6),
+          expect.closeTo(crossAt, 6),
+        ]);
+      });
+
+      it("re-aims a clip's lane at a new rate when its element takes it, not before", async () => {
+        const { transport, el, laneGain } = await playBed(FADE);
+        expect(rampsAfter(laneGain, 0)).toContainEqual([1, 103]);
+        const before = param(laneGain).linearRampToValueAtTime.mock.calls.length;
+
+        transport.setRate(2);
+        expect(rampsAfter(laneGain, before)).toEqual([]);
+        Object.defineProperties(el, {
+          paused: { value: false, configurable: true },
+          playbackRate: { value: 2, configurable: true },
+        });
+        el.dispatchEvent(new Event("ratechange"));
+
+        expect(rampsAfter(laneGain, before)).toContainEqual([1, 101.5]);
+      });
+
+      it("re-books a clip's lane when it is edited", async () => {
+        const { el, laneGain } = await playBed(FADE);
+        const before = param(laneGain).linearRampToValueAtTime.mock.calls.length;
+
+        el.setAttribute(
+          "data-automation",
+          lane([
+            { t: 0, v: 0 },
+            { t: 2, v: 0.5 },
+          ]),
+        );
+        await settle();
+
+        expect(rampsAfter(laneGain, before)).toContainEqual([0.5, 102]);
+      });
+
+      it("clears a clip's lane when it is removed", async () => {
+        const { el, laneGain } = await playBed(FADE);
+        const ramps = param(laneGain).linearRampToValueAtTime.mock.calls.length;
+        const cancels = param(laneGain).cancelScheduledValues.mock.calls.length;
+
+        el.removeAttribute("data-automation");
+        await settle();
+
+        expect(param(laneGain).cancelScheduledValues.mock.calls.slice(cancels)).toContainEqual([0]);
+        expect(rampsAfter(laneGain, ramps)).toEqual([]);
+      });
+
+      it("books a lane added to a playing clip", async () => {
+        const { el, laneGain } = await playBed();
+        expect(laneGain).toBeDefined();
+
+        el.setAttribute("data-automation", FADE);
+        await settle();
+
+        expect(rampsAfter(laneGain, 0)).toContainEqual([1, 103]);
+      });
+
+      it("books a group's lane times its data-volume, at a new rate and on an edit", async () => {
+        document.body.innerHTML = `<hf-audio-group id="vo" data-volume="0.5"></hf-audio-group>`;
+        document.getElementById("vo")!.setAttribute("data-automation", FADE);
+        const { transport, mock, gen } = setupGroupTransport();
+        await scheduleGrouped(transport, gen, "a", "vo");
+        const fader = mock.gainNodes[4]!;
+        expect(rampsAfter(fader, 0)).toContainEqual([0.5, 103]);
+
+        let before = param(fader).linearRampToValueAtTime.mock.calls.length;
+        transport.setRate(2);
+        expect(rampsAfter(fader, before)).toContainEqual([0.5, 101.5]);
+
+        before = param(fader).linearRampToValueAtTime.mock.calls.length;
+        document.getElementById("vo")!.setAttribute(
+          "data-automation",
+          lane([
+            { t: 0, v: 0 },
+            { t: 4, v: 0.5 },
+          ]),
+        );
+        await settle();
+        expect(rampsAfter(fader, before)).toContainEqual([0.25, 102]);
+      });
+
+      describe("a routed clip's lane and fades follow its element", () => {
+        // Routed at context 100, 0.1 s before its window opens at timeline 4 and source 8.
+        async function routeTake(extra: Record<string, string> = {}) {
+          const setup = setupGroupTransport();
+          const el = groupedAudioEl("take");
+          el.setAttribute("data-automation", FADE);
+          for (const [name, value] of Object.entries(extra)) el.setAttribute(name, value);
+          await setup.transport.scheduleMediaElementPlayback(el, 4, 8, 3.9, 1, setup.gen, 1, 2);
+          const [laneGain, fadeGain] = [setup.mock.gainNodes[2]!, setup.mock.gainNodes[4]];
+          const at = (ctxTime: number, currentTime: number, playbackRate = 1, paused = false) => {
+            setup.mock.ctx.currentTime = ctxTime;
+            Object.defineProperties(el, {
+              currentTime: { value: currentTime, configurable: true },
+              playbackRate: { value: playbackRate, configurable: true },
+              paused: { value: paused, configurable: true },
+            });
+          };
+          return { ...setup, el, laneGain, fadeGain, at };
+        }
+        const peakAfter = (node: { gain: unknown }, from: number) =>
+          rampsAfter(node, from).find(([value]) => value === 1)?.[1];
+
+        it("books the lane where the element starts sounding, not where the clock put it", async () => {
+          const { el, laneGain, at } = await routeTake();
+          expect(peakAfter(laneGain, 0)).toBeCloseTo(103.1, 9);
+
+          const before = param(laneGain).linearRampToValueAtTime.mock.calls.length;
+          at(100.155, 8);
+          el.dispatchEvent(new Event("playing"));
+
+          expect(peakAfter(laneGain, before)).toBeCloseTo(103.155, 9);
+        });
+
+        it("re-books the fades from the element too", async () => {
+          const { el, fadeGain, at } = await routeTake({ "data-fade-out": "0.03" });
+          expect(rampsAfter(fadeGain!, 0).at(-1)).toEqual([0, expect.closeTo(102.1, 9)]);
+
+          const before = param(fadeGain!).linearRampToValueAtTime.mock.calls.length;
+          at(100.155, 8);
+          el.dispatchEvent(new Event("playing"));
+
+          expect(rampsAfter(fadeGain!, before).at(-1)).toEqual([0, expect.closeTo(102.155, 9)]);
+        });
+
+        it("re-books the lane after the element is seeked and when its rate is steered", async () => {
+          const { el, laneGain, at } = await routeTake();
+          let before = param(laneGain).linearRampToValueAtTime.mock.calls.length;
+          at(100.2, 8.2);
+          el.dispatchEvent(new Event("seeked"));
+          expect(peakAfter(laneGain, before)).toBeCloseTo(103, 9);
+
+          before = param(laneGain).linearRampToValueAtTime.mock.calls.length;
+          at(100.3, 8.3, 1.03);
+          el.dispatchEvent(new Event("ratechange"));
+          expect(peakAfter(laneGain, before)).toBeCloseTo(100.3 + 2.7 / 1.03, 9);
+        });
+
+        it("books a looping element's lane on the pass the transport is in", async () => {
+          const { el, laneGain, at } = await routeTake();
+          Object.defineProperties(el, {
+            loop: { value: true, configurable: true },
+            duration: { value: 10, configurable: true },
+          });
+          const before = param(laneGain).linearRampToValueAtTime.mock.calls.length;
+          at(102.2, 8.1);
+          el.dispatchEvent(new Event("playing"));
+
+          expect(peakAfter(laneGain, before)).toBeCloseTo(103.1, 9);
+        });
+
+        it("leaves the lane alone while the element is paused and once the clip is stopped", async () => {
+          const { transport, el, laneGain, fadeGain, at } = await routeTake({
+            "data-fade-out": "0.03",
+          });
+          const booked = () =>
+            [laneGain, fadeGain!].map(
+              (node) => param(node).linearRampToValueAtTime.mock.calls.length,
+            );
+          const before = booked();
+          at(100.2, 8, 1, true);
+          el.dispatchEvent(new Event("seeked"));
+          transport.stopAll();
+          at(100.3, 8.1);
+          el.dispatchEvent(new Event("playing"));
+
+          expect(booked()).toEqual(before);
+        });
+
+        describe("a seek while it sounds", () => {
+          beforeEach(() => vi.useFakeTimers());
+          afterEach(() => vi.useRealTimers());
+          type Dip = Record<"linearRampToValueAtTime", ReturnType<typeof vi.fn>>;
+          const dipRamps = (node: { gain: unknown }) =>
+            (node.gain as Dip).linearRampToValueAtTime.mock.calls;
+
+          it("dips, seeks once the dip is down, and comes back up when the element lands", async () => {
+            const { transport, el, mock, at } = await routeTake();
+            const dip = mock.gainNodes[1]!;
+            at(100.5, 8.35);
+            const seek = vi.fn();
+            Object.defineProperty(el, "currentTime", {
+              get: () => 8.35,
+              set: seek,
+              configurable: true,
+            });
+
+            expect(transport.seekUnderDip(el, 8.5)).toBe(true);
+            expect(dipRamps(dip)).toEqual([[0, expect.closeTo(100.515, 9)]]);
+            expect(transport.seekUnderDip(el, 8.51)).toBe(true);
+            vi.advanceTimersByTime(14);
+            expect(seek).not.toHaveBeenCalled();
+            vi.advanceTimersByTime(1);
+            expect(seek).toHaveBeenCalledExactlyOnceWith(mediaElementTime(8.5 + 0.015));
+
+            mock.ctx.currentTime = 100.54;
+            el.dispatchEvent(new Event("seeked"));
+            expect(dipRamps(dip).at(-1)).toEqual([1, expect.closeTo(100.555, 9)]);
+            el.dispatchEvent(new Event("seeked"));
+            expect(dipRamps(dip)).toHaveLength(2);
+          });
+
+          it("leaves the element alone when the clip is stopped during the dip", async () => {
+            const { transport, el, at } = await routeTake();
+            at(100.5, 8.35);
+            const seek = vi.fn();
+            Object.defineProperty(el, "currentTime", {
+              get: () => 8.35,
+              set: seek,
+              configurable: true,
+            });
+            transport.seekUnderDip(el, 8.5);
+            transport.stopAll();
+            vi.advanceTimersByTime(15);
+            expect(seek).not.toHaveBeenCalled();
+          });
+
+          it("has no dip for an element it does not route", () => {
+            const { transport } = setupGroupTransport();
+            expect(transport.seekUnderDip(groupedAudioEl("loose"), 1)).toBe(false);
+          });
+        });
+      });
+    });
+
     it("routes an ungrouped clip straight to master through its own gain", async () => {
       const { transport, mock, gen } = setupGroupTransport();
 
       await scheduleGrouped(transport, gen, "lone");
 
-      // One gain per clip now that solo is gone — it goes straight to master.
-      expect(mock.gainNodes).toHaveLength(1);
-      const [clipGain] = mock.gainNodes;
-      expect(clipGain!.connect).toHaveBeenCalledWith(mock.masterGain);
+      // Clip gain (data-volume, ahead of the FX), then the lane, then the per-tick gain to master.
+      expect(mock.gainNodes).toHaveLength(3);
+      const [gain, laneGain, clipGain] = mock.gainNodes;
+      expect(gain!.connect).toHaveBeenCalledWith(mock.masterGain);
+      expect(laneGain!.connect).toHaveBeenCalledWith(gain);
+      expect(clipGain!.connect).toHaveBeenCalledWith(laneGain);
     });
 
     // The media-element transport is the PRIMARY path for audio — the runtime
@@ -947,14 +1359,32 @@ describe("WebAudioTransport", () => {
       expect(clipGain.connect).not.toHaveBeenCalledWith(mock.masterGain);
     });
 
+    it("plays a routed clip's data-volume on its clip gain, ahead of its effects", async () => {
+      const { transport, mock, gen } = setupGroupTransport();
+      const el = groupedAudioEl("lone");
+      await transport.scheduleMediaElementPlayback(el, 0, 0, 0, 1, gen, 1);
+
+      transport.setElementVolume(el, 0.8, 0.5);
+
+      const [gain, , , clipGain] = mock.gainNodes;
+      expect(clipGain!.gain.value).toBe(0.5);
+      expect(gain!.gain.value).toBe(0.8);
+    });
+
     it("routes an UNGROUPED clip's media-element playback straight to master", async () => {
       const { transport, mock, gen } = setupGroupTransport();
       const el = groupedAudioEl("lone");
 
       await transport.scheduleMediaElementPlayback(el, 0, 0, 0, 1, gen, 1);
 
-      expect(mock.gainNodes).toHaveLength(1);
-      expect(mock.gainNodes[0]!.connect).toHaveBeenCalledWith(mock.masterGain);
+      // Element gain to master, seek dip, lane into the element gain, clip gain into the lane.
+      const [gain, dip, lane, clipGain] = mock.gainNodes;
+      expect(mock.gainNodes).toHaveLength(4);
+      expect(gain!.connect).toHaveBeenCalledWith(mock.masterGain);
+      expect(lane!.connect).toHaveBeenCalledWith(gain);
+      expect(clipGain!.connect).toHaveBeenCalledWith(lane);
+      expect(mock.mediaElementSource.connect).toHaveBeenCalledWith(dip);
+      expect(dip!.connect).toHaveBeenCalledWith(clipGain);
     });
 
     it("two members of the same group land on ONE shared group gain, not master directly", async () => {
@@ -965,14 +1395,14 @@ describe("WebAudioTransport", () => {
 
       // Creation order for a: a-gain(0), groupInput(1), groupOutput(2),
       // muteGain(3), fader(4) — the group bus is built lazily inside a's
-      // schedule call. Then b: b-gain(5).
-      expect(mock.gainNodes.length).toBeGreaterThanOrEqual(6);
+      // schedule call — then a's lane(5) and clip gain(6). Then b: b-gain(7), lane(8), clip gain(9).
+      expect(mock.gainNodes.length).toBeGreaterThanOrEqual(10);
       const aGain = mock.gainNodes[0]!;
       const groupInput = firstGroupInput(mock);
       const groupOutput = mock.gainNodes[2]!;
       const muteGain = mock.gainNodes[3]!;
       const fader = mock.gainNodes[4]!;
-      const bGain = mock.gainNodes[5]!;
+      const bGain = mock.gainNodes[7]!;
 
       // Both members feed the shared bus — neither connects straight to master.
       expect(aGain.connect).toHaveBeenCalledWith(groupInput);
@@ -996,11 +1426,11 @@ describe("WebAudioTransport", () => {
       const { transport, mock, gen } = setupGroupTransport();
 
       await scheduleGrouped(transport, gen, "a", "vo");
-      const gainCountAfterFirst = mock.gainNodes.length; // a-gain + group input/output/mute/fader
+      const gainCountAfterFirst = mock.gainNodes.length; // a's gains + group input/output/mute/fader
       await scheduleGrouped(transport, gen, "b", "vo");
 
-      // Only b's own gain is new — no second group bus minted.
-      expect(mock.gainNodes.length).toBe(gainCountAfterFirst + 1);
+      // Only b's own gain, lane and clip gain are new — no second group bus minted.
+      expect(mock.gainNodes.length).toBe(gainCountAfterFirst + 3);
     });
 
     it("a group id with no matching <hf-audio-group> element still gets a flat bus", async () => {
@@ -1193,8 +1623,8 @@ describe("WebAudioTransport", () => {
         const nodesAfterFirst = setup.mock.gainNodes.length;
         await scheduleGrouped(setup.transport, setup.gen, "b");
 
-        // The second member adds its own element gain and nothing else.
-        expect(setup.mock.gainNodes.length).toBe(nodesAfterFirst + 1);
+        // The second member adds its own element gain, lane and clip gain, and nothing else.
+        expect(setup.mock.gainNodes.length).toBe(nodesAfterFirst + 3);
         expect(setup.mock.masterGain.disconnect).toHaveBeenCalledTimes(1);
       });
     });
@@ -1346,11 +1776,14 @@ describe("WebAudioTransport", () => {
     }
     const el = (src: string) =>
       ({
+        tagName: "AUDIO",
         getAttribute: (name: string) => (name === "src" ? src : null),
         currentSrc: "",
       }) as unknown as HTMLMediaElement;
     const failedSrcs = (t: WebAudioTransport) =>
       (t as unknown as { _failedSrcs: Set<string> })._failedSrcs;
+    // Keys are resolved against the document, so one asset has one key however it is written.
+    const key = (src: string) => new URL(src, document.baseURI).href;
 
     it("does NOT blacklist a transient fetch failure — a later play retries and succeeds", async () => {
       const transport = transportWithDecode(async () => ({}) as AudioBuffer);
@@ -1362,7 +1795,7 @@ describe("WebAudioTransport", () => {
 
       const first = await transport.decodeAudioElement(el("tts.wav"));
       expect(first).toBeNull();
-      expect(failedSrcs(transport).has("tts.wav")).toBe(false); // not permanently silenced
+      expect(failedSrcs(transport).has(key("tts.wav"))).toBe(false); // not permanently silenced
 
       const second = await transport.decodeAudioElement(el("tts.wav"));
       expect(second).not.toBeNull(); // self-heals once the asset is available
@@ -1381,12 +1814,185 @@ describe("WebAudioTransport", () => {
 
       const first = await transport.decodeAudioElement(el("corrupt.wav"));
       expect(first).toBeNull();
-      expect(failedSrcs(transport).has("corrupt.wav")).toBe(true); // bad data is permanent
+      expect(failedSrcs(transport).has(key("corrupt.wav"))).toBe(true); // bad data is permanent
 
       const second = await transport.decodeAudioElement(el("corrupt.wav"));
       expect(second).toBeNull();
       expect(fetchMock).toHaveBeenCalledTimes(1); // short-circuited, no re-fetch
       vi.unstubAllGlobals();
     });
+
+    it("fetches and decodes a source once when a play and a seek both ask before it decodes", async () => {
+      const decoded = {} as AudioBuffer;
+      const transport = transportWithDecode(async () => decoded);
+      const fetchMock = vi.fn(async () => ({
+        ok: true,
+        arrayBuffer: async () => new ArrayBuffer(8),
+      }));
+      vi.stubGlobal("fetch", fetchMock);
+
+      const both = await Promise.all([
+        transport.decodeAudioElement(el("sfx.wav")),
+        transport.decodeAudioElement(el("sfx.wav")),
+      ]);
+      expect(both).toEqual([decoded, decoded]);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      vi.unstubAllGlobals();
+    });
+
+    it("keeps a listed clip's decoded audio while its load is between resources", async () => {
+      // An in-place sub-composition reload resets the root voiceover's resource selection, so
+      // `currentSrc` reads empty and the relative attribute behind it keyed a second cache slot:
+      // the release pass then dropped the buffer of a clip it was handed as live.
+      const transport = transportWithDecode(async () => ({}) as AudioBuffer);
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) });
+      vi.stubGlobal("fetch", fetchMock);
+      const vo = document.createElement("audio");
+      vo.setAttribute("src", "vo.mp3");
+      let currentSrc = new URL("vo.mp3", document.baseURI).href;
+      Object.defineProperty(vo, "currentSrc", { configurable: true, get: () => currentSrc });
+
+      expect(await transport.decodeAudioElement(vo)).not.toBeNull();
+      currentSrc = "";
+      transport.releaseDecodedExcept([vo]);
+      currentSrc = new URL("vo.mp3", document.baseURI).href;
+
+      expect(await transport.decodeAudioElement(vo)).not.toBeNull();
+      expect(fetchMock).toHaveBeenCalledTimes(1); // the buffer it was told to keep is still there
+      vi.unstubAllGlobals();
+    });
+
+    it("keys a clip whose src cannot be read as a URL without throwing", () => {
+      const transport = transportWithDecode(async () => ({}) as AudioBuffer);
+      const bad = document.createElement("audio");
+      bad.setAttribute("src", "http://localhost:PORT/vo.mp3");
+
+      expect(() => transport.releaseDecodedExcept([bad])).not.toThrow();
+    });
+  });
+});
+
+describe("WebAudioTransport clip fades on the audio clock", () => {
+  type Param = {
+    value: number;
+    setValueAtTime: ReturnType<typeof vi.fn>;
+    linearRampToValueAtTime: ReturnType<typeof vi.fn>;
+    cancelScheduledValues: ReturnType<typeof vi.fn>;
+  };
+  const param = (): Param => ({
+    value: 1,
+    setValueAtTime: vi.fn(),
+    linearRampToValueAtTime: vi.fn(),
+    cancelScheduledValues: vi.fn(),
+  });
+  /** A context whose gains record their automation; the element gain is the first one made. */
+  function setup(currentTime = 100) {
+    const { transport, mock, gen } = setupTransport(currentTime);
+    const gains: {
+      gain: Param;
+      connect: ReturnType<typeof vi.fn>;
+      disconnect: ReturnType<typeof vi.fn>;
+    }[] = [];
+    mock.ctx.createGain = vi.fn(() => {
+      const node = { gain: param(), connect: vi.fn(), disconnect: vi.fn() };
+      gains.push(node);
+      return node;
+    }) as never;
+    const booked = () => gains.find((g) => g.gain.setValueAtTime.mock.calls.length > 0)?.gain;
+    return { transport, mock, gen, gains, booked };
+  }
+  const faded = (fadeIn = "0.02", fadeOut = "0.02") =>
+    ({
+      muted: false,
+      volume: 1,
+      paused: true,
+      addEventListener: () => {},
+      getAttribute: (name: string) =>
+        ({ "data-playback-rate": "1", "data-fade-in": fadeIn, "data-fade-out": fadeOut })[name] ??
+        null,
+    }) as unknown as HTMLMediaElement;
+
+  it("a decoded clip ramps in over its fade-in from its start and out to silence at its end", async () => {
+    const { transport, gen, booked } = setup(100);
+    await transport.schedulePlayback(faded(), mockBuffer, 5, 0, () => 5, 1, gen, 1, 1);
+    const gain = booked();
+    expect(gain?.setValueAtTime.mock.calls).toEqual([
+      [0, 100],
+      [1, expect.closeTo(100.98, 9)],
+    ]);
+    expect(gain?.linearRampToValueAtTime.mock.calls).toEqual([
+      [1, expect.closeTo(100.02, 9)],
+      [0, expect.closeTo(101, 9)],
+    ]);
+  });
+
+  it("a clip started halfway through its fade-in starts at half level", async () => {
+    const { transport, gen, booked } = setup(100);
+    await transport.schedulePlayback(faded(), mockBuffer, 5, 0, () => 5.01, 1, gen, 1, 1);
+    const gain = booked();
+    expect(gain?.setValueAtTime.mock.calls[0]).toEqual([expect.closeTo(0.5, 9), 100]);
+    expect(gain?.linearRampToValueAtTime.mock.calls[0]).toEqual([1, expect.closeTo(100.01, 9)]);
+  });
+
+  it("a captured media element books its fades the same way", async () => {
+    const { transport, gen, booked } = setup(100);
+    await transport.scheduleMediaElementPlayback(faded(), 5, 0, 5, 1, gen, 1, 1);
+    expect(booked()?.linearRampToValueAtTime.mock.calls).toEqual([
+      [1, expect.closeTo(100.02, 9)],
+      [0, expect.closeTo(101, 9)],
+    ]);
+  });
+
+  it("a clip scheduled ahead of its start holds its fade-in's first level until it starts", async () => {
+    const { transport, gen, booked } = setup(100);
+    await transport.schedulePlayback(faded(), mockBuffer, 5, 0, () => 4.9, 1, gen, 1, 1);
+    const gain = booked();
+    expect(gain?.value).toBe(0);
+    expect(gain?.setValueAtTime.mock.calls[0]).toEqual([0, expect.closeTo(100.1, 9)]);
+  });
+
+  it("a fade-out with no clip end books nothing, so the per-tick volume keeps the fade", async () => {
+    const { transport, gen, gains, booked } = setup(100);
+    const el = faded("0.02", "2");
+    await transport.scheduleMediaElementPlayback(el, 5, 0, 5, 1, gen, 1);
+    expect(booked()).toBeUndefined();
+    transport.setElementVolume(el, 0.4, 1, 0.8);
+    expect(gains[0]!.gain.value).toBeCloseTo(0.4, 9);
+  });
+
+  it("a rate change rebooks a decoded clip's fades on the new rate from where the clip is", async () => {
+    const { transport, mock, gen, booked } = setup(100);
+    await transport.schedulePlayback(faded("0.02", "1"), mockBuffer, 5, 0, () => 5, 1, gen, 2, 10);
+    const gain = booked()!;
+    mock.ctx.currentTime = 101;
+    transport.setRate(1);
+    expect(gain.cancelScheduledValues).toHaveBeenCalled();
+    expect(gain.linearRampToValueAtTime.mock.calls.at(-1)).toEqual([
+      0,
+      expect.closeTo(101 + (10 - 2), 9),
+    ]);
+  });
+
+  it("a clip without fades books nothing", async () => {
+    const { transport, gen, booked } = setup(100);
+    await transport.schedulePlayback(faded("", ""), mockBuffer, 5, 0, () => 5, 1, gen, 1, 1);
+    expect(booked()).toBeUndefined();
+  });
+
+  it("the per-tick volume leaves out the fade where it is booked, and keeps it where it is not", async () => {
+    const { transport, gen, gains } = setup(100);
+    const withFades = faded();
+    await transport.schedulePlayback(withFades, mockBuffer, 5, 0, () => 5, 1, gen, 1, 1);
+    const elementGain = gains[0]!.gain;
+    transport.setElementVolume(withFades, 0.4, 1, 0.8);
+    expect(elementGain.value).toBeCloseTo(0.8, 9);
+
+    const second = setup(100);
+    const plain = faded("", "");
+    await second.transport.schedulePlayback(plain, mockBuffer, 5, 0, () => 5, 1, second.gen, 1, 1);
+    second.transport.setElementVolume(plain, 0.4, 1, 0.8);
+    expect(second.gains[0]!.gain.value).toBeCloseTo(0.4, 9);
   });
 });

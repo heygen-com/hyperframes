@@ -48,6 +48,14 @@ describe("shouldWatchProjectFile", () => {
     expect(shouldWatchProjectFile(".waveform-cache/peaks.json")).toBe(false);
   });
 
+  it("skips a render's scratch dirs, so a render beside the project does not stream changes", () => {
+    const work = "work-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d-Ab12Cd";
+    expect(shouldWatchProjectFile(`${work}/compiled/index.html`)).toBe(false);
+    expect(shouldWatchProjectFile(`${work}/frames/frame-000042.png`)).toBe(false);
+    expect(shouldWatchProjectFile(".video.mp4.hf-transaction-Ab12Cd/video.mp4")).toBe(false);
+    expect(shouldWatchProjectFile("work-notes/index.html")).toBe(true);
+  });
+
   it("skips the temp file of a save in flight, but not a user's own .tmp file", () => {
     expect(shouldWatchProjectFile("index.html.hf0a1b2c.tmp")).toBe(false);
     expect(shouldWatchProjectFile("compositions/intro.html.hf0a1b2c.tmp")).toBe(false);

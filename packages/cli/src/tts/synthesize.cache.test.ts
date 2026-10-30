@@ -34,7 +34,7 @@ describe("synthesis script cache", () => {
     vi.clearAllMocks();
     paths.home = fs.mkdtempSync(join(tmpdir(), "hf-tts-cache-"));
     cacheDir = join(paths.home, ".cache", "hyperframes", "tts");
-    scriptPath = join(cacheDir, "synth-v3.py");
+    scriptPath = join(cacheDir, "synth-v4.py");
     outputPath = join(paths.home, "speech.wav");
     fs.mkdirSync(cacheDir, { recursive: true });
     vi.mocked(execFileSync).mockImplementation(() => {

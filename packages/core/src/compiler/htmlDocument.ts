@@ -1,3 +1,4 @@
+import { acceleratedCanvasTrackerSource } from "../pageMotionBlur.js";
 import { parseHTML } from "linkedom";
 
 export const RUNTIME_BOOTSTRAP_ATTR = "data-hyperframes-preview-runtime";
@@ -14,6 +15,10 @@ const SIMPLE_RUNTIME_FLAG_ASSIGNMENTS = [
 ];
 
 const LEADING_COMMENTS = /^(?:\s|<!--(?:>|->|[\s\S]*?-->))*/;
+
+export function isTemplateEntry(html: string): boolean {
+  return /^<template[\s>/]/i.test(html.replace(LEADING_COMMENTS, ""));
+}
 
 export function isFullHtmlDocument(html: string): boolean {
   return /^(?:<!doctype|<html[\s>/])/i.test(html.replace(LEADING_COMMENTS, ""));
@@ -233,6 +238,28 @@ function findDocumentTag(html: string, tag: DocumentTag): number {
   return -1;
 }
 
+export function mapStartTagsAndStyles(
+  html: string,
+  map: { tag: (tag: string) => string; style: (css: string) => string },
+): string {
+  const lowered = lowerAscii(html);
+  let out = "";
+  let cursor = 0;
+  for (const open of markupStarts(lowered)) {
+    if (open < cursor || !/[a-z]/.test(lowered.charAt(open + 1))) continue;
+    const end = findTagEnd(lowered, open + 1);
+    if (end === -1) break;
+    out += html.slice(cursor, open) + map.tag(html.slice(open, end + 1));
+    cursor = end + 1;
+    if (!isTagAt(lowered, open, "<style")) continue;
+    const close = findRawTextClose(lowered, "style", cursor);
+    if (close === -1) continue;
+    out += map.style(html.slice(cursor, close));
+    cursor = close;
+  }
+  return out + html.slice(cursor);
+}
+
 export function findStartTags(html: string, name: string): number[] {
   const lowered = lowerAscii(html);
   const token = `<${lowerAscii(name)}`;
@@ -347,7 +374,7 @@ export function insertBeforeCloseTag(
   return insertBeforeDocumentTag(html, `</${name}`, markup);
 }
 
-export function insertRuntimeTag(html: string, tag: string): string {
+function insertTagInHead(html: string, tag: string): string {
   const withHead = insertBeforeCloseTag(html, "head", `${tag}\n`);
   if (withHead !== null) return withHead;
   const htmlOpenMatch = html.match(/<html\b[^>]*>/i);
@@ -361,6 +388,16 @@ export function insertRuntimeTag(html: string, tag: string): string {
     return html.slice(0, insertPos) + tag + html.slice(insertPos);
   }
   return tag + html;
+}
+
+const ACCEL_TRACKER_ATTR = "data-hf-accel-tracker";
+const OPTS_INTO_MOTION_BLUR = /\sdata-motion-blur\s*=\s*["']?on[\s"'>]/i;
+
+export function insertRuntimeTag(html: string, tag: string): string {
+  const withRuntime = insertTagInHead(html, tag);
+  if (!OPTS_INTO_MOTION_BLUR.test(html) || html.includes(ACCEL_TRACKER_ATTR)) return withRuntime;
+  const tracker = `<script ${ACCEL_TRACKER_ATTR}>${acceleratedCanvasTrackerSource()}</script>`;
+  return injectTagsAtHeadStart(withRuntime, tracker);
 }
 
 /**

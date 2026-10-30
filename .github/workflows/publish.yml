@@ -13,10 +13,47 @@ on:
     branches: [main]
 
 jobs:
+  lambda-arm64-ffmpeg:
+    name: Lambda arm64 ffmpeg
+    runs-on: ubuntu-24.04-arm
+    # A cache miss compiles ffmpeg natively, 15-20 minutes.
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    env:
+      EXPECTED_RELEASE_SHA: >-
+        ${{ github.event_name == 'pull_request'
+            && github.event.pull_request.merge_commit_sha
+            || github.sha }}
+    if: >-
+      github.event_name == 'push' ||
+      (github.event.pull_request.merged == true &&
+       startsWith(github.event.pull_request.head.ref, 'release/v'))
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ env.EXPECTED_RELEASE_SHA }}
+      # lambda-arm64-image.yml saves this key on main; a release run's own saves reach only its re-runs.
+      - id: cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: out/
+          key: hf-media-linux-aarch64-${{ hashFiles('packages/aws-lambda/image/**') }}
+      - if: steps.cache.outputs.cache-hit != 'true'
+        run: >-
+          docker buildx build --progress=plain --platform linux/arm64 --target artifact
+          --output type=local,dest=out packages/aws-lambda/image
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: hf-media-linux-aarch64
+          path: out/hf-media-linux-aarch64.tar.gz
+          if-no-files-found: error
+
   publish:
     name: Publish
+    needs: lambda-arm64-ffmpeg
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     environment: npm-publish
     permissions:
       contents: write
@@ -120,7 +157,93 @@ jobs:
       - run: corepack prepare pnpm@10.17.1 --activate
       - run: bun install --frozen-lockfile
       - run: bun run build
+
+      # Before `npm publish`, so @hyperframes/aws-lambda pins this exact zip.
+      - name: Build Lambda handler zip
+        id: lambda_zip
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+          REPO: ${{ github.repository }}
+        run: |
+          # A retried run reuses the zip already on the release, so the pin still matches it.
+          if gh release download "v${VERSION}" --repo "$REPO" --pattern hyperframes-lambda-handler.zip --dir dist; then
+            echo "attached=true" >> "$GITHUB_OUTPUT"
+          else
+            bun run --cwd packages/aws-lambda build:zip
+          fi
+          bun packages/aws-lambda/scripts/pin-handler-zip.ts
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: hf-media-linux-aarch64
+          path: dist/hf-media
+
+      # Built from the zip pinned above. The video stage only copies files, so no emulation is needed.
+      - name: Build Lambda video image
+        id: lambda_video_image
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+          REPO: ${{ github.repository }}
+        run: |
+          # A retried run reuses the image already on the release, so the pin still matches it.
+          if gh release download "v${VERSION}" --repo "$REPO" --pattern hyperframes-lambda-video-arm64.oci.tar --dir dist; then
+            echo "attached=true" >> "$GITHUB_OUTPUT"
+          else
+            bun packages/aws-lambda/scripts/stage-arm64-image.ts --zip=dist/hyperframes-lambda-handler.zip \
+              --ffmpeg=dist/hf-media/hf-media-linux-aarch64.tar.gz --out=dist/arm64-image
+            # OCI export needs a docker-container builder; no attestations, so index.json lists one image.
+            docker buildx create --use
+            docker buildx build --progress=plain --platform linux/arm64 --target video \
+              --provenance=false --sbom=false --build-context task=dist/arm64-image/task \
+              --output type=oci,dest=dist/hyperframes-lambda-video-arm64.oci.tar packages/aws-lambda/image
+          fi
+          bun packages/aws-lambda/scripts/pin-handler-zip.ts --video-image
+
       - run: bun run verify:packed-manifests
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+          PRERELEASE: ${{ steps.version.outputs.prerelease }}
+          REPO: ${{ github.repository }}
+        run: |
+          NOTES_FILE="releases/v${VERSION}.md"
+
+          # Skip if release already exists (idempotent re-runs)
+          if gh release view "v${VERSION}" --repo "$REPO" >/dev/null 2>&1; then
+            echo "Release v${VERSION} already exists — skipping"
+          else
+            FLAGS=(--repo "$REPO" --title "v${VERSION}")
+            if [ -f "$NOTES_FILE" ]; then
+              FLAGS+=(--notes-file "$NOTES_FILE")
+            else
+              echo "No reviewed release notes found at $NOTES_FILE — using GitHub generated notes"
+              FLAGS+=(--generate-notes)
+            fi
+            if [ "$PRERELEASE" = "true" ]; then
+              FLAGS+=(--prerelease)
+            fi
+            gh release create "v${VERSION}" "${FLAGS[@]}"
+          fi
+
+      - name: Attach Lambda handler zip to release
+        if: steps.lambda_zip.outputs.attached != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+          REPO: ${{ github.repository }}
+        run: gh release upload "v${VERSION}" dist/hyperframes-lambda-handler.zip dist/hyperframes-lambda-handler.sha256 --repo "$REPO"
+
+      - name: Attach Lambda video image to release
+        if: steps.lambda_video_image.outputs.attached != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+          REPO: ${{ github.repository }}
+        run: gh release upload "v${VERSION}" dist/hyperframes-lambda-video-arm64.oci.tar dist/hyperframes-lambda-video-arm64.sha256 --repo "$REPO"
 
       - name: Publish packages
         env:
@@ -188,32 +311,6 @@ jobs:
           if [ "$FAILED" -ne 0 ]; then
             echo "::error::One or more packages failed to publish"
             exit 1
-          fi
-
-      - name: Create GitHub Release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERSION: ${{ steps.version.outputs.version }}
-          PRERELEASE: ${{ steps.version.outputs.prerelease }}
-          REPO: ${{ github.repository }}
-        run: |
-          NOTES_FILE="releases/v${VERSION}.md"
-
-          # Skip if release already exists (idempotent re-runs)
-          if gh release view "v${VERSION}" --repo "$REPO" >/dev/null 2>&1; then
-            echo "Release v${VERSION} already exists — skipping"
-          else
-            FLAGS=(--repo "$REPO" --title "v${VERSION}")
-            if [ -f "$NOTES_FILE" ]; then
-              FLAGS+=(--notes-file "$NOTES_FILE")
-            else
-              echo "No reviewed release notes found at $NOTES_FILE — using GitHub generated notes"
-              FLAGS+=(--generate-notes)
-            fi
-            if [ "$PRERELEASE" = "true" ]; then
-              FLAGS+=(--prerelease)
-            fi
-            gh release create "v${VERSION}" "${FLAGS[@]}"
           fi
 
       - name: Build portable agent plugin

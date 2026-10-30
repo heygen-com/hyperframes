@@ -7,6 +7,10 @@ import { clearAutomationClipboard, copyRange } from "../player/components/automa
 import { VOLUME_RANGE } from "@hyperframes/core/audio-automation";
 import type { TimelineElement } from "../player/store/timelineElement";
 import { useAudioGainDialogStore } from "../player/components/audioGainDialogStore";
+import {
+  cancelTimelineZoom,
+  registerTimelineZoomViewport,
+} from "../player/components/timelineZoomInput";
 
 /** Minimal valid fixture — TimelineElement only requires these five fields. */
 const bgmElement: TimelineElement = {
@@ -498,6 +502,77 @@ describe("dispatchPlainKey — G opens Audio Gain", () => {
     dispatchPlainKey(event, "g", callbacks());
     expect(useAudioGainDialogStore.getState().targetKeys).toEqual(["bgm"]);
     expect(event.defaultPrevented).toBe(true);
+  });
+
+  it("Z zooms when a clip is selected and does not take the key otherwise", () => {
+    const scroll = document.createElement("div");
+    Object.defineProperties(scroll, {
+      clientWidth: { value: 1080 },
+      scrollWidth: { value: 1080 },
+      scrollLeft: { value: 0, writable: true },
+    });
+    const unregister = registerTimelineZoomViewport({
+      scroll,
+      contentOrigin: 32,
+      publishScroll: () => {},
+    });
+    usePlayerStore.setState({
+      elements: [bgmElement],
+      selectedElementId: "bgm",
+      selectedElementIds: new Set(["bgm"]),
+    });
+    const event = press("z");
+    dispatchPlainKey(event, "z", callbacks());
+    expect(event.defaultPrevented).toBe(true);
+    cancelTimelineZoom();
+    unregister();
+
+    const unmounted = press("z");
+    dispatchPlainKey(unmounted, "z", callbacks());
+    expect(unmounted.defaultPrevented).toBe(false);
+
+    const collapsedScroll = document.createElement("div");
+    Object.defineProperties(collapsedScroll, {
+      clientWidth: { value: 32 },
+      scrollWidth: { value: 32 },
+      scrollLeft: { value: 0, writable: true },
+    });
+    const unregisterCollapsed = registerTimelineZoomViewport({
+      scroll: collapsedScroll,
+      contentOrigin: 32,
+      publishScroll: () => {},
+    });
+    const collapsed = press("z");
+    dispatchPlainKey(collapsed, "z", callbacks());
+    expect(collapsed.defaultPrevented).toBe(false);
+    unregisterCollapsed();
+
+    usePlayerStore.setState({ selectedElementId: null, selectedElementIds: new Set() });
+    const idle = press("z");
+    dispatchPlainKey(idle, "z", callbacks());
+    expect(idle.defaultPrevented).toBe(false);
+
+    const shifted = new KeyboardEvent("keydown", { key: "z", shiftKey: true, bubbles: true });
+    dispatchPlainKey(shifted, "z", callbacks());
+    expect(shifted.defaultPrevented).toBe(false);
+
+    usePlayerStore.setState({
+      elements: [bgmElement],
+      selectedElementId: "scene.html#child",
+      selectedElementIds: new Set(["scene.html#child"]),
+    });
+    const child = press("z");
+    dispatchPlainKey(child, "z", callbacks());
+    expect(child.defaultPrevented).toBe(false);
+
+    usePlayerStore.setState({
+      elements: [{ ...bgmElement, duration: 0 }],
+      selectedElementId: "bgm",
+      selectedElementIds: new Set(["bgm"]),
+    });
+    const zero = press("z");
+    dispatchPlainKey(zero, "z", callbacks());
+    expect(zero.defaultPrevented).toBe(false);
   });
 
   it("leaves G to the grid toggle when nothing selected has sound", () => {

@@ -103,3 +103,37 @@ describe("Studio render GPU encoding", () => {
     expect(mocks.createRenderJob).toHaveBeenCalledWith(expect.objectContaining({ useGpu: true }));
   });
 });
+
+describe("Studio render motion blur", () => {
+  it("hands the route's pageMotionBlur to the job", async () => {
+    mocks.resolveRenderBrowser.mockResolvedValue({
+      executablePath: "/opt/chrome",
+      source: "cache",
+    });
+
+    startStudioRender({ pageMotionBlur: "off" });
+    await vi.waitFor(() => expect(mocks.createRenderJob).toHaveBeenCalledTimes(1), {
+      timeout: 10_000,
+    });
+
+    expect(mocks.createRenderJob).toHaveBeenCalledWith(
+      expect.objectContaining({ pageMotionBlur: "off" }),
+    );
+  });
+
+  it("sends none when the route sent none", async () => {
+    mocks.resolveRenderBrowser.mockResolvedValue({
+      executablePath: "/opt/chrome",
+      source: "cache",
+    });
+
+    startStudioRender();
+    await vi.waitFor(() => expect(mocks.createRenderJob).toHaveBeenCalledTimes(1), {
+      timeout: 10_000,
+    });
+
+    expect(mocks.createRenderJob).not.toHaveBeenCalledWith(
+      expect.objectContaining({ pageMotionBlur: expect.anything() }),
+    );
+  });
+});

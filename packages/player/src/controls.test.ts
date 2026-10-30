@@ -76,3 +76,92 @@ describe("createControls host listeners", () => {
     host.remove();
   });
 });
+
+describe("createControls playback speed name", () => {
+  it("includes the visible rate initially and after menu and API updates", () => {
+    const host = document.createElement("div");
+    const onSpeedChange = vi.fn();
+    const api = createControls(host, { ...noopCallbacks(), onSpeedChange });
+    const speedButton = host.querySelector(".hfp-speed-btn");
+
+    expect(speedButton?.textContent).toBe("1x");
+    expect(speedButton?.getAttribute("aria-label")).toBe("Playback speed: 1x");
+
+    const option = host.querySelector<HTMLButtonElement>('[data-speed="1.5"]');
+    expect(option).not.toBeNull();
+    option?.click();
+
+    expect(speedButton?.textContent).toBe("1.5x");
+    expect(speedButton?.getAttribute("aria-label")).toBe("Playback speed: 1.5x");
+    expect(onSpeedChange).toHaveBeenCalledWith(1.5);
+
+    api.updateSpeed(2);
+
+    expect(speedButton?.textContent).toBe("2x");
+    expect(speedButton?.getAttribute("aria-label")).toBe("Playback speed: 2x");
+
+    api.destroy();
+  });
+});
+
+describe("createControls idle hide", () => {
+  function setup() {
+    vi.useFakeTimers();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const api = createControls(host, noopCallbacks());
+    const controls = host.querySelector<HTMLElement>(".hfp-controls")!;
+    return { host, api, controls };
+  }
+
+  it("hides after 3 s of no input while playing, and returns on movement", () => {
+    const { host, api, controls } = setup();
+    api.updatePlaying(true);
+    host.dispatchEvent(new Event("mousemove"));
+    vi.advanceTimersByTime(3000);
+    expect(controls.classList.contains("hfp-hidden")).toBe(true);
+    host.dispatchEvent(new Event("mousemove"));
+    expect(controls.classList.contains("hfp-hidden")).toBe(false);
+    api.destroy();
+    host.remove();
+    vi.useRealTimers();
+  });
+
+  it("stays visible while paused or while a control has focus", () => {
+    const { host, api, controls } = setup();
+    vi.advanceTimersByTime(5000);
+    expect(controls.classList.contains("hfp-hidden")).toBe(false);
+    api.updatePlaying(true);
+    controls.querySelector<HTMLElement>("button")!.focus();
+    vi.advanceTimersByTime(5000);
+    expect(controls.classList.contains("hfp-hidden")).toBe(false);
+    api.destroy();
+    host.remove();
+    vi.useRealTimers();
+  });
+
+  it("comes back on a key press and stays visible until idle again", () => {
+    const { host, api, controls } = setup();
+    api.updatePlaying(true);
+    vi.advanceTimersByTime(3000);
+    host.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
+    expect(controls.classList.contains("hfp-hidden")).toBe(false);
+    vi.advanceTimersByTime(2999);
+    expect(controls.classList.contains("hfp-hidden")).toBe(false);
+    api.destroy();
+    host.remove();
+    vi.useRealTimers();
+  });
+
+  it("restarting playback state does not push the hide back", () => {
+    const { host, api, controls } = setup();
+    api.updatePlaying(true);
+    vi.advanceTimersByTime(2000);
+    api.updatePlaying(true);
+    vi.advanceTimersByTime(1000);
+    expect(controls.classList.contains("hfp-hidden")).toBe(true);
+    api.destroy();
+    host.remove();
+    vi.useRealTimers();
+  });
+});

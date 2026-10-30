@@ -153,6 +153,53 @@ describe("ThumbnailScheduler", () => {
     expect(richLoad).toHaveBeenCalledTimes(1);
   });
 
+  it("starts no visible or overscan video decode while the preview plays, but still a scrub's", async () => {
+    const scheduler = new ThumbnailScheduler();
+    const starts: string[] = [];
+    const load = (name: string) =>
+      vi.fn(async () => {
+        starts.push(name);
+        return result(name);
+      });
+    const video = { kind: "video" as const };
+    scheduler.setPlaybackActive(true);
+
+    const visible = scheduler.acquire(
+      request("visible", load("visible"), "visible", video),
+      vi.fn(),
+    );
+    scheduler.acquire(request("overscan", load("overscan"), "overscan", video), vi.fn());
+    scheduler.acquire(request("scrub", load("scrub"), "interaction", video), vi.fn());
+    scheduler.acquire(request("image", load("image"), "visible"), vi.fn());
+    await flush();
+    expect(starts).toEqual(["scrub", "image"]);
+
+    visible.updatePriority("interaction");
+    await flush();
+    expect(starts).toEqual(["scrub", "image", "visible"]);
+  });
+
+  it("drains the video decodes it held once playback pauses", async () => {
+    const scheduler = new ThumbnailScheduler();
+    const starts: string[] = [];
+    const load = (name: string) =>
+      vi.fn(async () => {
+        starts.push(name);
+        return result(name);
+      });
+    scheduler.setPlaybackActive(true);
+    scheduler.acquire(request("visible", load("visible"), "visible", { kind: "video" }), vi.fn());
+    scheduler.acquire(
+      request("overscan", load("overscan"), "overscan", { kind: "video" }),
+      vi.fn(),
+    );
+    await flush();
+    expect(starts).toEqual([]);
+
+    scheduler.setPlaybackActive(false);
+    await vi.waitFor(() => expect(starts).toEqual(["visible", "overscan"]));
+  });
+
   it("holds composition renders while the preview reloads and re-runs the ones it preempted", async () => {
     const scheduler = new ThumbnailScheduler();
     const signals: AbortSignal[] = [];
@@ -336,6 +383,8 @@ describe("ThumbnailScheduler", () => {
     await vi.advanceTimersByTimeAsync(11);
     await flush();
     expect(signal?.aborted).toBe(true);
+    // Said apart from a cancel: a job that timed out without progress failed its source.
+    expect(signal?.reason).toMatchObject({ name: "TimeoutError" });
     expect(nextLoad).toHaveBeenCalledTimes(1);
     expect(scheduler.getSnapshot(hungRequest).status).toBe("error");
 

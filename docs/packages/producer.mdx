@@ -100,6 +100,19 @@ segment starts on a keyframe. HLS is SDR only (`hdrMode: "force-hdr"` is
 rejected), refuses GPU encoding (GPU encoders ignore the keyframe lock), and is
 not available in distributed rendering, Lambda, or Cloud Run.
 
+## Inspect output validation
+
+A matching output duration does not prove that every expected frame is present.
+WebM and HLS often omit the frame count from their metadata. When no usable count
+is available, the producer skips the frame-count check and continues checking
+duration and requested dimensions.
+
+Set `debug: true` in `createRenderJob()` or use `npx hyperframes render --debug`
+to retain `render.log` in the render's working directory. Its
+`artifact_frame_count_unavailable` debug event records the output path and
+expected frame count whenever this check is skipped. Normal output stays quiet;
+a custom `logger` can also collect the event through its `debug` method.
+
 ## Cancel a render
 
 Pass an abort signal to the final argument:

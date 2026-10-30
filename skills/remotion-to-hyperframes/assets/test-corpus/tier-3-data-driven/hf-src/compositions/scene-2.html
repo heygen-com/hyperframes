@@ -23,7 +23,6 @@
         justify-content: center;
         align-items: center;
         opacity: 0;
-        transform: scale(0);
       }
       .stat-card .number {
         font-size: 72px;
@@ -74,16 +73,16 @@
         const value = Number(card.dataset.statValue);
         const numberEl = card.querySelector(".number");
         // spring({damping:14, stiffness:90, mass:1}) -> back.out(1.2) ~0.7s; opacity 0..0.4s linear
-        tl.to(card, { scale: 1, duration: 0.7, ease: "back.out(1.2)" }, start);
+        tl.fromTo(card, { scale: 0 }, { scale: 1, duration: 0.7, ease: "back.out(1.2)" }, start);
         tl.to(card, { opacity: 1, duration: 0.4, ease: "none" }, start);
-        // AnimatedNumber: easeOutCubic over 45 frames (1.5s) is GSAP power3.out on a counter.
+        // AnimatedNumber: easeOutCubic over 45 frames (1.5s) is GSAP power2.out on a counter.
         const counter = { v: 0 };
         tl.to(
           counter,
           {
             v: value,
             duration: 1.5,
-            ease: "power3.out",
+            ease: "power2.out",
             onUpdate: () => {
               numberEl.textContent = Math.round(counter.v).toLocaleString();
             },

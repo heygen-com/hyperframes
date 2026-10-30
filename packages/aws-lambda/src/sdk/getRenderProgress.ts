@@ -2,10 +2,10 @@
  * `getRenderProgress` — read-only progress + cost snapshot for a single
  * render started by {@link renderToLambda}.
  *
- * Pulls one `DescribeExecution` + one `GetExecutionHistory` per call. The
- * history is paginated server-side; the helper loops until exhausted so a
- * 1,000-event Step Functions execution still produces a single
- * `RenderProgress` snapshot.
+ * Pulls one `DescribeExecution` + one `GetExecutionHistory` per call. While
+ * the chunk Distributed Map runs, one `DescribeMapRun` adds its item counts;
+ * once it exits, chunk frames and cost come from the Map's output. Failed
+ * chunks' histories are read only when the counts show a failure.
  *
  * Progress math:
  *   - 0  before Plan completes (no frame count is known yet)
@@ -22,13 +22,17 @@
 
 import {
   DescribeExecutionCommand,
+  DescribeMapRunCommand,
   GetExecutionHistoryCommand,
   type HistoryEvent,
+  ListExecutionsCommand,
   SFNClient,
+  type SFNClientConfig,
 } from "@aws-sdk/client-sfn";
 import {
   type BilledLambdaInvocation,
   computeRenderCost,
+  type LambdaArchitecture,
   type RenderCost,
 } from "./costAccounting.js";
 
@@ -42,6 +46,8 @@ export interface GetRenderProgressOptions {
    * `LambdaMemoryMb` parameter the stack was deployed with.
    */
   defaultMemorySizeMb?: number;
+  /** Architecture of the stack's video function, which runs the plan and the chunks: `arm64` when it has one. */
+  videoArchitecture?: LambdaArchitecture;
   region?: string;
   /** Test injection seam. */
   sfn?: SFNClient;
@@ -81,18 +87,25 @@ export interface RenderProgress {
   errors: RenderError[];
   /** `true` once the execution has terminated in a non-`SUCCEEDED` state. */
   fatalErrorEncountered: boolean;
+  /** Problems reading progress that leave the render itself untouched, such as a missing IAM permission. */
+  warnings: string[];
   startedAt: string;
   endedAt: string | null;
 }
 
 const DEFAULT_MEMORY_MB = 10240;
 
+/** Rides out `ThrottlingException` with the SDK's backoff instead of throwing after the default 3 tries. */
+export function createProgressSfnClient(config: SFNClientConfig = {}): SFNClient {
+  return new SFNClient({ maxAttempts: 8, ...config });
+}
+
 /** Pull a current progress snapshot for one render. */
 export async function getRenderProgress(opts: GetRenderProgressOptions): Promise<RenderProgress> {
   if (!opts.executionArn) {
     throw new Error("[getRenderProgress] executionArn is required");
   }
-  const sfn = opts.sfn ?? new SFNClient({ region: opts.region });
+  const sfn = opts.sfn ?? createProgressSfnClient({ region: opts.region });
   const memoryMb = opts.defaultMemorySizeMb ?? DEFAULT_MEMORY_MB;
 
   const describe = await sfn.send(
@@ -103,7 +116,16 @@ export async function getRenderProgress(opts: GetRenderProgressOptions): Promise
   const endedAt = describe.stopDate?.toISOString() ?? null;
 
   const history = await loadFullHistory(sfn, opts.executionArn);
-  const summary = summarizeHistory(history, memoryMb);
+  const summary = summarizeHistory(history, memoryMb, opts.videoArchitecture);
+  const mapRun = findChunkMapRun(history);
+  const warnings: string[] = [];
+  if (mapRun?.exited) addChunkResults(summary, mapRun.output, memoryMb, opts.videoArchitecture);
+  else if (mapRun) {
+    await addRunningMapRun(sfn, mapRun.arn, summary, memoryMb).catch((err: unknown) => {
+      if ((err as { name?: unknown } | null)?.name !== "AccessDeniedException") throw err;
+      warnings.push(MAP_RUN_ACCESS_DENIED);
+    });
+  }
 
   const costs = computeRenderCost(summary.lambdaInvocations, summary.stateTransitions);
   const overallProgress = computeOverallProgress({
@@ -123,6 +145,7 @@ export async function getRenderProgress(opts: GetRenderProgressOptions): Promise
     outputFile: summary.outputFile,
     errors: summary.errors,
     fatalErrorEncountered: isTerminalFailure(status),
+    warnings,
     startedAt,
     endedAt,
   };
@@ -147,6 +170,88 @@ async function loadFullHistory(sfn: SFNClient, executionArn: string): Promise<Hi
   return events;
 }
 
+const FAILED_CHUNK_HISTORIES_READ = 5;
+
+const MAP_RUN_ACCESS_DENIED =
+  "Chunk progress is hidden until the chunks finish: this caller lacks states:DescribeMapRun. " +
+  "Re-apply the policy from `hyperframes lambda policies user`.";
+
+interface ChunkMapRun {
+  arn: string;
+  exited: boolean;
+  output: string | undefined;
+}
+
+/** The chunk Distributed Map's run; `null` for an inline Map, whose chunk events are in the parent history. */
+function findChunkMapRun(events: HistoryEvent[]): ChunkMapRun | null {
+  let run: ChunkMapRun | null = null;
+  for (const ev of events) {
+    const arn = ev.mapRunStartedEventDetails?.mapRunArn;
+    if (arn) run = { arn, exited: false, output: undefined };
+    const exit = ev.stateExitedEventDetails;
+    if (run && ev.type === "MapStateExited" && isRenderChunksMapState(exit?.name)) {
+      run = { ...run, exited: true, output: exit?.output };
+    }
+  }
+  return run;
+}
+
+/** Exact chunk frames and cost from the chunk results the Map's output carries. */
+function addChunkResults(
+  summary: HistorySummary,
+  mapOutput: string | undefined,
+  memoryMb: number,
+  architecture: LambdaArchitecture | undefined,
+) {
+  const chunks = (parseJson(mapOutput) as { Chunks?: unknown } | null)?.Chunks;
+  for (const chunk of Array.isArray(chunks) ? chunks : []) {
+    summary.lambdasInvoked++;
+    summary.stateTransitions++;
+    summary.lambdaInvocations.push(billedInvocation(chunk, memoryMb, architecture));
+    applyPayloadFrameCounts(chunk, "RenderChunk", (delta) => {
+      summary.framesRendered += delta;
+    });
+  }
+}
+
+// Open Map Run: frames estimated from the succeeded share; chunk Lambda cost waits for the Map's exit.
+async function addRunningMapRun(
+  sfn: SFNClient,
+  mapRunArn: string,
+  summary: HistorySummary,
+  memoryMb: number,
+): Promise<void> {
+  const res = await sfn.send(new DescribeMapRunCommand({ mapRunArn }));
+  const { total = 0, pending = 0, succeeded = 0, failed = 0 } = res.itemCounts ?? {};
+  summary.lambdasInvoked += total - pending;
+  summary.stateTransitions += total - pending;
+  if (summary.totalFrames !== null && total > 0) {
+    summary.framesRendered += Math.floor((summary.totalFrames * succeeded) / total);
+  }
+  if (failed > 0) summary.errors.push(...(await failedChunkErrors(sfn, mapRunArn, memoryMb)));
+}
+
+async function failedChunkErrors(
+  sfn: SFNClient,
+  mapRunArn: string,
+  memoryMb: number,
+): Promise<RenderError[]> {
+  const failed = await sfn.send(
+    new ListExecutionsCommand({
+      mapRunArn,
+      statusFilter: "FAILED",
+      maxResults: FAILED_CHUNK_HISTORIES_READ,
+    }),
+  );
+  const errors: RenderError[] = [];
+  for (const child of failed.executions ?? []) {
+    if (!child.executionArn) continue;
+    const childHistory = await loadFullHistory(sfn, child.executionArn);
+    errors.push(...summarizeHistory(childHistory, memoryMb).errors);
+  }
+  return errors;
+}
+
 interface HistorySummary {
   lambdaInvocations: BilledLambdaInvocation[];
   stateTransitions: number;
@@ -165,7 +270,11 @@ interface HistorySummary {
  * invocations = `LambdaFunctionScheduled` count. Frame totals come from
  * the success-payload of each Lambda invocation.
  */
-function summarizeHistory(events: HistoryEvent[], memoryMb: number): HistorySummary {
+function summarizeHistory(
+  events: HistoryEvent[],
+  memoryMb: number,
+  videoArchitecture?: LambdaArchitecture,
+): HistorySummary {
   let framesRendered = 0;
   let totalFrames: number | null = null;
   let lambdasInvoked = 0;
@@ -212,12 +321,13 @@ function summarizeHistory(events: HistoryEvent[], memoryMb: number): HistorySumm
         if (ev.taskSucceededEventDetails?.resourceType !== "lambda") break;
         const wrapped = parseJson(ev.taskSucceededEventDetails?.output);
         const payload = unwrapLambdaPayload(wrapped);
-        const billedDurationMs = inferBilledMs(payload);
-        lambdaInvocations.push({
-          billedDurationMs,
-          memorySizeMb: memoryMb,
-          estimated: billedDurationMs === 0,
-        });
+        lambdaInvocations.push(
+          billedInvocation(
+            payload,
+            memoryMb,
+            stateArchitecture(currentLambdaState, videoArchitecture),
+          ),
+        );
         applyPayloadFrameCounts(payload, currentLambdaState, (delta) => {
           framesRendered += delta;
         });
@@ -229,12 +339,13 @@ function summarizeHistory(events: HistoryEvent[], memoryMb: number): HistorySumm
       }
       case "LambdaFunctionSucceeded": {
         const payload = parseJson(ev.lambdaFunctionSucceededEventDetails?.output);
-        const billedDurationMs = inferBilledMs(payload);
-        lambdaInvocations.push({
-          billedDurationMs,
-          memorySizeMb: memoryMb,
-          estimated: billedDurationMs === 0,
-        });
+        lambdaInvocations.push(
+          billedInvocation(
+            payload,
+            memoryMb,
+            stateArchitecture(currentLambdaState, videoArchitecture),
+          ),
+        );
         applyPayloadFrameCounts(payload, currentLambdaState, (delta) => {
           framesRendered += delta;
         });
@@ -360,6 +471,10 @@ function isRenderChunkState(name: string | null | undefined): boolean {
   return name === "RenderChunk" || name === "RenderChunkV2";
 }
 
+function isRenderChunksMapState(name: string | null | undefined): boolean {
+  return name === "RenderChunks" || name === "RenderChunksV2";
+}
+
 function isAssembleState(name: string | null | undefined): boolean {
   return name === "Assemble" || name === "AssembleV2";
 }
@@ -371,6 +486,30 @@ function isAssembleState(name: string | null | undefined): boolean {
  * on `LambdaFunctionSucceeded` (the dedicated `BilledDuration` field
  * is in CloudWatch Metrics, not the SFN history payload).
  */
+function billedInvocation(
+  payload: unknown,
+  memoryMb: number,
+  architecture: LambdaArchitecture | undefined,
+): BilledLambdaInvocation {
+  const billedDurationMs = inferBilledMs(payload);
+  return {
+    billedDurationMs,
+    memorySizeMb: memoryMb,
+    estimated: billedDurationMs === 0,
+    architecture,
+  };
+}
+
+/** The video function runs the plan and the chunks; audio and assemble run on the render function. */
+function stateArchitecture(
+  state: string | null,
+  videoArchitecture: LambdaArchitecture | undefined,
+): LambdaArchitecture | undefined {
+  return state === "Plan" || state === "PlanV2" || isRenderChunkState(state)
+    ? videoArchitecture
+    : undefined;
+}
+
 function inferBilledMs(payload: unknown): number {
   if (!payload || typeof payload !== "object") return 0;
   const obj = payload as Record<string, unknown>;

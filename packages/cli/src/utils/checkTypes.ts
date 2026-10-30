@@ -1,11 +1,16 @@
 import type { CheckDeadline } from "./checkDeadline.js";
+import type { CheckProgress } from "./checkProgress.js";
 import type { ProjectLintResult } from "./lintProject.js";
 import type { LayoutIssue, LayoutOverflow, LayoutRect } from "./layoutAudit.js";
 import type { Canvas, MotionFrame } from "./motionAudit.js";
 import type { MotionSpec } from "./motionSpec.js";
 import type { ProjectDir } from "./project.js";
+import type { ProjectMedia } from "./projectMedia.js";
 import type { BrowserGpuMode } from "../browser/gpuPolicy.js";
 import type { HdrAutoPromotion } from "@hyperframes/engine";
+import type { ComponentReport } from "@hyperframes/inspector/live";
+import type { PrelaunchedBrowser } from "../capture/captureCompositionFrame.js";
+import type { CheckPhase } from "./checkDeadline.js";
 
 export interface CheckOptions {
   samples: number;
@@ -19,8 +24,11 @@ export interface CheckOptions {
   tolerance: number;
   timeout: number;
   contrast: boolean;
+  skipContrastInMotion?: boolean;
   strict: boolean;
   snapshots: boolean;
+  findingFrames?: boolean;
+  inspect?: boolean;
   captionZone?: CaptionZoneOptions;
   frameCheck?: FrameCheckOptions;
   /** Opt-in layout-audit knobs (`--layout "proseCoverageFloor=0.05"`). Defaults stay in the browser audit. */
@@ -74,9 +82,18 @@ export interface CheckAnchor {
   time: number;
   times?: number[];
   componentMatch?: boolean;
+  frame?: string;
+  frameTime?: number;
+  inspect?: CheckFindingInspect;
 }
 
+/** The inspector's own report for the finding's element at `frameTime`, or why it could not run. */
+export type CheckFindingInspect = ComponentReport | { error: string };
+
+export type CheckInspectTarget = { hfId: string } | { selector: string };
+
 export interface CheckFinding extends CheckAnchor {
+  timeRange?: [number, number];
   code: string;
   severity: CheckSeverity;
   message: string;
@@ -108,7 +125,7 @@ export interface CheckContrastFinding extends CheckFinding {
 
 export interface ContrastCapture {
   entries: ContrastAuditEntry[];
-  pngBase64: string;
+  pngBase64?: string;
 }
 
 export interface GeometryCandidateRequest {
@@ -131,6 +148,23 @@ export interface CheckFindingCropRequest {
   filename: string;
   time: number;
   bbox: CheckBbox;
+}
+
+export interface CheckFindingFrameRequest {
+  time: number;
+  filename: string;
+  inspect?: CheckInspectTarget[];
+}
+
+export interface CheckFindingFrames {
+  written: string[];
+  inspected: CheckFindingInspection[];
+}
+
+export interface CheckFindingInspection {
+  time: number;
+  target: CheckInspectTarget;
+  inspect: CheckFindingInspect;
 }
 
 export interface CheckGeometryCandidate extends CheckAnchor {
@@ -183,6 +217,34 @@ export interface OffPivotFrame {
   samples: OffPivotRotationSample[];
 }
 
+export interface CraftTextPart {
+  key: number;
+  /** Key of its reading block: the nearest block-level ancestor-or-self, so a split headline is one line. */
+  block: number;
+  selector: string;
+  blockSelector: string;
+  sourceFile: string;
+  text: string;
+  opacity: number;
+  fontPx: number;
+  rect: { left: number; top: number; width: number; height: number };
+  captions: boolean;
+}
+
+export interface CraftFrame {
+  time: number;
+  parts: CraftTextPart[];
+  /** A data-hold element is on screen: stillness here is deliberate. */
+  held: boolean;
+  painted: boolean;
+  coveredBy?: string;
+  signature: string;
+}
+
+export interface CraftFilm {
+  soundSources: number;
+}
+
 export type MotionSpecResolution =
   | { kind: "none" }
   | { kind: "valid"; path: string; spec: MotionSpec }
@@ -190,6 +252,7 @@ export type MotionSpecResolution =
 
 export interface CheckAuditDriver {
   initialize(contrast: boolean): Promise<void>;
+  markSamples?(phase: "start" | "end" | "drop"): void;
   matchComponents?(components: string[], findings: CheckFinding[]): Promise<boolean[]>;
   getDuration(): Promise<number>;
   /** True when the root composition explicitly declares that it is intentionally timeline-free. */
@@ -198,9 +261,9 @@ export interface CheckAuditDriver {
   getClipEdges(): Promise<number[]>;
   getCanvas(): Promise<Canvas>;
   findAmbiguousSelectors(selectors: string[]): Promise<AnchoredLayoutIssue[]>;
-  seek(time: number): Promise<void>;
-  /** Settle-free seek for the geometry-only dense content_overlap pass; only collectOverlap consumes it, and getBoundingClientRect is valid synchronously after setTime. */
-  seekGeometry(time: number): Promise<void>;
+  seek(time: number, screenshotFollows?: boolean): Promise<void>;
+  /** Settle-free seek for the dense passes; WebGL draws are skipped unless `draws` (a pass reading canvas pixels). */
+  seekGeometry(time: number, options?: { draws?: boolean }): Promise<void>;
   collectLayout(
     time: number,
     tolerance: number,
@@ -208,9 +271,12 @@ export interface CheckAuditDriver {
   ): Promise<AnchoredLayoutIssue[]>;
   /** content_overlap only, for the dense re-sampling grid — catches transient text collisions the sparse grid seeks past. */
   collectOverlap(time: number): Promise<AnchoredLayoutIssue[]>;
+  collectOverlapGrid(times: number[]): Promise<AnchoredLayoutIssue[][]>;
   /** Frozen-sweep guard (#U10): an opaque fingerprint of the seeked visual state, from
    * motion-signature.browser.js (shared with motion-sample's liveness). Legacy name kept. */
   collectLayoutGeometry(): Promise<string>;
+  captureFrame(scope?: string): Promise<string>;
+  framesDiffer(first: string, second: string): Promise<boolean>;
   collectSeekClock(): Promise<SeekClock[]>;
   /** rotation_pivot_drift: every rotatable element's bbox center/size/angle at
    * the current seeked state. Accumulated across the grid — see checkPipeline. */
@@ -229,7 +295,14 @@ export interface CheckAuditDriver {
     livenessScopes: string[],
   ): Promise<MotionFrame>;
   anchorMotionIssues(issues: LayoutIssue[]): Promise<AnchoredLayoutIssue[]>;
-  collectContrast(time: number, annotations?: CheckAnnotationBox[]): Promise<ContrastCapture>;
+  collectContrast(
+    time: number,
+    snapshotAnnotations?: CheckAnnotationBox[],
+    skipInMotion?: boolean,
+  ): Promise<ContrastCapture>;
+  /** Craft section: text, stillness and paint at the current seek. A driver without it skips the section. */
+  collectCraftFrame?(time: number): Promise<CraftFrame>;
+  collectCraftFilm?(): Promise<CraftFilm>;
 }
 
 export interface CheckScreenshot {
@@ -241,6 +314,9 @@ export interface CheckTimings {
   launchSettleMs: number;
   seekLoopMs: number;
   contrastMs: number;
+  gridMs: number;
+  craftMs: number;
+  overlapMs: number;
 }
 
 export interface CheckBrowserResult {
@@ -256,9 +332,29 @@ export interface CheckBrowserResult {
   contrastFindings: CheckContrastFinding[];
   contrastChecked: number;
   contrastPassed: number;
+  craft: CraftResult;
   screenshots: CheckScreenshot[];
   timings: CheckTimings;
+  renderReadyTimedOut: boolean;
   skipped: boolean;
+}
+
+/** Taste warnings measured on the dense grid: never errors, so they gate only under --strict. */
+export interface CraftFinding extends CheckFinding {
+  words?: number;
+  seconds?: number;
+  floorSeconds?: number;
+  fontPx?: number;
+  floorPx?: number;
+  until?: number;
+  elements?: { selector: string; text: string; fontPx: number; time: number; seconds: number }[];
+}
+
+export interface CraftResult {
+  enabled: boolean;
+  step: number;
+  samples: number;
+  findings: CraftFinding[];
 }
 
 /** The seek-grid audit loop, injected into checkBrowser so it never imports checkPipeline back. */
@@ -266,6 +362,10 @@ export type RunAuditGrid = (
   driver: CheckAuditDriver,
   options: CheckOptions,
   motion: MotionSpecResolution,
+  helpers?: Promise<CheckAuditDriver[]>,
+  enter?: (phase: CheckPhase) => void,
+  report?: CheckProgress,
+  keep?: (read: () => Partial<CheckBrowserResult>) => void,
 ) => Promise<CheckBrowserResult>;
 
 export interface CheckSection<T extends CheckFinding = CheckFinding> {
@@ -304,6 +404,8 @@ export interface CheckReport {
     checked: number;
     passed: number;
   };
+  craft: CheckSection<CraftFinding> & { enabled: boolean; step: number; samples: number };
+  audio: CheckSection;
   hdr: { autoPromotion: HdrAutoPromotion | null; inspection: "available" | "unavailable" };
   snapshots: { enabled: boolean; files: string[]; times: number[]; findingFiles: string[] };
 }
@@ -316,7 +418,12 @@ export interface CheckDependencies {
     options: CheckOptions,
     motion: MotionSpecResolution,
     deadline?: CheckDeadline,
+    prelaunched?: PrelaunchedBrowser,
   ): Promise<CheckBrowserResult>;
+  prelaunchBrowser?(
+    project: ProjectDir,
+    options: CheckOptions,
+  ): Promise<PrelaunchedBrowser | undefined>;
   writeSnapshot(
     projectDir: string,
     index: number,
@@ -329,7 +436,18 @@ export interface CheckDependencies {
     requests: CheckFindingCropRequest[],
     deadline?: CheckDeadline,
   ): Promise<string[]>;
-  inspectHdrAutoPromotion?(project: ProjectDir): Promise<CheckReport["hdr"]["autoPromotion"]>;
+  captureFindingFrames?(
+    project: ProjectDir,
+    options: CheckOptions,
+    requests: CheckFindingFrameRequest[],
+    deadline?: CheckDeadline,
+  ): Promise<CheckFindingFrames>;
+  collectMedia?(project: ProjectDir): Promise<ProjectMedia>;
+  inspectHdrAutoPromotion?(
+    project: ProjectDir,
+    media: ProjectMedia,
+  ): Promise<CheckReport["hdr"]["autoPromotion"]>;
+  inspectAudio?(project: ProjectDir, media: ProjectMedia): Promise<CheckFinding[]>;
 }
 
 export function rectToBbox(rect: {

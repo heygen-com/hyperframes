@@ -126,14 +126,14 @@ describe("mirrorGlobalSkills", () => {
 
   it("mirrors the store into installed agents as relative symlinks (Unix)", () => {
     const home = makeHome();
-    seedStore(home, ["hyperframes", "hyperframes-core"]);
+    seedStore(home, ["hyperframes", "hyperframes-cli"]);
     installMarker(home, ".cursor"); // cursor present
     installMarker(home, ".bob"); // IBM Bob present
     installMarker(home, ".config/goose"); // goose present (XDG base)
     // windsurf NOT installed (no ~/.codeium/windsurf)
 
     const { mirrored, skipped } = mirrorGlobalSkills({
-      skills: ["hyperframes", "hyperframes-core"],
+      skills: ["hyperframes", "hyperframes-cli"],
       home,
       platform: "linux",
       env: ENV,
@@ -159,7 +159,7 @@ describe("mirrorGlobalSkills", () => {
 
     // goose lands in the XDG config dir (~/.config/goose), not ~/.goose
     expect(
-      existsSync(join(home, ".config", "goose", "skills", "hyperframes-core", "SKILL.md")),
+      existsSync(join(home, ".config", "goose", "skills", "hyperframes-cli", "SKILL.md")),
     ).toBe(true);
   });
 

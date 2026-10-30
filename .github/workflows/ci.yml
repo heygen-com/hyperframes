@@ -39,20 +39,12 @@ jobs:
   test-reachability:
     name: Test reachability
     runs-on: ubuntu-latest
-    timeout-minutes: 4
+    timeout-minutes: 6
     steps:
-      # A history fetch now and then stalls until the job's limit; a second fetch gets through.
-      - id: checkout
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        timeout-minutes: 1
-        continue-on-error: true
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        timeout-minutes: 3
         with:
-          fetch-depth: 0
-      - if: steps.checkout.outcome != 'success'
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        timeout-minutes: 1
-        with:
-          fetch-depth: 0
+          fetch-depth: 2
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
@@ -73,38 +65,32 @@ jobs:
   changes:
     name: Detect changes
     runs-on: ubuntu-latest
-    timeout-minutes: 4
+    timeout-minutes: 8
     permissions:
       actions: read
       contents: read
       pull-requests: read
     outputs:
-      code: ${{ (github.event_name == 'workflow_dispatch' && inputs.catalog_publish) && 'true' || steps.filter.outputs.code }}
+      release_only: ${{ steps.release.outputs.release_only }}
+      code: ${{ (github.event_name == 'workflow_dispatch' && inputs.catalog_publish) && 'true' || steps.release.outputs.release_only == 'true' && 'false' || steps.filter.outputs.code }}
       docs_catalog: ${{ steps.filter.outputs.docs_catalog }}
-      cli: ${{ steps.filter.outputs.cli }}
-      cli_bundle: ${{ steps.filter.outputs.cli_bundle }}
-      skills: ${{ steps.filter.outputs.skills }}
-      catalog_index: ${{ steps.filter.outputs.catalog_index }}
+      cli: ${{ steps.release.outputs.release_only == 'true' && 'false' || steps.filter.outputs.cli }}
+      cli_bundle: ${{ steps.release.outputs.release_only == 'true' && 'false' || steps.filter.outputs.cli_bundle }}
+      skills: ${{ steps.release.outputs.release_only == 'true' && 'false' || steps.filter.outputs.skills }}
+      catalog_index: ${{ steps.release.outputs.release_only == 'true' && 'false' || steps.filter.outputs.catalog_index }}
       codex_plugin: ${{ steps.filter.outputs.codex_plugin }}
-      gcp_beginframe: ${{ steps.filter.outputs.gcp_beginframe }}
-      studio: ${{ steps.filter.outputs.studio }}
-      edit_accuracy: ${{ steps.edit_accuracy_filter.outputs.edit_accuracy }}
+      gcp_beginframe: ${{ steps.release.outputs.release_only == 'true' && 'false' || steps.filter.outputs.gcp_beginframe }}
+      studio: ${{ steps.release.outputs.release_only == 'true' && 'false' || steps.filter.outputs.studio }}
+      edit_accuracy: ${{ steps.release.outputs.release_only == 'true' && 'false' || steps.edit_accuracy_filter.outputs.edit_accuracy }}
     steps:
       # Force git-based change detection instead of the pull_request REST API.
       # The API path can fail the whole workflow on transient listFiles
       # timeouts before any real CI work starts.
-      # A history fetch now and then stalls until the job's limit; a second fetch gets through.
-      - id: checkout
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        timeout-minutes: 1
-        continue-on-error: true
-        with:
-          fetch-depth: 0
-      - if: steps.checkout.outcome != 'success'
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        timeout-minutes: 1
-        with:
-          fetch-depth: 0
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        timeout-minutes: 3
+      - name: Fetch the history the diffs read
+        timeout-minutes: 2
+        uses: ./.github/actions/fetch-history
       - name: Check whether this commit already passed before a title or body edit
         id: edit
         uses: ./.github/actions/edit-already-passed
@@ -125,6 +111,9 @@ jobs:
         env:
           BASE_SHA: ${{ steps.base.outputs.sha }}
         run: sh scripts/check-large-files.sh --range "$BASE_SHA" HEAD
+      - name: Find a release-only diff
+        id: release
+        uses: ./.github/actions/release-only-diff
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4
         id: filter
         if: steps.edit.outputs.passed != 'true'
@@ -170,7 +159,6 @@ jobs:
               - "skills/gsap/**"
               - "skills/media-use/**"
             skills:
-              - "scripts/generate-captured-font-copies.mjs"
               - "packages/cli/src/media-use/**"
               - "scripts/check-media-use-copy-parity.test.mjs"
               - "scripts/check-skill-import-boundaries.test.mjs"
@@ -192,7 +180,6 @@ jobs:
               - ".claude-plugin/**"
               - ".cursor-plugin/**"
               - "scripts/package-agent-plugin*"
-              - "scripts/agent-plugin-captions.test.mjs"
               - "scripts/set-version*"
               - "LICENSE"
               - ".codex-plugin/**"
@@ -251,6 +238,7 @@ jobs:
               - "packages/cli/src/{background-removal,registry,telemetry}/**"
               - "packages/cli/src/capture/{captureCompositionFrame,captureTimeout,navigateForCapture,readBoundedResponse}.ts"
               - "packages/cli/src/media-use/lib/config-lock.mjs"
+              - "packages/cli/src/auth/{config,errors,paths,telemetryIdentity}.ts"
               - "packages/cli/scripts/**"
               - "packages/core/stubs/**"
               - "packages/engine/src/**"
@@ -273,6 +261,20 @@ jobs:
               - "!**/*.{test,spec}.{ts,tsx,mjs,js}"
               - "!**/{__tests__,__fixtures__}/**"
               - "!**/*.md"
+
+  # A release PR changes versions and notes only (scripts/ci/release-only-diff.mjs), so heavy suites skip it.
+  # Build still packs the manifests and keeps the tarballs; this job checks the release is consistent.
+  release-checks:
+    name: Release checks
+    needs: changes
+    if: ${{ needs.changes.outputs.release_only == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - run: node scripts/ci/release-only-diff.mjs --verify
 
   gcp-beginframe-contract:
     name: GCP BeginFrame image contract
@@ -302,13 +304,14 @@ jobs:
           target: beginframe-contract
           push: false
           cache-from: type=gha,scope=gcp-beginframe-contract
-          cache-to: type=gha,mode=max,scope=gcp-beginframe-contract
+          # One writer (main): ~1 GB exports per PR run evict the bun cache, and a cold bun install can stall.
+          cache-to: ${{ github.event_name == 'push' && 'type=gha,mode=max,scope=gcp-beginframe-contract' || '' }}
 
   build:
     name: Build
     needs: changes
     # A skipped required check passes, so a broken change detection must fail it instead.
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.code == 'true' || needs.changes.outputs.cli_bundle == 'true' || needs.changes.outputs.edit_accuracy == 'true') }}
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.code == 'true' || needs.changes.outputs.cli_bundle == 'true' || needs.changes.outputs.edit_accuracy == 'true' || needs.changes.outputs.release_only == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -330,6 +333,17 @@ jobs:
       - run: bash scripts/ci/install-workspace-dependencies.sh
       - run: bun run build
       - run: bun run verify:packed-manifests
+        env:
+          PACK_KEEP_DIR: ${{ startsWith(github.head_ref, 'release/v') && format('{0}/release-tarballs', runner.temp) || '' }}
+      - name: Keep the release tarballs
+        if: startsWith(github.head_ref, 'release/v')
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-tarballs
+          path: ${{ runner.temp }}/release-tarballs/*.tgz
+          if-no-files-found: error
+          retention-days: 7
+      - run: bun run check:cli-lazy-deps
       - name: Share the built CLI with the edit accuracy shards
         if: needs.changes.outputs.edit_accuracy == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -533,17 +547,7 @@ jobs:
         with:
           lfs: true
           fetch-depth: 0
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 22
-      - name: Install FFmpeg for catalog preview tests
-        uses: ./.github/actions/install-ffmpeg-linux
-      - uses: ./.github/actions/prepare-ffmpeg-bin
-      - run: bash scripts/ci/install-workspace-dependencies.sh
-      - run: bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
-      - run: bun run --cwd packages/core build
-      - run: bun run --cwd packages/core build:hyperframes-runtime
+      - uses: ./.github/actions/setup-test-workspace
       - run: bun run --cwd packages/studio test
 
   test-runtime:
@@ -556,17 +560,21 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           lfs: true
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: ./.github/actions/setup-test-workspace
+      - run: bun run --filter '@hyperframes/{core,engine}' test
+
+  test-cli:
+    name: Test (cli)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          node-version: 22
-      - uses: ./.github/actions/install-ffmpeg-linux
-      - uses: ./.github/actions/prepare-ffmpeg-bin
-      - run: bash scripts/ci/install-workspace-dependencies.sh
-      - run: bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
-      - run: bun run --cwd packages/core build
-      - run: bun run --cwd packages/core build:hyperframes-runtime
-      - run: bun run --filter '@hyperframes/{cli,core,engine}' test
+          lfs: true
+      - uses: ./.github/actions/setup-test-workspace
+      - run: bun run --filter '@hyperframes/cli' test
 
   test-support:
     name: Test (support)
@@ -579,31 +587,56 @@ jobs:
         with:
           lfs: true
           fetch-depth: 0
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - id: workspace
+        uses: ./.github/actions/setup-test-workspace
         with:
-          node-version: 22
-      - uses: ./.github/actions/install-ffmpeg-linux
-      - uses: ./.github/actions/prepare-ffmpeg-bin
-      - run: bash scripts/ci/install-workspace-dependencies.sh
-      - run: bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
-      - run: bun run --cwd packages/core build
-      - run: bun run --cwd packages/core build:hyperframes-runtime
-      - name: Install Chrome for catalog preview tests
-        id: catalog-chrome
-        uses: browser-actions/setup-chrome@c785b87e244131f27c9f19c1a33e2ead956ab7ce # v1
-        with:
-          chrome-version: stable
+          chrome: "true"
       - run: bun run generate:catalog
         if: needs.changes.outputs.docs_catalog == 'true'
       - run: bun run test:scripts
         env:
-          HYPERFRAMES_BROWSER_PATH: ${{ steps.catalog-chrome.outputs.chrome-path }}
+          HYPERFRAMES_BROWSER_PATH: ${{ steps.workspace.outputs.chrome-path }}
       - run: bun run --filter '@hyperframes/{lint,parsers,studio-server,sdk,player,aws-lambda,gcp-cloud-run,sdk-playground,shader-transitions,inspector}' test
+
+  flake-gate:
+    name: Flake gate
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          lfs: true
+          fetch-depth: 0
+      # HEAD is the PR merge ref; its first parent is the current base tip (see `changes`).
+      - name: Find changed test files
+        id: plan
+        run: |
+          echo "base=$(git rev-parse HEAD^1)" >> "$GITHUB_OUTPUT"
+          node scripts/ci/flake-gate.mjs --list --base "$(git rev-parse HEAD^1)"
+      - id: workspace
+        if: steps.plan.outputs.any == 'true'
+        uses: ./.github/actions/setup-test-workspace
+        with:
+          chrome: "true"
+          engine: "true"
+      - if: steps.plan.outputs.any == 'true'
+        env:
+          HYPERFRAMES_BROWSER_PATH: ${{ steps.workspace.outputs.chrome-path }}
+        run: node scripts/ci/flake-gate.mjs --base "${{ steps.plan.outputs.base }}"
 
   test:
     name: Test
-    needs: [changes, producer-source-tests, test-studio, test-runtime, test-support, test-skills]
+    needs:
+      [
+        changes,
+        producer-source-tests,
+        test-studio,
+        test-runtime,
+        test-cli,
+        test-support,
+        test-skills,
+      ]
     # Keep the existing required `Test` context authoritative for producer
     # failures too. It also fails closed if any package shard fails or is cancelled.
     if: always() && (needs.changes.result != 'success' || needs.changes.outputs.code == 'true' || needs.changes.outputs.skills == 'true')
@@ -621,10 +654,10 @@ jobs:
           echo "::error::Producer unit/integration tests did not succeed."
           exit 1
       - name: Require package test shards
-        if: needs.changes.outputs.code == 'true' && (needs.test-studio.result != 'success' || needs.test-runtime.result != 'success' || needs.test-support.result != 'success')
+        if: needs.changes.outputs.code == 'true' && (needs.test-studio.result != 'success' || needs.test-runtime.result != 'success' || needs.test-cli.result != 'success' || needs.test-support.result != 'success')
         run: |
           echo "::error::A package test shard did not succeed."
-          echo "studio=${{ needs.test-studio.result }} runtime=${{ needs.test-runtime.result }} support=${{ needs.test-support.result }}"
+          echo "studio=${{ needs.test-studio.result }} runtime=${{ needs.test-runtime.result }} cli=${{ needs.test-cli.result }} support=${{ needs.test-support.result }}"
           exit 1
       - name: Require skills tests
         if: needs.changes.outputs.skills == 'true' && needs.test-skills.result != 'success'
@@ -715,8 +748,6 @@ jobs:
       - name: Exercise npm-cli bootstrap command
         run: >-
           node --test
-          skills/hyperframes-animation/scripts/package-loader.test.mjs
-          skills/hyperframes-creative/scripts/package-loader.test.mjs
           skills/hyperframes/scripts/plugin-cli.test.mjs
 
   # Guards that skills-manifest.json (the published freshness fingerprint read
@@ -786,8 +817,6 @@ jobs:
         run: node --test scripts/package-agent-plugin.test.mjs
       - name: Build portable agent plugin
         run: node scripts/package-agent-plugin.mjs
-      - name: Exercise captions from the extracted portable bundle
-        run: node --test scripts/agent-plugin-captions.test.mjs
       - name: Build upload-ready Codex plugin
         run: node scripts/package-codex-plugin.mjs
 
@@ -813,6 +842,8 @@ jobs:
       - name: Install dependencies
         if: runner.os == 'Windows'
         run: bun install --frozen-lockfile --ignore-scripts --linker=hoisted
+      - run: bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
+      - run: bun run --cwd packages/core build
       - run: bun run --cwd packages/cli test src/utils/npxCommand.test.ts src/commands/skills.test.ts
 
   sdk-tests:
@@ -1267,7 +1298,7 @@ jobs:
   studio-edit-accuracy-gate:
     name: "Studio: edit accuracy gate"
     needs: [changes, studio-edit-accuracy, studio-edit-accuracy-retry]
-    if: ${{ !cancelled() && needs.changes.outputs.edit_accuracy == 'true' }}
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.edit_accuracy == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -1315,7 +1346,8 @@ jobs:
       - name: Fail if the gate failed
         if: steps.gate.outputs.exit_code != '0'
         run: |
-          echo "::error::Edit accuracy fell against the base branch; see the PR comment."
+          verdict=$(jq -r '.verdict // empty' /tmp/edit-accuracy-gate/gate.json 2>/dev/null)
+          echo "::error::${verdict:-The edit accuracy gate could not finish; see its log.}"
           exit 1
 
   smoke-global-install:
@@ -1427,8 +1459,7 @@ jobs:
           test -s /tmp/hf-cli-input.mp4
 
       - name: Smoke-test CLI from monorepo source
-        # init's --skip-skills flag is neutered (see init.ts); opt out of the
-        # GitHub skills check via this env so the smoke test stays offline/fast.
+        # Skip skill installation and GitHub checks to keep the smoke test offline.
         env:
           HYPERFRAMES_SKIP_SKILLS: "1"
         run: |
@@ -1441,6 +1472,9 @@ jobs:
             --skip-transcribe \
             --non-interactive \
             --skip-skills
+
+          # No smoke page waits on a CDN for GSAP.
+          node scripts/ci/inline-gsap.mjs /tmp/hf-cli-inside
 
           bun run --filter @hyperframes/cli dev -- lint /tmp/hf-cli-inside
           bun run --filter @hyperframes/cli dev -- validate /tmp/hf-cli-inside --timeout 3000
@@ -1491,8 +1525,7 @@ jobs:
           npm install -g --prefix /tmp/hf-cli-global "$HF_CLI_TARBALL"
 
       - name: Smoke-test packed CLI outside monorepo
-        # init's --skip-skills flag is neutered (see init.ts); opt out of the
-        # GitHub skills check via this env so the smoke test stays offline/fast.
+        # Skip skill installation and GitHub checks to keep the smoke test offline.
         env:
           HYPERFRAMES_SKIP_SKILLS: "1"
         run: |
@@ -1506,6 +1539,9 @@ jobs:
             --skip-transcribe \
             --non-interactive \
             --skip-skills
+
+          # No smoke page waits on a CDN for GSAP.
+          node scripts/ci/inline-gsap.mjs /tmp/hf-cli-outside
 
           hyperframes lint /tmp/hf-cli-outside
           hyperframes validate /tmp/hf-cli-outside --timeout 3000
@@ -1522,9 +1558,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 1
     steps:
+      # A pull request checks out its merge commit, whose first parent is the base: two commits are the whole diff.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          fetch-depth: 0
+          fetch-depth: 2
       - name: Check file sizes (max 600 lines)
         # Scoped to files THIS PR changed under packages/studio. Walking the
         # whole tree blamed every unrelated PR for pre-existing offenders.
@@ -1535,7 +1572,7 @@ jobs:
           if [ -n "${{ github.base_ref }}" ]; then
             mapfile -t files < <(
               git diff --name-only --diff-filter=ACMR \
-                "origin/${{ github.base_ref }}...HEAD" -- \
+                HEAD^1 HEAD -- \
                 'packages/studio/**/*.ts' 'packages/studio/**/*.tsx' \
                 | grep -vE '\.(test|spec)\.(ts|tsx)$|\.generated\.' || true
             )

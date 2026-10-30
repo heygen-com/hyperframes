@@ -36,12 +36,14 @@ export function isNonRelativeUrl(val: string): boolean {
  * Cross-platform containment check: is `childPath` inside `parentPath`?
  * Equality counts as "inside".
  */
+const LEADING_PARENT_SEGMENT_RE = /^\.\.(?:[\\/]|$)/;
+
 export function isPathInside(childPath: string, parentPath: string): boolean {
   const absChild = resolve(childPath);
   const absParent = resolve(parentPath);
   if (absChild === absParent) return true;
   const rel = relative(absParent, absChild);
-  return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
+  return rel !== "" && !LEADING_PARENT_SEGMENT_RE.test(rel) && !isAbsolute(rel);
 }
 
 export {

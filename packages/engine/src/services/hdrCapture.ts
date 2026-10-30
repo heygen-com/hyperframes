@@ -19,8 +19,9 @@
  * Performance: ~6 fps at 1080x1920 via base64 transfer.
  */
 
+import { withHyperframesBrowserMarker } from "@hyperframes/core/browser-marker";
 import type { Page, Browser, PuppeteerNode } from "puppeteer-core";
-import { resolveFullChromePath, sigintLaunchOptions } from "./browserManager.js";
+import { resolveFullChromePath, ownedLaunchOptions } from "./browserManager.js";
 
 // ── PQ (SMPTE 2084) OETF ─────────────────────────────────────────────────────
 
@@ -246,10 +247,10 @@ export async function launchHdrBrowser(
   }
 
   const browser = await ppt.launch({
-    ...sigintLaunchOptions(),
+    ...ownedLaunchOptions(),
     headless: false,
     executablePath: chromePath,
-    args: buildHdrChromeArgs(width, height),
+    args: withHyperframesBrowserMarker(buildHdrChromeArgs(width, height)),
   });
 
   const page = await browser.newPage();

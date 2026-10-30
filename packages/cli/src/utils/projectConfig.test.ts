@@ -8,6 +8,7 @@ import {
   normalizeConfig,
   projectConfigPath,
   readProjectConfig,
+  readProjectConfigWithStatus,
   resolveAutoProxy,
   recordProjectRegistryItems,
   seedProjectAuthoringSkill,
@@ -48,6 +49,75 @@ describe("projectConfig", () => {
         rmSync(dir, { recursive: true, force: true });
       }
     });
+  });
+
+  describe("UTF-8 byte order marks", () => {
+    it("reads custom project settings after one leading byte order mark", () => {
+      const dir = tmp();
+      try {
+        const config = {
+          registry: "https://example.com/custom-registry",
+          paths: { blocks: "scenes", components: "effects", assets: "media" },
+          media: { autoProxy: false },
+        };
+        writeFileSync(projectConfigPath(dir), `\uFEFF${JSON.stringify(config)}`);
+        expect(readProjectConfigWithStatus(dir)).toMatchObject({ status: "ok", config });
+        expect(readProjectConfig(dir)?.registry).toBe(config.registry);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it("patches marked settings without dropping their encoding marker or custom keys", () => {
+      const dir = tmp();
+      try {
+        writeFileSync(
+          projectConfigPath(dir),
+          `\uFEFF${JSON.stringify({ custom: "kept" }, null, 4)}\n`,
+        );
+        seedProjectAuthoringSkill(dir, "hyperframes");
+        recordProjectRegistryItems(dir, [
+          { name: "test-block", type: "hyperframes:block", target: "scenes/test.html" },
+        ]);
+        const text = readFileSync(projectConfigPath(dir), "utf8");
+        expect(text.startsWith("\uFEFF")).toBe(true);
+        expect(text).toContain('\n    "custom"');
+        expect(JSON.parse(text.slice(1))).toMatchObject({
+          custom: "kept",
+          authoringSkill: "hyperframes",
+          registryItems: [{ name: "test-block", target: "scenes/test.html" }],
+        });
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it("preserves byte order mark characters inside configuration values", () => {
+      const dir = tmp();
+      try {
+        writeFileSync(
+          projectConfigPath(dir),
+          `\uFEFF${JSON.stringify({ paths: { assets: "media/\uFEFFmarked" } })}`,
+        );
+        expect(readProjectConfig(dir)?.paths.assets).toBe("media/\uFEFFmarked");
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it.each(["\uFEFF{", "\uFEFF", "\uFEFF\uFEFF{}"])(
+      "keeps malformed or empty marked configuration unreadable (%s)",
+      (content) => {
+        const dir = tmp();
+        try {
+          writeFileSync(projectConfigPath(dir), content);
+          expect(readProjectConfigWithStatus(dir)).toEqual({ status: "unreadable" });
+          expect(readProjectConfig(dir)).toBeUndefined();
+        } finally {
+          rmSync(dir, { recursive: true, force: true });
+        }
+      },
+    );
   });
 
   describe("normalizeConfig", () => {

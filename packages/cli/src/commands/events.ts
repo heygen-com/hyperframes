@@ -1,4 +1,4 @@
-import { defineCommand } from "citty";
+import { defineCommand } from "../utils/defineCommand.js";
 import { trackEvent, flushSync } from "../telemetry/client.js";
 import { SKILL_SLUG } from "../telemetry/skill.js";
 
@@ -6,8 +6,8 @@ import { SKILL_SLUG } from "../telemetry/skill.js";
 // ideally from its own bundled script, so it fires deterministically rather
 // than relying on the agent to remember:
 //
-//   npx hyperframes events --skill=product-launch-video
-//   npx hyperframes events --skill=product-launch-video --event=skill_completed --outcome=success
+//   npx hyperframes events --skill=slideshow
+//   npx hyperframes events --skill=slideshow --event=skill_completed --outcome=success
 //
 // Rides the SAME anonymous PostHog pipeline + consent gates as every other CLI
 // event (DO_NOT_TRACK / telemetry opt-out, anonymous install UUID, IP stripped).
@@ -23,12 +23,12 @@ export default defineCommand({
   meta: {
     name: "events",
     description:
-      "Emit an anonymous skill-usage telemetry event (skills report their own invocation/outcome). Honors DO_NOT_TRACK / telemetry opt-out.",
+      "Emit a skill-usage telemetry event (skills report their own invocation/outcome). Honors DO_NOT_TRACK / telemetry opt-out.",
   },
   args: {
     skill: {
       type: "string",
-      description: "Authoring skill slug, e.g. product-launch-video",
+      description: "Authoring skill slug, e.g. slideshow",
     },
     event: {
       type: "string",

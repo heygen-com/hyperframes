@@ -1,5 +1,5 @@
-import { buildSync } from "esbuild";
 import { existsSync } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -8,6 +8,8 @@ export type HyperframesRuntimeBuildOptions = {
   defaultParityMode?: boolean;
   minify?: boolean;
 };
+
+export const RUNTIME_ESBUILD_DEFINE = { console: "globalThis.console" };
 
 function applyDefaultParityMode(script: string, enabled: boolean): string {
   const parityFlagPattern = /var\s+_parityModeEnabled\s*=\s*(?:true|false)\s*;/;
@@ -31,6 +33,7 @@ export function buildHyperframesRuntimeScript(
   const entryPath = resolve(dirname(fileURLToPath(import.meta.url)), "../runtime/entry.ts");
   if (!existsSync(entryPath)) return null;
 
+  const { buildSync } = createRequire(import.meta.url)("esbuild") as typeof import("esbuild");
   const result = buildSync({
     entryPoints: [entryPath],
     bundle: true,
@@ -40,6 +43,7 @@ export function buildHyperframesRuntimeScript(
     target: ["es2020"],
     minify: options.minify ?? true,
     legalComments: "none",
+    define: RUNTIME_ESBUILD_DEFINE,
   });
   let script = result.outputFiles[0]?.text ?? "";
   if (typeof options.defaultParityMode === "boolean") {

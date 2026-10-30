@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import { parseHTML } from "linkedom";
 import { JSDOM } from "jsdom";
 import {
+  AUTHORED_SOURCE_BEGIN,
+  AUTHORED_SOURCE_END,
   buildVariablesByCompScript,
   dedupeFontFaceRules,
   scopeCssToComposition,
@@ -485,6 +487,37 @@ body { margin: 0; }
     expect(fakeWindow.__capturedMountCharsType).toBe("function");
   });
 
+  it("scopes a selector naming the authored composition id to each mount of a shared scene", () => {
+    const { document } = parseHTML(`
+      <div data-composition-id="step__hf1"><i class="sc">first</i></div>
+      <div data-composition-id="step__hf2"><i class="sc">second</i></div>
+    `);
+    const gsapTargets: string[][] = [];
+    const fakeWindow = {
+      document,
+      __timelines: {},
+      gsap: {
+        timeline: () => ({
+          to(targets: Element[]) {
+            gsapTargets.push(Array.from(targets).map((target) => target.textContent || ""));
+            return this;
+          },
+        }),
+      },
+    };
+    const wrapped = wrapScopedCompositionScript(
+      `gsap.timeline({ paused: true }).to('[data-composition-id="step"] .sc', { x: 1 });`,
+      "step",
+      undefined,
+      '[data-composition-id="step__hf2"]',
+      "step__hf2",
+    );
+
+    new Function("window", "gsap", wrapped)(fakeWindow, fakeWindow.gsap);
+
+    expect(gsapTargets).toEqual([["second"]]);
+  });
+
   it("executes document and GSAP selectors inside the composition root", () => {
     const { document } = parseHTML(`
       <div data-composition-id="scene" data-start="intro"><h1 class="title">Scene</h1></div>
@@ -629,6 +662,34 @@ globalThis.gsap.to("p", { x: 1 });
     new Function("window", "gsap", wrapped)(fakeWindow, fakeWindow.gsap);
 
     expect(targetCompositions).toEqual(["scene", "scene"]);
+  });
+
+  it("preserves missing GSAP selectors without targeting another composition", () => {
+    const { document } = parseHTML(`
+      <div data-composition-id="scene"></div>
+      <div data-composition-id="other"><span data-part="missing"></span></div>
+    `);
+    const targets: Element[][] = [];
+    const fakeWindow = {
+      document,
+      __timelines: {},
+      gsap: {
+        to(target: Element[]) {
+          targets.push(target);
+        },
+      },
+    };
+    const wrapped = wrapScopedCompositionScript(
+      `gsap.to('[data-part="missing"]', { opacity: 1 });`,
+      "scene",
+    );
+
+    new Function("window", "gsap", wrapped)(fakeWindow, fakeWindow.gsap);
+
+    expect(targets).toHaveLength(1);
+    expect(Array.isArray(targets[0])).toBe(true);
+    expect(targets[0]).toHaveLength(0);
+    expect(String(targets[0])).toBe('[data-part="missing"]');
   });
 
   it("scopes getElementById when duplicate IDs exist across composition roots", () => {
@@ -1506,5 +1567,15 @@ describe("composition scoping – renamed-id selector runtime", () => {
     );
     expect(captured.hash).toBe("rect");
     expect(captured.bracket).toBe("circle");
+  });
+});
+
+describe("wrapScopedCompositionScript — authored source delimiters", () => {
+  it("puts exactly the authored source between the markers, apart from the wrapper's own __timelines use", () => {
+    const wrapped = wrapScopedCompositionScript("draw();", "scene");
+    const authored = wrapped.split(AUTHORED_SOURCE_BEGIN)[1]!.split(AUTHORED_SOURCE_END)[0]!;
+    expect(authored.trim()).toBe("draw();");
+    expect(wrapped).toContain("__timelines");
+    expect(wrapped.replace(authored, "")).toContain("__timelines");
   });
 });

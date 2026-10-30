@@ -136,6 +136,25 @@ describe("fontToDataUri", () => {
     expect(uri).toMatch(/^data:font\/otf;base64,/);
   });
 
+  it("embeds ttf and otf raw without compressing or caching when compress is false", async () => {
+    const cacheDir = mkdtempSync(join(tmpdir(), "hf-font-compression-off-"));
+    const compressImpl = vi.fn(async () => Buffer.from("woff2"));
+    try {
+      const raw = Buffer.from("font-bytes");
+      const options = { cacheDir, compressImpl, compressToWoff2: false };
+      expect(await fontToDataUri(raw, "ttf", options)).toBe(
+        `data:font/ttf;base64,${raw.toString("base64")}`,
+      );
+      expect(await fontToDataUri(raw, "otf", options)).toBe(
+        `data:font/otf;base64,${raw.toString("base64")}`,
+      );
+      expect(compressImpl).not.toHaveBeenCalled();
+      expect(readdirSync(cacheDir)).toEqual([]);
+    } finally {
+      rmSync(cacheDir, { recursive: true, force: true });
+    }
+  });
+
   it("embeds ttc collections raw without attempting slow woff2 compression", async () => {
     const warnings: unknown[][] = [];
     const originalWarn = console.warn;

@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>control: the box a player takes from its embed</title>
+    <style>
+      body {
+        margin: 0;
+      }
+      .wrap {
+        width: 800px;
+      }
+      p {
+        margin: 12px 0 4px;
+        font:
+          14px/1.2 system-ui,
+          sans-serif;
+      }
+      .column {
+        display: flex;
+        flex-direction: column;
+        width: 800px;
+        height: 600px;
+      }
+      .ratio {
+        aspect-ratio: 16 / 9;
+        height: 300px;
+        background: #333;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <p>no height or width set: expect 800x450</p>
+      <hyperframes-player id="plain" src="../gsap-heavy/index.html"></hyperframes-player>
+      <p>height: 300px only: expect 800x300</p>
+      <hyperframes-player
+        id="heightOnly"
+        style="height: 300px"
+        src="../gsap-heavy/index.html"
+      ></hyperframes-player>
+      <p>width: 400px only: expect 400x225</p>
+      <hyperframes-player
+        id="widthOnly"
+        style="width: 400px"
+        src="../gsap-heavy/index.html"
+      ></hyperframes-player>
+      <p>width: 200px and height: 100px: expect 200x100</p>
+      <hyperframes-player
+        id="both"
+        style="width: 200px; height: 100px"
+        src="../gsap-heavy/index.html"
+      ></hyperframes-player>
+      <p>not a player: a plain div with aspect-ratio 16/9 and only height: 300px</p>
+      <div id="ratioHeightOnly" class="ratio"></div>
+    </div>
+    <p>flex: 1 in an 800x600 column: expect 800x600</p>
+    <div class="column">
+      <hyperframes-player
+        id="flexFill"
+        style="flex: 1"
+        src="../gsap-heavy/index.html"
+      ></hyperframes-player>
+    </div>
+    <script src="/player/hyperframes-player.global.js"></script>
+    <script>
+      // Each player's box once every film is ready, against the box its embed asks for.
+      (async function () {
+        var EXPECTED = {
+          plain: [800, 450],
+          heightOnly: [800, 300],
+          widthOnly: [400, 225],
+          both: [200, 100],
+          flexFill: [800, 600],
+        };
+        var players = Object.keys(EXPECTED).map((id) => document.getElementById(id));
+        await Promise.all(
+          players.map(
+            (p) =>
+              new Promise((resolve) => {
+                p.addEventListener("ready", resolve, { once: true });
+                setTimeout(resolve, 15000);
+              }),
+          ),
+        );
+        var cases = players.map((p) => {
+          var w = Math.round(p.getBoundingClientRect().width);
+          var h = Math.round(p.getBoundingClientRect().height);
+          var want = EXPECTED[p.id];
+          return {
+            name: p.id,
+            width: w,
+            height: h,
+            ok: Math.abs(w - want[0]) <= 1 && Math.abs(h - want[1]) <= 1,
+          };
+        });
+        window.__box = {
+          cases: cases,
+          ratioHeightOnlyWidth: Math.round(
+            document.getElementById("ratioHeightOnly").getBoundingClientRect().width,
+          ),
+        };
+      })();
+    </script>
+  </body>
+</html>

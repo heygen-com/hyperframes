@@ -116,6 +116,25 @@ describe("validateVariables", () => {
     expect(validateVariables({ hero: "https://x/y.png" }, DECLS)).toEqual([]);
   });
 
+  it("validates image metadata using the declaration object shape", () => {
+    expect(
+      validateVariables({ hero: { url: "logo.svg", alt: "Brand", fit: "contain" } }, DECLS),
+    ).toEqual([]);
+    for (const value of [
+      { url: "logo.svg", alt: 3 },
+      { url: "logo.svg", fit: "stretch" },
+    ]) {
+      expect(validateVariables({ hero: value }, DECLS)).toEqual([
+        {
+          kind: "type-mismatch",
+          variableId: "hero",
+          expected: "image object {url: string}",
+          actual: "object with invalid alt/fit",
+        },
+      ]);
+    }
+  });
+
   it("flags an image object missing a string url", () => {
     expect(validateVariables({ hero: { foo: 42 } }, DECLS)).toEqual([
       {

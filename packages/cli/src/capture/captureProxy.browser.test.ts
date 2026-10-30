@@ -11,14 +11,36 @@ const fixture = vi.hoisted(() => ({
   rebound: false,
   dialed: [] as string[],
 }));
-vi.mock("node:dns/promises", () => ({
-  lookup: vi.fn(async (host: string) => {
-    if (host === "capture-fixture.example.com") {
-      return [{ address: fixture.rebound ? "127.0.0.1" : "93.184.216.34", family: 4 }];
-    }
-    throw new Error("Fixture has no such DNS name");
-  }),
-}));
+vi.mock("node:dns", async (importOriginal) => {
+  const real = await importOriginal<typeof import("node:dns")>();
+  return {
+    ...real,
+    promises: {
+      ...real.promises,
+      Resolver: class {
+        async resolve4(host: string) {
+          if (host === "capture-fixture.example.com") {
+            return [fixture.rebound ? "127.0.0.1" : "93.184.216.34"];
+          }
+          throw new Error("Fixture has no such DNS name");
+        }
+        cancel() {}
+      },
+    },
+  };
+});
+vi.mock("node:child_process", async (importOriginal) => {
+  const real = await importOriginal<typeof import("node:child_process")>();
+  return {
+    ...real,
+    execFile: (...args: Parameters<typeof real.execFile>) => {
+      if (!(args[1] as string[] | undefined)?.includes("-e")) return real.execFile(...args);
+      const callback = args.at(-1) as (error: Error, stdout: string, stderr: string) => void;
+      callback(new Error("Fixture has no system DNS"), "", "ENOTFOUND");
+      return { once() {}, kill() {} } as unknown as ReturnType<typeof real.execFile>;
+    },
+  };
+});
 vi.mock("node:http", async (importOriginal) => {
   const original = await importOriginal<typeof import("node:http")>();
   return {

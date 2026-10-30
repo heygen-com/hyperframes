@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Direct and layered gradient text</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #ffffff;
+      }
+
+      #text {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        background: #ffffff;
+      }
+
+      .gradient {
+        position: absolute;
+        left: 120px;
+        width: 1680px;
+        height: 170px;
+        font:
+          120px/170px "DejaVu Sans",
+          sans-serif;
+        background: linear-gradient(#b91c1c, #1d4ed8);
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+
+      #direct {
+        top: 180px;
+      }
+
+      #layered {
+        top: 420px;
+      }
+
+      /* A child with its own paint layer must still contribute glyphs to the gradient mask.
+         https://github.com/heygen-com/hyperframes/issues/5117 */
+      #layered-child {
+        transform: translateY(0);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="text"
+      data-composition-id="gradient-text"
+      data-no-timeline
+      data-start="0"
+      data-duration="1"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="direct" class="gradient">Gradient text</div>
+      <div id="layered" class="gradient"><div id="layered-child">Gradient text</div></div>
+    </div>
+  </body>
+</html>

@@ -13,7 +13,7 @@ import { launchManagedBrowser, resolveManagedGpuMode } from "../browser/launch.j
 
 import { mkdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { resolveDiagnosticNavigationTimeoutMs } from "../utils/renderArgs.js";
+import { pageNavigationTimeoutMs } from "../utils/renderArgs.js";
 import { gotoWhenSent } from "../capture/navigateForCapture.js";
 import { resolveCompositionViewportFromHtml } from "../utils/compositionViewport.js";
 import { waitForRuntimeReady } from "../capture/captureCompositionFrame.js";
@@ -427,7 +427,7 @@ async function openCompositionPage(
   try {
     const page = await browser.newPage();
     await page.setViewport(size);
-    await gotoWhenSent(page, url, resolveDiagnosticNavigationTimeoutMs());
+    await gotoWhenSent(page, url, pageNavigationTimeoutMs());
     await assertWebGpuAdapterAvailable(page, requiresWebGpu, softwareWebGpu);
     await waitForRuntimeReady(page, 10000);
     await page

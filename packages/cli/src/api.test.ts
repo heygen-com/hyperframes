@@ -370,6 +370,7 @@ describe("transcribe", () => {
       "utils/stoppableExecFile.ts",
       "utils/stoppableExecFile.test.ts",
       "whisper/manager.ts",
+      "whisper/modelFile.ts",
       "whisper/modelForLanguage.ts",
       "whisper/parakeet.ts",
       "whisper/sherpa.ts",

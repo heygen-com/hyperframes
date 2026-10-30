@@ -87,10 +87,37 @@ describe.skipIf(!HAS_FFMPEG)("computeAudioResidualRmsDb", () => {
       join(tmp, "sine-880.wav"),
     );
     expect(result.ok).toBe(false);
-    // The residual of two uncorrelated unit-amplitude sines is roughly
-    // the sum of both signals at near-full level — typically around
-    // -3 dBFS in this resampled-stereo configuration.
     expect(result.overallDb).toBeGreaterThan(-30);
+  });
+
+  it("measures the whole unscaled difference when both streams end in silence", () => {
+    for (const [name, source] of [
+      ["prefix.wav", "aevalsrc=0.25|0.25:s=48000:d=1"],
+      ["silence.wav", "anullsrc=r=48000:cl=stereo:d=1"],
+    ] as const) {
+      const generated = spawnSync(
+        "ffmpeg",
+        [
+          "-nostdin",
+          "-v",
+          "error",
+          "-f",
+          "lavfi",
+          "-i",
+          source,
+          "-af",
+          "apad=whole_dur=2",
+          "-c:a",
+          "pcm_s16le",
+          join(tmp, name),
+        ],
+        { encoding: "utf-8" },
+      );
+      expect(generated.status, generated.stderr).toBe(0);
+    }
+    const result = computeAudioResidualRmsDb(join(tmp, "prefix.wav"), join(tmp, "silence.wav"));
+    expect(result.overallDb).toBeCloseTo(-15.0515, 2);
+    expect(result.ok).toBe(false);
   });
 
   it("reports ok=false when an input has no audio stream", () => {

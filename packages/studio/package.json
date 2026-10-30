@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/studio",
-  "version": "0.8.170",
+  "version": "0.8.218",
   "description": "",
   "repository": {
     "type": "git",
@@ -109,6 +109,7 @@
     "@mcp-b/global": "^5.0.1",
     "@phosphor-icons/react": "^2.1.10",
     "@tanstack/react-virtual": "^3.14.13",
+    "acorn": "^8.17.0",
     "cn": "0.2.4",
     "dockview-react": "8.3.1",
     "gsap": "^3.13.0",
@@ -121,7 +122,7 @@
     "@types/react-dom": "19",
     "@vitejs/plugin-react": "^4.0.0",
     "chokidar": "^4.0.3",
-    "esbuild": "^0.25.12",
+    "esbuild": "^0.28.2",
     "fake-indexeddb": "^6.2.5",
     "puppeteer-core": "^25.2.1",
     "tailwindcss": "^4.3.3",

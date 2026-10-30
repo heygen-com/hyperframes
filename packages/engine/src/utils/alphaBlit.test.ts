@@ -88,6 +88,9 @@ function makePng(width: number, height: number, pixels: number[]): Buffer {
 
 // ── decodePng tests ──────────────────────────────────────────────────────────
 
+/** sRGB 255 in an HLG frame: 75% signal, the BT.2408 SDR reference white. */
+const HLG_SDR_WHITE = 49151;
+
 describe("decodePng", () => {
   it("decodes a 1x1 RGBA PNG correctly", () => {
     // RGBA: red pixel, full opacity
@@ -502,12 +505,9 @@ describe("blitRgba8OverRgb48le", () => {
     const dom = makeDomRgba(1, 1, 255, 128, 0, 255); // R=255, G=128, B=0, full opaque
     blitRgba8OverRgb48le(dom, canvas, 1, 1);
 
-    // sRGB 255 → HLG 65535 (white maps to white)
-    // sRGB 128 → HLG ~46484 (mid-gray maps higher due to HLG OETF)
-    // sRGB 0 → HLG 0
-    expect(canvas.readUInt16LE(0)).toBe(65535);
-    expect(canvas.readUInt16LE(2)).toBeGreaterThan(40000); // HLG mid-gray > sRGB mid-gray
-    expect(canvas.readUInt16LE(2)).toBeLessThan(50000);
+    // sRGB 255 → HLG reference white, 128 → 27146, 0 → 0
+    expect(canvas.readUInt16LE(0)).toBe(HLG_SDR_WHITE);
+    expect(canvas.readUInt16LE(2)).toBe(27146);
     expect(canvas.readUInt16LE(4)).toBe(0);
   });
 
@@ -521,7 +521,7 @@ describe("blitRgba8OverRgb48le", () => {
     expect(canvas.readUInt16LE(4)).toBe(257);
   });
 
-  it("sRGB→HLG: black stays black, white stays white", () => {
+  it("sRGB→HLG: black stays black, white lands on HLG reference white", () => {
     const canvasBlack = makeHdrFrame(1, 1, 0, 0, 0);
     const domBlack = makeDomRgba(1, 1, 0, 0, 0, 255);
     blitRgba8OverRgb48le(domBlack, canvasBlack, 1, 1);
@@ -530,7 +530,7 @@ describe("blitRgba8OverRgb48le", () => {
     const canvasWhite = makeHdrFrame(1, 1, 0, 0, 0);
     const domWhite = makeDomRgba(1, 1, 255, 255, 255, 255);
     blitRgba8OverRgb48le(domWhite, canvasWhite, 1, 1);
-    expect(canvasWhite.readUInt16LE(0)).toBe(65535);
+    expect(canvasWhite.readUInt16LE(0)).toBe(HLG_SDR_WHITE);
   });
 
   it("50% alpha: HLG-converted DOM blended with canvas", () => {
@@ -540,9 +540,9 @@ describe("blitRgba8OverRgb48le", () => {
     const dom = makeDomRgba(1, 1, 255, 255, 255, 128);
     blitRgba8OverRgb48le(dom, canvas, 1, 1);
 
-    // sRGB 255 → HLG 65535, blended 50/50 with black
+    // sRGB 255 → HLG reference white, blended 50/50 with black
     const alpha = 128 / 255;
-    const expectedR = Math.round(65535 * alpha);
+    const expectedR = Math.round(HLG_SDR_WHITE * alpha);
     expect(canvas.readUInt16LE(0)).toBeCloseTo(expectedR, -1);
   });
 
@@ -572,12 +572,12 @@ describe("blitRgba8OverRgb48le", () => {
     const nearR = canvasNear.readUInt16LE(0);
 
     // α=255 over black gave us the pure HLG-of-white value
-    expect(opaqueR).toBe(65535);
+    expect(opaqueR).toBe(HLG_SDR_WHITE);
     // α=254 over (1000, 1000, 1000) must be *strictly less* than α=255 over black —
-    // if the implementation short-circuits at α >= 254 it would also return 65535.
+    // if the implementation short-circuits at α >= 254 it would return the same value.
     expect(nearR).toBeLessThan(opaqueR);
-    // …but it should still be very close (within ~1% of full white)
-    expect(nearR).toBeGreaterThan(64000);
+    // …but it should still be very close (within ~1% of white)
+    expect(nearR).toBeGreaterThan(HLG_SDR_WHITE * 0.99);
   });
 
   it("handles a 2x2 frame correctly pixel-by-pixel", () => {
@@ -592,10 +592,10 @@ describe("blitRgba8OverRgb48le", () => {
 
     blitRgba8OverRgb48le(dom, canvas, 2, 2);
 
-    // Pixel 0: sRGB white → HLG white (65535)
-    expect(canvas.readUInt16LE(0)).toBe(65535);
-    expect(canvas.readUInt16LE(2)).toBe(65535);
-    expect(canvas.readUInt16LE(4)).toBe(65535);
+    // Pixel 0: sRGB white → HLG reference white
+    expect(canvas.readUInt16LE(0)).toBe(HLG_SDR_WHITE);
+    expect(canvas.readUInt16LE(2)).toBe(HLG_SDR_WHITE);
+    expect(canvas.readUInt16LE(4)).toBe(HLG_SDR_WHITE);
 
     // Pixel 1: transparent DOM → canvas black (0, 0, 0) unchanged
     expect(canvas.readUInt16LE(6)).toBe(0);
@@ -649,12 +649,13 @@ describe("blitRgba8OverRgb48le with PQ transfer", () => {
 //
 // Two key invariants the table enforces:
 //
-// 1. HLG: sRGB 255 → 65535 (white maps to white in HLG signal space).
+// 1. HLG: sRGB 255 → 49151 (75% signal, BT.2408 SDR reference white).
 //
-// 2. PQ:  sRGB 255 → 38055 (≪ 65535). NOT a bug — SDR white is placed at
-//    203 nits per BT.2408, normalized against PQ's 10000-nit peak. This is
-//    what lets HDR highlights live above SDR-reference-white in a PQ frame.
-//    Never "fix" PQ to map sRGB 255 → 65535.
+// 2. PQ:  sRGB 255 → 38055 (≪ 65535). SDR white is placed at 203 nits per
+//    BT.2408, normalized against PQ's 10000-nit peak.
+//
+// Neither maps SDR white to peak: that is what lets HDR highlights live above
+// SDR reference white. Never "fix" either to map sRGB 255 → 65535.
 //
 // To regenerate after an *intentional* LUT change (transfer-function constant,
 // BT.709→BT.2020 matrix tuning, SDR-white nit reference, OOTF), run:
@@ -673,17 +674,17 @@ interface SrgbHdrProbe {
 
 const SRGB_TO_HDR_REFERENCE: readonly SrgbHdrProbe[] = [
   { srgb: 0, hlg: 0, pq: 0 },
-  { srgb: 1, hlg: 1978, pq: 3315 },
-  { srgb: 10, hlg: 6254, pq: 8300 },
-  { srgb: 32, hlg: 13642, pq: 13884 },
-  { srgb: 64, hlg: 25702, pq: 19848 },
-  { srgb: 96, hlg: 38011, pq: 24379 },
-  { srgb: 128, hlg: 46484, pq: 28037 },
-  { srgb: 160, hlg: 52745, pq: 31104 },
-  { srgb: 192, hlg: 57772, pq: 33743 },
-  { srgb: 224, hlg: 61994, pq: 36057 },
-  { srgb: 254, hlg: 65428, pq: 37994 },
-  { srgb: 255, hlg: 65535, pq: 38055 },
+  { srgb: 1, hlg: 1018, pq: 3315 },
+  { srgb: 10, hlg: 3219, pq: 8300 },
+  { srgb: 32, hlg: 7022, pq: 13884 },
+  { srgb: 64, hlg: 13230, pq: 19848 },
+  { srgb: 96, hlg: 19983, pq: 24379 },
+  { srgb: 128, hlg: 27146, pq: 28037 },
+  { srgb: 160, hlg: 34553, pq: 31104 },
+  { srgb: 192, hlg: 40564, pq: 33743 },
+  { srgb: 224, hlg: 45307, pq: 36057 },
+  { srgb: 254, hlg: 49036, pq: 37994 },
+  { srgb: 255, hlg: 49151, pq: 38055 },
 ];
 
 describe("blitRgba8OverRgb48le: sRGB → BT.2020 reference values", () => {
@@ -712,9 +713,9 @@ describe("blitRgba8OverRgb48le: sRGB → BT.2020 reference values", () => {
     const canvas = makeHdrFrame(1, 1, 0, 0, 0);
     const dom = makeDomRgba(1, 1, 64, 128, 192, 255);
     blitRgba8OverRgb48le(dom, canvas, 1, 1, "hlg");
-    expect(canvas.readUInt16LE(0)).toBe(25702);
-    expect(canvas.readUInt16LE(2)).toBe(46484);
-    expect(canvas.readUInt16LE(4)).toBe(57772);
+    expect(canvas.readUInt16LE(0)).toBe(13230);
+    expect(canvas.readUInt16LE(2)).toBe(27146);
+    expect(canvas.readUInt16LE(4)).toBe(40564);
   });
 
   it("PQ: asymmetric R/G/B maps each channel independently through the LUT", () => {
@@ -726,12 +727,11 @@ describe("blitRgba8OverRgb48le: sRGB → BT.2020 reference values", () => {
     expect(canvas.readUInt16LE(4)).toBe(33743);
   });
 
-  it("PQ caps SDR-reference-white well below HLG signal peak (BT.2408 invariant)", () => {
-    // sRGB 255 (SDR white) → HLG 65535 (top of HLG signal range)
+  it("both transfers place SDR white at BT.2408 reference white, below peak", () => {
+    // sRGB 255 (SDR white) → HLG 49151 (75% of HLG signal)
     //                     → PQ  38055 (~58% of PQ signal, ~203 nits)
-    // The gap is what lets PQ carry HDR highlights above SDR reference level.
-    // Locking the exact PQ value here prevents a future "fix" that would
-    // re-scale PQ to peak-at-SDR-white (which would clip every real HDR pixel).
+    // The headroom is what carries HDR highlights above SDR reference level;
+    // at peak, a grade or white text on HLG footage blows out.
     const canvasHlg = makeHdrFrame(1, 1, 0, 0, 0);
     const canvasPq = makeHdrFrame(1, 1, 0, 0, 0);
     const dom = makeDomRgba(1, 1, 255, 255, 255, 255);
@@ -739,9 +739,8 @@ describe("blitRgba8OverRgb48le: sRGB → BT.2020 reference values", () => {
     blitRgba8OverRgb48le(dom, canvasHlg, 1, 1, "hlg");
     blitRgba8OverRgb48le(dom, canvasPq, 1, 1, "pq");
 
-    expect(canvasHlg.readUInt16LE(0)).toBe(65535);
+    expect(canvasHlg.readUInt16LE(0)).toBe(49151);
     expect(canvasPq.readUInt16LE(0)).toBe(38055);
-    expect(canvasPq.readUInt16LE(0)).toBeLessThan(canvasHlg.readUInt16LE(0));
   });
 });
 
@@ -1049,11 +1048,11 @@ describe("decodePng + blitRgba8OverRgb48le integration", () => {
     const canvas = makeHdrFrame(width, height, 50000, 40000, 30000);
     blitRgba8OverRgb48le(domRgba, canvas, width, height);
 
-    // sRGB blue (0,0,255) → HLG (0, 0, 65535) — black/white map identically
+    // sRGB blue (0,0,255) → HLG (0, 0, reference white): each channel maps alone
     for (let i = 0; i < width * height; i++) {
       expect(canvas.readUInt16LE(i * 6 + 0)).toBe(0);
       expect(canvas.readUInt16LE(i * 6 + 2)).toBe(0);
-      expect(canvas.readUInt16LE(i * 6 + 4)).toBe(65535);
+      expect(canvas.readUInt16LE(i * 6 + 4)).toBe(HLG_SDR_WHITE);
     }
   });
 });

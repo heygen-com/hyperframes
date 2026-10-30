@@ -21,10 +21,10 @@
  * chain the color-grading runtime uses: `__hfVariablesByComp[compId]` for
  * inlined sub-compositions, then the top-level merged `getVariables()`.
  *
- * Applied at init AND re-applied after the composition loader inlines
- * external / template sub-compositions (their DOM and per-instance scoped
- * values don't exist at init). Idempotent: re-applying writes the same
- * values.
+ * Text is bound before composition scripts run; all of it at init and after
+ * the composition loader inlines external / template sub-compositions (their
+ * DOM and per-instance scoped values don't exist at init). Idempotent:
+ * re-applying writes the same values.
  */
 
 import { readVariablesForElement } from "./variableScope";
@@ -171,13 +171,15 @@ export function unproxiedMediaSrc(el: Element): string | null {
   return variableSrcFor(el, new Map(), false) ?? unproxiedSrc(el);
 }
 
+const matching = (doc: Document, within: Element | undefined, selector: string): Element[] =>
+  within
+    ? [...(within.matches(selector) ? [within] : []), ...within.querySelectorAll(selector)]
+    : Array.from(doc.querySelectorAll(selector));
+
 /** Applies the bindings in `doc`, or only those inside `within` and `within` itself. */
 export function applyVariableBindings(doc: Document, within?: Element): void {
   const cache: ScopeValuesCache = new Map();
-  const all = (selector: string): Element[] =>
-    within
-      ? [...(within.matches(selector) ? [within] : []), ...within.querySelectorAll(selector)]
-      : Array.from(doc.querySelectorAll(selector));
+  const all = (selector: string) => matching(doc, within, selector);
   const topRoot = within ? null : findTopRoot(doc);
   applyCssCustomProperties([...(topRoot ? [topRoot] : []), ...all("[data-composition-id]")], cache);
 
@@ -185,11 +187,24 @@ export function applyVariableBindings(doc: Document, within?: Element): void {
     const url = variableSrcFor(el, cache);
     if (url !== null && unproxiedSrc(el) !== url) el.setAttribute("src", url);
   }
+  bindText(all("[data-var-text]"), cache);
+}
 
-  for (const el of all("[data-var-text]")) {
+/** Binds only text, in `doc` or inside `within`: what composition scripts read before they run. */
+export function applyTextBindings(doc: Document, within?: Element): void {
+  bindText(matching(doc, within, "[data-var-text]"), new Map());
+}
+
+const textWrittenOnce = new WeakSet<Element>();
+
+/** Writes each binding once: a script may then reshape the text, which a second write would duplicate. */
+function bindText(elements: Element[], cache: ScopeValuesCache): void {
+  for (const el of elements) {
     const id = el.getAttribute("data-var-text")?.trim();
-    if (!id) continue;
+    if (!id || textWrittenOnce.has(el)) continue;
     const value = valuesForElement(el, cache)[id];
-    if (isScalar(value)) setOwnTextPreservingChildren(el, String(value));
+    if (!isScalar(value)) continue;
+    setOwnTextPreservingChildren(el, String(value));
+    textWrittenOnce.add(el);
   }
 }

@@ -25,6 +25,34 @@ function project(files: Record<string, string>): string {
 }
 
 describe("compileForRender mounted module scripts", () => {
+  it("compiles mounted import maps without unblocking non-string addresses", async () => {
+    const dir = project({
+      "index.html":
+        '<!doctype html><html><head></head><body><div data-composition-id="root" data-width="320" data-height="180"><div data-composition-id="blk" data-composition-src="blocks/blk.html" data-start="0" data-duration="2"></div></div></body></html>',
+      "blocks/ok.js": "export const VALUE = 1;",
+      "blocks/blk.html":
+        '<div data-composition-id="blk" data-width="320" data-height="180"><script type="importmap">{"imports":{"ok":"./ok.js","blocked":null,"number":17,"constructor":"./ok.js","__proto__":"./ok.js"}}</script><script type="module">import "ok";</script></div>',
+    });
+    const { html } = await compileForRender(dir, join(dir, "index.html"), join(dir, ".downloads"), {
+      allowSystemFontCapture: false,
+    });
+    const { document } = parseHTML(html);
+    expect(
+      JSON.parse(document.querySelector('script[type="importmap"]')?.textContent || "null"),
+    ).toEqual({
+      imports: Object.fromEntries([
+        ["ok", "./blocks/ok.js"],
+        ["blocked", null],
+        ["number", null],
+        ["constructor", "./blocks/ok.js"],
+        ["__proto__", "./blocks/ok.js"],
+      ]),
+    });
+    expect(
+      document.querySelector(`script[type="${AFTER_FONTS_SCRIPT_TYPE}+module"]`),
+    ).not.toBeNull();
+  });
+
   it("keeps a mounted file's import map and module script as such, bound to that file", async () => {
     const dir = project({
       "index.html": `<!doctype html>

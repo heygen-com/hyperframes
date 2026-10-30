@@ -4,6 +4,14 @@ import { DISTRIBUTED_FPS, type DistributedFps, isDistributedFps } from "@hyperfr
 import { parseHTML } from "linkedom";
 import { c } from "../ui/colors.js";
 
+function getHtmlAttribute(element: Element, name: string): string | null {
+  // linkedom preserves spelling; HTML names match without case and keep the first duplicate.
+  return (
+    Array.from(element.attributes).find((attribute) => attribute.name.toLowerCase() === name)
+      ?.value ?? null
+  );
+}
+
 /**
  * Read a composition's declared frame rate from its root element's `data-fps`
  * attribute — the same attribute the runtime honors (core/runtime/init.ts) — so
@@ -24,15 +32,14 @@ export function readCompositionFps(html: string): string | null {
     return null;
   }
 
-  const explicitRoot = doc.querySelector('[data-composition-id][data-root="true"]');
+  const compositions = Array.from(doc.querySelectorAll("*")).filter(
+    (element) => getHtmlAttribute(element, "data-composition-id") !== null,
+  );
   const root =
-    explicitRoot ??
-    Array.from(doc.querySelectorAll("[data-composition-id]")).find(
-      (el) => !el.parentElement?.closest("[data-composition-id]"),
-    ) ??
-    null;
+    compositions.find((element) => getHtmlAttribute(element, "data-root") === "true") ??
+    compositions[0];
 
-  const raw = root?.getAttribute("data-fps")?.trim();
+  const raw = root ? getHtmlAttribute(root, "data-fps")?.trim() : undefined;
   return raw ? raw : null;
 }
 

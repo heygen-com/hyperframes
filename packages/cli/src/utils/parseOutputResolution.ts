@@ -21,6 +21,7 @@
 
 import { type CanvasResolution, resolveResolutionFlagPair } from "@hyperframes/core";
 import { VALID_CANVAS_RESOLUTIONS } from "@hyperframes/core";
+import { CliUsageError } from "./commandResult.js";
 
 /**
  * Free-text prefix the thrown error is scoped to (e.g. `"[cloudrun render]"`,
@@ -60,7 +61,7 @@ export function parseOutputResolutionFlag(
   const { outputResolution, outputResolutionAspectAgnostic } = resolveResolutionFlagPair(asString);
   if (outputResolution) return { outputResolution, outputResolutionAspectAgnostic };
   const aliasHint = options.aliasHint ?? "1080p, 4k, uhd, hd, …";
-  throw new Error(
+  throw new CliUsageError(
     `${options.surfaceLabel} --output-resolution must be one of ${VALID_CANVAS_RESOLUTIONS.join("|")} ` +
       `(or an alias: ${aliasHint}); got ${asString}`,
   );

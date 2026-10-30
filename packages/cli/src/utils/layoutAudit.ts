@@ -18,6 +18,7 @@ export type LayoutIssueCode =
   | "content_overlap"
   | "visibility_escapes_segment"
   | "text_occluded"
+  | "canvas_covered"
   | "video_alpha_unread"
   | "text_not_painted"
   | "caption_zone_collision"
@@ -263,7 +264,7 @@ export function collapseStaticLayoutIssues(
   const multiSampleRun = sampleCount > 1;
 
   return [...groups.values()].map(({ issue, firstSeen, lastSeen, occurrences, times }) =>
-    applyPersistenceTier(
+    tierIssue(
       {
         ...issue,
         firstSeen,
@@ -273,26 +274,40 @@ export function collapseStaticLayoutIssues(
         times: [...new Set(times)].sort((a, b) => a - b),
       },
       multiSampleRun,
+      sampleCount,
     ),
   );
 }
 
 export function longestContiguousRunMs(times: number[]): number {
+  const run = longestContiguousRun(times);
+  return ((run.at(-1) ?? 0) - (run[0] ?? 0)) * 1000;
+}
+
+export function longestContiguousRun(times: number[]): number[] {
   const sorted = [...new Set(times)].sort((a, b) => a - b);
-  const first = sorted[0];
-  const last = sorted.at(-1);
-  if (first === undefined || last === undefined) return 0;
-  let longest = 0;
-  let runStart = first;
-  let previous = first;
+  let longest: number[] = [];
+  let run: number[] = [];
+  const span = (values: number[]) => (values.at(-1) ?? 0) - (values[0] ?? 0);
   for (const current of sorted) {
-    if ((current - previous) * 1000 > CONTIGUOUS_SAMPLE_GAP_MS) {
-      longest = Math.max(longest, previous - runStart);
-      runStart = current;
+    const previous = run.at(-1);
+    if (previous !== undefined && (current - previous) * 1000 > CONTIGUOUS_SAMPLE_GAP_MS) {
+      if (longest.length === 0 || span(run) > span(longest)) longest = run;
+      run = [];
     }
-    previous = current;
+    run.push(current);
   }
-  return Math.max(longest, last - runStart) * 1000;
+  return longest.length === 0 || span(run) > span(longest) ? run : longest;
+}
+
+/** A full-frame card or a fade to colour covers the canvas briefly; most of the film is a blank stage. */
+function coverTier(issue: LayoutIssue, sampleCount: number): LayoutIssue {
+  return (issue.occurrences ?? 1) * 2 >= sampleCount ? issue : { ...issue, severity: "info" };
+}
+
+function tierIssue(issue: LayoutIssue, multiSampleRun: boolean, sampleCount: number): LayoutIssue {
+  if (multiSampleRun && issue.code === "canvas_covered") return coverTier(issue, sampleCount);
+  return applyPersistenceTier(issue, multiSampleRun);
 }
 
 /**

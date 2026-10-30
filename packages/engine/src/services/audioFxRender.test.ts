@@ -322,6 +322,31 @@ describe.skipIf(!HAS_BROWSER)("browser render", () => {
     expect(db(rms(readWav(outPath).samples))).toBeLessThan(db(rms(readWav(input).samples)) - 3);
   }, 180_000);
 
+  it("applies clip gain ahead of the chain, so a compressor sees it", async () => {
+    const input = join(dir, "in.wav");
+    tone(input, 0.5, 200);
+    const chain: HfAudioFxChain = {
+      version: 1,
+      nodes: [
+        {
+          type: "compressor",
+          enabled: true,
+          params: { ...defaultAudioFxParams("compressor"), threshold: -40, ratio: 20 },
+        },
+      ],
+    };
+    const levelAt = async (inputGain: number): Promise<number> => {
+      const outPath = join(dir, `gain-${inputGain}.wav`);
+      await applyAudioFxChain(input, chain, outPath, { trackId: "t", inputGain });
+      return db(rms(readWav(outPath).samples));
+    };
+    // After the chain, a quarter gain would land exactly 12.04 dB down; ahead of
+    // it, the compressor takes most of that back.
+    const drop = (await levelAt(1)) - (await levelAt(0.25));
+    expect(drop).toBeGreaterThan(0);
+    expect(drop).toBeLessThan(6);
+  }, 180_000);
+
   it("shifts pitch up an octave, matching the preview worklet", async () => {
     const input = join(dir, "in.wav");
     tone(input, 0.5, 220);

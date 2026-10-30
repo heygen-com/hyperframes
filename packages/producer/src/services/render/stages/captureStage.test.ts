@@ -2,9 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DEFAULT_CONFIG, classifyCaptureFailure } from "@hyperframes/engine";
+import { CaptureFailure, DEFAULT_CONFIG, classifyCaptureFailure } from "@hyperframes/engine";
 import { createRenderJob, isTransientCaptureRetryEligible } from "../../renderOrchestrator.js";
 import { formatCaptureFrameName } from "../../../utils/paths.js";
+import { CaptureStageError, getCaptureStageBrowserConsole } from "../captureStageError.js";
+import { summarizeBrowserDiagnostics } from "../observability.js";
 
 // Mock only the engine session primitives; `classifyCaptureFailure` stays
 // real so the retry decision is exercised.
@@ -41,8 +43,8 @@ vi.mock("node:fs", async (importOriginal) => {
 });
 
 import {
-  assertDiskCaptureHeadroom,
   createDiskCaptureProjection,
+  diskCaptureRemedy,
   diskCaptureShortfallError,
   measureCaptureFrameBytes,
   estimateDiskCaptureBytes,
@@ -84,38 +86,6 @@ describe("disk capture capacity", () => {
     expect(estimateDiskCaptureBytes(10, { ...captureOptions, quality: 80 })).toBe(100_000);
     expect(estimateDiskCaptureBytes(10, { ...captureOptions, quality: 95 })).toBe(200_000);
     expect(estimateDiskCaptureBytes(10, { ...captureOptions, quality: 100 })).toBe(200_000);
-  });
-
-  it("fails before capture when estimated frames exceed available headroom", () => {
-    expect(() =>
-      assertDiskCaptureHeadroom("/render/captured-frames", 10, pngOptions, () => 800_000),
-    ).toThrow(/may need ~0\.8 MB.*0\.8 MB is free.*--low-memory-mode/s);
-  });
-
-  it("tells the user which routes still use disk capture, not a dead env var", () => {
-    const landscape = {
-      width: 1920,
-      height: 1080,
-      fps: { num: 30, den: 1 },
-      format: "png" as const,
-    };
-    let message = "";
-    try {
-      assertDiskCaptureHeadroom("/tmp/frames", 9000, landscape, () => 10 * 1e9);
-    } catch (error) {
-      message = error instanceof Error ? error.message : String(error);
-    }
-    expect(message).toContain("Disk capture may need");
-    expect(message).toContain("--workers 1");
-    expect(message).toContain("--low-memory-mode");
-    // Every override that can land an otherwise-streaming render here, so the
-    // message explains the case the reader is actually in. The duration cap
-    // matters because it sends even a --workers 1 render to disk, which the
-    // pre-Phase-1 wording told them to "fix" with --workers 1.
-    expect(message).toContain("HF_CAPTURE_PARALLEL_STREAM=true");
-    expect(message).toContain("PRODUCER_STREAMING_ENCODE_DURATION_CAP_ENABLED=true");
-    expect(message).toContain("png-sequence");
-    expect(message).not.toContain("PRODUCER_STREAMING_ENCODE_MAX_DURATION_SECONDS if streaming");
   });
 
   it("exposes the same 90% headroom decision to fallback planning", () => {
@@ -161,6 +131,36 @@ describe("disk capture capacity", () => {
   });
 });
 
+describe("diskCaptureRemedy", () => {
+  it("offers --workers 1 when one worker would stream this render", () => {
+    const remedy = diskCaptureRemedy(DEFAULT_CONFIG, "mp4", 60, 4);
+    expect(remedy).toContain("captures with 4 workers");
+    expect(remedy).toContain("re-run this render with --workers 1");
+  });
+
+  it("never offers --workers 1 where one worker would still store every frame", () => {
+    const capped = { ...DEFAULT_CONFIG, streamingEncodeDurationCapEnabled: true };
+    const cases = [
+      [DEFAULT_CONFIG, "mp4", 60, 1, "Free up disk space."],
+      [DEFAULT_CONFIG, "png-sequence", 60, 4, "png-sequence output stores every frame"],
+      [DEFAULT_CONFIG, "gif", 60, 1, "gif output stores every frame"],
+      [
+        { ...DEFAULT_CONFIG, enableStreamingEncode: false },
+        "mp4",
+        60,
+        4,
+        "PRODUCER_ENABLE_STREAMING_ENCODE=false",
+      ],
+      [capped, "mp4", 600, 4, "--low-memory-mode, which streams past it"],
+    ] as const;
+    for (const [cfg, format, duration, workers, condition] of cases) {
+      const remedy = diskCaptureRemedy(cfg, format, duration, workers);
+      expect(remedy).toContain(condition);
+      expect(remedy).not.toContain("--workers 1");
+    }
+  });
+});
+
 describe("createDiskCaptureProjection", () => {
   it("throws a measured shortfall once ten frames show the remainder cannot fit", () => {
     const measure = vi.fn(() => 10e6);
@@ -168,6 +168,7 @@ describe("createDiskCaptureProjection", () => {
       framesDir: "/frames",
       totalFrames: 1010,
       measureBytes: measure,
+      remedy: "Free up disk space.",
       freeDiskBytes: () => 500e6,
     });
     check(9);
@@ -184,6 +185,7 @@ describe("createDiskCaptureProjection", () => {
       framesDir: "/frames",
       totalFrames: 1010,
       measureBytes: () => bytes,
+      remedy: "Free up disk space.",
       freeDiskBytes: () => 500e6,
     });
     expect(() => check(10)).not.toThrow();
@@ -214,6 +216,7 @@ describe("createDiskCaptureProjection", () => {
       framesDir: "/frames",
       totalFrames: 1010,
       measureBytes: () => 10e6,
+      remedy: "Free up disk space.",
       freeDiskBytes: () => 5000e6,
     });
     expect(() => check(10)).not.toThrow();
@@ -227,7 +230,7 @@ describe("runCaptureStage measured disk projection (both branches)", () => {
     fileServer: { url: "http://localhost:0" } as never,
     workDir,
     framesDir,
-    job: createRenderJob({ fps: { num: 30, den: 1 }, quality: "draft" }),
+    job: { ...createRenderJob({ fps: { num: 30, den: 1 }, quality: "draft" }), duration: 20 / 30 },
     totalFrames: 20,
     cfg: DEFAULT_CONFIG,
     plan: { workerCount, forceScreenshot: false },
@@ -277,20 +280,89 @@ describe("runCaptureStage measured disk projection (both branches)", () => {
       writeFileSync(join(framesDir, formatCaptureFrameName(index, "jpg")), oneMb);
     });
 
-    await expect(runCaptureStage(makeInput(1, workDir, framesDir))).rejects.toThrow(
-      /measured from the first 10 frames/,
-    );
+    const error = await runCaptureStage(makeInput(1, workDir, framesDir)).catch((e: Error) => e);
+    expect(String(error)).toMatch(/measured from the first 10 frames.*Free up disk space\./s);
+    expect(String(error)).not.toContain("--workers 1");
     expect(captureFrame).toHaveBeenCalledTimes(10);
     expect(createCaptureSession).toHaveBeenCalledTimes(1);
   });
 
+  it("sequential: a png render whose raw estimate exceeds free space still captures when frames are small", async () => {
+    const { workDir, framesDir } = makeDirs();
+    // 64x64 png estimates 20 * 16 KB = 327 KB raw; 100 KB free, but the real frames are 100 bytes.
+    freeBytes.mockReturnValue({ bavail: 100_000, bsize: 1 });
+    createCaptureSession.mockResolvedValue({
+      isInitialized: false,
+      browserConsoleBuffer: [],
+      options: { captureBeyondViewport: false, format: "png" },
+      workerEncodeEnabled: false,
+      outputDir: framesDir,
+    });
+    captureFrame.mockImplementation(async (_s: unknown, index: number) => {
+      writeFileSync(join(framesDir, formatCaptureFrameName(index, "png")), Buffer.alloc(100));
+    });
+    const input = makeInput(1, workDir, framesDir);
+
+    await runCaptureStage({
+      ...input,
+      buildCaptureOptions: () => ({ ...input.buildCaptureOptions(), format: "png" as const }),
+    });
+    expect(captureFrame).toHaveBeenCalledTimes(20);
+  });
+
   it("a measured shortfall is never classified as a retryable browser death", () => {
-    const shortfall = diskCaptureShortfallError(10e9, 1e9, "/frames", "measured");
+    const shortfall = diskCaptureShortfallError(10e9, 1e9, "/frames", "measured", "");
     const kind = classifyCaptureFailure(shortfall);
     expect(kind).not.toBe("transient_browser");
     expect(isTransientCaptureRetryEligible(kind, [{ startFrame: 10, endFrame: 20 }], 0)).toBe(
       false,
     );
+  });
+
+  it("parallel: page errors seen only by worker sessions reach the diagnostics count", async () => {
+    const { workDir, framesDir } = makeDirs();
+    freeBytes.mockReturnValue({ bavail: 10_000_000_000, bsize: 1 });
+    executeParallelCapture.mockImplementation(async () => {
+      for (let i = 0; i < 20; i++) {
+        writeFileSync(join(framesDir, formatCaptureFrameName(i, "jpg")), oneMb);
+      }
+      return [
+        { pageErrorLines: ["[Browser:PAGEERROR] Identifier 'dup' has already been declared"] },
+        { pageErrorLines: ["[Browser:PAGEERROR] Identifier 'dup' has already been declared"] },
+      ];
+    });
+
+    const result = await runCaptureStage(makeInput(2, workDir, framesDir));
+
+    expect(summarizeBrowserDiagnostics(result.lastBrowserConsole).pageErrors).toBe(1);
+  });
+
+  it("parallel: a failed capture still reports the page errors its workers saw", async () => {
+    const { workDir, framesDir } = makeDirs();
+    freeBytes.mockReturnValue({ bavail: 10_000_000_000, bsize: 1 });
+    executeParallelCapture.mockRejectedValue(
+      new CaptureFailure({
+        kind: "authoring",
+        message: "Composition has zero duration.",
+        pageErrorLines: ["[Browser:PAGEERROR] ReferenceError: gsap is not defined"],
+      }),
+    );
+
+    const probeSession = {
+      browserConsoleBuffer: ["[FrameCapture:ERROR] page.goto failed"],
+      options: { captureBeyondViewport: false },
+    } as never;
+
+    const error = await runCaptureStage({
+      ...makeInput(2, workDir, framesDir),
+      probeSession,
+    }).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(CaptureStageError);
+    expect(getCaptureStageBrowserConsole(error)).toEqual([
+      "[FrameCapture:ERROR] page.goto failed",
+      "[Browser:PAGEERROR] ReferenceError: gsap is not defined",
+    ]);
   });
 
   it("parallel: the progress callback raises the same shortfall from worker dirs", async () => {
@@ -321,7 +393,7 @@ describe("runCaptureStage measured disk projection (both branches)", () => {
     );
 
     await expect(runCaptureStage(makeInput(2, workDir, framesDir))).rejects.toThrow(
-      /measured from the first 10 frames/,
+      /measured from the first 10 frames.*re-run this render with --workers 1/s,
     );
   });
 });

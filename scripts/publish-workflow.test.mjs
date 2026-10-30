@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -130,4 +130,69 @@ test("stable release tag creation survives retries and rejects a mismatched comm
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("the Lambda handler zip is pinned and attached to the release before npm publish", () => {
+  const names = publish.steps.map((step) => step.name);
+  const at = (name) => {
+    assert.ok(names.includes(name), `missing step ${name}`);
+    return names.indexOf(name);
+  };
+  assert.ok(at("Build Lambda handler zip") < at("Create GitHub Release"));
+  assert.ok(at("Create GitHub Release") < at("Attach Lambda handler zip to release"));
+  assert.ok(at("Attach Lambda handler zip to release") < at("Publish packages"));
+  const attach = publish.steps[at("Attach Lambda handler zip to release")];
+  assert.equal(attach.if, "steps.lambda_zip.outputs.attached != 'true'");
+  assert.doesNotMatch(attach.run, /--clobber/);
+});
+
+test("a retried release reuses the attached handler zip instead of building a new one", () => {
+  const step = publish.steps.find((s) => s.name === "Build Lambda handler zip");
+  const run = (ghExit) => {
+    const root = mkdtempSync(join(tmpdir(), "hyperframes-lambda-zip-step-"));
+    try {
+      const bin = join(root, "bin");
+      mkdirSync(bin);
+      const log = join(root, "calls.log");
+      for (const [name, exit] of [
+        ["gh", ghExit],
+        ["bun", 0],
+      ]) {
+        writeFileSync(join(bin, name), `#!/bin/sh\necho "${name} $*" >> "${log}"\nexit ${exit}\n`);
+        chmodSync(join(bin, name), 0o755);
+      }
+      const output = join(root, "github-output");
+      writeFileSync(output, "");
+      const result = spawnSync("bash", ["-euo", "pipefail", "-c", step.run], {
+        cwd: root,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          PATH: `${bin}:${process.env.PATH}`,
+          GITHUB_OUTPUT: output,
+          VERSION: "9.8.7",
+          REPO: "o/r",
+        },
+        timeout: 5_000,
+      });
+      assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+      return { calls: readFileSync(log, "utf8"), output: readFileSync(output, "utf8") };
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  };
+
+  const retried = run(0);
+  assert.match(
+    retried.calls,
+    /^gh release download v9\.8\.7 --repo o\/r --pattern hyperframes-lambda-handler\.zip --dir dist$/m,
+  );
+  assert.doesNotMatch(retried.calls, /build:zip/);
+  assert.match(retried.calls, /^bun packages\/aws-lambda\/scripts\/pin-handler-zip\.ts$/m);
+  assert.equal(retried.output, "attached=true\n");
+
+  const fresh = run(1);
+  assert.match(fresh.calls, /^bun run --cwd packages\/aws-lambda build:zip$/m);
+  assert.match(fresh.calls, /^bun packages\/aws-lambda\/scripts\/pin-handler-zip\.ts$/m);
+  assert.equal(fresh.output, "");
 });

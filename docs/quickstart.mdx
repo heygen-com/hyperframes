@@ -1,30 +1,61 @@
 ---
 title: "Make your first video"
-description: "Install the HyperFrames skills, make one short request, and continue with your agent, Studio, or the CLI."
+description: "Make your first HyperFrames video in the free Studio app for Mac, Windows and Linux, with your own AI agent, or in an AI chat with nothing to install."
 ---
 
 import { QuickstartContinuationGrid } from "/snippets/quickstart-continuation-grid.jsx";
 import { DocsVideo } from "/snippets/docs-video.jsx";
 
-<div className="hf-docs-video-frame">
-  <DocsVideo
-    title="A beginner creates a first HyperFrames video from one short request, then continues with an agent, Studio, or the CLI."
-    src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/journey-quickstart-v5-v2.mp4"
-    poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/journey-quickstart-v5.jpg"
-  />
-</div>
+HyperFrames turns one sentence into a video you can keep editing. Start in the Studio app; if you are on Windows or
+already work with an AI agent in a terminal, use one of the other two ways. All three make the same kind of project.
+
+<DocsVideo
+  title="A first video in the Studio app: one request, a few questions, a storyboard, the finished film"
+  src="https://static.heygen.ai/hyperframes-oss/docs/studio-demos/first-video-demo-v2.mp4"
+  poster="/public/images/studio-app/first-video-demo-v2.jpg"
+  aspect="16 / 10"
+  autoPlay
+  loop
+/>
 
 <Note>
-  HyperFrames is free and open-source, and local rendering does not use HeyGen credits. Your coding
-  agent and any optional hosted, voice, avatar, or generated-media services may have their own
-  costs.
+  HyperFrames is free. Your AI agent bills its own plan, and HeyGen media such as avatars and generated clips uses
+  HeyGen credits only when you ask for it.
 </Note>
 
-## The short way: hand it to your agent
+## In the Studio app
 
-If you already have a coding agent open in a folder, paste this and skip the
-rest of the page. It installs the skills, makes the video, and opens the
-preview — you only change the URL.
+The easiest way: the app runs your agent beside a live preview, and you change the video by typing, pointing or
+drawing. For Mac (Apple Silicon or Intel), Windows (64-bit Intel and AMD; not Windows on Arm yet) and Linux.
+
+<Steps>
+  <Step title="Download and install">
+    <a href="https://hyperframes.studio/studio/download?src=docs-quickstart">Download the Studio app</a>, open it, and
+    sign in with a free HeyGen account. [Install the Studio app](/studio-app) has the steps for each system.
+  </Step>
+  <Step title="Ask for the video">
+    Type what you want in **Make something** and send it. Framey asks a few questions, shows a storyboard, then
+    builds the film.
+  </Step>
+  <Step title="Change it">
+    Ask for changes in the chat, or point at the picture. [Make your first video in the app](/studio-app/first-video)
+    walks through it.
+  </Step>
+</Steps>
+
+<Card title="Practice it: The brief" icon="graduation-cap" href="https://hyperframes.heygen.com/lessons/the-brief">
+  Free 20-minute lesson with a short video, a quiz and a brief to try. A brief is the goal, who it is for, two to four specifics and the exact words in quotes.
+</Card>
+
+## With your agent
+
+For Claude Code, Codex, Cursor, Copilot, Gemini CLI or any agent that works in a folder on your computer, on any
+system.
+
+### The short way
+
+If you already have a coding agent open in a folder, paste this. It installs the skills, makes the video, and opens
+the preview. You only change the URL.
 
 ```text
 Set this folder up for HyperFrames and make me a video.
@@ -34,51 +65,52 @@ Set this folder up for HyperFrames and make me a video.
 3. Open the local preview when it is done and tell me the project folder.
 ```
 
-Swap `https://example.com` for the page you want the video to show. Everything
-below is the same thing done by hand, if you would rather see each step.
+### Step by step
 
-## 1. Install the plugin or skills
+<Steps>
+  <Step title="Install the plugin or skills">
+    Step-by-step pages: [Claude Code](/guides/with-claude-code), [Codex](/guides/with-codex),
+    [Cursor](/guides/with-cursor).
 
-For Claude Code, Copilot, VS Code, Cursor, or Gemini CLI, start with the
-[plugin installation guide](/guides/plugins). It includes update settings for
-each agent. Claude's plugin router is `/hyperframes:hyperframes`.
+    For Claude Code, Copilot, VS Code, Cursor, or Gemini CLI, start with the
+    [plugin installation guide](/guides/plugins). It includes update settings for each agent. Claude's plugin entry
+    skill is `/hyperframes:hyperframes`.
 
-For standalone skills, run this in your project folder:
+    For standalone skills, run this in your project folder, choose **Core Skills** in the picker, then open or
+    restart your agent in that folder:
 
-```bash
-npx skills add heygen-com/hyperframes
-```
+    ```bash
+    npx skills add heygen-com/hyperframes
+    ```
+  </Step>
+  <Step title="Ask for the video">
+    ```text
+    Using /hyperframes, make a 10-second product intro for https://example.com.
+    ```
 
-Choose **Core Skills** in the picker. Then open or restart your coding agent in that folder.
+    Replace `https://example.com` with the page you want the video to show. For a longer film that tells a story, the
+    agent first offers three storylines to pick from.
+  </Step>
+  <Step title="Continue from the first version">
+    The agent leaves you with a project folder and opens its preview in the browser editor. To reopen it later, run
+    `npx hyperframes preview` in the project folder. All three paths below work on the same project.
 
-## 2. Ask for the video
+    <QuickstartContinuationGrid />
+  </Step>
+</Steps>
 
-```text
-Using /hyperframes, make a 10-second product intro for https://example.com.
-```
+## In an AI chat, nothing to install
 
-Replace `https://example.com` with the real page you want the video to show. The agent will propose
-a direction and ask for anything important that is missing. You do not need to write a production
-specification.
-
-## 3. Continue from the first version
-
-The agent leaves you with an editable project folder and opens its local preview.
-To reopen that preview later, run `npx hyperframes preview` inside the project
-folder. Watch the first version once and check the story, facts, readable text,
-and sound; it is not a guaranteed final cut. All three paths below work with
-the same project.
-
-<QuickstartContinuationGrid />
+In Claude.ai or ChatGPT, the HyperFrames connector builds and renders the video in your HeyGen account. You give up
+the project folder and local rendering. [Connect HyperFrames to an AI chat](/guides/mcp).
 
 ## Related topics
 
 <CardGroup cols={2}>
-  <Card title="Choose a specific workflow" icon="route" href="/workflows">
-    Product launch, explainer, captions, recut, pull request, music, motion graphic, or
-    presentation.
+  <Card title="Choose what to make" icon="route" href="/workflows">
+    Product launch, explainer, captions, recut, pull request, music, motion graphic, or presentation.
   </Card>
-  <Card title="Go further" icon="arrow-right" href="/go-further">
-    Direct the agent, edit in Studio, build richer projects, and finish with confidence.
+  <Card title="Continue from Claude Code in the app" icon="arrow-right" href="/studio-app/existing-project">
+    Open a project your agent made in the Studio app, and hand it back.
   </Card>
 </CardGroup>

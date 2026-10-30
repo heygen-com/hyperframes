@@ -40,9 +40,10 @@ import { shouldResumeForwardPlaybackAfterSeek, shouldStopAfterSeek } from "../li
 import { applyPreviewVariablesToUrl } from "../../hooks/previewVariablesStore";
 import { isStudioManualEditGestureLiveIn } from "../../components/editor/manualEditsDom";
 import { createPreviewMessageHandler } from "./previewMessageRouter";
+import { usePreviewQualityForwarding } from "./usePreviewQualityForwarding";
 import { timelineElementsChanged } from "./timelinePlayerSync";
 import { safeContentDocument } from "./timelineSyncHydration";
-import { sceneSwapFor } from "../sceneSwap";
+import { sceneSwapFor, supersededByNewerEdit } from "../sceneSwap";
 import { whileScriptWrites } from "../previewReloading";
 
 export interface UseTimelinePlayerOptions {
@@ -55,6 +56,7 @@ export interface UseTimelinePlayerOptions {
 const publishSeek = (time: number, options?: { follow?: boolean }) =>
   options?.follow === false ? liveTime.notify(time) : liveTime.notifySeek(time);
 
+// fallow-ignore-next-line complexity
 export function useTimelinePlayer({
   onShadowPromoted,
   onPreviewReloadFailed,
@@ -78,7 +80,6 @@ export function useTimelinePlayer({
   // The fixture lease belongs at this shared synchronization boundary so every
   // iframe discovery path has the same owner for deciding whether it may write.
   const syncTimelineElements = useCallback(
-    // The lease guard adds one deliberate branch at the shared synchronization boundary.
     // fallow-ignore-next-line complexity
     (elements: TimelineElement[], nextDuration?: number) => {
       if (hasTimelinePerformanceFixtureLease()) return;
@@ -489,7 +490,7 @@ export function useTimelinePlayer({
   const refreshPlayer = useCallback(() => {
     const iframe = iframeRef.current;
     if (!iframe) return;
-    swapCancelRef.current?.abort(new Error("superseded by a newer edit"));
+    swapCancelRef.current?.abort(supersededByNewerEdit());
     const cancel = new AbortController();
     swapCancelRef.current = cancel;
     logReload("refreshPlayer", () => ({ stack: new Error("refreshPlayer").stack }));
@@ -515,6 +516,8 @@ export function useTimelinePlayer({
   }, [reloadWholeFilm, previewGeneration]);
   const pauseRef = useRef(pause);
   pauseRef.current = pause;
+
+  usePreviewQualityForwarding(iframeRef);
 
   useMountEffect(() => {
     const handleWindowKeyDown = (e: KeyboardEvent) => playbackKeyDownRef.current(e);

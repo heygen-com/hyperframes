@@ -1,14 +1,16 @@
 import type { ArgDef, ArgsDef, CommandDef } from "citty";
 import { CliUsageError } from "./commandResult.js";
 import { c } from "../ui/colors.js";
+import { closestMatch } from "./didYouMean.js";
 
 // citty is permissive: an unrecognized flag (e.g. `render --out x` when the flag
 // is `--output`/`-o`) is silently ignored instead of rejected, so the value is
 // dropped and the command falls back to its default — a silent wrong result. We
 // reject unknown flags up front with a clear message.
 
-// Global flags citty / the CLI understand on every command.
-const ALWAYS_KNOWN = new Set(["help", "h", "version", "v", "json"]);
+// Global flags citty / the CLI understand on every command. `--json` is not one: a command
+// supports it by declaring a `json` arg, and every other command rejects it.
+const ALWAYS_KNOWN = new Set(["help", "h", "version", "v"]);
 
 // A camelCase arg name (`gifLoop`) is passed as `--gif-loop`; a kebab name is
 // passed as-is. Accept both spellings so the validator matches citty's parsing.
@@ -43,8 +45,18 @@ function longFlagName(tok: string): string {
   return name.startsWith("no-") ? name.slice(3) : name;
 }
 
+// A negative number (`-18`, `-0.5`) is a value: no flag is spelled with digits.
+function isNegativeNumber(tok: string): boolean {
+  return /^-(\d+\.?\d*|\.\d+)$/.test(tok);
+}
+
+// Dash-prefixed and not a bare `-` (stdin) or a negative number: the only tokens that can name a flag.
+function canNameFlag(tok: string): boolean {
+  return tok.startsWith("-") && tok !== "-" && !isNegativeNumber(tok);
+}
+
 function unknownFlagIn(tok: string, known: Set<string>): string | null {
-  if (tok === "-" || !tok.startsWith("-")) return null; // positional or flag value
+  if (!canNameFlag(tok)) return null; // positional or flag value
   if (tok.startsWith("--")) {
     const name = longFlagName(tok);
     return name && !known.has(name) ? `--${name}` : null;
@@ -55,12 +67,27 @@ function unknownFlagIn(tok: string, known: Set<string>): string | null {
   return null;
 }
 
+function unknownFlagError(flag: string, known: Set<string>, path: string): CliUsageError {
+  const command = `hyperframes ${path ? `${path} ` : ""}`.trim();
+  if (flag === "--json") {
+    return new CliUsageError(`${command} has no JSON output.`, {
+      code: "json_unsupported",
+      hint: "Run it without --json.",
+    });
+  }
+  const longNames = [...known].filter((name) => name.length > 1);
+  const match = flag.startsWith("--") ? closestMatch(flag.slice(2), longNames) : undefined;
+  const help = `Run 'hyperframes ${path ? `${path} ` : ""}--help' to see its flags.`;
+  const hint = match ? `Did you mean --${match}? ${help}` : help;
+  return new CliUsageError(`Unknown flag: ${flag}`, { hint, code: "unknown_flag" });
+}
+
 /**
  * Throw on the first flag in `rawArgs` not declared by `cmd` (its args + aliases
  * + the global set). Only dash-prefixed tokens are inspected, so positionals and
  * flag values pass through untouched. Stops at `--`.
  */
-export function assertKnownFlags(cmd: CommandDef<ArgsDef>, rawArgs: string[]): void {
+export function assertKnownFlags(cmd: CommandDef<ArgsDef>, rawArgs: string[], path = ""): void {
   if (!Array.isArray(rawArgs)) return;
   // citty types `args` as Resolvable<ArgsDef> (it may be a fn/promise); every
   // hyperframes command uses a static object, so treat anything else as "no
@@ -71,7 +98,7 @@ export function assertKnownFlags(cmd: CommandDef<ArgsDef>, rawArgs: string[]): v
   for (const tok of rawArgs) {
     if (tok === "--") break;
     const bad = unknownFlagIn(tok, known);
-    if (bad) throw new Error(`Unknown flag: ${bad}`);
+    if (bad) throw unknownFlagError(bad, known, path);
   }
 }
 
@@ -135,7 +162,7 @@ export interface SwallowGuardResult {
 
 // End of argv and a bare `-` (stdin) are never a swallow; `--` or a known flag spelling is.
 function looksLikeSwallowedFlag(next: string | undefined, known: Set<string>): boolean {
-  if (next === undefined || next === "-") return false;
+  if (next === undefined || next === "-" || isNegativeNumber(next)) return false;
   return next === "--" || (next.startsWith("-") && unknownFlagIn(next, known) === null);
 }
 

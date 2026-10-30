@@ -157,6 +157,20 @@ const readJson = (path) => JSON.parse(readFileSync(path, "utf8"));
 /** The grid a shard ran, from its first run's meta ("pr shard 2/5"); re-runs record their filter instead. */
 const gridOf = (results) => results.find((r) => !r.meta.rerun)?.meta.grid.split(" ")[0];
 
+const VERDICTS = {
+  0: "Edit accuracy holds against the base branch.",
+  1: "Edit accuracy fell against the base branch; see the PR comment.",
+};
+const notRun = (reported) => `Edit accuracy did not run: ${reported}; see the shard jobs.`;
+
+/** Writes what the workflow posts and prints; the verdict is the only text it shows for a failed gate. */
+function report(out, markdown, g) {
+  mkdirSync(out, { recursive: true });
+  writeFileSync(join(out, "comment.md"), markdown);
+  writeFileSync(join(out, "gate.json"), JSON.stringify(g, null, 1));
+  console.log(markdown);
+}
+
 // fallow-ignore-next-line complexity
 function main(argv) {
   const shardsAt = argv.indexOf("--shards");
@@ -169,7 +183,18 @@ function main(argv) {
   }
   const [headPath, out, ...resultPaths] = rest;
   const runs = resultPaths.map((p) => readJson(p));
-  if (!runs.length) throw new Error("no results.json from any shard");
+  if (!runs.length) {
+    const verdict = notRun(`0 of ${shards ?? "the"} shards reported results`);
+    report(
+      out,
+      `<!-- edit-accuracy -->\n### ${verdict}\n\nNothing was compared with the base branch.\n`,
+      {
+        ok: false,
+        verdict,
+      },
+    );
+    return 2;
+  }
   const cases = runs.flatMap((r) => r.cases);
   const full = gridOf(runs) === "full";
   const g = gate(
@@ -181,21 +206,21 @@ function main(argv) {
   );
   // A shard that died uploads nothing, so the count of first runs is what shows it.
   const firstRuns = runs.filter((r) => !r.meta.rerun).length;
-  if (shards !== null && firstRuns !== shards) {
-    g.reasons.push(`${firstRuns} of ${shards} shards reported results`);
-    g.ok = false;
-  }
-  mkdirSync(out, { recursive: true });
-  writeFileSync(join(out, "comment.md"), comment(g));
-  writeFileSync(join(out, "gate.json"), JSON.stringify(g, null, 1));
+  const shortfall =
+    shards !== null && firstRuns !== shards && `${firstRuns} of ${shards} shards reported results`;
+  // A case that ran and fell is a drop; a shard that did not report is not one.
+  const code = g.ok ? (shortfall ? 2 : 0) : 1;
+  if (shortfall) g.reasons.push(shortfall);
+  g.ok = code === 0;
+  g.verdict = code === 2 ? notRun(shortfall) : VERDICTS[code];
+  report(out, comment(g), g);
   // A baseline.json to commit when cases newly pass; only a full grid holds every case.
   if (full) writeReport(out, { ...runs[0].meta, grid: "full (CI)" }, bankable(cases), 0);
-  console.log(comment(g));
   if (g.unbanked.length && process.env.GITHUB_ACTIONS)
     console.log(
       `::notice title=Edit accuracy::${g.unbanked.length} newly passing case(s) are not banked in baseline.json; not gated.`,
     );
-  return g.ok ? 0 : 1;
+  return code;
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url))

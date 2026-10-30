@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { parsePort } from "./port.js";
 
 export interface OpenBrowserOptions {
   browserPath?: string;
@@ -16,14 +17,7 @@ export interface OpenBrowserOptions {
 
 export function parseRemoteDebuggingPort(value: string | undefined): number | undefined {
   if (value === undefined || value === "") return undefined;
-  if (!/^\d+$/.test(value)) {
-    throw new Error("--remote-debugging-port must be an integer between 1 and 65535");
-  }
-  const port = Number(value);
-  if (port < 1 || port > 65535) {
-    throw new Error("--remote-debugging-port must be an integer between 1 and 65535");
-  }
-  return port;
+  return parsePort(value, "--remote-debugging-port");
 }
 
 export interface RemoteDebuggingPortDeps {
@@ -81,6 +75,7 @@ export function openBrowser(url: string, options: OpenBrowserOptions = {}): void
     const child = spawn(options.browserPath, args, {
       detached: true,
       stdio: "ignore",
+      windowsHide: false,
     });
     child.on("error", () => {});
     child.unref();

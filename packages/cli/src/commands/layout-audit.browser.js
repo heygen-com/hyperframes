@@ -107,20 +107,29 @@
     return `${uniqueSelectorFor(parent)} > ${element.tagName.toLowerCase()}:nth-of-type(${index})`;
   }
 
+  // Color grading paints an <img>/<video> into a canvas the runtime inserts right after it; that canvas answers
+  // to the element the author wrote. ponytail: render-frame siblings sit between them only in render, not check.
+  const GRADED_STAND_IN = "[data-hf-color-grading-canvas]";
+  function authoredElement(element) {
+    return (element.matches(GRADED_STAND_IN) && element.previousElementSibling) || element;
+  }
+
   function hasIgnoreFlag(element) {
-    return !!element.closest("[data-layout-ignore], [data-layout-check='ignore']");
+    return !!authoredElement(element).closest("[data-layout-ignore], [data-layout-check='ignore']");
   }
 
   function hasAllowOverflowFlag(element) {
-    return !!element.closest("[data-layout-allow-overflow]");
+    return !!authoredElement(element).closest("[data-layout-allow-overflow]");
   }
 
   function hasAllowCaptionZoneFlag(element) {
-    return !!element.closest("[data-layout-allow-caption-zone]");
+    return !!authoredElement(element).closest("[data-layout-allow-caption-zone]");
   }
 
   function hasTextClipOptOut(element) {
-    return hasAllowOverflowFlag(element) || element.hasAttribute("data-layout-bleed");
+    return (
+      hasAllowOverflowFlag(element) || authoredElement(element).hasAttribute("data-layout-bleed")
+    );
   }
 
   function opacityChain(element) {
@@ -187,16 +196,13 @@
   function isVisibleElement(element, opacityFloor, probeClipPath) {
     if (IGNORE_TAGS.has(element.tagName)) return false;
     if (hasIgnoreFlag(element)) return false;
-    if (
-      opacityFloor != null &&
-      typeof element.checkVisibility === "function" &&
-      !element.checkVisibility({
-        opacityProperty: true,
-        visibilityProperty: true,
-        contentVisibilityAuto: true,
-      })
-    ) {
-      return false;
+    if (typeof element.checkVisibility === "function") {
+      // Without a floor the plain call still drops content the page does not render, such as a closed <details>.
+      const options =
+        opacityFloor != null
+          ? { opacityProperty: true, visibilityProperty: true, contentVisibilityAuto: true }
+          : {};
+      if (!element.checkVisibility(options)) return false;
     }
     const style = getComputedStyle(element);
     if (
@@ -512,23 +518,11 @@
 
   function visibleTextLineRects(element, rects, style, clip, tolerance) {
     const metrics = horizontalTextMetrics(element, style);
-    const fontHeight = metrics ? metrics.fontBoundingBoxAscent + metrics.fontBoundingBoxDescent : 0;
-    const lineHeight = parsePx(style.lineHeight) || fontHeight;
     return rects.flatMap((rect) => {
       if (!metrics) return intersectsTextWindow(rect, clip, tolerance) ? [rect] : [];
-      const scale = rect.height / fontHeight;
-      if (!intersectsTextWindow(inkRect(rect, metrics), clip, tolerance)) return [];
-      // Negative leading belongs outside the used line box. Font metrics scale
-      // with the Range rect, so zoomed cards retain the same clipping decision.
-      const inset = Math.max(0, (rect.height - lineHeight * scale) / 2);
-      return [
-        toRect({
-          ...rect,
-          top: rect.top + inset,
-          bottom: rect.bottom - inset,
-          height: rect.height - 2 * inset,
-        }),
-      ];
+      // The glyphs' ink is what a clip cuts; a line box with negative leading hides descenders from it.
+      const ink = inkRect(rect, metrics);
+      return intersectsTextWindow(ink, clip, tolerance) ? [toRect(ink)] : [];
     });
   }
 
@@ -704,7 +698,7 @@
     return colorAlpha(getComputedStyle(element).color) >= 0.35;
   }
 
-  const RUNTIME_HIDDEN_CLIP = '[data-hf-clip-hidden][style*="visibility: hidden"]';
+  const RUNTIME_HIDDEN_CLIP = "[data-hf-clip-hidden]";
 
   // Core's timedClipHide rule hides these clips' whole subtrees: skipping them bounds work by what is on screen.
   function elementsOnScreenScenes(root) {
@@ -1282,6 +1276,33 @@
   // An element hides text beneath it when it paints opaque pixels at near-full
   // opacity: raster content (img/video/canvas), a background image, or a solid
   // background colour. Low-opacity overlays (grain, scrims) do not occlude.
+  const canvasProbe = document.createElement("canvas");
+  canvasProbe.width = 1;
+  canvasProbe.height = 1;
+
+  // The drawn alpha under the point, or null when the canvas cannot be read (then it counts as opaque).
+  function canvasAlphaAt(element, x, y) {
+    const rect = element.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0 || !element.width || !element.height) return null;
+    const px = Math.min(
+      element.width - 1,
+      Math.max(0, Math.floor(((x - rect.left) / rect.width) * element.width)),
+    );
+    const py = Math.min(
+      element.height - 1,
+      Math.max(0, Math.floor(((y - rect.top) / rect.height) * element.height)),
+    );
+    try {
+      const context = canvasProbe.getContext("2d", { willReadFrequently: true });
+      if (!context) return null;
+      context.clearRect(0, 0, 1, 1);
+      context.drawImage(element, px, py, 1, 1, 0, 0, 1, 1);
+      return context.getImageData(0, 0, 1, 1).data[3] / 255;
+    } catch {
+      return null;
+    }
+  }
+
   function isOpaqueOccluder(element, x, y) {
     const opacity = opacityChain(element);
     if (opacity < OCCLUDING_ALPHA) return false;
@@ -1289,6 +1310,11 @@
     if (element.tagName === "IMG") {
       const alpha = imageAlphaAt(element, x, y);
       if (alpha !== null) return alpha * opacity >= OCCLUDING_ALPHA;
+    }
+    if (element.tagName === "CANVAS") {
+      const alpha = canvasAlphaAt(element, x, y);
+      if (alpha !== null)
+        return alpha * opacity >= OCCLUDING_ALPHA || hasOpaqueBackground(getComputedStyle(element));
     }
     const matte = matteFrameFor(element);
     if (matte) return matteOccludesAt(matte, x, y);
@@ -1336,6 +1362,12 @@
     return !!ctx && ctx === preserve3dContext(b);
   }
 
+  // A covering element marked to cover text, or inside a marked wrapper that does not also hold the text.
+  function allowsOcclusionOf(hit, element) {
+    const allowed = authoredElement(hit).closest("[data-layout-allow-occlusion]");
+    return !!allowed && !allowed.contains(element);
+  }
+
   // The opaque element painted over (x, y), or null when the topmost element
   // there is related to the text, non-opaque, sharing a 3D context with it, or
   // part of a transient crossfade overlap.
@@ -1351,6 +1383,7 @@
     for (const hit of stack) {
       if (!isForeignElement(element, hit)) return null;
       // Pair-specific exemptions excuse this hit only; keep walking for deeper occluders.
+      if (hasIgnoreFlag(hit) || allowsOcclusionOf(hit, element)) continue;
       if (sharedPreserve3d(element, hit)) continue;
       if (isCrossSceneTransitionOverlap(element, hit)) continue;
       const matte = seenMattes && matteFrameFor(hit);
@@ -1606,6 +1639,93 @@
     };
   }
 
+  // canvas_covered: an opaque element over most of the canvas with every other painted clip beneath it.
+  const COVER_CANVAS_SHARE = 0.9;
+  const COVERED_CONTENT_SHARE = 0.9;
+
+  function paintsOwnContent(element) {
+    return (
+      hasOwnTextCandidate(element, true) ||
+      FRAME_MEDIA_TAGS.has(element.tagName.toUpperCase()) ||
+      hasPaint(getComputedStyle(element))
+    );
+  }
+
+  function onCanvasRect(element, rootRect) {
+    const rect = toRect(element.getBoundingClientRect());
+    const left = Math.max(rect.left, rootRect.left);
+    const top = Math.max(rect.top, rootRect.top);
+    const right = Math.min(rect.right, rootRect.right);
+    const bottom = Math.min(rect.bottom, rootRect.bottom);
+    return right > left && bottom > top
+      ? rectFromOrigin(left, top, right - left, bottom - top)
+      : null;
+  }
+
+  // Topmost first, and a centre probe before the grid: a backdrop under its content clears on the first clip.
+  function isBuried(element, rootRect) {
+    const rect = onCanvasRect(element, rootRect);
+    if (!rect) return true;
+    if (!occluderAt(element, rect.left + rect.width / 2, rect.top + rect.height / 2)) return false;
+    return occlusionCoverage(element, [rect]).coveredFraction >= COVERED_CONTENT_SHARE;
+  }
+
+  function spansCanvas(element, rootRect) {
+    const rect = toRect(element.getBoundingClientRect());
+    return intersectionArea(rect, rootRect) >= rectArea(rootRect) * COVER_CANVAS_SHARE;
+  }
+
+  function visibleElementsIn(root) {
+    return Array.from(root.querySelectorAll("*")).filter((element) =>
+      isVisibleElement(element, 0.05),
+    );
+  }
+
+  // Only frame 0 asks: the craft sweep samples at 8 fps and the scan restores hit testing on every node.
+  function canvasCoverAt(root, rootRect) {
+    const restoreHits = restoreHitTesting(root);
+    try {
+      return canvasCoveredIssue(root, rootRect, visibleElementsIn(root), 0);
+    } finally {
+      restoreHits();
+    }
+  }
+
+  function canvasCoveredIssue(root, rootRect, elements, time) {
+    for (const cover of elements) {
+      if (cover === root || hasAllowOcclusionFlag(cover) || !spansCanvas(cover, rootRect)) continue;
+      // A buried backdrop is not a lost clip: full-frame b-roll over a background is the film.
+      const beneath = elements.filter(
+        (element) =>
+          element !== cover &&
+          !element.contains(cover) &&
+          paintsOwnContent(element) &&
+          !spansCanvas(element, rootRect),
+      );
+      if (
+        beneath.length === 0 ||
+        !beneath.reverse().every((element) => isBuried(element, rootRect))
+      )
+        continue;
+      // Last: an opaque check reads a video's frame, which a backdrop under its content never needs.
+      const rect = toRect(cover.getBoundingClientRect());
+      if (!isOpaqueOccluder(cover, rect.left + rect.width / 2, rect.top + rect.height / 2))
+        continue;
+      return {
+        code: "canvas_covered",
+        severity: "error",
+        time,
+        selector: uniqueSelectorFor(cover),
+        message:
+          "An opaque element covers the canvas above every other visible clip, so the frame shows only it.",
+        rect: toRect(cover.getBoundingClientRect()),
+        fixHint:
+          "Move the full-frame element below the content (earlier in the DOM or a lower z-index / track), or mark a deliberate full-frame card with data-layout-allow-occlusion.",
+      };
+    }
+    return null;
+  }
+
   function layoutOffset(element) {
     let left = 0;
     let top = 0;
@@ -1624,7 +1744,8 @@
     // Chromium 150+ includes independently painted descendants in text masks;
     // older builds drop their glyphs: https://github.com/heygen-com/hyperframes/issues/5117.
     const chromium = window.navigator.userAgent.match(/(?:HeadlessChrome|Chrome)\/(\d+)/);
-    if (!chromium || Number(chromium[1]) < 150 || !(element instanceof HTMLElement)) return false;
+    const chromiumVersion = chromium ? Number(chromium[1]) : 0;
+    if (!chromiumVersion || !(element instanceof HTMLElement)) return false;
 
     for (
       let ancestor = element.parentElement;
@@ -1636,6 +1757,7 @@
         style.webkitBackgroundClip || style.backgroundClip || "border-box",
       ).map((clip) => clip.trim());
       if (!clips.includes("text")) continue;
+      if (chromiumVersion < 150 && hasIndependentTextPaint(element, ancestor)) continue;
       // Chromium builds the mask before descendant transforms, so moving the
       // child must not move its glyphs out of the mask for this check.
       const offset = layoutOffset(element);
@@ -1662,13 +1784,72 @@
       const imagePaints = images.some(
         (image, index) =>
           clips[index % clips.length] === "text" &&
-          /(?:linear|radial|conic)-gradient\(/i.test(image) &&
-          gradientMaxAlpha(image) > 0.05,
+          (/url\(/i.test(image) ||
+            (/(?:linear|radial|conic)-gradient\(/i.test(image) && gradientMaxAlpha(image) > 0.05)),
       );
       const colorPaints =
         clips[(images.length - 1) % clips.length] === "text" &&
         colorAlpha(style.backgroundColor || "rgba(0, 0, 0, 0)") > 0.05;
       if (imagePaints || colorPaints) return true;
+    }
+    return false;
+  }
+
+  // Plain descendants share a text mask on older Chromium; independently
+  // painted descendants do not. Check the whole path to the mask, including
+  // wrappers: https://github.com/chromium/chromium/blob/148.0.7778.97/third_party/blink/renderer/core/layout/layout_inline.cc.
+  function hasIndependentTextPaint(element, background) {
+    for (let current = element; current !== background; current = current.parentElement) {
+      const style = getComputedStyle(current);
+      if (style.position && style.position !== "static") return true;
+      if (Number.parseFloat(style.opacity || "1") < 1) return true;
+      const isInline = style.display === "inline";
+      if (
+        [
+          style.filter,
+          style.backdropFilter,
+          style.webkitBackdropFilter,
+          style.maskImage,
+          style.webkitMaskImage,
+          style.clipPath,
+          style.webkitClipPath,
+          style.viewTransitionName,
+        ].some((value) => value && value !== "none")
+      )
+        return true;
+      if (
+        !isInline &&
+        [style.transform, style.translate, style.rotate, style.scale, style.perspective].some(
+          (value) => value && value !== "none",
+        )
+      )
+        return true;
+      if (style.isolation === "isolate") return true;
+      if (style.mixBlendMode && style.mixBlendMode !== "normal") return true;
+      if (
+        !isInline &&
+        (style.backfaceVisibility === "hidden" || style.transformStyle === "preserve-3d")
+      )
+        return true;
+      if (!isInline && /\b(?:paint|layout|content|strict)\b/.test(style.contain || "")) return true;
+      if (style.contentVisibility && style.contentVisibility !== "visible") return true;
+      if (
+        (style.willChange || "")
+          .split(",")
+          .some(
+            (property) =>
+              /^(?:opacity|filter|backdrop-filter|position|isolation|mix-blend-mode|mask|mask-image|clip-path)$/.test(
+                property.trim(),
+              ) ||
+              (!isInline &&
+                /^(?:transform|translate|rotate|scale|perspective)$/.test(property.trim())),
+          )
+      )
+        return true;
+      if (style.zIndex && style.zIndex !== "auto" && current.parentElement) {
+        const display = getComputedStyle(current.parentElement).display;
+        if (/^(?:inline-)?(?:flex|grid)$/.test(display)) return true;
+      }
     }
     return false;
   }
@@ -1695,6 +1876,11 @@
     // unset, so it is the effective fill directly.
     const fill = cs.webkitTextFillColor || cs.color;
     if (colorAlpha(fill) > 0.05) return null;
+    if (
+      Number.parseFloat(cs.webkitTextStrokeWidth) > 0 &&
+      colorAlpha(cs.webkitTextStrokeColor) > 0.05
+    )
+      return null;
     const clip = cs.webkitBackgroundClip || cs.backgroundClip || "";
     if (/text/i.test(clip)) {
       const bgImage = cs.backgroundImage || "none";
@@ -1935,6 +2121,8 @@
   function canvasEdgeIssues(root, rootRect, time, tolerance) {
     const issues = [];
     for (const canvas of Array.from(root.querySelectorAll("canvas"))) {
+      // A graded stand-in shows the author's media, not drawn art; the media itself is never read here.
+      if (canvas.matches(GRADED_STAND_IN)) continue;
       if (!isVisibleElement(canvas) || hasAllowOverflowFlag(canvas)) continue;
       if (!canvas.width || !canvas.height) continue;
       const rect = toRect(canvas.getBoundingClientRect());
@@ -2349,9 +2537,7 @@
       document.querySelector("[data-composition-id]") ||
       document.body;
     const rootRect = rootRectFor(root);
-    const elements = Array.from(root.querySelectorAll("*")).filter((element) =>
-      isVisibleElement(element, 0.05),
-    );
+    const elements = visibleElementsIn(root);
     const issues = [];
     const matteResults = new Map();
     videoAlphaFrames = new Map();
@@ -2368,6 +2554,8 @@
         const invisible = invisibleTextIssue(element, time);
         if (invisible) issues.push(invisible);
       }
+      const covered = canvasCoveredIssue(root, rootRect, elements, time);
+      if (covered) issues.push(covered);
     } finally {
       restoreHits();
     }
@@ -2393,6 +2581,204 @@
       document.querySelector("[data-composition-id]") ||
       document.body;
     return contentOverlapIssues(root, time);
+  };
+
+  // Craft sampling for check's craft section (utils/craftAudit.ts judges it in Node). One call per seek:
+  // every painted text element with its reading block, rendered font size and opacity; whether a data-hold
+  // element is on screen; whether anything besides the background paints; and the keepsMoving liveness
+  // signature from motion-signature.browser.js, so a still stretch here is the stillness motion_frozen sees.
+  const craftKeys = new WeakMap();
+  const craftAnchors = new WeakMap();
+  let craftNextKey = 0;
+  const INLINE_LEVEL_DISPLAY = /^(inline|inline-block|inline-flex|inline-grid|contents|ruby)$/;
+  const CRAFT_PAINTED_OPACITY = 0.2;
+  const PAINT_OPTIONS = { opacityProperty: true, visibilityProperty: true };
+
+  function craftKey(element) {
+    if (!craftKeys.has(element)) craftKeys.set(element, ++craftNextKey);
+    return craftKeys.get(element);
+  }
+
+  // Sampled at every seek of a dense grid, so the selector walk runs once per element.
+  function craftAnchor(element) {
+    if (!craftAnchors.has(element)) {
+      const source = element
+        .closest("[data-composition-file]")
+        ?.getAttribute("data-composition-file");
+      craftAnchors.set(element, {
+        selector: uniqueSelectorFor(element),
+        sourceFile: source || "index.html",
+      });
+    }
+    return craftAnchors.get(element);
+  }
+
+  // Mirrors trackKindOf in @hyperframes/parsers (data-track-kind, legacy caption hosts) plus the caption
+  // stages __hyperframesGeometryCandidates already skips.
+  function isCaptionsText(element) {
+    for (let current = element; current; current = current.parentElement) {
+      if ((current.getAttribute("data-track-kind") || "").trim().toLowerCase() === "captions") {
+        return true;
+      }
+      const host =
+        current.hasAttribute("data-composition-id") || current.hasAttribute("data-composition-src");
+      if (!host) continue;
+      if (current.getAttribute("data-composition-id") === "captions") return true;
+      if (/(?:^|\s)caption[-_]/.test(current.getAttribute("class") || "")) return true;
+    }
+    return !!element.closest(".caption-layer, #caption-stage");
+  }
+
+  // The line a reader takes in at once: the nearest block-level ancestor-or-self, so a headline split into
+  // inline word or character spans is one line, while flex items and positioned spans stay their own.
+  function readingBlock(element, root) {
+    let current = element;
+    while (
+      current !== root &&
+      current.parentElement &&
+      !current.hasAttribute("data-composition-id") &&
+      INLINE_LEVEL_DISPLAY.test(getComputedStyle(current).display)
+    ) {
+      current = current.parentElement;
+    }
+    return current;
+  }
+
+  function scaleProperty(style) {
+    const parts = (style.scale || "none")
+      .split(/\s+/)
+      .map((part) => Number.parseFloat(part))
+      .filter(Number.isFinite);
+    if (parts.length === 0) return 1;
+    return Math.sqrt(Math.abs(parts[0] * (parts.length > 1 ? parts[1] : parts[0])));
+  }
+
+  // A transform scales glyphs without changing the computed font-size: multiply in every ancestor's area
+  // scale (rotation-invariant), or the SVG screen matrix for SVG text.
+  function renderedFontPx(element, style) {
+    const font = parsePx(style.fontSize);
+    if (typeof element.getScreenCTM === "function" && element.ownerSVGElement) {
+      const ctm = element.getScreenCTM();
+      return ctm ? font * Math.sqrt(Math.abs(ctm.a * ctm.d - ctm.b * ctm.c)) : font;
+    }
+    let scale = 1;
+    for (let current = element; current; current = current.parentElement) {
+      const currentStyle = current === element ? style : getComputedStyle(current);
+      if (currentStyle.transform && currentStyle.transform !== "none") {
+        try {
+          const matrix = new DOMMatrixReadOnly(currentStyle.transform);
+          scale *= Math.sqrt(Math.abs(matrix.a * matrix.d - matrix.b * matrix.c));
+        } catch {
+          // An unparsable transform leaves the size as computed.
+        }
+      }
+      scale *= scaleProperty(currentStyle);
+    }
+    return font * scale;
+  }
+
+  function intersectsRect(rect, frame) {
+    return (
+      rect.right > frame.left &&
+      rect.left < frame.right &&
+      rect.bottom > frame.top &&
+      rect.top < frame.bottom
+    );
+  }
+
+  function craftTextParts(root, rootRect) {
+    const candidates = [];
+    for (const element of elementsOnScreenScenes(root)) {
+      if (!hasOwnTextCandidate(element, true) || !isVisibleElement(element, 0.05, false)) continue;
+      const rect = unionRects(visibleTextClientRects(element, true));
+      if (!rect || !intersectsRect(rect, rootRect)) continue;
+      candidates.push({ element, rect });
+    }
+    const clipped = candidates.filter((candidate) => hasClipPath(candidate.element));
+    const clippedAway = new Set();
+    if (clipped.length > 0) {
+      const restoreHits = restoreHitTesting(root);
+      try {
+        for (const candidate of clipped) {
+          if (isClippedAway(candidate.element)) clippedAway.add(candidate.element);
+        }
+      } finally {
+        restoreHits();
+      }
+    }
+    return candidates
+      .filter((candidate) => !clippedAway.has(candidate.element))
+      .map(({ element, rect }) => {
+        const block = readingBlock(element, root);
+        return {
+          key: craftKey(element),
+          block: craftKey(block),
+          ...craftAnchor(element),
+          blockSelector: craftAnchor(block).selector,
+          text: textContentFor(element, true),
+          opacity: round(opacityChain(element)),
+          fontPx: round(renderedFontPx(element, getComputedStyle(element))),
+          rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+          captions: isCaptionsText(element),
+        };
+      });
+  }
+
+  function isPaintedBox(element, rootRect) {
+    if (typeof element.checkVisibility === "function" && !element.checkVisibility(PAINT_OPTIONS)) {
+      return false;
+    }
+    const style = getComputedStyle(element);
+    if (style.display === "none" || style.visibility === "hidden") return false;
+    if (opacityChain(element) < CRAFT_PAINTED_OPACITY) return false;
+    const rect = element.getBoundingClientRect();
+    return rect.width >= 4 && rect.height >= 4 && intersectsRect(rect, rootRect);
+  }
+
+  function paintsContent(root, rootRect, parts) {
+    if (parts.some((part) => part.opacity >= CRAFT_PAINTED_OPACITY)) return true;
+    for (const element of Array.from(root.querySelectorAll("img, video, canvas, svg"))) {
+      if (element.parentElement?.closest("svg")) continue;
+      if (isPaintedBox(element, rootRect)) return true;
+    }
+    return false;
+  }
+
+  window.__hyperframesCraftSample = function collectCraftSample(options) {
+    const root =
+      document.querySelector("[data-composition-id][data-width][data-height]") ||
+      document.querySelector("[data-composition-id]") ||
+      document.body;
+    const rootRect = rootRectFor(root);
+    const parts = craftTextParts(root, rootRect);
+    const cover = options && options.withCover ? canvasCoverAt(root, rootRect) : null;
+    const holds = [root, ...Array.from(root.querySelectorAll("[data-hold]"))].filter((element) =>
+      element.hasAttribute("data-hold"),
+    );
+    const shared = window.__hyperframesMotionSignature;
+    return {
+      parts,
+      held: holds.some((element) => isPaintedBox(element, rootRect)),
+      painted: paintsContent(root, rootRect, parts),
+      coveredBy: cover ? cover.selector : null,
+      signature: shared
+        ? shared.compositionSignature(shared.compositionRoot(), { quantize: true })
+        : "",
+    };
+  };
+
+  // Sound the render mixes: any unmuted <audio>, and a <video> the timing compiler marks audible
+  // (data-has-audio="true", or no data-has-audio on an unmuted video).
+  window.__hyperframesCraftFilm = function collectCraftFilm() {
+    let soundSources = 0;
+    for (const media of Array.from(document.querySelectorAll("audio, video"))) {
+      if (media.hasAttribute("muted")) continue;
+      const declared = media.getAttribute("data-has-audio");
+      const audible =
+        media.tagName.toUpperCase() === "AUDIO" || declared === null || declared === "true";
+      if (audible) soundSources += 1;
+    }
+    return { soundSources };
   };
 
   // The frozen-sweep fingerprint (window.__hyperframesLayoutGeometry, #U10 in

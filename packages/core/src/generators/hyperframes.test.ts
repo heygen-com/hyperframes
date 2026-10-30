@@ -8,6 +8,7 @@ import {
   generateHyperframesStyles,
 } from "./hyperframes.js";
 import { parseHtml } from "@hyperframes/parsers";
+import { MEDIA_ELEMENT_LEAD_SECONDS } from "../runtime/mediaClock";
 import { GSAP_CDN } from "../templates/constants.js";
 import type {
   TimelineTextElement,
@@ -400,7 +401,16 @@ describe("generateGsapTimelineScript", () => {
     const script = generateGsapTimelineScript(elements, 10);
 
     expect(script).toContain("Sync media playback");
-    expect(script).toContain("media.currentTime");
+    expect(script).toContain(`media.currentTime = mediaTime + ${MEDIA_ELEMENT_LEAD_SECONDS};`);
+  });
+
+  it("leads media seeks by the same literal on the keyframes branch", () => {
+    const elements = [makeVideoElement({ id: "vid-kf" })];
+    const keyframes = { "vid-kf": [{ id: "kf1", time: 0, properties: { opacity: 1 } }] };
+    const script = generateGsapTimelineScript(elements, 10, { keyframes });
+
+    expect(script).toContain(`media.currentTime = mediaTime + ${MEDIA_ELEMENT_LEAD_SECONDS};`);
+    expect(script).not.toContain("media.currentTime = mediaTime;");
   });
 
   it("generates initial position sets for elements with x/y offsets", () => {

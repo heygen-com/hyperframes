@@ -45,6 +45,28 @@ describe("tts command", () => {
     );
   });
 
+  it("refuses a missing --text-file before passing its path to synthesis", async () => {
+    const input = join(dir, "missing.txt");
+
+    await expect(
+      runCommand(ttsCommand, { rawArgs: ["--text-file", input, "--json"] }),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+
+    expect(synthesizeMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps positional text that resembles a missing filename as spoken text", async () => {
+    const input = join(dir, "missing.txt");
+
+    await runCommand(ttsCommand, { rawArgs: [input, "--json"] });
+
+    expect(synthesizeMock).toHaveBeenCalledWith(
+      input,
+      expect.any(String),
+      expect.objectContaining({ lang: "en-us" }),
+    );
+  });
+
   it.each(["0.05", "1x", "1.5junk", "1 2", "", " ", "NaN", "Infinity", "0", "-1", "3.01"])(
     "rejects invalid speed %j before synthesis",
     async (speed) => {

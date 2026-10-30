@@ -9,8 +9,23 @@ vi.mock("../utils/runFfmpeg.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../utils/runFfmpeg.js")>()),
   runFfmpeg: runFfmpegMock,
 }));
-vi.mock("../utils/ffprobe.js", () => ({
-  extractAudioMetadata: vi.fn(async () => ({ durationSeconds: 1, channels: 2 })),
+
+// Enough cores that every preparation starts at once, so they can finish in reverse.
+vi.mock("node:os", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("node:os")>()),
+  cpus: () =>
+    Array.from({ length: 16 }, () => ({}) as ReturnType<typeof import("node:os").cpus>[number]),
+}));
+
+// The AAC encode is aacEncode.test.ts's subject; here the mix only has to hand it the float sum.
+vi.mock("./aacEncode.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./aacEncode.js")>()),
+  encodeAac: vi.fn(async () => ({ success: true, durationMs: 1, stderr: "", exitCode: 0 })),
+}));
+
+vi.mock("../utils/ffprobe.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../utils/ffprobe.js")>()),
+  extractAudioMetadata: vi.fn(async () => ({ durationSeconds: 1, channels: 2, audioStream: 0 })),
 }));
 
 import { processCompositionAudio, type AudioElement } from "./audioMixer.js";

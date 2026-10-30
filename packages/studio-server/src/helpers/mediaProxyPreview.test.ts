@@ -23,7 +23,10 @@ function hostile(codecName: string, representativeMime: string | null): AssetCod
   return { codecName, browserHostile: true, representativeMime, hasAlpha: false };
 }
 
-async function loadHelper(map: MediaCodecMap): Promise<{
+async function loadHelper(
+  map: MediaCodecMap,
+  sourceFacts: Record<string, unknown> = {},
+): Promise<{
   injectMediaCodecMapIntoHtml: typeof import("./mediaProxyPreview.js").injectMediaCodecMapIntoHtml;
   mediaProxyDemand: typeof import("./mediaCodecMap.js").mediaProxyDemand;
   resolveProxy: ReturnType<typeof vi.fn>;
@@ -35,7 +38,7 @@ async function loadHelper(map: MediaCodecMap): Promise<{
   // replaced, so this asserts the shipped policy rather than a copy of it.
   vi.doMock("./mediaCodecMap.js", async () => ({
     ...(await vi.importActual<typeof import("./mediaCodecMap.js")>("./mediaCodecMap.js")),
-    scanProjectMediaCodecMap: async () => map,
+    scanProjectMedia: async () => ({ codecMap: map, sourceFacts }),
   }));
   const { injectMediaCodecMapIntoHtml } = await import("./mediaProxyPreview.js");
   const { mediaProxyDemand } = await import("./mediaCodecMap.js");
@@ -53,6 +56,33 @@ afterEach(() => {
   vi.doUnmock("./proxyTranscoder.js");
   vi.doUnmock("./mediaCodecMap.js");
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+});
+
+describe("injectMediaCodecMapIntoHtml source facts", () => {
+  const facts = { "/videos/cam.mp4": { width: 3840, height: 2160, bitDepth: 10, bitrate: 0 } };
+
+  it("hands the page the sizes of its videos, and no codec map when none is hostile", async () => {
+    const { injectMediaCodecMapIntoHtml } = await loadHelper({}, facts);
+
+    const html = await injectMediaCodecMapIntoHtml(
+      "<html><head></head><body></body></html>",
+      tmpProject(),
+      [{ html: "<html></html>" }],
+    );
+
+    expect(html).toContain("window.__HF_MEDIA_SOURCE_FACTS__=");
+    expect(html).toContain('"/videos/cam.mp4"');
+    expect(html).not.toContain("__HF_MEDIA_CODEC_MAP__");
+  });
+
+  it("leaves the page untouched when there is nothing to say about its videos", async () => {
+    const { injectMediaCodecMapIntoHtml } = await loadHelper({}, {});
+    const page = "<html><head></head><body></body></html>";
+
+    expect(await injectMediaCodecMapIntoHtml(page, tmpProject(), [{ html: "<html></html>" }])).toBe(
+      page,
+    );
+  });
 });
 
 describe("injectMediaCodecMapIntoHtml pre-warm", () => {
@@ -75,11 +105,40 @@ describe("injectMediaCodecMapIntoHtml pre-warm", () => {
       projectDir,
       resolve(projectDir, "videos/broll.mov"),
       "h264",
+      undefined,
+      { signal: undefined },
     );
     // Both entries still reach the client: the browser-side canPlayType check
     // owns whether a VP9 asset needs a proxy, and that contract is unchanged.
     expect(html).toContain("/videos/avatar.webm");
     expect(html).toContain("/videos/broll.mov");
+  });
+
+  it("pre-warms the copy the page will ask for when given its box", async () => {
+    const projectDir = tmpProject();
+    const { injectMediaCodecMapIntoHtml, resolveProxy } = await loadHelper({
+      "/videos/broll.mov": hostile("hevc", 'video/mp4; codecs="hvc1.1.6.L120.B0"'),
+    });
+    const box = { width: 2048, height: 1448 };
+
+    await injectMediaCodecMapIntoHtml(
+      "<html><head></head></html>",
+      projectDir,
+      [{ html: "<html></html>" }],
+      undefined,
+      true,
+      undefined,
+      box,
+    );
+    await settle();
+
+    expect(resolveProxy).toHaveBeenCalledWith(
+      projectDir,
+      resolve(projectDir, "videos/broll.mov"),
+      "h264",
+      box,
+      { signal: undefined },
+    );
   });
 
   it("counts the pre-warms it requests, and none for a widely-decoded codec", async () => {

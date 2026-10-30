@@ -31,7 +31,7 @@ import type {
 } from "./timelineClipDragTypes";
 import { getTimelineElementIndexes } from "../lib/timelineElementIndexes";
 import { dropMisalignedTrimPartners, linkedGestureKeys } from "./audioClipLink";
-import { isLinkedSelectionOn } from "../../utils/linkedClipPreferences";
+import { isLinkedSelectionOn, useLinkedClipPreferences } from "../../utils/linkedClipPreferences";
 import { useTimelineClipCapabilities } from "./timelineReadOnly";
 import { timelineClipFocusId } from "./timelineNavigationIdentity";
 import {
@@ -184,7 +184,10 @@ export function useTimelineClipDrag({
   // The ruler's line spacing at the current zoom; 0 with the magnet off, like the targets.
   const snapGridStep = useCallback(() => {
     if (!snapContextRef.current.enabled) return 0;
-    const frameRate = rulerFrameRate(usePlayerStore.getState().timeDisplayMode);
+    const frameRate = rulerFrameRate(
+      usePlayerStore.getState().timeDisplayMode,
+      useLinkedClipPreferences.getState().compositionFps,
+    );
     return getTimelineGridStep(durationRef.current, ppsRef.current, frameRate);
   }, [durationRef, ppsRef]);
 

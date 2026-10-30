@@ -43,28 +43,21 @@ jobs:
   changes:
     name: Detect changes
     runs-on: ubuntu-latest
-    timeout-minutes: 4
+    timeout-minutes: 8
     permissions:
       actions: read
       contents: read
     outputs:
-      code: ${{ steps.filter.outputs.code }}
+      code: ${{ steps.release.outputs.release_only == 'true' && 'false' || steps.filter.outputs.code }}
     steps:
       # Force git-based change detection instead of the pull_request REST API.
       # The API path can fail the workflow on transient listFiles timeouts
       # before the Windows render jobs even start.
-      # A history fetch now and then stalls until the job's limit; a second fetch gets through.
-      - id: checkout
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        timeout-minutes: 1
-        continue-on-error: true
-        with:
-          fetch-depth: 0
-      - if: steps.checkout.outcome != 'success'
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        timeout-minutes: 1
-        with:
-          fetch-depth: 0
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        timeout-minutes: 3
+      - name: Fetch the history the diffs read
+        timeout-minutes: 2
+        uses: ./.github/actions/fetch-history
       - name: Check whether this commit already passed before a title or body edit
         id: edit
         uses: ./.github/actions/edit-already-passed
@@ -77,6 +70,9 @@ jobs:
           git rev-parse --verify -q HEAD^2 > /dev/null || { echo "::error::HEAD is not the pull request merge commit"; exit 1; }
           sha="$(git rev-parse --verify HEAD^1)"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Find a release-only diff
+        id: release
+        uses: ./.github/actions/release-only-diff
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4
         id: filter
         if: steps.edit.outputs.passed != 'true'
@@ -225,7 +221,7 @@ jobs:
         run: bun install --frozen-lockfile --linker=hoisted
 
       # The CLI bundle consumes Engine and Producer from source, but copies the
-      # built Studio and Player artifacts. Build only that dependency chain;
+      # built Studio, Player and Inspector artifacts. Build only that dependency chain;
       # cloud adapters, SDK playground, and other publish-only packages are not
       # exercised by this Windows render smoke test.
       - name: Build render prerequisites
@@ -235,6 +231,7 @@ jobs:
           bun run --cwd packages/core build
           bun run --filter @hyperframes/player build
           bun run --filter @hyperframes/studio build
+          bun run --filter @hyperframes/inspector build
           bun run --filter @hyperframes/cli build
 
       # -----------------------------------------------------------------
@@ -247,8 +244,7 @@ jobs:
 
       - name: Scaffold canary composition
         shell: pwsh
-        # init's --skip-skills flag is neutered (see init.ts); opt out of the
-        # GitHub skills check via this env so the canary scaffold stays offline.
+        # Skip skill installation and GitHub checks to keep the canary scaffold offline.
         env:
           HYPERFRAMES_SKIP_SKILLS: "1"
         run: |
@@ -428,7 +424,7 @@ jobs:
     needs: [changes, preflight]
     if: needs.changes.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -508,17 +504,21 @@ jobs:
         shell: pwsh
         run: node --import tsx packages/cli/scripts/prepare-process-test-browser.mjs
 
+      # Step limits stay under the job limit minus setup (~5 min), so a hung run fails its step and keeps the log.
       - name: Run Studio shard ${{ matrix.studio_shard }}
         if: matrix.studio_shard
         shell: pwsh
-        run: bun run --cwd packages/studio test -- --shard=${{ matrix.studio_shard }} --maxWorkers=2
+        timeout-minutes: 16
+        run: bun run --cwd packages/studio test -- --shard=${{ matrix.studio_shard }} --maxWorkers=2 --reporter=verbose
 
       - name: Run ${{ matrix.lane }} package tests
         if: matrix.packages
         shell: pwsh
+        timeout-minutes: 20
         # Each package starts its own Vitest pool. Bound every pool so concurrent
         # package scripts cannot oversubscribe the hosted Windows runner.
-        run: bun run ${{ matrix.packages }} test -- --maxWorkers=2
+        # timeout-minutes did not fire on a hung run, so the script enforces the 16 minutes itself.
+        run: ./scripts/ci/run-with-deadline.ps1 -Minutes 16 -Command 'bun run ${{ matrix.packages }} test -- --maxWorkers=2 --reporter=verbose'
 
       - name: Verify waveform cache writes on Windows
         if: matrix.lane == 'engine-cli'
@@ -539,6 +539,15 @@ jobs:
         if: matrix.lane == 'engine-cli'
         shell: pwsh
         run: bunx vitest run scripts/catalog/catalog-payload-assets.file-race.test.ts scripts/catalog/catalog-payload-assets.cache-race.test.ts --maxWorkers=2
+
+      - name: Upload test step log
+        if: always() && matrix.packages
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: test-step-log-${{ matrix.lane }}
+          path: ${{ runner.temp }}/deadline-step.log
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Run runtime contract test
         if: matrix.runtime_contract

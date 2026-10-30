@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { join } from "node:path";
 
 const browserMocks = vi.hoisted(() => {
@@ -23,7 +23,9 @@ import { findSystemChrome, generateThumbnail, type GenerateThumbnailOptions } fr
 
 const originalBrowserPath = process.env["HYPERFRAMES_BROWSER_PATH"];
 
-function options(signal = new AbortController().signal): GenerateThumbnailOptions {
+const controllers: AbortController[] = [];
+
+function options(signal = trackedSignal()): GenerateThumbnailOptions {
   return {
     project: { dir: process.cwd() },
     compPath: "index.html",
@@ -38,15 +40,28 @@ function options(signal = new AbortController().signal): GenerateThumbnailOption
   };
 }
 
+function trackedSignal(): AbortSignal {
+  const controller = new AbortController();
+  controllers.push(controller);
+  return controller.signal;
+}
+
 describe("generateThumbnail", () => {
-  beforeAll(() => {
+  beforeAll(async () => {
     process.env["HYPERFRAMES_BROWSER_PATH"] = process.execPath;
-  });
+    // generateThumbnail loads puppeteer lazily; the first load is slow on a cold Windows runner.
+    await import("puppeteer-core");
+  }, 60_000);
 
   beforeEach(() => {
     browserMocks.launch.mockReset().mockResolvedValue(browserMocks.sharedBrowser);
     browserMocks.newPage.mockClear();
     for (const mock of Object.values(browserMocks.page)) mock.mockClear();
+  });
+
+  afterEach(() => {
+    // Cancel any request a timed-out test left running, so it cannot close pages in the next test.
+    for (const controller of controllers.splice(0)) controller.abort();
   });
 
   afterAll(() => {

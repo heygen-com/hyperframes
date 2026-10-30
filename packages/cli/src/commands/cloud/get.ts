@@ -6,7 +6,7 @@
  * docs / chat — fetch them on demand.
  */
 
-import { defineCommand } from "citty";
+import { defineCommand } from "../../utils/defineCommand.js";
 import { createCloudClient } from "../../cloud/index.js";
 import { reportApiError } from "../../cloud/errors.js";
 import { colorStatus } from "../../cloud/statusColor.js";

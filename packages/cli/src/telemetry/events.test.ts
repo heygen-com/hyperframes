@@ -118,9 +118,15 @@ describe("trackCheckReport", () => {
       motionWarnings: 8,
       contrastErrors: 9,
       contrastWarnings: 10,
+      craftWarnings: 16,
       launchSettleMs: 11,
+      renderReadyTimedOut: true,
       seekLoopMs: 12,
       contrastMs: 13,
+      gridMs: 17,
+      craftMs: 18,
+      overlapMs: 19,
+      durationSec: 20,
       gridPoints: 14,
       contrastPoints: 15,
       ok: false,
@@ -144,9 +150,15 @@ describe("trackCheckReport", () => {
       motion_warnings: 8,
       contrast_errors: 9,
       contrast_warnings: 10,
+      craft_warnings: 16,
       launch_settle_ms: 11,
+      render_ready_timed_out: true,
       seek_loop_ms: 12,
       contrast_ms: 13,
+      grid_ms: 17,
+      craft_ms: 18,
+      overlap_ms: 19,
+      composition_s: 20,
       grid_points: 14,
       contrast_points: 15,
       ok: false,
@@ -172,9 +184,15 @@ describe("trackCheckReport", () => {
       motionWarnings: 0,
       contrastErrors: 0,
       contrastWarnings: 0,
+      craftWarnings: 0,
       launchSettleMs: 0,
+      renderReadyTimedOut: false,
       seekLoopMs: 0,
       contrastMs: 0,
+      gridMs: 0,
+      craftMs: 0,
+      overlapMs: 0,
+      durationSec: 0,
       gridPoints: 0,
       contrastPoints: 0,
       ok: true,
@@ -982,6 +1000,22 @@ describe("render telemetry events", () => {
     );
   });
 
+  it("reports render_complete de_router_breaker_off when the install's breaker held the router off", () => {
+    trackRenderComplete({
+      durationMs: 1000,
+      fps: 30,
+      quality: "standard",
+      docker: false,
+      gpu: false,
+      deRouterBreakerOff: true,
+    });
+    expect(trackEvent).toHaveBeenCalledWith(
+      "render_complete",
+      expect.objectContaining({ de_router_breaker_off: true }),
+      undefined,
+    );
+  });
+
   it("emits render_preflight_rejected with the low-cardinality issue kind", () => {
     trackRenderPreflightRejected({ kind: "aspect-mismatch" });
     expect(trackEvent).toHaveBeenCalledWith("render_preflight_rejected", {
@@ -1361,11 +1395,14 @@ describe("auth login telemetry events", () => {
   });
 
   it("identifyUser emits a $identify alias linking the anon install to the identity", () => {
-    identifyUser("alice@example.com");
+    identifyUser("user-id-1", { email: "alice@example.com", heygen_username: "alice" });
     expect(trackEvent).toHaveBeenCalledWith(
       "$identify",
-      { $anon_distinct_id: "anon-test-123" },
-      "alice@example.com",
+      {
+        $anon_distinct_id: "anon-test-123",
+        $set: { email: "alice@example.com", heygen_username: "alice" },
+      },
+      "user-id-1",
     );
   });
 

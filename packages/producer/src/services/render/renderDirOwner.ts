@@ -10,13 +10,11 @@ import {
 } from "node:fs";
 import { hostname, uptime } from "node:os";
 import { dirname, join } from "node:path";
+import { RENDER_TEMP_DIR } from "@hyperframes/core/project-folders";
 
 const OWNER_FILE = "owner.json";
 /** Where a staging dir parks the previous output while swapping in the new one. */
 export const TRANSACTION_BACKUP = "backup";
-// The names mkdtemp gives a render's temp dirs: work-<job uuid>-, hf-render- (Windows) and .<output>.hf-transaction-.
-const RENDER_TEMP_DIR =
-  /^(work-[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}|hf-render|\..+\.hf-transaction)-[A-Za-z0-9]{6}$/;
 /** A `--debug` render's work dir, named by its job id. */
 export const RENDER_JOB_DIR = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
 
@@ -37,7 +35,7 @@ function pidScope(): { host: string; boot?: string; pidns?: string } {
     // Without /proc (macOS, Windows) the boot time, to the minute, stands in for the boot id.
     boot:
       attempt(() => readFileSync("/proc/sys/kernel/random/boot_id", "utf-8").trim()) ??
-      String(Math.round(Date.now() / 60_000 - uptime() / 60)),
+      attempt(() => String(Math.round(Date.now() / 60_000 - uptime() / 60))),
     pidns: attempt(() => readlinkSync("/proc/self/ns/pid")),
   };
 }
@@ -61,9 +59,21 @@ function alive(pid: number): boolean {
 
 type OwnerRecord = { pid?: unknown; host?: unknown; boot?: unknown; pidns?: unknown };
 
-function inThisPidScope(owner: OwnerRecord): boolean {
+function knownPidScope(): ReturnType<typeof pidScope> | undefined {
   const scope = pidScope();
-  return owner.host === scope.host && owner.boot === scope.boot && owner.pidns === scope.pidns;
+  const unknown =
+    scope.boot === undefined || (process.platform === "linux" && scope.pidns === undefined);
+  return unknown ? undefined : scope;
+}
+
+function inThisPidScope(owner: OwnerRecord): boolean {
+  const scope = knownPidScope();
+  return (
+    scope !== undefined &&
+    owner.host === scope.host &&
+    owner.boot === scope.boot &&
+    owner.pidns === scope.pidns
+  );
 }
 
 /** "gone" only for an owner in this pid scope that has exited; "none" when there is no owner file, else "unknown". */

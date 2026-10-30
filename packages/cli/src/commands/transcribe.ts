@@ -1,8 +1,8 @@
 import { createProgressWriter } from "../whisper/progress.js";
 import { failCommand, setCommandExitCode } from "../utils/commandResult.js";
-import { defineCommand } from "citty";
+import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
-import * as clack from "@clack/prompts";
+import * as clack from "../ui/prompts.js";
 import { c } from "../ui/colors.js";
 import { DEFAULT_MODEL } from "../whisper/manager.js";
 import { trackTranscribeUnavailable } from "../telemetry/events.js";
@@ -14,6 +14,7 @@ import {
   type TranscribeEngineEvent,
   type TranscribeResult,
 } from "../api/transcribe.js";
+import { jsonFailure } from "../utils/jsonError.js";
 
 export const examples: Example[] = [
   ["Transcribe an audio file", "hyperframes transcribe audio.mp3"],
@@ -56,7 +57,7 @@ export default defineCommand({
     },
     model: {
       type: "string",
-      description: `Whisper model (default: ${DEFAULT_MODEL}). Options: tiny.en, base.en, small.en, medium.en, large-v3`,
+      description: `Whisper model (default: ${DEFAULT_MODEL}). Options: tiny.en, base.en, small.en, medium.en, small, medium, large-v3`,
       alias: "m",
     },
     language: {
@@ -127,6 +128,7 @@ export default defineCommand({
         onStatus: json ? undefined : (message) => ui.spin?.message(message),
         onProgress: json ? createProgressWriter(process.stderr) : undefined,
         onEngine: (event) => {
+          if (event.notice && !json) console.error(c.dim(`  Note: ${event.notice}`));
           ui.spin = showEngine(event, ui.spin, { json, model: args.model });
         },
       });
@@ -189,7 +191,7 @@ function showEngine(
 
 function failWith(message: string, json: boolean): never {
   if (json) {
-    console.log(JSON.stringify({ ok: false, error: message }));
+    console.log(JSON.stringify(jsonFailure("runtime_error", message)));
   } else {
     console.error(c.error(message));
   }
@@ -226,13 +228,13 @@ function reportRunFailure(
 ): void {
   if (err.code === "whisper_unavailable") return reportWhisperUnavailable(err, spin, opts);
   if (err.code === "cancelled" || err.code === "caption_write_failed") {
-    if (opts.json) console.log(JSON.stringify({ ok: false, error: err.message }));
+    if (opts.json) console.log(JSON.stringify(jsonFailure("runtime_error", err.message)));
     else spin?.stop(err.code === "cancelled" ? c.warn(err.message) : c.error(err.message));
     setCommandExitCode(err.code === "cancelled" ? 130 : 1);
     return;
   }
   if (opts.json) {
-    console.log(JSON.stringify({ ok: false, error: err.message }));
+    console.log(JSON.stringify(jsonFailure("runtime_error", err.message)));
   } else {
     spin?.stop(c.error(`Transcription failed: ${err.message}`));
   }

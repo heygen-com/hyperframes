@@ -5,6 +5,7 @@ export const STUDIO_PLAIN_KEYS = {
   record: "r",
   addKeyframe: "k",
   audioGain: "g",
+  zoomSelection: "z",
 } as const;
 
 export interface ShortcutHint {
@@ -20,6 +21,7 @@ export interface ShortcutSection {
 const hintKey = (key: string) => key.toUpperCase();
 
 export const SPLIT_SHORTCUT_HINT = hintKey(STUDIO_PLAIN_KEYS.split);
+export const ZOOM_SELECTION_SHORTCUT_HINT = hintKey(STUDIO_PLAIN_KEYS.zoomSelection);
 
 /** What PlayerControls' shortcuts panel lists unless an embedder passes its own sections. */
 export const DEFAULT_SHORTCUT_SECTIONS: readonly ShortcutSection[] = [
@@ -54,6 +56,7 @@ export const DEFAULT_SHORTCUT_SECTIONS: readonly ShortcutSection[] = [
       { key: "⌘V", label: "Paste element" },
       { key: "⌘X", label: "Cut element" },
       { key: SPLIT_SHORTCUT_HINT, label: "Split clip at playhead" },
+      { key: ZOOM_SELECTION_SHORTCUT_HINT, label: "Zoom timeline to selected clips" },
       { key: hintKey(STUDIO_PLAIN_KEYS.audioGain), label: "Audio Gain for clips with sound" },
       { key: "⇧Click", label: "Razor tool: split all tracks" },
       { key: "[", label: "Select clips starting before the playhead" },

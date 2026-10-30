@@ -8,8 +8,10 @@ npx hyperframes beats ./my-video
 npx hyperframes beats ./my-video --json
 ```
 
+`beats` takes the project folder, never a media file. For the beats of one audio or video file, run `npx hyperframes audio <file> --only beats --json`.
+
 The project must contain a local music `<audio>` source. Mark it with `data-timeline-role="music"`; an id containing `music`, `bgm`, or `soundtrack` is also recognized. The command decodes that file with ffmpeg, tracks its beats, and writes `beats/<audio-relative-path>.json`.
 
 If the track has no steady beat, the command fails and writes nothing. If ffmpeg is missing, run `npx hyperframes doctor`.
 
-For a complete beat-synced video, route through `/music-to-video`. That workflow owns a different audio-driven pipeline and its `audiomap.json`; do not replace its analyzer with this Studio utility.
+For a whole video cut to a music track, see `/hyperframes` → `references/film.md`.

@@ -159,6 +159,23 @@ describe("keepsMoving", () => {
     expect(issue.selector).toBe(".scene");
   });
 
+  it("leaves a 3 s still end card out of the static run when the film's duration is known", () => {
+    const assertion: MotionAssertion = { kind: "keepsMoving" };
+    const times = Array.from({ length: 21 }, (_, index) => index);
+    const endCard = frames(times, (t) => ({ liveness: { "*": t >= 17 ? "card" : `m-${t}` } }));
+    expect(evaluateMotion(endCard, [assertion], CANVAS)).toHaveLength(1);
+    expect(evaluateMotion(endCard, [assertion], CANVAS, 20)).toEqual([]);
+  });
+
+  it("still flags stillness that starts before the end card", () => {
+    const assertion: MotionAssertion = { kind: "keepsMoving" };
+    const times = Array.from({ length: 21 }, (_, index) => index);
+    const longHold = frames(times, (t) => ({ liveness: { "*": t >= 14 ? "card" : `m-${t}` } }));
+    const issue = expectOne(evaluateMotion(longHold, [assertion], CANVAS, 20));
+    expect(issue.code).toBe("motion_frozen");
+    expect(issue.message).toContain("between 14s and 17s");
+  });
+
   it("flags a missing withinSelector instead of reporting it frozen", () => {
     const assertion: MotionAssertion = { kind: "keepsMoving", withinSelector: ".nope" };
     const f = frames([0, 1, 2], () => ({ liveness: { "*": "moving" } }));

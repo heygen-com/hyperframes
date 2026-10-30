@@ -25,7 +25,7 @@ import {
   EXTRAS_KEYS,
   GSAP_DEFAULT_DURATION,
 } from "./gsapConstants.js";
-import { buildArcPath } from "./gsapSerialize.js";
+import { buildArcPath, distributeArrayKeyframes } from "./gsapSerialize.js";
 import { inlineComputedTimelines, readProvenance } from "./gsapInline.js";
 import { getObjectArrayKeyframeTiming } from "./gsapObjectArrayTiming.js";
 
@@ -1181,21 +1181,9 @@ function parseSimpleArrayKeyframes(node: any, scope: ScopeBindings): GsapKeyfram
     }
   }
 
-  const maxLen = Math.max(...[...arrayProps.values()].map((a) => a.length), 0);
-  const keyframes: GsapPercentageKeyframe[] = [];
-
-  for (let i = 0; i < maxLen; i++) {
-    const percentage = maxLen > 1 ? Math.round((i / (maxLen - 1)) * 100) : 0;
-    const properties: Record<string, number | string> = {};
-    for (const [key, values] of arrayProps) {
-      if (i < values.length) properties[key] = values[i] as number | string;
-    }
-    keyframes.push({ percentage, properties });
-  }
-
   return {
     format: "simple-array",
-    keyframes,
+    keyframes: distributeArrayKeyframes(arrayProps),
     ...(ease ? { ease } : {}),
     ...(easeEach ? { easeEach } : {}),
   };

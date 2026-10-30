@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/engine",
-  "version": "0.8.170",
+  "version": "0.8.218",
   "description": "Seekable web page to video rendering engine (Puppeteer + FFmpeg)",
   "repository": {
     "type": "git",
@@ -29,6 +29,11 @@
       "bun": "./src/services/chromeHostCeiling.ts",
       "import": "./src/services/chromeHostCeiling.ts",
       "types": "./src/services/chromeHostCeiling.ts"
+    },
+    "./chrome-startup": {
+      "bun": "./src/services/chromeStartup.ts",
+      "import": "./src/services/chromeStartup.ts",
+      "types": "./src/services/chromeStartup.ts"
     },
     "./system-memory": {
       "bun": "./src/services/systemMemory.ts",
@@ -62,6 +67,10 @@
         "import": "./dist/services/chromeHostCeiling.js",
         "types": "./dist/services/chromeHostCeiling.d.ts"
       },
+      "./chrome-startup": {
+        "import": "./dist/services/chromeStartup.js",
+        "types": "./dist/services/chromeStartup.d.ts"
+      },
       "./system-memory": {
         "import": "./dist/services/systemMemory.js",
         "types": "./dist/services/systemMemory.d.ts"
@@ -90,8 +99,9 @@
     "@hyperframes/parsers": "workspace:^",
     "hono": "^4.6.0",
     "linkedom": "^0.18.12",
-    "puppeteer": "^25.8.0",
-    "puppeteer-core": "^25.8.0"
+    "puppeteer": "~25.11.0",
+    "puppeteer-core": "^25.11.0",
+    "undici": "7.25.0"
   },
   "devDependencies": {
     "@types/node": "^25.0.10",

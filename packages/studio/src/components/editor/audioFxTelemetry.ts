@@ -198,7 +198,7 @@ export function trackEqChanged(band: string, value: number): void {
  *
  * This is how agent-applied effects become visible at all. An agent asked to
  * fix a mix does not drive the panel — it edits the composition HTML, or runs
- * `scripts/carve.mjs`, and the rack simply finds the result already present.
+ * `skills/media-use/audio/scripts/carve.mjs`, and the rack simply finds the result already present.
  * None of the events above will ever fire for that work.
  *
  * So the panel reports the shape of what it was handed, and how many edits this

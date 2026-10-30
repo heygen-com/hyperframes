@@ -66,6 +66,7 @@ export {
   isAspectAgnosticResolutionAlias,
   resolveResolutionFlagPair,
   checkOutputResolutionCompatibility,
+  outputResolutionForSize,
   suggestMatchingPreset,
   parseFps,
   parseFpsWithDefault,
@@ -177,6 +178,7 @@ export {
   rewriteInlineStyleAssetUrls,
 } from "./compiler/rewriteSubCompPaths";
 export { CSS_URL_RE, isNonRelativeUrl, isPathInside } from "./compiler/assetPaths";
+export { rewriteSrcsetUrls } from "./compiler/srcset";
 export {
   checkSubCompositionUsability,
   type ParsableDocumentLike,
@@ -184,6 +186,7 @@ export {
   type SubCompositionValidityReason,
 } from "./compiler/subCompositionValidity";
 export { RUNTIME_BOOTSTRAP_ATTR, stripEmbeddedRuntimeScripts } from "./compiler/htmlDocument";
+export { AUTHORED_SOURCE_BEGIN, AUTHORED_SOURCE_END } from "./compiler/compositionScoping";
 export { COMPOSITION_SOURCE_URL } from "./compiler/scriptRuns";
 export { queryByAttr } from "./utils/cssSelector";
 export {
@@ -259,7 +262,21 @@ export {
   type NormalizedHfColorGradingWheels,
   type ResolvedHfColorGrading,
 } from "./colorGrading";
-export { parseCubeLut, CubeLutParseError, type ParseCubeLutOptions } from "./colorLuts";
+export {
+  colorGroupOf,
+  effectiveColorGrading,
+  ensureColorGroupInertStyle,
+  HF_COLOR_GROUP_ATTR,
+  HF_COLOR_GROUP_TAG,
+  resolveColorGroupElement,
+} from "./colorGroups";
+export {
+  parseCubeLut,
+  CubeLutParseError,
+  type CubeLut3D,
+  type ParseCubeLutOptions,
+} from "./colorLuts";
+export { bakeHfColorGradingCube, type BakeHfColorGradingCubeOptions } from "./colorGradingBake";
 export {
   firstFrameColourArgs,
   hdrToSdrToneMapFilter,
@@ -267,10 +284,23 @@ export {
   type ToneMapSourceColour,
 } from "./hdrToneMap";
 export {
+  HEAVY_BITRATE,
+  HEAVY_PIXEL_SHARE,
   PREVIEW_PROXY_BOX_PARAM,
+  PREVIEW_PROXY_LIGHT_PARAM,
+  PREVIEW_PROXY_PRIORITY_HEADER,
+  PREVIEW_PROXY_PROGRESS_HEADER,
+  PREVIEW_PROXY_RETRY_PARAM,
+  PREVIEW_QUALITY_LEVELS,
   formatPreviewProxyBox,
+  isHeavyForPreview,
+  isPreviewQuality,
   parsePreviewProxyBox,
+  quantizePreviewProxyBox,
+  scalePreviewProxyBox,
   type PreviewProxyBox,
+  type PreviewQuality,
+  type PreviewSourceFacts,
 } from "./previewProxyBox";
 
 // Inline scripts
@@ -299,7 +329,11 @@ export {
   quantizeTimeToFrame,
   type MediaVisualStyleProperty,
 } from "./inline-scripts/parityContract";
-export { redactKnownPaths, redactTelemetryString } from "./telemetryRedaction";
+export {
+  redactKnownPaths,
+  redactTelemetryString,
+  redactUrlQueryStrings,
+} from "./telemetryRedaction";
 export {
   folderGone,
   isProjectRootMissing,
@@ -329,6 +363,7 @@ export { formatRenderOutputTimestamp } from "./utils/renderOutputTimestamp.js";
 
 // Runtime helpers (composition-side)
 export { getVariables } from "./runtime/getVariables.js";
+export { SCENE_CALLBACK_ERROR_PREFIX } from "./runtime/diagnostics.js";
 export {
   parseStartExpression,
   parseNumeric,
@@ -357,6 +392,7 @@ export {
 export { createRuntimeStartTimeResolver } from "./runtime/startResolver.js";
 // Also exposed via the ./runtime/clip-window subpath; re-exported here for the same dist-emit reason.
 export { hasClipStarted, isClipVisibleAt, isInClipWindow } from "./runtime/clipWindow.js";
+export { MEDIA_ELEMENT_LEAD_SECONDS, mediaElementTime } from "./runtime/mediaClock.js";
 export {
   normalizePlaybackRate,
   normalizeRateSpec,
@@ -433,3 +469,8 @@ export {
   type HfVfxParam,
   type HfVfxParamValues,
 } from "./vfx.js";
+export {
+  PAGE_DEVICE_SCALE_GLOBAL,
+  PAGE_MOTION_BLUR_OFF_GLOBAL,
+  acceleratedCanvasTrackerSource,
+} from "./pageMotionBlur.js";

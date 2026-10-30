@@ -1,4 +1,5 @@
 import { ensureCaptureDirSync, writeCaptureFileSync } from "./captureFile.js";
+import { captureSiteName } from "./localPage.js";
 import { join } from "node:path";
 import { noDrops } from "./assetDownloader.js";
 import type {
@@ -72,7 +73,7 @@ export function writePartialCaptureBundle(
   state: PartialCaptureState,
   lastPhase: CaptureResult["lastPhase"],
 ): CaptureResult {
-  const hostname = new URL(opts.url).hostname.replace(/^www\./, "");
+  const hostname = captureSiteName(opts.url);
   const extractedDir = ensureCaptureDirSync(opts.outputDir, join(opts.outputDir, "extracted"));
   writeCaptureFileSync(join(extractedDir, "tokens.json"), serializeTokensForCapture(state.tokens));
   writeCaptureFileSync(

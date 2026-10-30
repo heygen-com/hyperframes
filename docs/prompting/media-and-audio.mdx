@@ -1,16 +1,20 @@
 ---
-title: Media and audio
+title: "Add voice, music and sound"
+sidebarTitle: "Voice, music and sound"
 description: "Ask for the voiceover, music, sound, captions, cutouts, and assets a composition needs, in phrasing the media pipeline acts on."
 ---
 
 import { DocsVideo } from "/snippets/docs-video.jsx";
 
-Your video moves and reads right. This level gives it a voice.
+Ask for a voice, music and sound in plain words; the agent finds or makes each one. Two ways to pay for it:
 
-HyperFrames owns media *playback*. A sibling media pipeline resolves everything
-else: voice, music, sound effects, images, icons, logos, captions, and
-background removal. You describe what the composition needs. The agent resolves
-each need to a frozen local file.
+- **Free, no account:** Kokoro voices on your computer, local transcription, bundled and Openverse sound effects,
+  local music if you install it.
+- **HeyGen (best quality):** HeyGen voices and voice cloning, a 10,000-track music catalog, presenters. Sign in to the
+  HeyGen CLI for a free allowance, or use an API key that bills HeyGen credits.
+
+You describe what the video needs; the agent finds or makes each file (voice, music, sound effects, images, icons,
+logos, captions, cutouts) and saves it in the project, so it renders the same anywhere.
 
 Precision is the whole craft here. Vague asks come back wrong. "Add some music"
 and "no sound" are the two that bite most often, because the pipeline does
@@ -29,14 +33,14 @@ tone, and speed yourself:
 
 > Add TTS voiceover, British male voice, at 1.1× speed.
 
-The [Vocabulary](/prompting/vocabulary#text-to-speech-voices) table maps content
+This table maps content
 types to Kokoro voices. `af_heart` and `af_nova` suit a product demo. `am_adam`
 and `bf_emma` suit a tutorial. `af_sky` and `am_michael` suit marketing. Name a
 voice directly if you already know it. Otherwise describe the read and let the
 agent choose.
 
-- ❌ `add a voice`
-- ✅ `warm, unhurried female narration of the quoted script` — tone and pace are what actually change the delivery
+- **Avoid:** `add a voice`
+- **Instead:** `warm, unhurried female narration of the quoted script` — tone and pace are what actually change the delivery
 
 ### Gemini voiceover
 
@@ -70,8 +74,8 @@ a level, so an explicit target lands a mix instead of a guess.
 
 > Upbeat tech-launch music bed at a low level, ducking under narration.
 
-- ❌ `add background music` — you'll get a full-volume track fighting the VO
-- ✅ `subtle background music, ducked ~12 dB under the voice` — a mix instruction the pipeline can execute
+- **Avoid:** `add background music` — you'll get a full-volume track fighting the VO
+- **Instead:** `subtle background music, ducked ~12 dB under the voice` — a mix instruction the pipeline can execute
 
 <Tip>
   A stated loudness target ("under −18 dB," "ducked under the voice") is the
@@ -144,8 +148,8 @@ framing, a background that contrasts with the subject. On **non-human subjects**
 So if you need to cut out a product, say so. The agent should route to a
 different tool instead of running the person model and getting nothing.
 
-- ❌ `remove the background from this product shot` with the built-in command — the human-matting model can't see it
-- ✅ `matte the presenter out of assets/talk.mp4` for a person. For a product, flag that it's a non-human subject so a different matter is used.
+- **Avoid:** `remove the background from this product shot` with the built-in command — the human-matting model can't see it
+- **Instead:** `matte the presenter out of assets/talk.mp4` for a person. For a product, flag that it's a non-human subject so a different matter is used.
 
 The [Remove background guide](/guides/remove-background) covers the person-only
 caveat, the two-layer plate for text-behind-subject, and alternatives for
@@ -162,8 +166,8 @@ for you. Naming the layout you want still helps.
 > Layer the headline *behind* the presenter so their silhouette occludes the text.
 
 <Note>
-  Two mechanics the workflow skills handle automatically, from the [Remove
-  background guide](/guides/remove-background#compositing-patterns-and-pitfalls):
+  Two mechanics the skills handle automatically, from the [Remove
+  background guide](/guides/remove-background#on-the-command-line):
 
   - A cutout that reveals into view goes inside a non-timed `<div>`, and the
     *wrapper* is what gets animated. HyperFrames owns clip visibility, so
@@ -184,9 +188,10 @@ case, straight off an iPhone or a screen recorder. The framework probes the
 asset and builds a bounded H.264 proxy automatically, cached under
 `.transcode-cache/`.
 
-`preview`, `play`, Studio, and published player pages use that proxy for
+`preview`, `play`, the browser editor, and published player pages use that proxy for
 playback. A render always decodes the original file, so nothing about final
-quality or color is touched.
+quality or color is touched. `snapshot` also reads frames from the original with
+FFmpeg, so it makes no proxy unless you pass `--proxy`.
 
 `hyperframes lint` also flags the asset at info level (`hevc_preview_codec`) so
 you know a proxy is in play. Proxying is optional. Pass `--no-proxy` per
@@ -202,7 +207,7 @@ other supplied asset, and describe the composition you want built from it.
 > Build a short picture-in-picture piece from `source-hevc.mp4` — inset it bottom-right over a full-bleed background scene, with a soft rounded border.
 
 <DocsVideo
-  title="HyperFrames video: Proxy Footage"
+  title="Proxy footage"
   src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/proxy-footage.mp4#t=0.1"
   loop
 />
@@ -213,13 +218,17 @@ automatic H.264 proxy.*
 See the [Rendering guide](/guides/rendering#input-video-codecs) for the
 mechanics — proxy generation, caching, and which codecs it covers.
 
+<Card title="Practice it: Edit your own footage" icon="graduation-cap" href="https://hyperframes.heygen.com/lessons/edit-your-footage">
+  Free 20-minute lesson with a short video, a quiz and a brief to try. A footage brief is the goal, where it plays, two or three edits and the exact title words.
+</Card>
+
 ## The supplied-assets rule
 
 For any asset you already have, an explicit path removes the most ambiguity. The
 agent will search when you only describe an asset. A path settles *which* file.
 
-- ❌ `use my logo`
-- ✅ `use assets/logo.svg`
+- **Avoid:** `use my logo`
+- **Instead:** `use assets/logo.svg`
 
 This matters even when a search would have worked. Brand and entity assets
 should point at *your* file, not a resolved lookalike.
@@ -234,41 +243,204 @@ The most common audio mistake is a negative that means less than you think. "No
 narration" removes the voiceover. It does **not** silence music or sound
 effects. If you want genuine silence, say so:
 
-- ❌ `no narration` when you mean a completely silent video — music and SFX can still be added
-- ✅ `no audio at all` — the unambiguous way to ask for silence
+- **Avoid:** `no narration` when you mean a completely silent video — music and SFX can still be added
+- **Instead:** `no audio at all` — the unambiguous way to ask for silence
 
-This mirrors the negatives discipline in [Anatomy](/prompting/anatomy). Close
+This mirrors the negatives discipline in [Anatomy](/prompting/overview#the-shape-of-a-strong-prompt). Close
 the gap explicitly, because the engine acts on the literal words.
 
-## The capstone thread
+## Mix it
 
-<Note>
-**Capstone thread** — the [Level 7 film](/prompting/capstone)'s Material region
-runs this chapter's entire pipeline on one clip: generated footage → HEVC
-auto-proxy → background removal mid-scene → word-synced captions from the clip's
-own transcription, with the clip's audio ducking the BGM (cut from the film,
-below).
-</Note>
+Getting voice, music and sound into the video is half the job. This part makes them
+*listenable* together.
 
-This is the clause in the [full capstone
-prompt](/prompting/capstone#the-prompt-word-for-word) that buys the piece. It's
-prompt language you can lift for your own video:
+Audio work is where prompts go wrong in a specific way: it is tempting to name
+the machine. "Add a high-pass at 80 Hz with a Q of 0.7" is a real instruction, and
+it is worse than the request that produced it, because it commits you to a fix
+before anyone has established the problem. The mix is stored as effects on each
+track — filters, dynamics, character, space, and envelopes that move any of them
+over time — and the agent reaches into that toolbox for you. Your job is to
+describe the symptom accurately.
+
+### Say what it sounds like, not what to add
+
+Every effect in the rack exists to answer a complaint. Name the complaint.
+
+```text
+The narration sounds muffled, like it's behind cardboard. Fix it.
+```
+
+```text
+The voice sounds amateur — clean it up but don't make it sound processed.
+```
+
+```text
+There's a hum under the interview audio the whole way through.
+```
+
+Each of those lands on a specific, small change: a cut at 250 Hz, the
+`voice-clean` chain, a high-pass under the voice. You do not have to know which —
+and if you name the wrong mechanism, you get the wrong mechanism applied
+confidently.
+
+This matters more than it does for picture work, because **you can hear a mix and
+the agent cannot**. A prompt describing a sound is evidence. A prompt naming a
+filter is a guess wearing evidence's clothes.
+
+### The one request worth learning by name
+
+Music under narration is the single most common audio problem, and the reflex fix
+is wrong.
+
+Ducking the whole music track works and costs the music all of its presence for
+the entire voiceover — it goes limp for as long as anyone is talking. The voice
+does not need the whole spectrum, though. It needs the few bands it actually
+occupies. Taking only those out of the music is called a **carve**, and it keeps
+the low end and the top, so the bed is still music while the voice stays
+intelligible.
+
+Ask for it in those terms:
+
+```text
+Put the music under the narration properly — carve it so the voice stays clear
+without the track going limp.
+```
+
+```text
+The music is fighting the voiceover. Make room for the voice in the music
+rather than just turning the music down.
+```
+
+Two things are worth knowing so you can judge the result:
+
+- **It follows the speech.** Silence leaves the music alone; a loud passage pushes
+  it to full depth. It is not a fixed dip held through every pause.
+- **It lives on the music**, and names the voices it makes room for. If someone
+  tells you they carved the voice track, that is a bug rather than a taste
+  decision.
+
+If it comes back and the music sounds *hollow* rather than simply quieter, say so
+in exactly that word — it means the depth is too high, and it is the one failure
+mode with an obvious sound:
+
+```text
+Too far — the music sounds notched now. Back it off.
+```
+
+### Ask for levels before asking for more depth
+
+A carve cannot fix music that is simply louder than the voice. When narration is
+buried, the useful instruction is about **level**, not about spectrum:
+
+```text
+Check the actual loudness of the voiceover against the music before touching
+the carve — the voice may just be quieter than the bed.
+```
+
+Machine-generated speech commonly arrives far below a mastered music track. That
+gap is arithmetic, not taste, and no amount of carving closes it. Asking for the
+measurement first turns one round of guessing into a number.
+
+### Group the things that belong together
+
+Five narration clips want one set of effects, one fader, and one mute — not five
+copies that drift apart as you edit. Say so:
+
+```text
+Group all the narration clips as one voiceover group, then carve the music
+against that group.
+```
+
+That phrasing is worth the extra clause. A carve pointed at individual clips has
+to list every one of them, and it stays right only until you add another — the
+sixth clip plays outside the carve's awareness and the music silently fails to
+duck under it. A carve pointed at a *group* picks up whatever is in the group at
+the time it runs.
+
+Use groups for sound effects too, when there are more than a couple. One place to
+turn all of them down is worth more than precise individual levels you will never
+revisit.
+
+### Ask for movement when a static setting will not do
+
+Anything that should change over the video's length is an envelope, and you ask
+for it by describing the shape in time:
+
+```text
+Fade the music out over the last three seconds.
+```
+
+```text
+Bring the ambience up while the wide shot is on screen, then pull it back
+under the interview.
+```
+
+One caveat worth carrying: a few effects cannot move over time at all — the
+compressor, limiter, gate, bitcrush, and pitch shift are configured whole rather
+than knob-by-knob. If you ask for a compressor that tightens as a scene builds, the
+honest answer is a level stage moving in front of it instead. An agent that
+quietly writes an envelope on one of those has written something inert, so if a
+requested change does nothing audible, that is the first thing to suspect.
+
+### Three requests with no honest answer
+
+Naming a gap is more useful than accepting the nearest preset and calling it the
+thing.
+
+**De-essing.** Sharp `s` sounds need a detector faster than anything in the
+toolbox. The nearest fix is a narrow cut in the 5–9 kHz range, swept to find
+where that particular voice spits. It is always on, so it costs a little air on
+every word. That trade is usually worth it — but ask for it knowing it is a
+trade:
+
+```text
+The s sounds are spitting. I know there's no real de-esser — put a narrow cut
+where this voice actually sibilates and tell me what it cost.
+```
+
+**Noise removal.** A gate closes the gaps between phrases; the hiss *underneath*
+the words is untouched by anything available. A source with audible hiss needs a
+better source, and an agent telling you so is being accurate rather than lazy.
+
+**Matching one voice to another.** There is no match-curve tool. Two takes can be
+brought closer by hand with an EQ, which is predictable in a way a derived curve
+would not be — but it is hand work, and worth asking for as such.
+
+### Describe the whole mix once, at the end
+
+Individual fixes accumulate into something nobody has judged as a whole. One
+closing instruction is worth more than three more adjustments:
+
+```text
+Render an audio-only pass and check the mix end to end: voice clear through
+the loudest musical moment, effects where the action is, nothing surprising
+at the open, and the music finishing on purpose rather than at the file edge.
+```
+
+Audio problems are easier to notice when the picture is not competing for
+attention. Listening once without watching catches things twenty prompt rounds
+will not.
+
+<Card title="Practice it: Sound" icon="graduation-cap" href="https://hyperframes.heygen.com/lessons/sound">
+  Free 20-minute lesson with a short video, a quiz and a brief to try. Say the sound in your brief: the music's mood, the voice, and where the music starts and stops.
+</Card>
+
+## In a real film
+
+This clause from a [longer HyperFrames film](/prompting/capstone#the-prompt-word-for-word)
+produced the shot below. You can lift the wording for your own video:
 
 > […] a real talking-head clip (generate a short clip of a person speaking one neutral line via the media pipeline's avatar video generation […] **transcode it to HEVC `hvc1`** so the automatic proxy subsystem carries preview) sits as a clip on the wire. The order of operations IS the story: as the camera arrives and BEFORE the person speaks, the framework mattes the footage — **the background peels away via background removal** […] THEN they speak, and the main **keywords of their own line — derived from the clip's transcription — land word-synced** […] The clip's own audio ducks the BGM briefly; the VO resumes as the camera pulls away.
 
 <DocsVideo
-  title="HyperFrames video: Capstone Region Material"
+  title="Capstone region material"
   src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/capstone-region-material.mp4#t=0.1"
   loop
 />
-*That clause, rendered — the region cut from the finished film.*
-
-*Next: [Audio effects and mixing](/prompting/audio-effects) — making the voice,
-music, and effects you just placed sit together.*
+*That clause, rendered: the shot cut from the finished film.*
 
 ## Related topics
 
-- [Vocabulary](/prompting/vocabulary) — voice names, caption tones, and audio-reactive mappings
 - [Captions catalog](/prompting/captions-catalog) — styling the timed text this page produces
 - [Remove a background](/guides/remove-background) — the matting command, its person-only caveat, and alternatives
 - [Use images and video](/guides/video-components) — installable overlays, captions, and effects

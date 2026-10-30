@@ -1,11 +1,11 @@
-import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { findFFmpeg, findFFprobe, H264EncoderUnavailableError } from "./ffmpeg.js";
+import { runCancellableProcess } from "../utils/cancellableProcess.js";
 
-// Only child_process is mocked: the H264 encoder probe shells out, while the
-// wrapper tests below resolve via env overrides and need the real `existsSync`.
+// Only child_process is mocked, so no lookup shells out, while the wrapper
+// tests below resolve via env overrides and need the real `existsSync`.
 vi.mock("node:child_process", () => ({ execFileSync: vi.fn(), execSync: vi.fn() }));
 
 // Only the distro probe is faked; `ffmpegInstallCommand` stays real so the
@@ -16,7 +16,18 @@ vi.mock("./linuxDeps.js", async (importOriginal) => ({
   detectLinuxDistro: () => ({ family: linuxFamily, isWsl: false, prettyName: null }),
 }));
 
-const mockExecFile = vi.mocked(execFileSync);
+vi.mock("../utils/cancellableProcess.js", () => ({ runCancellableProcess: vi.fn() }));
+const mockRun = vi.mocked(runCancellableProcess);
+
+// The render's own GPU probe and the engine's must be one answer, so the encoder check asks the shared one.
+const gpuProbes = vi.hoisted(() => ({
+  shared: vi.fn(async () => "nvenc"),
+  fresh: vi.fn(async () => "nvenc"),
+}));
+vi.mock("@hyperframes/engine", () => ({
+  getCachedGpuEncoder: gpuProbes.shared,
+  detectGpuEncoder: gpuProbes.fresh,
+}));
 
 afterEach(() => {
   vi.clearAllMocks();
@@ -45,56 +56,81 @@ describe("findFFmpeg / findFFprobe", () => {
 });
 
 describe("resolveH264EncoderMode", () => {
-  it("falls back to VideoToolbox when libx264 is absent", async () => {
-    const { resolveH264EncoderMode } = await import("./ffmpeg.js");
-    const encoders = `
- V....D h264_videotoolbox    VideoToolbox H.264 Encoder
-`;
+  // The shape of an LGPL FFmpeg build: OpenH264 and VideoToolbox, no libx264.
+  const noX264 = " V....D libopenh264 OpenH264\n V....D h264_videotoolbox VideoToolbox H.264\n";
 
-    expect(resolveH264EncoderMode(encoders, false)).toBe("gpu");
+  it("falls back to a GPU encoder that works when libx264 is absent", async () => {
+    const { resolveH264EncoderMode } = await import("./ffmpeg.js");
+    expect(resolveH264EncoderMode(noX264, false, true)).toBe("gpu");
   });
 
-  it("does not treat a compiled Linux hardware encoder as usable", async () => {
+  it("refuses a compiled GPU encoder whose probe failed, with or without --gpu", async () => {
     const { resolveH264EncoderMode } = await import("./ffmpeg.js");
-    const encoders = `
- V....D h264_vaapi    H.264/AVC (VAAPI)
-`;
+    expect(() => resolveH264EncoderMode(noX264, false, false)).toThrow(H264EncoderUnavailableError);
+    expect(() => resolveH264EncoderMode(noX264, true, false)).toThrow(H264EncoderUnavailableError);
+  });
 
-    expect(() => resolveH264EncoderMode(encoders, false)).toThrow(H264EncoderUnavailableError);
+  it("encodes --gpu renders with libx264 when no GPU encoder works", async () => {
+    const { resolveH264EncoderMode } = await import("./ffmpeg.js");
+    expect(resolveH264EncoderMode(" V....D libx264 H.264\n", true, false)).toBe("software");
+    expect(resolveH264EncoderMode(" V....D libx264 H.264\n", true, true)).toBe("gpu");
   });
 
   it("prefers libx264 when both encoders are available", async () => {
     const { resolveH264EncoderMode } = await import("./ffmpeg.js");
     expect(
-      resolveH264EncoderMode(" V....D libx264 H.264\n V....D h264_videotoolbox H.264\n", false),
+      resolveH264EncoderMode(
+        " V....D libx264 H.264\n V....D h264_videotoolbox H.264\n",
+        false,
+        true,
+      ),
     ).toBe("software");
   });
 
-  it("distinguishes a successful unsupported probe from an unavailable probe", async () => {
-    const { detectH264EncoderMode } = await import("./ffmpeg.js");
-    mockExecFile.mockReturnValue(" V....D libvpx-vp9 VP9\n");
-    expect(() => detectH264EncoderMode("/custom/ffmpeg", false)).toThrow(
-      H264EncoderUnavailableError,
-    );
-    const timeout = new Error("ETIMEDOUT");
-    mockExecFile.mockImplementationOnce(() => {
-      throw timeout;
-    });
-    expect(() => detectH264EncoderMode("/custom/ffmpeg", false)).toThrow(timeout);
+  it("says whether HEVC could still encode when H.264 cannot", async () => {
+    const { resolveH264EncoderMode } = await import("./ffmpeg.js");
+    const refusal = (encoders: string) => {
+      try {
+        resolveH264EncoderMode(encoders, false, false);
+      } catch (error) {
+        return error as InstanceType<typeof H264EncoderUnavailableError>;
+      }
+    };
+    expect(refusal(" V....D libx265 HEVC\n")?.hevcEncoderAvailable).toBe(true);
+    expect(refusal(noX264)?.hevcEncoderAvailable).toBe(false);
   });
 
-  it("inspects the configured FFmpeg binary", async () => {
-    mockExecFile.mockReturnValue(
-      " V....D h264_videotoolbox    VideoToolbox H.264 Encoder\n" as never,
+  it("asks the configured FFmpeg, and probes the GPU only when libx264 is missing or --gpu is set", async () => {
+    const { detectH264EncoderModeForRender } = await import("./ffmpeg.js");
+    const signal = new AbortController().signal;
+    const probeGpu = vi.fn(async () => null);
+    mockRun.mockResolvedValue({ stdout: " V....D libx264 H.264\n" } as never);
+    expect(await detectH264EncoderModeForRender("/custom/ffmpeg", false, signal, probeGpu)).toBe(
+      "software",
     );
-    const { detectH264EncoderMode } = await import("./ffmpeg.js");
-
-    expect(detectH264EncoderMode("/custom/ffmpeg", false)).toBe("gpu");
-    expect(mockExecFile).toHaveBeenCalledWith(
+    expect(probeGpu).not.toHaveBeenCalled();
+    expect(mockRun).toHaveBeenCalledWith(
       "/custom/ffmpeg",
       ["-hide_banner", "-encoders"],
-      expect.objectContaining({ encoding: "utf-8", windowsHide: true }),
+      expect.objectContaining({ signal }),
     );
+
+    mockRun.mockResolvedValue({ stdout: " V....D h264_videotoolbox H.264\n" } as never);
+    await expect(
+      detectH264EncoderModeForRender("/custom/ffmpeg", true, signal, probeGpu),
+    ).rejects.toThrow(H264EncoderUnavailableError);
+    expect(probeGpu).toHaveBeenCalledOnce();
+
+    mockRun.mockResolvedValue({ stdout: " V....D h264_nvenc H.264\n" } as never);
+    expect(await detectH264EncoderModeForRender("/custom/ffmpeg", true, signal)).toBe("gpu");
+    expect(gpuProbes.shared).toHaveBeenCalledOnce();
+    expect(gpuProbes.fresh).not.toHaveBeenCalled();
+
+    const timeout = new Error("ETIMEDOUT");
+    mockRun.mockRejectedValueOnce(timeout);
+    await expect(
+      detectH264EncoderModeForRender("/custom/ffmpeg", false, signal, probeGpu),
+    ).rejects.toThrow(timeout);
   });
 });
 

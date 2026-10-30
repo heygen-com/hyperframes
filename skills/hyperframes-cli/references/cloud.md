@@ -1,6 +1,6 @@
 # cloud — HeyGen-hosted rendering (zero-infra)
 
-`hyperframes cloud render` renders a composition on HeyGen's managed cloud. The CLI zips the project, uploads it, runs the render on HeyGen's infrastructure (Chromium + FFmpeg), and downloads the finished video. Nothing to deploy, and no Chrome/FFmpeg/AWS to manage; you pay per credit.
+`hyperframes cloud render` renders a composition on HeyGen's managed cloud. The CLI zips the project, uploads it, runs the render on HeyGen's infrastructure (Chromium + FFmpeg), and downloads the finished video. Nothing to deploy, and no Chrome/FFmpeg/AWS to manage; the server applies the selected credential's render allowance or billing.
 
 ```bash
 npx hyperframes auth login            # one-time sign-in
@@ -10,13 +10,13 @@ npx hyperframes cloud render          # zip, upload, render, download
 ## When to use managed cloud, Lambda, Cloud Run, or local
 
 - **`hyperframes render`** (local): fastest iteration loop, use while authoring.
-- **`hyperframes cloud render`**: zero-infra. HeyGen runs the render and you pay per credit. This is the default answer to "render in the cloud" when you don't want to manage Chrome/FFmpeg/AWS.
+- **`hyperframes cloud render`**: zero-infra. HeyGen runs the render under the selected credential's allowance or billing. This is the default answer to "render in the cloud" when you don't want to manage Chrome/FFmpeg/AWS.
 - **`hyperframes lambda render`**: bring-your-own-AWS distributed rendering with chunked parallelism. Only worth it when you've already invested in AWS (see `lambda.md`).
 - **`hyperframes cloudrun render`**: bring-your-own-GCP distributed rendering through Cloud Run and Workflows. Use only when GCP ownership is explicit (see `cloudrun.md`).
 
 ## Authentication
 
-Cloud rendering needs a HeyGen credential, stored at `~/.heygen/credentials` (`0600`) and shared with the [`heygen` CLI](https://github.com/heygen-com/heygen-cli): sign in with one and the other picks up the session.
+Cloud rendering uses the dedicated HyperFrames OAuth client and isolated `~/.hyperframes/credentials` store. A previous shared HeyGen login requires a fresh `hyperframes auth login`; the separate `heygen` CLI keeps its own login. An explicit API key uses API billing.
 
 ```bash
 npx hyperframes auth login              # OAuth 2.0 + PKCE, opens the browser
@@ -30,7 +30,7 @@ npx hyperframes auth refresh            # force-refresh an OAuth token before a 
 npx hyperframes auth logout             # clear the stored credential
 ```
 
-Credential resolution order (first match wins): `HEYGEN_API_KEY`, then `HYPERFRAMES_API_KEY`, then `HEYGEN_ACCESS_TOKEN` (an OAuth token a host app injects; never refreshed or saved), then `~/.heygen/credentials`. Point at a different backend with `HEYGEN_API_URL` (default `https://api.heygen.com`).
+Credential resolution order (first match wins): `HEYGEN_API_KEY`, then `HYPERFRAMES_API_KEY`, then `HEYGEN_ACCESS_TOKEN` (an OAuth token a host app injects; never refreshed or saved), then `~/.hyperframes/credentials`. `HYPERFRAMES_ENV=dev` selects the dev client, OAuth/API hosts and `~/.hyperframes/dev/credentials` together. `HYPERFRAMES_CONFIG_DIR` overrides the credentials root. `HEYGEN_API_URL` overrides the API host.
 
 ## The render pipeline
 
@@ -103,7 +103,7 @@ npx hyperframes cloud render --quality high --fps 60
 
 ## Templates and variables
 
-Cloud rendering supports [composition variables](../../hyperframes-core/references/variables-and-media.md#variables): declare `data-composition-variables` on the composition, then fill them at render time.
+Cloud rendering supports [composition variables](../../hyperframes/references/format.md#variables): declare `data-composition-variables` on the composition, then fill them at render time.
 
 ```bash
 npx hyperframes cloud render --variables '{"title":"Q4 Recap","theme":"dark"}'
@@ -121,7 +121,7 @@ npx hyperframes cloud render --asset-id asst_abc123 --variables '{"name":"Ada"}'
 npx hyperframes cloud render --asset-id asst_abc123 --variables '{"name":"Linus"}'
 ```
 
-For high-volume personalized batches, both self-managed paths provide JSONL fan-out: AWS Lambda (`lambda.md`) and Google Cloud Run (`cloudrun.md`). The full variables schema (types, declarative bindings, sub-composition overrides, precedence) lives in the `hyperframes-core` skill.
+For high-volume personalized batches, both self-managed paths provide JSONL fan-out: AWS Lambda (`lambda.md`) and Google Cloud Run (`cloudrun.md`). The full variables schema (types, declarative bindings, sub-composition overrides, precedence) lives in [`/hyperframes` format.md](../../hyperframes/references/format.md#variables).
 
 ## Fire-and-forget and webhooks
 
@@ -137,7 +137,7 @@ npx hyperframes cloud render --callback-url https://example.com/hf-hook --no-wai
 | `--no-wait`       | Submit and exit immediately; print the `render_id`. |
 | `--callback-url`  | HTTPS webhook fired when the render terminates.     |
 | `--callback-id`   | Opaque tracking ID echoed in webhook payloads.      |
-| `--poll-interval` | Poll cadence in seconds (default `10`).             |
+| `--poll-interval` | Poll cadence in seconds (default `2`).              |
 | `--max-wait`      | Max poll duration in minutes (default `60`).        |
 
 ## Managing renders

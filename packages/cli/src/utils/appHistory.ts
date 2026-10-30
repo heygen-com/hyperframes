@@ -3,6 +3,7 @@ import { lstatSync, mkdirSync, readdirSync } from "node:fs";
 import { realpath } from "@hyperframes/core/safe-path";
 import { homedir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
+import { windowsLocalAppData } from "./windowsAppData.js";
 import { readPlainFile, readRecord, recordChangedAt, replaceFile } from "./projectRecords.js";
 
 // The desktop app records each chat turn in .hyperframes/ (hyperframes-internal appHistory.mjs), one JSON object
@@ -54,7 +55,7 @@ export interface Seen {
 
 const stamp = (value: unknown): number => (typeof value === "string" ? Date.parse(value) || 0 : 0);
 
-function seenPath(dir: string): string {
+export function seenPath(dir: string): string {
   let real: string;
   try {
     real = realpath(dir);
@@ -62,7 +63,12 @@ function seenPath(dir: string): string {
     real = resolve(dir);
   }
   const key = createHash("sha256").update(real).digest("hex").slice(0, 32);
-  return join(homedir(), ".hyperframes", "catch-up", `${key}.json`);
+  const base = windowsLocalAppData();
+  return join(
+    base ? join(base, "hyperframes") : join(homedir(), ".hyperframes"),
+    "catch-up",
+    `${key}.json`,
+  );
 }
 
 export function readSeen(dir: string): Seen {
@@ -96,6 +102,15 @@ export function unseenTurns(dir: string, since: number, now = Date.now()): AppTu
   );
 }
 
+function isChangedFile(path: string, since: number): boolean {
+  try {
+    const stats = lstatSync(path);
+    return stats.isFile() && stats.mtimeMs > since;
+  } catch {
+    return false;
+  }
+}
+
 /** Project files changed after `since`, by the app or by hand; hidden folders and outputs are not the video. */
 export function filesChangedSince(dir: string, since: number): string[] {
   const changed: string[] = [];
@@ -112,7 +127,7 @@ export function filesChangedSince(dir: string, since: number): string[] {
       if (entry.name.startsWith(".") || SKIPPED_DIRS.has(entry.name)) continue;
       const path = join(folder, entry.name);
       if (entry.isDirectory()) walk(path);
-      else if (entry.isFile() && lstatSync(path).mtimeMs > since)
+      else if (entry.isFile() && isChangedFile(path, since))
         changed.push(relative(dir, path).split(sep).join("/"));
     }
   };

@@ -28,11 +28,13 @@
  *     prefix.
  */
 
-import { join } from "node:path";
+import { createHash } from "node:crypto";
+import { basename, join } from "node:path";
 import { parseHTML } from "linkedom";
 import {
   type CaptureOptions,
   type CaptureSession,
+  type CompositionLengthSource,
   type EngineConfig,
   type SubTimelineWaitMemo,
   closeCaptureSession,
@@ -40,11 +42,22 @@ import {
   createCaptureSession,
   deriveBeginFrameProbeTimeTicks,
   getCompositionDuration,
+  getCompositionLengthSource,
   initializeSession,
   isTransientBrowserError,
   probeBeginFrameLiveness,
+  videoAudioId,
 } from "@hyperframes/engine";
-import { MEDIA_RENDER_ID_ATTR, fpsToNumber, readMediaStart } from "@hyperframes/core";
+import {
+  MEDIA_RENDER_ID_ATTR,
+  fpsToNumber,
+  normalizeRateSpec,
+  readMediaStart,
+  shiftRateLane,
+  sourceTimeAt,
+  timeAtSourceTime,
+} from "@hyperframes/core";
+import { parseHostVariableValues, readDeclaredDefaults } from "@hyperframes/core/compiler";
 import { extractMediaSrcMutations } from "@hyperframes/parsers";
 import type { BrowserMediaElement, CompiledComposition } from "../../htmlCompiler.js";
 import {
@@ -119,6 +132,8 @@ export interface ProbeStageResult {
   lastBrowserConsole: string[];
   /** Composition duration (post-probe). Guaranteed > 0 — the stage throws on <= 0. */
   duration: number;
+  /** Which input set `duration`; null when the runtime did not say. */
+  lengthSource: ReportedLengthSource | null;
   totalFrames: number;
   /** Wall-clock ms for the entire probe phase (near-zero when `needsBrowser` was false). */
   browserProbeMs: number;
@@ -160,16 +175,27 @@ export function hasAutoStartVideos(html: string): boolean {
   return document.querySelector("video[data-hf-auto-start]") !== null;
 }
 
+function variableHasValue(
+  element: Element,
+  variableId: string,
+  variables: Record<string, unknown> | undefined,
+): boolean {
+  if (variables && Object.hasOwn(variables, variableId)) return true;
+  for (let scope = element.parentElement; scope; scope = scope.parentElement) {
+    if (Object.hasOwn(parseHostVariableValues(scope), variableId)) return true;
+    if (Object.hasOwn(readDeclaredDefaults(scope), variableId)) return true;
+  }
+  return Object.hasOwn(readDeclaredDefaults(element.ownerDocument.documentElement), variableId);
+}
+
 /**
- * Variable-bound image/audio/video sources are resolved by the browser runtime, not
- * the static compiler. Probe them whenever the current render overrides the
- * referenced variable so media extraction follows the resolved row value.
+ * Variable-bound sources are resolved by the browser runtime, not the static compiler. Probe them whenever the
+ * element's variable has a value (the render's, its mount's `data-variable-values`, a declared default).
  */
 export function hasVariableBoundMedia(
   html: string,
   variables: Record<string, unknown> | undefined,
 ): boolean {
-  if (!variables || Object.keys(variables).length === 0) return false;
   const { document } = parseHTML(html);
   return Array.from(
     document.querySelectorAll(
@@ -177,7 +203,7 @@ export function hasVariableBoundMedia(
     ),
   ).some((element) => {
     const variableId = element.getAttribute("data-var-src")?.trim();
-    return Boolean(variableId && Object.hasOwn(variables, variableId));
+    return Boolean(variableId && variableHasValue(element, variableId, variables));
   });
 }
 
@@ -192,27 +218,40 @@ function authoredMediaStarts(html: string): Map<string, number> {
   return starts;
 }
 
+function isVideoAudio(audio: CompositionMetadata["audios"][number], videoId: string): boolean {
+  return audio.type === "video" && audio.id === videoAudioId(videoId);
+}
+
 /**
- * Take a start point the page changed by moving the collected one by the same amount, so the
- * in-point its scene added survives, and a video's sound track moves with its picture.
+ * Adopt browser timing without losing the scene trim the collector applied to picture and sound.
  */
-function adoptRuntimeMediaStart(
+function adoptRuntimeMediaTiming(
   composition: Pick<CompositionMetadata, "videos" | "audios">,
   el: BrowserMediaElement,
   authored: number,
 ): void {
   const shift = el.mediaStart - authored;
-  if (el.mediaStart <= 0 || Math.abs(shift) <= BROWSER_MEDIA_EPSILON) return;
   const entries =
     el.tagName === "video"
       ? [
           ...composition.videos.filter((video) => video.id === el.id),
-          ...composition.audios.filter(
-            (audio) => audio.type === "video" && audio.id === `${el.id}-audio`,
-          ),
+          ...composition.audios.filter((audio) => isVideoAudio(audio, el.id)),
         ]
       : composition.audios.filter((audio) => audio.type !== "video" && audio.id === el.id);
-  for (const entry of entries) entry.mediaStart += shift;
+  for (const entry of entries) {
+    // Collected lanes already carry their scene trim. Only newly discovered lanes need it.
+    if (typeof entry.playbackRate !== "object") {
+      if (typeof el.playbackRate === "object") {
+        const consumed = Math.max(0, entry.mediaStart - authored);
+        const head = timeAtSourceTime(normalizeRateSpec(entry.playbackRate), consumed);
+        entry.mediaStart += sourceTimeAt(el.playbackRate, head) - consumed;
+        entry.playbackRate = shiftRateLane(el.playbackRate, head);
+      } else {
+        entry.playbackRate = el.playbackRate;
+      }
+    }
+    if (el.mediaStart > 0 && Math.abs(shift) > BROWSER_MEDIA_EPSILON) entry.mediaStart += shift;
+  }
 }
 
 function reconcileBrowserMediaEnd(
@@ -300,6 +339,21 @@ export function probeRequiresBrowser(args: {
   );
 }
 
+export type ReportedLengthSource =
+  | { from: Exclude<CompositionLengthSource["from"], "media"> }
+  | { from: "media"; tag: string; trimmed: boolean; srcHash: string };
+
+/** The length source with a media clip's src reduced to a hash of its file name, so no path leaves the render. */
+export function reportedLengthSource(
+  source: CompositionLengthSource | null,
+): ReportedLengthSource | null {
+  if (!source) return null;
+  if (source.from !== "media") return { from: source.from };
+  const name = basename(source.src.split(/[?#]/, 1)[0] ?? "");
+  const srcHash = createHash("sha256").update(name).digest("hex").slice(0, 12);
+  return { from: "media", tag: source.tag, trimmed: source.trimmed, srcHash };
+}
+
 export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageResult> {
   const {
     projectDir,
@@ -324,6 +378,8 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
 
   let fileServer: FileServerHandle | null = null;
   let probeSession: CaptureSession | null = null;
+  let lengthSource: ReportedLengthSource | null =
+    input.composition.duration > 0 ? { from: "declared" } : null;
   let beginFrameStalled = false;
   let lastBrowserConsole: string[] = [];
 
@@ -379,11 +435,13 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
         height,
         fps: job.config.fps,
         format: captureFormat,
+        transparent: needsAlpha,
         quality:
           captureFormat === "png" ? undefined : resolveCaptureJpegQuality(job.config.quality),
         variables: job.config.variables,
         deviceScaleFactor,
         motionBlur,
+        pageMotionBlur: job.config.pageMotionBlur,
         requiresWebGpu: compositionRequiresWebGpu(compiled.html),
         subTimelineWaitMemo,
       };
@@ -516,10 +574,12 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
       if (composition.duration <= 0) {
         log.info("Discovering composition duration...");
         const discoveredDuration = await getCompositionDuration(session);
+        lengthSource = reportedLengthSource(await getCompositionLengthSource(session));
         assertNotAborted();
         log.info("Probed composition duration from browser", {
           discoveredDuration,
           staticDuration: compiled.staticDuration,
+          lengthSource,
         });
         composition.duration = discoveredDuration;
       } else {
@@ -594,7 +654,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
                   sourceChanged,
                   el.durationInferred,
                 );
-                adoptRuntimeMediaStart(
+                adoptRuntimeMediaTiming(
                   composition,
                   el,
                   authoredStarts.get(el.id) ?? existing.mediaStart,
@@ -605,6 +665,10 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
                 if (el.loop && !existing.loop) {
                   existing.loop = true;
                 }
+                const audio = composition.audios.find(
+                  (audio) => audio.type === "video" && audio.id === `${el.id}-audio`,
+                );
+                if (audio) audio.loop = existing.loop;
               }
             } else if (!compiled.droppedMediaIds.has(el.id)) {
               // New video discovered from browser
@@ -614,6 +678,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
                 start: el.start,
                 end: resolveBrowserMediaEnd(el.start, el.end, el.duration),
                 mediaStart: el.mediaStart,
+                playbackRate: el.playbackRate,
                 loop: el.loop,
                 hasAudio: el.hasAudio && !el.muted,
               });
@@ -639,11 +704,12 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
                   sourceChanged,
                   el.durationInferred,
                 );
-                adoptRuntimeMediaStart(
+                adoptRuntimeMediaTiming(
                   composition,
                   el,
                   authoredStarts.get(el.id) ?? existing.mediaStart,
                 );
+                existing.loop = el.loop;
                 if (
                   el.volume > 0 &&
                   Math.abs((existing.volume ?? 1) - el.volume) > BROWSER_MEDIA_EPSILON
@@ -658,6 +724,8 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
                 start: el.start,
                 end: resolveBrowserMediaEnd(el.start, el.end, el.duration),
                 mediaStart: el.mediaStart,
+                loop: el.loop,
+                playbackRate: el.playbackRate,
                 layer: 0,
                 volume: el.volume,
                 type: "audio",
@@ -848,6 +916,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
     probeSession,
     lastBrowserConsole,
     duration,
+    lengthSource,
     totalFrames,
     browserProbeMs,
     beginFrameStalled,

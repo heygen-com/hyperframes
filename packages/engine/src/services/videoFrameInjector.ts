@@ -15,7 +15,10 @@ import { injectVideoFramesBatch, syncVideoFrameVisibility } from "./screenshotSe
 import { type BeforeCaptureHook } from "./frameCapture.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import {
+  HF_COLOR_GRADING_ATTR,
   HF_COLOR_GRADING_CANVAS_ID_PREFIX,
+  HF_COLOR_GROUP_ATTR,
+  HF_COLOR_GROUP_TAG,
   RENDER_FRAME_ID_PREFIX,
   RENDER_FRAME_ID_SUFFIX,
   renderFrameIdForRenderId,
@@ -204,7 +207,7 @@ export function createVideoFrameInjector(
   }
 
   // fallow-ignore-next-line complexity
-  return async (page: Page, time: number, heldVideoTime?: number) => {
+  const inject: BeforeCaptureHook = async (page: Page, time: number, heldVideoTime?: number) => {
     for (const cacheDir of frameLookup.frameDirs()) renewCacheLease(cacheDir);
     const activePayloads = frameLookup.getActiveFramePayloads(time);
     if (heldVideoTime !== undefined) {
@@ -214,14 +217,19 @@ export function createVideoFrameInjector(
     }
 
     const updates: Array<{ videoId: string; dataUri: string; frameIndex: number }> = [];
+    const restyleIds: string[] = [];
     const activeIds = new Set<string>();
+    const isBlurSubSample = heldVideoTime !== undefined && heldVideoTime !== time;
     if (activePayloads.size > 0) {
       const pendingReads: Array<Promise<{ videoId: string; dataUri: string; frameIndex: number }>> =
         [];
       for (const [videoId, payload] of activePayloads) {
         activeIds.add(videoId);
         const lastFrameIndex = lastInjectedFrameByVideo.get(videoId);
-        if (lastFrameIndex === payload.frameIndex) continue;
+        if (lastFrameIndex === payload.frameIndex) {
+          if (!isBlurSubSample) restyleIds.push(videoId);
+          continue;
+        }
         pendingReads.push(
           frameCache
             .get(payload.framePath)
@@ -238,7 +246,7 @@ export function createVideoFrameInjector(
     }
 
     await syncVideoFrameVisibility(page, Array.from(activeIds));
-    if (updates.length > 0) {
+    if (updates.length > 0 || restyleIds.length > 0) {
       // Only record cache entries for videos the page actually painted.
       // injectVideoFramesBatch skips any video whose visual ancestor is
       // hidden (sub-comp host out-of-window) and returns the subset of ids
@@ -249,6 +257,7 @@ export function createVideoFrameInjector(
         await injectVideoFramesBatch(
           page,
           updates.map((u) => ({ videoId: u.videoId, dataUri: u.dataUri })),
+          restyleIds,
         ),
       );
       for (const update of updates) {
@@ -269,6 +278,7 @@ export function createVideoFrameInjector(
       }
     }
   };
+  return Object.assign(inject, { fresh: () => createVideoFrameInjector(frameLookup, config) });
 }
 
 // ── HDR compositing utilities ─────────────────────────────────────────────────
@@ -340,6 +350,89 @@ async function setVideoElementsVisibility(
     HF_COLOR_GRADING_CANVAS_ID_PREFIX,
     visible,
   );
+}
+
+export interface ShownBox {
+  width: number;
+  height: number;
+}
+
+/**
+ * Seeks to each of `times`; returns each video's largest drawn box in device pixels. Videos that are
+ * graded (directly or through a grade group), sampled by a canvas, `object-fit: none | scale-down` or never laid out get none (full size).
+ */
+export async function measureVideoShownBoxes(
+  page: Page,
+  videoIds: readonly string[],
+  times: readonly number[],
+): Promise<Map<string, ShownBox>> {
+  if (videoIds.length === 0 || times.length === 0) return new Map();
+  const boxes = await page.evaluate(
+    async (
+      ids: string[],
+      seekTimes: number[],
+      gradingAttr: string,
+      gradingCanvasPrefix: string,
+      groupAttr: string,
+      groupTag: string,
+    ) => {
+      const hf = (window as Window & { __hf?: { seek?: (t: number) => void } }).__hf;
+      if (typeof hf?.seek !== "function") return [];
+      const waitForSeek = (window as Window & { __hfWaitForSeekCompletion?: () => Promise<void> })
+        .__hfWaitForSeekCompletion;
+      const largest = new Map<string, ShownBox>();
+      const fullSize = new Set<string>();
+      const gradedThroughGroup = (video: Element): boolean => {
+        const groupId = video.getAttribute(groupAttr);
+        if (!groupId) return false;
+        // the member's own composition first: ids are unique only per composition file
+        const scope = video.closest("[data-composition-id]");
+        const group =
+          (scope &&
+            Array.from(scope.getElementsByTagName(groupTag)).find((g) => g.id === groupId)) ||
+          document.getElementById(groupId);
+        return group?.localName === groupTag && group.hasAttribute(gradingAttr);
+      };
+      const keepsFullSize = (video: Element): boolean => {
+        if (video.hasAttribute(gradingAttr) || gradedThroughGroup(video)) return true;
+        const fit = window.getComputedStyle(video).objectFit;
+        return fit === "none" || fit === "scale-down";
+      };
+      const measure = (id: string): void => {
+        const video = window.__hfMediaEl?.(id) ?? document.getElementById(id);
+        if (!video || keepsFullSize(video)) {
+          fullSize.add(id);
+          return;
+        }
+        const rect = video.getBoundingClientRect();
+        const box = largest.get(id) ?? { width: 0, height: 0 };
+        box.width = Math.max(box.width, rect.width * window.devicePixelRatio);
+        box.height = Math.max(box.height, rect.height * window.devicePixelRatio);
+        largest.set(id, box);
+      };
+      const pageHasCanvas = (): boolean =>
+        Array.from(document.querySelectorAll("canvas")).some(
+          (canvas) => !canvas.id.startsWith(gradingCanvasPrefix),
+        );
+      for (const t of seekTimes) {
+        hf.seek(t);
+        await waitForSeek?.();
+        // A canvas could sample any video, so every video keeps full size.
+        if (pageHasCanvas()) return [];
+        for (const id of ids) measure(id);
+      }
+      return Array.from(largest).filter(
+        ([id, box]) => !fullSize.has(id) && box.width > 0 && box.height > 0,
+      );
+    },
+    [...videoIds],
+    [...times],
+    HF_COLOR_GRADING_ATTR,
+    HF_COLOR_GRADING_CANVAS_ID_PREFIX,
+    HF_COLOR_GROUP_ATTR,
+    HF_COLOR_GROUP_TAG,
+  );
+  return new Map(boxes);
 }
 
 /**

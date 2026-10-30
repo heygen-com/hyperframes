@@ -80,13 +80,15 @@ export async function detectGpuEncoder(): Promise<GpuEncoder> {
   return selectUsableGpuEncoder(candidates, canUseGpuEncoder).catch(() => null);
 }
 
-let cachedGpuEncoder: GpuEncoder | undefined = undefined;
+let cachedGpuEncoder: Promise<GpuEncoder> | undefined = undefined;
 
-export async function getCachedGpuEncoder(): Promise<GpuEncoder> {
-  if (cachedGpuEncoder === undefined) {
-    cachedGpuEncoder = await detectGpuEncoder();
-  }
+export function getCachedGpuEncoder(): Promise<GpuEncoder> {
+  cachedGpuEncoder ??= detectGpuEncoder();
   return cachedGpuEncoder;
+}
+
+export function resetCachedGpuEncoder() {
+  cachedGpuEncoder = undefined;
 }
 
 export function getGpuEncoderName(encoder: GpuEncoder, codec: "h264" | "h265"): string {

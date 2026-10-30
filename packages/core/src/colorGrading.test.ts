@@ -129,7 +129,7 @@ describe("color grading", () => {
 
     expect(capabilities.version).toBe(2);
     expect(capabilities.colorSpace).toBe("rec709");
-    expect(capabilities.adjustments.map(({ key }) => key)).toEqual([
+    expect(capabilities.adjust.map(({ key }) => key)).toEqual([
       "exposure",
       "contrast",
       "highlights",

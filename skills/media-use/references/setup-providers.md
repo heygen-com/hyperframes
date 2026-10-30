@@ -1,15 +1,15 @@
 # Setup and providers — install, auth, RAM ladders, forcing a provider
 
-## Setup — install heygen first (free-usage path)
+## Setup — install the helper and sign in to HyperFrames
 
 Install the HeyGen CLI through its [verified release instructions](https://developers.heygen.com/cli), then run:
 
 ```bash
-heygen update             # free usage needs the OAuth-capable CLI (v0.3.0+)
-heygen auth login --oauth # OAuth = free subscription credits; --api-key bills API credits
+heygen update                  # requires v0.3.0+
+npx hyperframes auth login     # dedicated HyperFrames OAuth session
 ```
 
-This unlocks the FREE path for bgm/image/icon catalog search, TTS (voice), and avatar videos. Sign in with `--oauth` — the free allowance rides on the OAuth session (an API key bills API credits instead). **media-use requires heygen >= v0.3.0 uniformly** (the OAuth free-usage path needs it), so `--doctor` nudges older CLIs to update even for API-key-only use. Before resolving anything, verify setup with:
+HyperFrames owns the OAuth session in `~/.hyperframes/credentials` and supplies an access-only temporary credential to the HeyGen helper. Signing into `heygen` separately does not configure this path. The server decides subscription eligibility, free allowances and charges; an explicit API key uses API billing. **media-use requires heygen >= v0.3.0 uniformly.** Verify setup with:
 
 ```bash
 npx hyperframes media-use resolve --doctor
@@ -30,25 +30,25 @@ message (for example "add a key in Settings > Account") as written.
 
 ## Providers
 
-media-use holds no keys; every external tool owns its auth. Generation is
-centered on the HeyGen CLI free-usage path. Install and authenticate `heygen`
-before resolving bgm/sfx/image/icon/voice/avatar-video; music and sound effects from
+HyperFrames selects the credential for its HeyGen media helpers. Install
+`heygen` and sign in with `hyperframes auth login` before resolving
+bgm/sfx/image/icon/voice/avatar-video; music and sound effects from
 a host app's own tools need none of it. Local tools are opt-in
 alternatives where they exist: mflux for image, Kokoro for voice, Parakeet for
 transcription, and LTX for local video generation. `resolve` spec-checks
 AVAILABLE RAM for those local ladders inside the CLI (the image tiers are listed
 in `references/operations.md`).
 
-| Type      | Provider / path                                                                                                                                                               |
-| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| bgm       | heygen catalog free-usage path; a host app's own music tools come first                                                                                                       |
-| sfx       | Openverse (CC0 / CC BY, no account), bundled library offline; a host app's own sound tools come first                                                                         |
-| image     | heygen search free-usage path; optional local mflux; codex `image_gen` upsell                                                                                                 |
-| voice     | heygen tts free-usage path; optional local **Kokoro** (free, on-device)                                                                                                       |
-| icon      | heygen asset search free-usage path                                                                                                                                           |
-| logo      | theSVG (thesvg.org), then GitHub org avatar, then domain favicon (all free)                                                                                                   |
-| grade/lut | local core-preset map, params/CDN look index, deterministic `buildCube` fallback                                                                                              |
-| video     | heygen avatar video free-usage path (sign-in nudge on auth failure); optional local LTX (`videogen` ladder). Image-to-video / photo-avatar / dub stay manual `heygen` recipes |
+| Type      | Provider / path                                                                                                                                                                              |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| bgm       | heygen catalog HyperFrames-authenticated path; a host app's own music tools come first                                                                                                       |
+| sfx       | Openverse (CC0 / CC BY, no account), bundled library offline; a host app's own sound tools come first                                                                                        |
+| image     | heygen search HyperFrames-authenticated path; optional local mflux; codex `image_gen` upsell                                                                                                 |
+| voice     | heygen tts HyperFrames-authenticated path; optional local **Kokoro** (free, on-device)                                                                                                       |
+| icon      | heygen asset search HyperFrames-authenticated path                                                                                                                                           |
+| logo      | theSVG (thesvg.org), then GitHub org avatar, then domain favicon (all free)                                                                                                                  |
+| grade/lut | local core-preset map, params/CDN look index, deterministic `buildCube` fallback                                                                                                             |
+| video     | heygen avatar video HyperFrames-authenticated path (sign-in nudge on auth failure); optional local LTX (`videogen` ladder). Image-to-video / photo-avatar / dub stay manual `heygen` recipes |
 
 Local Kokoro (voice), mflux (image), and LTX (video) run on-device (free,
 private, offline once cached). The `codex` CLI remains the ChatGPT-sub image
@@ -58,31 +58,31 @@ allowance) so an agent-initiated `resolve --type video` confirms first.
 
 To force a specific generator (e.g. a user says "make this image with codex"),
 pass `--provider codex`: it pins resolution to that provider and skips the
-free-usage default. See `references/operations.md` for the RAM ladders and
+default provider. See `references/operations.md` for the RAM ladders and
 provider recipes.
 
-`--local-only` skips every network provider, including the free HeyGen ones,
+`--local-only` skips every network provider, including HeyGen,
 leaving the project + global cache and any installed local provider. For
 HeyGen-only types, that means no fresh resolve.
 
 ## CLI tools used (what to run, and how to enable each)
 
 `resolve` auto-cascades; each provider shells one CLI. HeyGen is the
-free-usage path for bgm/image/icon catalog search, TTS (voice), and avatar
-video, so those capabilities need `heygen` installed and authenticated. Local
+HyperFrames-authenticated path for bgm/image/icon catalog search, TTS (voice), and avatar
+video, so those capabilities need `heygen` installed and a HyperFrames login. Local
 tools are OPT-IN alternatives where they exist; install one to unlock its free,
 private, on-device path instead of or ahead of HeyGen for that type. Only
 `ffmpeg`/`ffprobe` are strictly required for the tool to run at all.
 
-| Tool               | Serves                                                                      | Install                                                                                                                                                                                     |
-| ------------------ | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ffmpeg`/`ffprobe` | adopt probing, smart-grade signalstats, cut, duck bake, loudnorm            | system package (`brew install ffmpeg`)                                                                                                                                                      |
-| `heygen`           | catalog (bgm/image/icon) + TTS (voice) + avatar video — the free-usage path | install through [verified HeyGen release instructions](https://developers.heygen.com/cli), then `heygen auth login --oauth` (needs >= v0.3.0)                                               |
-| `mflux-generate`   | local image gen (FLUX), best-for-RAM                                        | `uv venv ~/.venvs/mflux && VIRTUAL_ENV=~/.venvs/mflux uv pip install mflux==0.9.6`                                                                                                          |
-| `codex`            | image gen upsell (ChatGPT sub)                                              | Codex CLI, logged in via ChatGPT (owns its own auth)                                                                                                                                        |
-| `parakeet-mlx`     | local transcription (default ASR, best) on Apple Silicon                    | `uv venv ~/.venvs/parakeet && VIRTUAL_ENV=~/.venvs/parakeet uv pip install parakeet-mlx`                                                                                                    |
-| `ltx-2-mlx`        | local video gen                                                             | `git clone https://github.com/dgrauet/ltx-2-mlx && cd ltx-2-mlx && uv sync --all-extras`                                                                                                    |
-| `npx hyperframes`  | Kokoro TTS (voice), Parakeet or whisper.cpp (transcribe), remove-background | via the hyperframes CLI; Parakeet on macOS, Windows and glibc 2.32+ Linux: `npx hyperframes models install parakeet`; whisper.cpp is built on first use (Homebrew on macOS, else git+cmake) |
+| Tool               | Serves                                                                                     | Install                                                                                                                                                                                     |
+| ------------------ | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ffmpeg`/`ffprobe` | adopt probing, smart-grade signalstats, cut, duck bake, loudnorm                           | system package (`brew install ffmpeg`)                                                                                                                                                      |
+| `heygen`           | catalog (bgm/image/icon) + TTS (voice) + avatar video — the HyperFrames-authenticated path | install through [verified HeyGen release instructions](https://developers.heygen.com/cli), then `npx hyperframes auth login` (helper needs >= v0.3.0)                                       |
+| `mflux-generate`   | local image gen (FLUX), best-for-RAM                                                       | `uv venv ~/.venvs/mflux && VIRTUAL_ENV=~/.venvs/mflux uv pip install mflux==0.9.6`                                                                                                          |
+| `codex`            | image gen upsell (ChatGPT sub)                                                             | Codex CLI, logged in via ChatGPT (owns its own auth)                                                                                                                                        |
+| `parakeet-mlx`     | local transcription (default ASR, best) on Apple Silicon                                   | `uv venv ~/.venvs/parakeet && VIRTUAL_ENV=~/.venvs/parakeet uv pip install parakeet-mlx`                                                                                                    |
+| `ltx-2-mlx`        | local video gen                                                                            | `git clone https://github.com/dgrauet/ltx-2-mlx && cd ltx-2-mlx && uv sync --all-extras`                                                                                                    |
+| `npx hyperframes`  | Kokoro TTS (voice), Parakeet or whisper.cpp (transcribe), remove-background                | via the hyperframes CLI; Parakeet on macOS, Windows and glibc 2.32+ Linux: `npx hyperframes models install parakeet`; whisper.cpp is built on first use (Homebrew on macOS, else git+cmake) |
 
 The RAM-graded local-model shortlist + exact per-tier install/invoke lives in
 the CLI's bundled media-use engine, not in the standalone skill. Without a tool on PATH, its provider

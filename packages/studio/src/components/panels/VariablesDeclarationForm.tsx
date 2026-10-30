@@ -6,7 +6,7 @@
 
 import { useState } from "react";
 import type { CompositionVariable, CompositionVariableType } from "@hyperframes/sdk";
-import { VARIABLES_INPUT_CLASS } from "./VariablesValueControls";
+import { variableDefaultText, VARIABLES_INPUT_CLASS } from "./VariablesValueControls";
 
 const VARIABLE_TYPES: CompositionVariableType[] = [
   "string",
@@ -19,6 +19,7 @@ const VARIABLE_TYPES: CompositionVariableType[] = [
 ];
 
 export interface DeclarationDraft {
+  original?: CompositionVariable;
   id: string;
   label: string;
   type: CompositionVariableType;
@@ -48,10 +49,11 @@ export function draftFromDeclaration(decl: CompositionVariable): DeclarationDraf
   const numeric = decl.type === "number" ? decl : null;
   return {
     ...EMPTY_DRAFT,
+    original: decl,
     id: decl.id,
     label: decl.label,
     type: decl.type,
-    defaultRaw: String(decl.default),
+    defaultRaw: variableDefaultText(decl),
     description: decl.description ?? "",
     min: numeric?.min !== undefined ? String(numeric.min) : "",
     max: numeric?.max !== undefined ? String(numeric.max) : "",
@@ -153,8 +155,24 @@ export function declarationFromDraft(draft: DeclarationDraft): CompositionVariab
       return { ...base, type: "boolean", default: draft.defaultRaw.trim() === "true" };
     case "enum":
       return enumDeclFromDraft(base, draft);
+    case "font": {
+      const value = draft.original?.type === "font" ? draft.original.default : undefined;
+      return {
+        ...base,
+        type: "font",
+        default:
+          typeof value === "object" ? { ...value, name: draft.defaultRaw } : draft.defaultRaw,
+      };
+    }
+    case "image": {
+      const value = draft.original?.type === "image" ? draft.original.default : undefined;
+      return {
+        ...base,
+        type: "image",
+        default: typeof value === "object" ? { ...value, url: draft.defaultRaw } : draft.defaultRaw,
+      };
+    }
     default:
-      // string / color / font / image — string default, verbatim.
       return { ...base, type: draft.type, default: draft.defaultRaw };
   }
 }

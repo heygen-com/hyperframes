@@ -17,6 +17,7 @@ import {
   type CaptureSession,
   type EngineConfig,
   type WorkerSizing,
+  type WorkerSizingConfig,
   calculateOptimalWorkers,
   captureFrameToBuffer,
   closeCaptureSession,
@@ -138,7 +139,7 @@ export function buildHeapAdvisoryWarning(
 export function resolveRenderWorkerCount(
   totalFrames: number,
   requestedWorkers: number | undefined,
-  cfg: EngineConfig,
+  cfg: EngineConfig & Pick<WorkerSizingConfig, "appleGpuDiskCapture">,
   compiled: Pick<CompiledComposition, "hasShaderTransitions" | "renderModeHints">,
   log: ProducerLogger = defaultLogger,
   measuredCaptureCost?: CaptureCostEstimate,

@@ -380,3 +380,41 @@ describe("domEditSelectionToFacts hasAudio", () => {
     expect((await factsFor(`<div id="d1"></div>`)).hasAudio).toBe(false);
   });
 });
+
+describe("collectDomEditLayerItems and clips the runtime hid", () => {
+  afterEach(() => {
+    document.body.innerHTML = "";
+    document.head.innerHTML = "";
+  });
+
+  // As the runtime marks and styles a clip outside the playhead, with its rule that hides the clip's contents.
+  function filmWithHiddenScene(hiddenStyle: string): HTMLElement {
+    document.head.innerHTML = `<style>[data-hf-clip-hidden][data-hf-clip-hidden] * { visibility: hidden !important; }</style>`;
+    const cells = (prefix: string, n: number) =>
+      Array.from({ length: n }, (_, i) => `<div id="${prefix}-${i}"></div>`).join("");
+    document.body.innerHTML =
+      `<div data-composition-id="main">` +
+      `<div id="now" data-start="0" data-duration="5">${cells("now", 3)}</div>` +
+      `<div id="later" data-start="5" data-duration="5" data-hf-clip-hidden style="${hiddenStyle}">${cells("later", 50)}</div>` +
+      `</div>`;
+    return document.querySelector<HTMLElement>("[data-composition-id]")!;
+  }
+
+  it("lists what is on screen without reading the style of anything inside a hidden clip", () => {
+    const root = filmWithHiddenScene("visibility: hidden");
+    const read = vi.spyOn(window, "getComputedStyle");
+    const ids = collectDomEditLayerItems(root, opts).map((item) => item.id);
+    const insideHidden = read.mock.calls.filter(([el]) =>
+      document.getElementById("later")!.contains(el),
+    );
+    expect(ids).toEqual(["now", "now-0", "now-1", "now-2"]);
+    expect(insideHidden).toHaveLength(0);
+  });
+
+  // Older shader builds reveal a clip through its inline style alone, leaving the mark on.
+  it("still lists a marked clip whose inline style shows it", () => {
+    const root = filmWithHiddenScene("visibility: visible");
+    const ids = collectDomEditLayerItems(root, opts).map((item) => item.id);
+    expect(ids).toContain("later");
+  });
+});

@@ -322,4 +322,66 @@ describe("the audio the playhead follows", () => {
     }
     expect(window.__player!.getTime()).toBeGreaterThan(1.4);
   });
+
+  it("holds the playhead for a playing clip that has no data, then lets the picture run on", async () => {
+    const stuck = await playStarved();
+    stepFrames(1);
+    const held = window.__player!.getTime();
+    stepFrames(60);
+    expect(window.__player!.getTime()).toBe(held);
+    stepFrames(4 * 60); // past the 3 s hold
+    expect(window.__player!.getTime()).toBeGreaterThan(0.5);
+    expect(stuck.paused).toBe(false);
+  });
+
+  it("brings a clip whose data arrives late in where the playhead is, without moving it back", async () => {
+    const late = await playStarved();
+    stepFrames(5 * 60);
+    const before = window.__player!.getTime();
+    expect(before).toBeGreaterThan(1);
+    late.readyState = 4; // its data arrives and it plays on from its start, until media sync seeks it
+    for (let frame = 0; frame < 30; frame++) {
+      late.currentTime += 1 / 60;
+      stepFrames(1);
+      await new Promise((done) => setTimeout(done, 20)); // a seek lands under a 15 ms volume dip
+    }
+    const at = window.__player!.getTime();
+    expect(at).toBeGreaterThan(before);
+    expect(Math.abs(late.currentTime - at)).toBeLessThan(0.25);
+    const joinedAt = nowMs;
+    const from = late.currentTime;
+    for (let frame = 0; frame < 60; frame++) {
+      stepFrames(1);
+      late.currentTime = from + (nowMs - joinedAt) / 1000 + 0.2; // ahead of the wall clock: only the clip explains it
+    }
+    expect(window.__player!.getTime()).toBeGreaterThan(at + (nowMs - joinedAt) / 1000 + 0.1);
+  });
+
+  it("keeps following a clip that has data", async () => {
+    mount(`<audio id="vo" data-start="0" data-duration="10" src="/assets/vo.mp3"></audio>`);
+    const vo = document.getElementById("vo") as HTMLAudioElement;
+    initSandboxRuntimeModular();
+    await flush();
+    window.__player?.play();
+    await flush();
+    const playedAt = nowMs;
+    Object.assign(vo, { paused: false });
+    for (let frame = 0; frame < 5 * 60; frame++) {
+      stepFrames(1);
+      vo.currentTime = (nowMs - playedAt) / 1000 + 0.2;
+    }
+    expect(window.__player!.getTime()).toBeGreaterThan((nowMs - playedAt) / 1000 + 0.1);
+  });
 });
+
+/** One clip playing with no data: what a browser reports for a source whose server never answers. */
+async function playStarved(): Promise<HTMLAudioElement> {
+  mount(`<audio id="stuck" data-start="0" data-duration="10" src="/assets/stuck.mp3"></audio>`);
+  const stuck = document.getElementById("stuck") as HTMLAudioElement;
+  initSandboxRuntimeModular();
+  await flush();
+  window.__player?.play();
+  await flush();
+  Object.assign(stuck, { paused: false, readyState: 0, currentTime: 0 });
+  return stuck;
+}

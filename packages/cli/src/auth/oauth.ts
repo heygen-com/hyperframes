@@ -38,7 +38,6 @@ import {
   ErrApi,
   ErrDeviceAuthFailed,
   ErrLoginChanged,
-  ErrOAuthNotConfigured,
   ErrRefreshFailed,
   isAuthError,
 } from "./errors.js";
@@ -55,44 +54,29 @@ import {
   type StoredUserInfo,
 } from "./store.js";
 import { c } from "../ui/colors.js";
+import {
+  assertOAuthIdentity,
+  authorizeEndpoint,
+  deviceAuthorizationEndpoint,
+  oauthIdentity,
+  resolveClientId,
+  revokeEndpoint,
+  tokenEndpoint,
+} from "./config.js";
+
+export { resolveClientId } from "./config.js";
 
 const REVOKE_TIMEOUT_MS = 5_000;
 const MIN_EXPIRES_IN_SECONDS = 30;
 
-/**
- * Default OAuth client_id baked at build time. Override with the
- * `HYPERFRAMES_OAUTH_CLIENT_ID` env var. Empty string means "not
- * configured" — `resolveClientId()` errors cleanly with a pointer
- * at `--api-key`.
- */
-const DEFAULT_CLIENT_ID = "q2A2QRSke2LrFTPJhoDbHtXh";
 const DEFAULT_SCOPES = "openid profile email";
 
-// Endpoint defaults — see file-header comment for why these straddle two
-// hosts. Each is independently overridable.
-const DEFAULT_AUTHORIZE_URL = "https://app.heygen.com/oauth/authorize";
-const DEFAULT_TOKEN_URL = "https://api2.heygen.com/v1/oauth/token";
-const DEFAULT_REVOKE_URL = "https://api2.heygen.com/v1/oauth/revoke";
-const DEFAULT_DEVICE_AUTHORIZATION_URL = "https://api2.heygen.com/v1/oauth/device_authorization";
 const DEVICE_CODE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code";
 const MAX_DEVICE_FLOW_SECONDS = 30 * 60;
 const MIN_DEVICE_POLL_SECONDS = 5;
 const MAX_DEVICE_POLL_SECONDS = 60;
 const MAX_DEVICE_RESPONSE_BYTES = 64 * 1024;
 const DEVICE_REQUEST_TIMEOUT_MS = 15_000;
-
-function authorizeEndpoint(): string {
-  return process.env["HYPERFRAMES_OAUTH_AUTHORIZE_URL"] || DEFAULT_AUTHORIZE_URL;
-}
-function tokenEndpoint(): string {
-  return process.env["HYPERFRAMES_OAUTH_TOKEN_URL"] || DEFAULT_TOKEN_URL;
-}
-function revokeEndpoint(): string {
-  return process.env["HYPERFRAMES_OAUTH_REVOKE_URL"] || DEFAULT_REVOKE_URL;
-}
-function deviceAuthorizationEndpoint(): string {
-  return process.env["HYPERFRAMES_OAUTH_DEVICE_URL"] || DEFAULT_DEVICE_AUTHORIZATION_URL;
-}
 
 export interface AuthorizeFlowOptions {
   /** Override scopes (default `openid profile email`). */
@@ -132,14 +116,6 @@ export interface DeviceAuthorizationFlowOptions {
   requestTimeoutMs?: number;
   /** Present the user code and verification URI without exposing device_code. */
   onChallenge?: (challenge: DeviceAuthorizationChallenge) => void | Promise<void>;
-}
-
-/** Read the client_id, throwing `ErrOAuthNotConfigured` when unset. */
-export function resolveClientId(): string {
-  const override = process.env["HYPERFRAMES_OAUTH_CLIENT_ID"];
-  const id = override && override.length > 0 ? override : DEFAULT_CLIENT_ID;
-  if (!id || id.length === 0) throw ErrOAuthNotConfigured();
-  return id;
 }
 
 /**
@@ -214,7 +190,7 @@ export async function startAuthorizationCodeFlow(
  * RFC 8628 attended device flow. This function deliberately returns an
  * unpersisted token set: the command must verify `/v3/users/me` first and only
  * then call `persistFreshOAuth`. That ordering prevents a token for the wrong
- * account/resource from ever becoming the active shared credential.
+ * account/resource from ever becoming the active HyperFrames credential.
  */
 export async function startDeviceAuthorizationFlow(
   opts: DeviceAuthorizationFlowOptions = {},
@@ -385,6 +361,9 @@ export async function refreshTokens(
   refresh_token: string,
   opts: RefreshOptions = {},
 ): Promise<OAuthTokens> {
+  const { credentials } = await readStore();
+  if (credentials.oauth?.refresh_token !== refresh_token) throw ErrLoginChanged();
+  assertOAuthIdentity(credentials.oauth);
   const clientId = resolveClientId();
   const fetchImpl = opts.fetchImpl ?? fetch;
   const body = new URLSearchParams({
@@ -432,6 +411,13 @@ export async function revokeTokens(token: string, opts: RevokeOptions = {}): Pro
   let clientId: string;
   try {
     clientId = resolveClientId();
+    const { credentials } = await readStore();
+    if (
+      credentials.oauth &&
+      (credentials.oauth.access_token === token || credentials.oauth.refresh_token === token)
+    ) {
+      assertOAuthIdentity(credentials.oauth);
+    }
   } catch {
     // OAuth not configured — nothing to revoke server-side.
     return;
@@ -622,7 +608,9 @@ async function persistOAuth(tokens: OAuthTokens, opts: { refreshed?: string } = 
     throw ErrLoginChanged();
   }
   const oauth: OAuthTokens =
-    opts.refreshed !== undefined ? { ...existing.oauth, ...tokens } : { ...tokens };
+    opts.refreshed !== undefined
+      ? { ...existing.oauth, ...tokens, ...oauthIdentity() }
+      : { ...tokens, ...oauthIdentity() };
   // Start from the existing record so co-located data survives: the
   // api_key, the friendly-display `user` block, AND any unknown/foreign
   // keys another CLI wrote (carried on a hidden symbol slot by spread).
@@ -656,7 +644,7 @@ export async function persistVerifiedOAuthSession(
   }
   const next: Credentials = {
     ...credentials,
-    oauth: { ...tokens },
+    oauth: { ...tokens, ...oauthIdentity() },
   };
   if (user.email || user.first_name || user.last_name || user.username) {
     // Preserve only unknown/foreign user fields from the existing record.

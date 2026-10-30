@@ -80,9 +80,9 @@
             container-type: size;
             isolation: isolate;
             overflow: hidden;
-            background: var(--bg);
-            color: var(--fg);
-            font-family: var(--font-body);
+            background: var(--bg, #101d31);
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-body, Inter, system-ui, sans-serif);
           }
 
           .smr-clip,
@@ -109,20 +109,20 @@
           }
 
           .smr-media-start {
-            stop-color: var(--brand);
+            stop-color: var(--brand, #ff7a33);
           }
 
           .smr-media-middle {
-            stop-color: var(--accent);
+            stop-color: var(--accent, #22d3ee);
           }
 
           .smr-media-end {
-            stop-color: var(--fg);
+            stop-color: var(--fg, #f8fafc);
           }
 
           .smr-mask-text {
-            fill: var(--fg);
-            font-family: var(--font-display);
+            fill: var(--fg, #f8fafc);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
             font-size: 240px;
             font-weight: 850;
             letter-spacing: 0.02em;
@@ -135,9 +135,9 @@
 
           .smr-outline {
             fill: none;
-            stroke: var(--border);
+            stroke: var(--border, rgba(248, 250, 252, 0.22));
             stroke-width: 2;
-            font-family: var(--font-display);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
             font-size: 240px;
             font-weight: 850;
             letter-spacing: 0.02em;

@@ -2,6 +2,7 @@
 import { watch } from "node:fs";
 import { dirname, join } from "node:path";
 import { COMPOSITION, PLAYHEAD } from "./grid.mjs";
+import { hashOf, traceBench } from "./trace.mjs";
 import { centre, dist, percentile, quadDistance } from "./geometry.mjs";
 import {
   VIEWPORT,
@@ -10,6 +11,7 @@ import {
   chord,
   controlDrag,
   measure,
+  measureShown,
   nextFrame,
   openStudio,
   pointerGesture,
@@ -108,7 +110,10 @@ export function watchVersions(dir, files) {
   const versions = [readFiles(dir, files)];
   const record = () => {
     const now = readFiles(dir, files);
-    if (!sameFiles(now, versions.at(-1))) versions.push(now);
+    if (!sameFiles(now, versions.at(-1))) {
+      versions.push(now);
+      traceBench("version", { n: versions.length - 1, hash: hashOf(JSON.stringify(now)) });
+    }
   };
   const watchers = [...new Set(files.map((f) => dirname(join(dir, f))))].map((d) =>
     watch(d, record),
@@ -272,8 +277,13 @@ async function driveStep(ctx, step, state) {
   }
   const name = step.element ?? "A";
   const c = ctx[name];
-  // In flight: pressed where the last drag let go, without reading the preview first.
-  let pre = step.inFlight ? state.last.lastMeasure : await measure(c);
+  // In flight: pressed where the last drag let go, without reading the preview first. The waiting
+  // marker belongs to the selected element, so another element is read bare until it is selected.
+  let pre = step.inFlight
+    ? state.last.lastMeasure
+    : name === state.selected
+      ? (await measureShown(c)).m
+      : await measure(c);
   if (name !== state.selected) {
     await selectTarget(c, pre);
     state.selected = name;

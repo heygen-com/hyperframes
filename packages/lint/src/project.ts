@@ -3,8 +3,24 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, extname, join, relative, resolve } from "node:path";
 import { rewriteAssetPath } from "@hyperframes/parsers/asset-paths";
+import { spansOverlap } from "@hyperframes/parsers/time-spans";
+import {
+  compositionOriginSeconds,
+  cutToHostSlots,
+  MEDIA_START_BASIS_ATTR,
+  resolveMediaStartSeconds,
+  type HostSlot,
+} from "@hyperframes/parsers/media-timing";
+import { parseNumeric } from "@hyperframes/parsers/composition-contract";
+import {
+  resolveReferencedDuration,
+  resolveReferencedStart,
+  type RefResolverDoc,
+  type RefResolverEl,
+} from "@hyperframes/parsers/reference-resolver";
 import { checkSubCompositionUsability } from "@hyperframes/parsers/sub-composition-validity";
 import { parseHTML } from "linkedom";
+import postcss from "postcss";
 import {
   cleanAssetUrl,
   collectSubCompositionSrcs,
@@ -17,6 +33,7 @@ import {
   resolveLocalAssetCandidates,
   resolveProjectRelativeSrc,
 } from "@hyperframes/parsers/asset-resolution";
+import { encodeUrlPath } from "@hyperframes/parsers";
 import {
   collectLocalVideoCandidates,
   lintHevcPreviewCodec,
@@ -30,7 +47,7 @@ import type {
   HyperframeLinterOptions,
 } from "./types.js";
 import type { ParsableDocumentLike } from "@hyperframes/parsers/sub-composition-validity";
-import { isAudibleVideoTag, mediaSrcOf, mediaSrcTagRe, readAttr, readDecodedAttr } from "./utils";
+import { isAudibleVideo, isAudibleVideoTag, mediaSrcOf, mediaSrcTagRe } from "./utils";
 
 /** Adapts linkedom's `parseHTML` to the `checkSubCompositionUsability` contract. */
 function parseSubCompHtml(html: string): ParsableDocumentLike {
@@ -83,6 +100,7 @@ function contentDigest(html: string): string {
 }
 
 const AUDIO_EXTENSIONS = new Set([".mp3", ".wav", ".aac", ".ogg", ".m4a", ".flac", ".opus"]);
+const CSS_URL_RE = /\burl\(\s*(?:"([^"]+)"|'([^']+)'|([^"')\s]+))\s*\)/gi;
 const MASK_IMAGE_URL_RE =
   /\b(?:-webkit-)?mask-image\s*:\s*[^;{}]*url\(\s*(?:"([^"]+)"|'([^']+)'|([^"')\s]+))\s*\)/gi;
 
@@ -119,7 +137,7 @@ function collectLocalStylesheets(
   return styles;
 }
 
-function collectExternalStyles(
+export function collectExternalStyles(
   projectDir: string,
   html: string,
   compSrcPath?: string,
@@ -183,7 +201,7 @@ function resolveCssAssetCandidates(
 export async function lintProject(
   projectDir: string,
   entryFile?: string,
-  hostOptions: Pick<HyperframeLinterOptions, "host"> = {},
+  hostOptions: Pick<HyperframeLinterOptions, "host" | "isSubComposition"> = {},
 ): Promise<ProjectLintResult> {
   const indexPath = entryFile ? resolve(entryFile) : resolve(projectDir, "index.html");
   if (entryFile && !isWithinProjectRoot(projectDir, indexPath)) {
@@ -264,7 +282,7 @@ export async function lintProject(
     ...lintTextureMaskAssetNotFound(projectDir, allHtmlSources),
     ...(!entryFile ? lintMultipleRootCompositions(projectDir) : []),
     ...(!entryFile ? lintBlankRootWithStandaloneComposition(rootHtml, allHtmlSources) : []),
-    ...lintDuplicateAudioTracks(allHtmlSources),
+    ...lintDuplicateAudioTracks(projectDir, rootHtml),
     ...lintMissingOrEmptySubComposition(projectDir, rootHtml),
     ...(await lintVideoMediaStartPastEof(projectDir, allHtmlSources)),
     ...(await lintHevcPreviewCodec(collectLocalVideoCandidates(projectDir, allHtmlSources))),
@@ -368,6 +386,18 @@ function lintProjectAudioFiles(
   return findings;
 }
 
+/** The src that loads a project file whose own name holds `#` or `?`, which a URL cuts the name at; null when the raw
+ * src names no such file. */
+function urlSafeSrcOf(projectDir: string, rootRelative: string): string | null {
+  if (!/[?#]/.test(rootRelative)) return null;
+  const literal = resolve(projectDir, rootRelative.replace(/^\//, ""));
+  if (!existsSync(literal)) return null;
+  return encodeUrlPath(rootRelative);
+}
+
+const urlSafeHint = (safe: string) =>
+  `The file exists, but a "#" or "?" in a src ends the file name there. Write the src as "${safe}".`;
+
 function lintAudioSrcNotFound(
   projectDir: string,
   htmlSources: HtmlSource[],
@@ -377,6 +407,7 @@ function lintAudioSrcNotFound(
   const audioSrcRe = mediaSrcTagRe("audio");
 
   const missingByFile = new Map<string, Set<string>>();
+  const urlSafe = new Map<string, string>();
   for (const { html, compSrcPath } of htmlSources) {
     const scannable = maskNonScannableRanges(html);
     let match: RegExpExecArray | null;
@@ -388,6 +419,8 @@ function lintAudioSrcNotFound(
         ? rewriteAssetPath(compSrcPath, src, (path) => existsSync(join(projectDir, path)))
         : src;
       if (!existsSync(resolveProjectRelativeSrc(rootRelative, projectDir))) {
+        const safe = urlSafeSrcOf(projectDir, rootRelative);
+        if (safe) urlSafe.set(src, safe);
         const file = sourceFile(projectDir, compSrcPath);
         missingByFile.set(file, (missingByFile.get(file) ?? new Set()).add(src));
       }
@@ -402,9 +435,11 @@ function lintAudioSrcNotFound(
       file,
       message: `<audio> element references file(s) not found in the project: ${unique.join(", ")}. The rendered video will be silent.`,
       fixHint:
-        unique.length === 1
-          ? `Add the file "${unique[0]}" to the project directory, or update the src attribute to point to an existing file.`
-          : `Add the missing files to the project directory, or update the src attributes to point to existing files.`,
+        unique.length === 1 && urlSafe.has(unique[0]!)
+          ? urlSafeHint(urlSafe.get(unique[0]!)!)
+          : unique.length === 1
+            ? `Add the file "${unique[0]}" to the project directory, or update the src attribute to point to an existing file.`
+            : `Add the missing files to the project directory, or update the src attributes to point to existing files.`,
     });
   }
 
@@ -424,6 +459,7 @@ function lintMissingLocalAsset(
     string,
     { file: string; tagName: string; byResolved: Map<string, string> }
   >();
+  const urlSafe = new Map<string, string>();
 
   for (const { html, compSrcPath } of htmlSources) {
     const scannable = maskNonScannableRanges(html);
@@ -443,6 +479,14 @@ function lintMissingLocalAsset(
       const resolvedAsset = resolveExistingLocalAsset(projectDir, rootRelative);
       if (resolvedAsset) continue;
 
+      const rawRoot = rawSrc.trim();
+      const safe = urlSafeSrcOf(
+        projectDir,
+        compSrcPath
+          ? rewriteAssetPath(compSrcPath, rawRoot, (path) => existsSync(join(projectDir, path)))
+          : rawRoot,
+      );
+      if (safe) urlSafe.set(src, safe);
       const resolvedKey = resolve(projectDir, rootRelative);
       const file = sourceFile(projectDir, compSrcPath);
       const bucketKey = `${file}\0${tagName}`;
@@ -465,12 +509,14 @@ function lintMissingLocalAsset(
         `<${tagName}> element references local file(s) not found in the project: ${unique.join(", ")}. ` +
         "The renderer will silently skip these and produce a video with missing visuals.",
       fixHint:
-        unique.length === 1
-          ? `Add "${unique[0]}" to the project directory, or update the src attribute to point to an existing file. ` +
-            "Common cause: captured asset filenames are unreliable (heygen-logo.svg often contains Google, nvidia-logo.svg may contain Autodesk, etc.). " +
-            "Open the contact sheets and verify the file actually exists at this path before referencing it."
-          : "Add the missing files to the project directory, or update the src attributes to point to existing files. " +
-            "Captured asset filenames are unreliable. Verify against capture/contact-sheets/ and capture/extracted/asset-descriptions.md.",
+        unique.length === 1 && urlSafe.has(unique[0]!)
+          ? urlSafeHint(urlSafe.get(unique[0]!)!)
+          : unique.length === 1
+            ? `Add "${unique[0]}" to the project directory, or update the src attribute to point to an existing file. ` +
+              "Common cause: captured asset filenames are unreliable (heygen-logo.svg often contains Google, nvidia-logo.svg may contain Autodesk, etc.). " +
+              "Open the contact sheets and verify the file actually exists at this path before referencing it."
+            : "Add the missing files to the project directory, or update the src attributes to point to existing files. " +
+              "Captured asset filenames are unreliable. Verify against capture/contact-sheets/ and capture/extracted/asset-descriptions.md.",
     });
   }
 
@@ -486,9 +532,16 @@ function lintTextureMaskAssetNotFound(
   for (const { html, compSrcPath } of htmlSources) {
     const file = sourceFile(projectDir, compSrcPath);
     for (const cssSource of collectCssSources(projectDir, html, compSrcPath)) {
-      let match: RegExpExecArray | null;
-      const pattern = new RegExp(MASK_IMAGE_URL_RE.source, MASK_IMAGE_URL_RE.flags);
-      while ((match = pattern.exec(cssSource.content)) !== null) {
+      let matches: RegExpExecArray[] = [];
+      try {
+        postcss.parse(cssSource.content).walkDecls(/^(?:-webkit-)?mask-image$/i, (declaration) => {
+          matches.push(...declaration.value.matchAll(CSS_URL_RE));
+        });
+      } catch (error) {
+        if (!(error instanceof postcss.CssSyntaxError)) throw error;
+        matches = [...cssSource.content.matchAll(MASK_IMAGE_URL_RE)];
+      }
+      for (const match of matches) {
         const rawUrl = match[1] ?? match[2] ?? match[3] ?? "";
         // Placeholder check runs on the RAW value: cleanAssetUrl() splits on ?/# and would chop inside a ${...} token.
         if (isUnresolvedAssetPlaceholder(rawUrl)) continue;
@@ -551,44 +604,120 @@ function lintMultipleRootCompositions(projectDir: string): HyperframeLintFinding
   return findings;
 }
 
-function lintDuplicateAudioTracks(htmlSources: HtmlSource[]): HyperframeLintFinding[] {
-  const findings: HyperframeLintFinding[] = [];
-  const tracks: Array<{ trackIndex: number; start: number; end: number; src: string }> = [];
-  const seen = new Set<string>();
+interface AudioSpan {
+  trackIndex: number;
+  start: number;
+  end: number;
+  src: string;
+}
 
-  for (const { html } of htmlSources) {
-    const soundTagRe = /<(?:audio|video)\b[^>]*>/gi;
-    let match: RegExpExecArray | null;
-    while ((match = soundTagRe.exec(html)) !== null) {
-      const tag = match[0];
-      if (/^<video/i.test(tag) && !isAudibleVideoTag(tag)) continue;
-      const trackStr = readAttr(tag, "data-track-index");
-      const startStr = readAttr(tag, "data-start");
-      const durStr = readAttr(tag, "data-duration");
-      const src = readDecodedAttr(tag, "src") || "unknown";
-      if (!trackStr || !startStr) continue;
+/** One parsed file: reference starts resolve within it, memoised. */
+interface TimingFile {
+  doc: RefResolverDoc;
+  starts: Map<RefResolverEl, number>;
+}
 
-      const trackIndex = parseInt(trackStr, 10);
-      const start = parseFloat(startStr);
-      const duration = durStr ? parseFloat(durStr) : Infinity;
-      const key = `${src}:${start}:${duration}:${trackIndex}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
+const timingFile = (doc: RefResolverDoc): TimingFile => ({ doc, starts: new Map() });
+const localStart = (file: TimingFile, el: Element) =>
+  resolveReferencedStart(file.doc, el, file.starts, new Set());
+const localDuration = (file: TimingFile, el: Element) =>
+  resolveReferencedDuration(file.doc, el, file.starts, new Set());
 
-      tracks.push({ trackIndex, start, end: start + duration, src });
+/** Audible media on the main timeline, walked from the root through the scenes it mounts. */
+function collectMainTimelineAudio(projectDir: string, rootHtml: string): AudioSpan[] {
+  const spans: AudioSpan[] = [];
+  type Placement = { file: TimingFile; origin: number; slots: HostSlot[]; mounting: string[] };
+  const mount = (html: string, at: Omit<Placement, "file">) => {
+    const { document } = parseHTML(html);
+    const root = querySelectorAllIncludingTemplates(document, "[data-composition-id]")[0];
+    if (root) visit(root, { ...at, file: timingFile(document) });
+  };
+  const visit = (parent: ParentNode, at: Placement) => {
+    for (const el of parent.children) {
+      if (el.tagName === "TEMPLATE") {
+        visit((el as HTMLTemplateElement).content, at);
+        continue;
+      }
+      const span = audioSpanOf(el, at.file, at.origin, at.slots);
+      if (span) spans.push(span);
+      const scope = nestedScopeOf(el, at.file, at.origin, at.slots);
+      if (!scope) {
+        visit(el, at);
+        continue;
+      }
+      const inner = { ...at, ...scope };
+      const src = el.getAttribute("data-composition-src")?.trim();
+      const file = src && !isUnresolvedAssetPlaceholder(src) && !isRemoteOrInlineUrl(src);
+      const filePath = file ? resolve(projectDir, src) : null;
+      if (filePath && !at.mounting.includes(filePath)) {
+        const read = readProjectFile(filePath);
+        if (read.kind === "file")
+          mount(read.text, { ...inner, mounting: [...at.mounting, filePath] });
+      }
+      visit(el, inner);
     }
-  }
+  };
+  const { document } = parseHTML(rootHtml);
+  visit(document, { file: timingFile(document), origin: 0, slots: [], mounting: [] });
+  return spans;
+}
 
+/** A composition or scene host: its children's local t=0 sits at the host's start, cut to its window. */
+function nestedScopeOf(
+  el: Element,
+  file: TimingFile,
+  origin: number,
+  slots: HostSlot[],
+): { origin: number; slots: HostSlot[] } | null {
+  if (!el.hasAttribute("data-composition-id") && !el.hasAttribute("data-composition-src")) {
+    return null;
+  }
+  const start = origin + localStart(file, el);
+  const duration = localDuration(file, el);
+  const window = duration === null ? [] : [{ start, end: start + duration }];
+  return { origin: compositionOriginSeconds(start, el), slots: [...slots, ...window] };
+}
+
+function audioSpanOf(
+  el: Element,
+  file: TimingFile,
+  origin: number,
+  slots: HostSlot[],
+): AudioSpan | null {
+  const tag = el.tagName.toLowerCase();
+  if (tag !== "audio" && !(tag === "video" && isAudibleVideo((name) => el.getAttribute(name)))) {
+    return null;
+  }
+  const trackStr = el.getAttribute("data-track-index");
+  if (!trackStr || !el.hasAttribute("data-start")) return null;
+  const start = resolveMediaStartSeconds({
+    authoredStart: parseNumeric(el.getAttribute("data-start")),
+    hostStart: origin,
+    hasAutoStart: el.hasAttribute("data-hf-auto-start"),
+    basis: el.getAttribute(MEDIA_START_BASIS_ATTR),
+    ordinaryStart: () => origin + localStart(file, el),
+  });
+  const duration = parseNumeric(el.getAttribute("data-duration")) ?? localDuration(file, el);
+  const kept = cutToHostSlots({ start, end: start + (duration ?? Infinity) }, slots);
+  if (kept.end <= kept.start) return null;
+  return { trackIndex: parseInt(trackStr, 10), ...kept, src: el.getAttribute("src") || "unknown" };
+}
+
+const formatSeconds = (t: number) => (Number.isFinite(t) ? String(Number(t.toFixed(2))) : "end");
+
+function lintDuplicateAudioTracks(projectDir: string, rootHtml: string): HyperframeLintFinding[] {
+  const findings: HyperframeLintFinding[] = [];
+  const tracks = collectMainTimelineAudio(projectDir, rootHtml);
   for (let i = 0; i < tracks.length; i++) {
     for (let j = i + 1; j < tracks.length; j++) {
       const a = tracks[i]!;
       const b = tracks[j]!;
       if (a.trackIndex !== b.trackIndex) continue;
-      if (a.start < b.end && b.start < a.end) {
+      if (spansOverlap(a.start, a.end, b.start, b.end)) {
         findings.push({
           code: "duplicate_audio_track",
           severity: "warning",
-          message: `Multiple audible <audio>/<video> elements on track ${a.trackIndex} overlap (${a.src} at ${a.start}-${Number.isFinite(a.end) ? a.end.toFixed(1) : "end"}s, ${b.src} at ${b.start}-${Number.isFinite(b.end) ? b.end.toFixed(1) : "end"}s). This causes layered audio playback.`,
+          message: `Multiple audible <audio>/<video> elements on track ${a.trackIndex} overlap (${a.src} at ${formatSeconds(a.start)}-${formatSeconds(a.end)}s, ${b.src} at ${formatSeconds(b.start)}-${formatSeconds(b.end)}s). This causes layered audio playback.`,
           fixHint: "Use non-overlapping time windows or different track indices.",
         });
       }

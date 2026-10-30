@@ -144,7 +144,7 @@ export function segmentOutputPath(segmentDir: string, index: number): string {
 
 /**
  * One closed-GOP encoder per segment. `gopSize` is the segment's own frame
- * count so the segment is exactly one GOP and concat-copy has an IDR at every
+ * count (or the keyframe interval if shorter) so concat-copy has an IDR at every
  * boundary; without it ffmpeg picks its own keyframes and a boundary can land
  * mid-GOP, which decodes as a glitch rather than an error.
  */
@@ -155,7 +155,7 @@ function segmentEncoderOptions(
   return {
     ...base,
     lockGopForChunkConcat: true,
-    gopSize: segment.endFrame - segment.startFrame,
+    gopSize: Math.min(base.gopSize ?? Infinity, segment.endFrame - segment.startFrame),
   };
 }
 
@@ -291,6 +291,11 @@ function defaultSessionFactory(input: CaptureSegmentedStageInput): SessionFactor
   let probeSession = input.probeSession;
   return {
     create: async () => {
+      const probeCannotCaptureEveryFrame = Boolean(probeSession?.deRiskFrames?.size);
+      if (probeSession && probeCannotCaptureEveryFrame) {
+        await closeCaptureSession(probeSession).catch(() => {});
+        probeSession = null;
+      }
       const session = probeSession ?? (await openSegmentedSession(input));
       if (probeSession) {
         openSegmentedSessionReuse(input, probeSession);
@@ -323,7 +328,7 @@ async function openSegmentedSession(input: CaptureSegmentedStageInput): Promise<
       ? input.cfg
       : { ...input.cfg, forceScreenshot: input.plan.forceScreenshot };
   const videoInjector = input.createRenderVideoFrameInjector();
-  const captureOptions = input.buildCaptureOptions();
+  const captureOptions = { ...input.buildCaptureOptions(), deFrameFallback: false };
   const ownBrowser = shouldDisableBrowserPoolForParallelWorker({
     parallel: (input.workerCount ?? 1) > 1,
   });

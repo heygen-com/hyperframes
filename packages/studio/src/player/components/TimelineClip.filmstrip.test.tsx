@@ -140,7 +140,7 @@ describe("Filmstrip clips", () => {
     const picture = host.querySelector(".timeline-clip__content");
     expect(clip?.classList.contains("is-audio")).toBe(true);
     expect(picture?.classList.contains("inset-0")).toBe(true);
-    expect(css).toMatch(/--timeline-clip-audio-radius:\s*21px;/);
+    expect(css).toMatch(/--timeline-clip-audio-radius:\s*var\(--timeline-clip-radius\);/);
     expect(clip instanceof HTMLElement && clip.style.borderRadius).toBe(
       "var(--timeline-clip-audio-radius)",
     );

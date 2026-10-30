@@ -77,7 +77,8 @@ describe.skipIf(!HAS_FFMPEG)("probeInputAlphaPlane on real files", () => {
     dir = mkdtempSync(join(tmpdir(), "hf-alpha-probe-test-"));
   });
   afterAll(() => {
-    rmSync(dir, { recursive: true, force: true });
+    // Windows holds just-exited ffmpeg outputs briefly (EBUSY/EPERM); rmSync retries those.
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
   const encode = (name: string, color: string, codecArgs: string[]): string => {

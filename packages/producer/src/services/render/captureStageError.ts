@@ -1,6 +1,7 @@
 import { normalizeErrorMessage } from "../../utils/errorMessage.js";
 import { CaptureFailure, classifyCaptureFailure } from "@hyperframes/engine";
 import { EncoderInterruptedError } from "./encoderInterruption.js";
+import { withWorkerPageErrors } from "./perfSummary.js";
 
 export class CaptureStageError extends CaptureFailure {
   readonly browserConsole: string[];
@@ -12,9 +13,12 @@ export class CaptureStageError extends CaptureFailure {
       message: normalizeErrorMessage(input.cause),
       cause: input.cause,
       workerDiagnostics: classified.workerDiagnostics,
+      pageErrorLines: classified.pageErrorLines,
     });
     this.name = "CaptureStageError";
-    this.browserConsole = input.browserConsole.slice();
+    this.browserConsole = withWorkerPageErrors(input.browserConsole, [
+      ...classified.pageErrorLines,
+    ]);
     if (input.cause instanceof Error && input.cause.stack) {
       this.stack = input.cause.stack;
     }
@@ -31,5 +35,6 @@ export function wrapCaptureStageError(
 
 export function getCaptureStageBrowserConsole(error: unknown): string[] {
   if (error instanceof CaptureStageError) return error.browserConsole;
+  if (error instanceof CaptureFailure) return [...error.pageErrorLines];
   return [];
 }

@@ -83,7 +83,7 @@ describe("sub-composition timeline wait memo", () => {
     );
     await vi.advanceTimersByTimeAsync(TIMEOUT_MS * 2);
     await wait.promise;
-    expect(session.subTimelineWaitOutcome).toBe("timeout");
+    expect(session.subTimelineWaitOutcome).toBe("script_failure");
     expect(memo.unregisteredIds).toBeUndefined();
   });
 

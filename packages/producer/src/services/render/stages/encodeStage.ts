@@ -26,6 +26,10 @@
  *     branch + same args.
  *   - `Encoding failed: <err>` throws on the encoder's
  *     `success: false`.
+ *
+ * `encodeWhileCapturing` runs the same mp4 encode during multi-worker disk
+ * capture, feeding frames in order as they land, and falls back to this
+ * stage's encode if it fails.
  */
 
 import {
@@ -38,6 +42,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import {
   encodeFramesChunkedConcat,
@@ -47,8 +52,10 @@ import {
   MIXED_AUDIO_FILENAME,
   resolveConfig,
   runFfmpeg,
+  spawnStreamingEncoder,
   type EngineConfig,
   type EncodeResult,
+  type LandedFrame,
 } from "@hyperframes/engine";
 import {
   clearGifFramesBeforeNext,
@@ -56,7 +63,7 @@ import {
   type Fps,
 } from "@hyperframes/core";
 import type { ProducerLogger } from "../../../logger.js";
-import { formatExportFrameName } from "../../../utils/paths.js";
+import { formatCaptureFrameName, formatExportFrameName } from "../../../utils/paths.js";
 import type { ProgressCallback, RenderJob } from "../../renderOrchestrator.js";
 import {
   buildGifPalettegenArgs,
@@ -104,11 +111,14 @@ export interface EncodeStageInput {
   preset: ReturnType<typeof getEncoderPreset>;
   effectiveQuality: number;
   effectiveBitrate: string | undefined;
+  maxBitrate?: string;
+  bufferSize?: string;
   /** Producer config — enables the chunked-concat encoder when on. */
   enableChunkedEncode: boolean;
   chunkedEncodeSize: number;
   /** Already-resolved engine config from the orchestrator; direct callers fall back below. */
-  engineConfig?: Pick<EngineConfig, "ffmpegEncodeTimeout" | "vp9CpuUsed">;
+  engineConfig?: Pick<EngineConfig, "ffmpegEncodeTimeout" | "vp9CpuUsed"> &
+    Partial<Pick<EngineConfig, "ffmpegStreamingTimeout">>;
   abortSignal: AbortSignal | undefined;
   assertNotAborted: () => void;
   onProgress?: ProgressCallback;
@@ -254,6 +264,171 @@ function startEncodeProgress(
   return (frames = total) => reportEncodeProgress(job, frames, total, onProgress, 75);
 }
 
+function resolveEngineConfig(input: EncodeStageInput) {
+  return input.engineConfig ?? input.job.config.producerConfig ?? resolveConfig();
+}
+
+function videoEncoderOptions(input: EncodeStageInput, engineCfg: Pick<EngineConfig, "vp9CpuUsed">) {
+  const { job, preset } = input;
+  return {
+    fps: job.config.fps,
+    width: input.width,
+    height: input.height,
+    codec: preset.codec,
+    preset: preset.preset,
+    quality: input.effectiveQuality,
+    bitrate: input.effectiveBitrate,
+    maxBitrate: input.maxBitrate,
+    bufferSize: input.bufferSize,
+    pixelFormat: preset.pixelFormat,
+    vp9CpuUsed: engineCfg.vp9CpuUsed,
+    useGpu: job.config.useGpu,
+    hdr: preset.hdr,
+    // Distributed chunk renders pass these so the encoder writes closed-GOP
+    // keyframes that survive `-f concat -c copy` at assemble time. In-process
+    // renders leave both undefined → preserves the existing open-GOP output.
+    lockGopForChunkConcat: input.lockGopForChunkConcat === true,
+    gopSize: input.gopSize,
+  };
+}
+
+/**
+ * h264 from JPEG only, software or GPU: the streaming encoder then runs the disk encoder's
+ * arguments. Needs a core the capture workers leave free.
+ */
+export function canEncodeWhileCapturing(
+  input: EncodeStageInput,
+  workerCount: number,
+  cpuCount: number,
+): boolean {
+  return (
+    workerCount > 1 &&
+    workerCount < cpuCount &&
+    !input.isPngSequence &&
+    !input.isGif &&
+    !input.enableChunkedEncode &&
+    input.preset.codec === "h264" &&
+    !input.preset.hdr &&
+    input.captureImageFormat === "jpeg"
+  );
+}
+
+export interface EncodeWhileCapturing {
+  /** A worker finished writing this frame. */
+  onFrameLanded: (frame: LandedFrame) => void;
+  /** Capture succeeded and every frame is in `framesDir`: encode the rest. */
+  finish: () => Promise<EncodeStageResult>;
+  /** Capture failed: stop the encoder and wait for it to exit. */
+  abort: () => Promise<void>;
+  /** Frames handed to the encoder so far. */
+  readonly framesFed: number;
+}
+
+/** The merge renames a worker's frame into `framesDir` at any moment; rename is atomic, so it is at one of the two. */
+async function readLandedFrame(workerPath: string | undefined, mergedPath: string) {
+  if (workerPath !== undefined) {
+    try {
+      return await readFile(workerPath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+  }
+  return readFile(mergedPath);
+}
+
+/**
+ * Feeds frames 0, 1, 2… to the encoder as each lands; capture never waits on it.
+ * On failure `finish` re-runs `runEncodeStage` on the same frames.
+ */
+export function encodeWhileCapturing(
+  input: EncodeStageInput,
+  totalFrames: number,
+): EncodeWhileCapturing {
+  const engineCfg = resolveEngineConfig(input);
+  const stop = new AbortController();
+  const signal = input.abortSignal
+    ? AbortSignal.any([input.abortSignal, stop.signal])
+    : stop.signal;
+  const landed = new Map<number, string>();
+  let captureDone = false;
+  let framesFed = 0;
+  let wake: (() => void) | null = null;
+  const nudge = () => {
+    wake?.();
+    wake = null;
+  };
+  signal.addEventListener("abort", nudge, { once: true });
+  let reportFed = null as ((frames?: number) => void) | null;
+
+  const encoder = spawnStreamingEncoder(
+    input.videoOnlyPath,
+    { ...videoEncoderOptions(input, engineCfg), imageFormat: "jpeg" },
+    signal,
+    engineCfg,
+  );
+  const fed: Promise<unknown> = (async () => {
+    const stream = await encoder;
+    for (let next = 0; next < totalFrames; next++) {
+      while (!landed.has(next) && !captureDone && !signal.aborted) {
+        await new Promise<void>((resolve) => (wake = resolve));
+      }
+      if (signal.aborted) return;
+      const mergedPath = join(input.framesDir, formatCaptureFrameName(next, "jpg"));
+      const frame = await readLandedFrame(landed.get(next), mergedPath);
+      landed.delete(next);
+      if (!(await stream.writeFrame(frame))) {
+        throw new Error(stream.getExitError() ?? "encoder exited before the last frame");
+      }
+      framesFed++;
+      reportFed?.(framesFed);
+    }
+  })().then(
+    () => undefined,
+    (error: unknown) => error ?? new Error("encode failed"),
+  );
+  const closeEncoder = async () => (await encoder.catch(() => null))?.close();
+
+  return {
+    onFrameLanded: (frame) => {
+      landed.set(frame.index, frame.path);
+      nudge();
+    },
+    finish: async () => {
+      const start = Date.now();
+      captureDone = true;
+      input.log.info("[Render] Encoded frames while capturing", {
+        framesFed,
+        totalFrames,
+      });
+      const encoded = startEncodeProgress(input.job, "Encoding video", input.onProgress);
+      reportFed = encoded;
+      nudge();
+      const failure = await fed;
+      const result = await closeEncoder();
+      input.assertNotAborted();
+      if (failure === undefined && result?.success) {
+        encoded();
+        return { encodeMs: Date.now() - start };
+      }
+      input.log.warn(
+        "[Render] Encoding while capturing failed; encoding the frames after capture",
+        {
+          error: String(failure ?? result?.error),
+        },
+      );
+      return runEncodeStage(input);
+    },
+    abort: async () => {
+      stop.abort();
+      await fed;
+      await closeEncoder();
+    },
+    get framesFed() {
+      return framesFed;
+    },
+  };
+}
+
 export async function runEncodeStage(input: EncodeStageInput): Promise<EncodeStageResult> {
   const {
     job,
@@ -261,16 +436,11 @@ export async function runEncodeStage(input: EncodeStageInput): Promise<EncodeSta
     outputPath,
     framesDir,
     videoOnlyPath,
-    width,
-    height,
     needsAlpha,
     hasAudio,
     audioOutputPath,
     isPngSequence,
     isGif,
-    preset,
-    effectiveQuality,
-    effectiveBitrate,
     enableChunkedEncode,
     chunkedEncodeSize,
     abortSignal,
@@ -313,7 +483,7 @@ export async function runEncodeStage(input: EncodeStageInput): Promise<EncodeSta
     return { encodeMs: Date.now() - stage5Start };
   }
 
-  const engineCfg = input.engineConfig ?? job.config.producerConfig ?? resolveConfig();
+  const engineCfg = resolveEngineConfig(input);
 
   if (isGif) {
     // ── Stage 5 (gif): two-pass palette encode ───────────────────────
@@ -343,38 +513,9 @@ export async function runEncodeStage(input: EncodeStageInput): Promise<EncodeSta
   // ── Stage 5: Encode ───────────────────────────────────────────────
   const onFramesEncoded = startEncodeProgress(job, "Encoding video", onProgress);
 
-  // ffmpegEncodeTimeout is a total wall-clock cap, not an inactivity timeout.
-  // A fixed ten-minute cap reliably kills long high-quality disk-frame encodes
-  // that are still making progress. High-quality CPU presets are substantially
-  // slower, so reserve 24x source duration there while retaining the established
-  // 4x budget for draft/standard and preserving larger operator overrides.
-  const baseScaledEncodeTimeout = Math.ceil((job.duration ?? 0) * 4_000);
-  const scaledEncodeTimeout = baseScaledEncodeTimeout * (job.config.quality === "high" ? 6 : 1);
-  const videoEngineCfg =
-    scaledEncodeTimeout > engineCfg.ffmpegEncodeTimeout
-      ? { ...engineCfg, ffmpegEncodeTimeout: scaledEncodeTimeout }
-      : engineCfg;
-
   const frameExt = frameFileExtension(input.captureImageFormat);
   const framePattern = `frame_%06d.${frameExt}`;
-  const encoderOpts = {
-    fps: job.config.fps,
-    width,
-    height,
-    codec: preset.codec,
-    preset: preset.preset,
-    quality: effectiveQuality,
-    bitrate: effectiveBitrate,
-    pixelFormat: preset.pixelFormat,
-    vp9CpuUsed: engineCfg.vp9CpuUsed,
-    useGpu: job.config.useGpu,
-    hdr: preset.hdr,
-    // Distributed chunk renders pass these so the encoder writes closed-GOP
-    // keyframes that survive `-f concat -c copy` at assemble time. In-process
-    // renders leave both undefined → preserves the existing open-GOP output.
-    lockGopForChunkConcat: input.lockGopForChunkConcat === true,
-    gopSize: input.gopSize,
-  };
+  const encoderOpts = videoEncoderOptions(input, engineCfg);
   const encodeResult = enableChunkedEncode
     ? await encodeFramesChunkedConcat(
         framesDir,
@@ -383,7 +524,7 @@ export async function runEncodeStage(input: EncodeStageInput): Promise<EncodeSta
         encoderOpts,
         chunkedEncodeSize,
         abortSignal,
-        videoEngineCfg,
+        engineCfg,
         onFramesEncoded,
       )
     : await encodeFramesFromDir(
@@ -392,7 +533,7 @@ export async function runEncodeStage(input: EncodeStageInput): Promise<EncodeSta
         videoOnlyPath,
         encoderOpts,
         abortSignal,
-        videoEngineCfg,
+        engineCfg,
         onFramesEncoded,
       );
   assertNotAborted();

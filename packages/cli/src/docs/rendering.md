@@ -14,11 +14,14 @@ Requires: Docker installed and running.
 
 ## Options
 
-- `-f, --fps` — 24, 30, or 60 (default: 30)
-- `-q, --quality` — draft, standard, high (default: standard)
+- `-f, --fps` — 1-240 or a rational such as 30000/1001 (default: root `data-fps`, else 30)
+- `-q, --quality` — draft, looks, delivery, or standard/high (default: looks)
 - `-w, --workers` — Parallel workers 1-8 (default: auto)
 - `--crf` — Override encoder CRF (mutually exclusive with `--video-bitrate`)
 - `--video-bitrate` — Target video bitrate such as `10M` (mutually exclusive with `--crf`)
+- `--keyframe-interval` — MP4 only: a keyframe at least every N seconds (default: encoder's choice)
+- `--max-bitrate` — MP4 only: peak video bitrate cap such as `8M`, kept alongside the quality target (default: uncapped)
+- `--buffer-size` — MP4 only: buffer for `--max-bitrate`, such as `16M` (default: twice `--max-bitrate`)
 - `--vp9-cpu-used` — WebM VP9 speed/quality tradeoff (`-8` to `8`, default: `4`). Higher values encode faster with larger output / quality tradeoff.
 - `--video-frame-format` — Source video frame extraction format: `auto`, `jpg`, or `png` (default: `auto`). Use `png` for UI recordings, screen captures, and color-sensitive source videos.
 - `--gpu` — Use GPU encoding (NVENC, VideoToolbox, AMF, VAAPI, QSV)

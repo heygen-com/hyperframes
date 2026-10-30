@@ -17,7 +17,9 @@ import {
   unlinkSync,
 } from "fs";
 import { createHash, randomUUID } from "crypto";
-import { BlockList, isIP } from "node:net";
+import dns from "node:dns";
+import { fetchGoesThroughEnvProxy } from "@hyperframes/core/env-proxy";
+import { BlockList, isIP, type LookupFunction } from "node:net";
 import { dirname, extname, join } from "path";
 import { Readable, Transform } from "stream";
 import { pipeline } from "stream/promises";
@@ -467,6 +469,57 @@ async function acquireCachePathLock(
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 const MAX_REDIRECTS = 5;
 
+const NON_PUBLIC_ADDRESS_CODE = "HF_NON_PUBLIC_ADDRESS";
+
+/** Resolves a host and refuses to connect when any answer is a non-public address. */
+const publicOnlyLookup: LookupFunction = (hostname, options, callback) => {
+  dns.lookup(hostname, { ...options, all: true }, (error, answers) => {
+    if (error) return callback(error, "", 0);
+    if (
+      answers.length === 0 ||
+      answers.some((a) => isBlockedNetworkHost(a.address.split("%")[0]!))
+    ) {
+      const refused = Object.assign(new Error("host resolves to a non-public address"), {
+        code: NON_PUBLIC_ADDRESS_CODE,
+      });
+      return callback(refused, "", 0);
+    }
+    if (options.all) return callback(null, answers as never);
+    return callback(null, answers[0]!.address, answers[0]!.family);
+  });
+};
+
+type DownloadFetch = (url: string, init: RequestInit) => Promise<Response>;
+
+let undiciTransport: Promise<DownloadFetch> | undefined;
+const fetchPublic: DownloadFetch = async (url, init) => {
+  // Behind an env proxy the proxy resolves the name; the URL and redirect checks are the guard then.
+  if (fetchGoesThroughEnvProxy()) return fetch(url, init);
+  undiciTransport ??= import("undici").then(({ Agent, fetch: undiciFetch }) => {
+    const dispatcher = new Agent({ connect: { lookup: publicOnlyLookup } });
+    return (target, options) =>
+      undiciFetch(target, { ...(options as object), dispatcher }) as unknown as Promise<Response>;
+  });
+  return (await undiciTransport)(url, init);
+};
+
+let downloadFetch: DownloadFetch = fetchPublic;
+
+/** Test seam: replaces the transport every download goes through; no argument restores it. */
+export function _setDownloadFetchForTests(replacement?: DownloadFetch): void {
+  downloadFetch = replacement ?? fetchPublic;
+}
+
+function refusedNonPublicAddress(error: unknown): boolean {
+  for (let depth = 0; error && depth < 4; depth += 1) {
+    if (typeof error === "object" && "code" in error && error.code === NON_PUBLIC_ADDRESS_CODE) {
+      return true;
+    }
+    error = typeof error === "object" && "cause" in error ? error.cause : undefined;
+  }
+  return false;
+}
+
 function assertAllowedDownloadUrl(url: string, redirect: boolean): void {
   try {
     assertPublicHttpsUrl(url);
@@ -517,10 +570,19 @@ async function fetchWithValidatedRedirects(
     // lgtm[js/file-access-to-http] — every redirect hop is fetched manually
     // only after the HTTPS/private-host guard above; automatic redirect
     // following is disabled so an allowed host cannot bounce into IMDS.
-    const response = await fetch(currentUrl, {
+    const response = await downloadFetch(currentUrl, {
       signal: controller.signal,
       redirect: "manual",
       headers: { "accept-encoding": "identity" },
+    }).catch((error: unknown) => {
+      if (!refusedNonPublicAddress(error)) throw error;
+      throw new UrlDownloadError(
+        "http_rejected",
+        false,
+        redirects > 0
+          ? "Download redirect target is not permitted"
+          : "Download URL is not permitted",
+      );
     });
     if (!REDIRECT_STATUSES.has(response.status)) return { response, finalUrl: currentUrl };
 
@@ -786,6 +848,7 @@ async function fetchToPartial(
   partialPath: string,
   controller: AbortController,
   options: UrlDownloadOptions,
+  onSizedBodyBytes: () => void,
 ): Promise<PartialIntegrity> {
   const { response, finalUrl } = await fetchWithValidatedRedirects(url, controller);
   const finalIdentity = safeDownloadUrlIdentity(finalUrl);
@@ -862,6 +925,7 @@ async function fetchToPartial(
   const inspector = new Transform({
     transform(chunk: Buffer, _encoding, callback) {
       const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      if (declaredLength !== undefined) onSizedBodyBytes();
       receivedBytes += bytes.length;
       sha256.update(bytes);
       md5.update(bytes);
@@ -1025,17 +1089,27 @@ async function runDownloadAttempt(
     controller.abort();
   };
   signal?.addEventListener("abort", onCallerAbort, { once: true });
-  const timeoutId = setTimeout(() => {
-    timedOut = true;
-    controller.abort();
-  }, timeoutMs);
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const armTimeout = (): void => {
+    clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, timeoutMs);
+  };
+  armTimeout();
+  let sizedBodyStarted = false;
+  const extendTimeout = (): void => {
+    sizedBodyStarted = true;
+    armTimeout();
+  };
   const identity = safeDownloadUrlIdentity(url);
 
   try {
     if (callerAborted) {
       throw new UrlDownloadError("cancelled", false, "Download cancelled");
     }
-    const integrity = await fetchToPartial(url, partialPath, controller, options);
+    const integrity = await fetchToPartial(url, partialPath, controller, options, extendTimeout);
     let outcome = syncAndPublishPartial(partialPath, localPath);
     let publishedIntegrity = integrity;
     if (outcome === "race_reused") {
@@ -1094,7 +1168,9 @@ async function runDownloadAttempt(
       const classified = new UrlDownloadError(
         "timeout",
         true,
-        `Download timeout after ${timeoutMs / 1000}s`,
+        sizedBodyStarted
+          ? `Download stalled: no data for ${timeoutMs / 1000}s`
+          : `Download timeout after ${timeoutMs / 1000}s`,
       );
       emitDownloadTelemetry(options, {
         urlFingerprint: identity.urlFingerprint,

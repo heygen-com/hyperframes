@@ -1,6 +1,7 @@
 // fallow-ignore-file code-duplication
 import { describe, it, expect } from "vitest";
 import { lintHyperframeHtml } from "../hyperframeLinter.js";
+import { parseCompositionVariables } from "@hyperframes/parsers/composition";
 
 describe("composition rules", () => {
   describe("canonical timing contract", () => {
@@ -803,6 +804,56 @@ describe("composition rules", () => {
     });
   });
 
+  describe("subcomposition_style_outside_template", () => {
+    const scene = (head: string, beforeTemplate = "", inTemplate = "") => `<!doctype html>
+<html><head>${head}</head><body>${beforeTemplate}
+<template id="scene-template">${inTemplate}
+  <div data-composition-id="scene" data-width="1920" data-height="1080"></div>
+</template>
+</body></html>`;
+    const findings = async (html: string, isSubComposition = true) =>
+      (await lintHyperframeHtml(html, { isSubComposition })).findings.filter(
+        (f) => f.code === "subcomposition_style_outside_template",
+      );
+
+    it("warns on a head <style> the mount drops, and says to move it inside <template>", async () => {
+      const found = await findings(scene("<style>.title { color: red; }</style>"));
+      expect(found).toHaveLength(1);
+      expect(found[0]?.severity).toBe("warning");
+      expect(found[0]?.fixHint).toContain("Move it inside <template>");
+      expect(found[0]?.snippet).toContain("<style>");
+    });
+
+    it("warns on a <style> or stylesheet link in the body outside <template>", async () => {
+      const found = await findings(
+        scene("", '<style>.a { color: red; }</style><link rel="stylesheet" href="scene.css">'),
+      );
+      expect(found.map((f) => f.snippet)).toEqual([
+        "<style>",
+        '<link rel="stylesheet" href="scene.css">',
+      ]);
+    });
+
+    it("does not warn on styles inside <template> or a stylesheet link in <head>", async () => {
+      const html = scene(
+        '<link rel="stylesheet" href="fonts.css">',
+        "",
+        '<style>.a { color: red; }</style><link rel="stylesheet" href="scene.css">',
+      );
+      expect(await findings(html)).toEqual([]);
+    });
+
+    it("does not warn without a <template> or outside a sub-composition", async () => {
+      const head = "<style>.a { color: red; }</style>";
+      expect(
+        await findings(
+          `<html><head>${head}</head><body><div data-composition-id="scene"></div></body></html>`,
+        ),
+      ).toEqual([]);
+      expect(await findings(scene(head), false)).toEqual([]);
+    });
+  });
+
   describe("requestanimationframe_in_composition", () => {
     it("flags requestAnimationFrame usage in script content", async () => {
       const html = `
@@ -1222,6 +1273,79 @@ describe("composition rules", () => {
   });
 
   describe("invalid_composition_variables_declaration", () => {
+    const invalidDeclarations = [
+      { id: "setting", type: "string", label: "Setting", default: 3 },
+      { id: "setting", type: "number", label: "Setting", default: "3" },
+      { id: "setting", type: "boolean", label: "Setting", default: "false" },
+      { id: "setting", type: "color", label: "Setting", default: 3 },
+      { id: "setting", type: "font", label: "Setting", default: 3 },
+      { id: "setting", type: "image", label: "Setting", default: 3 },
+      { id: "setting", type: "font", label: "Setting", default: { name: "Brand" } },
+      { id: "setting", type: "image", label: "Setting", default: { url: 3 } },
+      { id: "setting", type: "enum", label: "Setting", default: 3, options: [] },
+      { id: "setting", type: "enum", label: "Setting", default: "light" },
+      { id: "setting", type: "enum", label: "Setting", default: "light", options: "light" },
+    ];
+
+    for (const placement of ["html", "root", "template"]) {
+      it.each(invalidDeclarations)(
+        `reports parser-rejected declaration %j on ${placement}`,
+        async (declaration) => {
+          const attribute = `data-composition-variables='${JSON.stringify([declaration])}'`;
+          const root = `<div data-composition-id="main" data-no-timeline data-width="1920" data-height="1080" data-duration="2" ${placement === "html" ? "" : attribute}></div>`;
+          const html =
+            placement === "template"
+              ? `<template>${root}</template>`
+              : `<html ${placement === "html" ? attribute : ""}><body>${root}</body></html>`;
+          const element = document.createElement("div");
+          element.setAttribute("data-composition-variables", JSON.stringify([declaration]));
+          expect(parseCompositionVariables(element)).toEqual([]);
+          const result = await lintHyperframeHtml(html, {
+            isSubComposition: placement === "template",
+          });
+          const findings = result.findings.filter(
+            (finding) => finding.code === "invalid_composition_variables_declaration",
+          );
+          expect(findings).toHaveLength(1);
+          expect(findings[0]?.message).toMatch(/\[0\]/);
+          expect(findings[0]?.severity).toBe("error");
+        },
+      );
+    }
+
+    it.each([
+      { id: "setting", type: "string", label: "Setting", default: "" },
+      { id: "setting", type: "number", label: "Setting", default: 0 },
+      { id: "setting", type: "boolean", label: "Setting", default: false },
+      { id: "setting", type: "color", label: "Setting", default: "#fff" },
+      { id: "setting", type: "font", label: "Setting", default: "Arial" },
+      { id: "setting", type: "image", label: "Setting", default: "assets/a.png" },
+      {
+        id: "setting",
+        type: "font",
+        label: "Setting",
+        default: { name: "Brand", source: "assets/brand.css" },
+      },
+      {
+        id: "setting",
+        type: "image",
+        label: "Setting",
+        default: { url: "assets/a.png", alt: "Brand", fit: "contain" },
+      },
+      { id: "setting", type: "enum", label: "Setting", default: "light", options: [] },
+    ])("preserves parser-admitted declaration %j", async (declaration) => {
+      const element = document.createElement("div");
+      element.setAttribute("data-composition-variables", JSON.stringify([declaration]));
+      expect(parseCompositionVariables(element)).toEqual([declaration]);
+      const html = `<html data-composition-variables='${JSON.stringify([declaration])}'><body><div data-composition-id="main" data-no-timeline data-width="1920" data-height="1080" data-duration="2"></div></body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(
+        result.findings.filter(
+          (finding) => finding.code === "invalid_composition_variables_declaration",
+        ),
+      ).toEqual([]);
+    });
+
     it("checks a declaration on the composition root too", async () => {
       const html = `<html><body><div data-composition-id="x" data-composition-variables='[{"id":12345}]'></div></body></html>`;
       const result = await lintHyperframeHtml(html);
@@ -1259,6 +1383,7 @@ describe("composition rules", () => {
       expect(findings.length).toBe(1);
       expect(findings[0]?.message).toMatch(/\[1\]/);
       expect(findings[0]?.message).toMatch(/type|label|default/);
+      expect(findings[0]?.fixHint).toMatch(/entry \[1\]/);
     });
 
     it("warns when a declaration uses an unknown type", async () => {
@@ -1269,6 +1394,17 @@ describe("composition rules", () => {
       );
       expect(finding).toBeDefined();
       expect(finding?.message).toMatch(/type/);
+      expect(finding?.fixHint).toBeTruthy();
+    });
+
+    it("gives a fix hint when an entry is not an object", async () => {
+      const html = `<html data-composition-variables='["title"]'><body><div data-composition-id="x"></div></body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find(
+        (f) => f.code === "invalid_composition_variables_declaration",
+      );
+      expect(finding?.message).toMatch(/must be an object/);
+      expect(finding?.fixHint).toMatch(/"id":"title"/);
     });
 
     it("does not warn for a fully valid declarations array", async () => {
@@ -1315,6 +1451,30 @@ describe("composition rules", () => {
   describe("unloadable_media_variable_default", () => {
     const CODE = "unloadable_media_variable_default";
     const find = (r: { findings: { code: string }[] }) => r.findings.find((f) => f.code === CODE);
+
+    it.each(["file:///abs/logo.svg", "javascript:alert(1)", "data:text/html,hello"])(
+      "rejects an unsafe URL inside an image object default: %s",
+      async (url) => {
+        const declarations = [
+          {
+            id: "logo",
+            type: "image",
+            label: "Logo",
+            default: { url, alt: "Logo", fit: "contain" },
+          },
+        ];
+        const html = `<html data-composition-variables='${JSON.stringify(declarations)}'><body><div data-composition-id="x"></div></body></html>`;
+        const result = await lintHyperframeHtml(html);
+        expect(
+          result.findings.filter((finding) => finding.code === "unloadable_media_variable_default"),
+        ).toHaveLength(1);
+        expect(
+          result.findings.some(
+            (finding) => finding.code === "invalid_composition_variables_declaration",
+          ),
+        ).toBe(false);
+      },
+    );
 
     it("errors on an image variable defaulting to a file:// URL", async () => {
       const html = `<html data-composition-variables='[{"id":"bg","type":"image","label":"BG","default":"file:///abs/assets/blue.png"}]'><body><img data-composition-id="x" src="assets/red.png" data-var-src="bg"></body></html>`;
@@ -2327,6 +2487,257 @@ describe("composition rules", () => {
       expect(codes(result)).not.toContain("root_zoom_rescales_a_fixed_canvas");
     });
 
+    it.each([
+      "#root .badge",
+      "#root .badge.zoomed",
+      "#root #badge",
+      "#root [data-badge]",
+      "#root > .badge",
+      ".canvas .badge",
+      "body .badge",
+      "#root > *",
+      ":is(#root, body) .badge",
+      ":is(.missing, #root .badge)",
+      '#root[data-label="main canvas"] > .badge',
+      "#root::before",
+      "#root:is(span.zoomed)",
+      "#root:is(.badge::before)",
+      "#root :is(.badge.zoomed)",
+      "#root:is(#root .canvas)",
+      ":is(span#root.zoomed).active",
+      ":is(#root .badge).active",
+      ":is(#root::before).active",
+    ])("allows descendant or pseudo-element zoom selected by %s", async (selector) => {
+      const result = await lintHyperframeHtml(`<!doctype html><html><head><style>
+        ${selector} { zoom: 2; }
+      </style></head><body>
+        <div id="root" class="canvas" data-label="main canvas" data-composition-id="main" data-width="800" data-height="400" data-duration="5">
+          <div class="badge"></div>
+        </div>
+      </body></html>`);
+
+      expect(codes(result)).not.toContain("root_zoom_rescales_a_fixed_canvas");
+    });
+
+    it.each([
+      "body > #root",
+      "body > *",
+      "html body .canvas",
+      ":is(.missing, #root)",
+      ":where(.missing, .canvas)",
+      "#root:not(.badge)",
+      ".canvas:has(.badge)",
+      ".badge::before, #root",
+    ])("keeps canvas zoom selected by %s blocking", async (selector) => {
+      const result = await lintHyperframeHtml(`<!doctype html><html><head><style>
+        ${selector} { zoom: 2; }
+      </style></head><body>
+        <div id="root" class="canvas" data-composition-id="main" data-width="800" data-height="400" data-duration="5">
+          <div class="badge"></div>
+        </div>
+      </body></html>`);
+
+      expect(codes(result)).toContain("root_zoom_rescales_a_fixed_canvas");
+    });
+
+    it.each([
+      ["#root.zoomed", 'root.classList.add("zoomed")'],
+      [":is(#root.zoomed).active", 'root.classList.add("zoomed", "active")'],
+      [
+        ":where(.canvas.zoomed)[data-active]",
+        'root.classList.add("zoomed"); root.dataset.active = ""',
+      ],
+      [":is(#root[data-zoomed]).active", 'root.dataset.zoomed = ""; root.classList.add("active")'],
+      ["#root:is(.zoomed)", 'root.classList.add("zoomed")'],
+      ["#root:where([data-zoomed])", 'root.dataset.zoomed = ""'],
+      [".canvas:is(.zoomed)", 'root.classList.add("zoomed")'],
+      [":is(#root).zoomed", 'root.classList.add("zoomed")'],
+      ["#root:is(:where(.zoomed))", 'root.classList.add("zoomed")'],
+      [".canvas.zoomed", 'root.classList.add("zoomed")'],
+      [".zoomed.canvas", 'root.classList.add("zoomed")'],
+      [".canvas#zoomed", 'root.id = "zoomed"'],
+      ["#root[data-zoomed]", 'root.dataset.zoomed = ""'],
+      ["body > div.zoomed", 'root.classList.add("zoomed")'],
+      ["body > div#zoomed", 'root.id = "zoomed"'],
+      ["body > div[data-zoomed]", 'root.dataset.zoomed = ""'],
+    ])("retains canvas protection for runtime identity in %s", async (selector, mutation) => {
+      const result = await lintHyperframeHtml(`<!doctype html><html><head><style>
+        ${selector} { zoom: 2; }
+      </style></head><body>
+        <div id="root" class="canvas" data-composition-id="main" data-width="800" data-height="400" data-duration="5"></div>
+        <script>const root = document.getElementById("root"); ${mutation};</script>
+      </body></html>`);
+
+      expect(codes(result)).toContain("root_zoom_rescales_a_fixed_canvas");
+    });
+
+    it("does not assume a head composition root is a child of body", async () => {
+      const result = await lintHyperframeHtml(`<!doctype html><html>
+        <head id="root" data-composition-id="main" data-width="800" data-height="400" data-duration="5">
+          <style>head { display: block; } html > #root { zoom: 2; }</style>
+        </head>
+      </html>`);
+
+      expect(codes(result)).toContain("root_zoom_rescales_a_fixed_canvas");
+    });
+
+    it("does not assume a template composition root is a child of body", async () => {
+      const result = await lintHyperframeHtml(`<!doctype html><html><head>
+        <style>head, template { display: block; } html > head > #root { zoom: 2; }</style>
+        <template id="root" data-composition-id="main" data-width="800" data-height="400" data-duration="5"></template>
+      </head><div></div></html>`);
+
+      expect(codes(result)).toContain("root_zoom_rescales_a_fixed_canvas");
+    });
+
+    it.each([
+      '<html><head><style>CSS</style></head><body data-composition-id="main" data-width="800" data-height="400" data-duration="5"><div class="badge"></div></body></html>',
+      '<template><style>CSS</style><div data-composition-id="main" data-width="800" data-height="400" data-duration="5"><div class="badge"></div></div></template>',
+    ])("matches the lint context's root in body and template sources", async (root) => {
+      for (const [selector, expected] of [
+        ["[data-composition-id] .badge", false],
+        ["[data-composition-id]", true],
+        ["body", true],
+      ] as const) {
+        const result = await lintHyperframeHtml(root.replace("CSS", `${selector} { zoom: 2; }`));
+
+        expect(codes(result).includes("root_zoom_rescales_a_fixed_canvas")).toBe(expected);
+      }
+    });
+
+    it("treats optional document tags like their explicit equivalents", async () => {
+      const root =
+        '<div id="root" data-composition-id="main" data-width="800" data-height="400" data-duration="5"><div class="badge"></div></div>';
+      for (const source of [
+        `<html><head><style>CSS</style></head><body>${root}</body></html>`,
+        `<html><head><style>CSS</style></head>${root}</html>`,
+        `<html><head><title>Canvas</title><style>CSS</style>${root}</html>`,
+        `<html><head><title>Canvas</title><style>CSS</style><template><div></div></template><body>${root}</body></html>`,
+        `<html><style>CSS</style><body>${root}</body></html>`,
+        `<html><style>CSS</style>${root}</html>`,
+      ]) {
+        for (const [selector, expected] of [
+          ["#root:first-child", true],
+          ["body:nth-child(2) > #root", true],
+          ["#root:first-child .badge", false],
+        ] as const) {
+          const result = await lintHyperframeHtml(
+            source.replace("CSS", `${selector} { zoom: 2; }`),
+          );
+
+          expect(codes(result).includes("root_zoom_rescales_a_fixed_canvas"), source).toBe(
+            expected,
+          );
+        }
+      }
+    });
+
+    it.each([
+      "#root:lang(en)",
+      "#root:dir(ltr)",
+      "#root:nth-child(1 of .canvas)",
+      ":is(#root, :unknown)",
+    ])("retains canvas protection for unsupported static selectors: %s", async (selector) => {
+      const result = await lintHyperframeHtml(`<html lang="en" dir="ltr"><head><style>
+        ${selector} { zoom: 2; }
+      </style></head><body>
+        <div id="root" class="canvas" data-composition-id="main" data-width="800" data-height="400" data-duration="5"></div>
+      </body></html>`);
+
+      expect(codes(result)).toContain("root_zoom_rescales_a_fixed_canvas");
+    });
+
+    it("keeps table-dependent canvas zoom blocking with optional tbody tags", async () => {
+      for (const table of [
+        "<table><tr><td>Cell</td></tr></table>",
+        "<table><tbody><tr><td>Cell</td></tr></tbody></table>",
+      ]) {
+        const result = await lintHyperframeHtml(`<!doctype html><html><head><style>
+          #root:has(tbody) { zoom: 2; }
+        </style></head><body>
+          <div id="root" data-composition-id="main" data-width="800" data-height="400" data-duration="5">${table}</div>
+        </body></html>`);
+
+        expect(codes(result)).toContain("root_zoom_rescales_a_fixed_canvas");
+      }
+    });
+
+    it("keeps SVG canvas zoom blocking with case-sensitive attributes", async () => {
+      const result = await lintHyperframeHtml(`<!doctype html><html><head><style>
+        body > svg[viewBox] { zoom: 2; }
+      </style></head><body>
+        <svg id="root" viewBox="0 0 800 400" data-composition-id="main" data-width="800" data-height="400" data-duration="5"></svg>
+      </body></html>`);
+
+      expect(codes(result)).toContain("root_zoom_rescales_a_fixed_canvas");
+    });
+
+    it.each([".canvas #ROOT", ".canvas .BADGE", ".canvas :is(.BADGE, .missing)"])(
+      "keeps quirks-mode canvas zoom blocking for %s",
+      async (selector) => {
+        const result = await lintHyperframeHtml(`<html><head><style>
+          ${selector} { zoom: 2; }
+        </style></head><body class="canvas">
+          <div id="root" class="canvas badge" data-composition-id="main" data-width="800" data-height="400" data-duration="5"></div>
+        </body></html>`);
+
+        expect(codes(result)).toContain("root_zoom_rescales_a_fixed_canvas");
+      },
+    );
+
+    it("does not invent a canvas hit for a false body position", async () => {
+      const result = await lintHyperframeHtml(`<!doctype html><html><head><style>
+        body:nth-child(3) > #root { zoom: 2; }
+      </style></head><body>
+        <div id="root" data-composition-id="main" data-width="800" data-height="400" data-duration="5"></div>
+      </body></html>`);
+
+      expect(codes(result)).not.toContain("root_zoom_rescales_a_fixed_canvas");
+    });
+
+    it("does not treat a relative selector as an unconditional canvas hit", async () => {
+      const result = await lintHyperframeHtml(`<!doctype html><html><head><style>
+        > #root { zoom: 2; }
+      </style></head><body>
+        <div id="root" data-composition-id="main" data-width="800" data-height="400" data-duration="5"></div>
+      </body></html>`);
+
+      expect(codes(result)).not.toContain("root_zoom_rescales_a_fixed_canvas");
+    });
+
+    it("preserves uncertainty about stylesheet context before adding canvas hits", async () => {
+      for (const selector of ["[data-review-zoom]", "body:nth-child(2) > #root"]) {
+        for (const [style, expected] of [
+          [`<style>.unused { color: red; } ${selector} { zoom: 2; }</style>`, true],
+          [
+            `<style>@namespace url("http://www.w3.org/2000/svg"); .unused { color: red; } ${selector} { zoom: 2; }</style>`,
+            false,
+          ],
+          [`<style>@media print { ${selector} { zoom: 2; } }</style>`, false],
+          [`<style media="print">${selector} { zoom: 2; }</style>`, false],
+        ] as const) {
+          const result = await lintHyperframeHtml(`<!doctype html><html><head>${style}</head><body>
+            <div id="root" data-review-zoom data-composition-id="main" data-width="800" data-height="400" data-duration="5">
+              <svg id="badge" data-review-zoom width="40" height="40"></svg>
+            </div>
+          </body></html>`);
+
+          expect(codes(result).includes("root_zoom_rescales_a_fixed_canvas"), style).toBe(expected);
+        }
+      }
+    });
+
+    it("keeps namespace context local to its stylesheet", async () => {
+      const result = await lintHyperframeHtml(`<!doctype html><html><head>
+        <style>@namespace url("http://www.w3.org/2000/svg"); .unused { color: red; }</style>
+        <style>[data-review-zoom] { zoom: 2; }</style>
+      </head><body>
+        <div id="root" data-review-zoom data-composition-id="main" data-width="800" data-height="400" data-duration="5"></div>
+      </body></html>`);
+
+      expect(codes(result)).toContain("root_zoom_rescales_a_fixed_canvas");
+    });
+
     it("stays silent on identity zoom values", async () => {
       for (const value of ["1", "1.0", "100%", "normal", "unset", "initial"]) {
         const result = await lintHyperframeHtml(`<!doctype html><html><head><style>
@@ -2637,5 +3048,53 @@ ${body}
         false,
       );
     });
+  });
+});
+
+describe("subcomposition_linked_style_names_root_id", () => {
+  const root = `<div id="a" data-composition-id="a" data-width="320" data-height="180"><div class="box"></div></div>`;
+  const codes = async (html: string, externalStyles?: Array<{ href: string; content: string }>) =>
+    (await lintHyperframeHtml(html, { isSubComposition: true, externalStyles })).findings.map(
+      ({ code }) => code,
+    );
+
+  it("warns when a linked stylesheet has a rule on the root id", async () => {
+    const html = `<template id="a-template"><link rel="stylesheet" href="a.css">${root}</template>`;
+    const found = await codes(html, [{ href: "a.css", content: "#a .box { color: red; }" }]);
+    expect(found).toContain("subcomposition_linked_style_names_root_id");
+  });
+
+  it("the hinted fixes leave no finding: the rule moved into the template, or a child selected", async () => {
+    const lint = async (html: string, externalStyles?: Array<{ href: string; content: string }>) =>
+      (await lintHyperframeHtml(html, { isSubComposition: true, externalStyles })).findings.map(
+        ({ code }) => code,
+      );
+    const hinted = [
+      await lint(
+        `<template id="a-template">${root}<style>#a .box { color: red; }</style></template>`,
+      ),
+      await lint(
+        `<template id="a-template"><link rel="stylesheet" href="a.css">${root}</template>`,
+        [{ href: "a.css", content: ".box { color: red; }" }],
+      ),
+    ];
+    for (const found of hinted) {
+      expect(found).not.toContain("subcomposition_linked_style_names_root_id");
+      expect(found).not.toContain("subcomposition_root_styled_by_class");
+    }
+  });
+
+  it("is quiet when the linked stylesheet uses classes, another id, or only a longer id", async () => {
+    const html = `<template id="a-template"><link rel="stylesheet" href="a.css">${root}</template>`;
+    for (const content of [
+      ".box { color: red; }",
+      "#b .box { color: red; }",
+      "#ab { color: red; }",
+      "/* #a */ .box { color: red; }",
+    ]) {
+      expect(await codes(html, [{ href: "a.css", content }])).not.toContain(
+        "subcomposition_linked_style_names_root_id",
+      );
+    }
   });
 });

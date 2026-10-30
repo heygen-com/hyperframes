@@ -34,6 +34,15 @@ describe("isNavigationTimeoutError", () => {
     ).toBe(true);
   });
 
+  it("does not treat a page error or abort signal named TimeoutError as Puppeteer's", () => {
+    const pageError = Object.assign(new Error("Navigation timeout of 30000 ms exceeded"), {
+      name: "TimeoutError",
+    });
+    expect(isNavigationTimeoutError(pageError)).toBe(false);
+    expect(isProtocolEvaluateTimeoutError(pageError)).toBe(false);
+    expect(isProtocolEvaluateTimeoutError(new DOMException("aborted", "TimeoutError"))).toBe(false);
+  });
+
   it("does not treat plain Error as navigation timeout", () => {
     expect(isNavigationTimeoutError(new Error("Navigation timeout of 30000 ms exceeded"))).toBe(
       false,

@@ -1,4 +1,4 @@
-import { defineCommand } from "citty";
+import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
 
 export const examples: Example[] = [
@@ -10,7 +10,7 @@ export const examples: Example[] = [
   ["Search (positional, same as --query)", 'hyperframes catalog "crossfade"'],
 ];
 
-import * as clack from "@clack/prompts";
+import * as clack from "../ui/prompts.js";
 import { realpath, type ItemType, type RegistryItem } from "@hyperframes/core";
 import { c } from "../ui/colors.js";
 import { loadAllItems } from "../registry/resolver.js";
@@ -18,7 +18,7 @@ import { fetchRegistryManifest } from "../registry/remote.js";
 import { loadProjectConfig, DEFAULT_PROJECT_CONFIG } from "../utils/projectConfig.js";
 import { relative, resolve } from "node:path";
 import { finishCommand } from "../utils/commandResult.js";
-import { isAttendedTerminal } from "../utils/attendedTerminal.js";
+import { isUnattended } from "../utils/attendedTerminal.js";
 import { runAdd } from "./add.js";
 import { hasNoSearchableTokens, searchByWords } from "../registry/localSearch.js";
 import {
@@ -40,6 +40,8 @@ import {
   localVectorNames,
 } from "../registry/localSemantic.js";
 
+const ON_DEVICE_SETUP_COMMAND = "hyperframes catalog --on-device";
+
 /**
  * Get the offline tier ready, and report every reason it could not be.
  *
@@ -55,6 +57,8 @@ async function prepareOnDeviceTier(opts: {
   assumedYes: boolean;
   artifactRevision?: string;
   canPrompt: boolean;
+  /** Only an explicit --on-device installs the runtime; a plain search never waits on it. */
+  installRuntime: boolean;
   registry: string;
   registryNames: ReadonlySet<string>;
   status: LocalModelStatus;
@@ -117,6 +121,12 @@ async function prepareOnDeviceTier(opts: {
     return warnings;
   }
 
+  if (!opts.installRuntime && !hasLocalRuntime()) {
+    warn(
+      `on-device search is off until its runtime is installed: run \`${ON_DEVICE_SETUP_COMMAND}\` once.`,
+    );
+    return warnings;
+  }
   // Before the model download: fetching 32 MB and then finding the runtime missing wastes it.
   const runtime = await ensureLocalRuntime();
   if (!runtime.ok) {
@@ -201,7 +211,7 @@ export default defineCommand({
       // prompt that fires on a TTY, which leaves every agent and CI run unable
       // to opt in at all.
       description:
-        "Use on-device meaning search; pass --yes to approve a first non-interactive download",
+        "Use on-device meaning search, or set it up when given without a query; pass --yes to approve a first non-interactive download",
     },
   },
   // one flag-parsing entry point feeding three output paths (json, interactive, table); splitting those is its own change
@@ -247,7 +257,8 @@ export default defineCommand({
     // Collected rather than only printed, so --json can carry the same reasons
     // the terminal shows. A machine that asked for a tier deserves to be told
     // it did not run.
-    const searchContext = query ? { status: localModelStatus() } : null;
+    const searchContext =
+      query || args["on-device"] === true ? { status: localModelStatus() } : null;
     const routineUpdate =
       searchContext?.status.status === "unavailable" ||
       (searchContext?.status.status === "ready" &&
@@ -260,7 +271,8 @@ export default defineCommand({
       warnings = await prepareOnDeviceTier({
         assumedYes: args.yes === true,
         artifactRevision,
-        canPrompt: isAttendedTerminal() && !json,
+        canPrompt: !isUnattended() && !json,
+        installRuntime: args["on-device"] === true,
         registry: config.registry,
         registryNames,
         status: searchContext.status,
@@ -269,9 +281,10 @@ export default defineCommand({
       // the state owner again rather than carrying the pre-download snapshot.
       effectiveStatus = localModelStatus();
     }
-    const searched = effectiveStatus
-      ? await applySearch(tagged, query, registryNames, effectiveStatus)
-      : null;
+    const searched =
+      query && effectiveStatus
+        ? await applySearch(tagged, query, registryNames, effectiveStatus)
+        : null;
     if (searched) warnings.push(...searched.warnings);
     const matching = searched ? searched.items : tagged;
 
@@ -613,7 +626,7 @@ async function applySearch<
   const warnings: string[] = [];
   // On-device meaning search, when the user opted into the model. Free and
   // offline, and it answers phrasings word matching cannot reach.
-  if (status.status === "ready") {
+  if (status.status === "ready" && hasLocalRuntime()) {
     try {
       const ranking = await localSemanticRanking(query);
       if (ranking) {
@@ -712,7 +725,7 @@ type LocalMode = "local-model" | "words";
  * person to prompt instead, or when that person has already answered.
  */
 function localModelHint(json: boolean, status: LocalModelStatus | undefined): string | null {
-  if (!json && isAttendedTerminal()) return null;
+  if (!json && !isUnattended()) return null;
   if (status?.status !== "not-asked") return null;
   return nonInteractiveConsentMessage();
 }
@@ -730,7 +743,7 @@ async function offerLocalModel(
   registryBaseUrl: string,
   artifactRevision?: string,
 ): Promise<void> {
-  if (json || !isAttendedTerminal()) return;
+  if (json || isUnattended()) return;
   if (localModelStatus().status !== "not-asked") return;
   // Deliberately not gated on the number of results. That gate was set when the
   // catalog was small; against 411 moves a word match nearly always returns
@@ -757,7 +770,7 @@ async function offerLocalModel(
   console.log(
     c.dim(
       vectors
-        ? "  Run the search again to download the model and rank by meaning."
+        ? `  Run \`${ON_DEVICE_SETUP_COMMAND}\` once to download the model and rank by meaning.`
         : "  Could not fetch the catalog vectors; offline ranking stays off until they are available.",
     ),
   );

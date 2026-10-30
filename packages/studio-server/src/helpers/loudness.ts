@@ -3,9 +3,11 @@ import { isAbsolute, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 import { isAudibleVideoElement } from "@hyperframes/core/audible-video";
 import { formatAudioGain, MAX_AUDIO_GAIN_DB } from "@hyperframes/core/audio-gain";
+import { decodeAuthoredAttribute } from "@hyperframes/parsers";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { readMediaOffsetSeconds } from "@hyperframes/parsers/media-duration";
 import { requestedProjectPath } from "./requestSubPath.js";
+import { probeAudioTrack } from "./mediaMetadata.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -101,7 +103,14 @@ function attributeFromMatch(
   const whole = match[0];
   const localValueStart = attributeValueStart(whole);
   const valueStart = absoluteOffset + match.index + localValueStart;
-  return [name, { value, valueStart, valueEnd: valueStart + value.length }];
+  return [
+    name,
+    {
+      value: decodeAuthoredAttribute(value),
+      valueStart,
+      valueEnd: valueStart + value.length,
+    },
+  ];
 }
 
 function matchedAttributeValue(match: RegExpMatchArray): string | undefined {
@@ -446,12 +455,23 @@ export function updateAudioVolume(html: string, id: string, volume: number): str
  * -61.8 LUFS: output-side `-t 4` reported -33.8 LUFS, input-side reports -61.8,
  * the same as physically cutting the file first.
  */
-export function loudnessMeasureArgs(file: string, tag: MeasuredWindow): string[] {
+export function loudnessMeasureArgs(file: string, tag: MeasuredWindow, stream: number): string[] {
   const args = ["-hide_banner", "-nostats"];
   if (tag.mediaStart > 0) args.push("-ss", String(tag.mediaStart));
   const sourceSpan = tag.duration === null ? null : tag.duration * (tag.playbackRate ?? 1);
   if (sourceSpan !== null && sourceSpan > 0) args.push("-t", String(sourceSpan));
-  args.push("-i", file, "-map", "0:a:0", "-vn", "-af", "ebur128=peak=true", "-f", "null", "-");
+  args.push(
+    "-i",
+    file,
+    "-map",
+    `0:a:${stream}`,
+    "-vn",
+    "-af",
+    "ebur128=peak=true",
+    "-f",
+    "null",
+    "-",
+  );
   return args;
 }
 
@@ -463,7 +483,9 @@ export async function measureAudio(
   file: string,
   tag: MeasuredWindow,
 ): Promise<LoudnessMeasurement> {
-  const result = await execFileAsync(ffmpegPath, loudnessMeasureArgs(file, tag), {
+  const track = await probeAudioTrack(file);
+  if (!track) throw new Error("no audio stream to measure");
+  const result = await execFileAsync(ffmpegPath, loudnessMeasureArgs(file, tag, track.stream), {
     encoding: "utf8",
     maxBuffer: 16 * 1024 * 1024,
     timeout: FFMPEG_TIMEOUT_MS,

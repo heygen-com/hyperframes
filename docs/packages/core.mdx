@@ -129,6 +129,22 @@ const bundled = await bundleToSingleHtml("./project", {
 });
 ```
 
+Bundling preserves data URLs and commas inside image `srcset` URLs on `<img>`
+and `<source>` elements. Eligible local candidates are inlined by default; with
+`inlineAssets: false`, they stay as paths relative to the project root, including
+when the entry file is in a subdirectory. Width and density descriptors are
+preserved.
+
+Local stylesheet `@import` rules keep each occurrence's media condition and
+cascade position, even when several imports reference the same file. Circular
+imports stop at a stylesheet already being expanded.
+Repeated imports add copies of the stylesheet to the bundle, which can increase
+its size.
+
+Inlined local assets drop cache-busting queries and keep fragments. For example,
+`image.png?v=2#sprite` becomes a data URL ending in `#sprite`. With
+`inlineAssets: false`, both the query and fragment stay on the file URL.
+
 The compiler also exposes lower-level timing helpers such as
 `compileTimingAttrs()`, `injectDurations()`, and `extractResolvedMedia()`.
 

@@ -68,6 +68,19 @@ try {
 Use `captureFrameToBuffer()` when the next stage needs an in-memory buffer
 instead of a file.
 
+## WebGPU requirements
+
+A composition marked `data-requires-webgpu` must be able to create a WebGPU
+device before capture starts. Finding an adapter alone is insufficient: device
+creation can still fail because of the browser or graphics driver. The adapter
+and device check share a ten-second timeout, and failure stops capture with
+`WebGpuUnavailableError`.
+
+Hardware adapters are required by default. A launch explicitly configured for
+software WebGPU may use SwiftShader, but it must also create a device. The check
+releases its temporary device; the composition still creates its own device
+with any features or limits its renderer needs.
+
 ## What else the package exposes
 
 | Surface | Use it for |
@@ -78,9 +91,21 @@ instead of a file.
 | Parallel capture | Distributing frame ranges across workers |
 | Diagnostics | Capture performance, media metadata, and GPU parity |
 
+Paths passed to `encodeFramesChunkedConcat()` and `concatVideoFiles()` may be
+relative or absolute. Relative paths resolve from the calling process's working
+directory.
+
+`muxVideoWithAudio()` recognizes output filename extensions regardless of case.
+WebM output, including `.WEBM` and `.WeBm`, converts audio to Opus while copying
+the video stream.
+
 These are rendering internals. Their result and error conventions differ by
 operation: browser and capture orchestration throws, FFmpeg wrappers generally
 return result objects, and teardown helpers avoid masking the original failure.
+
+Browser and frame-capture diagnostics, including motion-blur reports, go to
+stderr. This keeps stdout available for machine-readable results such as
+`hyperframes benchmark --json`.
 
 ## Related topics
 

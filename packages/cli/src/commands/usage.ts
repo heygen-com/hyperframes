@@ -1,4 +1,4 @@
-import { defineCommand } from "citty";
+import { defineCommand } from "../utils/defineCommand.js";
 import { readHarnessUsage } from "../utils/harnessUsage.js";
 
 export default defineCommand({

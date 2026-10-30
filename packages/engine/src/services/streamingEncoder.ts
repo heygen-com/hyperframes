@@ -37,19 +37,24 @@ import {
   isExternalFfmpegInterruption,
 } from "../utils/runFfmpeg.js";
 import { getFfmpegBinary } from "../utils/ffmpegBinaries.js";
-import { getHdrEncoderColorParams } from "../utils/hdr.js";
+import { getHdrEncoderColorParams, hdrFrameTagsFilter } from "../utils/hdr.js";
 import { withEvenDimensionPad } from "../utils/evenDimensions.js";
 import {
   SDR_CAPTURE_TO_BT709_FILTER,
-  SDR_RGB_TO_BT709_FILTER,
   SDR_RGB_TO_TAGGED_BT709_FILTER,
 } from "../utils/sdrCaptureColor.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { fpsToFfmpegArg, fpsToNumber, type Fps } from "@hyperframes/core";
 import { appendVp9CpuUsedArg } from "./vp9Options.js";
+import { appendSoftwareEncoderThreadsArg } from "./softwareEncoderThreads.js";
 import { appendRenderProvenanceArgs } from "../utils/renderProvenance.js";
 
-import { appendLockedGopArgs, lockedGopCodecParams, resolveLockedGopSize } from "./chunkEncoder.js";
+import {
+  appendLockedGopArgs,
+  appendRateCapArgs,
+  lockedGopCodecParams,
+  resolveLockedGopSize,
+} from "./chunkEncoder.js";
 
 // Re-export EncoderOptions so callers can reference the type via this module.
 export type { EncoderOptions } from "./chunkEncoder.types.js";
@@ -157,6 +162,8 @@ export interface StreamingEncoderOptions {
   preset?: string;
   quality?: number;
   bitrate?: string;
+  maxBitrate?: string;
+  bufferSize?: string;
   pixelFormat?: string;
   /** libvpx-vp9 -cpu-used value. Defaults to the engine VP9 setting. */
   vp9CpuUsed?: number;
@@ -281,6 +288,7 @@ export function buildStreamingArgs(
   args.push("-r", fpsToFfmpegArg(fps));
 
   const shouldUseGpu = useGpu && gpuEncoder !== null;
+  appendRateCapArgs(args, options);
 
   if (codec === "h264" || codec === "h265") {
     if (shouldUseGpu) {
@@ -339,6 +347,7 @@ export function buildStreamingArgs(
     } else {
       const encoderName = codec === "h264" ? "libx264" : "libx265";
       args.push("-c:v", encoderName, "-preset", preset);
+      appendSoftwareEncoderThreadsArg(args, encoderName);
       if (bitrate) args.push("-b:v", bitrate);
       else args.push("-crf", String(quality));
 
@@ -424,24 +433,28 @@ export function buildStreamingArgs(
       );
     }
 
-    // Raw HDR input (from WebGPU pipeline) is already PQ-encoded, so only SDR gets a
-    // conversion: raw sRGB or Chrome's BT.601 JPEG screenshots to BT.709 limited range.
-    const sdrFilter = options.rawInputFormat
-      ? SDR_RGB_TO_BT709_FILTER
-      : SDR_CAPTURE_TO_BT709_FILTER;
-    if (options.rawInputFormat && options.hdr) {
-      // No filter needed — PQ data goes straight to encoder
-    } else if (gpuEncoder === "vaapi") {
+    // Raw HDR input (from WebGPU pipeline) is already PQ-encoded and is only tagged; SDR is
+    // converted: raw sRGB or Chrome's BT.601 JPEG screenshots to tagged BT.709 limited range.
+    const frameFilter =
+      options.rawInputFormat && options.hdr
+        ? hdrFrameTagsFilter(options.hdr.transfer)
+        : options.rawInputFormat
+          ? SDR_RGB_TO_TAGGED_BT709_FILTER
+          : SDR_CAPTURE_TO_BT709_FILTER;
+    if (gpuEncoder === "vaapi") {
       // vaapi already runs `format=nv12,hwupload`; the nv12 conversion aligns
       // odd dimensions before upload, so only prepend the colour conversion.
       const vfIdx = args.indexOf("-vf");
       if (vfIdx !== -1) {
-        args[vfIdx + 1] = `${sdrFilter},${args[vfIdx + 1]}`;
+        args[vfIdx + 1] = `${frameFilter},${args[vfIdx + 1]}`;
       }
     } else {
       // Pad odd dimensions up to even so 4:2:0 encoders (software and
       // nvenc/videotoolbox/qsv/amf) don't abort with "height not divisible by 2".
-      args.push("-vf", withEvenDimensionPad(sdrFilter, pixelFormat, options.width, options.height));
+      args.push(
+        "-vf",
+        withEvenDimensionPad(frameFilter, pixelFormat, options.width, options.height),
+      );
     }
 
     // Fixed timescale for consistent A/V timing across platforms.

@@ -13,14 +13,14 @@ Severities:
 - **Info** — a heads-up that needs no action. Shown by `hyperframes lint --verbose`.
 
 <Info>
-  Looking for a code from a render or check log? Codes appear in the output of `npx hyperframes lint [dir]` — add `--json` to script over them. `check` additionally runs runtime, layout and motion audits beyond these lint rules; see [Troubleshooting](/guides/troubleshooting).
+  Looking for a code from a render or check log? Codes appear in the output of `npx hyperframes lint [dir]` — add `--json` to script over them. `check` additionally runs runtime, layout and motion audits beyond these lint rules; see [Troubleshooting](/help).
 </Info>
 
 ## Structure and timeline
 
 Source: `packages/lint/src/rules/structure.ts`.
 
-The five codes marked **Warning or error** are warnings when the CLI lints a project, and errors when Studio
+The five codes marked **Warning or error** are warnings when the CLI lints a project, and errors when the browser editor
 lints the file it is editing.
 
 ### `nested_structure_needs_subcomposition`
@@ -100,7 +100,7 @@ Source: `packages/lint/src/rules/composition.ts`.
 
 **Error.** The legacy `data-layer` attribute is used.
 
-**Fix:** Replace it with `data-track-index`, the canonical name Studio and the linter read.
+**Fix:** Replace it with `data-track-index`, the canonical name the browser editor and the linter read.
 
 ### `duplicate_composition_id`
 
@@ -192,11 +192,25 @@ Source: `packages/lint/src/rules/composition.ts`.
 
 **Fix:** Set the sub-composition's `data-duration` to fill the host window, or cover the gap with another clip.
 
+### `subcomposition_linked_style_names_root_id`
+
+**Warning.** A stylesheet linked from a sub-composition has a rule on `#<root id>`, the id of the sub-composition's root. When the composition is compiled the root is merged into its host, so that selector matches nothing. The same rule in an inline `<style>` is rewritten and works.
+
+**Fix:** Move the rule into a `<style>` inside the `<template>`, or select a child element of the root in the linked file instead of the root itself.
+
 ### `subcomposition_root_styled_by_class`
 
 **Error.** A sub-composition's root element is styled through class selectors, but at render every rule is scoped to `[data-composition-id=...]`, so the class-keyed styles stop applying.
 
 **Fix:** Give the root `id="root"` and style it with `#root` plus plain descendant selectors.
+
+### `subcomposition_style_outside_template`
+
+**Warning.** A sub-composition file with a `<template>` has a `<style>`, or a `<link rel="stylesheet">`
+outside `<head>`, that sits outside the template. Mounting keeps only the template's content and the
+stylesheet links in `<head>`, so those styles never apply in preview, snapshot or render.
+
+**Fix:** Move it inside `<template>`, next to the composition root.
 
 ### `template_literal_selector`
 
@@ -206,7 +220,7 @@ Source: `packages/lint/src/rules/composition.ts`.
 
 ### `timed_element_missing_clip_class`
 
-**Warning.** An element has timing attributes but no `class="clip"`. The runtime still times it, but Studio and the clip-ownership rules use `.clip` to recognise it, so it is harder to edit and to lint.
+**Warning.** An element has timing attributes but no `class="clip"`. The runtime still times it, but the browser editor and the clip-ownership rules use `.clip` to recognise it, so it is harder to edit and to lint.
 
 **Fix:** Add `class="clip"` to the element.
 
@@ -249,6 +263,15 @@ Source: `packages/lint/src/rules/core.ts`.
 **Error / warning.** An id starts with a digit, so `#id` selectors throw a `SyntaxError` in `querySelector` and GSAP, and CSS drops the rule. Error when such a selector is actually used in the composition, warning otherwise.
 
 **Fix:** Rename the id to start with a letter (recommended), or build selectors with `CSS.escape(id)` at runtime.
+
+### `inline_style_attribute_selector`
+
+**Error.** A selector reads the inline `style` attribute (`[style]`, `[style*=...]` and the other forms).
+GSAP writes inline styles every frame, and each write then restyles far more than the animated element.
+The preview slows to a crawl.
+
+**Fix:** Let the runtime hide hidden clips; it already hides their contents.
+For a state of your own, toggle a class or data attribute from your script and select on that.
 
 ### `invalid_inline_script_syntax`
 
@@ -296,7 +319,8 @@ Source: `packages/lint/src/rules/core.ts`.
 
 **Error.** A selector observes the runtime-owned hidden style (used to hide native video during frame copying) and forces `opacity` to zero, which breaks the video replacement pipeline.
 
-**Fix:** Restrict the guard to sub-composition hosts (for example `[data-composition-src][style*="visibility: hidden"]`) and do not derive element or media opacity from the runtime's hidden style.
+**Fix:** Remove the rule; the runtime already hides a hidden clip and its contents.
+To fade or hide something yourself, animate it on the timeline, or toggle a class or data attribute and select on that.
 
 ### `scoped_css_missing_wrapper`
 
@@ -306,9 +330,9 @@ Source: `packages/lint/src/rules/core.ts`.
 
 ### `studio_missing_editable_id`
 
-**Warning.** A timeline-visible element has no `id`, so Studio cannot target it stably for timeline and canvas edits.
+**Warning.** A timeline-visible element has no `id`, so the browser editor cannot target it stably for timeline and canvas edits.
 
-**Fix:** Add a stable, human-readable id such as `id="hero-title"` to elements that agents or Studio should edit.
+**Fix:** Add a stable, human-readable id such as `id="hero-title"` to elements that agents or the browser editor should edit.
 
 ### `timeline_id_mismatch`
 
@@ -388,7 +412,7 @@ Source: `packages/lint/src/rules/gsap.ts`.
 
 ### `gsap_group_selector_keyframes`
 
-**Warning.** A GSAP tween targets several elements with shared keyframes, so editing one element's keyframes in Studio changes all of them.
+**Warning.** A GSAP tween targets several elements with shared keyframes, so editing one element's keyframes in the browser editor changes all of them.
 
 **Fix:** Replace the group selector with individual `tl.to()` calls per element.
 
@@ -488,6 +512,16 @@ Source: `packages/lint/src/rules/gsap.ts`.
 
 **Fix:** Remove the CSS `stroke-dasharray` (decorative dashes belong on a separate element), or set the full two-component value in GSAP.
 
+### `svg_round_cap_hidden_dash`
+
+**Warning.** A round or square capped path is hidden with dasharray = gap = `pathLength` and dashoffset = dash.
+
+Chrome can leave a zero-length sliver at the path end there, and the cap paints it as a dot on some curves.
+
+**Fix:** Make the gap longer than the path (`stroke-dasharray="100 120"`, `stroke-dashoffset="110"`).
+
+Or keep the element `visibility: hidden` until its draw tween starts.
+
 ### `svg_measure_before_path_d`
 
 **Error / warning.** `getTotalLength()` is called on a path with no static `d` attribute, so it returns 0 and the dash animation dies. Error when no `d` assignment exists anywhere, warning when `d` is only assigned inside a function body.
@@ -509,6 +543,12 @@ Source: `packages/lint/src/rules/media.ts`.
 **Warning.** An `<hf-audio-group>` carries `data-fx-carve` (or a carve-derived chain), but a carve belongs on the bed clip, not the bus.
 
 **Fix:** Remove `data-fx-carve` from the group and carve the bed clip instead.
+
+### `audio_group_holds_elements`
+
+**Warning.** Elements sit inside an `<hf-audio-group>`. Most often the group was written self-closed (`<hf-audio-group id="sfx" />`), which HTML does not close on a custom element, so every later sibling lands inside it. Being inside routes no audio through the bus, and while the group has `data-hidden` those elements are hidden and silenced in preview and render.
+
+**Fix:** Close the group with `</hf-audio-group>` right after its opening tag, and give clips meant for the bus `data-audio-group`.
 
 ### `audio_group_no_members`
 
@@ -554,9 +594,12 @@ Source: `packages/lint/src/rules/media.ts`.
 
 ### `color_grading_non_media`
 
-**Error.** `data-color-grading` is set on an element other than `<video>` or `<img>`, such as a wrapper or an element with a CSS background. The shader runtime only grades real `<video>` and `<img>` elements, so the attribute has no effect.
+**Error.** `data-color-grading` is set on an element other than `<video>`, `<img>`, `<canvas>` or
+`<hf-color-group>`, such as a wrapper or an element with a CSS background. The shader runtime only grades
+real `<video>`, `<img>` and `<canvas>` elements, plus the members of a
+[grade group](/reference/color-grading#grade-a-whole-lane), so the attribute has no effect.
 
-**Fix:** Move the attribute to the `<video>` or `<img>` element itself.
+**Fix:** Move the attribute to the `<video>`, `<img>` or `<canvas>` element itself.
 
 ### `duplicate_media_discovery_risk`
 
@@ -578,7 +621,7 @@ Source: `packages/lint/src/rules/media.ts`.
 
 ### `media_crossorigin_breaks_preview`
 
-**Error.** The element has `crossorigin`, which forces a CORS-checked fetch; if the host omits CORS headers, the load fails silently in Studio preview (blank media) while renders still work.
+**Error.** The element has `crossorigin`, which forces a CORS-checked fetch; if the host omits CORS headers, the load fails silently in the browser editor preview (blank media) while renders still work.
 
 **Fix:** Remove `crossorigin` unless you read the media back through canvas, WebGL or WebAudio from a host known to send CORS headers.
 
@@ -662,7 +705,7 @@ Source: `packages/lint/src/rules/media.ts`.
 
 ### `video_muted_with_declared_audio`
 
-**Error.** A `<video>` declares `data-has-audio="true"` but also carries `muted`, so Studio preview silences the audio the declaration promises.
+**Error.** A `<video>` declares `data-has-audio="true"` but also carries `muted`, so the browser editor preview silences the audio the declaration promises.
 
 **Fix:** Remove `muted` if the video should be audible, or drop `data-has-audio` and use `data-volume="0"` for silent visual video.
 
@@ -714,7 +757,7 @@ Source: `packages/lint/src/rules/captions.ts`.
 
 ### `caption_transcript_not_inline`
 
-**Error.** A captions composition loads its transcript with `fetch()`, but the Studio caption editor needs an inline `var TRANSCRIPT = [...]` array to detect and edit captions.
+**Error.** A captions composition loads its transcript with `fetch()`, but the browser editor caption editor needs an inline `var TRANSCRIPT = [...]` array to detect and edit captions.
 
 **Fix:** Embed the transcript inline as `var TRANSCRIPT = [...]` with JSON-quoted keys.
 
@@ -727,6 +770,8 @@ Source: `packages/lint/src/rules/fonts.ts`.
 **Error.** A `@font-face`-undeclared font family is used, so the renderer cannot supply it and text falls back to a default face.
 
 **Fix:** Declare each family with `@font-face` pointing at the captured `.woff2` files, or bundle the font under `capture/assets/fonts/`.
+
+The declaration may use a quoted or unquoted family name. If `font-family` is the last descriptor in the block, its final semicolon is optional.
 
 ### `system_font_will_alias`
 
@@ -858,7 +903,7 @@ Source: the project lint pass in `packages/lint/src/project.ts`, `packages/lint/
 
 ### `texture_mask_asset_not_found`
 
-**Error.** A CSS `mask-image` references files that are not in the project, so the texture mask fails to load.
+**Error.** A CSS `mask-image` or `-webkit-mask-image` declaration references files that are not in the project, so the texture mask fails to load. In valid CSS, comments and text inside other declarations, such as `content` strings, are ignored.
 
 **Fix:** Add the missing mask file(s) to the project, or update the `mask-image` URL.
 

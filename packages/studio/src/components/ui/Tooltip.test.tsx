@@ -108,3 +108,35 @@ it("wraps its child in a box-less span so a disabled child still gets hover", ()
   expect(trigger.parentElement?.className).toBe("contents");
   expect(trigger.parentElement?.parentElement?.parentElement).toBe(document.body);
 });
+
+it("keeps a label on one line unless it is given lines", async () => {
+  const trigger = mount();
+  act(() => trigger.focus());
+  await settle();
+
+  expect(bubble()?.className).toContain("whitespace-nowrap");
+  expect(bubble()?.querySelector("span")).toBeNull();
+});
+
+it("wraps a long label at a reading width and cuts it at its lines", async () => {
+  const label = "Make a 30 second launch promo for the spring release. ".repeat(6).trim();
+  const host = mountHost(
+    <Tooltip label={label} delay={0} lines={3}>
+      <button type="button" data-testid="long">
+        P
+      </button>
+    </Tooltip>,
+  );
+  act(() => host.querySelector<HTMLElement>('[data-testid="long"]')?.focus());
+  await settle();
+
+  const tip = bubble();
+  expect(tip?.className).toContain("whitespace-normal");
+  expect(tip?.className, "a long URL or path breaks too").toContain("break-words");
+  expect(tip?.className).toContain("max-w-[300px]");
+  expect(tip?.className).not.toContain("whitespace-nowrap");
+  const text = tip?.querySelector<HTMLElement>("span");
+  expect(text?.textContent).toBe(label);
+  expect(text?.className).toBe("line-clamp-(--tooltip-lines)");
+  expect(text?.style.getPropertyValue("--tooltip-lines")).toBe("3");
+});

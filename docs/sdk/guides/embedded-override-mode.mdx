@@ -9,7 +9,7 @@ This is exactly how a canvas embedder (for example, AI Studio) persists in-compo
 
 ## Opening with overrides
 
-Pass the stored delta as `overrides` when you call `openComposition`. The SDK replays the override set onto the base template in one pass, so the session exposes the user's exact edited state immediately:
+Pass the stored delta as `overrides` when you call `openComposition`. The SDK applies the saved changes to the base template, so the session exposes the user's exact edited state immediately:
 
 ```typescript
 import { openComposition } from "@hyperframes/sdk";
@@ -31,7 +31,7 @@ After `openComposition` returns, `comp.getElements()` reflects the overridden st
 
 ## Reading the current delta
 
-Call `getOverrides()` to retrieve the current delta for storage. It returns a shallow copy of the internal override set — safe to serialize and stash:
+Call `getOverrides()` to retrieve the current delta for storage. It returns a copy ready to serialize and save:
 
 ```typescript
 comp.setText("hf-cta", "Get started free");
@@ -45,6 +45,26 @@ await db.saveOverrides(sessionId, nextOverrides);
 
 On the next session open, pass `nextOverrides` as `overrides` again — the user sees their exact state.
 
+Elements inserted with `addElement()` are stored in the delta too, including their
+parent and sibling position. Later text, style, or attribute edits replay onto the
+restored element:
+
+```typescript
+const id = comp.addElement("hf-stage", 1, "<p>Available today</p>");
+comp.setText(id, "Available worldwide");
+
+const reopened = await openComposition(templateHtml, {
+  overrides: comp.getOverrides(),
+});
+reopened.getElement(id)?.text; // "Available worldwide"
+```
+
+`getOverrides()` saves each added or restored element's current position among
+all child nodes, including surrounding text. Removing a temporary sibling does
+not shift the element when reopened.
+Store the returned set without sorting its keys. The SDK keeps the latest edit
+order so later child edits apply after their parent's snapshot.
+
 ## Override set key format
 
 Keys follow the pattern `hfId.prop.path`. The common forms are:
@@ -54,11 +74,17 @@ Keys follow the pattern `hfId.prop.path`. The common forms are:
 | `"hf-title.text"` | Inner text of element `hf-title` |
 | `"hf-logo.attr.src"` | `src` attribute on `hf-logo` |
 | `"hf-x.style.fontSize"` | Inline `fontSize` style on `hf-x` |
+| `"hf-card"` with an element snapshot | Added or restored element, with its HTML, parent, and sibling position |
 | `"hf-card"` with value `null` | Removal marker — element was deleted |
 
 A `null` value is a removal marker. When the SDK serializes the composition it omits that element entirely. This lets the host distinguish "never touched" (key absent) from "user deleted" (key present, value `null`).
 
 Sub-composition elements use scoped IDs — `"hf-host/hf-leaf.text"` — where the host and leaf are separated by `/`.
+
+Periods in an authored ID stay part of that ID: editing `hf-title.main` produces
+`"hf-title.main.text"`, which restores the edit to that same element when reopened.
+Non-null whole-element values must be snapshots returned by `getOverrides()`. Opening a
+delta skips scalar values and incomplete snapshots under whole-element keys.
 
 ### Font and image variable overrides
 

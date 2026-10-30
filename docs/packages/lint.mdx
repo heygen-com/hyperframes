@@ -104,11 +104,16 @@ Every finding code — its severity, what it catches, and how to fix it — is d
 
 Detected issues include:
 
+- Invalid inline JavaScript syntax. GLSL data blocks with `type="x-shader/x-fragment"`,
+  `type="x-shader/x-vertex"`, or `type="text/glsl"` skip JavaScript syntax checks and
+  still receive shader warnings.
 - Missing timeline registration (`window.__timelines`)
 - A timed `<video>` that declares neither `muted` (silent footage) nor `data-has-audio="true"` (has sound) — `video_missing_muted`
 - Missing `class="clip"` on timed visible elements
 - Deprecated attribute names
 - Missing composition dimensions (`data-width`, `data-height`)
+- CSS `zoom` on the composition root or its ancestors (`root_zoom_rescales_a_fixed_canvas`);
+  zoom on descendants is allowed, including scoped selectors such as `#root .badge`
 - Invalid `data-start` references to nonexistent clip IDs
 - Seek-order hazards that render differently on cold render workers: relative tween
   values (`"+=..."`) whose property has a second concurrent writer
@@ -127,7 +132,7 @@ Detected issues include:
   (`gsap_timeline_set_initial_hide`)
 
 <Info>
-  For common failures and fixes, see [Troubleshooting](/guides/troubleshooting).
+  For common failures and fixes, see [Troubleshooting](/help).
 </Info>
 
 ## Related topics

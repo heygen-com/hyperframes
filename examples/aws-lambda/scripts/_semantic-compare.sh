@@ -57,15 +57,15 @@ hf_decode_pcm() {
     -ac 2 -ar 48000 -c:a pcm_s16le -f s16le "$2"
 }
 
+# Chunks run in Distributed Map child executions; the Map's exit output carries every result.
 hf_extract_chunk_hashes() {
   local history="$1" output="$2"
   jq '[
     .events[] |
-    .taskSucceededEventDetails.output? |
-    select(type == "string") |
-    (try fromjson catch empty) |
-    .Payload |
-    select(type == "object" and .Action == "renderChunk") |
+    select(.type == "MapStateExited") |
+    .stateExitedEventDetails |
+    select(.name == "RenderChunks" or .name == "RenderChunksV2") |
+    (.output | fromjson | .Chunks // [])[] |
     {ChunkIndex, Sha256, FramesEncoded}
   ] | sort_by(.ChunkIndex)' "$history" > "$output"
 }

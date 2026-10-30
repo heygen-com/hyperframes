@@ -1,5 +1,6 @@
 // fallow-ignore-file code-duplication
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { mediaElementTime } from "./mediaClock";
 import { readFileSync } from "node:fs";
 import { initSandboxRuntimeModular, installFlatGsapTransforms } from "./init";
 import {
@@ -8,6 +9,7 @@ import {
   SKIPPED_CLIP,
 } from "./timedClipHide";
 import { applyAuthoredTiming, STUDIO_PREVIEW_MARK_META } from "../studioPreviewMark";
+import { runtimeProtocolMetadata } from "./protocol";
 import { collectRuntimeTimelinePayload } from "./timeline";
 import { TYPEGPU_PRESENT_HEARTBEAT_MS } from "./adapters/typegpu";
 import { WebAudioTransport } from "./webAudioTransport";
@@ -261,6 +263,7 @@ describe("initSandboxRuntimeModular", () => {
     delete window.__playerReady;
     delete window.__renderReady;
     delete (window as { __HF_EXPORT_RENDER_SEEK_CONFIG?: unknown }).__HF_EXPORT_RENDER_SEEK_CONFIG;
+    delete window.__HF_REPLAY_SKIPPED_FRAMES;
     delete window.__hfTimelinesBuilding;
     delete (window as { THREE?: unknown }).THREE;
     delete (window as { __hfAutoNoopRegistered?: boolean }).__hfAutoNoopRegistered;
@@ -494,6 +497,37 @@ describe("initSandboxRuntimeModular", () => {
       expect([at(1), at(6), at(9)]).toEqual(["hidden", "visible", "hidden"]);
     });
 
+    it.each([
+      ["no mark", undefined, ["auto", "auto", "auto"]],
+      ["a preview mark", "", ["auto", "none", "none"]],
+      ["a capture-mode mark", "capture", ["auto", "none", "none"]],
+    ])("loads media near the playhead under %s", (_label, mode, expected) => {
+      if (mode !== undefined) {
+        const mark = document.createElement("meta");
+        mark.name = STUDIO_PREVIEW_MARK_META;
+        if (mode) mark.content = mode;
+        document.head.append(mark);
+      }
+      try {
+        document.body.innerHTML =
+          `<div data-composition-id="main" data-root="true" data-start="0" data-duration="60" data-width="1920" data-height="1080">` +
+          [0, 20, 40]
+            .map(
+              (start, i) =>
+                `<video id="v${i}" src="a.mp4" data-start="${start}" data-duration="2" data-track-index="0"></video>`,
+            )
+            .join("") +
+          `</div>`;
+        window.__timelines = { main: createMockTimeline(60) };
+        for (const video of document.querySelectorAll("video")) video.load = vi.fn();
+        initSandboxRuntimeModular();
+        window.__player?.seek(0.5);
+        expect([...document.querySelectorAll("video")].map((v) => v.preload)).toEqual(expected);
+      } finally {
+        document.head.querySelector(`meta[name="${STUDIO_PREVIEW_MARK_META}"]`)?.remove();
+      }
+    });
+
     it("does not hold a paused seek on images in a stamped container its script hides", () => {
       const mark = Object.assign(document.createElement("meta"), {
         name: STUDIO_PREVIEW_MARK_META,
@@ -532,6 +566,99 @@ describe("initSandboxRuntimeModular", () => {
       },
     );
 
+    it("shows only the clips a first render crosses, not later ones", () => {
+      document.body.innerHTML =
+        `<div data-composition-id="main" data-root="true" data-start="0" data-duration="10" data-width="1920" data-height="1080">` +
+        `<div id="line" style="position: absolute" data-start="2" data-duration="2"><p id="said"></p></div>` +
+        `<div id="later" style="position: absolute" data-start="8" data-duration="1"><p id="next"></p></div>` +
+        `</div>`;
+      const seen: string[] = [];
+      const read = () => {
+        for (const id of ["line", "later"])
+          seen.push(document.getElementById(id)!.style.visibility);
+        return 1;
+      };
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#said", { x: read, duration: 0.1 }, 3);
+      tl.to("#next", { x: 1, duration: 0.1 }, 8);
+      window.__timelines = { main: tl as unknown as RuntimeTimelineLike };
+      initSandboxRuntimeModular();
+      window.__player?.seek(1);
+      window.__player?.seek(3.5);
+      expect(seen).toEqual(["visible", "hidden"]);
+    });
+
+    it("looks for hidden clips only on a jump where some tween draws for the first time", () => {
+      document.body.innerHTML =
+        `<div data-composition-id="main" data-root="true" data-start="0" data-duration="10" data-width="1920" data-height="1080">` +
+        `<div id="line" style="position: absolute" data-start="2" data-duration="2"><p id="said"></p></div>` +
+        `</div>`;
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#said", { x: 1, duration: 0.1 }, 3);
+      window.__timelines = { main: tl as unknown as RuntimeTimelineLike };
+      initSandboxRuntimeModular();
+      const query = vi.spyOn(document, "querySelectorAll");
+      const looked = () =>
+        query.mock.calls.filter(([selector]) => selector === "[data-hf-clip-hidden]").length;
+      try {
+        window.__player?.seek(1);
+        window.__player?.seek(1.5);
+        const beforeTheTween = looked();
+        // Past the line's span: its tween at 3 s draws for the first time while the line is hidden.
+        window.__player?.seek(6);
+        expect([beforeTheTween, looked()]).toEqual([0, 1]);
+      } finally {
+        query.mockRestore();
+      }
+    });
+
+    it("styles a hidden clip visible once while playing toward its start, far scene included", () => {
+      document.body.innerHTML =
+        `<div data-composition-id="main" data-root="true" data-start="0" data-duration="10" data-width="1920" data-height="1080">` +
+        `<div id="later" style="position: absolute" data-start="8" data-duration="1" data-hf-far-scene><p></p></div>` +
+        `</div>`;
+      window.__timelines = { main: createMockTimeline(10) };
+      const later = document.getElementById("later")!;
+      let styledVisible = 0;
+      const original = window.getComputedStyle.bind(window);
+      const style = vi.spyOn(window, "getComputedStyle").mockImplementation((el, pseudo) => {
+        const shown =
+          later.style.visibility === "visible" && !later.hasAttribute("data-hf-clip-hidden");
+        if (el === later && shown && !later.hasAttribute("data-hf-far-scene")) styledVisible++;
+        return original(el, pseudo);
+      });
+      const raf = createManualRaf();
+      vi.spyOn(performance, "now").mockImplementation(() => raf.now());
+      window.requestAnimationFrame =
+        raf.requestAnimationFrame as typeof window.requestAnimationFrame;
+      window.cancelAnimationFrame = raf.cancelAnimationFrame as typeof window.cancelAnimationFrame;
+      try {
+        initSandboxRuntimeModular();
+        const counts: number[] = [];
+        const playFor = (ms: number) => {
+          for (let at = 0; at < ms; at += 100) raf.step(100);
+          counts.push(styledVisible);
+        };
+        for (const t of [6.5, 4]) {
+          window.__player?.seek(t);
+          counts.push(styledVisible);
+        }
+        window.__player?.play();
+        playFor(300);
+        playFor(1800);
+        playFor(1000);
+        window.__player?.pause();
+        expect(counts).toEqual([0, 0, 0, 1, 1]);
+        expect([later.style.visibility, later.hasAttribute("data-hf-clip-hidden")]).toEqual([
+          "hidden",
+          true,
+        ]);
+        expect(later.hasAttribute("data-hf-far-scene")).toBe(true);
+      } finally {
+        style.mockRestore();
+      }
+    });
+
     it("keeps a hidden scene's contents hidden when a rewound GSAP set marks one visible inline", () => {
       hideTimedClipsUntilFirstPass();
       try {
@@ -568,9 +695,10 @@ describe("initSandboxRuntimeModular", () => {
         window.__player?.seek(1);
         const copy = document.getElementById("scene")!.cloneNode(true) as HTMLElement;
         document.body.append(copy);
-        // As showSceneAndClips forces a captured scene and its clips visible.
-        copy.style.setProperty("visibility", "visible", "important");
         expect(copy.hasAttribute("data-hf-clip-hidden")).toBe(true);
+        // As showSceneAndClips forces a captured scene and its clips visible and drops the mark.
+        copy.style.setProperty("visibility", "visible", "important");
+        copy.removeAttribute("data-hf-clip-hidden");
         const sheet = document.querySelector<HTMLStyleElement>(
           "style[data-hf-hidden-clip-contents]",
         )!.sheet!;
@@ -1073,6 +1201,36 @@ describe("initSandboxRuntimeModular", () => {
     });
   });
 
+  it("gives a still the value playback shows when its capture page asks to replay skipped frames", () => {
+    const zoomFilm = () => {
+      const params = { z: 1 };
+      const timeline = gsap.timeline({ paused: true });
+      timeline.to(params, { z: 1.45, duration: 0.3, ease: "power4.out" }, 0.573);
+      timeline.set(params, { z: 1.04 }, 0.8);
+      timeline.to(params, { z: 1.12, duration: 1.39, ease: "power1.in" }, 0.869);
+      return { params, timeline };
+    };
+    const played = zoomFilm();
+    for (let frame = 0; frame <= 56; frame++) played.timeline.totalTime(frame / 60, true);
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "3");
+    root.setAttribute("data-fps", "60");
+    root.setAttribute("data-width", "640");
+    root.setAttribute("data-height", "360");
+    document.body.appendChild(root);
+    const still = zoomFilm();
+    window.__timelines = { main: still.timeline as unknown as RuntimeTimelineLike };
+    window.__HF_REPLAY_SKIPPED_FRAMES = true;
+
+    initSandboxRuntimeModular();
+    window.__player?.renderSeek(56 / 60);
+
+    expect(still.params.z).toBeCloseTo(played.params.z, 9);
+  });
+
   it("activates a nested outro on frame 584 when its authored start rounds just above it", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");
@@ -1306,6 +1464,45 @@ describe("initSandboxRuntimeModular", () => {
     });
   });
 
+  describe("a preview seek lands on the composition's own frame grid", () => {
+    // Frame 7 on a 30 fps grid would be 7/30: earlier than frame 7 at 25 and 29.97 fps.
+    const rates = [
+      { dataFps: "25", fps: 25 },
+      { dataFps: "30000/1001", fps: 30_000 / 1_001 },
+    ];
+
+    function previewTimeline(dataFps: string): RuntimeTimelineLike {
+      document.body.innerHTML = `<div data-composition-id="main" data-root="true" data-start="0" data-duration="20" data-fps="${dataFps}" data-width="1920" data-height="1080"></div>`;
+      const timeline = createMockTimeline(20);
+      window.__timelines = { main: timeline };
+      initSandboxRuntimeModular();
+      return timeline;
+    }
+
+    it.each(rates)("player.seek to frame 7 at $dataFps fps", ({ dataFps, fps }) => {
+      const timeline = previewTimeline(dataFps);
+      window.__player?.seek(7 / fps);
+      expect(timeline.time()).toBeCloseTo(7 / fps, 9);
+    });
+
+    it.each(rates)("a parent frame seek to frame 7 at $dataFps fps", ({ dataFps, fps }) => {
+      const timeline = previewTimeline(dataFps);
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          source: window.parent,
+          data: {
+            source: "hf-parent",
+            type: "control",
+            action: "seek",
+            frame: 7,
+            ...runtimeProtocolMetadata(fps),
+          },
+        }),
+      );
+      expect(timeline.time()).toBeCloseTo(7 / fps, 9);
+    });
+  });
+
   it("uses live child timeline duration when a composition host has no authored duration", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");
@@ -1464,7 +1661,7 @@ describe("initSandboxRuntimeModular", () => {
       window.__player?.renderSeek(5);
 
       expect(video.style.visibility).toBe("visible");
-      expect(video.currentTime).toBe(2.5);
+      expect(video.currentTime).toBe(mediaElementTime(2.5));
       expect(video.paused).toBe(true);
       expect(video.play).not.toHaveBeenCalled();
     });
@@ -2293,7 +2490,7 @@ describe("initSandboxRuntimeModular", () => {
     player?.seek(29);
 
     expect(video.paused).toBe(true);
-    expect(video.currentTime).toBe(9);
+    expect(video.currentTime).toBe(mediaElementTime(9));
   });
 
   // Regression (#1838): a video authoring its OWN data-start (the normal case
@@ -2343,7 +2540,7 @@ describe("initSandboxRuntimeModular", () => {
     // must be 5s into its own local playback, not 25s (root time).
     player?.seek(25);
 
-    expect(video.currentTime).toBe(5);
+    expect(video.currentTime).toBe(mediaElementTime(5));
   });
 
   it("keeps a scene-local video visible inside a later template-mounted host", () => {
@@ -2733,6 +2930,35 @@ describe("initSandboxRuntimeModular", () => {
     player?.seek(7);
     expect(hiddenClip.style.visibility).toBe("hidden");
     expect(hiddenClip.style.display).toBe("");
+  });
+
+  it("hides a static data-hidden element that has no data-start, as the Studio-stamped copy is", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "10");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const overlay = document.createElement("div");
+    overlay.setAttribute("data-hidden", "");
+    root.appendChild(overlay);
+
+    window.__timelines = {
+      main: createMockTimeline(10),
+    };
+
+    initSandboxRuntimeModular();
+
+    window.__player?.seek(1);
+    expect(overlay.style.display).toBe("none");
+
+    overlay.removeAttribute("data-hidden");
+    window.__player?.seek(2);
+    expect(overlay.style.display).toBe("");
+    expect(overlay.style.visibility).toBe("");
   });
 
   describe("a clip the visibility pass hides gets the author's inline display back", () => {
@@ -3136,12 +3362,9 @@ describe("initSandboxRuntimeModular", () => {
     expect(video.currentTime).toBe(0);
   });
 
-  it("activates sub-composition timelines at data-start near 0 during renderSeek", () => {
-    // Regression: sub-compositions starting at or near t=0 had their GSAP
-    // sub-timelines ignored during render because renderSeek did not
-    // activate (unpause) nested child timelines before seeking the root.
-    // The children were added to the root while paused, and GSAP's
-    // totalTime() does not propagate to paused children.
+  it("seeks sub-composition timelines at data-start near 0 during renderSeek", () => {
+    // Regression: sub-compositions starting at or near t=0 kept their initial CSS state
+    // in render. Each scene now gets its own seek, so the paused root need not reach it.
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");
     root.setAttribute("data-root", "true");
@@ -3177,9 +3400,7 @@ describe("initSandboxRuntimeModular", () => {
       tweet: tweetTimeline,
     };
 
-    // Record what the children looked like AT the root seek — that is the moment
-    // the activation exists for, and the only moment it is observable now that
-    // the seek restores them.
+    // A scene's callbacks must not run inside the root's pass, so the root sees it paused.
     const pausedDuringRootSeek: Array<[boolean, boolean]> = [];
     const rootTotalTime = rootTimeline.totalTime!;
     rootTimeline.totalTime = (time?: number, suppressEvents?: boolean) => {
@@ -3201,11 +3422,10 @@ describe("initSandboxRuntimeModular", () => {
     // Seek to 0.5s — well within the hook's window [0.001, 2.001]
     player?.renderSeek(0.5);
 
-    // renderSeek must activate (unpause) all child timelines before seeking the
-    // root. Without that, children stay paused and GSAP's totalTime()
-    // propagation skips them, leaving elements at initial CSS state (opacity: 0).
     expect(pausedDuringRootSeek.length).toBeGreaterThan(0);
-    for (const pausedPair of pausedDuringRootSeek) expect(pausedPair).toEqual([false, false]);
+    for (const pausedPair of pausedDuringRootSeek) expect(pausedPair).toEqual([true, true]);
+    expect(hookTimeline.time()).toBeCloseTo(0.499, 6);
+    expect(tweetTimeline.time()).toBe(0);
 
     // The hook host should be visible at t=0.5
     expect(hookHost.style.visibility).toBe("visible");
@@ -3766,6 +3986,16 @@ describe("initSandboxRuntimeModular", () => {
     expect(startedAt.length).toBeGreaterThan(0);
     expect(startedAt[0]).toBeLessThan(1);
     expect(startedAt[0]).toBeGreaterThanOrEqual(1 - 0.02);
+  });
+
+  it("primes a clip that starts later inside the tap on iOS, so a late start is not refused", () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 26_5 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148",
+    );
+    const { sfx } = mountLateSfx();
+    window.__player?.play();
+    expect(sfx.play).toHaveBeenCalledTimes(1);
+    expect(sfx.pause).toHaveBeenCalledTimes(1);
   });
 
   const setRate = (playbackRate: number) =>
@@ -5913,6 +6143,117 @@ describe("initSandboxRuntimeModular", () => {
 
         expect(audio.muted).toBe(false);
       });
+    });
+  });
+
+  describe("decoded audio across edits", () => {
+    useMockAudioContext();
+    afterEach(() => vi.unstubAllGlobals());
+
+    it("releases buffers for sources the film no longer uses and keeps the rest without re-decoding", async () => {
+      const first = mountAudio("https://cdn.example.com/clip-0.mp3");
+      const audios = [first];
+      for (let i = 1; i < 8; i++) {
+        const audio = document.createElement("audio");
+        audio.setAttribute("data-start", String(i));
+        audio.setAttribute("data-duration", "1");
+        audio.setAttribute("src", `https://cdn.example.com/clip-${i}.mp3`);
+        audio.load = () => {};
+        audio.play = vi.fn(() => Promise.resolve());
+        first.parentElement!.appendChild(audio);
+        audios.push(audio);
+      }
+      (AudioContext.prototype as unknown as { decodeAudioData: unknown }).decodeAudioData =
+        async () => ({}) as AudioBuffer;
+      const fetchMock = vi.fn(async () => ({
+        ok: true,
+        arrayBuffer: async () => new ArrayBuffer(8),
+      }));
+      vi.stubGlobal("fetch", fetchMock);
+      vi.spyOn(console, "info").mockImplementation(() => {});
+      vi.spyOn(WebAudioTransport.prototype, "schedulePlayback").mockResolvedValue(null);
+      const decode = vi.spyOn(WebAudioTransport.prototype, "decodeAudioElement");
+      const settled = async (calls: number) => {
+        await vi.waitFor(() => expect(decode).toHaveBeenCalledTimes(calls));
+        await Promise.all(decode.mock.results.map((r) => r.value));
+      };
+      const cached = () =>
+        [
+          ...(
+            decode.mock.contexts[0] as unknown as { _bufferCache: Map<string, unknown> }
+          )._bufferCache.keys(),
+        ].sort();
+
+      await startPlayback();
+      await settled(8);
+      expect(cached()).toHaveLength(8);
+
+      // An edit swaps the second half of the clips to new sources.
+      window.__player?.pause();
+      audios
+        .slice(4)
+        .forEach((a, i) => a.setAttribute("src", `https://cdn.example.com/edit-${i}.mp3`));
+      window.__player?.play();
+      await settled(16);
+
+      expect(cached()).toEqual(audios.map((a) => a.getAttribute("src")).sort());
+      expect(fetchMock).toHaveBeenCalledTimes(12);
+    });
+
+    it("plays the film when a clip's src cannot be read as a URL", async () => {
+      mountAudio("http://localhost:PORT/vo.mp3");
+
+      await startPlayback();
+
+      expect(window.__player?.isPlaying()).toBe(true);
+    });
+  });
+
+  describe("Web Audio on a long film", () => {
+    const ctx = useMockAudioContext();
+
+    it("schedules a clip only as the playhead comes near it, and none that already ended", async () => {
+      const raf = createManualRaf();
+      vi.spyOn(performance, "now").mockImplementation(() => raf.now());
+      window.requestAnimationFrame =
+        raf.requestAnimationFrame as typeof window.requestAnimationFrame;
+      window.cancelAnimationFrame = raf.cancelAnimationFrame as typeof window.cancelAnimationFrame;
+      document.body.innerHTML =
+        `<div data-composition-id="main" data-root="true" data-start="0" data-duration="200" data-width="1920" data-height="1080">` +
+        `<audio id="past" src="/past.mp3" data-start="0" data-duration="5"></audio>` +
+        `<audio id="now" src="/now.mp3" data-start="0" data-duration="60"></audio>` +
+        `<audio id="later" src="/later.mp3" data-start="100" data-duration="10"></audio>` +
+        `</div>`;
+      for (const audio of document.querySelectorAll("audio")) {
+        audio.load = () => {};
+        audio.play = vi.fn(() => Promise.resolve());
+        // Loaded: a buffering clip would hold the playhead.
+        Object.defineProperty(audio, "readyState", { value: 4, configurable: true });
+      }
+      window.__timelines = { main: createMockTimeline(200) };
+      const capture = vi
+        .spyOn(WebAudioTransport.prototype, "scheduleMediaElementPlayback")
+        .mockResolvedValue(null);
+      vi.spyOn(WebAudioTransport.prototype, "decodeAudioElement").mockResolvedValue(null);
+      const scheduled = () => capture.mock.calls.map(([el]) => el.id);
+      initSandboxRuntimeModular();
+      await Promise.resolve();
+      window.__player?.seek(20);
+      window.__player?.play();
+      await Promise.resolve();
+      expect(scheduled()).toEqual(["now"]);
+      const playTo = (time: number) => {
+        // Steps under the clock's stall threshold, which would fold a longer gap away.
+        for (let i = 0; i < 400 && (window.__player?.getTime() ?? 0) < time; i++) {
+          ctx.time += 0.4;
+          raf.step(400);
+        }
+        expect(window.__player?.getTime()).toBeGreaterThanOrEqual(time);
+      };
+      playTo(85);
+      expect(scheduled()).toEqual(["now"]);
+      playTo(92);
+      expect(scheduled()).toEqual(["now", "later"]);
     });
   });
 

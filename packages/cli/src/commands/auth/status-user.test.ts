@@ -1,6 +1,8 @@
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { writeStore } from "../../auth/store.js";
 import { setupTempAuthEnv, type EnvFixture } from "../../auth/_test-utils.js";
+import { persistFreshOAuth } from "../../auth/oauth.js";
 import { consumeCommandResult } from "../../utils/commandResult.js";
 
 // Mock only AuthClient so the live /v3/users/me probe is controllable;
@@ -35,7 +37,7 @@ describe("auth status — persisted user block surface", () => {
   let stdout: string[];
 
   beforeEach(async () => {
-    envFixture = await setupTempAuthEnv("hf-status-");
+    envFixture = await setupTempAuthEnv("hf-status-99-");
     probeState.apiReject = false;
     probeState.user = { email: "live@example.com" };
     stdout = [];
@@ -73,6 +75,60 @@ describe("auth status — persisted user block surface", () => {
     expect(stdout.join("\n")).toContain("env (HEYGEN_ACCESS_TOKEN)");
     expect(stdout.join("\n")).not.toContain("fixture-host-secret");
     expect(stdout.join("\n")).not.toContain("stored@example.com");
+  });
+
+  async function configureBillingCredential(mode: string): Promise<void> {
+    if (mode === "api_key") {
+      await writeStore({ api_key: "hg_x" });
+      return;
+    }
+    if (mode === "host") {
+      process.env["HEYGEN_ACCESS_TOKEN"] = "host-at";
+      return;
+    }
+    if (mode === "hyperframes_dev") process.env["HYPERFRAMES_ENV"] = "dev";
+    if (mode === "custom") process.env["HYPERFRAMES_OAUTH_CLIENT_ID"] = "custom-client";
+    await persistFreshOAuth({ access_token: "at", refresh_token: "rt" });
+  }
+
+  it.each([
+    ["hyperframes", "hyperframes"],
+    ["hyperframes_dev", "hyperframes"],
+    ["custom", "unknown"],
+    ["host", "unknown"],
+    ["api_key", "heygen"],
+  ])("keeps %s billing distinct from generic account balances", async (mode, product) => {
+    probeState.user = {
+      email: "live@example.com",
+      billing_type: "subscription",
+      wallet: { remaining_balance: 99 },
+      subscription: { plan: "HeyGen Pro" },
+    };
+    await configureBillingCredential(mode);
+    expect(await runStatus(true)).toBe(0);
+    const payload = lastJson();
+    expect(payload["billing_product"]).toBe(product);
+    expect(payload["user"]).toEqual(probeState.user);
+    if (mode !== "api_key") {
+      expect(payload["hyperframes_balance"]).toBeNull();
+      expect(payload["billing_notice"]).toContain("HeyGen account");
+    }
+    stdout = [];
+    expect(await runStatus(false)).toBe(0);
+    const text = stdout.join("\n");
+    if (mode === "hyperframes_dev") expect(text).toContain(join("dev", "credentials"));
+    if (mode === "api_key") {
+      expect(text).toContain("Wallet:");
+      expect(text).toMatch(/^Wallet:\s+99$/m);
+    } else {
+      expect(text).not.toMatch(/^Wallet:/m);
+      expect(text).not.toContain("HeyGen Pro");
+      expect(text).toContain(
+        mode.startsWith("hyperframes")
+          ? "HyperFrames balance unavailable"
+          : "OAuth product not verified",
+      );
+    }
   });
 
   it("surfaces the persisted user block (with resolved display_name) for a file credential", async () => {

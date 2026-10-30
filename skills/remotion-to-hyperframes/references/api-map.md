@@ -13,15 +13,27 @@ details (timing, transitions, etc.).
 
 ## Composition root
 
-| Remotion                                             | HyperFrames                                                                                                          |
-| ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `<Composition id durationInFrames fps width height>` | root `<div id="stage" data-composition-id data-start="0" data-duration="<dur/fps>" data-fps data-width data-height>` |
-| `defaultProps={...}`                                 | `data-*` attributes on `#stage` (one per scalar prop). Nested objects/arrays — see [parameters.md](parameters.md)    |
-| `schema={z.object(...)}`                             | not represented in HTML; the schema lives in the agent's translation step only                                       |
-| `calculateMetadata` (sync)                           | resolve at translation time, write concrete values into `data-*`                                                     |
-| `calculateMetadata` (async)                          | **refuse + interop** — see [escape-hatch.md](escape-hatch.md)                                                        |
-| `registerRoot(RemotionRoot)`                         | drop                                                                                                                 |
-| `<AbsoluteFill style>`                               | `<div style="position:absolute;inset:0;{style}">`                                                                    |
+| Remotion                                               | HyperFrames                                                                                                          |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| `<Composition id durationInFrames fps width height>`   | root `<div id="stage" data-composition-id data-start="0" data-duration="<dur/fps>" data-fps data-width data-height>` |
+| `defaultProps={...}`                                   | `data-*` attributes on `#stage` (one per scalar prop). Nested objects/arrays — see [parameters.md](parameters.md)    |
+| `schema={z.object(...)}`                               | not represented in HTML; the schema lives in the agent's translation step only                                       |
+| `calculateMetadata` (sync)                             | resolve at translation time, write concrete values into `data-*`                                                     |
+| `calculateMetadata` (async)                            | **refuse + interop** — see [escape-hatch.md](escape-hatch.md)                                                        |
+| `registerRoot(RemotionRoot)`                           | drop                                                                                                                 |
+| `<AbsoluteFill style>`                                 | `<div style="position:absolute;inset:0;{style}">`                                                                    |
+| Remotion's render page: `* { box-sizing: border-box }` | the same rule, once, in the root `index.html` `<style>` (see below)                                                  |
+
+Remotion's render page sets `* { box-sizing: border-box }`, so a `width` there already includes the border and padding. A browser's own default is `content-box`, so a port without the rule draws every bordered or padded element larger. This box is 200 by 100 in Remotion and with the rule; without it, it is 260 by 160:
+
+```html
+<style>
+  * {
+    box-sizing: border-box;
+  }
+</style>
+<div style="width:200px;height:100px;padding:20px;border:10px solid #fff">…</div>
+```
 
 ## Sequencing
 
@@ -38,16 +50,16 @@ See [sequencing.md](sequencing.md) for nesting and stagger details.
 
 See [timing.md](timing.md) — this is the highest-leverage section.
 
-| Remotion                                                   | HyperFrames                                                                                                        |
-| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `useCurrentFrame()`                                        | drop — HF seeks the timeline. The math derived from `frame` becomes an animatable property of a paused GSAP tween. |
-| `useVideoConfig()` for `fps` / `durationInFrames`          | drop — read from `data-fps` / `data-duration` on `#stage`                                                          |
-| `interpolate(frame, [a,b], [x,y])` (linear)                | `gsap.fromTo(t, {p:x}, {p:y, duration:(b-a)/fps, ease:"none"})` at offset `a/fps`                                  |
-| `interpolate(frame, [a,b,c,d], [x,y,y,z])` (multi-segment) | three `gsap.to` calls at offsets `a/fps`, `b/fps`, `c/fps`                                                         |
-| `interpolate(..., {easing: Easing.bezier})`                | GSAP `CustomEase.create("c", "M0,0 C${a},${b} ${c},${d} 1,1")`                                                     |
-| `spring({frame, fps, config: {damping, stiffness, mass}})` | GSAP `back.out(N)` — see [timing.md](timing.md) for damping → overshoot table                                      |
-| `interpolateColors(frame, range, colors)`                  | `gsap.to({...}, { backgroundColor, color, duration, ease })` — GSAP handles color tweens natively                  |
-| `Easing.in / .out / .inOut(power)`                         | GSAP `power<N>.in` / `power<N>.out` / `power<N>.inOut`                                                             |
+| Remotion                                                   | HyperFrames                                                                                                                    |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `useCurrentFrame()`                                        | drop — HF seeks the timeline. The math derived from `frame` becomes an animatable property of a paused GSAP tween.             |
+| `useVideoConfig()` for `fps` / `durationInFrames`          | drop — read from `data-fps` / `data-duration` on `#stage`                                                                      |
+| `interpolate(frame, [a,b], [x,y])` (linear)                | `gsap.fromTo(t, {p:x}, {p:y, duration:(b-a)/fps, ease:"none"})` at offset `a/fps`                                              |
+| `interpolate(frame, [a,b,c,d], [x,y,y,z])` (multi-segment) | three `gsap.to` calls at offsets `a/fps`, `b/fps`, `c/fps`                                                                     |
+| `interpolate(..., {easing: Easing.bezier})`                | GSAP `CustomEase.create("c", "M0,0 C${a},${b} ${c},${d} 1,1")`                                                                 |
+| `spring({frame, fps, config: {damping, stiffness, mass}})` | GSAP `back.out(N)` — see [timing.md](timing.md) for damping → overshoot table                                                  |
+| `interpolateColors(frame, range, colors)`                  | `gsap.to({...}, { backgroundColor, color, duration, ease })` — GSAP handles color tweens natively                              |
+| `Easing.in / .out / .inOut(Easing.poly(N))`                | GSAP `power<N-1>.in` / `power<N-1>.out` / `power<N-1>.inOut` for integer N=1–5; see [timing.md](timing.md) for other exponents |
 
 ## Media
 

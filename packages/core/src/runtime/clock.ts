@@ -1,5 +1,5 @@
 import { timeAtSourceTime, type RateSpec } from "../speedRamp.js";
-import { MEDIA_HARD_SYNC_SECONDS } from "./media.js";
+import { MEDIA_HARD_SYNC_SECONDS } from "./mediaSteer.js";
 import { playRangeHoldTime } from "./protocol.js";
 
 export type TransportClockSnapshot = {

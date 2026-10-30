@@ -278,7 +278,7 @@ describe("ensureAudioGroupInertStyle", () => {
     document.body.innerHTML = `<hf-audio-group id="voiceover"></hf-audio-group>`;
     const el = document.getElementById("voiceover") as HTMLElement;
     ensureAudioGroupInertStyle(document);
-    expect(getComputedStyle(el).display).toBe("none");
+    expect(getComputedStyle(el).display).toBe("contents");
   });
 
   // An unknown custom element is an ordinary inline box, so in a flex or grid
@@ -295,7 +295,7 @@ describe("ensureAudioGroupInertStyle", () => {
     document.body.innerHTML = `<hf-audio-group id="voiceover"></hf-audio-group>`;
     ensureAudioGroupInertStyle(document);
     expect(getComputedStyle(document.getElementById("voiceover") as HTMLElement).display).toBe(
-      "none",
+      "contents",
     );
     document.getElementById("author")?.remove();
   });

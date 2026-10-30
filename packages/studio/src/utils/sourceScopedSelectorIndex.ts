@@ -9,6 +9,7 @@
 /** Every element matching one selector, mapped to the source file it belongs to
  *  and its occurrence index within that file. One document query fills it. */
 type SelectorOccurrences = Map<Element, { scope: string; index: number }>;
+export type KeptIndexes = Map<Document, Map<string, SelectorOccurrences>>;
 
 interface SelectorIndexPass {
   doc: Document;
@@ -33,9 +34,11 @@ let activePass: SelectorIndexPass | null = null;
  * (the resolver may be a fresh closure per call, as long as it answers the
  * same). Outside a pass the index is per-call, exactly as before.
  */
-export function withSelectorIndexPass<T>(doc: Document, run: () => T): T {
+export function withSelectorIndexPass<T>(doc: Document, run: () => T, kept?: KeptIndexes): T {
   const previous = activePass;
-  activePass = { doc, bySelector: new Map() };
+  const bySelector = kept?.get(doc) ?? new Map();
+  kept?.set(doc, bySelector);
+  activePass = { doc, bySelector };
   try {
     return run();
   } finally {

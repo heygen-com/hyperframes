@@ -14,7 +14,7 @@
  * Guardrails:
  *   - Never auto-update across major versions. The user opts in explicitly
  *     via `hyperframes upgrade`.
- *   - Skip on CI, dev mode, unknown installer, ephemeral exec (npx),
+ *   - Skip on CI, unattended runs (agents, no TTY), dev mode, unknown installer, ephemeral exec (npx),
  *     or when `HYPERFRAMES_NO_AUTO_INSTALL` / `HYPERFRAMES_NO_UPDATE_CHECK`
  *     is set.
  *   - If a previous install is still in flight (less than 10 min old), don't
@@ -30,6 +30,7 @@ import { join } from "node:path";
 import { compareVersions } from "compare-versions";
 import { withFileLock } from "../media-use/lib/config-lock.mjs";
 import { readConfig, writeConfig } from "../telemetry/config.js";
+import { isUnattended } from "./attendedTerminal.js";
 import { updateCheckDisabled } from "./updateCheck.js";
 import { RUNNING_DIR, RUNNING_STALE_MS } from "./runningCli.js";
 import {
@@ -47,7 +48,9 @@ const INSTALL_MAX_WAIT_MS = 60 * 60 * 1000;
 const INSTALL_POLL_MS = 2_000;
 
 function isAutoInstallDisabled(): boolean {
-  return updateCheckDisabled() || process.env["HYPERFRAMES_NO_AUTO_INSTALL"] === "1";
+  return (
+    updateCheckDisabled() || process.env["HYPERFRAMES_NO_AUTO_INSTALL"] === "1" || isUnattended()
+  );
 }
 
 /** Parse a semver-ish string's major number; returns NaN for pre-releases etc. */

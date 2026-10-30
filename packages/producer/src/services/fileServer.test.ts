@@ -14,6 +14,11 @@ import {
   VIRTUAL_TIME_SHIM,
 } from "./fileServer.js";
 
+const TAGGED_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAABGNJQ1ABAQABlXPCVgAAAAxJREFUeJxj0NfXBwABHgCOTp25kgAAAABJRU5ErkJggg==",
+  "base64",
+);
+
 function captureLogger() {
   const warnings: { message: string; meta?: Record<string, unknown> }[] = [];
   return {
@@ -1050,5 +1055,25 @@ describe("HF_EARLY_STUB + HF_BRIDGE_SCRIPT integration", () => {
     (win.__hfFlushSync as () => void)();
     expect(child.__hfReal).toBeInstanceOf(FakeTimeline);
     expect(child.__hfReal.parent).toBe(parent.__hfReal);
+  });
+});
+
+describe("createFileServer colour-tagged PNGs", () => {
+  it("serves a BT.709-tagged PNG without the tag, so render keeps the file's values", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-file-server-png-tags-"));
+    try {
+      writeEmptyIndex(projectDir);
+      writeFileSync(join(projectDir, "tagged.png"), TAGGED_PNG);
+      await withFileServer(projectDir, async (server) => {
+        const response = await fetch(`${server.url}/tagged.png`);
+        const body = Buffer.from(await response.arrayBuffer());
+        expect(response.status).toBe(200);
+        expect(body.includes("cICP")).toBe(false);
+        expect(body.includes("IDAT")).toBe(true);
+        expect(response.headers.get("content-length")).toBe(String(body.length));
+      });
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
   });
 });

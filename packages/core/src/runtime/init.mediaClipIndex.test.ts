@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { mediaElementTime } from "./mediaClock";
 import type { RuntimeTimelineLike } from "./types";
 import {
   createMockTimeline,
@@ -221,7 +222,7 @@ describe("per-seek media clip index", () => {
 
     const indexed = seekOntoFloatSumStart(false);
     expect(indexed).toEqual(seekOntoFloatSumStart(true));
-    expect(indexed[0]).toMatchObject({ currentTime: 3 });
+    expect(indexed[0]).toMatchObject({ currentTime: mediaElementTime(3) });
   });
 
   it("re-derives the index when a clip is moved on the timeline", () => {

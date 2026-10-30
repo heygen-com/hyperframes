@@ -28,7 +28,14 @@ export interface StudioUrlState {
   selection: StudioUrlSelectionState | null;
 }
 
-const VALID_TABS: RightPanelTab[] = ["layers", "design", "renders", "slideshow", "variables"];
+const VALID_TABS: RightPanelTab[] = [
+  "layers",
+  "design",
+  "renders",
+  "slideshow",
+  "variables",
+  "motionBlur",
+];
 
 /**
  * The composition auto-open and a schema-level panel (Variables / Slideshow)

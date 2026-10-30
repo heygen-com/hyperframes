@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from "vitest";
+import { mediaElementTime } from "@hyperframes/core/runtime/media-clock";
 import { formatTime, formatSpeed, SPEED_PRESETS } from "./controls.js";
 
 // Install a stubbed contentDocument getter on the given iframe element. The
@@ -146,6 +147,7 @@ describe("HyperframesPlayer parent-frame media", () => {
     paused: boolean;
     play: ReturnType<typeof vi.fn>;
     pause: ReturnType<typeof vi.fn>;
+    addEventListener: ReturnType<typeof vi.fn>;
     load: ReturnType<typeof vi.fn>;
   };
 
@@ -161,6 +163,7 @@ describe("HyperframesPlayer parent-frame media", () => {
       paused: true,
       play: vi.fn().mockResolvedValue(undefined),
       pause: vi.fn(),
+      addEventListener: vi.fn(),
       load: vi.fn(),
     };
 
@@ -253,7 +256,7 @@ describe("HyperframesPlayer parent-frame media", () => {
     expect(mockAudio.play).toHaveBeenCalled();
 
     player.seek(12.5);
-    expect(mockAudio.currentTime).toBe(12.5);
+    expect(mockAudio.currentTime).toBe(mediaElementTime(12.5));
 
     player.pause();
     expect(mockAudio.pause).toHaveBeenCalled();
@@ -339,7 +342,7 @@ describe("HyperframesPlayer parent-frame media", () => {
 
     player.seek(12.5);
     expect(mockAudio.pause).toHaveBeenCalled();
-    expect(mockAudio.currentTime).toBe(12.5);
+    expect(mockAudio.currentTime).toBe(mediaElementTime(12.5));
   });
 
   it("promotion is idempotent", () => {
@@ -778,206 +781,6 @@ describe("HyperframesPlayer media MutationObserver scoping", () => {
   });
 });
 
-// ── Parent-proxy time-mirror coalescing ──
-//
-// `_mirrorParentMediaTime` is the steady-state correction loop that nudges
-// every parent-frame audio/video proxy back onto the iframe's timeline. The
-// post-`P1-4` contract: a single over-threshold sample (one slow bridge tick,
-// one tab-throttled rAF, one GC pause) is absorbed by a per-proxy counter and
-// does NOT cost a `currentTime` write. Only a *trending* drift — two
-// consecutive samples above the 50 ms threshold — triggers a seek. Forced
-// callers (audio-ownership promotion, brand-new proxy initialization) bypass
-// the gate so the listener never hears a misaligned sample on cut-over.
-
-describe("HyperframesPlayer parent-proxy time-mirror coalescing", () => {
-  type DriftEntry = {
-    el: { currentTime: number; src: string; pause: () => void };
-    start: number;
-    duration: number;
-    driftSamples: number;
-  };
-  type PlayerInternal = HTMLElement & {
-    _parentMedia: DriftEntry[];
-    _mirrorParentMediaTime: (timelineSeconds: number, options?: { force?: boolean }) => void;
-    _promoteToParentProxy?: () => void;
-  };
-
-  let player: PlayerInternal;
-
-  beforeEach(async () => {
-    await import("./hyperframes-player.js");
-    player = document.createElement("hyperframes-player") as PlayerInternal;
-    document.body.appendChild(player);
-    // No audio-src was set, so `_parentMedia` is empty. Tests push synthetic
-    // POJO entries — `_mirrorParentMediaTime` only reads/writes
-    // `el.currentTime`, so a plain object stands in fine for HTMLMediaElement.
-  });
-
-  afterEach(() => {
-    player.remove();
-    vi.restoreAllMocks();
-  });
-
-  function makeEntry(
-    opts: {
-      currentTime?: number;
-      start?: number;
-      duration?: number;
-      driftSamples?: number;
-    } = {},
-  ): DriftEntry {
-    // Include `pause`/`src` so `disconnectedCallback`'s teardown loop
-    // (`m.el.pause(); m.el.src = ""`) doesn't blow up when the player is
-    // removed at the end of the test — `_mirrorParentMediaTime` itself only
-    // touches `currentTime`.
-    const entry: DriftEntry = {
-      el: {
-        currentTime: opts.currentTime ?? 0,
-        src: "",
-        pause: vi.fn(),
-      },
-      start: opts.start ?? 0,
-      duration: opts.duration ?? 100,
-      driftSamples: opts.driftSamples ?? 0,
-    };
-    player._parentMedia.push(entry);
-    return entry;
-  }
-
-  it("initializes new parent-media entries with driftSamples=0", () => {
-    // Mock Audio just for this test so the audio-src bootstrap path produces
-    // a real entry rather than throwing on construction.
-    const mockAudio = {
-      src: "",
-      preload: "",
-      muted: false,
-      playbackRate: 1,
-      currentTime: 0,
-      paused: true,
-      play: vi.fn().mockResolvedValue(undefined),
-      pause: vi.fn(),
-      load: vi.fn(),
-    };
-    vi.spyOn(globalThis, "Audio").mockImplementation(function () {
-      return mockAudio as unknown as HTMLAudioElement;
-    });
-
-    const fresh = document.createElement("hyperframes-player") as PlayerInternal;
-    fresh.setAttribute("audio-src", "https://cdn.example.com/narration.mp3");
-    document.body.appendChild(fresh);
-
-    expect(fresh._parentMedia).toHaveLength(1);
-    expect(fresh._parentMedia[0]?.driftSamples).toBe(0);
-    fresh.remove();
-  });
-
-  it("does nothing when drift is within the 50 ms threshold", () => {
-    const m = makeEntry({ currentTime: 5 });
-    player._mirrorParentMediaTime(5.04);
-    expect(m.el.currentTime).toBe(5);
-    expect(m.driftSamples).toBe(0);
-  });
-
-  it("absorbs a single over-threshold spike without writing currentTime", () => {
-    const m = makeEntry({ currentTime: 5 });
-    player._mirrorParentMediaTime(5.5);
-    expect(m.el.currentTime).toBe(5);
-    expect(m.driftSamples).toBe(1);
-  });
-
-  it("issues a seek on the second consecutive over-threshold sample", () => {
-    const m = makeEntry({ currentTime: 5 });
-    player._mirrorParentMediaTime(5.5);
-    expect(m.el.currentTime).toBe(5);
-    expect(m.driftSamples).toBe(1);
-    // Second sample with the same drift: the gate trips, the write fires,
-    // and the counter resets so the proxy doesn't re-seek every later tick.
-    player._mirrorParentMediaTime(5.5);
-    expect(m.el.currentTime).toBe(5.5);
-    expect(m.driftSamples).toBe(0);
-  });
-
-  it("resets the counter when a sample comes back within threshold", () => {
-    const m = makeEntry({ currentTime: 5 });
-    player._mirrorParentMediaTime(5.5);
-    expect(m.driftSamples).toBe(1);
-    // Recovery — counter must clear so a later isolated spike doesn't
-    // accidentally satisfy the 2-sample gate by piggy-backing on stale state.
-    player._mirrorParentMediaTime(5.02);
-    expect(m.driftSamples).toBe(0);
-    expect(m.el.currentTime).toBe(5);
-    player._mirrorParentMediaTime(5.5);
-    expect(m.driftSamples).toBe(1);
-    expect(m.el.currentTime).toBe(5);
-  });
-
-  it("force: true writes immediately on the first over-threshold sample", () => {
-    const m = makeEntry({ currentTime: 5 });
-    player._mirrorParentMediaTime(5.5, { force: true });
-    expect(m.el.currentTime).toBe(5.5);
-    expect(m.driftSamples).toBe(0);
-  });
-
-  it("force: true clears any pre-existing drift counter", () => {
-    const m = makeEntry({ currentTime: 5, driftSamples: 1 });
-    player._mirrorParentMediaTime(5.5, { force: true });
-    expect(m.el.currentTime).toBe(5.5);
-    expect(m.driftSamples).toBe(0);
-  });
-
-  it("does not seek out-of-range entries and resets their counters", () => {
-    // Active window [10, 15). currentTime=99 is a sentinel — if the function
-    // ever writes inside an out-of-range branch the test catches it because
-    // relTime would be 5 (or 15), not 99.
-    const m = makeEntry({
-      currentTime: 99,
-      start: 10,
-      duration: 5,
-      driftSamples: 5,
-    });
-    player._mirrorParentMediaTime(5);
-    expect(m.el.currentTime).toBe(99);
-    expect(m.driftSamples).toBe(0);
-    // Boundary: relTime === duration → still out of range (the loop uses `>=`).
-    m.driftSamples = 7;
-    player._mirrorParentMediaTime(15);
-    expect(m.el.currentTime).toBe(99);
-    expect(m.driftSamples).toBe(0);
-  });
-
-  it("tracks drift independently across multiple proxies", () => {
-    // a is drifted; b is aligned. A single tick must increment a's counter
-    // and reset b's — proving the per-entry state is genuinely per-entry.
-    const a = makeEntry({ currentTime: 5 });
-    const b = makeEntry({ currentTime: 7.01, driftSamples: 1 });
-    player._mirrorParentMediaTime(7);
-    expect(a.el.currentTime).toBe(5);
-    expect(a.driftSamples).toBe(1);
-    expect(b.el.currentTime).toBe(7.01);
-    expect(b.driftSamples).toBe(0);
-  });
-
-  it("force: true bypasses the gate for every proxy in a single sweep", () => {
-    const a = makeEntry({ currentTime: 5 });
-    const b = makeEntry({ currentTime: 8 });
-    player._mirrorParentMediaTime(7, { force: true });
-    expect(a.el.currentTime).toBe(7);
-    expect(b.el.currentTime).toBe(7);
-    expect(a.driftSamples).toBe(0);
-    expect(b.driftSamples).toBe(0);
-  });
-
-  it("_promoteToParentProxy invokes _mirrorParentMediaTime with force: true", () => {
-    // Integration check of the promotion call site — we cannot tolerate even
-    // ~80 ms of audible drift across an ownership flip, so the call site
-    // must opt out of the jitter gate.
-    const spy = vi.spyOn(player, "_mirrorParentMediaTime");
-    player._promoteToParentProxy?.();
-    const forcedCall = spy.mock.calls.find(([, opts]) => opts?.force === true);
-    expect(forcedCall).toBeDefined();
-  });
-});
-
 // ── Synchronous seek() with same-origin detection ──
 //
 // Studio has long reached past the postMessage bridge and called the runtime's
@@ -1020,7 +823,6 @@ describe("HyperframesPlayer seek() sync path", () => {
       el: { pause: ReturnType<typeof vi.fn>; src: string };
       start: number;
       duration: number;
-      driftSamples: number;
       source?: HTMLMediaElement | null;
     }>;
   };
@@ -1250,14 +1052,12 @@ describe("HyperframesPlayer seek() sync path", () => {
         el: { pause: slideProxyPause, src: "https://cdn.example.com/slide.mp4" },
         start: 0,
         duration: 5,
-        driftSamples: 0,
         source: iframeVideo,
       },
       {
         el: { pause: globalProxyPause, src: "https://cdn.example.com/background.mp3" },
         start: 0,
         duration: Infinity,
-        driftSamples: 0,
         source: null,
       },
     );
@@ -1899,6 +1699,7 @@ describe("HyperframesPlayer volume and mute", () => {
     load: ReturnType<typeof vi.fn>;
     play: ReturnType<typeof vi.fn>;
     pause: ReturnType<typeof vi.fn>;
+    addEventListener: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(async () => {
@@ -1914,6 +1715,7 @@ describe("HyperframesPlayer volume and mute", () => {
       load: vi.fn(),
       play: vi.fn().mockResolvedValue(undefined),
       pause: vi.fn(),
+      addEventListener: vi.fn(),
     };
     vi.spyOn(globalThis, "Audio").mockImplementation(function () {
       return mockAudio as unknown as HTMLAudioElement;
@@ -2849,6 +2651,7 @@ describe("HyperframesPlayer playback rate", () => {
     load: ReturnType<typeof vi.fn>;
     play: ReturnType<typeof vi.fn>;
     pause: ReturnType<typeof vi.fn>;
+    addEventListener: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(async () => {
@@ -2864,6 +2667,7 @@ describe("HyperframesPlayer playback rate", () => {
       load: vi.fn(),
       play: vi.fn().mockResolvedValue(undefined),
       pause: vi.fn(),
+      addEventListener: vi.fn(),
     };
     vi.spyOn(globalThis, "Audio").mockImplementation(function () {
       return mockAudio as unknown as HTMLAudioElement;
@@ -3145,7 +2949,7 @@ describe("HyperframesPlayer video mode", () => {
     expect(player.paused).toBe(false);
 
     player.seek(2.5);
-    expect(video.currentTime).toBe(2.5);
+    expect(video.currentTime).toBe(mediaElementTime(2.5));
     expect(player.currentTime).toBe(2.5);
     expect(player.paused).toBe(true);
     expect(HTMLMediaElement.prototype.pause).toHaveBeenCalled();
@@ -3182,7 +2986,7 @@ describe("HyperframesPlayer video mode", () => {
     flushFrame();
 
     expect(ended).toBe(0);
-    expect(video.currentTime).toBe(0);
+    expect(video.currentTime).toBe(mediaElementTime(0));
     expect(playSpy).toHaveBeenCalledTimes(2);
     expect(player.paused).toBe(false);
   });
@@ -3544,6 +3348,42 @@ describe("HyperframesPlayer video mode", () => {
     expect(playButton).not.toBeNull();
     expect(withControls.shadowRoot?.textContent).toContain("0:00 / 0:00");
     expect(withControls.duration).toBe(0);
+  });
+
+  it("shows a playback rate configured before controls are created", () => {
+    player = createPlayer({ type: "video/mp4", src: FILM, "playback-rate": "2", controls: "" });
+
+    const speed = player.shadowRoot?.querySelector(".hfp-speed-btn");
+    expect(speed?.textContent).toBe("2x");
+    expect(speed?.getAttribute("aria-label")).toBe("Playback speed: 2x");
+    expect(player.shadowRoot?.querySelector(".hfp-speed-option.hfp-active")?.textContent).toBe(
+      "2x",
+    );
+  });
+
+  it.each([false, true])("restores current controls state with paused=%s", (paused) => {
+    loadMetadata(videoOf(player), 60);
+    player.playbackRate = 2;
+    player.seek(15);
+    if (!paused) player.play();
+
+    for (let i = 0; i < 2; i++) {
+      player.setAttribute("controls", "");
+
+      const button = player.shadowRoot?.querySelector<HTMLButtonElement>(".hfp-play-btn");
+      expect(button?.getAttribute("aria-label")).toBe(paused ? "Play" : "Pause");
+      expect(player.shadowRoot?.querySelector(".hfp-time")?.textContent).toBe("0:15 / 1:00");
+      expect(player.shadowRoot?.querySelector<HTMLElement>(".hfp-progress")?.style.width).toBe(
+        "25%",
+      );
+      expect(player.shadowRoot?.querySelector(".hfp-speed-btn")?.textContent).toBe("2x");
+
+      player.removeAttribute("controls");
+    }
+
+    player.setAttribute("controls", "");
+    player.shadowRoot?.querySelector<HTMLButtonElement>(".hfp-play-btn")?.click();
+    expect(player.paused).toBe(!paused);
   });
 
   it("stops playing when the video fails", () => {

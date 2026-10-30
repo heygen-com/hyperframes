@@ -39,6 +39,9 @@ describe("policies — required actions", () => {
       "iam:CreateRole",
       "logs:CreateLogGroup",
       "cloudwatch:PutMetricAlarm",
+      // A redeploy that drops a reserved concurrency rolls back without it.
+      "lambda:DeleteFunctionConcurrency",
+      "states:DescribeMapRun",
     ]) {
       expect(actions).toContain(must);
     }

@@ -11,14 +11,16 @@ import {
 } from "@hyperframes/studio-server/history";
 import { formatFindingTimes } from "../utils/checkFindings.js";
 import { withProjectLock } from "../utils/projectLock.js";
-import { reportArtifacts } from "../utils/toolContext.js";
-import { defineCommand, parseArgs } from "citty";
+import { readToolContext, reportArtifacts, type ToolContext } from "../utils/toolContext.js";
+import { parseArgs } from "citty";
+import { defineCommand } from "../utils/defineCommand.js";
 import type { ArgsDef } from "citty";
 import type { Example } from "./_examples.js";
 import { parseAt } from "./layout.js";
 import { c } from "../ui/colors.js";
+import { registerBrowserSessionCleanup } from "../browser/launch.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
-import { setCommandExitCode } from "../utils/commandResult.js";
+import { CliUsageError, failUsage, setCommandExitCode } from "../utils/commandResult.js";
 import { swallowedFlagUsageError } from "../utils/reject-unknown-flags.js";
 import { formatLayoutIssue } from "../utils/layoutAudit.js";
 import { resolveProject, type ProjectDir } from "../utils/project.js";
@@ -26,6 +28,7 @@ import { withMeta } from "../utils/updateCheck.js";
 import {
   DEFAULT_CHECK_OPTIONS,
   checkExitCode,
+  prelaunchBrowserForNextCheck,
   runCheckPipeline,
   selectFindingCropRequests,
   type CheckFinding,
@@ -35,12 +38,18 @@ import {
 } from "../utils/checkPipeline.js";
 import type { CaptionZoneOptions, FrameCheckOptions, LayoutOptions } from "../utils/checkTypes.js";
 import { resolveLocalBrowserGpuMode } from "../browser/gpuPolicy.js";
+import { preResolveHostileMediaProxies, type PreparedMediaFile } from "../utils/checkBrowser.js";
+import { parseTimeoutMs } from "../utils/timeoutArg.js";
+import { failureMessage, jsonFailure } from "../utils/jsonError.js";
+import { recordLastCheck } from "../telemetry/config.js";
+import { failureCodes } from "../utils/checkFailureCodes.js";
 
 export const examples: Example[] = [
   ["Run the full verification gate", "hyperframes check"],
   ["Output one agent-readable envelope", "hyperframes check --json"],
   ["Persist the five audited contrast frames", "hyperframes check --snapshots"],
   ["Also fail on warnings", "hyperframes check --strict"],
+  ["Make only the browser-playable video copies, then exit", "hyperframes check --prepare-media"],
 ];
 
 type SavedCheck = Pick<ArtifactRecord, "id" | "revision" | "report" | "attribution">;
@@ -49,6 +58,7 @@ type SavedCheckReport = CheckReport & { saved?: SavedCheck };
 export interface CheckCommandDependencies {
   resolveProject(dir: string | undefined): ProjectDir;
   runPipeline(project: ProjectDir, options: CheckOptions): Promise<SavedCheckReport>;
+  prepareMedia(project: ProjectDir, options: CheckOptions): Promise<PreparedMediaFile[]>;
   withMeta(value: object): object;
 }
 
@@ -68,6 +78,11 @@ const DEFAULT_COMMAND_DEPENDENCIES: CheckCommandDependencies = {
       warnNotRecorded(error);
       return report;
     }
+  },
+  async prepareMedia(project, options) {
+    const { bundleWithLocalizedFonts } = await import("../utils/bundleWithLocalizedFonts.js");
+    const html = await bundleWithLocalizedFonts(project.dir);
+    return (await preResolveHostileMediaProxies(project.dir, html, options.autoProxy)).files;
   },
   withMeta,
 };
@@ -197,8 +212,8 @@ const CHECK_COMMAND_ARGS = {
   timeout: {
     type: "string",
     description:
-      "Initial render-ready timeout in ms; also sets the navigation minimum (10s floor, default: 3000)",
-    default: "3000",
+      "Initial render-ready timeout in ms, or with a unit (45s, 2m); also sets the navigation minimum (10s floor, default: 10000)",
+    default: "10000",
   },
   contrast: {
     type: "boolean",
@@ -208,6 +223,12 @@ const CHECK_COMMAND_ARGS = {
   strict: {
     type: "boolean",
     description: "Exit non-zero on warnings too",
+    default: false,
+  },
+  "prepare-media": {
+    type: "boolean",
+    description:
+      "Only make the browser-playable copies of videos Chrome cannot decode, then exit (no browser, no report). Stopped copies resume on the next run",
     default: false,
   },
   proxy: {
@@ -257,15 +278,26 @@ export function createCheckCommand(
       const args = parseArgs(rawArgs, CHECK_COMMAND_ARGS);
       const asJson = args.json === true;
 
+      const reported = untilReported();
       try {
-        const project = dependencies.resolveProject(args.dir);
         const options = parseCheckOptions(args);
+        const project = dependencies.resolveProject(args.dir);
         if (!asJson) {
           console.log(`${c.accent("◆")}  Checking ${c.accent(project.name)}`);
         }
+        if (args["prepare-media"] === true) {
+          await runPrepareMedia(dependencies, project, options, asJson);
+          return;
+        }
+        recordLastCheck({ at: new Date().toISOString(), codes: {} });
         const report = await withProjectLock(project.dir, "check", () =>
           dependencies.runPipeline(project, options),
         );
+        recordLastCheck({
+          at: new Date().toISOString(),
+          exitCode: checkExitCode(report),
+          codes: failureCodes(report),
+        });
         if (asJson) {
           console.log(JSON.stringify(dependencies.withMeta(report), null, 2));
         } else {
@@ -279,18 +311,97 @@ export function createCheckCommand(
         }
         setCommandExitCode(checkExitCode(report));
       } catch (error) {
-        const message = normalizeErrorMessage(error);
-        if (asJson) {
-          console.log(
-            JSON.stringify(dependencies.withMeta({ ok: false, error: message }), null, 2),
-          );
-        } else {
-          console.error(`${c.error("✗")} Check failed: ${message}`);
-        }
-        setCommandExitCode(1);
+        recordLastCheck({
+          at: new Date().toISOString(),
+          exitCode: 1,
+          codes: { [error instanceof CliUsageError ? error.code : "runtime_error"]: 1 },
+        });
+        reportCheckFailure(error, asJson, (value) => dependencies.withMeta(value));
+      } finally {
+        reported.done();
       }
     },
   });
+}
+
+function reportCheckFailure(
+  error: unknown,
+  asJson: boolean,
+  addMeta: (value: object) => object,
+): void {
+  const message = failureMessage(error);
+  const usage = error instanceof CliUsageError;
+  if (asJson) {
+    const code = usage ? error.code : "runtime_error";
+    console.log(JSON.stringify(addMeta(jsonFailure(code, message)), null, 2));
+  } else {
+    console.error(`${c.error("✗")} Check failed: ${message}`);
+  }
+  if (usage) failUsage();
+  setCommandExitCode(1);
+}
+
+const REPORT_GRACE_MS = 5_000;
+
+function untilReported(): { done: () => void } {
+  let done = (): void => undefined;
+  const printed = new Promise<void>((resolve) => {
+    done = resolve;
+  });
+  const forget = registerBrowserSessionCleanup(
+    () =>
+      new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, REPORT_GRACE_MS);
+        void printed.then(() => {
+          clearTimeout(timer);
+          resolve();
+        });
+      }),
+  );
+  return {
+    done: () => {
+      done();
+      forget();
+    },
+  };
+}
+
+async function runPrepareMedia(
+  dependencies: CheckCommandDependencies,
+  project: ProjectDir,
+  options: CheckOptions,
+  asJson: boolean,
+): Promise<void> {
+  const files = await withProjectLock(project.dir, "check", () =>
+    dependencies.prepareMedia(project, options),
+  );
+  const failed = files.filter((file) => file.state === "failed");
+  if (asJson) {
+    console.log(
+      JSON.stringify(
+        dependencies.withMeta({
+          ok: failed.length === 0,
+          prepared: files,
+          total: files.length,
+          ready: files.length - failed.length,
+          failed: failed.length,
+        }),
+        null,
+        2,
+      ),
+    );
+  } else {
+    const mark = failed.length === 0 ? c.success("✓") : c.error("✗");
+    console.log(
+      `${mark}  Browser-playable copies: ${files.length - failed.length}/${files.length} ready`,
+    );
+    for (const file of failed) console.log(`   ${file.file}: ${file.reason}`);
+  }
+  setCommandExitCode(failed.length === 0 ? 0 : 1);
+}
+
+function checkReview(): ToolContext["checkReview"] {
+  return readToolContext().checkReview;
 }
 
 function parseCheckOptions(args: Record<string, unknown>): CheckOptions {
@@ -305,16 +416,24 @@ function parseCheckOptions(args: Record<string, unknown>): CheckOptions {
     maxIssues: positiveInteger(args["max-issues"], DEFAULT_CHECK_OPTIONS.maxIssues),
     collapseStatic: args["collapse-static"] !== false,
     tolerance: nonNegativeNumber(args.tolerance, DEFAULT_CHECK_OPTIONS.tolerance),
-    timeout: Math.max(500, positiveInteger(args.timeout, DEFAULT_CHECK_OPTIONS.timeout)),
+    timeout: parseTimeoutMs(args.timeout, DEFAULT_CHECK_OPTIONS.timeout, 500),
     contrast: args.contrast !== false,
+    ...(checkReview()?.skipContrastInMotion ? { skipContrastInMotion: true } : {}),
     strict: args.strict === true,
     snapshots: args.snapshots === true,
+    ...(checkReview()?.findingFrames ? { findingFrames: true } : {}),
+    ...(checkReview()?.inspect ? { inspect: true } : {}),
     captionZone: parseCaptionZone(args["caption-zone"]),
     frameCheck: parseFrameCheck(args["frame-check"]),
     layout: parseLayout(args.layout),
     autoProxy: args.proxy as boolean | undefined,
     browserGpuMode: resolveLocalBrowserGpuMode(args["browser-gpu"] as boolean | undefined),
   };
+}
+
+export function prelaunchBrowserForCheck(rawArgs: string[]) {
+  const args = parseArgs(rawArgs, CHECK_COMMAND_ARGS);
+  return prelaunchBrowserForNextCheck(resolveProject(args.dir), parseCheckOptions(args));
 }
 
 export function parseCheckRange(value: unknown): [number, number] | undefined {
@@ -330,7 +449,7 @@ export function parseCheckRange(value: unknown): [number, number] | undefined {
     start < 0 ||
     end <= start
   )
-    throw new Error("Invalid --range: use non-negative start,end with end > start");
+    throw new CliUsageError("Invalid --range: use non-negative start,end with end > start");
   return [start, end];
 }
 
@@ -377,7 +496,7 @@ function parseFrameCheckTolerance(raw: string | undefined): number | undefined {
 }
 
 function frameCheckError(): Error {
-  return new Error(
+  return new CliUsageError(
     'Invalid --frame-check: use bare --frame-check or "severity=warning|error;seek=.25,.75;tol=4" (all fields optional)',
   );
 }
@@ -416,7 +535,7 @@ function parseProseCoverageFloor(raw: string | undefined): number | undefined {
 }
 
 function layoutError(): Error {
-  return new Error(
+  return new CliUsageError(
     'Invalid --layout: use "proseCoverageFloor=0.05" with a fraction from 0 to 1 (inclusive)',
   );
 }
@@ -518,7 +637,7 @@ function captionSeeks(
 }
 
 function captionZoneError(): Error {
-  return new Error(
+  return new CliUsageError(
     'Invalid --caption-zone; use "x0=0;y0=.82;x1=1;y1=1[;severity=warning|error][;seek=.5,1]" with fractions from 0 to 1.',
   );
 }
@@ -533,6 +652,13 @@ function nonNegativeNumber(value: unknown, fallback: number): number {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
+function browserSkippedLine(report: CheckReport): string {
+  const lintError = report.lint.findings.some((finding) => finding.severity === "error");
+  return lintError
+    ? "Browser validation skipped because of the lint error above: fix it and run check again. Layout, motion, and contrast were not checked, so this is not a clean pass."
+    : "Browser session never ran — layout, motion, and contrast below are empty placeholders, not a clean pass.";
+}
+
 function printHumanReport(report: CheckReport): void {
   if (report.scope) {
     console.log(
@@ -543,14 +669,14 @@ function printHumanReport(report: CheckReport): void {
   printSection("Lint", report.lint);
   if (report.browserSkipped) {
     console.log();
-    console.log(
-      `  ${c.warn("⚠")} Browser session never ran — layout, motion, and contrast below are empty placeholders, not a clean pass.`,
-    );
+    console.log(`  ${c.warn("⚠")} ${browserSkippedLine(report)}`);
   }
   printSection("Runtime", report.runtime);
   printLayoutSection("Layout", report.layout);
   printSection("Motion", report.motion);
   printContrastSection(report);
+  printCraftSection(report);
+  printSection("Audio", report.audio);
   printSnapshotSection(report);
   console.log();
   const label = report.ok ? c.success("Check passed") : c.error("Check failed");
@@ -615,6 +741,17 @@ function printContrastSection(report: CheckReport): void {
     console.log(`    ${c.dim(`Try ${finding.suggestedColor}; source ${finding.sourceFile}`)}`);
   }
   printCounts(section);
+}
+
+function printCraftSection(report: CheckReport): void {
+  const section = report.craft;
+  if (!section.enabled) {
+    console.log();
+    console.log(c.bold("Craft"));
+    console.log(`  ${c.dim("◇")} skipped`);
+    return;
+  }
+  printSection("Craft", section);
 }
 
 function printSnapshotSection(report: CheckReport): void {

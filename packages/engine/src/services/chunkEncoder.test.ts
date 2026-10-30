@@ -62,7 +62,7 @@ const tinyEncodeOptions = {
 };
 
 function encodeTimeoutMessage(timeoutMs: number): string {
-  return `FFmpeg killed after exceeding ffmpegEncodeTimeout (${timeoutMs} ms)`;
+  return `FFmpeg killed after writing no new frame for ffmpegEncodeTimeout (${timeoutMs} ms)`;
 }
 
 type FakeProc = EventEmitter & {
@@ -130,8 +130,8 @@ describe("ENCODER_PRESETS", () => {
     expect(ENCODER_PRESETS.draft.codec).toBe("h264");
   });
 
-  it("high uses slow preset with low CRF for better quality", () => {
-    expect(ENCODER_PRESETS.high.preset).toBe("slow");
+  it("high uses the fast preset with low CRF for better quality", () => {
+    expect(ENCODER_PRESETS.high.preset).toBe("fast");
     expect(ENCODER_PRESETS.high.quality).toBeLessThan(ENCODER_PRESETS.standard.quality);
     expect(ENCODER_PRESETS.high.codec).toBe("h264");
   });
@@ -177,11 +177,41 @@ describe("encodeFramesFromDir ffmpegEncodeTimeout", () => {
     expect(result.error).toContain("FFmpeg exited with code 143");
     expect(result.error).toContain("terminated by timeout");
     expect(result.error).toContain(encodeTimeoutMessage(1000));
-    // Regression: the timeout message used to just state what happened, leaving
-    // the user to independently discover FFMPEG_ENCODE_TIMEOUT_MS and
-    // PRODUCER_ENABLE_CHUNKED_ENCODE (both already existed) on their own.
     expect(result.error).toContain("FFMPEG_ENCODE_TIMEOUT_MS");
-    expect(result.error).toContain("PRODUCER_ENABLE_CHUNKED_ENCODE");
+    // Chunking does not help an encode that writes no frames, so it is no longer suggested.
+    expect(result.error).not.toContain("PRODUCER_ENABLE_CHUNKED_ENCODE");
+  });
+
+  it("keeps an encode going past the timeout while its frame count advances", async () => {
+    vi.useFakeTimers();
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { encodeFramesFromDir } = await import("./chunkEncoder.js");
+    const { root, framesDir } = createFrameFixture();
+
+    const encodePromise = encodeFramesFromDir(
+      framesDir,
+      "frame_%06d.png",
+      join(root, "slow.mp4"),
+      tinyEncodeOptions,
+      undefined,
+      { ffmpegEncodeTimeout: 1000 },
+    );
+
+    const proc = calls[0]!.proc;
+    for (let frame = 1; frame <= 4; frame += 1) {
+      vi.advanceTimersByTime(900);
+      proc.stderr.emit(
+        "data",
+        Buffer.from(`frame=${frame} fps=1 q=28.0 time=00:00:0${frame}.00\r`),
+      );
+    }
+    expect(proc.kill).not.toHaveBeenCalled();
+    emitClose(proc, 0);
+
+    await expect(encodePromise).resolves.toMatchObject({ success: true, framesEncoded: 2 });
   });
 
   it("keeps non-timeout ffmpeg failures unchanged", async () => {
@@ -871,6 +901,32 @@ describe("getEncoderPreset", () => {
     expect(preset.pixelFormat).toBe("yuva444p10le");
   });
 
+  it.each([
+    ["4444", "4444", "yuva444p10le"],
+    ["hq", "3", "yuv422p10le"],
+    ["422", "2", "yuv422p10le"],
+    ["lt", "1", "yuv422p10le"],
+    ["proxy", "0", "yuv422p10le"],
+  ] as const)("maps ProRes profile %s to -profile:v %s and %s", (name, profile, pixelFormat) => {
+    const preset = getEncoderPreset("standard", "mov", undefined, name);
+    expect(preset).toMatchObject({ codec: "prores", preset: profile, pixelFormat });
+    const args = buildEncoderArgs(
+      {
+        fps: { num: 30, den: 1 },
+        width: 1920,
+        height: 1080,
+        codec: "prores",
+        preset: preset.preset,
+        quality: 23,
+        pixelFormat,
+      },
+      ["-framerate", "30", "-i", "frames/%04d.png"],
+      "out.mov",
+    );
+    expect(args[args.indexOf("-profile:v") + 1]).toBe(profile);
+    expect(args[args.indexOf("-pix_fmt") + 1]).toBe(pixelFormat);
+  });
+
   it("uses prores 4444 for all mov quality levels", () => {
     for (const q of ["draft", "standard", "high"] as const) {
       const preset = getEncoderPreset(q, "mov");
@@ -1015,7 +1071,7 @@ describe("buildEncoderArgs GPU preset mapping", () => {
     expect(presetArg(args)).toBe("p4");
   });
 
-  it("translates the high slow preset to NVENC p5", () => {
+  it("translates the slow preset to NVENC p5", () => {
     const args = buildEncoderArgs(
       { ...baseOptions, codec: "h264", preset: "slow", quality: 15, useGpu: true },
       inputArgs,
@@ -1226,7 +1282,9 @@ describe("buildEncoderArgs color space", () => {
       "out.mp4",
       "nvenc",
     );
-    expect(args[args.indexOf("-vf") + 1]).toBe("pad=ceil(iw/2)*2:ceil(ih/2)*2");
+    expect(args[args.indexOf("-vf") + 1]).toBe(
+      "setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc:range=tv,pad=ceil(iw/2)*2:ceil(ih/2)*2",
+    );
   });
 
   it("converts alpha ProRes to BT.709 without an even-dim pad", () => {
@@ -1896,6 +1954,53 @@ describe.skipIf(!HAS_FFMPEG)("buildEncoderArgs SDR colour", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   }, 30_000);
+
+  // VideoToolbox, like a libx264/libx265 given no colour options, writes only the colour its frames carry.
+  const streamTagsThrough = (args: string[], encoder: string[]): string => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-frame-tags-"));
+    try {
+      const out = join(dir, "out.mp4");
+      const vfAt = args.indexOf("-vf");
+      const vf = vfAt === -1 ? [] : ["-vf", args[vfAt + 1]!];
+      const source = ["-f", "lavfi", "-i", "color=c=0x808080:s=64x16:d=0.1"];
+      const encode = spawnSync(ffmpeg, ["-y", "-v", "error", ...source, ...vf, ...encoder, out]);
+      expect(encode.status).toBe(0);
+      const entries = "stream=color_space,color_transfer,color_primaries";
+      const probe = ["-v", "error", "-show_entries", entries, "-of", "csv=p=0", "--", out];
+      return spawnSync(getFfprobeBinary(), probe).stdout.toString().trim();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+  const tinyFrame = { fps: { num: 30, den: 1 }, width: 64, height: 16, preset: "ultrafast" };
+
+  it("tags BT.709 on the frames, so an encoder that reads only them tags the stream", () => {
+    const args = buildEncoderArgs(
+      { ...tinyFrame, codec: "h264", quality: 23 },
+      ["-i", "in"],
+      "o.mp4",
+    );
+
+    expect(streamTagsThrough(args, ["-c:v", "libx264", "-preset", "ultrafast"])).toBe(
+      "bt709,bt709,bt709",
+    );
+  });
+
+  it.each([
+    ["pq", "smpte2084", null],
+    ["hlg", "arib-std-b67", null],
+    ["pq", "smpte2084", "videotoolbox"],
+  ] as const)("tags HDR %s (%s) on the frames for encoder %s", (transfer, trc, gpu) => {
+    const args = buildEncoderArgs(
+      { ...tinyFrame, codec: "h265", quality: 23, hdr: { transfer }, useGpu: gpu !== null },
+      ["-i", "in"],
+      "o.mp4",
+      gpu,
+    );
+    const x265 = ["-c:v", "libx265", "-pix_fmt", "yuv420p10le", "-x265-params", "log-level=error"];
+
+    expect(streamTagsThrough(args, x265)).toBe(`bt2020nc,${trc},bt2020`);
+  });
 
   it("keeps the rightmost 8 columns of a 1080-wide (16n + 8) mp4", () => {
     const dir = mkdtempSync(join(tmpdir(), "hf-sdr-right-edge-"));

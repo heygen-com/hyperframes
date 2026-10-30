@@ -1,4 +1,4 @@
-import { failCommand } from "./commandResult.js";
+import { failCommand, failUsage } from "./commandResult.js";
 /**
  * Shared `--variables` / `--variables-file` / `--strict-variables` parsing
  * and validation helpers used by both `hyperframes render` (in-process) and
@@ -14,7 +14,6 @@ import { failCommand } from "./commandResult.js";
  */
 
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import {
   extractCompositionMetadata,
   formatVariableValidationIssue,
@@ -24,6 +23,12 @@ import {
 import { ensureDOMParser } from "./dom.js";
 import { c } from "../ui/colors.js";
 import { errorBox } from "../ui/format.js";
+import {
+  inlineJsonHint,
+  JsonFlagReadError,
+  readJsonFlagText,
+  type JsonFlagIO,
+} from "./jsonFlag.js";
 
 export type VariablesParseError =
   | { kind: "conflict" }
@@ -48,29 +53,21 @@ export type VariablesParseResult =
 export function parseVariablesArg(
   inline: string | undefined,
   filePath: string | undefined,
-  readFile: (path: string) => string = (p) => readFileSync(resolve(p), "utf8"),
+  readFile?: JsonFlagIO["readFile"],
+  readStdin?: JsonFlagIO["readStdin"],
 ): VariablesParseResult {
   if (inline != null && filePath != null) {
     return { ok: false, error: { kind: "conflict" } };
   }
+  const value = inline ?? filePath;
+  const source = inline != null ? "inline" : "file";
   let raw: string | undefined;
-  let source: "inline" | "file" | undefined;
-  if (inline != null) {
-    raw = inline;
-    source = "inline";
-  } else if (filePath != null) {
+  if (value != null) {
     try {
-      raw = readFile(filePath);
-      source = "file";
+      raw = readJsonFlagText(value, { readFile, readStdin });
     } catch (error: unknown) {
-      return {
-        ok: false,
-        error: {
-          kind: "read-error",
-          path: filePath,
-          cause: error instanceof Error ? error.message : String(error),
-        },
-      };
+      if (!(error instanceof JsonFlagReadError)) throw error;
+      return { ok: false, error: { kind: "read-error", path: error.path, cause: error.cause } };
     }
   }
   if (raw == null) return { ok: true, value: undefined };
@@ -83,7 +80,7 @@ export function parseVariablesArg(
       ok: false,
       error: {
         kind: "parse-error",
-        source: source ?? "inline",
+        source,
         cause: error instanceof Error ? error.message : String(error),
       },
     };
@@ -103,7 +100,7 @@ function variablesErrorMessage(error: VariablesParseError): { title: string; mes
       };
     case "read-error":
       return {
-        title: "Could not read --variables-file",
+        title: "Could not read the variables JSON",
         message: `${error.path}: ${error.cause}`,
       };
     case "parse-error":
@@ -112,7 +109,10 @@ function variablesErrorMessage(error: VariablesParseError): { title: string; mes
           error.source === "file"
             ? "Invalid JSON in --variables-file"
             : "Invalid JSON in --variables",
-        message: error.cause,
+        message:
+          error.source === "inline"
+            ? `${error.cause} (${inlineJsonHint("--variables")})`
+            : error.cause,
       };
     case "shape-error":
       return {
@@ -135,6 +135,9 @@ export function resolveVariablesArg(
   if (!result.ok) {
     const { title, message } = variablesErrorMessage(result.error);
     errorBox(title, message);
+    const { kind } = result.error;
+    const flagsAreWrong = kind === "conflict" || (inline != null && kind !== "read-error");
+    if (flagsAreWrong) failUsage();
     failCommand();
   }
   return result.value;

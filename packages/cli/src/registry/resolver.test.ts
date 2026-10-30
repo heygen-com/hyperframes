@@ -5,6 +5,7 @@ import {
   loadAllItems,
   resolveItem,
   resolveItemWithDependencies,
+  resolveItemsByTag,
   unreachableRegistryMessage,
 } from "./resolver.js";
 
@@ -54,6 +55,7 @@ function mockFetch(
     missing?: string[];
     /** Inject `registryDependencies` into served items, keyed by item name. */
     dependencies?: Record<string, string[] | undefined>;
+    tags?: Record<string, string[]>;
   } = {},
 ): void {
   vi.stubGlobal(
@@ -67,9 +69,8 @@ function mockFetch(
       if (m && !overrides.missing?.includes(m[2]!)) {
         const type = m[1] === "examples" ? "hyperframes:example" : "hyperframes:block";
         const item = buildItem(m[2]!, type);
-        if (overrides.dependencies && item.name in overrides.dependencies) {
-          item.registryDependencies = overrides.dependencies[item.name];
-        }
+        item.registryDependencies = overrides.dependencies?.[item.name];
+        item.tags = overrides.tags?.[item.name];
         return new Response(JSON.stringify(item), { status: 200 });
       }
       return new Response("not found", { status: 404 });
@@ -132,6 +133,70 @@ describe("registry resolver", () => {
     });
   });
 
+  describe("loadAllItems on a slow registry", () => {
+    const entries = Array.from({ length: 100 }, (_, i) => ({
+      name: `item-${i}`,
+      type: "hyperframes:block" as const,
+    }));
+    const itemName = (url: string) => /\/blocks\/([^/]+)\/registry-item\.json$/.exec(url)?.[1];
+
+    it("keeps at most 32 item fetches in flight", async () => {
+      let inFlight = 0;
+      let peak = 0;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string) => {
+          inFlight += 1;
+          peak = Math.max(peak, inFlight);
+          await new Promise((resolve) => setImmediate(resolve));
+          inFlight -= 1;
+          return new Response(JSON.stringify(buildItem(itemName(url)!, "hyperframes:block")));
+        }),
+      );
+      const items = await loadAllItems(entries, { baseUrl: uniqueBaseUrl() });
+      expect(items).toHaveLength(100);
+      expect(peak).toBe(32);
+    });
+
+    it("stops fetching after a timeout and warns once for every skipped item", async () => {
+      const fetchMock = vi.fn(async () => {
+        throw new DOMException("The operation was aborted due to timeout", "TimeoutError");
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      const warnings: string[] = [];
+      const items = await loadAllItems(entries, {
+        baseUrl: uniqueBaseUrl(),
+        onWarn: (m) => warnings.push(m),
+      });
+      expect(items).toEqual([]);
+      expect(fetchMock).toHaveBeenCalledTimes(32);
+      expect(warnings).toEqual([
+        'skipped 100 items ("item-0", "item-1", "item-2", ...): TimeoutError: The operation was aborted due to timeout',
+      ]);
+    });
+    it("uses cached remaining items after a forced refresh times out", async () => {
+      const baseUrl = uniqueBaseUrl();
+      const cached = await loadAllItems(entries.slice(32), { baseUrl });
+      expect(cached).toHaveLength(68);
+      const fetchMock = vi.fn(async () => {
+        throw new DOMException("The operation was aborted due to timeout", "TimeoutError");
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      const warnings: string[] = [];
+
+      const items = await loadAllItems(entries, {
+        baseUrl,
+        skipCache: true,
+        onWarn: (m) => warnings.push(m),
+      });
+      expect(items).toEqual(cached);
+      expect(fetchMock).toHaveBeenCalledTimes(32);
+      expect(warnings).toEqual([
+        'skipped 32 items ("item-0", "item-1", "item-2", ...): TimeoutError: The operation was aborted due to timeout',
+      ]);
+    });
+  });
+
   describe("resolveItem", () => {
     it("returns the full manifest for a known item", async () => {
       const baseUrl = uniqueBaseUrl();
@@ -167,6 +232,22 @@ describe("registry resolver", () => {
   });
 
   describe("resolveItemWithDependencies", () => {
+    it("refreshes cached transitive dependencies when skipCache is requested", async () => {
+      const baseUrl = uniqueBaseUrl();
+      mockFetch({ dependencies: { gamma: ["beta"] } });
+      const cached = await resolveItemWithDependencies("gamma", { baseUrl });
+      expect(cached.map((item) => item.name)).toEqual(["beta", "gamma"]);
+      mockFetch({ dependencies: { gamma: ["beta"], beta: ["alpha"] } });
+
+      const unchanged = await resolveItemWithDependencies("gamma", { baseUrl });
+      expect(unchanged.map((item) => item.name)).toEqual(["beta", "gamma"]);
+      expect(fetch).not.toHaveBeenCalled();
+
+      const refreshed = await resolveItemWithDependencies("gamma", { baseUrl, skipCache: true });
+      expect(refreshed.map((item) => item.name)).toEqual(["alpha", "beta", "gamma"]);
+      expect(fetch).toHaveBeenCalledTimes(4);
+    });
+
     it("returns dependencies first, then the requested item (linear chain)", async () => {
       mockFetch({ dependencies: { beta: ["alpha"], gamma: ["beta"] } });
       const baseUrl = uniqueBaseUrl();
@@ -204,6 +285,26 @@ describe("registry resolver", () => {
         /Circular registryDependencies detected: gamma -> beta -> alpha -> gamma/,
       );
     });
+  });
+});
+
+describe("resolveItemsByTag", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("refreshes added and removed tags on already cached items", async () => {
+    const baseUrl = uniqueBaseUrl();
+    mockFetch({ tags: { gamma: ["old-tag"] } });
+    const original = await resolveItemsByTag("old-tag", { baseUrl });
+    expect(original.map((item) => item.name)).toEqual(["gamma"]);
+    mockFetch({ tags: { gamma: ["new-tag"] } });
+
+    expect(await resolveItemsByTag("new-tag", { baseUrl })).toEqual([]);
+    expect(fetch).not.toHaveBeenCalled();
+    const refreshed = await resolveItemsByTag("new-tag", { baseUrl, skipCache: true });
+    expect(refreshed.map((item) => item.name)).toEqual(["gamma"]);
+    expect(fetch).toHaveBeenCalledTimes(4);
+    expect(await resolveItemsByTag("old-tag", { baseUrl })).toEqual([]);
+    expect(fetch).toHaveBeenCalledTimes(4);
   });
 });
 

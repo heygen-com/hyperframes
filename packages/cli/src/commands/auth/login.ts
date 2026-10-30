@@ -6,7 +6,7 @@ import { envFlagEnabled, isAttendedTerminal } from "../../utils/attendedTerminal
  * Default: OAuth 2.0 + PKCE via a loopback callback. The CLI opens
  * the user's browser, captures the authorization code on an
  * ephemeral 127.0.0.1 port, exchanges it for tokens, and persists
- * them to `~/.heygen/credentials`.
+ * them to `~/.hyperframes/credentials`.
  *
  * `--api-key`: opts into the legacy long-lived API-key path.
  *
@@ -23,7 +23,7 @@ import { envFlagEnabled, isAttendedTerminal } from "../../utils/attendedTerminal
  *     the transient-blip rationale.
  */
 
-import { defineCommand } from "citty";
+import { defineCommand } from "../../utils/defineCommand.js";
 import { stdin as input } from "node:process";
 import {
   AuthClient,
@@ -47,6 +47,7 @@ import {
   type StoredUserInfo,
   type UserInfo,
 } from "../../auth/index.js";
+import { telemetryIdentity } from "../../auth/telemetryIdentity.js";
 import { c } from "../../ui/colors.js";
 
 const STDIN_TIMEOUT_MS = 30_000;
@@ -178,9 +179,9 @@ async function runDeviceLogin(): Promise<void> {
     failCommand();
   }
 
-  const id = identityKey(user);
-  if (id) identifyUser(id);
-  trackAuthLoginCompleted("device", id);
+  const who = telemetryIdentity(user);
+  if (who) identifyUser(who.distinctId, who.traits);
+  trackAuthLoginCompleted("device", who?.distinctId);
   const identity = userDisplayName(toStoredUserInfo(user)) ?? "(unknown user)";
   console.log(c.success(`✓ Signed in as ${identity}.`));
 }
@@ -250,9 +251,9 @@ async function reportIdentity(credential: ReturnType<typeof issuedCredential>): 
     // Attribute this install to the signed-in account (and stitch its prior
     // anonymous usage) before recording completion, so the completed event
     // carries the identity. Both no-op under the telemetry opt-out.
-    const id = identityKey(user);
-    if (id) identifyUser(id);
-    trackAuthLoginCompleted("oauth", id);
+    const who = telemetryIdentity(user);
+    if (who) identifyUser(who.distinctId, who.traits);
+    trackAuthLoginCompleted("oauth", who?.distinctId);
     const identity = userDisplayName(toStoredUserInfo(user)) ?? "(unknown user)";
     console.log(c.success(`✓ Signed in as ${identity}.`));
   } catch (err) {
@@ -267,20 +268,6 @@ async function reportIdentity(credential: ReturnType<typeof issuedCredential>): 
       c.warn(`Signed in. Identity check failed (transient): ${(err as Error).message}`),
     );
   }
-}
-
-/**
- * The stable key we associate this install with in telemetry after sign-in.
- * `/v3/users/me` exposes no opaque user_id, so we key on the HeyGen account
- * EMAIL — the canonical account identifier and the reliable join key back to
- * billing — falling back to username only when the account exposes no email.
- * (Username is NOT a privacy win — HeyGen usernames are frequently email-shaped
- * — it is purely a fallback so an emailless account is still attributable.)
- * The privacy notice (showTelemetryNotice) and docs/packages/cli.mdx disclose
- * both, so keep them in sync with whatever this returns.
- */
-function identityKey(user: UserInfo): string | undefined {
-  return user.email ?? user.username;
 }
 
 /** Project the API `/v3/users/me` view onto the on-disk identity block. */
@@ -369,9 +356,9 @@ async function runApiKeyLogin(inlineKey: string): Promise<void> {
     await rollback(previous);
     failCommand();
   }
-  const id = identityKey(user);
-  if (id) identifyUser(id);
-  trackAuthLoginCompleted("api_key", id);
+  const who = telemetryIdentity(user);
+  if (who) identifyUser(who.distinctId, who.traits);
+  trackAuthLoginCompleted("api_key", who?.distinctId);
 }
 
 async function snapshotStore(): Promise<Credentials> {
@@ -468,7 +455,7 @@ async function readAllWithTimeout(
 }
 
 async function promptForKey(): Promise<string> {
-  const clack = await import("@clack/prompts");
+  const clack = await import("../../ui/prompts.js");
   const value = await clack.password({
     message: "Enter HeyGen API key",
     validate: (v) => {

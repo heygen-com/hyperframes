@@ -12,15 +12,21 @@
  */
 
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { availableParallelism, tmpdir } from "node:os";
 import { basename, join } from "node:path";
+import { GetAccountSettingsCommand, InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
 import { S3Client } from "@aws-sdk/client-s3";
 import {
   assemble,
+  buildPlanAudio,
+  chunksAreStitchedMp4,
+  plansSeparateAudio,
+  stitchesSeparateAudio,
   type AssembleResult,
   type ChunkRenderer,
   type ChunkResult,
   type DistributedRenderConfig,
+  DEFAULT_MAX_PARALLEL_CHUNKS,
   listPlanV2ArtifactsForTarget,
   materializePlanV2Target,
   plan,
@@ -29,17 +35,22 @@ import {
   resolvePlanAudioPath,
   planV2WithPublisher,
   type PlanResult,
+  isPlanV2DeferredSourceArtifact,
   type PlanV2Artifact,
   type PlanV2Manifest,
   type PlanV2MaterializationTarget,
   readPlanV2Manifest,
+  type RemoteProjectFile,
   renderChunk,
 } from "@hyperframes/producer/distributed";
 import { resolveChromeExecutablePath } from "./chromium.js";
+import { type StitchHelper, sendRangeParts, stitchMp4InS3 } from "./s3Stitch.js";
 import { type DistributedFormat, formatExtension } from "./formatExtension.js";
 import type {
   AssembleEvent,
   AssembleLambdaResult,
+  AudioEvent,
+  AudioLambdaResult,
   LambdaAction,
   LambdaEvent,
   LambdaResult,
@@ -50,16 +61,21 @@ import type {
   RenderChunkV2Event,
   RenderChunkLambdaResult,
   AssembleV2Event,
+  StitchPartsEvent,
+  StitchPartsLambdaResult,
 } from "./events.js";
 import {
   downloadS3ObjectToFile,
   downloadS3ObjectToFileVerified,
+  mapConcurrent,
   parseS3Uri,
+  presignVerifiedS3GetUrl,
   tarDirectory,
   untarDirectory,
   uploadFileToS3,
 } from "./s3Transport.js";
 import { S3PlanV2ArtifactPublisher } from "./s3PlanV2Publisher.js";
+import { downloadSiteFiles, isSiteManifestUri } from "./siteManifest.js";
 
 /**
  * Lazily-constructed S3 client. Cached at module scope so warm Lambda
@@ -81,9 +97,12 @@ function getS3Client(): S3Client {
  */
 export interface HandlerDeps {
   s3?: S3Client;
+  /** Reads the account's concurrency when the render does not set one. */
+  lambda?: LambdaClient;
   primitives?: {
     plan: typeof plan;
     planV2WithPublisher?: typeof planV2WithPublisher;
+    buildPlanAudio?: typeof buildPlanAudio;
     renderChunk: ChunkRenderer;
     assemble: typeof assemble;
   };
@@ -104,6 +123,14 @@ export interface HandlerDeps {
  * shape; unwrap until we hit a discriminated event.
  */
 export async function handler(event: LambdaEvent, deps?: HandlerDeps): Promise<LambdaResult> {
+  if ((event as { Action?: unknown }).Action === "warm") {
+    primeRuntimeEnv();
+    await ensureChromePath(deps);
+    return { Action: "warm" };
+  }
+  if ((event as { Action?: unknown }).Action === "stitchParts") {
+    return await handleStitchParts(event as StitchPartsEvent, deps);
+  }
   const unwrapped = unwrapEvent(event);
   validatePlanProtocolShape(unwrapped);
   validateEventS3Uris(unwrapped);
@@ -116,6 +143,8 @@ export async function handler(event: LambdaEvent, deps?: HandlerDeps): Promise<L
     switch (unwrapped.Action) {
       case "plan":
         return await handlePlan(unwrapped, deps);
+      case "audio":
+        return await handleAudio(unwrapped, deps);
       case "renderChunk":
         return await handleRenderChunk(unwrapped, deps);
       case "assemble":
@@ -184,13 +213,15 @@ function normalizeTerminalErrorName(error: unknown): void {
 // configurations and prevents infinite loops on malformed input.
 const MAX_ENVELOPE_DEPTH = 4;
 
-export function unwrapEvent(event: LambdaEvent): PlanEvent | RenderChunkEvent | AssembleEvent {
+export function unwrapEvent(
+  event: LambdaEvent,
+): PlanEvent | AudioEvent | RenderChunkEvent | AssembleEvent {
   let cursor: LambdaEvent = event;
   for (let i = 0; i < MAX_ENVELOPE_DEPTH; i++) {
     if (cursor && typeof cursor === "object") {
       const obj = cursor as Record<string, unknown>;
       if (typeof obj.Action === "string" && isLambdaAction(obj.Action)) {
-        return cursor as PlanEvent | RenderChunkEvent | AssembleEvent;
+        return cursor as PlanEvent | AudioEvent | RenderChunkEvent | AssembleEvent;
       }
       if ("Payload" in obj) {
         cursor = obj.Payload as LambdaEvent;
@@ -209,13 +240,15 @@ export function unwrapEvent(event: LambdaEvent): PlanEvent | RenderChunkEvent | 
 }
 
 function isLambdaAction(value: string): value is LambdaAction {
-  return value === "plan" || value === "renderChunk" || value === "assemble";
+  return value === "plan" || value === "audio" || value === "renderChunk" || value === "assemble";
 }
 
 // This is the single fail-closed boundary for the wire union. Keeping all
 // forbidden locator combinations together makes mixed-protocol input auditable.
 // fallow-ignore-next-line complexity
-function validatePlanProtocolShape(event: PlanEvent | RenderChunkEvent | AssembleEvent): void {
+function validatePlanProtocolShape(
+  event: PlanEvent | AudioEvent | RenderChunkEvent | AssembleEvent,
+): void {
   const raw = event as unknown as Record<string, unknown>;
   const protocol = raw.PlanProtocol;
   if (protocol !== undefined && protocol !== "v1" && protocol !== "v2") {
@@ -225,7 +258,7 @@ function validatePlanProtocolShape(event: PlanEvent | RenderChunkEvent | Assembl
     error.name = "PLAN_PROTOCOL_UNSUPPORTED";
     throw error;
   }
-  if (event.Action === "plan") return;
+  if (event.Action === "plan" || event.Action === "audio") return;
 
   const effectiveProtocol = protocol ?? "v2";
   const hasV1Locator = typeof raw.PlanS3Uri === "string";
@@ -239,11 +272,6 @@ function validatePlanProtocolShape(event: PlanEvent | RenderChunkEvent | Assembl
     const error = new Error(
       `[handler] ${effectiveProtocol} ${event.Action} event has mixed or missing plan locators`,
     );
-    error.name = "PLAN_PROTOCOL_UNSUPPORTED";
-    throw error;
-  }
-  if (effectiveProtocol === "v2" && event.Action === "assemble" && event.AudioS3Uri !== null) {
-    const error = new Error("[handler] v2 assemble audio must be materialized from the manifest");
     error.name = "PLAN_PROTOCOL_UNSUPPORTED";
     throw error;
   }
@@ -270,7 +298,7 @@ function logEvent(payload: Record<string, unknown>): void {
 // Keep event variants together so logs share one redaction and summarization boundary.
 // fallow-ignore-next-line complexity
 function summarizeEvent(
-  event: PlanEvent | RenderChunkEvent | AssembleEvent,
+  event: PlanEvent | AudioEvent | RenderChunkEvent | AssembleEvent,
 ): Record<string, unknown> {
   switch (event.Action) {
     case "plan":
@@ -278,6 +306,13 @@ function summarizeEvent(
         projectS3Uri: event.ProjectS3Uri,
         planOutputS3Prefix: event.PlanOutputS3Prefix,
         planProtocol: event.PlanProtocol ?? "v2",
+        format: event.Config.format,
+        fps: event.Config.fps,
+      };
+    case "audio":
+      return {
+        projectS3Uri: event.ProjectS3Uri,
+        planOutputS3Prefix: event.PlanOutputS3Prefix,
         format: event.Config.format,
         fps: event.Config.fps,
       };
@@ -323,12 +358,60 @@ function primeRuntimeEnv(): void {
 
 // ── Plan ────────────────────────────────────────────────────────────────────
 
-function planConfig(event: PlanEvent, deps?: HandlerDeps): DistributedRenderConfig {
-  const remainingMs = deps?.getRemainingTimeInMillis?.();
-  if (event.Config.workerTimeoutSeconds !== undefined || remainingMs === undefined) {
-    return { ...event.Config };
+// Share of the account's unreserved concurrency a render plans for. The rest stays free for other
+// functions; at the default 1000 quota that is the 100 AWS keeps unreserved anyway.
+const ACCOUNT_CONCURRENCY_SHARE = 0.9;
+
+async function resolveWorkerConcurrency(event: PlanEvent, deps?: HandlerDeps): Promise<number> {
+  if (event.Config.workerConcurrency !== undefined) return event.Config.workerConcurrency;
+  try {
+    return await functionConcurrency(deps?.lambda);
+  } catch (err) {
+    logEvent({
+      event: "worker_concurrency",
+      level: "WARN",
+      source: "fallback",
+      concurrency: DEFAULT_MAX_PARALLEL_CHUNKS,
+      message:
+        `Could not read the account's Lambda concurrency (${String(err)}); ` +
+        `planning for ${DEFAULT_MAX_PARALLEL_CHUNKS} chunks at once. Allow lambda:GetAccountSettings ` +
+        "on the function role, or set the concurrency explicitly.",
+    });
+    return DEFAULT_MAX_PARALLEL_CHUNKS;
   }
-  return { ...event.Config, workerTimeoutSeconds: Math.ceil(remainingMs / 1000) };
+}
+
+/** The stack's reserved concurrency (on the function that runs the chunks), if it sets one. */
+function reservedConcurrency(): number | undefined {
+  const reserved = Number(process.env.HYPERFRAMES_LAMBDA_RESERVED_CONCURRENCY);
+  return reserved > 0 ? reserved : undefined;
+}
+
+/** The function's reserved concurrency, else its share of the account's unreserved pool. */
+async function functionConcurrency(lambda = new LambdaClient({})): Promise<number> {
+  const reserved = reservedConcurrency();
+  if (reserved) return reserved;
+  const { AccountLimit } = await lambda.send(new GetAccountSettingsCommand({}));
+  const unreserved = AccountLimit?.UnreservedConcurrentExecutions;
+  if (unreserved === undefined) throw new Error("no UnreservedConcurrentExecutions in the reply");
+  const concurrency = Math.max(1, Math.floor(unreserved * ACCOUNT_CONCURRENCY_SHARE));
+  logEvent({ event: "worker_concurrency", source: "account", unreserved, concurrency });
+  return concurrency;
+}
+
+async function planConfig(
+  event: PlanEvent,
+  deps?: HandlerDeps,
+): Promise<DistributedRenderConfig & { workerConcurrency: number }> {
+  const config = {
+    ...event.Config,
+    workerConcurrency: await resolveWorkerConcurrency(event, deps),
+  };
+  const remainingMs = deps?.getRemainingTimeInMillis?.();
+  if (config.workerTimeoutSeconds === undefined && remainingMs !== undefined) {
+    config.workerTimeoutSeconds = Math.ceil(remainingMs / 1000);
+  }
+  return config;
 }
 
 // The v1 handler owns one transactional download, plan, archive, upload, and cleanup lifecycle.
@@ -338,34 +421,21 @@ async function handlePlan(event: PlanEvent, deps?: HandlerDeps): Promise<PlanLam
     return handlePlanV2(event, deps);
   }
   const started = Date.now();
-  const config = planConfig(event, deps);
+  const config = await planConfig(event, deps);
   const s3 = deps?.s3 ?? getS3Client();
   const primitive = deps?.primitives?.plan ?? plan;
-
-  // The producer's probe stage launches Chromium whenever the composition
-  // needs a runtime duration probe or has unresolved sub-compositions, so
-  // plan has to resolve Chrome the same way renderChunk does. Without this
-  // the probe throws "An `executablePath` or `channel` must be specified
-  // for `puppeteer-core`" the moment runProbeStage calls puppeteer.launch.
-  if (!deps?.skipChromeResolution && !process.env.PRODUCER_HEADLESS_SHELL_PATH) {
-    const chromePath = await resolveChromeExecutablePath();
-    process.env.PRODUCER_HEADLESS_SHELL_PATH = chromePath;
-  }
+  await ensureChromePath(deps);
 
   const work = mkdtempSync(join(deps?.tmpRoot ?? tmpdir(), "hf-lambda-plan-"));
-  // We use `.tar.gz` (not `.zip`) as the project archive's on-the-wire
-  // format because Lambda's Amazon Linux base image ships GNU `tar` but
-  // not `unzip` in `/usr/bin`. The smoke script + future CLI both
-  // produce tar.gz uploads.
-  const projectArchive = join(work, "project.tar.gz");
-  const projectDir = join(work, "project");
   const planDir = join(work, "plan");
 
   try {
-    await downloadS3ObjectToFile(s3, event.ProjectS3Uri, projectArchive);
-    await untarDirectory(projectArchive, projectDir);
+    const { projectDir } = await fetchProject(s3, event.ProjectS3Uri, work);
 
-    const result: PlanResult = await primitive(projectDir, config, planDir);
+    // Same chunk layout as v2, so both protocols produce the same chunks and output.
+    const result: PlanResult = await primitive(projectDir, config, planDir, {
+      chunksCarryAudio: true,
+    });
 
     // Upload the planDir as a single tarball. Step Functions cannot pass
     // a directory-shaped artifact between states; we serialize and rely on
@@ -392,6 +462,7 @@ async function handlePlan(event: PlanEvent, deps?: HandlerDeps): Promise<PlanLam
       PlanS3Uri: planTarUri,
       PlanHash: result.planHash,
       ChunkCount: result.chunkCount,
+      MaxChunkConcurrency: Math.min(config.workerConcurrency, result.chunkCount),
       TotalFrames: result.totalFrames,
       Fps: result.fps,
       Width: result.width,
@@ -408,6 +479,31 @@ async function handlePlan(event: PlanEvent, deps?: HandlerDeps): Promise<PlanLam
   }
 }
 
+/**
+ * `ProjectS3Uri` is a site manifest from `deploySite`, or a `.tar.gz` of the project
+ * (hand-built uploads such as `examples/aws-lambda/scripts/smoke.sh`).
+ */
+async function fetchProject(
+  s3: S3Client,
+  projectS3Uri: string,
+  work: string,
+  leaveVideosRemote = false,
+): Promise<{ projectDir: string; remoteFiles: Record<string, RemoteProjectFile> }> {
+  const projectDir = join(work, "project");
+  if (isSiteManifestUri(projectS3Uri)) {
+    const remoteFiles = await downloadSiteFiles(s3, projectS3Uri, projectDir, leaveVideosRemote);
+    return { projectDir, remoteFiles };
+  }
+  const projectArchive = join(work, "project.tar.gz");
+  let stageStarted = Date.now();
+  await downloadS3ObjectToFile(s3, projectS3Uri, projectArchive);
+  logEvent({ event: "plan_stage", stage: "download", ms: Date.now() - stageStarted });
+  stageStarted = Date.now();
+  await untarDirectory(projectArchive, projectDir);
+  logEvent({ event: "plan_stage", stage: "untar", ms: Date.now() - stageStarted });
+  return { projectDir, remoteFiles: {} };
+}
+
 // Plan v2 orchestration is kept as one transactional boundary: stage, CAS upload,
 // and manifest-last publication must stay ordered and fail together.
 // fallow-ignore-next-line complexity
@@ -416,30 +512,27 @@ async function handlePlanV2(
   deps?: HandlerDeps,
 ): Promise<Extract<PlanLambdaResult, { PlanProtocol: "v2" }>> {
   const started = Date.now();
-  const config = planConfig(event, deps);
+  const config = await planConfig(event, deps);
   const s3 = deps?.s3 ?? getS3Client();
   const primitive = deps?.primitives?.planV2WithPublisher ?? planV2WithPublisher;
-  if (!deps?.skipChromeResolution && !process.env.PRODUCER_HEADLESS_SHELL_PATH) {
-    process.env.PRODUCER_HEADLESS_SHELL_PATH = await resolveChromeExecutablePath();
-  }
+  await ensureChromePath(deps);
 
   const work = mkdtempSync(join(deps?.tmpRoot ?? tmpdir(), "hf-lambda-plan-v2-"));
-  const projectArchive = join(work, "project.tar.gz");
-  const projectDir = join(work, "project");
   try {
-    let stageStarted = Date.now();
-    await downloadS3ObjectToFile(s3, event.ProjectS3Uri, projectArchive);
-    logEvent({ event: "plan_stage", stage: "download", ms: Date.now() - stageStarted });
-    stageStarted = Date.now();
-    await untarDirectory(projectArchive, projectDir);
-    logEvent({ event: "plan_stage", stage: "untar", ms: Date.now() - stageStarted });
+    const { projectDir, remoteFiles } = await fetchProject(s3, event.ProjectS3Uri, work, true);
     const publisher = new S3PlanV2ArtifactPublisher({
       s3,
       planOutputS3Prefix: event.PlanOutputS3Prefix,
       temporaryRoot: work,
     });
+    // The audio task shares the chunks' workers: it runs beside them only with one kept free.
+    const separateAudio =
+      config.workerConcurrency > 1 && plansSeparateAudio(config, { deferAudio: true });
     const manifest: PlanV2Manifest = await primitive(projectDir, config, publisher, {
       stagingParentDir: work,
+      remoteFiles,
+      chunksCarryAudio: true,
+      deferAudio: separateAudio,
     });
 
     return {
@@ -449,6 +542,10 @@ async function handlePlanV2(
       PlanV2ArtifactS3Prefix: publisher.artifactPrefix,
       PlanHash: manifest.planHash,
       ChunkCount: manifest.chunkCount,
+      MaxChunkConcurrency: Math.min(
+        config.workerConcurrency - (separateAudio ? 1 : 0),
+        manifest.chunkCount,
+      ),
       TotalFrames: manifest.totalFrames,
       Fps: manifest.fps,
       Width: manifest.width,
@@ -456,6 +553,7 @@ async function handlePlanV2(
       Format: manifest.format,
       HasAudio: manifest.artifacts.some((artifact) => isPlanAudioArtifactPath(artifact.path)),
       AudioS3Uri: null,
+      SeparateAudio: separateAudio,
       FfmpegVersion: manifest.ffmpegVersion,
       ProducerVersion: manifest.producerVersion,
       DurationMs: Date.now() - started,
@@ -465,7 +563,63 @@ async function handlePlanV2(
   }
 }
 
+/**
+ * Points the engine at the bundled Chrome (unpacked into /tmp once per container) before any stage
+ * launches it; a caller-set PRODUCER_HEADLESS_SHELL_PATH, such as the SAM-local smoke's, wins.
+ */
+async function ensureChromePath(deps?: HandlerDeps): Promise<void> {
+  if (deps?.skipChromeResolution || process.env.PRODUCER_HEADLESS_SHELL_PATH) return;
+  process.env.PRODUCER_HEADLESS_SHELL_PATH = await resolveChromeExecutablePath();
+}
+
+// ── Audio ───────────────────────────────────────────────────────────────────
+
+async function handleAudio(event: AudioEvent, deps?: HandlerDeps): Promise<AudioLambdaResult> {
+  const started = Date.now();
+  const none = (): AudioLambdaResult => ({
+    Action: "audio",
+    HasAudio: false,
+    AudioS3Uri: null,
+    DurationMs: Date.now() - started,
+  });
+  // The plan mixed it (png-sequence, cfr): the assembler reads it from the manifest.
+  if (!plansSeparateAudio(event.Config, { deferAudio: true })) return none();
+  const s3 = deps?.s3 ?? getS3Client();
+  await ensureChromePath(deps);
+  const work = mkdtempSync(join(deps?.tmpRoot ?? tmpdir(), "hf-lambda-audio-"));
+  try {
+    const { projectDir, remoteFiles } = await fetchProject(s3, event.ProjectS3Uri, work, true);
+    const audioPath = join(work, "audio.m4a");
+    const build = deps?.primitives?.buildPlanAudio ?? buildPlanAudio;
+    const { hasAudio } = await build(projectDir, event.Config, join(work, "plan"), audioPath, {
+      remoteFiles,
+    });
+    if (!hasAudio) return none();
+    const audioUri = `${trimTrailingSlash(event.PlanOutputS3Prefix)}/audio/${PLAN_AUDIO_RELATIVE_PATH}`;
+    await uploadFileToS3(s3, audioPath, audioUri, "audio/mp4");
+    return {
+      Action: "audio",
+      HasAudio: true,
+      AudioS3Uri: audioUri,
+      DurationMs: Date.now() - started,
+    };
+  } finally {
+    cleanupDir(work);
+  }
+}
+
 // ── RenderChunk ─────────────────────────────────────────────────────────────
+
+// Twice a 4K capture browser's peak memory, so half the function stays free.
+const LAMBDA_MB_PER_CAPTURE_BROWSER = 2048;
+
+/** Capture browsers this function can host: by its memory, leaving one core to Node and ffmpeg. */
+function lambdaMaxCaptureWorkers(): number | undefined {
+  const memoryMb = Number(process.env.AWS_LAMBDA_FUNCTION_MEMORY_SIZE);
+  if (!(memoryMb > 0)) return undefined;
+  const byMemory = Math.floor(memoryMb / LAMBDA_MB_PER_CAPTURE_BROWSER);
+  return Math.max(1, Math.min(byMemory, availableParallelism() - 1));
+}
 
 async function handleRenderChunk(
   event: RenderChunkEvent,
@@ -477,18 +631,9 @@ async function handleRenderChunk(
   const started = Date.now();
   const s3 = deps?.s3 ?? getS3Client();
   const primitive = deps?.primitives?.renderChunk ?? renderChunk;
-
-  // Sparticuz decompresses Chromium into /tmp on first call; warm starts
-  // skip the work (path already cached). Guard the env-var mutation too so
-  // a caller-supplied PRODUCER_HEADLESS_SHELL_PATH (e.g. the SAM-local
-  // RIE smoke) wins over the auto-resolution.
-  if (!deps?.skipChromeResolution && !process.env.PRODUCER_HEADLESS_SHELL_PATH) {
-    const chromePath = await resolveChromeExecutablePath();
-    // The OSS engine resolves Chrome via `PRODUCER_HEADLESS_SHELL_PATH`
-    // first (see `browserManager.resolveHeadlessShellPath`); set it before
-    // invoking the primitive so launch picks up the bundled binary.
-    process.env.PRODUCER_HEADLESS_SHELL_PATH = chromePath;
-  }
+  const chromeStarted = Date.now();
+  await ensureChromePath(deps);
+  const chromeMs = Date.now() - chromeStarted;
 
   const work = mkdtempSync(join(deps?.tmpRoot ?? tmpdir(), "hf-lambda-chunk-"));
   const planTar = join(work, "plan.tar.gz");
@@ -513,7 +658,18 @@ async function handleRenderChunk(
         : `chunk-${pad(event.ChunkIndex)}${formatExtension(event.Format)}`,
     );
 
-    const result: ChunkResult = await primitive(planDir, event.ChunkIndex, chunkOutputBase);
+    const primitiveStarted = Date.now();
+    const result: ChunkResult = await primitive(planDir, event.ChunkIndex, chunkOutputBase, {
+      maxCaptureWorkers: lambdaMaxCaptureWorkers(),
+      interleaveCapture: true,
+    });
+    logEvent({
+      event: "chunk_capture",
+      chunkIndex: event.ChunkIndex,
+      workers: result.workers,
+      captureMode: result.captureMode,
+      ...chunkStageTimings(result, primitiveStarted - started, chromeMs),
+    });
 
     const chunkUri = await uploadChunkOutput(
       s3,
@@ -546,12 +702,12 @@ async function handleRenderChunkV2(
   const started = Date.now();
   const s3 = deps?.s3 ?? getS3Client();
   const primitive = deps?.primitives?.renderChunk ?? renderChunk;
-  if (!deps?.skipChromeResolution && !process.env.PRODUCER_HEADLESS_SHELL_PATH) {
-    process.env.PRODUCER_HEADLESS_SHELL_PATH = await resolveChromeExecutablePath();
-  }
+  const chromeStarted = Date.now();
+  await ensureChromePath(deps);
+  const chromeMs = Date.now() - chromeStarted;
   const work = mkdtempSync(join(deps?.tmpRoot ?? tmpdir(), "hf-lambda-chunk-v2-"));
   try {
-    const planDir = await downloadAndMaterializePlanV2(
+    const { planDir } = await downloadAndMaterializePlanV2(
       s3,
       event,
       { role: "chunk", chunkIndex: event.ChunkIndex },
@@ -563,7 +719,18 @@ async function handleRenderChunkV2(
         ? `chunk-${pad(event.ChunkIndex)}`
         : `chunk-${pad(event.ChunkIndex)}${formatExtension(event.Format)}`,
     );
-    const result = await primitive(planDir, event.ChunkIndex, chunkOutputBase);
+    const primitiveStarted = Date.now();
+    const result = await primitive(planDir, event.ChunkIndex, chunkOutputBase, {
+      maxCaptureWorkers: lambdaMaxCaptureWorkers(),
+      interleaveCapture: true,
+    });
+    logEvent({
+      event: "chunk_capture",
+      chunkIndex: event.ChunkIndex,
+      workers: result.workers,
+      captureMode: result.captureMode,
+      ...chunkStageTimings(result, primitiveStarted - started, chromeMs),
+    });
     const chunkUri = await uploadChunkOutput(
       s3,
       result,
@@ -582,6 +749,19 @@ async function handleRenderChunkV2(
   } finally {
     cleanupDir(work);
   }
+}
+
+function chunkStageTimings(result: ChunkResult, setupMs: number, chromeMs: number) {
+  const { planHashMs, sessionBootMs, captureStageMs, encodeStageMs, durationMs } = result;
+  return {
+    setupMs,
+    chromeMs,
+    planHashMs,
+    sessionBootMs,
+    captureStageMs,
+    encodeStageMs,
+    durationMs,
+  };
 }
 
 async function uploadChunkOutput(
@@ -677,10 +857,28 @@ async function handleAssembleV2(
   const primitive = deps?.primitives?.assemble ?? assemble;
   const work = mkdtempSync(join(deps?.tmpRoot ?? tmpdir(), "hf-lambda-assemble-v2-"));
   try {
-    const planDir = await downloadAndMaterializePlanV2(s3, event, { role: "assembler" }, work);
+    const { planDir, manifest } = await downloadAndMaterializePlanV2(
+      s3,
+      event,
+      { role: "assembler" },
+      work,
+    );
+    // Only a plan that left its audio to the audio task takes it by URI; any other v2 plan ships it.
+    if (event.AudioS3Uri !== null && !stitchesSeparateAudio(planDir)) {
+      const error = new Error("[handler] v2 assemble audio must be materialized from the manifest");
+      error.name = "PLAN_PROTOCOL_UNSUPPORTED";
+      throw error;
+    }
+    if (chunksAreStitchedMp4(planDir, event.Cfr === true)) {
+      return await stitchChunksInS3(s3, event, manifest, started, deps?.lambda);
+    }
     // `downloadAndMaterializePlanV2` materializes atomically. Audio is
     // assembler-only and lives at the familiar v1-compatible location.
-    const audioPath = resolvePlanAudioPath(planDir);
+    let audioPath = resolvePlanAudioPath(planDir);
+    if (event.AudioS3Uri !== null) {
+      audioPath = join(planDir, PLAN_AUDIO_RELATIVE_PATH);
+      await downloadS3ObjectToFile(s3, event.AudioS3Uri, audioPath);
+    }
     const chunksStarted = Date.now();
     const chunkPaths = await downloadChunkObjects(s3, event.ChunkS3Uris, work, event.Format);
     const chunksMs = Date.now() - chunksStarted;
@@ -718,6 +916,42 @@ async function handleAssembleV2(
   }
 }
 
+async function stitchChunksInS3(
+  s3: S3Client,
+  event: AssembleV2Event,
+  plan: PlanV2Manifest,
+  started: number,
+  lambda?: LambdaClient,
+): Promise<AssembleLambdaResult> {
+  if (event.ChunkS3Uris.length !== plan.chunkCount) {
+    throw new Error(
+      `[handler] ${event.ChunkS3Uris.length} chunk URIs for a plan of ${plan.chunkCount} chunks`,
+    );
+  }
+  const stitchStarted = Date.now();
+  const stitched = await stitchMp4InS3(s3, event.ChunkS3Uris, event.OutputS3Uri, {
+    audioUri: event.AudioS3Uri ?? undefined,
+    helper: stitchHelper(lambda),
+  });
+  logEvent({
+    event: "assemble_stages",
+    mode: "s3-stitch",
+    planMs: stitchStarted - started,
+    stitchMs: Date.now() - stitchStarted,
+    parts: stitched.parts,
+    downloadedBytes: stitched.downloadedBytes,
+    helpers: stitched.helpers,
+    helperFallbacks: stitched.helperFallbacks,
+  });
+  return {
+    Action: "assemble",
+    OutputS3Uri: event.OutputS3Uri,
+    FramesEncoded: plan.totalFrames,
+    FileSize: stitched.fileSize,
+    DurationMs: Date.now() - started,
+  };
+}
+
 async function downloadAndMaterializePlanV2(
   s3: S3Client,
   event: {
@@ -727,7 +961,7 @@ async function downloadAndMaterializePlanV2(
   },
   target: PlanV2MaterializationTarget,
   work: string,
-): Promise<string> {
+): Promise<{ planDir: string; manifest: PlanV2Manifest }> {
   const transportDir = join(work, "plan-v2");
   mkdirSync(transportDir, { recursive: true });
   await downloadS3ObjectToFile(s3, event.PlanV2ManifestS3Uri, join(transportDir, "plan.json"));
@@ -736,15 +970,52 @@ async function downloadAndMaterializePlanV2(
     throwPlanHashMismatch(event.PlanHash, manifest.planHash);
   }
   const artifacts = listPlanV2ArtifactsForTarget(manifest, target);
+  const remoteSources = await presignDeferredSources(s3, event.PlanV2ArtifactS3Prefix, artifacts);
   const uniqueArtifacts = [
-    ...new Map(artifacts.map((artifact) => [artifact.sha256, artifact])).values(),
+    ...new Map(
+      artifacts
+        .filter((artifact) => !Object.hasOwn(remoteSources, artifact.path))
+        .map((artifact) => [artifact.sha256, artifact]),
+    ).values(),
   ];
   await mapConcurrent(uniqueArtifacts, 16, async (artifact) => {
     await downloadPlanV2Artifact(s3, event.PlanV2ArtifactS3Prefix, transportDir, artifact);
   });
   const planDir = join(work, "plan");
-  materializePlanV2Target(transportDir, target, planDir);
-  return planDir;
+  materializePlanV2Target(transportDir, target, planDir, { remoteSources });
+  return { planDir, manifest };
+}
+
+/** Outlives the longest chunk (Lambda caps an invocation at 900 s) with margin. */
+const DEFERRED_SOURCE_URL_TTL_SECONDS = 3600;
+
+/**
+ * A chunk's ffmpeg reads a deferred video by byte range from a pre-signed URL
+ * instead of downloading it whole. The key is the content hash, written once.
+ */
+async function presignDeferredSources(
+  s3: S3Client,
+  artifactPrefix: string,
+  artifacts: readonly Readonly<PlanV2Artifact>[],
+): Promise<Record<string, string>> {
+  const entries = await Promise.all(
+    artifacts
+      .filter(isPlanV2DeferredSourceArtifact)
+      .map(
+        async (artifact) =>
+          [
+            artifact.path,
+            await presignVerifiedS3GetUrl(
+              s3,
+              planV2BlobUri(artifactPrefix, artifact.sha256),
+              artifact.sha256,
+              artifact.sizeBytes,
+              DEFERRED_SOURCE_URL_TTL_SECONDS,
+            ),
+          ] as const,
+      ),
+  );
+  return Object.fromEntries(entries);
 }
 
 async function downloadPlanV2Artifact(
@@ -775,30 +1046,6 @@ function throwPlanHashMismatch(expected: string, actual: string): never {
   );
   error.name = "PLAN_HASH_MISMATCH";
   throw error;
-}
-
-async function mapConcurrent<T>(
-  values: readonly T[],
-  concurrency: number,
-  fn: (value: T) => Promise<void>,
-): Promise<void> {
-  let cursor = 0;
-  async function worker(): Promise<void> {
-    while (cursor < values.length) {
-      const index = cursor++;
-      await fn(values[index]!);
-    }
-  }
-  const results = await Promise.allSettled(
-    Array.from({ length: Math.min(concurrency, values.length) }, () => worker()),
-  );
-  const failure = results.find(
-    (result): result is PromiseRejectedResult => result.status === "rejected",
-  );
-  // Do not reject while sibling workers may still be writing into invocation
-  // scratch. The caller removes that directory in `finally`; draining the pool
-  // first prevents late S3 streams from racing cleanup after another GET fails.
-  if (failure) throw failure.reason;
 }
 
 async function downloadChunkObjects(
@@ -840,9 +1087,12 @@ async function downloadChunkObjects(
 /** Collect every S3 URI that the handler will touch for a given event. */
 // This is an exhaustive event-union projection used only for safe log summaries.
 // fallow-ignore-next-line complexity
-function getEventS3Uris(event: PlanEvent | RenderChunkEvent | AssembleEvent): string[] {
+function getEventS3Uris(
+  event: PlanEvent | AudioEvent | RenderChunkEvent | AssembleEvent,
+): string[] {
   switch (event.Action) {
     case "plan":
+    case "audio":
       return [event.ProjectS3Uri, event.PlanOutputS3Prefix];
     case "renderChunk":
       return event.PlanProtocol !== "v1"
@@ -861,6 +1111,53 @@ function getEventS3Uris(event: PlanEvent | RenderChunkEvent | AssembleEvent): st
 }
 
 /**
+ * Parts S3 cannot copy go to the function the stack names: it just ran the chunks, so it is warm,
+ * and each invocation brings its own network link.
+ */
+export function stitchHelper(lambda?: LambdaClient): StitchHelper | undefined {
+  const functionName = process.env.HYPERFRAMES_STITCH_FUNCTION?.trim();
+  if (!functionName) return undefined;
+  const client = lambda ?? new LambdaClient({});
+  // This assemble may hold one slot of the reservation itself.
+  const reserved = reservedConcurrency();
+  const maxInvocations = reserved ? Math.max(1, reserved - 1) : Infinity;
+  const send: StitchHelper["send"] = async (target, parts) => {
+    const event: StitchPartsEvent = { Action: "stitchParts", ...target, Parts: parts };
+    const response = await client.send(
+      new InvokeCommand({ FunctionName: functionName, Payload: JSON.stringify(event) }),
+    );
+    const body = JSON.parse(
+      new TextDecoder().decode(response.Payload),
+    ) as StitchPartsLambdaResult & {
+      errorMessage?: string;
+      errorType?: string;
+    };
+    if (response.FunctionError) {
+      const error = new Error(
+        `[handler] stitchParts on ${functionName} failed: ${body.errorMessage ?? response.FunctionError}`,
+      );
+      if (body.errorType) error.name = body.errorType;
+      throw error;
+    }
+    return body.ETags;
+  };
+  return { send, maxInvocations };
+}
+
+async function handleStitchParts(
+  event: StitchPartsEvent,
+  deps?: HandlerDeps,
+): Promise<StitchPartsLambdaResult> {
+  const { Bucket, Key, UploadId, Parts } = event;
+  assertAllowedBuckets([
+    `s3://${Bucket}/${Key}`,
+    ...Parts.flatMap((part) => part.ranges.map((r) => r.uri)),
+  ]);
+  const ETags = await sendRangeParts(deps?.s3 ?? getS3Client(), { Bucket, Key, UploadId }, Parts);
+  return { Action: "stitchParts", ETags };
+}
+
+/**
  * Verify every S3 URI in the event resolves to the configured render bucket.
  * Throws `S3_URI_NOT_ALLOWED` (non-retryable) when a URI targets a different
  * bucket, preventing event injection from reading or writing arbitrary S3 data.
@@ -868,11 +1165,17 @@ function getEventS3Uris(event: PlanEvent | RenderChunkEvent | AssembleEvent): st
  * Skipped when `HYPERFRAMES_RENDER_BUCKET` is unset so existing deployments
  * without the env var continue to work.
  */
-function validateEventS3Uris(event: PlanEvent | RenderChunkEvent | AssembleEvent): void {
+function validateEventS3Uris(
+  event: PlanEvent | AudioEvent | RenderChunkEvent | AssembleEvent,
+): void {
+  assertAllowedBuckets(getEventS3Uris(event));
+}
+
+function assertAllowedBuckets(uris: Iterable<string>): void {
   const allowedBucket = process.env.HYPERFRAMES_RENDER_BUCKET?.trim();
   if (!allowedBucket) return;
 
-  for (const uri of getEventS3Uris(event)) {
+  for (const uri of uris) {
     const { bucket } = parseS3Uri(uri);
     if (bucket !== allowedBucket) {
       const err = new Error(

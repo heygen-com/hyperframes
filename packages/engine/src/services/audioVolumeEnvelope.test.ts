@@ -107,6 +107,24 @@ describe("applyVolumeEnvelopeToWav", () => {
     expect(readdirSync(stagingDir)).toEqual([]);
   });
 
+  it("rides out a transient Windows file lock on the final rename", () => {
+    const dir = tmp();
+    const path = join(dir, "locked.wav");
+    writeConstantWav(path, 16, 10000);
+    const locked = () => {
+      throw Object.assign(new Error("EPERM: operation not permitted, rename"), { code: "EPERM" });
+    };
+    vi.mocked(fs.renameSync).mockImplementationOnce(locked).mockImplementationOnce(locked);
+    const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+    Object.defineProperty(process, "platform", { value: "win32" });
+    try {
+      expect(applyVolumeEnvelopeToWav(path, [{ time: 0, volume: 0 }], 0, 0)).toBe(true);
+    } finally {
+      Object.defineProperty(process, "platform", platform);
+    }
+    expect(sampleAt(path, 0)).toBe(0);
+  });
+
   it("applies a linear fade sample-accurately", () => {
     const path = join(tmp(), "a.wav");
     const frames = SAMPLE_RATE; // 1 second

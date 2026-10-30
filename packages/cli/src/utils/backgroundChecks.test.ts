@@ -119,7 +119,7 @@ describe("launchBackgroundChecks", () => {
     [
       "no terminal",
       () => Object.defineProperty(process.stderr, "isTTY", { value: false, configurable: true }),
-      ["update"],
+      ["update", "skills"],
     ],
   ])("with %s, hands the child only what the parent used to check", (_, arrange, checks) => {
     arrange();

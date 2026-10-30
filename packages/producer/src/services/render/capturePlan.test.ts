@@ -471,6 +471,16 @@ describe("sdr_segmented capture plan", () => {
     expect(initial.kind).toBe("sdr_segmented");
   });
 
+  it("keeps a forced screenshot when a screenshot retry's encoder is unavailable", () => {
+    const retry = replanAfterFailure(createCapturePlan(segmented), {
+      kind: "draw_element_capture",
+    });
+    expect(replanAfterFailure(retry, { kind: "streaming_unavailable" })).toMatchObject({
+      kind: "sdr_streaming",
+      forceScreenshot: true,
+    });
+  });
+
   it("keeps segmenting but drops to screenshot after a drawElement failure", () => {
     const next = replanAfterFailure(createCapturePlan(segmented), {
       kind: "draw_element_capture",

@@ -280,17 +280,21 @@ export interface EnumVariable extends CompositionVariableBase {
   options: { value: string; label: string }[];
 }
 
-/**
- * Font variable — value is a `{name, source}` object (object-valued; LOCKED §7).
- * `default` is the fallback font-family name string.
- * `source` is the font stylesheet URL (e.g. Google Fonts CSS).
- * `default_name` / `default_source` are the CSS-level fallbacks when the
- * brand font is absent.
- */
+export interface FontValue {
+  name: string;
+  source: string;
+}
+
+export interface ImageValue {
+  url: string;
+  alt?: string;
+  fit?: "cover" | "contain" | "fill" | "none" | "scale-down";
+}
+
 export interface FontVariable extends CompositionVariableBase {
   type: "font";
-  /** Fallback font-family name, e.g. "Inter". */
-  default: string;
+  /** Font-family fallback or a persisted font value. */
+  default: string | FontValue;
   /** Font stylesheet URL (e.g. Google Fonts CSS link). */
   source?: string;
   /** CSS font-family name to use when source is unavailable, e.g. "sans-serif". */
@@ -299,15 +303,10 @@ export interface FontVariable extends CompositionVariableBase {
   default_source?: string;
 }
 
-/**
- * Image variable — value is a `{url, …}` object (object-valued; LOCKED §7).
- * `default` is the fallback image URL string.
- * `brandRole` is an optional semantic label, e.g. "logo:primary".
- */
 export interface ImageVariable extends CompositionVariableBase {
   type: "image";
-  /** Fallback image URL. */
-  default: string;
+  /** Image URL fallback or a persisted image value. */
+  default: string | ImageValue;
   /** Brand role identifier, e.g. "logo:primary". */
   brandRole?: string;
 }

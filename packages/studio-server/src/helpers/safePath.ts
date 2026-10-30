@@ -1,6 +1,7 @@
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import { readdirSync, type Dirent } from "node:fs";
 import { realpath, resolveWithinProject as resolveInProject } from "@hyperframes/core/safe-path";
+import { RENDER_TEMP_DIR } from "@hyperframes/core/project-folders";
 import { STUDIO_MANUAL_EDITS_PATH } from "./manualEditsRenderScript.js";
 import { STUDIO_MOTION_PATH } from "./studioMotionRenderScript.js";
 
@@ -114,7 +115,8 @@ export function walkDir(dir: string, prefix = ""): string[] {
   const files: string[] = [];
   for (const entry of entries) {
     const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
-    if (IGNORE_DIRS.has(entry.name) || shouldIgnoreDir(rel)) continue;
+    if (IGNORE_DIRS.has(entry.name) || RENDER_TEMP_DIR.test(entry.name) || shouldIgnoreDir(rel))
+      continue;
     if (entry.isDirectory()) {
       files.push(...walkDir(join(dir, entry.name), rel));
     } else {

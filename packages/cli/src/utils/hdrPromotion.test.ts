@@ -32,11 +32,8 @@ function metadata(colorSpace: VideoColorSpace, videoCodec = "hevc") {
 
 function bundledMedia(videos: string[], images: string[]) {
   return {
-    bundleHtml: vi.fn(async () => "<html>bundled sub-composition</html>"),
-    collectMedia: vi.fn(() => ({
-      videos: videos.map((src) => ({ src })),
-      images: images.map((src) => ({ src })),
-    })),
+    videos: videos.map((src) => ({ src, hasAudio: false })),
+    images: images.map((src) => ({ src })),
   };
 }
 
@@ -48,8 +45,8 @@ describe("inspectHdrAutoPromotion", () => {
     await expect(
       inspectHdrAutoPromotion(
         PROJECT,
-        extractMetadata,
         bundledMedia(["assets/source-hdr.mp4?token=secret#preview"], []),
+        extractMetadata,
       ),
     ).resolves.toEqual({
       triggeringAsset: "assets/source-hdr.mp4",
@@ -64,7 +61,7 @@ describe("inspectHdrAutoPromotion", () => {
     const extractMetadata = vi.fn(async () => metadata(HDR));
 
     await expect(
-      inspectHdrAutoPromotion(PROJECT, extractMetadata, bundledMedia([remote], [])),
+      inspectHdrAutoPromotion(PROJECT, bundledMedia([remote], []), extractMetadata),
     ).resolves.toEqual({
       triggeringAsset: "https://media.example/remote-hdr.mp4",
       output: { colorSpace: "BT.2020", codec: "HEVC Main10" },
@@ -82,8 +79,8 @@ describe("inspectHdrAutoPromotion", () => {
     await expect(
       inspectHdrAutoPromotion(
         PROJECT,
-        extractMetadata,
         bundledMedia(["assets/sdr.mp4", firstVideo], [image]),
+        extractMetadata,
       ),
     ).resolves.toMatchObject({ triggeringAsset: "https://media.example/first-hdr-video.mp4" });
     expect(extractMetadata).toHaveBeenCalledWith(
@@ -104,7 +101,7 @@ describe("inspectHdrAutoPromotion", () => {
     );
 
     await expect(
-      inspectHdrAutoPromotion(PROJECT, extractMetadata, bundledMedia([], ["assets/hdr.png"])),
+      inspectHdrAutoPromotion(PROJECT, bundledMedia([], ["assets/hdr.png"]), extractMetadata),
     ).resolves.toMatchObject({ triggeringAsset: "assets/hdr.png" });
   });
 });

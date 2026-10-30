@@ -4,7 +4,7 @@ import { existsSync, lstatSync, readFileSync, unlinkSync, readdirSync, statSync 
 import { dirname, join } from "node:path";
 import type { StudioApiAdapter, RenderJobState } from "../types.js";
 import { VALID_CANVAS_RESOLUTIONS, type CanvasResolution } from "@hyperframes/parsers";
-import { formatRenderOutputTimestamp, parseFps } from "@hyperframes/core";
+import { formatRenderOutputTimestamp, parseFps, fpsToNumber } from "@hyperframes/core";
 import {
   folderGone,
   isPrivateProjectFile,
@@ -20,6 +20,7 @@ const RENDER_MIME: Record<string, string> = {
   ".mp4": "video/mp4",
   ".webm": "video/webm",
   ".mov": "video/quicktime",
+  ".gif": "image/gif",
 };
 const RENDER_EXTENSIONS = Object.keys(RENDER_MIME);
 const RENDER_ARTIFACT_EXTENSIONS = [...RENDER_EXTENSIONS, ".meta.json"];
@@ -108,17 +109,26 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
       // window.__hfVariables — same channel as `hyperframes render --variables`.
       variables?: Record<string, unknown>;
       gpu?: boolean;
+      previewMotionBlur?: boolean;
+      pageMotionBlur?: unknown;
     };
-    const VALID_FORMATS = new Set(["mp4", "webm", "mov"]);
-    const FORMAT_EXT: Record<string, string> = { mp4: ".mp4", webm: ".webm", mov: ".mov" };
-    const format = VALID_FORMATS.has(body.format ?? "") ? (body.format as string) : "mp4";
+    const VALID_FORMATS = ["mp4", "webm", "mov", "gif"] as const;
+    const FORMAT_EXT: Record<string, string> = {
+      mp4: ".mp4",
+      webm: ".webm",
+      mov: ".mov",
+      gif: ".gif",
+    };
+    const format = VALID_FORMATS.find((value) => value === body.format) ?? "mp4";
 
     // Default to 30 fps when unset or unparseable. The route stays lenient on
     // invalid fps values (matching the lenient handling of `resolution` and
     // `quality` already in this file) — the producer surfaces a clearer error
     // message if the caller really did mean to fail loudly.
     const fpsParse = body.fps === undefined ? null : parseFps(body.fps);
-    const fps = fpsParse && fpsParse.ok ? fpsParse.value : { num: 30, den: 1 };
+    const requestedFps = fpsParse && fpsParse.ok ? fpsParse.value : { num: 30, den: 1 };
+    const fps =
+      format === "gif" && fpsToNumber(requestedFps) > 30 ? { num: 30, den: 1 } : requestedFps;
     const quality = ["draft", "standard", "high"].includes(body.quality ?? "")
       ? (body.quality as string)
       : "standard";
@@ -150,6 +160,15 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     const encoder = parseEncoderOptions(body, format);
     if (!encoder.ok) return c.json({ error: encoder.error }, 400);
 
+    const requestedPageMotionBlur = body.pageMotionBlur;
+    if (requestedPageMotionBlur !== undefined && requestedPageMotionBlur !== "off") {
+      return c.json({ error: "pageMotionBlur must be off when supplied" }, 400);
+    }
+    const pageMotionBlur =
+      requestedPageMotionBlur === undefined && body.previewMotionBlur === false
+        ? "off"
+        : requestedPageMotionBlur;
+
     const now = new Date();
     const jobId = `${project.id}_${formatRenderOutputTimestamp(now)}`;
     const rendersDir = adapter.rendersDir(project);
@@ -160,7 +179,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     const jobState = adapter.startRender({
       project,
       outputPath,
-      format: format as "mp4" | "webm" | "mov",
+      format,
       fps,
       quality,
       jobId,
@@ -172,6 +191,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
       distinctId:
         typeof body.telemetryDistinctId === "string" ? body.telemetryDistinctId : undefined,
       telemetryOptOut: body.telemetryOptOut === true,
+      ...(pageMotionBlur === undefined ? {} : { pageMotionBlur }),
     });
     (jobState as RenderJobState & { createdAt: number }).createdAt = Date.now();
     renderJobs.set(jobId, jobState as RenderJobState & { createdAt: number });
@@ -334,14 +354,14 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     const rendersDir = adapter.rendersDir(project);
     if (!existsSync(rendersDir)) return c.json({ renders: [] });
     const files = readdirSync(rendersDir)
-      .filter((f) => f.endsWith(".mp4") || f.endsWith(".webm") || f.endsWith(".mov"))
+      .filter((f) => RENDER_EXTENSIONS.some((extension) => f.endsWith(extension)))
       .flatMap((f) => {
         const fp = resolveWithinProject(rendersDir, f);
         return fp && !isPrivateProjectFile(project.dir, fp) ? [{ f, fp }] : [];
       })
       .map(({ f, fp }) => {
         const stat = statSync(fp);
-        const rid = f.replace(/\.(mp4|webm|mov)$/, "");
+        const rid = f.replace(/\.(mp4|webm|mov|gif)$/, "");
         const metaPath = join(rendersDir, `${rid}.meta.json`);
         let status: "complete" | "failed" = "complete";
         let durationMs: number | undefined;

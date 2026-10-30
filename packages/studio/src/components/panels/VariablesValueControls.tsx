@@ -16,6 +16,12 @@ import type {
 export const VARIABLES_INPUT_CLASS =
   "w-full bg-neutral-900 border border-neutral-800 rounded-sm px-2 py-1 text-[10px] text-neutral-200 focus:outline-hidden focus:border-neutral-700";
 
+export function variableDefaultText(decl: CompositionVariable): string {
+  if (decl.type === "font" && typeof decl.default === "object") return decl.default.name;
+  if (decl.type === "image" && typeof decl.default === "object") return decl.default.url;
+  return String(decl.default);
+}
+
 /** Text input that drafts locally and commits on blur/Enter. */
 function DraftTextInput({
   value,

@@ -28,6 +28,7 @@
  * drawElementImage) without depending on requestAnimationFrame for paint.
  */
 
+import { revealClip } from "@hyperframes/core/runtime/clip-reveal";
 import {
   createContext,
   setupQuad,
@@ -295,10 +296,10 @@ export function installPageSideCompositor(options: PageCompositorInstallOptions)
     ] as const) {
       const clone = live.cloneNode(true) as HTMLElement;
       clone.style.opacity = "1";
-      clone.style.visibility = "visible";
+      revealClip(clone);
       clone.querySelectorAll<HTMLElement>("[data-start]").forEach((el) => {
         el.style.opacity = "1";
-        el.style.visibility = "visible";
+        revealClip(el);
       });
       const { root, liveRoot, pairs } = stageWithAncestors(live, clone);
       // A full-frame box gives the copies a sized containing block to lay out against.

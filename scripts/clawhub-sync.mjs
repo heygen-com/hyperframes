@@ -5,8 +5,15 @@ import { spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 
 const TAKEN_VERSION = /Version (\d+)\.(\d+)\.(\d+) already exists/;
-// The registry hid this one version; any other taken version still fails the sync.
-const SKIPPABLE_TAKEN = new Map([["hyperframes-creative", "1.0.13"]]);
+// Versions the registry holds but does not list; any other taken version still fails the sync.
+const SKIPPABLE_TAKEN = new Map([
+  ["hyperframes-creative", "1.0.13"],
+  ["hyperframes", "1.0.51"],
+  ["hyperframes-cli", "1.0.73"],
+  ["hyperframes-registry", "1.0.15"],
+  ["media-use", "1.0.87"],
+  ["remotion-to-hyperframes", "1.0.17"],
+]);
 const OWNER_HANDLE = "heygen-com";
 const OWNER = ["--owner", OWNER_HANDLE];
 

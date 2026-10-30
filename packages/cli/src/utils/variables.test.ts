@@ -58,6 +58,19 @@ describe("parseVariablesArg", () => {
     }
   });
 
+  it("reads --variables from a file path or stdin", () => {
+    const readFile = () => '{"a":1}';
+    const readStdin = () => '{"b":2}';
+    expect(parseVariablesArg("v.json", undefined, readFile, readStdin)).toEqual({
+      ok: true,
+      value: { a: 1 },
+    });
+    expect(parseVariablesArg(undefined, "-", readFile, readStdin)).toEqual({
+      ok: true,
+      value: { b: 2 },
+    });
+  });
+
   it("surfaces filesystem errors from --variables-file", () => {
     const err = expectErr<{
       kind: "read-error";

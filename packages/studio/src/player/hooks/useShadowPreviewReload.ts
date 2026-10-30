@@ -8,6 +8,7 @@ import {
   isStudioManualEditGestureLiveIn,
   studioManualEditSavesIn,
 } from "../../components/editor/manualEditsDom";
+import { refusedPreviewStatus } from "@hyperframes/core/studio-preview-mark";
 import { logReload } from "../../utils/reloadDebug";
 import {
   useTimelineSyncCallbacks,
@@ -25,7 +26,7 @@ import { usePlayerStore } from "../store/playerStore";
 
 // One wait budget for a shadow: the player's 8s asset cap plus its 0.42s loader fade
 // leaves about 6.5s for the document load and runtime boot. Nothing shorter may fail the swap.
-// It only runs while the tab is visible: readiness is frame-driven, and a hidden tab renders none.
+// Spent only while frames are drawn (readiness needs them); a hidden tab or a covered Linux window draws none.
 export const SHADOW_READY_TIMEOUT_MS = 15_000;
 // A busy machine can need more than one budget; the shadow keeps loading for this many before it is dropped.
 export const SHADOW_READY_BUDGETS = 3;
@@ -42,6 +43,20 @@ function shadowPlayerReachable(iframe: HTMLIFrameElement | null): boolean {
     return false;
   }
 }
+
+function shadowPagePhase(iframe: HTMLIFrameElement | null): string {
+  const doc = iframe?.contentDocument;
+  if (!doc || doc.URL === "about:blank") return "no-page";
+  const win = iframe!.contentWindow as unknown as Record<string, unknown>;
+  if (doc.readyState === "loading") return "page-loading";
+  if (win.__hfStartupError) return "startup-error";
+  if (!win.__hyperframes) return "runtime-not-run";
+  if (!win.__hyperframeRuntimeBootstrapped) return "scripts-waiting";
+  return "no-player";
+}
+
+const pageGotTo = (iframe: HTMLIFrameElement | null) =>
+  shadowPlayerReachable(iframe) ? "" : ` Its page had got to: ${shadowPagePhase(iframe)}.`;
 
 function isDocumentHidden(): boolean {
   return typeof document !== "undefined" && document.visibilityState === "hidden";
@@ -122,6 +137,7 @@ export function useShadowPreviewReload({
         : pendingCommitRef.current?.gen !== gen
           ? "its timeline to be ready"
           : "its loaders to clear";
+      const got = pageGotTo(shadowIframeRef.current);
       shadowGenRef.current += 1;
       stopPendingShadow();
       shadowIframeRef.current = null;
@@ -129,9 +145,11 @@ export function useShadowPreviewReload({
       pendingSeekRef.current = null;
       setPreviewSlots(planShadowDiscard);
       setPreviewReloading(false);
-      const message = `The preview did not reload (${cause}). It was still waiting for ${waitingFor}. The previous preview is still showing.`;
+      const message = `The preview did not reload (${cause}). It was still waiting for ${waitingFor}.${got} The previous preview is still showing.`;
       logReload("shadow-failed", { cause, waitingFor });
-      console.error(`[studio] ${message}`);
+      const refused = refusedPreviewStatus(cause);
+      const pageMissingNow = refused !== null && refused < 500;
+      (pageMissingNow ? console.warn : console.error)(`[studio] ${message}`);
       onReloadFailedRef.current?.(message);
     },
     [stopPendingShadow, isRefreshingRef, pendingSeekRef],
@@ -276,8 +294,19 @@ export function useShadowPreviewReload({
     (gen: number) => {
       clearTimeout(readyTimerRef.current);
       if (isDocumentHidden()) return;
+      let drew = false;
+      let starved = false;
+      requestAnimationFrame(() => {
+        if (!starved) drew = true;
+        else if (budgetGenRef.current === gen) armReadyTimerRef.current(gen);
+      });
       readyTimerRef.current = setTimeout(() => {
         if (gen !== shadowGenRef.current) return;
+        if (!drew) {
+          starved = true;
+          logReload("shadow-starved", { gen });
+          return;
+        }
         budgetsSpentRef.current += 1;
         if (budgetsSpentRef.current < SHADOW_READY_BUDGETS) {
           logReload("shadow-slow", { budgetsSpent: budgetsSpentRef.current });

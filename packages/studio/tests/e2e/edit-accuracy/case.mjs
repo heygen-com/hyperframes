@@ -5,6 +5,7 @@ import { parseGsapScript } from "../../../../parsers/src/gsapParser.ts";
 import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { COMPOSITION, FIXTURE_CDN, PLAYHEAD, localAsset } from "./grid.mjs";
+import { traceBench } from "./trace.mjs";
 import {
   angleOf,
   centre,
@@ -203,7 +204,7 @@ async function findHandles(ctx) {
 }
 
 async function readQuads({ handles }) {
-  return Promise.all([
+  const read = await Promise.all([
     contentQuad(handles.root),
     contentQuad(handles.target),
     handles.target.evaluate((e) => ({
@@ -212,6 +213,12 @@ async function readQuads({ handles }) {
       clip: getComputedStyle(e).clipPath,
     })),
   ]);
+  const shown = await handles.target.evaluate((e) => {
+    const host = e.ownerDocument.defaultView?.frameElement;
+    return !host || host.checkVisibility({ visibilityProperty: true });
+  });
+  if (!shown) throw new Error("the measured preview was retired");
+  return read;
 }
 
 /** The target's rendered quad, visible (cropped) quad and the screen/composition mapping, from CDP quads. */
@@ -242,11 +249,13 @@ const STILL_MS = process.env.EDIT_ACCURACY_STILL_MS
   : null;
 export const STILL_FRAMES = 3;
 
-// The server's event stream stays open for the page's life; timeline thumbnails are rendered by the server
-// for the timeline strip, can take seconds, and never change the preview.
-const backgroundRequest = (request) =>
+// The server's event stream stays open for the page's life; timeline thumbnails and the background lint
+// behind the lint badge run on the server, can take seconds (lint over 15 s on a busy runner), and never
+// change the preview. A blob: load is page memory (a thumbnail's image) and can end with no event at all.
+export const backgroundRequest = (request) =>
   request.resourceType() === "eventsource" ||
-  /\/api\/projects\/[^/]+\/thumbnail\//.test(request.url());
+  request.url().startsWith("blob:") ||
+  /\/api\/projects\/[^/]+\/(thumbnail\/|lint(\?|$))/.test(request.url());
 
 /**
  * The Studio page's network, for the stillness check: requests in flight, a counter bumped by any request or
@@ -312,8 +321,16 @@ async function hiddenTarget(page, selector = "#target") {
   return false;
 }
 
+// Studio's own word that the preview is about to change: a reload asked for, loading, or an undo or redo in flight.
+const previewChanging = (page) =>
+  Promise.resolve()
+    .then(() => page.evaluate(() => document.documentElement.hasAttribute("data-preview-changing")))
+    .catch(() => false);
+
 // Keyframed cases only: waiting out the swap lands a later undo in the preview's burst of requests.
-export const swapPending = (ctx) => Boolean(ctx.keys) && hiddenTarget(ctx.page, ctx.selector);
+export const swapPending = async (ctx) =>
+  Boolean(ctx.keys) &&
+  ((await previewChanging(ctx.page)) || (await hiddenTarget(ctx.page, ctx.selector)));
 
 // fallow-ignore-next-line complexity
 const netMoved = (start, now) =>
@@ -670,12 +687,31 @@ async function waitingQuad(page, map) {
   return quad;
 }
 
-async function sample(ctx, gesture, point, pointerScreen) {
-  const m = await measure(ctx);
-  if (gesture === "crop") m.outline = await cropOutline(ctx, m.map);
-  const waiting = await waitingQuad(ctx.page, m.map);
-  const shown = waiting ? { ...m, quad: waiting, visible: waiting } : m;
-  return { m: shown, actual: m.visible, p: point(shown), c: m.map.toComp(pointerScreen) };
+/** The box as the preview shows it: the waiting marker's quad while a press waits for its replay, else the element. */
+export async function measureShown(ctx, gesture, read = measure, quadOf = contentQuad) {
+  for (;;) {
+    const waiting = await ctx.page.$("[data-dom-edit-press-waiting]");
+    try {
+      const m = await read(ctx);
+      if (gesture === "crop") m.outline = await cropOutline(ctx, m.map);
+      const quad = waiting && (await quadOf(waiting)).map(m.map.toComp);
+      // Replay removes the marker before moving the element. Do not combine a pre-replay
+      // element read with a post-replay marker read into a position nobody displayed.
+      if (
+        waiting &&
+        !(await waiting.evaluate((e) => e.hasAttribute("data-dom-edit-press-waiting")))
+      )
+        continue;
+      return { m: quad ? { ...m, quad, visible: quad } : m, actual: m.visible };
+    } finally {
+      await waiting?.dispose();
+    }
+  }
+}
+
+export async function sample(ctx, gesture, point, pointerScreen) {
+  const { m, actual } = await measureShown(ctx, gesture);
+  return { m, actual, p: point(m), c: m.map.toComp(pointerScreen) };
 }
 
 const TRACE_CATEGORIES = ["toplevel", "devtools.timeline", "blink.user_timing"];
@@ -859,9 +895,11 @@ export async function pointerGesture(ctx, gesture, pre, route) {
   await ctx.page.mouse.move(press[0], press[1]);
   await startFrames(ctx.page, ctx.selector ?? "#target");
   await nextFrame(ctx.page, 2);
+  traceBench("press", { gesture });
   await ctx.page.mouse.down();
   await nextFrame(ctx.page);
   const s0 = await sample(ctx, gesture, g.point, press);
+  traceBench("pressed", { gesture, jump: pre && quadDistance(s0.m.visible, pre.visible) });
   await recording(ctx.page, true);
   const errors = [];
   let last = s0;
@@ -881,6 +919,7 @@ export async function pointerGesture(ctx, gesture, pre, route) {
   }
   const rec = await recording(ctx.page, false);
   const smooth = smoothness(rec);
+  traceBench("release", { gesture, worst: Math.max(...errors) });
   await ctx.page.mouse.up();
   const lastQuad = gesture === "crop" ? last.m.outline : last.m.visible;
   return {
@@ -966,11 +1005,18 @@ export async function inStudio({ browser, spec, dir, files, url, evidence }, dri
   };
   const consoleErrors = [];
   page.on("pageerror", (e) => consoleErrors.push(e.message));
+  page.on(
+    "console",
+    (m) =>
+      m.text().startsWith("[hf-reload]") && traceBench("reload", { line: m.text().slice(0, 400) }),
+  );
   evidence.shots = {};
   const shoot = async (name) =>
     (evidence.shots[name] = await page.screenshot({ type: "jpeg", quality: 70 }));
   try {
     await page.setViewport(VIEWPORT);
+    if (process.env.HF_WRITE_TRACE)
+      await page.evaluateOnNewDocument(() => localStorage.setItem("hf-reload-debug", "1"));
     await page.evaluateOnNewDocument(installWebMcpHost, "__editBench");
     await page.evaluateOnNewDocument(instrumentPage);
     if (spec.slowSaves) await page.evaluateOnNewDocument(slowSaves, spec.slowSaves);

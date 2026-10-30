@@ -262,6 +262,13 @@ export function prepareBatchRender(options: PrepareBatchRenderOptions): Prepared
     commonOutputDirectory(rows.map((row) => row.outputPath)),
     "manifest.json",
   );
+  if (manifestPath === batchPath) {
+    throw new BatchRenderInputError(
+      "Batch manifest collision",
+      `The generated manifest would overwrite the batch input: ${batchPath}.`,
+      "Use a separate output directory in --output, such as renders/{index}.mp4.",
+    );
+  }
   checkOutputCollisions(rows, manifestPath);
 
   const variableIssueCount = validateBatchVariables(

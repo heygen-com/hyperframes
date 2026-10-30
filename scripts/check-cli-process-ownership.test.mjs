@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, it } from "node:test";
-import { listDirectProcessTermination } from "./check-cli-process-ownership.mjs";
+import {
+  checkCliProcessOwnership,
+  listDirectProcessTermination,
+} from "./check-cli-process-ownership.mjs";
 
 describe("CLI process ownership checker", () => {
   it("reports direct process exit and exitCode writes", () => {
@@ -24,5 +30,16 @@ describe("CLI process ownership checker", () => {
       ),
       [],
     );
+  });
+
+  it("lets a test fixture, spawned as its own process, exit", (t) => {
+    const root = mkdtempSync(join(tmpdir(), "hf-ownership-"));
+    t.after(() => rmSync(root, { recursive: true, force: true }));
+    mkdirSync(join(root, "packages/cli/src/utils"), { recursive: true });
+    writeFileSync(join(root, "packages/cli/src/utils/a.fixture.ts"), "process.exit(0);\n");
+    writeFileSync(join(root, "packages/cli/src/utils/a.ts"), "process.exit(0);\n");
+    assert.deepEqual(checkCliProcessOwnership(root), [
+      "packages/cli/src/utils/a.ts:1:1 uses process.exit",
+    ]);
   });
 });

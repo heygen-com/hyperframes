@@ -4,9 +4,9 @@ sidebarTitle: "Agent plugins"
 description: "Install video creation skills as one versioned plugin and let your agent manage updates."
 ---
 
-The HyperFrames plugin gives your coding agent the complete set of video workflows:
-product promos, explainers, captions, motion graphics, and more. Skills load when
-needed; you do not have to install each workflow separately.
+The HyperFrames plugin gives your coding agent every HyperFrames skill: the video
+contract and references for product promos, explainers, captions, motion graphics,
+and more, plus the CLI, registry, and media skills. Skills load when needed.
 
 Choose one installation method per agent. Plugins receive updates through the
 agent's plugin manager. [Standalone skills](/guides/skills) remain available for
@@ -35,16 +35,20 @@ claude plugin install hyperframes@hyperframes
 claude plugin details hyperframes
 ```
 
-The inventory should include `hyperframes`, `general-video`, and `media-use`.
+The inventory should include `hyperframes`, `hyperframes-cli`, and `media-use`.
 Start a new session or run `/reload-plugins`, then try:
 
 ```text
 Using /hyperframes:hyperframes, make a 5-second title card that says "Hello world".
 ```
 
-**Enable automatic updates:** run `/plugin`, open **Marketplaces**, select
-**hyperframes**, and choose **Enable auto-update**. Third-party marketplaces do
-not enable this by default. To update manually:
+**Enable automatic updates in Claude Code's terminal UI:** open a terminal in
+your project and run `claude`. In that session, run `/plugin`, open **Marketplaces**,
+select **hyperframes**, and choose **Enable auto-update**. If you installed through
+Claude Code's IDE extension or desktop app, use this terminal route on the same
+machine. Third-party marketplaces do not enable this by default. See
+[Claude Code's auto-update guidance](https://code.claude.com/docs/en/plugins/install#turn-auto-update-on-or-off-for-a-marketplace)
+for details. To update manually:
 
 ```bash
 claude plugin update hyperframes@hyperframes
@@ -126,10 +130,8 @@ To stay on a specific release, install with `--ref <release-tag>` instead of
 `--auto-update`. Choose a release containing `gemini-extension.json`.
 See [Gemini's extension guide](https://geminicli.com/docs/extensions/reference/).
 
-The embedded-captions workflow additionally needs project-local Sharp, Puppeteer
-with Chromium, and GSAP. Its skill includes the versioned installation command;
-keep those dependencies and their lockfile in the caption project. The plugin
-itself remains read-only and does not include browsers or model weights.
+The plugin itself remains read-only and does not include browsers or model
+weights.
 
 ## Versions and updates
 

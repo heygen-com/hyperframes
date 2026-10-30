@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>control: native video playback without the player</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #000;
+      }
+      video {
+        width: 320px;
+        height: 180px;
+        object-fit: cover;
+      }
+    </style>
+  </head>
+  <body>
+    <script>
+      // ?media=<key>&n=&rate=, &tick=1 (per-frame media writes),
+      // &animate=scale|translate|css (ancestor transform every frame; css runs on the compositor).
+      (async function () {
+        var q = new URLSearchParams(location.search);
+        var MEDIA = {
+          "grid-sample": "../10-video-grid/sample.mp4",
+          "h264-1080": "../_media/h264-1080.mp4",
+          "alpha-vp9": "../_media/alpha-vp9.webm",
+        };
+        var src = MEDIA[q.get("media")];
+        if (!src) throw new Error("unknown media " + q.get("media"));
+        var videos = [];
+        for (var i = 0; i < Number(q.get("n") || 1); i++) {
+          var v = document.createElement("video");
+          v.src = src;
+          v.muted = true;
+          v.playsInline = true;
+          v.preload = "auto";
+          document.body.appendChild(v);
+          videos.push(v);
+        }
+        await Promise.all(
+          videos.map(
+            (v) => new Promise((r) => v.addEventListener("canplaythrough", r, { once: true })),
+          ),
+        );
+        var decoded = () =>
+          videos.reduce(
+            (a, v) => {
+              var p = v.getVideoPlaybackQuality();
+              return {
+                dropped: a.dropped + p.droppedVideoFrames,
+                total: a.total + p.totalVideoFrames,
+              };
+            },
+            { dropped: 0, total: 0 },
+          );
+        await Promise.all(videos.map((v) => v.play()));
+        videos.forEach((v) => (v.playbackRate = Number(q.get("rate") || 1)));
+        if (q.get("tick")) {
+          (function tick() {
+            videos.forEach((v) => {
+              v.volume = 1;
+              v.muted = true;
+              void v.currentTime;
+            });
+            requestAnimationFrame(tick);
+          })();
+        }
+        var animate = q.get("animate");
+        if (animate === "css") {
+          document.body.animate([{ transform: "scale(0.85)" }, { transform: "scale(0.95)" }], {
+            duration: 1000,
+            iterations: Infinity,
+            direction: "alternate",
+          });
+        } else if (animate) {
+          (function frame(t) {
+            var k = Math.sin(t / 500);
+            document.body.style.transform =
+              animate === "translate"
+                ? "translateX(" + 40 * k + "px)"
+                : "scale(" + (0.9 + 0.05 * k) + ")";
+            requestAnimationFrame(frame);
+          })(0);
+        }
+        var before = decoded();
+        await new Promise((r) => setTimeout(r, 8000));
+        var after = decoded();
+        window.__control = {
+          dropped: after.dropped - before.dropped,
+          total: after.total - before.total,
+          presentedFps:
+            Math.round(
+              ((after.total - before.total - (after.dropped - before.dropped)) /
+                videos.length /
+                8) *
+                10,
+            ) / 10,
+        };
+      })().catch((e) => (window.__control = { error: String(e) }));
+    </script>
+  </body>
+</html>

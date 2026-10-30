@@ -29,6 +29,18 @@ const FIXED_INPUT = {
 };
 
 describe("buildDockerRunArgs", () => {
+  it("preserves an explicit page motion blur override inside Docker", () => {
+    const args = buildDockerRunArgs({
+      ...FIXED_INPUT,
+      options: { ...BASE, pageMotionBlur: "off" },
+    });
+    expect(
+      args.slice(args.indexOf("--page-motion-blur"), args.indexOf("--page-motion-blur") + 2),
+    ).toEqual(["--page-motion-blur", "off"]);
+    expect(buildDockerRunArgs({ ...FIXED_INPUT, options: BASE })).not.toContain(
+      "--page-motion-blur",
+    );
+  });
   it("matches snapshot for the default render", () => {
     expect(buildDockerRunArgs({ ...FIXED_INPUT, options: BASE })).toMatchInlineSnapshot(`
       [
@@ -282,6 +294,20 @@ describe("buildDockerRunArgs", () => {
     expect(args[formatIdx + 1]).toBe("gif");
     expect(loopIdx).toBeGreaterThanOrEqual(0);
     expect(args[loopIdx + 1]).toBe("0");
+  });
+
+  it("forwards the delivery options to the container only when set", () => {
+    const args = buildDockerRunArgs({
+      ...FIXED_INPUT,
+      options: { ...BASE, keyframeIntervalSeconds: 2, maxBitrate: "8M", bufferSize: "12M" },
+    });
+    const after = (flag: string) => args[args.indexOf(flag) + 1];
+    expect(after("--keyframe-interval")).toBe("2");
+    expect(after("--max-bitrate")).toBe("8M");
+    expect(after("--buffer-size")).toBe("12M");
+    const plain = buildDockerRunArgs({ ...FIXED_INPUT, options: BASE });
+    expect(plain).not.toContain("--max-bitrate");
+    expect(plain).not.toContain("--keyframe-interval");
   });
 
   it("forwards --video-bitrate to the container when set", () => {

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
-import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { VALID_CANVAS_RESOLUTIONS } from "@hyperframes/parsers";
@@ -372,6 +372,27 @@ describe("POST /projects/:id/render — crf", () => {
     const both = await post({ format: "mp4", crf: 12, videoBitrate: "10M" });
     expect(both.res.status).toBe(400);
     expect(both.opts).toBeUndefined();
+  });
+
+  it("forwards a ProRes profile for mov to the render adapter and refuses an unknown one", async () => {
+    expect((await post({ format: "mov", proresProfile: "hq" })).opts.proresProfile).toBe("hq");
+    const unknown = await post({ format: "mov", proresProfile: "422hq" });
+    expect(unknown.res.status).toBe(400);
+    expect(unknown.opts).toBeUndefined();
+  });
+
+  it("forwards the keyframe interval and the rate cap to the render adapter", async () => {
+    const { res, opts } = await post({
+      format: "mp4",
+      keyframeIntervalSeconds: 2,
+      maxBitrate: "8M",
+      bufferSize: "12M",
+    });
+    expect(res.status).toBe(200);
+    expect(opts).toMatchObject({ keyframeIntervalSeconds: 2, maxBitrate: "8M", bufferSize: "12M" });
+    const webm = await post({ format: "webm", maxBitrate: "8M" });
+    expect(webm.res.status).toBe(400);
+    expect(webm.opts).toBeUndefined();
   });
 
   it.each([
@@ -785,6 +806,69 @@ describe("POST /projects/:id/render — telemetryDistinctId forwarding", () => {
     }
   });
 
+  // WYSIWYG: the browser says whether its preview could blur; only `false` is a signal, and the
+  // route hands every adapter the final render value.
+  it.each([
+    [false, "off"],
+    [true, undefined],
+    ["false", undefined],
+    [undefined, undefined],
+  ])("maps previewMotionBlur %s to pageMotionBlur %s", async (flag, expected) => {
+    const spy = vi.fn();
+    const { app, cleanup } = buildApp(spy);
+    try {
+      await app.request("http://localhost/projects/demo/render", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          fps: 30,
+          quality: "standard",
+          format: "mp4",
+          previewMotionBlur: flag,
+        }),
+      });
+      expect(spy.mock.calls[0][0].pageMotionBlur).toBe(expected);
+      expect(spy.mock.calls[0][0]).not.toHaveProperty("previewMotionBlur");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("preserves explicit page motion blur off over preview capability", async () => {
+    const spy = vi.fn();
+    const { app, cleanup } = buildApp(spy);
+    try {
+      const res = await app.request("http://localhost/projects/demo/render", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ pageMotionBlur: "off", previewMotionBlur: true }),
+      });
+      expect(res.status).toBe(200);
+      expect(spy.mock.calls[0][0].pageMotionBlur).toBe("off");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it.each(["on", "", false, true, null, 0])(
+    "rejects invalid page motion blur %s before starting a render",
+    async (pageMotionBlur) => {
+      const spy = vi.fn();
+      const { app, cleanup } = buildApp(spy);
+      try {
+        const res = await app.request("http://localhost/projects/demo/render", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ pageMotionBlur }),
+        });
+        expect(res.status).toBe(400);
+        expect(spy).not.toHaveBeenCalled();
+      } finally {
+        cleanup();
+      }
+    },
+  );
+
   // An old client omits the flag, and a non-boolean is not a signal either.
   // Defaulting those to "opted out" would silently drop every pre-upgrade
   // render outcome.
@@ -976,6 +1060,129 @@ describe("audioLoweredDb — the limiter's attenuation reaches the host", () => 
       ).json()) as { renders: Array<{ id: string; audioLoweredDb?: number }> };
       expect(renders.find((r) => r.id === "loud")?.audioLoweredDb).toBe(1.44);
       expect(renders.find((r) => r.id === "quiet")).not.toHaveProperty("audioLoweredDb");
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe("Studio GIF renders", () => {
+  it.each([undefined, null, 0, 1, 65535])("accepts GIF with gifLoop %j", async (gifLoop) => {
+    const spy = vi.fn();
+    const { app, cleanup } = buildApp(spy);
+    try {
+      const res = await app.request("/projects/demo/render", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ format: "gif", gifLoop, gpu: true }),
+      });
+      expect(res.status).toBe(200);
+      expect(spy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          format: "gif",
+          outputPath: expect.stringMatching(/\.gif$/),
+          useGpu: false,
+          ...(typeof gifLoop === "number" ? { gifLoop } : {}),
+        }),
+      );
+      if (gifLoop == null) expect(spy.mock.calls[0][0]).not.toHaveProperty("gifLoop");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it.each([-1, 65536, 1.5, "2", true, {}, []])(
+    "rejects invalid gifLoop %j before starting",
+    async (gifLoop) => {
+      const spy = vi.fn();
+      const { app, cleanup } = buildApp(spy);
+      try {
+        const res = await app.request("/projects/demo/render", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ format: "gif", gifLoop }),
+        });
+        expect(res.status).toBe(400);
+        expect(await res.json()).toEqual({ error: "gifLoop must be an integer from 0 to 65535" });
+        expect(spy).not.toHaveBeenCalled();
+      } finally {
+        cleanup();
+      }
+    },
+  );
+
+  it("leaves video exports unchanged when a valid GIF loop option is supplied", async () => {
+    const spy = vi.fn();
+    const { app, cleanup } = buildApp(spy);
+    try {
+      const res = await app.request("/projects/demo/render", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ format: "mp4", gifLoop: 3 }),
+      });
+      expect(res.status).toBe(200);
+      expect(spy.mock.calls[0][0]).not.toHaveProperty("gifLoop");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("lists a saved GIF after restart, serves image bytes, and deletes its sidecar", async () => {
+    const { app, rendersDir, cleanup } = buildApp(vi.fn());
+    try {
+      const output = join(rendersDir, "saved.gif");
+      const meta = join(rendersDir, "saved.meta.json");
+      writeFileSync(output, "GIF89a");
+      writeFileSync(meta, JSON.stringify({ status: "complete", durationMs: 42 }));
+      const list = await app.request("/projects/demo/renders");
+      expect(await list.json()).toMatchObject({
+        renders: [{ id: "saved", filename: "saved.gif", durationMs: 42 }],
+      });
+      for (const url of [
+        "/projects/demo/renders/file/saved.gif",
+        "/render/saved/view",
+        "/render/saved/download",
+      ]) {
+        const res = await app.request(url);
+        expect(res.status).toBe(200);
+        expect(res.headers.get("content-type")).toBe("image/gif");
+        expect(await res.text()).toBe("GIF89a");
+        expect(res.headers.get("content-disposition")).toContain(
+          url.endsWith("download") ? "attachment" : "inline",
+        );
+      }
+      expect((await app.request("/render/saved", { method: "DELETE" })).status).toBe(200);
+      expect(existsSync(output)).toBe(false);
+      expect(existsSync(meta)).toBe(false);
+      expect(await (await app.request("/projects/demo/renders")).json()).toEqual({ renders: [] });
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe("Studio GIF frame-rate cap", () => {
+  it.each([
+    { format: "gif", fps: 60, expected: { num: 30, den: 1 } },
+    { format: "gif", fps: "60000/1001", expected: { num: 30, den: 1 } },
+    { format: "gif", fps: "30001/1000", expected: { num: 30, den: 1 } },
+    { format: "gif", fps: "30000/1001", expected: { num: 30000, den: 1001 } },
+    { format: "gif", fps: 30, expected: { num: 30, den: 1 } },
+    { format: "gif", fps: 24, expected: { num: 24, den: 1 } },
+    { format: "mp4", fps: 60, expected: { num: 60, den: 1 } },
+    { format: "webm", fps: 60, expected: { num: 60, den: 1 } },
+    { format: "mov", fps: 60, expected: { num: 60, den: 1 } },
+  ])("forwards $format at $fps fps as $expected", async ({ format, fps, expected }) => {
+    const spy = vi.fn();
+    const { app, cleanup } = buildApp(spy);
+    try {
+      const res = await app.request("/projects/demo/render", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ format, fps }),
+      });
+      expect(res.status).toBe(200);
+      expect(spy).toHaveBeenCalledWith(expect.objectContaining({ format, fps: expected }));
     } finally {
       cleanup();
     }

@@ -29,6 +29,7 @@ import crypto from "node:crypto";
 import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import { serve } from "@hono/node-server";
+import { fetchPublicHttpsText } from "@hyperframes/engine";
 import {
   RenderCancelledError,
   createRenderJob,
@@ -50,6 +51,9 @@ import {
 } from "@hyperframes/core";
 import { parseEncoderOptions } from "@hyperframes/studio-server/encoder-options";
 import { createRenderRequest, renderConfigFromRequest } from "./renderRequest.js";
+import { extractSafeRenderErrorCode } from "./services/safeRenderErrorCode.js";
+
+export { extractSafeRenderErrorCode };
 
 // ---------------------------------------------------------------------------
 // Types
@@ -84,10 +88,15 @@ interface RenderInput {
   quality: "draft" | "standard" | "high";
   format?: "mp4" | "webm" | "mov";
   videoFrameFormat?: RenderConfig["videoFrameFormat"];
+  pageMotionBlur?: RenderConfig["pageMotionBlur"];
   outputDynamicRange?: "auto" | "hdr" | "sdr";
   workers?: number;
+  maxRenderMs?: number;
   crf?: number;
   videoBitrate?: string;
+  keyframeIntervalSeconds?: number;
+  maxBitrate?: string;
+  bufferSize?: string;
   useGpu: boolean;
   debug: boolean;
   strictness: RenderConfig["strictness"];
@@ -121,25 +130,7 @@ interface PreparedRenderInput {
 }
 
 const DEFAULT_SERVER_FPS = { num: 30, den: 1 } as const;
-const SAFE_RENDER_ERROR_CODES = new Set<string>([
-  "ASSET_MEDIA_TYPE_MISMATCH",
-  "NOT_MEDIA_PAYLOAD",
-  "INVALID_VIDEO_METADATA",
-  "VIDEO_SOURCE_UNRENDERABLE",
-  "VIDEO_EXTRACTION_FAILED",
-  "ENCODER_INTERRUPTED",
-]);
-
-/**
- * Preserve only bounded producer error codes across JSON/SSE. Never derive a
- * code from the message: it may contain local paths or signed source URLs.
- */
-export function extractSafeRenderErrorCode(error: unknown): string | undefined {
-  if (typeof error !== "object" || error === null || !("code" in error)) return undefined;
-  const code = error.code;
-  return typeof code === "string" && SAFE_RENDER_ERROR_CODES.has(code) ? code : undefined;
-}
-
+const SSE_KEEPALIVE_MS = 30_000;
 export interface SafeRenderErrorMetadata {
   errorCode: string;
   errorOwner?: "system" | "user";
@@ -222,6 +213,7 @@ export function parseRenderOptions(body: Record<string, unknown>): Omit<RenderIn
   const fps = parseServerFps(body.fps);
   const quality = parseServerQuality(body.quality);
   const workers = typeof body.workers === "number" ? body.workers : undefined;
+  const maxRenderMs = typeof body.maxRenderMs === "number" ? body.maxRenderMs : undefined;
   const useGpu = body.gpu === true;
   const debug = body.debug === true;
   // Preserve the pre-structured-warning HTTP contract for callers that do
@@ -236,7 +228,8 @@ export function parseRenderOptions(body: Record<string, unknown>): Omit<RenderIn
     parseServerOutputDynamicRange(body.outputDynamicRange) ??
     fromRenderHdrMode(parseLegacyServerHdrMode(body.hdrMode));
   const encoder = parseEncoderOptions(body, format ?? "mp4");
-  const { crf, videoBitrate, videoFrameFormat } = encoder.ok ? encoder.options : {};
+  const { crf, videoBitrate, videoFrameFormat, keyframeIntervalSeconds, maxBitrate, bufferSize } =
+    encoder.ok ? encoder.options : {};
 
   const { variables, outputResolution, outputResolutionAspectAgnostic } =
     parseRenderOverrides(body);
@@ -246,8 +239,12 @@ export function parseRenderOptions(body: Record<string, unknown>): Omit<RenderIn
     fps,
     quality,
     workers,
+    maxRenderMs,
     crf,
     videoBitrate,
+    keyframeIntervalSeconds,
+    maxBitrate,
+    bufferSize,
     useGpu,
     debug,
     strictness,
@@ -307,8 +304,12 @@ function buildRenderJobConfig(input: RenderInput, outputPath: string, log: Produ
       quality: input.quality,
       format: input.format ?? "mp4",
       workers: input.workers,
+      maxRenderMs: input.maxRenderMs,
       crf: input.crf,
       videoBitrate: input.videoBitrate,
+      keyframeIntervalSeconds: input.keyframeIntervalSeconds,
+      maxBitrate: input.maxBitrate,
+      bufferSize: input.bufferSize,
       useGpu: input.useGpu,
       debug: input.debug,
       strictness: input.strictness,
@@ -317,6 +318,7 @@ function buildRenderJobConfig(input: RenderInput, outputPath: string, log: Produ
       outputResolution: input.outputResolution,
       outputResolutionAspectAgnostic: input.outputResolutionAspectAgnostic,
       videoFrameFormat: input.videoFrameFormat,
+      pageMotionBlur: input.pageMotionBlur,
       hdrMode: toRenderHdrMode(input.outputDynamicRange),
     },
   });
@@ -349,6 +351,14 @@ function resolvePreparedRenderOutput(
 function validateRenderOverrides(body: Record<string, unknown>): string | undefined {
   const encoder = parseEncoderOptions(body, parseServerFormat(body.format) ?? "mp4");
   if (!encoder.ok) return encoder.error;
+  if (
+    body.maxRenderMs !== undefined &&
+    (typeof body.maxRenderMs !== "number" ||
+      !Number.isInteger(body.maxRenderMs) ||
+      body.maxRenderMs < 0)
+  ) {
+    return "maxRenderMs must be a non-negative integer number of milliseconds";
+  }
   if (body.variables !== undefined && !isPlainObject(body.variables)) {
     return 'variables must be a JSON object keyed by variable id (e.g. {"title":"Hello"})';
   }
@@ -376,10 +386,7 @@ function validateRenderOverrides(body: Record<string, unknown>): string | undefi
 /**
  * Validate an explicitly-supplied `outputResolution`. Rejects (a) non-string
  * values, which parseRenderOverrides would otherwise silently coerce to
- * `undefined`; (b) unknown presets; and (c) the alpha-format combination —
- * outputResolution drives deviceScaleFactor supersampling, which the webm/mov
- * capture path can't apply (resolveDeviceScaleFactor throws mid-render), so we
- * reject it here for a clean 400 regardless of which caller sent it.
+ * `undefined`; and (b) unknown presets.
  */
 function validateOutputResolutionOverride(body: Record<string, unknown>): string | undefined {
   if (body.outputResolution === undefined) return undefined;
@@ -390,13 +397,12 @@ function validateOutputResolutionOverride(body: Record<string, unknown>): string
   if (body.outputResolution.trim().length > 0 && normalized === undefined) {
     return `Invalid outputResolution "${body.outputResolution}". Must be one of: landscape, portrait, landscape-4k, portrait-4k, square, square-4k (aliases: 1080p, 4k, …).`;
   }
-  if (normalized !== undefined && (body.format === "webm" || body.format === "mov")) {
-    return `outputResolution is not supported with format "${body.format}": the alpha (webm/mov) capture path can't supersample. Use format "mp4", or omit outputResolution to render at the composition's native dimensions.`;
-  }
   return undefined;
 }
 
 type PrepareRenderResult = { prepared: PreparedRenderInput } | { error: string };
+
+const MAX_PREVIEW_HTML_BYTES = 20 * 1024 * 1024;
 
 function prepareProjectDirectory(
   projectDir: unknown,
@@ -427,11 +433,7 @@ async function resolveInlineRenderHtml(body: Record<string, unknown>): Promise<
   if (!previewUrl)
     return { error: "Missing render source: provide projectDir, previewUrl, or html" };
   try {
-    const response = await fetch(previewUrl, { method: "GET" });
-    if (!response.ok) {
-      return { error: `Failed to fetch previewUrl: ${response.status} ${response.statusText}` };
-    }
-    return { html: await response.text() };
+    return { html: await fetchPublicHttpsText(previewUrl, { maxBytes: MAX_PREVIEW_HTML_BYTES }) };
   } catch (error) {
     return {
       error: `Failed to fetch previewUrl: ${error instanceof Error ? error.message : String(error)}`,
@@ -462,7 +464,11 @@ export async function prepareRenderBody(
   const overrideError = validateRenderOverrides(body);
   if (overrideError) return { error: overrideError };
 
-  const options = parseRenderOptions(body);
+  const pageMotionBlur = body.pageMotionBlur;
+  if (pageMotionBlur !== undefined && pageMotionBlur !== "off") {
+    return { error: "pageMotionBlur must be off when supplied" };
+  }
+  const options: Omit<RenderInput, "projectDir"> = { ...parseRenderOptions(body), pageMotionBlur };
   const project = prepareProjectDirectory(body.projectDir, options);
   if (project) return project;
   const source = await resolveInlineRenderHtml(body);
@@ -847,6 +853,10 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
           }),
         });
       }
+      const reportProgress = createSseProgressReporter(stream, requestId);
+      const keepalive = setInterval(() => {
+        Promise.resolve(reportProgress(job, job.currentStage)).catch(() => {});
+      }, SSE_KEEPALIVE_MS);
       const release = await renderSemaphore.acquire();
 
       try {
@@ -854,9 +864,10 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
           job,
           input.projectDir,
           absoluteOutputPath,
-          createSseProgressReporter(stream, requestId),
+          reportProgress,
           abortController.signal,
-        );
+        ).finally(release);
+        clearInterval(keepalive);
 
         const fileSize = outputFileSize(absoluteOutputPath);
         const outputToken = store.register(absoluteOutputPath);
@@ -877,6 +888,7 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
           }),
         });
       } catch (error) {
+        clearInterval(keepalive);
         await writeRenderStreamFailure({
           error,
           job,
@@ -886,7 +898,6 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
           log,
         });
       } finally {
-        release();
         c.req.raw.signal.removeEventListener("abort", onRequestAbort);
         cleanupTempDir(cleanupProjectDir, log);
       }

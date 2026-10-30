@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef, type ReactNode } from "react";
 import {
   ArrowsOutLineHorizontal,
+  FrameCorners,
   Image,
   Magnet,
   MagnifyingGlassMinus,
@@ -20,8 +21,10 @@ import {
 } from "../player/components/timelineZoom";
 import { useTimelineZoom } from "../player/components/useTimelineZoom";
 import {
+  canZoomToSelectedClips,
   useShownTimelineZoomPercent,
   zoomTimelineStep,
+  zoomTimelineToSelectedClips,
 } from "../player/components/timelineZoomInput";
 import { usePlayerStore, type TimelineElement } from "../player";
 import { Tooltip } from "./ui";
@@ -38,7 +41,10 @@ import { LinkedSelectionToggle } from "./LinkedSelectionToggle";
 import { useProjectHasAudio } from "../utils/audioMeterMath";
 import { canAddBeatAt, addBeatAtCompositionTime } from "../utils/beatEditActions";
 import { isTypingTarget } from "../utils/typingTarget";
-import { SPLIT_SHORTCUT_HINT } from "../player/components/studioShortcuts";
+import {
+  SPLIT_SHORTCUT_HINT,
+  ZOOM_SELECTION_SHORTCUT_HINT,
+} from "../player/components/studioShortcuts";
 import { useTimelineTrackDensity } from "../player/components/useTimelineTrackHeight";
 import type { TimelineProps } from "../player/components/TimelineTypes";
 
@@ -179,7 +185,13 @@ export const TimelineToolbar = memo(function TimelineToolbar({
   const beatAnalysisReady = usePlayerStore((s) => s.beatAnalysis !== null);
   // Subscribed, so the split button follows the selection, not only playhead ticks.
   const selectedElementId = usePlayerStore((s) => s.selectedElementId);
+  const selectedElementIds = usePlayerStore((s) => s.selectedElementIds);
   const elements = usePlayerStore((s) => s.elements);
+  const canZoomSelection = canZoomToSelectedClips({
+    elements,
+    selectedElementId,
+    selectedElementIds,
+  });
   const timelineFitPps = usePlayerStore((s) => s.timelineFitPps);
   const { zoomMode, setZoomMode, setManualZoomPercent } = useTimelineZoom();
   const displayedTimelineZoomPercent = useShownTimelineZoomPercent();
@@ -453,120 +465,4 @@ export const TimelineToolbar = memo(function TimelineToolbar({
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                     <path
-                      d="M21 10C21 12.2091 16.9706 14 12 14M21 10C21 7.79086 16.9706 6 12 6C7.02944 6 3 7.79086 3 10M21 10V16C21 18.2091 16.9706 20 12 20M12 14C7.02944 14 3 12.2091 3 10M12 14V20M3 10V16C3 18.2091 7.02944 20 12 20M7 19.3264V13.3264M17 19.3264V13.3264M12 10L20 4"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                </button>
-              </Tooltip>
-            );
-          })()}
-        </div>
-        <div className="flex items-center gap-0.5">
-          {rightActions}
-          <Tooltip
-            label={
-              thumbnailsVisible
-                ? "Hide thumbnails: labels only"
-                : "Show thumbnails: posters stay visible; richer previews appear on interaction"
-            }
-          >
-            <button
-              type="button"
-              aria-label={
-                thumbnailsVisible
-                  ? "Hide thumbnails: labels only"
-                  : "Show thumbnails: posters stay visible; richer previews appear on interaction"
-              }
-              aria-pressed={thumbnailsVisible}
-              onClick={() => setThumbnailMode(thumbnailsVisible ? "hidden" : "adaptive")}
-              className={`h-7 px-2 rounded-md text-[11px] font-medium transition-colors ${
-                thumbnailsVisible
-                  ? "bg-studio-accent/10 text-accent-ink"
-                  : "text-neutral-400 hover:bg-hover hover:text-neutral-200"
-              }`}
-            >
-              <Image size={16} aria-hidden="true" />
-            </button>
-          </Tooltip>
-          <Tooltip label="Compact track height">
-            <button
-              type="button"
-              aria-label="Compact track height"
-              aria-pressed={compactTracks}
-              onClick={() => setTrackDensity(compactTracks ? "comfortable" : "compact")}
-              className={`h-7 px-2 rounded-md text-[11px] font-medium transition-colors ${
-                compactTracks
-                  ? "bg-studio-accent/10 text-accent-ink"
-                  : "text-neutral-400 hover:bg-hover hover:text-neutral-200"
-              }`}
-            >
-              <Rows size={16} aria-hidden="true" />
-            </button>
-          </Tooltip>
-          <Tooltip label="Fit timeline to width">
-            <button
-              type="button"
-              onClick={() => setZoomMode("fit")}
-              aria-label="Fit timeline to width"
-              aria-pressed={zoomMode === "fit"}
-              className={`h-7 px-2 rounded-md text-[11px] font-medium transition-colors ${
-                zoomMode === "fit"
-                  ? "bg-studio-accent/10 text-accent-ink"
-                  : "text-neutral-400 hover:bg-hover hover:text-neutral-200"
-              }`}
-            >
-              <ArrowsOutLineHorizontal size={16} aria-hidden="true" />
-            </button>
-          </Tooltip>
-          <Tooltip label="Zoom out">
-            <button
-              type="button"
-              aria-label="Zoom out"
-              onClick={() => zoomTimelineStep("out")}
-              className={flatIdle}
-            >
-              <MagnifyingGlassMinus size={16} aria-hidden="true" />
-            </button>
-          </Tooltip>
-          <input
-            type="range"
-            min="0"
-            max="100"
-            value={timelineZoomPercentToSlider(displayedTimelineZoomPercent, timelineFitPps)}
-            title={`${displayedTimelineZoomPercent}%`}
-            aria-label="Timeline zoom"
-            onChange={(e) =>
-              setManualZoomPercent(
-                timelineSliderToZoomPercent(Number(e.target.value), timelineFitPps),
-              )
-            }
-            // h-6 on the input is the 24x24 WCAG 2.2 (2.5.8) target: the visible
-            // track stays 2px and the thumb 10px, only the pointer box grows.
-            className="mx-1 h-6 w-[96px] cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-[2px] [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-neutral-700 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-[10px] [&::-webkit-slider-thumb]:h-[10px] [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-text-0 [&::-webkit-slider-thumb]:-mt-1 [&::-webkit-slider-thumb]:shadow-[0_0_0_2px_#0a0a0a,0_1px_3px_rgba(0,0,0,0.5)] [&::-webkit-slider-thumb]:cursor-grab [&::-webkit-slider-thumb:active]:cursor-grabbing"
-          />
-          <Tooltip label="Zoom in">
-            <button
-              type="button"
-              aria-label="Zoom in"
-              onClick={() => zoomTimelineStep("in")}
-              className={flatIdle}
-            >
-              <MagnifyingGlassPlus size={16} aria-hidden="true" />
-            </button>
-          </Tooltip>
-          {/* Numeric zoom readout (main-parity): "Fit" in fit mode, N% in manual. */}
-          <span
-            className="ml-1 w-[38px] text-right font-mono text-[11px] tabular-nums text-neutral-500 select-none"
-            aria-label="Timeline zoom level"
-          >
-            {showsFit ? "Fit" : `${displayedTimelineZoomPercent}%`}
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-});
+                      d="M21 10C21 12.2091 16.9706 14 12 14M21 10C21 7.79086 16.9706 6 12 6C7.02944 6 3 7.79086 3 10M21 10V16C21 18.2091 16.9706 20

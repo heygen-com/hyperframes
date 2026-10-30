@@ -1,7 +1,7 @@
 ---
 title: "Speed ramps"
 sidebarTitle: "Speed ramps"
-description: "Change a clip's playback speed over time with a rate lane in data-automation. One curve drives the preview, the render and Studio."
+description: "Change a clip's playback speed over time with a rate lane in data-automation. One curve drives the preview, the render and the browser editor."
 ---
 
 A speed ramp changes how fast a `<video>` or `<audio>` clip plays while it
@@ -39,6 +39,9 @@ which the preview and the renderer both use, so the render shows the frames the
 preview showed. Set `data-duration` on the clip to fix how long it holds the
 timeline; without it the length follows from the source and the speed.
 
+If a browser probe discovers a rate lane on an existing clip, export preserves
+the scene's trim in both the ramp's position and the source media in-point.
+
 Pitch is kept. The preview leaves the browser's default pitch correction on.
 The render time-stretches audio in short constant-speed slices (a quarter
 second, coarser on clips longer than a minute), which approximates the curve
@@ -46,11 +49,11 @@ while keeping pitch, so the sound follows the ramp closely rather than exactly.
 
 ## Presets
 
-Studio's **Speed preset** menu draws a ready curve over the clip: Montage,
+the browser editor's **Speed preset** menu draws a ready curve over the clip: Montage,
 Hero, Bullet, Jump cut, Flash in and Flash out. An agent can write the same
 points by hand.
 
-## Editing in Studio
+## Editing in the browser editor
 
 Select a clip and open its Media section. The **Speed** slider sets the
 constant rate. The **A** toggle next to it automates speed, which shows a rate
@@ -61,6 +64,6 @@ lane on the clip in the timeline that you edit like the volume lane.
 - Only `<video>` and `<audio>` clips carry a rate lane.
 - Speeds outside `0.1` to `10` are clamped.
 - The viewer's own transport speed is a separate control that multiplies with
-  the clip's speed, and it is narrower: the Studio speed menu offers `0.25` to
+  the clip's speed, and it is narrower: the browser editor speed menu offers `0.25` to
   `2`, the player's menu offers up to `4`, and the runtime clamps a transport
   request to `0.1` to `5`.

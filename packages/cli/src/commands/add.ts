@@ -1,6 +1,7 @@
 import { failCommand } from "../utils/commandResult.js";
-import { defineCommand } from "citty";
+import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
+import { failCaught } from "../utils/jsonError.js";
 
 export const examples: Example[] = [
   ["Add a block to the current project", "hyperframes add claude-code-window"],
@@ -42,6 +43,7 @@ import {
   createProjectConfig,
 } from "../utils/projectConfig.js";
 import { copyToClipboard } from "../utils/clipboard.js";
+import { readJsonFlag } from "../utils/jsonFlag.js";
 import { trackRegistryItemAdded } from "../telemetry/events.js";
 
 // ── Target-path resolution ──────────────────────────────────────────────────
@@ -146,25 +148,32 @@ export function buildSnippet(
   return "";
 }
 
-/** `add <tag> --json` output: each item's warnings, prefixed with its name. */
-export function tagAddJson(tag: string, results: RunAddResult[]) {
+/** `add <tag> --json` output: successful installs and each item's warnings or failure. */
+export function tagAddJson(
+  tag: string,
+  results: RunAddResult[],
+  errors: Array<{ name: string; error: string }> = [],
+) {
   return {
-    ok: true,
+    ok: errors.length === 0,
     tag,
     installed: results.map((r) => r.name),
     warnings: results.flatMap((r) => r.warnings.map((w) => `${r.name}: ${w}`)),
+    errors,
   };
 }
 
-/** `--vars` is JSON an agent or the catalog page produced; a malformed one is
- *  worth a clear error rather than a snippet that silently drops the values. */
+/** `--vars` is JSON, a file or `-`; a malformed one is an error, not a snippet that drops the values. */
 export function parseVariableValues(raw: string | undefined): Record<string, unknown> | null {
   if (raw === undefined) return null;
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw);
-  } catch {
-    throw new AddError("--vars must be a JSON object of variable values", "invalid-vars");
+    parsed = readJsonFlag("--vars", raw);
+  } catch (error: unknown) {
+    throw new AddError(
+      `--vars must be a JSON object of variable values (${error instanceof Error ? error.message : String(error)})`,
+      "invalid-vars",
+    );
   }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new AddError("--vars must be a JSON object of variable values", "invalid-vars");
@@ -473,7 +482,7 @@ export default defineCommand({
     vars: {
       type: "string",
       description:
-        "JSON of variable values to bake into the printed snippet, as copied from a catalog page",
+        "JSON of variable values to bake into the printed snippet, as copied from a catalog page; or a JSON file path, or - for stdin",
     },
     force: {
       type: "boolean",
@@ -547,10 +556,7 @@ export default defineCommand({
     } catch (singleErr) {
       // Not a single item — try as a tag for bulk install
       if (!(singleErr instanceof AddError) || singleErr.code !== "unknown-item") {
-        const msg = singleErr instanceof Error ? singleErr.message : String(singleErr);
-        if (json) console.log(JSON.stringify({ ok: false, error: msg }));
-        else console.error(c.error(msg));
-        failCommand();
+        failCaught(singleErr, json, c.error);
       }
 
       let config = loadProjectConfig(projectDir);
@@ -570,10 +576,7 @@ export default defineCommand({
       }
 
       if (items.length === 0) {
-        const msg = singleErr instanceof Error ? singleErr.message : String(singleErr);
-        if (json) console.log(JSON.stringify({ ok: false, error: msg }));
-        else console.error(c.error(msg));
-        failCommand();
+        failCaught(singleErr, json, c.error);
       }
 
       if (!json) {
@@ -584,6 +587,7 @@ export default defineCommand({
       }
 
       const results: RunAddResult[] = [];
+      const errors: Array<{ name: string; error: string }> = [];
       for (const item of items) {
         try {
           const result = await runAdd({
@@ -600,16 +604,19 @@ export default defineCommand({
           if (!json) console.log(`  ${c.success("✓")} ${result.name}`);
         } catch (err) {
           const reason = err instanceof Error ? err.message : String(err);
+          errors.push({ name: item.name, error: reason });
           if (!json) console.log(`  ${c.error("✗")} ${item.name} (skipped: ${reason})`);
         }
       }
 
       if (json) {
-        console.log(JSON.stringify(tagAddJson(args.name, results)));
+        console.log(JSON.stringify(tagAddJson(args.name, results, errors)));
       } else {
         console.log("");
-        console.log(`${c.success("✓")} Installed ${results.length}/${items.length} blocks`);
+        const summary = `Installed ${results.length}/${items.length} blocks`;
+        console.log(`${errors.length > 0 ? c.error("✗") : c.success("✓")} ${summary}`);
       }
+      if (errors.length > 0) failCommand();
     }
   },
 });

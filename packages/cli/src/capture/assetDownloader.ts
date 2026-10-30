@@ -7,6 +7,7 @@
 
 import { isBlockedNetworkHost } from "@hyperframes/engine";
 import { publicRequest } from "./publicNetwork.js";
+import { fetchLocalPageUrl } from "./localPage.js";
 import { ensureCaptureDirSync, writeCaptureFileSync } from "./captureFile.js";
 import { join, extname } from "node:path";
 import { createHash } from "node:crypto";
@@ -22,6 +23,7 @@ import {
 } from "./readBoundedResponse.js";
 import { captureFontExtension, captureFontFilename } from "./captureFontValidation.js";
 import { captureImageExtension } from "./captureImageValidation.js";
+import { loadSharp } from "../utils/optionalPackages.js";
 
 interface DownloadBudgetOptions {
   byteBudget?: DownloadByteBudget;
@@ -323,6 +325,7 @@ export async function downloadAssets(
   faviconLinks?: IconCandidate[],
   options: DownloadBudgetOptions = {},
 ): Promise<{ assets: DownloadedAsset[]; drops: AssetDropCounts; icons: IconManifest }> {
+  await loadSharp("website capture");
   options = { ...options, byteBudget: options.byteBudget ?? createCaptureDownloadBudget() };
   const assetsDir = join(outputDir, "assets");
   ensureCaptureDirSync(outputDir, assetsDir);
@@ -594,7 +597,7 @@ export async function downloadAndRewriteFonts(
   });
 
   const usedFontNames = new Set<string>();
-  let rewritten = css;
+  const localFontPaths = new Map<string, string>();
   let count = 0;
 
   for (const [index, fontUrl] of sortedUrls.entries()) {
@@ -629,7 +632,7 @@ export async function downloadAndRewriteFonts(
         const localPath = join(assetsDir, filename);
         const relativePath = `assets/fonts/${filename}`;
         writeCaptureFileSync(localPath, buffer);
-        rewritten = rewritten.split(fontUrl).join(relativePath);
+        localFontPaths.set(fontUrl, relativePath);
       } else {
         drops.unavailable++;
       }
@@ -638,6 +641,10 @@ export async function downloadAndRewriteFonts(
     }
   }
 
+  const rewritten = css.replace(fontUrlRegex, (match: string, url: string) => {
+    const localPath = localFontPaths.get(url);
+    return localPath ? match.replace(url, localPath) : match;
+  });
   return { css: rewritten, drops };
 }
 
@@ -668,6 +675,8 @@ const MAX_FETCH_REDIRECTS = 5;
  * or on network error.
  */
 export async function safeFetch(url: string, init?: RequestInit): Promise<Response | null> {
+  const local = fetchLocalPageUrl(url, init);
+  if (local) return local;
   let current = url;
   for (let hop = 0; hop <= MAX_FETCH_REDIRECTS; hop++) {
     if (isPrivateUrl(current)) return null;

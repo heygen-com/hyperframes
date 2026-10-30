@@ -81,8 +81,9 @@ const FIXTURES: Fixture[] = [
 ];
 
 const SAMPLES = [0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5, 9.5, 10.5, 11.5];
+// 0.1 ms: far finer than a frame, coarser than the lead mediaElementTime adds to a seek.
 const round = (value: number | undefined) =>
-  value != null && Number.isFinite(value) ? Math.round(value * 1e6) / 1e6 : String(value);
+  value != null && Number.isFinite(value) ? Math.round(value * 1e4) / 1e4 : String(value);
 
 function mount(fixture: Fixture) {
   document.body.innerHTML = fixture.html;

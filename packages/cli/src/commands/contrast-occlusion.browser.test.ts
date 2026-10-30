@@ -206,4 +206,29 @@ describe("contrast audit beneath composition boxes", () => {
     installStack(["overlay", "root"]);
     expect(prepare()).toEqual([]);
   });
+
+  it.each(["inset(0)", "inset(0 50% 0 0)"])(
+    "audits visible text with clip-path %s beneath a transparent host",
+    (clipPath) => {
+      element("headline").style.clipPath = clipPath;
+      expect(prepare()).toContainEqual(expect.objectContaining({ selector: "#headline" }));
+    },
+  );
+
+  it("audits text clipped by an ancestor beneath transparent inner roots", () => {
+    element("headline").removeAttribute("data-layout-allow-occlusion");
+    element("root").style.clipPath = "inset(0)";
+    const inner = document.createElement("div");
+    inner.id = "inner";
+    inner.dataset.hfInnerRoot = "true";
+    element("overlay").appendChild(inner);
+    installStack(["inner", "overlay", "headline", "root"]);
+    expect(prepare()).toContainEqual(expect.objectContaining({ selector: "#headline" }));
+  });
+
+  it("keeps clipped text behind a painted host out of contrast candidates", () => {
+    element("headline").style.clipPath = "inset(0)";
+    element("overlay").style.backgroundColor = "white";
+    expect(prepare()).toEqual([]);
+  });
 });

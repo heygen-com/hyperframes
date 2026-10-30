@@ -1076,7 +1076,7 @@ describe("duplicate_audio_track", () => {
     expect(finding).toBeUndefined();
   });
 
-  it("deduplicates same audio found in root + sub-composition", async () => {
+  it("ignores audio in a sub-composition the root never mounts", async () => {
     const project = makeProject(validHtmlWithAudio(), {
       "scene.html": validHtmlWithAudio("scene"),
     });
@@ -1102,7 +1102,7 @@ describe("duplicate_audio_track", () => {
 
   it("formats Infinity end times as 'end' without crashing", async () => {
     const html = `<html><body>
-  <div data-composition-id="main" data-width="1920" data-height="1080" data-duration="30">
+  <div data-composition-id="main" data-width="1920" data-height="1080">
     <audio id="a" src="a.wav" data-track-index="0" data-start="0">
     <audio id="b" src="b.wav" data-track-index="0" data-start="5">
   </div>
@@ -1117,7 +1117,8 @@ describe("duplicate_audio_track", () => {
   });
 
   it("finds audio across multiple HTML sources (g-flag regression)", async () => {
-    const project = makeProject(validHtmlWithAudio(), {
+    const mountScene = `</audio><div data-composition-id="scene" data-composition-src="compositions/scene.html" data-start="0"></div>`;
+    const project = makeProject(validHtmlWithAudio().replace("</audio>", mountScene), {
       "scene.html": `<html><body>
   <div data-composition-id="scene" data-width="1920" data-height="1080">
     <audio id="overlap" src="music.wav" data-track-index="0" data-start="5" data-duration="20">

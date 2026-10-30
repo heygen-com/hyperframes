@@ -31,12 +31,17 @@ export function listDirectProcessTermination(source, filename = "source.ts") {
   return issues;
 }
 
-function listTypeScriptFiles(directory, rootCliPath) {
+// Each is the root of its own process: the CLI, the warm check process, and the check client in bin.
+const PROCESS_ROOTS = ["cli.ts", "warmCheck.ts", "warmCheckClient.ts"];
+
+function listTypeScriptFiles(directory, roots) {
   // fallow-ignore-next-line complexity
   return readdirSync(directory).flatMap((name) => {
     const path = join(directory, name);
-    if (statSync(path).isDirectory()) return listTypeScriptFiles(path, rootCliPath);
-    if (!path.endsWith(".ts") || path.endsWith(".test.ts") || path === rootCliPath) return [];
+    if (statSync(path).isDirectory()) return listTypeScriptFiles(path, roots);
+    if (!path.endsWith(".ts") || /\.(test|fixture)\.ts$/.test(path) || roots.includes(path)) {
+      return [];
+    }
     return [path];
   });
 }
@@ -44,7 +49,8 @@ function listTypeScriptFiles(directory, rootCliPath) {
 export function checkCliProcessOwnership(root = ROOT) {
   const sourceRoot = join(root, "packages/cli/src");
   if (!existsSync(sourceRoot)) return [];
-  return listTypeScriptFiles(sourceRoot, join(sourceRoot, "cli.ts")).flatMap((path) =>
+  const roots = PROCESS_ROOTS.map((name) => join(sourceRoot, name));
+  return listTypeScriptFiles(sourceRoot, roots).flatMap((path) =>
     listDirectProcessTermination(readFileSync(path, "utf8"), relative(root, path)),
   );
 }
@@ -57,7 +63,7 @@ function main() {
     process.exitCode = 1;
     return;
   }
-  console.log("CLI process ownership verified: only cli.ts terminates the process.");
+  console.log("CLI process ownership verified: only process roots terminate the process.");
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) main();

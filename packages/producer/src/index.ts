@@ -24,6 +24,7 @@ export {
   type RenderPerfSummary,
   type ProgressCallback,
 } from "./services/renderOrchestrator.js";
+export { extractSafeRenderErrorCode } from "./services/safeRenderErrorCode.js";
 export {
   RENDER_JOB_DIR,
   createOwnedRenderDir,
@@ -70,8 +71,8 @@ export {
   getCompositionDuration,
   getCapturePerfSummary,
   // Transient-vs-genuine init failure classifier — re-exported so standalone
-  // skill helpers (animation-map, contrast-report) can reuse the render
-  // pipeline's canonical retry gating instead of re-deriving it.
+  // helpers can reuse the render pipeline's canonical retry gating instead of
+  // re-deriving it.
   isTransientBrowserError,
   prepareCaptureSessionForReuse,
   type CaptureOptions,
@@ -87,6 +88,9 @@ export {
   type FileServerOptions,
   type FileServerHandle,
 } from "./services/fileServer.js";
+
+export { prepareAnimatedGifInputs } from "./services/animatedGifPrep.js";
+export { prepareHeifImageInputs } from "./services/heifImagePrep.js";
 
 // ── Video frame injection (Hyperframes-specific hook) ───────────────────────
 export { createVideoFrameInjector } from "@hyperframes/engine";
@@ -115,6 +119,7 @@ export {
 // ── Utilities ───────────────────────────────────────────────────────────────
 export { normalizeErrorMessage } from "./utils/errorMessage.js";
 export { collectRenderMedia, type RenderMedia } from "./services/renderMediaCollector.js";
+export { mediaProfileMatchesElementType } from "./services/assetMediaType.js";
 // Font localization: fetch + embed @font-face rules for requested families
 // (including those declared only via a remote <link>) so a bundled composition
 // renders with the real font instead of a fallback, regardless of network

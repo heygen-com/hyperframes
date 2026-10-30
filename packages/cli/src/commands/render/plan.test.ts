@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join, resolve } from "node:path";
+import { basename, dirname, join, parse, resolve } from "node:path";
 import { CliUsageError } from "../../utils/commandResult.js";
 import { createRenderPlan } from "./plan.js";
 
@@ -115,6 +115,18 @@ describe("createRenderPlan", () => {
     expect(plan.bestEffort).toBe(false);
   });
 
+  it.each([undefined, "off"])("preserves page motion blur override %s", (value) => {
+    expect(createRenderPlan({ dir: projectDir, "page-motion-blur": value }).pageMotionBlur).toBe(
+      value,
+    );
+  });
+
+  it.each(["", "on", "false", "OFF"])("rejects unsupported page motion blur value %s", (value) => {
+    expect(() => createRenderPlan({ dir: projectDir, "page-motion-blur": value })).toThrow(
+      CliUsageError,
+    );
+  });
+
   it("preserves an aspect-agnostic resolution alias through the execution plan", () => {
     const plan = createRenderPlan({ dir: projectDir, resolution: "1080p" });
     expect(plan.outputResolution).toBe("landscape");
@@ -154,7 +166,19 @@ describe("createRenderPlan", () => {
     );
     expect(vi.mocked(console.error).mock.calls.flat().join("\n")).toContain(flag);
     expect(vi.mocked(console.error).mock.calls.flat().join("\n")).toContain(
-      "fixed alpha-preserving ProRes 4444",
+      "MOV rate is set by the ProRes profile",
+    );
+  });
+
+  it("takes --prores-profile on MOV only", () => {
+    expect(
+      createRenderPlan({ dir: projectDir, format: "mov", "prores-profile": "hq" }).proresProfile,
+    ).toBe("hq");
+    expect(() =>
+      createRenderPlan({ dir: projectDir, format: "mp4", "prores-profile": "hq" }),
+    ).toThrow(CliUsageError);
+    expect(vi.mocked(console.error).mock.calls.flat().join("\n")).toContain(
+      "ProRes profile applies to MOV",
     );
   });
 
@@ -172,8 +196,15 @@ describe("createRenderPlan", () => {
     expect(plan.format).toBe("hls");
     expect(plan.hlsSegmentSeconds).toBe(4);
     // No extension: outputPath is the directory the playlists are written into.
-    expect(plan.outputPath.startsWith(resolve("renders", plan.project.name))).toBe(true);
+    expect(plan.outputPath.startsWith(join(projectDir, "renders", plan.project.name))).toBe(true);
     expect(basename(plan.outputPath)).not.toContain(".");
+  });
+
+  it("writes the default output under the project's renders folder whatever the cwd is", () => {
+    vi.spyOn(process, "cwd").mockReturnValue(parse(projectDir).root);
+    const plan = createRenderPlan({ dir: projectDir });
+
+    expect(dirname(plan.outputPath)).toBe(join(projectDir, "renders"));
   });
 
   it("carries an explicit --hls-segment-seconds and rejects a fractional one", () => {
@@ -208,6 +239,19 @@ describe("createRenderPlan", () => {
     expect(
       createRenderPlan({ dir: projectDir, format: "webm", "video-bitrate": "10M" }).videoBitrate,
     ).toBe("10M");
+  });
+
+  it("carries the delivery options into the plan for MP4 and refuses them for other formats", () => {
+    const flags = { "keyframe-interval": "2", "max-bitrate": "8M", "buffer-size": "12M" };
+    expect(createRenderPlan({ dir: projectDir, format: "mp4", ...flags })).toMatchObject({
+      keyframeIntervalSeconds: 2,
+      maxBitrate: "8M",
+      bufferSize: "12M",
+    });
+    expect(createRenderPlan({ dir: projectDir }).maxBitrate).toBeUndefined();
+    for (const format of ["webm", "mov", "gif", "hls"]) {
+      expect(() => createRenderPlan({ dir: projectDir, format, ...flags })).toThrow(CliUsageError);
+    }
   });
 
   it("rejects batch and single-render variables before execution", () => {

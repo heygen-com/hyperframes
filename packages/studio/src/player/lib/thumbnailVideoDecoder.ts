@@ -4,6 +4,28 @@ import {
   type ThumbnailLoadedResult,
   type ThumbnailValue,
 } from "./thumbnailScheduler";
+import { MediaFetchError, reportMediaFetchFailure } from "./mediaFetch";
+import {
+  acquireThumbnailSource,
+  timedOut,
+  type SourceInfo,
+  type ThumbnailSource,
+} from "./thumbnailSourcePool";
+import {
+  releaseSharedFrames,
+  shareFrame,
+  takeSharedFrame,
+  type HeldFrame,
+} from "./thumbnailFrameCache";
+import {
+  readStoredFrame,
+  readStoredInfo,
+  rememberVersion,
+  storedVersion,
+  storeFrame,
+  storeInfo,
+  type StoredSource,
+} from "./thumbnailDiskCache";
 
 export interface VideoThumbnailDecodeRequest {
   source: string;
@@ -32,75 +54,52 @@ export function videoThumbnailTimestamps(
   return [...edges, safeStart + Math.max(0, safeDuration - LAST_FRAME_INSET_S)];
 }
 
-interface SharedFrame {
-  url: string;
-  decodedAt: number;
-  users: number;
-}
-
-interface HeldFrame {
-  key: string;
-  frame: SharedFrame;
-}
-
 interface FrameWindow {
   sourceStart: number;
   lead: number;
   end: number;
 }
 
-const sharedFrames = new Map<string, SharedFrame[]>();
 const sourceInfos = new Map<string, { version: string | undefined; info: SourceInfo }>();
+const storedVersions = new Map<string, Promise<StoredSource | undefined>>();
+const storedInfos = new Set<string>();
+
+const openOf = (request: VideoThumbnailDecodeRequest) =>
+  `${request.source}\u0000${request.contentVersion ?? ""}`;
+
+function storedVersionOf(request: VideoThumbnailDecodeRequest): Promise<StoredSource | undefined> {
+  let pending = storedVersions.get(openOf(request));
+  if (!pending) storedVersions.set(openOf(request), (pending = storedVersion(request.source)));
+  return pending;
+}
 
 const accepts = (window: FrameWindow, time: number, decodedAt: number) =>
   decodedAt >= window.sourceStart && time - decodedAt <= (time >= window.end ? 0 : window.lead);
 
-function takeSharedFrame(key: string, time: number, window: FrameWindow): SharedFrame | undefined {
-  const frame = sharedFrames.get(key)?.find((shared) => accepts(window, time, shared.decodedAt));
-  if (frame) frame.users += 1;
-  return frame;
-}
-
-function shareFrame(key: string, decodedAt: number, url: string): SharedFrame {
-  const frames = sharedFrames.get(key) ?? [];
-  const existing = frames.find((shared) => shared.decodedAt === decodedAt);
-  if (existing) {
-    existing.users += 1;
-    URL.revokeObjectURL(url);
-    return existing;
-  }
-  const frame = { url, decodedAt, users: 1 };
-  sharedFrames.set(key, [...frames, frame]);
-  return frame;
-}
-
-function releaseSharedFrames(held: HeldFrame[]): void {
-  for (const { key, frame } of held.splice(0)) {
-    if (--frame.users > 0) continue;
-    const rest = sharedFrames.get(key)?.filter((shared) => shared !== frame) ?? [];
-    if (rest.length > 0) sharedFrames.set(key, rest);
-    else sharedFrames.delete(key);
-    URL.revokeObjectURL(frame.url);
-  }
-}
+class ClipResultError extends Error {}
 
 async function canvasToBlob(canvas: HTMLCanvasElement | OffscreenCanvas): Promise<Blob> {
   if (canvas instanceof HTMLCanvasElement) {
     return new Promise((resolve, reject) => {
       canvas.toBlob(
-        (blob) => (blob ? resolve(blob) : reject(new Error("Video thumbnail encode failed"))),
+        (blob) =>
+          blob ? resolve(blob) : reject(new ClipResultError("Video thumbnail encode failed")),
         "image/jpeg",
         0.72,
       );
     });
   }
-  return canvas.convertToBlob({ type: "image/jpeg", quality: 0.72 });
+  return canvas.convertToBlob({ type: "image/jpeg", quality: 0.72 }).catch(() => {
+    throw new ClipResultError("Video thumbnail encode failed");
+  });
 }
 
 interface DecodedResources {
   urls: (string | undefined)[];
   held: HeldFrame[];
   canvases: Set<HTMLCanvasElement | OffscreenCanvas>;
+  releasedFrameBytes: number;
+  store?: (slot: number, decodedAt: number, blob: Blob) => void;
 }
 
 interface ThumbnailCanvasSink {
@@ -109,18 +108,19 @@ interface ThumbnailCanvasSink {
   ): AsyncIterable<{ canvas: HTMLCanvasElement | OffscreenCanvas } | null>;
 }
 
-interface SourceInfo {
-  aspect: number;
-  metadataDuration: number | null;
-}
+const timeoutWithoutProgress = () => new MediaFetchError("thumbnail", null, "timeout");
 
+const isAbortError = (error: unknown) =>
+  (error as { name?: unknown } | null)?.name === "AbortError";
+const isSourceFailure = (error: unknown) =>
+  !isAbortError(error) && !(error instanceof ClipResultError);
 function throwIfAborted(signal: AbortSignal): void {
   if (signal.aborted) throw new DOMException("Aborted", "AbortError");
 }
 
 function releaseDecodedResources(resources: DecodedResources): void {
   resources.urls.length = 0;
-  releaseSharedFrames(resources.held);
+  releaseSharedFrames(resources.held, resources.releasedFrameBytes);
   for (const canvas of resources.canvases) {
     canvas.width = 0;
     canvas.height = 0;
@@ -181,7 +181,7 @@ function takeDecodedFrames(
   const missing: number[] = [];
   timestamps.forEach((time, slot) => {
     const key = keyOf(time);
-    const frame = takeSharedFrame(key, time, window);
+    const frame = takeSharedFrame(key, (decodedAt) => accepts(window, time, decodedAt));
     if (!frame) return void missing.push(slot);
     resources.urls[slot] = frame.url;
     resources.held.push({ key, frame });
@@ -195,6 +195,7 @@ async function decodeFrames(
   slots: { slot: number; key: string; decodedAt?: number }[],
   signal: AbortSignal,
   resources: DecodedResources,
+  progress: ThumbnailSource["progress"],
 ): Promise<void> {
   let next = 0;
   for await (const wrapped of sink.canvasesAtTimestamps(times)) {
@@ -204,7 +205,9 @@ async function decodeFrames(
     resources.canvases.add(wrapped.canvas);
     const blob = await canvasToBlob(wrapped.canvas);
     throwIfAborted(signal);
-    const frame = shareFrame(target.key, target.decodedAt, URL.createObjectURL(blob));
+    const frame = shareFrame(target.key, target.decodedAt, URL.createObjectURL(blob), blob.size);
+    progress.framesFromAnyJob += 1;
+    resources.store?.(target.slot, target.decodedAt, blob);
     resources.urls[target.slot] = frame.url;
     resources.held.push({ key: target.key, frame });
   }
@@ -219,7 +222,7 @@ function loadedResult(
 ): ThumbnailLoadedResult {
   const decoded = resources.urls.filter((url): url is string => url !== undefined);
   const firstUrl = decoded[0];
-  if (!firstUrl) throw new Error("Video source returned no thumbnail frames");
+  if (!firstUrl) throw new ClipResultError("Video source returned no thumbnail frames");
   let nearest = firstUrl;
   const urls = Array.from(
     { length: frameCount },
@@ -237,6 +240,64 @@ function loadedResult(
   };
 }
 
+const storedFrameName =
+  (fit: string, info: SourceInfo, budgets: Readonly<TimelineViewportBudgets>) => (time: number) => {
+    const { width, height } = targetDimensions(info.aspect, budgets);
+    return `${fit} ${width}x${height} ${time}`;
+  };
+
+async function takeStoredFrames(
+  { timestamps, window }: ReturnType<typeof stripTimes>,
+  slots: number[],
+  keyOf: (time: number) => string,
+  nameOf: (time: number) => string,
+  resources: DecodedResources,
+  stored: StoredSource,
+): Promise<number[]> {
+  const found = await Promise.all(
+    slots.map((slot) => readStoredFrame(stored, nameOf(timestamps[slot]!))),
+  );
+  return slots.filter((slot, i) => {
+    const time = timestamps[slot]!;
+    const hit = found[i];
+    if (!hit || !accepts(window, time, hit.decodedAt)) return true;
+    const key = keyOf(time);
+    const frame = shareFrame(key, hit.decodedAt, URL.createObjectURL(hit.blob), hit.blob.size);
+    resources.urls[slot] = frame.url;
+    resources.held.push({ key, frame });
+    return false;
+  });
+}
+
+function versionRead(
+  request: VideoThumbnailDecodeRequest,
+  source: ThumbnailSource,
+): StoredSource | undefined {
+  if (!source.etag) return undefined;
+  const version = { source: request.source, etag: source.etag };
+  storedVersions.set(openOf(request), Promise.resolve(version));
+  return version;
+}
+
+function storeForNextSession(
+  request: VideoThumbnailDecodeRequest,
+  info: SourceInfo,
+  budgets: Readonly<TimelineViewportBudgets>,
+  resources: DecodedResources,
+  version: StoredSource | undefined,
+): void {
+  if (!version) return;
+  const id = `${version.source}\u0000${version.etag}`;
+  if (!storedInfos.has(id)) {
+    storedInfos.add(id);
+    void rememberVersion(version).then(() => storeInfo(version, info));
+  }
+  const nameOf = storedFrameName(request.fit ?? "cover", info, budgets);
+  const { timestamps } = stripTimes(request, info, budgets);
+  resources.store = (slot, decodedAt, blob) =>
+    void storeFrame(version, nameOf(timestamps[slot]!), decodedAt, blob);
+}
+
 /** Sparse Mediabunny extraction with one pooled canvas and one cleanup owner. */
 export async function decodeVideoThumbnail(
   request: VideoThumbnailDecodeRequest,
@@ -246,20 +307,38 @@ export async function decodeVideoThumbnail(
   const fit = request.fit ?? "cover";
   const sourceKey = createThumbnailKey({ source: request.source, version: request.contentVersion });
   const keyOf = (time: number) => `${sourceKey}\u0000${fit}\u0000${time}`;
-  const resources: DecodedResources = { urls: [], held: [], canvases: new Set() };
+  const resources: DecodedResources = {
+    urls: [],
+    held: [],
+    canvases: new Set(),
+    releasedFrameBytes: budgets.sharedFrameCacheBytes,
+  };
   const entry = sourceInfos.get(request.source);
-  const known = entry?.version === request.contentVersion ? entry?.info : undefined;
   try {
+    const stored = await storedVersionOf(request);
+    const known =
+      entry && entry.version === request.contentVersion
+        ? entry.info
+        : stored && (await readStoredInfo(stored));
     if (known) {
-      if (takeDecodedFrames(stripTimes(request, known, budgets), keyOf, resources).length === 0) {
+      sourceInfos.set(request.source, { version: request.contentVersion, info: known });
+      const strip = stripTimes(request, known, budgets);
+      const missing = takeDecodedFrames(strip, keyOf, resources);
+      const nameOf = storedFrameName(fit, known, budgets);
+      const left =
+        stored && missing.length > 0
+          ? await takeStoredFrames(strip, missing, keyOf, nameOf, resources, stored)
+          : missing;
+      if (left.length === 0) {
         throwIfAborted(signal);
         return loadedResult(resources, known.aspect, budgets);
       }
       releaseDecodedResources(resources);
     }
-    return await decodeMissingFrames(request, signal, budgets, keyOf, resources);
+    return await decodeMissingFrames(request, signal, budgets, keyOf, resources, stored);
   } catch (error) {
     releaseDecodedResources(resources);
+    reportMediaFetchFailure(error);
     throw error;
   }
 }
@@ -270,32 +349,35 @@ async function decodeMissingFrames(
   budgets: Readonly<TimelineViewportBudgets>,
   keyOf: (time: number) => string,
   resources: DecodedResources,
+  stored: StoredSource | undefined,
 ): Promise<ThumbnailLoadedResult> {
-  const mediabunny = await import("mediabunny");
-  throwIfAborted(signal);
-
-  const input = new mediabunny.Input({
-    source: new mediabunny.UrlSource(request.source),
-    formats: mediabunny.ALL_FORMATS,
-  });
+  let source: ThumbnailSource;
   try {
-    const track = await input.getPrimaryVideoTrack();
+    source = await acquireThumbnailSource(
+      request.source,
+      request.contentVersion,
+      signal,
+      budgets.thumbnailSourceIdleMs,
+    );
+  } catch (error) {
+    if (timedOut(signal)) reportMediaFetchFailure(timeoutWithoutProgress());
+    throw error;
+  }
+  const framesBefore = source.progress.framesFromAnyJob;
+  const releaseOnAbort = () => {
+    const madeProgress = source.waitedForOpen || source.progress.framesFromAnyJob > framesBefore;
+    const failed = timedOut(signal) && !madeProgress;
+    if (failed) reportMediaFetchFailure(timeoutWithoutProgress());
+    source.release(failed);
+  };
+  signal.addEventListener("abort", releaseOnAbort, { once: true });
+  try {
     throwIfAborted(signal);
-    if (!track) throw new Error("Video source has no decodable video track");
-    const [displayWidth, displayHeight] = await Promise.all([
-      track.getDisplayWidth(),
-      track.getDisplayHeight(),
-    ]);
-    throwIfAborted(signal);
-    if (!(displayWidth > 0 && displayHeight > 0)) {
-      throw new Error("Video source has invalid dimensions");
-    }
-    const metadataDuration = await track.getDurationFromMetadata({ skipLiveWait: true });
-    throwIfAborted(signal);
-    const info: SourceInfo = { aspect: displayWidth / displayHeight, metadataDuration };
+    const { mediabunny, track, info } = source;
     sourceInfos.set(request.source, { version: request.contentVersion, info });
     const strip = stripTimes(request, info, budgets);
     const { timestamps, window } = strip;
+    storeForNextSession(request, info, budgets, resources, stored ?? versionRead(request, source));
     const slots: { slot: number; key: string; decodedAt?: number }[] = takeDecodedFrames(
       strip,
       keyOf,
@@ -319,10 +401,16 @@ async function decodeMissingFrames(
         fit: request.fit ?? "cover",
         poolSize: 1,
       });
-      await decodeFrames(sink, decodeTimesAtNearbyKeyframes(), slots, signal, resources);
+      const times = decodeTimesAtNearbyKeyframes();
+      await decodeFrames(sink, times, slots, signal, resources, source.progress);
     }
-    return loadedResult(resources, info.aspect, budgets, timestamps.length);
+    const result = loadedResult(resources, info.aspect, budgets, timestamps.length);
+    source.release(false);
+    return result;
+  } catch (error) {
+    source.release(isSourceFailure(error));
+    throw error;
   } finally {
-    input.dispose();
+    signal.removeEventListener("abort", releaseOnAbort);
   }
 }

@@ -1,6 +1,8 @@
+import { revealClip } from "@hyperframes/core/runtime/clip-reveal";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePlayerStore, liveTime } from "../player/store/playerStore";
 import { frameToSeconds, secondsToFrame } from "../player/lib/time";
+import { useLinkedClipPreferences } from "../utils/linkedClipPreferences";
 
 export interface GestureSample {
   time: number;
@@ -36,6 +38,7 @@ interface GsapRuntime {
   maxSeekTime: number;
   savedVisibility: string;
   savedTranslate: string;
+  putMarkBack: (() => void) | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -107,6 +110,7 @@ function connectGsapRuntime(
           elementEndTime != null && elementEndTime < tlDuration ? elementEndTime : tlDuration,
         savedVisibility: element.style.visibility,
         savedTranslate: element.style.getPropertyValue("translate"),
+        putMarkBack: null,
       };
     }
   } catch {
@@ -124,7 +128,8 @@ function applyRuntimePreview(
   runtime.timeline.seek(seekTime);
   runtime.element.style.setProperty("translate", "none");
   runtime.gsap.set(runtime.element, { ...properties });
-  runtime.element.style.visibility = "visible";
+  const putMarkBack = revealClip(runtime.element);
+  runtime.putMarkBack ??= putMarkBack;
   liveTime.notify(seekTime);
   usePlayerStore.getState().setCurrentTime(seekTime);
 }
@@ -137,12 +142,13 @@ function recordSample(r: RecordingRefs, time: number, properties: Record<string,
   // stripStudioEditsFromTarget in studio-api), so the keyframes must already
   // include it. Subtracting it made the committed gesture play shoved off by the
   // offset (the offset was removed twice).
-  const frame = secondsToFrame(time);
-  const sample = { time: frameToSeconds(frame), properties: { ...properties } };
+  const fps = useLinkedClipPreferences.getState().compositionFps;
+  const frame = secondsToFrame(time, fps);
+  const sample = { time: frameToSeconds(frame, fps), properties: { ...properties } };
   const lastIndex = r.samples.length - 1;
   const lastSample = r.samples[lastIndex];
   // Gesture events follow the display refresh rate (often 60/120Hz), but the
-  // Studio preview is authored at 30fps. Keep the latest pointer state for each
+  // composition has its own frame rate. Keep the latest pointer state for each
   // output frame so recording cannot create visually indistinguishable piles.
   if (lastSample?.time === sample.time) {
     r.samples[lastIndex] = sample;
@@ -251,6 +257,7 @@ function releaseRuntimePreview(r: RecordingRefs): void {
   if (!runtime) return;
   const { element, savedVisibility, savedTranslate } = runtime;
   element.style.visibility = savedVisibility;
+  runtime.putMarkBack?.();
   element.style.setProperty("translate", savedTranslate || "");
   try {
     runtime.gsap.set(runtime.element, {

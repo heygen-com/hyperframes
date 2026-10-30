@@ -1,3 +1,5 @@
+// @vitest-environment happy-dom
+
 import { afterEach, describe, expect, it } from "vitest";
 import {
   giveUpOnPreviewChange,
@@ -44,5 +46,20 @@ describe("the preview is changing", () => {
     await stuck;
     requestPreviewReload();
     expect(isPreviewChanging(), "the next change counts again").toBe(true);
+  });
+
+  it("is mirrored on the page for a tool that watches the preview from outside", async () => {
+    const shown = () => document.documentElement.hasAttribute("data-preview-changing");
+    expect(shown()).toBe(false);
+    requestPreviewReload();
+    expect(shown()).toBe(true);
+    previewReloadBegun();
+    expect(shown()).toBe(false);
+    let land: () => void = () => {};
+    const write = whileScriptWrites(() => new Promise<void>((resolve) => (land = resolve)));
+    expect(shown()).toBe(true);
+    land();
+    await write;
+    expect(shown()).toBe(false);
   });
 });

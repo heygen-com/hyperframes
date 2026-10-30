@@ -315,6 +315,17 @@ describe("resolveOwnVersionFrom", () => {
     expect(resolveOwnVersionFrom(join(root, "node_modules/hyperframes/dist"))).toBe("0.8.71");
   });
 
+  it("reads the installed engine when an app bundles it into its own dist", () => {
+    write(".", { name: "some-server-app", version: "0.0.0" });
+    write("node_modules/@hyperframes/engine", {
+      name: "@hyperframes/engine",
+      version: "0.8.212",
+      exports: { "./package.json": "./package.json" },
+    });
+    mkdirSync(join(root, "dist"), { recursive: true });
+    expect(resolveOwnVersionFrom(join(root, "dist"))).toBe("0.8.212");
+  });
+
   it("returns the sentinel, not a foreign version, when our root declares none", () => {
     write(".", { name: "some-consumer-app", version: "9.9.9" });
     write("node_modules/hyperframes", { name: "hyperframes" });

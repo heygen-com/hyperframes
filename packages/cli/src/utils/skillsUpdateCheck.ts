@@ -6,10 +6,13 @@
 // check on their own, but they DO run render/lint/validate — so we piggyback
 // the reminder on the commands they already run.
 
-import { readConfig, readConfigFresh, writeConfig } from "../telemetry/config.js";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { CONFIG_PATH, readConfig, readConfigFresh, writeConfig } from "../telemetry/config.js";
+import { isUnattended } from "./attendedTerminal.js";
 import { hostAnswers } from "./hostAnswers.js";
 import { checkSkills } from "./skillsManifest.js";
-import { updateNoticesSuppressed } from "./updateCheck.js";
+import { updateCheckDisabled } from "./updateCheck.js";
 
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -17,8 +20,6 @@ interface SkillsUpdateMeta {
   updateAvailable: boolean;
   outdated: number;
   missing: number;
-  /** Installed skills flagged removed-upstream (renamed/dropped) at the last check. */
-  removed: number;
 }
 
 /** Synchronous read from cache — never fetches. */
@@ -28,7 +29,6 @@ function getSkillsUpdateMeta(): SkillsUpdateMeta {
     updateAvailable: config.skillsUpdateAvailable ?? false,
     outdated: config.skillsOutdatedCount ?? 0,
     missing: config.skillsMissingCount ?? 0,
-    removed: config.skillsRemovedCount ?? 0,
   };
 }
 
@@ -54,11 +54,6 @@ export async function refreshSkillsCache(): Promise<void> {
     // Core-missing only: skills that install on demand (workflows not yet
     // triggered on this machine) are not "missing" worth nagging about.
     config.skillsMissingCount = result.summary.coreMissing;
-    // Removed-upstream skills are just as reconcilable as outdated/missing
-    // ones (a plain `skills update` prunes them) — omitting them here is what
-    // made the nudge undercount (e.g. reporting "2 skills out of date or
-    // missing" while a 3rd, renamed/dropped skill sat unmentioned).
-    config.skillsRemovedCount = result.summary.removed;
     writeConfig(config);
   }
 }
@@ -90,33 +85,59 @@ export function invalidateSkillsCache(): void {
     delete config.skillsUpdateAvailable;
     delete config.skillsOutdatedCount;
     delete config.skillsMissingCount;
-    delete config.skillsRemovedCount;
     writeConfig(config);
   } catch {
     // best-effort — never break the command that just reconciled skills
   }
 }
 
+/** Not tied to a TTY: agents run the CLI without one and are the ones that need to hear it. */
+function skillsNoticeOff(): boolean {
+  return process.env["HYPERFRAMES_SKIP_SKILLS"] === "1" || updateCheckDisabled();
+}
+
 /** Whether a background skills check is due: this run shows notices and the 24 h cache is stale. */
 export function skillsCheckDue(): boolean {
-  if (process.env["HYPERFRAMES_SKIP_SKILLS"] === "1" || updateNoticesSuppressed()) return false;
+  if (skillsNoticeOff()) return false;
   return !cacheFresh(readConfig().lastSkillsCheck, Date.now());
 }
 
-/** The stale-skills nudge text, or null when nothing is outdated, missing, or removed. */
+/** True at most once a day per project; records the showing. Unreadable state counts as never shown. */
+function claimDailyNotice(project: string, now = Date.now()): boolean {
+  const noticeFile = join(dirname(CONFIG_PATH), "skills-notice.json");
+  let shown: Record<string, number> = {};
+  try {
+    shown = JSON.parse(readFileSync(noticeFile, "utf-8")) as Record<string, number>;
+  } catch {
+    // first notice, or a damaged file that the write below replaces
+  }
+  if (now - (shown[project] ?? 0) < CHECK_INTERVAL_MS) return false;
+  const kept = Object.entries(shown).filter(([, at]) => now - at < CHECK_INTERVAL_MS);
+  try {
+    mkdirSync(dirname(noticeFile), { recursive: true, mode: 0o700 });
+    writeFileSync(noticeFile, JSON.stringify(Object.fromEntries([...kept, [project, now]])));
+  } catch {
+    return false;
+  }
+  return true;
+}
+
+/** The stale-skills nudge text, or null when nothing is outdated or missing. */
 function skillsNoticeText(meta: SkillsUpdateMeta): string | null {
-  const total = meta.outdated + meta.missing + meta.removed;
+  const total = meta.outdated + meta.missing;
   if (total < 1) return null;
   const noun = total === 1 ? "skill" : "skills";
   return `\n  ${total} HyperFrames ${noun} out of date or missing.\n  Run: npx hyperframes skills update\n\n`;
 }
 
 /**
- * Print a one-line nudge to stderr if installed skills are stale. Same gating
- * as the CLI self-update notice (CI, non-TTY, dev, HYPERFRAMES_NO_UPDATE_CHECK).
+ * Print a one-line nudge to stderr if installed skills are stale, at most once a day per project.
+ * Off in CI, dev, HYPERFRAMES_NO_UPDATE_CHECK and HYPERFRAMES_SKIP_SKILLS. Unattended, only
+ * missing skills count: an agent without them cannot do the work, an outdated one still can.
  */
-export function printSkillsUpdateNotice(): void {
-  if (process.env["HYPERFRAMES_SKIP_SKILLS"] === "1" || updateNoticesSuppressed()) return;
-  const text = skillsNoticeText(getSkillsUpdateMeta());
-  if (text) process.stderr.write(text);
+export function printSkillsUpdateNotice(cwd: string = process.cwd()): void {
+  if (skillsNoticeOff()) return;
+  const meta = getSkillsUpdateMeta();
+  const text = skillsNoticeText(isUnattended() ? { ...meta, outdated: 0 } : meta);
+  if (text && claimDailyNotice(resolve(cwd))) process.stderr.write(text);
 }

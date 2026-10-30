@@ -5,13 +5,14 @@
  * linkedom/Node HTML-parser machinery from the main entry.
  */
 
-import type { CompositionVariable, CompositionVariableType } from "./types.js";
+import type {
+  CompositionVariable,
+  CompositionVariableType,
+  FontValue,
+  ImageValue,
+} from "./types.js";
 
-/**
- * Required typeof for each variable type's `default`. For font the default is
- * the font-family name string; for image it is the fallback URL string —
- * extra metadata fields on both are optional and not validated here.
- */
+/** Scalar defaults; font/image also accept their typed object values. */
 const DEFAULT_TYPEOF: Record<CompositionVariableType, "string" | "number" | "boolean"> = {
   string: "string",
   number: "number",
@@ -33,7 +34,25 @@ export function isScalarVariableValue(value: unknown): value is string | number 
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null;
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+export function isFontValue(value: unknown): value is FontValue {
+  return isRecord(value) && typeof value.name === "string" && typeof value.source === "string";
+}
+
+export function isImageValue(value: unknown): value is ImageValue {
+  return (
+    isRecord(value) &&
+    typeof value.url === "string" &&
+    (value.alt === undefined || typeof value.alt === "string") &&
+    (value.fit === undefined ||
+      value.fit === "cover" ||
+      value.fit === "contain" ||
+      value.fit === "fill" ||
+      value.fit === "none" ||
+      value.fit === "scale-down")
+  );
 }
 
 function isVariableType(t: unknown): t is CompositionVariableType {
@@ -50,6 +69,8 @@ export function isCompositionVariable(v: unknown): v is CompositionVariable {
   if (!isRecord(v)) return false;
   if (typeof v.id !== "string" || typeof v.label !== "string") return false;
   if (!isVariableType(v.type)) return false;
+  if (v.type === "font") return typeof v.default === "string" || isFontValue(v.default);
+  if (v.type === "image") return typeof v.default === "string" || isImageValue(v.default);
   if (typeof v.default !== DEFAULT_TYPEOF[v.type]) return false;
   if (v.type === "enum" && !Array.isArray(v.options)) return false;
   return true;

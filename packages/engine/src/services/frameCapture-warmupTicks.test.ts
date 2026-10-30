@@ -190,6 +190,47 @@ describe("driveWarmupTicks — locked", () => {
     expect(state.ticks).toBe(LOCKED_WARMUP_TICKS);
   });
 
+  it("sleeps only while the page is still loading, then finishes the count unpaced", async () => {
+    const state = makeState();
+    let sleeps = 0;
+    await driveWarmupTicks(
+      {
+        intervalMs: 33,
+        lockWarmupTicks: true,
+        tick: async () => {
+          if (state.ticks === 4) state.running = false;
+        },
+        sleep: async () => {
+          sleeps += 1;
+        },
+      },
+      state,
+    );
+    expect(state.ticks).toBe(LOCKED_WARMUP_TICKS);
+    expect(sleeps).toBe(4);
+  });
+
+  it("keeps sleeping after the page is ready while every tick fails", async () => {
+    const state: WarmupTickState = { running: false, ticks: 0 };
+    let sleeps = 0;
+    await driveWarmupTicks(
+      {
+        intervalMs: 33,
+        lockWarmupTicks: true,
+        tick: async () => {
+          throw new Error("target closed");
+        },
+        sleep: async () => {
+          sleeps += 1;
+          if (sleeps === 3) state.cancelled = true;
+        },
+      },
+      state,
+    );
+    expect(sleeps).toBe(3);
+    expect(state.ticks).toBe(0);
+  });
+
   it("does not exceed LOCKED_WARMUP_TICKS even if the caller never stops it", async () => {
     const state = makeState();
     let observedMax = 0;

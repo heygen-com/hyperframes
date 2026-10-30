@@ -98,4 +98,40 @@ describe("upgradeProjectPins", () => {
     expect(r.changed).toBe(true);
     expect(readFileSync(join(d, "package.json"), "utf-8")).toBe(before);
   });
+
+  it("upgrades Hyperframes pins without changing unrelated package pins", async () => {
+    const unrelated = "npx @acme/hyperframes@1.2.3 preview";
+    const d = project({ render: "npx hyperframes@0.7.48 render", unrelated });
+    const wrapperPath = join(d, "render.sh");
+    writeFileSync(
+      wrapperPath,
+      "npx custom-hyperframes@1.2.3 preview\nnpx hyperframes@0.7.48 render\n",
+    );
+
+    const result = await upgradeProjectPins(d, { json: true, check: false });
+
+    expect(result.from).toEqual(["0.7.48"]);
+    const pkg = JSON.parse(readFileSync(join(d, "package.json"), "utf-8"));
+    expect(pkg.scripts).toEqual({ render: "npx hyperframes@0.7.55 render", unrelated });
+    expect(readFileSync(wrapperPath, "utf-8")).toBe(
+      "npx custom-hyperframes@1.2.3 preview\nnpx hyperframes@0.7.55 render\n",
+    );
+  });
+
+  it("leaves an unrelated-only project's files intact in check and apply modes", async () => {
+    const d = project({ preview: "npx @acme/hyperframes@1.2.3 preview" });
+    const wrapperPath = join(d, "preview.sh");
+    writeFileSync(wrapperPath, "npx custom-hyperframes@1.2.3 preview\n");
+    const packageBefore = readFileSync(join(d, "package.json"), "utf-8");
+    const wrapperBefore = readFileSync(wrapperPath, "utf-8");
+
+    for (const check of [true, false]) {
+      const result = await upgradeProjectPins(d, { json: true, check });
+
+      expect(result.changed).toBe(false);
+      expect(result.from).toEqual([]);
+      expect(readFileSync(join(d, "package.json"), "utf-8")).toBe(packageBefore);
+      expect(readFileSync(wrapperPath, "utf-8")).toBe(wrapperBefore);
+    }
+  });
 });

@@ -5,6 +5,9 @@ import { readStore, writeStore } from "../../auth/store.js";
 import { setupTempAuthEnv, type EnvFixture } from "../../auth/_test-utils.js";
 import { CliRuntimeError } from "../../utils/commandResult.js";
 
+// heygenUserId("alice"): the sha256-derived UUID the web app and Desktop also use.
+const ALICE_USER_ID = "2bd806c9-7f0e-50af-9a1f-c3328fa763a9";
+
 // Mock only AuthClient — keep the real store/resolver so the test
 // exercises the actual on-disk rollback / persistence behavior.
 // `verifyState` controls what `getCurrentUser` returns per test:
@@ -245,18 +248,23 @@ describe("auth login", () => {
     expect(onDisk.future_credential).toEqual({ token: "owned_by_other_cli" });
   });
 
-  it("attributes a successful login to the account email", async () => {
-    verifyState.user = { email: "alice@example.com", username: "alice" };
+  it("attributes a successful login to the username's HyperFrames user id", async () => {
+    verifyState.user = { email: "Alice@Example.com", username: "alice" };
     await runLogin("hg_goodkey456");
-    expect(telemetry.identifyUser).toHaveBeenCalledWith("alice@example.com");
-    expect(telemetry.trackAuthLoginCompleted).toHaveBeenCalledWith("api_key", "alice@example.com");
+    expect(telemetry.identifyUser).toHaveBeenCalledWith(ALICE_USER_ID, {
+      email: "alice@example.com",
+      heygen_username: "alice",
+    });
+    expect(telemetry.trackAuthLoginCompleted).toHaveBeenCalledWith("api_key", ALICE_USER_ID);
   });
 
-  it("falls back to username when the account has no email", async () => {
-    verifyState.user = { username: "alice" };
+  it("falls back to the email when the account has no username", async () => {
+    verifyState.user = { email: "alice@example.com" };
     await runLogin("hg_goodkey456");
-    expect(telemetry.identifyUser).toHaveBeenCalledWith("alice");
-    expect(telemetry.trackAuthLoginCompleted).toHaveBeenCalledWith("api_key", "alice");
+    expect(telemetry.identifyUser).toHaveBeenCalledWith("alice@example.com", {
+      email: "alice@example.com",
+    });
+    expect(telemetry.trackAuthLoginCompleted).toHaveBeenCalledWith("api_key", "alice@example.com");
   });
 
   it("does not identify when the identity probe returns nothing", async () => {

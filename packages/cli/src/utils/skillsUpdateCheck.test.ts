@@ -1,8 +1,8 @@
-// Nudge-count regression coverage: `refreshSkillsCache` must persist
-// `summary.removed` (renamed/dropped skills), and the printed nudge total must
-// include it — otherwise the background nudge undercounts what a plain
-// `skills update` would actually reconcile (the "misleading 2 vs 3" bug).
+// Nudge-count coverage: the printed total is outdated plus missing, as cached by refreshSkillsCache.
 
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 type FakeConfig = Record<string, unknown>;
@@ -12,6 +12,9 @@ let config: FakeConfig;
 let cachedRead: FakeConfig | null = null;
 
 vi.mock("../telemetry/config.js", () => ({
+  get CONFIG_PATH() {
+    return join(gate.stateDir, "config.json");
+  },
   readConfig: () => ({ ...(cachedRead ?? config) }),
   readConfigFresh: () => ({ ...config }),
   writeConfig: (next: FakeConfig) => {
@@ -19,9 +22,17 @@ vi.mock("../telemetry/config.js", () => ({
   },
 }));
 
-const gate = vi.hoisted(() => ({ suppressed: false, answers: true }));
+const gate = vi.hoisted(() => ({
+  disabled: false,
+  noTty: false,
+  answers: true,
+  unattended: false,
+  stateDir: "",
+}));
+vi.mock("./attendedTerminal.js", () => ({ isUnattended: () => gate.unattended }));
 vi.mock("./updateCheck.js", () => ({
-  updateNoticesSuppressed: () => gate.suppressed,
+  updateCheckDisabled: () => gate.disabled,
+  updateNoticesSuppressed: () => gate.disabled || gate.noTty,
 }));
 vi.mock("./hostAnswers.js", () => ({ hostAnswers: async () => gate.answers }));
 
@@ -36,8 +47,11 @@ describe("skillsUpdateCheck", () => {
     config = {};
     cachedRead = null;
     mockCheckSkills.mockReset();
-    gate.suppressed = false;
+    gate.disabled = false;
+    gate.noTty = false;
     gate.answers = true;
+    gate.unattended = false;
+    gate.stateDir = mkdtempSync(join(tmpdir(), "hf-skills-notice-"));
     vi.stubEnv("HYPERFRAMES_SKIP_SKILLS", "");
   });
   afterEach(() => {
@@ -47,12 +61,18 @@ describe("skillsUpdateCheck", () => {
 
   it.each([
     ["HYPERFRAMES_SKIP_SKILLS is set", () => vi.stubEnv("HYPERFRAMES_SKIP_SKILLS", "1")],
-    ["the run shows no notices", () => (gate.suppressed = true)],
+    ["the update check is disabled (CI, dev, opt-out)", () => (gate.disabled = true)],
   ])("no background check is due when %s", async (_, arrange) => {
     const { skillsCheckDue } = await import("./skillsUpdateCheck.js");
     expect(skillsCheckDue()).toBe(true);
     arrange();
     expect(skillsCheckDue()).toBe(false);
+  });
+
+  it("a run without a TTY (an agent) still has its background check due", async () => {
+    gate.noTty = true;
+    const { skillsCheckDue } = await import("./skillsUpdateCheck.js");
+    expect(skillsCheckDue()).toBe(true);
   });
 
   it("does not check skills when DNS does not answer", async () => {
@@ -69,18 +89,18 @@ describe("skillsUpdateCheck", () => {
     mockCheckSkills.mockResolvedValue({
       location: "/home/user/.claude/skills",
       updateAvailable: false,
-      summary: { current: 1, outdated: 0, missing: 0, coreMissing: 0, removed: 0 },
+      summary: { current: 1, outdated: 0, missing: 0, coreMissing: 0 },
     });
     const { refreshSkillsCache } = await import("./skillsUpdateCheck.js");
     await refreshSkillsCache();
     expect(config).toMatchObject({ commandCount: 2, skillsOutdatedCount: 0 });
   });
 
-  it("refreshSkillsCache persists the removed count alongside outdated/missing", async () => {
+  it("refreshSkillsCache persists the outdated and core-missing counts", async () => {
     mockCheckSkills.mockResolvedValue({
       location: "/home/user/.claude/skills",
       updateAvailable: true,
-      summary: { current: 1, outdated: 2, missing: 3, coreMissing: 1, removed: 3 },
+      summary: { current: 1, outdated: 2, missing: 3, coreMissing: 1 },
     });
 
     const { refreshSkillsCache } = await import("./skillsUpdateCheck.js");
@@ -90,7 +110,6 @@ describe("skillsUpdateCheck", () => {
       skillsUpdateAvailable: true,
       skillsOutdatedCount: 2,
       skillsMissingCount: 1,
-      skillsRemovedCount: 3,
     });
     // Must resolve against the canonical upstream manifest, not a possibly
     // stale in-repo skills-manifest.json, so this nudge agrees with what
@@ -102,26 +121,26 @@ describe("skillsUpdateCheck", () => {
     mockCheckSkills.mockResolvedValue({
       location: null,
       updateAvailable: false,
-      summary: { current: 0, outdated: 0, missing: 0, coreMissing: 0, removed: 0 },
+      summary: { current: 0, outdated: 0, missing: 0, coreMissing: 0 },
     });
 
     const { refreshSkillsCache } = await import("./skillsUpdateCheck.js");
     await refreshSkillsCache();
-
-    expect(config["skillsRemovedCount"]).toBeUndefined();
   });
 
   /** Drive printSkillsUpdateNotice from the given cache shape; returns what it wrote (if anything). */
-  async function noticeTextFor(cache: FakeConfig): Promise<string | null> {
+  async function noticeTextFor(cache: FakeConfig, project = "/projects/a"): Promise<string | null> {
     config = cache;
     const { printSkillsUpdateNotice } = await import("./skillsUpdateCheck.js");
     const writeSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 
-    printSkillsUpdateNotice();
+    printSkillsUpdateNotice(project);
+    const calls = [...writeSpy.mock.calls];
+    writeSpy.mockRestore();
 
-    if (writeSpy.mock.calls.length === 0) return null;
-    expect(writeSpy).toHaveBeenCalledTimes(1);
-    return String(writeSpy.mock.calls[0]?.[0]);
+    if (calls.length === 0) return null;
+    expect(calls).toHaveLength(1);
+    return String(calls[0]?.[0]);
   }
 
   it("suppresses a cached stale-skills notice in an attended plugin run", async () => {
@@ -130,34 +149,41 @@ describe("skillsUpdateCheck", () => {
     expect(await noticeTextFor({ skillsOutdatedCount: 2, skillsMissingCount: 1 })).toBeNull();
   });
 
-  it("the cached nudge total counts removed skills, not just outdated/missing", async () => {
-    // Cache pre-populated as if a prior refreshSkillsCache had run — only
-    // outdated + missing, no removed (the pre-fix shape).
-    const text = await noticeTextFor({
-      skillsOutdatedCount: 1,
-      skillsMissingCount: 1,
-      skillsRemovedCount: 2,
-    });
-    // 1 outdated + 1 missing + 2 removed = 4, not the pre-fix "2".
-    expect(text).toContain("4 HyperFrames skills out of date or missing");
+  it("prints the stale-skills notice without a TTY, so an agent hears it", async () => {
+    gate.noTty = true;
+    const text = await noticeTextFor({ skillsOutdatedCount: 2, skillsMissingCount: 1 });
+    expect(text).toContain("3 HyperFrames skills out of date or missing");
   });
 
-  it("prints nothing when outdated, missing, and removed are all zero", async () => {
+  it("prints at most once a day per project", async () => {
+    const stale = { skillsOutdatedCount: 2, skillsMissingCount: 0 };
+    expect(await noticeTextFor(stale, "/projects/a")).toContain("2 HyperFrames skills");
+    expect(await noticeTextFor(stale, "/projects/a")).toBeNull();
+    expect(await noticeTextFor(stale, "/projects/b")).toContain("2 HyperFrames skills");
+  });
+
+  it("unattended, says nothing about skills that are only outdated", async () => {
+    gate.unattended = true;
+    expect(await noticeTextFor({ skillsOutdatedCount: 3, skillsMissingCount: 0 })).toBeNull();
+  });
+
+  it("unattended, still names missing skills", async () => {
+    gate.unattended = true;
+    const text = await noticeTextFor({ skillsOutdatedCount: 3, skillsMissingCount: 1 });
+    expect(text).toContain("1 HyperFrames skill out of date or missing");
+  });
+
+  it("prints nothing when the update check is disabled (CI, dev, opt-out)", async () => {
+    gate.disabled = true;
+    expect(await noticeTextFor({ skillsOutdatedCount: 2, skillsMissingCount: 1 })).toBeNull();
+  });
+
+  it("prints nothing when outdated and missing are both zero", async () => {
     const text = await noticeTextFor({
       skillsOutdatedCount: 0,
       skillsMissingCount: 0,
-      skillsRemovedCount: 0,
     });
     expect(text).toBeNull();
-  });
-
-  it("a removed-only count (no outdated/missing) still triggers the nudge", async () => {
-    const text = await noticeTextFor({
-      skillsOutdatedCount: 0,
-      skillsMissingCount: 0,
-      skillsRemovedCount: 1,
-    });
-    expect(text).toContain("1 HyperFrames skill out of date or missing");
   });
 
   // Regression: the stale-24h-cache bug. A successful `skills update`/install
@@ -172,7 +198,6 @@ describe("skillsUpdateCheck", () => {
       skillsUpdateAvailable: true,
       skillsOutdatedCount: 12,
       skillsMissingCount: 8,
-      skillsRemovedCount: 0,
     };
 
     it("a fresh cache short-circuits the background check with the stale verdict (the bug's precondition)", async () => {
@@ -187,14 +212,14 @@ describe("skillsUpdateCheck", () => {
       mockCheckSkills.mockResolvedValue({
         location: "/home/user/.claude/skills",
         updateAvailable: false,
-        summary: { current: 20, outdated: 0, missing: 0, coreMissing: 0, removed: 0 },
+        summary: { current: 20, outdated: 0, missing: 0, coreMissing: 0 },
       });
 
       const { skillsCheckDue, refreshSkillsCache, invalidateSkillsCache } =
         await import("./skillsUpdateCheck.js");
       invalidateSkillsCache();
 
-      // All five cached fields are gone — timestamp AND counts.
+      // All four cached fields are gone — timestamp AND counts.
       expect(config["lastSkillsCheck"]).toBeUndefined();
       expect(config["skillsUpdateAvailable"]).toBeUndefined();
       expect(config["skillsOutdatedCount"]).toBeUndefined();

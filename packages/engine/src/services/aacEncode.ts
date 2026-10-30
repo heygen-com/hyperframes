@@ -3,8 +3,11 @@
  * so long audio is encoded as frame-aligned segments in parallel and their frames joined.
  */
 
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFile } from "node:child_process";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { removeScratch } from "@hyperframes/core/remove-scratch";
 import { dirname, join } from "node:path";
+import { getFfmpegBinary } from "../utils/ffmpegBinaries.js";
 import { runFfmpeg, type RunFfmpegResult } from "../utils/runFfmpeg.js";
 
 const SAMPLE_RATE = 48_000;
@@ -12,11 +15,11 @@ const FRAME_SAMPLES = 1024;
 const MIN_SEGMENT_SECONDS = 60;
 // Fixed rather than the core count, so the bytes (and the planHash) do not depend on the machine.
 const MAX_SEGMENTS = 8;
-// Encoded on each side of a segment and dropped. The encoder's rate control takes about
-// 10 s to settle (its error is higher until then), so a segment starts 10 s before its cut.
+// Encoded around each segment and dropped: rate control settles over ~10 s, and opening cold on
+// quiet sound codes the first loud frame up to 4.5 dB hot, so the first segment opens in silence.
 const PRE_ROLL_FRAMES = 469;
 const POST_ROLL_FRAMES = 8;
-export const AAC_ARGS = ["-acodec", "aac", "-b:a", "192k"];
+const AAC_ARGS = ["-acodec", "aac", "-b:a", "192k"];
 
 export function aacSegmentCount(totalDuration: number): number {
   return Math.max(1, Math.min(MAX_SEGMENTS, Math.floor(totalDuration / MIN_SEGMENT_SECONDS)));
@@ -45,26 +48,65 @@ function planSegments(totalDuration: number, count: number) {
   const cuts = Array.from({ length: count + 1 }, (_, k) => Math.round((k * packets) / count));
   return cuts.slice(0, -1).map((cut, k) => {
     const next = cuts[k + 1]!;
-    const firstFrame = Math.max(0, cut - PRE_ROLL_FRAMES);
-    const end = k === count - 1 ? "" : `:end_sample=${(next + POST_ROLL_FRAMES) * FRAME_SAMPLES}`;
-    const trim = `atrim=start_sample=${firstFrame * FRAME_SAMPLES}${end}`;
+    const firstFrame = cut - PRE_ROLL_FRAMES;
+    const end = k === count - 1 ? "" : `end_sample=${(next + POST_ROLL_FRAMES) * FRAME_SAMPLES}`;
+    const trim =
+      firstFrame < 0
+        ? `${end && `atrim=${end},`}adelay=delays=${-firstFrame * FRAME_SAMPLES}S:all=1`
+        : `atrim=start_sample=${firstFrame * FRAME_SAMPLES}${end && `:${end}`}`;
     return { trim, keepFrom: cut - firstFrame, keepTo: next - firstFrame };
   });
 }
 
-/** `input` is a 48 kHz WAV of exactly `totalDuration`. */
+const settsDurationSupport = new Map<string, Promise<boolean>>();
+
+/** FFmpeg before 5.0 (Ubuntu 22.04 ships 4.4) has no `duration` option on the setts filter. */
+function supportsSettsDuration(binary = getFfmpegBinary()): Promise<boolean> {
+  let supported = settsDurationSupport.get(binary);
+  if (!supported) {
+    supported = new Promise((resolve) => {
+      execFile(
+        binary,
+        ["-hide_banner", "-h", "bsf=setts"],
+        { windowsHide: true },
+        (error, stdout) => {
+          // A binary that cannot even print help fails the encode with its own error, not this one.
+          resolve(error !== null || stdout.includes("duration"));
+        },
+      );
+    });
+    settsDurationSupport.set(binary, supported);
+  }
+  return supported;
+}
+
+function encodeInOnePass(
+  input: string,
+  outputPath: string,
+  { signal, timeout, filter }: { signal?: AbortSignal; timeout: number; filter?: string },
+): Promise<RunFfmpegResult> {
+  const filters = [filter, `aresample=${SAMPLE_RATE}`].filter(Boolean).join(",");
+  return runFfmpeg(["-i", input, "-af", filters, ...AAC_ARGS, "-y", outputPath], {
+    signal,
+    timeout,
+  });
+}
+
+/** `input`, after `filter`, is audio of exactly `totalDuration`. */
 export async function encodeAac(
   input: string,
   outputPath: string,
   totalDuration: number,
-  { signal, timeout }: { signal?: AbortSignal; timeout: number },
+  {
+    signal,
+    timeout,
+    filter,
+    segments: count = aacSegmentCount(totalDuration),
+  }: { signal?: AbortSignal; timeout: number; filter?: string; segments?: number },
 ): Promise<RunFfmpegResult> {
-  const count = aacSegmentCount(totalDuration);
-  if (count === 1) {
-    const args = ["-i", input, "-t", String(totalDuration), ...AAC_ARGS, "-y", outputPath];
-    return runFfmpeg(args, { signal, timeout });
+  if (!(await supportsSettsDuration())) {
+    return encodeInOnePass(input, outputPath, { signal, timeout, filter });
   }
-
   const dir = mkdtempSync(join(dirname(outputPath), ".aac-segments-"));
   try {
     const segments = planSegments(totalDuration, count).map((segment, k) => ({
@@ -73,10 +115,25 @@ export async function encodeAac(
     }));
     const results = await Promise.all(
       segments.map(({ trim, path }) =>
-        runFfmpeg(["-i", input, "-af", trim, ...AAC_ARGS, "-f", "adts", "-y", path], {
-          signal,
-          timeout,
-        }),
+        runFfmpeg(
+          [
+            "-cpuflags",
+            "0",
+            "-i",
+            input,
+            "-af",
+            [filter, `aresample=${SAMPLE_RATE}`, trim].filter(Boolean).join(","),
+            ...AAC_ARGS,
+            "-f",
+            "adts",
+            "-y",
+            path,
+          ],
+          {
+            signal,
+            timeout,
+          },
+        ),
       ),
     );
     const failed = results.find((result) => !result.success);
@@ -115,6 +172,6 @@ export async function encodeAac(
     const slowest = Math.max(...results.map((result) => result.durationMs));
     return { ...muxed, durationMs: slowest + muxed.durationMs };
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   }
 }

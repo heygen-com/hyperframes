@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { createReadStream, readdirSync, statSync, type Dirent } from "node:fs";
 import { relative, resolve } from "node:path";
 import { spawn, spawnSync } from "node:child_process";
+import { ManagedChildProcess } from "@hyperframes/engine";
 import type {
   PlanParityDriverResult,
   PlanParityMediaMeasurement,
@@ -199,60 +200,45 @@ async function hashPath(path: string): Promise<{ sha256: string; bytes: number }
 async function canonicalPcmAudio(
   outputPath: string,
 ): Promise<PlanParityMediaMeasurement["pcmAudio"]> {
-  return new Promise((resolvePromise, reject) => {
-    const child = spawn(
-      "ffmpeg",
-      [
-        "-hide_banner",
-        "-loglevel",
-        "error",
-        "-i",
-        outputPath,
-        "-map",
-        "0:a:0",
-        "-vn",
-        "-ac",
-        "2",
-        "-ar",
-        "48000",
-        "-f",
-        "s16le",
-        "-",
-      ],
-      { stdio: ["ignore", "pipe", "pipe"], windowsHide: true },
-    );
-    const hash = createHash("sha256");
-    const stderr: Buffer[] = [];
-    let bytes = 0;
-    child.stdout.on("data", (chunk: Buffer) => {
-      hash.update(chunk);
-      bytes += chunk.length;
-    });
-    child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
-    child.on("error", reject);
-    child.on("close", (code) => {
-      if (code !== 0) {
-        const message = Buffer.concat(stderr).toString("utf-8");
-        // A video-only fixture is a valid parity input. ffmpeg uses this
-        // wording when the optional audio map has no match.
-        if (/matches no streams|does not contain any stream/iu.test(message)) {
-          resolvePromise(null);
-          return;
-        }
-        reject(new Error(`ffmpeg PCM decode exited ${code}: ${message.trim()}`));
-        return;
-      }
-      if (bytes % 4 !== 0) {
-        reject(new Error(`canonical stereo s16le byte count ${bytes} is not divisible by 4`));
-        return;
-      }
-      resolvePromise({
-        sha256: hash.digest("hex"),
-        sampleCount: bytes / 4,
-        bytes,
-      });
-    });
+  const child = spawn(
+    "ffmpeg",
+    [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-i",
+      outputPath,
+      "-map",
+      "0:a:0",
+      "-vn",
+      "-ac",
+      "2",
+      "-ar",
+      "48000",
+      "-f",
+      "s16le",
+      "-",
+    ],
+    { stdio: ["ignore", "pipe", "pipe"], windowsHide: true },
+  );
+  const hash = createHash("sha256");
+  let bytes = 0;
+  child.stdout.on("data", (chunk: Buffer) => {
+    hash.update(chunk);
+    bytes += chunk.length;
   });
+  const outcome = await new ManagedChildProcess(child).wait();
+  if (outcome.reason === "spawn_error") throw outcome.error;
+  if (outcome.exitCode !== 0) {
+    // A video-only fixture is a valid parity input. ffmpeg uses this
+    // wording when the optional audio map has no match.
+    if (/matches no streams|does not contain any stream/iu.test(outcome.stderr)) return null;
+    throw new Error(`ffmpeg PCM decode exited ${outcome.exitCode}: ${outcome.stderr.trim()}`);
+  }
+  if (bytes % 4 !== 0) {
+    throw new Error(`canonical stereo s16le byte count ${bytes} is not divisible by 4`);
+  }
+  return { sha256: hash.digest("hex"), sampleCount: bytes / 4, bytes };
 }
 
 export async function analyzePlanParityDriverResult(

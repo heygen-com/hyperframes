@@ -45,6 +45,9 @@ vi.mock("./canary.js", () => ({
   canaryEventProperties: () => canaryProps(),
 }));
 
+const signedIn = vi.hoisted(() => ({ username: undefined as string | undefined }));
+vi.mock("./signedInUser.js", () => ({ signedInHeygenUsername: () => signedIn.username }));
+
 // Intercept the exit-time child process so flushSync delivery is assertable.
 const spawnMock = vi.fn(() => ({ unref: vi.fn() }));
 vi.mock("node:child_process", () => ({
@@ -333,5 +336,42 @@ describe("canary cohort on every event", () => {
     expect(Object.keys(eventProps(fetchMock)).some((k) => k.startsWith("$feature/canary-"))).toBe(
       false,
     );
+  });
+});
+
+describe("signed-in HeyGen account on every event", () => {
+  const firstEvent = (fetchMock: ReturnType<typeof vi.fn>) => {
+    const init = fetchMock.mock.calls[0]?.[1] as { body: string };
+    return (
+      JSON.parse(init.body) as {
+        batch: Array<{ distinct_id: string; properties: Record<string, unknown> }>;
+      }
+    ).batch[0]!;
+  };
+
+  it("keys signed-in events on the account id and carries heygen_username", async () => {
+    signedIn.username = "alice";
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 200 }) as Response);
+    vi.stubGlobal("fetch", fetchMock);
+
+    trackEvent("cli_command", { command: "render" });
+    await flush();
+
+    const event = firstEvent(fetchMock);
+    expect(event.distinct_id).toBe("2bd806c9-7f0e-50af-9a1f-c3328fa763a9");
+    expect(event.properties.heygen_username).toBe("alice");
+  });
+
+  it("goes back to the install id once signed out", async () => {
+    signedIn.username = undefined;
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 200 }) as Response);
+    vi.stubGlobal("fetch", fetchMock);
+
+    trackEvent("cli_command", { command: "render" });
+    await flush();
+
+    const event = firstEvent(fetchMock);
+    expect(event.distinct_id).not.toBe("2bd806c9-7f0e-50af-9a1f-c3328fa763a9");
+    expect(event.properties.heygen_username).toBeUndefined();
   });
 });

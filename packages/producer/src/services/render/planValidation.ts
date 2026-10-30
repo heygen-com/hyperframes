@@ -123,6 +123,7 @@ export function validateNoGpuEncode(config: ValidateNoGpuEncodeInput): void {
 export function validateNoSystemFonts(compiledHtml: string): void {
   const customProperties = collectFontFamilyCustomProperties(compiledHtml);
   for (const { surface, declaration } of iterateFontFamilyDeclarations(compiledHtml)) {
+    if (surface === "font") continue;
     const families = resolveFontFamilyDeclarationFamilies(declaration, customProperties);
     if (families.length === 0) continue;
     const primaryRaw = families[0]!;

@@ -1,15 +1,14 @@
 import { launchManagedBrowser, resolveManagedGpuMode } from "../browser/launch.js";
 import { failCommand, setCommandExitCode } from "../utils/commandResult.js";
-import { defineCommand } from "citty";
+import { defineCommand } from "../utils/defineCommand.js";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
 import { resolveProject } from "../utils/project.js";
-import { resolveDiagnosticNavigationTimeoutMs } from "../utils/renderArgs.js";
+import { pageNavigationTimeoutMs } from "../utils/renderArgs.js";
 import { gotoWhenSent } from "../capture/navigateForCapture.js";
-import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
 import { printDeprecationNotice, withMeta } from "../utils/updateCheck.js";
 import {
@@ -38,6 +37,7 @@ import {
   waitForRuntimeReady,
   type SeekCompositionTimelineOptions,
 } from "../capture/captureCompositionFrame.js";
+import { failureMessage, jsonFailure } from "../utils/jsonError.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -185,7 +185,7 @@ async function alignViewportToComposition(
   });
 
   await page.setViewport(size);
-  await gotoWhenSent(page, url, resolveDiagnosticNavigationTimeoutMs());
+  await gotoWhenSent(page, url, pageNavigationTimeoutMs());
 }
 
 async function runLayoutAudit(
@@ -235,7 +235,7 @@ async function runLayoutAudit(
     const page = await chromeBrowser.newPage();
     await installPageFunctionGuard(page);
     await page.setViewport({ width: 1920, height: 1080 });
-    await gotoWhenSent(page, server.url, resolveDiagnosticNavigationTimeoutMs());
+    await gotoWhenSent(page, server.url, pageNavigationTimeoutMs());
     await assertWebGpuAdapterAvailable(page, requiresWebGpu, softwareWebGpu);
     await alignViewportToComposition(page, server.url);
     await waitForRuntimeReady(page, opts.timeout);
@@ -389,7 +389,10 @@ async function runMotionPass(
   await page.addScriptTag({ content: loadBrowserScript("motion-signature.browser.js") });
   await page.addScriptTag({ content: loadBrowserScript("motion-sample.browser.js") });
   const frames = await collectMotionFrames(page, times, selectors, livenessScopes);
-  return { issues: evaluateMotion(frames, spec.assertions, canvas), sampleCount: frames.length };
+  return {
+    issues: evaluateMotion(frames, spec.assertions, canvas, duration),
+    sampleCount: frames.length,
+  };
 }
 
 /** Read + validate the motion sidecar; print the error and exit on a bad spec. */
@@ -404,8 +407,7 @@ function resolveMotionSpec(specPath: string, json: boolean): MotionSpec {
         withMeta(
           {
             schemaVersion: INSPECT_SCHEMA_VERSION,
-            ok: false,
-            error: message,
+            ...jsonFailure("runtime_error", message),
             issues: [],
             errorCount: 0,
             warningCount: 0,
@@ -620,15 +622,14 @@ export function createInspectCommand(commandName: "inspect" | "layout") {
         setCommandExitCode(ok ? 0 : 1);
         return;
       } catch (err) {
-        const message = normalizeErrorMessage(err);
+        const message = failureMessage(err);
         if (args.json) {
           console.log(
             JSON.stringify(
               withMeta(
                 {
                   schemaVersion: INSPECT_SCHEMA_VERSION,
-                  ok: false,
-                  error: message,
+                  ...jsonFailure("runtime_error", message),
                   issues: [],
                   errorCount: 0,
                   warningCount: 0,

@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { lstatSync, readFileSync, readdirSync, type Stats } from "node:fs";
 import { extname, isAbsolute, relative, resolve, sep } from "node:path";
 import { isAtomicTempPath } from "@hyperframes/core/atomic-file";
-import { PREVIEW_IGNORED_DIRS } from "@hyperframes/core/project-folders";
+import { isProjectIgnoredDir } from "@hyperframes/core/project-folders";
 import type { ResolvedProject, StudioApiAdapter } from "../types.js";
 
 const SIGNATURE_TEXT_EXTENSIONS = new Set([
@@ -34,10 +34,8 @@ export const STUDIO_SIGNATURE_MANIFEST_PATHS = [
  * preview, so an unfiltered watcher discards the memo on roughly every request of
  * the one workload the memo exists for.
  *
- * Note this is not `WATCHER_EXCLUDED_DIRS`, which is character-identical but
- * excludes all of `.hyperframes/` — the signature deliberately reads two manifest
- * files from inside it, so filtering with that set would stop motion-state saves
- * from ever invalidating.
+ * The watcher shares `isProjectIgnoredDir` but drops all of `.hyperframes/`; the two
+ * manifest files read from inside it are let through first so motion-state saves invalidate.
  *
  * Every segment is tested, not just the parents, so a directory event on an
  * excluded dir itself (`unlinkDir .thumbnails`) is filtered too. The cost is that
@@ -57,7 +55,7 @@ export function affectsProjectSignature(projectDir: string, changedPath: string)
   if (isRenderOutput(projectDir, changedPath, readRenderOutputsOrNone(projectDir))) return false;
   const segments = relativePath.split(sep);
   if (STUDIO_SIGNATURE_MANIFEST_PATHS.includes(segments.join("/") as never)) return true;
-  return !segments.some((segment) => PREVIEW_IGNORED_DIRS.has(segment));
+  return !segments.some(isProjectIgnoredDir);
 }
 
 interface ProjectSignatureFile {
@@ -90,8 +88,7 @@ function isTextContentEligible(file: string, size: number): boolean {
   );
 }
 
-const isSkippedEntry = (entry: string) =>
-  PREVIEW_IGNORED_DIRS.has(entry) || isAtomicTempPath(entry);
+const isSkippedEntry = (entry: string) => isProjectIgnoredDir(entry) || isAtomicTempPath(entry);
 
 function signatureEntryStat(
   projectDir: string,

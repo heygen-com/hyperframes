@@ -5,6 +5,7 @@
  */
 
 import { describe, it, expect } from "vitest";
+import { createMemoryAdapter, openComposition } from "@hyperframes/sdk";
 import {
   mergeDeclarationEdit,
   declarationFromDraft,
@@ -12,6 +13,32 @@ import {
   EMPTY_DRAFT,
 } from "./VariablesDeclarationForm.js";
 import type { CompositionVariable } from "@hyperframes/core/variables";
+
+const fontDefault = {
+  name: "monospace",
+  source: "assets/brand.css",
+  vendor: { familyId: "brand", weights: [400, 700] },
+};
+const imageDefault = {
+  url: "assets/logo.svg",
+  alt: "Brand logo",
+  fit: "contain" as const,
+  vendor: { assetId: "logo", crop: { x: 0, y: 1 } },
+};
+const objectDeclarations = [
+  {
+    id: "font",
+    type: "font",
+    label: "Brand font",
+    default: fontDefault,
+  },
+  {
+    id: "logo",
+    type: "image",
+    label: "Brand logo",
+    default: imageDefault,
+  },
+] satisfies CompositionVariable[];
 
 describe("mergeDeclarationEdit", () => {
   it("preserves unmodeled keys on a same-type edit", () => {
@@ -64,6 +91,85 @@ describe("mergeDeclarationEdit", () => {
 });
 
 describe("declarationFromDraft", () => {
+  for (const original of objectDeclarations) {
+    it.each(["label", "description"])(
+      `preserves the ${original.type} object on a %s-only edit through save/reopen`,
+      async (field) => {
+        const draft = draftFromDeclaration(original);
+        expect(draft.defaultRaw).toBe(
+          original.type === "font" ? original.default.name : original.default.url,
+        );
+        const edited = declarationFromDraft({ ...draft, [field]: "Updated metadata" });
+        if (typeof edited === "string") throw new Error(edited);
+        const merged = mergeDeclarationEdit(original, edited);
+        expect(merged).toEqual({ ...original, [field]: "Updated metadata" });
+
+        const persist = createMemoryAdapter();
+        const session = await openComposition("<html><body></body></html>", {
+          persist,
+          coalesceMs: 0,
+        });
+        session.declareVariable(original);
+        session.updateVariableDeclaration(original.id, merged);
+        await session.flush();
+        const reopened = await openComposition(await persist.read("composition.html"));
+        try {
+          expect(reopened.getVariableValue(original.id)).toEqual(original.default);
+          expect(reopened.getVariableDeclarations()).toEqual([merged]);
+        } finally {
+          reopened.dispose();
+          session.dispose();
+        }
+      },
+    );
+
+    it(`edits only the primary ${original.type} value`, () => {
+      const edited = declarationFromDraft({
+        ...draftFromDeclaration(original),
+        defaultRaw: "replacement",
+      });
+      if (typeof edited === "string") throw new Error(edited);
+      expect(mergeDeclarationEdit(original, edited).default).toEqual({
+        ...original.default,
+        ...(original.type === "font" ? { name: "replacement" } : { url: "replacement" }),
+      });
+    });
+
+    it(`drops the ${original.type} object when changing type`, () => {
+      const edited = declarationFromDraft({
+        ...draftFromDeclaration(original),
+        type: original.type === "font" ? "image" : "font",
+        defaultRaw: "replacement",
+      });
+      if (typeof edited === "string") throw new Error(edited);
+      expect(mergeDeclarationEdit(original, edited)).toEqual({
+        id: original.id,
+        label: original.label,
+        type: original.type === "font" ? "image" : "font",
+        default: "replacement",
+      });
+    });
+  }
+
+  it.each(["font", "image"] as const)("keeps %s string defaults scalar", (type) => {
+    const original: CompositionVariable = {
+      id: "brand",
+      label: "Brand",
+      type,
+      default: "fallback",
+    };
+    expect(declarationFromDraft(draftFromDeclaration(original))).toEqual(original);
+    expect(
+      declarationFromDraft({
+        ...EMPTY_DRAFT,
+        id: "brand",
+        label: "Brand",
+        type,
+        defaultRaw: "fallback",
+      }),
+    ).toEqual(original);
+  });
+
   it("requires a non-empty id", () => {
     expect(declarationFromDraft({ ...EMPTY_DRAFT, id: "  " })).toBe("Variable id is required.");
   });

@@ -44,6 +44,14 @@ describe("ensureHfIds fragment detection", () => {
 });
 
 describe("stampHfIdsInPlace keeps the source's own formatting", () => {
+  it.each(["script", "style"])("keeps source offsets after expanding Unicode near %s", (tag) => {
+    const html = `<div DATA-X='KeepCase'>${"İ".repeat(20)}<${tag}>/* İ <span> */</${tag.toUpperCase()} \n><p class='KeepMe'>after</p></div>`;
+    const out = stampHfIdsInPlace(html);
+    expect(out.replace(/ data-hf-id="hf-[a-z0-9]{4}"/g, "")).toBe(html);
+    expect(ids(out)).toEqual(ids(ensureHfIds(html)));
+    expect(stampHfIdsInPlace(out)).toBe(out);
+  });
+
   it("only inserts ids into a composition written without whitespace", () => {
     const html =
       '<template id="s-template"><div data-composition-id="s" data-start="0" data-duration="4"><style>#t{color:red}</style><img src="a.png"/><input disabled><p class=\'t\' id=t>Hi<br></p></div></template>';

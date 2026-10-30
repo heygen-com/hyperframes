@@ -1,7 +1,24 @@
 {
   "name": "@hyperframes/cli",
-  "version": "0.8.170",
-  "description": "HyperFrames CLI — create, preview, and render HTML video compositions",
+  "version": "0.8.218",
+  "description": "Make videos with code and AI agents: write HTML, render MP4. Open source.",
+  "keywords": [
+    "ai-agents",
+    "animation",
+    "claude-code",
+    "codex",
+    "cursor",
+    "gsap",
+    "html-to-video",
+    "hyperframes",
+    "motion-graphics",
+    "mp4",
+    "remotion-alternative",
+    "render",
+    "video",
+    "video-editor"
+  ],
+  "homepage": "https://hyperframes.heygen.com",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -39,21 +56,21 @@
   "dependencies": {
     "@hono/node-server": "^2.0.5",
     "@puppeteer/browsers": "^3.2.2",
+    "acorn": "^8.17.0",
     "adm-zip": "^0.6.0",
     "citty": "^0.2.1",
     "compare-versions": "^6.1.1",
     "css-tree": "^3.2.1",
     "debug": "^4.4.0",
-    "esbuild": "^0.25.12",
+    "esbuild": "^0.28.2",
     "fontkit": "^2.0.4",
     "giget": "^3.2.0",
     "hono": "^4.0.0",
     "ignore": "^5.3.2",
     "open": "^10.0.0",
     "postcss": "^8.5.8",
-    "prettier": "^3.8.1",
     "puppeteer-core": "^25.10.0",
-    "sharp": "^0.35.0",
+    "undici": "7.25.0",
     "yauzl": "^3.4.0"
   },
   "devDependencies": {
@@ -63,6 +80,7 @@
     "@hyperframes/core": "workspace:*",
     "@hyperframes/engine": "workspace:*",
     "@hyperframes/gcp-cloud-run": "workspace:*",
+    "@hyperframes/inspector": "workspace:*",
     "@hyperframes/lint": "workspace:*",
     "@hyperframes/parsers": "workspace:*",
     "@hyperframes/producer": "workspace:*",
@@ -70,7 +88,6 @@
     "@hyperframes/studio-server": "workspace:*",
     "@types/css-tree": "^3.2.0",
     "@types/fontkit": "^2.0.9",
-    "@types/mime-types": "^3.0.1",
     "@types/node": "^25.0.10",
     "ajv": "^8.20.0",
     "linkedom": "^0.18.12",
@@ -80,6 +97,9 @@
     "tsx": "^4.0.0",
     "typescript": "^5.0.0",
     "vitest": "^4.1.11"
+  },
+  "optionalDependencies": {
+    "sharp": "^0.35.0"
   },
   "engines": {
     "node": ">=22"

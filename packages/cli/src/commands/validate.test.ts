@@ -16,7 +16,6 @@ import {
   navigationTimeoutHint,
   projectPathOfUrl,
   raceMediaReady,
-  resolveNavigationTimeoutMs,
   shouldIgnoreRequestFailure,
   shouldIgnoreHttpError,
 } from "./validate.js";
@@ -335,24 +334,6 @@ describe("extractCompositionErrorsFromLint", () => {
     const errors = extractCompositionErrorsFromLint(lintResult);
     expect(errors).toHaveLength(2);
     expect(errors.map((e) => e.text)).toEqual(["scene-a is empty", "scene-b is empty"]);
-  });
-});
-
-// Regression: `validate` used a hardcoded 10s page-navigation timeout that
-// ignored --timeout, so a composition loading GSAP from a CDN <script> (which
-// blocks domcontentloaded) failed with an opaque "Navigation timeout of 10000ms"
-// even though the full render's larger budget rode it out — with no knob to
-// extend it. resolveNavigationTimeoutMs makes --timeout raise the nav budget
-// (never below the 10s floor); navigationTimeoutHint replaces the opaque error.
-describe("resolveNavigationTimeoutMs", () => {
-  it("keeps the 10s floor when --timeout is unset or smaller", () => {
-    expect(resolveNavigationTimeoutMs(undefined)).toBe(10000);
-    expect(resolveNavigationTimeoutMs(3000)).toBe(10000); // the default --timeout
-    expect(resolveNavigationTimeoutMs(0)).toBe(10000);
-  });
-
-  it("raises the navigation budget to --timeout when it exceeds the floor", () => {
-    expect(resolveNavigationTimeoutMs(30000)).toBe(30000);
   });
 });
 

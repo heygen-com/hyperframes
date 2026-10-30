@@ -336,7 +336,7 @@ export function trackRenderComplete(
     durationMs: number;
     fps: number;
     quality: string;
-    /** Authoring workflow skill that drove this render (e.g. "product-launch-video"). */
+    /** Authoring skill that drove this render (e.g. "hyperframes"). */
     authoringSkill?: string;
     /** Which step resolved authoringSkill: an explicit --skill flag, or the project's own config. */
     authoringSkillSource?: string;
@@ -426,6 +426,7 @@ export function trackRenderComplete(
     deBlankDeterministicAccepts?: number;
     deBlankRecaptures?: number;
     deBoundaryFrames?: number;
+    deRiskFrames?: number;
     deNcprFallbacks?: number;
     deFrameTimeouts?: number;
     // "cli" when triggered by `hyperframes render` (default), "studio" when
@@ -446,6 +447,7 @@ export function trackRenderComplete(
     capturePeakMs?: number;
     // Resource usage
     peakMemoryMb?: number;
+    deRouterBreakerOff?: boolean;
     // Aggregate Chrome memory (RenderPerfSummary.chromeMemory); overrides the
     // live observability values when both are present, because the live ones
     // are only the last session's and the aggregate covers every worker.
@@ -595,10 +597,12 @@ export function trackRenderComplete(
         props.deFallbackThresholdDb,
         props.captureDeFallbackThresholdDb,
       ),
+      de_router_breaker_off: props.deRouterBreakerOff,
       de_blank_suspects: props.deBlankSuspects,
       de_blank_deterministic_accepts: props.deBlankDeterministicAccepts,
       de_blank_recaptures: props.deBlankRecaptures,
       de_boundary_frames: props.deBoundaryFrames,
+      de_risk_frames: props.deRiskFrames,
       de_ncpr_fallbacks: props.deNcprFallbacks,
       de_frame_timeouts: props.deFrameTimeouts,
       ...powerStateFields(),
@@ -653,7 +657,7 @@ export function trackRenderError(
   props: {
     fps: number;
     quality: string;
-    /** Authoring workflow skill that drove this render (e.g. "product-launch-video"). */
+    /** Authoring skill that drove this render (e.g. "hyperframes"). */
     authoringSkill?: string;
     /** Which step resolved authoringSkill: an explicit --skill flag, or the project's own config. */
     authoringSkillSource?: string;
@@ -670,6 +674,7 @@ export function trackRenderError(
     errorName?: string;
     /** failedStage normalized to a stable snake_case code. */
     failedStageCode?: string;
+    missingPathKind?: string;
     errorMessage?: string;
     elapsedMs?: number;
     peakMemoryMb?: number;
@@ -698,6 +703,7 @@ export function trackRenderError(
       failed_stage: props.failedStage,
       error_name: props.errorName,
       failed_stage_code: props.failedStageCode,
+      missing_path_kind: props.missingPathKind,
       error_message: props.errorMessage ? redactTelemetryMessage(props.errorMessage) : undefined,
       elapsed_ms: props.elapsedMs,
       ...renderOutputShapeEventProperties(props),
@@ -868,11 +874,15 @@ export function trackAuthLoginFailed(
 // install's anonymousId, so events recorded before sign-in stitch to the same
 // person instead of stranding as a separate anonymous profile. Routed through
 // trackEvent so it shares the opt-out gate and flush path — a no-op when
-// telemetry is disabled. `distinctId` is the account email (else username);
-// see the privacy notice in showTelemetryNotice and docs/packages/cli.mdx.
-export function identifyUser(distinctId: string): void {
+// telemetry is disabled. Identity comes from auth/telemetryIdentity.ts; see
+// showTelemetryNotice and docs/packages/cli.mdx.
+export function identifyUser(distinctId: string, traits: Record<string, string> = {}): void {
   if (!distinctId) return;
-  trackEvent("$identify", { $anon_distinct_id: readConfig().anonymousId }, distinctId);
+  trackEvent(
+    "$identify",
+    { $anon_distinct_id: readConfig().anonymousId, $set: traits },
+    distinctId,
+  );
 }
 
 // A render was rejected by the output-resolution/HDR pre-flight (P1-3)
@@ -1075,6 +1085,28 @@ export function trackCatalogSearchMiss(props: {
   });
 }
 
+// Where a snapshot's time went and how far its video frames sat from a keyframe, so the slow runs
+// split by cause. Low-cardinality only: counts, a stage name and a distance bucket.
+export function trackSnapshotRun(props: {
+  frames: number;
+  videoFrames: number;
+  decodePasses: number;
+  sharedFrames: number;
+  longestDecodeSeconds: number;
+  slowStage: "open" | "seek" | "video" | "capture";
+}): void {
+  const seconds = props.longestDecodeSeconds;
+  trackEvent("cli_snapshot_run", {
+    frames: props.frames,
+    video_frames: props.videoFrames,
+    decode_passes: props.decodePasses,
+    shared_frames: props.sharedFrames,
+    keyframe_distance:
+      seconds <= 2 ? "to_2s" : seconds <= 10 ? "to_10s" : seconds <= 60 ? "to_60s" : "over_60s",
+    slow_stage: props.slowStage,
+  });
+}
+
 export function trackCommandResult(props: {
   command: string;
   success: boolean;
@@ -1107,9 +1139,15 @@ export function trackCheckReport(props: {
   motionWarnings: number;
   contrastErrors: number;
   contrastWarnings: number;
+  craftWarnings: number;
   launchSettleMs: number;
+  renderReadyTimedOut: boolean;
   seekLoopMs: number;
   contrastMs: number;
+  gridMs: number;
+  craftMs: number;
+  overlapMs: number;
+  durationSec: number;
   gridPoints: number;
   contrastPoints: number;
   ok: boolean;
@@ -1132,9 +1170,15 @@ export function trackCheckReport(props: {
     motion_warnings: props.motionWarnings,
     contrast_errors: props.contrastErrors,
     contrast_warnings: props.contrastWarnings,
+    craft_warnings: props.craftWarnings,
     launch_settle_ms: props.launchSettleMs,
+    render_ready_timed_out: props.renderReadyTimedOut,
     seek_loop_ms: props.seekLoopMs,
     contrast_ms: props.contrastMs,
+    grid_ms: props.gridMs,
+    craft_ms: props.craftMs,
+    overlap_ms: props.overlapMs,
+    composition_s: props.durationSec,
     grid_points: props.gridPoints,
     contrast_points: props.contrastPoints,
     ok: props.ok,

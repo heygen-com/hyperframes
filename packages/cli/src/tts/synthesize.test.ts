@@ -131,6 +131,7 @@ describe("synthesize — Kokoro voice token overflow", () => {
     expect(source).toContain("def is_voice_token_overflow(error):");
     expect(source).toContain("def synthesize_text(value):");
     expect(source).toContain("samples.extend(right_samples)");
-    expect(source).toContain('const SCRIPT_PATH = join(SCRIPT_DIR, "synth-v3.py")');
+    expect(source).toContain("def espeak_config_for_long_data_path():");
+    expect(source).toContain('const SCRIPT_PATH = join(SCRIPT_DIR, "synth-v4.py")');
   });
 });

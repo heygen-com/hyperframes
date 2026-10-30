@@ -1,0 +1,38 @@
+name: Set up the test workspace
+description: Bun, Node, FFmpeg, Chrome, dependencies and the package builds the Linux test jobs need.
+inputs:
+  chrome:
+    description: Install Chrome (path in the chrome-path output).
+    default: "false"
+  engine:
+    description: Build @hyperframes/engine.
+    default: "false"
+outputs:
+  chrome-path:
+    description: Path of the installed Chrome, when `chrome` is true.
+    value: ${{ steps.chrome.outputs.chrome-path }}
+runs:
+  using: composite
+  steps:
+    - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      with:
+        node-version: 22
+    - uses: ./.github/actions/install-ffmpeg-linux
+    - uses: ./.github/actions/prepare-ffmpeg-bin
+    - id: chrome
+      if: inputs.chrome == 'true'
+      uses: browser-actions/setup-chrome@c785b87e244131f27c9f19c1a33e2ead956ab7ce # v1
+      with:
+        chrome-version: stable
+    - shell: bash
+      run: bash scripts/ci/install-workspace-dependencies.sh
+    - shell: bash
+      run: bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
+    - shell: bash
+      run: bun run --cwd packages/core build
+    - shell: bash
+      run: bun run --cwd packages/core build:hyperframes-runtime
+    - if: inputs.engine == 'true'
+      shell: bash
+      run: bun run --filter @hyperframes/engine build

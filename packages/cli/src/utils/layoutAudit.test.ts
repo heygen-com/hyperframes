@@ -136,6 +136,16 @@ describe("layoutAudit helpers", () => {
     });
   });
 
+  it("keeps canvas_covered an error only when the canvas is covered for most of the film", () => {
+    const covered = (times: number[], samples: number) =>
+      collapseStaticLayoutIssues(
+        times.map((time) => ({ ...issue("canvas_covered", "error"), time })),
+        samples,
+      )[0]?.severity;
+    expect(covered([1, 2, 3, 4, 5], 8)).toBe("error");
+    expect(covered([7, 8], 8)).toBe("info");
+  });
+
   it("formats issues with timestamp, selector, container, and fix hint", () => {
     const formatted = formatLayoutIssue({
       ...issue("text_box_overflow", "error"),

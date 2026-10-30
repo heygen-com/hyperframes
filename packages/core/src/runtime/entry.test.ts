@@ -1,7 +1,9 @@
 // fallow-ignore-file code-duplication
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { mediaElementTime } from "./mediaClock";
 import { HF_COLOR_GRADING_ATTR, serializeHfColorGrading } from "../colorGrading";
 import { STUDIO_PREVIEW_LAZY_ATTR, STUDIO_PREVIEW_MARK_META } from "../studioPreviewMark";
+import { revealClip } from "./clipReveal";
 import type { RuntimeTimelineLike } from "./types";
 
 function pausedTimeline(duration: number): RuntimeTimelineLike {
@@ -95,6 +97,23 @@ const neverDecodes = (clip: HTMLElement) => {
 
 describe("runtime entry", () => {
   afterEach(resetRuntimeGlobals);
+
+  it("starts a held capture-motion-blur frame when capture waits on the seek, after video injection", async () => {
+    const release = vi.fn();
+    vi.doMock("./captureMotionBlur", async (original) => ({
+      ...(await original<typeof import("./captureMotionBlur")>()),
+      releaseCaptureMotionBlurFrame: release,
+    }));
+    try {
+      mountRoot().appendChild(document.createElement("div"));
+      await evaluateRuntime();
+      expect(release).not.toHaveBeenCalled();
+      await window.__hfWaitForSeekCompletion?.();
+      expect(release).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.doUnmock("./captureMotionBlur");
+    }
+  });
 
   it("drives an async frame source without a GSAP timeline and waits before capture", async () => {
     const root = mountRoot();
@@ -225,7 +244,7 @@ describe("runtime entry", () => {
     expect(imageSkipped(later, brief)).toEqual([false, false]);
     window.__player?.seek(0);
     // How Studio's layer reveal shows a hidden clip.
-    later.style.visibility = "visible";
+    revealClip(later);
     expect(imageSkipped(later)).toEqual([false]);
   });
 
@@ -438,6 +457,85 @@ describe("runtime entry", () => {
       expect(loadsOf(later)).toEqual([beforeJump]);
     });
 
+    it("fetches the clips due soon three at a time, earliest first, so the clip due never queues behind them", async () => {
+      spyLoad();
+      servePreview();
+      const [now, ...due] = videos(mountRoot(), "0", "1.5", "1.1", "1.4", "1.2", "1.3");
+
+      await evaluateRuntime();
+      expect(armed(now, ...due)).toEqual([true, true, true, true, false, false]);
+      expect(loadsOf(...due)).toEqual([1, 1, 1, 0, 0]);
+      due[0]!.dispatchEvent(new Event("suspend"));
+      expect(armed(...due)).toEqual([true, true, true, false, false]);
+      Object.defineProperty(due[0]!, "readyState", { value: 3 });
+      due[0]!.dispatchEvent(new Event("canplay"));
+      expect(armed(...due)).toEqual([true, true, true, true, false]);
+      due[1]!.dispatchEvent(new Event("error"));
+      expect(armed(...due)).toEqual([true, true, true, true, true]);
+    });
+
+    it("prepares a queued split only after a prefetch slot opens", async () => {
+      spyLoad();
+      servePreview();
+      const [now, first, second, third, queued] = videos(
+        mountRoot(),
+        "0",
+        "1",
+        "1.2",
+        "1.4",
+        "1.6",
+      );
+      for (const video of [first, second, third, queued])
+        video.setAttribute("data-media-start", "6");
+
+      await evaluateRuntime();
+      expect(armed(now, first, second, third, queued)).toEqual([true, true, true, true, false]);
+      queued.dispatchEvent(new Event("loadedmetadata"));
+      expect(queued.currentTime).toBe(0);
+
+      first.dispatchEvent(new Event("error"));
+      queued.dispatchEvent(new Event("loadedmetadata"));
+      expect(queued.preload).toBe("auto");
+      expect(queued.currentTime).toBe(mediaElementTime(6));
+      expect(loadsOf(queued)).toEqual([1]);
+    });
+
+    it("frees a clip the playhead has passed while it is still downloading, and keeps one that finished", async () => {
+      spyLoad();
+      servePreview();
+      stubPlayback();
+      const [slow, done] = videos(mountRoot(), "0", "0.5");
+      Object.defineProperty(slow, "networkState", { value: 2 });
+      Object.defineProperty(done, "networkState", { value: 1 });
+      Object.defineProperty(done, "readyState", { value: 4 });
+
+      await evaluateRuntime();
+      window.__player?.play();
+      expect(armed(slow, done)).toEqual([true, true]);
+      window.__player?.seek(2.6, { keepPlaying: true });
+      expect(armed(slow, done)).toEqual([false, true]);
+    });
+
+    it("keeps a passed clip released for the rest of the play instead of refetching it each pass", async () => {
+      spyLoad();
+      servePreview();
+      stubPlayback();
+      const [slow, next] = videos(mountRoot(), "0", "2");
+      // A fetch is running whenever preload asks for one.
+      Object.defineProperty(slow, "networkState", { get: () => (slow.preload === "auto" ? 2 : 1) });
+
+      await evaluateRuntime();
+      window.__player?.play();
+      window.__player?.seek(2.05, { keepPlaying: true });
+      expect(armed(slow, next)).toEqual([false, true]);
+      const loadsAfterRelease = loadsOf(slow)[0];
+      for (let t = 2.1; t <= 4.0; t += 0.05) {
+        window.__player?.seek(t, { keepPlaying: true });
+        expect(slow.preload).toBe("none");
+      }
+      expect(loadsOf(slow)[0]).toBe(loadsAfterRelease);
+    });
+
     // jsdom's media elements cannot play; the runtime only needs play() to settle.
     const stubPlayback = () => {
       vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
@@ -449,6 +547,77 @@ describe("runtime entry", () => {
       otherTrack.setAttribute("data-track-index", "2");
       return { now, next, afterNext, otherTrack };
     };
+
+    it("decodes an upcoming split video at its source offset before playback reaches it", async () => {
+      spyLoad();
+      servePreview();
+      const { next } = tracks(mountRoot());
+      next.setAttribute("data-media-start", "6");
+
+      await evaluateRuntime();
+      window.__player?.play();
+      next.dispatchEvent(new Event("loadedmetadata"));
+      expect(next.currentTime).toBe(mediaElementTime(6));
+      expect(next.paused).toBe(true);
+      expect(visibility(next)).toEqual(["hidden"]);
+    });
+
+    it("prepares a loaded upcoming video when the paused playhead enters its look-ahead", async () => {
+      spyLoad();
+      servePreview();
+      const [, next] = videos(mountRoot(), "0", "5");
+      next.setAttribute("data-media-start", "6");
+      Object.defineProperty(next, "readyState", { value: 4 });
+
+      await evaluateRuntime();
+      window.__player?.seek(3.5);
+      expect(next.currentTime).toBe(mediaElementTime(6));
+      expect(next.paused).toBe(true);
+      expect(loadsOf(next)).toEqual([0]);
+    });
+
+    it("leaves a late preload callback out of a jump that already reached the video", async () => {
+      spyLoad();
+      servePreview();
+      const [, next] = videos(mountRoot(), "0", "5");
+      next.setAttribute("data-media-start", "6");
+
+      await evaluateRuntime();
+      window.__player?.seek(3.5);
+      window.__player?.seek(5.5);
+      expect(next.currentTime).toBe(mediaElementTime(6.5));
+      next.dispatchEvent(new Event("loadedmetadata"));
+      expect(next.currentTime).toBe(mediaElementTime(6.5));
+    });
+
+    it("does not rewind a loaded outgoing video while it remains in the trailing window", async () => {
+      spyLoad();
+      servePreview();
+      const [previous] = videos(mountRoot(), "0", "2");
+      previous.setAttribute("data-media-start", "6");
+      Object.defineProperty(previous, "readyState", { value: 4 });
+
+      await evaluateRuntime();
+      window.__player?.seek(1.5);
+      expect(previous.currentTime).toBe(mediaElementTime(7.5));
+      window.__player?.seek(2.1);
+      expect(previous.currentTime).toBe(mediaElementTime(7.5));
+    });
+
+    it("prepares a split again on replay when the loaded clip never leaves the window", async () => {
+      spyLoad();
+      servePreview();
+      const [, next] = videos(mountRoot(), "0", "2");
+      next.setAttribute("data-media-start", "6");
+      Object.defineProperty(next, "readyState", { value: 4 });
+
+      await evaluateRuntime();
+      window.__player?.seek(3.5);
+      expect(next.currentTime).toBe(mediaElementTime(7.5));
+      window.__player?.seek(0);
+      expect(next.currentTime).toBe(mediaElementTime(6));
+      expect(loadsOf(next)).toEqual([0]);
+    });
 
     it("arms the next clip on a clip's track when it starts playing, and nothing else", async () => {
       spyLoad();

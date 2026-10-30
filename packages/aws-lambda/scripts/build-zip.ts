@@ -111,10 +111,10 @@ async function main(): Promise<void> {
   const opts = parseArgs(process.argv);
   const start = Date.now();
 
-  rmSync(distDir, { recursive: true, force: true });
-  mkdirSync(distDir, { recursive: true });
-
+  // Leave the package build in dist/: the release job zips after `bun run build`.
   const stagingDir = join(distDir, "staging");
+  rmSync(stagingDir, { recursive: true, force: true });
+  rmSync(join(distDir, "handler.zip"), { force: true });
   mkdirSync(stagingDir, { recursive: true });
 
   console.log(`[build-zip] source=${opts.source}`);
@@ -228,6 +228,7 @@ async function bundleHandler(stagingDir: string): Promise<void> {
       "puppeteer",
       // AWS SDK v3 is pre-installed in the Lambda Node 22 runtime; mark
       // external so we don't double-bundle 3+ MiB of SDK.
+      "@aws-sdk/client-lambda",
       "@aws-sdk/client-s3",
     ],
     plugins: [workspaceAliasPlugin],

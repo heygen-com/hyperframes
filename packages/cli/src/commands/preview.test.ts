@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { runCommand } from "citty";
 import { PreviewServerPortMismatchError } from "../utils/studioSelectionClient.js";
 import { PreviewPortUnavailableError } from "./previewLifecycle.js";
+import * as previewLifecycle from "./previewLifecycle.js";
 import {
   default as previewCommand,
   backgroundStartFailureCode,
@@ -14,6 +15,7 @@ import {
   prebuildPreview,
   handlePreviewKillAll,
   handlePreviewList,
+  previewHostAppError,
   previewLaunchMode,
   previewLaunchModeError,
   previewPortError,
@@ -35,6 +37,12 @@ vi.mock("../utils/cancellableProcess.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../utils/cancellableProcess.js")>()),
   runRenderSetupWorker: lint.worker,
 }));
+// The real cleanup kills every orphaned Chrome the user owns, so no test may reach it.
+const killOrphanedProcesses = vi.hoisted(() => vi.fn(() => 0));
+vi.mock("../utils/orphanCleanup.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../utils/orphanCleanup.js")>()),
+  killOrphanedProcesses,
+}));
 
 const tempDirs: string[] = [];
 
@@ -49,6 +57,141 @@ function tempProject(): string {
   tempDirs.push(dir);
   return dir;
 }
+
+describe.each(["status", "stop"] as const)("preview --%s port scope", (operation) => {
+  it.each([undefined, 32521])("forwards the explicit port %s", async (port) => {
+    const dir = tempProject();
+    writeFileSync(join(dir, "index.html"), "<html></html>");
+    const readStatus = vi
+      .spyOn(previewLifecycle, "readBackgroundPreviewStatus")
+      .mockResolvedValue(null);
+    const stop = vi.spyOn(previewLifecycle, "stopBackgroundPreview").mockResolvedValue(false);
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const rawArgs = [
+      dir,
+      `--${operation}`,
+      "--json",
+      ...(port === undefined ? [] : ["--port", String(port)]),
+    ];
+    const previousArgv = process.argv;
+    process.argv = [process.execPath, "cli.js", "preview", ...rawArgs];
+    try {
+      await runCommand(previewCommand, { rawArgs });
+    } finally {
+      process.argv = previousArgv;
+    }
+
+    const call = operation === "status" ? readStatus : stop;
+    expect(call).toHaveBeenCalledOnce();
+    const [project, startPort, options] = call.mock.calls[0] ?? [];
+    expect(project).toBe(dir);
+    expect(startPort).toBe(port ?? 3002);
+    expect(options?.preferredPort).toBe(port);
+    expect(operation === "status" ? stop : readStatus).not.toHaveBeenCalled();
+  });
+});
+
+describe("preview --status reporting", () => {
+  it("reports an unknown listener PID without borrowing the saved wrapper's PID", async () => {
+    const dir = tempProject();
+    writeFileSync(join(dir, "index.html"), "<html></html>");
+    vi.spyOn(previewLifecycle, "readBackgroundPreviewStatus").mockResolvedValue({
+      pid: null,
+      port: 32600,
+      projectDir: dir,
+    });
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    await runCommand(previewCommand, { rawArgs: [dir, "--status", "--json"] });
+
+    const result = JSON.parse(log.mock.calls.flat().join("\n")).result;
+    expect(result).toMatchObject({ state: "running", pid: null, mode: "unknown" });
+    expect(result).not.toHaveProperty("logPath");
+  });
+
+  it("lists an unverified endpoint without inventing its PID or background mode", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    await handlePreviewList(3002, true, {
+      scan: async () => [],
+      listManaged: async () => [{ pid: null, port: 32600, projectDir: "/tmp/preview-unverified" }],
+    });
+
+    const result = JSON.parse(log.mock.calls.flat().join("\n")).result;
+    expect(result.sessions).toMatchObject([{ port: 32600, pid: null, mode: "unknown" }]);
+  });
+
+  it("keeps existing stop targets when status cannot confirm a listener PID", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const stopManaged = vi.fn(async () => true);
+    await handlePreviewKillAll(3002, true, {
+      listManaged: async () => [{ pid: null, port: 32600, projectDir: "/tmp/preview-unverified" }],
+      stopManaged,
+      killScanned: async () => ({ killed: 0, unverified: [] }),
+    });
+
+    expect(stopManaged).toHaveBeenCalledExactlyOnceWith("/tmp/preview-unverified", 32600);
+  });
+
+  it("retains scanned metadata when the same endpoint has an unknown saved-status PID", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    await handlePreviewList(3002, true, {
+      scan: async () => [
+        {
+          pid: "9876",
+          pidSource: "os",
+          port: 32600,
+          host: "[::1]",
+          projectDir: "/tmp/preview-unverified",
+          projectName: "scanned-project",
+          version: "test",
+        },
+      ],
+      listManaged: async () => [{ pid: null, port: 32600, projectDir: "/tmp/preview-unverified" }],
+    });
+
+    const result = JSON.parse(log.mock.calls.flat().join("\n")).result;
+    expect(result.sessions).toHaveLength(1);
+    expect(result.sessions[0]).toMatchObject({
+      pid: 9876,
+      host: "[::1]",
+      projectName: "scanned-project",
+      mode: "unknown",
+    });
+    expect(result.sessions[0]).not.toHaveProperty("logPath");
+  });
+
+  it.each([true, false])("reports log ownership in JSON=%s", async (json) => {
+    const dir = tempProject();
+    writeFileSync(join(dir, "index.html"), "<html></html>");
+    const readStatus = vi.spyOn(previewLifecycle, "readBackgroundPreviewStatus");
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    for (const logPath of [undefined, "/tmp/owned-preview.log"]) {
+      readStatus.mockResolvedValue({ pid: 5555, port: 32530, projectDir: dir, logPath });
+      log.mockClear();
+      await runCommand(previewCommand, {
+        rawArgs: [dir, "--status", ...(json ? ["--json"] : [])],
+      });
+      const output = log.mock.calls.flat().join("\n");
+      if (json) {
+        const result = JSON.parse(output).result;
+        expect(result).toMatchObject({
+          state: "running",
+          pid: 5555,
+          port: 32530,
+          mode: logPath ? "background" : "unknown",
+        });
+        if (logPath) expect(result.logPath).toBe(logPath);
+        else expect(result).not.toHaveProperty("logPath");
+      } else if (logPath) {
+        expect(output).toContain(`Log: ${logPath}`);
+        expect(output).toContain("Background preview running");
+      } else {
+        expect(output).not.toContain("Log:");
+        expect(output).not.toContain("Background preview running");
+        expect(output).toContain("Preview running");
+      }
+    }
+  });
+});
 
 describe("Studio handoff URLs", () => {
   it("hands off the exact timeline project route", () => {
@@ -599,5 +742,39 @@ describe("studio dev-server spawns", () => {
 
     expect(spawn).toHaveBeenCalledOnce();
     expect(spawn.mock.calls[0]?.[2]).toMatchObject({ windowsHide: true });
+  });
+});
+
+describe("preview inside a host app's agent run", () => {
+  const hostRun = { HYPERFRAMES_DESKTOP_PROJECT: "/projects/demo" };
+
+  it("refuses a background preview, which would outlive the run", () => {
+    expect(previewHostAppError("background", hostRun)).toMatch(/host app .* owns its preview/);
+    expect(previewHostAppError("background", hostRun)).toContain("--foreground");
+  });
+
+  it("allows a preview attached to the run, and background outside a host app", () => {
+    expect(previewHostAppError("embedded", hostRun)).toBeNull();
+    expect(previewHostAppError("local", hostRun)).toBeNull();
+    expect(previewHostAppError("background", {})).toBeNull();
+  });
+
+  it("refuses before spawning anything", async () => {
+    vi.stubEnv("HYPERFRAMES_DESKTOP_PROJECT", "/projects/demo");
+    const project = mkdtempSync(join(tmpdir(), "hf-host-preview-"));
+    writeFileSync(join(project, "index.html"), "<html><body></body></html>");
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    let printed = "";
+    try {
+      await runCommand(previewCommand, { rawArgs: [project, "--background", "--json"] });
+      printed = String(log.mock.calls.at(-1)?.[0]);
+    } finally {
+      log.mockRestore();
+      vi.unstubAllEnvs();
+      rmSync(project, { recursive: true, force: true });
+    }
+    const payload = JSON.parse(printed);
+    expect(payload).toMatchObject({ ok: false, error: { code: "host-app-owns-preview" } });
+    expect(killOrphanedProcesses).not.toHaveBeenCalled();
   });
 });

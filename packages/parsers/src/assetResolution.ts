@@ -2,6 +2,7 @@ import { scanHtmlOpeningTags, decodeAuthoredAttribute } from "./htmlAttributeSpa
 import { closeSync, constants, existsSync, fstatSync, openSync, readFileSync } from "node:fs";
 import { isAbsolute, join, posix, relative, resolve, sep } from "node:path";
 import { decodeUrlPathVariants } from "./composition.js";
+import { rewriteAssetPath } from "./rewriteSubCompPaths.js";
 
 /** The subset of `node:path` that `isWithinProjectRoot` needs to run under
  * an injected platform (tests pass `path.win32` / `path.posix`). */
@@ -136,6 +137,20 @@ export function resolveExistingLocalAsset(
   const resolved = resolveLocalAssetCandidates(projectRoot, url).find(existsSync);
   if (!resolved) return null;
   return { resolved, rootRelativePath: relative(projectRoot, resolved) };
+}
+
+/** The project file a `src` authored in `compositionFile` loads in preview and render; null when none exists. */
+export function resolveAuthoredAssetFile(
+  projectDir: string,
+  compositionFile: string,
+  src: string,
+): string | null {
+  const cleanSrc = cleanAssetUrl(src.trim());
+  if (!cleanSrc) return null;
+  const rootRelative = cleanSrc.startsWith("/")
+    ? cleanSrc
+    : rewriteAssetPath(compositionFile, cleanSrc, (path) => existsSync(join(projectDir, path)));
+  return resolveExistingLocalAsset(projectDir, rootRelative)?.resolved ?? null;
 }
 
 // Candidates for a variant whose join escaped the project root, re-anchored at the root.

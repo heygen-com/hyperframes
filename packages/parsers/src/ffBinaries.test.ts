@@ -184,7 +184,7 @@ describe("findFfBinary", () => {
 
   function installerProject(
     name: "ffmpeg" | "ffprobe",
-    { viaInstaller = false, mode = 0o755 } = {},
+    { viaInstaller = false, mode = 0o755, content = "" as string | Buffer } = {},
   ) {
     const project = realpathSync(mkdtempSync(join(tmpdir(), "hf-ff-installer-")));
     const platformPackage = `@${name}-installer/${process.platform}-${process.arch}`;
@@ -205,7 +205,7 @@ describe("findFfBinary", () => {
       );
     }
     const binary = join(packageDir, process.platform === "win32" ? `${name}.exe` : name);
-    writeFileSync(binary, "");
+    writeFileSync(binary, content);
     chmodSync(binary, mode);
     return { project, binary };
   }
@@ -279,6 +279,29 @@ describe("findFfBinary", () => {
     },
   );
 
+  describe.skipIf(process.platform === "win32")("on Apple Silicon without Rosetta", () => {
+    const machO = (cpu: number) => Buffer.from([0xcf, 0xfa, 0xed, 0xfe, cpu, 0x00, 0x00, 0x01]);
+
+    function asAppleSilicon() {
+      Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
+      vi.spyOn(process, "arch", "get").mockReturnValue("arm64");
+    }
+
+    it("skips an x86_64 installer binary", async () => {
+      asAppleSilicon();
+      const { project } = installerProject("ffprobe", { content: machO(0x07) });
+
+      expect(await findInProjectDir(project, "ffprobe")).toBeUndefined();
+    });
+
+    it("keeps an arm64 installer binary", async () => {
+      asAppleSilicon();
+      const { project, binary } = installerProject("ffprobe", { content: machO(0x0c) });
+
+      expect(await findInProjectDir(project, "ffprobe")).toBe(binary);
+    });
+  });
+
   it("returns undefined when the binary is nowhere, and caches the miss until cleared", async () => {
     delete process.env.HYPERFRAMES_FFMPEG_PATH;
     Object.defineProperty(process, "platform", { value: "linux", configurable: true });
@@ -343,5 +366,27 @@ describe("findFfBinary", () => {
     expect(findFfBinary("ffmpeg")).toBe(resolve("/opt/homebrew/bin/ffmpeg"));
     expect(findFfBinary("ffmpeg")).toBe(resolve("/opt/homebrew/bin/ffmpeg"));
     expect(execFileSync).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("isX86OnlyMachO", () => {
+  function fixture(bytes: number[]): string {
+    const file = join(realpathSync(mkdtempSync(join(tmpdir(), "hf-macho-"))), "ffprobe");
+    writeFileSync(file, Buffer.from(bytes));
+    onTestFinished(() => rmSync(file, { force: true }));
+    return file;
+  }
+
+  it("flags a 64-bit x86_64 Mach-O (the ffprobe-static darwin/arm64 payload)", async () => {
+    const { isX86OnlyMachO } = await importFresh();
+    expect(isX86OnlyMachO(fixture([0xcf, 0xfa, 0xed, 0xfe, 0x07, 0x00, 0x00, 0x01]))).toBe(true);
+  });
+
+  it("passes an arm64 Mach-O, a universal binary, a script and a missing file", async () => {
+    const { isX86OnlyMachO } = await importFresh();
+    expect(isX86OnlyMachO(fixture([0xcf, 0xfa, 0xed, 0xfe, 0x0c, 0x00, 0x00, 0x01]))).toBe(false);
+    expect(isX86OnlyMachO(fixture([0xca, 0xfe, 0xba, 0xbe, 0x00, 0x00, 0x00, 0x02]))).toBe(false);
+    expect(isX86OnlyMachO(fixture([0x23, 0x21, 0x2f, 0x62, 0x69, 0x6e, 0x2f, 0x73]))).toBe(false);
+    expect(isX86OnlyMachO("/nonexistent/ffprobe")).toBe(false);
   });
 });

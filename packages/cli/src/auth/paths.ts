@@ -1,23 +1,19 @@
 /**
- * Filesystem layout for the shared HeyGen credential store. Mirrors
- * `heygen-cli/internal/paths/paths.go` so both CLIs read the same file.
- * `HEYGEN_CONFIG_DIR` overrides the directory.
+ * HyperFrames credentials are isolated from the HeyGen CLI and between environments.
  */
 
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { oauthEnvironment } from "./config.js";
 
 /**
- * Filename for the credential store. Matches heygen-cli (no `.json`
- * suffix) so a `~/.heygen/credentials` written by either CLI is
- * readable by the other — see `heygen-cli/internal/auth/file_resolver.go`.
+ * Filename for the HyperFrames credential store (JSON, no extension).
  */
 export const CREDENTIAL_FILENAME = "credentials";
 
 export function configDir(): string {
-  const override = process.env["HEYGEN_CONFIG_DIR"];
-  if (override && override.length > 0) return override;
-  return join(homedir(), ".heygen");
+  const root = process.env["HYPERFRAMES_CONFIG_DIR"] || join(homedir(), ".hyperframes");
+  return oauthEnvironment() === "dev" ? join(root, "dev") : root;
 }
 
 export function credentialPath(): string {

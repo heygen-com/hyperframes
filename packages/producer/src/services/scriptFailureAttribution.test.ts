@@ -15,10 +15,12 @@ import { compileForRender } from "./htmlCompiler.js";
 import { writeCompiledArtifacts } from "./render/shared.js";
 
 // Real Chromium on the render path (compiled, CDN scripts inlined, body scripts re-run after fonts).
-// The timeline never registers in any case; what differs is whose script threw.
+// The timeline never registers in any case; what differs is whose script threw. The registrar
+// is defined and never called, so the page can still register one and the render waits for it.
 const composition = (scripts: string) => `<!doctype html>
 <html><body style="margin:0">
   <div data-composition-id="main" data-start="0" data-duration="1" data-width="160" data-height="120"></div>
+  <script>function register() { window.__timelines.main = gsap.timeline(); }</script>
   ${scripts}
 </body></html>`;
 

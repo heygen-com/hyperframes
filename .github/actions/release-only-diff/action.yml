@@ -1,0 +1,19 @@
+name: Release-only diff
+description: >-
+  Says whether a pull request changes only package and plugin versions, release notes and the changelog, so heavy suites
+  can skip it. Main and the merge queue never skip. Needs a checkout with full history.
+outputs:
+  release_only:
+    description: "'true' when every changed file is a version bump, release note or changelog entry."
+    value: ${{ steps.diff.outputs.release_only }}
+runs:
+  using: composite
+  steps:
+    - id: diff
+      shell: bash
+      run: |
+        if [ "${{ github.event_name }}" = pull_request ]; then
+          node scripts/ci/release-only-diff.mjs
+        else
+          echo "release_only=false" >> "$GITHUB_OUTPUT"
+        fi

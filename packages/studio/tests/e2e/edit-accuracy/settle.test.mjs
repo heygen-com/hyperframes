@@ -4,7 +4,9 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   STILL_FRAMES,
+  backgroundRequest,
   heldStill,
+  measureShown,
   networkBusy,
   seekBound,
   swapPending,
@@ -49,6 +51,13 @@ describe("settling on the shown preview", () => {
       false,
     );
     expect(await swapPending({ page: page(frame("/studio", false, true)), keys })).toBe(false);
+  });
+
+  it("calls a swap pending while Studio says the preview is changing, with no hidden preview yet", async () => {
+    const changing = (on) => ({ frames: () => [], evaluate: async () => on });
+    expect(await swapPending({ page: changing(true), keys })).toBe(true);
+    expect(await swapPending({ page: changing(false), keys })).toBe(false);
+    expect(await swapPending({ page: changing(true) }), "a case without keyframes").toBe(false);
   });
 
   it("never waits on a swap in a case without keyframes, so its undo keeps main's timing", async () => {
@@ -96,6 +105,18 @@ describe("settling on the page's network", () => {
     const now = { ...read(false, 0), net: networkBusy(ctx) };
     expect(now.net.busy).toBe(false);
     expect(unsettledBy(start, now)).toBe(true);
+  });
+
+  it("never waits on thumbnails, their blob images or background lint, which do not change the preview", () => {
+    const request = (url, type = "fetch") => ({ url: () => url, resourceType: () => type });
+    const api = "http://127.0.0.1:5910/api/projects/case";
+    expect(backgroundRequest(request(`${api}/lint`))).toBe(true);
+    expect(backgroundRequest(request(`${api}/thumbnail/index.html?t=3.00`))).toBe(true);
+    expect(backgroundRequest(request(`${api}/events`, "eventsource"))).toBe(true);
+    expect(backgroundRequest(request("blob:http://127.0.0.1:5910/7baf001f", "image"))).toBe(true);
+    expect(backgroundRequest(request(`${api}/preview`, "document"))).toBe(false);
+    expect(backgroundRequest(request(`${api}/files/index.html`))).toBe(false);
+    expect(backgroundRequest(request(`${api}/lint-rules`))).toBe(false);
   });
 
   it("waits for requests in live frames and for the server to announce each written file", () => {
@@ -163,5 +184,40 @@ describe("the size auto-record keys hold", () => {
     expect(heldSize(keys, 5)).toEqual({ width: 440, height: 294 });
     expect(heldSize(keys, 2.5)).toBeUndefined();
     expect(heldSize(new Map(), 1)).toBeUndefined();
+  });
+});
+
+describe("the box a press is measured against", () => {
+  const quad = (x) => [
+    [x, 0],
+    [x + 1, 0],
+    [x + 1, 1],
+    [x, 1],
+  ];
+  const marker = (answers) => ({
+    evaluate: async () => answers.shift() ?? false,
+    dispose: async () => {},
+  });
+  const read = async () => ({ map: { toComp: (p) => p }, visible: quad(0) });
+  const page = (markers) => ({ $: async () => markers.shift() ?? null });
+
+  it("reads the waiting marker while a press waits for its replay, not the element under it", async () => {
+    const shown = await measureShown({ page: page([marker([true])]) }, "move", read, async () =>
+      quad(260),
+    );
+    expect(shown.m.visible[0][0]).toBe(260);
+    expect(shown.actual[0][0]).toBe(0);
+  });
+
+  it("reads the element when nothing waits", async () => {
+    const shown = await measureShown({ page: page([]) }, "move", read, async () => quad(260));
+    expect(shown.m.visible[0][0]).toBe(0);
+  });
+
+  it("reads again when the replay took the marker away between the two reads", async () => {
+    const shown = await measureShown({ page: page([marker([false])]) }, "move", read, async () =>
+      quad(260),
+    );
+    expect(shown.m.visible[0][0]).toBe(0);
   });
 });

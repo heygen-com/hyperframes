@@ -41,6 +41,7 @@ export async function captureWebsiteAttempt(
   disableWebgl: boolean,
   watchdog: CaptureWatchdog,
   state: PartialCaptureState,
+  localOrigin?: string,
 ): Promise<CaptureResult> {
   const {
     url,
@@ -57,7 +58,9 @@ export async function captureWebsiteAttempt(
   } = opts;
 
   const initialUrl = new URL(url);
-  if (
+  if (localOrigin !== undefined) {
+    if (initialUrl.origin !== localOrigin) throw new Error("Local capture URL must use its server");
+  } else if (
     !["http:", "https:"].includes(initialUrl.protocol) ||
     initialUrl.username ||
     initialUrl.password
@@ -125,6 +128,7 @@ export async function captureWebsiteAttempt(
     disableWebgl,
     width: viewportWidth,
     height: viewportHeight,
+    localOrigin,
   });
   const chromeBrowser = captureBrowser.browser;
   watchdog.registerBrowser(captureBrowser);

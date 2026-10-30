@@ -1,29 +1,40 @@
-import { describe, expect, it } from "vitest";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync, type Stats } from "node:fs";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_CONFIG } from "@hyperframes/engine";
+import {
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+  type Stats,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import {
   MAX_PAGE_NAVIGATION_TIMEOUT_SECONDS,
-  hasExplicitCompositionArg,
   parseBrowserTimeoutMsArg,
-  resolveDiagnosticNavigationTimeoutMs,
-  parseCompositionEntryArg,
+  pageNavigationTimeoutMs,
   parseGifLoopArg,
   parseHlsSegmentSecondsArg,
   resolveDefaultFpsArg,
   type BrowserTimeoutParseResult,
-  type CompositionEntryParseResult,
 } from "./renderArgs.js";
+import {
+  compositionEntryErrorMessage,
+  hasExplicitCompositionArg,
+  parseCompositionEntryArg,
+  type CompositionEntryParseError,
+  type CompositionEntryParseResult,
+} from "./compositionEntry.js";
 
 function expectBrowserTimeoutErr(result: BrowserTimeoutParseResult): { kind: string; raw: string } {
   if (result.ok) throw new Error(`expected error, got value=${result.value}`);
   return result.error;
 }
 
-function expectCompositionErr(result: CompositionEntryParseResult): {
-  kind: string;
-  entryFile: string;
-} {
+function expectCompositionErr(result: CompositionEntryParseResult): CompositionEntryParseError {
   if (result.ok) throw new Error(`expected error, got value=${result.value}`);
   return result.error;
 }
@@ -106,35 +117,42 @@ describe("parseBrowserTimeoutMsArg", () => {
   });
 });
 
-describe("resolveDiagnosticNavigationTimeoutMs", () => {
-  it("uses the render navigation timeout env override", () => {
-    expect(
-      resolveDiagnosticNavigationTimeoutMs({ PRODUCER_PAGE_NAVIGATION_TIMEOUT_MS: "90000" }),
-    ).toBe(90_000);
+describe("pageNavigationTimeoutMs", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("gives check and snapshot the page-load budget render uses", () => {
+    expect(pageNavigationTimeoutMs()).toBe(DEFAULT_CONFIG.pageNavigationTimeout);
+    vi.stubEnv("PRODUCER_PAGE_NAVIGATION_TIMEOUT_MS", "90000");
+    expect(pageNavigationTimeoutMs()).toBe(90_000);
   });
 
-  it("falls back to ten seconds for missing or invalid values", () => {
-    expect(resolveDiagnosticNavigationTimeoutMs({})).toBe(10_000);
-    expect(
-      resolveDiagnosticNavigationTimeoutMs({ PRODUCER_PAGE_NAVIGATION_TIMEOUT_MS: "invalid" }),
-    ).toBe(10_000);
+  it("falls back to that default for a zero or invalid override", () => {
+    vi.stubEnv("PRODUCER_PAGE_NAVIGATION_TIMEOUT_MS", "0");
+    expect(pageNavigationTimeoutMs()).toBe(DEFAULT_CONFIG.pageNavigationTimeout);
+    vi.stubEnv("PRODUCER_PAGE_NAVIGATION_TIMEOUT_MS", "invalid");
+    expect(pageNavigationTimeoutMs()).toBe(DEFAULT_CONFIG.pageNavigationTimeout);
   });
 
-  it("raises the diagnostic navigation budget to a larger caller-provided minimum", () => {
-    expect(resolveDiagnosticNavigationTimeoutMs({}, 30_000)).toBe(30_000);
+  it("prints no render-only warning where render would disable streaming encode", () => {
+    const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+    Object.defineProperty(process, "platform", { value: "win32" });
+    vi.stubEnv("PRODUCER_BROWSER_GPU_MODE", "software");
+    vi.stubEnv("PRODUCER_MAX_WORKERS", "1");
+    const stderr = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      expect(pageNavigationTimeoutMs()).toBe(DEFAULT_CONFIG.pageNavigationTimeout);
+      expect(stderr).not.toHaveBeenCalled();
+    } finally {
+      stderr.mockRestore();
+      Object.defineProperty(process, "platform", platform);
+    }
   });
 
-  it("does not let a caller-provided minimum shorten the default budget", () => {
-    expect(resolveDiagnosticNavigationTimeoutMs({}, 3_000)).toBe(10_000);
-  });
-
-  it("does not let a caller-provided minimum shorten the environment override", () => {
-    expect(
-      resolveDiagnosticNavigationTimeoutMs(
-        { PRODUCER_PAGE_NAVIGATION_TIMEOUT_MS: "90000" },
-        30_000,
-      ),
-    ).toBe(90_000);
+  it("lets a command's longer --timeout raise it, never lower it", () => {
+    expect(pageNavigationTimeoutMs(DEFAULT_CONFIG.pageNavigationTimeout * 2)).toBe(
+      DEFAULT_CONFIG.pageNavigationTimeout * 2,
+    );
+    expect(pageNavigationTimeoutMs(3_000)).toBe(DEFAULT_CONFIG.pageNavigationTimeout);
   });
 });
 
@@ -194,17 +212,56 @@ describe("parseCompositionEntryArg", () => {
 
   it("rejects a directory path with 'not-a-file' (the EISDIR cause)", () => {
     const err = expectCompositionErr(parseCompositionEntryArg("compositions", PROJECT, stat));
-    expect(err).toEqual({ kind: "not-a-file", entryFile: "compositions" });
+    expect(err).toMatchObject({ kind: "not-a-file", entryFile: "compositions" });
   });
 
   it("rejects a non-existent file with 'not-found'", () => {
     const err = expectCompositionErr(parseCompositionEntryArg("missing.html", PROJECT, stat));
-    expect(err).toEqual({ kind: "not-found", entryFile: "missing.html" });
+    expect(err).toMatchObject({ kind: "not-found", entryFile: "missing.html" });
   });
 
   it("rejects a path that escapes the project directory", () => {
     const err = expectCompositionErr(parseCompositionEntryArg("../escape.html", PROJECT, stat));
     expect(err.kind).toBe("outside-project");
+  });
+
+  it("accepts an absolute path inside the project and returns it project-relative", () => {
+    expect(
+      parseCompositionEntryArg(resolve(PROJECT, "compositions/intro.html"), PROJECT, stat),
+    ).toEqual({ ok: true, value: "compositions/intro.html" });
+  });
+
+  it("keeps a dot-named entry relative to the project", () => {
+    const dotStat = makeStat({ [resolve(PROJECT, ".solo.html")]: "file", [PROJECT]: "directory" });
+    expect(parseCompositionEntryArg(".solo.html", PROJECT, dotStat)).toEqual({
+      ok: true,
+      value: ".solo.html",
+    });
+  });
+
+  it("rejects an absolute path outside the project", () => {
+    const outsideStat = makeStat({ "/elsewhere/x.html": "file", [PROJECT]: "directory" });
+    const err = expectCompositionErr(
+      parseCompositionEntryArg("/elsewhere/x.html", PROJECT, outsideStat),
+    );
+    expect(err.kind).toBe("outside-project");
+  });
+
+  it.each([
+    ["../escape.html", "outside-project", "/escape.html"],
+    ["missing.html", "not-found", "/proj/missing.html"],
+    ["compositions", "not-a-file", "/proj/compositions"],
+  ])("names the resolved entry path and project directory for %s", (raw, kind, entryPath) => {
+    const err = expectCompositionErr(parseCompositionEntryArg(raw, PROJECT, stat));
+    expect(err).toEqual({
+      kind,
+      entryFile: raw,
+      entryPath: resolve(entryPath),
+      projectDir: resolve(PROJECT),
+    });
+    const { message } = compositionEntryErrorMessage(err);
+    expect(message).toContain(`"${raw}" resolves to ${resolve(entryPath)}`);
+    expect(message).toContain(resolve(PROJECT));
   });
 
   it("rejects a sibling-prefix path (trailing-separator guard)", () => {
@@ -220,6 +277,28 @@ describe("parseCompositionEntryArg", () => {
     expect(err.kind).toBe("outside-project");
   });
 });
+
+describe.skipIf(process.platform === "win32")(
+  "parseCompositionEntryArg through a symlinked project path",
+  () => {
+    it("accepts an absolute entry spelled with the alias of the project directory", () => {
+      const root = realpathSync(mkdtempSync(join(tmpdir(), "hyperframes-entry-alias-")));
+      try {
+        const project = join(root, "project");
+        mkdirSync(project);
+        writeFileSync(join(project, "entry.html"), "<html></html>");
+        const alias = join(root, "alias");
+        symlinkSync(project, alias);
+        expect(parseCompositionEntryArg(join(alias, "entry.html"), project, statSync)).toEqual({
+          ok: true,
+          value: "entry.html",
+        });
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+  },
+);
 
 describe("resolveDefaultFpsArg", () => {
   function writeComposition(path: string, fps: string): void {
@@ -266,6 +345,21 @@ describe("resolveDefaultFpsArg", () => {
     const project = makeProject();
     try {
       expect(resolveDefaultFpsArg(undefined, project.dir, project.indexPath, undefined)).toBe("24");
+    } finally {
+      project.cleanup();
+    }
+  });
+
+  it("uses an uppercase HTML data-fps declaration when --fps is omitted", () => {
+    const project = makeProject();
+    try {
+      writeFileSync(
+        project.indexPath,
+        '<!DOCTYPE html><html><body><div data-composition-id="root" DATA-FPS="24">x</div></body></html>',
+      );
+
+      expect(resolveDefaultFpsArg(undefined, project.dir, project.indexPath, undefined)).toBe("24");
+      expect(resolveDefaultFpsArg("60", project.dir, project.indexPath, undefined)).toBe("60");
     } finally {
       project.cleanup();
     }

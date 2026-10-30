@@ -61,6 +61,27 @@ describe("getVariables", () => {
     expect(getVariables()).toEqual({ title: "x", extra: 42 });
   });
 
+  it("keeps a scene's declaration in its own scope, and a pasted component's on the page", () => {
+    const declare = (id: string, value: string) =>
+      JSON.stringify([{ id, type: "string", label: id, default: value }]);
+    setDeclared(declare("title", "Top"));
+    document.body.innerHTML = `
+      <div data-composition-id="main">
+        <div data-composition-id="card" data-composition-variables='${declare("title", "Default")}'></div>
+        <div data-composition-variables='${declare("accent", "red")}'></div>
+      </div>`;
+    const win = window as Window & {
+      __hfVariablesByComp?: Record<string, Record<string, unknown>>;
+    };
+    win.__hfVariablesByComp = { card: { title: "Card" } };
+    try {
+      expect(getVariables()).toEqual({ title: "Top", accent: "red" });
+    } finally {
+      delete win.__hfVariablesByComp;
+      document.body.innerHTML = "";
+    }
+  });
+
   it("returns {} when the declared JSON is invalid", () => {
     setDeclared("{not-json");
     expect(getVariables()).toEqual({});
