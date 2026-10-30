@@ -1837,6 +1837,7 @@ describe("WebAudioTransport", () => {
 
       const primed = transportWithDecode(async () => ({ duration: 4 }) as AudioBuffer);
       expect(await primed.decodeAudioElement(withDuration("he.m4a", 4.133))).not.toBeNull();
+      expect(await primed.decodeAudioElement(withDuration("rec.webm", Infinity))).not.toBeNull();
       vi.unstubAllGlobals();
     });
 

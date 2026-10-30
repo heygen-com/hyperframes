@@ -396,7 +396,7 @@ export class WebAudioTransport {
     try {
       const audioBuffer = await this._ctx.decodeAudioData(arrayBuffer);
       // A file whose container timescale disagrees with its stream decodes short; its element plays it whole.
-      if (el.duration - audioBuffer.duration > SHORT_DECODE_SECONDS) {
+      if (Number.isFinite(el.duration) && el.duration - audioBuffer.duration > SHORT_DECODE_SECONDS) {
         this._failedSrcs.add(src);
         return null;
       }
