@@ -31,8 +31,8 @@ export const RENDER_SIDECAR_SUFFIX = ".hf-render.json";
 export const RENDER_SIDECAR_SCHEMA_URL =
   "https://hyperframes.heygen.com/schema/hf-render-sidecar.json";
 
-/** undefined writes `<output>.hf-render.json`, false disables it, a string relocates it. */
-export type ProvenanceSetting = string | false | undefined;
+/** Off unless set: true writes `<output>.hf-render.json`, a string relocates it. */
+export type ProvenanceSetting = string | boolean | undefined;
 
 export interface RenderProvenanceSidecar {
   $schema: string;
@@ -97,10 +97,10 @@ export function resolveProvenanceSidecarPath(
   outputPath: string,
   provenance: ProvenanceSetting,
 ): string | null {
-  if (provenance === false) return null;
   if (typeof provenance === "string" && provenance.trim() !== "") {
     return resolve(provenance);
   }
+  if (provenance !== true) return null;
   // `resolve` strips a directory output's trailing separator, so the sidecar lands beside it.
   return `${resolve(outputPath)}${RENDER_SIDECAR_SUFFIX}`;
 }

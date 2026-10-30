@@ -434,13 +434,15 @@ export default defineCommand({
       // env fallback survives (matches the --low-memory-mode idiom).
     },
     provenance: {
-      type: "string",
+      type: "boolean",
       description:
-        "Render provenance sidecar path (default: <output>.hf-render.json). " +
-        "The sidecar is a portable JSON receipt written next to the output " +
-        "after a successful render: tool versions, input hashes, variables " +
-        "hash, fonts, format/fps/resolution, encoder, stage timings, and " +
-        "warning codes. Pass false (or use --no-provenance) to disable.",
+        "Write a render provenance sidecar (<output>.hf-render.json) after a successful render: " +
+        "a JSON receipt with tool versions, input hashes, variables hash, fonts, " +
+        "format/fps/resolution, encoder, stage timings and warning codes. Off by default.",
+    },
+    "provenance-path": {
+      type: "string",
+      description: "Write the provenance sidecar to this path instead. Implies --provenance.",
     },
     "frames-cache-dir": {
       type: "string",
@@ -570,11 +572,8 @@ export interface RenderOptions {
   protocolTimeout?: number;
   /** Player-ready timeout override (ms). */
   playerReadyTimeout?: number;
-  /**
-   * Provenance sidecar setting: `undefined` = default sidecar next to the
-   * output, `false` = disabled, string = custom sidecar path.
-   */
-  provenance?: string | false;
+  /** Provenance sidecar: omitted or false = none, true = next to the output, string = custom path. */
+  provenance?: string | boolean;
   /** Throw render failures to the caller instead of printing and exiting. */
   throwOnError?: boolean;
   /** Skip the interactive feedback prompt after a successful render. */

@@ -1,17 +1,17 @@
 ---
 title: "Render provenance sidecar"
 sidebarTitle: "Render provenance"
-description: "The portable JSON receipt written next to every rendered output."
+description: "An opt-in portable JSON receipt written next to a rendered output."
 ---
 
-Every successful `hyperframes render` writes a small JSON receipt next to the
-output file: `out.mp4` gets `out.mp4.hf-render.json`. The sidecar records what
+With `--provenance`, a successful `hyperframes render` writes a small JSON
+receipt next to the output file: `out.mp4` gets `out.mp4.hf-render.json`. The sidecar records what
 produced the file — tool versions, input hashes, fonts, format, encoder, stage
 timings, and warning codes — so agents, CI pipelines, and support tooling can
 answer "what rendered this, from what, and how" without re-running anything.
 
 ```bash
-npx hyperframes render --output out.mp4
+npx hyperframes render --output out.mp4 --provenance
 # → out.mp4
 # → out.mp4.hf-render.json
 ```
@@ -62,23 +62,21 @@ npx hyperframes render --output out.mp4
 
 ## Controlling the sidecar
 
-The sidecar is on by default for every render, including `--docker` and
-`--batch` renders (each batch row writes its own
-`<row output>.hf-render.json`).
+The sidecar is off by default, so a plain render writes no extra file and
+does not hash the output. Turn it on per render; it works with `--docker` and
+`--batch` too (each batch row writes its own `<row output>.hf-render.json`).
 
 ```bash
-npx hyperframes render --output out.mp4 --no-provenance        # disable
-npx hyperframes render --output out.mp4 --provenance receipts/out.json  # relocate
+npx hyperframes render --output out.mp4 --provenance                                # next to the output
+npx hyperframes render --output out.mp4 --provenance-path receipts/out.json  # custom path
 ```
 
-Two combinations are rejected up front: a custom `--provenance <path>` with
-`--batch` (one fixed path cannot serve N row outputs) and with `--docker`
-(an arbitrary host path is not visible from the render container). Disabling
-works everywhere.
+`--provenance-path` implies `--provenance`. It is rejected with `--batch`
+(one fixed path cannot serve N row outputs) and with `--docker` (an arbitrary
+host path is not visible from the render container).
 
-Programmatic callers set the same tri-state on the render request:
-`provenance` omitted (default path), `false` (disabled), or a custom path
-string.
+Programmatic callers set `provenance` on the render request: omitted or
+`false` (no sidecar), `true` (default path), or a custom path string.
 
 ## What the fields mean
 

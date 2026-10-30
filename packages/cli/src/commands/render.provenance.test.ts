@@ -4,25 +4,21 @@ import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CliUsageError } from "../utils/commandResult.js";
 import { buildDockerRunArgs } from "../utils/dockerRunArgs.js";
-import { createRenderPlan, parseProvenanceArg } from "./render/plan.js";
+import { createRenderPlan, parseProvenanceArgs } from "./render/plan.js";
 
-describe("parseProvenanceArg", () => {
-  it("defaults to on (undefined) when the flag is absent or bare", () => {
-    expect(parseProvenanceArg(undefined)).toBeUndefined();
-    expect(parseProvenanceArg(true)).toBeUndefined();
-    expect(parseProvenanceArg("  ")).toBeUndefined();
+describe("parseProvenanceArgs", () => {
+  it("is off when neither flag is given", () => {
+    expect(parseProvenanceArgs(undefined, undefined)).toBeUndefined();
+    expect(parseProvenanceArgs(false, undefined)).toBeUndefined();
+    expect(parseProvenanceArgs(undefined, "  ")).toBeUndefined();
   });
 
-  it("disables on --no-provenance and on disable-alias values", () => {
-    expect(parseProvenanceArg(false)).toBe(false);
-    expect(parseProvenanceArg("false")).toBe(false);
-    expect(parseProvenanceArg("OFF")).toBe(false);
-    expect(parseProvenanceArg("0")).toBe(false);
-    expect(parseProvenanceArg("none")).toBe(false);
+  it("turns on the default sidecar with --provenance", () => {
+    expect(parseProvenanceArgs(true, undefined)).toBe(true);
   });
 
-  it("resolves a custom sidecar path", () => {
-    expect(parseProvenanceArg("receipts/out.json")).toBe(resolve("receipts/out.json"));
+  it("resolves --provenance-path, which implies --provenance", () => {
+    expect(parseProvenanceArgs(undefined, "receipts/out.json")).toBe(resolve("receipts/out.json"));
   });
 });
 
@@ -48,21 +44,21 @@ describe("createRenderPlan provenance", () => {
     rmSync(projectDir, { recursive: true, force: true });
   });
 
-  it("leaves provenance on by default", () => {
+  it("leaves provenance off by default", () => {
     const plan = createRenderPlan({ dir: projectDir, output: "out.mp4" });
     expect(plan.provenance).toBeUndefined();
   });
 
-  it("threads --no-provenance through the plan", () => {
-    const plan = createRenderPlan({ dir: projectDir, output: "out.mp4", provenance: false });
-    expect(plan.provenance).toBe(false);
+  it("threads --provenance through the plan", () => {
+    const plan = createRenderPlan({ dir: projectDir, output: "out.mp4", provenance: true });
+    expect(plan.provenance).toBe(true);
   });
 
   it("threads a custom sidecar path through the plan", () => {
     const plan = createRenderPlan({
       dir: projectDir,
       output: "out.mp4",
-      provenance: "receipts/out.json",
+      "provenance-path": "receipts/out.json",
     });
     expect(plan.provenance).toBe(resolve("receipts/out.json"));
   });
@@ -72,14 +68,14 @@ describe("createRenderPlan provenance", () => {
       createRenderPlan({
         dir: projectDir,
         batch: "rows.json",
-        provenance: "receipts/out.json",
+        "provenance-path": "receipts/out.json",
       }),
     ).toThrow(CliUsageError);
   });
 
-  it("allows disabling provenance batch-wide", () => {
-    const plan = createRenderPlan({ dir: projectDir, batch: "rows.json", provenance: false });
-    expect(plan.provenance).toBe(false);
+  it("allows enabling provenance batch-wide", () => {
+    const plan = createRenderPlan({ dir: projectDir, batch: "rows.json", provenance: true });
+    expect(plan.provenance).toBe(true);
   });
 
   it("rejects a custom sidecar path with --docker (path is not container-visible)", () => {
@@ -88,19 +84,19 @@ describe("createRenderPlan provenance", () => {
         dir: projectDir,
         output: "out.mp4",
         docker: true,
-        provenance: "receipts/out.json",
+        "provenance-path": "receipts/out.json",
       }),
     ).toThrow(CliUsageError);
   });
 
-  it("allows disabling provenance with --docker", () => {
+  it("allows --provenance with --docker", () => {
     const plan = createRenderPlan({
       dir: projectDir,
       output: "out.mp4",
       docker: true,
-      provenance: "false",
+      provenance: true,
     });
-    expect(plan.provenance).toBe(false);
+    expect(plan.provenance).toBe(true);
   });
 });
 
@@ -122,15 +118,15 @@ describe("buildDockerRunArgs provenance forwarding", () => {
     },
   };
 
-  it("forwards --no-provenance into the container CLI", () => {
+  it("forwards --provenance into the container CLI", () => {
     const args = buildDockerRunArgs({
       ...base,
-      options: { ...base.options, provenance: false as const },
+      options: { ...base.options, provenance: true },
     });
-    expect(args).toContain("--no-provenance");
+    expect(args).toContain("--provenance");
   });
 
-  it("does not forward anything for the default-on setting", () => {
+  it("does not forward anything when provenance is off", () => {
     const args = buildDockerRunArgs(base);
     expect(args).not.toContain("--no-provenance");
     expect(args).not.toContain("--provenance");

@@ -35,19 +35,20 @@ function makeLogger(): ProducerLogger & { warnings: string[]; infos: string[] } 
 }
 
 describe("resolveProvenanceSidecarPath", () => {
-  it("defaults to <output>.hf-render.json beside the artifact", () => {
-    expect(resolveProvenanceSidecarPath("/renders/out.mp4", undefined)).toBe(
+  it("writes <output>.hf-render.json beside the artifact when enabled", () => {
+    expect(resolveProvenanceSidecarPath("/renders/out.mp4", true)).toBe(
       `${resolve("/renders/out.mp4")}${RENDER_SIDECAR_SUFFIX}`,
     );
   });
 
   it("places a png-sequence sidecar NEXT TO the directory, not inside it", () => {
-    expect(resolveProvenanceSidecarPath("/renders/frames/", undefined)).toBe(
+    expect(resolveProvenanceSidecarPath("/renders/frames/", true)).toBe(
       `${resolve("/renders/frames")}${RENDER_SIDECAR_SUFFIX}`,
     );
   });
 
-  it("returns null when disabled", () => {
+  it("returns null when off or unset", () => {
+    expect(resolveProvenanceSidecarPath("/renders/out.mp4", undefined)).toBeNull();
     expect(resolveProvenanceSidecarPath("/renders/out.mp4", false)).toBeNull();
   });
 
@@ -219,7 +220,7 @@ describe("emitRenderProvenanceSidecar", () => {
     writeFileSync(outputPath, "fake-mp4-bytes");
     return {
       outputPath,
-      provenance: undefined as string | false | undefined,
+      provenance: true as string | boolean | undefined,
       isFileArtifact: true,
       projectDir,
       entryFile: "index.html",
@@ -246,7 +247,7 @@ describe("emitRenderProvenanceSidecar", () => {
     };
   }
 
-  it("writes the receipt beside the artifact by default", async () => {
+  it("writes the receipt beside the artifact when enabled", async () => {
     const input = makeEmitInput();
     const sidecarPath = await emitRenderProvenanceSidecar(input);
     expect(sidecarPath).toBe(`${input.outputPath}${RENDER_SIDECAR_SUFFIX}`);
@@ -267,6 +268,12 @@ describe("emitRenderProvenanceSidecar", () => {
     expect(existsSync(`${sidecarPath}.tmp`)).toBe(false);
     // The rename target must be complete, parseable JSON.
     expect(JSON.parse(readFileSync(sidecarPath as string, "utf-8")).kind).toBe("hf-render-sidecar");
+  });
+
+  it("returns null and writes nothing by default", async () => {
+    const input = makeEmitInput({ provenance: undefined });
+    expect(await emitRenderProvenanceSidecar(input)).toBeNull();
+    expect(existsSync(`${input.outputPath}${RENDER_SIDECAR_SUFFIX}`)).toBe(false);
   });
 
   it("returns null and writes nothing when disabled", async () => {

@@ -457,11 +457,10 @@ export interface RenderConfig {
    */
   outputResolution?: CanvasResolution;
   /**
-   * Render provenance sidecar setting. `undefined` (default) writes the
-   * public receipt to `<outputPath>.hf-render.json` after a successful
-   * artifact commit; `false` disables it; a string sets a custom sidecar
-   * path. Populated by the CLI from `--provenance <path|false>` /
-   * `--no-provenance`. See `services/render/provenanceSidecar.ts`.
+   * Render provenance sidecar, off by default. `true` writes the public
+   * receipt to `<outputPath>.hf-render.json` after a successful artifact
+   * commit; a string sets a custom sidecar path. Populated by the CLI from
+   * `--provenance` / `--provenance-path`.
    */
   provenance?: ProvenanceSetting;
   /**
@@ -5557,10 +5556,8 @@ async function executeRenderPipeline(input: {
     });
     job.outputPath = outputPath;
 
-    // Public provenance receipt beside the committed artifact (default on,
-    // `provenance: false` / `--no-provenance` disables). Emitted only after a
-    // successful commit; a sidecar write failure logs a warning and never
-    // un-completes the render.
+    // Opt-in provenance receipt, emitted only after a successful commit; a
+    // sidecar write failure logs a warning and never un-completes the render.
     await emitRenderProvenanceSidecar({
       outputPath,
       provenance: job.config.provenance,

@@ -116,7 +116,8 @@ export interface RenderCommandArgs {
   "low-memory-mode"?: boolean;
   "experimental-fast-capture"?: boolean;
   "frames-cache-dir"?: string;
-  provenance?: string | boolean;
+  provenance?: boolean;
+  "provenance-path"?: string;
 }
 
 export interface RenderPlan {
@@ -178,8 +179,8 @@ export interface RenderPlan {
   variablesArg?: string;
   variablesFileArg?: string;
   strictVariables: boolean;
-  /** undefined writes the sidecar next to the output, false disables it, a string relocates it. */
-  provenance?: string | false;
+  /** undefined writes no sidecar, true writes it next to the output, a string relocates it. */
+  provenance?: string | true;
   environment: Readonly<Record<string, string>>;
   /** Names of HF_-/HYPERFRAMES_-prefixed env vars present at plan time (never values), capped at 20. */
   hfEnvOverrides: readonly string[];
@@ -239,15 +240,13 @@ function resolveHfEnvOverrides(): readonly string[] {
     .slice(0, MAX_REPORTED_ENV_OVERRIDES);
 }
 
-const PROVENANCE_DISABLE_ALIASES = new Set(["false", "off", "0", "none"]);
-
-export function parseProvenanceArg(raw: string | boolean | undefined): string | false | undefined {
-  if (raw === undefined || raw === true) return undefined;
-  if (raw === false) return false;
-  const trimmed = raw.trim();
-  if (trimmed === "") return undefined;
-  if (PROVENANCE_DISABLE_ALIASES.has(trimmed.toLowerCase())) return false;
-  return resolve(trimmed);
+export function parseProvenanceArgs(
+  enabled: boolean | undefined,
+  path: string | undefined,
+): string | true | undefined {
+  const trimmed = path?.trim();
+  if (trimmed) return resolve(trimmed);
+  return enabled === true ? true : undefined;
 }
 
 /** Parse and validate command input into an immutable execution plan. */
@@ -540,21 +539,20 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
     failUsage();
   }
 
-  const provenance = parseProvenanceArg(args.provenance);
+  const provenance = parseProvenanceArgs(args.provenance, args["provenance-path"]);
   if (typeof provenance === "string" && batchPath) {
     errorBox(
       "Invalid provenance",
-      "--provenance with a custom path cannot be combined with --batch. " +
-        "Each batch row writes its own <output>.hf-render.json; use --no-provenance to disable.",
+      "--provenance-path cannot be combined with --batch. " +
+        "Use --provenance and each batch row writes its own <output>.hf-render.json.",
     );
     failUsage();
   }
   if (typeof provenance === "string" && useDocker) {
     errorBox(
       "Invalid provenance",
-      "--provenance with a custom path is not supported with --docker. " +
-        "The sidecar is written next to the output inside the mounted output directory; " +
-        "use the default location or --no-provenance.",
+      "--provenance-path is not supported with --docker. " +
+        "Use --provenance to write the sidecar next to the output in the mounted output directory.",
     );
     failUsage();
   }
