@@ -270,6 +270,7 @@ export interface ExtractionOptions {
   format?: VideoFrameFormat;
   sdrToHdrTransfer?: HdrTransfer;
   toneMapHdrToSdr?: boolean;
+  hdrTransferAfterToneMap?: HdrTransfer;
   /** Extract exactly one frame at `startTime`. Used only after ffprobe has
    *  resolved the actual final decoded-frame timestamp for a held tail. */
   finalFrameOnly?: boolean;
@@ -1201,21 +1202,21 @@ async function extractVideoFramesRangeUnredacted(
           `fps=${ffmpegFps}:start_time=0:round=up`,
         ]
       : [];
+  if (toneMappedToSdr) {
+    const frameColour = await readFirstFrameColour(videoPath);
+    vfFilters.push(hdrToSdrToneMapFilter(metadata.colorSpace ?? {}, frameColour));
+  }
   if (options.sdrToHdrTransfer) {
     // Ordering intent: fps sampling runs BEFORE the colorspace remap so only
     // kept frames are converted. The remap is pointwise per-frame, so the
     // output is identical either way for the SDR (BT.709, 8-bit) inputs this
     // flag is set for. If format=nv12 (macOS HDR-source decode) ever combines
     // with this flag, revisit: nv12 subsampling before a BT.2020 remap is an
-    // untested interaction (today the flags are mutually exclusive — the
-    // remap only applies to SDR sources, nv12 only to HDR sources).
+    // untested interaction (today they never combine: the remap applies to SDR
+    // and tone-mapped sources, nv12 only to HDR sources decoded as HDR).
     vfFilters.push(SDR_TO_HDR_COLORSPACE_FILTER);
   }
-  if (toneMappedToSdr) {
-    const frameColour = await readFirstFrameColour(videoPath);
-    vfFilters.push(hdrToSdrToneMapFilter(metadata.colorSpace ?? {}, frameColour));
-  }
-  if (toneMappedToSdr || (!isHdr && !options.sdrToHdrTransfer)) {
+  if (!options.sdrToHdrTransfer && (toneMappedToSdr || !isHdr)) {
     vfFilters.push(...sdrCanvasColourFilters(metadata, toneMappedToSdr));
     if (format === "jpg") {
       if (options.shownBox) vfFilters.push(halveToCoverScaleFilter(options.shownBox));
@@ -2120,7 +2121,11 @@ export async function extractAllVideoFrames(
   // this array via the prepared work items — never set one side independently
   // or cache lookups and written frames drift apart (the poisoning bug this
   // field exists to fix).
-  const sdrToHdrTransfers: Array<HdrTransfer | undefined> = resolvedVideos.map(() => undefined);
+  const sdrToHdrTransfers: Array<HdrTransfer | undefined> = resolvedVideos.map((_, i) =>
+    options.toneMapHdrToSdr && isHdrColorSpaceUtil(videoColorSpaces[i] ?? null)
+      ? options.hdrTransferAfterToneMap
+      : undefined,
+  );
   breakdown.hdrProbeMs = Date.now() - phase2ProbeStart;
 
   // Warning only: an opaque video used as a full-frame background is legitimate.
@@ -2149,7 +2154,11 @@ export async function extractAllVideoFrames(
   // Phase 3 still calls `extractVideoFramesRange` on the same past-EOF
   // mediaStart, surfacing a second raw FFmpeg error for the same clip.
   const hdrSkippedIndices = new Set<number>();
-  if (!options.toneMapHdrToSdr && hdrInfo.hasHdr && hdrInfo.dominantTransfer) {
+  if (
+    (!options.toneMapHdrToSdr || options.hdrTransferAfterToneMap) &&
+    hdrInfo.hasHdr &&
+    hdrInfo.dominantTransfer
+  ) {
     // dominantTransfer is "majority wins" — if a composition mixes PQ and HLG
     // sources (rare but legal), the minority transfer's videos get converted
     // with the wrong curve. We treat this as caller-error: a single composition

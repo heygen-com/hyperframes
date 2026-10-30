@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>HDR overlays and filter regression</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: #000;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="root" data-width="1920" data-height="1080" data-duration="4">
+      <div
+        id="reel-host"
+        data-composition-id="reel"
+        data-composition-src="compositions/reel.html"
+        data-start="0"
+        data-duration="4"
+      ></div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines.root = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

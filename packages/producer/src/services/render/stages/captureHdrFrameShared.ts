@@ -17,6 +17,7 @@ import {
   blitRgba8OverRgb48le,
   captureAlphaPng,
   decodePng,
+  layerUnitsInside,
   queryElementStacking,
   removeDomLayerMask,
 } from "@hyperframes/engine";
@@ -180,7 +181,7 @@ export async function captureSceneIntoBuffer(a: CaptureSceneArgs): Promise<void>
   const {
     session,
     sceneBuf,
-    sceneIds,
+    sceneIds: sceneElementIds,
     stackingInfo,
     time,
     width,
@@ -195,6 +196,10 @@ export async function captureSceneIntoBuffer(a: CaptureSceneArgs): Promise<void>
     log,
     frameIdx,
   } = a;
+  const sceneIds = new Set([
+    ...sceneElementIds,
+    ...(await layerUnitsInside(session.page, [...sceneElementIds])),
+  ]);
   await seekAndInject(
     session.page,
     time,

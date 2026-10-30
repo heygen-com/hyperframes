@@ -1,0 +1,14 @@
+{
+  "name": "hdr-overlay-filter-regression",
+  "description": "Regression test for an HDR export of a sub-composition that mixes a generated HLG clip with an SDR clip, untimed HTML overlays (title, logo image, progress bar) and a CSS brightness() filter on the video container. Overlays that paint above the HLG video must stay on top of its HDR layer, and the filtered HLG video must render through the SDR path so the filter applies, as it does in the preview.",
+  "tags": ["regression", "hdr"],
+  "minPsnr": 28,
+  "maxFrameFailures": 0,
+  "minAudioCorrelation": 0,
+  "maxAudioLagWindows": 1,
+  "renderConfig": {
+    "fps": 30,
+    "workers": 1,
+    "hdr": true
+  }
+}
