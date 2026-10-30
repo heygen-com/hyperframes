@@ -99,8 +99,13 @@ describe("capture navigation retry launch", () => {
   const closedBrowser = () => new Error("Protocol error: Connection closed.");
 
   it("retries once without WebGL when the page stopped answering", async () => {
-    const options: CaptureOptions = { url: "https://example.com", outputDir: "/tmp/hf-capture-test-stall" };
-    const finished = { ...(await import("./partialCapture.js")).createPartialCaptureState(options) };
+    const options: CaptureOptions = {
+      url: "https://example.com",
+      outputDir: "/tmp/hf-capture-test-stall",
+    };
+    const finished = {
+      ...(await import("./partialCapture.js")).createPartialCaptureState(options),
+    };
     captureWebsiteAttemptMock.mockReset();
     captureWebsiteAttemptMock
       .mockImplementationOnce(async (_o, _p, _w, _wd, state: { webglStalled: boolean }) => {
@@ -119,7 +124,12 @@ describe("capture navigation retry launch", () => {
         assets: [],
         dropped: finished.dropped,
         warnings: [],
-        lastPhase: { schema: CAPTURE_PHASE_SCHEMA, phase: "complete", status: "completed", remainingMs: 1 },
+        lastPhase: {
+          schema: CAPTURE_PHASE_SCHEMA,
+          phase: "complete",
+          status: "completed",
+          remainingMs: 1,
+        },
       } satisfies CaptureResult);
 
     const { captureWebsite } = await import("./index.js");
@@ -134,7 +144,9 @@ describe("capture navigation retry launch", () => {
       expect.anything(),
       undefined,
     );
-    expect(actual.warnings).toContain("The page stopped answering; retrying once with WebGL disabled");
+    expect(actual.warnings).toContain(
+      "The page stopped answering; retrying once with WebGL disabled",
+    );
   });
 
   it("does not retry a failed capture whose page never stalled", async () => {
@@ -142,9 +154,9 @@ describe("capture navigation retry launch", () => {
     captureWebsiteAttemptMock.mockRejectedValueOnce(closedBrowser());
 
     const { captureWebsite } = await import("./index.js");
-    await expect(captureWebsite({ url: "https://example.com", outputDir: "/tmp/hf-capture-test-stall2" })).rejects.toThrow(
-      "Connection closed",
-    );
+    await expect(
+      captureWebsite({ url: "https://example.com", outputDir: "/tmp/hf-capture-test-stall2" }),
+    ).rejects.toThrow("Connection closed");
     expect(captureWebsiteAttemptMock).toHaveBeenCalledOnce();
   });
 
