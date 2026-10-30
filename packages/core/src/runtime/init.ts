@@ -5636,6 +5636,18 @@ export function initSandboxRuntimeModular(): void {
     }
   }
 
+  const READY_AHEAD_SECONDS = 1;
+  // WebKit reports a paused element as HAVE_CURRENT_DATA however much it has buffered, so read the ranges too.
+  const hasDataAhead = (el: HTMLMediaElement): boolean => {
+    if (el.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) return true;
+    if (el.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return false;
+    const until = Math.min(el.currentTime + READY_AHEAD_SECONDS, el.duration) - 0.01;
+    for (let i = 0; i < el.buffered.length; i++) {
+      if (el.buffered.start(i) <= el.currentTime && el.buffered.end(i) >= until) return true;
+    }
+    return false;
+  };
+
   const mediaNotReadyAt = (t: number): HTMLMediaElement[] =>
     state.nativeMediaSyncDisabled
       ? []
@@ -5643,7 +5655,7 @@ export function initSandboxRuntimeModular(): void {
           .filter(
             ({ el, start, end }) =>
               isInClipWindow(t, start, end) &&
-              el.readyState < HTMLMediaElement.HAVE_FUTURE_DATA &&
+              !hasDataAhead(el) &&
               isPlayableTrack(el) &&
               !webAudio.ownsElement(el),
           )

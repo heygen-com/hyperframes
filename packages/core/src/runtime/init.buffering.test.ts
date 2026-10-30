@@ -2,12 +2,16 @@ import { afterEach, expect, it, vi } from "vitest";
 import { initSandboxRuntimeModular } from "./init";
 import { createMockTimeline, resetRuntimeFixtureDom } from "./runtimeSeekFixture.test-helpers";
 
-function audio(id: string, duration: number, readyState: { value: number }) {
+function audio(id: string, duration: number, readyState: { value: number; bufferedTo?: number }) {
   const el = document.getElementById(id) as HTMLAudioElement;
   let paused = true;
   Object.defineProperties(el, {
     duration: { value: duration, configurable: true },
     readyState: { get: () => readyState.value, configurable: true },
+    buffered: {
+      get: () => ({ length: 1, start: () => 0, end: () => readyState.bufferedTo ?? 0 }),
+      configurable: true,
+    },
     paused: { get: () => paused, configurable: true },
   });
   el.play = vi.fn(() => {
@@ -29,7 +33,7 @@ function playPodcast(voiceStart = 0) {
     '<audio id="music" data-start="0" data-duration="10" src="/music.m4a"></audio>' +
     `<audio id="voice" data-start="${voiceStart}" data-duration="4" src="/voice.m4a"></audio>` +
     "</div>";
-  const voiceReady = { value: 1 };
+  const voiceReady: { value: number; bufferedTo?: number } = { value: 1 };
   const music = audio("music", 10, { value: 4 });
   const voice = audio("voice", 4, voiceReady);
   window.__timelines = { main: createMockTimeline(10) };
@@ -84,6 +88,20 @@ it("holds on the frame a slow tick skips into a clip with no data, after asking 
   step(250);
   expect(voice.play).toHaveBeenCalled();
   expect(states.at(-1)).toEqual({ isPlaying: true, buffering: true });
+});
+
+it("resumes for a held clip with data buffered ahead that reports only its current frame, as WebKit's do", () => {
+  const { voiceReady, states, playFor } = playPodcast();
+
+  playFor(0.5);
+  voiceReady.value = 2;
+  playFor(0.5);
+  expect(states.at(-1)).toEqual({ isPlaying: true, buffering: true });
+
+  voiceReady.bufferedTo = 2;
+  playFor(1);
+  expect(window.__player!.getTime()).toBeGreaterThan(0.9);
+  expect(states.at(-1)).toEqual({ isPlaying: true, buffering: false });
 });
 
 it("a pause while buffering stays paused once the track is ready", () => {
