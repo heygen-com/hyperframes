@@ -106,7 +106,15 @@ export function resolveReviewTimeline(
     const id = sceneId(node.el, index);
     scenes.push({ id, start: interval[0], end: interval[1] });
     const inner = node.el.getAttribute("data-composition-id");
-    if (inner && sceneRows(node).length >= 2) {
+    const innerScenes = inner
+      ? sceneRows(node).flatMap((row, rowIndex) => {
+          const inside = span(row.el);
+          return inside
+            ? [{ id: sceneId(row.el, rowIndex), start: inside[0], end: inside[1] }]
+            : [];
+        })
+      : [];
+    if (inner && innerScenes.length >= 2 && seamTimes(innerScenes, interval).length > 0) {
       notes.push(
         `${id} holds several timed clips; run --review --composition ${inner} to review its cuts.`,
       );

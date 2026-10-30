@@ -58,6 +58,19 @@ describe("resolveReviewTimeline", () => {
     ]);
   });
 
+  it("leaves out the note for hosts whose layers share one start and end", () => {
+    const html = `<div data-composition-id="main" data-duration="10">
+      <div id="stills" data-composition-id="stills-comp" data-start="0" data-duration="5">
+        <img src="bg.png"><img src="logo.png">
+      </div>
+      <div id="layered" data-composition-id="layered-comp" data-start="5" data-duration="5">
+        <video src="bg.mp4" data-start="5" data-duration="5"></video>
+        <div class="clip" data-start="5" data-duration="5"></div>
+      </div>
+    </div>`;
+    expect(resolveReviewTimeline(html, {}, 10).notes).toEqual([]);
+  });
+
   it("times a host without data-duration from its registered timeline", () => {
     const html = `<div data-composition-id="main" data-duration="10">
       <div data-composition-id="a" data-start="0"></div>
