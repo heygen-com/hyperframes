@@ -1034,14 +1034,9 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         if (shouldWatchProjectFile(changedPath)) listener(changedPath);
       };
       watcher.addListener(wrappedListener);
-      stream.onAbort(() => watcher.removeListener(wrappedListener));
-      try {
-        while (true) {
-          await stream.sleep(30000);
-        }
-      } finally {
-        watcher.removeListener(wrappedListener);
-      }
+      // Open until the tab goes; a sleep loop here left a timer that kept a stopping CLI alive.
+      if (!stream.aborted) await new Promise<void>((resolve) => stream.onAbort(resolve));
+      watcher.removeListener(wrappedListener);
     });
   });
 

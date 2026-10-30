@@ -891,6 +891,18 @@ describe("Studio file-change SSE", () => {
     return { projectDir, projectUrl };
   }
 
+  it("leaves no timer behind once the tab disconnects, so a stopping CLI can exit", async () => {
+    server = createStudioServer({ projectDir: tmpProject() });
+    const timers = () => process.getActiveResourcesInfo().filter((r) => r === "Timeout").length;
+    const before = timers();
+    const [stream] = await subscribe(1);
+
+    await stream!.cancel();
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(timers()).toBe(before);
+  });
+
   it("marks a notes write as not affecting the preview, so the tab does not reload", async () => {
     const { projectDir } = await previewedProject();
     const [stream] = await subscribe(1);
