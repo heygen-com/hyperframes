@@ -1,6 +1,6 @@
 // The public `<output>.hf-render.json` receipt. Raw variable values, env vars, host paths and
 // usernames stay out, and like the engine's container tags it is a hint, not an authenticity
-// boundary. Keep in sync with core/schemas/hf-render-sidecar.json and the render-provenance doc.
+// boundary. Keep in sync with docs/schema/hf-render-sidecar.json and the render-provenance doc.
 
 import { execFile as execFileCallback } from "node:child_process";
 import { createHash } from "node:crypto";
