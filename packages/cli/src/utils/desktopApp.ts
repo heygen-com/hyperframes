@@ -7,10 +7,16 @@ import { addCatchUpNote, markSeen, readSeen, seenPath } from "./appHistory.js";
 import { createProjectConfig } from "./projectConfig.js";
 import { writeRecord } from "./projectRecords.js";
 
-// The HyperFrames desktop app (not "Studio"): `open -b` on macOS, its executable elsewhere; released, then Canary.
-const DESKTOP_BUNDLE_IDS = ["dev.hyperframes.desktop", "dev.hyperframes.desktop.canary"] as const;
-const DESKTOP_APP_NAMES = ["HyperFrames.app", "HyperFrames Canary.app"];
-const APP_NAMES = ["HyperFrames", "HyperFrames Canary"] as const;
+// The HyperFrames desktop app (not "Studio"): `open -b` on macOS, its executable elsewhere. Other builds of it can
+// be named in HYPERFRAMES_DESKTOP_BUNDLE_IDS and HYPERFRAMES_DESKTOP_APP_NAMES (comma-separated), looked for after it.
+const list = (name: string): string[] =>
+  (process.env[name] ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+const bundleIds = (): string[] => ["dev.hyperframes.desktop", ...list("HYPERFRAMES_DESKTOP_BUNDLE_IDS")];
+const appNames = (): string[] => ["HyperFrames", ...list("HYPERFRAMES_DESKTOP_APP_NAMES")];
+const DEFAULT_APP = "the HyperFrames desktop app";
 const STUDIO_PAGE = "https://hyperframes.studio/studio";
 const DOWNLOADS: Partial<Record<NodeJS.Platform, string>> = {
   darwin: `${STUDIO_PAGE}/download`,
@@ -56,10 +62,8 @@ export function agentSession(env: NodeJS.ProcessEnv = process.env): AgentSession
   return null;
 }
 
-type AppName = "the HyperFrames desktop app" | "HyperFrames Canary";
-
 export type DesktopOpenResult =
-  | { opened: true; app: AppName; handedOver: AgentSession | null }
+  | { opened: true; app: string; handedOver: AgentSession | null }
   | {
       opened: false;
       reason: "handoff-unavailable" | "unsupported-platform" | "not-installed" | "open-failed";
@@ -118,7 +122,7 @@ function desktopApps({
   home = homedir(),
   exists = existsSync,
   read = readText,
-}: AppLookup = {}): { executable: string; canary: boolean }[] | null {
+}: AppLookup = {}): { executable: string; name: string }[] | null {
   if (platform !== "win32" && platform !== "linux") return null;
   const config = env.XDG_CONFIG_HOME || join(home, ".config");
   const where = (name: string): string | null => {
@@ -129,9 +133,9 @@ function desktopApps({
     const appImage = launcherAppImage(read(join(config, name, "launcher.json")));
     return appImage && isAbsolute(appImage) ? appImage : null;
   };
-  return APP_NAMES.flatMap((name, i) => {
+  return appNames().flatMap((name, i) => {
     const executable = where(name);
-    return executable && exists(executable) ? [{ executable, canary: i === 1 }] : [];
+    return executable && exists(executable) ? [{ executable, name: i === 0 ? DEFAULT_APP : name }] : [];
   });
 }
 
@@ -188,26 +192,26 @@ export function openInDesktop(
     reason,
     downloadUrl: desktopDownloadUrl(platform, src) ?? STUDIO_PAGE,
   });
-  const opened = (canary: boolean): DesktopOpenResult => {
+  const opened = (app: string): DesktopOpenResult => {
     if (cta) writeRecord(dir, DESKTOP_CTA_RECORD, JSON.stringify({ cta, at: Date.now() }));
     return {
       opened: true,
-      app: canary ? "HyperFrames Canary" : "the HyperFrames desktop app",
+      app,
       handedOver: leaveHandoff(dir, agentSession(env)),
     };
   };
   if (!ready) return notOpened("handoff-unavailable");
   markBareIndexAsProject(dir);
   if (platform === "darwin") {
-    const bundleId = DESKTOP_BUNDLE_IDS.find((id) => open(id, dir));
+    const bundleId = bundleIds().find((id) => open(id, dir));
     if (!bundleId) return notOpened(installed() ? "open-failed" : "not-installed");
-    return opened(bundleId.endsWith(".canary"));
+    return opened(bundleId === bundleIds()[0] ? DEFAULT_APP : bundleId);
   }
   const apps = desktopApps({ platform, env, ...where });
   if (!apps) return notOpened("unsupported-platform");
   if (!apps.length) return notOpened("not-installed");
   const app = apps.find(({ executable }) => launch(executable, dir));
-  return app ? opened(app.canary) : notOpened("open-failed");
+  return app ? opened(app.name) : notOpened("open-failed");
 }
 
 /** The `hyperframes open` line for a project, relative to where the person is. */
@@ -230,9 +234,9 @@ export function desktopInstalled({
   const { platform = process.platform, home = homedir(), exists = existsSync } = where;
   if (platform !== "darwin") return (desktopApps(where)?.length ?? 0) > 0;
   const folders = ["/Applications", join(home, "Applications")];
-  if (folders.some((folder) => DESKTOP_APP_NAMES.some((name) => exists(join(folder, name)))))
+  if (folders.some((folder) => appNames().some((name) => exists(join(folder, `${name}.app`)))))
     return true;
-  return DESKTOP_BUNDLE_IDS.some(spotlight);
+  return bundleIds().some(spotlight);
 }
 
 export function insideHostApp(env: NodeJS.ProcessEnv = process.env): boolean {

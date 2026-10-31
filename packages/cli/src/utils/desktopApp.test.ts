@@ -29,6 +29,8 @@ const never = () => {
   throw new Error("must not run");
 };
 
+afterEach(() => vi.unstubAllEnvs());
+
 describe("openInDesktop", () => {
   it("opens and writes nothing while the app cannot take a project", () => {
     expect(openInDesktop(FILM, { ready: false, platform: "darwin", open: never })).toEqual({
@@ -118,9 +120,17 @@ describe("openInDesktop", () => {
     }
   });
 
-  it("falls back to Canary when only Canary is installed", () => {
-    const result = openInDesktop(FILM, { ...LIVE, open: (id) => id.endsWith(".canary") });
-    expect(result).toMatchObject({ opened: true, app: "HyperFrames Canary" });
+  it("looks only for the released app unless other builds are configured", () => {
+    const asked: string[] = [];
+    const result = openInDesktop(FILM, { ...LIVE, open: (id) => (asked.push(id), false) });
+    expect(asked).toEqual(["dev.hyperframes.desktop"]);
+    expect(result).toMatchObject({ opened: false, reason: "not-installed" });
+  });
+
+  it("falls back to a configured build when the released app is not installed", () => {
+    vi.stubEnv("HYPERFRAMES_DESKTOP_BUNDLE_IDS", "dev.hyperframes.desktop.next");
+    const result = openInDesktop(FILM, { ...LIVE, open: (id) => id.endsWith(".next") });
+    expect(result).toMatchObject({ opened: true, app: "dev.hyperframes.desktop.next" });
   });
 
   it("tells a missing app from one macOS could not open", () => {
@@ -156,10 +166,12 @@ describe("openInDesktop on Windows", () => {
     expect(started).toEqual([`${exe("HyperFrames")} ${FILM}`]);
   });
 
-  it("falls back to Canary when only Canary is installed", () => {
-    const canary = exe("HyperFrames Canary");
-    const result = openInDesktop(FILM, { ...WIN, exists: (p) => p === canary, launch: () => true });
-    expect(result).toMatchObject({ opened: true, app: "HyperFrames Canary" });
+  it("finds a configured build only when it is named", () => {
+    const next = exe("HyperFrames Next");
+    const opts = { ...WIN, exists: (p: string) => p === next, launch: () => true };
+    expect(openInDesktop(FILM, opts)).toMatchObject({ opened: false, reason: "not-installed" });
+    vi.stubEnv("HYPERFRAMES_DESKTOP_APP_NAMES", "HyperFrames Next");
+    expect(openInDesktop(FILM, opts)).toMatchObject({ opened: true, app: "HyperFrames Next" });
   });
 
   it("tells a missing app from one that would not start, and offers the app's page", () => {
@@ -181,14 +193,15 @@ describe("openInDesktop on Linux", () => {
   const LINUX = { ...LIVE, platform: "linux" as const, home, open: never, exists: () => true };
 
   it("starts the AppImage the app last recorded in its launcher.json", () => {
-    const files = { [launcher("HyperFrames Canary")]: JSON.stringify({ appImage }) };
+    vi.stubEnv("HYPERFRAMES_DESKTOP_APP_NAMES", "HyperFrames Next");
+    const files = { [launcher("HyperFrames Next")]: JSON.stringify({ appImage }) };
     const started: string[] = [];
     const result = openInDesktop(FILM, {
       ...LINUX,
       read: (p) => files[p] ?? null,
       launch: (executable, dir) => (started.push(`${executable} ${dir}`), true),
     });
-    expect(result).toMatchObject({ opened: true, app: "HyperFrames Canary" });
+    expect(result).toMatchObject({ opened: true, app: "HyperFrames Next" });
     expect(started).toEqual([`${appImage} ${FILM}`]);
   });
 
@@ -314,9 +327,9 @@ describe("desktopInstalled", () => {
     spotlight: () => false,
   };
 
-  it("finds the app where the DMG and the installer put it, Canary included", () => {
-    const canary = join("/Applications", "HyperFrames Canary.app");
-    expect(desktopInstalled({ ...nothing, exists: (p: string) => p === canary })).toBe(true);
+  it("finds the app where the DMG and the installer put it", () => {
+    const system = join("/Applications", "HyperFrames.app");
+    expect(desktopInstalled({ ...nothing, exists: (p: string) => p === system })).toBe(true);
     const mine = join(home, "Applications", "HyperFrames.app");
     expect(desktopInstalled({ ...nothing, exists: (p: string) => p === mine })).toBe(true);
   });
@@ -330,9 +343,9 @@ describe("desktopInstalled", () => {
 
   it("finds the Windows app where its installer puts it, and nothing where there is no build", () => {
     const local = win32.join("C:", "Users", "a", "AppData", "Local");
-    const canary = win32.join(local, "Programs", "HyperFrames Canary", "HyperFrames Canary.exe");
+    const app = win32.join(local, "Programs", "HyperFrames", "HyperFrames.exe");
     const windows = { ...nothing, platform: "win32" as const, env: { LOCALAPPDATA: local } };
-    expect(desktopInstalled({ ...windows, exists: (p: string) => p === canary })).toBe(true);
+    expect(desktopInstalled({ ...windows, exists: (p: string) => p === app })).toBe(true);
     expect(desktopInstalled(windows)).toBe(false);
     expect(desktopInstalled({ ...nothing, platform: "freebsd", exists: () => true })).toBe(false);
   });
