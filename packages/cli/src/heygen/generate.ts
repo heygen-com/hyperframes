@@ -85,11 +85,7 @@ function delogoFilters(masks: Mask[], width: number, height: number): string {
     .join(",");
 }
 
-/**
- * Replaces each mask's box with its temporal median over about a second either side, so drawn text that moves is
- * replaced by the picture behind it. Text that stays put for longer than the window survives it, and `fillMasks`
- * then falls back to `delogoFilters` for that box.
- */
+/** A box's temporal median over about a second either side: moving text becomes the picture behind it. */
 function maskFilters(masks: Mask[], fps: number): string {
   const radius = Math.min(127, Math.max(2, Math.round(fps)));
   const steps = masks.map(({ box: [x, y, w, h], window }, i) => {
