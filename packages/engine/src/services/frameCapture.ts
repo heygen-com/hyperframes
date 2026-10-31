@@ -3654,12 +3654,9 @@ const STATIC_VERIFY_REFERENCE_STRIDE = 24;
 // capture count so a long composition cannot spend minutes proving an
 // optimization before the real render starts. Exhaustion fails closed: dedup is
 // disabled and normal capture proceeds.
-// This is the floor; the budget grows to STATIC_VERIFY_HEADROOM x the planned
-// screenshots at the measured per-shot cost, so big or long jobs can finish
-// proving what the plan already bounded (about 3 shots per 24 frames saved).
+// Floor; the budget grows with planned shots x first-shot time.
 const STATIC_VERIFY_MAX_MS = 15_000;
 const STATIC_VERIFY_HEADROOM = 1.5;
-// The adaptive budget never exceeds this (the issue measured nothing gained past 600 s).
 const STATIC_VERIFY_CEILING_MS = 300_000;
 // Two captures (anchor + comparison) are the minimum proof for a run. Four hundred
 // therefore permits 200 fully verified runs while bounding pathological schedules.
@@ -3948,7 +3945,7 @@ export async function verifyStaticFramesSafe(
     plan.effectiveSampleFloor * STATIC_VERIFY_SAMPLE_CAP_MULTIPLIER,
     Math.ceil(plan.predictedFrames / STATIC_VERIFY_REFERENCE_STRIDE) * 3 + plan.runs.length,
   );
-  let firstShotMs = 0; // calibrates the budget; later shots slower than this exhaust it
+  let firstShotMs = 0;
   const seekCapture = async (
     frameIdx: number,
   ): Promise<Buffer | "time_budget" | "count_budget"> => {
