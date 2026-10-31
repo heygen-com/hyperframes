@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   dispatchSeekEvent,
   forceDispatchSeekEvent,
+  registerSeekCompletion,
   resetSeekDispatchState,
   waitForSeekCompletion,
   type HfSeekEventDetail,
@@ -210,5 +211,54 @@ describe("seek-dispatch", () => {
       { status: "rejected", reason: failure },
     ]);
     await expect(waitForSeekCompletion()).resolves.toBeUndefined();
+  });
+
+  // Main had no deadline: a hold that never settles waited out the caller's protocol timeout.
+  it("a seek with a hold that never settles ends at its deadline, naming what it still waits on", async () => {
+    registerSeekCompletion(new Promise(() => {}), "frame-source");
+    registerSeekCompletion(Promise.resolve(), "video-frame");
+    await expect(waitForSeekCompletion({ timeoutMs: 20 })).rejects.toThrow(
+      "seek did not settle within 20 ms: still waiting on frame-source",
+    );
+  });
+
+  it("holds registered while the barrier waits still end at the same deadline", async () => {
+    let stopped = false;
+    const again = (): void => {
+      if (stopped) return;
+      registerSeekCompletion(
+        new Promise((resolve) => setTimeout(() => (again(), resolve(undefined)), 1)),
+        "video-frame",
+      );
+    };
+    again();
+    const started = Date.now();
+    try {
+      await expect(waitForSeekCompletion({ timeoutMs: 50 })).rejects.toThrow(
+        /still waiting on video-frame/,
+      );
+    } finally {
+      stopped = true;
+    }
+    expect(Date.now() - started).toBeLessThan(1000);
+  });
+
+  it("without a caller's timeoutMs a seek waits as long as its holds take", async () => {
+    vi.useFakeTimers();
+    try {
+      let settle = () => {};
+      registerSeekCompletion(new Promise<void>((resolve) => (settle = resolve)), "vfx");
+      const barrier = waitForSeekCompletion();
+      await vi.advanceTimersByTimeAsync(30 * 60_000);
+      settle();
+      await expect(barrier).resolves.toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a seek whose holds settle in time resolves as before", async () => {
+    registerSeekCompletion(new Promise((resolve) => setTimeout(resolve, 5)), "scene-window");
+    await expect(waitForSeekCompletion({ timeoutMs: 1000 })).resolves.toBeUndefined();
   });
 });

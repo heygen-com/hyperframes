@@ -1,4 +1,5 @@
 import { oneProcessOverPipe } from "@hyperframes/engine";
+import { SEEK_SETTLES_BEFORE_PROTOCOL_TIMEOUT_MS } from "./captureTimeout.js";
 import {
   rethrowAfterBrowserCleanup,
   launchManagedBrowser,
@@ -72,7 +73,7 @@ export interface SeekCompositionTimelineOptions {
   skipWebglDraws?: boolean;
 }
 
-type SeekBarrierOptions = { videoFrames: boolean };
+type SeekBarrierOptions = { videoFrames: boolean; timeoutMs: number };
 type FontWaitOptions = { ms: number; frames: number };
 
 type CompositionPageFunction =
@@ -561,7 +562,10 @@ export async function settleCompositionSeek(
         await Reflect.apply(waitForCompletion, window, [barrier]);
       }
     },
-    { videoFrames: options.waitForVideoFrames !== false },
+    {
+      videoFrames: options.waitForVideoFrames !== false,
+      timeoutMs: SEEK_SETTLES_BEFORE_PROTOCOL_TIMEOUT_MS,
+    },
   );
 
   const animationFrameSettle = options.animationFrameSettle ?? "race";

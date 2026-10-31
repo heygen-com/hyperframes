@@ -1412,5 +1412,8 @@ export function paintVfx(t: number, options?: { engineMode?: boolean }): void {
   // `__hf_page_composite_resolve` — so a `self` chain painted nothing there, in
   // silence. The runtime has to be able to finish its own frame.
   if (options?.engineMode) armPageComposite();
-  registerSeekCompletion(capturePreviewThenPaint(capturing, t, seq, options?.engineMode === true));
+  registerSeekCompletion(
+    capturePreviewThenPaint(capturing, t, seq, options?.engineMode === true),
+    "vfx",
+  );
 }
