@@ -120,19 +120,11 @@ export async function outputWritten(): Promise<void> {
   await Promise.all([written(process.stdout), written(process.stderr)]);
 }
 
-let liveNativeSessions = 0;
+let drainsToExit = false;
 const DRAIN_GRACE_MS = 8_000;
 
-/** Marks a native session live, so a quit leaves the exit to Node's teardown while it is; call the result once the
- * session is released and a quit exits at once again. */
-export function drainToExit(): () => void {
-  liveNativeSessions += 1;
-  let ended = false;
-  return () => {
-    if (ended) return;
-    ended = true;
-    liveNativeSessions -= 1;
-  };
+export function drainToExit(): void {
+  drainsToExit = true;
 }
 
 export interface ProcessEnd {
@@ -142,7 +134,7 @@ export interface ProcessEnd {
 }
 
 export function endProcess(exitCode: number, host: ProcessEnd): void {
-  if (liveNativeSessions === 0) return host.exit(exitCode);
+  if (!drainsToExit) return host.exit(exitCode);
   host.setExitCode(exitCode);
   host.later(() => host.exit(exitCode), DRAIN_GRACE_MS).unref();
 }

@@ -60,7 +60,7 @@ describe("ending the process", () => {
 
   it("after CoreML ran, leaves the exit to Node's own teardown and forces it only after a grace", () => {
     const ending = host();
-    const undrain = drainToExit();
+    drainToExit();
 
     endProcess(143, ending);
 
@@ -69,19 +69,5 @@ describe("ending the process", () => {
     expect(ending.pending).toHaveLength(1);
     ending.pending[0]!();
     expect(ending.exit).toHaveBeenCalledWith(143);
-    undrain();
-  });
-
-  // fails without the fix: the drain stayed on, so a quit after the session was released waited out the grace.
-  it("exits at once again once the native session is released, however often it is released", () => {
-    const ending = host();
-    const undrain = drainToExit();
-    undrain();
-    undrain();
-
-    endProcess(0, ending);
-
-    expect(ending.exit).toHaveBeenCalledWith(0);
-    expect(ending.pending).toHaveLength(0);
   });
 });
