@@ -1,6 +1,7 @@
 import { readFileSync, statSync } from "node:fs";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { backupPathForResponse, snapshotBeforeWrite } from "./backupJournal.js";
+import { RootCompositionRemovedError, rootCompositionRefusal } from "./rootCompositionGuard.js";
 import {
   clearFileWriteReceipt,
   createWriteToken,
@@ -40,8 +41,12 @@ export function applyFileMutations(
   }));
   const results: AppliedFileMutation[] = [];
   const attempted: AttemptedMutation[] = [];
-  for (const mutation of prepared)
-    assertExpectedVersion(mutation, readFileSync(mutation.absPath, "utf-8"));
+  for (const mutation of prepared) {
+    const current = readFileSync(mutation.absPath, "utf-8");
+    assertExpectedVersion(mutation, current);
+    if (rootCompositionRefusal(mutation.sourceFile, current, mutation.after))
+      throw new RootCompositionRemovedError(mutation.sourceFile);
+  }
   try {
     for (const mutation of prepared) {
       results.push(applyOneMutation(projectDir, mutation, requestToken, writeFile, attempted));
