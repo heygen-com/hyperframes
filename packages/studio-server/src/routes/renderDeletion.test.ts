@@ -5,13 +5,14 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { registerRenderRoutes } from "./render";
+import { registerRenderRoutes, renderArtifactPaths } from "./render";
 import type { StudioApiAdapter } from "../types";
 
 describe("DELETE /render/:jobId", () => {
@@ -46,6 +47,7 @@ describe("DELETE /render/:jobId", () => {
       rendersDir: (resolved) => join(resolved.dir, "renders"),
       startRender: (opts) => {
         writeFileSync(opts.outputPath, "render-bytes");
+        writeFileSync(`${opts.outputPath}.hf-render.json`, '{"schemaVersion":1}');
         writeFileSync(join(rendersDir, `${opts.jobId}.meta.json`), '{"status":"complete"}');
         return {
           id: opts.jobId,
@@ -85,6 +87,15 @@ describe("DELETE /render/:jobId", () => {
     expect(existsSync(join(rendersDir, `${jobId}.mp4`))).toBe(false);
     expect(existsSync(join(rendersDir, `${jobId}.meta.json`))).toBe(false);
     expect((await app.request(`/render/${jobId}/progress`)).status).toBe(404);
+  });
+
+  it("removes the provenance sidecar so the renders folder is empty after delete", async () => {
+    const { app, rendersDir } = fixture();
+    const jobId = await startRender(app);
+    expect(existsSync(join(rendersDir, `${jobId}.mp4.hf-render.json`))).toBe(true);
+
+    expect((await deleteRender(app, jobId)).status).toBe(200);
+    expect(readdirSync(rendersDir)).toEqual([]);
   });
 
   it("deletes expired artifacts permanently while preserving other renders on reload", async () => {
@@ -146,5 +157,15 @@ describe("DELETE /render/:jobId", () => {
     expect(readFileSync(outside, "utf-8")).toBe("preserve");
     expect(readFileSync(join(rendersDir, `${jobId}.mp4`), "utf-8")).toBe("render-bytes");
     expect(existsSync(metaPath)).toBe(true);
+  });
+});
+
+describe("renderArtifactPaths", () => {
+  it("lists the output, its metadata and its provenance sidecar for cancel cleanup", () => {
+    const paths = renderArtifactPaths("/proj/renders/job.mp4");
+    expect(paths).toContain("/proj/renders/job.mp4");
+    expect(paths).toContain("/proj/renders/job.meta.json");
+    expect(paths).toContain("/proj/renders/job.mp4.hf-render.json");
+    expect(paths.every((path) => path.startsWith("/proj/renders/job."))).toBe(true);
   });
 });

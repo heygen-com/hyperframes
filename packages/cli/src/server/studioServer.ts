@@ -66,6 +66,7 @@ import {
   HistoryBusyError,
   HistoryClosedError,
   historyCache,
+  renderArtifactPaths,
 } from "@hyperframes/studio-server";
 import { encoderJobOptions } from "@hyperframes/studio-server/encoder-options";
 import { resolveAutoProxy } from "../utils/projectConfig.js";
@@ -627,10 +628,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
           // User-initiated cancel: not a failure. Remove any output so the
           // cancelled job doesn't resurrect in the render history.
           state.status = "cancelled";
-          for (const suffix of ["", ".meta.json"]) {
-            const fp = suffix
-              ? opts.outputPath.replace(/\.(mp4|webm|mov|gif)$/, suffix)
-              : opts.outputPath;
+          for (const fp of renderArtifactPaths(opts.outputPath)) {
             try {
               if (existsSync(fp)) unlinkSync(fp);
             } catch {
