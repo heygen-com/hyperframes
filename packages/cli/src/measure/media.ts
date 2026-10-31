@@ -358,7 +358,6 @@ export function pearson(a: number[], b: number[]): number | null {
   return da && db ? num / Math.sqrt(da * db) : null;
 }
 
-/** The nearest folder at or above `from` holding index.html: the project the file belongs to. */
 export function projectOf(from: string): string | null {
   for (let dir = resolve(from); ; dir = dirname(dir)) {
     if (existsSync(join(dir, "index.html"))) return dir;
