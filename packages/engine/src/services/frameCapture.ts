@@ -3654,7 +3654,13 @@ const STATIC_VERIFY_REFERENCE_STRIDE = 24;
 // capture count so a long composition cannot spend minutes proving an
 // optimization before the real render starts. Exhaustion fails closed: dedup is
 // disabled and normal capture proceeds.
+// This is the floor; the budget grows to STATIC_VERIFY_HEADROOM x the planned
+// screenshots at the measured per-shot cost, so big or long jobs can finish
+// proving what the plan already bounded (about 3 shots per 24 frames saved).
 const STATIC_VERIFY_MAX_MS = 15_000;
+const STATIC_VERIFY_HEADROOM = 1.5;
+// The adaptive budget never exceeds this (the issue measured nothing gained past 600 s).
+const STATIC_VERIFY_CEILING_MS = 300_000;
 // Two captures (anchor + comparison) are the minimum proof for a run. Four hundred
 // therefore permits 200 fully verified runs while bounding pathological schedules.
 const STATIC_VERIFY_MIN_SCREENSHOT_CAP = 400;
@@ -3899,7 +3905,6 @@ export async function verifyStaticFramesSafe(
   const now = dependencies.now ?? Date.now;
   const capture = dependencies.capture ?? pageScreenshotCapture;
   const startedAt = now();
-  const deadline = startedAt + STATIC_VERIFY_MAX_MS;
   const verifiedFrames = new Set<number>();
   const stats: StaticVerificationStats = {
     plannedRuns: plan.runs.length,
@@ -3943,14 +3948,26 @@ export async function verifyStaticFramesSafe(
     plan.effectiveSampleFloor * STATIC_VERIFY_SAMPLE_CAP_MULTIPLIER,
     Math.ceil(plan.predictedFrames / STATIC_VERIFY_REFERENCE_STRIDE) * 3 + plan.runs.length,
   );
+  let firstShotMs = 0; // calibrates the budget; later shots slower than this exhaust it
   const seekCapture = async (
     frameIdx: number,
   ): Promise<Buffer | "time_budget" | "count_budget"> => {
-    if (now() >= deadline) return "time_budget";
+    const spent = now() - startedAt;
+    const budget = Math.max(
+      STATIC_VERIFY_MAX_MS,
+      Math.min(
+        STATIC_VERIFY_CEILING_MS,
+        STATIC_VERIFY_HEADROOM * plan.plannedScreenshots * firstShotMs,
+      ),
+    );
+    if (spent >= budget) return "time_budget";
     if (stats.screenshots >= hardCap) return "count_budget";
     await seekToFrame(frameIdx);
     stats.screenshots++;
-    return capture(page, session.options);
+    const shotStart = now();
+    const buf = await capture(page, session.options);
+    if (stats.screenshots === 1) firstShotMs = now() - shotStart;
+    return buf;
   };
   // Verify profitable runs in deterministic savings order. A run is added to the armed
   // set only after its anchor and every planner-selected comparison match. Budget exits
