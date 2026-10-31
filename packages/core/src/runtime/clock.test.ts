@@ -289,7 +289,11 @@ describe("TransportClock", () => {
       expect(clock.followedClock()).toBe("monotonic");
       clock.play();
       expect(clock.followedClock()).toBe("monotonic");
-      clock.attachAudioSource({ el: createMockAudioEl(3.5, false), compositionStart: 0, mediaStart: 0 });
+      clock.attachAudioSource({
+        el: createMockAudioEl(3.5, false),
+        compositionStart: 0,
+        mediaStart: 0,
+      });
       expect(clock.followedClock()).toBe("audio");
       clock.attachAudioSource({ currentTimeSeconds: 2, webAudio: true });
       expect(clock.followedClock()).toBe("webaudio");

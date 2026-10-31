@@ -71,9 +71,20 @@ describe("preview quality in the player store", () => {
   });
 
   it("keeps the clock the runtime names, and only a clock it knows", () => {
-    const health = { droppedShare: 0.4, seconds: 3, choppy: true, fps: 40, worstFrameMs: 90, mode: "play" };
-    expect(parsePlaybackHealth({ ...health, clockSource: "webaudio" })?.clockSource).toBe("webaudio");
-    expect(parsePlaybackHealth({ ...health, clockSource: "/Users/a/film.mp3" })?.clockSource).toBeUndefined();
+    const health = {
+      droppedShare: 0.4,
+      seconds: 3,
+      choppy: true,
+      fps: 40,
+      worstFrameMs: 90,
+      mode: "play",
+    };
+    expect(parsePlaybackHealth({ ...health, clockSource: "webaudio" })?.clockSource).toBe(
+      "webaudio",
+    );
+    expect(
+      parsePlaybackHealth({ ...health, clockSource: "/Users/a/film.mp3" })?.clockSource,
+    ).toBeUndefined();
     expect(parsePlaybackHealth(health)?.clockSource).toBeUndefined();
   });
 });
