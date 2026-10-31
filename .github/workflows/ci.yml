@@ -581,17 +581,21 @@ jobs:
       - run: bun run --filter '@hyperframes/{core,engine}' test
 
   test-cli:
-    name: Test (cli)
+    name: Test (cli ${{ matrix.shard }}/2)
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           lfs: true
       - uses: ./.github/actions/setup-test-workspace
-      - run: bun run --filter '@hyperframes/cli' test
+      - run: bun run --filter '@hyperframes/cli' test --shard=${{ matrix.shard }}/2
 
   test-support:
     name: Test (support)
