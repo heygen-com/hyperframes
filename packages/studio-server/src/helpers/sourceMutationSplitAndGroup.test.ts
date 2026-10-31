@@ -544,7 +544,7 @@ describe("relinkSplitHalvesInHtml", () => {
 describe("splitElementInHtml — id CSS rules across repeated cuts", () => {
   it("keeps one rule set per live id when a clip is cut again and again", () => {
     let html =
-      "<html><head><style>#a{opacity:.5;width:10px}#a:hover,#a.on{opacity:1}</style></head><body>" +
+      "<html><head><style>#a{opacity:.5;width:10px}#a:hover,#a.on{opacity:1}.clip:not(#a-cut){filter:blur(2px)}</style></head><body>" +
       '<div id="root" data-composition-id="m"><video id="a" src="a.mp4" data-start="0" data-duration="60" ' +
       'data-track-index="0"></video></div></body></html>';
     for (let i = 0; i < 5; i++) {
@@ -555,7 +555,8 @@ describe("splitElementInHtml — id CSS rules across repeated cuts", () => {
     const css = /<style>([\s\S]*?)<\/style>/.exec(html)?.[1] ?? "";
     // two rules per live id, none left by the removed cut piece
     const live = html.match(/<video\b/g)?.length ?? 0;
-    expect(css.match(/\{/g)).toHaveLength(live * 2);
-    expect(css).not.toContain("a-cut");
+    expect(css.match(/\{/g)).toHaveLength(live * 2 + 1);
+    expect(css).not.toContain("#a-cut{");
+    expect(css).toContain(".clip:not(#a-cut){filter:blur(2px)}");
   });
 });

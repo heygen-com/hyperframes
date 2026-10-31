@@ -52,7 +52,10 @@ function dropCssRulesForId(document: Document, id: string): void {
     let found = false;
     selectorParser((selectors) => {
       selectors.walkIds((node) => {
-        if (node.value === id) found = true;
+        // an id inside :not() excludes the element, so the rule styles the others
+        let up = node.parent;
+        while (up && !(up.type === "pseudo" && up.value === ":not")) up = up.parent as typeof up;
+        if (node.value === id && !up) found = true;
       });
     }).processSync(selector);
     return found;
