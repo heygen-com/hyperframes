@@ -395,7 +395,6 @@ export function fitAspect(out: string, aspect: string): string | undefined {
 
 const MIN_SHOT_S = 0.5;
 
-/** The cuts left once every piece under MIN_SHOT_S is folded into its neighbour: a stray frame is not a shot. */
 export function foldShort(cuts: number[], length: number): number[] {
   const kept = [...cuts];
   for (;;) {

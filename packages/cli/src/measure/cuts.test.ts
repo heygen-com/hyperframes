@@ -70,6 +70,11 @@ describe("findCuts on moving pictures", () => {
     expect(cutsIn(d)).toEqual([{ frame: 30, frames: 1, change: 60 }]);
   });
 
+  it("keeps a quick insert shot as two cuts, not two flashes", () => {
+    const frames = [...still(100, 20), ...still(30, 8), ...still(100, 20)];
+    expect(findCuts(frames).map((c) => c.frame)).toEqual([20, 28]);
+  });
+
   it("calls a light flash a flash and the cut after it a cut", () => {
     const frames = [...still(100, 20), ...still(250, 2), ...still(100, 20), ...still(30, 20)];
     expect(classifiedCuts(frames).map((c) => [c.frame, c.kind])).toEqual([

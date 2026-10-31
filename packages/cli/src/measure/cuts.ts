@@ -12,14 +12,10 @@ const SOFT_ALONE = 4;
 const CONFIRM_LEVEL = 6;
 const CONFIRM_SHARE = 0.5;
 const NEIGHBOURS = 12;
-// A repeated frame (animation on twos) changes by about nothing: it says nothing of the motion around it.
-const HELD = 0.5;
-// Fewer moving neighbours than this is a still picture with a few events, not motion that hides a cut.
-const MOTION_MIN = 4;
-// A run of more changes than this is a whip or a dissolve, not a cut.
-const CUT_FRAMES = 3;
-// A change after which the picture is back, within RETURNED of the change, inside FLASH_FRAMES is a flash, not a cut.
-const FLASH_FRAMES = 12;
+const HELD_CHANGE = 0.5;
+const MIN_MOVING_NEIGHBOURS = 4;
+const MAX_CUT_FRAMES = 3;
+const FLASH_FRAMES = 4;
 const RETURNED = 0.4;
 
 export interface Cut {
@@ -48,13 +44,13 @@ export function frameChanges(frames: Uint8Array[]): number[] {
 }
 
 const typicalOf = (around: number[]) =>
-  around.length >= MOTION_MIN ? Math.max(1, median(around)) : 1;
+  around.length >= MIN_MOVING_NEIGHBOURS ? Math.max(1, median(around)) : 1;
 
 const neighbours = (diffs: number[], i: number) =>
   diffs
     .slice(Math.max(1, i - NEIGHBOURS), i)
     .concat(diffs.slice(i + 1, i + NEIGHBOURS + 1))
-    .filter((d) => d >= HELD);
+    .filter((d) => d >= HELD_CHANGE);
 
 export function cutsIn(diffs: number[]): Cut[] {
   const hits = diffs.flatMap((d, i): { frame: number; change: number; soft?: true }[] => {
@@ -85,8 +81,7 @@ export function classifiedCuts(frames: Uint8Array[]): Cut[] {
     const end = c.frame + c.frames;
     const back = (a: number, b: number) =>
       frames[a] && frames[b] ? meanAbsDiff(frames[a]!, frames[b]!) < RETURNED * c.change : false;
-    if (c.frames > CUT_FRAMES) return { ...c, kind: "fast" as const };
-    // A flash lights up and goes out: this change leads back to the picture before it, or is the way back.
+    if (c.frames > MAX_CUT_FRAMES) return { ...c, kind: "fast" as const };
     const returns = Array.from({ length: FLASH_FRAMES }, (_, k) => k + 1).some(
       (k) => back(c.frame - 1, end - 1 + k) || back(c.frame - k, end),
     );

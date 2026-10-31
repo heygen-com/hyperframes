@@ -173,7 +173,6 @@ export interface CutReport {
   /** The original's cuts with no cut within a frame of them in yours. */
   missing: number[];
   extra: number[];
-  /** The original's flashes, whips and fast moves: changes that are not a new shot, so never missing or extra. */
   not_cuts: { t: number; kind: "flash" | "fast" }[];
   pass: boolean;
 }
