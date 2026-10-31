@@ -120,6 +120,25 @@ export async function outputWritten(): Promise<void> {
   await Promise.all([written(process.stdout), written(process.stderr)]);
 }
 
+let drainsToExit = false;
+const DRAIN_GRACE_MS = 8_000;
+
+export function drainToExit(): void {
+  drainsToExit = true;
+}
+
+export interface ProcessEnd {
+  exit(exitCode: number): void;
+  setExitCode(exitCode: number): void;
+  later: typeof setTimeout;
+}
+
+export function endProcess(exitCode: number, host: ProcessEnd): void {
+  if (!drainsToExit) return host.exit(exitCode);
+  host.setExitCode(exitCode);
+  host.later(() => host.exit(exitCode), DRAIN_GRACE_MS).unref();
+}
+
 /** Ask cli.ts to finalize telemetry/output and then terminate the process. */
 export function requestCliExit(exitCode = 0): void {
   if (!rootExitRequester) {
