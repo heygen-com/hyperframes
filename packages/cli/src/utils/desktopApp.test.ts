@@ -122,7 +122,11 @@ describe("openInDesktop", () => {
 
   it("looks only for the released app unless other builds are configured", () => {
     const asked: string[] = [];
-    const result = openInDesktop(FILM, { ...LIVE, open: (id) => (asked.push(id), false) });
+    const result = openInDesktop(FILM, {
+      ...LIVE,
+      installed: () => false,
+      open: (id) => (asked.push(id), false),
+    });
     expect(asked).toEqual(["dev.hyperframes.desktop"]);
     expect(result).toMatchObject({ opened: false, reason: "not-installed" });
   });

@@ -89,7 +89,7 @@ test("heygenAuthHeaders tags OAuth requests as CLI traffic and with the media-us
   });
 });
 
-test("development audio uses its isolated store and the client and host from the environment", () => {
+test("development audio uses its isolated store and the client and token host from the environment", () => {
   withCleanHeygenEnv(() => {
     const dir = mkdtempSync(join(tmpdir(), "hf-dev-cred-"));
     try {
@@ -97,7 +97,6 @@ test("development audio uses its isolated store and the client and host from the
       process.env.HYPERFRAMES_ENV = "dev";
       process.env.HYPERFRAMES_OAUTH_CLIENT_ID = "fake-client";
       process.env.HYPERFRAMES_OAUTH_TOKEN_URL = "https://auth.example.test/token";
-      process.env.HEYGEN_API_BASE = "https://api.example.test";
       mkdirSync(join(dir, "dev"));
       writeFileSync(
         join(dir, "dev", "credentials"),
@@ -109,7 +108,7 @@ test("development audio uses its isolated store and the client and host from the
           },
         }),
       );
-      assert.equal(heygenBase(), "https://api.example.test/v3");
+      assert.equal(heygenBase(), "https://api.heygen.com/v3");
       assert.equal(heygenAuthHeaders().Authorization, "Bearer dev-at");
     } finally {
       rmSync(dir, { recursive: true, force: true });
