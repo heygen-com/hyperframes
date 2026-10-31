@@ -138,6 +138,10 @@ Local images outside the project referenced by an `<img>` or `<source>` element'
 `srcset` are included too. Their size or pixel-density descriptors are preserved,
 and your source files stay unchanged.
 
+Copied external assets go under `_ext/` in the uploaded project. If a path is
+already occupied, the copy gets a suffix such as `logo_2.png`, and its references
+use that name. Existing project assets keep their names and contents.
+
 Before sharing source, remove secrets and confirm that every included media file
 can be shared. Tell a reviewer whether you need feedback on story, visuals,
 timing, facts, or final approval.

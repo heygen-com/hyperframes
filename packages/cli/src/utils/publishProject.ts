@@ -602,7 +602,7 @@ export function localizeExternalAssets(
     fileContents,
     onDiskMinBytes,
     externalMap: new Map(),
-    usedArchivePaths: new Set(),
+    usedArchivePaths: new Set(fileContents.keys()),
   };
 
   for (const [entryPath, content] of [...fileContents.entries()]) {
