@@ -12,9 +12,9 @@ import {
   writeFileSync,
 } from "node:fs";
 import { createRequire } from "node:module";
-import { homedir } from "node:os";
 import { basename, dirname, join, sep } from "node:path";
 import { buildNpmCommand } from "./npxCommand.js";
+import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
 
 /** Module type of each optional package; the keys are the only names the loader accepts. */
 export interface OptionalPackageModules {
@@ -37,7 +37,7 @@ export const PINNED_PACKAGES = {
 
 type PinnedPackage = keyof typeof PINNED_PACKAGES;
 
-export const CACHE_DIR = join(homedir(), ".cache", "hyperframes", "optional");
+export const CACHE_DIR = hyperframesCacheDir("optional");
 
 /** Installed on first use only when a host bundled the CLI without its sharp dependency. */
 export const SHARP_VERSION = "0.35.3";

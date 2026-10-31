@@ -1,14 +1,15 @@
 // fallow-ignore-file code-duplication complexity
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
-import { homedir, platform } from "node:os";
+import { platform } from "node:os";
 import { join } from "node:path";
 import { findFFmpeg } from "../browser/ffmpeg.js";
 import { downloadFile } from "../utils/download.js";
 import { stoppableExecFile } from "../utils/stoppableExecFile.js";
 import { verifies, type ModelFile } from "./modelFile.js";
+import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
 
-const MODELS_DIR = join(homedir(), ".cache", "hyperframes", "whisper", "models");
+const MODELS_DIR = hyperframesCacheDir("whisper", "models");
 const DEFAULT_MODEL = "small.en";
 
 export type WhisperSource = "env" | "system" | "brew" | "build";
@@ -144,7 +145,7 @@ function findFromSystem(): WhisperResult | undefined {
 
 // --- Build from source ------------------------------------------------------
 
-const BUILD_DIR = join(homedir(), ".cache", "hyperframes", "whisper", "whisper.cpp");
+const BUILD_DIR = hyperframesCacheDir("whisper", "whisper.cpp");
 const WHISPER_REPO = "https://github.com/ggml-org/whisper.cpp.git";
 
 function findBuiltBinary(): WhisperResult | undefined {
@@ -168,7 +169,7 @@ async function buildFromSource(
 
   if (!existsSync(BUILD_DIR)) {
     onProgress?.("Downloading whisper.cpp...");
-    mkdirSync(join(homedir(), ".cache", "hyperframes", "whisper"), {
+    mkdirSync(hyperframesCacheDir("whisper"), {
       recursive: true,
     });
     await stoppableExecFile("git", ["clone", "--depth", "1", WHISPER_REPO, BUILD_DIR], {

@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
+import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
 
 export const WARM_IDLE_MS = 5 * 60_000;
 export const HANDSHAKE_TIMEOUT_MS = 2_000;
@@ -50,7 +51,7 @@ export function warmCheckDirectory(env = process.env): string | undefined {
       ? join(env.LOCALAPPDATA ?? join(homedir(), "AppData", "Local"), "hyperframes", "warm")
       : env.XDG_RUNTIME_DIR
         ? join(env.XDG_RUNTIME_DIR, "hyperframes-warm")
-        : join(homedir(), ".cache", "hyperframes", "warm");
+        : hyperframesCacheDir("warm");
   try {
     mkdirSync(dir, { recursive: true, mode: 0o700 });
   } catch {

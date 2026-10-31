@@ -15,7 +15,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { basename, dirname, extname, join, posix, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 import { parseHTML } from "linkedom";
@@ -41,6 +41,7 @@ import {
   stagedSize,
   TEXT_FILE_EXTS,
 } from "../utils/publishProject.js";
+import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
 
 const execFileAsync = promisify(execFile);
 
@@ -200,7 +201,7 @@ interface CacheEntry {
 }
 
 function defaultOffloadCachePath(): string {
-  return join(homedir(), ".cache", "hyperframes", "cloud-assets.json");
+  return hyperframesCacheDir("cloud-assets.json");
 }
 
 function readCache(path: string): Record<string, CacheEntry> {
@@ -650,7 +651,7 @@ async function prepareEntryGifs(
     downloadDir: outputDir,
     outputDir,
     outputSrcPrefix: posix.relative(posix.dirname(entryPath), GIF_PREFIX),
-    cacheDir: join(homedir(), ".cache", "hyperframes", "animated-gif"),
+    cacheDir: hyperframesCacheDir("animated-gif"),
     sourceAssets,
   });
   if (result.preparedGifs.length === 0) return;

@@ -1866,6 +1866,9 @@ default 3); `--json` prints the results as JSON.
 
 ## Keep the environment healthy
 
+HyperFrames keeps what it downloads and builds (the headless browser, models, optional packages, fonts and project
+history) under `~/.cache/hyperframes`. Set `HYPERFRAMES_CACHE_DIR` to an absolute path to keep it somewhere else.
+
 ### `doctor`
 
 Check the machine for everything a render needs.

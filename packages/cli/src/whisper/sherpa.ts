@@ -1,7 +1,7 @@
 import { execFile, spawn, type ExecFileException } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, renameSync, rmSync, statSync } from "node:fs";
-import { homedir } from "node:os";
+import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
@@ -45,13 +45,7 @@ export const SHERPA_RUNTIME_DIR = join(
 
 const MODEL_REPO = "csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8";
 const MODEL_REVISION = "2bda32ec70b097a55adaa07d9a7173915b43cc78";
-export const PARAKEET_MODEL_DIR = join(
-  homedir(),
-  ".cache",
-  "hyperframes",
-  "parakeet",
-  "parakeet-tdt-0.6b-v3-int8",
-);
+export const PARAKEET_MODEL_DIR = hyperframesCacheDir("parakeet", "parakeet-tdt-0.6b-v3-int8");
 
 export type { ModelFile };
 

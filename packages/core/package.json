@@ -80,6 +80,12 @@
       "import": "./src/atomicFile.ts",
       "types": "./src/atomicFile.ts"
     },
+    "./cache-dir": {
+      "bun": "./src/cacheDir.ts",
+      "node": "./dist/cacheDir.js",
+      "import": "./src/cacheDir.ts",
+      "types": "./src/cacheDir.ts"
+    },
     "./remove-tree": {
       "bun": "./src/removeTree.ts",
       "node": "./dist/removeTree.js",
@@ -661,6 +667,10 @@
       "./atomic-file": {
         "import": "./dist/atomicFile.js",
         "types": "./dist/atomicFile.d.ts"
+      },
+      "./cache-dir": {
+        "import": "./dist/cacheDir.js",
+        "types": "./dist/cacheDir.d.ts"
       },
       "./remove-tree": {
         "import": "./dist/removeTree.js",
