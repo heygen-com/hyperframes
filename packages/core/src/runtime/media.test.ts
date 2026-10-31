@@ -1,5 +1,5 @@
 // fallow-ignore-file code-duplication
-import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { mediaElementTime } from "./mediaClock";
 import {
   evictMediaSyncState,
@@ -2300,19 +2300,15 @@ describe("syncRuntimeMedia", () => {
         getCompositionDuration: () => 20,
       });
 
-    it("runs a playing video lagging past the sync tolerance 3% fast instead of seeking it", () => {
-      const clip = playingVideoAt(4.908, 1, "video");
-      for (let i = 0; i < 4; i++) tick(clip, 5);
-      expect(clip.el.playbackRate).toBeCloseTo(1.03, 9);
-      expect(clip.el.currentTime).toBe(4.908);
-    });
-
-    it("leaves a playing audio lagging past the sync tolerance at its rate, unseeked", () => {
-      const clip = playingVideoAt(4.6, 1, "audio");
-      for (let i = 0; i < 4; i++) tick(clip, 5);
-      expect(clip.el.playbackRate).toBe(1);
-      expect(clip.el.currentTime).toBe(4.6);
-    });
+    it.each(["video", "audio"] as const)(
+      "runs a playing %s lagging past the sync tolerance 3% fast instead of seeking it",
+      (tag) => {
+        const clip = playingVideoAt(4.908, 1, tag);
+        for (let i = 0; i < 4; i++) tick(clip, 5);
+        expect(clip.el.playbackRate).toBeCloseTo(1.03, 9);
+        expect(clip.el.currentTime).toBe(4.908);
+      },
+    );
 
     it("runs a video that is ahead 3% slow", () => {
       const clip = playingVideoAt(5.06);
@@ -2412,14 +2408,7 @@ describe("syncRuntimeMedia", () => {
       expect(clip.el.playbackRate).toBeCloseTo(1.03, 9);
     });
 
-    describe("sounding audio past 0.65 s behind in WebKit", () => {
-      beforeEach(() => {
-        vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15",
-        );
-      });
-      afterEach(() => vi.restoreAllMocks());
-
+    describe("sounding audio past a gentle nudge", () => {
       const tickDipping = (clip: RuntimeMediaClip, timeSeconds: number, dips: boolean) => {
         const seekUnderDip = vi.fn(() => dips);
         syncRuntimeMedia({
@@ -2433,27 +2422,26 @@ describe("syncRuntimeMedia", () => {
         return seekUnderDip;
       };
 
-      // A lag that jumps 0.5 s at once is a hard sync, so the audio falls behind in steps and then holds.
-      const lagBuilt = () => {
-        const clip = playingVideoAt(4.9, 1, "audio");
+      it("never nudges audio past 10% while its lag still grows", () => {
+        const clip = playingVideoAt(4.6, 1, "audio");
         tickDipping(clip, 5, true);
-        for (const at of [4.6, 4.3]) {
-          clip.el.currentTime = at;
-          tickDipping(clip, 5, true);
-        }
-        return clip;
-      };
+        const seekUnderDip = tickDipping(clip, 5.02, true);
+        expect(clip.el.playbackRate).toBeCloseTo(1.1, 9);
+        expect(seekUnderDip).not.toHaveBeenCalled();
+      });
 
-      it("seeks audio that holds a lag past 0.65 s under a dip, at its authored rate", () => {
-        const clip = lagBuilt();
+      it("seeks audio that holds a lag past 100 ms under a dip, at its authored rate", () => {
+        const clip = playingVideoAt(4.85, 1, "audio");
+        tickDipping(clip, 5, true);
         const seekUnderDip = tickDipping(clip, 5, true);
         expect(seekUnderDip).toHaveBeenCalledWith(clip.el, 5);
-        expect(clip.el.currentTime).toBe(4.3);
+        expect(clip.el.currentTime).toBe(4.85);
         expect(clip.el.playbackRate).toBe(1);
       });
 
       it("seeks it plainly when it has no dip to hide the seek under", () => {
-        const clip = lagBuilt();
+        const clip = playingVideoAt(4.85, 1, "audio");
+        tickDipping(clip, 5, false);
         tickDipping(clip, 5, false);
         expect(clip.el.currentTime).toBe(mediaElementTime(5));
       });
