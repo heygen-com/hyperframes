@@ -6,6 +6,13 @@ const media = (tag: "audio" | "video") => document.createElement(tag);
 describe("steerMedia", () => {
   afterEach(() => vi.restoreAllMocks());
 
+  it("treats an embedded WKWebView, whose user agent has no Safari token, as WebKit", () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
+    );
+    expect(steerMedia(media("audio"), 0.35, 1, true)).toEqual({ rate: 1, seek: false });
+  });
+
   it("never steers WebKit audio: it is seeked only once its lag holds past 0.65 s", () => {
     vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15",

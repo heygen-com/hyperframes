@@ -11,8 +11,5 @@ export function startsSoundOnlyInsideATap(): boolean {
 
 export function isWebKit(): boolean {
   const { userAgent } = navigator;
-  return (
-    /AppleWebKit.*(Safari|Version)\//.test(userAgent) &&
-    !/Chrom(e|ium)\/|Edg\/|Android/.test(userAgent)
-  );
+  return /AppleWebKit/.test(userAgent) && !/Chrom(e|ium)\/|Edg\/|Android/.test(userAgent);
 }
