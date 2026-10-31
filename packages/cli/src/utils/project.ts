@@ -45,7 +45,14 @@ export function resolveProjectOrThrow(
   const name = basename(dir);
   const indexPath = resolve(dir, "index.html");
 
-  if (!existsSync(dir) || !statSync(dir).isDirectory()) {
+  if (existsSync(dir) && !statSync(dir).isDirectory()) {
+    throw new InvalidProjectError(
+      "Not a directory: " + dir,
+      basename(dir) + " is a file; this command takes the project folder.",
+      "Pass the folder that holds index.html: " + projectHolding(dir),
+    );
+  }
+  if (!existsSync(dir)) {
     throw new InvalidProjectError("Not a directory: " + dir);
   }
   if (options.requireIndex !== false && !existsSync(indexPath)) {

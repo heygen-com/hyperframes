@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  getCachedGpuEncoder,
   getCompiledGpuEncoders,
   getGpuEncoderName,
   getProbeArgs,
   mapPresetForGpuEncoder,
+  resetCachedGpuEncoder,
   selectUsableGpuEncoder,
 } from "./gpuEncoder.js";
 
@@ -144,5 +146,14 @@ describe("getProbeArgs", () => {
     expect(args).not.toContain("-q:v");
     expect(args[args.indexOf("-b:v") + 1]).toBe("1M");
     expect(args[args.indexOf("-allow_sw") + 1]).toBe("1");
+  });
+});
+
+describe("getCachedGpuEncoder", () => {
+  afterEach(() => resetCachedGpuEncoder());
+
+  it("is one probe however many callers ask while it runs", () => {
+    const first = getCachedGpuEncoder();
+    expect(getCachedGpuEncoder()).toBe(first);
   });
 });

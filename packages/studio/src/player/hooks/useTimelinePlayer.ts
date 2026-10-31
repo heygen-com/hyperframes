@@ -40,6 +40,7 @@ import { shouldResumeForwardPlaybackAfterSeek, shouldStopAfterSeek } from "../li
 import { applyPreviewVariablesToUrl } from "../../hooks/previewVariablesStore";
 import { isStudioManualEditGestureLiveIn } from "../../components/editor/manualEditsDom";
 import { createPreviewMessageHandler } from "./previewMessageRouter";
+import { usePreviewQualityForwarding } from "./usePreviewQualityForwarding";
 import { timelineElementsChanged } from "./timelinePlayerSync";
 import { safeContentDocument } from "./timelineSyncHydration";
 import { sceneSwapFor, supersededByNewerEdit } from "../sceneSwap";
@@ -55,6 +56,7 @@ export interface UseTimelinePlayerOptions {
 const publishSeek = (time: number, options?: { follow?: boolean }) =>
   options?.follow === false ? liveTime.notify(time) : liveTime.notifySeek(time);
 
+// fallow-ignore-next-line complexity
 export function useTimelinePlayer({
   onShadowPromoted,
   onPreviewReloadFailed,
@@ -78,7 +80,6 @@ export function useTimelinePlayer({
   // The fixture lease belongs at this shared synchronization boundary so every
   // iframe discovery path has the same owner for deciding whether it may write.
   const syncTimelineElements = useCallback(
-    // The lease guard adds one deliberate branch at the shared synchronization boundary.
     // fallow-ignore-next-line complexity
     (elements: TimelineElement[], nextDuration?: number) => {
       if (hasTimelinePerformanceFixtureLease()) return;
@@ -133,7 +134,7 @@ export function useTimelinePlayer({
         (key, durationSeconds) => {
           usePlayerStore.setState((state) => {
             const idx = state.elements.findIndex((e) => (e.key ?? e.id) === key);
-            if (idx === -1 || state.elements[idx].sourceDuration != null) return {};
+            if (idx === -1 || state.elements[idx].sourceDuration != null) return state;
             const patched = state.elements.slice();
             patched[idx] = { ...state.elements[idx], sourceDuration: durationSeconds };
             return { elements: patched };
@@ -515,6 +516,8 @@ export function useTimelinePlayer({
   }, [reloadWholeFilm, previewGeneration]);
   const pauseRef = useRef(pause);
   pauseRef.current = pause;
+
+  usePreviewQualityForwarding(iframeRef);
 
   useMountEffect(() => {
     const handleWindowKeyDown = (e: KeyboardEvent) => playbackKeyDownRef.current(e);

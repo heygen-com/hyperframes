@@ -55,6 +55,7 @@ import {
   CHUNK_INDEX_OUT_OF_RANGE,
   distributedCaptureSessionDependencies,
   extractDeferredVideoFramesForChunk,
+  interleavesCapture,
   MISSING_PLAN_ARTIFACT,
   MISSING_RUNTIME_ENV_SNAPSHOT,
   PLAN_HASH_MISMATCH,
@@ -1102,6 +1103,18 @@ describe("resolvePresetForLockedEncoder", () => {
     const base = { preset: "medium", quality: 18, codec: "h264" as const, pixelFormat: "yuv420p" };
     const out = resolvePresetForLockedEncoder(base, "png-sequence");
     expect(out).toBe(base);
+  });
+});
+
+describe("interleavesCapture", () => {
+  it("is off for a caller that does not ask, so CPU-billed callers get contiguous ranges", () => {
+    expect(interleavesCapture(true, undefined)).toBe(false);
+    expect(interleavesCapture(true, { maxCaptureWorkers: 4 })).toBe(false);
+  });
+
+  it("is on only when the caller asks and the encoder overlaps", () => {
+    expect(interleavesCapture(true, { interleaveCapture: true })).toBe(true);
+    expect(interleavesCapture(false, { interleaveCapture: true })).toBe(false);
   });
 });
 

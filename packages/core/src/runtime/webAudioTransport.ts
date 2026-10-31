@@ -14,12 +14,16 @@ import {
   resolveMasterBusElement,
 } from "../audioGroups.js";
 import { swallow } from "./diagnostics";
+import { reportMediaLoadFailure } from "./mediaLoadFailure";
 import { createLevelTap, type LevelTap, type StereoLevel } from "./levelTap.js";
 import { clampAudioGain } from "../audioGain.js";
 import { getDebugSurface } from "./globals.js";
-import { readElementPlaybackRate } from "./media.js";
+import { readElementPlaybackRate, readElementRateSpec } from "./media.js";
+import { rateAt, sourceTimeAt, timeAtSourceTime } from "../speedRamp.js";
 import { classifyWebAudioMediaRoute, reportWebAudioMediaRoute } from "./webAudioRoute.js";
 import { assetUrl } from "./assetUrl.js";
+import { mediaElementTime } from "./mediaClock.js";
+import { clampFadesToDuration, fadeGain, readElementFades } from "../audioFade.js";
 
 const MASTER_FX_ATTRS: FxAttributes = { automation: null };
 
@@ -92,6 +96,50 @@ function startBoundedSource(
   return true;
 }
 
+type BookedFades = { node: GainNode; rebook(timing: AutomationTiming): void };
+
+/**
+ * The clip's `data-fade-in` / `data-fade-out` booked on their own gain on the audio clock, from where the clip starts
+ * sounding (`from`, clip seconds). A per-tick volume write is 50 ms apart, coarser than a fade: stepped, the clip
+ * starts and stops at full level and clicks at every cut. Null when the clip has no fade, or a fade-out with no end
+ * to book it against, which the per-tick volume keeps.
+ */
+function bookedFades(
+  ctx: AudioContext,
+  el: HTMLMediaElement,
+  timing: AutomationTiming,
+  from: number,
+  clipDuration: number,
+): BookedFades | null {
+  const fades = clampFadesToDuration(readElementFades(el), clipDuration);
+  if (fades.fadeIn <= 0 && fades.fadeOut <= 0) return null;
+  if (fades.fadeOut > 0 && !Number.isFinite(clipDuration)) return null;
+  const node = ctx.createGain();
+  const gain = node.gain;
+  const level = (clipSeconds: number) => fadeGain(clipSeconds, clipDuration, fades);
+  const book = (t: AutomationTiming) => {
+    const start = Math.max(from, t.elapsed);
+    const at = (clipSeconds: number) =>
+      t.scheduledAt + Math.max(0, clipSeconds - t.elapsed) / t.rate;
+    gain.value = level(start);
+    gain.setValueAtTime(level(start), at(start));
+    if (fades.fadeIn > start) gain.linearRampToValueAtTime(level(fades.fadeIn), at(fades.fadeIn));
+    if (fades.fadeOut > 0) {
+      const hold = clipDuration - fades.fadeOut;
+      if (hold > start && hold > fades.fadeIn) gain.setValueAtTime(level(hold), at(hold));
+      gain.linearRampToValueAtTime(0, at(clipDuration));
+    }
+  };
+  book(timing);
+  return {
+    node,
+    rebook: (t) => {
+      gain.cancelScheduledValues(0);
+      book(t);
+    },
+  };
+}
+
 // Clip gain, FX, then the volume lane on its own gain ahead of `gainNode` (all but the lane
 // rewritten every tick); the FX handle re-aims the lane on rate changes and edits.
 function attachClipStages(
@@ -100,17 +148,25 @@ function attachClipStages(
   source: AudioNode,
   gainNode: GainNode,
   timing: AutomationTiming,
-): { fx: ElementFxHandle | null; laneNode: GainNode; clipGainNode: GainNode } {
+  span: { from: number; clipDuration: number },
+): {
+  fx: ElementFxHandle | null;
+  laneNode: GainNode;
+  clipGainNode: GainNode;
+  fades: BookedFades | null;
+} {
   const laneNode = ctx.createGain();
   laneNode.connect(gainNode);
   const clipGainNode = ctx.createGain();
-  source.connect(clipGainNode);
+  const fades = bookedFades(ctx, el, timing, span.from, span.clipDuration);
+  if (fades) source.connect(fades.node);
+  (fades?.node ?? source).connect(clipGainNode);
   const fx = attachElementFxChain(ctx, el, clipGainNode, laneNode, timing, undefined, {
     param: laneNode.gain,
     gain: () => readAudioGroupVolume(el),
     gainAhead: true,
   });
-  return { fx, laneNode, clipGainNode };
+  return { fx, laneNode, clipGainNode, fades };
 }
 
 type ScheduledSourceBase = {
@@ -122,6 +178,13 @@ type ScheduledSourceBase = {
   clipGainNode: GainNode;
   /** FX chain spliced between source and gain, when the element carries one. */
   fx?: ElementFxHandle | null;
+  /** The clip's fades booked on the audio clock, between the source and its clip gain; absent without a fade. */
+  fades?: BookedFades | null;
+  /** Stops re-aiming the lane and fades at a routed element's own position. */
+  unfollow?: () => void;
+  /** A routed element's first stage: unity except while `seekUnderDip` hides a seek. */
+  dipNode?: GainNode;
+  dipping?: boolean;
   compositionStart: number;
   mediaStart: number;
   scheduledAt: number;
@@ -156,8 +219,16 @@ const decodeKey = (el: HTMLMediaElement): string | null => {
   }
 };
 
+const DIP_SECONDS = 0.015;
+/** A dipped seek comes back up when the element lands, or when it can no longer land. */
+const DIP_END_EVENTS = ["seeked", "error", "emptied", "abort"] as const;
+
+/** Where a routed element starts sounding or jumps; a pause needs nothing, no audio flows until `playing`. */
+const FOLLOWED_EVENTS = ["playing", "seeked", "ratechange"] as const;
+
 // A pause to scrub or a reschedule mid-play keeps the output awake; a real idle lets it sleep.
 const IDLE_SUSPEND_MS = 10000;
+const SHORT_DECODE_SECONDS = 0.25;
 
 export class WebAudioTransport {
   private _ctx: AudioContext | null = null;
@@ -286,12 +357,12 @@ export class WebAudioTransport {
     if (!src) return Promise.resolve(null);
     const pending = this._decoding.get(src);
     if (pending) return pending;
-    const decoding = this.fetchAndDecode(src).finally(() => this._decoding.delete(src));
+    const decoding = this.fetchAndDecode(src, el).finally(() => this._decoding.delete(src));
     this._decoding.set(src, decoding);
     return decoding;
   }
 
-  private async fetchAndDecode(src: string): Promise<AudioBuffer | null> {
+  private async fetchAndDecode(src: string, el: HTMLMediaElement): Promise<AudioBuffer | null> {
     if (this._bufferCache.has(src)) return this._bufferCache.get(src)!;
     if (this._failedSrcs.has(src)) return null;
     if (!this._ctx) return null;
@@ -309,11 +380,13 @@ export class WebAudioTransport {
       const response = await fetch(src, { cache: "no-store" });
       if (!response.ok) {
         swallow("webAudioTransport.fetch", new Error(`${response.status} ${src}`));
+        reportMediaLoadFailure(el, "fetch", response.status);
         return null;
       }
       arrayBuffer = await response.arrayBuffer();
     } catch (err) {
       swallow("webAudioTransport.fetch", err);
+      reportMediaLoadFailure(el, "fetch", null);
       return null;
     }
 
@@ -322,11 +395,20 @@ export class WebAudioTransport {
     // the same bad payload on every generation.
     try {
       const audioBuffer = await this._ctx.decodeAudioData(arrayBuffer);
+      // A file whose container timescale disagrees with its stream decodes short; its element plays it whole.
+      if (
+        Number.isFinite(el.duration) &&
+        el.duration - audioBuffer.duration > SHORT_DECODE_SECONDS
+      ) {
+        this._failedSrcs.add(src);
+        return null;
+      }
       this._bufferCache.set(src, audioBuffer);
       return audioBuffer;
     } catch (err) {
       this._failedSrcs.add(src);
       swallow("webAudioTransport.decode", err);
+      reportMediaLoadFailure(el, "decode", null, arrayBuffer.byteLength);
       return null;
     }
   }
@@ -424,11 +506,12 @@ export class WebAudioTransport {
   async scheduleMediaElementPlayback(
     el: HTMLMediaElement,
     compositionStart: number,
-    _mediaStart: number,
+    mediaStart: number,
     compositionTime: number,
     volume: number,
     generation: number,
     rate = 1,
+    clipDuration = Number.POSITIVE_INFINITY,
   ): Promise<ScheduledSource | null> {
     if (!this._ctx || !this._masterGain) return null;
     if (generation !== this._playGeneration) return null;
@@ -455,12 +538,15 @@ export class WebAudioTransport {
       gainNode.connect(
         this.resolveDestination(el, scheduledAt, compositionTime, safeRate) ?? this._masterGain,
       );
-      const { fx, laneNode, clipGainNode } = attachClipStages(
+      const dipNode = this._ctx.createGain();
+      sourceNode.connect(dipNode);
+      const { fx, laneNode, clipGainNode, fades } = attachClipStages(
         this._ctx,
         el,
-        sourceNode,
+        dipNode,
         gainNode,
         timing,
+        { from: Math.max(elapsed, 0), clipDuration },
       );
 
       this._rate = safeRate;
@@ -469,6 +555,8 @@ export class WebAudioTransport {
 
       const scheduled: ScheduledSource = {
         fx,
+        fades,
+        dipNode,
         el,
         sourceNode,
         sourceKind: "media-element",
@@ -476,12 +564,13 @@ export class WebAudioTransport {
         laneNode,
         clipGainNode,
         compositionStart,
-        mediaStart: _mediaStart,
+        mediaStart,
         scheduledAt,
         priorMuted: el.muted,
         priorVolume: el.volume,
         mediaPlaybackRate: readElementPlaybackRate(el),
         bounded: false,
+        unfollow: this.followElement(el, compositionStart, mediaStart, fx, fades),
       };
       // Chrome applies HTMLMediaElement.volume before MediaElementAudioSource.
       // Keep that upstream stage at unity so the existing downstream gain is
@@ -494,6 +583,79 @@ export class WebAudioTransport {
       swallow("webAudioTransport.mediaElementSource", err);
       return null;
     }
+  }
+
+  /**
+   * A routed element keeps its own time: it starts late, is seeked and is steered by rate. Its lane and fades were
+   * booked against the context clock, so each time it starts or moves they are re-aimed at where it actually is.
+   */
+  private followElement(
+    el: HTMLMediaElement,
+    compositionStart: number,
+    mediaStart: number,
+    fx: ElementFxHandle | null,
+    fades: BookedFades | null,
+  ): () => void {
+    const retime = () => {
+      if (el.paused || !this._ctx) return;
+      const spec = readElementRateSpec(el);
+      let source = el.currentTime - mediaStart;
+      const loopLength = el.duration - mediaStart;
+      // A looping element's position wraps: it is on the pass nearest where the transport expects it.
+      if (el.loop && loopLength > 0) {
+        const expected = sourceTimeAt(spec, this.getTime() - compositionStart);
+        source += Math.round((expected - source) / loopLength) * loopLength;
+      }
+      const elapsed = timeAtSourceTime(spec, source);
+      const rate = el.playbackRate / rateAt(spec, elapsed);
+      // Stopped at rate 0, or with no position yet: no audio moves, so there is nothing to aim at.
+      if (!(rate > 0) || !Number.isFinite(elapsed)) return;
+      const timing: AutomationTiming = { scheduledAt: this._ctx.currentTime, elapsed, rate };
+      fx?.retime(timing);
+      fades?.rebook(timing);
+    };
+    for (const type of FOLLOWED_EVENTS) el.addEventListener(type, retime);
+    return () => {
+      for (const type of FOLLOWED_EVENTS) el.removeEventListener(type, retime);
+    };
+  }
+
+  /**
+   * Seek a sounding routed element under a short gain dip: down, seek, and back up once it has landed, so the jump
+   * is neither a click nor a tempo change. False when the element is not routed and has no dip to hide it under.
+   */
+  seekUnderDip(el: HTMLMediaElement, target: number): boolean {
+    const source = this._activeSources.find((s) => s.el === el && s.sourceKind === "media-element");
+    const ctx = this._ctx;
+    if (!ctx || !source?.dipNode) return false;
+    if (source.dipping) return true;
+    source.dipping = true;
+    const gain = source.dipNode.gain;
+    const ramp = (to: number) => {
+      const now = ctx.currentTime;
+      gain.cancelScheduledValues(now);
+      gain.setValueAtTime(gain.value, now);
+      gain.linearRampToValueAtTime(to, now + DIP_SECONDS);
+    };
+    const rise = () => {
+      for (const type of DIP_END_EVENTS) el.removeEventListener(type, rise);
+      source.dipping = false;
+      ramp(1);
+    };
+    ramp(0);
+    setTimeout(() => {
+      // A stop or a new pass in the meantime owns the element now.
+      if (!this._activeSources.includes(source)) return;
+      for (const type of DIP_END_EVENTS) el.addEventListener(type, rise);
+      try {
+        // Where the element would be by now had it been on time.
+        el.currentTime = mediaElementTime(target + DIP_SECONDS * el.playbackRate);
+      } catch (err) {
+        swallow("webAudioTransport.seekUnderDip", err);
+        rise();
+      }
+    }, DIP_SECONDS * 1000);
+    return true;
   }
 
   /**
@@ -730,6 +892,7 @@ export class WebAudioTransport {
     try {
       sourceNode.disconnect();
       scheduled.fx?.dispose();
+      scheduled.fades?.node.disconnect();
       scheduled.clipGainNode.disconnect();
       scheduled.laneNode.disconnect();
       scheduled.gainNode.disconnect();
@@ -788,12 +951,14 @@ export class WebAudioTransport {
       gainNode.connect(
         this.resolveDestination(el, scheduledAt, compositionTime, safeRate) ?? this._masterGain,
       );
-      const { fx, laneNode, clipGainNode } = attachClipStages(
+      const headCut = windowStart - compositionStart;
+      const { fx, laneNode, clipGainNode, fades } = attachClipStages(
         this._ctx,
         el,
         sourceNode,
         gainNode,
         timing,
+        { from: Math.max(elapsed, headCut, 0), clipDuration },
       );
 
       this._rate = safeRate;
@@ -808,12 +973,13 @@ export class WebAudioTransport {
           globalRate: safeRate,
           mediaRate,
           clipDuration,
-          headCut: windowStart - compositionStart,
+          headCut,
         })
       ) {
         // Playhead already past the clip end — discard the nodes we built.
         sourceNode.disconnect();
         fx?.dispose();
+        fades?.node.disconnect();
         clipGainNode.disconnect();
         laneNode.disconnect();
         gainNode.disconnect();
@@ -826,6 +992,7 @@ export class WebAudioTransport {
 
       const scheduled: ScheduledSource = {
         fx,
+        fades,
         el,
         sourceNode,
         sourceKind: "buffer",
@@ -860,7 +1027,7 @@ export class WebAudioTransport {
    * start in the future keep their original wallclock start time — callers
    * that need rate-correct future starts should `stopAll()` and reschedule.
    *
-   * Each source's FX automation is re-aimed too. Lanes are committed to
+   * Each decoded source's FX automation is re-aimed too. Lanes are committed to
    * absolute context times when the source is scheduled, so bumping only
    * `playbackRate` left every automated parameter running its original plan
    * over audio moving at a different speed. The `stopAll()`+reschedule recovery
@@ -876,12 +1043,18 @@ export class WebAudioTransport {
       this._rateAnchorCtx = this._ctx.currentTime;
     }
     this._rate = safeRate;
+    // A routed element is not touched: its rate change re-aims its own lane and fades (`followElement`).
     for (const source of this._activeSources) {
+      if (!isBufferSource(source)) continue;
       try {
-        if (isBufferSource(source)) {
-          source.sourceNode.playbackRate.value = safeRate * source.mediaPlaybackRate;
-        }
+        source.sourceNode.playbackRate.value = safeRate * source.mediaPlaybackRate;
         source.fx?.setRate(safeRate);
+        if (this._ctx && !this._paused)
+          source.fades?.rebook({
+            scheduledAt: this._ctx.currentTime,
+            elapsed: this.getTime() - source.compositionStart,
+            rate: safeRate,
+          });
       } catch (err) {
         swallow("webAudioTransport.setRate", err);
       }
@@ -929,10 +1102,13 @@ export class WebAudioTransport {
   }
 
   private dispose(source: ScheduledSource, keepsSounding = true): void {
+    source.unfollow?.();
     try {
       if (isBufferSource(source)) source.sourceNode.stop();
       source.sourceNode.disconnect();
       source.fx?.dispose();
+      source.fades?.node.disconnect();
+      source.dipNode?.disconnect();
       source.clipGainNode.disconnect();
       source.laneNode.disconnect();
       source.gainNode.disconnect();
@@ -963,13 +1139,17 @@ export class WebAudioTransport {
    * divergence this ceiling exists to close. Automation lanes hid it, because
    * they schedule ramps onto the param directly and never pass through here.
    */
-  setElementVolume(el: HTMLMediaElement, volume: number, clipGain = 1): void {
-    const safeVolume = clampAudioGain(volume);
+  setElementVolume(
+    el: HTMLMediaElement,
+    volume: number,
+    clipGain = 1,
+    unfadedVolume = volume,
+  ): void {
     for (const source of this._activeSources) {
       if (source.el !== el) continue;
       try {
         if (source.sourceKind === "media-element") source.el.volume = 1;
-        source.gainNode.gain.value = safeVolume;
+        source.gainNode.gain.value = clampAudioGain(source.fades ? unfadedVolume : volume);
         source.clipGainNode.gain.value = clampAudioGain(clipGain);
       } catch (err) {
         swallow("webAudioTransport.setElementVolume", err);

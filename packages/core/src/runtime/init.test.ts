@@ -1,5 +1,6 @@
 // fallow-ignore-file code-duplication
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { mediaElementTime } from "./mediaClock";
 import { readFileSync } from "node:fs";
 import { initSandboxRuntimeModular, installFlatGsapTransforms } from "./init";
 import {
@@ -8,6 +9,7 @@ import {
   SKIPPED_CLIP,
 } from "./timedClipHide";
 import { applyAuthoredTiming, STUDIO_PREVIEW_MARK_META } from "../studioPreviewMark";
+import { runtimeProtocolMetadata } from "./protocol";
 import { collectRuntimeTimelinePayload } from "./timeline";
 import { TYPEGPU_PRESENT_HEARTBEAT_MS } from "./adapters/typegpu";
 import { WebAudioTransport } from "./webAudioTransport";
@@ -261,6 +263,7 @@ describe("initSandboxRuntimeModular", () => {
     delete window.__playerReady;
     delete window.__renderReady;
     delete (window as { __HF_EXPORT_RENDER_SEEK_CONFIG?: unknown }).__HF_EXPORT_RENDER_SEEK_CONFIG;
+    delete window.__HF_REPLAY_SKIPPED_FRAMES;
     delete window.__hfTimelinesBuilding;
     delete (window as { THREE?: unknown }).THREE;
     delete (window as { __hfAutoNoopRegistered?: boolean }).__hfAutoNoopRegistered;
@@ -609,7 +612,26 @@ describe("initSandboxRuntimeModular", () => {
       }
     });
 
-    it("styles each hidden clip visible once, far scene included, so its cut does not do it first", () => {
+    it("leaves hidden clips alone on every jump when the page has no timeline", () => {
+      document.body.innerHTML =
+        `<div data-composition-id="main" data-root="true" data-start="0" data-duration="10" data-width="1920" data-height="1080">` +
+        `<video id="first" src="a.mp4" data-start="0" data-duration="2" data-track-index="0"></video>` +
+        `<video id="second" src="a.mp4" data-start="2" data-duration="8" data-track-index="0"></video>` +
+        `</div>`;
+      window.__timelines = {};
+      initSandboxRuntimeModular();
+      const query = vi.spyOn(document, "querySelectorAll");
+      const looked = () =>
+        query.mock.calls.filter(([selector]) => selector === "[data-hf-clip-hidden]").length;
+      try {
+        for (const t of [0.5, 1, 1.5, 3, 6]) window.__player?.seek(t);
+        expect(looked()).toBe(0);
+      } finally {
+        query.mockRestore();
+      }
+    });
+
+    it("styles a hidden clip visible once while playing toward its start, far scene included", () => {
       document.body.innerHTML =
         `<div data-composition-id="main" data-root="true" data-start="0" data-duration="10" data-width="1920" data-height="1080">` +
         `<div id="later" style="position: absolute" data-start="8" data-duration="1" data-hf-far-scene><p></p></div>` +
@@ -624,13 +646,28 @@ describe("initSandboxRuntimeModular", () => {
         if (el === later && shown && !later.hasAttribute("data-hf-far-scene")) styledVisible++;
         return original(el, pseudo);
       });
+      const raf = createManualRaf();
+      vi.spyOn(performance, "now").mockImplementation(() => raf.now());
+      window.requestAnimationFrame =
+        raf.requestAnimationFrame as typeof window.requestAnimationFrame;
+      window.cancelAnimationFrame = raf.cancelAnimationFrame as typeof window.cancelAnimationFrame;
       try {
         initSandboxRuntimeModular();
-        window.__player?.seek(1);
-        const once = styledVisible;
-        window.__player?.seek(2);
-        window.__player?.seek(3);
-        expect([once, styledVisible]).toEqual([1, 1]);
+        const counts: number[] = [];
+        const playFor = (ms: number) => {
+          for (let at = 0; at < ms; at += 100) raf.step(100);
+          counts.push(styledVisible);
+        };
+        for (const t of [6.5, 4]) {
+          window.__player?.seek(t);
+          counts.push(styledVisible);
+        }
+        window.__player?.play();
+        playFor(300);
+        playFor(1800);
+        playFor(1000);
+        window.__player?.pause();
+        expect(counts).toEqual([0, 0, 0, 1, 1]);
         expect([later.style.visibility, later.hasAttribute("data-hf-clip-hidden")]).toEqual([
           "hidden",
           true,
@@ -1183,6 +1220,36 @@ describe("initSandboxRuntimeModular", () => {
     });
   });
 
+  it("gives a still the value playback shows when its capture page asks to replay skipped frames", () => {
+    const zoomFilm = () => {
+      const params = { z: 1 };
+      const timeline = gsap.timeline({ paused: true });
+      timeline.to(params, { z: 1.45, duration: 0.3, ease: "power4.out" }, 0.573);
+      timeline.set(params, { z: 1.04 }, 0.8);
+      timeline.to(params, { z: 1.12, duration: 1.39, ease: "power1.in" }, 0.869);
+      return { params, timeline };
+    };
+    const played = zoomFilm();
+    for (let frame = 0; frame <= 56; frame++) played.timeline.totalTime(frame / 60, true);
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "3");
+    root.setAttribute("data-fps", "60");
+    root.setAttribute("data-width", "640");
+    root.setAttribute("data-height", "360");
+    document.body.appendChild(root);
+    const still = zoomFilm();
+    window.__timelines = { main: still.timeline as unknown as RuntimeTimelineLike };
+    window.__HF_REPLAY_SKIPPED_FRAMES = true;
+
+    initSandboxRuntimeModular();
+    window.__player?.renderSeek(56 / 60);
+
+    expect(still.params.z).toBeCloseTo(played.params.z, 9);
+  });
+
   it("activates a nested outro on frame 584 when its authored start rounds just above it", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");
@@ -1416,6 +1483,45 @@ describe("initSandboxRuntimeModular", () => {
     });
   });
 
+  describe("a preview seek lands on the composition's own frame grid", () => {
+    // Frame 7 on a 30 fps grid would be 7/30: earlier than frame 7 at 25 and 29.97 fps.
+    const rates = [
+      { dataFps: "25", fps: 25 },
+      { dataFps: "30000/1001", fps: 30_000 / 1_001 },
+    ];
+
+    function previewTimeline(dataFps: string): RuntimeTimelineLike {
+      document.body.innerHTML = `<div data-composition-id="main" data-root="true" data-start="0" data-duration="20" data-fps="${dataFps}" data-width="1920" data-height="1080"></div>`;
+      const timeline = createMockTimeline(20);
+      window.__timelines = { main: timeline };
+      initSandboxRuntimeModular();
+      return timeline;
+    }
+
+    it.each(rates)("player.seek to frame 7 at $dataFps fps", ({ dataFps, fps }) => {
+      const timeline = previewTimeline(dataFps);
+      window.__player?.seek(7 / fps);
+      expect(timeline.time()).toBeCloseTo(7 / fps, 9);
+    });
+
+    it.each(rates)("a parent frame seek to frame 7 at $dataFps fps", ({ dataFps, fps }) => {
+      const timeline = previewTimeline(dataFps);
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          source: window.parent,
+          data: {
+            source: "hf-parent",
+            type: "control",
+            action: "seek",
+            frame: 7,
+            ...runtimeProtocolMetadata(fps),
+          },
+        }),
+      );
+      expect(timeline.time()).toBeCloseTo(7 / fps, 9);
+    });
+  });
+
   it("uses live child timeline duration when a composition host has no authored duration", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");
@@ -1574,7 +1680,7 @@ describe("initSandboxRuntimeModular", () => {
       window.__player?.renderSeek(5);
 
       expect(video.style.visibility).toBe("visible");
-      expect(video.currentTime).toBe(2.5);
+      expect(video.currentTime).toBe(mediaElementTime(2.5));
       expect(video.paused).toBe(true);
       expect(video.play).not.toHaveBeenCalled();
     });
@@ -2403,7 +2509,7 @@ describe("initSandboxRuntimeModular", () => {
     player?.seek(29);
 
     expect(video.paused).toBe(true);
-    expect(video.currentTime).toBe(9);
+    expect(video.currentTime).toBe(mediaElementTime(9));
   });
 
   // Regression (#1838): a video authoring its OWN data-start (the normal case
@@ -2453,7 +2559,7 @@ describe("initSandboxRuntimeModular", () => {
     // must be 5s into its own local playback, not 25s (root time).
     player?.seek(25);
 
-    expect(video.currentTime).toBe(5);
+    expect(video.currentTime).toBe(mediaElementTime(5));
   });
 
   it("keeps a scene-local video visible inside a later template-mounted host", () => {
@@ -3899,6 +4005,16 @@ describe("initSandboxRuntimeModular", () => {
     expect(startedAt.length).toBeGreaterThan(0);
     expect(startedAt[0]).toBeLessThan(1);
     expect(startedAt[0]).toBeGreaterThanOrEqual(1 - 0.02);
+  });
+
+  it("primes a clip that starts later inside the tap on iOS, so a late start is not refused", () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 26_5 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148",
+    );
+    const { sfx } = mountLateSfx();
+    window.__player?.play();
+    expect(sfx.play).toHaveBeenCalledTimes(1);
+    expect(sfx.pause).toHaveBeenCalledTimes(1);
   });
 
   const setRate = (playbackRate: number) =>

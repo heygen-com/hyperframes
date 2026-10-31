@@ -27,12 +27,12 @@ export function mountDesktopRoutes(
   projectDir: string,
   {
     ready = HANDOFF_READY,
-    open = (dir: string, cta?: string) => openInDesktop(dir, { cta }),
+    open = (dir: string, cta?: string) => openInDesktop(dir, { cta, src: "browser-editor" }),
     platform = process.platform,
     installed = () => desktopInstalled({ platform }),
   } = {},
 ): void {
-  const downloadUrl = desktopDownloadUrl(platform);
+  const downloadUrl = desktopDownloadUrl(platform, "browser-editor");
   app.get("/api/open-in-desktop", (c) => {
     const here = installed();
     return c.json({

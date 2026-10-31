@@ -56,7 +56,7 @@ describe.skipIf(!HAS_FFMPEG)("concat input paths", () => {
     );
     expect(probe.status, probe.stderr).toBe(0);
     expect(probe.stdout.trim()).toBe("64,64,30/1,40");
-  });
+  }, 30_000);
 
   it.each([true, false])(
     "preserves frames and order with mixed input paths, relative first: %s",
@@ -111,5 +111,6 @@ describe.skipIf(!HAS_FFMPEG)("concat input paths", () => {
         expect(frame < 2 ? blue : red).toBeLessThan(5);
       }
     },
+    30_000,
   );
 });

@@ -1,5 +1,5 @@
-import { setCommandExitCode } from "../utils/commandResult.js";
-import { defineCommand } from "citty";
+import { failUsage, setCommandExitCode } from "../utils/commandResult.js";
+import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
 import { existsSync, readFileSync } from "node:fs";
 
@@ -11,9 +11,11 @@ export const examples: Example[] = [
   ["Open with a specific browser", "hyperframes present --browser-path /usr/bin/chromium"],
 ];
 import { resolve } from "node:path";
-import * as clack from "@clack/prompts";
+import * as clack from "../ui/prompts.js";
 import { c } from "../ui/colors.js";
 import { resolveProject, type ProjectDir } from "../utils/project.js";
+import { normalizeErrorMessage } from "../utils/errorMessage.js";
+import { parsePort } from "../utils/port.js";
 import type { Hono } from "hono";
 import { requestSubPath } from "@hyperframes/studio-server";
 import {
@@ -48,13 +50,18 @@ export default defineCommand({
     },
   },
   async run({ args }) {
+    let startPort: number;
+    try {
+      startPort = parsePort(args.port ?? "3004");
+    } catch (error) {
+      clack.log.error(normalizeErrorMessage(error));
+      failUsage();
+    }
     const project = resolveProject(args.dir);
-    const startPort = parseInt(args.port ?? "3004", 10);
 
     if (args["user-data-dir"] && !args["browser-path"]) {
       clack.log.error("--user-data-dir requires --browser-path");
-      setCommandExitCode(1);
-      return;
+      failUsage();
     }
     const depsError = validateRemoteDebuggingPortDeps({
       browserPath: args["browser-path"] as string | undefined,
@@ -63,8 +70,7 @@ export default defineCommand({
     });
     if (depsError) {
       clack.log.error(depsError);
-      setCommandExitCode(1);
-      return;
+      failUsage();
     }
     let remoteDebuggingPort: number | undefined;
     try {
@@ -73,8 +79,7 @@ export default defineCommand({
       );
     } catch (err) {
       clack.log.error((err as Error).message);
-      setCommandExitCode(1);
-      return;
+      failUsage();
     }
 
     const playerPath = resolvePlayerPath();

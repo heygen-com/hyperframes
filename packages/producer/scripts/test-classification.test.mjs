@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import {
   classifyTestSource,
@@ -7,6 +8,15 @@ import {
 } from "./test-classification.mjs";
 
 describe("producer test classification", () => {
+  it("keeps the integration list out of the selection logic the reachability check pins", () => {
+    const logic = readFileSync(new URL("./test-classification.mjs", import.meta.url), "utf8");
+    assert.doesNotMatch(logic, /["'][^"']*\/[^"']*\.test\.tsx?["']/);
+    const listed = JSON.parse(
+      readFileSync(new URL("./integration-tests.json", import.meta.url), "utf8"),
+    );
+    assert.equal(new Set(listed).size, listed.length);
+  });
+
   it("classifies each supported runner into one lane", () => {
     assert.deepEqual(classifyTestSource("src/a.test.ts", 'import { it } from "bun:test";'), {
       file: "src/a.test.ts",
@@ -56,6 +66,17 @@ describe("producer test classification", () => {
       lane: "integration",
     });
   });
+});
+
+it("runs every *.integration.test.ts in the integration lane, where sockets and real renders are allowed", () => {
+  const stray = discoverProducerTests().filter(
+    ({ file, lane }) => file.endsWith(".integration.test.ts") && lane !== "integration",
+  );
+  assert.deepEqual(
+    stray.map(({ file }) => file),
+    [],
+    "add each to scripts/integration-tests.json",
+  );
 });
 
 it("selects the distributed smoke and playback parity tests as integration tests", () => {

@@ -103,6 +103,37 @@ describe("fresh screenshot fallback", () => {
     });
   }
 
+  // A 21-minute render died here: the worker's encode timeout reached the stage's drain as a plain Error, so
+  // the whole-render fresh-session recovery that every other drawElement failure gets never ran.
+  describe("a worker encode that fails after its frame was produced", () => {
+    const timedOut = (frame: number) =>
+      new Error(`drawElement worker encode timed out (frame ${frame})`);
+
+    it("rejects a pipelined frame as a drawElement capture failure naming the frame", async () => {
+      vi.mocked(produceDrawElementFrame).mockImplementationOnce(async () => ({
+        encodeResult: Promise.reject(timedOut(21847)),
+      }));
+      const { encodeResult } = await captureFrameToBufferPipelined(await session(), 7, 7 / 30);
+      const error = await encodeResult.catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(DrawElementCaptureError);
+      expect(isDrawElementCaptureError(error)).toBe(true);
+      expect((error as DrawElementCaptureError).frameIndex).toBe(7);
+      expect((error as Error).message).toContain("worker encode timed out (frame 21847)");
+    });
+
+    it("rejects every frame of a batch the same way and keeps the frames that encoded", async () => {
+      vi.mocked(produceDrawElementFrameBatch).mockImplementationOnce(async () => ({
+        encodeResults: [Promise.resolve(Buffer.from("ok")), Promise.reject(timedOut(8))],
+        failedAt: null,
+      }));
+      const results = await captureFramesBatchPipelined(await session(), [7, 8], [7 / 30, 8 / 30]);
+      expect((await results[0]!.encodeResult).toString()).toBe("ok");
+      const error = await results[1]!.encodeResult.catch((e: unknown) => e);
+      expect(isDrawElementCaptureError(error)).toBe(true);
+      expect((error as DrawElementCaptureError).frameIndex).toBe(8);
+    });
+  });
+
   // The recoverable-error wrapper used to throw before the diagnostics call,
   // so exactly the NCPR/canvas failures worth debugging produced no bundle.
   it("still writes per-frame diagnostics when a recoverable pipelined failure aborts the attempt", async () => {

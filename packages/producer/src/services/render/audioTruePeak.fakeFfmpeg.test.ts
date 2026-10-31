@@ -104,9 +104,14 @@ describe("a local render's audio pad/trim", () => {
     expect(result.success).toBe(true);
     expect(scanFilters()).toEqual([
       "atrim=start_sample=0:end_sample=2880000,ebur128=peak=true",
-      "atrim=start_sample=2875200:end_sample=5760000,ebur128=peak=true",
-      "atrim=start_sample=5755200,ebur128=peak=true",
+      "atrim=start_sample=91200:end_sample=2976000,ebur128=peak=true",
+      "atrim=start_sample=91200,ebur128=peak=true",
     ]);
+    const seeks = vi
+      .mocked(runFfmpeg)
+      .mock.calls.filter(([args]) => args.some((arg) => arg.includes("ebur128")))
+      .map(([args]) => (args[0] === "-ss" ? args[1] : null));
+    expect(seeks).toEqual([null, "58", "118"]);
   });
 });
 

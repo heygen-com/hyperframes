@@ -15,6 +15,7 @@ import {
   syncVideoFrameVisibility,
   shouldDefaultCaptureBeyondViewport,
   initTransparentBackground,
+  capturesAlpha,
   DOM_LAYER_MASK_STYLE_ID,
 } from "./screenshotService.js";
 
@@ -183,6 +184,17 @@ describe("pageContentExceedsCaptureHeight", () => {
   it("is true when the page genuinely overflows the requested height", async () => {
     const page = makeFakePageWithScrollHeight(2007);
     await expect(pageContentExceedsCaptureHeight(page, 1920)).resolves.toBe(true);
+  });
+});
+
+describe("capturesAlpha", () => {
+  it("follows the format unless the caller says otherwise", () => {
+    expect(capturesAlpha({ format: "png" })).toBe(true);
+    expect(capturesAlpha({ format: "jpeg" })).toBe(false);
+  });
+
+  it("keeps an opaque page for PNG frames captured only to be averaged", () => {
+    expect(capturesAlpha({ format: "png", transparent: false })).toBe(false);
   });
 });
 

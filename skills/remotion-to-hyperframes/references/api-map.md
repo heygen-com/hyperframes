@@ -13,15 +13,27 @@ details (timing, transitions, etc.).
 
 ## Composition root
 
-| Remotion                                             | HyperFrames                                                                                                          |
-| ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `<Composition id durationInFrames fps width height>` | root `<div id="stage" data-composition-id data-start="0" data-duration="<dur/fps>" data-fps data-width data-height>` |
-| `defaultProps={...}`                                 | `data-*` attributes on `#stage` (one per scalar prop). Nested objects/arrays — see [parameters.md](parameters.md)    |
-| `schema={z.object(...)}`                             | not represented in HTML; the schema lives in the agent's translation step only                                       |
-| `calculateMetadata` (sync)                           | resolve at translation time, write concrete values into `data-*`                                                     |
-| `calculateMetadata` (async)                          | **refuse + interop** — see [escape-hatch.md](escape-hatch.md)                                                        |
-| `registerRoot(RemotionRoot)`                         | drop                                                                                                                 |
-| `<AbsoluteFill style>`                               | `<div style="position:absolute;inset:0;{style}">`                                                                    |
+| Remotion                                               | HyperFrames                                                                                                          |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| `<Composition id durationInFrames fps width height>`   | root `<div id="stage" data-composition-id data-start="0" data-duration="<dur/fps>" data-fps data-width data-height>` |
+| `defaultProps={...}`                                   | `data-*` attributes on `#stage` (one per scalar prop). Nested objects/arrays — see [parameters.md](parameters.md)    |
+| `schema={z.object(...)}`                               | not represented in HTML; the schema lives in the agent's translation step only                                       |
+| `calculateMetadata` (sync)                             | resolve at translation time, write concrete values into `data-*`                                                     |
+| `calculateMetadata` (async)                            | **refuse + interop** — see [escape-hatch.md](escape-hatch.md)                                                        |
+| `registerRoot(RemotionRoot)`                           | drop                                                                                                                 |
+| `<AbsoluteFill style>`                                 | `<div style="position:absolute;inset:0;{style}">`                                                                    |
+| Remotion's render page: `* { box-sizing: border-box }` | the same rule, once, in the root `index.html` `<style>` (see below)                                                  |
+
+Remotion's render page sets `* { box-sizing: border-box }`, so a `width` there already includes the border and padding. A browser's own default is `content-box`, so a port without the rule draws every bordered or padded element larger. This box is 200 by 100 in Remotion and with the rule; without it, it is 260 by 160:
+
+```html
+<style>
+  * {
+    box-sizing: border-box;
+  }
+</style>
+<div style="width:200px;height:100px;padding:20px;border:10px solid #fff">…</div>
+```
 
 ## Sequencing
 

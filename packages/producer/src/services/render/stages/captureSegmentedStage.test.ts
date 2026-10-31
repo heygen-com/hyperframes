@@ -265,7 +265,7 @@ describe("runCaptureSegmentedStage", () => {
           written.push({ segment: outputPath, frame: buf.readUInt32BE(0) });
           return true;
         },
-        close: async () => ({ success: true, durationMs: 5, fileSize: 1 }),
+        close: async () => ({ success: true, durationMs: 5, fileSize: 1, drainWaitMs: 2 }),
         getExitStatus: () => "success" as const,
         getExitError: () => undefined,
       };
@@ -286,6 +286,9 @@ describe("runCaptureSegmentedStage", () => {
     });
 
     expect(result.success).toBe(true);
+    if (!result.success) throw new Error("unreachable");
+    expect(result.encodeMs).toBe(15);
+    expect(result.encoderDrainWaitMs).toBe(6);
     expect(encoders).toEqual([
       segmentOutputPath(join(fixtureRoot, "segments"), 0),
       segmentOutputPath(join(fixtureRoot, "segments"), 1),
@@ -313,6 +316,37 @@ describe("runCaptureSegmentedStage", () => {
       lockGopForChunkConcat: true,
       gopSize: 1,
     });
+  });
+
+  it("does not capture on a probe that left frames to a screenshot session", async () => {
+    closeCaptureSession.mockClear();
+    const probeSession = {
+      ...fakeStageInput({ totalFrames: 1 }).probeSession,
+      captureMode: "drawelement" as const,
+      workerEncodeEnabled: true,
+      deRiskFrames: new Set([2]),
+    };
+    const capturedOn = new Set<unknown>();
+    const captureFrame = mock(async (session: unknown) => {
+      capturedOn.add(session);
+      return { buffer: Buffer.alloc(1) };
+    });
+    const result = await runCaptureSegmentedStage({
+      ...fakeStageInput({ totalFrames: 6 }),
+      probeSession: probeSession as never,
+      segmentFrames: 3,
+      segmentDir: join(fixtureRoot, "risk-probe"),
+      deps: {
+        spawnEncoder: mock(async () => okEncoder()),
+        captureFrame,
+        concat: mock(async () => ({ success: true as const })),
+        closeSession: mock(async () => {}),
+        removeFile: () => {},
+      },
+    });
+    expect(result.success).toBe(true);
+    expect(capturedOn.has(probeSession)).toBe(false);
+    expect(closeCaptureSession.mock.calls.map((c) => c[0])).toContain(probeSession);
   });
 
   it("skips completed segments and still concats all of them in order", async () => {

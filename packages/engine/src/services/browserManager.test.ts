@@ -1,6 +1,7 @@
 // fallow-ignore-file code-duplication
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { execFileSync } from "node:child_process";
+import { EventEmitter } from "node:events";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -84,6 +85,27 @@ describe("BeginFrame capability probe", () => {
 
     expect(result.supported).toBe(false);
     expect(result.detail).toMatch(/returned 0 bytes after \d+ attempts in \d+ms/);
+    expect(result.timedOut).toBe(true);
+  });
+
+  it("reports frames that are not a PNG as unsupported, not as a slow start", async () => {
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0]);
+    const send = vi.fn().mockResolvedValue({ screenshotData: jpeg.toString("base64") });
+    const browser = {
+      newPage: vi.fn().mockResolvedValue({
+        goto: vi.fn().mockResolvedValue(null),
+        createCDPSession: vi.fn().mockResolvedValue({
+          send,
+          detach: vi.fn().mockResolvedValue(undefined),
+        }),
+        close: vi.fn().mockResolvedValue(undefined),
+      }),
+    } as unknown as Browser;
+
+    const result = await _probeBeginFrameSupportForTests(browser, 120);
+
+    expect(result.supported).toBe(false);
+    expect(result.timedOut).toBe(false);
   });
 
   it("keeps trying a renderer that has not drawn its first surface yet, up to the probe deadline", async () => {
@@ -163,6 +185,30 @@ describe("BeginFrame capability probe", () => {
 
     expect(result.supported).toBe(true);
     expect(result.detail).toContain("probe page cleanup timed out");
+  });
+
+  it("marks a probe that ran out of time as timed out, and a rejection as not", async () => {
+    const stuck = {
+      newPage: vi.fn().mockResolvedValue({
+        goto: vi.fn().mockReturnValue(new Promise<never>(() => {})),
+        close: vi.fn().mockResolvedValue(undefined),
+      }),
+    } as unknown as Browser;
+    const rejecting = {
+      newPage: vi.fn().mockResolvedValue({
+        goto: vi.fn().mockResolvedValue(null),
+        createCDPSession: vi.fn().mockResolvedValue({
+          send: vi.fn().mockRejectedValue(new Error("'HeadlessExperimental.enable' wasn't found")),
+          detach: vi.fn().mockResolvedValue(undefined),
+        }),
+        close: vi.fn().mockResolvedValue(undefined),
+      }),
+    } as unknown as Browser;
+
+    expect((await _probeBeginFrameSupportForTests(stuck, 25)).timedOut).toBe(true);
+    const rejected = await _probeBeginFrameSupportForTests(rejecting);
+    expect(rejected.supported).toBe(false);
+    expect(rejected.timedOut).toBe(false);
   });
 
   it("force-kills and disconnects when graceful browser cleanup never resolves", async () => {
@@ -380,12 +426,13 @@ describe("assertWebGpuAdapterAvailable", () => {
   const pageWithAdapter = (hasAdapter: boolean) =>
     ({ evaluate: vi.fn().mockResolvedValue(hasAdapter) }) as unknown as Page;
 
-  it("no-ops for a composition that does not require WebGPU, regardless of adapter", () => {
+  it("no-ops for a composition that does not require WebGPU, regardless of adapter", async () => {
     const page = pageWithAdapter(false);
-    return expect(assertWebGpuAdapterAvailable(page, false)).resolves.toBeUndefined();
+    await expect(assertWebGpuAdapterAvailable(page, false)).resolves.toBeUndefined();
+    expect(page.evaluate).not.toHaveBeenCalled();
   });
 
-  it("resolves when a WebGPU adapter is obtainable", () => {
+  it("resolves when the page confirms a usable WebGPU device", () => {
     const page = pageWithAdapter(true);
     return expect(assertWebGpuAdapterAvailable(page, true)).resolves.toBeUndefined();
   });
@@ -395,32 +442,54 @@ describe("assertWebGpuAdapterAvailable", () => {
     await expect(assertWebGpuAdapterAvailable(page, true)).rejects.toThrow("data-requires-webgpu");
   });
 
+  it("preserves page evaluation failures separately from device unavailability", async () => {
+    const page = pageWithAdapter(false);
+    const failure = new Error("Execution context was destroyed");
+    vi.mocked(page.evaluate).mockRejectedValue(failure);
+    await expect(assertWebGpuAdapterAvailable(page, true)).rejects.toBe(failure);
+  });
+
   describe("in-page adapter check (real callback, stubbed navigator.gpu)", () => {
     const runInPage = {
       evaluate: (fn: (...args: unknown[]) => unknown, ...args: unknown[]) => fn(...args),
     } as unknown as Page;
     const stubAdapter = (adapter: unknown) =>
       vi.stubGlobal("navigator", { gpu: { requestAdapter: async () => adapter } });
-    afterEach(() => vi.unstubAllGlobals());
+    const workingAdapter = (fallback = false) => ({
+      info: { isFallbackAdapter: fallback },
+      requestDevice: vi.fn().mockResolvedValue({ destroy: vi.fn() }),
+    });
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    });
 
     it("accepts a hardware adapter", async () => {
-      stubAdapter({ info: { isFallbackAdapter: false } });
+      stubAdapter(workingAdapter());
       await expect(assertWebGpuAdapterAvailable(runInPage, true)).resolves.toBeUndefined();
     });
 
     it("refuses a software fallback adapter such as swiftshader", async () => {
-      stubAdapter({ info: { isFallbackAdapter: true } });
+      const adapter = workingAdapter(true);
+      stubAdapter(adapter);
       await expect(assertWebGpuAdapterAvailable(runInPage, true)).rejects.toBeInstanceOf(
         WebGpuUnavailableError,
       );
+      expect(adapter.requestDevice).not.toHaveBeenCalled();
     });
 
     it("accepts a software fallback adapter only on a launch that runs software WebGPU", async () => {
-      stubAdapter({ info: { isFallbackAdapter: true } });
+      const adapter = workingAdapter(true);
+      const destroy = vi.fn();
+      adapter.requestDevice.mockResolvedValue({ destroy });
+      stubAdapter(adapter);
       await expect(assertWebGpuAdapterAvailable(runInPage, true, true)).resolves.toBeUndefined();
       await expect(assertWebGpuAdapterAvailable(runInPage, true, false)).rejects.toBeInstanceOf(
         WebGpuUnavailableError,
       );
+      expect(adapter.requestDevice).toHaveBeenCalledExactlyOnceWith();
+      expect(destroy).toHaveBeenCalledOnce();
     });
 
     it("refuses a host with no navigator.gpu", async () => {
@@ -428,6 +497,121 @@ describe("assertWebGpuAdapterAvailable", () => {
       await expect(assertWebGpuAdapterAvailable(runInPage, true)).rejects.toBeInstanceOf(
         WebGpuUnavailableError,
       );
+    });
+
+    it("refuses a missing adapter and clears its timeout", async () => {
+      stubAdapter(null);
+      await expect(assertWebGpuAdapterAvailable(runInPage, true)).rejects.toBeInstanceOf(
+        WebGpuUnavailableError,
+      );
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("creates a descriptor-free device, destroys it, and clears its timeout", async () => {
+      const destroy = vi.fn();
+      const adapter = workingAdapter();
+      adapter.requestDevice.mockResolvedValue({ destroy });
+      stubAdapter(adapter);
+
+      await expect(assertWebGpuAdapterAvailable(runInPage, true)).resolves.toBeUndefined();
+
+      expect(adapter.requestDevice).toHaveBeenCalledExactlyOnceWith();
+      expect(destroy).toHaveBeenCalledOnce();
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it.each([false, true])("rejects a device-creation failure (software: %s)", async (software) => {
+      const adapter = workingAdapter(software);
+      adapter.requestDevice.mockRejectedValue(new Error("OperationError: device unavailable"));
+      stubAdapter(adapter);
+
+      await expect(assertWebGpuAdapterAvailable(runInPage, true, software)).rejects.toBeInstanceOf(
+        WebGpuUnavailableError,
+      );
+      expect(adapter.requestDevice).toHaveBeenCalledExactlyOnceWith();
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("rejects a synchronous device-creation failure and clears its timeout", async () => {
+      const adapter = workingAdapter();
+      adapter.requestDevice.mockImplementation(() => {
+        throw new Error("device creation failed");
+      });
+      stubAdapter(adapter);
+      await expect(assertWebGpuAdapterAvailable(runInPage, true)).rejects.toBeInstanceOf(
+        WebGpuUnavailableError,
+      );
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("shares the ten-second budget across adapter and device creation", async () => {
+      const adapter = workingAdapter();
+      adapter.requestDevice.mockImplementation(() => new Promise(() => {}));
+      vi.stubGlobal("navigator", {
+        gpu: {
+          requestAdapter: () => new Promise((resolve) => setTimeout(() => resolve(adapter), 9_000)),
+        },
+      });
+      const result = assertWebGpuAdapterAvailable(runInPage, true).catch((error: unknown) => error);
+      await vi.advanceTimersByTimeAsync(9_000);
+      expect(adapter.requestDevice).toHaveBeenCalledOnce();
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(await result).toBeInstanceOf(WebGpuUnavailableError);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("bounds an adapter request that never completes", async () => {
+      vi.stubGlobal("navigator", { gpu: { requestAdapter: () => new Promise(() => {}) } });
+      const result = assertWebGpuAdapterAvailable(runInPage, true).catch((error: unknown) => error);
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(await result).toBeInstanceOf(WebGpuUnavailableError);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("does not create a device when the adapter arrives after the deadline", async () => {
+      const adapter = workingAdapter();
+      vi.stubGlobal("navigator", {
+        gpu: {
+          requestAdapter: () =>
+            new Promise((resolve) => setTimeout(() => resolve(adapter), 11_000)),
+        },
+      });
+      const result = assertWebGpuAdapterAvailable(runInPage, true).catch((error: unknown) => error);
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(await result).toBeInstanceOf(WebGpuUnavailableError);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(adapter.requestDevice).not.toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("destroys a device that resolves after the deadline", async () => {
+      const destroy = vi.fn();
+      const adapter = workingAdapter();
+      adapter.requestDevice.mockImplementation(
+        () => new Promise((resolve) => setTimeout(() => resolve({ destroy }), 11_000)),
+      );
+      stubAdapter(adapter);
+      const result = assertWebGpuAdapterAvailable(runInPage, true).catch((error: unknown) => error);
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(await result).toBeInstanceOf(WebGpuUnavailableError);
+      expect(destroy).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(destroy).toHaveBeenCalledOnce();
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("clears the timeout when the adapter request rejects", async () => {
+      vi.stubGlobal("navigator", {
+        gpu: {
+          requestAdapter: async () => {
+            throw new Error("adapter unavailable");
+          },
+        },
+      });
+      await expect(assertWebGpuAdapterAvailable(runInPage, true)).rejects.toBeInstanceOf(
+        WebGpuUnavailableError,
+      );
+      expect(vi.getTimerCount()).toBe(0);
     });
   });
 });
@@ -528,6 +712,21 @@ describe("resolveBrowserGpuMode", () => {
     expect(managedLaunch).toHaveBeenCalledOnce();
     expect(launch).toHaveBeenCalledOnce();
     expect(close).toHaveBeenCalledOnce();
+  });
+
+  it("does not keep a probe its own caller cancelled as the answer for the process", async () => {
+    setMockWebGlProbe({ hasWebGL: true, vendor: "NVIDIA", renderer: "NVIDIA" });
+    const cancelled = {
+      launch: async () => {
+        throw new DOMException("This operation was aborted", "AbortError");
+      },
+      close: vi.fn(),
+    };
+    const first = resolveBrowserGpuMode("auto", { probeLifecycle: cancelled });
+    const second = resolveBrowserGpuMode("auto");
+    await expect(second).resolves.toBe("hardware");
+    await first;
+    await expect(resolveBrowserGpuMode("auto")).resolves.toBe("hardware");
   });
 
   it("passes 'software' through unchanged without probing", async () => {
@@ -1350,6 +1549,21 @@ describe("forceReleaseBrowser", () => {
     expect(disconnectFn).toHaveBeenCalled();
   });
 
+  it("absorbs the CDP pipes' late ECONNRESET so the killed browser cannot crash the process", () => {
+    const pipe = new EventEmitter();
+    const puppeteerListener = () => {};
+    pipe.on("error", puppeteerListener);
+    const mockBrowser = {
+      process: () => ({ kill: vi.fn(() => true), killed: false, stdio: [null, null, null, pipe] }),
+      // Puppeteer's own pipe listeners go away on disconnect; the pipe still errors afterwards.
+      disconnect: () => pipe.off("error", puppeteerListener),
+    } as any;
+
+    forceReleaseBrowser(mockBrowser);
+
+    expect(() => pipe.emit("error", new Error("read ECONNRESET"))).not.toThrow();
+  });
+
   it("tolerates an already-killed process", () => {
     const killFn = vi.fn();
     const disconnectFn = vi.fn();
@@ -1394,6 +1608,23 @@ describe("browser pool", () => {
   afterEach(async () => {
     await drainBrowserPool();
     _setPuppeteerForTests(undefined);
+  });
+
+  it("keeps the launch diagnostic on stderr when a command emits JSON", async () => {
+    const stdout = vi.spyOn(console, "log").mockImplementation(() => {});
+    const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const result = await acquireBrowser(["--no-sandbox"], poolCfg);
+      await result.release();
+
+      expect(stderr).toHaveBeenCalledWith(
+        expect.stringMatching(/^\[BrowserManager\] Browser launched/),
+      );
+      expect(stdout).not.toHaveBeenCalled();
+    } finally {
+      stdout.mockRestore();
+      stderr.mockRestore();
+    }
   });
 
   it("sequential acquires with pool enabled return the same browser", async () => {
@@ -1530,5 +1761,80 @@ describe("browser pool", () => {
 
     // The acquire should still resolve (the launch completed before drain closed it)
     await acquirePromise.catch(() => {});
+  });
+});
+
+describe.runIf(process.platform === "linux")("BeginFrame launch on a slow first start", () => {
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const BEGINFRAME_ARGS = ["--no-sandbox", "--enable-begin-frame-control"];
+  // chromePath must exist for the launch to request BeginFrame; the mocked launch never runs it.
+  const BEGINFRAME_CONFIG = { enableBrowserPool: false, chromePath: process.execPath };
+  const base = {
+    connected: true,
+    version: vi.fn().mockResolvedValue("HeadlessChrome/131.0.0.0"),
+    close: vi.fn().mockResolvedValue(undefined),
+    disconnect: vi.fn(),
+    process: () => ({ kill: vi.fn(), killed: false }),
+  };
+  const healthyPage = () => ({
+    goto: vi.fn().mockResolvedValue(null),
+    createCDPSession: vi.fn().mockResolvedValue({
+      send: vi
+        .fn()
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce({})
+        .mockResolvedValue({ hasDamage: true, screenshotData: png.toString("base64") }),
+      detach: vi.fn().mockResolvedValue(undefined),
+    }),
+    close: vi.fn().mockResolvedValue(undefined),
+  });
+  const slowPage = () => ({
+    goto: vi.fn().mockReturnValue(new Promise<never>(() => {})),
+    close: vi.fn().mockResolvedValue(undefined),
+  });
+
+  afterEach(async () => {
+    vi.useRealTimers();
+    await drainBrowserPool();
+    _setPuppeteerForTests(undefined);
+  });
+
+  it("probes again on a fresh launch instead of falling back to screenshot capture", async () => {
+    _resetBrowserPoolForTests();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const pages = [slowPage(), healthyPage()];
+    const launch = vi.fn().mockImplementation(async () => ({
+      ...base,
+      newPage: vi.fn().mockResolvedValue(pages.shift()),
+    }));
+    _setPuppeteerForTests({ launch } as unknown as PuppeteerNode);
+
+    vi.useFakeTimers();
+    const pending = acquireBrowser(BEGINFRAME_ARGS, BEGINFRAME_CONFIG);
+    await vi.advanceTimersByTimeAsync(3000);
+    const result = await pending;
+
+    expect(result.captureMode).toBe("beginframe");
+    expect(launch).toHaveBeenCalledTimes(2);
+  });
+
+  it("falls back to screenshot capture when the longer probe also fails", async () => {
+    _resetBrowserPoolForTests();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const launch = vi.fn().mockImplementation(async () => ({
+      ...base,
+      newPage: vi.fn().mockResolvedValue(slowPage()),
+    }));
+    _setPuppeteerForTests({ launch } as unknown as PuppeteerNode);
+
+    vi.useFakeTimers();
+    const pending = acquireBrowser(BEGINFRAME_ARGS, BEGINFRAME_CONFIG);
+    await vi.advanceTimersByTimeAsync(12000);
+    const result = await pending;
+
+    expect(result.captureMode).toBe("screenshot");
+    expect(launch).toHaveBeenCalledTimes(3);
   });
 });

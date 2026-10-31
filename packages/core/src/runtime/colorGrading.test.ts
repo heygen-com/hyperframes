@@ -1,11 +1,14 @@
 // fallow-ignore-file code-duplication
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { mediaElementTime } from "./mediaClock";
 import {
   HF_COLOR_GRADING_ATTR,
   HF_COLOR_GRADING_EFFECT_KEYS,
   serializeHfColorGrading,
 } from "../colorGrading";
+import { HF_COLOR_GROUP_ATTR, HF_COLOR_GROUP_TAG } from "../colorGroups";
 import {
+  calculateObjectFitUv,
   createColorGradingRuntime,
   installAuthoredOpacityCapture,
   type RuntimeColorGradingApi,
@@ -30,7 +33,11 @@ LUT_3D_SIZE 2
 `;
 
 function createMockWebGl(
-  options: { failMediaUpload?: boolean; halfFloatSupported?: boolean } = {},
+  options: {
+    failMediaUpload?: boolean;
+    halfFloatSupported?: boolean;
+    drawingBuffer?: { width: number; height: number };
+  } = {},
 ): WebGLRenderingContext {
   const shader = {};
   const program = {};
@@ -123,6 +130,12 @@ function createMockWebGl(
     drawArrays: vi.fn(),
     deleteTexture: vi.fn(),
     deleteBuffer: vi.fn(),
+    get drawingBufferWidth() {
+      return options.drawingBuffer?.width;
+    },
+    get drawingBufferHeight() {
+      return options.drawingBuffer?.height;
+    },
   } as unknown as WebGLRenderingContext;
 }
 
@@ -494,7 +507,7 @@ describe("createColorGradingRuntime", () => {
     video.currentTime = 6;
     stop?.();
     expect(pause).toHaveBeenCalledTimes(1);
-    expect(video.currentTime).toBe(3.25);
+    expect(video.currentTime).toBe(mediaElementTime(3.25));
     expect(video.loop).toBe(false);
     expect(video.muted).toBe(false);
   });
@@ -941,6 +954,66 @@ describe("createColorGradingRuntime", () => {
     expect(canvas.style.display).toBe("block");
     expect(video.style.getPropertyValue("opacity")).toBe("0");
     expect(video.style.getPropertyPriority("opacity")).toBe("important");
+  });
+
+  it("caps a clip shown far larger than the screen to what a GPU can draw, keeping its shape", () => {
+    vi.stubGlobal("devicePixelRatio", 1);
+    const video = makeDrawableVideo();
+    Object.defineProperty(video, "offsetWidth", { value: 6582, configurable: true });
+    Object.defineProperty(video, "offsetHeight", { value: 11520, configurable: true });
+
+    const { canvas } = startRuntimeWithVideo(video);
+
+    expect(canvas.width * canvas.height).toBeLessThanOrEqual(1 << 24);
+    expect(canvas.width / canvas.height).toBeCloseTo(6582 / 11520, 2);
+  });
+
+  it("leaves the source showing when the drawing buffer cannot hold the canvas", () => {
+    getContextSpy.mockImplementation((type: string) =>
+      type === "webgl"
+        ? createMockWebGl({ drawingBuffer: { width: 100, height: 100 } })
+        : type === "2d"
+          ? mock2d()
+          : null,
+    );
+
+    const { video } = startRuntimeWithVideo();
+
+    expect(video.style.getPropertyValue("opacity")).not.toBe("0");
+  });
+
+  it("gives a drawn clip back to its source when a later draw outgrows the drawing buffer", () => {
+    const drawingBuffer = { width: 4096, height: 4096 };
+    getContextSpy.mockImplementation((type: string) =>
+      type === "webgl" ? createMockWebGl({ drawingBuffer }) : type === "2d" ? mock2d() : null,
+    );
+    const { video, canvas } = startRuntimeWithVideo();
+    expect(video.style.getPropertyValue("opacity")).toBe("0");
+
+    drawingBuffer.width = 100;
+    drawingBuffer.height = 100;
+    Object.defineProperty(video, "offsetWidth", { value: 3000, configurable: true });
+    video.dispatchEvent(new Event("seeked"));
+
+    expect(video.style.getPropertyValue("opacity")).not.toBe("0");
+    expect(canvas.style.display).toBe("none");
+  });
+
+  it("draws a paused video again once its frame is presented, after the first draw sampled nothing", () => {
+    const presented: Array<() => void> = [];
+    const video = makeDrawableVideo();
+    Object.defineProperty(video, "paused", { value: true, configurable: true });
+    Object.defineProperty(video, "requestVideoFrameCallback", {
+      value: (callback: () => void) => presented.push(callback),
+      configurable: true,
+    });
+
+    startRuntimeWithVideo(video);
+    const drawsBefore = texImage2DCalls.length;
+    presented.shift()?.();
+
+    expect(texImage2DCalls.length).toBeGreaterThan(drawsBefore);
+    expect(presented).toHaveLength(0);
   });
 
   it("keeps the canvas visible when producer render-frame injection hides the source video", () => {
@@ -2246,6 +2319,127 @@ describe("createColorGradingRuntime", () => {
     await Promise.resolve();
     expect(runtime!.isGraded(live)).toBe(false);
   });
+
+  describe("a grade group", () => {
+    const grade = (exposure: number) => serializeHfColorGrading({ adjust: { exposure } });
+
+    function addGroup(id: string, exposure: number | null): HTMLElement {
+      const group = document.createElement(HF_COLOR_GROUP_TAG);
+      group.id = id;
+      if (exposure !== null) group.setAttribute(HF_COLOR_GRADING_ATTR, grade(exposure));
+      document.body.appendChild(group);
+      return group;
+    }
+
+    function addMember(id: string, groupId: string): HTMLVideoElement {
+      const video = makeDrawableVideo();
+      video.id = id;
+      video.removeAttribute(HF_COLOR_GRADING_ATTR);
+      video.setAttribute(HF_COLOR_GROUP_ATTR, groupId);
+      document.body.appendChild(video);
+      return video;
+    }
+
+    const exposureDraws = (exposure: number): number =>
+      (lastUniform1f?.mock.calls ?? []).filter(
+        ([name, value]) => name === "u_exposure" && value === exposure,
+      ).length;
+
+    it("grades a member through its group element", () => {
+      addGroup("tamer", 0.4);
+      const member = addMember("clip-1", "tamer");
+
+      runtime = createColorGradingRuntime();
+
+      expect(runtime.isGraded(member)).toBe(true);
+      expect(exposureDraws(0.4)).toBe(1);
+    });
+
+    it("re-grades every member when the group's grading changes", async () => {
+      const group = addGroup("tamer", 0.4);
+      const members = ["clip-1", "clip-2", "clip-3"].map((id) => addMember(id, "tamer"));
+      runtime = createColorGradingRuntime();
+      lastUniform1f?.mockClear();
+
+      group.setAttribute(HF_COLOR_GRADING_ATTR, grade(-0.3));
+      await Promise.resolve();
+
+      expect(members.every((member) => runtime!.isGraded(member))).toBe(true);
+      expect(exposureDraws(-0.3)).toBe(members.length);
+      expect(exposureDraws(0.4)).toBe(0);
+    });
+
+    it("draws only the members on screen, and grades a hidden one when it shows", async () => {
+      const group = addGroup("tamer", 0.4);
+      const shown = addMember("clip-1", "tamer");
+      const hidden = addMember("clip-2", "tamer");
+      hidden.style.display = "none";
+      runtime = createColorGradingRuntime();
+      lastUniform1f?.mockClear();
+
+      group.setAttribute(HF_COLOR_GRADING_ATTR, grade(-0.3));
+      await Promise.resolve();
+
+      expect(runtime.isGraded(shown)).toBe(true);
+      expect(runtime.isGraded(hidden)).toBe(false);
+      expect(exposureDraws(-0.3)).toBe(1);
+
+      hidden.style.display = "block";
+      expect(runtime.setSourceVisibility(hidden, true)).toBe(true);
+      expect(runtime.isGraded(hidden)).toBe(true);
+      expect(exposureDraws(-0.3)).toBe(2);
+    });
+
+    it("moves a member to the lane its data-color-group names", async () => {
+      addGroup("tamer", 0.4);
+      addGroup("guest", -0.3);
+      const member = addMember("clip-1", "tamer");
+      runtime = createColorGradingRuntime();
+      lastUniform1f?.mockClear();
+
+      member.setAttribute(HF_COLOR_GROUP_ATTR, "guest");
+      await Promise.resolve();
+      expect(runtime.isGraded(member)).toBe(true);
+      expect(exposureDraws(-0.3)).toBe(1);
+
+      member.setAttribute(HF_COLOR_GROUP_ATTR, "");
+      await Promise.resolve();
+      expect(runtime.isGraded(member)).toBe(false);
+    });
+
+    it("ungrades its members when its grading or the element goes", async () => {
+      const group = addGroup("tamer", 0.4);
+      const members = ["clip-1", "clip-2"].map((id) => addMember(id, "tamer"));
+      runtime = createColorGradingRuntime();
+
+      group.removeAttribute(HF_COLOR_GRADING_ATTR);
+      await Promise.resolve();
+      expect(members.some((member) => runtime!.isGraded(member))).toBe(false);
+
+      group.setAttribute(HF_COLOR_GRADING_ATTR, grade(0.4));
+      await Promise.resolve();
+      expect(members.every((member) => runtime!.isGraded(member))).toBe(true);
+
+      group.remove();
+      await Promise.resolve();
+      expect(members.some((member) => runtime!.isGraded(member))).toBe(false);
+    });
+
+    it("lets a member's own grading override its group's", async () => {
+      const group = addGroup("tamer", 0.4);
+      const member = addMember("clip-1", "tamer");
+      member.setAttribute(HF_COLOR_GRADING_ATTR, grade(-0.2));
+      runtime = createColorGradingRuntime();
+
+      expect(exposureDraws(-0.2)).toBe(1);
+      expect(exposureDraws(0.4)).toBe(0);
+
+      group.setAttribute(HF_COLOR_GRADING_ATTR, grade(0.9));
+      await Promise.resolve();
+      expect(exposureDraws(0.9)).toBe(0);
+      expect(runtime.isGraded(member)).toBe(true);
+    });
+  });
 });
 
 describe("createColorGradingRuntime after a context loss", () => {
@@ -2424,5 +2618,51 @@ describe("installAuthoredOpacityCapture", () => {
     await Promise.resolve();
     expect(el.getAttribute("data-hf-authored-opacity")).toBe("0.9");
     el.remove();
+  });
+});
+
+describe("calculateObjectFitUv", () => {
+  // The shader reads uv = (v_uv - offset) / scale; v_uv.y and the flipped source
+  // texture both run bottom-up, so this reports the CSS-facing fraction from the top.
+  function sampledFromSourceTop(
+    uv: ReturnType<typeof calculateObjectFitUv>,
+    boxEdgeY: 0 | 1,
+  ): number {
+    return 1 - (boxEdgeY - uv.offsetY) / uv.scaleY;
+  }
+
+  function sampledFromSourceLeft(
+    uv: ReturnType<typeof calculateObjectFitUv>,
+    boxEdgeX: 0 | 1,
+  ): number {
+    return (boxEdgeX - uv.offsetX) / uv.scaleX;
+  }
+
+  it("shows the top of a covered portrait source at object-position 50% 6%", () => {
+    const uv = calculateObjectFitUv(1920, 1080, 1080, 1920, "cover", "50% 6%");
+
+    expect(sampledFromSourceTop(uv, 1)).toBeCloseTo(0.041, 3);
+    expect(sampledFromSourceTop(uv, 0)).toBeCloseTo(0.3574, 3);
+  });
+
+  it("shows the bottom of a covered portrait source at object-position 50% 94%", () => {
+    const uv = calculateObjectFitUv(1920, 1080, 1080, 1920, "cover", "50% 94%");
+
+    expect(sampledFromSourceTop(uv, 1)).toBeCloseTo(0.6426, 3);
+    expect(sampledFromSourceTop(uv, 0)).toBeCloseTo(0.959, 3);
+  });
+
+  it("shows the left of a covered landscape source at object-position 6% 50%", () => {
+    const uv = calculateObjectFitUv(1080, 1920, 1920, 1080, "cover", "6% 50%");
+
+    expect(sampledFromSourceLeft(uv, 0)).toBeCloseTo(0.041, 3);
+    expect(sampledFromSourceLeft(uv, 1)).toBeCloseTo(0.3574, 3);
+  });
+
+  it("centers a covered source when no object-position is set", () => {
+    const uv = calculateObjectFitUv(1920, 1080, 1080, 1920, "cover", "");
+
+    expect(sampledFromSourceTop(uv, 1)).toBeCloseTo(0.3415, 3);
+    expect(sampledFromSourceTop(uv, 0)).toBeCloseTo(0.6585, 3);
   });
 });

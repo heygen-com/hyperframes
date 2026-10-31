@@ -24,6 +24,8 @@ import { TRANSCRIPT_FILE } from "./transcriptFile.js";
 import { findWavChunk } from "./wav.js";
 import type { Word } from "./normalize.js";
 import { emitWords } from "./progress.js";
+import { probeAudio } from "../audio/analysis/decode.js";
+import { decodableAudioStream } from "@hyperframes/parsers/media-streams";
 
 export { initialModelForLanguage };
 
@@ -351,10 +353,24 @@ async function extractAudio(videoPath: string, signal?: AbortSignal): Promise<st
       `ffmpeg is required to extract audio from video. Install: ${getFFmpegInstallHint()}`,
     );
   }
+  const audio = await probeAudio(videoPath);
+  if (!audio) throw new Error("the file has no audio track ffmpeg can decode");
   const wavPath = tempWavPath();
   await runFfmpeg(
     ffmpegPath,
-    ["-i", videoPath, "-vn", "-ar", "16000", "-ac", "1", "-f", "wav"],
+    [
+      "-i",
+      videoPath,
+      "-map",
+      `0:a:${audio.audioStream}`,
+      "-vn",
+      "-ar",
+      "16000",
+      "-ac",
+      "1",
+      "-f",
+      "wav",
+    ],
     wavPath,
     resolveAudioPreparationTimeoutMs(getMediaDurationSeconds(videoPath)),
     signal,
@@ -389,7 +405,9 @@ function isWav16kMono(filePath: string): boolean {
       { encoding: "utf-8", timeout: 10_000 },
     );
     const parsed: { streams?: AudioStream[] } = JSON.parse(raw);
-    return isPcm16kMono(parsed.streams?.find((s) => s.codec_type === "audio"));
+    const audio = (parsed.streams ?? []).filter((s) => s.codec_type === "audio");
+    const index = decodableAudioStream(audio);
+    return isPcm16kMono(index === null ? undefined : audio[index]);
   } catch {
     return false;
   }

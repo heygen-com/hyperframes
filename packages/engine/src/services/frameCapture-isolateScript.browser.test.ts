@@ -1,8 +1,14 @@
 import { spawnSync } from "node:child_process";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { Browser, Page } from "puppeteer-core";
+import type { Browser, Page, Protocol } from "puppeteer-core";
+import { COMPOSITION_SOURCE_URL } from "@hyperframes/core";
 import { resolveHeadlessShellPath } from "./browserManager.js";
-import { recordSubTimelineWarning, waitForSubCompositionTimelines } from "./frameCapture.js";
+import {
+  classifyPageError,
+  describeThrowSite,
+  recordSubTimelineWarning,
+  waitForSubCompositionTimelines,
+} from "./frameCapture.js";
 import type { CaptureSession } from "./frameCapture.js";
 import { closeTestChrome, launchTestChrome } from "./__fixtures__/loopback.js";
 
@@ -92,6 +98,60 @@ describe.skipIf(!hasBrowser)("a composition script that throws", () => {
     expect(session.isolatedCompositions).toEqual([]);
     recordSubTimelineWarning(session, 60_000);
     expect(session.warnings.map((w) => w.code)).toEqual(["sub_timeline_script_failure"]);
+    await page.close();
+  }, 30_000);
+
+  it("names where the root script threw and the element it looked up", async () => {
+    const page = await browser.newPage();
+    const client = await page.createCDPSession();
+    const thrown = new Promise<Protocol.Runtime.ExceptionDetails>((resolve) =>
+      client.on("Runtime.exceptionThrown", (e) => resolve(e.exceptionDetails)),
+    );
+    await client.send("Runtime.enable");
+    await page.setContent(
+      `<script>window.gsap = { set: function (t) { return t[0]._gsap; } };</script>
+       <div id="chart" data-composition-id="root" data-duration="4"></div>
+       <script>var a = 1;
+gsap.set([document.getElementById("hero-title")], { x: 1 });
+//# sourceURL=${COMPOSITION_SOURCE_URL}</script>`,
+    );
+    const details = await thrown;
+    const error = classifyPageError(details, new Set());
+    expect(error).toContain("_gsap");
+    const site = await describeThrowSite(client, details, new Set());
+    const session = sessionFor(page, [`${error}${site}`]);
+    await waitForSubCompositionTimelines(session, page, 60_000, { scriptErrorGraceMs: 100 });
+    recordSubTimelineWarning(session, 60_000);
+    expect(session.warnings.map((w) => w.code)).toEqual(["sub_timeline_script_failure"]);
+    expect(session.warnings[0]?.message).toContain(`${COMPOSITION_SOURCE_URL}:2:`);
+    expect(session.warnings[0]?.message).toContain('getElementById("hero-title")');
+    await page.close();
+  }, 30_000);
+
+  it("gives only the position when the throwing line holds several lookups", async () => {
+    const page = await browser.newPage();
+    const client = await page.createCDPSession();
+    const thrown = new Promise<Protocol.Runtime.ExceptionDetails>((resolve) =>
+      client.on("Runtime.exceptionThrown", (e) => resolve(e.exceptionDetails)),
+    );
+    await client.send("Runtime.enable");
+    await page.setContent(
+      `<script>window.gsap = { set: function (t) { return t[0]._gsap; } };</script>
+       <div id="chart" data-composition-id="root" data-duration="4"></div>
+       <script>var a = 1;
+gsap.set([document.getElementById("hero-title"), document.getElementById("hero-sub")], { x: 1 });
+//# sourceURL=${COMPOSITION_SOURCE_URL}</script>`,
+    );
+    const details = await thrown;
+    const error = classifyPageError(details, new Set());
+    expect(error).toContain("_gsap");
+    const site = await describeThrowSite(client, details, new Set());
+    const session = sessionFor(page, [`${error}${site}`]);
+    await waitForSubCompositionTimelines(session, page, 60_000, { scriptErrorGraceMs: 100 });
+    recordSubTimelineWarning(session, 60_000);
+    expect(session.warnings.map((w) => w.code)).toEqual(["sub_timeline_script_failure"]);
+    expect(session.warnings[0]?.message).toContain(`${COMPOSITION_SOURCE_URL}:2:`);
+    expect(session.warnings[0]?.message).not.toContain("getElementById");
     await page.close();
   }, 30_000);
 

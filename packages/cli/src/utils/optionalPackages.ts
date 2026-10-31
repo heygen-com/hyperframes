@@ -253,31 +253,32 @@ export function pinnedPackageBesideCli(
   cliUrl = import.meta.url,
 ): { resolution: "entry" | "package"; path: string } | null {
   const req = createRequire(cliUrl);
-  try {
-    let entry: string;
+  const pinnedFolder = (req.resolve.paths(name) ?? []).find((dir) =>
+    hasPinnedVersion(join(dir, name), name),
+  );
+  if (pinnedFolder === undefined) return null;
+  const copy = realpathSync(join(pinnedFolder, name));
+  const inside = (resolve: () => string) => {
     try {
-      entry = realpathSync(req.resolve(name));
+      const entry = realpathSync(resolve());
+      return entry.startsWith(copy + sep) ? entry : null;
     } catch {
-      const copy = (req.resolve.paths(name) ?? [])
-        .map((dir) => join(dir, name))
-        .find((dir) => existsSync(join(dir, "package.json")));
-      return copy && hasPinnedVersion(copy, name)
-        ? { resolution: "package", path: realpathSync(copy) }
-        : null;
+      return null;
     }
-    const copy = (req.resolve.paths(name) ?? [])
-      .map((dir) => join(dir, name))
-      .find((dir) => existsSync(dir) && entry.startsWith(realpathSync(dir) + sep));
-    if (!copy) return null;
-    return hasPinnedVersion(copy, name) ? { resolution: "entry", path: entry } : null;
-  } catch {
-    return null;
-  }
+  };
+  const entry =
+    inside(() => createRequire(join(copy, "package.json")).resolve(name)) ??
+    inside(() => req.resolve(copy));
+  return entry ? { resolution: "entry", path: entry } : { resolution: "package", path: copy };
 }
 
 function hasPinnedVersion(copy: string, name: PinnedPackage): boolean {
-  const manifest = readFileSync(join(copy, "package.json"), "utf-8");
-  return (JSON.parse(manifest) as { version?: string }).version === PINNED_PACKAGES[name];
+  try {
+    const manifest = readFileSync(join(copy, "package.json"), "utf-8");
+    return (JSON.parse(manifest) as { version?: string }).version === PINNED_PACKAGES[name];
+  } catch {
+    return false;
+  }
 }
 
 export function loadBesideCli(name: PinnedPackage, cliUrl = import.meta.url): unknown | null {

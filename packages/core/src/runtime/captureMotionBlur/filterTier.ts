@@ -6,7 +6,7 @@
  */
 
 import { swallow } from "../diagnostics";
-import { discoverMovers } from "./discover";
+import { scanMovers } from "./discover";
 import { planFilter, type FilterPlan } from "./filterPlan";
 import { readMoverFrames } from "./frames";
 import { createPoseReader } from "./pose";
@@ -105,6 +105,8 @@ export function createFilterTier(
   const width = Number(root.getAttribute("data-width")) || root.offsetWidth;
   const height = Number(root.getAttribute("data-height")) || root.offsetHeight;
   const seek = (t: number): void => host.seek(t, !config.events);
+  let readEvents = false;
+  const readSeek = (t: number): void => host.seek(t, !readEvents);
   let defs: SVGSVGElement | null = null;
   let movers: HTMLElement[] = [];
   let pads = new Map<HTMLElement, number>();
@@ -121,13 +123,15 @@ export function createFilterTier(
   function discover(restoreTo: number): void {
     scanned = host.timeline();
     const s0 = performance.now();
-    const found = discoverMovers({
+    const found = scanMovers({
       scene: root,
       durationSeconds: host.durationSeconds(),
       fps: host.fps,
-      seek,
+      seek: host.seek,
+      events: config.events,
     });
     seek(restoreTo);
+    readEvents = found.readEvents;
     movers = found.movers;
     pads = found.pads;
     reader = createPoseReader(root, found.dynamic);
@@ -178,7 +182,8 @@ export function createFilterTier(
     const read = readMoverFrames({
       movers,
       reader,
-      seek,
+      seek: readSeek,
+      restore: readEvents ? undefined : host.holdFrame?.(),
       t,
       reads: engineMode ? RENDER_READS : PREVIEW_READS,
       shutterSeconds: config.shutterDeg / 360 / host.fps,

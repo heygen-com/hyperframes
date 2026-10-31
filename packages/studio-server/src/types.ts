@@ -165,7 +165,7 @@ export interface StudioApiAdapter {
   startRender(opts: {
     project: ResolvedProject;
     outputPath: string;
-    format: "mp4" | "webm" | "mov";
+    format: "mp4" | "webm" | "mov" | "gif";
     /**
      * Frame rate as an exact rational. The HTTP layer (POST
      * `/projects/:id/render`) accepts either a JSON number (integer fps,
@@ -175,10 +175,15 @@ export interface StudioApiAdapter {
      */
     fps: import("@hyperframes/core").Fps;
     quality: string;
+    gifLoop?: number;
     crf?: number;
     videoBitrate?: string;
+    keyframeIntervalSeconds?: number;
+    maxBitrate?: string;
+    bufferSize?: string;
     videoFrameFormat?: "auto" | "jpg" | "png";
     hdrMode?: "auto" | "force-hdr" | "force-sdr";
+    proresProfile?: "4444" | "hq" | "422" | "lt" | "proxy";
     jobId: string;
     /**
      * The triggering browser profile has telemetry disabled (localStorage

@@ -3,6 +3,7 @@ import { formatTime, frameToSeconds } from "../lib/time";
 import { Popover, Tooltip } from "../../components/ui";
 import { flatActive, flatIdle } from "../../components/timelineToolbarStyles";
 import { usePlayerStore } from "../store/playerStore";
+import { useCompositionFps } from "../../utils/linkedClipPreferences";
 import { DEFAULT_SHORTCUT_SECTIONS, type ShortcutSection } from "./studioShortcuts";
 
 interface ShortcutsPanelProps {
@@ -31,6 +32,7 @@ export const ShortcutsPanel = memo(function ShortcutsPanel({
 }: ShortcutsPanelProps) {
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [jumpFrame, setJumpFrame] = useState("");
+  const compositionFps = useCompositionFps();
   // Focus lands on the scrolling body, not the frame input, so keyboard users can scroll and read it.
   const panelBodyRef = useRef<HTMLDivElement>(null);
 
@@ -38,8 +40,8 @@ export const ShortcutsPanel = memo(function ShortcutsPanel({
     if (disabled) return;
     const frame = Number.parseInt(jumpFrame, 10);
     if (!Number.isFinite(frame) || duration <= 0) return;
-    onSeek(Math.min(duration, frameToSeconds(Math.max(0, frame))));
-  }, [disabled, duration, jumpFrame, onSeek]);
+    onSeek(Math.min(duration, frameToSeconds(Math.max(0, frame), compositionFps)));
+  }, [compositionFps, disabled, duration, jumpFrame, onSeek]);
 
   const handleJumpSubmit = useCallback(
     (e: React.FormEvent) => {

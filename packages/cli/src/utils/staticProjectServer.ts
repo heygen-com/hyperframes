@@ -1,6 +1,7 @@
 import { createServer, request as httpRequest, type Server, type ServerResponse } from "node:http";
 import { Duplex } from "node:stream";
-import { createReadStream, existsSync, statSync } from "node:fs";
+import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
+import { stripSdrPngColourTags } from "@hyperframes/core/compiler/png-colour-tags";
 import { isAbsolute, relative, resolve } from "node:path";
 import {
   PREVIEW_PROXY_BOX_PARAM,
@@ -26,6 +27,7 @@ import {
   PROXY_VARIANT_CONFIG,
   type ProxyVariantRequest,
 } from "@hyperframes/studio-server/media-codec-map";
+import { listenOnBrowserSafePort } from "@hyperframes/engine";
 
 export interface StaticProjectServer {
   url: string;
@@ -115,6 +117,15 @@ const inProcessAnswers = new Map<
 /** The in-process answer for a URL served by `serveStaticProjectHtml` when listen() was refused, else undefined. */
 export function inProcessAnswer(url: string) {
   return inProcessAnswers.get(new URL(url).origin);
+}
+
+function serveUntaggedPng(filePath: string, res: ServerResponse): boolean {
+  if (getMimeType(filePath) !== "image/png") return false;
+  const untagged = stripSdrPngColourTags(readFileSync(filePath));
+  if (!untagged) return false;
+  res.writeHead(200, { "Content-Type": "image/png", "Content-Length": String(untagged.length) });
+  res.end(untagged);
+  return true;
 }
 
 /**
@@ -323,7 +334,8 @@ export async function serveStaticProjectHtml(
             copies.signal,
           );
         } else {
-          serveFileWithRange(filePath, req.headers.range, res);
+          if (!serveUntaggedPng(filePath, res))
+            serveFileWithRange(filePath, req.headers.range, res);
         }
         return;
       }
@@ -332,21 +344,15 @@ export async function serveStaticProjectHtml(
     res.end();
   });
 
-  const port = await new Promise<number>((resolvePort, rejectPort) => {
-    server.on("error", rejectPort);
-    // Bind loopback only (SECURITY F-001): a bare listen(0) binds 0.0.0.0/::,
-    // which an IDE's port auto-forward surfaces as a transient "preview". The
-    // snapshot browser is co-located (url below is already 127.0.0.1).
-    server.listen(0, "127.0.0.1", () => {
-      const addr = server.address();
-      const resolvedPort = typeof addr === "object" && addr ? addr.port : 0;
-      if (!resolvedPort) rejectPort(new Error(bindErrorMessage));
-      else resolvePort(resolvedPort);
+  // Bind loopback only (SECURITY F-001): a bare listen(0) binds 0.0.0.0/::,
+  // which an IDE's port auto-forward surfaces as a transient "preview". The
+  // snapshot browser is co-located (url below is already 127.0.0.1).
+  const port = await listenOnBrowserSafePort(server, "127.0.0.1")
+    .then((bound) => bound || Promise.reject(new Error(bindErrorMessage)))
+    .catch((error: unknown) => {
+      if (REFUSED_LISTEN.has((error as NodeJS.ErrnoException).code ?? "")) return 0;
+      throw error;
     });
-  }).catch((error: unknown) => {
-    if (REFUSED_LISTEN.has((error as NodeJS.ErrnoException).code ?? "")) return 0;
-    throw error;
-  });
 
   if (port === 0) {
     server.removeAllListeners("error");

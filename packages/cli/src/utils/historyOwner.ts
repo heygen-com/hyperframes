@@ -63,7 +63,10 @@ export type Reader = Pick<Owner, "via" | "list" | "peek" | "blob">;
 /** Swapped by tests. */
 export const historyDeps = {
   historyRoot: resolve(process.env.HYPERFRAMES_HISTORY_ROOT || DEFAULT_HISTORY_ROOT),
-  findServer: (projectDir: string) => findPreviewServerForProject(projectDir),
+  findServer: async (projectDir: string) =>
+    process.env.HYPERFRAMES_NO_PREVIEW_DISCOVERY === "1"
+      ? null
+      : findPreviewServerForProject(projectDir),
   /** A turn with no write for this long has ended, through a preview or not. */
   turnIdleMs: MAX_WINDOW_IDLE_MS,
   ownerWaitMs: undefined as number | undefined,

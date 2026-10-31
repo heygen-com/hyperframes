@@ -17,6 +17,7 @@
  * needs the actual planner.
  */
 
+import { validateDeliveryEncoderConfig } from "../render/deliveryEncoder.js";
 import {
   VIDEO_FRAME_FORMATS,
   isVideoFrameFormat,
@@ -145,6 +146,34 @@ export function validateDistributedRenderConfig(
     throw new InvalidConfigError(
       "config.bitrate",
       `must look like "10M" or "5000k"; got ${JSON.stringify(config.bitrate)}`,
+    );
+  }
+
+  try {
+    validateDeliveryEncoderConfig({
+      format: config.format,
+      fps: { num: config.fps, den: 1 },
+      keyframeIntervalSeconds: config.keyframeIntervalSeconds,
+      maxBitrate: config.maxBitrate,
+      bufferSize: config.bufferSize,
+    });
+  } catch (error) {
+    throw new InvalidConfigError(
+      "config.maxBitrate",
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+
+  try {
+    validateDeliveryEncoderConfig({
+      format: config.format,
+      fps: { num: config.fps, den: 1 },
+      proresProfile: config.proresProfile,
+    });
+  } catch (error) {
+    throw new InvalidConfigError(
+      "config.proresProfile",
+      error instanceof Error ? error.message : String(error),
     );
   }
 

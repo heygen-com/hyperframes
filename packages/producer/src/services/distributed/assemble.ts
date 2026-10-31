@@ -32,6 +32,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import {
+  appendRateCapArgs,
   appendRenderProvenanceArgs,
   describeFfmpegFailure,
   getEncoderPreset,
@@ -86,7 +87,12 @@ interface PlanJsonForAssemble {
 
 export type AssembleChunkPaths = readonly (string | readonly string[])[];
 
-type CfrRateControlSource = Partial<Pick<LockedRenderConfig, "quality" | "crf" | "bitrate">>;
+type CfrRateControlSource = Partial<
+  Pick<
+    LockedRenderConfig,
+    "quality" | "crf" | "bitrate" | "maxBitrate" | "bufferSize" | "keyframeIntervalFrames"
+  >
+>;
 
 export function cfrRateControlArgs(locked: CfrRateControlSource): string[] {
   const preset = getEncoderPreset(locked.quality ?? "standard", "mp4");
@@ -285,6 +291,9 @@ export function cfrEncodeArgs(
     "-r",
     fpsArg,
   ];
+  if (encoder.keyframeIntervalFrames !== undefined)
+    args.push("-g", String(encoder.keyframeIntervalFrames));
+  appendRateCapArgs(args, encoder);
   appendSoftwareEncoderThreadsArg(args, "libx264");
   return args;
 }

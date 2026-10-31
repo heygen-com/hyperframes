@@ -14,6 +14,7 @@ import {
   serviceFailure,
   type ServiceAccess,
 } from "../analysis/providers/shared.js";
+import { probeAudio } from "../analysis/decode.js";
 
 /**
  * Upload 192 kb/s stereo MP3 through the service origin's direct-upload routes, then POST
@@ -87,10 +88,15 @@ async function job(response: Response): Promise<StemsJob> {
 async function encoded(path: string, dir: string, signal: AbortSignal): Promise<string> {
   const ffmpeg = findFfBinary("ffmpeg", { configuredMustExist: true });
   if (!ffmpeg) throw new Error("ffmpeg is required to separate stems; run: npx hyperframes doctor");
+  const audio = await probeAudio(path);
+  if (!audio) throw new Error("the recording has no audio track ffmpeg can decode");
   const out = join(dir, "upload.mp3");
   await runFile(
     ffmpeg,
-    ["-v", "error", "-y", "-i", path, "-vn", "-ac", "2", "-ar", "44100", "-b:a", "192k", out],
+    [
+      ...["-v", "error", "-y", "-i", path, "-map", `0:a:${audio.audioStream}`],
+      ...["-vn", "-ac", "2", "-ar", "44100", "-b:a", "192k", out],
+    ],
     { windowsHide: true, maxBuffer: 8 * 1024 * 1024, signal },
   );
   return out;

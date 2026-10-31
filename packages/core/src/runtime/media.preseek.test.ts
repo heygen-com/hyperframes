@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { mediaElementTime } from "./mediaClock";
 import { syncRuntimeMedia, type RuntimeMediaClip } from "./media";
 
 function fixture(overrides: Partial<RuntimeMediaClip> = {}, tag = "video") {
@@ -37,19 +38,22 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("hidden incoming video preparation", () => {
-  it("lands the in-point before the cut without playing or seeking it again at activation", () => {
-    const { el, seek, tick } = fixture();
-    tick(0);
-    expect(seek).not.toHaveBeenCalled();
-    tick(2.5);
-    expect(el.currentTime).toBe(8);
-    expect(el.play).not.toHaveBeenCalled();
-    tick(3);
-    tick(4);
-    expect(seek).toHaveBeenCalledTimes(1);
-    expect(el.play).toHaveBeenCalledTimes(1);
-  });
+describe("incoming media preparation", () => {
+  it.each(["video", "audio"])(
+    "lands a %s clip's in-point before the cut without playing or seeking it again at activation",
+    (tag) => {
+      const { el, seek, tick } = fixture({}, tag);
+      tick(0);
+      expect(seek).not.toHaveBeenCalled();
+      tick(2.5);
+      expect(el.currentTime).toBe(mediaElementTime(8));
+      expect(el.play).not.toHaveBeenCalled();
+      tick(3);
+      tick(4);
+      expect(seek).toHaveBeenCalledTimes(1);
+      expect(el.play).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it("retries after metadata arrives without interrupting an outstanding seek", () => {
     const { el, seek, tick } = fixture();
@@ -62,7 +66,7 @@ describe("hidden incoming video preparation", () => {
     expect(seek).not.toHaveBeenCalled();
     Object.defineProperty(el, "seeking", { value: false, configurable: true });
     tick(2.7);
-    expect(el.currentTime).toBe(8);
+    expect(el.currentTime).toBe(mediaElementTime(8));
   });
 
   it.each([
@@ -72,7 +76,7 @@ describe("hidden incoming video preparation", () => {
   ])("prepares the activation source position for %j", ({ expected, ...fields }) => {
     const { el, seek, tick } = fixture(fields);
     tick(3);
-    expect(el.currentTime).toBe(expected);
+    expect(el.currentTime).toBe(mediaElementTime(expected));
     tick(4);
     expect(seek).toHaveBeenCalledTimes(1);
   });
@@ -80,13 +84,13 @@ describe("hidden incoming video preparation", () => {
   it("uses wall-time lookahead at a faster transport rate", () => {
     const { el, tick } = fixture();
     tick(1, true, 2);
-    expect(el.currentTime).toBe(8);
+    expect(el.currentTime).toBe(mediaElementTime(8));
   });
 
-  it.each(["audio", "paused", "past", "export", "injected", "playing", "disconnected"])(
+  it.each(["paused", "past", "export", "injected", "playing", "disconnected"])(
     "leaves %s media untouched",
     (kind) => {
-      const { el, tick, seek } = fixture({}, kind === "audio" ? "audio" : "video");
+      const { el, tick, seek } = fixture();
       if (kind === "export") window.__HF_EXPORT_RENDER_SEEK_CONFIG = {};
       if (kind === "injected") {
         el.id = "incoming";

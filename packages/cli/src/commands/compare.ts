@@ -1,4 +1,3 @@
-import { failCommand } from "../utils/commandResult.js";
 import {
   cpSync,
   existsSync,
@@ -12,7 +11,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, join } from "node:path";
-import { defineCommand } from "citty";
+import { defineCommand } from "../utils/defineCommand.js";
 import { createContactSheet } from "../capture/contactSheet.js";
 import {
   openSettledCompositionPage,
@@ -27,6 +26,8 @@ import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
 import { withMeta } from "../utils/updateCheck.js";
 import type { Example } from "./_examples.js";
 import { isPathInside } from "@hyperframes/parsers/asset-paths";
+import { failCaught } from "../utils/jsonError.js";
+import { CliUsageError } from "../utils/commandResult.js";
 
 const MAX_COMPARE_VARIANTS = 16;
 const MAX_COLUMNS = 4;
@@ -95,10 +96,12 @@ function parseLabels(value: unknown, pathCount: number): string[] | undefined {
   if (!raw) return undefined;
   const labels = raw.split(",").map((part) => part.trim());
   if (labels.some((label) => label.length === 0)) {
-    throw new Error("--labels entries must be non-empty");
+    throw new CliUsageError("--labels entries must be non-empty");
   }
   if (labels.length !== pathCount) {
-    throw new Error(`--labels count (${labels.length}) must match path count (${pathCount})`);
+    throw new CliUsageError(
+      `--labels count (${labels.length}) must match path count (${pathCount})`,
+    );
   }
   return labels;
 }
@@ -108,7 +111,7 @@ function parseAtSeconds(value: unknown): number {
   if (!raw) return 0;
   const parsed = Number(raw);
   if (!Number.isFinite(parsed) || parsed < 0) {
-    throw new Error("--at must be a non-negative number of seconds");
+    throw new CliUsageError("--at must be a non-negative number of seconds");
   }
   return parsed;
 }
@@ -118,7 +121,7 @@ function parseColumns(value: unknown): number | undefined {
   if (!raw) return undefined;
   const parsed = Number(raw);
   if (!Number.isInteger(parsed) || parsed < 1) {
-    throw new Error("--cols must be a positive integer");
+    throw new CliUsageError("--cols must be a positive integer");
   }
   return parsed;
 }
@@ -141,7 +144,7 @@ export function parseCompareArgs(
 ): ParsedCompareArgs {
   const paths = parsePathArgs(args);
   if (paths.length < 2) {
-    throw new Error("need 2+ paths to compare");
+    throw new CliUsageError("need 2+ paths to compare");
   }
 
   const labels = parseLabels(args.labels, paths.length);
@@ -440,13 +443,7 @@ export default defineCommand({
         console.log(`\n${c.success("◇")}  Comparison sheet saved to ${payload.sheet}`);
       }
     } catch (err) {
-      const message = normalizeErrorMessage(err);
-      if (jsonRequested) {
-        printJson({ ok: false, error: message });
-      } else {
-        console.error(`\n${c.error("✗")} Compare failed: ${message}`);
-      }
-      failCommand();
+      failCaught(err, jsonRequested, (m) => `\n${c.error("✗")} Compare failed: ${m}`, printJson);
     }
   },
 });

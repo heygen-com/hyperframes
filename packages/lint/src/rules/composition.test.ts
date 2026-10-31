@@ -1280,6 +1280,8 @@ describe("composition rules", () => {
       { id: "setting", type: "color", label: "Setting", default: 3 },
       { id: "setting", type: "font", label: "Setting", default: 3 },
       { id: "setting", type: "image", label: "Setting", default: 3 },
+      { id: "setting", type: "font", label: "Setting", default: { name: "Brand" } },
+      { id: "setting", type: "image", label: "Setting", default: { url: 3 } },
       { id: "setting", type: "enum", label: "Setting", default: 3, options: [] },
       { id: "setting", type: "enum", label: "Setting", default: "light" },
       { id: "setting", type: "enum", label: "Setting", default: "light", options: "light" },
@@ -1318,6 +1320,18 @@ describe("composition rules", () => {
       { id: "setting", type: "color", label: "Setting", default: "#fff" },
       { id: "setting", type: "font", label: "Setting", default: "Arial" },
       { id: "setting", type: "image", label: "Setting", default: "assets/a.png" },
+      {
+        id: "setting",
+        type: "font",
+        label: "Setting",
+        default: { name: "Brand", source: "assets/brand.css" },
+      },
+      {
+        id: "setting",
+        type: "image",
+        label: "Setting",
+        default: { url: "assets/a.png", alt: "Brand", fit: "contain" },
+      },
       { id: "setting", type: "enum", label: "Setting", default: "light", options: [] },
     ])("preserves parser-admitted declaration %j", async (declaration) => {
       const element = document.createElement("div");
@@ -1369,6 +1383,7 @@ describe("composition rules", () => {
       expect(findings.length).toBe(1);
       expect(findings[0]?.message).toMatch(/\[1\]/);
       expect(findings[0]?.message).toMatch(/type|label|default/);
+      expect(findings[0]?.fixHint).toMatch(/entry \[1\]/);
     });
 
     it("warns when a declaration uses an unknown type", async () => {
@@ -1379,6 +1394,17 @@ describe("composition rules", () => {
       );
       expect(finding).toBeDefined();
       expect(finding?.message).toMatch(/type/);
+      expect(finding?.fixHint).toBeTruthy();
+    });
+
+    it("gives a fix hint when an entry is not an object", async () => {
+      const html = `<html data-composition-variables='["title"]'><body><div data-composition-id="x"></div></body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find(
+        (f) => f.code === "invalid_composition_variables_declaration",
+      );
+      expect(finding?.message).toMatch(/must be an object/);
+      expect(finding?.fixHint).toMatch(/"id":"title"/);
     });
 
     it("does not warn for a fully valid declarations array", async () => {
@@ -1425,6 +1451,30 @@ describe("composition rules", () => {
   describe("unloadable_media_variable_default", () => {
     const CODE = "unloadable_media_variable_default";
     const find = (r: { findings: { code: string }[] }) => r.findings.find((f) => f.code === CODE);
+
+    it.each(["file:///abs/logo.svg", "javascript:alert(1)", "data:text/html,hello"])(
+      "rejects an unsafe URL inside an image object default: %s",
+      async (url) => {
+        const declarations = [
+          {
+            id: "logo",
+            type: "image",
+            label: "Logo",
+            default: { url, alt: "Logo", fit: "contain" },
+          },
+        ];
+        const html = `<html data-composition-variables='${JSON.stringify(declarations)}'><body><div data-composition-id="x"></div></body></html>`;
+        const result = await lintHyperframeHtml(html);
+        expect(
+          result.findings.filter((finding) => finding.code === "unloadable_media_variable_default"),
+        ).toHaveLength(1);
+        expect(
+          result.findings.some(
+            (finding) => finding.code === "invalid_composition_variables_declaration",
+          ),
+        ).toBe(false);
+      },
+    );
 
     it("errors on an image variable defaulting to a file:// URL", async () => {
       const html = `<html data-composition-variables='[{"id":"bg","type":"image","label":"BG","default":"file:///abs/assets/blue.png"}]'><body><img data-composition-id="x" src="assets/red.png" data-var-src="bg"></body></html>`;
@@ -2998,5 +3048,53 @@ ${body}
         false,
       );
     });
+  });
+});
+
+describe("subcomposition_linked_style_names_root_id", () => {
+  const root = `<div id="a" data-composition-id="a" data-width="320" data-height="180"><div class="box"></div></div>`;
+  const codes = async (html: string, externalStyles?: Array<{ href: string; content: string }>) =>
+    (await lintHyperframeHtml(html, { isSubComposition: true, externalStyles })).findings.map(
+      ({ code }) => code,
+    );
+
+  it("warns when a linked stylesheet has a rule on the root id", async () => {
+    const html = `<template id="a-template"><link rel="stylesheet" href="a.css">${root}</template>`;
+    const found = await codes(html, [{ href: "a.css", content: "#a .box { color: red; }" }]);
+    expect(found).toContain("subcomposition_linked_style_names_root_id");
+  });
+
+  it("the hinted fixes leave no finding: the rule moved into the template, or a child selected", async () => {
+    const lint = async (html: string, externalStyles?: Array<{ href: string; content: string }>) =>
+      (await lintHyperframeHtml(html, { isSubComposition: true, externalStyles })).findings.map(
+        ({ code }) => code,
+      );
+    const hinted = [
+      await lint(
+        `<template id="a-template">${root}<style>#a .box { color: red; }</style></template>`,
+      ),
+      await lint(
+        `<template id="a-template"><link rel="stylesheet" href="a.css">${root}</template>`,
+        [{ href: "a.css", content: ".box { color: red; }" }],
+      ),
+    ];
+    for (const found of hinted) {
+      expect(found).not.toContain("subcomposition_linked_style_names_root_id");
+      expect(found).not.toContain("subcomposition_root_styled_by_class");
+    }
+  });
+
+  it("is quiet when the linked stylesheet uses classes, another id, or only a longer id", async () => {
+    const html = `<template id="a-template"><link rel="stylesheet" href="a.css">${root}</template>`;
+    for (const content of [
+      ".box { color: red; }",
+      "#b .box { color: red; }",
+      "#ab { color: red; }",
+      "/* #a */ .box { color: red; }",
+    ]) {
+      expect(await codes(html, [{ href: "a.css", content }])).not.toContain(
+        "subcomposition_linked_style_names_root_id",
+      );
+    }
   });
 });

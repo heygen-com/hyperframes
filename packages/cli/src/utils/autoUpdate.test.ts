@@ -26,6 +26,7 @@ function setupMocks(opts: {
   config?: ConfigShape;
   env?: Record<string, string | undefined>;
   writeFails?: boolean;
+  unattended?: boolean;
 }): {
   writeSpy: ReturnType<typeof vi.fn>;
   spawnSpy: ReturnType<typeof vi.fn>;
@@ -50,6 +51,10 @@ function setupMocks(opts: {
     writeConfig: writeSpy,
   }));
   vi.doMock("./env.js", () => ({ isDevMode: () => !!opts.devMode }));
+  vi.doMock("./attendedTerminal.js", async (importOriginal) => ({
+    ...(await importOriginal<typeof import("./attendedTerminal.js")>()),
+    isUnattended: () => opts.unattended ?? false,
+  }));
   vi.doMock("./installerDetection.js", () => ({
     detectInstaller: () => ({
       kind: opts.installer.kind,
@@ -165,6 +170,18 @@ describe("scheduleBackgroundInstall", () => {
 
     expect(scheduleBackgroundInstall("0.4.4", "0.4.3")).toBe(false);
     expect(spawnSpy).not.toHaveBeenCalled();
+  });
+
+  it("skips when the run is unattended (an agent, no terminal)", async () => {
+    const { spawnSpy, config } = setupMocks({
+      installer: { kind: "npm", command: "npm install -g hyperframes@0.4.4" },
+      unattended: true,
+    });
+    const { scheduleBackgroundInstall } = await import("./autoUpdate.js");
+
+    expect(scheduleBackgroundInstall("0.4.4", "0.4.3")).toBe(false);
+    expect(spawnSpy).not.toHaveBeenCalled();
+    expect(config.pendingUpdate).toBeUndefined();
   });
 
   it("skips when HYPERFRAMES_NO_AUTO_INSTALL=1", async () => {

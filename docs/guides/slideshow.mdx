@@ -1,13 +1,13 @@
 ---
-title: "Create an interactive presentation"
+title: "Make an interactive presentation with AI"
 sidebarTitle: "Presentation"
-description: "Build a navigable deck with reveals, notes, optional branches, hotspots, and presenter mode."
+description: "Build a deck you present live: reveals on each click, optional branches, hotspots, and presenter mode with notes and a timer."
 ---
 
 import { DocsVideo } from "/snippets/docs-video.jsx";
 
-A HyperFrames slideshow stays interactive. The result is a live, navigable deck—not a linear MP4.
-
+A HyperFrames presentation stays live: you click through it like a deck, with reveals, branches and speaker notes,
+instead of playing a video.
 
 <DocsVideo
   title="A real deck being navigated — fragments, a branch, and presenter mode"
@@ -15,25 +15,53 @@ A HyperFrames slideshow stays interactive. The result is a live, navigable deck�
   poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/slideshow-demo-v1.jpg"
 />
 
-This is a live capture of a running deck, not a video of slides. Watch the
-fragments arrive one key-press at a time, a hotspot jump to a branch slide, the
-back control return to the exact fragment it left, and presenter mode open with
-real speaker notes and a running timer.
+*A running deck: points arrive one click at a time, a hotspot jumps to a branch, Back returns to the exact point it
+left, and presenter mode shows the notes and a timer.*
 
-## Make the request
+## Make it
 
 Give the agent the material and the decision the presentation should support:
 
 ```text
-Using /hyperframes, turn this product strategy outline into a presentation for
-our leadership review: [paste outline]
+Turn this product strategy outline into a presentation for our leadership review: [paste outline]
 ```
 
-The agent confirms the audience, main outcome, and whether the deck needs
-reveals, optional branches, or presenter notes. You do not need to prescribe
-every slide before seeing the proposed structure.
+The agent confirms the audience, the main outcome, and
+whether the deck needs reveals, branches or presenter notes; you don't need to plan every slide. With your own agent instead of the app, start the message with `/hyperframes`.
 
-If the result should play from beginning to end without a presenter, make a normal [video](/workflows). A slideshow cannot be exported as one linear MP4 yet.
+Name the audience and what should change after the presentation. If it should play start to finish with nobody
+presenting, make a [video](/workflows) instead: a deck can't be exported as one MP4 yet.
+
+## How a good deck is built
+
+- **One claim per slide**, with one visual that proves it.
+- **Reveals** when the presenter should add an idea a piece at a time.
+- **Branches and hotspots** for optional detail, so the main story still works if nobody opens them.
+- **Speaker notes** that help the presenter instead of repeating the slide.
+
+To change order, notes, reveals or branches by hand, use the [Slideshow panel](/studio/export#build-a-slideshow) in the browser
+editor.
+
+## Prompts that work
+
+Ask for the deck's moving parts by name: "reveal the bullets one at a time", "branch to a detail slide from a hotspot", "add speaker notes". A full pitch deck in one prompt:
+
+> Build a 5-slide pitch deck, 1920x1080. One idea per slide, each headline a complete-sentence claim (not a label), punchline first. Slide 2 reveals three pain points one at a time as fragments. Slide 3 shows bottom-up market math (accounts × ACV), not a bare "$40B TAM". Add presenter notes to every slide, and a hotspot on slide 3 that branches to a "sizing methodology" detail slide. I'll present it with `hyperframes present`.
+
+This makes a deck you click through, not a video. Each reveal is a stop inside the slide; the hotspot opens a detail slide, and Back returns to the slide that held it.
+
+## Present it
+
+```bash
+npx hyperframes present <project-directory>
+```
+
+Open the local link and press **P** (or click **Present**). The audience gets a clean full-screen view; you see the
+live slide, your notes, what comes next and a timer. In Google Meet, share the audience **tab**; in Zoom, move that tab
+into its own window and share the window.
+
+Use **Next** to step through reveals, including those on the final slide. The Next button disappears once the
+final slide's last reveal is shown.
 
 <Warning>
   Do not run `hyperframes render` on a deck. It does not fail — a deck has no
@@ -45,50 +73,8 @@ If the result should play from beginning to end without a presenter, make a norm
   per-slide stills.
 </Warning>
 
-## What control does the presenter need?
-
-- **Present a clear story** — give every slide one claim, one useful visual, and concise speaker notes.
-- **Reveal points as you speak** — use progressive reveals where the presenter should control the explanation.
-- **Offer optional detail** — keep the main story direct and place deeper material behind clear branches and hotspots.
-- **Convert an interactive page** — preserve its visual language and translate its motion into deliberate slide and reveal states.
-
-Attach the source notes, document, page, or existing deck. Name the audience and what should change after the presentation.
-
-## Keep the main story clear
-
-- **Slides** carry one complete claim and one useful visual.
-- **Reveals** let the presenter add part of an idea at a time.
-- **Branches** hold optional detail without interrupting the story everyone sees.
-- **Speaker notes** help the presenter; they should not repeat the slide.
-
-The main story should still make sense when no optional branch is opened.
-
-Use **Next** to step through fragment reveals, including those on the final slide.
-The Next button disappears once the final slide's last reveal is shown.
-
-## Review it as a presenter
-
-- Each slide makes one clear point.
-- Reveals help the explanation.
-- Hotspots are obvious without distracting.
-- Embedded media stops when its slide is left.
-- Presenter notes and the audience view stay separate.
-- The complete deck works with keyboard, touch, and its visible controls.
-
-Use [Studio’s Slideshow panel](/studio/slideshows) to adjust order, notes, reveals, and branches.
-
-## Present the deck
-
-```bash
-npx hyperframes present <project-directory>
-```
-
-Open the local URL, then click **Present** or press **P**. The audience gets a clean full-screen view while the presenter keeps the current slide, next slide, notes, and timer.
-
-In Google Meet, share the audience **tab**. In Zoom, move the audience tab into its own window and share that window.
-
 ## Related topics
 
-- [Build and revise a slideshow in Studio](/studio/slideshows)
-- [Use variables and templates](/studio/variables)
-- [Create a linear video instead](/workflows)
+- [Build and revise a slideshow in the browser editor](/studio/export#build-a-slideshow)
+- [Use variables and templates](/studio/assets-and-blocks#use-variables)
+- [Make a video instead](/workflows)

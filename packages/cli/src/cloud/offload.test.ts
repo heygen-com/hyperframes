@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  createReadStream,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -20,8 +21,17 @@ import {
   type UploadableFile,
 } from "./offload.js";
 
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  return { ...actual, createReadStream: vi.fn(actual.createReadStream) };
+});
+
 const HEAVY = Buffer.alloc(OFFLOAD_MIN_BYTES, 1);
 const dirs: string[] = [];
+
+beforeEach(() => {
+  vi.mocked(createReadStream).mockClear();
+});
 
 afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
@@ -146,6 +156,62 @@ describe("offloadHeavyMedia", () => {
       }),
     ]);
     expect(second.get("index.html")!.toString()).toContain("https://assets.example/1/clip.mp4");
+  });
+
+  describe("a dry run (no upload)", () => {
+    const opts = { apiBaseUrl: "https://api.example" };
+    const files = { "index.html": html(`<video src="clip.mp4"></video>`), "clip.mp4": HEAVY };
+
+    it("reads no media when nothing was uploaded before", async () => {
+      const dir = project(files);
+      const report = await offloadHeavyMedia(dir, stagePublishFiles(dir, OFFLOAD_MIN_BYTES), {
+        ...opts,
+        cachePath: cachePath(),
+      });
+
+      expect(report).toEqual([expect.objectContaining({ path: "clip.mp4", action: "upload" })]);
+      expect(createReadStream).not.toHaveBeenCalled();
+    });
+
+    it("reads no media when no cached asset has its size", async () => {
+      const dir = project(files);
+      const cache = cachePath();
+      writeFileSync(
+        cache,
+        JSON.stringify({
+          "https://api.example abc as-is": {
+            asset_id: "a",
+            url: "https://assets.example/a",
+            size_bytes: 1,
+          },
+        }),
+      );
+      await offloadHeavyMedia(dir, stagePublishFiles(dir, OFFLOAD_MIN_BYTES), {
+        ...opts,
+        cachePath: cache,
+      });
+
+      expect(createReadStream).not.toHaveBeenCalled();
+    });
+
+    it("still reports a file an earlier upload holds as cached", async () => {
+      const dir = project(files);
+      const cache = cachePath();
+      await offloadHeavyMedia(dir, stagePublishFiles(dir, OFFLOAD_MIN_BYTES), {
+        ...opts,
+        upload: fakeUpload(),
+        cachePath: cache,
+      });
+      vi.mocked(createReadStream).mockClear();
+
+      const report = await offloadHeavyMedia(dir, stagePublishFiles(dir, OFFLOAD_MIN_BYTES), {
+        ...opts,
+        cachePath: cache,
+      });
+
+      expect(report).toEqual([expect.objectContaining({ path: "clip.mp4", action: "cached" })]);
+      expect(createReadStream).toHaveBeenCalledOnce();
+    });
   });
 
   it("treats a cache file holding null as empty", async () => {

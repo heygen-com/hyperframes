@@ -65,3 +65,16 @@ describe("GPU encoding", () => {
     expect(body["gpu"]).toBeUndefined();
   });
 });
+
+describe("GIF export transport", () => {
+  it.each([0, 3, 65535])("forwards loop count %i and creates a GIF queue item", async (gifLoop) => {
+    const body = await renderBody(null, { format: "gif", gifLoop });
+    expect(body).toMatchObject({ format: "gif", gifLoop });
+    expect(queue?.api().jobs).toEqual([expect.objectContaining({ filename: "j1.gif" })]);
+  });
+
+  it("omits GIF options for video exports", async () => {
+    const body = await renderBody(null, { format: "mp4", gifLoop: 3 });
+    expect(body).not.toHaveProperty("gifLoop");
+  });
+});

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { mediaElementTime } from "./mediaClock";
 import {
   isRenderFrameVideo,
   preloadMedia,
@@ -115,6 +116,36 @@ describe("releasing a clip's download", () => {
     expect(video.getAttribute("src")).toBe("a.mp4");
   });
 
+  it("keeps a clip whose whole file is buffered", () => {
+    const video = document.createElement("video");
+    video.setAttribute("src", "a.mp4");
+    Object.defineProperty(video, "duration", { value: 6.67 });
+    Object.defineProperty(video, "buffered", {
+      value: { length: 1, start: () => 0, end: () => 6.67 },
+    });
+    video.load = vi.fn();
+
+    releaseMedia(video);
+    expect(video.load).not.toHaveBeenCalled();
+    expect(video.getAttribute("src")).toBe("a.mp4");
+  });
+
+  it.each([
+    [0, 15],
+    [430, 2642],
+  ])("releases a clip with only %s-%s s of a long file buffered", (from, to) => {
+    const video = document.createElement("video");
+    video.setAttribute("src", "a.mp4");
+    Object.defineProperty(video, "duration", { value: 2642 });
+    Object.defineProperty(video, "buffered", {
+      value: { length: 1, start: () => from, end: () => to },
+    });
+    video.load = vi.fn();
+
+    releaseMedia(video);
+    expect(video.load).toHaveBeenCalledTimes(1);
+  });
+
   it("leaves a clip on <source> children, their order and its markup untouched", () => {
     const video = document.createElement("video");
     video.innerHTML =
@@ -152,13 +183,13 @@ describe("preparing upcoming video playback", () => {
     const element = video();
     prepareUpcomingMedia(element, () => true);
     element.dispatchEvent(new Event("loadedmetadata"));
-    expect(element.currentTime).toBe(6);
+    expect(element.currentTime).toBe(mediaElementTime(6));
     element.currentTime = 0;
     releaseMedia(element);
 
     prepareUpcomingMedia(element, () => true);
     element.dispatchEvent(new Event("loadedmetadata"));
-    expect(element.currentTime).toBe(6);
+    expect(element.currentTime).toBe(mediaElementTime(6));
     element.remove();
   });
 
@@ -176,7 +207,7 @@ describe("preparing upcoming video playback", () => {
     prepareUpcomingMedia(element, () => true);
     element.setAttribute("data-media-start", "8");
     element.dispatchEvent(new Event("loadedmetadata"));
-    expect(element.currentTime).toBe(8);
+    expect(element.currentTime).toBe(mediaElementTime(8));
     element.remove();
   });
 

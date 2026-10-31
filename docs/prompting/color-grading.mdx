@@ -1,13 +1,14 @@
 ---
-title: Color grading and film effects
+title: "Colour, effects, 3D and generated art"
+sidebarTitle: "Colour, effects and 3D"
 description: "Grade media with a fixed-order pipeline — tonal work, hue keys, print and analogue treatments — and know why the source matters more than the payload."
 ---
 
 import { DocsVideo } from "/snippets/docs-video.jsx";
 
-Every chapter so far has built the image. This one changes what the image appears to have been *recorded on*. A grade is not decoration applied at the end; it is a claim about the medium — that this came off tape, or a press, or a tube, or a camera with a particular stock in it. Viewers read that claim instantly and they read it whether or not you meant it.
-
-Grading attaches to a single `<img>` or `<video>` through a `data-color-grading` payload. It never touches your text, your cards, or your captions — only the pixels of the media element it is on. The full contract lives in the [Color Grading guide](/guides/color-grading); this chapter is about what to *ask for*, and about the three ways these prompts go wrong.
+A grade tells the viewer what the picture was recorded on: tape, a press, a tube, a particular camera. This page is
+the words to ask for it, plus effects, 3D and generated art. A grade only touches the image or video it's on, never your
+text or captions; the controls themselves are in [Apply media effects](/guides/media-effects).
 
 ## The source has to have something to lose
 
@@ -21,7 +22,8 @@ Three worked examples from building this page, each of which produced a demo tha
 | Two-ink press | Black type on white paper | Already two-tone. Nothing to collapse. |
 | Kuwahara — painterly | Soft-focus office | An edge-preserving smoother needs edges to preserve. |
 
-Fixing all three meant changing the footage, not the payload. So specify the subject in the prompt, and specify it in terms of the property the effect consumes: *"pick a subject with dense color and dense edges"*, *"the surround has to carry color, not be neutral grey"*.
+So name the subject in terms of what the effect needs: *"a subject with dense color and dense edges"*, *"the surround
+carries color, not neutral grey"*.
 
 ## The pipeline order is fixed
 
@@ -31,7 +33,8 @@ Sections apply in a set order regardless of how you write them:
 adjust → wheels → curves → hueCurves → secondaries → lut → details → effects
 ```
 
-This is not cosmetic. A global `saturation: -0.9` in `adjust` runs *before* `secondaries`, so a hue-keyed selection that tries to hold one color back finds it already desaturated and has nothing to restore. If you want one color to survive a drain, key it in `hueCurves` rather than draining globally and painting it back.
+So a global desaturation runs before any color you try to hold back. To keep one color, key it in `hueCurves`
+instead of draining everything and painting it back.
 
 ## Grading qualifies by value, never by position
 
@@ -48,7 +51,7 @@ The most useful thing grading does is not a look. It is protecting one part of t
 > Take the talking-head clip and separate the subject from the room. Leave the person photographic — a gentle skin-softening pass and about a third of a stop of extra exposure, nothing that reads as an effect on skin. Grade the room behind them instead: across the four seconds bring up a halftone screen so the space resolves into small colored dots, and let a restrained bloom build alongside it so the windows lift. Both start at zero so the shot opens ungraded.
 
 <DocsVideo
-  title="HyperFrames video: Grade Matte Separation B0ef8e73"
+  title="Grade matte separation"
   src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/grade-matte-separation-b0ef8e73.mp4#t=0.1"
   loop
 />
@@ -61,15 +64,15 @@ Two traps here. Use the **original clip** as the background plate, not a subject
 > Matte the subject off the plate, then redact just their face — the rest of them and the room behind both stay completely untouched. Hold pixelation constant at about half strength for the whole shot: no ramp, no fade-up. A redaction that animates on reads as an effect; one that is simply on reads as policy. Size the redaction generously so it takes in the hairline, ears and jaw rather than sitting tight on the features.
 
 <DocsVideo
-  title="HyperFrames video: Grade Redaction Engaging Ec781f26"
+  title="Grade redaction engaging"
   src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/grade-redaction-engaging-ec781f26.mp4#t=0.1"
   loop
 />
 *Face pixelated, body and room untouched — the region is a `clip-path` on a third layer, not a payload setting.*
 
-The region comes from a `clip-path` on a *third* layer — a second copy of the cutout carrying the grade, stacked over an ungraded copy. Because the graded layer **is** the cutout, the ellipse can overshoot the head without touching the room; there is nothing outside the silhouette to paint. Size it generously rather than tightly.
-
-A fixed clip only holds for footage where the subject barely moves. Measure before relying on it — here the head travelled 5.5px across the whole clip. Anything with real movement needs a tracked matte produced outside HyperFrames.
+The face region is a `clip-path` on a graded copy of the cutout, so it can overshoot the head without touching the
+room. It only holds while the subject barely moves (here the head moved 5.5 px); real movement needs a tracked matte
+made outside HyperFrames.
 
 ---
 
@@ -82,7 +85,7 @@ Three ways to take the image apart, each saying something different. Pixelation 
 > Degrade the picture into a screen over four seconds. Ramp dithering from clean up to 0.85 at mid pattern size, so continuous tone breaks into discrete quantised levels. It should read as a display failing, not as a filter being applied.
 
 <DocsVideo
-  title="HyperFrames video: Grade Signal Loss Babe88ef"
+  title="Grade signal loss"
   src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/grade-signal-loss-babe88ef.mp4#t=0.1"
   loop
 />
@@ -91,7 +94,7 @@ Three ways to take the image apart, each saying something different. Pixelation 
 > Blow the highlights out over four seconds. Ramp bloom from nothing all the way to 3 — well past a tasteful highlight lift — on a wide radius, so light spills out of the windows and progressively swallows the frame. I want to see the top of the range, not a subtle glow.
 
 <DocsVideo
-  title="HyperFrames video: Grade Bloom Out 11531968"
+  title="Grade bloom out"
   src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/grade-bloom-out-11531968.mp4#t=0.1"
   loop
 />
@@ -106,7 +109,7 @@ Three ways to take the image apart, each saying something different. Pixelation 
 > Turn the shot into a painting over four seconds without turning it to mush. Ramp a Kuwahara filter from nothing to full — mid radius, fairly high sharpness so edges stay crisp, and pull the saturation back a little so it reads as brushwork rather than as a filter. Boundaries stay defined while flat areas smooth into strokes. Pick a subject with dense color and dense edges; the effect has nothing to preserve on flat skin or a soft-focus background.
 
 <DocsVideo
-  title="HyperFrames video: Grade Painterly Ffd5c0f9"
+  title="Grade painterly"
   src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/grade-painterly-ffd5c0f9-v2.mp4#t=0.1"
   loop
 />
@@ -121,7 +124,7 @@ Three ways to take the image apart, each saying something different. Pixelation 
 > Take the poster and print it in two inks only: a near-black navy and a warm cream, at mid dot size, like a two-color press run. Everything collapses to those two colors. Bring it up across the four seconds from the untouched poster rather than cutting straight to it. Give it the exact hex values rather than a named palette.
 
 <DocsVideo
-  title="HyperFrames video: Grade Two Ink Press 3c5662f1"
+  title="Grade two ink press"
   src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/grade-two-ink-press-3c5662f1-v2.mp4#t=0.1"
   loop
 />
@@ -134,13 +137,14 @@ Type is the harshest test of a two-ink reduction — dense small copy either sur
 > A single red apple on a teal backdrop. Hold the apple's color and drain everything else — key off hue and collapse saturation everywhere outside the reds, so the backdrop goes fully neutral grey while the apple stays exactly as saturated as it was. Use a hue-vs-saturation curve rather than a global desaturation with the apple keyed back in: global saturation runs first in the pipeline and would kill the apple before the key ever sees it. Keep a generous skirt on the band so the apple's shadowed side doesn't clip grey.
 
 <DocsVideo
-  title="HyperFrames video: Grade Brand Spotlight 5ebe45bf"
+  title="Grade brand spotlight"
   src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/grade-brand-spotlight-5ebe45bf.mp4#t=0.1"
   loop
 />
 *The backdrop drains to neutral grey; the apple holds its saturation exactly.*
 
-Three things have to be true of the subject, and each one killed an earlier attempt at this shot. It must be **inanimate** — the grade desaturates everything outside the band, and on a person that means a grey, corpse-like face. It must be a **single** subject — a still life of mixed produce is full of color, but half the items fall outside the band and grey out, so it reads as a filter misfiring rather than one color deliberately held. And the surround must **carry** color: against a neutral grey backdrop the grade would desaturate grey to grey and do nothing at all.
+The subject must be **inanimate** (on a person the face goes grey), a **single** object (mixed produce half-greys
+and looks like a mistake), against a surround that **carries** color (grey to grey changes nothing).
 
 ---
 
@@ -161,7 +165,7 @@ The rolling wave is `tapeTracking` and `tapeDamage`. Static interlacing is `scan
 > Make it look like a worn VHS tape. Not one artefact — layer them: strong tape damage with tracking error, a little noise, mid tape speed, scanlines, and noticeable chroma bleed. Any one of these alone reads as a filter; together they read as a failing signal.
 
 <DocsVideo
-  title="HyperFrames video: Grade Tape Degradation 6050228f"
+  title="Grade tape degradation"
   src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/grade-tape-degradation-6050228f.mp4#t=0.1"
   loop
 />
@@ -172,7 +176,7 @@ The rolling wave is `tapeTracking` and `tapeDamage`. Static interlacing is `scan
 > Make this look like it is being displayed on an old CRT television, not like it came off a worn tape. Bow the geometry with barrel curvature so the straight lines curve and the corners pull inward, lay scanlines across it at a fairly fine pitch, add phosphor bleed and enough chromatic aberration to give visible RGB fringing at the edges. Bleed and scanlines want to sit near the top of their range — bleed is subtle even at 0.9. Curvature and chromatic aberration are the exceptions: both read strongly, so hold curvature around half and keep the aberration modest, or the tube turns into a fisheye novelty. Grade the tone as well as the geometry: crush the shadows and blacks, lift the highlights and whites, nudge saturation up, and add a restrained bloom — a CRT has no true black and lets its top end halate. Add grain and a vignette. Use a test card or something with dead-straight lines: curvature is invisible on organic subject matter.
 
 <DocsVideo
-  title="HyperFrames video: Grade Crt Broadcast B64dc1a8"
+  title="Grade CRT broadcast"
   src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/grade-crt-broadcast-b64dc1a8.mp4#t=0.1"
   loop
 />
@@ -187,13 +191,14 @@ If you composite a subject into the shot, do it **before** grading. A CRT warps 
 > Take the clip and give it a camcorder grade: crush the shadows and blacks, lift the highlights and whites, pull the saturation back slightly, and add a restrained bloom, film grain for noise, a vignette, interlacing lines, and a little RGB splitting at the edges. Crushed contrast with muted color is what consumer tape actually looked like — crushed and punchy reads as a modern filter. For the split use chromatic aberration, which offsets the channels; chroma bleed is a different thing, a smear rather than a fringe. Keep the interlacing static — no tape tracking and no tape damage, because those produce a rolling horizontal wave that reads as a broken deck rather than as a camera.
 
 <DocsVideo
-  title="HyperFrames video: Grade Camcorder Overlay 18e80485"
+  title="Grade camcorder overlay"
   src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/grade-camcorder-overlay-18e80485.mp4#t=0.1"
   loop
 />
 *The footage degrades; the HUD does not. It is an overlay, composed above the media canvas.*
 
-The HUD in that shot is not part of the grade. It is a [`camcorder-hud`](/catalog) registry block — real HTML, CSS, and a paused GSAP timeline composed *above* the media canvas. Grading never touches it, which is exactly what you want: burn a timestamp into the source pixels and it degrades with them; put it in an overlay and it stays crisp, editable, and timeline-driven while the footage falls apart underneath.
+The HUD isn't part of the grade: it's the [`camcorder-hud`](/catalog) block, real HTML above the footage, so it stays
+crisp and editable while the picture falls apart underneath.
 
 ## Animating a grade
 
@@ -204,10 +209,446 @@ Two caveats worth knowing before you promise a client a ramp:
 - **`--hf-color-grading-intensity` scales the primary grade only** — `adjust`, `wheels`, `curves`, `hueCurves`, `secondaries` and the LUT. `details` and `effects` sit outside that mix and it scales neither: some shape the sampled media before it, others run after it. So it will not ramp grain, halftone, bloom, or the tape and CRT families. Reach for the specific effect instead of treating it as a master dial.
 - **Everything else has no custom property.** Some of those can still be animated by rewriting the `data-color-grading` payload from the timeline, and some cannot — the verified list of which is which lives in the guide's [Animating a Grade](/reference/color-grading#animate-a-supported-property), so it only has to be maintained in one place. Measure the effect you intend to animate before you promise a ramp, and fall back to a static treatment if it does not move.
 
-## Next steps
+## High-fidelity looks
 
-- [Color Grading guide](/guides/color-grading) — the full contract, every key and bound
+This is the [specification dial](/prompting/overview#how-much-to-specify)'s third setting,
+pushed all the way. Not a mood word. Every element of a scene, written out like a designer's spec.
+
+Words alone can carry a specific look, but only when the prompt reads like a
+spec. Every element named, positioned, colored, and timed.
+
+### A loose description, then a spec
+
+A loose description leaves the agent room to guess: "dark night scene, mountain,
+glowing ring, title fades in." Here is the same scene written as a spec.
+
+> 8-second 1920x1080 title card. Scene, back to front: #0a0e2a night sky with faint grain; an orange radial glow (#ff6a2b core ~150px, falling off to transparent by ~430px) igniting at the mountain peak's right shoulder from 2s, positioned so its upper falloff reaches the wordmark's baseline; over it a huge concentric ring system (5 rings, 1px strokes at 8% white opacity, innermost ring glowing #4a5fd9) centered 40% from the top; a low-poly mountain (6-8 dark navy facets, #141a3d–#1e2650) filling the lower third with its apex left of center, a white road S-curving up its face with a soft glow; thin horizontal cloud streaks (white, 6% opacity) drifting right at two heights; a man's silhouette, pure black, ~90px tall, bottom-right, fading in at 2.5s. At 3.5s "SHOWREEL" — thin geometric sans, ~140px, 0.35em tracking, white at 90% — fades in per letter across the ring center, the glow bleeding up through the letterforms above the peak. Slow 4% push-in across the full 8s. No audio.
+
+<DocsVideo
+  title="Spec showreel"
+  src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/spec-showreel.mp4#t=0.1"
+  loop
+/>
+*Rendered from the spec above, unedited.*
+
+<Note>
+  Two clauses in this spec were **corrected by building it.**
+
+  The first draft listed the scene "back to front," then put the rings before a
+  glow it had described as sitting *behind* the rings.
+
+  It also sized that glow at "~300px." Too small: it can't physically reach the
+  wordmark it is supposed to bleed through, given the ring center and mountain
+  positions the same sentence pins down.
+
+  Neither error is visible on the page. Both are obvious the moment someone
+  renders it. That is the argument for the [validation
+  rule](/prompting/overview#iterate-toward-the-look) this guide runs
+  on. A spec dense enough to be useful is dense enough to be internally
+  inconsistent, and only a render finds out.
+</Note>
+
+### What a spec can't carry
+
+Every element above is a primitive the agent can build directly. Two honest
+limits:
+
+- **Organic illustration** — drawn characters, painterly texture. Words
+  underdetermine a drawing. Steer to geometric shape language instead ("flat
+  rounded-geometric figure, circle head, no facial features"), or generate the
+  artwork. See [When to generate artwork](#generated-artwork).
+- **Photographic and live-action content** must be supplied as files. Mention
+  the paths explicitly.
+
+### The density contract
+
+A spec tells the builder what each element *is*. A density contract tells it how
+full every frame must be.
+
+A [longer HyperFrames film](/prompting/capstone) states the contract once and every
+region obeys it. This is the clause in the [full capstone
+prompt](/prompting/capstone#the-prompt-word-for-word) that buys it:
+
+> Density: every region fills three roles — one focal element at display scale, at least two supporting elements on their own cues, and the chrome/wire. Asymmetric compositions; display type ~a tenth of frame width; three depth layers with parallax between them […]
+
+That's the whole formula, and it's reusable in any prompt: **one focal element,
+at least two supporting, plus persistent chrome.** Compose asymmetrically — 60/40,
+never one element centered in emptiness. Size display type at roughly a tenth of
+the frame width. Use at least three depth layers so parallax can sell the space.
+
+Supporting elements land on their own cues. A frame that fills all three roles
+at t=0 is a poster, not a scene.
+
+Ask for the contract explicitly when a build keeps coming back sparse. "Every
+scene carries one focal element, two supporting elements on staggered cues, and
+the persistent chrome" is a sentence a builder can be held to.
+
+### Two more worked specs
+
+The same density, applied to a product-UI piece and a typographic piece. Both
+were one-shot from these exact words.
+
+Where a builder had to make a judgment call on the first pass, the spec below
+pins it. That's the editing loop these specs live by: build, see what the words
+underdetermined, then tighten the words.
+
+> 6-second 1920x1080. A frosted-glass command palette (640x84px, 20px radius, rgba(255,255,255,0.08) fill, 1px rgba(255,255,255,0.25) border, heavy backdrop blur) centered on a #0b0f1a field with two soft accent glows drifting slowly — #5b6cff upper-left, #22d3a5 lower-right, ~400px, 20% opacity. At 0.4s the palette scales in 0.96→1 settling with back.out(1.2). At 0.8s a grey placeholder "Search commands…" types on; at 2.2s it fades out over 0.2s and the query "render 4k" types in white. At 2.8s three result rows (56px tall, 12px gaps: icon square, label, shortcut chip) cascade in as a detached list below the fixed bar, staggered 0.12s, each rising 12px with back.out(1.4). At 4.2s a 10%-opacity #5b6cff fill sweeps left to right across the first row and its shortcut chip pulses once. Rows and glows keep a barely-visible drift to the end. No audio.
+
+<DocsVideo
+  title="Spec command palette"
+  src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/spec-command-palette.mp4#t=0.1"
+  loop
+/>
+*Rendered from the spec above, unedited.*
+
+> 7-second 1920x1080. Off-black #101014 field with fine static film grain at 4%. The word "PRECISION" in ~220px heavy condensed caps (a heavy system face condensed with scaleX 0.82), white, 0.02em tracking, centered: its letters assemble from alternating top/bottom 40px offsets with power3.out and a 0.05s stagger, starting 0.3s. At 1.8s a 2px hairline rule draws left-to-right beneath the word, 60% of its width, centered. At 2.4s a 40px tabular-mono counter fades in below and ticks 99.999 → 00.001 mm over 2.2s with expo.out deceleration. At 5.2s the whole lockup eases to 1.03 scale over 0.5s while the word cools from white to #d8d8de, then settles into a slow ±1% breathing idle to the end. No audio.
+
+<DocsVideo
+  title="Spec precision type"
+  src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/spec-precision-type.mp4#t=0.1"
+  loop
+/>
+*Rendered from the spec above, unedited.*
+
+## Generated artwork
+
+A [music slideshow](/guides/music-to-video) cuts real photos to the beat: there is real art to
+work with. This is the opposite case: a hero character, a painterly scene, or
+sculptural objects that do not exist yet as a photo or a capture.
+
+### What code draws well — and what it doesn't
+
+Code-drawn HTML, CSS, and SVG excel where the medium is native. That means UI
+mockups, typography, geometric shapes, charts, pixel art, and 3D via Three.js.
+
+**Illustration-led** hero art is the exception. Characters, painterly scenes,
+and sculptural objects are what hand-drawn SVG is worst at. It tops out at
+clipart quality no matter how well you prompt.
+
+### The hybrid: generate the art, animate it in code
+
+Ask for the still art from an image model, then move it with code:
+
+> Generate the hero artwork as an image (via the media-use skill's image generation), then animate it with code. Anything that must move independently — eyelids, light beams, drawing lines — stays a code layer on top of the static art.
+
+The generated image is one flat layer. Everything that has to move on its own
+stays a code layer above it.
+
+### Three rules that make this work
+
+1. **Generate on a solid contrasting background.** Magenta works well. It lets
+   the subject key out cleanly. A light subject on a light background gets
+   silently eaten.
+2. **Key flat vector-style art with a chroma key** (`ffmpeg colorkey`), not AI
+   background removal. `remove-background` runs a human-segmentation matting
+   model, so it is tuned for photographs and people. It reads flat art
+   unreliably, and sometimes keeps the background instead of the subject. Save
+   `remove-background` for photographs.
+3. **Put a restraint clause in the generation prompt** — "minimal, lots of
+   negative space". Image models fill the frame by default. A busy generated
+   texture reads as cheap as bad vector art.
+
+### The difference, side by side
+
+The same brief built both ways: four people arm in arm, warm gradient sweaters,
+flat-illustration style. Same animation beats, same craft layer of lighting,
+atmosphere, and grade. The only variable is where the figures came from.
+
+<DocsVideo
+  title="Artwork hand drawn"
+  src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/artwork-hand-drawn.mp4#t=0.1"
+  loop
+/>
+*Hand-drawn SVG figures — clean, but the proportions and gesture read as clipart.*
+
+<DocsVideo
+  title="Artwork generated"
+  src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/artwork-generated.mp4#t=0.1"
+  loop
+/>
+*Generated illustration animated as layers — real anatomy and editorial shading. The animated line still passes behind the figures, because the artwork was keyed to transparency.*
+
+This clause from a [longer HyperFrames film](/prompting/capstone#the-prompt-word-for-word) produced the shot below. You can lift the wording for your own video:
+
+> […] over a **generated-artwork backdrop** — a flat abstract mural evoking motion trails, generated **palette-neutral (grayscale) and duotoned live by CSS** from the two variables so it re-skins with everything else. **The mural is a full-frame, screen-fixed backdrop: it never moves on screen — the widening iris circle alone reveals it already in place at full frame […] and it exits by fading out.**
+
+<DocsVideo
+  title="Capstone region surface"
+  src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/capstone-region-surface.mp4#t=0.1"
+  loop
+/>
+*That clause, rendered: the shot cut from the finished film.*
+
+## VFX and liquid glass
+
+A [motion graphic](/guides/motion-graphics) can name one of these, such as `vfx-shatter` for the beat where a terminal breaks apart. This is the rest of that showy end of the catalog: 3D device mockups, frosted-glass Apple UI, and cinematic moments where HTML shatters or gets sucked through a portal. Two groups do the work — the [HTML-in-Canvas](/catalog/blocks/vfx-iphone-device) blocks (real WebGL, live HTML rendered as GPU textures) and the [Effects](/catalog/components/vignette) components (lightweight CSS polish). Knowing which is which is the difference between an effect that renders and one that surprises you. All of it slots into the [one-shot skeleton](/prompting/overview#the-shape-of-a-strong-prompt) at the "technique" step.
+
+#### Device mockups
+
+To put your product UI inside a real phone or laptop, name [`vfx-iphone-device`](/catalog/blocks/vfx-iphone-device) — real GLTF iPhone 15 Pro Max and MacBook Pro models with live HTML-in-Canvas screen content, a product-review camera choreography, and a 360° turntable. For a styled iOS/macOS *environment* (home screen, desktop, dock) rather than a bare device, reach for the liquid-glass system blocks below.
+
+> 15-second 1920x1080 video. Our dashboard UI lives on the screen of a real iPhone 15 Pro Max that turntables slowly under product-review lighting, then a MacBook Pro slides in beside it showing the same UI wider. Use the `vfx-iphone-device` registry block. No narration.
+
+<DocsVideo
+  title="Validate device mockup"
+  src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/validate-device-mockup.mp4#t=0.1"
+  loop
+/>
+*Rendered from the prompt above (the block's demo UI on screen), unedited.*
+
+**Ask for the device *and* what's on its screen.** The block renders live HTML into the screen but ships with its own demo UI — describing your UI (or pointing at screenshots/paths) is what makes the agent replace the block's screen content instead of shipping the demo.
+- **Avoid:** `show my app on an iPhone` (you'll get the block's built-in demo UI)
+- **Instead:** `our dashboard UI (screenshots in assets/ui/) on the screen of the iPhone 15 Pro Max, turntabling`
+
+#### Liquid-glass UI treatments
+
+The liquid-glass blocks are frosted-glass Apple-style UI floating over an aurora shader background. Pick by the surface you want:
+
+| You want…                                        | Name this block                                                  | Length |
+| ------------------------------------------------ | ---------------------------------------------------------------- | ------ |
+| A full iOS 26 home screen on a 3D iPhone          | [`ios26-liquid-glass`](/catalog/blocks/ios26-liquid-glass)       | 15s    |
+| A macOS Tahoe desktop on a 3D MacBook             | [`macos-tahoe-liquid-glass`](/catalog/blocks/macos-tahoe-liquid-glass) | 15s |
+| Glass notification cards                          | [`liquid-glass-notification`](/catalog/blocks/liquid-glass-notification) | 8s |
+| Glass stat cards, panels, pill chips              | [`liquid-glass-widgets`](/catalog/blocks/liquid-glass-widgets)   | 8s     |
+
+The four `liquid-glass-*` panel blocks share the aurora-shader stage, so they compose cleanly into one scene; `ios26-liquid-glass` and `macos-tahoe-liquid-glass` are complete device environments and generally stand alone.
+
+> 8-second 1920x1080 video. Frosted glass notification cards drift in and stack over an aurora shader background, each reading a fake alert ("Build passed", "Deploy live", "0 incidents"). Real translucency — the aurora must be visible through each card. Smoke the glass enough to keep white text above 3:1 against the brightest part of the aurora. No audio.
+
+<DocsVideo
+  title="Glass notify"
+  src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/glass-notify.mp4#t=0.1"
+  loop
+/>
+*Rendered from the prompt above, unedited — CSS `backdrop-filter` glass over a Three.js aurora.*
+
+<Warning>
+  **The `liquid-glass-notification` block needs a GPU and fails quietly without one.** It is marked `stability: experimental` and tagged `webgpu` because its frosted surface is painted through `drawElementImage` with refraction computed by a WebGPU renderer. Validating this chapter, `navigator.gpu.requestAdapter()` returned `null` in every headless and headful Chrome tried — with `--enable-unsafe-webgpu`, `--use-angle=metal`, and hardware GPU mode — and the block's init simply bails. The failure mode is not an error: you get **no cards at all**, just the text floating on the background.
+
+  So for a render you need to be able to reproduce, ask for the *effect* — "real translucency, the background visible through the card" — and let the agent build it with CSS `backdrop-filter`, which renders anywhere. That's what the video above is. Reach for the WebGPU block only when you have confirmed a working adapter in your render environment and you specifically want refraction, specular, and chromatic aberration, which CSS cannot do.
+</Warning>
+
+**"Liquid glass" means the block, not a filter you're describing.** These are complete WebGL stages; asking for "a glassy blur on my div" gets you a CSS `backdrop-filter`, not this look.
+- **Avoid:** `add a liquid glass effect over my text`
+- **Instead:** `use the liquid-glass-widgets registry block for the stat cards`
+
+#### Shatter, portal, magnetic, and cursor moments
+
+The `vfx-*` blocks are single cinematic beats — spend them on a transition or a reveal, not a whole video:
+
+| The moment                                       | Name this block                                     | Length |
+| ------------------------------------------------ | --------------------------------------------------- | ------ |
+| HTML shatters into glass fragments               | [`vfx-shatter`](/catalog/blocks/vfx-shatter)        | 12s    |
+| A dimension breach with volumetric light         | [`vfx-portal`](/catalog/blocks/vfx-portal)          | 10s    |
+| A magnetic-field particle visualization          | [`vfx-magnetic`](/catalog/blocks/vfx-magnetic)      | 15s    |
+| HTML floating over an organic liquid surface     | [`vfx-liquid-background`](/catalog/blocks/vfx-liquid-background) | 12s |
+| A dramatic text reveal with chromatic shadow rays | [`vfx-text-cursor`](/catalog/blocks/vfx-text-cursor) | 8s    |
+
+> 8-second 1920x1080 video. Beat 1 (0-4s): a landing-page hero holds under directional light. Beat 2 (4-6s): the whole page shatters into glass fragments that scatter. Beat 3 (6-8s): bold white text slams in on black. Use the `vfx-shatter` registry block; the final beat reads "HTML IS VIDEO". No narration, no image or media files.
+
+<DocsVideo
+  title="Vfx shatter"
+  src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/vfx-shatter.mp4#t=0.1"
+  loop
+/>
+*Rendered from the prompt above, unedited.*
+
+**Name the exact effect — "explode," "break," "burst" don't map.** Each block is a specific simulation.
+- **Avoid:** `make the UI explode`
+- **Instead:** `the page shatters into glass fragments` → `vfx-shatter`, or `gets pulled through a portal` → `vfx-portal`
+
+#### Ambient polish
+
+The [Effects](/catalog/components/vignette) components are lightweight, pure-CSS finishing passes you layer *on top* of a finished scene — grain, vignette, a light sweep, a push:
+
+| Say this                       | Component                                              |
+| ------------------------------ | ------------------------------------------------------ |
+| Film grain / texture           | [`grain-overlay`](/catalog/components/grain-overlay)   |
+| Darkened cinematic edges       | [`vignette`](/catalog/components/vignette)             |
+| A light sweep across text      | [`shimmer-sweep`](/catalog/components/shimmer-sweep)   |
+| Slow push-in on a card         | [`parallax-zoom`](/catalog/components/parallax-zoom)   |
+| Card pulls back to reveal siblings | [`parallax-unzoom`](/catalog/components/parallax-unzoom) |
+| Screen dissolves into a grid   | [`grid-pixelate-wipe`](/catalog/components/grid-pixelate-wipe) |
+
+These are finishing layers. Grain and a vignette add texture without moving anything. Use a push only when the camera
+is going somewhere ([motion](/prompting/motion)); a title that has landed holds still.
+
+#### When an effect needs the canvas pipeline
+
+The distinction that trips people up: the **HTML-in-Canvas blocks are not CSS**. The device mockups, liquid-glass stages, and `vfx-*` blocks render live DOM into WebGL textures via the experimental `drawElementImage` API — which needs a Chrome flag. The [HTML-in-Canvas guide](/guides/html-in-canvas) documents the real behavior:
+
+- **Rendering enables CanvasDrawElement automatically** (`--enable-features=CanvasDrawElement`), including inside Docker. That is enough for CanvasDrawElement-only blocks. Liquid-glass blocks that combine it with WebGPU still need a compatible browser such as Brave or Chrome Canary configured through `PRODUCER_HEADLESS_SHELL_PATH`; the bundled headless shell cannot run that combination.
+- **Live preview in the browser editor needs the flag turned on manually** (`chrome://flags/#canvas-draw-element` → *Enabled* → restart). Without it, these blocks fall back rather than showing the effect in preview.
+- The blocks **feature-detect and degrade gracefully**, so a browser without the flag won't crash — it just won't show the WebGL treatment.
+
+The Effects components above have none of this — they're plain CSS and animate everywhere, preview included. So if you need something visible in the browser editor preview today with zero setup, prefer the CSS Effects; the HTML-in-Canvas group is where the flag caveat lives.
+
+<Warning>
+  Don't promise a stakeholder a live the browser editor preview of a liquid-glass or device block without confirming the Chrome flag is enabled on that machine — the rendered MP4 is unaffected, but the in-browser preview may fall back. See the [HTML-in-Canvas guide](/guides/html-in-canvas).
+</Warning>
+
+#### Where to go next
+
+- [Anatomy of a one-shot prompt](/prompting/overview#the-shape-of-a-strong-prompt) — the skeleton, and quoting on-screen copy.
+- [Ask for smooth motion and transitions](/prompting/motion) — when to move and when to hold still.
+- [Copy-paste examples](/prompting/examples) — a `vfx-liquid-background` social-card prompt to adapt.
+- [HTML-in-Canvas guide](/guides/html-in-canvas) — how `drawElementImage` works and the flag details.
+
+This clause from a [longer HyperFrames film](/prompting/capstone#the-prompt-word-for-word) produced the shot below. You can lift the wording for your own video:
+
+> Inside: frosted-glass inspector panels (real translucency — blur over what's behind; the product's the browser editor design language) hover above the wire carrying live values (`ease: power3.out`, a color token, an fps readout) […] Glass surfaces use the file's `--glass-*` tokens with real backdrop blur.
+
+<DocsVideo
+  title="Capstone region surface"
+  src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/capstone-region-surface.mp4#t=0.1"
+  loop
+/>
+*That clause, rendered: the shot cut from the finished film.*
+
+## 3D and other animation runtimes
+
+Some prompts ask to "Build the scene in Three.js via the adapter." This is why,
+and the rest of the runtime map, for the cases where GSAP isn't the right tool.
+
+HyperFrames animates through the
+[frame-adapter](/concepts/frame-adapters) pattern. Any runtime that can answer
+"what should the screen look like at frame N?" plugs in and renders
+deterministically. [GSAP](/guides/gsap-animation) is the default adapter and
+covers most motion, so you rarely need to name it. The cases below are the ones
+where the default can go wrong. There, the prompt should pick the runtime.
+
+### Real 3D → Three.js via the adapter
+
+This is the one pin to state every time. Ask for Three.js explicitly for
+anything with genuine **depth, lighting, or a camera** — a rotating product, a
+scene you move through, surfaces that catch light:
+
+> Build the scene in **Three.js via the adapter**: a product model on a turntable, one key light and a soft fill, slow rotation.
+
+- **Avoid:** `isometric cards floating in CSS 3D with perspective`
+- **Instead:** `build the isometric scene in Three.js via the adapter, with real depth and lighting`
+
+<DocsVideo
+  title="Example 3D cards"
+  src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/example-3d-cards.mp4#t=0.1"
+  loop
+/>
+*The Three.js version of the isometric-cards prompt — real shadows and lighting, one-shot.*
+
+The engine rationale is simple. CSS `perspective` transforms skew flat planes.
+There is no light source and no camera, only projected rectangles, so they read
+flat the moment lighting or parallax matters.
+
+Three.js is a first-party seek-safe runtime. The adapter publishes HyperFrames
+time as `window.__hfThreeTime` and dispatches an `hf-seek` event on each seek, so
+a real 3D scene renders frame-accurately like everything else.
+
+Treat "real 3D" as "Three.js." This is a validated default, not a preference.
+The exception is when you specifically want a flat, stylized fake-3D look.
+
+Camera moves are part of the same rule. A drone orbit, a dolly, or a push-in
+only exists where there's an actual camera:
+
+<DocsVideo
+  title="Camera orbit"
+  src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/camera-orbit.mp4#t=0.1"
+  loop
+/>
+*A seek-driven Three.js drone orbit. The camera sweeps a continuous arc, which CSS transforms cannot do.*
+
+- **Avoid:** `a drone-orbit camera move around the logo` with no runtime named — CSS has no camera to orbit
+- **Instead:** `orbit the camera around the logo — Three.js via the adapter`
+
+### Existing animation files → Lottie
+
+You may already have a designed animation: an After Effects export, a `.json` or
+`.lottie` file, an icon animation from a designer. Don't ask the agent to redraw
+it. Point at the file and ask for Lottie:
+
+> Play this Lottie file (`assets/loader.lottie`) centered, then fade to the title.
+
+The Lottie adapter seeks the existing animation frame by frame, so the
+designer's work renders exactly as authored. Asking the agent to recreate it in
+GSAP throws away the source and lands somewhere approximate.
+
+Characters work the same way. A mascot that walks in, stops and points is a
+Lottie file with the acting in it; the agent builds the scene around it in GSAP:
+
+> Use this character Lottie (`assets/mascot.json`): it walks in and points right at 5.2s. Bring the title card in on the point.
+
+A short walk cycle with `loop: true` keeps cycling for the whole scene. The
+[`lottie-character-walk`](/catalog/blocks/lottie-character-walk) block is a
+working starting point.
+
+### Simple UI and text motion → the default
+
+Fades, slides, staggers, counters, kinetic type, hover-style reveals — the
+everyday motion — is what GSAP does natively. It's already the default. Don't
+name a runtime here. Describe the motion instead. See [Motion that reads
+premium](/prompting/motion):
+
+> The headline slides up per word, staggered 0.1s apart, easing out as it lands.
+
+CSS keyframes and the Web Animations API are supported adapters too. Name them
+only when you're bringing existing CSS `@keyframes` or WAAPI code you want kept
+as-is. For a fresh ask, let the default handle it.
+
+An SVG "line draws itself" effect (animated `strokeDasharray` /
+`strokeDashoffset`) is also GSAP-default territory. See the appendix's [SVG
+draw-on rows](/prompting/overview#rules-and-common-mistakes) for two lint
+gotchas worth knowing before you ask for one.
+
+### Scene-to-scene → shader transitions
+
+Motion *within* a scene is one thing. The handoff *between* scenes is another.
+For a designed transition — a wipe, a glitch, a liquid dissolve — ask for a
+shader transition at that specific moment:
+
+> Hard-cut between the first three scenes; use a **shader transition** (glitch) into the final logo scene.
+
+Name the moments. Shader transitions are for the two or three beats that deserve
+them, not every cut. See [Transitions](/prompting/motion#between-scenes-transitions) for the
+vocabulary.
+
+### Determinism surfaces in the prompt
+
+Every runtime renders under the same [determinism](/concepts/determinism)
+contract. The frame clock is `t = frame / fps`. There is **no wall clock, no live
+network at render time, and no unseeded randomness**.
+
+Two asks bump into this, so phrase them accordingly.
+
+Live data can't be fetched at render time, because the render must be
+reproducible:
+
+- **Avoid:** `fetch the current BTC price and count up to it`
+- **Instead:** `count up to $67,400` with a fixed value baked in, or `read the target from a variable I pass at render time`
+
+Unseeded randomness renders differently each frame and breaks reproducibility:
+
+- **Avoid:** `scatter 200 particles randomly`
+- **Instead:** `scatter 200 particles from a seeded random layout` — say **seeded** and the positions stay stable across frames and re-renders
+
+The rule of thumb: anything the video needs to *know* must be present before
+rendering starts, baked in or passed as a
+[variable](/prompting/design-systems#templates-and-variables). Anything random must be seeded.
+
+### In a real film
+
+This clause from a [longer HyperFrames film](/prompting/capstone#the-prompt-word-for-word) produced the shot below. You can lift the wording for your own video:
+
+> **Depth (52–56s).** The wire spirals off the flat plane into real 3D — a **Three.js scene via the frame adapter** (never CSS fake-3D): the camera descends following the wire as it coils around a rim-lit faceted form (ink material on charcoal), mono axis readouts landing on cue, then rises back to the plane with the wire leading the way out. The coil winds up out of the wire and collapses back onto it — its ends never float cut off in mid-air — and the protagonist chip joins the 3D scene for the crossing: it rides the wire straight through the coil's loops and passes behind the form with true depth occlusion, never floating over the geometry as a flat overlay.
+
+<DocsVideo
+  title="Capstone region depth"
+  src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/capstone-region-depth.mp4#t=0.1"
+  loop
+/>
+*That clause, rendered: the shot cut from the finished film.*
+
+## Related topics
+
+- [Color Grading guide](/guides/media-effects#fix-and-grade-the-color) — the full contract, every key and bound
 - [Catalog: overlays and effects](/catalog) — HUD, flash, light leak, freeze-frame dressing
-- [VFX and liquid glass](/prompting/vfx-and-liquid-glass) — the canvas-pipeline end of the catalog
+- [VFX and liquid glass](#vfx-and-liquid-glass) — the canvas-pipeline end of the catalog
 
-*Next: [VFX and liquid glass](/prompting/vfx-and-liquid-glass) — the same grading vocabulary pushed into the canvas pipeline.*

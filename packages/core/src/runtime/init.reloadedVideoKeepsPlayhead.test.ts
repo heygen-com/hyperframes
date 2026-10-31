@@ -1,4 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
+import { mediaElementTime } from "./mediaClock";
 import { initSandboxRuntimeModular } from "./init";
 import { evictMediaSyncState } from "./media";
 import { createMockTimeline, resetRuntimeFixtureDom } from "./runtimeSeekFixture.test-helpers";
@@ -29,8 +30,8 @@ function reloadClipPausedAt4s() {
   window.__timelines = { main: createMockTimeline(6.27) };
   initSandboxRuntimeModular();
   window.__player!.seek(4);
-  expect(clip.currentTime).toBe(4);
-  expect(cutout.currentTime).toBe(4);
+  expect(clip.currentTime).toBe(mediaElementTime(4));
+  expect(cutout.currentTime).toBe(mediaElementTime(4));
 
   evictMediaSyncState(clip);
   clip.src = "/clip.mp4?hf-proxy=h264";
@@ -43,8 +44,8 @@ function reloadClipPausedAt4s() {
 // showed another moment of the person under the cutout.
 it("a paused video that loads a new source goes back to the playhead, level with its stacked twin", () => {
   const { clip, cutout } = reloadClipPausedAt4s();
-  expect(clip.currentTime).toBe(4);
-  expect(cutout.currentTime).toBe(4);
+  expect(clip.currentTime).toBe(mediaElementTime(4));
+  expect(cutout.currentTime).toBe(mediaElementTime(4));
 });
 
 it("leaves a render's videos to the render", () => {

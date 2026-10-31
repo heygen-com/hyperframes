@@ -44,7 +44,7 @@ import {
   assignBundledRuntimeCompositionIds,
   assignMediaRenderIds,
   type BundledHostCompositionIdentity,
-  buildVariablesByCompScript,
+  emitVariablesByCompScript,
   inlineSubCompositions as inlineSubCompositionsShared,
   ensureExternalLinkTag,
   ensureExternalScriptTag,
@@ -56,6 +56,8 @@ import {
   readDeclaredDefaults,
   parseHostVariableValues,
   headStyleRuns,
+  isAlwaysAppliedStyle,
+  dedupeFontFaceRules,
   inlineScriptRuns,
   parsesAsScript,
   styleElementsFor,
@@ -98,6 +100,7 @@ import {
   normalizeSystemFontPrimaryFamilies,
 } from "@hyperframes/core/fonts/embed";
 import { prepareAnimatedGifInputs } from "./animatedGifPrep.js";
+import { prepareHeifImageInputs } from "./heifImagePrep.js";
 import { createStudioPositionSeekReapplyScript } from "@hyperframes/studio-server/manual-edits-render-script";
 import { getPositionEditsRenderScript } from "@hyperframes/core/runtime/position-edits-render";
 import { defaultLogger, type ProducerLogger } from "../logger.js";
@@ -115,6 +118,7 @@ export interface CompiledComposition {
   audios: AudioElement[];
   images: ImageElement[];
   droppedMediaIds: Set<string>;
+  gradedCanvas: boolean;
   masterFxChain?: string;
   unresolvedCompositions: UnresolvedElement[];
   /** Assets that resolve outside projectDir. Keys are the path used in HTML, values are absolute filesystem paths. */
@@ -481,6 +485,11 @@ export function detectShaderTransitionUsage(html: string): boolean {
   return false;
 }
 
+type SourceProbe = { profile: MediaProbeProfile; fileDuration: number | null } | { error: unknown };
+
+/** One probe per unique source for a whole compile, whatever number of elements point at it. */
+type SourceProbes = Map<string, Promise<SourceProbe>>;
+
 async function resolveMediaDuration(
   src: string,
   mediaStart: number,
@@ -491,13 +500,15 @@ async function resolveMediaDuration(
   elementIdentity: string,
   log?: ProducerLogger,
   urlByAbsentLocalPath?: ReadonlyMap<string, string>,
+  probes?: SourceProbes,
 ): Promise<{ duration: number | null; resolvedPath: string }> {
   let filePath = src;
 
   if (isHttpUrl(src)) {
-    if (!existsSync(downloadDir)) mkdirSync(downloadDir, { recursive: true });
+    const remoteDir = join(downloadDir, REMOTE_MEDIA_SUBDIR);
+    if (!existsSync(remoteDir)) mkdirSync(remoteDir, { recursive: true });
     try {
-      filePath = await downloadToTemp(src, downloadDir, undefined, undefined, undefined, {
+      filePath = await downloadToTemp(src, remoteDir, undefined, undefined, undefined, {
         onTelemetry: logRemoteDownloadTelemetry,
       });
     } catch {
@@ -541,64 +552,62 @@ async function resolveMediaDuration(
     return wrapped;
   };
 
-  return withMediaProbeSlot(async () => {
-    let profile: MediaProbeProfile;
-    try {
-      // Payload sniff (STUDIO-5433): if an authoring bug hands us a text
-      // payload (e.g. an unresolved nested-composition preview URL), fail with
-      // a typed NotMediaPayloadError instead of letting ffprobe emit an opaque
-      // `[mov,mp4,...] moov atom not found` that routes as a codec bug.
-      // Deliberately inside this try: the audio/video split below is the
-      // contract, so a bad audio src must still degrade to duration 0 rather
-      // than take down the whole render.
-      await assertMediaPayload(filePath, elementIdentity);
-      profile = await probeMediaProfile(filePath);
-    } catch (error) {
-      // Preserve the historical split: invalid video sources surface their
-      // probe failure, while invalid/unreadable audio sources resolve to zero
-      // duration and are excluded by the compiler.
-      if (tagName !== "video") {
-        if (error instanceof NotMediaPayloadError) {
-          // Dropping it silently is what let STUDIO-5433 resurface downstream
-          // as `prepare/ffmpeg_failed` with owner "system".
-          log?.warn(
-            `[compile] Audio "${elementIdentity}" (${src}) is a text document, not a media ` +
-              "file, so the element is dropped from the render. Point it at a rendered media file.",
-          );
+  const probe = () =>
+    withMediaProbeSlot(async (): Promise<SourceProbe> => {
+      try {
+        // Payload sniff (STUDIO-5433): if an authoring bug hands us a text
+        // payload (e.g. an unresolved nested-composition preview URL), fail with
+        // a typed NotMediaPayloadError instead of letting ffprobe emit an opaque
+        // `[mov,mp4,...] moov atom not found` that routes as a codec bug.
+        await assertMediaPayload(filePath, elementIdentity);
+        const profile = await probeMediaProfile(filePath);
+        if (tagName === "video") {
+          return { profile, fileDuration: (await extractMediaMetadata(filePath)).durationSeconds };
         }
-        return { duration: null, resolvedPath: filePath };
-      }
-      throw withSrcContext(error);
-    }
-    assertAssetMediaTypeProfile(tagName === "video" ? "video" : "audio", profile, elementIdentity);
-
-    let metadata: { durationSeconds: number };
-    if (tagName === "video") {
-      try {
-        metadata = await extractMediaMetadata(filePath);
+        try {
+          return { profile, fileDuration: (await extractAudioMetadata(filePath)).durationSeconds };
+        } catch {
+          // Source file has no audio stream (e.g. a silent video used as an audio src).
+          // Duration 0 excludes the element from the composition, as missing files do.
+          return { profile, fileDuration: null };
+        }
       } catch (error) {
-        throw withSrcContext(error);
+        return { error };
       }
-    } else {
-      try {
-        metadata = await extractAudioMetadata(filePath);
-      } catch {
-        // Source file has no audio stream (e.g. a silent video used as an audio src).
-        // Return duration 0 so the element is excluded from the composition gracefully,
-        // matching how missing files and failed downloads are already handled above.
-        return { duration: null, resolvedPath: filePath };
+    });
+  const key = `${tagName}\0${filePath}`;
+  let probed = probes?.get(key);
+  if (!probed) {
+    probed = probe();
+    probes?.set(key, probed);
+  }
+  const outcome = await probed;
+  if ("error" in outcome) {
+    // Invalid video sources surface their probe failure; invalid or unreadable
+    // audio sources resolve to zero duration and are excluded by the compiler.
+    if (tagName !== "video") {
+      if (outcome.error instanceof NotMediaPayloadError) {
+        log?.warn(
+          `[compile] Audio "${elementIdentity}" (${src}) is a text document, not a media ` +
+            "file, so the element is dropped from the render. Point it at a rendered media file.",
+        );
       }
+      return { duration: null, resolvedPath: filePath };
     }
-
-    const fileDuration = metadata.durationSeconds;
-    const duration = resolveNaturalMediaTimelineDurationFromValues(
-      fileDuration,
-      mediaStart,
-      playbackRate,
-    );
-
-    return { duration, resolvedPath: filePath };
-  });
+    throw withSrcContext(outcome.error);
+  }
+  assertAssetMediaTypeProfile(
+    tagName === "video" ? "video" : "audio",
+    outcome.profile,
+    elementIdentity,
+  );
+  if (outcome.fileDuration === null) return { duration: null, resolvedPath: filePath };
+  const duration = resolveNaturalMediaTimelineDurationFromValues(
+    outcome.fileDuration,
+    mediaStart,
+    playbackRate,
+  );
+  return { duration, resolvedPath: filePath };
 }
 
 /**
@@ -628,6 +637,7 @@ async function compileHtmlFile(
   downloadDir: string,
   log?: ProducerLogger,
   urlByAbsentLocalPath?: ReadonlyMap<string, string>,
+  probes?: SourceProbes,
 ): Promise<{ html: string; unresolvedCompositions: UnresolvedElement[] }> {
   const { html: staticCompiled, unresolved } = compileTimingAttrs(html);
 
@@ -650,6 +660,7 @@ async function compileHtmlFile(
         el.id,
         log,
         urlByAbsentLocalPath,
+        probes,
       ).then(({ duration }) => ({ id: el.id, duration })),
     ),
   );
@@ -678,6 +689,8 @@ async function compileHtmlFile(
           el.tagName,
           el.id,
           log,
+          undefined,
+          probes,
         );
         return { id: el.id, tagName: el.tagName, duration: el.duration, maxDuration, src: el.src! };
       }),
@@ -746,6 +759,7 @@ async function parseSubCompositions(
   downloadDir: string,
   visited: Set<string> = new Set(),
   urlByAbsentLocalPath?: ReadonlyMap<string, string>,
+  probes?: SourceProbes,
 ): Promise<{ subCompositions: Map<string, string> }> {
   const subCompositions = new Map<string, string>();
 
@@ -792,6 +806,7 @@ async function parseSubCompositions(
         downloadDir,
         undefined,
         urlByAbsentLocalPath,
+        probes,
       );
 
       const nested = await parseSubCompositions(
@@ -800,6 +815,7 @@ async function parseSubCompositions(
         downloadDir,
         item.nestedVisited,
         urlByAbsentLocalPath,
+        probes,
       );
 
       return {
@@ -938,6 +954,12 @@ function coalesceHeadStylesAndBodyScripts(html: string): string {
   const head = document.querySelector("head");
   const body = document.querySelector("body");
   if (!head && !body) return html;
+
+  const liveStyles = [...document.querySelectorAll("style")].filter(isAlwaysAppliedStyle);
+  const dedupedStyles = dedupeFontFaceRules(liveStyles.map((el) => el.textContent || ""));
+  liveStyles.forEach((el, i) => {
+    el.textContent = dedupedStyles[i] ?? "";
+  });
 
   const styleEls = head ? Array.from(head.querySelectorAll("style")) : [];
   const importRe = /@import\s+url\([^)]*\)\s*;|@import\s+["'][^"']+["']\s*;/gi;
@@ -1124,17 +1146,11 @@ function inlineSubCompositions(
     }
   }
 
-  // Append collected inline scripts to <body>. The per-instance variables
-  // table MUST be written before the sub-comp scripts run — their scoped
-  // getVariables() reads window.__hfVariablesByComp[compId]. htmlBundler
-  // (preview/snapshot) prepends this; the render path emitted only the CSS
-  // custom properties (below) and dropped the JS table, so getVariables()
-  // returned {} during render and parametrized sub-comps shipped blank/default
-  // text (issue #2064). Same shared builder as the bundler so they stay in
-  // lockstep.
-  const variablesByCompScript = buildVariablesByCompScript(result.variablesByComp);
+  // The per-instance variables table must exist before the sub-comp scripts run (their scoped getVariables() reads
+  // it); the render path once dropped it (issue #2064). Same shared emitter as the bundler so they stay in lockstep.
+  emitVariablesByCompScript(document as unknown as Document, result.variablesByComp);
   if (body) {
-    let pending = variablesByCompScript ? [variablesByCompScript] : [];
+    let pending: string[] = [];
     const flushInline = () => {
       if (!pending.length) return;
       const joined = pending.join("\n;\n");
@@ -1933,10 +1949,7 @@ export interface CompileForRenderOptions {
   allowSystemFontCapture?: boolean;
   /** Caller cancellation propagated through compile-time font fetches. */
   abortSignal?: AbortSignal;
-  /**
-   * Optional persistent cache directory for prep-time animated GIF → WebM
-   * transcodes. When omitted, the render's downloadDir is used.
-   */
+  /** Persistent cache directory for the animated GIF and HEIC prep transcodes; defaults to downloadDir. */
   animatedGifCacheDir?: string;
   /** FFmpeg timeout for animated GIF transcodes. */
   ffmpegProcessTimeout?: number;
@@ -1995,7 +2008,7 @@ function rebaseDirectEntryAssetPaths(html: string, projectDir: string, htmlPath:
   const { document } = parseHTML(html);
   const assetExists = (path: string) => existsSync(resolve(projectDir, path));
   rewriteAssetPaths(
-    document.querySelectorAll("[src], [href]"),
+    document.querySelectorAll("[src], [href], [srcset]"),
     entryPath,
     (el: Element, attr: string) => el.getAttribute(attr),
     (el: Element, attr: string, value: string) => el.setAttribute(attr, value),
@@ -2040,12 +2053,14 @@ export async function compileForRender(
   // start.
   assertSubCompositionsUsable(rawHtml, projectDir);
 
+  const probes: SourceProbes = new Map();
   const { html: compiledHtml, unresolvedCompositions } = await compileHtmlFile(
     rawHtml,
     projectDir,
     downloadDir,
     options.log,
     options.urlByAbsentLocalPath,
+    probes,
   );
 
   // Compile each referenced sub-composition so the inliner can hoist it.
@@ -2055,6 +2070,7 @@ export async function compileForRender(
     downloadDir,
     undefined,
     options.urlByAbsentLocalPath,
+    probes,
   );
 
   // Ensure the HTML is a full document before inlining sub-compositions.
@@ -2157,12 +2173,29 @@ export async function compileForRender(
   const { html: htmlWithLocalizedFonts, remoteMediaAssets: remoteFontAssets } =
     await localizeRemoteFontFaces(htmlWithLocalBg, downloadDir);
 
+  // Chrome cannot decode HEIC, and ffprobe reads a tiled one as video streams,
+  // so convert to JPEG before the media-type preflight sees it.
+  const {
+    html: htmlWithJpegs,
+    preparedAssets: preparedHeifAssets,
+    preparedImages: preparedHeifImages,
+  } = await prepareHeifImageInputs(htmlWithLocalizedFonts, {
+    projectDir,
+    downloadDir,
+    cacheDir: options.animatedGifCacheDir,
+    sourceAssets: remoteImageAssets,
+    timeoutMs: options.ffmpegProcessTimeout,
+  });
+  if (preparedHeifImages.length > 0) {
+    defaultLogger.info(`[Compiler] Converted ${preparedHeifImages.length} HEIC image(s) to JPEG`);
+  }
+
   const gifSourceAssets = new Map<string, string>(remoteImageAssets);
   const {
     html: htmlWithPreparedGifs,
     preparedAssets: preparedGifAssets,
     preparedGifs,
-  } = await prepareAnimatedGifInputs(htmlWithLocalizedFonts, {
+  } = await prepareAnimatedGifInputs(htmlWithJpegs, {
     projectDir,
     downloadDir,
     cacheDir: options.animatedGifCacheDir,
@@ -2195,22 +2228,28 @@ export async function compileForRender(
   for (const [relPath, absPath] of preparedGifAssets) {
     externalAssets.set(relPath, absPath);
   }
+  for (const [relPath, absPath] of preparedHeifAssets) {
+    externalAssets.set(relPath, absPath);
+  }
 
   // Read the media list off the inlined document rather than merging the
   // per-file lists. Merging deduplicated by element id, which is only unique
   // within one composition file: two scenes declaring `<video id="clip">` — or
   // two bare `<video>`s, both auto-numbered `hf-video-0` — collapsed into one
   // entry and injected frames onto whichever element came first. See #3340.
-  const { videos, audios, images, droppedMediaIds } = collectRenderMedia(html);
+  const { videos, audios, images, droppedMediaIds, gradedCanvas } = collectRenderMedia(html);
   const masterFxChain = parseMasterFxChain(html);
 
   // Advisory video checks (sparse keyframes, VFR). Fire-and-forget — these spawn
   // ffprobe subprocesses and should not block compilation since they only produce warnings.
   // The two probes run in sequence rather than in parallel: the keyframe analysis needs
   // the video stream's own duration to classify a single-keyframe (single-GOP) file.
+  const advised = new Set<string>();
   for (const video of videos) {
     if (isHttpUrl(video.src)) continue;
     const videoPath = resolve(projectDir, video.src);
+    if (advised.has(videoPath)) continue;
+    advised.add(videoPath);
     const reencode = `ffmpeg -i "${video.src}" -c:v libx264 -r 30 -g 30 -keyint_min 30 -movflags +faststart -c:a copy output.mp4`;
     (async () => {
       const metadata = await withMediaProbeSlot(() => extractMediaMetadata(videoPath));
@@ -2256,6 +2295,7 @@ export async function compileForRender(
     audios,
     images,
     droppedMediaIds,
+    gradedCanvas,
     ...(masterFxChain ? { masterFxChain } : {}),
     unresolvedCompositions,
     externalAssets,
@@ -2356,10 +2396,10 @@ export async function discoverMediaFromBrowser(page: Page): Promise<BrowserMedia
       if (!id) return;
 
       // currentSrc is authoritative for <video>/<audio><source> and responsive images.
-      const ownSrc = htmlEl.getAttribute("src");
-      const blankSrc =
-        ownSrc !== null && ownSrc.trim() === "" && !htmlEl.querySelector("source[src]");
-      const src = blankSrc ? "" : htmlEl.currentSrc || htmlEl.src || ownSrc || "";
+      const resolvedSrc = htmlEl.currentSrc || htmlEl.src || htmlEl.getAttribute("src") || "";
+      const withoutQueryAndHash = (url: string) => url.replace(/[?#][\s\S]*$/, "");
+      const isPageItself = withoutQueryAndHash(resolvedSrc) === withoutQueryAndHash(location.href);
+      const src = isPageItself ? "" : resolvedSrc;
       const start = parseFloat(htmlEl.getAttribute("data-start") || "0");
       const endRaw = htmlEl.getAttribute("data-end");
       const durationRaw = htmlEl.getAttribute("data-duration");

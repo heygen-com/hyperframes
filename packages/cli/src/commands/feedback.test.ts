@@ -1,4 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
+import { CliUsageError } from "../utils/commandResult.js";
 
 const mocks = vi.hoisted(() => ({
   // Never settles: waiting on it would hang the command.
@@ -57,7 +58,9 @@ it("refuses a source that is neither person nor agent, and sends nothing", async
   vi.spyOn(console, "error").mockImplementation(() => {});
   mocks.submitFeedback.mockClear();
   const { default: feedback } = await import("./feedback.js");
-  await expect(feedback.run?.({ args: { rating: "6", source: "bot" } } as never)).rejects.toThrow();
+  await expect(feedback.run?.({ args: { rating: "6", source: "bot" } } as never)).rejects.toThrow(
+    CliUsageError,
+  );
   expect(mocks.submitFeedback).not.toHaveBeenCalled();
 });
 
@@ -82,16 +85,16 @@ it.each([
   vi.spyOn(console, "error").mockImplementation(() => {});
   mocks.submitFeedback.mockClear();
   const { default: feedback } = await import("./feedback.js");
-  await expect(feedback.run?.({ args } as never)).rejects.toThrow();
+  await expect(feedback.run?.({ args } as never)).rejects.toThrow(CliUsageError);
   expect(mocks.submitFeedback).not.toHaveBeenCalled();
 });
 
 it("keeps the rating error for an unreadable rating, so a retry keeps the rating", async () => {
   const errors = vi.spyOn(console, "error").mockImplementation(() => {});
   const { default: feedback } = await import("./feedback.js");
-  await expect(
-    feedback.run?.({ args: { rating: "8/10", comment: "x" } } as never),
-  ).rejects.toThrow();
+  await expect(feedback.run?.({ args: { rating: "8/10", comment: "x" } } as never)).rejects.toThrow(
+    CliUsageError,
+  );
   expect(String(errors.mock.calls.at(-1)?.[0])).toContain(
     "Rating must be an integer between 0 and 10",
   );

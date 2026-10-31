@@ -64,6 +64,32 @@ describe("RenderRequest", () => {
     ).toBe("off");
   });
 
+  it("carries the delivery encoder options through every adapter", () => {
+    const value = request();
+    Object.assign(value.options, {
+      keyframeIntervalSeconds: 2,
+      maxBitrate: "8M",
+      bufferSize: "12M",
+    });
+    const expected = { keyframeIntervalSeconds: 2, maxBitrate: "8M", bufferSize: "12M" };
+    expect(renderConfigFromRequest(value)).toMatchObject(expected);
+    const config = distributedConfigFromRequest(value);
+    expect(config).toMatchObject(expected);
+    expect(
+      renderRequestFromDistributedConfig({
+        projectDir: value.projectDir,
+        outputPath: value.outputPath,
+        config,
+      }).options,
+    ).toMatchObject(expected);
+    expect(() =>
+      parseRenderRequest({ ...value, options: { ...value.options, maxBitrate: 8 } }),
+    ).toThrow();
+    expect(() =>
+      parseRenderRequest({ ...value, options: { ...value.options, keyframeIntervalSeconds: 0 } }),
+    ).toThrow(/positive/);
+  });
+
   it("round-trips through JSON without dropping nested options", () => {
     const value = request();
     expect(parseRenderRequest(serializeRenderRequest(value))).toEqual(value);

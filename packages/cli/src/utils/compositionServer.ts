@@ -2,11 +2,12 @@
 // `present`: locating the built runtime/player/slideshow bundles, serving
 // composition asset files, and binding to a free port.
 import { createHash } from "node:crypto";
-import { createReadStream, existsSync, statSync } from "node:fs";
+import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { getMimeType } from "@hyperframes/studio-server";
+import { stripSdrPngColourTags } from "@hyperframes/core/compiler/png-colour-tags";
 import { injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document";
 
 /**
@@ -95,6 +96,10 @@ export function revalidatedResponse(
   return new Response(body, { status: 200, headers });
 }
 
+function untaggedPngBody(filePath: string, contentType: string): Buffer | null {
+  return contentType === "image/png" ? stripSdrPngColourTags(readFileSync(filePath)) : null;
+}
+
 /**
  * Hono-native Range/206 response for a file on disk, mirroring the inline
  * Range logic in `packages/studio-server/src/routes/preview.ts`'s static
@@ -116,6 +121,15 @@ export function buildRangeResponse(
     ETag: `"${mtimeMs.toString(36)}-${size.toString(36)}"`,
   };
   if (ifNoneMatch === cache.ETag) return new Response(null, { status: 304, headers: cache });
+  const untagged = untaggedPngBody(filePath, contentType);
+  if (untagged) {
+    const headers = {
+      ...cache,
+      "Content-Type": contentType,
+      "Content-Length": `${untagged.length}`,
+    };
+    return new Response(new Uint8Array(untagged), { status: 200, headers });
+  }
   const match = rangeHeader ? /^bytes=(\d*)-(\d*)$/.exec(rangeHeader.trim()) : null;
 
   const body = (start: number, end: number): ReadableStream<Uint8Array> | null =>

@@ -170,9 +170,21 @@ Resources:
           TMPDIR: /tmp
           HYPERFRAMES_RENDER_BUCKET: !Ref RenderBucket
           HYPERFRAMES_LAMBDA_RESERVED_CONCURRENCY: !Ref ReservedConcurrency
+          # Assemble spreads the parts S3 cannot copy across the warm function that ran the chunks.
+          HYPERFRAMES_STITCH_FUNCTION: !If
+            - HasVideoFunction
+            - !Sub "${ProjectName}-video"
+            - !Sub "${ProjectName}-render"
       Policies:
         - S3CrudPolicy:
             BucketName: !Ref RenderBucket
+        - Statement:
+            - Effect: Allow
+              Action: lambda:InvokeFunction
+              Resource: !If
+                - HasVideoFunction
+                - !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${ProjectName}-video"
+                - !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${ProjectName}-render"
         - Statement:
             - Effect: Allow
               Action: s3:AbortMultipartUpload

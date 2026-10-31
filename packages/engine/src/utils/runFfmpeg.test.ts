@@ -177,9 +177,9 @@ describe("describeFfmpegFailure", () => {
     expect(message).toMatch(/^FFmpeg ended without an exit code \(abort\)\./);
   });
 
-  it("leads with the timeout when the deadline ended it", () => {
+  it("leads with the timeout when no progress ended it", () => {
     const message = describeFfmpegFailure(
-      { exitCode: null, signal: "SIGTERM", stderr, terminationReason: "deadline" },
+      { exitCode: null, signal: "SIGTERM", stderr, terminationReason: "inactivity" },
       1000,
     );
     expect(message).toMatch(/^FFmpeg timed out after 1000 ms/);
@@ -245,14 +245,14 @@ describe("ffmpegStatsReader", () => {
   });
 });
 
-describe("a run with a stall timeout", () => {
+describe("a run's timeout", () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.doUnmock("child_process");
     vi.resetModules();
   });
 
-  it("outlives the timeout while frames advance, and stops once they do not", async () => {
+  async function fakeFfmpeg() {
     vi.useFakeTimers();
     const proc = Object.assign(new EventEmitter(), {
       stderr: new EventEmitter(),
@@ -261,8 +261,41 @@ describe("a run with a stall timeout", () => {
     vi.resetModules();
     vi.doMock("child_process", () => ({ spawn: () => proc }));
     const { runFfmpeg } = await import("./runFfmpeg.js");
+    return { proc, runFfmpeg };
+  }
 
-    const run = runFfmpeg(["-i", "in.mp4", "out-%05d.png"], { stallTimeout: 2_000 });
+  it("lets an audio run whose output time advances outlive it", async () => {
+    const { proc, runFfmpeg } = await fakeFfmpeg();
+
+    const run = runFfmpeg(["-i", "in.wav", "out.m4a"], { timeout: 300_000 });
+    // Nine minutes of an audio run, which prints no frame count, one progress line every 100 s.
+    for (let minute = 1; minute <= 9; minute += 1) {
+      await vi.advanceTimersByTimeAsync(100_000);
+      proc.stderr.emit("data", Buffer.from(`size=  ${minute}00KiB time=00:0${minute}:00.00\r`));
+    }
+    expect(proc.kill).not.toHaveBeenCalled();
+    proc.emit("close", 0, null);
+
+    await expect(run).resolves.toMatchObject({ success: true, terminationReason: "exit" });
+  });
+
+  it("stops a run that prints no progress at the timeout and says it timed out", async () => {
+    const { proc, runFfmpeg } = await fakeFfmpeg();
+
+    const run = runFfmpeg(["-i", "pipe:0", "out.wav"]);
+    await vi.advanceTimersByTimeAsync(299_999);
+    expect(proc.kill).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(proc.kill).toHaveBeenCalledWith("SIGTERM");
+    const result = await run;
+    expect(describeFfmpegFailure(result, 300_000)).toMatch(/^FFmpeg timed out after 300000 ms/);
+  });
+
+  it("outlives the timeout while frames advance, and stops once they do not", async () => {
+    const { proc, runFfmpeg } = await fakeFfmpeg();
+
+    const run = runFfmpeg(["-i", "in.mp4", "out-%05d.png"], { timeout: 2_000 });
     for (let frame = 1; frame <= 4; frame += 1) {
       await vi.advanceTimersByTimeAsync(1_500);
       proc.stderr.emit("data", Buffer.from(`frame=${frame} fps=1 time=00:00:0${frame}.00\r`));

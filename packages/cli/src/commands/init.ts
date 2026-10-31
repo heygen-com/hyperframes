@@ -3,9 +3,10 @@
 // This branch only repointed the scaffolded npm scripts; the refactor is its
 // own task.
 // fallow-ignore-file complexity
-import { failCommand, finishCommand } from "../utils/commandResult.js";
+import { failCommand, finishCommand, failUsage } from "../utils/commandResult.js";
 import { writeNewFileSync } from "../utils/writeNewFile.js";
-import { defineCommand, runCommand } from "citty";
+import { runCommand } from "citty";
+import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
 import { patchMediaPlaceholders, type InitMediaOptions } from "./initMedia.js";
 
@@ -18,10 +19,7 @@ export const examples: Example[] = [
   ["Start from an audio file", "hyperframes init my-video --audio track.mp3"],
   ["Scaffold with Tailwind CSS", "hyperframes init my-video --tailwind"],
   ["Non-interactive mode (for CI or AI agents)", "hyperframes init my-video --non-interactive"],
-  [
-    "Opt out of the GitHub skills check (CI/tests only)",
-    "HYPERFRAMES_SKIP_SKILLS=1 hyperframes init my-video --non-interactive",
-  ],
+  ["Skip installing AI skills", "hyperframes init my-video --skip-skills"],
 ];
 import {
   existsSync,
@@ -35,8 +33,9 @@ import { copyDirSync } from "../utils/copyDir.js";
 import { resolve, basename, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync, spawn } from "node:child_process";
-import * as clack from "@clack/prompts";
+import * as clack from "../ui/prompts.js";
 import { c } from "../ui/colors.js";
+import { isUnattended } from "../utils/attendedTerminal.js";
 import { printBanner } from "../ui/banner.js";
 import {
   BUNDLED_TEMPLATES,
@@ -60,6 +59,7 @@ import {
   HTML_BODY_CSS_WIDTH_FIRST_RE,
   VIEWPORT_META_SIZE_RE,
 } from "@hyperframes/parsers";
+import { decodableAudioStream } from "@hyperframes/parsers/media-streams";
 
 function resolveScaffoldTemplateId(exampleFlag: string | undefined, hasMediaFile: boolean): string {
   const example = exampleFlag === "agent" ? "blank" : exampleFlag;
@@ -147,7 +147,7 @@ function probeVideo(filePath: string): VideoMeta | undefined {
     const videoStream = streams.find((s) => s.codec_type === "video");
     if (!videoStream) return undefined;
 
-    const hasAudio = streams.some((s) => s.codec_type === "audio");
+    const hasAudio = decodableAudioStream(streams) !== null;
 
     let fps = 30;
     const fpsStr = videoStream.avg_frame_rate ?? videoStream.r_frame_rate;
@@ -774,8 +774,7 @@ export default defineCommand({
     },
     "skip-skills": {
       type: "boolean",
-      description:
-        "[temporarily ignored] init always checks AI skills against GitHub while the skills.sh registry catches up; set HYPERFRAMES_SKIP_SKILLS=1 to opt out (CI/tests)",
+      description: "Skip installing missing core AI skills (also HYPERFRAMES_SKIP_SKILLS=1)",
     },
     tailwind: {
       type: "boolean",
@@ -791,7 +790,7 @@ export default defineCommand({
       description:
         "Owning authoring skill slug (e.g. hyperframes). Stamped into " +
         "hyperframes.json so every render of this project is attributed to it on " +
-        "anonymous telemetry, without re-passing --skill on each render. Ignored unless it is a slug.",
+        "usage telemetry, without re-passing --skill on each render. Ignored unless it is a slug.",
     },
   },
   async run({ args }) {
@@ -803,7 +802,7 @@ export default defineCommand({
           `The --template flag was renamed to --example. Example:\n  npx hyperframes init ${args.name ?? "my-video"} --example "${args.template}"`,
         ),
       );
-      failCommand();
+      failUsage();
     }
     if (args["video-legacy"] !== undefined) {
       console.error(
@@ -811,7 +810,7 @@ export default defineCommand({
           `The -V short flag no longer maps to --video. Use --video (or -v). Example:\n  npx hyperframes init ${args.name ?? "my-video"} --video "${args["video-legacy"]}"`,
         ),
       );
-      failCommand();
+      failUsage();
     }
     const exampleFlag = args.example;
     const videoFlag = args.video;
@@ -827,7 +826,7 @@ export default defineCommand({
       modelFlag ?? DEFAULT_MODEL,
       languageFlag,
     );
-    const interactive = !nonInteractive && process.stdout.isTTY === true;
+    const interactive = !nonInteractive && !isUnattended();
 
     let resolutionPreset: CanvasResolution | undefined;
     if (args.resolution !== undefined) {
@@ -840,7 +839,7 @@ export default defineCommand({
               `(or aliases 1080p, 4k, uhd, 1080p-square, square-1080p, 4k-square).`,
           ),
         );
-        failCommand();
+        failUsage();
       }
     }
 
@@ -865,7 +864,7 @@ export default defineCommand({
 
       if (videoFlag && audioFlag) {
         console.error(c.error("Cannot use --video and --audio together"));
-        failCommand();
+        failUsage();
       }
 
       // Validate source files before creating destDir so a failed run does

@@ -71,6 +71,17 @@ describe("project history and media files", () => {
     expect(blobBytes(historyRoot, history)).toBeLessThan(1024);
   });
 
+  it("leaves GIF render outputs out of project history", async () => {
+    const { history, historyRoot, projectDir, write } = await project({ "index.html": "A" });
+    const render = await history.beginWindow(you, "Export GIF");
+    write("renders/export.gif", Buffer.alloc(2 * MiB, 7));
+    const entry = await render.close();
+    expect(entry?.files ?? []).toEqual([]);
+    expect(history.peek("start")).not.toHaveProperty(["renders/export.gif"]);
+    expect(statSync(join(projectDir, "renders/export.gif")).size).toBe(2 * MiB);
+    expect(blobBytes(historyRoot, history)).toBeLessThan(1024);
+  });
+
   it("copies no bytes of media written or replaced while history is open", async () => {
     const { history, historyRoot, write } = await project({ "index.html": "A" });
     const window = await history.beginWindow(you, "Render");

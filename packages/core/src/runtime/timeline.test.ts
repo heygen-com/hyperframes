@@ -1,6 +1,7 @@
 import { DEFAULT_IMAGE_TIMELINE_DURATION_SECONDS } from "@hyperframes/parsers/media-duration";
 import { describe, it, expect, afterEach } from "vitest";
-import { collectRuntimeTimelinePayload } from "./timeline";
+import { collectRuntimeTimelinePayload, runtimeElementWindow } from "./timeline";
+import { createRuntimeStartTimeResolver } from "./startResolver";
 
 type TimelineTestWindow = Window & {
   __timelines?: Record<string, { duration: () => number }>;
@@ -1108,6 +1109,28 @@ describe("collectRuntimeTimelinePayload", () => {
 
       expect(result.durationSeconds).toBe(154.8);
       expect(result.durationInFrames).toBe(Math.ceil(154.8 * 30));
+    });
+  });
+});
+
+describe("runtimeElementWindow", () => {
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  // A root with no data-duration and a 2 s timeline under a 6 s video went black from 2 s.
+  it("ends a nested scene with its timeline, but never the root", () => {
+    document.body.innerHTML = `<div id="main" data-composition-id="main" data-start="0">
+      <div id="scene" data-composition-id="scene" data-start="0"></div></div>`;
+    const timelineRegistry = { main: { duration: () => 2 }, scene: { duration: () => 2 } };
+    const options = { timelineRegistry, resolver: createRuntimeStartTimeResolver({}) };
+    expect(runtimeElementWindow(document.getElementById("main")!, options)).toEqual({
+      start: 0,
+      end: Number.POSITIVE_INFINITY,
+    });
+    expect(runtimeElementWindow(document.getElementById("scene")!, options)).toEqual({
+      start: 0,
+      end: 2,
     });
   });
 });

@@ -317,7 +317,7 @@ describe("probeMediaProfile", () => {
         kind: "exit",
         code: 0,
         stdout: JSON.stringify({
-          streams: [{ codec_type: "video" }, { codec_type: "audio" }],
+          streams: [{ codec_type: "video" }, { codec_type: "audio", codec_name: "opus" }],
           format: { format_name: "matroska,webm" },
         }),
       },
@@ -360,7 +360,7 @@ describe("probeMediaProfile", () => {
         stdout: JSON.stringify({
           streams: [
             { codec_type: "video", disposition: { attached_pic: 1 } },
-            { codec_type: "audio" },
+            { codec_type: "audio", codec_name: "mp3" },
           ],
           format: { format_name: "mp3" },
         }),
@@ -494,7 +494,7 @@ describe("probeMediaProfile", () => {
           streams: [
             { codec_type: "video", disposition: { attached_pic: 1 } },
             { codec_type: "video", codec_name: "h264" },
-            { codec_type: "audio" },
+            { codec_type: "audio", codec_name: "mp3" },
           ],
           format: { format_name: "mov,mp4,m4a,3gp,3g2,mj2" },
         }),

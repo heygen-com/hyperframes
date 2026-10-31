@@ -3,7 +3,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, relative, win32 } from "node:path";
 import { isHyperframesProject } from "@hyperframes/core";
-import { addCatchUpNote, markSeen, readSeen } from "./appHistory.js";
+import { addCatchUpNote, markSeen, readSeen, seenPath } from "./appHistory.js";
 import { createProjectConfig } from "./projectConfig.js";
 import { writeRecord } from "./projectRecords.js";
 
@@ -11,22 +11,32 @@ import { writeRecord } from "./projectRecords.js";
 const DESKTOP_BUNDLE_IDS = ["dev.hyperframes.desktop", "dev.hyperframes.desktop.canary"] as const;
 const DESKTOP_APP_NAMES = ["HyperFrames.app", "HyperFrames Canary.app"];
 const APP_NAMES = ["HyperFrames", "HyperFrames Canary"] as const;
-const STUDIO_PAGE = "https://hyperframes.dev/studio";
+const STUDIO_PAGE = "https://hyperframes.studio/studio";
 const DOWNLOADS: Partial<Record<NodeJS.Platform, string>> = {
   darwin: `${STUDIO_PAGE}/download`,
   linux: `${STUDIO_PAGE}/download?os=linux`,
+  win32: `${STUDIO_PAGE}/download?os=windows`,
 };
 
-/** This machine's build of the app; null where there is none yet (Windows). */
-export const desktopDownloadUrl = (platform = process.platform): string | null =>
-  DOWNLOADS[platform] ?? null;
+export type DownloadSource = "cli" | "browser-editor";
+
+const tagged = (url: string, src: DownloadSource) =>
+  `${url}${url.includes("?") ? "&" : "?"}src=${src}`;
+
+/** This machine's build of the app, tagged with where the link is shown; null where there is none. */
+export const desktopDownloadUrl = (
+  platform = process.platform,
+  src: DownloadSource = "cli",
+): string | null => {
+  const url = DOWNLOADS[platform];
+  return url ? tagged(url, src) : null;
+};
 
 export const downloadHint = (url: string): string =>
   `Keep editing by chatting with Framey in the HyperFrames desktop app → ${url}`;
 
-// ponytail: the Mac app takes a handed-over folder since b254 (hyperframes-internal#2601); Windows and Linux join
-// once its folder-argv change ships. Until then every surface offers the download and writes no hand-off.
-export const HANDOFF_READY = process.platform === "darwin";
+// Every build of the app takes a handed-over folder: macOS as open-file, Windows and Linux on their command line.
+export const HANDOFF_READY = true;
 
 export interface AgentSession {
   engine: "claude" | "codex" | "grok";
@@ -62,7 +72,7 @@ const openWithBundle = (bundleId: string, dir: string): boolean =>
 /** Single-instance app: a running copy is forwarded the folder. Only a refused spawn counts as failed. */
 function launchApp(executable: string, dir: string): boolean {
   try {
-    const child = spawn(executable, [dir], { detached: true, stdio: "ignore" });
+    const child = spawn(executable, [dir], { detached: true, stdio: "ignore", windowsHide: false });
     child.on("error", () => {});
     child.unref();
     return true;
@@ -130,7 +140,9 @@ function leaveHandoff(dir: string, session: AgentSession | null): AgentSession |
   if (!session || !writeRecord(dir, "agent-handoff.json", JSON.stringify(session))) return null;
   const now = Date.now();
   if (!readSeen(dir).at && !markSeen(dir, { at: now, checked: now }))
-    console.warn("◇  Couldn't note the hand-off in ~/.hyperframes, so `catch-up` won't see it.");
+    console.warn(
+      `◇  Couldn't note the hand-off in ${seenPath(dir)}, so \`catch-up\` won't see it.`,
+    );
   addCatchUpNote(dir);
   return session;
 }
@@ -158,9 +170,11 @@ export function openInDesktop(
     installed = () => desktopInstalled({ platform }),
     env = process.env,
     cta,
+    src = "cli",
     ...where
   }: AppLookup & {
     cta?: string;
+    src?: DownloadSource;
     ready?: boolean;
     open?: (bundleId: string, dir: string) => boolean;
     launch?: (executable: string, dir: string) => boolean;
@@ -172,7 +186,7 @@ export function openInDesktop(
   ): DesktopOpenResult => ({
     opened: false,
     reason,
-    downloadUrl: desktopDownloadUrl(platform) ?? STUDIO_PAGE,
+    downloadUrl: desktopDownloadUrl(platform, src) ?? STUDIO_PAGE,
   });
   const opened = (canary: boolean): DesktopOpenResult => {
     if (cta) writeRecord(dir, DESKTOP_CTA_RECORD, JSON.stringify({ cta, at: Date.now() }));

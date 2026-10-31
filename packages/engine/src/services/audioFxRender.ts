@@ -19,7 +19,6 @@ import {
   openSync,
   readFileSync,
   readSync,
-  rmSync,
   statSync,
   writeFileSync,
   writeSync,
@@ -30,7 +29,8 @@ import { pathToFileURL } from "node:url";
 import { getAudioFxRuntimeScript } from "@hyperframes/core/audio-fx-runtime";
 import { enabledAudioFxNodes, type HfAudioFxChain } from "@hyperframes/core/audio-fx";
 import { serializeAutomation, type HfAutomation } from "@hyperframes/core/audio-automation";
-import { acquireBrowser } from "./browserManager.js";
+import { removeScratch } from "@hyperframes/core/remove-scratch";
+import { acquireBrowser, buildChromeArgs } from "./browserManager.js";
 import { createEnvelopeWalker } from "./audioVolumeEnvelope.js";
 import { riffChunks, wavFormatTag } from "./wavChunks.js";
 import { windowPrerollSeconds } from "./audioFxWarmup.js";
@@ -606,6 +606,14 @@ export async function applyAudioFxChain(
   });
 }
 
+/** Audio processing needs no GPU, so software mode; every other launch detail is the shared one. */
+let fxBrowserArgs: string[] | undefined;
+const fxChromeArgs = () =>
+  (fxBrowserArgs ??= buildChromeArgs(
+    { width: 1280, height: 720, captureMode: "screenshot" },
+    { browserGpuMode: "software" },
+  ));
+
 /** Run `body` with a leased browser and a way to open pages on the runtime; both are released in the same try that takes them. */
 async function withFxBrowser<T>(
   options: { trackId: string; signal?: AbortSignal },
@@ -621,7 +629,7 @@ async function withFxBrowser<T>(
     if (options.signal?.aborted) {
       throw new AudioFxRenderError(`Audio FX cancelled for track ${options.trackId}`);
     }
-    lease = await acquireBrowser(["--no-sandbox", "--autoplay-policy=no-user-gesture-required"]);
+    lease = await acquireBrowser(fxChromeArgs());
     const { browser } = lease;
     return await body(() => openFxPage(browser, hostDir));
   } catch (err) {
@@ -630,7 +638,7 @@ async function withFxBrowser<T>(
       `Audio FX failed for track ${options.trackId}: ${(err as Error).message}`,
     );
   } finally {
-    rmSync(hostDir, { recursive: true, force: true });
+    removeScratch(hostDir);
     await lease?.release().catch(() => undefined);
   }
 }

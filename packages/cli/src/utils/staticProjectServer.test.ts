@@ -133,12 +133,30 @@ afterEach(async () => {
   mocks.decideMediaProxyEligibility.mockReturnValue({ eligible: true });
 });
 
-async function serveWith(bytes: Buffer): Promise<{ url: string }> {
+const TAGGED_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAABGNJQ1ABAQABlXPCVgAAAAxJREFUeJxj0NfXBwABHgCOTp25kgAAAABJRU5ErkJggg==",
+  "base64",
+);
+
+async function serveWith(bytes: Buffer, name = "tone.wav"): Promise<{ url: string }> {
   dir = mkdtempSync(join(tmpdir(), "hf-static-"));
-  writeFileSync(join(dir, "tone.wav"), bytes);
+  writeFileSync(join(dir, name), bytes);
   server = await serveStaticProjectHtml(dir, "<html></html>");
   return { url: server.url };
 }
+
+describe("serveStaticProjectHtml colour-tagged PNGs", () => {
+  it("serves a BT.709-tagged PNG without the tag, so check and snapshot see the file's values", async () => {
+    const { url } = await serveWith(TAGGED_PNG, "tagged.png");
+
+    const res = await fetch(`${url}tagged.png`);
+    const body = Buffer.from(await res.arrayBuffer());
+
+    expect(body.includes("cICP")).toBe(false);
+    expect(body.includes("IDAT")).toBe(true);
+    expect(res.headers.get("content-length")).toBe(String(body.length));
+  });
+});
 
 describe("serveStaticProjectHtml range support", () => {
   it("answers a Range request with 206 + the requested byte slice", async () => {

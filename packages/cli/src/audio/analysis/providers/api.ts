@@ -213,29 +213,14 @@ function answerFor(signal: AudioSignal, capability: AudioApiCapability) {
   return request(signal);
 }
 
-/** The signal's own beats, which an answer's times move onto when one is within a quarter of the answer's beat. */
-function beatSnapper(signal: AudioSignal, beatSeconds: number | null): Snapper {
+/** The signal's own beats, which a section boundary moves onto when one is within a quarter beat. */
+function beatSnapper(signal: AudioSignal): Snapper {
   const measured = rhythm(signal).beats.times;
-  const period = beatSeconds ?? medianInterval(measured) ?? 0;
-  return snapper(measured, period / 4, "signal beats");
-}
-
-function snappedBeats(signal: AudioSignal, body: AudioApiResponse) {
-  const times = body.beats!.times;
-  const onBeat = beatSnapper(signal, medianInterval(times));
-  return { times: rounded(times.map(onBeat.snap)), snap: onBeat.report() };
-}
-
-function snappedDownbeats(signal: AudioSignal, body: AudioApiResponse) {
-  const { times, meter = null } = body.downbeats!;
-  const beat = body.beats ? medianInterval(body.beats.times) : null;
-  const bar = medianInterval(times);
-  const onBeat = beatSnapper(signal, beat ?? (bar && meter ? bar / meter : null));
-  return { times: rounded(times.map(onBeat.snap)), meter, snap: onBeat.report() };
+  return snapper(measured, (medianInterval(measured) ?? 0) / 4, "signal beats");
 }
 
 function snappedSections(signal: AudioSignal, body: AudioApiResponse) {
-  const onBeat = beatSnapper(signal, null);
+  const onBeat = beatSnapper(signal);
   const end = (signal.channels[0]?.length ?? 0) / signal.sampleRate;
   const move = (t: number) => (t <= 0 || t >= end ? t : onBeat.snap(t));
   const spans = body.sections!.spans.map((s) => ({
@@ -246,13 +231,12 @@ function snappedSections(signal: AudioSignal, body: AudioApiResponse) {
   return { spans, snap: onBeat.report() };
 }
 
-/** The answer for one capability, its times moved onto what the signal measured. */
 function measured(capability: AudioApiCapability, signal: AudioSignal, body: AudioApiResponse) {
   const value =
     capability === "beats"
-      ? snappedBeats(signal, body)
+      ? { times: rounded(body.beats!.times) }
       : capability === "downbeats"
-        ? snappedDownbeats(signal, body)
+        ? { times: rounded(body.downbeats!.times), meter: body.downbeats!.meter ?? null }
         : capability === "sections"
           ? snappedSections(signal, body)
           : body.describe!;

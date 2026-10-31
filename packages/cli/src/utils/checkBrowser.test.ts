@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 // fallow-ignore-file code-duplication
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os, { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -12,9 +12,11 @@ import {
 } from "../capture/captureCompositionFrame.js";
 import { DEFAULT_CHECK_OPTIONS, runAuditGrid } from "./checkPipeline.js";
 import {
+  captureFindingFrames,
   matchComponentFindings,
   captureOverviewShot,
   keepBrokenImageAborts,
+  keepFailedNetworkChanges,
   preResolveHostileMediaProxies,
   dropFailedProxyEchoes,
   runBrowserCheck,
@@ -22,6 +24,8 @@ import {
   mergeHelperDrafts,
   samplingBrowserCount,
 } from "./checkBrowser.js";
+import { CheckDeadline } from "./checkDeadline.js";
+import { closeManagedBrowser } from "../browser/launch.js";
 import type { ProjectDir } from "./project.js";
 
 const mocks = vi.hoisted(() => ({
@@ -35,6 +39,7 @@ const mocks = vi.hoisted(() => ({
   },
   proxySignal: undefined as AbortSignal | undefined,
   bundleWithLocalizedFonts: vi.fn(async () => "<html></html>"),
+  prepareFindingInspector: vi.fn(),
   serverClose: vi.fn(async () => undefined),
   resolveProxy:
     vi.fn<
@@ -67,6 +72,9 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("../browser/launch.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../browser/launch.js")>()),
+  closeManagedBrowser: vi.fn(
+    (await importOriginal<typeof import("../browser/launch.js")>()).closeManagedBrowser,
+  ),
   onStopSignal: (listener: () => void) => {
     mocks.stopListeners.add(listener);
     return () => mocks.stopListeners.delete(listener);
@@ -77,6 +85,10 @@ vi.mock("./bundleWithLocalizedFonts.js", () => ({
   // The real helper cold-loads the producer/font graph, which is covered by its
   // own tests and can exhaust this suite's timeout under Windows CI contention.
   bundleWithLocalizedFonts: mocks.bundleWithLocalizedFonts,
+}));
+
+vi.mock("./checkFindingInspect.js", () => ({
+  prepareFindingInspector: mocks.prepareFindingInspector,
 }));
 
 vi.mock("../capture/captureCompositionFrame.js", async (importOriginal) => ({
@@ -230,7 +242,11 @@ it("carries raw browser geometry through the page driver and pipeline", async ()
       time: 5,
     }),
   ]);
-  expect(result.timings).toEqual({ launchSettleMs: 60, seekLoopMs: 40, contrastMs: 0 });
+  expect(result.timings).toMatchObject({ launchSettleMs: 60, seekLoopMs: 40, contrastMs: 0 });
+  // Each pass inside the seek loop reports its own time.
+  for (const pass of [result.timings.gridMs, result.timings.craftMs, result.timings.overlapMs]) {
+    expect(pass).toBeGreaterThanOrEqual(0);
+  }
   expect(mocks.serverClose).toHaveBeenCalledOnce();
 });
 
@@ -387,6 +403,10 @@ it("runs the dense overlap grid in page tasks of at most 8 samples, keeping each
   expect(lines).toContain("[hyperframes] check: samples 1/1");
   const batches = Math.ceil(denseAudits.length / 8);
   expect(lines).toContain(`[hyperframes] check: overlap ${batches}/${batches}`);
+  for (const step of [0, 1, 2]) expect(lines).toContain(`[hyperframes] check: analyze ${step}/3`);
+  expect(lines.indexOf("[hyperframes] check: analyze 0/3")).toBeGreaterThan(
+    lines.indexOf(`[hyperframes] check: overlap ${batches}/${batches}`),
+  );
   expect(denseAudits.length).toBeGreaterThan(10);
   const tasks = new Map<number, number>();
   for (const calls of denseAudits) tasks.set(calls, (tasks.get(calls) ?? 0) + 1);
@@ -687,6 +707,136 @@ it.each([
   },
 );
 
+describe("skipContrastInMotion", () => {
+  type Tween = { target: string; start: number; duration: number; repeat?: number };
+
+  async function contrastFindings(
+    tweens: Tween[],
+    skipContrastInMotion: boolean | undefined,
+    snapshots = false,
+  ) {
+    vi.spyOn(Date, "now").mockReturnValue(100);
+    mountCanvasFixture(`<div id="scene"><div id="headline">Low contrast copy</div></div>`);
+    const root = document.querySelector("[data-composition-id]");
+    const headline = document.querySelector("#headline");
+    if (!root || !headline) throw new Error("Contrast fixture failed to mount");
+    vi.spyOn(root, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 640, 360));
+    vi.spyOn(headline, "getBoundingClientRect").mockReturnValue(new DOMRect(50, 50, 300, 40));
+    vi.spyOn(window, "getComputedStyle").mockImplementation(
+      () =>
+        ({
+          display: "block",
+          visibility: "visible",
+          opacity: "1",
+          color: "rgb(250,250,250)",
+          fill: "",
+          backgroundColor: "rgba(0,0,0,0)",
+          backgroundImage: "none",
+          fontSize: "32px",
+          fontWeight: "700",
+        }) as unknown as CSSStyleDeclaration,
+    );
+    class MockImage {
+      onload: (() => void) | null = null;
+      naturalWidth = 640;
+      naturalHeight = 360;
+      set src(_value: string) {
+        this.onload?.();
+      }
+    }
+    vi.stubGlobal("Image", MockImage);
+    const getContextSpy = vi.spyOn(HTMLCanvasElement.prototype, "getContext") as unknown as {
+      mockReturnValue(value: CanvasRenderingContext2D): void;
+    };
+    getContextSpy.mockReturnValue({
+      drawImage() {},
+      getImageData() {
+        return { data: new Uint8ClampedArray(640 * 360 * 4).fill(255) };
+      },
+    } as unknown as CanvasRenderingContext2D);
+    const main = {
+      time: () => 5,
+      repeat: () => 0,
+      globalTime: (local: number) => local,
+      getChildren: () => children,
+    };
+    const children = tweens.map((tween) => ({
+      parent: main,
+      targets: () => [document.querySelector(tween.target)],
+      duration: () => tween.duration,
+      totalDuration: () => tween.duration * ((tween.repeat ?? 0) + 1),
+      repeat: () => tween.repeat ?? 0,
+      globalTime: (local: number) => tween.start + local,
+      startTime: () => tween.start,
+      endTime: () => tween.start + tween.duration,
+      timeScale: () => 1,
+      paused: () => false,
+    }));
+    if (tweens.length > 0) {
+      Reflect.set(window, "__timelines", {
+        main,
+      });
+    }
+    const page = fakePage();
+    const annotations: string[] = [];
+    page.screenshot = vi.fn(async () => {
+      annotations.push(document.getElementById("__hyperframesCheckAnnotations")?.textContent ?? "");
+      return "c3R1Yg==";
+    });
+    installSessionMock(page);
+    try {
+      const result = await runBrowserCheck(
+        PROJECT,
+        { ...DEFAULT_CHECK_OPTIONS, samples: 1, contrast: true, skipContrastInMotion, snapshots },
+        { kind: "none" },
+        runAuditGrid,
+      );
+      return { ...result, annotations };
+    } finally {
+      Reflect.deleteProperty(window, "__timelines");
+    }
+  }
+
+  const fadingIn: Tween[] = [{ target: "#headline", start: 4.8, duration: 0.6 }];
+
+  it("drops a failure measured mid-tween only when enabled", async () => {
+    const off = await contrastFindings(fadingIn, undefined);
+    expect(off.contrastFindings).toEqual([
+      expect.objectContaining({ selector: "#headline", severity: "error" }),
+    ]);
+    expect(off.contrastFindings[0]).not.toHaveProperty("inMotion");
+    expect((await contrastFindings(fadingIn, true)).contrastFindings).toEqual([]);
+  });
+
+  it("removes filtered failures from checked counts and snapshot annotations", async () => {
+    const off = await contrastFindings(fadingIn, undefined, true);
+    expect(off.contrastChecked).toBe(1);
+    expect(off.annotations.some((text) => text.includes("contrast_aa_failure"))).toBe(true);
+    const on = await contrastFindings(fadingIn, true, true);
+    expect(on.contrastChecked).toBe(0);
+    expect(on.contrastPassed).toBe(0);
+    expect(on.annotations.every((text) => !text.includes("contrast_aa_failure"))).toBe(true);
+    expect(on.screenshots).toHaveLength(1);
+  });
+
+  it("still reports the same text once its tween has ended", async () => {
+    const settled: Tween[] = [{ target: "#headline", start: 1, duration: 0.6 }];
+    expect((await contrastFindings(settled, true)).contrastFindings).toHaveLength(1);
+  });
+
+  it("still reports text under only ambient tweens on an ancestor", async () => {
+    const ambient: Tween[] = [
+      { target: "#scene", start: 0, duration: 10 },
+      { target: "#scene", start: 0, duration: 2, repeat: -1 },
+    ];
+    expect((await contrastFindings(ambient, true)).contrastFindings).toHaveLength(1);
+  });
+
+  it("still reports text on a page without GSAP", async () => {
+    expect((await contrastFindings([], true)).contrastFindings).toHaveLength(1);
+  });
+});
+
 it("carries validate's clip-duration audit into the runtime findings", async () => {
   vi.spyOn(Date, "now").mockReturnValue(100);
   mountCanvasFixture();
@@ -937,6 +1087,34 @@ describe("collectSeekClock", () => {
     const clocks = await collectSeekClock(seekPage);
 
     expect(clocks.map((clock) => clock.time)).toEqual([3]);
+  });
+});
+
+describe("keepFailedNetworkChanges", () => {
+  const draft = (url: string, networkChanged: boolean) => ({
+    code: "request_failed",
+    severity: "error" as const,
+    message: `Failed to load ${url}`,
+    time: 31,
+    url,
+    networkChanged,
+  });
+
+  it("drops a request the network change cut when the file loads again, and keeps every other failure", () => {
+    const cut = draft("http://h/assets/clip.mp4", true);
+    const gone = draft("http://h/assets/gone.mp4", true);
+    const refused = draft("http://h/assets/refused.mp4", false);
+    const kept = keepFailedNetworkChanges(
+      [cut, gone, refused],
+      new Set(["http://h/assets/gone.mp4"]),
+    );
+    expect(kept).toEqual([gone, refused]);
+  });
+
+  it("drops every cut request when nothing is re-asked, as a check out of time reports", () => {
+    const cut = draft("http://h/assets/clip.mp4", true);
+    const refused = draft("http://h/assets/refused.mp4", false);
+    expect(keepFailedNetworkChanges([cut, refused], new Set())).toEqual([refused]);
   });
 });
 
@@ -1353,7 +1531,7 @@ describe("preResolveHostileMediaProxies", () => {
       await pending;
 
       expect(errorSpy.mock.calls.map(([line]) => line)).toContain(
-        "[hyperframes] browser-playable copy of clip.mov: 25% (10s so far)",
+        "[hyperframes] making browser-playable copies: 0 of 1 done. clip.mov: 25% (10s so far)",
       );
     } finally {
       mocks.proxyProgress.feed = undefined;
@@ -1391,8 +1569,10 @@ describe("preResolveHostileMediaProxies", () => {
       await pending;
 
       const lines = errorSpy.mock.calls.map(([line]) => String(line));
-      expect(lines).toContain("[hyperframes] browser-playable copy of b.mov: 25% (10s so far)");
-      expect(lines.some((line) => line.includes("copy of a.mov"))).toBe(false);
+      expect(lines).toContain(
+        "[hyperframes] making browser-playable copies: 1 of 2 done. b.mov: 25% (10s so far)",
+      );
+      expect(lines.some((line) => line.includes(" a.mov: "))).toBe(false);
     } finally {
       mocks.proxyProgress.feed = undefined;
       vi.useRealTimers();
@@ -1480,13 +1660,13 @@ describe("preResolveHostileMediaProxies", () => {
     expect(mocks.resolveProxy).not.toHaveBeenCalled();
   });
 
-  it("pre-resolves an alpha VP9 asset through the Chromium-compatible VP8 proxy", async () => {
+  it("pre-resolves an alpha asset through the Chromium-compatible VP8 proxy", async () => {
     const projectDir = mkProjectDir();
     mocks.scanProjectMediaCodecMap.mockResolvedValue({
-      "/alpha.webm": {
-        codecName: "vp9",
+      "/alpha.mov": {
+        codecName: "prores",
         browserHostile: true,
-        representativeMime: 'video/webm; codecs="vp09.00.10.08"',
+        representativeMime: null,
         hasAlpha: true,
       },
     });
@@ -1496,9 +1676,31 @@ describe("preResolveHostileMediaProxies", () => {
     expect(mocks.resolveProxy).toHaveBeenCalledTimes(1);
     expect(mocks.resolveProxy).toHaveBeenCalledWith(
       projectDir,
-      join(projectDir, "alpha.webm"),
+      join(projectDir, "alpha.mov"),
       "vp8",
     );
+  });
+
+  it("does not copy VP9 or AV1 videos, which Chrome plays (alpha included)", async () => {
+    const projectDir = mkProjectDir();
+    mocks.scanProjectMediaCodecMap.mockResolvedValue({
+      "/cutout.webm": {
+        codecName: "vp9",
+        browserHostile: true,
+        representativeMime: 'video/webm; codecs="vp09.00.10.08"',
+        hasAlpha: true,
+      },
+      "/clip.mp4": {
+        codecName: "av1",
+        browserHostile: true,
+        representativeMime: 'video/mp4; codecs="av01.0.08M.08"',
+        hasAlpha: false,
+      },
+    });
+
+    await preResolveHostileMediaProxies(projectDir, "<html></html>");
+
+    expect(mocks.resolveProxy).not.toHaveBeenCalled();
   });
 
   it("is a no-op when the codec map has no hostile entries", async () => {
@@ -1770,5 +1972,252 @@ describe("motion blur findings in the check output (T6)", () => {
       runAuditGrid,
     );
     expect(blurCodes(result.runtimeFindings)).toEqual([]);
+  });
+});
+
+describe("finding frame capture", () => {
+  it("keeps a progressing frame batch alive past 120 seconds", async () => {
+    vi.useFakeTimers();
+    const dir = mkdtempSync(join(tmpdir(), "finding-frames-progress-"));
+    const deadline = new CheckDeadline();
+    const page = Object.assign(fakePage(), { evaluateOnNewDocument: vi.fn(async () => undefined) });
+    page.screenshot.mockImplementation(async () => {
+      await vi.advanceTimersByTimeAsync(4_000);
+      deadline.signal.throwIfAborted();
+      return "frame";
+    });
+    installSessionMock(page);
+    const requests = Array.from({ length: 40 }, (_, index) => ({
+      time: index,
+      filename: `frame-${index}.png`,
+    }));
+    try {
+      const result = await deadline
+        .run(() =>
+          captureFindingFrames({ ...PROJECT, dir }, DEFAULT_CHECK_OPTIONS, requests, deadline),
+        )
+        .catch((error: unknown) => error);
+      expect((result as { written: string[] }).written).toHaveLength(40);
+      expect(deadline.signal.aborted).toBe(false);
+    } finally {
+      await deadline.close();
+      vi.useRealTimers();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("seeks each requested time, writes its screenshot and closes the session", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "finding-frames-"));
+    const page = fakePage();
+    installSessionMock(page);
+    const closeCalls = mocks.serverClose.mock.calls.length;
+    const requests = [
+      { time: 1, filename: "finding-frame-00.png" },
+      { time: 2, filename: "finding-frame-01.png" },
+    ];
+    try {
+      const { written: paths, inspected } = await captureFindingFrames(
+        { ...PROJECT, dir },
+        DEFAULT_CHECK_OPTIONS,
+        requests,
+      );
+      expect(paths).toHaveLength(2);
+      expect(inspected).toEqual([]);
+      for (const [index, path] of paths.entries()) {
+        expect(readFileSync(path, "utf8")).toBe("c3R1Yg==");
+        expect(seekCompositionTimeline).toHaveBeenCalledWith(
+          page,
+          requests[index]?.time,
+          SCREENSHOT_SEEK_OPTIONS,
+        );
+      }
+      expect(mocks.serverClose.mock.calls.length).toBe(closeCalls + 1);
+      const session = await vi.mocked(openSettledCompositionPage).mock.results.at(-1)?.value;
+      expect(closeManagedBrowser).toHaveBeenCalledWith(session.browser);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("inspects each target on the inspector's page right after its frame, keeping going past a failure", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "finding-frames-inspect-"));
+    const page = fakePage();
+    installSessionMock(page);
+    const order: string[] = [];
+    vi.mocked(seekCompositionTimeline).mockImplementation(async (_page, time) => {
+      order.push(`seek ${time}`);
+    });
+    const ready = vi.fn(async () => undefined);
+    mocks.prepareFindingInspector.mockResolvedValue({
+      html: "<html>inspected</html>",
+      ready,
+      inspect: vi.fn(async (_page: unknown, target: { selector?: string; hfId?: string }) => {
+        order.push(`inspect ${target.selector ?? target.hfId}`);
+        return target.selector === "#bad" ? { error: "missing" } : { results: [] };
+      }),
+    });
+    try {
+      const { written, inspected } = await captureFindingFrames(
+        { ...PROJECT, dir },
+        DEFAULT_CHECK_OPTIONS,
+        [
+          { time: 1, filename: "a.png", inspect: [{ selector: "#bad" }, { hfId: "hf-1" }] },
+          { time: 2, filename: "b.png", inspect: [{ selector: "#c" }] },
+        ],
+      );
+      expect(written).toHaveLength(2);
+      expect(vi.mocked(openSettledCompositionPage).mock.calls.at(-1)?.[0]).toBe(
+        "<html>inspected</html>",
+      );
+      expect(ready).toHaveBeenCalledWith(expect.objectContaining({ url: "http://127.0.0.1:3000" }));
+      expect(order).toEqual(["seek 1", "inspect #bad", "inspect hf-1", "seek 2", "inspect #c"]);
+      expect(inspected).toEqual([
+        { time: 1, target: { selector: "#bad" }, inspect: { error: "missing" } },
+        { time: 1, target: { hfId: "hf-1" }, inspect: { results: [] } },
+        { time: 2, target: { selector: "#c" }, inspect: { results: [] } },
+      ]);
+    } finally {
+      vi.mocked(seekCompositionTimeline).mockImplementation(async () => undefined);
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it.each(["prepare", "ready"] as const)(
+    "does not capture after cancellation during inspector %s",
+    async (stage) => {
+      const dir = mkdtempSync(join(tmpdir(), "finding-inspect-setup-abort-"));
+      const deadline = new CheckDeadline();
+      const page = Object.assign(fakePage(), {
+        evaluateOnNewDocument: vi.fn(async () => undefined),
+      });
+      installSessionMock(page);
+      const inspect = vi.fn();
+      mocks.prepareFindingInspector.mockImplementationOnce(async () => {
+        if (stage === "prepare") deadline.stop("SIGTERM");
+        return {
+          html: "<html>inspected</html>",
+          ready: async () => {
+            deadline.stop("SIGTERM");
+          },
+          inspect,
+        };
+      });
+      const launches = vi.mocked(openSettledCompositionPage).mock.calls.length;
+      const closes = mocks.serverClose.mock.calls.length;
+      try {
+        const result = await deadline
+          .run(() =>
+            captureFindingFrames(
+              { ...PROJECT, dir },
+              DEFAULT_CHECK_OPTIONS,
+              [{ time: 1, filename: "first.png", inspect: [{ selector: "#a" }] }],
+              deadline,
+            ),
+          )
+          .catch((error: unknown) => error);
+        expect(result).toBe(deadline.signal.reason);
+        await deadline.close();
+        expect(page.screenshot).not.toHaveBeenCalled();
+        expect(inspect).not.toHaveBeenCalled();
+        expect(vi.mocked(openSettledCompositionPage).mock.calls.length - launches).toBe(
+          stage === "prepare" ? 0 : 1,
+        );
+        expect(mocks.serverClose.mock.calls.length - closes).toBe(stage === "prepare" ? 0 : 1);
+      } finally {
+        await deadline.close();
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.each(["stop", "timeout"] as const)(
+    "ends inspection work after a %s and closes the session",
+    async (reason) => {
+      vi.useFakeTimers();
+      const dir = mkdtempSync(join(tmpdir(), "finding-inspect-abort-"));
+      const deadline = new CheckDeadline();
+      const page = Object.assign(fakePage(), {
+        evaluateOnNewDocument: vi.fn(async () => undefined),
+      });
+      installSessionMock(page);
+      const inspect = vi.fn(async () => {
+        if (reason === "stop") deadline.stop("SIGTERM");
+        else await vi.advanceTimersByTimeAsync(120_001);
+        return { error: "page closed" };
+      });
+      mocks.prepareFindingInspector.mockResolvedValue({
+        html: "<html>inspected</html>",
+        ready: async () => undefined,
+        inspect,
+      });
+      const closeCalls = mocks.serverClose.mock.calls.length;
+      try {
+        const result = await deadline
+          .run(() =>
+            captureFindingFrames(
+              { ...PROJECT, dir },
+              DEFAULT_CHECK_OPTIONS,
+              [
+                {
+                  time: 1,
+                  filename: "first.png",
+                  inspect: [{ selector: "#a" }, { selector: "#b" }],
+                },
+                { time: 2, filename: "later.png", inspect: [{ selector: "#c" }] },
+              ],
+              deadline,
+            ),
+          )
+          .catch((error: unknown) => error);
+        expect(result).toBe(deadline.signal.reason);
+        await deadline.close();
+        expect(inspect).toHaveBeenCalledTimes(1);
+        expect(page.screenshot).toHaveBeenCalledTimes(1);
+        expect(mocks.serverClose.mock.calls.length).toBe(closeCalls + 1);
+        const session = await vi.mocked(openSettledCompositionPage).mock.results.at(-1)?.value;
+        expect(closeManagedBrowser).toHaveBeenCalledWith(session.browser);
+      } finally {
+        await deadline.close();
+        vi.useRealTimers();
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("does not prepare the inspector when no request asks for it", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "finding-frames-no-inspect-"));
+    installSessionMock(fakePage());
+    mocks.prepareFindingInspector.mockClear();
+    try {
+      await captureFindingFrames({ ...PROJECT, dir }, DEFAULT_CHECK_OPTIONS, [
+        { time: 1, filename: "a.png", inspect: [] },
+      ]);
+      expect(mocks.prepareFindingInspector).not.toHaveBeenCalled();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("closes the session when a later screenshot fails", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "finding-frames-failure-"));
+    const page = fakePage();
+    page.screenshot
+      .mockResolvedValueOnce("first")
+      .mockRejectedValueOnce(new Error("capture failed"));
+    installSessionMock(page);
+    const closeCalls = mocks.serverClose.mock.calls.length;
+    try {
+      await expect(
+        captureFindingFrames({ ...PROJECT, dir }, DEFAULT_CHECK_OPTIONS, [
+          { time: 1, filename: "first.png" },
+          { time: 2, filename: "second.png" },
+        ]),
+      ).rejects.toThrow("capture failed");
+      expect(mocks.serverClose.mock.calls.length).toBe(closeCalls + 1);
+      const session = await vi.mocked(openSettledCompositionPage).mock.results.at(-1)?.value;
+      expect(closeManagedBrowser).toHaveBeenCalledWith(session.browser);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

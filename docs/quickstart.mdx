@@ -1,13 +1,14 @@
 ---
 title: "Make your first video"
-description: "Make your first HyperFrames video in the free Studio app for Mac and Linux, with your own AI agent, or in an AI chat with nothing to install."
+description: "Make your first HyperFrames video in the free Studio app for Mac, Windows and Linux, with your own AI agent, or in an AI chat with nothing to install."
 ---
 
 import { QuickstartContinuationGrid } from "/snippets/quickstart-continuation-grid.jsx";
 import { DocsVideo } from "/snippets/docs-video.jsx";
 
-HyperFrames turns one sentence into a video you can keep editing. Start in the Studio app; if you are on Windows or
-already work with an AI agent in a terminal, use one of the other two ways. All three make the same kind of project.
+HyperFrames turns one sentence into a video you can keep editing. Start in the Studio app; if you already work with an
+AI agent in a terminal, or your computer can't run the app, use one of the other two ways. All three make the same
+kind of project.
 
 <DocsVideo
   title="A first video in the Studio app: one request, a few questions, a storyboard, the finished film"
@@ -26,11 +27,11 @@ already work with an AI agent in a terminal, use one of the other two ways. All 
 ## In the Studio app
 
 The easiest way: the app runs your agent beside a live preview, and you change the video by typing, pointing or
-drawing. For Mac (Apple Silicon or Intel) and Linux; Windows is coming soon.
+drawing. For Mac (Apple Silicon or Intel), Windows (64-bit Intel and AMD; not Windows on Arm yet) and Linux.
 
 <Steps>
   <Step title="Download and install">
-    <a href="https://hyperframes.dev/studio/download?src=docs-quickstart">Download the Studio app</a>, open it, and
+    <a href="https://hyperframes.studio/studio/download?src=docs-quickstart">Download the Studio app</a>, open it, and
     sign in with a free HeyGen account. [Install the Studio app](/studio-app) has the steps for each system.
   </Step>
   <Step title="Ask for the video">
@@ -42,6 +43,10 @@ drawing. For Mac (Apple Silicon or Intel) and Linux; Windows is coming soon.
     walks through it.
   </Step>
 </Steps>
+
+<Card title="Practice it: The brief" icon="graduation-cap" href="https://hyperframes.heygen.com/lessons/the-brief">
+  Free 20-minute lesson with a short video, a quiz and a brief to try. A brief is the goal, who it is for, two to four specifics and the exact words in quotes.
+</Card>
 
 ## With your agent
 
@@ -65,6 +70,9 @@ Set this folder up for HyperFrames and make me a video.
 
 <Steps>
   <Step title="Install the plugin or skills">
+    Step-by-step pages: [Claude Code](/guides/with-claude-code), [Codex](/guides/with-codex),
+    [Cursor](/guides/with-cursor).
+
     For Claude Code, Copilot, VS Code, Cursor, or Gemini CLI, start with the
     [plugin installation guide](/guides/plugins). It includes update settings for each agent. Claude's plugin entry
     skill is `/hyperframes:hyperframes`.
@@ -81,8 +89,8 @@ Set this folder up for HyperFrames and make me a video.
     Using /hyperframes, make a 10-second product intro for https://example.com.
     ```
 
-    Replace `https://example.com` with the page you want the video to show. The agent proposes a direction and asks
-    for anything important that is missing.
+    Replace `https://example.com` with the page you want the video to show. For a longer film that tells a story, the
+    agent first offers three storylines to pick from.
   </Step>
   <Step title="Continue from the first version">
     The agent leaves you with a project folder and opens its preview in the browser editor. To reopen it later, run

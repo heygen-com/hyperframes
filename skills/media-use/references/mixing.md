@@ -69,4 +69,4 @@ Duck the bed with a `volume` lane on the music: full level before the voice, dow
 
 ## Group buses
 
-Give clips the same `data-audio-group="<id>"` to treat them as one group. An `<hf-audio-group id="<id>">` element with that id makes the group a submix bus with one `data-fx-chain`, one volume and one automation clock for every member. Keep one role per group: `voiceover`, `music`, `sfx`.
+Give clips the same `data-audio-group="<id>"` to treat them as one group. An `<hf-audio-group id="<id>"></hf-audio-group>` element with that id (closed like that: `/>` does not close it) makes the group a submix bus with one `data-fx-chain`, one volume and one automation clock for every member. Keep one role per group: `voiceover`, `music`, `sfx`.

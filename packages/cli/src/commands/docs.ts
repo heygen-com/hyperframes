@@ -1,5 +1,5 @@
-import { failCommand } from "../utils/commandResult.js";
-import { defineCommand } from "citty";
+import { failCommand, failUsage } from "../utils/commandResult.js";
+import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
 import { readFileSync, existsSync } from "node:fs";
 
@@ -42,6 +42,10 @@ const TOPICS: Record<string, TopicEntry> = {
   compositions: {
     file: "compositions.md",
     description: "Composition structure, nesting, and variables",
+  },
+  "motion-blur": {
+    file: "motion-blur.md",
+    description: "Shutter smear on fast movers: attributes, tiers, checks",
   },
 };
 
@@ -128,7 +132,7 @@ export default defineCommand({
       for (const name of Object.keys(TOPICS)) {
         console.error(`  ${c.accent(name)}`);
       }
-      failCommand();
+      failUsage();
     }
 
     const filePath = join(docsDir(), entry.file);

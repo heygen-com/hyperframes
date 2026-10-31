@@ -49,7 +49,12 @@ import { appendVp9CpuUsedArg } from "./vp9Options.js";
 import { appendSoftwareEncoderThreadsArg } from "./softwareEncoderThreads.js";
 import { appendRenderProvenanceArgs } from "../utils/renderProvenance.js";
 
-import { appendLockedGopArgs, lockedGopCodecParams, resolveLockedGopSize } from "./chunkEncoder.js";
+import {
+  appendLockedGopArgs,
+  appendRateCapArgs,
+  lockedGopCodecParams,
+  resolveLockedGopSize,
+} from "./chunkEncoder.js";
 
 // Re-export EncoderOptions so callers can reference the type via this module.
 export type { EncoderOptions } from "./chunkEncoder.types.js";
@@ -157,6 +162,8 @@ export interface StreamingEncoderOptions {
   preset?: string;
   quality?: number;
   bitrate?: string;
+  maxBitrate?: string;
+  bufferSize?: string;
   pixelFormat?: string;
   /** libvpx-vp9 -cpu-used value. Defaults to the engine VP9 setting. */
   vp9CpuUsed?: number;
@@ -184,6 +191,8 @@ export interface StreamingEncoderResult {
   error?: string;
   /** Stable machine-readable cause for failures safe to retry on a fresh host. */
   failureReason?: "external_interruption";
+  /** Total time `writeFrame` waited for FFmpeg to drain its stdin pipe. */
+  drainWaitMs?: number;
 }
 
 export interface StreamingEncoder {
@@ -281,6 +290,7 @@ export function buildStreamingArgs(
   args.push("-r", fpsToFfmpegArg(fps));
 
   const shouldUseGpu = useGpu && gpuEncoder !== null;
+  appendRateCapArgs(args, options);
 
   if (codec === "h264" || codec === "h265") {
     if (shouldUseGpu) {
@@ -577,6 +587,7 @@ export async function spawnStreamingEncoder(
   };
 
   let inputFrameIndex = 0;
+  let drainWaitMs = 0;
   const encoder: StreamingEncoder = {
     writeFrame: async (buffer: Buffer): Promise<boolean> => {
       const stdin = ffmpeg.stdin;
@@ -618,7 +629,9 @@ export async function spawnStreamingEncoder(
         return true;
       }
 
+      const drainStart = Date.now();
       const drainResult = await waitForDrainOrExit(stdin);
+      drainWaitMs += Date.now() - drainStart;
       if (drainResult !== "drain" || exitStatus !== "running") {
         return false;
       }
@@ -684,7 +697,7 @@ export async function spawnStreamingEncoder(
 
       const fileSize = existsSync(outputPath) ? statSync(outputPath).size : 0;
 
-      return { success: true, durationMs, fileSize };
+      return { success: true, durationMs, fileSize, drainWaitMs };
     },
 
     getExitStatus: () => exitStatus,

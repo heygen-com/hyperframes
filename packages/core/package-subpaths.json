@@ -68,6 +68,30 @@
       "types": "./dist/atomicFile.d.ts",
       "environments": ["bun", "node"]
     },
+    "./remove-tree": {
+      "source": "./src/removeTree.ts",
+      "runtime": "./dist/removeTree.js",
+      "types": "./dist/removeTree.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./env-proxy": {
+      "source": "./src/envProxy.ts",
+      "runtime": "./dist/envProxy.js",
+      "types": "./dist/envProxy.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./rename-retry": {
+      "source": "./src/renameWithRetry.ts",
+      "runtime": "./dist/renameWithRetry.js",
+      "types": "./dist/renameWithRetry.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./remove-scratch": {
+      "source": "./src/removeScratch.ts",
+      "runtime": "./dist/removeScratch.js",
+      "types": "./dist/removeScratch.d.ts",
+      "environments": ["bun", "node"]
+    },
     "./project-folders": {
       "source": "./src/projectFolders.ts",
       "runtime": "./dist/projectFolders.js",
@@ -120,6 +144,12 @@
       "source": "./src/motionBlurSettings.ts",
       "runtime": "./dist/motionBlurSettings.js",
       "types": "./dist/motionBlurSettings.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./preview-quality": {
+      "source": "./src/previewProxyBox.ts",
+      "runtime": "./dist/previewProxyBox.js",
+      "types": "./dist/previewProxyBox.d.ts",
       "environments": ["browser", "bun", "node"]
     },
     "./gsap-cdn": {
@@ -380,6 +410,18 @@
       "types": "./dist/runtime/clipWindow.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./runtime/media-clock": {
+      "source": "./src/runtime/mediaClock.ts",
+      "runtime": "./dist/runtime/mediaClock.js",
+      "types": "./dist/runtime/mediaClock.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./runtime/media-steer": {
+      "source": "./src/runtime/mediaSteer.ts",
+      "runtime": "./dist/runtime/mediaSteer.js",
+      "types": "./dist/runtime/mediaSteer.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./runtime/clip-reveal": {
       "source": "./src/runtime/clipReveal.ts",
       "runtime": "./dist/runtime/clipReveal.js",
@@ -409,6 +451,12 @@
       "runtime": "./dist/compiler/htmlDocument.js",
       "types": "./dist/compiler/htmlDocument.d.ts",
       "environments": ["browser", "bun", "node"]
+    },
+    "./compiler/png-colour-tags": {
+      "source": "./src/compiler/pngColourTags.ts",
+      "runtime": "./dist/compiler/pngColourTags.js",
+      "types": "./dist/compiler/pngColourTags.d.ts",
+      "environments": ["bun", "node"]
     },
     "./runtime/position-edits": {
       "source": "./src/runtime/positionEdits.ts",

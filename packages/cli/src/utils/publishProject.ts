@@ -1,3 +1,4 @@
+import { envProxyEnabled } from "@hyperframes/core/env-proxy";
 import { basename, dirname, join, posix, relative, resolve } from "node:path";
 import {
   closeSync,
@@ -12,9 +13,10 @@ import {
 import { parseHTML } from "linkedom";
 import AdmZip from "adm-zip";
 import ignore, { type Ignore } from "ignore";
-import { CSS_URL_RE, isNonRelativeUrl, isPathInside } from "@hyperframes/core";
+import { CSS_URL_RE, isNonRelativeUrl, isPathInside, rewriteSrcsetUrls } from "@hyperframes/core";
 import { decodeUrlPathVariants, encodeUrlPath } from "@hyperframes/parsers";
 import { buildAuthHeaders } from "../auth/client.js";
+import { oauthEnvironment } from "../auth/config.js";
 import { tryResolveCredential } from "../auth/index.js";
 import { isAuthError } from "../auth/errors.js";
 import { envCredentialVar, isTokenExpired, type ResolvedCredential } from "../auth/resolver.js";
@@ -235,11 +237,7 @@ function proxySupportHint(): string {
   const proxyConfigured = ["HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy"].some((key) =>
     Boolean(process.env[key]?.trim()),
   );
-  const proxyEnabled =
-    process.env["NODE_USE_ENV_PROXY"] === "1" ||
-    process.execArgv.includes("--use-env-proxy") ||
-    process.env["NODE_OPTIONS"]?.split(/\s+/u).includes("--use-env-proxy") === true;
-  if (!proxyConfigured || proxyEnabled) return "";
+  if (!proxyConfigured || envProxyEnabled()) return "";
   return (
     ". Proxy variables are set but ignored by Node fetch; if this network requires them, retry with " +
     "NODE_USE_ENV_PROXY=1 (Node 22.21+)"
@@ -542,6 +540,27 @@ export function rewriteStyleBlocks(
   return modified;
 }
 
+function rewriteHtmlSrcsets(
+  document: Document,
+  referrerAbsDir: string,
+  entryPath: string,
+  resolveTarget: HtmlAttributeResolver,
+): boolean {
+  let modified = false;
+  for (const el of document.querySelectorAll("[srcset]")) {
+    const srcset = el.getAttribute("srcset");
+    if (!srcset) continue;
+    const rewritten = rewriteSrcsetUrls(srcset, (url) => {
+      const target = resolveTarget(url, referrerAbsDir);
+      return target ? referenceFrom(entryPath, target) : url;
+    });
+    if (rewritten === srcset) continue;
+    el.setAttribute("srcset", rewritten);
+    modified = true;
+  }
+  return modified;
+}
+
 function localizeHtmlEntry(ctx: ExternalAssetContext, entryPath: string, content: Buffer): void {
   const referrerAbsDir = resolve(ctx.absProjectDir, dirname(entryPath));
   const { document } = parseHTML(content.toString("utf-8"));
@@ -550,7 +569,8 @@ function localizeHtmlEntry(ctx: ExternalAssetContext, entryPath: string, content
     attrs: ["src", "href", "poster"],
   });
   const stylesChanged = rewriteStyleBlocks(document, referrerAbsDir, entryPath, resolveTarget);
-  if (attrsChanged || stylesChanged) {
+  const srcsetsChanged = rewriteHtmlSrcsets(document, referrerAbsDir, entryPath, resolveTarget);
+  if (attrsChanged || stylesChanged || srcsetsChanged) {
     ctx.fileContents.set(entryPath, Buffer.from(document.toString(), "utf-8"));
   }
 }
@@ -681,7 +701,7 @@ export function getPublishApiBaseUrl(): string {
   return (
     process.env["HYPERFRAMES_PUBLISHED_PROJECTS_API_URL"] ||
     process.env["HEYGEN_API_URL"] ||
-    "https://api2.heygen.com"
+    `https://api2.${oauthEnvironment() === "dev" ? "dev." : ""}heygen.com`
   ).replace(/\/$/, "");
 }
 

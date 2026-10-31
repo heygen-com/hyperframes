@@ -1,23 +1,28 @@
 pre-commit:
   parallel: true
-  commands:
-    lint:
+  jobs:
+    - name: lint
       glob: "*.{js,jsx,ts,tsx,mjs,cjs,mts,cts}"
       run: node_modules/.bin/oxlint --no-error-on-unmatched-pattern {staged_files}
-    format:
-      glob: "*.{js,jsx,ts,tsx,mjs,cjs,mts,cts,json,md,yaml,yml}"
-      # Auto-format and re-stage so the committed snapshot is always formatted.
-      # Replaces --check which only reports — that left unformatted files in
-      # commits when the hook ran after the amend snapshot was taken.
-      run: node_modules/.bin/oxfmt --no-error-on-unmatched-pattern {staged_files} && git add -f {staged_files}
-    skills-manifest:
-      glob: "skills/**"
-      # Regenerate the freshness fingerprint when a skill changes, then re-stage
-      # it so skills-manifest.json (repo root) never drifts from skills/ (CI
-      # enforces the same via the "Skills: manifest in sync" job). Churn-free:
-      # the generator rewrites only when a content hash actually changed.
-      run: bun packages/cli/scripts/gen-skills-manifest.ts && git add skills-manifest.json
-    typecheck:
+    # format rewrites staged files and skills-manifest hashes them, so they run in order:
+    # in parallel the hash could be taken from a file the formatter was still reflowing.
+    - group:
+        piped: true
+        jobs:
+          - name: format
+            glob: "*.{js,jsx,ts,tsx,mjs,cjs,mts,cts,json,md,yaml,yml}"
+            # Auto-format and re-stage so the committed snapshot is always formatted.
+            # Replaces --check which only reports — that left unformatted files in
+            # commits when the hook ran after the amend snapshot was taken.
+            run: node_modules/.bin/oxfmt --no-error-on-unmatched-pattern {staged_files} && git add -f {staged_files}
+          - name: skills-manifest
+            glob: "skills/**"
+            # Regenerate the freshness fingerprint when a skill changes, then re-stage
+            # it so skills-manifest.json (repo root) never drifts from skills/ (CI
+            # enforces the same via the "Skills: manifest in sync" job). Churn-free:
+            # the generator rewrites only when a content hash actually changed.
+            run: bun packages/cli/scripts/gen-skills-manifest.ts && git add skills-manifest.json
+    - name: typecheck
       glob: "*.{ts,tsx}"
       run: cd packages/core && node_modules/.bin/tsc --noEmit && cd ../studio && node_modules/.bin/tsc --noEmit && cd ../.. && node_modules/.bin/tsc --noEmit -p scripts/tsconfig.json
     # Mirrors the CI gate (same `--base origin/main` so the local hook can't
@@ -25,7 +30,7 @@ pre-commit:
     # unstaged WIP in `packages/**` is part of the diff — stash before
     # committing if that surprises you. `--gate new-only` (the default) only
     # fails on issues introduced by the branch, not inherited findings.
-    fallow:
+    - name: fallow
       glob: "packages/**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}"
       # Unset git worktree env vars: fallow creates a temp worktree internally and
       # GIT_DIR/GIT_INDEX_FILE (set by git in worktree hook context) break that.
@@ -33,19 +38,19 @@ pre-commit:
       # fallow reuses one base-snapshot cache per checkout; `audit-cache prune` drops caches unused for a day,
       # including those of removed checkouts. The commit gets the audit's own status.
       run: env -u GIT_DIR -u GIT_INDEX_FILE -u GIT_WORK_TREE sh -c 'node_modules/.bin/fallow audit --base origin/main --fail-on-issues; status=$?; node_modules/.bin/fallow audit-cache prune --max-age-days 1 > /dev/null; exit $status'
-    cli-process-ownership:
+    - name: cli-process-ownership
       glob: "packages/cli/src/**/*.ts"
       run: bun run check:cli-process-ownership
-    largefiles:
+    - name: largefiles
       # Rejects staged binaries over the limit that are not LFS pointers; see
       # the script header. CI runs the same script with --range.
       run: ./scripts/check-large-files.sh
-    tracked-artifacts:
+    - name: tracked-artifacts
       # Keep ignored dependency trees and platform metadata out of commits.
       # `git ls-files` observes the staged index, so staged removals pass and
       # an accidental force-add fails before the commit is created.
       run: bun run check:tracked-artifacts
-    filesize:
+    - name: filesize
       # Scoped to packages/studio — the 600 LOC limit is a studio architecture
       # standard enforced as part of the App.tsx decomposition work. Player and
       # other packages enforce size discipline via code review and convention.

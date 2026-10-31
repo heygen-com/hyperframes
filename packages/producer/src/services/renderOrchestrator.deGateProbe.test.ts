@@ -130,6 +130,8 @@ beforeEach(() => {
   vi.stubEnv("PRODUCER_EXPERIMENTAL_FAST_CAPTURE", "");
   vi.stubEnv("HF_DE_PARALLEL_STREAM", "");
   vi.stubEnv("HF_DE_PARALLEL_MIN_MEM_MB", "0");
+  // These cases exercise the single-worker inversion, which is opt-in.
+  vi.stubEnv("HF_DE_SINGLE_MIN_FRAMES", "900");
 });
 afterEach(() => {
   vi.unstubAllEnvs();

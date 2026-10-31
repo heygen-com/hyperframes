@@ -11,6 +11,7 @@ vi.mock("./sam.js", async (importOriginal) => ({
   samDeploy: vi.fn(),
   fetchStackOutputs: vi.fn(() => ({ bucketName: "b", functionName: "f", stateMachineArn: "s" })),
 }));
+vi.mock("./warm.js", () => ({ warmFunction: vi.fn() }));
 const written = vi.hoisted(() => [] as Record<string, unknown>[]);
 vi.mock("./state.js", () => ({
   DEFAULT_STACK_NAME: "hf",
@@ -22,7 +23,8 @@ vi.mock("./videoImage.js", () => ({
 }));
 
 const { runDeploy } = await import("./deploy.js");
-const { samDeploy } = await import("./sam.js");
+const { fetchStackOutputs, samDeploy } = await import("./sam.js");
+const { warmFunction } = await import("./warm.js");
 const { pushVideoImage } = await import("./videoImage.js");
 
 let dir: string | undefined;
@@ -30,6 +32,7 @@ let quiet: { mockRestore(): void };
 
 beforeEach(() => {
   vi.mocked(samDeploy).mockClear();
+  vi.mocked(warmFunction).mockReset();
   vi.mocked(pushVideoImage).mockClear();
   written.length = 0;
   quiet = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -84,6 +87,60 @@ describe("runDeploy", () => {
     expect(vi.mocked(pushVideoImage).mock.calls[0]?.[0]).toMatchObject({ inCheckout: true });
     expect(vi.mocked(samDeploy).mock.calls[0]?.[0].videoImageUri).toBe("repo@sha256:a");
     expect(written[0]).toMatchObject({ videoRepository: "hf-video" });
+  });
+
+  describe("warming the video function", () => {
+    const outputs = {
+      bucketName: "b",
+      functionName: "f",
+      stateMachineArn: "s",
+      videoFunctionName: "hf-video",
+    };
+
+    function checkout(): void {
+      dir = mkdtempSync(join(tmpdir(), "hf-deploy-warm-"));
+      mkdirSync(join(dir, "examples", "aws-lambda"), { recursive: true });
+      writeFileSync(join(dir, "examples", "aws-lambda", "template.yaml"), "Resources: {}\n");
+      mkdirSync(join(dir, "packages", "aws-lambda", "dist"), { recursive: true });
+      writeFileSync(join(dir, "packages", "aws-lambda", "dist", "handler.zip"), "zip");
+      root.value = dir;
+      vi.mocked(fetchStackOutputs).mockReturnValueOnce(outputs);
+    }
+
+    it("warms it once by default, after the state is written", async () => {
+      checkout();
+      await runDeploy({ skipBuild: true, stackName: "hf", region: "eu-west-1" });
+      expect(vi.mocked(warmFunction).mock.calls).toEqual([
+        [{ functionName: "hf-video", region: "eu-west-1", awsProfile: undefined }],
+      ]);
+      expect(written).toHaveLength(1);
+    });
+
+    it("still finishes the deploy when the warm-up fails", async () => {
+      checkout();
+      vi.mocked(warmFunction).mockImplementation(() => {
+        throw new Error("Task timed out");
+      });
+      await expect(runDeploy({ skipBuild: true, stackName: "hf" })).resolves.toBeUndefined();
+      expect(written).toHaveLength(1);
+    });
+
+    it("does not warm with warm: false", async () => {
+      checkout();
+      await runDeploy({ skipBuild: true, stackName: "hf", warm: false });
+      expect(warmFunction).not.toHaveBeenCalled();
+    });
+
+    it("has no image function to warm on x86_64", async () => {
+      checkout();
+      vi.mocked(fetchStackOutputs).mockReset();
+      vi.mocked(fetchStackOutputs).mockReturnValueOnce({
+        ...outputs,
+        videoFunctionName: undefined,
+      });
+      await runDeploy({ skipBuild: true, stackName: "hf", videoArch: "x86_64" });
+      expect(warmFunction).not.toHaveBeenCalled();
+    });
   });
 
   it.each([undefined, "arm64" as const])(

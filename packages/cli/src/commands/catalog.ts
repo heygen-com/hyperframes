@@ -1,4 +1,4 @@
-import { defineCommand } from "citty";
+import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
 
 export const examples: Example[] = [
@@ -10,7 +10,7 @@ export const examples: Example[] = [
   ["Search (positional, same as --query)", 'hyperframes catalog "crossfade"'],
 ];
 
-import * as clack from "@clack/prompts";
+import * as clack from "../ui/prompts.js";
 import { realpath, type ItemType, type RegistryItem } from "@hyperframes/core";
 import { c } from "../ui/colors.js";
 import { loadAllItems } from "../registry/resolver.js";
@@ -18,7 +18,7 @@ import { fetchRegistryManifest } from "../registry/remote.js";
 import { loadProjectConfig, DEFAULT_PROJECT_CONFIG } from "../utils/projectConfig.js";
 import { relative, resolve } from "node:path";
 import { finishCommand } from "../utils/commandResult.js";
-import { isAttendedTerminal } from "../utils/attendedTerminal.js";
+import { isUnattended } from "../utils/attendedTerminal.js";
 import { runAdd } from "./add.js";
 import { hasNoSearchableTokens, searchByWords } from "../registry/localSearch.js";
 import {
@@ -271,7 +271,7 @@ export default defineCommand({
       warnings = await prepareOnDeviceTier({
         assumedYes: args.yes === true,
         artifactRevision,
-        canPrompt: isAttendedTerminal() && !json,
+        canPrompt: !isUnattended() && !json,
         installRuntime: args["on-device"] === true,
         registry: config.registry,
         registryNames,
@@ -725,7 +725,7 @@ type LocalMode = "local-model" | "words";
  * person to prompt instead, or when that person has already answered.
  */
 function localModelHint(json: boolean, status: LocalModelStatus | undefined): string | null {
-  if (!json && isAttendedTerminal()) return null;
+  if (!json && !isUnattended()) return null;
   if (status?.status !== "not-asked") return null;
   return nonInteractiveConsentMessage();
 }
@@ -743,7 +743,7 @@ async function offerLocalModel(
   registryBaseUrl: string,
   artifactRevision?: string,
 ): Promise<void> {
-  if (json || !isAttendedTerminal()) return;
+  if (json || isUnattended()) return;
   if (localModelStatus().status !== "not-asked") return;
   // Deliberately not gated on the number of results. That gate was set when the
   // catalog was small; against 411 moves a word match nearly always returns

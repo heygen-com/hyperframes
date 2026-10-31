@@ -100,7 +100,7 @@ describe("hyperframes init flag rename", () => {
     const target = join(dir, "proj");
     try {
       const res = runInit([target, "--example", "--non-interactive"]);
-      expect(res.status).toBe(1);
+      expect(res.status).toBe(2);
       expect(res.stderr).toContain("Missing value for --example");
       expect(existsSync(target)).toBe(false);
     } finally {
@@ -445,7 +445,7 @@ describe("hyperframes init flag rename", () => {
         "--audio",
         "track.mp3",
       ]);
-      expect(res.status).toBe(1);
+      expect(res.status).toBe(2);
       expect(res.stderr).toContain("Cannot use --video and --audio together");
       expect(existsSync(target)).toBe(false);
     } finally {
@@ -529,19 +529,19 @@ describe("hyperframes init flag rename", () => {
         "-V",
         "missing.mp4",
       ]);
-      expect(res.status).toBe(1);
+      expect(res.status).toBe(2);
       expect(res.stderr).toContain("The -V short flag no longer maps to --video");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  it("--template prints a rename hint and exits non-zero", () => {
+  it("--template prints a rename hint and exits 2", () => {
     const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
     const target = join(dir, "proj");
     try {
       const res = runInit([target, "--template", "blank", "--non-interactive", "--skip-skills"]);
-      expect(res.status).toBe(1);
+      expect(res.status).toBe(2);
       expect(res.stderr).toContain("--template flag was renamed to --example");
       expect(res.stderr).toContain(`--example "blank"`);
       expect(existsSync(target)).toBe(false);
@@ -682,7 +682,7 @@ describe("applyResolutionPreset", () => {
         "--non-interactive",
         "--skip-skills",
       ]);
-      expect(res.status).toBe(1);
+      expect(res.status).toBe(2);
       expect(res.stderr).toContain("Invalid --resolution");
       expect(existsSync(target)).toBe(false);
     } finally {

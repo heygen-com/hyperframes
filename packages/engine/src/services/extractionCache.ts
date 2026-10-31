@@ -44,7 +44,7 @@ import {
   utimesSync,
   writeFileSync,
 } from "node:fs";
-import { renameWithRetry } from "../utils/renameWithRetry.js";
+import { renameWithRetry } from "@hyperframes/core/rename-retry";
 import { join } from "node:path";
 import type { VideoMetadata } from "../utils/ffprobe.js";
 import { FRAME_FILENAME_PREFIX, framePathsFromDirectory } from "./extractedFrameIndex.js";

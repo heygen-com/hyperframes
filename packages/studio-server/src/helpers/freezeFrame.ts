@@ -138,7 +138,7 @@ function growRootToFit(document: Document): void {
   if (end > rootDuration + EPSILON) root.setAttribute("data-duration", String(round3(end)));
 }
 
-const COPIED_PICTURE_ATTRS = ["class", "style", "data-color-grading"];
+const COPIED_PICTURE_ATTRS = ["class", "style", "data-color-grading", "data-color-group"];
 
 function buildStill(
   document: Document,

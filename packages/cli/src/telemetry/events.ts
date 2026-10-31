@@ -442,6 +442,10 @@ export function trackRenderComplete(
     captureAvgMs?: number;
     /** Warmup-robust per-frame capture median (basis for speedup estimates). */
     captureP50Ms?: number;
+    captureSeekAvgMs?: number;
+    captureBeforeCaptureAvgMs?: number;
+    captureScreenshotAvgMs?: number;
+    encoderWaitAvgMs?: number;
     /** <video> element count (speedup segmentation: injection comps read lower). */
     videoCount?: number;
     capturePeakMs?: number;
@@ -617,6 +621,10 @@ export function trackRenderComplete(
       speed_ratio: props.speedRatio,
       capture_avg_ms: props.captureAvgMs,
       capture_p50_ms: props.captureP50Ms,
+      capture_seek_avg_ms: props.captureSeekAvgMs,
+      capture_before_capture_avg_ms: props.captureBeforeCaptureAvgMs,
+      capture_screenshot_avg_ms: props.captureScreenshotAvgMs,
+      encoder_wait_avg_ms: props.encoderWaitAvgMs,
       video_count: props.videoCount,
       capture_peak_ms: props.capturePeakMs,
       peak_memory_mb: props.peakMemoryMb,
@@ -674,6 +682,7 @@ export function trackRenderError(
     errorName?: string;
     /** failedStage normalized to a stable snake_case code. */
     failedStageCode?: string;
+    missingPathKind?: string;
     errorMessage?: string;
     elapsedMs?: number;
     peakMemoryMb?: number;
@@ -702,6 +711,7 @@ export function trackRenderError(
       failed_stage: props.failedStage,
       error_name: props.errorName,
       failed_stage_code: props.failedStageCode,
+      missing_path_kind: props.missingPathKind,
       error_message: props.errorMessage ? redactTelemetryMessage(props.errorMessage) : undefined,
       elapsed_ms: props.elapsedMs,
       ...renderOutputShapeEventProperties(props),
@@ -872,11 +882,15 @@ export function trackAuthLoginFailed(
 // install's anonymousId, so events recorded before sign-in stitch to the same
 // person instead of stranding as a separate anonymous profile. Routed through
 // trackEvent so it shares the opt-out gate and flush path — a no-op when
-// telemetry is disabled. `distinctId` is the account email (else username);
-// see the privacy notice in showTelemetryNotice and docs/packages/cli.mdx.
-export function identifyUser(distinctId: string): void {
+// telemetry is disabled. Identity comes from auth/telemetryIdentity.ts; see
+// showTelemetryNotice and docs/packages/cli.mdx.
+export function identifyUser(distinctId: string, traits: Record<string, string> = {}): void {
   if (!distinctId) return;
-  trackEvent("$identify", { $anon_distinct_id: readConfig().anonymousId }, distinctId);
+  trackEvent(
+    "$identify",
+    { $anon_distinct_id: readConfig().anonymousId, $set: traits },
+    distinctId,
+  );
 }
 
 // A render was rejected by the output-resolution/HDR pre-flight (P1-3)
@@ -1079,6 +1093,28 @@ export function trackCatalogSearchMiss(props: {
   });
 }
 
+// Where a snapshot's time went and how far its video frames sat from a keyframe, so the slow runs
+// split by cause. Low-cardinality only: counts, a stage name and a distance bucket.
+export function trackSnapshotRun(props: {
+  frames: number;
+  videoFrames: number;
+  decodePasses: number;
+  sharedFrames: number;
+  longestDecodeSeconds: number;
+  slowStage: "open" | "seek" | "video" | "capture";
+}): void {
+  const seconds = props.longestDecodeSeconds;
+  trackEvent("cli_snapshot_run", {
+    frames: props.frames,
+    video_frames: props.videoFrames,
+    decode_passes: props.decodePasses,
+    shared_frames: props.sharedFrames,
+    keyframe_distance:
+      seconds <= 2 ? "to_2s" : seconds <= 10 ? "to_10s" : seconds <= 60 ? "to_60s" : "over_60s",
+    slow_stage: props.slowStage,
+  });
+}
+
 export function trackCommandResult(props: {
   command: string;
   success: boolean;
@@ -1113,8 +1149,13 @@ export function trackCheckReport(props: {
   contrastWarnings: number;
   craftWarnings: number;
   launchSettleMs: number;
+  renderReadyTimedOut: boolean;
   seekLoopMs: number;
   contrastMs: number;
+  gridMs: number;
+  craftMs: number;
+  overlapMs: number;
+  durationSec: number;
   gridPoints: number;
   contrastPoints: number;
   ok: boolean;
@@ -1139,8 +1180,13 @@ export function trackCheckReport(props: {
     contrast_warnings: props.contrastWarnings,
     craft_warnings: props.craftWarnings,
     launch_settle_ms: props.launchSettleMs,
+    render_ready_timed_out: props.renderReadyTimedOut,
     seek_loop_ms: props.seekLoopMs,
     contrast_ms: props.contrastMs,
+    grid_ms: props.gridMs,
+    craft_ms: props.craftMs,
+    overlap_ms: props.overlapMs,
+    composition_s: props.durationSec,
     grid_points: props.gridPoints,
     contrast_points: props.contrastPoints,
     ok: props.ok,

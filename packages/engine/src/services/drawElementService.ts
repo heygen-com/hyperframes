@@ -86,9 +86,7 @@ export function resolveDrawElementCaptureMode(
  * captureDrawElementFrame can hide them from paint records and drawImage
  * their live content underneath the drawElementImage output.
  *
- * WebGL contexts additionally get `preserveDrawingBuffer: true` forced —
- * without it the drawing buffer is cleared after each compositor present and
- * drawImage(glCanvas) reads blank.
+ * Register forcePreservedDrawingBuffer first: this wrapper only records.
  *
  * Must be registered via page.evaluateOnNewDocument BEFORE navigation.
  */
@@ -107,11 +105,10 @@ export function instrumentAcceleratedCanvases(): void {
     type: string,
     attrs?: Record<string, unknown>,
   ) {
-    const isGl = type === "webgl" || type === "webgl2" || type === "experimental-webgl";
-    const isAccel = isGl || type === "webgpu";
-    const finalAttrs = isGl ? { ...attrs, preserveDrawingBuffer: true } : attrs;
+    const isAccel =
+      type === "webgl" || type === "webgl2" || type === "experimental-webgl" || type === "webgpu";
     // oxlint-disable-next-line no-explicit-any
-    const ctx = (orig as any).call(this, type, finalAttrs);
+    const ctx = (orig as any).call(this, type, attrs);
     if (ctx && isAccel) {
       const list = w.__hf_accel_canvases ?? [];
       if (!list.includes(this)) list.push(this);
@@ -128,6 +125,24 @@ export function instrumentAcceleratedCanvases(): void {
       w.__hf_canvas_2d = list2d;
     }
     return ctx;
+  };
+}
+
+/**
+ * WebGL contexts keep their drawing buffer after a frame is presented, so drawImage(glCanvas) reads the frame
+ * instead of blank. Must be registered via page.evaluateOnNewDocument BEFORE navigation.
+ */
+export function forcePreservedDrawingBuffer(): void {
+  const orig = HTMLCanvasElement.prototype.getContext;
+  // oxlint-disable-next-line no-explicit-any
+  (HTMLCanvasElement.prototype as any).getContext = function (
+    this: HTMLCanvasElement,
+    type: string,
+    attrs?: Record<string, unknown>,
+  ) {
+    const isGl = type === "webgl" || type === "webgl2" || type === "experimental-webgl";
+    // oxlint-disable-next-line no-explicit-any
+    return (orig as any).call(this, type, isGl ? { ...attrs, preserveDrawingBuffer: true } : attrs);
   };
 }
 

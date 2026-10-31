@@ -1,18 +1,19 @@
 ---
-title: Caption styles
+title: "Text, captions and code on screen"
+sidebarTitle: "Text, captions and code"
 description: "Map caption tone to named caption components, and prompt per-word emphasis for composed videos."
 ---
 
 import { DocsVideo } from "/snippets/docs-video.jsx";
 
-Your faceless explainer from Level 1 already asked for "embedded captions, keywords highlighted in the accent color" and got a sensible default. This chapter is the catalog behind that ask — the named components you can pin instead, by tone, so the highlight color and the animation are a decision, not a default.
+Ask for "embedded captions, keywords highlighted in the accent color" and you get a sensible default. This page is the catalog behind that ask: the named components you can pin instead, by tone, so the highlight color and the animation are a decision, not a default.
 
 ## What caption styles do and when they trigger
 
 Caption components are drop-in snippets that render animated on-screen text — one visual identity per component, animating per word or per line. Prompts trigger this layer when you ask for captions, subtitles, kinetic text, lyric-style words, or word-by-word titles inside a composition you're building. Describe the *energy* of the captions and the agent picks matching typography, size, and animation; name a component to lock the look.
 
 <Note>
-  These components are for **composed videos** — captions you author into a HyperFrames composition. To add captions to an existing **talking-head MP4**, see [captions and talking heads](/prompting/captions-and-talking-heads) instead: captions set *behind* the speaker need a cutout of the subject layered over them, which the composition snippets below don't do.
+  These components are for **composed videos** — captions you author into a HyperFrames composition. To add captions to an existing **talking-head MP4**, see [captions and talking heads](/guides/captions-and-recuts#prompts-that-work) instead: captions set *behind* the speaker need a cutout of the subject layered over them, which the composition snippets below don't do.
 </Note>
 
 ## Tone → caption component
@@ -40,16 +41,15 @@ Three [Text Effects](/catalog/components/morph-text) components do one focused j
 
 ## Example prompts
 
-> /hyperframes 30-second vertical explainer. Add [`caption-highlight`](/catalog/components/caption-highlight) captions, TikTok-style — the visible line stays up, one word highlighted at a time.
+> 30-second vertical explainer. Add [`caption-highlight`](/catalog/components/caption-highlight) captions, TikTok-style — the visible line stays up, one word highlighted at a time.
 
 <DocsVideo
-  title="HyperFrames video: Validate Captions Catalog"
+  title="Validate captions catalog"
   src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/validate-captions-catalog.mp4#t=0.1"
   portrait
   loop
 />
 *Rendered from the prompt above, unedited.*
-
 
 <Note>
   Caption components ship as demos — a fixed word list, landscape sizing, an 8-second timeline. The agent re-authors the words and timings to your narration and re-sizes for your format; that's expected, not a workaround. If you want one full-screen word at a time (no visible line), that's [`caption-kinetic-slam`](/catalog/components/caption-kinetic-slam), not `caption-highlight`.
@@ -58,28 +58,26 @@ Three [Text Effects](/catalog/components/morph-text) components do one focused j
 > Hype captions with [`caption-kinetic-slam`](/catalog/components/caption-kinetic-slam): one full-screen word per beat, alternating slam-in direction.
 
 <DocsVideo
-  title="HyperFrames video: Caption Kinetic Slam"
+  title="Caption kinetic slam"
   src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/caption-kinetic-slam.mp4#t=0.1"
   loop
 />
 *Rendered from the prompt above with an authored 24-word line, unedited.*
 
-
 > Neon music-video captions using [`caption-neon-glow`](/catalog/components/caption-neon-glow). Make brand names larger with an accent color and highlight the numbers differently.
 
 <DocsVideo
-  title="HyperFrames video: Caption Neon Glow"
+  title="Caption neon glow"
   src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/caption-neon-glow.mp4#t=0.1"
   loop
 />
 *Rendered from the prompt above, unedited — the brand renders 1.4x in magenta, numbers in amber, distinct from the default cyan.*
 
-
 > Fill the hero word "STONE" with [`texture-mask-text`](/catalog/components/texture-mask-text) using the rock texture.
 
 ## Knobs
 
-- **Tone** picks typography, size, and animation — Hype (heavy, 72–96px, scale-pop) through Storytelling (serif, 44–56px, slow fade). See the caption-tone table in [vocabulary](/prompting/vocabulary).
+- **Tone** picks typography, size, and animation — Hype (heavy, 72–96px, scale-pop) through Storytelling (serif, 44–56px, slow fade). See the caption-tone table in [vocabulary](/prompting/motion#words-for-how-motion-feels).
 - **Per-word emphasis.** "Make brand names larger with accent color," "highlight numbers differently," "add bounce to emotional keywords" all work — several components key off this: [`caption-editorial-emphasis`](/catalog/components/caption-editorial-emphasis) drives a dramatic size contrast on emphasis words, [`caption-particle-burst`](/catalog/components/caption-particle-burst) fires on keywords, and the neon components carry keyword accent colors.
 - **Texture variable.** [`caption-texture`](/catalog/components/caption-texture) ships lava, marble, metal, wood, concrete, and rock — name the one you want.
 - **Word list.** [`morph-text`](/catalog/components/morph-text) cycles an editable list; quote the words in order.
@@ -88,38 +86,306 @@ Three [Text Effects](/catalog/components/morph-text) components do one focused j
 ## Failure modes
 
 **Don't stack a heavy effect on every word.** Caption components already animate per word; layering another emphasis on top of that competes and turns illegible. Emphasize only the keywords.
-- ❌ `make every word explode with particles`
-- ✅ `caption-particle-burst, firing only on the keywords`
+- **Avoid:** `make every word explode with particles`
+- **Instead:** `caption-particle-burst, firing only on the keywords`
 
 **Don't mix caption styles in one section.** One identity per composition (or per section) reads as designed; two competing styles read as a mistake.
-- ❌ `use caption-neon-glow and caption-matrix-decode together`
-- ✅ pick one; switch styles only across a clear section break
+- **Avoid:** `use caption-neon-glow and caption-matrix-decode together`
+- **Instead:** pick one; switch styles only across a clear section break
 
 **Don't reach for these on talking-head footage.** These are composition snippets, not the matting/occlusion pipeline — dropped onto an untouched MP4, a caption sits in front of the speaker, never behind. (The capstone thread below shows `caption-kinetic-slam` reading *behind* a subject, which is not a contradiction: that composition mattes the footage itself first, so the cutout is a separate layer the type can pass under. The limitation is about the snippet alone, not the technique.)
-- ❌ `/hyperframes add caption-highlight to my interview.mp4`
-- ✅ `/hyperframes caption interview.mp4 with the words set behind the speaker` (see [captions and talking heads](/prompting/captions-and-talking-heads))
+- **Avoid:** `add caption-highlight to my interview.mp4`
+- **Instead:** `caption interview.mp4 with the words set behind the speaker` (see [captions and talking heads](/guides/captions-and-recuts#prompts-that-work))
 
 **Don't match a hype style to calm content.** A high-energy caption on a corporate explainer fights the tone; let the tone table pick the identity.
-- ❌ `glitchy RGB captions` (on a wellness brand piece)
-- ✅ `clean captions with caption-clip-wipe`
+- **Avoid:** `glitchy RGB captions` (on a wellness brand piece)
+- **Instead:** `clean captions with caption-clip-wipe`
 
 **Don't invent caption names.** Only the components in the [Captions](/catalog/components/caption-highlight) and [Text Effects](/catalog/components/morph-text) groups exist.
-- ❌ `add typewriter-bounce captions`
-- ✅ describe the tone ("tutorial, monospace, typewriter") or name a real component
+- **Avoid:** `add typewriter-bounce captions`
+- **Instead:** describe the tone ("tutorial, monospace, typewriter") or name a real component
 
-<Note>
-**Capstone thread** — in the [Level 7 film](/prompting/capstone)'s Material region, word-synced keywords from the clip's own transcription slam in as display type behind the matted-out speaker — captions as scenography, on real word timings (cut from the film, below).
-</Note>
-
-This is the clause in the [full capstone prompt](/prompting/capstone#the-prompt-word-for-word) that buys the piece — prompt language you can lift for your own video:
+**In a real film.** This clause from a [longer HyperFrames film](/prompting/capstone#the-prompt-word-for-word) produced the shot below. You can lift the wording for your own video:
 
 > THEN they speak, and the main **keywords of their own line — derived from the clip's transcription — land word-synced as huge display text BEHIND the cutout**, each keyword slamming in on its spoken moment with the subject's silhouette occluding it (the two-layer text-behind-subject plate); style the keyword type by adapting a bold **catalog caption component** (`caption-kinetic-slam` or similar) at display scale.
 
 <DocsVideo
-  title="HyperFrames video: Capstone Region Material"
+  title="Capstone region material"
   src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/capstone-region-material.mp4#t=0.1"
   loop
 />
-*That clause, rendered — the region cut from the finished film.*
+*That clause, rendered: the shot cut from the finished film.*
 
-*Next: [When to generate artwork](/prompting/generated-artwork) — where hand-drawn HTML/CSS/SVG wins, and where a generated image beats it.*
+## Code on screen
+
+A [PR video](/guides/pr-to-video) can name `code-diff` for a single beat. The rest of that catalog covers typing, diffing, highlighting, scrolling, and picking a terminal or editor theme by name, for the moments a walkthrough needs to slow down and let the code itself carry the scene.
+
+Code is the one subject where the framework does the hard part for you. The [Code Animations](/catalog/blocks/code-typing) blocks handle syntax highlighting, caret tracking, diff coloring, and camera moves deterministically — you describe the *walkthrough*, name the block, and paste your snippet. This page is the vocabulary for doing that well; for turning a real pull request into a code-change video, see [Code and PRs](/guides/pr-to-video#prompts-that-work).
+
+Everything here follows the [one-shot skeleton](/prompting/overview#the-shape-of-a-strong-prompt): route, spec, beats, copy, technique, negatives. The "technique" slot is where you name the block, and the "copy" slot is where your code goes — quoted exactly, because unquoted code gets paraphrased into something that won't compile.
+
+#### Pick the motion by what the viewer should learn
+
+Each Code Animations block answers a different "what is the viewer supposed to notice." Map the intent to the block:
+
+| You want to show…                          | Name this block                                         | Length |
+| ------------------------------------------ | ------------------------------------------------------- | ------ |
+| Code being written, character by character | [`code-typing`](/catalog/blocks/code-typing)            | 5s     |
+| An edit — before → after, red/green        | [`code-diff`](/catalog/blocks/code-diff)                | 6s     |
+| One line as *the* line, everything else dim | [`code-highlight`](/catalog/blocks/code-highlight)      | 5s     |
+| Walking a long file to a spot deep inside  | [`code-scroll`](/catalog/blocks/code-scroll)            | 6s     |
+| One snippet transforming into another      | [`code-morph`](/catalog/blocks/code-morph)              | 7s     |
+| Code on a rotating 3D slab (title-card feel) | [`code-3d-extrude`](/catalog/blocks/code-3d-extrude)    | 8s     |
+| Code resolving out of a shader dissolve    | [`code-shader-dissolve`](/catalog/blocks/code-shader-dissolve) | 7s |
+| Code assembling from a particle swarm      | [`code-particle-assemble`](/catalog/blocks/code-particle-assemble) | 8s |
+
+The first four are the workhorses of a code *walkthrough* — they keep the code readable and the viewer oriented. Everything below them trades legibility for motion: they look great as an opener or a hero moment, but they trade legibility for motion, so don't ask them to carry an explanation.
+
+<Tip>
+  `code-morph` re-drives Shiki Magic Move as a paused GSAP timeline, and `code-diff` collapses removed lines and expands added lines. Both read "an edit happened" far more clearly than retyping the whole snippet with `code-typing` — reach for them when the story is *a change*, not *authoring from scratch*.
+</Tip>
+
+#### Prompting a typing reveal
+
+`code-typing` reveals code character by character with a caret that tracks the frontier — no CSS animation, so it seeks cleanly. Give it the exact code and a pace; the agent re-bakes the block's syntax tokens to your snippet.
+
+> 6-second 1920x1080 video. A dark editor types this snippet, character by character, caret tracking the frontier, then holds on the blinking cursor for the final second:
+> ```
+> export async function render(comp: Composition) {
+>   await comp.seek(0);
+>   return comp.capture();
+> }
+> ```
+> Use the `code-typing` registry block. No narration, no image or media files.
+
+<DocsVideo
+  title="Validate code typing"
+  src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/validate-code-typing.mp4#t=0.1"
+  loop
+/>
+*Rendered from the prompt above, unedited.*
+
+**Quote the code as a literal block.** Prose descriptions of code get paraphrased.
+- **Avoid:** `type out a function that seeks to zero and captures`
+- **Instead:** paste the actual snippet in a fenced block — it renders verbatim
+
+**Give the caret somewhere to rest.** Compositions hold their final state, so if you don't ask for a hold the last frame is a frozen full snippet — the [dead-motion tell](/prompting/motion).
+- **Avoid:** `types the code and ends`
+- **Instead:** `types the code, then holds on the blinking cursor for the final second`
+
+#### Prompting a diff or a highlight
+
+For "here's what changed," hand `code-diff` the before and after and let it color the delta. For "look at *this* line," give `code-highlight` the full context and name the target line.
+
+> 6-second 1920x1080 video. Show this edit to `api.ts` as a colored diff — the removed line collapses in red, the added line expands in green:
+> removed: `const res = await fetch(url)`
+> added: `const res = await fetch(url, { signal })`
+> Use the `code-diff` registry block. No audio.
+
+<DocsVideo
+  title="Validate code diff"
+  src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/validate-code-diff.mp4#t=0.1"
+  loop
+/>
+*Rendered from the prompt above, unedited.*
+
+> 5-second 1920x1080 video. Show a 12-line config file; a highlight band sweeps to line 7 (`timeout: 30_000`) while the surrounding lines dim. Hold with line 7 lit and the cursor blinking. Use the `code-highlight` registry block. No audio.
+
+<DocsVideo
+  title="Validate code highlight"
+  src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/validate-code-highlight.mp4#t=0.1"
+  loop
+/>
+*Rendered from the prompt above, unedited — the agent authors plausible surrounding config lines; paste all 12 if the exact file matters.*
+
+**Name the target line unambiguously.** The block dims context around one line — tell it which.
+- **Avoid:** `highlight the important line`
+- **Instead:** `highlight line 7 (timeout: 30_000)`
+
+#### Prompting a scroll-through
+
+`code-scroll` moves the camera down a long file to bring a target line to center and spotlights it — the block for walking real modules, not toy snippets.
+
+> 6-second 1920x1080 video. Scroll a ~60-line source file so line 44 (`return dedupeFrames(frames)`) arrives at center and gets spotlighted; ease the scroll and let it settle without snapping. Use the `code-scroll` registry block. No audio.
+
+<DocsVideo
+  title="Code scroll"
+  src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/code-scroll.mp4#t=0.1"
+  loop
+/>
+*Rendered from the prompt above, unedited.*
+
+**Ask the scroll to ease and settle, not snap.** A linear scroll that stops dead reads mechanical.
+- **Avoid:** `scroll straight to the line`
+- **Instead:** `ease the scroll and let it settle` — pair with the [motion grammar](/prompting/motion)
+
+#### Choosing a theme by name
+
+| Profile      | Block                                     | Profile        | Block                                       |
+| ------------ | ----------------------------------------- | -------------- | ------------------------------------------- |
+
+**VS Code workbench themes** — full editor chrome (activity bar, sidebar, tabs, terminal, status bar). Say "monokai" or "visual studio dark":
+
+| Say this               | Block                                 | Say this            | Block                              |
+| ---------------------- | ------------------------------------- | ------------------- | ---------------------------------- |
+
+<DocsVideo
+  title="Terminal ocean"
+  src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/terminal-ocean.mp4#t=0.1"
+  loop
+/>
+*Rendered from the prompt above, unedited.*
+
+**Match the theme to the surface you're claiming to show.** A terminal command in a VS Code editor chrome reads wrong; a source file in Terminal.app reads wrong.
+- **Avoid:** `monokai theme typing a shell command`
+- **Instead:** `apple terminal homebrew profile typing a shell command`
+
+<Tip>
+  Ambiguity resolves to the closest named block. "Dark theme" is under-specified — the agent picks one of a dozen dark variants and you may not get the one you pictured. Say the theme name. This is the [specification dial](/prompting/overview#how-much-to-specify) applied to code: name the block when the default choice can miss.
+</Tip>
+
+#### Pairing with a pull request
+
+When the code you're animating comes from a real PR, don't hand-write the beats — [point the agent at the PR](/guides/pr-to-video#prompts-that-work) and it reads the diff and composes `code-diff`, `code-highlight`, and `code-scroll` around the actual changed hunks. Use the blocks on this page directly when you're illustrating a concept; hand over the PR when you're narrating a specific change set.
+
+#### Where to go next
+
+- [Anatomy of a one-shot prompt](/prompting/overview#the-shape-of-a-strong-prompt) — the skeleton every prompt above uses.
+- [Copy-paste examples](/prompting/examples) — full prompts you can adapt.
+- [Code and PRs](/guides/pr-to-video#prompts-that-work) — turning a GitHub PR into a code-change video.
+- [Ask for smooth motion and transitions](/prompting/motion) — the hold-and-settle rules the code blocks still need from you.
+
+**In a real film.** This clause from a [longer HyperFrames film](/prompting/capstone#the-prompt-word-for-word) produced the shot below. You can lift the wording for your own video:
+
+> **Type (0–7s).** Black-on-charcoal close-up: a cursor types real HyperFrames markup character by character — `<div class="clip" data-start="0" data-duration="4">` and a `gsap.timeline({ paused: true })` line. As the typed line completes, the text's baseline extends and becomes **the wire** — the underline literally grows into the timeline and the camera begins its dolly along it. The typed div folds into a compact clip chip (persistent element 3) that drops onto the wire. Kinetic display type states "WRITE HTML." as the travel begins.
+
+<DocsVideo
+  title="Capstone region type"
+  src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/capstone-region-type.mp4#t=0.1"
+  loop
+/>
+*That clause, rendered: the shot cut from the finished film.*
+
+## Overlays and lower thirds
+
+On [talking-head footage](/guides/captions-and-recuts), lower-thirds and card overlays are designed as bespoke cards synced to that transcript. This is the reverse case: ready-made lower-third and social-overlay blocks you drop into a composition you're building from scratch, no existing footage required. Same vocabulary, pointed at a scene instead of a shot.
+
+### What overlays do and when they trigger
+
+Overlays are timed blocks that sit on top of your footage or scene — a lower third that names a speaker, a broadcast ticker, or a replica social-media card. Because each is a timed clip, prompts trigger this layer when you ask to *add* something *at* a moment: "add a lower third at 0:03 with the name and title," "show an animated tweet during the intro," "put a Spotify now-playing card in the corner." Give the timestamp, the copy, and the tone; the agent places the block on a track above the footage.
+
+Two groups:
+
+- **[Lower thirds](/catalog/blocks/lt-clean-bar)** — name/title identifiers for speakers, interviews, podcasts, and news.
+- **[Social overlays](/catalog/blocks/x-post)** — animated replicas of platform UI (posts, cards, notifications, follow prompts).
+
+### Brand tone → lower third
+
+Lower thirds split into **cards** (a filled shape behind the text) and **cardless** (text with a rule or sweep, designed to overlay live footage without boxing it in).
+
+| Tone | Blocks |
+| ---- | ------ |
+| **Minimal / clean / corporate** | [`lt-clean-bar`](/catalog/blocks/lt-clean-bar), [`lt-soft-pill`](/catalog/blocks/lt-soft-pill) |
+| **High-energy / podcast / bold** | [`lt-bold-block`](/catalog/blocks/lt-bold-block), [`lt-color-block`](/catalog/blocks/lt-color-block) |
+| **Cardless over footage** (interview, talking head) | [`lt-accent-underline`](/catalog/blocks/lt-accent-underline), [`lt-kicker-name`](/catalog/blocks/lt-kicker-name), [`lt-mask-reveal`](/catalog/blocks/lt-mask-reveal), [`lt-side-rule`](/catalog/blocks/lt-side-rule) |
+| **Card over bright footage** | [`lt-dark-card`](/catalog/blocks/lt-dark-card) |
+| **Broadcast / news** | [`lower-third-bild`](/catalog/blocks/lower-third-bild), [`news-ticker`](/catalog/blocks/news-ticker) |
+| **Two-part wipe (name + role)** | [`lt-stack-bars`](/catalog/blocks/lt-stack-bars) |
+
+<Tip>
+  Over live footage, prefer a **cardless** lower third — they're text-shadowed for legibility without a box that fights the shot. Use a **card** ([`lt-dark-card`](/catalog/blocks/lt-dark-card) charcoal for bright scenes) when the background is too busy for cardless text to read.
+</Tip>
+
+### Use → social overlay
+
+Each social overlay is a self-contained animated card with editable placeholder content.
+
+| You want | Block |
+| -------- | ----- |
+| An animated tweet / X post with engagement metrics | [`x-post`](/catalog/blocks/x-post) |
+| A Reddit post card with upvotes and comments | [`reddit-post`](/catalog/blocks/reddit-post) |
+| A Spotify now-playing card with album art and progress | [`spotify-card`](/catalog/blocks/spotify-card) |
+| A macOS notification banner | [`macos-notification`](/catalog/blocks/macos-notification) |
+| An Instagram follow prompt | [`instagram-follow`](/catalog/blocks/instagram-follow) |
+| A TikTok follow prompt | [`tiktok-follow`](/catalog/blocks/tiktok-follow) |
+| A YouTube subscribe lower third | [`yt-lower-third`](/catalog/blocks/yt-lower-third) |
+
+### Example prompts
+
+Quote the exact copy — unquoted names and titles get paraphrased (see [anatomy](/prompting/overview#the-shape-of-a-strong-prompt)).
+
+> Add a lower third at 0:03 for 5 seconds, on a track above the footage, with [`lt-clean-bar`](/catalog/blocks/lt-clean-bar). Name: "Dana Ríos". Title: "Head of Design".
+
+<DocsVideo
+  title="Validate lower third"
+  src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/validate-lower-third.mp4#t=0.1"
+  loop
+/>
+*Rendered from the prompt above over stand-in footage, unedited.*
+
+<Note>
+  Give a lower third at least the block's own timeline length (most run ~5 seconds including their designed exit) — a shorter window hard-cuts the block before its settle-out animation plays.
+</Note>
+
+> Podcast clip. Bring in [`lt-bold-block`](/catalog/blocks/lt-bold-block) when the guest starts talking, holding 5 seconds — name "MARCUS LEE", tag "GUEST" — brand accent #FF5A1F.
+
+> During the intro, show an [`x-post`](/catalog/blocks/x-post) card with the quote "we shipped it in a weekend" and 12.4K likes, then slide it out before the demo.
+
+<DocsVideo
+  title="Overlay xpost"
+  src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/overlay-xpost.mp4#t=0.1"
+  loop
+/>
+*Rendered from the prompt above over stand-in scenes, unedited — the card's built-in like-tap ticks 12.4K → 12.5K.*
+
+> Transparent overlay only — a [`spotify-card`](/catalog/blocks/spotify-card) now-playing widget animating in, bottom-left. Export as transparent WebM so I can drop it over footage in my editor.
+
+<DocsVideo
+  title="Overlay spotify preview"
+  src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/overlay-spotify-preview.mp4#t=0.1"
+  portrait
+  loop
+/>
+*MP4 preview of the transparent WebM over a checkerboard — the delivered file carries real VP9 alpha (verified via ALPHA_MODE + alphaextract).*
+
+### Knobs
+
+- **Timing.** "at 0:03," "for 4 seconds," "slide it out before the demo" set the block's start and duration — an overlay is a timed clip, so it needs both.
+- **Copy.** Quote every editable field: name, title, handle, headline, metrics, ticker text. The blocks ship with placeholder content you replace.
+- **Track placement.** Overlays go on a track *above* the footage so they composite on top; say "over the footage" if you're layering onto an existing clip.
+- **Brand accent.** Give a hex or brand color — most lower thirds carry an accent bar, tab, or block that takes it.
+- **Card vs cardless.** State it when it matters, or let the tone table decide.
+- **Transparent output.** For use in an external NLE, render the overlay on its own as a transparent WebM — see [rendering and output](/guides/rendering#ask-the-agent-for-the-right-output).
+
+### Common mistakes
+
+**Don't leave the copy unquoted.** Unquoted names and titles get paraphrased; quoted text renders verbatim.
+- **Avoid:** `add a lower third with the speaker's name and role`
+- **Instead:** `lt-clean-bar — name: "Dana Ríos", title: "Head of Design"`
+
+**Don't omit the timestamp.** An overlay is a timed clip; without a start (and ideally a duration) the agent has to guess when it appears and how long it holds.
+- **Avoid:** `put a lower third somewhere in the intro`
+- **Instead:** `lower third at 0:03, holding 4 seconds`
+
+**Don't let the overlay render behind the footage.** It has to sit on a track above the clip, or the video covers it.
+- **Avoid:** `add the tweet card to the video` (ambiguous layering)
+- **Instead:** `x-post card on a track above the footage, top-right`
+
+**Don't over-spec real account data.** These are stylized replicas with editable placeholders — provide the copy you want shown, not a live URL to scrape.
+- **Avoid:** `pull my actual Spotify page`
+- **Instead:** `spotify-card: track "Midnight City", artist "M83"`
+
+**Don't invent overlay names.** Only the blocks in the [Social Overlays](/catalog/blocks/x-post) and [Lower Thirds](/catalog/blocks/lt-clean-bar) groups exist.
+- **Avoid:** `add a linkedin-post overlay`
+- **Instead:** pick a real block, or describe the card and let the agent build a custom one in a freeform composition
+
+**In a real film.** This clause from a [longer HyperFrames film](/prompting/capstone#the-prompt-word-for-word) produced the shot below. You can lift the wording for your own video:
+
+> […] as the camera arrives and BEFORE the person speaks, the framework mattes the footage — **the background peels away via background removal**, sliding off along the travel direction and leaving the cutout standing alone on the brand ground. […] A designed lower-third chip renders behind the subject.
+
+<DocsVideo
+  title="Capstone region material"
+  src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/capstone-region-material.mp4#t=0.1"
+  loop
+/>
+*That clause, rendered: the shot cut from the finished film.*

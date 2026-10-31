@@ -7,7 +7,7 @@ import { failCommand } from "../../utils/commandResult.js";
  * mirrors the API default (10).
  */
 
-import { defineCommand } from "citty";
+import { defineCommand } from "../../utils/defineCommand.js";
 import { createCloudClient } from "../../cloud/index.js";
 import { padEndVisible } from "../../cloud/ansi.js";
 import { reportApiError } from "../../cloud/errors.js";

@@ -1,6 +1,6 @@
 // fallow-ignore-file code-duplication complexity
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { join } from "node:path";
 import { findFFmpeg } from "../browser/ffmpeg.js";
@@ -320,21 +320,17 @@ export async function ensureModel(
       ? `Downloading model ${model}...`
       : `Model ${model} is incomplete; downloading it again...`,
   );
-  const downloaded = `${modelPath}.${process.pid}.download`;
-  try {
-    await downloadFile(getModelUrl(model), downloaded, {
-      signal: options?.signal,
-      onProgress: options?.onDownloadProgress,
-    });
-    if (pin && !(await verifies(downloaded, pin))) {
-      throw new Error(
-        `${pin.name} did not match its pinned size and sha256, so it was discarded. Re-run to retry.`,
-      );
-    }
-    renameSync(downloaded, modelPath);
-  } finally {
-    rmSync(downloaded, { force: true });
-  }
+  await downloadFile(getModelUrl(model), modelPath, {
+    signal: options?.signal,
+    onProgress: options?.onDownloadProgress,
+    verify: async (path) => {
+      if (pin && !(await verifies(path, pin))) {
+        throw new Error(
+          `${pin.name} did not match its pinned size and sha256, so it was discarded. Re-run to retry.`,
+        );
+      }
+    },
+  });
   return modelPath;
 }
 

@@ -1,10 +1,9 @@
-import { execFile, spawn } from "node:child_process";
-import { promisify } from "node:util";
+import { spawn } from "node:child_process";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
+import { probeAudioTrack } from "./mediaMetadata.js";
 
 export const PEAK_BIN_SECONDS = 0.05;
 const PEAK_SAMPLE_RATE = 48_000;
-const execFileAsync = promisify(execFile);
 const PEAK_MAP_CACHE_VERSION = "peaks-v2";
 
 /**
@@ -61,30 +60,10 @@ export function finishPeaks(acc: PeakAccumulator): number[] {
   return acc.bins.map((peak) => Number(peak.toFixed(4)));
 }
 
-async function probeChannels(mediaPath: string): Promise<number> {
-  const { stdout } = await execFileAsync(
-    findFfBinary("ffprobe") ?? "ffprobe",
-    [
-      "-v",
-      "error",
-      "-select_streams",
-      "a:0",
-      "-show_entries",
-      "stream=channels",
-      "-of",
-      "csv=p=0",
-      "--",
-      mediaPath,
-    ],
-    { encoding: "utf8", timeout: 30_000, windowsHide: true },
-  );
-  const channels = Number.parseInt(stdout.trim(), 10);
-  if (!Number.isFinite(channels) || channels < 1) throw new Error("no audio stream");
-  return channels;
-}
-
 export async function decodePeakMap(mediaPath: string): Promise<number[]> {
-  const channels = await probeChannels(mediaPath);
+  const track = await probeAudioTrack(mediaPath);
+  if (!track || track.channels < 1) throw new Error("no audio stream");
+  const { stream, channels } = track;
   return new Promise((resolvePromise, reject) => {
     const proc = spawn(
       findFfBinary("ffmpeg") ?? "ffmpeg",
@@ -94,7 +73,7 @@ export async function decodePeakMap(mediaPath: string): Promise<number[]> {
         "-i",
         mediaPath,
         "-map",
-        "0:a:0",
+        `0:a:${stream}`,
         "-vn",
         "-ar",
         String(PEAK_SAMPLE_RATE),

@@ -493,7 +493,7 @@ export function buildMissingCompositionElements(
   const hosts = doc.querySelectorAll("[data-composition-id][data-start]");
   const missing: TimelineElement[] = [];
 
-  const resolveEnd = createReferenceEndResolver(createTimedElementLookup(doc), iframeWin);
+  let resolveEnd: ReturnType<typeof createReferenceEndResolver> | undefined;
   const masterTime = createRuntimeStartTimeResolver({
     timelineRegistry: iframeWin.__timelines,
     includeAuthoredTimingAttrs: true,
@@ -505,6 +505,7 @@ export function buildMissingCompositionElements(
     const compId = el.getAttribute("data-composition-id");
     if (!compId || compId === rootCompId) continue;
     if (existingIds.has(el.id) || existingIds.has(compId)) continue;
+    resolveEnd ??= createReferenceEndResolver(createTimedElementLookup(doc), iframeWin);
     const entry = buildMissingCompositionEntry({
       doc,
       iframeWin,
@@ -518,7 +519,9 @@ export function buildMissingCompositionElements(
     if (entry) missing.push(entry);
   }
 
-  // Patch existing elements that are missing compositionSrc
+  // Patch existing elements that are missing compositionSrc; only a host carrying its source can supply one.
+  if (!doc.querySelector("[data-composition-src], [data-composition-file]"))
+    return { missing, updatedEls: currentEls as TimelineElement[], patched: false };
   let patched = false;
   const findHost = previewElementFinder(doc);
   const updatedEls = (currentEls as TimelineElement[]).map((existing) => {

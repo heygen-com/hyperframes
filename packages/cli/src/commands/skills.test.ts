@@ -826,8 +826,8 @@ describe("hyperframes skills update <names>", () => {
 
     expect(await commandExitCode()).toBe(1);
     const last = String(logSpy.mock.calls.at(-1)?.[0] ?? "");
-    const parsed = JSON.parse(last) as { error?: string };
-    expect(parsed.error).toMatch(/Unknown skill/);
+    const parsed = JSON.parse(last) as { error?: { message: string } };
+    expect(parsed.error?.message).toMatch(/Unknown skill/);
   });
 
   it("exits non-zero when the targeted install fails", async () => {

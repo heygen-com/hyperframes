@@ -74,6 +74,28 @@ function runTests() {
     cleanup();
   });
 
+  test("labels an audio file by its folder or its file name, not always bgm", () => {
+    setup();
+    drop("voice-intro.mp3");
+    drop("sfx-click.mp3");
+    drop("narration.mp3");
+    drop("soundtrack/main.mp3");
+    drop("track.mp3");
+    drop("soundfx/pop.mp3");
+    const types = Object.fromEntries(
+      adoptExistingAssets(tmp).map((record) => [record.path, record.type]),
+    );
+    assert.deepEqual(types, {
+      "assets/voice-intro.mp3": "voice",
+      "assets/sfx-click.mp3": "sfx",
+      "assets/narration.mp3": "voice",
+      "assets/soundtrack/main.mp3": "bgm",
+      "assets/track.mp3": "bgm",
+      "assets/soundfx/pop.mp3": "sfx",
+    });
+    cleanup();
+  });
+
   let passed = 0;
   let failed = 0;
   for (const { name, fn } of tests) {

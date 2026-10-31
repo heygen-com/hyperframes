@@ -10,6 +10,7 @@
 
 import {
   type Browser,
+  type CDPSession,
   type Page,
   type Protocol,
   type Viewport,
@@ -24,12 +25,15 @@ import {
   quantizeTimeToFrame,
   fpsToNumber,
   resolveAuthoredTimingWindow,
+  AUTHORED_SOURCE_BEGIN,
+  AUTHORED_SOURCE_END,
+  RUNTIME_BOOTSTRAP_ATTR,
   SCENE_CALLBACK_ERROR_PREFIX,
   type RawAuthoredTiming,
 } from "@hyperframes/core";
 
 import { holdRenderFrameVideos } from "./renderFrameVideoHold.js";
-import { DrawElementCaptureError } from "./drawElementCaptureError.js";
+import { asDrawElementCaptureFailure, DrawElementCaptureError } from "./drawElementCaptureError.js";
 import { encodePng } from "../utils/alphaBlit.js";
 import {
   DEFAULT_SAMPLES_PER_FRAME,
@@ -71,6 +75,7 @@ import {
   pageContentExceedsCaptureHeight,
   pageScreenshotCapture,
   initTransparentBackground,
+  capturesAlpha,
   shouldDefaultCaptureBeyondViewport,
 } from "./screenshotService.js";
 import {
@@ -79,6 +84,7 @@ import {
   injectDrawElementCanvas,
   captureDrawElementFrame,
   resolveDrawElementCaptureMode,
+  forcePreservedDrawingBuffer,
   instrumentAcceleratedCanvases,
   initDrawElementWorkerEncode,
   cleanupDrawElementWorkerEncode,
@@ -116,6 +122,7 @@ import {
   type ChromePids,
 } from "./chromeMemorySampler.js";
 import { sampleProcessRss } from "../utils/processRss.js";
+import type { CompositionLengthSource } from "@hyperframes/core/runtime/composition-length";
 export { isMemoryExhaustionError, isTransientBrowserError } from "./captureFailure.js";
 
 export type { CaptureOptions, CaptureResult, CaptureBufferResult, CapturePerfSummary };
@@ -985,7 +992,7 @@ async function initDrawElementOrTransparentBackground(
   if ((session.config?.useDrawElement ?? false) && supersampling) {
     session.deGateReason = "supersampling";
     session.deFallbackTrigger = "supersampling";
-    console.log(
+    console.error(
       "[engine] --experimental-fast-capture disabled for this render: drawElementImage " +
         "ignores deviceScaleFactor, so scaled (DPR other than 1) output uses screenshot capture.",
     );
@@ -993,7 +1000,7 @@ async function initDrawElementOrTransparentBackground(
   if ((session.config?.useDrawElement ?? false) && !supersampling && forceScreenshot) {
     session.deGateReason = "render_mode_hint";
     session.deFallbackTrigger = "render_mode_hint";
-    console.log(
+    console.error(
       "[engine] fast capture falls back to screenshot: render-mode compatibility " +
         "hint forced screenshot capture (e.g. raw requestAnimationFrame composition).",
     );
@@ -1002,7 +1009,7 @@ async function initDrawElementOrTransparentBackground(
     const gpuBackend = await detectGpuBackend(page);
     session.isSwiftShader = gpuBackend.isSwiftShader;
     session.gpuRenderer = classifyGpuRenderer(gpuBackend.renderer);
-    const transparent = session.options.format === "png";
+    const transparent = capturesAlpha(session.options);
     async function routeToFallback(): Promise<void> {
       session.captureMode = session.launchCaptureMode;
       if (transparent) {
@@ -1045,7 +1052,7 @@ async function initDrawElementOrTransparentBackground(
     if (!supportsDrawElement) {
       session.deGateReason = "unsupported_chrome";
       session.deFallbackTrigger = "unsupported_chrome";
-      console.log(
+      console.error(
         `[engine] fast capture falls back to ${session.launchCaptureMode} capture: ` +
           "this Chrome build does not implement canvas.drawElementImage (Dev/Canary-only " +
           "feature); run `hyperframes browser ensure --force` to fetch a supported " +
@@ -1097,7 +1104,7 @@ async function initDrawElementOrTransparentBackground(
       // "screenshot": on a BeginFrame-launched browser (Linux fast capture)
       // Page.captureScreenshot hangs for the full protocol timeout, while
       // beginFrameCapture is the platform's normal baseline path.
-      console.log(
+      console.error(
         `[engine] fast capture falls back to ${session.launchCaptureMode} capture: ` +
           "SwiftShader (software rasterizer, no GPU egress to skip, drawElement is " +
           "parity-or-slower; see fast-capture-limitations.md)",
@@ -1121,7 +1128,7 @@ async function initDrawElementOrTransparentBackground(
       const routeWholeRender = async (reason: string, trigger: string, message: string) => {
         session.deGateReason = reason;
         session.deFallbackTrigger = trigger;
-        console.log(
+        console.error(
           `[engine] fast capture falls back to ${session.launchCaptureMode} capture: ${message}`,
         );
         await routeToFallback();
@@ -1222,7 +1229,7 @@ async function initDrawElementOrTransparentBackground(
       if (!forceDE && !threeD.ok) {
         session.deGateReason = "3d_init_failed";
         session.deFallbackTrigger = "3d_init_failed";
-        console.log(
+        console.error(
           `[engine] fast capture falls back to ${session.launchCaptureMode} capture: ` +
             `3D projection init failed (${threeD.reason ?? "unknown"})`,
         );
@@ -1257,7 +1264,7 @@ async function initDrawElementOrTransparentBackground(
       }
       await finalizeDrawElementInit(session, page, logInitPhase, { transparent, forceDE });
     }
-  } else if (session.options.format === "png") {
+  } else if (capturesAlpha(session.options)) {
     await initTransparentBackground(session.page);
   }
 }
@@ -1302,10 +1309,11 @@ async function cssEffectRiskFrames(
       fps,
       totalFrames,
       totalFrames * MAX_RISK_FRAME_FRACTION,
+      { onProgress: session.options.onEffectScanProgress },
     );
     return live && withFramesAfterCallback(live, scan.callbackFrom, fps, totalFrames);
   } catch (error) {
-    console.log(
+    console.error(
       `[engine] fast capture: effect scan failed (${error instanceof Error ? error.message : String(error)})`,
     );
     return null;
@@ -1386,9 +1394,9 @@ export async function completeDeferredDrawElementInit(session: CaptureSession): 
   if (!session.deInitDeferred || !session.onBeforeCapture) return;
   const page = session.page;
   const logInitPhase = (phase: string) =>
-    console.log(`[initSession:${session.captureMode}] ${phase} (deferred drawElement init)`);
+    console.error(`[initSession:${session.captureMode}] ${phase} (deferred drawElement init)`);
   await finalizeDrawElementInit(session, page, logInitPhase, {
-    transparent: session.options.format === "png",
+    transparent: capturesAlpha(session.options),
     forceDE: process.env.HF_FORCE_DRAWELEMENT === "1",
   });
   session.deInitDeferred = false;
@@ -1409,7 +1417,6 @@ async function installMediaPageHooks(page: Page, options: CaptureOptions): Promi
   }
 }
 
-// fallow-ignore-next-line unit-size
 export async function createCaptureSession(
   serverUrl: string,
   outputDir: string,
@@ -1433,7 +1440,7 @@ export async function createCaptureSession(
   const isLinux = process.platform === "linux";
   const forceScreenshot = config?.forceScreenshot ?? DEFAULT_CONFIG.forceScreenshot;
   const useDrawElement = config?.useDrawElement ?? false;
-  const drawElementTransparent = useDrawElement && options.format === "png";
+  const drawElementTransparent = useDrawElement && capturesAlpha(options);
   // drawElement and page-side shader compositing are mutually incompatible
   // capture strategies: drawElement reads the composition root's paint records
   // directly and skips the prepare→micro-screenshot→resolve protocol (the
@@ -1635,6 +1642,7 @@ async function constructCaptureSession(
   // composites their live content via drawImage instead (see
   // instrumentAcceleratedCanvases). Must be registered before navigation.
   if (useDrawElement) {
+    await page.evaluateOnNewDocument(forcePreservedDrawingBuffer);
     await page.evaluateOnNewDocument(instrumentAcceleratedCanvases);
   }
   // The opacity → autoAlpha tween rewrite was RETIRED with the requestPaint
@@ -2061,6 +2069,83 @@ export interface IsolatedComposition {
   elementId: string | null;
 }
 
+// Runs in the page. False once every script is read and none can register an id still waited on;
+// an unreadable, module or importing script, a computed key, or a page still loading answers true.
+export async function authorScriptsMayRegisterTimelines(
+  runtimeAttr: string,
+  authoredBegin: string,
+  authoredEnd: string,
+  skipIds: readonly string[] = [],
+): Promise<boolean> {
+  if (document.readyState !== "complete") return true;
+  const memo = globalThis as {
+    __hfAuthorScan?: { opaque: boolean; mentions: boolean; ids: string[] };
+  };
+  memo.__hfAuthorScan ??= await (async () => {
+    const scripts = [
+      ...Array.from(document.querySelectorAll("script")),
+      ...Array.from(document.querySelectorAll("template")).flatMap((t) =>
+        Array.from(t.content.querySelectorAll("script")),
+      ),
+    ].filter((script) => !script.hasAttribute(runtimeAttr));
+    const scan = { opaque: false, mentions: false, ids: [] as string[] };
+    // Code that imports another file may register through it, which is not read here.
+    const mayImport = (code: string) => /\bimport\s*\(|^\s*import\s*[\w{*"']/m.test(code);
+    const read = (code: string) => {
+      if (mayImport(code)) scan.opaque = true;
+      if (!code.includes("__timelines")) return;
+      scan.mentions = true;
+      const literalKey = /__timelines\s*(?:\[\s*(["'])((?:(?!\1).)+)\1\s*\]|\.([A-Za-z_$][\w$]*))/g;
+      const rest = code
+        .replace(/__timelines\s*=\s*(?:window\.__timelines\s*\|\|\s*)?\{\s*\}/g, "")
+        .replace(literalKey, (_m, _q, bracketId, dotId) => {
+          scan.ids.push(bracketId ?? dotId);
+          return "";
+        });
+      if (rest.includes("__timelines")) scan.opaque = true;
+    };
+    for (const script of scripts) {
+      if (script.type === "module") return { ...scan, opaque: true };
+      if (!script.src) {
+        const text = script.textContent ?? "";
+        read(
+          text.includes(authoredBegin)
+            ? text
+                .split(authoredBegin)
+                .slice(1)
+                .map((region) => region.split(authoredEnd)[0])
+                .join("\n")
+            : text,
+        );
+        continue;
+      }
+      const url = new URL(script.src, location.href);
+      if (url.origin !== location.origin) return { ...scan, opaque: true };
+      try {
+        read(await (await fetch(url)).text());
+      } catch {
+        return { ...scan, opaque: true };
+      }
+    }
+    return scan;
+  })();
+  const { opaque, mentions, ids } = memo.__hfAuthorScan;
+  if (opaque) return true;
+  if (!mentions) return false;
+  const timelines = (window as { __timelines?: Record<string, unknown> }).__timelines ?? {};
+  return Array.from(document.querySelectorAll("[data-composition-id]")).some((host) => {
+    const id = host.getAttribute("data-composition-id");
+    const authoredId = host.getAttribute("data-hf-original-composition-id") ?? id;
+    return (
+      id &&
+      !host.hasAttribute("data-no-timeline") &&
+      !timelines[id] &&
+      !skipIds.includes(id) &&
+      ids.includes(authoredId ?? id)
+    );
+  });
+}
+
 export interface SubTimelinePollOptions {
   intervalMs?: number;
   // Fail-fast: a script resource that failed to load can never register its timeline,
@@ -2116,13 +2201,23 @@ export async function pollSubCompositionTimelines(
   // A page error is given its grace from when it first appeared, not from when the poll began.
   let errorSeenAt: number | undefined;
   for (;;) {
-    ready = Boolean(await page.evaluate(expression));
-    if (ready || shouldStop?.()) break;
-    const now = Date.now();
-    if (now >= deadline) break;
     const failures = getScriptLoadFailures?.() ?? [];
     const errors = getPageErrors?.() ?? [];
     const failed = failures.length > 0 ? failures : errors;
+    // A failed script keeps the wait, so the failure is still named; only a quiet page is ready early.
+    ready =
+      Boolean(await page.evaluate(expression)) ||
+      (failed.length === 0 &&
+        !(await page.evaluate(
+          authorScriptsMayRegisterTimelines,
+          RUNTIME_BOOTSTRAP_ATTR,
+          AUTHORED_SOURCE_BEGIN,
+          AUTHORED_SOURCE_END,
+          knownUnregisteredIds,
+        )));
+    if (ready || shouldStop?.()) break;
+    const now = Date.now();
+    if (now >= deadline) break;
     const graceMs = failures.length > 0 ? scriptFailureGraceMs : scriptErrorGraceMs;
     if (failed.length > 0) errorSeenAt ??= now;
     const sinceFailure = failures.length > 0 ? now - start : now - (errorSeenAt ?? now);
@@ -2642,26 +2737,61 @@ export function classifyPageError(
   // Frameless: a parse error names its script; a rejection names whatever document is current, so it is unattributable.
   if (frames.length === 0 && details.text.startsWith("Uncaught (in promise)")) return null;
   const urls = frames.length > 0 ? frames : [details.url];
-  // The render compiler names the composition's inline code.
-  // Inline handlers report the document, which a widget can move.
-  const owned = (url: string | undefined) =>
-    url !== undefined && (projectScripts.has(url) || url.startsWith(COMPOSITION_SOURCE_URL));
-  return urls.some(owned) ? `runtime-error:${firstLine}` : null;
+  return urls.some((url) => isOwnedScriptUrl(url, projectScripts))
+    ? `runtime-error:${firstLine}`
+    : null;
 }
 
-// fallow-ignore-next-line unit-size
+// The render compiler names the composition's inline code.
+// Inline handlers report the document, which a widget can move.
+function isOwnedScriptUrl(url: string | undefined, projectScripts: ReadonlySet<string>): boolean {
+  return url !== undefined && (projectScripts.has(url) || url.startsWith(COMPOSITION_SOURCE_URL));
+}
+
+const LOOKUP_CALL =
+  /\b(?:getElementById|querySelectorAll|querySelector|getElementsByClassName|getElementsByTagName)\(\s*(["'`])((?:(?!\1).)*)\1/g;
+
+/** ` [thrown at: <url>:<line>:<col>, <lookup>]` for a throw's authored frame, so the author can find the element. */
+export async function describeThrowSite(
+  client: CDPSession,
+  details: Protocol.Runtime.ExceptionDetails,
+  projectScripts: ReadonlySet<string>,
+): Promise<string> {
+  const frame = (details.stackTrace?.callFrames ?? []).find((f) =>
+    isOwnedScriptUrl(f.url, projectScripts),
+  );
+  if (!frame) return "";
+  let where = `${frame.url}:${frame.lineNumber + 1}:${frame.columnNumber + 1}`;
+  try {
+    // Source is only fetchable with the debugger on; enabling after the fact keeps script ids.
+    await client.send("Debugger.enable");
+    const { scriptSource } = await client.send("Debugger.getScriptSource", {
+      scriptId: frame.scriptId,
+    });
+    const line = scriptSource.split("\n")[frame.lineNumber] ?? "";
+    const lookups = [...line.matchAll(LOOKUP_CALL)];
+    // Only a lone lookup is certain to be the one that returned null; with several the position alone is given.
+    if (lookups.length === 1) where += `, ${lookups[0]?.[0]})`;
+  } catch {
+    // Source unavailable: line:col alone still locates the throw.
+  } finally {
+    await client.send("Debugger.disable").catch(() => undefined);
+  }
+  return ` [thrown at: ${where}]`;
+}
+
 export async function initializeSession(session: CaptureSession): Promise<void> {
   const { page, serverUrl } = session;
 
   // Forward browser console to host. HyperFrames runtime logs get a dedicated
-  // prefix so page-context observability is visible in producer stdout.
+  // prefix so page-context observability is visible in producer stderr.
   page.on("console", (msg: ConsoleMessage) => {
     const type = msg.type();
     const text = msg.text();
     const locationUrl = msg.location()?.url ?? "";
     const diagnostic = formatConsoleDiagnostic(type, text, locationUrl);
     if (!diagnostic.suppressHostLog && !loggedEarlierInRender(session, text)) {
-      console.log(diagnostic.text);
+      console.error(diagnostic.text);
     }
     appendBrowserDiagnostic(session, diagnostic.text);
 
@@ -2730,7 +2860,16 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
   // Unlike the pageerror Error, this keeps the script URL of syntax errors and thrown non-errors.
   const runtimeClient = await getCdpSession(page);
   runtimeClient.on("Runtime.exceptionThrown", ({ exceptionDetails }) => {
-    recordPageError(session, classifyPageError(exceptionDetails, projectScripts));
+    const error = classifyPageError(exceptionDetails, projectScripts);
+    recordPageError(session, error);
+    if (!error) return;
+    // Recorded first so fail-fast sees it; the throw site is appended once the source is fetched.
+    void describeThrowSite(runtimeClient, exceptionDetails, projectScripts).then((site) => {
+      const i = session.pageErrors.indexOf(error);
+      if (!site || i < 0) return;
+      if (session.pageErrors.includes(`${error}${site}`)) session.pageErrors.splice(i, 1);
+      else session.pageErrors[i] = `${error}${site}`;
+    });
   });
   await runtimeClient.send("Runtime.enable");
 
@@ -2738,7 +2877,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     session.config?.pageNavigationTimeout ?? DEFAULT_CONFIG.pageNavigationTimeout;
   const initStart = Date.now();
   const logInitPhase = (phase: string) => {
-    console.log(`[initSession:${session.captureMode}] ${phase} (${Date.now() - initStart}ms)`);
+    console.error(`[initSession:${session.captureMode}] ${phase} (${Date.now() - initStart}ms)`);
   };
   const gotoEntryPage = async (): Promise<void> => {
     appendBrowserDiagnostic(
@@ -3729,7 +3868,7 @@ export async function createStaticVerificationPage(session: CaptureSession): Pro
       page.evaluate(`document.fonts?.ready`),
       waitForOptionalTailwindReady(page, pageReadyTimeout),
     ]);
-    if (session.options.format === "png") await initTransparentBackground(page);
+    if (capturesAlpha(session.options)) await initTransparentBackground(page);
     return page;
   } catch (error) {
     await page.close().catch(() => {});
@@ -4570,8 +4709,8 @@ async function captureAccumulatedFrame(
   await seekPageTimeline(session.page, frameTime, undefined);
   const totals = { seekMs: Date.now() - eventfulSeekStart, beforeCaptureMs: 0, screenshotMs: 0 };
   if (session.onBeforeCapture) {
-    // The injector copies a video's own style only when its frame changes: inject at frameTime
-    // first so the held frame carries frameTime's style, not the first sample's.
+    // Sub-samples leave a video's style alone: inject at frameTime first so the held frame
+    // carries frameTime's style, not the first sample's.
     const injectStart = Date.now();
     session.captureStep = "injecting video frames";
     await session.onBeforeCapture(session.page, frameTime, frameTime);
@@ -4628,6 +4767,13 @@ async function captureAccumulatedFrame(
   };
 }
 
+function framesAreStatic(staticFrames: ReadonlySet<number>, from: number, to: number): boolean {
+  for (let frame = from; frame <= to; frame++) {
+    if (!staticFrames.has(frame)) return false;
+  }
+  return true;
+}
+
 async function captureFrameCore(
   session: CaptureSession,
   frameIndex: number,
@@ -4654,7 +4800,8 @@ async function captureFrameCore(
   if (
     session.staticFrames?.has(absFrameIndex) &&
     session.lastFrameBuffer &&
-    session.lastFrameAbsoluteIndex === absFrameIndex - 1 &&
+    session.lastFrameAbsoluteIndex !== undefined &&
+    framesAreStatic(session.staticFrames, session.lastFrameAbsoluteIndex + 1, absFrameIndex) &&
     (!session.motionBlur ||
       motionBlurWindowIsStatic(session.motionBlur, absFrameIndex, session.staticFrames))
   ) {
@@ -4684,7 +4831,7 @@ async function captureFrameCore(
     session.capturePerf.frameMs.push(captureTimeMs);
     if (session.capturePerf.frames === 1) {
       const blur = await describePageMotionBlur(session.page).catch(() => null);
-      if (blur) console.log(blur);
+      if (blur) console.error(blur);
     }
 
     // Retain this freshly-captured buffer so the following static frames can reuse it.
@@ -4774,7 +4921,7 @@ export async function captureFrameToBuffer(
             // works. Counted here rather than in captureFrameCore's catch: the
             // deadline rejects from outside it, so that catch never runs.
             session.deFrameTimeouts = (session.deFrameTimeouts ?? 0) + 1;
-            console.log(
+            console.error(
               `[engine] fast capture frame ${frameIndex}: capture exceeded ` +
                 `${DE_FRAME_TIMEOUT_MS}ms; renderer stalled after drawElementImage ` +
                 `(PRINFRA-488). Failing the drawElement attempt so the whole render ` +
@@ -4827,13 +4974,7 @@ export async function captureFrameToBufferPipelined(
     // same pixels. Sequential capture reduces to has(i) (gap = {i}); the
     // interleaved parallel stride makes the gap N frames wide.
     const lastIdx = session.lastEncodeResultFrame ?? frameIndex - 1;
-    let gapStatic = true;
-    for (let j = lastIdx + 1; j <= frameIndex; j++) {
-      if (!session.staticFrames.has(j)) {
-        gapStatic = false;
-        break;
-      }
-    }
+    const gapStatic = framesAreStatic(session.staticFrames, lastIdx + 1, frameIndex);
     if (gapStatic) {
       session.staticDedupCount = (session.staticDedupCount ?? 0) + 1;
       session.capturePerf.frames += 1;
@@ -4868,13 +5009,14 @@ export async function captureFrameToBufferPipelined(
     // syncToPaintEvent = true); see initDrawElementOrTransparentBackground. The
     // BeginFrame branch present in the synchronous captureFrameCore is therefore
     // unreachable here and intentionally omitted.
-    const { encodeResult } = await produceDrawElementFrame(
+    const produced = await produceDrawElementFrame(
       page,
       options.width,
       options.height,
       options.quality ?? 80,
       true,
     );
+    const encodeResult = asDrawElementCaptureFailure(frameIndex, produced.encodeResult);
 
     const captureTimeMs = Date.now() - startTime;
 
@@ -5019,7 +5161,10 @@ export async function captureFramesBatchPipelined(
     const frameIndex = frameIndices[i];
     const encodeResult = encodeResults[i];
     if (frameIndex === undefined || !encodeResult) break;
-    results.push({ frameIndex, encodeResult });
+    results.push({
+      frameIndex,
+      encodeResult: asDrawElementCaptureFailure(frameIndex, encodeResult),
+    });
   }
 
   if (failedAt !== null) {
@@ -5037,7 +5182,7 @@ export async function captureFramesBatchPipelined(
       session.deNcprFallbacks = (session.deNcprFallbacks ?? 0) + 1;
       throw new DrawElementCaptureError(frameIndices[failedAt] ?? failedAt, reason, error);
     } else {
-      console.log(
+      console.error(
         `[engine] fast capture: batch produce failed at frame ` +
           `${frameIndices[failedAt] ?? "?"} (${error ?? "?"}); ` +
           `re-capturing ${frameIndices.length - failedAt} frame(s) per-frame`,
@@ -5132,11 +5277,11 @@ export async function closeCaptureSession(session: CaptureSession): Promise<void
     session.chromeMemory.stop();
     // One last sample so the summary reflects the session's end state, not a
     // point up to `intervalMs` earlier. Best effort; the page may be gone.
-    await session.chromeMemory.sampleOnce();
+    await waitForCloseWithTimeout(session.chromeMemory.sampleOnce());
   }
   if (session.page && !session.pageReleased) {
     const blur = await describePageMotionBlurAtEnd(session.page);
-    if (blur) console.log(blur);
+    if (blur) console.error(blur);
   }
   // Realized static-dedup telemetry: how much the cache actually helped this
   // render (vs the prediction logged at arm time). Both capture paths
@@ -5149,7 +5294,7 @@ export async function closeCaptureSession(session: CaptureSession): Promise<void
     const total = captured + reused;
     const pct = total > 0 ? Math.round((reused / total) * 100) : 0;
     const avgTotalMs = captured > 0 ? Math.round(session.capturePerf.totalMs / captured) : 0;
-    console.log(
+    console.error(
       `[static-dedup] reused ${reused}/${total} frame(s) (${pct}%), ` +
         `est. ~${reused * avgTotalMs}ms saved (avg ${avgTotalMs}ms/frame)`,
     );
@@ -5232,6 +5377,16 @@ export async function getCompositionDuration(session: CaptureSession): Promise<n
   return session.page.evaluate(() => {
     return window.__hf?.duration ?? 0;
   });
+}
+
+export type { CompositionLengthSource };
+
+/** Which input set the composition's length, as the runtime published it; null when it did not. */
+export async function getCompositionLengthSource(
+  session: CaptureSession,
+): Promise<CompositionLengthSource | null> {
+  if (!session.isInitialized) throw new Error("[FrameCapture] Session not initialized");
+  return session.page.evaluate(() => window.__hf?.lengthSource ?? null);
 }
 
 /**

@@ -5,44 +5,11 @@ import { fileURLToPath } from "node:url";
 
 export const PRODUCER_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-// These tests need host capabilities such as Chrome, ffmpeg, worker threads,
-// or local sockets. Keep the list explicit so a filename-only rename does not
-// make Git/fallow re-audit thousands of unchanged test lines as new code.
-const INTEGRATION_TEST_FILES = new Set([
-  "tests/distributed/_smoke/webm-concat-copy.test.ts",
-  "tests/playback-rate-av-parity/playback-rate-av-parity.test.ts",
-  "src/regression-harness-psnr.test.ts",
-  "src/services/bundleScriptPolicy.test.ts",
-  "src/services/coreRuntimeBrowser.test.ts",
-  "src/services/vfxDeterminism.test.ts",
-  "src/services/distributed/assemble.test.ts",
-  "src/services/distributed/chunkBoundary.test.ts",
-  "src/services/distributed/crossWorkerIdempotency.test.ts",
-  "src/services/distributed/plan.masterBus.test.ts",
-  "src/services/distributed/plan.test.ts",
-  "src/services/distributed/planSizeCap.test.ts",
-  "src/services/distributed/planV2RemoteFiles.test.ts",
-  "src/services/distributed/renderChunk.test.ts",
-  "src/services/fileServer.test.ts",
-  "src/services/fileServer.file-race.test.ts",
-  "src/services/healthWorker.test.ts",
-  "src/services/scriptFailureAttribution.test.ts",
-  "src/services/hyperframeLint.file-race.test.ts",
-  "src/services/assetMediaType.test.ts",
-  "src/services/htmlCompiler.mediaType.test.ts",
-  "src/services/htmlCompiler.naturalDuration.test.ts",
-  "src/services/render/firstFrameStartingState.integration.test.ts",
-  "src/services/render/hlsRender.integration.test.ts",
-  "src/services/render/motionBlurVideo.integration.test.ts",
-  "src/services/render/renderCancel.integration.test.ts",
-  "src/services/render/segmentedColorGrading.integration.test.ts",
-  "src/services/render/stages/compileStage.mediaType.test.ts",
-  "src/services/render/stages/encodeWhileCapturing.test.ts",
-  "src/services/render/stages/gifEncodeArgs.test.ts",
-  "src/services/videoFrameBorderClip.test.ts",
-  "src/utils/audioRegression.test.ts",
-  "src/utils/streamDurationParity.test.ts",
-]);
+// The tests that need host capabilities such as Chrome, ffmpeg, worker threads or local sockets, one path per
+// line, so adding one never edits (or re-pins) the selection logic below.
+const INTEGRATION_TEST_FILES = new Set(
+  JSON.parse(readFileSync(resolve(PRODUCER_ROOT, "scripts/integration-tests.json"), "utf8")),
+);
 
 function collectTestFiles(directory, files = []) {
   for (const entry of readdirSync(directory, { withFileTypes: true })) {

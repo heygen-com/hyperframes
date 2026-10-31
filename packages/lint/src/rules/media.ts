@@ -13,6 +13,7 @@ import {
 } from "../utils";
 import {
   COLOR_GRADING_SOURCE_TAGS,
+  COLOR_GROUP_TAG,
   validateColorGradingContract,
 } from "@hyperframes/parsers/color-grading-contract";
 import { extractMediaSrcMutations } from "@hyperframes/parsers/composition";
@@ -558,7 +559,10 @@ export const mediaRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = 
           snippet: truncateSnippet(tag.raw),
         });
       };
-      if (!(COLOR_GRADING_SOURCE_TAGS as readonly string[]).includes(tag.name)) {
+      if (
+        tag.name !== COLOR_GROUP_TAG &&
+        !(COLOR_GRADING_SOURCE_TAGS as readonly string[]).includes(tag.name)
+      ) {
         report(
           "color_grading_non_media",
           `data-color-grading on <${tag.name}> has no effect. The shader runtime only grades real <video>, <img> and <canvas> elements.`,
@@ -831,7 +835,8 @@ export const mediaRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = 
       const source = { id: readAttr(tag.raw, "id") || undefined, raw: tag.raw };
       if (tag.name === "video") {
         if (isAudibleVideoTag(tag.raw)) videos.push([src, source]);
-      } else if (tag.name === "audio") {
+      } else if (tag.name === "audio" && readAttr(tag.raw, "data-timeline-role") !== "room-tone") {
+        // A room tone plays another stretch of the file under the video's own sound to bridge a cut: it is meant.
         audios.push([src, source]);
       }
     }
@@ -877,6 +882,9 @@ export const mediaRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = 
 
   // audio_group_carve_attr
   findAudioGroupCarveAttrFindings,
+
+  // audio_group_holds_elements
+  findAudioGroupHoldsElementsFindings,
   findLinkedClipFindings,
 ];
 
@@ -1135,6 +1143,34 @@ function findAudioGroupTimingAttrFindings(ctx: LintContext): HyperframeLintFindi
       elementId,
       fixHint: `Remove ${present.map((attr) => `\`${attr}\``).join(", ")} from the group element.`,
       snippet: truncateSnippet(tag.raw),
+    });
+  }
+  return findings;
+}
+
+/** A bus holds nothing; a self-closed `<hf-audio-group />` stays open in HTML and takes in every later sibling. */
+function findAudioGroupHoldsElementsFindings(ctx: LintContext): HyperframeLintFinding[] {
+  const findings: HyperframeLintFinding[] = [];
+  for (const group of ctx.tags) {
+    if (group.name !== "hf-audio-group") continue;
+    const end = group.closeIndex ?? Number.POSITIVE_INFINITY;
+    const held = ctx.tags.filter((tag) => tag.index > group.index && tag.index < end);
+    if (held.length === 0) continue;
+    const elementId = readAttr(group.raw, "id") || undefined;
+    const first = readAttr(held[0]!.raw, "id");
+    findings.push({
+      code: "audio_group_holds_elements",
+      severity: "warning",
+      message:
+        `${elementId ? `#${elementId}` : "This audio group"} holds ${held.length} element(s), ` +
+        `starting with <${held[0]!.name}${first ? `#${first}` : ""}>. Being inside it routes no audio ` +
+        "through the bus (only `data-audio-group` does), and while the group has `data-hidden` they are " +
+        "hidden and silenced in preview and render.",
+      elementId,
+      fixHint:
+        "Close the group with `</hf-audio-group>` right after its opening tag (`/>` does not close a custom " +
+        "element), and give clips meant for this bus `data-audio-group`.",
+      snippet: truncateSnippet(group.raw),
     });
   }
   return findings;

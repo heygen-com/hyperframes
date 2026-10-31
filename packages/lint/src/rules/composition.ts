@@ -661,6 +661,8 @@ function variablesDeclarationFindings(
         code: "invalid_composition_variables_declaration",
         severity: "error",
         message: `data-composition-variables entry [${i}] must be an object with id, type, label, and default.`,
+        fixHint:
+          'Replace the entry with an object such as {"id":"title","type":"string","label":"Title","default":"Hello"}.',
         snippet: truncateSnippet(tag.raw),
       });
       continue;
@@ -676,6 +678,7 @@ function variablesDeclarationFindings(
         code: "invalid_composition_variables_declaration",
         severity: "error",
         message: `data-composition-variables entry [${i}] is missing or has invalid: ${missing.join(", ")}. Type must be one of string, number, color, boolean, enum, font, image.`,
+        fixHint: `Give entry [${i}] a string id and label, a supported type, and a default, e.g. {"id":"title","type":"string","label":"Title","default":"Hello"}.`,
         snippet: truncateSnippet(tag.raw),
       });
       continue;
@@ -686,17 +689,19 @@ function variablesDeclarationFindings(
         severity: "error",
         message: `data-composition-variables entry [${i}] has a default that does not match its type, or an enum without an options array.`,
         fixHint:
-          "Use number defaults for number variables, boolean defaults for boolean variables, and string defaults for other types. Enum variables also require an options array.",
+          "Use number defaults for number variables, boolean defaults for boolean variables, and string defaults for other types. Font/image also accept font {name, source} or image {url, alt?, fit?} objects. Enum variables also require an options array.",
         snippet: truncateSnippet(tag.raw),
       });
       continue;
     }
-    const id = String(e.id);
+    const id = e.id;
+    const mediaUrl =
+      e.type === "image" && typeof e.default !== "string" ? e.default.url : e.default;
     if (
       (e.type === "image" || varSrcIds.has(id)) &&
-      typeof e.default === "string" &&
-      e.default.length > 0 &&
-      !isSafeMediaUrl(e.default)
+      typeof mediaUrl === "string" &&
+      mediaUrl.length > 0 &&
+      !isSafeMediaUrl(mediaUrl)
     ) {
       findings.push({
         code: "unloadable_media_variable_default",
@@ -1918,6 +1923,28 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
         snippet: truncateSnippet(rootTag.raw),
       },
     ];
+  },
+
+  // subcomposition_linked_style_names_root_id
+  // The compiler flattens a sub-composition root into its host and rewrites inline <style>
+  // selectors to match; a linked stylesheet is not rewritten, so `#root-id` in it matches nothing.
+  ({ styles, rootTag, options }) => {
+    if (!options.isSubComposition || !rootTag) return [];
+    const rootId = readAttr(rootTag.raw, "id");
+    if (!rootId) return [];
+    const escaped = rootId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const names = new RegExp(`#${escaped}(?![\\w-])`);
+    return styles
+      .filter((style) => style.index === -1 && names.test(stripCssComments(style.content)))
+      .map((style) => ({
+        code: "subcomposition_linked_style_names_root_id",
+        severity: "warning" as const,
+        message:
+          `The linked stylesheet "${style.rootRelativePath ?? style.file}" has a rule on #${rootId}, the id of this sub-composition's root. ` +
+          "The root is merged into its host when the composition is compiled, so that selector matches nothing (the same rule in an inline <style> is rewritten and works).",
+        fixHint: `Move the #${rootId} rules into a <style> inside the <template>, where they are rewritten for the merged root, or select a child element of the root in the linked file instead of the root itself.`,
+        snippet: truncateSnippet(style.content.slice(0, 120)),
+      }));
   },
 ];
 

@@ -1,4 +1,6 @@
 export const PUPPETEER_DEFAULT_PROTOCOL_TIMEOUT_MS = 180_000;
+export const SEEK_SETTLES_BEFORE_PROTOCOL_TIMEOUT_MS =
+  PUPPETEER_DEFAULT_PROTOCOL_TIMEOUT_MS - 10_000;
 
 export class StageBudgetTimeoutError extends Error {
   readonly budgetMs: number;

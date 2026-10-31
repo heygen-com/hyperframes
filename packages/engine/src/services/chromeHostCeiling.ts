@@ -64,11 +64,17 @@ const starts = new Map<string, boolean>();
 const debug = debuglog("hyperframes:browser");
 
 /** Whether a shell loads a blank page and exits: an old build can die at launch on a newer OS. Asked once per path. */
-export function shellStarts(binary: string): boolean {
+export function shellStarts(binary: string, timeoutMs = 10_000): boolean {
   let answer = starts.get(binary);
   if (answer === undefined) {
     const probe = ["--no-sandbox", "--dump-dom", "about:blank"];
-    answer = spawnSync(binary, probe, { stdio: "ignore", timeout: 10_000 })?.status === 0;
+    answer =
+      spawnSync(binary, probe, {
+        stdio: "ignore",
+        timeout: timeoutMs,
+        killSignal: "SIGKILL",
+        windowsHide: true,
+      })?.status === 0;
     if (!answer) debug("skipping %s: it did not start", binary);
     starts.set(binary, answer);
   }

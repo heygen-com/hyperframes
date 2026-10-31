@@ -1419,7 +1419,8 @@ describe("core rules", () => {
       expect(finding?.severity).toBe("error");
       expect(finding?.selector).toBe(`[style*="visibility: hidden"]`);
       expect(finding?.message).toContain("replacement frame");
-      expect(finding?.fixHint).toContain("data-composition-src");
+      expect(finding?.fixHint).not.toContain("[style");
+      expect(finding?.fixHint).toContain("class or data attribute");
     });
 
     it("errors when composition scoping still leaves the hidden-style selector on video", async () => {
@@ -1469,6 +1470,51 @@ describe("core rules", () => {
       expect(
         result.findings.find((item) => item.code === "runtime_hidden_style_opacity"),
       ).toBeUndefined();
+    });
+  });
+
+  describe("inline_style_attribute_selector", () => {
+    const findingsFor = async (css: string) =>
+      (
+        await lintHyperframeHtml(`
+<html><head><style>${css}</style></head><body>
+  <div id="root" data-composition-id="main" data-width="1920" data-height="1080"></div>
+  <script>window.__timelines = { main: gsap.timeline({ paused: true }) };</script>
+</body></html>`)
+      ).findings.filter((item) => item.code === "inline_style_attribute_selector");
+
+    it.each([
+      `[style] { color: red; }`,
+      `.scene[style*="visibility: hidden"] * { visibility: hidden !important; }`,
+      `div[style^="opacity"] { color: red; }`,
+      `div[style$="none;"] { color: red; }`,
+      `div[style~="x"] { color: red; }`,
+      `div[style|="x"] { color: red; }`,
+      `[STYLE*="hidden" i] { color: red; }`,
+      `.card:not([style*="opacity: 0"]) { color: red; }`,
+    ])("errors on a rule that selects on the inline style attribute: %s", async (css) => {
+      const [finding] = await findingsFor(css);
+      expect(finding?.severity).toBe("error");
+      expect(finding?.message).toContain("every frame");
+      expect(finding?.fixHint).toContain("class or data attribute");
+      expect(finding?.fixHint).not.toContain("[style");
+    });
+
+    it.each([
+      `.scene.is-hidden * { visibility: hidden; }`,
+      `[data-state="hidden"] { opacity: 0; }`,
+      `[data-style="bold"] { font-weight: 700; }`,
+      `[styles] { color: red; }`,
+      `[data-hf-style] { color: red; }`,
+    ])("allows a selector that does not read the inline style: %s", async (css) => {
+      expect(await findingsFor(css)).toEqual([]);
+    });
+
+    it("reports a selector once and each selector of a list on its own", async () => {
+      const findings = await findingsFor(
+        `[style*="a"], .x[style] { color: red; } [style*="a"] { color: blue; }`,
+      );
+      expect(findings.map((item) => item.selector)).toEqual([`[style*="a"]`, `.x[style]`]);
     });
   });
 
@@ -1612,6 +1658,7 @@ describe("core rules", () => {
       expect(finding).toBeDefined();
       expect(finding?.severity).toBe("error");
       expect(finding?.message).toContain("Missed semicolon");
+      expect(finding?.fixHint).toMatch(/reported line/);
     });
   });
 });

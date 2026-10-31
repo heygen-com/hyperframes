@@ -72,6 +72,13 @@ vi.mock("./render/stages/audioStage.js", () => ({
     throw new Error("audio stage reached");
   },
 }));
+// The mix runs while capture sets up, so the render stops at setup's first step instead.
+vi.mock("./fileServer.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./fileServer.js")>()),
+  createFileServer: async () => {
+    throw new Error("capture setup reached");
+  },
+}));
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -89,7 +96,7 @@ it("the local renderer gives the shared audio stage its master chain and video c
     logger: { info() {}, warn() {}, error() {}, debug() {} },
   });
   await expect(executeRenderJob(job, root, join(root, "output.mp4"))).rejects.toThrow(
-    "audio stage reached",
+    "capture setup reached",
   );
   expect(seen.audioInput?.masterFxChain).toBe(MASTER_CHAIN);
   expect(seen.audioInput?.totalFrames).toBe(30);

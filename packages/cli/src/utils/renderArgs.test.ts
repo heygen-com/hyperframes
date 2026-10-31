@@ -14,26 +14,27 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import {
   MAX_PAGE_NAVIGATION_TIMEOUT_SECONDS,
-  hasExplicitCompositionArg,
   parseBrowserTimeoutMsArg,
   pageNavigationTimeoutMs,
-  parseCompositionEntryArg,
   parseGifLoopArg,
   parseHlsSegmentSecondsArg,
   resolveDefaultFpsArg,
   type BrowserTimeoutParseResult,
-  type CompositionEntryParseResult,
 } from "./renderArgs.js";
+import {
+  compositionEntryErrorMessage,
+  hasExplicitCompositionArg,
+  parseCompositionEntryArg,
+  type CompositionEntryParseError,
+  type CompositionEntryParseResult,
+} from "./compositionEntry.js";
 
 function expectBrowserTimeoutErr(result: BrowserTimeoutParseResult): { kind: string; raw: string } {
   if (result.ok) throw new Error(`expected error, got value=${result.value}`);
   return result.error;
 }
 
-function expectCompositionErr(result: CompositionEntryParseResult): {
-  kind: string;
-  entryFile: string;
-} {
+function expectCompositionErr(result: CompositionEntryParseResult): CompositionEntryParseError {
   if (result.ok) throw new Error(`expected error, got value=${result.value}`);
   return result.error;
 }
@@ -211,12 +212,12 @@ describe("parseCompositionEntryArg", () => {
 
   it("rejects a directory path with 'not-a-file' (the EISDIR cause)", () => {
     const err = expectCompositionErr(parseCompositionEntryArg("compositions", PROJECT, stat));
-    expect(err).toEqual({ kind: "not-a-file", entryFile: "compositions" });
+    expect(err).toMatchObject({ kind: "not-a-file", entryFile: "compositions" });
   });
 
   it("rejects a non-existent file with 'not-found'", () => {
     const err = expectCompositionErr(parseCompositionEntryArg("missing.html", PROJECT, stat));
-    expect(err).toEqual({ kind: "not-found", entryFile: "missing.html" });
+    expect(err).toMatchObject({ kind: "not-found", entryFile: "missing.html" });
   });
 
   it("rejects a path that escapes the project directory", () => {
@@ -244,6 +245,23 @@ describe("parseCompositionEntryArg", () => {
       parseCompositionEntryArg("/elsewhere/x.html", PROJECT, outsideStat),
     );
     expect(err.kind).toBe("outside-project");
+  });
+
+  it.each([
+    ["../escape.html", "outside-project", "/escape.html"],
+    ["missing.html", "not-found", "/proj/missing.html"],
+    ["compositions", "not-a-file", "/proj/compositions"],
+  ])("names the resolved entry path and project directory for %s", (raw, kind, entryPath) => {
+    const err = expectCompositionErr(parseCompositionEntryArg(raw, PROJECT, stat));
+    expect(err).toEqual({
+      kind,
+      entryFile: raw,
+      entryPath: resolve(entryPath),
+      projectDir: resolve(PROJECT),
+    });
+    const { message } = compositionEntryErrorMessage(err);
+    expect(message).toContain(`"${raw}" resolves to ${resolve(entryPath)}`);
+    expect(message).toContain(resolve(PROJECT));
   });
 
   it("rejects a sibling-prefix path (trailing-separator guard)", () => {

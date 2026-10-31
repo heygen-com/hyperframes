@@ -45,7 +45,7 @@ export interface LoopbackHandle {
 }
 
 const CALLBACK_PATH = "/oauth/callback";
-const DEFAULT_TIMEOUT_MS = 120_000;
+const DEFAULT_TIMEOUT_MS = 300_000;
 
 export async function startLoopback(opts: LoopbackOptions): Promise<LoopbackHandle> {
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -191,7 +191,7 @@ function respond(res: ServerResponse, status: number, body: string): void {
 }
 
 function successPage(): string {
-  return `<!doctype html><html><head><meta charset="utf-8"><title>Signed in to HeyGen</title>
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Signed in to HyperFrames</title>
 <style>body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#0b0f14;color:#e6e8eb}main{max-width:480px;text-align:center;padding:32px;border-radius:12px;background:#11161d;border:1px solid #1f2630}h1{font-weight:600;margin:0 0 8px;color:#3CE6AC}p{margin:0;color:#9aa3ad}</style>
 </head><body><main><h1>You're signed in.</h1><p>You can close this tab and return to your terminal.</p></main></body></html>`;
 }

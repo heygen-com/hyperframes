@@ -3,6 +3,7 @@ import { useCallback, useMemo } from "react";
 import { STUDIO_MOTION_PATH } from "../components/editor/studioMotion";
 import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
 import type { RestoreFiles } from "../utils/gsapUndoRestore";
+import { whileScriptWrites } from "../player/previewReloading";
 import {
   beginStudioShownRestore,
   cancelNewestStudioWaitingPress,
@@ -152,8 +153,8 @@ export function useEditHistoryActions({
     ],
   );
 
-  const undo = useCallback(() => apply("undo"), [apply]);
-  const redo = useCallback(() => apply("redo"), [apply]);
+  const undo = useCallback(() => whileScriptWrites(() => apply("undo")), [apply]);
+  const redo = useCallback(() => whileScriptWrites(() => apply("redo")), [apply]);
   return useMemo(() => ({ undo, redo }), [undo, redo]);
 }
 

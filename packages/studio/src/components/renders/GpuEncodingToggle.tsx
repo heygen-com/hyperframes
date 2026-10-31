@@ -4,7 +4,7 @@ export function GpuEncodingToggle({
   disabled,
   onToggle,
 }: {
-  format: "mp4" | "webm" | "mov";
+  format: "mp4" | "webm" | "mov" | "gif";
   checked: boolean;
   disabled: boolean;
   onToggle: () => void;

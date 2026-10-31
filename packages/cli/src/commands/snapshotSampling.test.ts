@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  parseSnapshotFrames,
   parseSnapshotRange,
   sampleSnapshotRange,
   resolveSnapshotCompositionRange,
@@ -18,6 +19,9 @@ describe("snapshot scoped sampling", () => {
       expect(() => parseSnapshotRange(v)).toThrow();
     expect(parseSnapshotRange("1.8:2.5")).toEqual([1.8, 2.5]);
     expect(parseSnapshotRange("1.8,2.5")).toEqual([1.8, 2.5]);
+    for (const v of ["abc", "-3", "0", "2.5", ""])
+      expect(() => parseSnapshotFrames(v)).toThrow("--frames must be a positive integer");
+    expect(parseSnapshotFrames("10")).toBe(10);
     for (const n of [0, -1, 1.5, NaN]) expect(() => sampleSnapshotRange([1, 2], n, 5)).toThrow();
     expect(() => sampleSnapshotRange([1, 6], 5, 5)).toThrow();
   });

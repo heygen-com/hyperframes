@@ -1422,7 +1422,7 @@ async function captureResolveEvent({ provider, type = "bgm", intent }) {
     // never touch the real developer machine, and point the host at the local
     // server. HEYGEN_CONFIG_DIR is sandboxed too -- runResolve's env is
     // {...process.env, ...env}, so a developer with that var set to a real
-    // credentials dir would otherwise have heygenAccountDistinctId() read
+    // credentials dir would otherwise have heygenAccount() read
     // their real email into this test's local-server payload despite HOME
     // being sandboxed (HEYGEN_CONFIG_DIR, not HOME, resolves the credentials
     // path). Every other test in this file keeps its untouched default env.

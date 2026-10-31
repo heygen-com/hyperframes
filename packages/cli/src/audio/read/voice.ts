@@ -1,7 +1,7 @@
 import type { Span } from "@hyperframes/core/audio-analysis";
 import { median, round, levels, quantile } from "./signal.js";
 import { semitones, within, type PitchPoint } from "./pitch.js";
-import type { Ending, RateUnit, Sentence, Voice } from "./types.js";
+import type { Ending, Pause, RateUnit, Sentence, Voice } from "./types.js";
 
 export interface TimedWord {
   text: string;
@@ -75,7 +75,9 @@ function pitchOf(track: readonly PitchPoint[], start: number, end: number): numb
   return hz.length >= MIN_PITCH_FRAMES ? Math.round(median(hz)) : null;
 }
 
-function summary(sentences: Sentence[], pauses: Span[], track: readonly PitchPoint[]) {
+export type LevelOf = (span: Span) => number;
+
+function summary(sentences: Sentence[], pauses: Pause[], track: readonly PitchPoint[]) {
   const timed = sentences.filter((s) => s.rate !== null);
   const seconds = timed.reduce((n, s) => n + (s.end - s.start), 0);
   const meanRate = seconds
@@ -89,7 +91,11 @@ function summary(sentences: Sentence[], pauses: Span[], track: readonly PitchPoi
   };
 }
 
-export function voiceFromWords(words: readonly TimedWord[], track: readonly PitchPoint[]): Voice {
+export function voiceFromWords(
+  words: readonly TimedWord[],
+  track: readonly PitchPoint[],
+  levelOf: LevelOf,
+): Voice {
   const ordered = words.filter((w) => w.end > w.start).sort((a, b) => a.start - b.start);
   const unit = rateUnit(ordered);
   const sentences = sentenceGroups(ordered).map((group): Sentence => {
@@ -103,13 +109,16 @@ export function voiceFromWords(words: readonly TimedWord[], track: readonly Pitc
       rate: count && end > start ? round(count / (end - start), 1) : null,
       pitchHz: pitchOf(track, start, end),
       ending: ending(track, start, end),
+      againstMusic: null,
     };
   });
-  const pauses: Span[] = [];
+  const pauses: Pause[] = [];
   for (let i = 1; i < ordered.length; i++) {
     const gap = ordered[i]!.start - ordered[i - 1]!.end;
-    if (gap >= PAUSE_SECONDS)
-      pauses.push({ start: round(ordered[i - 1]!.end), end: round(ordered[i]!.start) });
+    if (gap >= PAUSE_SECONDS) {
+      const span = { start: round(ordered[i - 1]!.end), end: round(ordered[i]!.start) };
+      pauses.push({ ...span, recordingDb: Math.round(levelOf(span)) });
+    }
   }
   return { source: "transcript", unit, ...summary(sentences, pauses, track) };
 }
@@ -122,6 +131,7 @@ export function voiceFromActivity(
   vocals: Float32Array,
   sampleRate: number,
   track: readonly PitchPoint[],
+  levelOf: LevelOf,
 ): Voice {
   const db = levels(vocals, sampleRate, ACTIVITY_HOP);
   const threshold = Math.max(-45, quantile(db, 0.9) - 30);
@@ -153,10 +163,12 @@ export function voiceFromActivity(
       rate: null,
       pitchHz: pitchOf(track, s.start, s.end),
       ending: ending(track, s.start, s.end),
+      againstMusic: null,
     }),
   );
-  const pauses = spans
-    .slice(1)
-    .map((s, i) => ({ start: round(spans[i]!.end), end: round(s.start) }));
+  const pauses = spans.slice(1).map((s, i) => {
+    const span = { start: round(spans[i]!.end), end: round(s.start) };
+    return { ...span, recordingDb: Math.round(levelOf(span)) };
+  });
   return { source: "activity", unit: "chars", ...summary(sentences, pauses, track) };
 }

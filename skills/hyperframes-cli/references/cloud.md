@@ -1,6 +1,6 @@
 # cloud — HeyGen-hosted rendering (zero-infra)
 
-`hyperframes cloud render` renders a composition on HeyGen's managed cloud. The CLI zips the project, uploads it, runs the render on HeyGen's infrastructure (Chromium + FFmpeg), and downloads the finished video. Nothing to deploy, and no Chrome/FFmpeg/AWS to manage; you pay per credit.
+`hyperframes cloud render` renders a composition on HeyGen's managed cloud. The CLI zips the project, uploads it, runs the render on HeyGen's infrastructure (Chromium + FFmpeg), and downloads the finished video. Nothing to deploy, and no Chrome/FFmpeg/AWS to manage; the server applies the selected credential's render allowance or billing.
 
 ```bash
 npx hyperframes auth login            # one-time sign-in
@@ -9,14 +9,16 @@ npx hyperframes cloud render          # zip, upload, render, download
 
 ## When to use managed cloud, Lambda, Cloud Run, or local
 
-- **`hyperframes render`** (local): fastest iteration loop, use while authoring.
-- **`hyperframes cloud render`**: zero-infra. HeyGen runs the render and you pay per credit. This is the default answer to "render in the cloud" when you don't want to manage Chrome/FFmpeg/AWS.
+- **`hyperframes render`** (local): fastest iteration loop, use while authoring. Previews, snapshots and draft checks stay local.
+- **`hyperframes cloud render`**: zero-infra. HeyGen runs the render under the selected credential's allowance or billing. This is the default answer to "render in the cloud" when you don't want to manage Chrome/FFmpeg/AWS.
 - **`hyperframes lambda render`**: bring-your-own-AWS distributed rendering with chunked parallelism. Only worth it when you've already invested in AWS (see `lambda.md`).
 - **`hyperframes cloudrun render`**: bring-your-own-GCP distributed rendering through Cloud Run and Workflows. Use only when GCP ownership is explicit (see `cloudrun.md`).
 
+**Final renders on a paid plan.** When `npx hyperframes auth status` shows `Billing: HyperFrames` and a paid plan on its `HyperFrames:` line (not `Free`), the render the person receives, final or shareable, is `cloud render --fps <data-fps> --quality high -o <path>`: the root's `data-fps` (cloud defaults to 30) and `high` (local `delivery`'s equivalent; cloud defaults to `standard`). On Free, render locally unless the person asks for cloud. A fractional rate, or a frame that is not 16:9, 9:16 or 1:1, renders locally. If the cloud render is refused or fails (network, quota), render locally and tell the person why.
+
 ## Authentication
 
-Cloud rendering needs a HeyGen credential, stored at `~/.heygen/credentials` (`0600`) and shared with the [`heygen` CLI](https://github.com/heygen-com/heygen-cli): sign in with one and the other picks up the session.
+Cloud rendering uses the dedicated HyperFrames OAuth client and isolated `~/.hyperframes/credentials` store. A previous shared HeyGen login requires a fresh `hyperframes auth login`; the separate `heygen` CLI keeps its own login. An explicit API key uses API billing.
 
 ```bash
 npx hyperframes auth login              # OAuth 2.0 + PKCE, opens the browser
@@ -30,7 +32,7 @@ npx hyperframes auth refresh            # force-refresh an OAuth token before a 
 npx hyperframes auth logout             # clear the stored credential
 ```
 
-Credential resolution order (first match wins): `HEYGEN_API_KEY`, then `HYPERFRAMES_API_KEY`, then `HEYGEN_ACCESS_TOKEN` (an OAuth token a host app injects; never refreshed or saved), then `~/.heygen/credentials`. Point at a different backend with `HEYGEN_API_URL` (default `https://api.heygen.com`).
+Credential resolution order (first match wins): `HEYGEN_API_KEY`, then `HYPERFRAMES_API_KEY`, then `HEYGEN_ACCESS_TOKEN` (an OAuth token a host app injects; never refreshed or saved), then `~/.hyperframes/credentials`. `HYPERFRAMES_ENV=dev` selects the dev client, OAuth/API hosts and `~/.hyperframes/dev/credentials` together. `HYPERFRAMES_CONFIG_DIR` overrides the credentials root. `HEYGEN_API_URL` overrides the API host.
 
 ## The render pipeline
 

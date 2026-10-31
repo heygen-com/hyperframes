@@ -1,16 +1,13 @@
 ---
-title: "Apply media effects"
-sidebarTitle: "Media effects"
-description: "Turn an image or video into ASCII, halftone print, tape damage, CRT, painted art, and more — without touching the original file."
+title: "Add effects to images and video"
+sidebarTitle: "Video effects"
+description: "Give a photo or video a look (ASCII, halftone, tape damage, CRT, paint) or fix and grade its color, by asking or by hand. The original file never changes."
 ---
 
 import { DocsVideo } from "/snippets/docs-video.jsx";
 
-An effect changes how a photo or video **looks**, not what it is. The file on
-disk never changes. You can adjust the effect later, animate it, or take it off
-entirely.
-
-Here is the whole range on real footage:
+An effect changes how a picture looks, not what it is. The file stays untouched, so you can soften the effect,
+animate it or take it off later.
 
 <DocsVideo
   title="Every media effect family, applied to real sources"
@@ -18,26 +15,28 @@ Here is the whole range on real footage:
   poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/media-effects-showcase-v2.jpg"
 />
 
-Eighteen effects, sixteen color looks and four LUT paths — all on a single media
-layer, and all still editable afterwards.
+*Eighteen effects, sixteen color looks and four LUT paths, each on one media layer and all still editable.*
 
-## What each family is for
+## Ask for a look
 
-**Essentials — Blur, Pixelate, Bloom.**
-Hide something, pull focus onto something else, or make bright areas glow.
+Say what it should feel like; you don't need the effect names:
 
-**Retro and glitch — Tape Damage, Film Artifacts, Scanlines, CRT Curvature,
-Channel Separation, Digital Glitch, Chroma Softening.**
-Make footage look like old tape, old film, an old monitor, or a broken signal.
-The damage is built to behave like the real thing — tracking wobble, color
-bleed and tearing — not random colored noise.
+```text
+Make the product clip feel like a clean two-ink editorial print. Keep the label readable.
+The interview looks too dark and slightly cold. Keep skin natural, no filtered look.
+Pixelate the email address in the screen recording from 0:04 to 0:07.
+```
 
-**Print — Halftone, Two-Ink Print, Ordered Dither, Mono Screen.**
-Turn the picture into printed dots or a two-color poster.
+Works the same in the Studio app and with your own agent. To copy a look from a video you like, add it as a
+reference and say "grade it like this".
 
-**Art — ASCII, Engraving, Crosshatch, Kuwahara Paint.**
-Redraw the picture as text characters, engraved lines, hatching or paint. ASCII
-alone has eight styles, not one switch.
+## The effects
+
+- **Essentials:** Blur, Pixelate, Bloom. Hide something, pull focus, make highlights glow.
+- **Retro and glitch:** Tape Damage, Film Artifacts, Scanlines, CRT Curvature, Channel Separation, Digital Glitch,
+  Chroma Softening. Old tape, old film, old monitors, broken signals, with real tracking wobble and color bleed.
+- **Print:** Halftone, Two-Ink Print, Ordered Dither, Mono Screen.
+- **Art:** ASCII (eight styles), Engraving, Crosshatch, Kuwahara Paint.
 
 <Frame caption="One source, four finishes: original, pixelated, two-ink print, and ASCII.">
   <img
@@ -46,77 +45,100 @@ alone has eight styles, not one switch.
   />
 </Frame>
 
-For grain and darkened edges, use Grain and Vignette in
-[Color grading](/guides/color-grading). For a HUD, light leak or flash, use a
-[Catalog overlay](/catalog).
+Commit to a strong look or leave it off: a half-strength ASCII reads as a mistake. For grain and vignette, use the
+color controls below; for HUDs, light leaks and flashes, use a [Catalog overlay](/catalog).
 
-## Try one in Studio
+## Fix and grade the color
 
-Select an image or video, then open **Effects** in the Inspector. Pick one
-effect, adjust it, and play the clip all the way through — some effects only
-look wrong once things move.
+Correct first (exposure, white balance, contrast, saturation), then style. No look rescues blown highlights or the
+wrong shot.
 
-An effect covers the whole media layer. It does not follow a face, a screen or
-an object. If only part of the frame should change, crop or mask that part into
-its own layer first.
+<Frame caption="The same source before and after a restrained natural-portrait grade.">
+  <img
+    src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/color-grading-before-after-v1.png"
+    alt="The same presenter frame before and after a restrained natural portrait grade"
+  />
+</Frame>
 
-Blur, Bloom and Kuwahara Paint are the expensive ones. Several of them stacked
-across large layers will slow down both preview and rendering.
+<DocsVideo
+  title="Correction, presets, curves, selective colour, scopes and a LUT on real footage"
+  src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/color-grading-demo-v1.mp4"
+  poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/color-grading-demo-v1.jpg"
+/>
 
-## Or just ask the agent
+## Adjust it by hand
 
-Describe what you want it to look like. You do not need to know the control
-names:
+In the [browser editor](/studio/index), select an image or video and open **Effects** or **Grade** in the Inspector.
+**Grade** starts with thirteen presets, each previewed on your own frame, and a **Strength** slider. Hold the compare
+button to flash back to the original, and scrub a few places in moving footage: a grade that flatters one frame can
+ruin the next.
 
-```text
-Make this product clip feel like a clean two-ink editorial print.
-Keep the product shape and label readable.
-```
+| Control | Use it for |
+| --- | --- |
+| Preset and strength | Pick a whole look, then dial it back |
+| Exposure, contrast, highlights, shadows, whites, blacks | Brightness and contrast, overall and per tonal range |
+| Warmth, tint, vibrance, saturation | Take out a color cast, or push color further |
+| Color wheels | Tint shadows, midtones and highlights separately |
+| RGB curves | Redraw the brightness ramp — whole image, or red, green and blue one at a time |
+| Hue curves | Pick one hue and move only it: shift, saturate or brighten |
+| HSL selections | Key a band of hue, saturation and brightness, then correct only those pixels. Up to four, in order |
+| Grain and vignette | Add texture, or darken the edges to pull the eye in |
+| Custom LUT | Load a `.cube` file that maps every color to another |
 
-The agent can look up what is available before it changes anything:
+The scopes measure the picture so you aren't judging by your screen: the **histogram** shows lost detail at either
+end, the **waveform** shows where across the frame, the **RGB parade** names a color cast, and the **vectorscope**
+puts skin tones on one known line.
+
+**Copy grade to** reuses a grade on other clips, as a starting point; the same numbers rarely suit two shots.
+
+## LUTs
+
+A LUT (a `.cube` file, up to 64 points per side) maps every color to another, blended in at the strength you set.
+Use creative Rec.709 LUTs. HyperFrames doesn't convert camera LOG footage first, so a LOG clip needs its camera's own
+transform or comes out wrong.
+
+## Limits
+
+- An effect or grade covers the whole layer. It doesn't follow a face or an object: to treat part of the frame, put
+  that part on its own layer.
+- It applies to images, video and canvas, not to text or HTML.
+- Standard video only. HDR sources preview in SDR and the effects don't carry into true HDR.
+- Blur, Bloom and Kuwahara Paint are slow; several stacked on big layers slow preview and render.
+- Keep media inside the project. A file on another server needs the right CORS headers and can vanish before render.
+
+<Accordion title="For agents and code: the commands and the stored format">
+
+List what exists, measure a source, then apply. `--dry-run` shows the change, `--clear` removes it.
 
 ```bash
 npx hyperframes media-treatment --capabilities --json
-npx hyperframes media-treatment --capability twoInkPrint --json
+npx hyperframes media-treatment --selector '#interview' --analyze --json
+npx hyperframes media-treatment --selector '#product' --grading '{"preset":"two-ink-print"}' --apply --json
 ```
 
-Then apply it:
+Compare several looks on one frame (up to sixteen, the original first):
 
 ```bash
-npx hyperframes media-treatment \
-  --selector '#product' \
-  --grading '{"preset":"two-ink-print"}' \
-  --apply --json
+npx hyperframes grade-compare --for frame.png --grades grades.json
 ```
 
-Add `--dry-run` to see the change without writing it, `--analyze` to measure the
-source first, or `--clear` to take an effect off. This writes the same
-`data-color-grading` data that Studio reads, so the two never disagree.
+Phone photos keep their displayed orientation and aspect ratio in the sheet; the source image stays unchanged.
 
-## Keeping it useful
+Everything lands in `data-color-grading`, in named sections: `adjust` for corrections, `details` for grain and
+vignette, `effects` for treatments. A flat object such as `{"exposure":0.15}` renders nothing, and
+`npx hyperframes lint` says which section it belongs in.
 
-Use blur or pixelation when you actually mean to hide or reveal something. If
-you pick a strong look, commit to it — a half-strength ASCII just reads as a
-mistake. Compare against the original, and take the effect off when it starts
-competing with the story.
+```html
+<video src="./interview.mp4" data-color-grading='{"preset":"skin-soft","intensity":0.7,"adjust":{"exposure":0.15},"effects":{"bloom":0.4}}'></video>
+```
 
-## Two limits worth knowing
+The full format is in the [HTML schema](/reference/html-schema#color-grading-and-media-effects) and the
+[color grading reference](/reference/color-grading).
 
-**HDR.** Effects run on the standard (SDR) pipeline. A native HDR layer keeps
-its HDR pixels through a separate path, so these effects will not appear on it.
-Convert to SDR if the effect has to survive into the final file.
-
-**Remote files.** Keep media inside the project. A file loaded from another
-server only works if that server sends the right CORS headers, and it can
-disappear between now and render time.
-
-The [Color grading guide](/guides/color-grading) covers correction, curves,
-selective color and LUTs. The
-[HTML schema](/reference/html-schema#color-grading-and-media-effects) has the
-exact data format.
+</Accordion>
 
 ## Related topics
 
-- [Color grade images and footage](/guides/color-grading)
 - [Use images and video](/guides/video-components)
-- [Browse ready-made visual effects](/catalog)
+- [Color, effects, 3D and generated art: the words to use](/prompting/color-grading)
+- [Browse ready-made effects in the Catalog](/catalog)

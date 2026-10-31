@@ -6,10 +6,10 @@ import {
   createMediaCodecProbeCache,
   proxyVariantFor,
   recordProxyPrewarm,
-  scanProjectMediaCodecMap,
+  scanProjectMedia,
   shouldPrewarmProxy,
   type HtmlSourceLike,
-  type MediaCodecMap,
+  type ProjectMediaScan,
   type MediaCodecProbeCache,
 } from "./mediaCodecMap.js";
 import { resolveProxy, PROXY_PARAMS_VERSION } from "./proxyTranscoder.js";
@@ -97,18 +97,16 @@ export async function injectMediaCodecMapIntoHtml(
   signal?: AbortSignal,
   box?: PreviewProxyBox,
 ): Promise<string> {
-  let map: MediaCodecMap;
+  let scan: ProjectMediaScan;
   try {
-    map = await scanProjectMediaCodecMap(
-      projectDir,
-      htmlSources,
-      probeCache ? { cache: probeCache } : {},
-    );
+    scan = await scanProjectMedia(projectDir, htmlSources, probeCache ? { cache: probeCache } : {});
   } catch {
     // Best-effort: a scan failure must never block serving the page.
     return html;
   }
-  if (Object.keys(map).length === 0) return html;
+  const { codecMap: map, sourceFacts } = scan;
+  const hasMap = Object.keys(map).length > 0;
+  if (!hasMap && Object.keys(sourceFacts).length === 0) return html;
   for (const [rootRelativePathname, facts] of Object.entries(map)) {
     if (!prewarm || !shouldPrewarmProxy(facts)) continue;
     recordProxyPrewarm();
@@ -125,11 +123,17 @@ export async function injectMediaCodecMapIntoHtml(
   }
   // <-escape prevents a src path containing "</script>" from breaking out of
   // the injected tag, mirroring injectPreviewVariables in helpers/previewVariables.ts.
-  const json = JSON.stringify(map)
-    .replace(/</g, "\\u003c")
-    .replace(/\u2028/g, "\\u2028")
-    .replace(/\u2029/g, "\\u2029");
-  const tag = `<script data-hf-media-codec-map>window.__HF_MEDIA_CODEC_MAP__=${json};</script>`;
+  const safeJson = (value: unknown): string =>
+    JSON.stringify(value)
+      .replace(/</g, "\\u003c")
+      .replace(/\u2028/g, "\\u2028")
+      .replace(/\u2029/g, "\\u2029");
+  // An empty map stays out: the runtime reads a present map as leave to rescue unlisted files.
+  const assignments = [
+    ...(hasMap ? [`window.__HF_MEDIA_CODEC_MAP__=${safeJson(map)};`] : []),
+    `window.__HF_MEDIA_SOURCE_FACTS__=${safeJson(sourceFacts)};`,
+  ];
+  const tag = `<script data-hf-media-codec-map>${assignments.join("")}</script>`;
   return insertBeforeCloseTag(html, "head", `${tag}\n`) ?? `${tag}\n${html}`;
 }
 

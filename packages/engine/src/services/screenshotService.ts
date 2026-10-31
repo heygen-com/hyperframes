@@ -284,6 +284,11 @@ export async function captureScreenshotWithAlpha(
  * [data-composition-id] roots (nested too) keep their background unless clearCompositionRoot (HDR layered pass).
  * A repeat call rewrites the rule, so the last call wins.
  */
+/** Whether frames must carry alpha. PNG alone does not imply it: motion blur captures opaque output as PNG. */
+export function capturesAlpha(options: Pick<CaptureOptions, "format" | "transparent">): boolean {
+  return options.transparent ?? options.format === "png";
+}
+
 const TRANSPARENT_BG_STYLE_ID = "__hf_transparent_bg__";
 
 export async function initTransparentBackground(
@@ -638,25 +643,35 @@ export async function ensureRenderFrameSiblings(page: Page): Promise<void> {
  * cache entry for a frame that never reached the page, which would otherwise
  * short-circuit the next inject at the same frameIndex and leave the host's
  * first visible frame blank.
+ *
+ * `restyleIds` keep their current picture and only re-copy the video's style.
  */
 export async function injectVideoFramesBatch(
   page: Page,
   updates: Array<{ videoId: string; dataUri: string }>,
+  restyleIds: readonly string[] = [],
 ): Promise<string[]> {
-  if (updates.length === 0) return [];
+  if (updates.length === 0 && restyleIds.length === 0) return [];
   return withVideoFrameSources(page, updates, (resolved) =>
-    injectResolvedVideoFramesBatch(page, resolved),
+    injectResolvedVideoFramesBatch(page, resolved, restyleIds),
   );
 }
 
 async function injectResolvedVideoFramesBatch(
   page: Page,
   updates: VideoFrameUpdate[],
+  restyleIds: readonly string[],
 ): Promise<string[]> {
+  // Build the sibling id with core's function rather than a template here,
+  // so the id the readers look up has exactly one definition.
+  const items: Array<Partial<VideoFrameUpdate> & { videoId: string; frameId: string }> = [
+    ...updates,
+    ...restyleIds.map((videoId) => ({ videoId })),
+  ].map((item) => ({ ...item, frameId: renderFrameIdForRenderId(item.videoId) }));
   return await page.evaluate(
     // fallow-ignore-next-line complexity
     async (
-      items: Array<VideoFrameUpdate & { frameId: string }>,
+      items: Array<Partial<VideoFrameUpdate> & { videoId: string; frameId: string }>,
       visualProperties: string[],
       colorGradingSourceHiddenAttr: string,
     ) => {
@@ -718,6 +733,8 @@ async function injectResolvedVideoFramesBatch(
 
         let img = video.nextElementSibling as HTMLImageElement | null;
         const hasImg = img !== null && img.classList.contains("__render_frame__");
+        const restyleOnly = item.dataUri === undefined;
+        if (restyleOnly && !hasImg) continue;
 
         if (isVisualAncestorHidden(video)) {
           // Don't paint a frame over a hidden host — if an existing replacement
@@ -807,7 +824,7 @@ async function injectResolvedVideoFramesBatch(
         // Publish after full decode so raster cannot race it with a reduced JPEG decode.
         img.style.setProperty("visibility", "hidden", "important");
         img.decoding = "sync";
-        if (img.getAttribute("src") !== item.dataUri) {
+        if (item.dataUri !== undefined && img.getAttribute("src") !== item.dataUri) {
           if (item.crossOrigin) img.crossOrigin = item.crossOrigin;
           else img.removeAttribute("crossorigin");
           img.src = item.dataUri;
@@ -830,22 +847,20 @@ async function injectResolvedVideoFramesBatch(
         // GSAP-controlled value.
         video.style.setProperty("visibility", "hidden", "important");
         video.style.setProperty("pointer-events", "none", "important");
-        injectedIds.push(item.videoId);
+        if (!restyleOnly) injectedIds.push(item.videoId);
       }
       if (pendingDecodes.length > 0) {
         await Promise.all(pendingDecodes);
       }
       for (const img of imagesToPublish) img.style.visibility = "visible";
-      if (injectedIds.length > 0) {
+      if (imagesToPublish.length > 0) {
         const redraw = (window as Window & { __hf?: { colorGrading?: { redraw?: () => void } } })
           .__hf?.colorGrading?.redraw;
         redraw?.();
       }
       return injectedIds;
     },
-    // Build the sibling id with core's function rather than a template here,
-    // so the id the readers look up has exactly one definition.
-    updates.map((update) => ({ ...update, frameId: renderFrameIdForRenderId(update.videoId) })),
+    items,
     [...MEDIA_VISUAL_STYLE_PROPERTIES],
     COLOR_GRADING_SOURCE_HIDDEN_ATTR,
   );

@@ -10,6 +10,7 @@ if (error) {
 } else {
   // Reuses V8 bytecode across runs (os.tmpdir()/node-compile-cache); Node 22.0 has no such API.
   module.enableCompileCache?.();
+  if (process.env.HYPERFRAMES_HANG_REPORT) (await import("../dist/hangReport.js")).watchForHang();
   const warm = process.argv[2] === "check" ? await import("../dist/warmCheckClient.js") : undefined;
   if (warm?.warmCheckEligible()) process.once("exit", () => warm.startNextWarmCheck());
   if (!(warm?.warmCheckEligible() && (await warm.runWarmCheck()))) await import("../dist/cli.js");

@@ -44,8 +44,8 @@ it.each(
     [
       ["capture", false, undefined, "fixture-key", undefined],
       ["capture", true, undefined, undefined, undefined],
-      ["init", false, process.execPath, "fixture-key", undefined],
-      ["init", true, process.execPath, "fixture-key", undefined],
+      ["init", false, undefined, "fixture-key", undefined],
+      ["init", true, undefined, "fixture-key", undefined],
       ["capture", false, process.execPath, "fixture-key", process.execPath],
     ] as const
   ).flatMap((test) =>
@@ -84,6 +84,6 @@ it.each(
     mockTelemetry();
     process.argv = ["node", "cli.ts", ...prefix, command];
     await import("./cli.js");
-    expect(observed).toEqual([browser, command === "capture" ? undefined : "--no-warnings", key]);
+    expect(observed).toEqual([browser, undefined, key]);
   },
 );

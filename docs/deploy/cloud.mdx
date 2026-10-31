@@ -86,6 +86,10 @@ hyperframes cloud render \
 
 For larger payloads, pass a JSON file with `--variables-file`.
 
+For a local project, variable validation uses the entry selected by
+`--composition`, or `index.html` when omitted. `--strict-variables` stops before
+upload when a value does not match that entry's declarations.
+
 The first `hyperframes cloud render` that uploads a local project prints an `asset_id`. Reuse it to
 render the same uploaded project with different values:
 

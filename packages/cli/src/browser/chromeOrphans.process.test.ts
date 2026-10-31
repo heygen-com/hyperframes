@@ -15,15 +15,15 @@ import {
 const here = dirname(fileURLToPath(import.meta.url));
 const cli = join(here, "..", "cli.ts");
 
-function project(busy: boolean): string {
+function project(busy: boolean, seconds = 1): string {
   const dir = mkdtempSync(join(tmpdir(), "hf-chrome-orphans-"));
   onTestFinished(() => rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }));
   mkdirSync(join(dir, "compositions"));
   writeFileSync(
     join(dir, "index.html"),
-    `<!doctype html><html><body><div data-composition-id="main" data-width="320" data-height="180" data-duration="1">
-<div data-composition-id="scene" data-composition-src="compositions/scene.html" data-start="0" data-duration="1"></div></div>
-<script>window.__timelines={main:{duration:()=>1,seek:()=>{},pause:()=>{}}};</script></body></html>`,
+    `<!doctype html><html><body><div data-composition-id="main" data-width="320" data-height="180" data-duration="${seconds}">
+<div data-composition-id="scene" data-composition-src="compositions/scene.html" data-start="0" data-duration="${seconds}"></div></div>
+<script>window.__timelines={main:{duration:()=>${seconds},seek:()=>{},pause:()=>{}}};</script></body></html>`,
   );
   const script = busy
     ? `const el=document.getElementById("box");while(el.offsetWidth<2){el.style.height="1px";}`
@@ -35,15 +35,16 @@ function project(busy: boolean): string {
   return dir;
 }
 
-function check(dir: string, entry = cli, env: Record<string, string> = {}) {
-  const child = spawn(
-    process.execPath,
-    ["--import", "tsx", entry, "check", dir, "--json", "--no-browser-gpu", "--samples=1"],
-    {
-      env: { ...process.env, CI: "1", HYPERFRAMES_NO_TELEMETRY: "1", ...env },
-      stdio: ["ignore", "ignore", "ignore"],
-    },
-  );
+function check(
+  dir: string,
+  entry = cli,
+  env: Record<string, string> = {},
+  command = ["check", dir, "--json", "--no-browser-gpu", "--samples=1"],
+) {
+  const child = spawn(process.execPath, ["--import", "tsx", entry, ...command], {
+    env: { ...process.env, CI: "1", HYPERFRAMES_NO_TELEMETRY: "1", ...env },
+    stdio: ["ignore", "ignore", "ignore"],
+  });
   const seen = { chrome: new Set<number>(), watchdog: new Set<number>() };
   const record = () => {
     for (const pid of testProcessDescendants(child.pid!, /chrom/i)) seen.chrome.add(pid);
@@ -89,3 +90,21 @@ it("leaves no Chrome process or watchdog behind after a check that finishes", as
     10_000,
   );
 }, 90_000);
+
+it("leaves no Chrome process behind when the CLI is killed mid-render", async () => {
+  const dir = project(false, 30);
+  const run = check(dir, cli, {}, [
+    "render",
+    dir,
+    "--output",
+    join(dir, "out.mp4"),
+    "--quality",
+    "draft",
+  ]);
+  await waitForTestCondition(() => {
+    run.record();
+    return alive(run.seen.chrome).length >= 3;
+  }, 60_000);
+  run.child.kill("SIGKILL");
+  await waitForTestCondition(() => alive(run.seen.chrome).length === 0, 30_000);
+}, 120_000);

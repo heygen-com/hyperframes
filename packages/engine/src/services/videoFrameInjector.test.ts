@@ -231,18 +231,22 @@ describe("createVideoFrameInjector cache hygiene against page-side skips", () =>
     injectVideoFramesBatchMock.mockResolvedValueOnce([]);
     await hook!(fakePage, 0);
     expect(injectVideoFramesBatchMock).toHaveBeenCalledTimes(1);
-    expect(injectVideoFramesBatchMock).toHaveBeenLastCalledWith(fakePage, [
-      { videoId: "pip", dataUri: "data:image/png;base64,fake-/p" },
-    ]);
+    expect(injectVideoFramesBatchMock).toHaveBeenLastCalledWith(
+      fakePage,
+      [{ videoId: "pip", dataUri: "data:image/png;base64,fake-/p" }],
+      [],
+    );
 
     // Second call: same frameIndex, but the previous call did not really
     // paint. The cache must NOT short-circuit; the inject must run again.
     injectVideoFramesBatchMock.mockResolvedValueOnce(["pip"]);
     await hook!(fakePage, 0);
     expect(injectVideoFramesBatchMock).toHaveBeenCalledTimes(2);
-    expect(injectVideoFramesBatchMock).toHaveBeenLastCalledWith(fakePage, [
-      { videoId: "pip", dataUri: "data:image/png;base64,fake-/p" },
-    ]);
+    expect(injectVideoFramesBatchMock).toHaveBeenLastCalledWith(
+      fakePage,
+      [{ videoId: "pip", dataUri: "data:image/png;base64,fake-/p" }],
+      [],
+    );
   });
 
   it("does cache normally when the page reports the id as injected", async () => {
@@ -265,7 +269,21 @@ describe("createVideoFrameInjector cache hygiene against page-side skips", () =>
     expect(injectVideoFramesBatchMock).toHaveBeenCalledTimes(1);
 
     await hook!(fakePage, 0);
-    // Cache hit — no second inject for the same frameIndex.
+    // Cache hit: the picture is not sent again, only the video's style is re-copied.
+    expect(injectVideoFramesBatchMock).toHaveBeenCalledTimes(2);
+    expect(injectVideoFramesBatchMock).toHaveBeenLastCalledWith(fakePage, [], ["pip"]);
+  });
+
+  it("leaves a held video's style alone on a motion-blur sub-sample", async () => {
+    const fakePage = { evaluate: async () => undefined } as unknown as Page;
+    const hook = createVideoFrameInjector(
+      fakeTable({ videoId: "pip", framePath: "/p", frameIndex: 5 }),
+      { frameSrcResolver: inlineResolver },
+    );
+
+    injectVideoFramesBatchMock.mockResolvedValueOnce(["pip"]);
+    await hook!(fakePage, 0.5, 0.5);
+    await hook!(fakePage, 0.48, 0.5);
     expect(injectVideoFramesBatchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -283,13 +301,16 @@ describe("createVideoFrameInjector cache hygiene against page-side skips", () =>
     await fresh!(truthPage, 0);
     // The fresh hook paints its own page even though the first hook already painted frame 5.
     expect(injectVideoFramesBatchMock).toHaveBeenCalledTimes(2);
-    expect(injectVideoFramesBatchMock).toHaveBeenLastCalledWith(truthPage, [
-      { videoId: "pip", dataUri: "data:image/png;base64,fake-/p" },
-    ]);
+    expect(injectVideoFramesBatchMock).toHaveBeenLastCalledWith(
+      truthPage,
+      [{ videoId: "pip", dataUri: "data:image/png;base64,fake-/p" }],
+      [],
+    );
 
     await hook!(renderPage, 0);
-    // The first hook still remembers frame 5 on its page.
-    expect(injectVideoFramesBatchMock).toHaveBeenCalledTimes(2);
+    // The first hook still remembers frame 5 on its page: it only re-copies the style.
+    expect(injectVideoFramesBatchMock).toHaveBeenCalledTimes(3);
+    expect(injectVideoFramesBatchMock).toHaveBeenLastCalledWith(renderPage, [], ["pip"]);
   });
 
   it("reinjects frame zero when a whole-chunk retry uses a fresh hook and page", async () => {

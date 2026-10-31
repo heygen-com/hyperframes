@@ -1,7 +1,7 @@
 {
   "@hyperframes/aws-lambda": {
-    "packed": 73369,
-    "unpacked": 266805
+    "packed": 78851,
+    "unpacked": 290508
   },
   "@hyperframes/cli": {
     "packed": 7902966,
@@ -9,7 +9,7 @@
   },
   "@hyperframes/core": {
     "packed": 1661748,
-    "unpacked": 4024585
+    "unpacked": 4268445
   },
   "@hyperframes/engine": {
     "packed": 456397,
@@ -20,7 +20,7 @@
     "unpacked": 192672
   },
   "@hyperframes/inspector": {
-    "packed": 808905,
+    "packed": 858046,
     "unpacked": 3645432
   },
   "@hyperframes/lint": {
@@ -28,16 +28,16 @@
     "unpacked": 695173
   },
   "@hyperframes/parsers": {
-    "packed": 191000,
-    "unpacked": 831243
+    "packed": 203731,
+    "unpacked": 885314
   },
   "@hyperframes/player": {
     "packed": 157145,
     "unpacked": 541601
   },
   "@hyperframes/producer": {
-    "packed": 781312,
-    "unpacked": 2840135
+    "packed": 828932,
+    "unpacked": 3081613
   },
   "@hyperframes/sdk": {
     "packed": 90662,
@@ -52,7 +52,7 @@
     "unpacked": 24360208
   },
   "@hyperframes/studio-server": {
-    "packed": 145266,
-    "unpacked": 568500
+    "packed": 154437,
+    "unpacked": 603489
   }
 }

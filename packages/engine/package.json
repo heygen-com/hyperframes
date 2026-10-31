@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/engine",
-  "version": "0.8.200",
+  "version": "0.8.224",
   "description": "Seekable web page to video rendering engine (Puppeteer + FFmpeg)",
   "repository": {
     "type": "git",
@@ -30,6 +30,11 @@
       "import": "./src/services/chromeHostCeiling.ts",
       "types": "./src/services/chromeHostCeiling.ts"
     },
+    "./chrome-startup": {
+      "bun": "./src/services/chromeStartup.ts",
+      "import": "./src/services/chromeStartup.ts",
+      "types": "./src/services/chromeStartup.ts"
+    },
     "./system-memory": {
       "bun": "./src/services/systemMemory.ts",
       "import": "./src/services/systemMemory.ts",
@@ -45,7 +50,12 @@
       "import": "./src/utils/shaderTransitions.ts",
       "types": "./src/utils/shaderTransitions.ts"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./network-policy": {
+      "bun": "./src/utils/networkPolicy.ts",
+      "import": "./src/utils/networkPolicy.ts",
+      "types": "./src/utils/networkPolicy.ts"
+    }
   },
   "publishConfig": {
     "access": "public",
@@ -62,6 +72,10 @@
         "import": "./dist/services/chromeHostCeiling.js",
         "types": "./dist/services/chromeHostCeiling.d.ts"
       },
+      "./chrome-startup": {
+        "import": "./dist/services/chromeStartup.js",
+        "types": "./dist/services/chromeStartup.d.ts"
+      },
       "./system-memory": {
         "import": "./dist/services/systemMemory.js",
         "types": "./dist/services/systemMemory.d.ts"
@@ -74,7 +88,11 @@
         "import": "./dist/utils/shaderTransitions.js",
         "types": "./dist/utils/shaderTransitions.d.ts"
       },
-      "./package.json": "./package.json"
+      "./package.json": "./package.json",
+      "./network-policy": {
+        "import": "./dist/utils/networkPolicy.js",
+        "types": "./dist/utils/networkPolicy.d.ts"
+      }
     },
     "main": "./dist/index.js",
     "types": "./dist/index.d.ts"
@@ -90,8 +108,9 @@
     "@hyperframes/parsers": "workspace:^",
     "hono": "^4.6.0",
     "linkedom": "^0.18.12",
-    "puppeteer": "^25.8.0",
-    "puppeteer-core": "^25.8.0"
+    "puppeteer": "~25.11.0",
+    "puppeteer-core": "^25.11.0",
+    "undici": "7.25.0"
   },
   "devDependencies": {
     "@types/node": "^25.0.10",

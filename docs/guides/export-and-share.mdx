@@ -1,10 +1,10 @@
 ---
-title: "Finish and share a video"
-sidebarTitle: "Finish and share"
-description: "Review the project, run its checks, render through an agent, Studio, or the CLI, and deliver the right file or link."
+title: "Render a video to MP4"
+sidebarTitle: "Render"
+description: "Review the project, run its checks, render through an agent, the browser editor, or the CLI, and deliver the right file or link."
 ---
 
-Finish the same editable project through your agent, Studio, or the command
+Finish the same editable project through your agent, the browser editor, or the command
 line. The route can change; the quality gate does not.
 
 ## 1. Approve the project, not one good frame
@@ -20,7 +20,7 @@ before spending time on small visual details.
 
 ## 2. Run the project checks
 
-Run the checks in Studio, ask your agent to run them, or use:
+Run the checks in the browser editor, ask your agent to run them, or use:
 
 ```bash
 npx hyperframes lint
@@ -48,14 +48,14 @@ Use the agent when a failed check may require a source change or when you want
 one person to manage the complete finish. The `/hyperframes` skill waits for
 render approval after the final preview.
 
-### Use Studio
+### Use the browser editor
 
 Open **Export**, choose the destination's format and size, and start the render.
 The Renders panel shows progress and keeps completed files available to
 download.
 
 <div style={{ maxWidth: "42rem", margin: "1.5rem auto" }}>
-  <Frame caption="Studio checking and rendering the same project shown in its editor.">
+  <Frame caption="The browser editor checking and rendering the same project shown in its editor.">
     <video
       src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/studio-check-render-loop-v2.mp4"
       poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/studio-check-render-loop-v2.jpg"
@@ -93,7 +93,7 @@ Higher output resolution does not add detail to low-resolution media. A higher
 frame rate creates more frames; it does not improve motion authored for a lower
 cadence.
 
-Use [Studio export](/studio/export) for its visible controls or the
+Use [export in the browser editor](/studio/export) for its visible controls or the
 [rendering reference](/guides/rendering) for formats, Docker, batch output, and
 advanced CLI behavior.
 
@@ -134,6 +134,10 @@ outside the project directory. Percent-encoded paths work too, such as
 `../shared/poster%20art.svg` for `poster art.svg` or
 `../shared/%E5%B0%81%E9%9D%A2.svg` for `封面.svg`.
 
+Local images outside the project referenced by an `<img>` or `<source>` element's
+`srcset` are included too. Their size or pixel-density descriptors are preserved,
+and your source files stay unchanged.
+
 Before sharing source, remove secrets and confirm that every included media file
 can be shared. Tell a reviewer whether you need feedback on story, visuals,
 timing, facts, or final approval.
@@ -148,12 +152,12 @@ npx hyperframes lint
 npx hyperframes check
 ```
 
-Use [Troubleshooting](/guides/troubleshooting) for project and render failures,
-or [Studio troubleshooting](/studio/troubleshooting) when the problem is in the
+Use [Troubleshooting](/help) for project and render failures,
+or [Browser editor troubleshooting](/help#in-the-preview-and-browser-editor) when the problem is in the
 editor or its render queue.
 
 ## Related topics
 
-- [Export and manage renders in Studio](/studio/export)
+- [Export and manage renders in the browser editor](/studio/export)
 - [Use advanced rendering options](/guides/rendering)
-- [Diagnose a project or render failure](/guides/troubleshooting)
+- [Diagnose a project or render failure](/help)

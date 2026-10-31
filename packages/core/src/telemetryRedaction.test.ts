@@ -127,6 +127,42 @@ describe("non-Latin paths", () => {
   });
 });
 
+describe("paths with spaces", () => {
+  it.each([
+    "/Users/kim/내 드라이브/영상 프로젝트/clip.mp4",
+    "/Users/ivan/Мои документы/Проект Видео/видео.mp4",
+    "/Users/tanaka/マイ\u3000ドライブ/動画/clip.mp4",
+    "/Users/alex/Library/CloudStorage/GoogleDrive-alex@example.com/My Drive/Claude Projects/edit.mp4",
+    "/Users/alex/Dropbox (Personal)/Client Work/edit.mov",
+    "C:\\Users\\Kim\\OneDrive - Contoso\\Client Videos\\clip.mp4",
+    "\\\\fileserver\\Team Share\\clips\\clip.mp4",
+  ])("redacts every folder of %s", (path) => {
+    expect(redactTelemetryString(`ffprobe failed reading ${path}`)).toBe(
+      "ffprobe failed reading [path]",
+    );
+  });
+
+  it("keeps the words after the path", () => {
+    expect(redactTelemetryString("could not read /Users/kim/My Drive/clip.mp4 was not found")).toBe(
+      "could not read [path] was not found",
+    );
+  });
+
+  it.each([
+    "  Duration: N/A, start: 0.000000, bitrate: N/A",
+    "Stream #0:0: Video: h264, 24/1 fps, 30000/1001 tbr",
+    "r_frame_rate=24/1 avg_frame_rate=30000/1001",
+    "input/output error then read/write failed",
+  ])("never joins ordinary ffprobe words into a path: %s", (line) => {
+    expect(redactTelemetryString(line)).toBe(line);
+  });
+
+  it("redacts spaced folders of a path that lost its root", () => {
+    const out = redactTelemetryString("could not open My Drive/Claude Projects/edit.mp4");
+    expect(out).not.toMatch(/Drive|Claude|Projects|edit/);
+  });
+});
+
 describe("redactKnownPaths", () => {
   // Shape matching has holes by construction. A caller that built the argv
   // knows the exact path, so it can name it instead of hoping a regex does.

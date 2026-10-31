@@ -65,6 +65,7 @@ describe.skipIf(!RUNS_CHROMIUM)("motion-signature.browser in Chromium", () => {
       headless: true,
       executablePath,
       args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
+      timeout: BROWSER_LAUNCH_TIMEOUT_MS,
     });
     page = await browser.newPage();
     await page.setViewport({ width: 640, height: 360 });
@@ -565,6 +566,23 @@ describe.skipIf(!RUNS_CHROMIUM)("motion-signature.browser in Chromium", () => {
     const after = await sample();
 
     expect(after).toEqual(before);
+  });
+
+  it("sees a small sprite move across a large canvas", async () => {
+    await load(
+      composition(
+        "#c { width: 640px; height: 360px; }",
+        '<canvas id="c" width="1080" height="1920"></canvas>',
+      ),
+    );
+    const draw = (x: number) =>
+      `{ const ctx = document.getElementById("c").getContext("2d"); ctx.clearRect(0, 0, 1080, 1920); ctx.fillStyle = "#fc8"; ctx.fillRect(${x}, 500, 24, 24); }`;
+    await mutate(draw(300));
+    const before = await sample();
+    await mutate(draw(308));
+    const after = await sample();
+
+    expect(after.liveness).not.toBe(before.liveness);
   });
 
   it("ignores a repaint of a canvas whose contents are skipped by content-visibility:hidden", async () => {

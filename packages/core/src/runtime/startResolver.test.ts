@@ -212,6 +212,51 @@ describe("createRuntimeStartTimeResolver", () => {
       expect(resolver.resolveStartForElement(wrapper)).toBe(4.619);
     });
 
+    describe.each([
+      ['data-composition-src="child.html"'],
+      ['data-composition-id="host"'],
+      ['data-composition-file="compositions/child.html"'],
+    ])("an inner root under a %s host", (marker) => {
+      it.each([0, 1, 2])("takes the host's start through %i neutral wrappers", (wrappers) => {
+        const open = "<section>".repeat(wrappers);
+        const close = "</section>".repeat(wrappers);
+        document.body.innerHTML = `
+          <div data-composition-id="root" data-start="0">
+            <div ${marker} data-start="5">
+              ${open}<div id="inner" data-composition-id="child"></div>${close}
+            </div>
+          </div>`;
+        const inner = document.getElementById("inner")!;
+        expect(createRuntimeStartTimeResolver({}).resolveStartForElement(inner)).toBe(5);
+      });
+    });
+
+    it("takes the nearest host, not an outer one, across a wrapper", () => {
+      document.body.innerHTML = `
+        <div data-composition-src="outer.html" data-start="2">
+          <div data-composition-id="outer">
+            <div data-composition-src="inner.html" data-start="3">
+              <canvas><div id="inner" data-composition-id="inner"></div></canvas>
+            </div>
+          </div>
+        </div>`;
+      const inner = document.getElementById("inner")!;
+      // The inner host's 3 s is local to the outer composition, which starts at 2 s.
+      expect(createRuntimeStartTimeResolver({}).resolveStartForElement(inner)).toBe(5);
+    });
+
+    it("takes a timed wrapper's start over its host's", () => {
+      document.body.innerHTML = `
+        <div data-composition-id="root" data-start="0">
+          <div data-composition-id="scene" data-start="5">
+            <section data-start="2"><div id="inner" data-composition-id="child"></div></section>
+          </div>
+        </div>`;
+      const inner = document.getElementById("inner")!;
+      // The wrapper shows the inner composition from 2 s into the scene; its clock starts then.
+      expect(createRuntimeStartTimeResolver({}).resolveStartForElement(inner)).toBe(7);
+    });
+
     it("keeps nested references in the host composition timeline", () => {
       const host = document.createElement("div");
       host.id = "slide-5";

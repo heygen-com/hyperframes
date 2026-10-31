@@ -338,7 +338,7 @@ describe("TransportClock", () => {
       expect(clock.getSource()).toBe("monotonic");
     });
 
-    it("holds, never rewinds, the playhead for a clip that started late, then follows it", () => {
+    it("never rewinds the playhead for a clip that started late, and runs on while it catches up", () => {
       const { clock, advance } = createClock({ duration: 30 });
       clock.play();
       advancePolled(clock, advance, 6300);
@@ -347,20 +347,43 @@ describe("TransportClock", () => {
       expect(clock.now()).toBeCloseTo(6.3, 5);
       advance(100);
       sfx.currentTime = 0.02;
-      expect(clock.now()).toBeCloseTo(6.3, 5);
+      expect(clock.now()).toBeCloseTo(6.4, 5); // steering catches the clip up; the playhead does not wait
       advance(100);
-      sfx.currentTime = 0.12;
-      expect(clock.now()).toBeCloseTo(6.37, 5);
+      sfx.currentTime = 0.4; // now it is ahead of the playhead: the playhead follows it
+      expect(clock.now()).toBeCloseTo(6.65, 5);
     });
 
-    it("holds the playhead while its element seeks, even to a time ahead", () => {
+    it("keeps the playhead moving while a just-played element is frozen behind it, as WebKit leaves it", () => {
+      const { clock, advance } = createClock({ duration: 30 });
+      clock.play();
+      advancePolled(clock, advance, 6300);
+      const take = createMockAudioEl(0, false); // playing, its time frozen at its start
+      clock.attachAudioSource({ el: take, compositionStart: 6, mediaStart: 0 });
+      let previous = clock.now();
+      for (let i = 0; i < 20; i++) {
+        advance(16);
+        const now = clock.now();
+        expect(now).toBeGreaterThan(previous);
+        previous = now;
+      }
+    });
+
+    it("keeps the playhead moving while the element it follows is seeked", () => {
       const { clock, advance } = createClock({ duration: 30 });
       clock.play();
       advancePolled(clock, advance, 2000);
-      const voice = Object.assign(createMockAudioEl(3, false), { seeking: true });
+      const voice = Object.assign(createMockAudioEl(0.1, false), { seeking: false });
       clock.attachAudioSource({ el: voice, compositionStart: 2, mediaStart: 0 });
-      advance(150);
-      expect(clock.now()).toBeCloseTo(2, 5);
+      expect(clock.now()).toBeCloseTo(2.1, 5);
+      voice.seeking = true;
+      voice.currentTime = 3; // WebKit reports the target at once
+      let previous = clock.now();
+      for (let i = 0; i < 20; i++) {
+        advance(16);
+        const now = clock.now();
+        expect(now).toBeGreaterThan(previous);
+        previous = now;
+      }
     });
 
     it("holds the playhead on an element that is buffering behind it", () => {
@@ -395,14 +418,18 @@ describe("TransportClock", () => {
       expect(clock.now()).toBeCloseTo(0.316, 5);
     });
 
-    it("holds the playhead for a looping bed that starts late", () => {
+    it("keeps the playhead moving for a looping bed that starts late", () => {
       const { clock, advance } = createClock({ duration: 30 });
       clock.play();
       advancePolled(clock, advance, 2000);
-      const bed = Object.assign(createMockAudioEl(0, false), { loop: true, duration: 8 });
+      const bed = Object.assign(createMockAudioEl(0, false), {
+        loop: true,
+        duration: 8,
+        readyState: 4,
+      });
       clock.attachAudioSource({ el: bed, compositionStart: 1.9, mediaStart: 0 });
       advance(16);
-      expect(clock.now()).toBeCloseTo(2, 5);
+      expect(clock.now()).toBeCloseTo(2.016, 5);
     });
 
     it("continues from the last audio time when the element drops out", () => {

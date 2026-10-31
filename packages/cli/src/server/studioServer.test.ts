@@ -1,3 +1,7 @@
+import {
+  waitForRenderCancellation,
+  cancelAndVerifyArtifacts,
+} from "../../../../test-utils/renderCancellation";
 import { EventEmitter } from "node:events";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -205,6 +209,27 @@ describe("createStudioServer project history (D-491)", () => {
     },
   );
 
+  // A preview an agent starts inside a host app's run can outlive it; holding the lock, it refused every later run.
+  it("never opens the history inside a host app's run, which owns it", async () => {
+    const opens: unknown[] = [];
+    historyState.open = async (options) => {
+      opens.push(options);
+      throw new Error("the history was opened");
+    };
+    vi.stubEnv("HYPERFRAMES_DESKTOP_PROJECT", "/a/project");
+    try {
+      const projectDir = tmpProject();
+      server = createStudioServer({ projectDir, historyRoot: tmpProject() });
+      const historyUrl = `/api/projects/${encodeURIComponent(basename(projectDir))}/history`;
+      expect((await server.app.request(historyUrl)).status).toBe(404);
+      expect(opens).toEqual([]);
+      await server.shutdown();
+    } finally {
+      vi.unstubAllEnvs();
+      historyState.open = null;
+    }
+  });
+
   it("never makes a request wait on another process's history lock again once it was busy", async () => {
     const waits: unknown[] = [];
     historyState.open = async (options) => {
@@ -407,6 +432,46 @@ describe("createStudioServer shutdown", () => {
     ]);
     rmSync(outDir, { recursive: true, force: true });
   });
+
+  it("forwards GIF loop count and writes a metadata sidecar without overwriting output", async () => {
+    producerState.executeRenderJob = async (job, _dir, outputPath) => {
+      expect(job).toMatchObject({ format: "gif", gifLoop: 3 });
+      writeFileSync(outputPath, "GIF89a");
+    };
+    const projectDir = tmpProject();
+    const outputPath = join(projectDir, "out.gif");
+    server = createStudioServer({ projectDir });
+    const state = server.adapter.startRender({
+      ...startRenderOpts("gif-job", outputPath),
+      format: "gif",
+      gifLoop: 3,
+    });
+    await vi.waitFor(() => expect(state.status, state.error).toBe("complete"));
+    expect(readFileSync(outputPath, "utf8")).toBe("GIF89a");
+    expect(JSON.parse(readFileSync(join(projectDir, "out.meta.json"), "utf8"))).toMatchObject({
+      status: "complete",
+    });
+  });
+
+  it.each([false, true])(
+    "removes cancelled GIF output and sidecar (late completion: %s)",
+    async (lateCompletion) => {
+      const projectDir = tmpProject();
+      const outputPath = join(projectDir, "out.gif");
+      const metaPath = join(projectDir, "out.meta.json");
+      producerState.executeRenderJob = async (_job, _dir, output, _progress, signal) => {
+        writeFileSync(output, "partial-gif");
+        writeFileSync(metaPath, "{}");
+        await waitForRenderCancellation(signal, lateCompletion);
+      };
+      server = createStudioServer({ projectDir });
+      const state = server.adapter.startRender({
+        ...startRenderOpts("gif-job", outputPath),
+        format: "gif",
+      });
+      await cancelAndVerifyArtifacts(state, outputPath, metaPath);
+    },
+  );
 
   it("cancels an in-flight render's signal and waits for it before draining the browser pool", async () => {
     const events: string[] = [];
@@ -817,10 +882,25 @@ describe("Studio file-change SSE", () => {
     );
     server = createStudioServer({ projectDir });
     const projectUrl = `/api/projects/${encodeURIComponent(basename(projectDir))}`;
-    expect((await server.app.request(`${projectUrl}/preview`)).status).toBe(200);
-    expect((await server.app.request(`${projectUrl}/preview/assets/logo.png`)).status).toBe(200);
+    // An unread asset body keeps logo.png open, and Windows refuses to move a folder holding an open file.
+    for (const path of [`${projectUrl}/preview`, `${projectUrl}/preview/assets/logo.png`]) {
+      const response = await server.app.request(path);
+      expect(response.status).toBe(200);
+      await response.arrayBuffer();
+    }
     return { projectDir, projectUrl };
   }
+
+  it("leaves no timer behind once the tab disconnects, so a stopping CLI can exit", async () => {
+    server = createStudioServer({ projectDir: tmpProject() });
+    const timeouts = vi.spyOn(globalThis, "setTimeout");
+    const [stream] = await subscribe(1);
+    await stream!.cancel();
+
+    const keepAlive = timeouts.mock.calls.filter(([, ms]) => (ms ?? 0) >= 30_000);
+    timeouts.mockRestore();
+    expect(keepAlive).toEqual([]);
+  });
 
   it("marks a notes write as not affecting the preview, so the tab does not reload", async () => {
     const { projectDir } = await previewedProject();

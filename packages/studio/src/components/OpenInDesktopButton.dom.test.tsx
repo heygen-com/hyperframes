@@ -103,19 +103,19 @@ it("stays hidden where the server has no hand-off (the desktop's own Studio)", a
   expect(button()).toBeNull();
 });
 
-it("stays hidden when the app has no build for this machine (Windows)", async () => {
+it("stays hidden when the app has no build for this machine (FreeBSD)", async () => {
   serve(Response.json({ available: false, handoff: true, downloadUrl: null }));
   await mount();
   expect(button()).toBeNull();
 });
 
-it("with the app installed but no download (Windows), shows only once the app can take the project", async () => {
+it("with the app installed but no download (FreeBSD), shows only once the app can take the project", async () => {
   serve(Response.json({ available: true, handoff: false, downloadUrl: null }));
   await mount();
   expect(button()).toBeNull();
 });
 
-it("opens the project in an installed app that has no download (Windows)", async () => {
+it("opens the project in an installed app that has no download (FreeBSD)", async () => {
   serve(Response.json({ available: true, handoff: true, downloadUrl: null }), {
     opened: true,
     app: "the HyperFrames desktop app",
@@ -381,6 +381,28 @@ it("where the app is installed but cannot take a project (Linux), step 3 shows t
   expect(posts).toBe(0);
 });
 
+it("on Windows, step 1 names the Windows download and opens it tagged", async () => {
+  const opened: string[] = [];
+  vi.stubGlobal("open", (url: string) => (opened.push(url), { opener: {} }));
+  serve(
+    Response.json({
+      available: true,
+      handoff: false,
+      downloadUrl: `${DOWNLOAD}?os=windows`,
+      os: "win32",
+      installed: false,
+    }),
+  );
+  await mount();
+  expect(button()).not.toBeNull();
+  await act(async () => button()!.click());
+  await act(async () => cardButton("Download for Windows")!.click());
+  expect(opened).toEqual([tagged(`${DOWNLOAD}?os=windows`)]);
+  expect(events("desktop_cta_eligibility")).toEqual([
+    { eligibility: "download", os: "win32", app_installed: false, download_available: true },
+  ]);
+});
+
 it("counts where the button can show, the app here, and platforms with no app", async () => {
   serve(
     Response.json({
@@ -402,7 +424,7 @@ it("counts where the button can show, the app here, and platforms with no app", 
       available: false,
       handoff: false,
       downloadUrl: null,
-      os: "win32",
+      os: "freebsd",
       installed: false,
     }),
   );
@@ -411,7 +433,7 @@ it("counts where the button can show, the app here, and platforms with no app", 
   expect(events("desktop_cta_eligibility")).toEqual([
     {
       eligibility: "no_app_for_platform",
-      os: "win32",
+      os: "freebsd",
       app_installed: false,
       download_available: false,
     },

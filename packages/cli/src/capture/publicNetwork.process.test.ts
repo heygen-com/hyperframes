@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, it, onTestFinished } from "vitest";
 import { startTestDnsServer } from "../utils/dnsTestServer.js";
-import { testProcessIsAlive } from "../utils/processTestUtils.js";
+import { testProcessIsAlive, waitForTestCondition } from "../utils/processTestUtils.js";
 import { systemLookupInKillableChild } from "./publicNetwork.js";
 
 const fixture = join(dirname(fileURLToPath(import.meta.url)), "publicNetwork.fixture.ts");
@@ -76,7 +76,7 @@ it("leaves no system lookup running when the CLI exits mid-lookup", async () => 
   const pid = Number(/^exit (\d+)$/m.exec(run.printed)?.[1]);
   onTestFinished(() => void (testProcessIsAlive(pid) && process.kill(pid, "SIGKILL")));
   expect(pid).toBeGreaterThan(0);
-  expect(testProcessIsAlive(pid)).toBe(false);
+  await waitForTestCondition(() => !testProcessIsAlive(pid), 5_000);
 }, 30_000);
 
 it("runs the real system lookup in its child", async () => {

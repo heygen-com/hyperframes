@@ -17,6 +17,7 @@
     "src/runtime/compositionLength.ts",
     "src/runtime/customEase.ts",
     "src/runtime/mediaVolumeEnvelope.ts",
+    "src/runtime/mediaSteer.ts",
     "src/runtime/positionEdits.ts",
     "src/runtime/protocol.ts",
     "src/runtime/stackingContext.ts",

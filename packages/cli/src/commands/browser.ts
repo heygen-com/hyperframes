@@ -1,7 +1,7 @@
-import { failCommand } from "../utils/commandResult.js";
-import { defineCommand } from "citty";
+import { failCommand, failUsage } from "../utils/commandResult.js";
+import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
-import * as clack from "@clack/prompts";
+import * as clack from "../ui/prompts.js";
 import { c } from "../ui/colors.js";
 
 export const examples: Example[] = [
@@ -182,7 +182,7 @@ ${c.bold("EXAMPLES:")}
         console.error(
           `${c.error("Unknown subcommand:")} ${subcommand}\n\nRun ${c.accent("hyperframes browser --help")} for usage.`,
         );
-        failCommand(1, `Unknown subcommand: ${subcommand}`);
+        failUsage();
     }
   },
 });

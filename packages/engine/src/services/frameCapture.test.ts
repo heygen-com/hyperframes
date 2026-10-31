@@ -186,6 +186,41 @@ describe("classifyPageError", () => {
     return { session, pageListeners, runtimeListeners };
   }
 
+  it("keeps browser diagnostics on stderr and in the session buffer", async () => {
+    const stdout = vi.spyOn(console, "log").mockImplementation(() => {});
+    const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const { session, pageListeners } = await listenedSession();
+      const emit = (type: string, text: string, url = "") =>
+        pageListeners.get("console")?.({
+          type: () => type,
+          text: () => text,
+          location: () => ({ url }),
+        });
+      emit("info", "[hyperframes] render runtime fps");
+      emit("warn", "GPU readback warning");
+      emit("error", "[HyperFrames] composition script error: scene TypeError: x");
+      emit("error", "Failed to load resource", "https://fonts.gstatic.com/font.woff2");
+
+      expect(stderr.mock.calls).toEqual([
+        ["[HyperFrames] render runtime fps"],
+        ["[Browser:WARN] GPU readback warning"],
+        ["[Browser:ERROR] [HyperFrames] composition script error: scene TypeError: x"],
+      ]);
+      expect(stdout).not.toHaveBeenCalled();
+      expect(session.browserConsoleBuffer).toEqual([
+        "[HyperFrames] render runtime fps",
+        "[Browser:WARN] GPU readback warning",
+        "[Browser:ERROR] [HyperFrames] composition script error: scene TypeError: x",
+        "[Browser] Failed to load resource",
+      ]);
+      expect(session.pageErrors).toEqual(["runtime-error:scene TypeError: x"]);
+    } finally {
+      stdout.mockRestore();
+      stderr.mockRestore();
+    }
+  });
+
   it("records the page's uncaught errors from scripts it loaded from the server", async () => {
     const { session, pageListeners, runtimeListeners } = await listenedSession();
     const loaded = (url: string, resourceType: string) => ({
@@ -227,7 +262,7 @@ describe("classifyPageError", () => {
   it("logs a scene callback error once per render, and never as a page error", async () => {
     const memo: SubTimelineWaitMemo = {};
     const sessions = [await listenedSession(memo), await listenedSession(memo)];
-    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
     const text = `${SCENE_CALLBACK_ERROR_PREFIX} "scene" TypeError: x`;
     for (const { pageListeners } of sessions) {
       for (let i = 0; i < 2; i++) {

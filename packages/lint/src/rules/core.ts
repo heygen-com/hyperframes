@@ -196,6 +196,20 @@ function selectorAliasesRuntimeHiddenStyle(selector: string): boolean {
   return unsafe;
 }
 
+function selectsOnInlineStyle(selector: string): boolean {
+  let found = false;
+  try {
+    selectorParser((root) => {
+      root.walkAttributes((node) => {
+        if (node.attribute.toLowerCase() === "style") found = true;
+      });
+    }).processSync(selector);
+  } catch {
+    return false;
+  }
+  return found;
+}
+
 const POSITION_PROPERTIES = new Set(["left", "top", "right", "bottom", "inset"]);
 
 function weakIdOf(node: selectorParser.Node): string | null {
@@ -612,10 +626,14 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
     }
     if (/(?:^|\s)data-no-timeline(?=[\s=/]|$)/i.test(rootTag?.attrs || "")) return [];
     const findings: HyperframeLintFinding[] = [];
+    const registered = [source, ...(options.externalScripts ?? []).map((script) => script.content)];
     if (
-      !TIMELINE_REGISTRY_INIT_PATTERN.test(source) &&
-      !TIMELINE_REGISTRY_ASSIGN_PATTERN.test(source) &&
-      !TIMELINE_REGISTRY_OBJECT_LITERAL_PATTERN.test(source)
+      !registered.some(
+        (text) =>
+          TIMELINE_REGISTRY_INIT_PATTERN.test(text) ||
+          TIMELINE_REGISTRY_ASSIGN_PATTERN.test(text) ||
+          TIMELINE_REGISTRY_OBJECT_LITERAL_PATTERN.test(text),
+      )
     ) {
       findings.push({
         code: "missing_timeline_registry",
@@ -713,6 +731,7 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
     const findings: HyperframeLintFinding[] = [];
     const reportedRepeatedIds = new Set<string>();
     const reportedHiddenStyleSelectors = new Set<string>();
+    const reportedInlineStyleSelectors = new Set<string>();
     const reportedReducedIdSelectors = new Set<string>();
     for (const style of styles) {
       let root: postcss.Root;
@@ -729,6 +748,8 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
           code: "css_parse_error",
           severity: "error",
           message: `CSS parse error: ${error instanceof Error ? error.message : "unknown"}`,
+          fixHint:
+            "Check the CSS at the reported line for an unclosed brace, quote, or comment, or a missing semicolon between declarations.",
         });
         continue;
       }
@@ -748,6 +769,23 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
             });
           }
 
+          if (!reportedInlineStyleSelectors.has(selector) && selectsOnInlineStyle(selector)) {
+            reportedInlineStyleSelectors.add(selector);
+            findings.push({
+              code: "inline_style_attribute_selector",
+              severity: "error",
+              message:
+                `Selector "${selector}" reads the inline \`style\` attribute. GSAP writes inline styles every ` +
+                "frame, and each write then restyles far more than the animated element, " +
+                "so the preview slows to a crawl.",
+              selector,
+              fixHint:
+                "Let the runtime hide hidden clips; it already hides their contents. For a state of your own, " +
+                "toggle a class or data attribute from your script and select on that.",
+              snippet: truncateSnippet(rule.toString()),
+            });
+          }
+
           if (
             !forcesOpacityZero ||
             reportedHiddenStyleSelectors.has(selector) ||
@@ -762,7 +800,8 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
             message: `Selector "${selector}" observes HyperFrames' runtime-owned hidden style and forces opacity to zero. The renderer hides each native video before copying its computed opacity to the visible replacement frame, so this rule makes both transparent.`,
             selector,
             fixHint:
-              'Restrict the guard to sub-composition hosts, for example `[data-composition-src][style*="visibility: hidden"]` and `[data-composition-file][style*="visibility: hidden"]`. Do not derive arbitrary element or media opacity from runtime-owned inline visibility.',
+              "Remove this rule; the runtime already hides a hidden clip and its contents. To fade or hide something " +
+              "yourself, animate it on the timeline, or toggle a class or data attribute and select on that.",
             snippet: truncateSnippet(rule.toString()),
           });
         }
@@ -804,9 +843,9 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   ({ scripts, locate }) => {
     const findings: HyperframeLintFinding[] = [];
     for (const script of scripts) {
-      const type = readDecodedAttr(script.raw, "type")?.trim().toLowerCase() ?? "";
-      if (readDecodedAttr(script.raw, "src") !== null || SCRIPT_SYNTAX_EXEMPT_TYPES.has(type))
-        continue;
+      const tag = `<script ${script.attrs}>`;
+      const type = readDecodedAttr(tag, "type")?.trim().toLowerCase() ?? "";
+      if (readDecodedAttr(tag, "src") !== null || SCRIPT_SYNTAX_EXEMPT_TYPES.has(type)) continue;
       const syntaxError = getInlineScriptSyntaxError(script.content);
       if (!syntaxError) continue;
       findings.push({

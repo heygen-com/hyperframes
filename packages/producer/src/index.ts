@@ -25,6 +25,13 @@ export {
   type ProgressCallback,
 } from "./services/renderOrchestrator.js";
 export {
+  renderSpan,
+  RenderSpanUnsupportedError,
+  spanFrameRange,
+  type RenderSpanResult,
+} from "./services/distributed/renderSpan.js";
+export { extractSafeRenderErrorCode } from "./services/safeRenderErrorCode.js";
+export {
   RENDER_JOB_DIR,
   createOwnedRenderDir,
   listAbandonedRenderDirs,
@@ -89,6 +96,7 @@ export {
 } from "./services/fileServer.js";
 
 export { prepareAnimatedGifInputs } from "./services/animatedGifPrep.js";
+export { prepareHeifImageInputs } from "./services/heifImagePrep.js";
 
 // ── Video frame injection (Hyperframes-specific hook) ───────────────────────
 export { createVideoFrameInjector } from "@hyperframes/engine";
@@ -117,6 +125,7 @@ export {
 // ── Utilities ───────────────────────────────────────────────────────────────
 export { normalizeErrorMessage } from "./utils/errorMessage.js";
 export { collectRenderMedia, type RenderMedia } from "./services/renderMediaCollector.js";
+export { mediaProfileMatchesElementType } from "./services/assetMediaType.js";
 // Font localization: fetch + embed @font-face rules for requested families
 // (including those declared only via a remote <link>) so a bundled composition
 // renders with the real font instead of a fallback, regardless of network

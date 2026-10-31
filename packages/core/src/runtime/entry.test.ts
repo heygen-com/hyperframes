@@ -1,5 +1,6 @@
 // fallow-ignore-file code-duplication
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { mediaElementTime } from "./mediaClock";
 import { HF_COLOR_GRADING_ATTR, serializeHfColorGrading } from "../colorGrading";
 import { STUDIO_PREVIEW_LAZY_ATTR, STUDIO_PREVIEW_MARK_META } from "../studioPreviewMark";
 import { revealClip } from "./clipReveal";
@@ -495,7 +496,7 @@ describe("runtime entry", () => {
       first.dispatchEvent(new Event("error"));
       queued.dispatchEvent(new Event("loadedmetadata"));
       expect(queued.preload).toBe("auto");
-      expect(queued.currentTime).toBe(6);
+      expect(queued.currentTime).toBe(mediaElementTime(6));
       expect(loadsOf(queued)).toEqual([1]);
     });
 
@@ -556,7 +557,7 @@ describe("runtime entry", () => {
       await evaluateRuntime();
       window.__player?.play();
       next.dispatchEvent(new Event("loadedmetadata"));
-      expect(next.currentTime).toBe(6);
+      expect(next.currentTime).toBe(mediaElementTime(6));
       expect(next.paused).toBe(true);
       expect(visibility(next)).toEqual(["hidden"]);
     });
@@ -570,7 +571,7 @@ describe("runtime entry", () => {
 
       await evaluateRuntime();
       window.__player?.seek(3.5);
-      expect(next.currentTime).toBe(6);
+      expect(next.currentTime).toBe(mediaElementTime(6));
       expect(next.paused).toBe(true);
       expect(loadsOf(next)).toEqual([0]);
     });
@@ -584,9 +585,9 @@ describe("runtime entry", () => {
       await evaluateRuntime();
       window.__player?.seek(3.5);
       window.__player?.seek(5.5);
-      expect(next.currentTime).toBe(6.5);
+      expect(next.currentTime).toBe(mediaElementTime(6.5));
       next.dispatchEvent(new Event("loadedmetadata"));
-      expect(next.currentTime).toBe(6.5);
+      expect(next.currentTime).toBe(mediaElementTime(6.5));
     });
 
     it("does not rewind a loaded outgoing video while it remains in the trailing window", async () => {
@@ -598,9 +599,9 @@ describe("runtime entry", () => {
 
       await evaluateRuntime();
       window.__player?.seek(1.5);
-      expect(previous.currentTime).toBe(7.5);
+      expect(previous.currentTime).toBe(mediaElementTime(7.5));
       window.__player?.seek(2.1);
-      expect(previous.currentTime).toBe(7.5);
+      expect(previous.currentTime).toBe(mediaElementTime(7.5));
     });
 
     it("prepares a split again on replay when the loaded clip never leaves the window", async () => {
@@ -612,9 +613,9 @@ describe("runtime entry", () => {
 
       await evaluateRuntime();
       window.__player?.seek(3.5);
-      expect(next.currentTime).toBe(7.5);
+      expect(next.currentTime).toBe(mediaElementTime(7.5));
       window.__player?.seek(0);
-      expect(next.currentTime).toBe(6);
+      expect(next.currentTime).toBe(mediaElementTime(6));
       expect(loadsOf(next)).toEqual([0]);
     });
 

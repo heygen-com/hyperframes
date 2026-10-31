@@ -1,0 +1,18 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.heygen-com/hyperframes",
+  "title": "HyperFrames",
+  "description": "Compose, edit and render HyperFrames videos (HTML to MP4) in your HeyGen account from chat clients.",
+  "repository": {
+    "url": "https://github.com/heygen-com/hyperframes",
+    "source": "github"
+  },
+  "websiteUrl": "https://hyperframes.heygen.com/guides/mcp",
+  "version": "1.0.0",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://mcp.heygen.com/mcp/hyperframes/"
+    }
+  ]
+}

@@ -217,7 +217,10 @@ async function getProcessOnPort(port: number): Promise<string | null> {
 
 async function windowsListenerPid(port: number): Promise<string | null> {
   try {
-    const { stdout } = await execFileAsync("netstat", ["-ano", "-p", "tcp"], { timeout: 4000 });
+    const { stdout } = await execFileAsync("netstat", ["-ano", "-p", "tcp"], {
+      timeout: 4000,
+      windowsHide: true,
+    });
     for (const line of stdout.split(/\r?\n/)) {
       const columns = line.trim().split(/\s+/);
       if (columns.length < 5 || columns[3] !== "LISTENING") continue;
@@ -408,6 +411,12 @@ export async function killActiveServers(
   }
 
   return { killed, unverified };
+}
+
+/** Stops `server` once every open connection is closed too; an open Studio tab holds its event stream for its life. */
+export function closeServer(server: import("@hono/node-server").ServerType): Promise<void> {
+  if ("closeAllConnections" in server) server.closeAllConnections();
+  return new Promise((resolve) => server.close(() => resolve()));
 }
 
 // ── Smart port selection ───────────────────────────────────────────────────

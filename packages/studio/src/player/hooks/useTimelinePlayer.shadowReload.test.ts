@@ -5,6 +5,7 @@ import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SHADOW_READY_BUDGETS, SHADOW_READY_TIMEOUT_MS } from "./useShadowPreviewReload";
+import { refusedPreviewMessage } from "@hyperframes/core/studio-preview-mark";
 import { usePlayerStore } from "../store/playerStore";
 import { isPreviewChanging } from "../previewReloading";
 import { NLEProvider, useNLEContext, type NLEContextValue } from "../../components/nle/NLEContext";
@@ -404,6 +405,36 @@ describe("shadow reload readiness and failure", () => {
     unmount(root);
   });
 
+  const loaded = { URL: "http://127.0.0.1/preview", readyState: "complete" };
+  it.each([
+    ["no-page", {}, { ...loaded, URL: "about:blank" }],
+    ["page-loading", {}, { ...loaded, readyState: "loading" }],
+    ["startup-error", { __hfStartupError: "failed", __hyperframes: {} }, loaded],
+    ["runtime-not-run", {}, loaded],
+    // Its runtime ran, but the composition's scripts never finished (fonts that never load, say).
+    ["scripts-waiting", { __hyperframes: {} }, loaded],
+    ["no-player", { __hyperframes: {}, __hyperframeRuntimeBootstrapped: true }, loaded],
+  ])(
+    "says its page got to %s when a shadow gives up waiting for the runtime",
+    (phase, win, doc) => {
+      vi.useFakeTimers();
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const onPreviewReloadFailed = vi.fn();
+      const { getApi, gen, root } = beginReload({ onPreviewReloadFailed });
+      const shadow = makeFakeIframe(win);
+      Object.defineProperty(shadow, "contentDocument", { value: doc });
+      act(() => {
+        getApi().setShadowIframeNode(shadow);
+        getApi().onShadowIframeLoad(gen);
+      });
+      act(() => void vi.advanceTimersByTime(FULL_WAIT_MS));
+      expect(onPreviewReloadFailed).toHaveBeenCalledWith(
+        expect.stringContaining(`Its page had got to: ${phase}.`),
+      );
+      unmount(root);
+    },
+  );
+
   it("names the timeline when a shadow's runtime runs but never reports a length", () => {
     vi.useFakeTimers();
     vi.spyOn(console, "error").mockImplementation(() => {});
@@ -636,6 +667,26 @@ describe("shadow reload readiness and failure", () => {
     expect(onPreviewReloadFailed).toHaveBeenCalledWith(
       expect.stringContaining("Composition timeline not found after 8s"),
     );
+    unmount(root);
+  });
+
+  // An agent's edit moves the page away for a few saves: each reload is refused until it is back.
+  it.each([
+    [404, "warn"],
+    [500, "error"],
+  ] as const)("reports a reload the server refused with %i as a console %s", (status, level) => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const onPreviewReloadFailed = vi.fn();
+    const { getApi, live, gen, root } = beginReload({ onPreviewReloadFailed });
+
+    act(() => getApi().onShadowError(gen, refusedPreviewMessage(status)));
+
+    expect(getApi().iframeRef.current).toBe(live);
+    expect(onPreviewReloadFailed).toHaveBeenCalledOnce();
+    const said = (spy: typeof warn) =>
+      spy.mock.calls.some(([text]) => String(text).includes(`(HTTP ${status})`));
+    expect([said(warn), said(error)]).toEqual([level === "warn", level === "error"]);
     unmount(root);
   });
 

@@ -2,6 +2,8 @@ import { scanHtmlOpeningTags, decodeAuthoredAttribute } from "@hyperframes/parse
 import { statSync } from "node:fs";
 import { realpath } from "./safePath.js";
 import { sep } from "node:path";
+import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
+import { ffmpegHasHdrFilters } from "./hdrFilters.js";
 import { rewriteAssetPath } from "@hyperframes/parsers/asset-paths";
 import {
   cleanAssetUrl,
@@ -9,6 +11,11 @@ import {
   isUnresolvedAssetPlaceholder,
   resolveExistingLocalAsset as resolveAsset,
 } from "@hyperframes/parsers/asset-resolution";
+import {
+  isHeavyForPreview,
+  type PreviewProxyBox,
+  type PreviewSourceFacts,
+} from "@hyperframes/core";
 import { probeMediaMetadata, type FfprobeRunner } from "./mediaMetadata.js";
 
 /**
@@ -27,6 +34,8 @@ export interface AssetCodecFacts {
   /** Source carries an alpha channel (`MediaMetadata.hasAlpha`). Alpha sources use a
    * VP8/WebM proxy so their transparency is preserved across Chromium builds. */
   hasAlpha: boolean;
+  /** Size, bit depth and bitrate, for deciding whether a playable file deserves a lighter copy. */
+  source?: PreviewSourceFacts;
 }
 
 /** Server-root-relative URL pathname -> that asset's codec facts. */
@@ -176,20 +185,36 @@ export type MediaProxyEligibility =
   | { eligible: true }
   | { eligible: false; reason: MediaProxyIneligibilityReason };
 
-/** Single policy gate shared by proactive scans and on-demand proxy routes. */
-export function decideMediaProxyEligibility(facts: AssetCodecFacts | null): MediaProxyEligibility {
+/**
+ * Single policy gate shared by proactive scans and on-demand proxy routes. A file Chrome can play is
+ * eligible only for a lighter copy (`lightBox`, the box that request asks for) and only when it is heavy there.
+ */
+export function decideMediaProxyEligibility(
+  facts: AssetCodecFacts | null,
+  lightBox?: PreviewProxyBox,
+): MediaProxyEligibility {
   if (!facts) return { eligible: false, reason: "unknown_codec" };
-  if (!facts.browserHostile) return { eligible: false, reason: "browser_safe_codec" };
-  return { eligible: true };
+  if (facts.browserHostile) return { eligible: true };
+  if (lightBox && facts.source && isHeavyForPreview(facts.source, lightBox)) {
+    return { eligible: true };
+  }
+  return { eligible: false, reason: "browser_safe_codec" };
 }
 
-function codecFactsFor(codecName: string, hasAlpha: boolean): AssetCodecFacts {
+function codecFactsFor(
+  codecName: string,
+  hasAlpha: boolean,
+  source?: PreviewSourceFacts,
+  toneMapsToSdr = false,
+): AssetCodecFacts {
   const hostile = hostileCodecEntry(codecName);
   return {
     codecName,
-    browserHostile: hostile !== undefined,
-    representativeMime: hostile?.representativeMime ?? null,
+    browserHostile: hostile !== undefined || toneMapsToSdr,
+    // An HDR clip is never 'playable' for preview, whatever its codec: it takes the SDR copy the export uses.
+    representativeMime: toneMapsToSdr ? null : (hostile?.representativeMime ?? null),
     hasAlpha,
+    ...(source && { source }),
   };
 }
 
@@ -205,7 +230,25 @@ async function probeCodecFacts(
   if (metadata.kind !== "video") return null;
   const codecName = metadata.color.codecName;
   if (!codecName) return null;
-  return codecFactsFor(codecName, metadata.hasAlpha === true);
+  const hasAlpha = metadata.hasAlpha === true;
+  const toneMaps = !hasAlpha && (await toneMapsHdr(metadata.color.hdrTransfer));
+  return codecFactsFor(codecName, hasAlpha, metadata.source, toneMaps);
+}
+
+let warnedNoHdrFilters = false;
+
+/** An HDR video previews through the same tone-mapped copy the SDR export uses, so the two match. */
+async function toneMapsHdr(hdrTransfer: string | null): Promise<boolean> {
+  if (hdrTransfer !== "pq" && hdrTransfer !== "hlg") return false;
+  const ffmpegPath = findFfBinary("ffmpeg");
+  if (ffmpegPath && (await ffmpegHasHdrFilters(ffmpegPath))) return true;
+  if (!warnedNoHdrFilters) {
+    warnedNoHdrFilters = true;
+    console.warn(
+      `[hyperframes] A video in this project is HDR, but this ffmpeg has no zscale/tonemap (libzimg), so the preview plays it as the browser shows it and will not match an SDR export. Install an ffmpeg with libzimg.`,
+    );
+  }
+  return false;
 }
 
 interface CachedAssetProbe {
@@ -347,20 +390,12 @@ export interface ScanProjectMediaCodecMapOptions {
   runner?: FfprobeRunner;
 }
 
-/**
- * Scans a project's composition HTML for local `<video src>` references and
- * returns the injection map: root-relative URL pathname -> codec facts.
- * Best-effort throughout — a video whose codec can't be determined (missing
- * ffprobe, probe error, no video stream) is simply omitted, never thrown.
- */
-export async function scanProjectMediaCodecMap(
+async function probeProjectAssets(
   projectDir: string,
   htmlSources: HtmlSourceLike[],
-  options: ScanProjectMediaCodecMapOptions = {},
-): Promise<MediaCodecMap> {
+  options: ScanProjectMediaCodecMapOptions,
+): Promise<Array<[string, AssetCodecFacts | null]>> {
   const candidates = collectLocalVideoAssets(projectDir, htmlSources);
-  if (candidates.size === 0) return {};
-
   const cache = options.cache ?? defaultProbeCache;
   const entries = [...candidates.entries()]; // [resolvedPath, rootRelativePathname]
   const facts = new Array<AssetCodecFacts | null>(entries.length).fill(null);
@@ -376,11 +411,35 @@ export async function scanProjectMediaCodecMap(
       }
     }),
   );
+  return entries.map(([, pathname], index) => [pathname, facts[index] ?? null]);
+}
 
-  const map: MediaCodecMap = {};
-  entries.forEach(([, pathname], index) => {
-    const entryFacts = facts[index];
-    if (entryFacts?.browserHostile) map[pathname] = entryFacts;
-  });
-  return map;
+/** What a scan of a project's local videos finds: the hostile ones for the proxy map, and every readable one's size. */
+export interface ProjectMediaScan {
+  codecMap: MediaCodecMap;
+  /** Root-relative URL pathname -> size, bit depth and bitrate. */
+  sourceFacts: Record<string, PreviewSourceFacts>;
+}
+
+/** Scans composition HTML for local `<video src>` references; a video that can't be probed is omitted. */
+export async function scanProjectMedia(
+  projectDir: string,
+  htmlSources: HtmlSourceLike[],
+  options: ScanProjectMediaCodecMapOptions = {},
+): Promise<ProjectMediaScan> {
+  const scan: ProjectMediaScan = { codecMap: {}, sourceFacts: {} };
+  for (const [pathname, facts] of await probeProjectAssets(projectDir, htmlSources, options)) {
+    if (facts?.browserHostile) scan.codecMap[pathname] = facts;
+    if (facts?.source) scan.sourceFacts[pathname] = { ...facts.source, codec: facts.codecName };
+  }
+  return scan;
+}
+
+/** The injection map alone: root-relative URL pathname -> codec facts of the hostile videos. */
+export async function scanProjectMediaCodecMap(
+  projectDir: string,
+  htmlSources: HtmlSourceLike[],
+  options: ScanProjectMediaCodecMapOptions = {},
+): Promise<MediaCodecMap> {
+  return (await scanProjectMedia(projectDir, htmlSources, options)).codecMap;
 }

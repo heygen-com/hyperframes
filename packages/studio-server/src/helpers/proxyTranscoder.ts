@@ -1,26 +1,32 @@
 import { spawn } from "node:child_process";
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import {
   existsSync,
   mkdtempSync,
   renameSync,
   rmSync,
-  statSync,
   unlinkSync,
   utimesSync,
   writeFileSync,
 } from "node:fs";
-import { availableParallelism, tmpdir } from "node:os";
+import { availableParallelism, tmpdir, totalmem } from "node:os";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import {
-  formatPreviewProxyBox,
-  hdrToSdrToneMapFilter,
-  type PreviewProxyBox,
-} from "@hyperframes/core";
+import { hdrToSdrToneMapFilter, type PreviewProxyBox } from "@hyperframes/core";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { alphaDecoderFor } from "@hyperframes/parsers/media-alpha";
+import { ffmpegHasHdrFilters } from "./hdrFilters.js";
 import { probeFirstFrameColour, probeMediaMetadata } from "./mediaMetadata.js";
 import { cleanupProxyCache } from "./proxyCache.js";
+import {
+  contentCopyKey,
+  contentIndexPath,
+  fastCopyKey,
+  fastIndexPath,
+  readCopyIndex,
+  sourceSizeBytes,
+  writeCopyIndex,
+} from "./proxyCacheKey.js";
+import { acquireCopyLock } from "./proxyLock.js";
 import { PROXY_VARIANT_CONFIG, type ProxyVariant } from "./mediaCodecMap.js";
 import { mkdirWithinProject, realpath, realProjectRoot } from "./safePath.js";
 
@@ -35,7 +41,7 @@ import { mkdirWithinProject, realpath, realProjectRoot } from "./safePath.js";
  * dropped from the queue or its ffmpeg is killed.
  */
 
-export const PROXY_PARAMS_VERSION = "v6";
+export const PROXY_PARAMS_VERSION = "v7";
 
 export const CACHE_DIR_NAME = ".transcode-cache";
 
@@ -146,18 +152,12 @@ export async function waitForProxy<T>(
 }
 
 /**
- * Cache key inputs per the plan: project-relative source path (portable across
- * checkouts), canonical source identity (so retargeted external symlinks do
- * not reuse a proxy), mtime and file size (mtime alone can collide on
- * same-second re-exports on coarse-timestamp filesystems; size catches nearly
- * all such cases at zero cost), and a params version token so changing the
- * ffmpeg recipe below invalidates every cached proxy cleanly.
+ * A copy is found by its source's place and time at no cost; when that misses, by the whole file's hash, once,
+ * and an index file makes the next lookup free. A params version invalidates every copy when the recipe changes.
  */
 type CanonicalProxySource = {
   projectDir: string;
   sourcePath: string;
-  relativePath: string;
-  cacheIdentity: string;
 };
 
 function canonicalizeProxySource(
@@ -174,52 +174,22 @@ function canonicalizeProxySource(
   ) {
     throw new ProxySourceOutsideProjectError();
   }
-
-  const canonicalProjectDir = realProjectRoot(projectDir);
-  const canonicalSourcePath = realpath(absoluteSourcePath);
-  const canonicalRelativePath = relative(canonicalProjectDir, canonicalSourcePath);
-  const sourceIsInsideCanonicalProject =
-    canonicalRelativePath !== ".." &&
-    !canonicalRelativePath.startsWith(`..${sep}`) &&
-    !isAbsolute(canonicalRelativePath);
-  return {
-    projectDir: canonicalProjectDir,
-    sourcePath: canonicalSourcePath,
-    relativePath: requestedRelativePath.normalize("NFC"),
-    // An external target needs a stable identity in addition to its project-local
-    // symlink path, otherwise retargeting the link can reuse an unrelated proxy.
-    cacheIdentity: (sourceIsInsideCanonicalProject
-      ? canonicalRelativePath
-      : canonicalSourcePath
-    ).normalize("NFC"),
-  };
+  return { projectDir: realProjectRoot(projectDir), sourcePath: realpath(absoluteSourcePath) };
 }
 
-function buildProxyCacheKey(
-  source: CanonicalProxySource,
-  variant: ProxyVariant,
-  box: PreviewProxyBox | undefined,
-): string {
-  const stat = statSync(source.sourcePath);
-  const size = box ? `\0${formatPreviewProxyBox(box)}` : "";
-  return createHash("sha256")
-    .update(
-      `${source.relativePath}\0${source.cacheIdentity}\0${stat.mtimeMs}\0${stat.size}\0${PROXY_PARAMS_VERSION}\0${variant}${size}`,
-    )
-    .digest("hex");
-}
-
+/** The copy for this source: the one at its fast name, the one its fast index names, or where a new one goes. */
 function getCanonicalProxyCachePath(
   source: CanonicalProxySource,
   variant: ProxyVariant,
   box?: PreviewProxyBox,
 ): string {
-  const key = buildProxyCacheKey(source, variant, box);
-  return join(
+  const key = fastCopyKey(source.sourcePath, PROXY_PARAMS_VERSION, variant, box);
+  const made = join(
     source.projectDir,
     CACHE_DIR_NAME,
     `${key}${PROXY_VARIANT_CONFIG[variant].extension}`,
   );
+  return existsSync(made) ? made : (readCopyIndex(fastIndexPath(made)) ?? made);
 }
 
 /**
@@ -280,9 +250,8 @@ let activeTranscodes = 0;
 const waitQueue: ProxyJob[] = [];
 
 function enqueue(job: ProxyJob): void {
-  const firstNormal = job.priority ? waitQueue.findIndex((queued) => !queued.priority) : -1;
-  if (firstNormal === -1) waitQueue.push(job);
-  else waitQueue.splice(firstNormal, 0, job);
+  if (job.priority) waitQueue.unshift(job);
+  else waitQueue.push(job);
 }
 
 function dequeue(job: ProxyJob): void {
@@ -323,7 +292,6 @@ function releaseSlot(): void {
 }
 
 function prioritize(job: ProxyJob): void {
-  if (job.priority) return;
   job.priority = true;
   if (!job.queued) return;
   dequeue(job);
@@ -383,30 +351,8 @@ interface RememberedFailure {
 
 const failedTranscodes = new Map<string, RememberedFailure>();
 
-let hdrFilterCheck: { ffmpegPath: string; promise: Promise<void> } | undefined;
-
-function ensureHdrFilters(ffmpegPath: string): Promise<void> {
-  if (hdrFilterCheck?.ffmpegPath === ffmpegPath) return hdrFilterCheck.promise;
-  const promise = new Promise<void>((resolveCheck, rejectCheck) => {
-    const proc = spawn(ffmpegPath, ["-hide_banner", "-filters"], {
-      stdio: ["ignore", "pipe", "pipe"],
-      windowsHide: true,
-    });
-    let stdout = "";
-    proc.stdout?.on("data", (chunk: Buffer) => {
-      stdout += chunk.toString();
-    });
-    proc.on("error", () => rejectCheck(new FfmpegMissingFilterError()));
-    proc.on("close", (code) => {
-      if (code !== 0 || !/\bzscale\b/.test(stdout) || !/\btonemap\b/.test(stdout)) {
-        rejectCheck(new FfmpegMissingFilterError());
-      } else {
-        resolveCheck();
-      }
-    });
-  });
-  hdrFilterCheck = { ffmpegPath, promise };
-  return promise;
+async function ensureHdrFilters(ffmpegPath: string): Promise<void> {
+  if (!(await ffmpegHasHdrFilters(ffmpegPath))) throw new FfmpegMissingFilterError();
 }
 
 function rememberFailure(cachePath: string, error: unknown): void {
@@ -444,15 +390,77 @@ function proxyScaleFilter(box?: PreviewProxyBox): string {
 
 const STDERR_ERROR_LINE = /error|invalid|denied|no space|not found|unknown/i;
 
-/** ffmpeg ends most failures with "Conversion failed!"; the cause is the last error-looking line above it. */
-function stderrReason(stderrTail: string): string {
+const OPEN_OUTPUT_LINE = /^Error opening output file /;
+const ABSOLUTE_PATH = /(?:[A-Za-z]:)?(?:[\\/][^\\/\s'"]+){2,}/g;
+const REASON_LINES = 3;
+
+/** ffmpeg ends most failures with "Conversion failed!"; its causes are the last few error-looking lines above it,
+ * and the line before "Error opening output file" names why the output could not open. Paths are dropped. */
+function stderrReason(stderrTail: string, knownPaths: string[]): string {
   const lines = stderrTail
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean);
-  const errorLines = lines.filter((line) => STDERR_ERROR_LINE.test(line));
-  const line = errorLines.at(-1) ?? lines.at(-1);
-  return line ? `: ${line.replace(/[.!]+$/, "")}` : "";
+  const openedAt = lines.map((candidate) => OPEN_OUTPUT_LINE.test(candidate)).lastIndexOf(true);
+  const causes = lines.filter(
+    (line, index) =>
+      !OPEN_OUTPUT_LINE.test(line) && (STDERR_ERROR_LINE.test(line) || index === openedAt - 1),
+  );
+  const shown = (causes.length ? causes : lines.slice(-1)).slice(-REASON_LINES);
+  const byLength = knownPaths.filter(isAbsolute).sort((a, b) => b.length - a.length);
+  const reason = shown.map((line) =>
+    byLength
+      .reduce((text, path) => text.split(path).join("<path>"), line)
+      .replace(ABSOLUTE_PATH, "<path>")
+      .replace(/[.!]+$/, ""),
+  );
+  return reason.length ? `: ${reason.join("; ")}` : "";
+}
+
+export type SourceFolderKind = "icloud" | "cloud-storage" | "external-volume" | "local";
+
+const CLOUD_FOLDER = /\/(?:Library\/CloudStorage|Dropbox|OneDrive|Google Drive)(?:[ \-/]|$)/i;
+
+/** Where a source lives, in the terms that decide whether its file can be read and written normally. */
+export function sourceFolderKind(sourcePath: string): SourceFolderKind {
+  const path = sourcePath.replace(/\\/g, "/");
+  if (path.includes("/Library/Mobile Documents/")) return "icloud";
+  if (CLOUD_FOLDER.test(path)) return "cloud-storage";
+  return path.startsWith("/Volumes/") ? "external-volume" : "local";
+}
+
+/** What a failure report needs about the source, without its name or folder. */
+function describeSource(
+  sourcePath: string,
+  metadata: Awaited<ReturnType<typeof probeMediaMetadata>>,
+): string {
+  const { codecName, pixelFormat, colorTransfer } = metadata.color;
+  const megabytes = sourceSizeBytes(sourcePath);
+  return [
+    metadata.kind,
+    codecName,
+    pixelFormat,
+    colorTransfer,
+    metadata.hasAudio ? "with audio" : "no audio",
+    metadata.streams?.length ? `streams ${metadata.streams.join(" ")}` : undefined,
+    metadata.durationSeconds ? `${Math.round(metadata.durationSeconds)}s` : undefined,
+    megabytes === undefined ? "missing" : `${Math.round(megabytes / 1e6)} MB`,
+    sourceFolderKind(sourcePath),
+  ]
+    .filter(Boolean)
+    .join(", ");
+}
+
+/** A copy's failure message ends with the source it was made from; other errors pass through. */
+function withSource(err: unknown, describe: () => string): unknown {
+  if (err instanceof ProxyTranscodeError && err.name === "ProxyTranscodeError") {
+    return new ProxyTranscodeError(
+      `${err.message} (source: ${describe()})`,
+      err.exitCode,
+      err.stderrTail,
+    );
+  }
+  return err;
 }
 
 interface ChunkRange {
@@ -472,7 +480,53 @@ function chunkRanges(durationSeconds: number | undefined): ChunkRange[] | null {
   }));
 }
 
-type EncodeFn = (outputPath: string, range?: ChunkRange) => Promise<void>;
+type EncodeFn = (
+  outputPath: string,
+  range: ChunkRange | undefined,
+  signal: AbortSignal,
+  onEncoded: (encodedSeconds: number) => void,
+) => Promise<void>;
+
+interface PieceGate {
+  size: number;
+  acquire: (signal: AbortSignal) => Promise<void>;
+  release: () => void;
+}
+
+const UNGATED: PieceGate = { size: 1, acquire: async () => {}, release: () => {} };
+
+/** Every alpha copy draws its pieces from this one pool, so two copies together stay within the cap. */
+function createPieceGate(size: number): PieceGate {
+  let free = size;
+  const waiters: Array<() => void> = [];
+  return {
+    size,
+    acquire: (signal) => {
+      signal.throwIfAborted();
+      if (free > 0) {
+        free--;
+        return Promise.resolve();
+      }
+      return new Promise((resolve, reject) => {
+        const grant = (): void => {
+          signal.removeEventListener("abort", onAbort);
+          resolve();
+        };
+        const onAbort = (): void => {
+          waiters.splice(waiters.indexOf(grant), 1);
+          reject(signal.reason);
+        };
+        signal.addEventListener("abort", onAbort, { once: true });
+        waiters.push(grant);
+      });
+    },
+    release: () => {
+      const next = waiters.shift();
+      if (next) next();
+      else free++;
+    },
+  };
+}
 
 /** Copies a long source in pieces that stay in the cache, so a stopped copy continues from the first missing one. */
 async function encodeInChunks(
@@ -481,28 +535,58 @@ async function encodeInChunks(
   tempPath: string,
   encode: EncodeFn,
   concat: (listPath: string, target: string) => Promise<void>,
+  signal: AbortSignal,
+  gate: PieceGate,
   onDone: (doneSeconds: number) => void = () => {},
 ): Promise<void> {
   const extension = extname(tempPath);
   const pieces = ranges.map((_, index) => `${chunkPrefix}${index}${extension}`);
+  const pending = ranges.flatMap((_, index) => (existsSync(pieces[index]!) ? [] : [index]));
   let doneSeconds = 0;
   for (const [index, range] of ranges.entries()) {
-    if (existsSync(pieces[index]!)) doneSeconds += range.lengthSeconds;
+    if (!pending.includes(index)) doneSeconds += range.lengthSeconds;
   }
   if (doneSeconds) onDone(doneSeconds);
-  for (const [index, range] of ranges.entries()) {
-    const piece = pieces[index]!;
-    if (existsSync(piece)) continue;
-    const pieceTemp = join(dirname(piece), `.tmp-${randomUUID()}-${basename(piece)}`);
-    try {
-      await encode(pieceTemp, range);
-      renameSync(pieceTemp, piece);
-      doneSeconds += range.lengthSeconds;
-      onDone(doneSeconds);
-    } finally {
-      if (existsSync(pieceTemp)) unlinkSync(pieceTemp);
+  const inFlight = new Map<number, number>();
+  const stop = new AbortController();
+  const pieceSignal = AbortSignal.any([signal, stop.signal]);
+  let failure: unknown;
+  let cursor = 0;
+  const work = async (): Promise<void> => {
+    for (;;) {
+      await gate.acquire(pieceSignal);
+      try {
+        if (cursor >= pending.length) return;
+        const index = pending[cursor++]!;
+        const range = ranges[index]!;
+        const piece = pieces[index]!;
+        const pieceTemp = join(dirname(piece), `.tmp-${randomUUID()}-${basename(piece)}`);
+        try {
+          await encode(pieceTemp, range, pieceSignal, (encodedSeconds) => {
+            inFlight.set(index, encodedSeconds);
+            onDone(doneSeconds + [...inFlight.values()].reduce((sum, seconds) => sum + seconds, 0));
+          });
+          renameSync(pieceTemp, piece);
+          inFlight.delete(index);
+          doneSeconds += range.lengthSeconds;
+          onDone(doneSeconds);
+        } finally {
+          if (existsSync(pieceTemp)) unlinkSync(pieceTemp);
+        }
+      } finally {
+        gate.release();
+      }
     }
-  }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(gate.size, pending.length) }, () =>
+      work().catch((error: unknown) => {
+        failure ??= error;
+        stop.abort();
+      }),
+    ),
+  );
+  if (failure !== undefined) throw failure;
   const listDir = mkdtempSync(join(tmpdir(), "hf-proxy-join-"));
   try {
     const listPath = join(listDir, "pieces.txt");
@@ -519,6 +603,7 @@ async function encodeInChunks(
   for (const piece of pieces) if (existsSync(piece)) unlinkSync(piece);
 }
 
+const KEYFRAME_EVERY_SECOND_ARGS = ["-force_key_frames", "expr:gte(t,n_forced*1)"];
 // Fixed recipe; changing either array means bumping PROXY_PARAMS_VERSION.
 const H264_ARGS = [
   "-c:v",
@@ -542,7 +627,13 @@ const H264_ARGS = [
   "-movflags",
   "+faststart",
 ];
-const VP8_THREADS = String(Math.min(4, availableParallelism()));
+const CORES = availableParallelism();
+const PIECE_MEMORY_BYTES = 3 * 1024 ** 3;
+
+/** One core stays free for the editor; a 4K piece holds ~1.2 GB, so the copies stay within a third of RAM. */
+const ALPHA_PIECE_GATE = createPieceGate(
+  Math.max(1, Math.min(4, CORES - 1, Math.floor(totalmem() / PIECE_MEMORY_BYTES))),
+);
 const VP8_ARGS = [
   "-c:v",
   "libvpx",
@@ -562,8 +653,6 @@ const VP8_ARGS = [
   "bt709",
   "-cpu-used",
   "4",
-  "-threads",
-  VP8_THREADS,
   "-auto-alt-ref",
   "0",
   "-metadata:s:v:0",
@@ -615,8 +704,18 @@ async function runFfmpeg(
   const videoFilter = await buildVideoFilter(ffmpegPath, sourcePath, metadata, keepsAlpha, box);
   const alphaDecoder = keepsAlpha ? alphaDecoderFor(metadata.color.codecName) : null;
   const decoderArgs = alphaDecoder ? ["-c:v", alphaDecoder] : [];
+  const streamArgs = [
+    ...["-map", "0:V:0"],
+    ...(metadata.audioStream === undefined ? [] : ["-map", `0:a:${metadata.audioStream}`]),
+  ];
   const totalSeconds = metadata.durationSeconds;
-  const encode: EncodeFn = (target, range) =>
+  // libvpx scales poorly across threads, so alpha pieces run side by side with the cores shared out.
+  const gate = keepsAlpha ? ALPHA_PIECE_GATE : UNGATED;
+  const vp8Threads = (pieces: number) => [
+    "-threads",
+    String(Math.min(4, Math.floor(CORES / pieces))),
+  ];
+  const encode: EncodeFn = (target, range, pieceSignal, onEncoded) =>
     spawnFfmpeg(
       ffmpegPath,
       [
@@ -628,28 +727,39 @@ async function runFfmpeg(
         ...decoderArgs,
         "-i",
         sourcePath,
+        ...streamArgs,
         ...(range ? ["-t", String(range.lengthSeconds)] : []),
         "-vf",
         videoFilter,
-        ...(variant === "vp8" ? VP8_ARGS : H264_ARGS),
+        ...KEYFRAME_EVERY_SECOND_ARGS,
+        ...(keepsAlpha ? [...VP8_ARGS, ...vp8Threads(range ? gate.size : 1)] : H264_ARGS),
         target,
       ],
       TRANSCODE_STALL_MS,
-      signal,
-      (encodedSeconds) =>
-        onProgress({ doneSeconds: (range?.startSeconds ?? 0) + encodedSeconds, totalSeconds }),
+      pieceSignal,
+      onEncoded,
     );
   const ranges = chunkRanges(totalSeconds);
-  if (!ranges) return encode(outputPath);
-  await encodeInChunks(
-    ranges,
-    chunkPrefix,
-    outputPath,
-    encode,
-    (listPath, target) =>
-      spawnFfmpeg(ffmpegPath, concatArgs(listPath, target, variant), CONCAT_TIMEOUT_MS, signal),
-    (doneSeconds) => onProgress({ doneSeconds, totalSeconds }),
-  );
+  try {
+    if (!ranges) {
+      return await encode(outputPath, undefined, signal, (encodedSeconds) =>
+        onProgress({ doneSeconds: encodedSeconds, totalSeconds }),
+      );
+    }
+    await encodeInChunks(
+      ranges,
+      chunkPrefix,
+      outputPath,
+      encode,
+      (listPath, target) =>
+        spawnFfmpeg(ffmpegPath, concatArgs(listPath, target, variant), CONCAT_TIMEOUT_MS, signal),
+      signal,
+      gate,
+      (doneSeconds) => onProgress({ doneSeconds, totalSeconds }),
+    );
+  } catch (err) {
+    throw withSource(err, () => describeSource(sourcePath, metadata));
+  }
 }
 
 function concatArgs(listPath: string, target: string, variant: ProxyVariant): string[] {
@@ -742,7 +852,7 @@ function spawnFfmpeg(
       } else {
         reject(
           new ProxyTranscodeError(
-            `ffmpeg exited with code ${code}${stderrReason(stderrTail)}`,
+            `ffmpeg exited with code ${code}${stderrReason(stderrTail, args)}`,
             code,
             stderrTail,
           ),
@@ -767,6 +877,23 @@ async function transcodeToCache(
 
     const cacheDir = dirname(cachePath);
     mkdirWithinProject(projectDir, cacheDir);
+    const contentIndex = contentIndexPath(
+      cacheDir,
+      await contentCopyKey(
+        absoluteSourcePath,
+        PROXY_PARAMS_VERSION,
+        variant,
+        box,
+        job.abandoned.signal,
+      ),
+    );
+    const sameContent = readCopyIndex(contentIndex);
+    if (sameContent) {
+      writeCopyIndex(fastIndexPath(cachePath), sameContent);
+      return sameContent;
+    }
+    const release = await acquireCopyLock(cachePath, job.abandoned.signal);
+    if (!release) return cachePath;
     const tempPath = join(cacheDir, `.tmp-${randomUUID()}-${basename(cachePath)}`);
     try {
       const chunkPrefix = join(
@@ -783,16 +910,41 @@ async function transcodeToCache(
         (progress) => reportProgress(job, progress),
       );
       renameSync(tempPath, cachePath);
+      writeCopyIndex(contentIndex, cachePath);
       maintainProxyCache(cacheDir);
       return cachePath;
     } finally {
       // No partial files: if anything above threw, remove whatever ffmpeg
       // may have partially written under the temp name.
       if (existsSync(tempPath)) unlinkSync(tempPath);
+      release();
     }
   } finally {
     releaseSlot();
   }
+}
+
+export function proxyCopyProgress(
+  projectDir: string,
+  absoluteSourcePath: string,
+  variant: ProxyVariant,
+  box?: PreviewProxyBox,
+): number | undefined {
+  const source = canonicalizeProxySource(projectDir, absoluteSourcePath);
+  const progress = inFlight.get(getCanonicalProxyCachePath(source, variant, box))?.job.lastProgress;
+  return progress?.totalSeconds
+    ? Math.min(1, progress.doneSeconds / progress.totalSeconds)
+    : undefined;
+}
+
+export function retryProxyCopy(
+  projectDir: string,
+  absoluteSourcePath: string,
+  variant: ProxyVariant,
+  box?: PreviewProxyBox,
+): void {
+  const source = canonicalizeProxySource(projectDir, absoluteSourcePath);
+  failedTranscodes.delete(getCanonicalProxyCachePath(source, variant, box));
 }
 
 let proxyActivity = 0;

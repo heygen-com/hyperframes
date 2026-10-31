@@ -238,4 +238,112 @@ describe("executeParallelCapture peer abort", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  it("worker 0 verifies its session before any worker captures, and a failed check fails every worker", async () => {
+    const root = mkdtempSync(join(tmpdir(), "hf-first-session-gate-"));
+    const order: string[] = [];
+    const captureFrame = vi.fn(async () => {
+      order.push("frame");
+      return { path: join(root, "frame.jpg") };
+    });
+    vi.doMock("./frameCapture.js", () => ({
+      createCaptureSession: vi.fn(async () => ({ browserConsoleBuffer: [] })),
+      initializeSession: vi.fn(async () => {
+        order.push("init");
+      }),
+      captureFrame,
+      captureFrameToBuffer: vi.fn(),
+      captureFrameToBufferPipelined: vi.fn(),
+      closeCaptureSession: vi.fn().mockResolvedValue(undefined),
+      getCapturePerfSummary: vi.fn(() => ({ frames: 0 })),
+    }));
+    const tasks = [0, 1].map((workerId) => ({
+      workerId,
+      startFrame: workerId,
+      endFrame: workerId + 1,
+      outputDir: join(root, `worker-${workerId}`),
+    }));
+    const run = async (verifyFirstSession: () => Promise<void>) => {
+      const { executeParallelCapture } = await import("./parallelCoordinator.js");
+      return executeParallelCapture(
+        "http://127.0.0.1",
+        root,
+        tasks,
+        { width: 320, height: 180, fps: { num: 30, den: 1 } },
+        () => null,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { verifyFirstSession },
+      );
+    };
+
+    try {
+      let pass!: () => void;
+      const gated = run(
+        () =>
+          new Promise<void>((resolve) => {
+            order.push("verify");
+            pass = resolve;
+          }),
+      );
+      await vi.waitFor(() => expect(order).toContain("verify"));
+      for (let turn = 0; turn < 20; turn++) await new Promise((resolve) => setImmediate(resolve));
+      expect(order.filter((step) => step === "frame")).toEqual([]);
+      pass();
+      await gated;
+      expect(order.filter((step) => step === "verify")).toHaveLength(1);
+      expect(order.filter((step) => step === "frame")).toHaveLength(2);
+
+      order.length = 0;
+      await expect(
+        run(async () => {
+          throw new Error("probe said no");
+        }),
+      ).rejects.toThrow(/probe said no/);
+      expect(order).not.toContain("frame");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("a worker 0 that fails before its check does not leave the other workers waiting", async () => {
+    const root = mkdtempSync(join(tmpdir(), "hf-first-session-dead-"));
+    vi.doMock("./frameCapture.js", () => ({
+      createCaptureSession: vi.fn(async (_url: string, outputDir: string) => {
+        if (outputDir.endsWith("worker-0")) throw new Error("Protocol error: Target closed");
+        return { browserConsoleBuffer: [] };
+      }),
+      initializeSession: vi.fn(async () => {}),
+      captureFrame: vi.fn(),
+      captureFrameToBuffer: vi.fn(),
+      captureFrameToBufferPipelined: vi.fn(),
+      closeCaptureSession: vi.fn().mockResolvedValue(undefined),
+      getCapturePerfSummary: vi.fn(() => ({ frames: 0 })),
+    }));
+    try {
+      const { executeParallelCapture } = await import("./parallelCoordinator.js");
+      const result = executeParallelCapture(
+        "http://127.0.0.1",
+        root,
+        [0, 1].map((workerId) => ({
+          workerId,
+          startFrame: workerId,
+          endFrame: workerId + 1,
+          outputDir: join(root, `worker-${workerId}`),
+        })),
+        { width: 320, height: 180, fps: { num: 30, den: 1 } },
+        () => null,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { verifyFirstSession: async () => {} },
+      );
+      await expect(result).rejects.toMatchObject({ name: "CaptureFailure" });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });

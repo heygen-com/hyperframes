@@ -118,6 +118,47 @@ describe("buildMissingCompositionElements — hfId (R7)", () => {
   });
 });
 
+describe("buildMissingCompositionElements — on a settled timeline", () => {
+  // Studio runs this on every runtime state tick, so a timeline with nothing to add must cost one host scan.
+  const settled = () =>
+    makeDoc(`
+      <div data-composition-id="root">
+        <div id="intro" data-composition-id="intro" data-start="0" data-duration="3"></div>
+        ${Array.from({ length: 40 }, (_, i) => `<video id="clip-${i}" data-start="${i}" data-duration="1"></video>`).join("")}
+      </div>
+    `);
+  const rows = ["intro", ...Array.from({ length: 40 }, (_, i) => `clip-${i}`)].map((id, i) => ({
+    id,
+    key: id,
+    tag: id === "intro" ? "div" : "video",
+    start: i,
+    duration: 1,
+    track: 0,
+  }));
+
+  it("walks no more of the document than the hosts when nothing is missing or patchable", () => {
+    const doc = settled();
+    const scans = vi.spyOn(doc, "querySelectorAll");
+    const result = buildMissingCompositionElements(doc, window as IframeWindow, rows, 40);
+    expect(scans.mock.calls.map(([selector]) => selector)).toEqual([
+      "[data-composition-id][data-start]",
+    ]);
+    expect([result.missing, result.patched, result.updatedEls]).toEqual([[], false, rows]);
+  });
+
+  it("still patches a row whose host carries its source", () => {
+    const doc = settled();
+    doc.getElementById("intro")!.setAttribute("data-composition-src", "compositions/intro.html");
+    const { patched, updatedEls } = buildMissingCompositionElements(
+      doc,
+      window as IframeWindow,
+      rows,
+      40,
+    );
+    expect([patched, updatedEls[0]?.compositionSrc]).toEqual([true, "compositions/intro.html"]);
+  });
+});
+
 describe("buildMissingCompositionElements — nested master time", () => {
   it("places hosts two and three levels deep at their master time", () => {
     const doc = makeDoc(`

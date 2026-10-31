@@ -46,7 +46,7 @@ export interface PrepareAnimatedGifInputsResult {
   preparedGifs: PreparedAnimatedGif[];
 }
 
-function splitUrlSuffix(src: string): { basePath: string; suffix: string } {
+export function splitUrlSuffix(src: string): { basePath: string; suffix: string } {
   const queryIdx = src.indexOf("?");
   const hashIdx = src.indexOf("#");
   if (queryIdx < 0 && hashIdx < 0) return { basePath: src, suffix: "" };
@@ -54,7 +54,7 @@ function splitUrlSuffix(src: string): { basePath: string; suffix: string } {
   return { basePath: src.slice(0, cutIdx), suffix: src.slice(cutIdx) };
 }
 
-function normalizeRelPath(path: string): string {
+export function normalizeRelPath(path: string): string {
   return path.replace(/\\/g, "/").replace(/^\/+/, "");
 }
 
@@ -76,7 +76,7 @@ function readLoopOverride(el: Element): boolean | null {
   return null;
 }
 
-function resolveGifSourcePath(
+export function resolveLocalImageSourcePath(
   src: string,
   options: Pick<PrepareAnimatedGifInputsOptions, "projectDir" | "downloadDir" | "sourceAssets">,
 ): string | null {
@@ -169,18 +169,18 @@ function resolveClipWindowSeconds(img: Element, compositionDuration: number | nu
 
 function resolvePreparedPlayback(
   metadata: AnimatedGifMetadata,
-  loop: boolean,
+  loopOverride: boolean | null,
   windowSeconds: number | null,
 ): { loopIterations: number; padSeconds: number } {
   const gifDuration = metadata.durationSeconds > 0 ? metadata.durationSeconds : null;
 
   let loopIterations = 1;
-  if (loop) {
+  if (resolveLoop(metadata, loopOverride)) {
     loopIterations =
       windowSeconds != null && gifDuration != null
         ? Math.min(MAX_LOOP_ITERATIONS, Math.max(1, Math.ceil(windowSeconds / gifDuration)))
         : 1;
-  } else if (metadata.loopCount != null && metadata.loopCount > 1) {
+  } else if (loopOverride == null && metadata.loopCount != null && metadata.loopCount > 1) {
     loopIterations = Math.min(MAX_LOOP_ITERATIONS, metadata.loopCount);
   }
 
@@ -248,7 +248,7 @@ async function runAnimatedGifTranscode(request: AnimatedGifTranscodeRequest): Pr
       failureReason: result.failureReason,
     });
   }
-  if (result.terminationReason === "deadline") {
+  if (result.terminationReason === "inactivity") {
     throw new Error(`Animated GIF transcode timed out after ${timeout}ms`);
   }
   throw (
@@ -380,16 +380,21 @@ export async function prepareAnimatedGifInputs(
     const img = images[i]!;
     const src = (img.getAttribute("src") || "").trim();
     if (!hasGifExtension(src)) continue;
-    const sourcePath = resolveGifSourcePath(src, options);
+    const sourcePath = resolveLocalImageSourcePath(src, options);
     if (!sourcePath) continue;
 
     const bytes = readFileSync(sourcePath);
     const metadata = parseAnimatedGifMetadata(bytes);
     if (!metadata?.animated) continue;
 
-    const loop = resolveLoop(metadata, readLoopOverride(img));
+    const loopOverride = readLoopOverride(img);
+    const loop = resolveLoop(metadata, loopOverride);
     const windowSeconds = resolveClipWindowSeconds(img, compositionDuration);
-    const { loopIterations, padSeconds } = resolvePreparedPlayback(metadata, loop, windowSeconds);
+    const { loopIterations, padSeconds } = resolvePreparedPlayback(
+      metadata,
+      loopOverride,
+      windowSeconds,
+    );
     const hash = computePreparedGifHash(bytes, loopIterations, padSeconds);
     const filename = `${CACHE_SCHEMA}-${hash.slice(0, 24)}.webm`;
     const cachePath = join(cacheDir, filename);

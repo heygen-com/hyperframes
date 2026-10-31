@@ -13,6 +13,8 @@ export { decodeUrlPathVariants } from "./utils/urlPath.js";
 export {
   parseCompositionVariables,
   isCompositionVariable,
+  isFontValue,
+  isImageValue,
   isScalarVariableValue,
   isSafeMediaUrl,
 } from "./compositionVariables.js";

@@ -138,6 +138,89 @@ describe("history coalescing", () => {
 // ─── T3 override replay ───────────────────────────────────────────────────────
 
 describe("override-set replay on open", () => {
+  it.each([
+    { key: "hf-title.timing.bogus", value: 2 },
+    { key: "meta.fps", value: 30 },
+    { key: "style.foo", value: "x" },
+    { key: "future.element", value: { html: '<p data-hf-id="hf-extra">Extra</p>' } },
+    { key: "future.element", value: { siblingIndex: 0 } },
+  ])("ignores an unrecognized non-snapshot override: $key", async ({ key, value }) => {
+    const base = await openComposition(BASE_HTML);
+    const reopened = await openComposition(BASE_HTML, { overrides: { [key]: value } });
+
+    expect(reopened.serialize()).toBe(base.serialize());
+  });
+
+  it.each([false, true])("replays edits with dotted IDs, scoped: %s", async (scoped) => {
+    const title = '<h1 data-hf-id="hf-title.main" style="color:red" title="Original">Original</h1>';
+    const html = `<div data-hf-id="hf-stage" data-hf-root>${
+      scoped
+        ? `<div data-hf-id="hf-host.one" data-composition-file="scene.html">${title}</div>`
+        : title
+    }</div>`;
+    const id = scoped ? "hf-host.one/hf-title.main" : "hf-title.main";
+    const comp = await openComposition(html, { overrides: {} });
+    comp.setText(id, "Updated");
+    comp.setStyle(id, { color: "blue" });
+    comp.setAttribute(id, "title", null);
+    comp.setAttribute(id, "data-app.attr.label", "Saved");
+    comp.setTiming(id, { start: 1, duration: 2 });
+    comp.setHold(id, { start: 0.5, end: 0.25, fill: "freeze" });
+
+    const reopened = await openComposition(html, {
+      overrides: JSON.parse(JSON.stringify(comp.getOverrides())),
+    });
+
+    expect(reopened.getElement(id)?.text).toBe("Updated");
+    expect(reopened.getElement(id)?.inlineStyles["color"]).toBe("blue");
+    expect(reopened.getElement(id)?.attributes["title"]).toBeUndefined();
+    expect(reopened.getElement(id)?.attributes["data-app.attr.label"]).toBe("Saved");
+    expect(reopened.getElement(id)?.attributes).toMatchObject({
+      "data-hold-start": "0.5",
+      "data-hold-end": "0.25",
+      "data-hold-fill": "freeze",
+    });
+    expect(reopened.getElementTimings()[id]).toMatchObject({ enterAt: 1, exitAt: 3 });
+    expect(reopened.serialize()).toBe(comp.serialize());
+  });
+
+  it("replays a removal marker for a dotted element ID", async () => {
+    const html = '<div data-hf-root><p data-hf-id="hf-copy.main">Remove me</p></div>';
+    const comp = await openComposition(html, { overrides: {} });
+    comp.removeElement("hf-copy.main");
+
+    const reopened = await openComposition(html, {
+      overrides: JSON.parse(JSON.stringify(comp.getOverrides())),
+    });
+
+    expect(reopened.getElement("hf-copy.main")).toBeNull();
+    expect(reopened.serialize()).toBe(comp.serialize());
+  });
+
+  it("keeps edit-family words inside an attribute name", async () => {
+    const comp = await openComposition(BASE_HTML, { overrides: {} });
+    comp.setAttribute("hf-title", "data-app.style.color", "Saved");
+    comp.setAttribute("hf-title", "data-app.text", "Label");
+
+    const reopened = await openComposition(BASE_HTML, { overrides: comp.getOverrides() });
+
+    expect(reopened.getElement("hf-title")?.attributes["data-app.style.color"]).toBe("Saved");
+    expect(reopened.getElement("hf-title")?.attributes["data-app.text"]).toBe("Label");
+    expect(reopened.serialize()).toBe(comp.serialize());
+  });
+
+  it("keeps ordinary element edits ahead of the variable namespace", async () => {
+    const html = '<div data-hf-root><p data-hf-id="var">Original</p></div>';
+    const comp = await openComposition(html, { overrides: {} });
+    comp.setText("var", "Updated");
+    comp.setStyle("var", { color: "blue" });
+
+    const reopened = await openComposition(html, { overrides: comp.getOverrides() });
+
+    expect(reopened.getElement("var")?.text).toBe("Updated");
+    expect(reopened.getElement("var")?.inlineStyles["color"]).toBe("blue");
+  });
+
   it("applies style, text, and attribute overrides to the base document", async () => {
     const comp = await openComposition(BASE_HTML, {
       overrides: {

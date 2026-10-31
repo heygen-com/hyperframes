@@ -1,5 +1,6 @@
-/** The visibility pass's mark on a timed clip it hides; the runtime's rules hide the clip's contents by it. */
-export const CLIP_HIDDEN_ATTR = "data-hf-clip-hidden";
+import { CLIP_HIDDEN_ATTR } from "../studioPreviewMark";
+
+export { CLIP_HIDDEN_ATTR };
 
 type ShaderWindow = Window & {
   HyperShader?: unknown;

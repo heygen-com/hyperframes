@@ -25,6 +25,32 @@ HyperFrames seeks each frame on its own, so motion must be a function of time, n
 
 Charts and map overlays: drive them from a GSAP tween's `onUpdate`, not the library's own transitions. A real place is shown on baked imagery, not drawn (`film.md` "Maps and real places"). Heavy setup (big meshes, shader compiles) registers a `window.__hf.buildReady["<key>"]` promise.
 
+## dotLottie browser setup
+
+Copy `dist/index.js` and `dist/dotlottie-player.wasm` from the same pinned
+`@lottiefiles/dotlottie-web` release (for example, 0.81.0) into the project's
+`lib/dotlottie-web/` directory. Its CommonJS entry cannot run as a classic
+browser script. Import the ESM entry and set the local WASM URL before creating
+the player, so rendering loads the SDK, WASM and animation from project files.
+
+```html
+<canvas id="anim" style="width:100%;height:100%"></canvas>
+<script type="module">
+  import { DotLottie } from "./lib/dotlottie-web/index.js";
+
+  DotLottie.setWasmUrl(new URL("./lib/dotlottie-web/dotlottie-player.wasm", import.meta.url).href);
+  const player = new DotLottie({
+    canvas: document.getElementById("anim"),
+    src: "assets/hello.lottie",
+    autoplay: false,
+    loop: false,
+    renderConfig: { autoResize: false, freezeOnOffscreen: false },
+  });
+  window.__hfLottie = window.__hfLottie || [];
+  window.__hfLottie.push(player);
+</script>
+```
+
 ## The seek protocol
 
 ```html

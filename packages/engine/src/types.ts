@@ -6,6 +6,7 @@
  */
 import type { AudioFailureDiagnostic } from "./services/audioMixer.types.js";
 import type { Fps } from "@hyperframes/core";
+import type { CompositionLengthSource } from "@hyperframes/core/runtime/composition-length";
 import type { ChromeMemoryStats } from "./services/chromeMemorySampler.js";
 import type { MotionBlurOptions } from "./services/motionBlur.js";
 
@@ -130,6 +131,8 @@ export interface HfSeekOptions {
 export interface HfProtocol {
   /** Total duration of the composition in seconds */
   duration: number;
+  /** Which input set `duration`. */
+  lengthSource?: CompositionLengthSource;
   /** Seek to a specific time. Must produce deterministic visual output. */
   seek(time: number, options?: HfSeekOptions): void;
   /** Optional: media elements the engine should handle */
@@ -169,6 +172,7 @@ export interface CaptureOptions {
    */
   fps: Fps;
   format?: "jpeg" | "png";
+  transparent?: boolean;
   quality?: number;
   /**
    * Opt into sub-frame multi-sample motion blur (issue #4010). Absent means off and the
@@ -242,6 +246,7 @@ export interface CaptureOptions {
    */
   deVerifySamples?: number;
   deFrameFallback?: boolean;
+  onEffectScanProgress?: (scannedFrames: number, totalFrames: number) => void;
 }
 
 export interface CaptureVideoMetadataHint {

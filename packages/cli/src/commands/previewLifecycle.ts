@@ -11,7 +11,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { homedir } from "node:os";
+import { devNull, homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { stripVTControlCharacters } from "node:util";
 import {
@@ -21,6 +21,7 @@ import {
   type ActiveServer,
 } from "../server/portUtils.js";
 import type { BrowserGpuMode } from "../browser/gpuPolicy.js";
+import { windowsLocalAppData } from "../utils/windowsAppData.js";
 import { isProcessDescendant, processIdentity } from "../utils/orphanCleanup.js";
 import { terminateProcessTree } from "../utils/processTree.js";
 import { PreviewServerPortMismatchError } from "../utils/studioSelectionClient.js";
@@ -87,7 +88,7 @@ interface LifecycleDependencies {
 }
 
 function defaultStateHome(): string {
-  return process.env.XDG_STATE_HOME || join(homedir(), ".local", "state");
+  return process.env.XDG_STATE_HOME || windowsLocalAppData() || join(homedir(), ".local", "state");
 }
 
 function normalized(path: string): string {
@@ -233,6 +234,18 @@ async function stopProcess(pid: number): Promise<void> {
 
 const delay = (ms: number): Promise<void> => new Promise((done) => setTimeout(done, ms));
 
+function openLog(logPath: string): number {
+  try {
+    mkdirSync(dirname(logPath), { recursive: true });
+    return openSync(logPath, "a", 0o600);
+  } catch (error) {
+    console.warn(
+      `[hyperframes] background preview log not written: cannot open ${logPath} (${error})`,
+    );
+    return openSync(devNull, "a");
+  }
+}
+
 function spawnDetachedPreview(
   projectDir: string,
   stateHome: string,
@@ -244,8 +257,7 @@ function spawnDetachedPreview(
   exitedWith: () => string | null;
 } {
   const logPath = previewLogPath(projectDir, stateHome);
-  mkdirSync(dirname(logPath), { recursive: true });
-  const logFd = openSync(logPath, "a", 0o600);
+  const logFd = openLog(logPath);
   const spawn = dependencies.spawn ?? (nodeSpawn as unknown as SpawnPreview);
   let child: SpawnResult;
   try {

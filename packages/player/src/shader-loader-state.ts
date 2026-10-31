@@ -145,11 +145,14 @@ export class ShaderLoaderState {
 
   /** Second reason to show the same overlay — reuses the shader-transition
    *  panel's DOM rather than drawing a second one. */
-  showAssetsLoading(): void {
+  showAssetsLoading(
+    title = "Loading assets",
+    detail = "Waiting for images, video and fonts to finish loading.",
+  ): void {
     this.reset();
-    this._el.title.textContent = "Loading assets";
-    this._el.detail.textContent = "Waiting for images, video and fonts to finish loading.";
-    this._el.root.setAttribute("aria-label", "Loading assets");
+    this._el.title.textContent = title;
+    this._el.detail.textContent = detail;
+    this._el.root.setAttribute("aria-label", title);
     this._drawingAssets = true;
     this.show();
   }

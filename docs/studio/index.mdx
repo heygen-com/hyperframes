@@ -1,113 +1,51 @@
 ---
-title: "Work on a project in Studio"
-sidebarTitle: "Studio overview"
-description: "Open a HyperFrames project, understand the workspace, make a safe edit, and finish a version."
+title: "Edit in the browser editor"
+sidebarTitle: "Browser editor"
+description: "The browser editor: open any HyperFrames project with one command and edit what you see, the timing and the motion by hand."
 ---
 
 import { DocsVideo } from "/snippets/docs-video.jsx";
 
-<div className="hf-docs-video-frame">
-  <DocsVideo
-    title="A narrated tour of a real HyperFrames Studio project"
-    src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/studio-front-door-v2.mp4"
-    poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/studio-front-door-v2.jpg"
-  />
-</div>
-
-Studio is the visual editor for the same HTML project your agent and the CLI
-use. Any HyperFrames project opens here without an import or conversion. Open any project folder, then run:
+There are two editors. **The [Studio app](/studio-app/index)** is the desktop app with an agent beside the
+preview: you say or draw what to change. **The browser editor**, on this page, opens any project folder in your
+browser for editing by hand while your own agent works in its terminal. Both edit the same files.
 
 ```bash
 npx hyperframes preview
 ```
 
-## Know the workspace
-
-<Frame caption="Preview keeps project files, the live frame, the Inspector, and time-based editing in one workspace.">
-  <img
-    src="https://static.heygen.ai/hyperframes-oss/docs/images/studio/overview-v1.jpg"
-    alt="HyperFrames Studio Preview showing project tools, a live composition, the Inspector, and the timeline"
-  />
+<Frame caption="The browser editor today: files on the left, the preview in the middle, Design on the right, the timeline below. Open in desktop app moves the project to the Studio app.">
+  <img src="/public/images/studio/editor-overview-v2.jpg" alt="The HyperFrames browser editor with the Inkwell project open: compositions, preview, Design panel and timeline" />
 </Frame>
 
-- **Preview** shows the built project. The live frame is in the middle, the
-  timeline is below, project tools are on the left, and the Inspector is on the
-  right. Drag any panel tab to move it, and use **Window** in the header to
-  reopen a closed panel or reset the layout. Studio remembers your layout for
-  each project.
-- **Code**, **Compositions**, **Assets**, and **Catalog** expose the project source,
-  compositions, media, and reusable visuals. **Design**, **Layers**,
-  **Variables**, and **Renders** control the selected work.
+## Where to start
 
-You do not need to learn every panel. Choose the surface that matches the
-problem in front of you.
+| You want to change | Start with |
+| --- | --- |
+| Something you can see in this frame | Click it in the preview, then **Design** or **Layers** |
+| When something appears or how long it stays | The **Timeline** |
+| One movement | The animation controls and keyframes |
+| The story, several scenes, the structure | Your agent. **Describe a change to the agent** (⌘K) copies a ready request to paste into it |
 
-## Compose preview guides in a host app
+Panels can be dragged anywhere; **Window** reopens a closed one or resets the layout.
 
-Host apps can compose the same rulers, safe margins, grid, and snap toolbar that
-Studio uses over their own preview iframe. The provider owns the iframe geometry
-and shared preferences, so the host supplies its current iframe element and chooses the
-parts to render:
+## Edit what you see
 
-```tsx
-import {
-  GridOverlay,
-  PreviewGuides,
-  PreviewOverlayProvider,
-  SnapToolbar,
-} from "@hyperframes/studio";
-function Preview({ iframe }: { iframe: HTMLIFrameElement | null }) {
-  return (
-    <PreviewOverlayProvider iframe={iframe}>
-      <PreviewGuides />
-      <GridOverlay />
-      <SnapToolbar />
-    </PreviewOverlayProvider>
-  );
-}
-```
-
-| You want to change                              | Start with                       |
-| ----------------------------------------------- | -------------------------------- |
-| Something visible in the current frame          | Canvas, then Design or Layers    |
-| When something appears or how long it stays     | Timeline                         |
-| One movement or transition                      | Animation controls and keyframes |
-| The story, several scenes, or project structure | Your agent                       |
-
-## Make one safe edit
-
-Pause where the problem is visible. Click the element on the canvas, or choose
-it in **Layers** when several elements overlap. Then change only the property
-you meant to change.
-
-<div style={{ maxWidth: "42rem", margin: "1.5rem auto" }}>
-  <Frame caption="The canvas selects the visible element; Design exposes the properties Studio can edit safely.">
-    <video
-      src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/studio-direct-edit-loop-v2.mp4"
-      poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/studio-direct-edit-loop-v2.jpg"
-      alt="Selecting an element and changing it in HyperFrames Studio"
-      aria-label="Selecting an element and changing it in HyperFrames Studio"
-      autoPlay
-      muted
-      loop
-      playsInline
-      preload="metadata"
-    />
-  </Frame>
-</div>
-
-Use the canvas to move, resize, rotate, or crop a supported element. Use
-**Design** for text, layout, style, media, motion, 3D, or color controls that
-apply to the selection. Play through the surrounding moment before accepting
-the change; a correct still frame can still create a collision in motion.
+Pause where the problem is, click the element (or pick it in **Layers** when things overlap), and change only that.
+Drag to move, resize, rotate or crop; use **Design** for text, layout, style, media, motion and color. Then play
+through the moment: a frame that looks right can still collide in motion.
 
 <Warning>
-  Auto-keyframe starts enabled. Turn it off before a normal layout correction that should stay
-  constant. Leave it on only when the change at the current playhead time should become animation.
+  **Auto-record manual edits as keyframes** is on by default, so a change you make at the playhead becomes animation.
+  Turn it off in the timeline toolbar for a fix that should stay the same all the way through.
 </Warning>
 
-For the complete visible-edit workflow, continue to [Edit the
-frame](/studio/canvas).
+More: [Edit the frame](/studio/canvas).
+
+## Change the timing
+
+Drag a clip to move it, drag an edge to make it longer or shorter, and use **Split at playhead** to cut one clip in
+two. Scrub across the cut after each change. More: [the timeline](/studio/timeline).
 
 ## Scrub the preview
 
@@ -116,84 +54,109 @@ the video. It stays available with the timeline hidden and in fullscreen. Use
 the arrow keys while the seek bar has focus, or Home and End to jump to the
 start and end. Seeking pauses playback, just like moving the timeline playhead.
 
-## Change time on the timeline
+## Check and export
 
-Drag a clip to move it earlier or later. Drag an edge to change its duration.
-Use the razor only when one supported clip must become two.
-
-<div style={{ maxWidth: "42rem", margin: "1.5rem auto" }}>
-  <Frame caption="Timing changes stay visible beside the frame and neighboring tracks.">
-    <video
-      src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/studio-timing-loop-v2.mp4"
-      poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/studio-timing-loop-v2.jpg"
-      alt="Adjusting clip timing in the HyperFrames Studio timeline"
-      aria-label="Adjusting clip timing in the HyperFrames Studio timeline"
-      autoPlay
-      muted
-      loop
-      playsInline
-      preload="metadata"
-    />
-  </Frame>
-</div>
-
-Move the playhead through the surrounding cut after every timing change. Use
-[the timeline guide](/studio/timeline) when you need trimming, splitting,
-beats, nested scenes, or multi-item editing.
-
-## Hand a broader change back to the agent
-
-Studio is best for a change you can point at. Ask the agent when the request
-affects the story, several scenes, source research, or unfamiliar project code.
-
-Use **Ask agent** or **Copy to Agent** when Studio offers it, then add the human
-intent that the copied context cannot know:
-
-```text
-Make the opening feel faster, but keep the current narration and final scene.
-```
-
-The agent and Studio edit the same source. There is no export or conversion
-between them.
-
-## Check and render the version
-
-Watch the project from the beginning, run **Lint**, and fix the reported issues.
-Before delivery, run the project-level browser gate as well:
+Run **Lint** (bottom left) and fix what it reports, then the full check before you deliver:
 
 ```bash
 npx hyperframes check
 ```
 
-Then render through Studio, your agent, or the CLI. Open the exported file and
-watch it once before sharing it.
+Choose **Export** in the header, or render from your agent or the command line, and watch the file once before you
+share it.
 
-<div style={{ maxWidth: "42rem", margin: "1.5rem auto" }}>
-  <Frame caption="Studio queues and monitors a render from the same project.">
-    <video
-      src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/studio-check-render-loop-v2.mp4"
-      poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/studio-check-render-loop-v2.jpg"
-      alt="Queuing and monitoring a render in HyperFrames Studio"
-      aria-label="Queuing and monitoring a render in HyperFrames Studio"
-      autoPlay
-      muted
-      loop
-      playsInline
-      preload="metadata"
-    />
-  </Frame>
-</div>
+## Keyboard shortcuts
+
+Shortcuts depend on the active area. The table below covers the shortcuts
+implemented by the browser editor's player, canvas, and timeline.
+
+### Playback
+
+| Shortcut | Action |
+| --- | --- |
+| Space | Play or pause |
+| J / K / L | Play backward, stop, or play forward |
+| Left / Right arrow | Step one frame, or nudge a selected canvas element horizontally |
+| Up / Down arrow | Nudge a selected canvas element vertically |
+| Shift + arrow | Step ten frames horizontally, or nudge a selected element farther |
+| M | Mute or unmute |
+| Shift + L | Toggle loop playback |
+| I / O | Set the work-area in or out point |
+| Shift + I / Shift + O | Clear the in or out point |
+| A / E | Jump to the in or out point |
+| F | Toggle fullscreen |
+
+### Editing
+
+| Shortcut | Action |
+| --- | --- |
+| V | Selection tool |
+| B | Toggle the razor tool |
+| S | Split the selected eligible clip at the playhead |
+| N | Toggle timeline snapping |
+| Command/Ctrl + Z | Undo |
+| Command/Ctrl + Shift + Z, or Ctrl + Y | Redo |
+| Command/Ctrl + C / V / X | Copy, paste, or cut the selected element |
+| Command/Ctrl + G | Group selected elements |
+| Command/Ctrl + Shift + G | Ungroup |
+| Delete / Backspace | Delete the selected keyframe or element |
+
+The focused area decides what a shared shortcut does. Arrow keys nudge a selected
+canvas element, step through frames when nothing nudgeable is selected, or move
+between timeline targets when the timeline has focus (see [Timeline
+navigation](#timeline-navigation) below). `K` adds or removes a keyframe at the
+playhead when a canvas element is selected, starting an animation on a static
+element, and otherwise stops playback. `J` always drives playback.
+
+### Timeline navigation
+
+Tab into the timeline before using these commands. The browser editor keeps one logical timeline target in the Tab order and moves that target without requiring every row or clip to stay mounted.
+
+| Shortcut | Action |
+| --- | --- |
+| Left / Right arrow | Move to the previous or next target in the focused row |
+| Up / Down arrow | Move to the nearest target at the same time in the previous or next logical row |
+| Home / End | Move to the start or end of the focused row |
+| Command/Ctrl + Home / End | Move to the first or last logical row |
+| Page Up / Page Down | Move by one visible page of logical rows |
+| Enter / Space | Expand or collapse keyframe property lanes on a focused track row |
+| Context Menu or Shift + F10 | Open the focused target's context menu when available |
+
+On an expandable track row, Right arrow expands collapsed keyframe lanes and Left arrow collapses expanded lanes. From a keyframe property row, Left arrow returns to its parent track row. When no disclosure or parent action applies, those arrows continue moving within the row.
+
+If the destination is outside the virtualized viewport, the browser editor scrolls it into view and restores focus after it mounts.
+
+### Keyframes and recording
+
+| Shortcut | Action |
+| --- | --- |
+| K | Add or remove a keyframe at the playhead when the current selection supports it |
+| R | Start or stop gesture recording |
+
+During gesture recording, drag records position, scroll records depth,
+Shift-drag records 3D rotation, Option/Alt-drag records rotation, and
+Command/Ctrl-drag or scroll records opacity or scale.
+
+### Canvas and panels
+
+| Shortcut | Action |
+| --- | --- |
+| G | Toggle the canvas grid |
+| Command/Ctrl + 1 | Open Compositions |
+| Command/Ctrl + 2 | Open Assets |
+| Option/Alt + drag | Move an entire animation path |
+| Shift + drag a resize handle | Resize uniformly |
+
+<Warning>
+  A shortcut should not fire while you are typing into a text or source field. If the wrong area has focus, click the canvas or timeline before using an editing shortcut.
+</Warning>
+
+Use the **Shortcuts and tools** button beside the playback controls for the
+built-in shortcut list, work-area controls, and jump-to-frame field.
 
 ## Related topics
 
-<CardGroup cols={2}>
-  <Card title="Edit the frame" icon="crop" href="/studio/canvas">
-    Select, style, arrange, group, and replace visible elements.
-  </Card>
-  <Card title="Edit timing" icon="timeline" href="/studio/timeline">
-    Trim, split, move, and retime clips on the project timeline.
-  </Card>
-  <Card title="Finish and share" icon="circle-check" href="/guides/export-and-share">
-    Review, validate, render, and deliver the project.
-  </Card>
-</CardGroup>
+- [Edit the frame](/studio/canvas)
+- [Edit timing on the timeline](/studio/timeline)
+- [The Studio app](/studio-app/index)
+- [Edit animation and keyframes](/studio/canvas#animate-with-keyframes)

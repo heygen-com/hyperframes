@@ -1,4 +1,5 @@
-import { defineCommand, type ArgDef } from "citty";
+import { type ArgDef } from "citty";
+import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
 import { describeProject } from "../timeline/describeProject.js";
 import { formatTimeline } from "../timeline/formatTimeline.js";

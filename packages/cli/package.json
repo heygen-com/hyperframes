@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/cli",
-  "version": "0.8.200",
+  "version": "0.8.224",
   "description": "Make videos with code and AI agents: write HTML, render MP4. Open source.",
   "keywords": [
     "ai-agents",
@@ -18,6 +18,7 @@
     "video",
     "video-editor"
   ],
+  "homepage": "https://hyperframes.heygen.com",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -69,6 +70,7 @@
     "open": "^10.0.0",
     "postcss": "^8.5.8",
     "puppeteer-core": "^25.10.0",
+    "undici": "7.25.0",
     "yauzl": "^3.4.0"
   },
   "devDependencies": {
@@ -78,6 +80,7 @@
     "@hyperframes/core": "workspace:*",
     "@hyperframes/engine": "workspace:*",
     "@hyperframes/gcp-cloud-run": "workspace:*",
+    "@hyperframes/inspector": "workspace:*",
     "@hyperframes/lint": "workspace:*",
     "@hyperframes/parsers": "workspace:*",
     "@hyperframes/producer": "workspace:*",
@@ -85,7 +88,6 @@
     "@hyperframes/studio-server": "workspace:*",
     "@types/css-tree": "^3.2.0",
     "@types/fontkit": "^2.0.9",
-    "@types/mime-types": "^3.0.1",
     "@types/node": "^25.0.10",
     "ajv": "^8.20.0",
     "linkedom": "^0.18.12",

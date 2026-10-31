@@ -346,6 +346,20 @@ describe("zoomTimelineToRange", () => {
     abort.abort();
     await expect(result).resolves.toBe("cancelled");
   });
+
+  it("resolves cancelled when the timeline is no wider than its headers", async () => {
+    const scroll = document.createElement("div");
+    Object.defineProperties(scroll, {
+      clientWidth: { value: 32 },
+      scrollWidth: { value: 32 },
+      scrollLeft: { value: 0, writable: true },
+    });
+    unregisterViewport = registerTimelineZoomViewport({ scroll, contentOrigin: 32, publishScroll });
+    const result = zoomTimelineToRange(10, 20, { smooth: false });
+    await expect(result).resolves.toBe("cancelled");
+    expect(usePlayerStore.getState().zoomMode).toBe("fit");
+    expect(usePlayerStore.getState().timelinePps).toBe(10);
+  });
 });
 
 describe("currentTimelineRange", () => {
@@ -455,5 +469,18 @@ describe("zoomTimelineStep", () => {
     run();
     // The range's middle, 56 + 1000 / 2, is the playhead.
     expect(laidOutX(60)).toBeCloseTo(556);
+  });
+
+  it("still doubles the scale when the timeline is no wider than its headers", () => {
+    const scroll = document.createElement("div");
+    Object.defineProperties(scroll, {
+      clientWidth: { value: 32 },
+      scrollWidth: { value: 32 },
+      scrollLeft: { value: 0, writable: true },
+    });
+    unregisterViewport = registerTimelineZoomViewport({ scroll, contentOrigin: 32, publishScroll });
+    zoomTimelineStep("in");
+    vi.advanceTimersByTime(150);
+    expect(usePlayerStore.getState().timelinePps).toBeCloseTo(20);
   });
 });

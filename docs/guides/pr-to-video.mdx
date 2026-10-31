@@ -1,52 +1,108 @@
 ---
-title: "Turn a pull request into a video"
-sidebarTitle: "Pull request"
-description: "Show what changed, why it matters, and what happens next."
+title: "Turn a GitHub PR into a video"
+sidebarTitle: "PR to video"
+description: "Paste a pull request link and get a short video of what changed and why it matters, for users, reviewers or social."
 ---
 
 import { DocsVideo } from "/snippets/docs-video.jsx";
 
-Give HyperFrames a pull request. It reads the diff, commits, files, and contributors—there is no website capture.
+Give it a pull request link. The agent reads the diff, the commits and who worked on it, then explains the change.
 
-<Frame caption="A real pull request becomes a 32-second explanation with code, before-and-after behavior, and sound.">
-  <DocsVideo
+<DocsVideo
     title="A pull request explained with code and before-and-after behavior"
     src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/full-prvideo.mp4"
     poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/wfv2-pr.jpg"
   />
-</Frame>
 
-## Make the request
+*A real pull request as a 32-second explanation: code, before and after, and sound.*
 
-Send the pull request and name the audience:
+## Make it
+
+Paste the pull request link into **Make something** and say who will watch:
 
 ```text
-Using /hyperframes, explain https://github.com/owner/repo/pull/123 to product
-and engineering teammates.
+Explain https://github.com/owner/repo/pull/123 to product and engineering teammates.
 ```
 
-The agent reads the actual pull request and checks its release state, so a
-proposed change is not presented as shipped behavior.
+The agent reads the actual pull request and checks whether it has shipped, so a proposed change is never shown as
+released. If your team already has a release video you like, add its link and ask for the same style. With your own agent instead of the app, start the message with `/hyperframes`.
 
-## Who needs to understand it?
+## Pick the story for the audience
 
-- **Users** — lead with the visible change, show the before and after, and name any action they must take.
-- **Contributors** — explain the architecture change, important tradeoff, and code path reviewers need to understand.
-- **Social audience** — make one clear feature reveal with visible proof and only the implementation detail that explains it.
+- **Users:** lead with the visible change, show before and after, name any action they must take.
+- **Contributors:** the architecture change, the tradeoff, the code path a reviewer needs.
+- **Social:** one feature reveal with visible proof and only the code that explains it.
 
-The same pull request needs a different story for users, contributors, or a social audience.
+Say whether it's a changelog, a feature reveal, a fix or a refactor, and mention any breaking change. The video
+explains the change; it doesn't read the description aloud.
 
-## Before it builds
+## Prompts that work
 
-Settle these in the request, or ask the agent to propose them first:
+Verified, from the [examples](/prompting/examples) page — a 30-second feature reveal:
 
-- the intended pull request and audience;
-- whether the angle is a changelog, feature reveal, fix, or refactor;
-- whether the change is proposed, merged, or released;
-- the visible before and after;
-- any breaking change or migration step.
+> Make a 30-second 1920x1080 feature-reveal video from [PR URL]. Lead with what users get, not the diff; show the key code change with the `code-diff` block for one beat only; end on version number + repo URL. No narration, kinetic captions instead.
 
-The video should explain the change, not read the pull request description aloud.
+<DocsVideo
+  title="Example PR video"
+  src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/example-pr-video-v2.mp4#t=0.1"
+  loop
+/>
+*Made from the prompt above.*
+
+### Say these when they matter
+
+| Knob | What to say | Why it matters |
+| --- | --- | --- |
+| **Impact vs diff** | "lead with what users get, not the diff" | The video explains the *change*, it doesn't read the diff aloud; opening on impact answers "why should I care?" before the code |
+| **How many hunks** | "one `code-diff` beat only" / "at most two hunks" | Code beats feature 2-4 real hunks total, each a small legible snippet — a whole file is unreadable at video scale |
+| **Which code block** | `code-diff` for a delta · `code-morph` for a refactor · `code-typing` for new code | The block matches the story: a diff shows added/removed lines, a morph shows one shape becoming another |
+| **Angle** | "changelog" / "feature-reveal" / "fix-explainer" / "refactor-walkthrough" | Sets the story shape; the agent reshapes the PR into it rather than walking files in diff order |
+| **Audience** | "for developers" (default) / "mixed technical" / "non-technical stakeholders" | Shifts how much the narration assumes — a non-technical cut leans harder on impact and lighter on code |
+| **End card** | "end on version number + repo URL" | The conventional close for a code explainer; state what goes on it so it's a real CTA, not an afterthought |
+| **Narration vs captions** | "calm male narration" or "no narration, kinetic captions instead" | Both are supported; captions-only keeps it silent-friendly for social, narration carries a longer walkthrough |
+| **Length** | "~30s" for one headline, up to ~3 min for a large PR | The agent sizes the video from the change — a huge PR is a ceiling on story, not a floor to fill |
+
+### Variants
+
+<AccordionGroup>
+  <Accordion title="Changelog roundup">
+    > Make a ~40-second 1920x1080 changelog video from [PR URL]. Changelog angle: open with the release line, then one beat per notable change — a short label and a one-line "what it does" each. Show at most two `code-diff` hunks across the whole video. End on version + repo URL. Calm male TTS narration, no captions.
+
+    <DocsVideo
+      title="Variant PR changelog"
+      src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/variant-pr-changelog.mp4#t=0.1"
+      loop
+    />
+    *Rendered from this prompt with [PR URL] = heygen-com/hyperframes#2092, unedited.*
+
+    A changelog trades depth for breadth — many small changes, each a beat, rather than one change explored deeply. Keep code beats sparse so the pace stays fast. A PR doesn't carry its shipping version — the agent finds it from the release tag or the package manifest on main.
+  </Accordion>
+  <Accordion title="Fix explainer">
+    > Make a ~40-second 1920x1080 fix-explainer from [PR URL], for developers. Fix angle: state the bug's symptom first, then the root cause, then the one-line fix on the `code-diff` block. End on version + repo URL. No narration, kinetic captions.
+
+    A fix reads as symptom → cause → fix. Lead with what users saw break, not the stack trace — the diff is the payoff, not the opening.
+  </Accordion>
+  <Accordion title="Refactor walkthrough">
+    > Make a ~70-second 1920x1080 refactor-walkthrough from [PR URL], for developers. Refactor angle: why the old shape hurt, then the new shape, showing the before/after with the `code-morph` block for the key file. End on version + repo URL. Calm male TTS narration.
+
+    A refactor changes shape without changing behavior, so the story is *why* the new structure is better. `code-morph` animates one form transforming into another — the right block when the point is the transition, not a line-by-line delta.
+  </Accordion>
+</AccordionGroup>
+
+### Common mistakes
+
+**Asking for the whole diff.** A PR video explains the change; it doesn't recite every file. A full diff is unreadable at video scale.
+- **Avoid:** `walk through the entire diff, file by file`
+- **Instead:** `feature the 2-3 key hunks, each a small legible snippet`
+
+**Opening on the code.** The diff is the payoff, not the hook — lead with what the change means.
+- **Avoid:** `start with the diff, then explain what it does`
+- **Instead:** `lead with what users get, then show the key hunk`
+
+**Hard-timing a narrated cut.** The spoken length sets the runtime, so give a range.
+- **Avoid:** `a 40-second narrated walkthrough`
+- **Instead:** `a ~40-second narrated walkthrough`
+
 
 ## Verify the proof
 
@@ -57,15 +113,9 @@ The video should explain the change, not read the pull request description aloud
 - Tests and refactoring are not presented as product features.
 - Contributor names and release details are accurate.
 
-Ask the agent when the explanation or evidence must change. Use
-Studio for a precise timing, code-framing, or
-caption correction.
-
-<Card title="Finish and share" icon="circle-check" href="/guides/export-and-share">
-  Check the final project, render through your preferred surface, and review the file.
-</Card>
+Ask the agent when the explanation or the evidence must change; fix a timing, a code crop or a caption by hand in
+the editor.
 
 ## Related topics
 
-- [Prompt for code changes and pull requests](/prompting/code-and-prs)
 - [Create a custom video from several sources](/guides/general-video)

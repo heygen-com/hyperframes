@@ -38,8 +38,14 @@ import {
 } from "@hyperframes/producer/distributed";
 import { resolveMaxParallelChunks } from "../../producer/src/services/distributed/plan.js";
 import { recomputePlanHashFromPlanDir } from "../../producer/src/services/render/stages/freezePlan.js";
-import type { AssembleEvent, LambdaEvent, PlanEvent, RenderChunkEvent } from "./events.js";
-import { handler as handleEvent, unwrapEvent } from "./handler.js";
+import type {
+  AssembleEvent,
+  LambdaEvent,
+  PlanEvent,
+  RenderChunkEvent,
+  StitchPartsEvent,
+} from "./events.js";
+import { handler as handleEvent, stitchHelper, unwrapEvent } from "./handler.js";
 import { S3PlanV2ArtifactPublisher } from "./s3PlanV2Publisher.js";
 
 interface FakeS3Op {
@@ -767,16 +773,29 @@ describe("handler dispatch", () => {
     }
     const options = renderChunkMock.mock.calls.map((call) => (call as unknown[])[3]);
     expect(options).toEqual([
-      { maxCaptureWorkers: undefined },
-      { maxCaptureWorkers: Math.max(1, Math.min(5, availableParallelism() - 1)) },
+      { maxCaptureWorkers: undefined, interleaveCapture: true },
+      {
+        maxCaptureWorkers: Math.max(1, Math.min(5, availableParallelism() - 1)),
+        interleaveCapture: true,
+      },
     ]);
     const captures = logged
       .filter((line) => line.includes('"chunk_capture"'))
       .map((line) => JSON.parse(line));
-    expect(captures).toEqual([
-      { event: "chunk_capture", chunkIndex: 0, workers: 5, captureMode: "beginframe" },
-      { event: "chunk_capture", chunkIndex: 0, workers: 5, captureMode: "beginframe" },
-    ]);
+    const capture = {
+      event: "chunk_capture",
+      chunkIndex: 0,
+      workers: 5,
+      captureMode: "beginframe",
+      setupMs: expect.any(Number),
+      chromeMs: expect.any(Number),
+      planHashMs: 1,
+      sessionBootMs: 1,
+      captureStageMs: 1,
+      encodeStageMs: 1,
+      durationMs: 1,
+    };
+    expect(captures).toEqual([capture, capture]);
   });
 
   it("rejects renderChunk when event.PlanHash diverges from plan.json", async () => {
@@ -1612,6 +1631,98 @@ describe("handler — S3 URI allowlist (security: F-004)", () => {
 
     await expect(handler(event, deps)).rejects.toMatchObject({ name: "S3_URI_NOT_ALLOWED" });
     expect(s3.ops).toHaveLength(0);
+  });
+
+  it("rejects a stitchParts range outside the allowed bucket", async () => {
+    process.env.HYPERFRAMES_RENDER_BUCKET = "good-bucket";
+    const s3 = new FakeS3Client();
+    const event: StitchPartsEvent = {
+      Action: "stitchParts",
+      Bucket: "good-bucket",
+      Key: "renders/abc/output.mp4",
+      UploadId: "upload-1",
+      Parts: [{ partNumber: 2, ranges: [{ uri: "s3://evil-bucket/secret", start: 0, end: 4 }] }],
+    };
+    await expect(
+      handler(event, { s3: s3 as unknown as S3Client, skipChromeResolution: true }),
+    ).rejects.toMatchObject({ name: "S3_URI_NOT_ALLOWED" });
+    expect(s3.ops).toHaveLength(0);
+  });
+});
+
+describe("handler — stitch helpers", () => {
+  const event = (uri: string): StitchPartsEvent => ({
+    Action: "stitchParts",
+    Bucket: "bucket",
+    Key: "renders/abc/output.mp4",
+    UploadId: "upload-1",
+    Parts: [
+      { partNumber: 3, ranges: [{ uri, start: 1, end: 4 }] },
+      {
+        partNumber: 4,
+        ranges: [
+          { uri, start: 0, end: 2 },
+          { uri, start: 4, end: 6 },
+        ],
+      },
+    ],
+  });
+
+  it("builds the parts a stitchParts call names and returns their ETags in order", async () => {
+    const s3 = new FakeS3Client();
+    s3.objects.set("s3://bucket/chunks/0.mp4", Buffer.from("abcdef"));
+    const result = await handler(event("s3://bucket/chunks/0.mp4"), {
+      s3: s3 as unknown as S3Client,
+      skipChromeResolution: true,
+    });
+    expect(result).toEqual({ Action: "stitchParts", ETags: ['"part-3"', '"part-4"'] });
+    expect([s3.parts.get(3)?.toString(), s3.parts.get(4)?.toString()]).toEqual(["bcd", "abef"]);
+  });
+
+  it("the stitch helper invokes the function the stack names and fails with its error", async () => {
+    const prev = process.env.HYPERFRAMES_STITCH_FUNCTION;
+    const prevReserved = process.env.HYPERFRAMES_LAMBDA_RESERVED_CONCURRENCY;
+    delete process.env.HYPERFRAMES_STITCH_FUNCTION;
+    expect(stitchHelper()).toBeUndefined();
+    process.env.HYPERFRAMES_STITCH_FUNCTION = "proj-video";
+    try {
+      // A reservation of 8 leaves 7 slots once this assemble holds one.
+      process.env.HYPERFRAMES_LAMBDA_RESERVED_CONCURRENCY = "8";
+      expect(stitchHelper()!.maxInvocations).toBe(7);
+      process.env.HYPERFRAMES_LAMBDA_RESERVED_CONCURRENCY = "-1";
+      expect(stitchHelper()!.maxInvocations).toBe(Infinity);
+      const s3 = new FakeS3Client();
+      s3.objects.set("s3://bucket/chunks/0.mp4", Buffer.from("abcdef"));
+      const invoked: string[] = [];
+      const lambda = {
+        send: async (command: { input: { FunctionName: string; Payload: string } }) => {
+          invoked.push(command.input.FunctionName);
+          const sent = JSON.parse(command.input.Payload) as StitchPartsEvent;
+          if (sent.Parts[0]!.ranges[0]!.uri.endsWith("missing")) {
+            const payload = JSON.stringify({ errorMessage: "NoSuchKey", errorType: "NoSuchKey" });
+            return { FunctionError: "Unhandled", Payload: new TextEncoder().encode(payload) };
+          }
+          const out = await handler(sent, { s3: s3 as unknown as S3Client });
+          return { Payload: new TextEncoder().encode(JSON.stringify(out)) };
+        },
+      } as unknown as LambdaClient;
+      const { send } = stitchHelper(lambda)!;
+      const target = { Bucket: "bucket", Key: "renders/abc/output.mp4", UploadId: "upload-1" };
+      expect(await send(target, event("s3://bucket/chunks/0.mp4").Parts)).toEqual([
+        '"part-3"',
+        '"part-4"',
+      ]);
+      await expect(send(target, event("s3://bucket/missing").Parts)).rejects.toMatchObject({
+        name: "NoSuchKey",
+        message: expect.stringContaining("stitchParts on proj-video failed: NoSuchKey"),
+      });
+      expect(invoked).toEqual(["proj-video", "proj-video"]);
+    } finally {
+      if (prev === undefined) delete process.env.HYPERFRAMES_STITCH_FUNCTION;
+      else process.env.HYPERFRAMES_STITCH_FUNCTION = prev;
+      if (prevReserved === undefined) delete process.env.HYPERFRAMES_LAMBDA_RESERVED_CONCURRENCY;
+      else process.env.HYPERFRAMES_LAMBDA_RESERVED_CONCURRENCY = prevReserved;
+    }
   });
 });
 

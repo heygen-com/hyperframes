@@ -195,6 +195,10 @@ async function main() {
     }
   }
 
+  // The bundled inspector reads its page runtime from beside its own chunk.
+  const inspectorRuntime = join(REPO_ROOT, "packages", "inspector", "dist", "inspection.js");
+  cpSync(inspectorRuntime, join(DIST, "inspection.js"));
+
   copyGsapVendorFiles();
 
   copyMdFiles(join(CLI_ROOT, "src", "docs"), join(DIST, "docs"));

@@ -11,7 +11,8 @@ import { useCaptionStore } from "../../captions/store";
 import { shouldIgnorePlaybackShortcutEvent, SHUTTLE_SPEEDS } from "../lib/playbackShortcuts";
 import { canvasNudgeKeysClaimed } from "../../utils/canvasNudgeGate";
 import { usePlayerStore } from "../store/playerStore";
-import { stepFrameTime, STUDIO_PREVIEW_FPS } from "../lib/time";
+import { stepFrameTime } from "../lib/time";
+import { useLinkedClipPreferences } from "../../utils/linkedClipPreferences";
 import type { PlaybackAdapter } from "../lib/playbackTypes";
 
 interface UsePlaybackKeyboardParams {
@@ -53,7 +54,9 @@ export function usePlaybackKeyboard({
     (deltaFrames: number) => {
       const adapter = getAdapter();
       const currentTime = adapter?.getTime() ?? usePlayerStore.getState().currentTime;
-      seek(stepFrameTime(currentTime, deltaFrames, STUDIO_PREVIEW_FPS));
+      seek(
+        stepFrameTime(currentTime, deltaFrames, useLinkedClipPreferences.getState().compositionFps),
+      );
     },
     [getAdapter, seek],
   );

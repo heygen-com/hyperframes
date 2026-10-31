@@ -1,5 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 
+const counter = vi.hoisted(() => ({ ffts: 0 }));
+vi.mock("../fft", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../fft")>();
+  return {
+    fft: (re: Float64Array, im: Float64Array) => {
+      counter.ffts++;
+      actual.fft(re, im);
+    },
+  };
+});
+
 import { signalProvider, type AudioSignal } from "../audioAnalysis";
 import { STEADY_BEAT_CONFIDENCE, rhythm } from "../audioRhythm";
 import { analyzeMusicFromBuffer, analyzeMusicFromSignal } from "./beatDetection";
@@ -55,6 +66,25 @@ function pad(seconds: number): Float32Array {
 }
 
 const mono = (samples: Float32Array): AudioSignal => ({ sampleRate: RATE, channels: [samples] });
+
+/** Stereo 48 kHz clicks at 120 BPM with a quieter tone on the right. */
+function stereoTrack(seconds: number): AudioSignal {
+  const rate = 48_000;
+  const clicks = (i: number) => {
+    const t = (i / rate) % 0.5;
+    return Math.exp(-t / 0.01) * Math.sin(2 * Math.PI * 1000 * t);
+  };
+  const length = seconds * rate;
+  const left = Float32Array.from({ length }, (_, i) => clicks(i));
+  const right = Float32Array.from({ length }, (_, i) => 0.5 * clicks(i) + 0.1 * Math.sin(i / 7));
+  return { sampleRate: rate, channels: [left, right] };
+}
+
+/** Every clock reading is a full slice later, so the analysis pauses at every step. */
+function pauseAtEveryStep() {
+  let now = 0;
+  return vi.spyOn(performance, "now").mockImplementation(() => (now += 1000));
+}
 
 const nearBpm = (found: number | null, bpm: number) => Math.abs((found ?? 0) - bpm) <= 1;
 
@@ -117,7 +147,7 @@ describe("analyzeMusicFromSignal", () => {
     });
   });
 
-  it("waits on the caller's pause before each long stage", async () => {
+  it("waits on the caller's pause whenever it holds one", async () => {
     const samples = new Float32Array(8 * RATE);
     clicks(samples, grid(0.25, 0.5, 7.5), 0.6);
     const held: (() => void)[] = [];
@@ -127,13 +157,51 @@ describe("analyzeMusicFromSignal", () => {
       done = true;
       return result;
     });
-    for (let stage = 1; stage <= 3; stage++) {
-      await vi.waitFor(() => expect(held).toHaveLength(stage));
+    for (let released = 0; !done; released++) {
+      await vi.waitFor(() => expect(done || held.length > released).toBe(true));
+      if (done) break;
       expect(done).toBe(false);
-      held[stage - 1]!();
+      held[released]!();
     }
     await expect(analysis).resolves.toMatchObject({ sampleRate: RATE });
   });
+
+  it("pauses a 265 s track between short steps: one FFT frame, resample block or score pass", async () => {
+    const clock = pauseAtEveryStep();
+    const fftsAtPause: number[] = [];
+    counter.ffts = 0;
+    const analysis = await analyzeMusicFromSignal(stereoTrack(265), {
+      pause: async () => void fftsAtPause.push(counter.ffts),
+    });
+    clock.mockRestore();
+    expect(nearBpm(analysis.bpm, 120)).toBe(true);
+    const mostFftsBetweenPauses = fftsAtPause.reduce(
+      (most, n, i) => Math.max(most, n - (fftsAtPause[i - 1] ?? 0)),
+      0,
+    );
+    expect(mostFftsBetweenPauses).toBeLessThanOrEqual(2);
+    // Resampling runs before the first FFT; scoring and level mixing after the last.
+    expect(fftsAtPause.filter((n) => n === 0).length).toBeGreaterThan(1000);
+    expect(fftsAtPause.filter((n) => n === counter.ffts).length).toBeGreaterThan(1000);
+  }, 120_000);
+
+  it("finds the same beats, strengths, tempo and levels paused between steps as in one go", async () => {
+    const whole = await analyzeMusicFromSignal(stereoTrack(30));
+    const clock = pauseAtEveryStep();
+    let pauses = 0;
+    const sliced = await analyzeMusicFromSignal(stereoTrack(30), {
+      pause: async () => void pauses++,
+    });
+    clock.mockRestore();
+    expect(pauses).toBeGreaterThan(1000);
+    expect(whole.beatTimes.length).toBeGreaterThan(50);
+    expect(sliced.beatTimes).toEqual(whole.beatTimes);
+    expect(sliced.beatStrengths).toEqual(whole.beatStrengths);
+    expect(sliced.bpm).toBe(whole.bpm);
+    expect(sliced.bpmConfidence).toBe(whole.bpmConfidence);
+    expect(sliced.peak).toBe(whole.peak);
+    expect(sliced.channelData).toEqual(whole.channelData);
+  }, 60_000);
 });
 
 describe("analyzeMusicFromBuffer", () => {

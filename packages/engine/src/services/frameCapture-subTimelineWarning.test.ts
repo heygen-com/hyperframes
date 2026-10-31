@@ -171,7 +171,8 @@ describe("pollSubCompositionTimelines pending-id reporting", () => {
   function pageReturning(enumerateResult: unknown) {
     const matched = { count: 0 };
     const page = {
-      evaluate: vi.fn(async (expr: string) => {
+      evaluate: vi.fn(async (expr: string | (() => unknown)) => {
+        if (typeof expr === "function") return true;
         if (!expr.includes("m.push(")) return false;
         matched.count++;
         return enumerateResult;

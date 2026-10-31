@@ -1225,6 +1225,14 @@ describe("bundleToSingleHtml", () => {
     const bundled = await bundleToSingleHtml(dir);
 
     expect(bundled).toMatch(/__hfVariablesByComp = Object\.assign\([^;]*assets\/blk\/one\.jpg/);
+    const { document } = parseHTML(bundled);
+    const tables = [...document.querySelectorAll("script")].filter((s) =>
+      s.textContent?.includes("__hfVariablesByComp = Object.assign"),
+    );
+    // In <head>, so the runtime binds each instance's text before the composition scripts, which wait for fonts.
+    expect(tables.map((s) => [s.parentElement?.tagName, s.getAttribute("type")])).toEqual([
+      ["HEAD", null],
+    ]);
   });
 
   it("emits per-instance scoped variables for bundled sub-compositions", async () => {
@@ -2128,6 +2136,26 @@ describe("bundleToSingleHtml", () => {
     },
   );
 
+  it("inlines a BT.709-tagged PNG without its tag, so the file's own values show", async () => {
+    const tagged = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAABGNJQ1ABAQABlXPCVgAAAAxJREFUeJxj0NfXBwABHgCOTp25kgAAAABJRU5ErkJggg==",
+      "base64",
+    );
+    const dir = makeTempProject({
+      "index.html": `<div data-composition-id="root" data-width="320" data-height="180"><img id="photo" src="tagged.png"></div>`,
+    });
+    writeFileSync(join(dir, "tagged.png"), tagged);
+    try {
+      const { document } = parseHTML(await bundleToSingleHtml(dir));
+      const src = document.getElementById("photo")?.getAttribute("src") ?? "";
+      const inlined = Buffer.from(src.slice(src.indexOf(",") + 1), "base64");
+      expect(inlined.includes("cICP")).toBe(false);
+      expect(inlined.includes("IDAT")).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it.each(["?v=2", "#sprite", "?v=2#sprite"])(
     "keeps inlined image bytes decodable with suffix %s",
     async (suffix) => {
@@ -2166,6 +2194,37 @@ describe("bundleToSingleHtml", () => {
         const bundled = await bundleToSingleHtml(dir, { inlineAssets });
         const fontUrl = inlineAssets ? inlinedAs("font/woff2", "font-bytes") : "icon.woff2?v=4.7.0";
         expect(styleText(bundled)).toContain(`url('${fontUrl}')`);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.each([true, false])(
+    "resolves mounted scene srcset candidates from their scene with inlineAssets %s",
+    async (inlineAssets) => {
+      const dataUrl = inlinedAs("image/svg+xml", '<svg xmlns="http://www.w3.org/2000/svg"/>');
+      const dir = makeTempProject({
+        "index.html": `<html><body><div data-composition-id="root" data-width="320" data-height="180" data-duration="1" data-no-timeline><div data-composition-id="scene" data-composition-src="scenes/scene.html" data-start="0" data-duration="1"></div></div></body></html>`,
+        "scenes/scene.html": `<div data-composition-id="scene" data-duration="1" data-no-timeline><picture><source id="photo" srcset="hero,red.png?v=2#sprite 1x, ${dataUrl} 2x"><img src="fallback.png"></picture><img id="srcset-only" srcset="hero,red.png 1x, assets/root.png 2x"></div>`,
+        "scenes/hero,red.png": "scene-red-image",
+        "hero,red.png": "root-blue-image",
+        "scenes/fallback.png": "fallback-image",
+        "assets/root.png": "root-image",
+      });
+      try {
+        const bundled = await bundleToSingleHtml(dir, { inlineAssets });
+        const { document } = parseHTML(bundled);
+        const sceneImage = inlineAssets
+          ? inlinedAs("image/png", "scene-red-image")
+          : "scenes/hero%2Cred.png";
+        const rootImage = inlineAssets ? inlinedAs("image/png", "root-image") : "assets/root.png";
+        expect(document.getElementById("photo")?.getAttribute("srcset")).toBe(
+          `${sceneImage}${inlineAssets ? "#sprite" : "?v=2#sprite"} 1x, ${dataUrl} 2x`,
+        );
+        expect(document.getElementById("srcset-only")?.getAttribute("srcset")).toBe(
+          `${sceneImage} 1x, ${rootImage} 2x`,
+        );
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }
@@ -2561,6 +2620,26 @@ describe("bundleToSingleHtml", () => {
     }
   });
 
+  it("reads a font declared in a linked stylesheet, as hyperframes lint does", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><head><link rel="stylesheet" href="fonts.css"><style>#root { font-family: 'Hiragino Sans'; }</style></head><body>
+  <div id="root" data-composition-id="root" data-width="320" data-height="180" data-duration="1"></div>
+  <script>window.__timelines = {};</script>
+</body></html>`,
+      "fonts.css": `@font-face { font-family: 'Hiragino Sans'; src: local('Hiragino Sans W3'); }`,
+    });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await bundleToSingleHtml(dir);
+      const guard = warnSpy.mock.calls
+        .map((call) => String(call[0] ?? ""))
+        .filter((line) => line.includes("[StaticGuard]"));
+      expect(guard).toEqual([]);
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
   it("runs the StaticGuard lint unless staticGuard is false", async () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html><html><head></head><body>
@@ -2702,7 +2781,7 @@ describe("bundleToSingleHtml unknown enum values", () => {
     const bundled = await bundleToSingleHtml(makeSubCompProject('{"accent":"orange"}'));
 
     expect(bundled).toContain("window.__hfVariablesByComp = Object.assign({}, ");
-    expect(bundled).toContain('{ "card": { "accent": "orange" } }');
+    expect(bundled).toContain('{"card":{"accent":"orange"}}');
     expect(bundled).toMatch(/\[data-composition-id="card"\]\s*\{[^}]*--accent:\s*orange/);
     expect(bundled).not.toContain("--accent: green");
   });

@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/parsers",
-  "version": "0.8.200",
+  "version": "0.8.224",
   "repository": {
     "type": "git",
     "url": "https://github.com/heygen-com/hyperframes",
@@ -130,6 +130,12 @@
       "import": "./src/mediaAlpha.ts",
       "types": "./src/mediaAlpha.ts"
     },
+    "./media-streams": {
+      "bun": "./src/mediaStreams.ts",
+      "node": "./dist/mediaStreams.js",
+      "import": "./src/mediaStreams.ts",
+      "types": "./src/mediaStreams.ts"
+    },
     "./asset-resolution": {
       "bun": "./src/assetResolution.ts",
       "node": "./dist/assetResolution.js",
@@ -246,6 +252,10 @@
       "./media-alpha": {
         "import": "./dist/mediaAlpha.js",
         "types": "./dist/mediaAlpha.d.ts"
+      },
+      "./media-streams": {
+        "import": "./dist/mediaStreams.js",
+        "types": "./dist/mediaStreams.d.ts"
       },
       "./asset-resolution": {
         "import": "./dist/assetResolution.js",

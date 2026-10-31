@@ -1,12 +1,15 @@
 import { runCommand } from "citty";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { consumeCommandResult } from "../utils/commandResult.js";
 import benchmark from "./benchmark.js";
 
-const producer = vi.hoisted(() => ({ executeRenderJob: vi.fn<() => Promise<void>>() }));
+const producer = vi.hoisted(() => ({
+  executeRenderJob:
+    vi.fn<(_job: unknown, _projectDir: string, outputPath: string) => Promise<void>>(),
+}));
 vi.mock("../utils/producer.js", () => ({
   loadProducer: async () => ({
     createRenderJob: (config: unknown) => ({ config }),
@@ -89,5 +92,23 @@ describe.each([true, false])("benchmark (json=%s)", (json) => {
     vi.mocked(Date.now).mockReturnValue(0);
 
     expect(await runBenchmark(json)).toMatchObject({ exitCode: 0, kind: "success" });
+  });
+
+  it("isolates output between invocations and removes temporary renders", async () => {
+    producer.executeRenderJob.mockImplementation(async (_job, _projectDir, outputPath) => {
+      mkdirSync(dirname(outputPath), { recursive: true });
+      writeFileSync(outputPath, "benchmark output");
+    });
+
+    await runBenchmark(json);
+    await runBenchmark(json);
+
+    const outputDirs = [0, 5].map((index) => {
+      const outputPath = producer.executeRenderJob.mock.calls[index]?.[2];
+      expect(outputPath).toBeDefined();
+      return dirname(outputPath ?? "");
+    });
+    expect(outputDirs[0]).not.toBe(outputDirs[1]);
+    expect(outputDirs.every((dir) => !existsSync(dir))).toBe(true);
   });
 });

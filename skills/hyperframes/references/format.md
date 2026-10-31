@@ -150,6 +150,7 @@ Studio's Detach audio writes a muted `<video>` and an `<audio>` of the same file
 | `media_missing_id`, `media_crossorigin_breaks_preview` | Give every `<audio>` an `id`; drop `crossorigin`                                                       |
 | `gsap_timeline_registered_before_async_build`          | Register the timeline at the end of the async callback                                                 |
 | `standalone_composition_wrapped_in_template`           | Only scene files use `<template>`                                                                      |
+| `subcomposition_linked_style_names_root_id`            | A linked sheet cannot style a scene's root by id: use an inline `<style>`, or select a child           |
 | `subcomposition_root_styled_by_class`                  | Style a scene's root as `#root`                                                                        |
 | `subcomposition_blanks_before_host`                    | Make the scene's slot span the time it should show                                                     |
 | `clip_ends_past_root_duration`                         | Raise the root's `data-duration`                                                                       |

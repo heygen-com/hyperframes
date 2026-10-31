@@ -21,7 +21,7 @@
 
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Duration, RemovalPolicy, Size } from "aws-cdk-lib";
+import { ArnFormat, Duration, RemovalPolicy, Size, Stack } from "aws-cdk-lib";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
@@ -120,6 +120,7 @@ export class HyperframesRenderStack extends Construct {
         HYPERFRAMES_LAMBDA_CHROME_SOURCE: chromeSource,
         HYPERFRAMES_RENDER_BUCKET: this.bucket.bucketName,
         HYPERFRAMES_LAMBDA_RESERVED_CONCURRENCY: String(props.reservedConcurrency ?? -1),
+        HYPERFRAMES_STITCH_FUNCTION: `${projectName}-render`,
       },
     });
 
@@ -130,6 +131,18 @@ export class HyperframesRenderStack extends Construct {
     this.bucket.grantReadWrite(this.renderFunction);
     this.renderFunction.addToRolePolicy(
       new iam.PolicyStatement({ actions: ["lambda:GetAccountSettings"], resources: ["*"] }),
+    );
+    const renderFunctionArnWithoutRoleCycle = Stack.of(this).formatArn({
+      service: "lambda",
+      resource: "function",
+      resourceName: `${projectName}-render`,
+      arnFormat: ArnFormat.COLON_RESOURCE_NAME,
+    });
+    this.renderFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["lambda:InvokeFunction"],
+        resources: [renderFunctionArnWithoutRoleCycle],
+      }),
     );
 
     const stateMachineLogGroup = new logs.LogGroup(this, "RenderStateMachineLogGroup", {

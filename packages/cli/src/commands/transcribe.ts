@@ -1,8 +1,8 @@
 import { createProgressWriter } from "../whisper/progress.js";
 import { failCommand, setCommandExitCode } from "../utils/commandResult.js";
-import { defineCommand } from "citty";
+import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
-import * as clack from "@clack/prompts";
+import * as clack from "../ui/prompts.js";
 import { c } from "../ui/colors.js";
 import { DEFAULT_MODEL } from "../whisper/manager.js";
 import { trackTranscribeUnavailable } from "../telemetry/events.js";
@@ -14,10 +14,15 @@ import {
   type TranscribeEngineEvent,
   type TranscribeResult,
 } from "../api/transcribe.js";
+import { jsonFailure } from "../utils/jsonError.js";
 
 export const examples: Example[] = [
   ["Transcribe an audio file", "hyperframes transcribe audio.mp3"],
   ["Transcribe a video file", "hyperframes transcribe video.mp4"],
+  [
+    "Transcribe on HeyGen, with speakers",
+    "hyperframes transcribe interview.mp4 --engine heygen --speakers",
+  ],
   ["Use a larger model for better accuracy", "hyperframes transcribe audio.mp3 --model medium.en"],
   ["Set language to filter non-target speech", "hyperframes transcribe audio.mp3 --language en"],
   ["Import an existing SRT file", "hyperframes transcribe subtitles.srt"],
@@ -51,8 +56,13 @@ export default defineCommand({
     engine: {
       type: "string",
       description:
-        "ASR engine: auto (Parakeet if installed and it covers --language, else whisper), parakeet, or whisper. Default: auto. Parakeet is more accurate and faster; install it with `hyperframes models install parakeet`.",
+        "ASR engine: auto (Parakeet if installed and it covers --language, else whisper), parakeet, whisper, or heygen (HeyGen's speech model; needs an API key, charged to API credits). Default: auto. Parakeet is more accurate and faster than whisper; install it with `hyperframes models install parakeet`.",
       alias: "e",
+    },
+    speakers: {
+      type: "boolean",
+      description: "With --engine heygen: label each word with its speaker",
+      default: false,
     },
     model: {
       type: "string",
@@ -118,6 +128,7 @@ export default defineCommand({
         input: args.input,
         dir: args.dir,
         engine: args.engine,
+        speakers: args.speakers,
         model: args.model,
         language: args.language,
         installRuntime: args["runtime-install"],
@@ -190,7 +201,7 @@ function showEngine(
 
 function failWith(message: string, json: boolean): never {
   if (json) {
-    console.log(JSON.stringify({ ok: false, error: message }));
+    console.log(JSON.stringify(jsonFailure("runtime_error", message)));
   } else {
     console.error(c.error(message));
   }
@@ -227,13 +238,13 @@ function reportRunFailure(
 ): void {
   if (err.code === "whisper_unavailable") return reportWhisperUnavailable(err, spin, opts);
   if (err.code === "cancelled" || err.code === "caption_write_failed") {
-    if (opts.json) console.log(JSON.stringify({ ok: false, error: err.message }));
+    if (opts.json) console.log(JSON.stringify(jsonFailure("runtime_error", err.message)));
     else spin?.stop(err.code === "cancelled" ? c.warn(err.message) : c.error(err.message));
     setCommandExitCode(err.code === "cancelled" ? 130 : 1);
     return;
   }
   if (opts.json) {
-    console.log(JSON.stringify({ ok: false, error: err.message }));
+    console.log(JSON.stringify(jsonFailure("runtime_error", err.message)));
   } else {
     spin?.stop(c.error(`Transcription failed: ${err.message}`));
   }

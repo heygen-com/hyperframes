@@ -105,7 +105,7 @@ describe("blitHdrVideoLayer", () => {
           frameCount: 2,
           scratch: Buffer.alloc(frameSize),
           mediaStart,
-          videoStreamLeadSeconds: lead,
+          videoStartSeconds: lead,
         };
         await blitHdrVideoLayer(
           canvas,

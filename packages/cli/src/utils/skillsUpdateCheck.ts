@@ -6,7 +6,10 @@
 // check on their own, but they DO run render/lint/validate — so we piggyback
 // the reminder on the commands they already run.
 
-import { readConfig, readConfigFresh, writeConfig } from "../telemetry/config.js";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { CONFIG_PATH, readConfig, readConfigFresh, writeConfig } from "../telemetry/config.js";
+import { isUnattended } from "./attendedTerminal.js";
 import { hostAnswers } from "./hostAnswers.js";
 import { checkSkills } from "./skillsManifest.js";
 import { updateCheckDisabled } from "./updateCheck.js";
@@ -99,6 +102,26 @@ export function skillsCheckDue(): boolean {
   return !cacheFresh(readConfig().lastSkillsCheck, Date.now());
 }
 
+/** True at most once a day per project; records the showing. Unreadable state counts as never shown. */
+function claimDailyNotice(project: string, now = Date.now()): boolean {
+  const noticeFile = join(dirname(CONFIG_PATH), "skills-notice.json");
+  let shown: Record<string, number> = {};
+  try {
+    shown = JSON.parse(readFileSync(noticeFile, "utf-8")) as Record<string, number>;
+  } catch {
+    // first notice, or a damaged file that the write below replaces
+  }
+  if (now - (shown[project] ?? 0) < CHECK_INTERVAL_MS) return false;
+  const kept = Object.entries(shown).filter(([, at]) => now - at < CHECK_INTERVAL_MS);
+  try {
+    mkdirSync(dirname(noticeFile), { recursive: true, mode: 0o700 });
+    writeFileSync(noticeFile, JSON.stringify(Object.fromEntries([...kept, [project, now]])));
+  } catch {
+    return false;
+  }
+  return true;
+}
+
 /** The stale-skills nudge text, or null when nothing is outdated or missing. */
 function skillsNoticeText(meta: SkillsUpdateMeta): string | null {
   const total = meta.outdated + meta.missing;
@@ -108,11 +131,13 @@ function skillsNoticeText(meta: SkillsUpdateMeta): string | null {
 }
 
 /**
- * Print a one-line nudge to stderr if installed skills are stale. Off in CI, dev,
- * HYPERFRAMES_NO_UPDATE_CHECK and HYPERFRAMES_SKIP_SKILLS; on without a TTY.
+ * Print a one-line nudge to stderr if installed skills are stale, at most once a day per project.
+ * Off in CI, dev, HYPERFRAMES_NO_UPDATE_CHECK and HYPERFRAMES_SKIP_SKILLS. Unattended, only
+ * missing skills count: an agent without them cannot do the work, an outdated one still can.
  */
-export function printSkillsUpdateNotice(): void {
+export function printSkillsUpdateNotice(cwd: string = process.cwd()): void {
   if (skillsNoticeOff()) return;
-  const text = skillsNoticeText(getSkillsUpdateMeta());
-  if (text) process.stderr.write(text);
+  const meta = getSkillsUpdateMeta();
+  const text = skillsNoticeText(isUnattended() ? { ...meta, outdated: 0 } : meta);
+  if (text && claimDailyNotice(resolve(cwd))) process.stderr.write(text);
 }

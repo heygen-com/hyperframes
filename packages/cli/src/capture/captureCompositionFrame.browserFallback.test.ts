@@ -74,6 +74,7 @@ function fakeBrowser() {
     evaluate: vi.fn(async () => undefined),
     setRequestInterception: vi.fn(async (_on: boolean) => undefined),
     on: vi.fn((_event: string, _handler: (request: unknown) => void) => undefined),
+    once: vi.fn((_event: string, _handler: () => void) => undefined),
   };
   return {
     browser: {
@@ -267,5 +268,14 @@ describe("openSettledCompositionPage when nothing may listen", () => {
     expect(launched().pipe).toBe(true);
     expect(launched().args).toEqual(["--headless", HYPERFRAMES_BROWSER_MARKER_ARG]);
     expect(opened.page.setRequestInterception).not.toHaveBeenCalled();
+  });
+
+  it("asks the page to replay skipped frames, so a still shows what playback shows", async () => {
+    const opened = fakeBrowser();
+    mocks.launch.mockResolvedValue(opened.browser);
+    await openSettledCompositionPage(HTML, "http://127.0.0.1:3000", OPTIONS);
+    expect(opened.page.evaluateOnNewDocument).toHaveBeenCalledWith(
+      "window.__HF_REPLAY_SKIPPED_FRAMES = true",
+    );
   });
 });

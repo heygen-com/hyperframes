@@ -21,7 +21,12 @@ runs:
         restore-keys: |
           bun-${{ runner.os }}-
 
+    # Lint and format need neither binary; skip their install-time downloads.
+    - uses: ./.github/actions/prepare-ffmpeg-bin
+
     - shell: bash
+      env:
+        PUPPETEER_SKIP_DOWNLOAD: "true"
       run: bun install --frozen-lockfile
 
     - shell: bash

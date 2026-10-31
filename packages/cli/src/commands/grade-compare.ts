@@ -1,4 +1,3 @@
-import { failCommand } from "../utils/commandResult.js";
 import {
   copyFileSync,
   existsSync,
@@ -8,6 +7,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { readJsonFileText } from "../utils/jsonFlag.js";
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import {
@@ -18,7 +18,7 @@ import {
   serializeHfColorGrading,
 } from "@hyperframes/core";
 import { gsapCdnDist } from "@hyperframes/core/gsap-cdn";
-import { defineCommand } from "citty";
+import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
 import { openSettledCompositionPage, runFfmpegOnce } from "../capture/captureCompositionFrame.js";
 import { findFFmpeg } from "../browser/ffmpeg.js";
@@ -29,6 +29,8 @@ import { displayPathFromBase, readOptionalString, resolveFromBase } from "../uti
 import { trackCompareSheet } from "../telemetry/events.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
 import { withMeta } from "../utils/updateCheck.js";
+import { failCaught } from "../utils/jsonError.js";
+import { CliUsageError } from "../utils/commandResult.js";
 
 const COMPOSITION_ID = "grade-compare";
 const COMPOSITION_DURATION = "1";
@@ -213,7 +215,7 @@ export function parseGradesFile(filePath: string): GradeCompareCell[] {
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(readFileSync(filePath, "utf-8"));
+    parsed = JSON.parse(readJsonFileText(filePath));
   } catch (err) {
     throw new Error(`Could not parse grades JSON: ${normalizeErrorMessage(err)}`);
   }
@@ -243,7 +245,7 @@ export function resolveLutCells(luts: string): GradeCompareCell[] {
     .map((part) => part.trim())
     .filter(Boolean);
   if (paths.length === 0) {
-    throw new Error("--luts must include at least one LUT path");
+    throw new CliUsageError("--luts must include at least one LUT path");
   }
   return paths.map((lutPath) =>
     validateCell(basename(lutPath, extname(lutPath)), { lut: { src: lutPath } }),
@@ -267,12 +269,12 @@ export function parseGradeCompareArgs(args: {
   timeout?: unknown;
 }): ParsedGradeCompareArgs {
   const frameArg = readOptionalString(args.for);
-  if (!frameArg) throw new Error("--for <path> is required");
+  if (!frameArg) throw new CliUsageError("--for <path> is required");
 
   const gradesArg = readOptionalString(args.grades);
   const lutsArg = readOptionalString(args.luts);
   if (Boolean(gradesArg) === Boolean(lutsArg)) {
-    throw new Error("Exactly one of --grades or --luts is required");
+    throw new CliUsageError("Exactly one of --grades or --luts is required");
   }
 
   const projectDir = resolve(readOptionalString(args.project) ?? process.cwd());
@@ -685,13 +687,12 @@ export default defineCommand({
         console.log(`\n${c.success("◇")}  Grade comparison saved to ${sheet}`);
       }
     } catch (err) {
-      const message = normalizeErrorMessage(err);
-      if (jsonRequested) {
-        printJson({ ok: false, error: message });
-      } else {
-        console.error(`\n${c.error("✗")} Grade compare failed: ${message}`);
-      }
-      failCommand();
+      failCaught(
+        err,
+        jsonRequested,
+        (m) => `\n${c.error("✗")} Grade compare failed: ${m}`,
+        printJson,
+      );
     } finally {
       if (preparedDir) {
         rmSync(preparedDir, { recursive: true, force: true });

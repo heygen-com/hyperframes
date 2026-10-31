@@ -17,6 +17,7 @@ import { fetchStackOutputs, locateSamTemplate, samDeploy } from "./sam.js";
 import { repoRoot } from "./repoRoot.js";
 import { DEFAULT_STACK_NAME, readStackOutputs, writeStackOutputs } from "./state.js";
 import { pushVideoImage, type VideoArch } from "./videoImage.js";
+import { warmFunction } from "./warm.js";
 
 export interface DeployArgs {
   stackName: string;
@@ -29,6 +30,7 @@ export interface DeployArgs {
   videoArch: VideoArch;
   /** Override the handler-ZIP rebuild step. Useful for CI runs that already built it. */
   skipBuild: boolean;
+  warm: boolean;
 }
 
 const DEFAULT_REGION = "us-east-1";
@@ -44,6 +46,7 @@ export async function runDeploy(args: Partial<DeployArgs> = {}): Promise<void> {
     lambdaMemoryMb: args.lambdaMemoryMb ?? DEFAULT_MEMORY_MB,
     videoArch: args.videoArch ?? "arm64",
     skipBuild: args.skipBuild ?? false,
+    warm: args.warm ?? true,
   };
 
   if (resolved.videoArch === "arm64" && resolved.chromeSource !== "sparticuz") {
@@ -96,22 +99,8 @@ export async function runDeploy(args: Partial<DeployArgs> = {}): Promise<void> {
     deployedAt: new Date().toISOString(),
   });
 
-  if (resolved.reservedConcurrency === -1) {
-    console.log(
-      c.warn(
-        "Removed the stack's reserved concurrency; each render now sizes itself to the account.",
-      ),
-    );
-  } else if (
-    resolved.reservedConcurrency === undefined &&
-    outputs.reservedConcurrency !== undefined
-  ) {
-    console.log(
-      c.warn(
-        `Kept the stack's reserved concurrency of ${outputs.reservedConcurrency}. Pass --concurrency=N to change it.`,
-      ),
-    );
-  }
+  warmVideoFunction(outputs.videoFunctionName, resolved);
+  reportReservedConcurrency(outputs.reservedConcurrency, resolved);
 
   console.log();
   console.log(c.success("Stack deployed."));
@@ -124,6 +113,32 @@ export async function runDeploy(args: Partial<DeployArgs> = {}): Promise<void> {
   console.log(`  ${c.dim("State file:")}     ${resolve(statePath)}`);
   console.log();
   console.log(c.dim(`Render with: hyperframes lambda render <project-dir>`));
+}
+
+function reportReservedConcurrency(kept: number | undefined, args: DeployArgs): void {
+  if (args.reservedConcurrency === -1) {
+    console.log(
+      c.warn(
+        "Removed the stack's reserved concurrency; each render now sizes itself to the account.",
+      ),
+    );
+  } else if (args.reservedConcurrency === undefined && kept !== undefined) {
+    console.log(
+      c.warn(
+        `Kept the stack's reserved concurrency of ${kept}. Pass --concurrency=N to change it.`,
+      ),
+    );
+  }
+}
+
+function warmVideoFunction(functionName: string | undefined, args: DeployArgs): void {
+  if (!args.warm || !functionName) return;
+  console.log(c.dim("→ Warming up the video function"));
+  try {
+    warmFunction({ functionName, region: args.region, awsProfile: args.awsProfile });
+  } catch (error) {
+    console.log(c.warn(`Warm-up skipped, the deploy is fine: ${(error as Error).message}`));
+  }
 }
 
 /** Checkout: build the ZIP from source. Otherwise: stage the adapter's pinned prebuilt ZIP. */

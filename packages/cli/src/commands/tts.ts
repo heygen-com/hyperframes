@@ -1,9 +1,10 @@
 import { failCommand, failUsage } from "../utils/commandResult.js";
 import { isTextFile } from "../utils/textFile.js";
 // fallow-ignore-file code-duplication
-import { defineCommand } from "citty";
+import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
 import { readFileSync } from "node:fs";
+import { failureMessage, jsonFailure } from "../utils/jsonError.js";
 
 export const examples: Example[] = [
   ["Generate speech from text", 'hyperframes tts "Welcome to HyperFrames"'],
@@ -22,7 +23,7 @@ export const examples: Example[] = [
   ["List available voices", "hyperframes tts --list"],
 ];
 import { resolve } from "node:path";
-import * as clack from "@clack/prompts";
+import * as clack from "../ui/prompts.js";
 import { c } from "../ui/colors.js";
 import { errorBox } from "../ui/format.js";
 import {
@@ -99,7 +100,7 @@ export default defineCommand({
     const input = args["text-file"] ?? args.input;
     if (!input) {
       console.error(c.error("Provide text to speak, or use --list to see available voices."));
-      failCommand();
+      failUsage();
     }
 
     let text: string;
@@ -125,7 +126,7 @@ export default defineCommand({
 
     if (!Number.isFinite(speed) || speed < 0.1 || speed > 3) {
       console.error(c.error("Speed must be a number between 0.1 and 3.0"));
-      failCommand();
+      failUsage();
     }
 
     const inferredLang = inferLangFromVoiceId(voice);
@@ -134,7 +135,7 @@ export default defineCommand({
       const requested = String(args.lang).toLowerCase();
       if (!isSupportedLang(requested)) {
         errorBox("Invalid --lang", `Got "${args.lang}". Must be one of: ${langList}.`);
-        failCommand();
+        failUsage();
       }
       lang = requested;
     }
@@ -189,9 +190,9 @@ export default defineCommand({
         }
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = failureMessage(err);
       if (args.json) {
-        console.log(JSON.stringify({ ok: false, error: message }));
+        console.log(JSON.stringify(jsonFailure("runtime_error", message)));
       } else {
         spin?.stop(c.error(`Speech synthesis failed: ${message}`));
       }

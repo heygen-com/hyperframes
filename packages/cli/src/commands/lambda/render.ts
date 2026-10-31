@@ -13,12 +13,13 @@ import type {
 } from "@hyperframes/aws-lambda/sdk";
 import type { CanvasResolution, DistributedFps } from "@hyperframes/core";
 import { c } from "../../ui/colors.js";
+import type { DeliveryFlagValues } from "../../utils/deliveryFlags.js";
 import {
   reportVariableIssues,
   resolveVariablesArg,
   validateVariablesAgainstProject,
 } from "../../utils/variables.js";
-import { warnOnDimensionMismatch } from "./_dimensions.js";
+import { resolveOutputResolutionFromSize } from "./_dimensions.js";
 import { videoArchitecture, requireStack, type StackOutputs, stateFilePath } from "./state.js";
 
 // Dynamic-import the SDK so tsup keeps it out of the static-import head of
@@ -27,7 +28,7 @@ async function loadSDK(): Promise<typeof import("@hyperframes/aws-lambda/sdk")> 
   return import("@hyperframes/aws-lambda/sdk");
 }
 
-export interface RenderArgs {
+export interface RenderArgs extends DeliveryFlagValues {
   projectDir: string;
   stackName: string;
   siteId?: string;
@@ -84,13 +85,15 @@ export async function runRender(args: RenderArgs): Promise<void> {
   const stack = requireStack(args.stackName);
   const projectDir = resolvePath(args.projectDir);
 
-  warnOnDimensionMismatch({
-    projectDir,
-    cliWidth: args.width,
-    cliHeight: args.height,
-    outputResolution: args.outputResolution,
-    quiet: args.json,
-  });
+  args = {
+    ...args,
+    outputResolution: resolveOutputResolutionFromSize({
+      projectDir,
+      cliWidth: args.width,
+      cliHeight: args.height,
+      outputResolution: args.outputResolution,
+    }),
+  };
 
   // Resolve --variables / --variables-file using the same parser the local
   // `hyperframes render` uses. `resolveVariablesArg` exits(1) with a friendly
@@ -253,6 +256,10 @@ export function buildLambdaRenderConfig(
     chunkSize: args.chunkSize,
     maxParallelChunks: args.maxParallelChunks,
     targetChunkFrames: args.targetChunkFrames,
+    keyframeIntervalSeconds: args.keyframeIntervalSeconds,
+    proresProfile: args.proresProfile,
+    maxBitrate: args.maxBitrate,
+    bufferSize: args.bufferSize,
     workerConcurrency,
     runtimeCap: "lambda",
     variables,

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { redactTelemetryString } from "@hyperframes/core";
+import { CaptureFailure } from "@hyperframes/engine";
 import type { ProducerLogger } from "../../logger.js";
 import { normalizeErrorMessage } from "../../utils/errorMessage.js";
 
@@ -598,13 +599,101 @@ export interface ObserveRenderStageOptions {
    * Defaults to "stage still running".
    */
   heartbeatMessage?: string;
+  stall?: StageStallRule;
 }
+
+/** Watches a stage's `progress()`; any change, in either direction, is progress. */
+export interface StageStallRule {
+  progress: () => number;
+  /** Allowed silence once `progress()` has changed in the current attempt. */
+  noProgressMs: number;
+  /** Allowed silence before the current attempt's first change. */
+  firstProgressMs: number;
+  /** True once every unit of work has landed: nothing more can change `progress()`, only the tail work runs. */
+  complete?: () => boolean;
+  /** Allowed silence once `complete()` holds; defaults to `noProgressMs`. */
+  tailMs?: number;
+  detail?: () => string | undefined;
+  attemptOpened?: () => void;
+}
+
+/**
+ * Classified like the per-call protocol timeout it replaces, so the capture retry ladder retries it.
+ * Not retryable on the wire: the producer already spent its retries on it.
+ */
+export class RenderStageStalledError extends CaptureFailure {
+  readonly code = "RENDER_STAGE_STALLED";
+  readonly owner = "system" as const;
+  readonly retryable = false as const;
+
+  constructor(phase: string, silentMs: number, progress: number, detail?: string) {
+    super({
+      kind: "protocol_timeout",
+      message: `[Render] ${phase} stalled: no progress for ${silentMs}ms (stuck at ${progress}).${detail ? ` ${detail}` : ""}`,
+    });
+    this.name = "RenderStageStalledError";
+  }
+}
+
+/** Opens a capture attempt: a fresh no-progress window, and a signal the rule aborts when that window runs out. */
+export type OpenStallAttempt = (parent?: AbortSignal) => AbortSignal;
+
+const STALL_POLL_MS = 5_000;
+
+// A trip aborts the open attempt and gives the stage one more window to retry or settle; a trip with
+// no live attempt fails the stage.
+function watchStall(phase: string, rule: StageStallRule) {
+  const detail = rule.detail ?? (() => undefined);
+  let last = rule.progress();
+  let budgetMs = rule.firstProgressMs;
+  let lastChangeAt = Date.now();
+  let attempt: AbortController | undefined;
+  let timer: ReturnType<typeof setInterval> | undefined;
+  let inTail = false;
+  const restartWindow = (ms: number) => {
+    last = rule.progress();
+    budgetMs = ms;
+    lastChangeAt = Date.now();
+  };
+  const tripped = new Promise<never>((_, reject) => {
+    timer = setInterval(
+      () => {
+        const current = rule.progress();
+        if (rule.complete?.() && !inTail) {
+          inTail = true;
+          return restartWindow(rule.tailMs ?? rule.noProgressMs);
+        }
+        if (current !== last) return restartWindow(rule.noProgressMs);
+        if (Date.now() - lastChangeAt < budgetMs) return;
+        const error = new RenderStageStalledError(phase, budgetMs, current, detail());
+        if (attempt && !attempt.signal.aborted) {
+          attempt.abort(error);
+          return restartWindow(rule.noProgressMs);
+        }
+        clearInterval(timer);
+        reject(error);
+      },
+      Math.min(STALL_POLL_MS, rule.noProgressMs, rule.firstProgressMs),
+    );
+  });
+  const openAttempt: OpenStallAttempt = (parent) => {
+    attempt = new AbortController();
+    inTail = false;
+    rule.attemptOpened?.();
+    restartWindow(rule.firstProgressMs);
+    return parent ? AbortSignal.any([parent, attempt.signal]) : attempt.signal;
+  };
+  const stalledBy = (): unknown => (attempt?.signal.aborted ? attempt.signal.reason : undefined);
+  return { tripped, openAttempt, stalledBy, stop: () => clearInterval(timer) };
+}
+
+const openUnwatchedAttempt: OpenStallAttempt = (parent) => parent ?? new AbortController().signal;
 
 export async function observeRenderStage<T>(
   recorder: RenderObservabilityRecorder,
   phase: string,
   data: RenderObservationData | undefined,
-  fn: () => Promise<T>,
+  fn: (openAttempt: OpenStallAttempt) => Promise<T>,
   options: ObserveRenderStageOptions = {},
 ): Promise<T> {
   const heartbeatMessage = options.heartbeatMessage ?? "stage still running";
@@ -627,15 +716,19 @@ export async function observeRenderStage<T>(
     heartbeatTimer.unref?.();
   };
   scheduleNextHeartbeat();
+  const stall = options.stall ? watchStall(phase, options.stall) : undefined;
   const clearHeartbeats = () => {
     clearTimeout(heartbeatTimer);
+    stall?.stop();
   };
   try {
-    const result = await fn();
+    const run = fn(stall?.openAttempt ?? openUnwatchedAttempt);
+    const result = await (stall ? Promise.race([run, stall.tripped]) : run);
     clearHeartbeats();
     recorder.stageEnd(phase, startedAt, data);
     return result;
-  } catch (error) {
+  } catch (caught) {
+    const error = stall?.stalledBy() ?? caught;
     clearHeartbeats();
     recorder.stageError(phase, startedAt, error, data);
     throw error;

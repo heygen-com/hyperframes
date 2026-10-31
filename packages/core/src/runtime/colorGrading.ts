@@ -25,6 +25,7 @@ import {
   COLOR_GRADING_SOURCE_HIDDEN_ATTR,
   COLOR_GRADING_AUTHORED_OPACITY_ATTR,
 } from "../colorGrading";
+import { effectiveColorGrading, HF_COLOR_GROUP_ATTR, HF_COLOR_GROUP_TAG } from "../colorGroups";
 import {
   compileHfColorCurve,
   compileHfHueCurve,
@@ -41,6 +42,7 @@ import {
 } from "../colorLuts";
 import { copyMediaVisualStyles } from "../inline-scripts/parityContract";
 import { readVariablesForElement } from "./variableScope";
+import { mediaElementTime } from "./mediaClock";
 import { swallow } from "./diagnostics";
 import { createRecordFilter } from "./mutationRecords";
 import { findInjectedRenderFrame } from "./renderFrameSibling";
@@ -319,6 +321,8 @@ type LutCacheEntry =
 const LUT_CACHE = new Map<string, LutCacheEntry>();
 const COLOR_GRADING_CANVAS_ATTR = "data-hf-color-grading-canvas";
 const COLOR_GRADING_CANVAS_CLASS = "__hf_color_grading_canvas__";
+const MAX_GRADING_CANVAS_PIXELS = 1 << 24;
+const MAX_GRADING_CANVAS_SIDE = 8192;
 
 /** Captures authored media opacity before animation or grading can mutate it. */
 export function installAuthoredOpacityCapture(): void {
@@ -365,8 +369,9 @@ const ADVANCED_TEXTURE_MAX_X_GLSL = `${HF_COLOR_CURVE_LUT_SIZE - 1}.0`;
 const ADVANCED_TEXTURE_HEIGHT_GLSL = `${ADVANCED_TEXTURE_HEIGHT}.0`;
 const ADVANCED_CONFIG_Y_GLSL = `${(ADVANCED_CONFIG_ROW + 0.5) / ADVANCED_TEXTURE_HEIGHT}`;
 
+// The member's own grade, else its grade group's — normalized in the member's variable scope.
 function readColorGradingAttribute(element: Element): ResolvedHfColorGrading | null {
-  const raw = element.getAttribute(HF_COLOR_GRADING_ATTR);
+  const raw = effectiveColorGrading(element, element.ownerDocument);
   if (raw == null) return null;
   return normalizeHfColorGradingWithVariables(raw, readVariablesForElement(element));
 }
@@ -1623,9 +1628,10 @@ const KUWAHARA_RESOLVE_FRAGMENT_SHADER = [
   "}",
 ].join("\n");
 
-const COLOR_GRADING_SOURCE_SELECTOR = HF_COLOR_GRADING_SOURCE_TAGS.map(
-  (tag) => `${tag}[${HF_COLOR_GRADING_ATTR}]`,
-).join(", ");
+const COLOR_GRADING_SOURCE_SELECTOR = HF_COLOR_GRADING_SOURCE_TAGS.flatMap((tag) => [
+  `${tag}[${HF_COLOR_GRADING_ATTR}]`,
+  `${tag}[${HF_COLOR_GROUP_ATTR}]`,
+]).join(", ");
 
 function isColorGradingMediaElement(value: Element): value is ColorGradingMediaElement {
   return (
@@ -2845,7 +2851,7 @@ function parseObjectPosition(value: string): { x: number; y: number } {
 }
 
 // fallow-ignore-next-line complexity
-function calculateObjectFitUv(
+export function calculateObjectFitUv(
   boxWidth: number,
   boxHeight: number,
   sourceWidth: number,
@@ -2876,7 +2882,8 @@ function calculateObjectFitUv(
   }
   const position = parseObjectPosition(objectPosition || "center");
   const offsetX = ((boxWidth - drawWidth) * position.x) / boxWidth;
-  const offsetY = ((boxHeight - drawHeight) * position.y) / boxHeight;
+  const positionFromBottom = 1 - position.y;
+  const offsetY = ((boxHeight - drawHeight) * positionFromBottom) / boxHeight;
   return {
     scaleX: drawWidth / boxWidth,
     scaleY: drawHeight / boxHeight,
@@ -2897,6 +2904,16 @@ function ensureParentPosition(entry: ColorGradingEntry, parent: HTMLElement): vo
 
 function resolvedLayoutSize(primary: number, fallback: number): number {
   return Math.max(0, Math.round(primary > 0 ? primary : fallback));
+}
+
+function fitToGpuLimits(width: number, height: number): { width: number; height: number } {
+  const scale = Math.min(
+    1,
+    Math.sqrt(MAX_GRADING_CANVAS_PIXELS / (width * height)),
+    MAX_GRADING_CANVAS_SIDE / Math.max(width, height),
+  );
+  const fitted = { width: Math.floor(width * scale), height: Math.floor(height * scale) };
+  return scale < 1 ? fitted : { width: Math.round(width), height: Math.round(height) };
 }
 
 function updateCanvasLayout(
@@ -2931,8 +2948,7 @@ function updateCanvasLayout(
     return null;
   }
   const pixelRatio = Math.max(1, window.devicePixelRatio || 1);
-  const width = Math.round(cssWidth * pixelRatio);
-  const height = Math.round(cssHeight * pixelRatio);
+  const { width, height } = fitToGpuLimits(cssWidth * pixelRatio, cssHeight * pixelRatio);
   if (canvas.width !== width) canvas.width = width;
   if (canvas.height !== height) canvas.height = height;
   return { width, height };
@@ -3496,6 +3512,11 @@ function renderGradedFrame(
     frameTime,
   );
   drawFullscreenQuad(gl, { quad: program.quad, position: shader.position });
+  if (gl.drawingBufferWidth < layout.width || gl.drawingBufferHeight < layout.height) {
+    restoreSourceElement(entry);
+    entry.canvas.style.display = "none";
+    throw new Error("The GPU's drawing buffer is smaller than the grading canvas");
+  }
   presentEntry(entry, layout);
 }
 
@@ -3771,10 +3792,14 @@ function installEntryListeners(entry: ColorGradingEntry): void {
   const redraw = () => {
     drawEntry(entry);
   };
+  const redrawOnPresentedFrame = () => {
+    drawEntry(entry);
+    scheduleVideoDraw(entry);
+  };
   addListener(entry, entry.element, "load", redraw);
   addListener(entry, entry.element, "loadedmetadata", redraw);
-  addListener(entry, entry.element, "loadeddata", redraw);
-  addListener(entry, entry.element, "seeked", redraw);
+  addListener(entry, entry.element, "loadeddata", redrawOnPresentedFrame);
+  addListener(entry, entry.element, "seeked", redrawOnPresentedFrame);
   addListener(entry, entry.element, "timeupdate", redraw);
   addListener(entry, window, "resize", redraw);
   if (isVideoElement(entry.element)) {
@@ -4006,7 +4031,7 @@ export function createColorGradingRuntime(pausedMediaLease?: {
     trackedElements.add(element);
     installEntryListeners(entry);
     drawEntry(entry);
-    if (isVideoElement(element) && !element.paused) scheduleVideoDraw(entry);
+    if (isVideoElement(element)) scheduleVideoDraw(entry);
     return true;
   };
 
@@ -4254,7 +4279,7 @@ export function createColorGradingRuntime(pausedMediaLease?: {
       element.pause();
       element.loop = loop;
       element.muted = muted;
-      element.currentTime = time;
+      element.currentTime = mediaElementTime(time);
     };
   };
 
@@ -4277,8 +4302,10 @@ export function createColorGradingRuntime(pausedMediaLease?: {
   };
 
   if (document.body) {
-    const recordsTouchGrading = createRecordFilter(COLOR_GRADING_SOURCE_SELECTOR, (node) =>
-      Array.from(trackedElements).some((element) => node.contains(element)),
+    // A grade group's element joining or leaving regrades its members, so it counts too.
+    const recordsTouchGrading = createRecordFilter(
+      `${COLOR_GRADING_SOURCE_SELECTOR}, ${HF_COLOR_GROUP_TAG}`,
+      (node) => Array.from(trackedElements).some((element) => node.contains(element)),
     );
     observer = new MutationObserver((records) => {
       if (recordsTouchGrading(records)) refresh();
@@ -4287,7 +4314,7 @@ export function createColorGradingRuntime(pausedMediaLease?: {
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: [HF_COLOR_GRADING_ATTR],
+      attributeFilter: [HF_COLOR_GRADING_ATTR, HF_COLOR_GROUP_ATTR],
     });
   }
 

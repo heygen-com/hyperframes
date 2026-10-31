@@ -1,6 +1,7 @@
 import { execFileSync, spawn as realSpawn, spawnSync, type ChildProcess } from "node:child_process";
 import { EventEmitter, once } from "node:events";
 import {
+  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -11,8 +12,8 @@ import {
   utimesSync,
   writeFileSync,
 } from "node:fs";
-import { availableParallelism, tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { availableParallelism, tmpdir, totalmem } from "node:os";
+import { basename, dirname, join } from "node:path";
 import { hdrToSdrToneMapFilter } from "@hyperframes/core";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -102,7 +103,7 @@ function fail(call: SpawnCall, code = 1, stderr = "boom"): void {
   call.proc.emit("close", code);
 }
 
-async function flush(times = 6): Promise<void> {
+async function flush(times = 30): Promise<void> {
   for (let i = 0; i < times; i++) await Promise.resolve();
 }
 
@@ -130,6 +131,11 @@ async function answerUntilIdle(
 
 const tempDirs: string[] = [];
 
+/** The copies in a cache folder, leaving out the small index files that find them again. */
+function copiesIn(cacheDir: string): string[] {
+  return readdirSync(cacheDir).filter((name) => !/^\.(?:fast|content)-/.test(name));
+}
+
 function tmpProject(): string {
   const dir = mkdtempSync(join(tmpdir(), "hf-proxy-transcoder-"));
   tempDirs.push(dir);
@@ -152,6 +158,7 @@ async function loadModule(
   hdrTransfer: string | null = isHdr ? "pq" : null,
   codecName?: string,
   durationSeconds?: number,
+  streams?: string[],
 ): Promise<typeof import("./proxyTranscoder.js")> {
   vi.resetModules();
   vi.doMock("node:child_process", () => {
@@ -166,6 +173,7 @@ async function loadModule(
       kind: "video",
       color: { isHdr, hdrTransfer, codecName },
       durationSeconds,
+      streams,
     }),
     probeFirstFrameColour: async () => ({}),
   }));
@@ -228,7 +236,96 @@ describe("resolveProxy on a long source", () => {
     expect(heard[0]).toEqual({ doneSeconds: PIECE_SECONDS, totalSeconds: LONG_SECONDS });
     expect(heard.at(-1)).toEqual({ doneSeconds: LONG_SECONDS, totalSeconds: LONG_SECONDS });
     expect(calls.at(-1)!.args).toEqual(expect.arrayContaining(["-f", "concat", "-c", "copy"]));
-    expect(readdirSync(cacheDirectory)).toEqual([cachePath.split("/").at(-1)]);
+    expect(copiesIn(cacheDirectory)).toEqual([cachePath.split("/").at(-1)]);
+  });
+
+  it("copies alpha pieces side by side, shares the cores out, and counts them together", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    const { resolveProxy } = await loadModule(
+      spawn,
+      FFMPEG_PATH,
+      false,
+      null,
+      undefined,
+      LONG_SECONDS,
+    );
+    const projectDir = tmpProject();
+    const sourcePath = join(projectDir, "long.webm");
+    writeFileSync(sourcePath, "source-bytes");
+    const cores = availableParallelism();
+    const workers = Math.max(1, Math.min(4, cores - 1, Math.floor(totalmem() / (3 * 1024 ** 3))));
+    const side = Math.min(workers, 3);
+
+    const heard: number[] = [];
+    const result = resolveProxy(projectDir, sourcePath, "vp8", undefined, {
+      onProgress: (progress) => heard.push(progress.doneSeconds),
+    });
+    await flush(50);
+
+    expect(calls).toHaveLength(side);
+    for (const call of calls) {
+      expect(call.args[call.args.indexOf("-threads") + 1]).toBe(
+        String(Math.min(4, Math.floor(cores / workers))),
+      );
+    }
+    calls[0]!.proc.stdout.emit("data", Buffer.from("out_time_us=4000000\n"));
+    if (side > 1) calls[1]!.proc.stdout.emit("data", Buffer.from("out_time_us=6000000\n"));
+    expect(heard.at(-1)).toBe(side > 1 ? 10 : 4);
+    await answerUntilIdle(calls, (call) => succeed(call, "fake-vp8-bytes"));
+    await result;
+    expect(heard.at(-1)).toBe(LONG_SECONDS);
+  });
+
+  it("keeps two alpha copies running together within one cap of pieces", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    const { resolveProxy } = await loadModule(
+      spawn,
+      FFMPEG_PATH,
+      false,
+      null,
+      undefined,
+      LONG_SECONDS,
+    );
+    const projectDir = tmpProject();
+    const sources = ["a.webm", "b.webm"].map((name) => join(projectDir, name));
+    for (const source of sources) writeFileSync(source, "source-bytes");
+    const cap = Math.max(
+      1,
+      Math.min(4, availableParallelism() - 1, Math.floor(totalmem() / (3 * 1024 ** 3))),
+    );
+
+    const results = sources.map((source) => resolveProxy(projectDir, source, "vp8"));
+    await flush(50);
+
+    expect(calls).toHaveLength(cap);
+    await answerUntilIdle(calls, (call) => succeed(call, "fake-vp8-bytes"));
+    await Promise.all(results);
+    expect(calls.filter((call) => call.args.includes("-ss"))).toHaveLength(6);
+  });
+
+  it("ends the pieces still running when one of them fails, and reports that failure", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    const { resolveProxy } = await loadModule(
+      spawn,
+      FFMPEG_PATH,
+      false,
+      null,
+      undefined,
+      LONG_SECONDS,
+    );
+    const projectDir = tmpProject();
+    const sourcePath = join(projectDir, "long.webm");
+    writeFileSync(sourcePath, "source-bytes");
+
+    const result = resolveProxy(projectDir, sourcePath, "vp8").catch((error: unknown) => error);
+    await flush(50);
+    fail(calls[0]!, 1, "bad piece");
+    await flush(50);
+    for (const call of calls.slice(1)) {
+      expect(call.options?.signal?.aborted).toBe(true);
+      call.proc.kill("SIGKILL");
+    }
+    expect(String(await result)).toContain("bad piece");
   });
 
   it("keeps a short source to one pass", async () => {
@@ -304,7 +401,7 @@ describe("resolveProxy", () => {
     expect(result).toBe(expectedCachePath);
     expect(existsSync(expectedCachePath)).toBe(true);
     // No leftover temp file next to the final cache entry.
-    const cacheDirEntries = readdirSync(join(projectDir, ".transcode-cache"));
+    const cacheDirEntries = copiesIn(join(projectDir, ".transcode-cache"));
     expect(cacheDirEntries).toEqual([expectedCachePath.split("/").at(-1)]);
   });
 
@@ -360,6 +457,22 @@ describe("resolveProxy", () => {
 
     succeed(calls[0]!, "fake-vp8-bytes");
     await expect(resultPromise).resolves.toBe(vp8Path);
+  });
+
+  it("puts a keyframe every second into a copy, so scrubbing lands close", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    const { resolveProxy } = await loadModule(spawn, FFMPEG_PATH);
+    const projectDir = tmpProject();
+    const sourcePath = join(projectDir, "clip.mov");
+    writeFileSync(sourcePath, "source-bytes");
+
+    const result = resolveProxy(projectDir, sourcePath);
+    await flush();
+
+    const args = calls[0]!.args;
+    expect(args[args.indexOf("-force_key_frames") + 1]).toBe("expr:gte(t,n_forced*1)");
+    succeed(calls[0]!);
+    await result;
   });
 
   it("decodes a VP9 alpha source with libvpx-vp9 so the VP8 proxy keeps its alpha", async () => {
@@ -1077,6 +1190,25 @@ describe("resolveProxy", () => {
       await expect(staying).resolves.toBeTruthy();
     });
 
+    it("makes the copy asked for last first, and moves a copy to the front each time it is asked again", async () => {
+      const { calls, resolveProxy, projectDir } = await oneSlot();
+      const clip = clips(projectDir, ["running", "c", "d", "f"]);
+      const ask = (name: string) =>
+        resolveProxy(projectDir, clip[name]!, "h264", undefined, { priority: true });
+
+      const running = resolveProxy(projectDir, clip.running!);
+      await flush();
+      const asks = [ask("c"), ask("d"), ask("f"), ask("c")];
+      succeed(calls[0]!);
+      await running;
+      for (const next of ["c", "f", "d"]) {
+        await flush(12);
+        expect(clipOf(calls[calls.length - 1]!)).toBe(next);
+        succeed(calls[calls.length - 1]!);
+      }
+      await expect(Promise.all(asks)).resolves.toHaveLength(4);
+    });
+
     it("makes the copy when the preview asks in the same moment the last thumbnail leaves", async () => {
       const { calls, resolveProxy, projectDir } = await oneSlot();
       const clip = clips(projectDir, ["running", "handoff"]);
@@ -1225,24 +1357,94 @@ describe("resolveProxy", () => {
     await expect(first).resolves.toBeTruthy();
   });
 
-  it("produces a new cache key when the source mtime changes", async () => {
-    const { resolveProxy: _unused, getProxyCachePath } = await loadModule(
-      () => createFakeProc(),
-      FFMPEG_PATH,
-    );
-    const projectDir = tmpProject();
-    const sourcePath = join(projectDir, "video.mov");
-    writeFileSync(sourcePath, "source-bytes");
-    const past = new Date(Date.now() - 60_000);
-    utimesSync(sourcePath, past, past);
-    const keyBefore = getProxyCachePath(projectDir, sourcePath);
+  describe("finding the copy of a source", () => {
+    /** Makes the copy of `sourcePath` and returns the path it was made at. */
+    async function made(
+      env: Awaited<ReturnType<typeof loadModule>>,
+      calls: SpawnCall[],
+      projectDir: string,
+      sourcePath: string,
+    ): Promise<string> {
+      const before = calls.length;
+      const result = env.resolveProxy(projectDir, sourcePath);
+      await flush(80);
+      for (const call of calls.slice(before)) succeed(call);
+      return result;
+    }
 
-    const future = new Date(Date.now() + 60_000);
-    utimesSync(sourcePath, future, future);
-    const keyAfter = getProxyCachePath(projectDir, sourcePath);
+    it("reuses the copy of a file that was only touched or re-saved with the same bytes", async () => {
+      const { spawn, calls } = createSpawnSpy();
+      const env = await loadModule(spawn, FFMPEG_PATH);
+      const projectDir = tmpProject();
+      const sourcePath = join(projectDir, "video.mov");
+      writeFileSync(sourcePath, "source-bytes");
+      const first = await made(env, calls, projectDir, sourcePath);
 
-    expect(keyAfter).not.toBe(keyBefore);
-    void _unused;
+      const future = new Date(Date.now() + 60_000);
+      utimesSync(sourcePath, future, future);
+      const again = await made(env, calls, projectDir, sourcePath);
+
+      expect(again).toBe(first);
+      expect(calls).toHaveLength(1);
+      expect(env.getProxyCachePath(projectDir, sourcePath)).toBe(first);
+    });
+
+    it("gives a copied project the copy its original has, and a symlinked clip the same one", async () => {
+      const { spawn, calls } = createSpawnSpy();
+      const env = await loadModule(spawn, FFMPEG_PATH);
+      const original = tmpProject();
+      writeFileSync(join(original, "video.mov"), "source-bytes");
+      symlinkSync(join(original, "video.mov"), join(original, "linked.mov"));
+      const first = await made(env, calls, original, join(original, "video.mov"));
+      const copied = join(tmpProject(), "project");
+      cpSync(original, copied, { recursive: true, dereference: true });
+      for (const name of readdirSync(copied))
+        utimesSync(join(copied, name), new Date(), new Date(Date.now() + 5_000));
+
+      const viaLink = await made(env, calls, original, join(original, "linked.mov"));
+      const inCopy = await made(env, calls, copied, join(copied, "video.mov"));
+
+      expect(viaLink).toBe(first);
+      expect(inCopy.startsWith(realpathSync(copied))).toBe(true);
+      expect(calls).toHaveLength(1);
+    });
+
+    it("makes a new copy for a changed file, even one of the same size that differs in a small stretch", async () => {
+      const { spawn, calls } = createSpawnSpy();
+      const env = await loadModule(spawn, FFMPEG_PATH);
+      const projectDir = tmpProject();
+      const sourcePath = join(projectDir, "big.mov");
+      const bytes = Buffer.alloc(1024 * 1024, 1);
+      writeFileSync(sourcePath, bytes);
+      const pinned = new Date("2026-01-01T00:00:00Z");
+      utimesSync(sourcePath, pinned, pinned);
+      const first = await made(env, calls, projectDir, sourcePath);
+
+      bytes[200 * 1024] = 2;
+      writeFileSync(sourcePath, bytes);
+      utimesSync(sourcePath, new Date(pinned.getTime() + 1000), new Date(pinned.getTime() + 1000));
+      const second = await made(env, calls, projectDir, sourcePath);
+
+      expect(second).not.toBe(first);
+      expect(calls).toHaveLength(2);
+    });
+
+    it("makes a new copy when a link is retargeted to other bytes", async () => {
+      const { spawn, calls } = createSpawnSpy();
+      const env = await loadModule(spawn, FFMPEG_PATH);
+      const projectDir = tmpProject();
+      writeFileSync(join(projectDir, "a.mov"), "source-bytes");
+      writeFileSync(join(projectDir, "b.mov"), "SOURCE-BYTES");
+      symlinkSync(join(projectDir, "a.mov"), join(projectDir, "linked.mov"));
+      const first = await made(env, calls, projectDir, join(projectDir, "linked.mov"));
+
+      rmSync(join(projectDir, "linked.mov"));
+      symlinkSync(join(projectDir, "b.mov"), join(projectDir, "linked.mov"));
+      const second = await made(env, calls, projectDir, join(projectDir, "linked.mov"));
+
+      expect(second).not.toBe(first);
+      expect(calls).toHaveLength(2);
+    });
   });
 
   it("produces a new cache key when size changes but mtime is pinned the same", async () => {
@@ -1289,8 +1491,9 @@ describe("resolveProxy", () => {
 
     await expect(resultPromise).rejects.toBeInstanceOf(ProxyTranscodeError);
     await expect(resultPromise).rejects.toMatchObject({
-      message:
-        "ffmpeg exited with code 1: Error submitting a packet to the muxer: No space left on device",
+      message: expect.stringContaining(
+        "ffmpeg exited with code 1: [hevc] Error while decoding stream #0:0: Invalid data found when processing input; Error submitting a packet to the muxer: No space left on device (source: video,",
+      ),
       exitCode: 1,
       stderrTail: expect.stringContaining("unsupported codec"),
     });
@@ -1299,6 +1502,112 @@ describe("resolveProxy", () => {
     const cacheDir = join(projectDir, ".transcode-cache");
     const leftover = existsSync(cacheDir) ? readdirSync(cacheDir) : [];
     expect(leftover).toEqual([]);
+  });
+
+  it("says how far the copy being made has got, and makes a failed one again when told to retry", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    const { resolveProxy, proxyCopyProgress, retryProxyCopy } = await loadModule(
+      spawn,
+      FFMPEG_PATH,
+      false,
+      null,
+      undefined,
+      20,
+    );
+    const projectDir = tmpProject();
+    const sourcePath = join(projectDir, "video.mov");
+    writeFileSync(sourcePath, "source-bytes");
+
+    const first = resolveProxy(projectDir, sourcePath).catch((error: unknown) => error);
+    await flush();
+    expect(proxyCopyProgress(projectDir, sourcePath, "h264")).toBeUndefined();
+    calls[0]!.proc.stdout.emit("data", Buffer.from("out_time_us=5000000\n"));
+    expect(proxyCopyProgress(projectDir, sourcePath, "h264")).toBeCloseTo(0.25);
+    fail(calls[0]!, 1, "boom");
+    await first;
+    expect(proxyCopyProgress(projectDir, sourcePath, "h264")).toBeUndefined();
+
+    const stillFailed = resolveProxy(projectDir, sourcePath).catch((error: unknown) => error);
+    await flush();
+    expect(calls).toHaveLength(1);
+    await stillFailed;
+
+    retryProxyCopy(projectDir, sourcePath, "h264");
+    const again = resolveProxy(projectDir, sourcePath);
+    await flush();
+    expect(calls).toHaveLength(2);
+    succeed(calls[1]!);
+    await again;
+  });
+
+  it("names why the output could not open, not only that it could not", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    const { resolveProxy } = await loadModule(spawn, FFMPEG_PATH);
+    const projectDir = tmpProject();
+    const sourcePath = join(projectDir, "phone.mov");
+    writeFileSync(sourcePath, "source-bytes");
+
+    const result = resolveProxy(projectDir, sourcePath).catch((error: unknown) => error);
+    await flush();
+    fail(
+      calls[0]!,
+      234,
+      [
+        "[out#0/mp4 @ 0x1] Output file does not contain any stream",
+        "Error opening output file /project/.transcode-cache/.tmp-1-abc.mp4.",
+        "Error opening output files: Invalid argument",
+      ].join("\n"),
+    );
+
+    expect(String(await result)).toContain(
+      "ffmpeg exited with code 234: [out#0/mp4 @ 0x1] Output file does not contain any stream; Error opening output files: Invalid argument",
+    );
+  });
+
+  it("ends a failure with what the source is, without its name or folder", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    const { resolveProxy } = await loadModule(spawn, FFMPEG_PATH, false, null, "hevc", undefined, [
+      "video:hevc[default]",
+      "data:?[]",
+    ]);
+    const projectDir = tmpProject();
+    const sourcePath = join(projectDir, "Phone Clip.mov");
+    writeFileSync(sourcePath, "source-bytes");
+
+    const result = resolveProxy(projectDir, sourcePath).catch((error: unknown) => error);
+    await flush();
+    fail(calls[0]!, 234, "Error opening output files: Invalid argument");
+
+    const message = String(await result);
+    expect(message).toContain(
+      "(source: video, hevc, no audio, streams video:hevc[default] data:?[], 0 MB, local)",
+    );
+    expect(message).not.toContain("Phone Clip");
+    expect(message).not.toContain(projectDir);
+  });
+
+  it("keeps a spaced file or folder name out of the failure, and survives a source that vanished", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    const { resolveProxy } = await loadModule(spawn, FFMPEG_PATH);
+    const projectDir = tmpProject();
+    const sourcePath = join(projectDir, "My Project", "Screen Recording 2026.mov");
+    mkdirSync(dirname(sourcePath));
+    writeFileSync(sourcePath, "source-bytes");
+
+    const result = resolveProxy(projectDir, sourcePath).catch((error: unknown) => error);
+    await flush();
+    rmSync(sourcePath);
+    const input = calls[0]!.args[calls[0]!.args.indexOf("-i") + 1];
+    fail(
+      calls[0]!,
+      234,
+      `Error opening input file ${input}.\nError opening input files: Invalid argument`,
+    );
+
+    const message = String(await result);
+    expect(message).toContain("Error opening input file <path>");
+    expect(message).toContain("missing");
+    expect(message).not.toMatch(/My Project|Screen Recording/);
   });
 
   it("remembers a failure per cache key: a second call rethrows without respawning ffmpeg", async () => {
@@ -1487,7 +1796,7 @@ describe("resolveProxy", () => {
     expect(cachePath.startsWith(join(realpathSync(projectDir), ".transcode-cache"))).toBe(true);
   });
 
-  it("retries after the source file changes (mtime in the cache key invalidates the remembered failure)", async () => {
+  it("retries after the source file changes (its content in the cache key invalidates the remembered failure)", async () => {
     const { spawn, calls } = createSpawnSpy();
     const { resolveProxy, ProxyTranscodeError } = await loadModule(spawn, FFMPEG_PATH);
     const projectDir = tmpProject();
@@ -1501,14 +1810,59 @@ describe("resolveProxy", () => {
     fail(calls[0]!, 1, "boom");
     await expect(first).rejects.toBeInstanceOf(ProxyTranscodeError);
 
-    // Re-exported file (new mtime) → new key → a fresh transcode attempt.
-    const future = new Date(Date.now() + 60_000);
-    utimesSync(sourcePath, future, future);
+    // Re-exported file (new bytes) → new key → a fresh transcode attempt.
+    writeFileSync(sourcePath, "re-exported-bytes");
     const retry = resolveProxy(projectDir, sourcePath);
     await flush();
     expect(calls).toHaveLength(2);
     succeed(calls[1]!);
     await expect(retry).resolves.toBeTruthy();
+  });
+
+  describe("two processes sharing one cache", () => {
+    it("lets only one make the copy, and gives both the finished file", async () => {
+      const projectDir = tmpProject();
+      const sourcePath = join(projectDir, "video.mov");
+      writeFileSync(sourcePath, "source-bytes");
+      const first = createSpawnSpy();
+      const second = createSpawnSpy();
+      const a = await loadModule(first.spawn, FFMPEG_PATH);
+      const b = await loadModule(second.spawn, FFMPEG_PATH);
+
+      const madeByA = a.resolveProxy(projectDir, sourcePath);
+      await flush(50);
+      const madeByB = b.resolveProxy(projectDir, sourcePath);
+      await new Promise((resolveWait) => setTimeout(resolveWait, 700));
+      expect(first.calls).toHaveLength(1);
+      expect(second.calls).toHaveLength(0);
+
+      succeed(first.calls[0]!);
+      const paths = await Promise.all([madeByA, madeByB]);
+
+      expect(paths[1]).toBe(paths[0]);
+      expect(second.calls).toHaveLength(0);
+      expect(copiesIn(join(projectDir, ".transcode-cache"))).toEqual([basename(paths[0]!)]);
+    });
+
+    it("takes over from a process that died, and clears its lock when done", async () => {
+      const { spawn, calls } = createSpawnSpy();
+      const { resolveProxy, getProxyCachePath } = await loadModule(spawn, FFMPEG_PATH);
+      const projectDir = tmpProject();
+      const sourcePath = join(projectDir, "video.mov");
+      writeFileSync(sourcePath, "source-bytes");
+      const cachePath = getProxyCachePath(projectDir, sourcePath);
+      mkdirSync(dirname(cachePath), { recursive: true });
+      const lockPath = join(dirname(cachePath), `.lock-${basename(cachePath)}`);
+      writeFileSync(lockPath, "99999999");
+
+      const result = resolveProxy(projectDir, sourcePath);
+      await flush(50);
+      expect(calls).toHaveLength(1);
+      succeed(calls[0]!);
+
+      await expect(result).resolves.toBe(cachePath);
+      expect(existsSync(lockPath)).toBe(false);
+    });
   });
 
   it("throws a typed error when ffmpeg cannot be resolved, without spawning", async () => {
@@ -1534,5 +1888,21 @@ describe("resolveProxy", () => {
     calls[0]!.proc.emit("error", new Error("EACCES"));
 
     await expect(result).rejects.toBeInstanceOf(FfmpegUnavailableError);
+  });
+});
+
+describe("sourceFolderKind", () => {
+  it.each([
+    ["/Users/a/Library/Mobile Documents/com~apple~CloudDocs/clip.mov", "icloud"],
+    ["/Users/a/Library/CloudStorage/Dropbox/p/clip.mov", "cloud-storage"],
+    ["/Users/a/Dropbox (Team)/p/clip.mov", "cloud-storage"],
+    ["C:\\Users\\a\\OneDrive - Co\\p\\clip.mov", "cloud-storage"],
+    ["/Volumes/Phone Backup/clip.mov", "external-volume"],
+    ["/Users/a/Movies/clip.mov", "local"],
+    ["/Users/a/Dropboxes/clip.mov", "local"],
+  ])("tells %s apart as %s", async (path, kind) => {
+    const { spawn } = createSpawnSpy();
+    const { sourceFolderKind } = await loadModule(spawn, FFMPEG_PATH);
+    expect(sourceFolderKind(path)).toBe(kind);
   });
 });

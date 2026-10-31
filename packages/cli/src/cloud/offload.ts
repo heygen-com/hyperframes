@@ -27,6 +27,7 @@ import {
   resolveLocalAssetCandidates,
 } from "@hyperframes/parsers/asset-resolution";
 import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
+import { probeAudio } from "../audio/analysis/decode.js";
 import { formatBytes } from "../ui/format.js";
 import { type PlayedSegment, planTrim } from "./offloadTrim.js";
 import {
@@ -293,22 +294,6 @@ function hdrColorArgs({ color }: VideoProbe): string[] {
   ];
 }
 
-async function hasAudioStream(ffprobe: string, path: string): Promise<boolean> {
-  const { stdout } = await execFileAsync(ffprobe, [
-    "-v",
-    "error",
-    "-select_streams",
-    "a",
-    "-show_entries",
-    "stream=index",
-    "-of",
-    "csv=p=0",
-    "--",
-    path,
-  ]);
-  return stdout.trim() !== "";
-}
-
 // Seconds floored to the microsecond, so a frame-aligned cut never rounds past its first frame.
 const seconds = (t: number) => (Math.floor(t * 1e6) / 1e6).toFixed(6);
 
@@ -317,32 +302,48 @@ async function segmentArgs(
   sourcePath: string,
   decoder: string[],
   segments: PlayedSegment[] | undefined,
-  audioOnly: boolean,
+  media: "audio" | "image" | "video",
 ): Promise<string[]> {
-  if (!segments?.length) return [...decoder, "-i", sourcePath];
-  const inputs = segments.flatMap((s) => [
-    ...decoder,
-    "-ss",
-    seconds(s.start),
-    "-t",
-    seconds(s.end - s.start),
-    "-i",
-    sourcePath,
-  ]);
-  if (segments.length === 1) return inputs;
-  const audio = audioOnly || (await hasAudioStream(findFFprobe()!, sourcePath));
-  return [...inputs, ...concatArgs(segments.length, !audioOnly, audio)];
+  if (media === "image") return [...decoder, "-i", sourcePath];
+  const audio = await keptAudio(sourcePath, media);
+  const cuts = segments?.length ? segments : [undefined];
+  const inputs = cuts.flatMap((s) => [...decoder, ...seekArgs(s), "-i", sourcePath]);
+  const video = media === "video";
+  return [
+    ...inputs,
+    ...(cuts.length > 1 ? concatArgs(cuts.length, video, audio) : streamMaps(video, audio)),
+  ];
 }
 
-function concatArgs(count: number, video: boolean, audio: boolean): string[] {
-  const pad = (i: number) => (video ? `[${i}:v]` : "") + (audio ? `[${i}:a]` : "");
+async function keptAudio(sourcePath: string, media: "audio" | "video"): Promise<number | null> {
+  const audio = (await probeAudio(sourcePath))?.audioStream ?? null;
+  if (media === "audio" && audio === null) {
+    throw new Error("the file has no audio track ffmpeg can decode");
+  }
+  return audio;
+}
+
+const seekArgs = (s: PlayedSegment | undefined) =>
+  s ? ["-ss", seconds(s.start), "-t", seconds(s.end - s.start)] : [];
+
+const streamMaps = (video: boolean, audio: number | null) => [
+  ...(video ? ["-map", "0:V:0"] : []),
+  ...(audio === null ? [] : ["-map", `0:a:${audio}`]),
+];
+
+const mediaOf = (preset: PresetName) =>
+  preset === "audio" || preset === "image" ? preset : ("video" as const);
+
+function concatArgs(count: number, video: boolean, audio: number | null): string[] {
+  const pad = (i: number) =>
+    (video ? `[${i}:v]` : "") + (audio === null ? "" : `[${i}:a:${audio}]`);
   const pads = Array.from({ length: count }, (_, i) => pad(i)).join("");
-  const flags = `n=${count}:v=${video ? 1 : 0}:a=${audio ? 1 : 0}`;
+  const flags = `n=${count}:v=${video ? 1 : 0}:a=${audio === null ? 0 : 1}`;
   return [
     "-filter_complex",
-    `${pads}concat=${flags}${video ? "[v]" : ""}${audio ? "[a]" : ""}`,
+    `${pads}concat=${flags}${video ? "[v]" : ""}${audio === null ? "" : "[a]"}`,
     ...(video ? ["-map", "[v]"] : []),
-    ...(audio ? ["-map", "[a]"] : []),
+    ...(audio === null ? [] : ["-map", "[a]"]),
   ];
 }
 
@@ -366,7 +367,7 @@ async function ffmpegReencode(
         "-v",
         "error",
         "-y",
-        ...(await segmentArgs(sourcePath, decoder, segments, presetName === "audio")),
+        ...(await segmentArgs(sourcePath, decoder, segments, mediaOf(presetName))),
         ...preset.args,
         ...color,
         ...preset.audio,
@@ -508,6 +509,7 @@ interface OffloadContext {
   opts: OffloadOptions;
   cachePath: string;
   cache: Record<string, CacheEntry>;
+  cachedSizes: Set<number>;
   fetchImpl: typeof fetch;
   reencoder: Reencoder;
   tempFiles: string[];
@@ -517,7 +519,7 @@ interface OffloadContext {
 }
 
 interface FilePlan {
-  key: string;
+  key?: string;
   preset?: PresetName;
   sourcePath: string;
   contentType?: string;
@@ -532,11 +534,14 @@ async function planFile(
   const kind = mediaKind(path);
   const size = stagedSize(file);
   if (!kind || size < OFFLOAD_MIN_BYTES) return null;
-  const sha256 = await stagedSha256(file);
-  const keyFor = (variant: string) => `${ctx.opts.apiBaseUrl} ${sha256} ${variant}`;
   const accepted = ACCEPTED[extname(path).toLowerCase()];
-  if (accepted && size <= accepted.maxBytes) {
-    return { key: keyFor("as-is"), sourcePath: "", contentType: accepted.contentType };
+  const asIs = accepted !== undefined && size <= accepted.maxBytes;
+  const mayBeCached =
+    ctx.opts.upload !== undefined || (asIs ? ctx.cachedSizes.has(size) : ctx.cachedSizes.size > 0);
+  const sha256 = mayBeCached ? await stagedSha256(file) : undefined;
+  const keyFor = (variant: string) => sha256 && `${ctx.opts.apiBaseUrl} ${sha256} ${variant}`;
+  if (asIs) {
+    return { key: keyFor("as-is"), sourcePath: "", contentType: accepted?.contentType };
   }
   const sourcePath = snapshotPath(path, file, ctx.tempFiles);
   const preset = await ctx.reencoder.choose(sourcePath, kind);
@@ -591,7 +596,7 @@ async function offloadFile(
       trimmed_to_seconds: plan.segments.reduce((sum, s) => sum + s.end - s.start, 0),
     }),
   };
-  const hit = ctx.cache[plan.key];
+  const hit = plan.key === undefined ? undefined : ctx.cache[plan.key];
   if (hit && (!ctx.opts.upload || (await stillServed(hit, ctx.fetchImpl)))) {
     return { ...item, action: "cached", url: hit.url };
   }
@@ -617,12 +622,10 @@ async function uploadPlanned(
   assertFitsAsset(path, file.filename, size);
   const asset = await upload(file);
   if (!Buffer.isBuffer(staged)) assertUnchanged(staged);
-  ctx.cache[plan.key] = {
-    asset_id: asset.asset_id,
-    url: asset.url,
-    size_bytes: size,
-  };
-  writeCache(ctx.cachePath, ctx.cache);
+  if (plan.key !== undefined) {
+    ctx.cache[plan.key] = { asset_id: asset.asset_id, url: asset.url, size_bytes: size };
+    writeCache(ctx.cachePath, ctx.cache);
+  }
   return asset.url;
 }
 
@@ -691,11 +694,18 @@ export async function offloadHeavyMedia(
   opts: OffloadOptions,
 ): Promise<OffloadedMedia[]> {
   const cachePath = opts.cachePath ?? defaultOffloadCachePath();
+  const cache = readCache(cachePath);
+  const apiPrefix = `${opts.apiBaseUrl} `;
   const ctx: OffloadContext = {
     absDir: resolve(projectDir),
     opts,
     cachePath,
-    cache: readCache(cachePath),
+    cache,
+    cachedSizes: new Set(
+      Object.entries(cache).flatMap(([key, entry]) =>
+        key.startsWith(apiPrefix) ? [entry.size_bytes] : [],
+      ),
+    ),
     fetchImpl: opts.fetchImpl ?? fetch,
     reencoder: opts.reencoder ?? ffmpegReencoder,
     tempFiles: [],

@@ -1,5 +1,7 @@
 {
   "$schema": "https://context7.com/schema/context7.json",
+  "url": "https://context7.com/heygen-com/hyperframes",
+  "public_key": "pk_7ap9nKkdYKKdCjGDm5clY",
   "folders": ["docs", "skills", "registry", "examples"],
   "excludeFolders": ["docs/public", "**/tests", "**/test", "**/fixtures", "**/node_modules"],
   "excludeFiles": ["weekly-updates.mdx"],

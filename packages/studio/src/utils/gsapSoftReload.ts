@@ -12,7 +12,12 @@ import {
 
 type IframeWindow = Window & {
   __timelines?: Record<string, { kill?: () => void; pause?: () => void }>;
-  __player?: { getTime?: () => number; seek?: (t: number) => void };
+  __player?: {
+    getTime?: () => number;
+    seek?: (t: number) => void;
+    isPlaying?: () => boolean;
+    play?: () => void;
+  };
   __hfForceTimelineRebind?: () => void;
   __hfSuppressSceneMutations?: <T>(fn: () => T) => T;
   __hfStudioManualEditsApply?: () => void;
@@ -252,9 +257,12 @@ export interface SoftReloadOptions {
  * no-op if the timeline already reports being at that time internally.
  */
 function finalizeSoftReload(win: IframeWindow, currentTime: number): void {
+  // A seek pauses the player, so an edit made while playing resumes it once the timeline is rebuilt.
+  const wasPlaying = win.__player?.isPlaying?.() === true;
   win.__player?.seek?.(currentTime);
   win.__hfForceTimelineRebind?.();
   win.__hfStudioManualEditsApply?.();
+  if (wasPlaying) win.__player?.play?.();
 }
 
 /**

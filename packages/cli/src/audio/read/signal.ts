@@ -1,15 +1,19 @@
-import type { AudioSignal } from "@hyperframes/core/audio-analysis";
+import { PITCH_RATE, type AudioSignal } from "@hyperframes/core/audio-analysis";
 import { decodeAudio } from "../analysis/decode.js";
 
 /** Every layer is read from mono at this rate: enough for onsets and band shapes, small enough for a long episode. */
 export const READ_RATE = 22050;
-export const PITCH_RATE = 8000;
+export { PITCH_RATE };
 const SILENT_DB = -120;
+export const ABSENT_DB = -55;
 
 export async function decodeMono(path: string, sampleRate = READ_RATE): Promise<Float32Array> {
   const decoded = await decodeAudio(path, {}, undefined, { sampleRate, mono: true });
   if (!decoded) throw new Error(`${path} has no audio stream`);
-  return decoded.signal.channels[0]!;
+  const samples = decoded.signal.channels[0]!;
+  if (samples.some((sample) => !Number.isFinite(sample)))
+    throw new Error(`${path} contains non-finite audio samples`);
+  return samples;
 }
 
 export const asSignal = (samples: Float32Array, sampleRate = READ_RATE): AudioSignal => ({
@@ -47,6 +51,17 @@ export function levels(
   return out;
 }
 
+export function levelWhileHeardDb(samples: Float32Array, sampleRate: number): number | null {
+  let sum = 0;
+  let heard = 0;
+  for (const db of levels(samples, sampleRate, 0.1, 0.4))
+    if (db >= ABSENT_DB) {
+      sum += 10 ** (db / 10);
+      heard++;
+    }
+  return heard ? Math.round(10 * Math.log10(sum / heard)) : null;
+}
+
 export function quantile(values: ArrayLike<number>, q: number): number {
   if (!values.length) return NaN;
   const sorted = Float64Array.from(values).sort();
@@ -59,3 +74,11 @@ export const round = (n: number, places = 2) => {
   const k = 10 ** places;
   return Math.round(n * k) / k;
 };
+
+export function spanDb(samples: Float32Array, sampleRate: number, start: number, end: number) {
+  const a = Math.max(0, Math.round(start * sampleRate));
+  const b = Math.min(samples.length, Math.round(end * sampleRate));
+  let sum = 0;
+  for (let i = a; i < b; i++) sum += samples[i]! ** 2;
+  return b > a && sum > 0 ? Math.max(SILENT_DB, 10 * Math.log10(sum / (b - a))) : SILENT_DB;
+}

@@ -143,7 +143,7 @@ export interface HdrVideoFrameSource {
   /** The playable range is one source cycle and must wrap at its end. */
   loop?: boolean;
   mediaStart?: number;
-  videoStreamLeadSeconds?: number;
+  videoStartSeconds?: number;
 }
 
 export function closeHdrVideoFrameSource(source: HdrVideoFrameSource, log?: ProducerLogger): void {
@@ -201,7 +201,7 @@ export async function blitHdrVideoLayer(
   );
   if (effectiveIndex === null) return;
   const mediaTime = (frameSource.mediaStart ?? 0) + effectiveIndex / fps;
-  if (isVideoHiddenBeforeStreamStart(frameSource.videoStreamLeadSeconds, mediaTime)) return;
+  if (isVideoHiddenBeforeStreamStart(frameSource.videoStartSeconds, mediaTime)) return;
 
   if (hdrPerf) hdrPerf.hdrVideoLayerBlits += 1;
   const lease = await frameSource.windows.lease(effectiveIndex);

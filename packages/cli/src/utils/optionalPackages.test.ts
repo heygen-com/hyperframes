@@ -429,6 +429,67 @@ describe("a copy installed beside the CLI", () => {
     }
   });
 
+  it("finds the pinned copy past a nearer one whose manifest is broken", () => {
+    const pin = OPTIONAL_PACKAGES["onnxruntime-node"];
+    const { root, cliUrl } = layout(pin);
+    const nearer = join(root, "node_modules", "hyperframes", "node_modules", "onnxruntime-node");
+    mkdirSync(nearer, { recursive: true });
+    writeFileSync(join(nearer, "package.json"), "{ version: 1");
+    try {
+      expect(loadBesideCli("onnxruntime-node", cliUrl)).toEqual({ copy: `beside ${pin}` });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("loads the entry the package's exports name, not its main", () => {
+    const pin = OPTIONAL_PACKAGES["onnxruntime-node"];
+    const { root, cliUrl } = layout(pin);
+    const pkg = join(root, "node_modules", "onnxruntime-node");
+    writeFileSync(
+      join(pkg, "package.json"),
+      JSON.stringify({ version: pin, main: "esm.mjs", exports: { require: "./index.js" } }),
+    );
+    writeFileSync(join(pkg, "esm.mjs"), "export default {};");
+    try {
+      expect(loadBesideCli("onnxruntime-node", cliUrl)).toEqual({ copy: `beside ${pin}` });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("finds the pinned copy in a host folder not named node_modules, though a stray one sits above it", () => {
+    const root = mkdtempSync(join(tmpdir(), "hf-beside-vendor-"));
+    const copy = (dir: string, version: string, label: string) => {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "package.json"), JSON.stringify({ version, main: "index.js" }));
+      writeFileSync(join(dir, "index.js"), `module.exports = { copy: ${JSON.stringify(label)} };`);
+    };
+    copy(join(root, "node_modules", "onnxruntime-node"), "0.0.1", "stray");
+    const pin = OPTIONAL_PACKAGES["onnxruntime-node"];
+    copy(join(root, "app", "vendor", "onnxruntime-node"), pin, "pinned");
+    const bundle = join(root, "app", "cli", "optionalPackages.mjs");
+    buildSync({
+      entryPoints: [fileURLToPath(new URL("./optionalPackages.ts", import.meta.url))],
+      bundle: true,
+      platform: "node",
+      format: "esm",
+      outfile: bundle,
+    });
+    const script = `const m = await import(${JSON.stringify(pathToFileURL(bundle).href)});
+console.log(JSON.stringify(m.loadBesideCli("onnxruntime-node")));`;
+    try {
+      const child = spawnSync(process.execPath, ["--input-type=module", "-e", script], {
+        encoding: "utf-8",
+        env: { ...process.env, NODE_PATH: join(root, "app", "vendor") },
+      });
+      expect(child.stderr).toBe("");
+      expect(JSON.parse(child.stdout)).toEqual({ copy: "pinned" });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("ignores it when its manifest is unreadable, instead of throwing", () => {
     const { root, cliUrl } = layout(OPTIONAL_PACKAGES["onnxruntime-node"]);
     writeFileSync(join(root, "node_modules", "onnxruntime-node", "package.json"), "{ version: 1");
@@ -440,13 +501,18 @@ describe("a copy installed beside the CLI", () => {
     }
   });
 
-  it("checks the copy require would load first, not a later pinned one", () => {
-    const { root, cliUrl } = layout(OPTIONAL_PACKAGES["onnxruntime-node"]);
+  it("finds the pinned copy past a nearer copy of another version, which must not send the CLI to install its own", () => {
+    const pin = OPTIONAL_PACKAGES["onnxruntime-node"];
+    const { root, cliUrl } = layout(pin);
     const nearer = join(root, "node_modules", "hyperframes", "node_modules", "onnxruntime-node");
     mkdirSync(nearer, { recursive: true });
-    writeFileSync(join(nearer, "index.js"), `module.exports = { copy: "unversioned" };`);
+    writeFileSync(
+      join(nearer, "package.json"),
+      JSON.stringify({ version: "0.0.1", main: "index.js" }),
+    );
+    writeFileSync(join(nearer, "index.js"), `module.exports = { copy: "stray" };`);
     try {
-      expect(loadBesideCli("onnxruntime-node", cliUrl)).toBeNull();
+      expect(loadBesideCli("onnxruntime-node", cliUrl)).toEqual({ copy: `beside ${pin}` });
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -514,13 +580,14 @@ console.log(JSON.stringify([m.loadBesideCli("onnxruntime-node", url),
     }
   });
 
-  it("ignores a file require would load before the pinned folder", () => {
-    const { root, cliUrl } = layout(OPTIONAL_PACKAGES["onnxruntime-node"]);
+  it("finds the pinned folder past a file require would load first", () => {
+    const pin = OPTIONAL_PACKAGES["onnxruntime-node"];
+    const { root, cliUrl } = layout(pin);
     const nearer = join(root, "node_modules", "hyperframes", "node_modules");
     mkdirSync(nearer, { recursive: true });
     writeFileSync(join(nearer, "onnxruntime-node.js"), `module.exports = { copy: "file" };`);
     try {
-      expect(loadBesideCli("onnxruntime-node", cliUrl)).toBeNull();
+      expect(loadBesideCli("onnxruntime-node", cliUrl)).toEqual({ copy: `beside ${pin}` });
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

@@ -12,10 +12,20 @@ Everything that claims to be the product is the product. One invented button los
 
 ## The product on screen
 
-- Rebuild only the piece the beat uses (the panel, the prompt box, the row that changes) and show it at 1.6–2× its real size; text stays at least 26 px at 1080p after any push. Never a small window in the middle of an empty canvas, never product UI tilted in 3D.
+Captured screens establish what is real; they are not a shot list. A launch film can rearrange verified pieces to explain a result. For a launch, do not substitute a sequence of full-page screenshots with titles for showing what the product does.
+
+Plan the relationship between the product and its parts:
+
+1. **Establish the workspace.** Show enough of the real navigation and surrounding interface to locate the task. A whole-product view supplies context; the viewer does not need to read every control.
+2. **Isolate the action.** Bring the relevant chart, field or result forward. Keep its real labels, values and state; rebuild only the piece the beat uses and show it at 1.6–2× its real size. Text stays at least 26 px at 1080p after any push. Never a small window in the middle of an empty canvas, never product UI tilted in 3D. Let a trace draw, a result populate or a panel open before advancing. A camera move over a frozen screenshot is not the product performing an action.
+3. **Return the result.** Carry the same component back into its place in the interface, or pull back to show where the output is used. When the result plays inside the product, pull back to reveal its player or zoom through the player until the result fills the frame. A film made only of floating close-ups loses the system they belong to. Do not imply that a rearranged component is an interaction the product actually supports.
+
+Keep a short explanation where the action needs one: a phrase naming the change, the relevant label or the meaning of a number. "Less text" does not mean removing the context needed to understand the evidence. Reveal supporting elements across the beat instead of showing everything at its start and extending the hold. Review the transition's intermediate frames as well as its endpoints; carried labels and values must not jump or get covered on the way back into the workspace.
+
+For a background or palette revision, update the root, scene surfaces and timeline color tweens together; a later tween can restore the old background. Adjust text, chart strokes and axes for contrast on the new ground, then check frames from every affected scene and transition. Preserve the product's meaningful status colors.
+
 - The camera cycles between the window on its ground, one pane, and a punch-in on one control. Moves take 0.4–0.6 s with motion blur, arrive at the control the cursor needs, then hold while the UI acts.
 - Containers morph instead of cutting: the button becomes the menu, the message becomes the bubble.
-- Pull back to reveal that the result was playing inside the product, or zoom through the player until the result fills the frame.
 - The cursor is big (4–7% of the frame), enters from off-screen, and its click causes the next thing on the same frame.
 
 ## Worlds and transitions

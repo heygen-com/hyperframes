@@ -16,7 +16,7 @@
  *   - `perfStages.videoExtractMs` is set at the same end-of-stage point.
  *   - `materializeExtractedFramesForCompiledDir` is still called once
  *     when `extractionResult.extracted` is non-empty.
- *   - `force-sdr` mode still skips ALL ffprobe overhead.
+ *   - `force-sdr` mode, and auto mode with graded media, still skip ALL ffprobe overhead.
  *
  * New for distributed mode:
  *   - `materializeSymlinks` (default `false`) — when `true`, the stage
@@ -44,6 +44,7 @@ import {
   detectTransfer,
   extractAllVideoFrames,
   extractMediaMetadata,
+  gradingKeepsSdr,
   isVideoPastTimelineEnd,
   isHdrColorSpace,
   rebaseVideoToWindow,
@@ -60,11 +61,17 @@ import {
   collectVideoReadinessSkipIds,
   type RenderJob,
 } from "../../renderOrchestrator.js";
-import { materializeExtractedFramesForCompiledDir, type CompositionMetadata } from "../shared.js";
+import {
+  materializeExtractedFramesForCompiledDir,
+  reportExtractProgress,
+  type CompositionMetadata,
+} from "../shared.js";
+import type { ProgressCallback } from "../../renderOrchestrator.js";
 import { REMOTE_MEDIA_SUBDIR } from "../../htmlCompiler.js";
 import { resolveRenderFpsConfig } from "../../fileServer.js";
 import type { ProducerLogger } from "../../../logger.js";
 import { encoderFailureError } from "../encoderInterruption.js";
+import { rendersSdrOnly } from "../hdrMode.js";
 import {
   compareExtractionFailureGroups,
   extractionFailureGroupIdentityKey,
@@ -91,6 +98,7 @@ export interface ExtractVideosStageInput {
   materializeSymlinks?: boolean;
   deferRangeExtraction?: boolean;
   urlByAbsentLocalPath?: ReadonlyMap<string, string>;
+  onProgress?: ProgressCallback;
 }
 
 export interface ExtractVideosStageResult {
@@ -232,10 +240,12 @@ export class VideoExtractionStageError extends Error {
         affectedElementCount: failure.count,
       })),
     ),
+    ffmpegReason?: string,
   ) {
     const total = failures.reduce((sum, failure) => sum + failure.count, 0);
     const breakdown = failures.map((failure) => `${failure.kind}=${failure.count}`).join(",");
-    super(`Video extraction failed for ${total} source(s) [${code}; ${breakdown}]`);
+    const reason = ffmpegReason ? `: ffmpeg said: ${ffmpegReason}` : "";
+    super(`Video extraction failed for ${total} source(s) [${code}; ${breakdown}]${reason}`);
     this.name = "VideoExtractionStageError";
     this.publicMetadata = { extractionFailure };
   }
@@ -275,6 +285,7 @@ function buildVideoExtractionStageError(
     retryable,
     failures,
     extractionFailureMetadataFromResult(result),
+    result.errors.find((failure) => failure.ffmpegReason)?.ffmpegReason,
   );
 }
 
@@ -408,12 +419,14 @@ export async function runExtractVideosStage(
 
   // Probe ORIGINAL color spaces before extraction (which may convert SDR→HDR).
   // This is needed to identify which videos are natively HDR vs converted-SDR
-  // for the two-pass compositing path. Skipped only in force-sdr mode to
-  // avoid ffprobe overhead when the user has explicitly opted out.
+  // for the two-pass compositing path. Skipped when the render is SDR anyway:
+  // force-sdr, or auto mode with graded media (grading is SDR-only).
+  const probesHdr =
+    job.config.hdrMode !== "force-sdr" && !gradingKeepsSdr(job.config.hdrMode, composition);
   const nativeHdrVideoIds = new Set<string>();
   const videoTransfers = new Map<string, HdrTransfer>();
   let hdrProbeTransientRetries = 0;
-  if (job.config.hdrMode !== "force-sdr" && composition.videos.length > 0) {
+  if (probesHdr && composition.videos.length > 0) {
     log?.info("Probing video color spaces...", { videoCount: composition.videos.length });
     const probeFailures = await Promise.all(
       composition.videos.map(async (v) => {
@@ -463,14 +476,13 @@ export async function runExtractVideosStage(
 
   // Probe images for HDR color spaces (16-bit PNGs tagged BT.2020 PQ/HLG).
   // Mirrors the video probe loop above so image-only compositions can
-  // trigger HDR output without any video sources present. Skipped only in
-  // force-sdr mode to avoid ffprobe overhead when the user has explicitly
-  // opted out.
+  // trigger HDR output without any video sources present. Skipped when the
+  // video probe is.
   const nativeHdrImageIds = new Set<string>();
   const imageTransfers = new Map<string, HdrTransfer>();
   const hdrImageSrcPaths = new Map<string, string>();
   const imageColorSpaces: (VideoColorSpace | null)[] = [];
-  if (job.config.hdrMode !== "force-sdr" && composition.images.length > 0) {
+  if (probesHdr && composition.images.length > 0) {
     const probed = await Promise.all(
       composition.images.map(async (img) => {
         // Same shared resolver as the video probe above — a percent-encoded
@@ -500,6 +512,8 @@ export async function runExtractVideosStage(
         safeVideoExtractionSourceLogMetadata(v.src),
       );
     }
+    let framesPlanned = 0;
+    let framesDone = 0;
     extractionResult = await extractAllVideoFrames(
       composition.videos,
       projectDir,
@@ -510,13 +524,18 @@ export async function runExtractVideosStage(
         fps: job.config.fps,
         outputDir: join(compiledDir, "__hyperframes_video_frames"),
         format: job.config.videoFrameFormat ?? "auto",
-        toneMapHdrToSdr: job.config.hdrMode === "force-sdr",
+        toneMapHdrToSdr: rendersSdrOnly(job.config, composition),
         timelineEnd: composition.duration,
         maxTransientRetries: extractionPolicy.maxTransientRetries,
         collectProbeFailures: extractionPolicy.failureMode === "enforce",
         deferRangeExtraction,
         contentKeyedDirs: [join(compiledDir, REMOTE_MEDIA_SUBDIR)],
         urlByAbsentLocalPath,
+        onProgress: ({ planned = 0, done = 0 }) => {
+          framesPlanned += planned;
+          framesDone += done;
+          reportExtractProgress(job, framesDone, framesPlanned, input.onProgress);
+        },
       },
       abortSignal,
       cfg,

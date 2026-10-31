@@ -21,8 +21,25 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    outputs:
+      release_only: ${{ steps.release.outputs.release_only }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - name: Find a release-only diff
+        id: release
+        uses: ./.github/actions/release-only-diff
+
   heavy-films:
     name: "Heavy films: Safari vs Chrome"
+    needs: changes
+    # A release PR changes versions and notes only; a failed change detection must not skip the films.
+    if: ${{ !cancelled() && needs.changes.outputs.release_only != 'true' }}
     runs-on: macos-latest
     timeout-minutes: 45
     steps:

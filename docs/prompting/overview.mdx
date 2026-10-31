@@ -1,170 +1,208 @@
 ---
-title: Prompt Guide
-description: "How to prompt AI agents to author HyperFrames videos — setup, the two prompt shapes, and the map of this guide."
+title: "Ask for a great video"
+description: "How to ask an AI agent for a HyperFrames video: one line is enough, then the parts of a strong prompt, how much to specify, and how to iterate."
 ---
 
 import { DocsVideo } from "/snippets/docs-video.jsx";
 
-<DocsVideo
-  title="HyperFrames video: Capstone Timeline Default"
-  src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/capstone-timeline-default-v2.mp4#t=0.1"
-  loop
-/>
-*By the end of this guide, you can build this with a prompt.*
+One sentence is enough: the agent picks the look, the pacing and the structure for you. Say more only about what
+must come out exactly as you imagine it. This page shows how to say it, and the topic pages show the words for
+motion, sound, text, color and brand.
 
-HyperFrames is built for AI agents — compositions are plain HTML, the CLI is non-interactive, and the framework ships [skills](https://github.com/vercel-labs/skills) that teach agents the patterns docs alone don't cover. This guide shows how to prompt agents effectively once skills are installed — the vocabulary that changes output, the iteration patterns that save time, and the rules that prevent breakage.
-
-<Note>
-  **Before you prompt**, have three things in place: the skills installed (below), a scaffolded project (`npx hyperframes init my-video`), and the live preview running (`npx hyperframes preview`) so you can judge each render the moment it lands. Prompting without the preview open turns every iteration into a blind guess.
-</Note>
-
-## The level ladder
-
-The guide is one arc, novice to advanced. Each level is what you can do once you've read it — read them in order, or jump straight to whichever gap matches where you are:
-
-| Level | What you can do after it |
+| Page | What it helps you ask for |
 | --- | --- |
-| **1 — [Your first video](/prompting/product-launch)** | Get a finished video from one prompt — the agent fills the gaps (palette, pacing, structure) for you. |
-| **2 — [Control](/prompting/anatomy)** | Name the parts yourself: route, spec, beats, copy, technique, negatives — the skeleton that removes the decisions agents get wrong. |
-| **3 — [Life](/prompting/motion)** | Motion and transitions that read premium instead of like a slideshow. |
-| **4 — [Substance](/prompting/code-blocks)** | Add real capabilities: code animation, data-viz, overlays, captions, generated artwork, VFX, 3D. |
-| **5 — [Voice & sound](/prompting/media-and-audio)** | Narration, music, and any footage you supply, scored and mixed correctly. |
-| **6 — [Scale](/prompting/design-systems)** | Design systems, variables, storyboards, editing, iterating, matching references, and export — a video as a system, not a one-off. |
-| **7 — [Capstone](/prompting/capstone)** | Everything above, composed into one real prompt. Each chapter on the way up shows its own region of this film cut out in isolation; the capstone prompt is the glue that binds them into one continuous camera journey, rendered twice from one template. |
+| **[Motion and transitions](/prompting/motion)** | Fix motion you don't like; camera, overlap, depth, pace; transitions between scenes |
+| **[Voice, music and sound](/prompting/media-and-audio)** | Narration, music, sound effects, supplied footage, and a mix you can listen to |
+| **[Text, captions and code](/prompting/captions-catalog)** | Caption styles, text effects, code on screen, overlays and lower thirds |
+| **[Colour, effects, 3D and generated art](/prompting/color-grading)** | Grades, exact looks, generated artwork, VFX and 3D |
+| **[Brand, templates and storyboards](/prompting/design-systems)** | Your brand as the source of truth, templates and variables, multi-scene plans |
 
 ## One-time setup
 
-Install the skills in your project (or globally for your agent):
+In the Studio app there is nothing to set up. With your own agent, install the skills once:
+[one paste](/quickstart#with-your-agent). Then start each request by calling the skill: `/hyperframes` in Claude
+Code and Cursor, `$hyperframes` in Codex, or however your agent invokes a skill.
 
-```bash
-npx skills add heygen-com/hyperframes
-```
+## Describe it, or hand it something
 
-The installer shows a picker. Select the **core skills** below — every project needs them. In Claude Code, restart the session after installing; the skills register as **slash commands**. Make any video by asking for it; the `/hyperframes` skill carries the contract and the references (each kind of film, story, motion, look, sound, review, captions, overlays).
+**Describe the video** when the idea is in your head: length, shape, mood, and the key elements.
 
-**Core skills — install all of these**
+> Create a 10-second product intro with a title over a dark background and quiet music.
 
-| Slash command           | What it loads                                                              |
-| ----------------------- | -------------------------------------------------------------------------- |
-| `/hyperframes`          | **Read first.** The render contract and work loop, plus references for format, motion, look, captions, whole films (website, topic, PR, music, short motion piece), talking-head overlays, and storyboards |
-| `/hyperframes-cli`      | The CLI by job — scaffold, check, look at frames, edit the timeline, preview, render, publish, project history |
-| `/hyperframes-registry` | About 450 ready-made blocks and components — search before hand-building a look; install via `hyperframes add` |
-| `/media-use`            | Music, sound effects, images, voiceover, avatar and generated video, transcripts, cutouts, colour grades — HeyGen (the `heygen` CLI; OAuth sign-in carries a free allowance) or free local tools (Kokoro TTS, Parakeet/whisper, background removal, bundled SFX) — and mixing placed audio |
+**Hand it something** when you have material: a URL, a doc, a spreadsheet, a transcript. The agent reads it and
+writes about something real, which gives richer videos than invented copy.
 
-**Optional skills — add the ones that match your inputs**
+> Turn this CSV into an animated bar chart race.
 
-| Slash command            | Input → output                                                              |
-| ------------------------ | --------------------------------------------------------------------------- |
-| `/slideshow`             | A deck outline or slides → navigable presentation with presenter mode (not a rendered MP4) |
-| `/remotion-to-hyperframes` | Import Remotion or other video code and renders, verified frame by frame |
-| `/figma`                 | A Figma file / frame / URL → imported assets, brand tokens, and reconstructed motion |
+A full example, a 45-second launch built from a live site:
 
-<Tip>
-  To skip the picker and install everything in one shot, run `npx hyperframes skills`. And start HyperFrames prompts with `/hyperframes` (or invoke the skill another way for non-Claude agents) — it loads the composition rules explicitly so the agent gets them right the first time.
-</Tip>
-
-
-
-## Claude Design
-
-Claude Design uses a different setup. Download [`claude-design-hyperframes.md`](https://github.com/heygen-com/hyperframes/blob/main/docs/guides/claude-design-hyperframes.md) from GitHub (click the ↓ button), then **attach it to your chat** (don't paste the URL — file attachments produce better output):
-
-```text
-Use the attached skill. 25-second LinkedIn video for my startup.
-
-Problem: Sales teams waste 3 hours/day on manual CRM updates.
-Solution: AutoCRM — AI that logs every call, email, and meeting.
-Traction: 200+ teams, $1.2M ARR, 18% MoM growth.
-CTA: autocrmhq.com
-```
-
-Claude Design produces a valid first draft (brand identity, scene content, animations, transitions). Download the ZIP and refine in any AI coding agent with `npx hyperframes preview` running. See the [Claude Design guide](/guides/design-tools) for the full workflow.
-
-
-
-## The two prompt shapes
-
-Most successful HyperFrames prompts fall into one of two shapes.
-
-**Cold start — describe the video.** You tell the agent what you want from scratch — best for greenfield work where you already have the creative direction in your head.
-
-> Using `/hyperframes`, create a 10-second product intro with a fade-in title over a dark background and subtle background music.
-
-Cold-start prompts work best when you specify **duration** ("10 seconds", "5 scenes of 3s each"), **aspect ratio** ("16:9", "9:16 vertical" — defaults to 1920x1080 otherwise), **mood / style** ("minimal Swiss grid", "high-energy social"), and **key elements** (title, lower third, captions, music).
-
-**Warm start — turn context into a video.** You give the agent something to work with — a URL, a doc, a CSV, a transcript — and ask it to synthesize that into a video. This is where HyperFrames shines because the agent does the research/summarization step *and* the production step in one flow.
-
-> Take a look at this GitHub repo https://github.com/heygen-com/hyperframes and explain its uses and architecture to me using `/hyperframes`.
-
-> Turn this CSV into an animated bar chart race using `/hyperframes`.
-
-Warm-start prompts produce richer, more grounded videos because the agent is writing about *something specific* instead of inventing copy.
-
-The four prompts above illustrate shape, not results — every prompt in this guide that ships with an embedded render was run exactly as written, and the gallery of those lives in [Verified examples](/prompting/examples).
-
-## Before the build
-
-The agent builds what you asked for and fills the gaps itself. A question, a hold, or a loose idea gets an answer or a proposal first, not an edit. Say what must be exact (a claim, a name, a length) and leave the rest.
-
-Want to review the plan before anything is built? Ask for a storyboard: the agent writes `STORYBOARD.md` in the project root, one section per frame, and builds each frame against it once you approve. In a hurry, skip any questions by saying so:
-
-> Just build it — don't ask me anything.
-
-## Recommended workflow
-
-1. `npx hyperframes init my-video` — scaffold a project (skills install automatically)
-2. Open the project in Claude Code (or Cursor / Codex)
-3. Prompt with `/hyperframes` and one of the shapes above
-4. `npx hyperframes preview` — watch in the browser as the agent edits
-5. Iterate with small targeted prompts
-6. `npx hyperframes lint && npx hyperframes check` — the gate: structure, runtime errors, layout collisions, motion, and contrast. Both must pass before you render
-7. `npx hyperframes render --output final.mp4` when you're happy
-
-`check` is the step people skip and regret. It runs the composition in a headless browser and reports what a still frame can't tell you — an element overflowing its region, two text blocks colliding, a runtime error that only fires mid-timeline, contrast below WCAG AA. It is fast and it is not optional: a render that took ten minutes will happily contain a defect `check` would have named in seconds.
-
-
-
-## What a prompt buys you
-
-Three prompts from this guide and their unedited renders — one warm start from a URL, one registry-block piece, one dense freeform spec:
-
-> /hyperframes Make a 45-second 1920x1080 launch video for https://linear.app. Energetic but minimal, use the site's own palette and screenshots. Structure: hook stating the problem, 3 feature beats with UI captures and one-line captions, end card with logo + "Try it free". Female TTS voice, confident tone, subtle electronic BGM under -18dB.
+> Make a 45-second 1920x1080 launch video for https://linear.app. Energetic but minimal, use the site's own palette and screenshots. Structure: hook stating the problem, 3 feature beats with UI captures and one-line captions, end card with logo + "Try it free". Female TTS voice, confident tone, subtle electronic BGM under -18dB.
 
 <DocsVideo
-  title="HyperFrames video: Example Product Launch"
+  title="Example product launch"
   src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/example-product-launch-v2.mp4#t=0.1"
   loop
 />
-*Rendered from the prompt above, unedited.*
+*Made from the prompt above.*
 
-> /hyperframes 6-second 1920x1080 video, dark navy background. Beat 1 (0-1s): label "ARR" fades up small, top-center. Beat 2 (1-4s): a giant number counts up to $4.2M with an odometer roll, easing out as it lands. Beat 3 (4-6s): "+312% YoY" stamps in below in green, then everything settles into a gentle ambient idle. Use the `apple-money-count` registry block as base. No narration.
-
-<DocsVideo
-  title="HyperFrames video: Example Stat Countup"
-  src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/example-stat-countup.mp4#t=0.1"
-  loop
-/>
-*Rendered from the prompt above, unedited.*
-
-And at the far end of the [specification dial](/prompting/specification-dial), a full visual+motion spec one-shots a broadcast-style animated globe — see [Recreating something you saw](/prompting/recreating-references) for the spec:
+At the other end, a dense visual spec rebuilt a broadcast-style globe in one go
+([how](/prompting/recreating-references)):
 
 <DocsVideo
-  title="HyperFrames video: Recreate Globe Oneshot"
+  title="Recreate globe oneshot"
   src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/recreate-globe-oneshot-v2.mp4#t=0.1"
   loop
 />
 *One-shot render from the distilled spec, no iteration.*
 
-## Explore the guide
+## Before the build
 
-<CardGroup cols={2}>
-  <Card title="Prompt anatomy" href="/prompting/anatomy">The six-part skeleton every one-shot prompt shares</Card>
-  <Card title="Verified examples" href="/prompting/examples">Copy-paste prompts, each one-shots a finished video</Card>
-  <Card title="The specification dial" href="/prompting/specification-dial">How much to specify, and what density buys</Card>
-  <Card title="Vocabulary" href="/prompting/vocabulary">Words that map to specific framework settings</Card>
-  <Card title="Premium motion" href="/prompting/motion">The eight-rule grammar that keeps video from feeling cheap</Card>
-  <Card title="Recreating references" href="/prompting/recreating-references">Match something you saw, from text alone</Card>
-  <Card title="Capstone" href="/prompting/capstone">The film above, dissected frame by frame</Card>
-</CardGroup>
+The agent asks only about what it can't decide well, then builds. Want to approve the plan first? Ask for a
+storyboard (in the Studio app, turn on **Start with a storyboard**): you see the video as stills before anything
+moves. In a hurry, say **Just build it, don't ask me anything.**
 
-*Next: [Your first video](/prompting/product-launch) — one URL, one prompt, a finished launch video.*
+## The shape of a strong prompt
+
+Each part of this skeleton removes a decision agents most often get wrong on a first try:
+
+```text
+[route]      /hyperframes
+[spec]       8-second 1920x1080 video.
+[beats]      Beat 1 (0-4s): ...  Beat 2 (4-5s): ...  Beat 3 (5-8s): ...
+[copy]       the exact on-screen text, quoted
+[technique]  Adapt the `code-typing` and `vfx-shatter` registry blocks.
+[negatives]  No narration, no image or media files.
+```
+
+- **Route** with a slash command, only with your own agent: `/hyperframes` loads the framework rules (`/slideshow` for a deck). The Studio app does this for you.
+- **Spec** duration and resolution up front. Defaults are 1920x1080 at 30fps.
+- **Beats** get timestamps. Include pacing instructions ("then hold on the blinking cursor") — agents skip breathing room unless told.
+- **Copy** is quoted exactly, with `/` for line breaks. Unquoted copy gets paraphrased.
+- **Technique**: name registry blocks exactly as they appear in the [catalog](/catalog/blocks/data-chart) — they're adapted starting points, not drop-ins (blocks ship with demo content the agent rewrites to your beat, so naming one pins the *technique*). Pin a technique wherever the default choice can fail (see [the specification dial](#how-much-to-specify)).
+- **Negatives** close the gaps: "no narration" is not "silent" — if you want no sound at all, say "no audio". Avoid ambiguous phrases like "no external assets" (CDN-loaded runtimes are normal; say "no image or media files" if that's what you mean).
+
+Assembled:
+
+> Make an 8-second 1920x1080 video. Beat 1 (0-4s): dark macOS terminal types "npx skills add heygen-com/hyperframes" character by character, then hold on the blinking cursor. Beat 2 (4-5s): the terminal shatters into fragments. Beat 3 (5-8s): bold white kinetic text on black slams in word by word, snappy: "YOU JUST MADE THIS / WITH HYPERFRAMES." Adapt the `code-typing` and `vfx-shatter` registry blocks; hand-author the kinetic text. No narration, no image or media files.
+
+<DocsVideo
+  title="Validate anatomy terminal"
+  src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/validate-anatomy-terminal.mp4#t=0.1"
+  loop
+/>
+*Made from the prompt above.*
+
+### Inside each beat
+
+The skeleton above structures the *ask*. Inside each beat, describe the *content* with the same five slots every time:
+
+```text
+[element]   what's on screen        a giant number · the tweet card · "SHOWREEL"
+[motion]    what it does            counts up with an odometer roll · slides up · fades in per letter
+[layout]    where it sits           top-center · filling the lower half · bottom-right
+[style]     how it looks            dark navy, green accent · 8-bit pixel · thin geometric sans
+[timing]    when, inside the beat   at 1s · over 3s, easing out as it lands · staggered 0.1s apart
+```
+
+One sentence per element, slots in any order: *"a giant number **(element)** counts up to $4.2M with an odometer roll **(motion)**, easing out as it lands **(timing)**, centered **(layout)** in green on dark navy **(style)**."* Elements you don't describe, the agent designs — which is fine when you trust its taste and a drift risk when you don't (see [the specification dial](#how-much-to-specify)).
+
+<Card title="Practice it: The brief" icon="graduation-cap" href="https://hyperframes.heygen.com/lessons/the-brief">
+  Free 20-minute lesson with a short video, a quiz and a brief to try. A brief is the goal, who it is for, two to four specifics and the exact words in quotes.
+</Card>
+
+## How much to specify
+
+How much you specify sets how far the result can drift from what you imagined, not whether it works. Mood words get a
+designer's interpretation; exact colors, timings and named techniques get your frame.
+
+Three settings:
+
+1. **Mood words** — "a warm, minimal logo sting". Fastest to write; the agent owns the look.
+2. **Style tokens** — exact hexes, named textures ("halftone-dot", "paper-cut matte", "8-bit pixel"), type direction ("condensed caps", "thin geometric sans, wide tracking"). Cheap precision, no downside.
+3. **Full visual spec** — every element gets shape + color + position + timing (see [visual specs](/prompting/color-grading#high-fidelity-looks)). Use when you're recreating a specific look.
+
+Density never hurts — a stronger model just uses less of its own taste. It matters most for technique choices a smaller model won't default well. Two worth pinning every time:
+
+- **3D**: any real depth, lighting, or camera motion → say **"Three.js via the adapter"**. CSS perspective transforms read flat on lighting-critical scenes, and Three.js is a supported seek-safe runtime.
+- **Sequencing**: resolve simultaneity in the text. "The counter fades out and READY stamps in at 4s" produces an overlap; "fades out fully by 4.2s; at 4.2s READY stamps in" doesn't.
+
+## Iterate toward the look
+
+After the first version, talk to the agent like a video editor instead of starting over:
+
+> Make the title 2x bigger.
+
+> Swap to dark mode.
+
+> Add a fade-out at the end and a lower third at 0:03 with my name and title.
+
+> The captions are too small and they overlap the lower third. Move them up and shrink them.
+
+> Replace the background music with `assets/track.mp3`.
+
+The agent already has the composition open and the skills loaded — small targeted edits produce better results than long re-specifications.
+
+### Make each change count
+
+Three moves keep iteration convergent instead of circular:
+
+1. **One variable per edit.** Change one thing, render, judge, repeat. A request that moves three things at once ("bigger title, warmer colors, faster cuts") makes it impossible to attribute what helped and what hurt.
+2. **Layer one element type at a time.** Building up a complex scene? Start with the minimal version (subject + its motion only), confirm it reads, then add exactly one layer per pass — camera move, then background motion, then style treatment. Every addition stays attributable.
+3. **Strip, then re-layer.** When a scene keeps misfiring, don't pile on corrections — strip it back to the simplest version that works (freeze the camera, simplify the motion, clear the background), confirm, then reintroduce complexity one layer at a time until you find the ingredient that breaks it.
+
+### Calibrate with absolute targets
+
+When you're dialing in a look, relative corrections oscillate — "make the dots finer" overshoots, "a bit bigger" overshoots back. State targets as absolute values and the agent lands them in one pass:
+
+- **Avoid:** `make the dots 2x finer`
+- **Instead:** `dot radius = 25% of row spacing, with clear gaps between dots`
+
+- **Avoid:** `the glow is too strong`
+- **Instead:** `glow at ~35% peak opacity, always subtler than the orb itself`
+
+And freeze what already works: "the framing and motion are right — don't touch them; only change the dot size." Without the freeze clause, a rebuild can drift on axes you'd already settled.
+
+<Card title="Practice it: Review and correct" icon="graduation-cap" href="https://hyperframes.heygen.com/lessons/review-and-correct">
+  Free 20-minute lesson with a short video, a quiz and a brief to try. Watch the first video all the way through, with sound, before you reply.
+</Card>
+
+## Rules and common mistakes
+
+**Ask for a hold, but say what stays alive.** A landed title should hold still; keep moving only what is actually
+changing (a live number, footage, the camera travelling to the next thing). Don't ask for "breathing" to fill time.
+
+**Give every second a job.** Ask for 12 seconds with 5 seconds of content and the agent has to invent the rest. Either
+shorten the length or say what the extra seconds show.
+
+**Write the timing out.** "At 4s the counter fades out and READY stamps in" overlaps for a few frames; "the counter
+is gone by 4.2s; at 4.2s READY stamps in" doesn't.
+
+**Quote on-screen text.** Unquoted copy gets paraphrased; `tagline: "Ship faster."` renders word for word.
+
+**Don't ask for React / Vue components.** Compositions are plain HTML with `data-*` attributes and a GSAP timeline; framework components force a translation step.
+- **Avoid:** `build a React component for the intro`
+- **Instead:** `build the intro scene` (the agent writes composition HTML directly)
+
+**Don't over-spec resolution or framerate.** Defaults (1920×1080, 30fps) render fast and look great; higher specs slow rendering meaningfully.
+- **Avoid:** `render in 4K 60fps` (for a social clip)
+- **Instead:** say nothing — or `4K` only when the delivery target actually needs it
+
+**With your own agent, don't skip the slash command.** Without `/hyperframes`, the agent guesses at HTML video conventions instead of loading the framework's actual rules.
+- **Avoid:** `make me a video of...`
+- **Instead:** `/hyperframes make me a video of...`
+
+**Don't paste raw error logs.** `check` localizes the problem first (lint, then a browser gate); a bare log makes the agent re-derive what the tool already knows.
+- **Avoid:** pasting 200 lines of console output
+- **Instead:** `check reports a missing asset in scene 2 — fix it`
+
+**Don't assume the agent knows your assets.** It will look, but a path skips the search.
+- **Avoid:** `use my logo`
+- **Instead:** `use assets/logo.svg`
+
+**Don't hard-time a verbatim script.** With supplied narration text, duration follows the spoken words.
+- **Avoid:** `a 60-second explainer from this script: ...`
+- **Instead:** `a ~60-second explainer from this script: ...`
+
+The agent's own rules (what it checks before rendering, the lint rules) live in the
+[`/hyperframes` skill](https://github.com/heygen-com/hyperframes/tree/main/skills/hyperframes); you don't need them to
+ask for a video.

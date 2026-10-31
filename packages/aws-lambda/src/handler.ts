@@ -14,7 +14,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { availableParallelism, tmpdir } from "node:os";
 import { basename, join } from "node:path";
-import { GetAccountSettingsCommand, LambdaClient } from "@aws-sdk/client-lambda";
+import { GetAccountSettingsCommand, InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
 import { S3Client } from "@aws-sdk/client-s3";
 import {
   assemble,
@@ -44,7 +44,7 @@ import {
   renderChunk,
 } from "@hyperframes/producer/distributed";
 import { resolveChromeExecutablePath } from "./chromium.js";
-import { stitchMp4InS3 } from "./s3Stitch.js";
+import { type StitchHelper, sendRangeParts, stitchMp4InS3 } from "./s3Stitch.js";
 import { type DistributedFormat, formatExtension } from "./formatExtension.js";
 import type {
   AssembleEvent,
@@ -61,6 +61,8 @@ import type {
   RenderChunkV2Event,
   RenderChunkLambdaResult,
   AssembleV2Event,
+  StitchPartsEvent,
+  StitchPartsLambdaResult,
 } from "./events.js";
 import {
   downloadS3ObjectToFile,
@@ -125,6 +127,9 @@ export async function handler(event: LambdaEvent, deps?: HandlerDeps): Promise<L
     primeRuntimeEnv();
     await ensureChromePath(deps);
     return { Action: "warm" };
+  }
+  if ((event as { Action?: unknown }).Action === "stitchParts") {
+    return await handleStitchParts(event as StitchPartsEvent, deps);
   }
   const unwrapped = unwrapEvent(event);
   validatePlanProtocolShape(unwrapped);
@@ -376,10 +381,16 @@ async function resolveWorkerConcurrency(event: PlanEvent, deps?: HandlerDeps): P
   }
 }
 
+/** The stack's reserved concurrency (on the function that runs the chunks), if it sets one. */
+function reservedConcurrency(): number | undefined {
+  const reserved = Number(process.env.HYPERFRAMES_LAMBDA_RESERVED_CONCURRENCY);
+  return reserved > 0 ? reserved : undefined;
+}
+
 /** The function's reserved concurrency, else its share of the account's unreserved pool. */
 async function functionConcurrency(lambda = new LambdaClient({})): Promise<number> {
-  const reserved = Number(process.env.HYPERFRAMES_LAMBDA_RESERVED_CONCURRENCY);
-  if (reserved > 0) return reserved;
+  const reserved = reservedConcurrency();
+  if (reserved) return reserved;
   const { AccountLimit } = await lambda.send(new GetAccountSettingsCommand({}));
   const unreserved = AccountLimit?.UnreservedConcurrentExecutions;
   if (unreserved === undefined) throw new Error("no UnreservedConcurrentExecutions in the reply");
@@ -620,7 +631,9 @@ async function handleRenderChunk(
   const started = Date.now();
   const s3 = deps?.s3 ?? getS3Client();
   const primitive = deps?.primitives?.renderChunk ?? renderChunk;
+  const chromeStarted = Date.now();
   await ensureChromePath(deps);
+  const chromeMs = Date.now() - chromeStarted;
 
   const work = mkdtempSync(join(deps?.tmpRoot ?? tmpdir(), "hf-lambda-chunk-"));
   const planTar = join(work, "plan.tar.gz");
@@ -645,14 +658,17 @@ async function handleRenderChunk(
         : `chunk-${pad(event.ChunkIndex)}${formatExtension(event.Format)}`,
     );
 
+    const primitiveStarted = Date.now();
     const result: ChunkResult = await primitive(planDir, event.ChunkIndex, chunkOutputBase, {
       maxCaptureWorkers: lambdaMaxCaptureWorkers(),
+      interleaveCapture: true,
     });
     logEvent({
       event: "chunk_capture",
       chunkIndex: event.ChunkIndex,
       workers: result.workers,
       captureMode: result.captureMode,
+      ...chunkStageTimings(result, primitiveStarted - started, chromeMs),
     });
 
     const chunkUri = await uploadChunkOutput(
@@ -686,7 +702,9 @@ async function handleRenderChunkV2(
   const started = Date.now();
   const s3 = deps?.s3 ?? getS3Client();
   const primitive = deps?.primitives?.renderChunk ?? renderChunk;
+  const chromeStarted = Date.now();
   await ensureChromePath(deps);
+  const chromeMs = Date.now() - chromeStarted;
   const work = mkdtempSync(join(deps?.tmpRoot ?? tmpdir(), "hf-lambda-chunk-v2-"));
   try {
     const { planDir } = await downloadAndMaterializePlanV2(
@@ -701,14 +719,17 @@ async function handleRenderChunkV2(
         ? `chunk-${pad(event.ChunkIndex)}`
         : `chunk-${pad(event.ChunkIndex)}${formatExtension(event.Format)}`,
     );
+    const primitiveStarted = Date.now();
     const result = await primitive(planDir, event.ChunkIndex, chunkOutputBase, {
       maxCaptureWorkers: lambdaMaxCaptureWorkers(),
+      interleaveCapture: true,
     });
     logEvent({
       event: "chunk_capture",
       chunkIndex: event.ChunkIndex,
       workers: result.workers,
       captureMode: result.captureMode,
+      ...chunkStageTimings(result, primitiveStarted - started, chromeMs),
     });
     const chunkUri = await uploadChunkOutput(
       s3,
@@ -728,6 +749,19 @@ async function handleRenderChunkV2(
   } finally {
     cleanupDir(work);
   }
+}
+
+function chunkStageTimings(result: ChunkResult, setupMs: number, chromeMs: number) {
+  const { planHashMs, sessionBootMs, captureStageMs, encodeStageMs, durationMs } = result;
+  return {
+    setupMs,
+    chromeMs,
+    planHashMs,
+    sessionBootMs,
+    captureStageMs,
+    encodeStageMs,
+    durationMs,
+  };
 }
 
 async function uploadChunkOutput(
@@ -836,7 +870,7 @@ async function handleAssembleV2(
       throw error;
     }
     if (chunksAreStitchedMp4(planDir, event.Cfr === true)) {
-      return await stitchChunksInS3(s3, event, manifest, started);
+      return await stitchChunksInS3(s3, event, manifest, started, deps?.lambda);
     }
     // `downloadAndMaterializePlanV2` materializes atomically. Audio is
     // assembler-only and lives at the familiar v1-compatible location.
@@ -887,6 +921,7 @@ async function stitchChunksInS3(
   event: AssembleV2Event,
   plan: PlanV2Manifest,
   started: number,
+  lambda?: LambdaClient,
 ): Promise<AssembleLambdaResult> {
   if (event.ChunkS3Uris.length !== plan.chunkCount) {
     throw new Error(
@@ -896,6 +931,7 @@ async function stitchChunksInS3(
   const stitchStarted = Date.now();
   const stitched = await stitchMp4InS3(s3, event.ChunkS3Uris, event.OutputS3Uri, {
     audioUri: event.AudioS3Uri ?? undefined,
+    helper: stitchHelper(lambda),
   });
   logEvent({
     event: "assemble_stages",
@@ -904,6 +940,8 @@ async function stitchChunksInS3(
     stitchMs: Date.now() - stitchStarted,
     parts: stitched.parts,
     downloadedBytes: stitched.downloadedBytes,
+    helpers: stitched.helpers,
+    helperFallbacks: stitched.helperFallbacks,
   });
   return {
     Action: "assemble",
@@ -1073,6 +1111,53 @@ function getEventS3Uris(
 }
 
 /**
+ * Parts S3 cannot copy go to the function the stack names: it just ran the chunks, so it is warm,
+ * and each invocation brings its own network link.
+ */
+export function stitchHelper(lambda?: LambdaClient): StitchHelper | undefined {
+  const functionName = process.env.HYPERFRAMES_STITCH_FUNCTION?.trim();
+  if (!functionName) return undefined;
+  const client = lambda ?? new LambdaClient({});
+  // This assemble may hold one slot of the reservation itself.
+  const reserved = reservedConcurrency();
+  const maxInvocations = reserved ? Math.max(1, reserved - 1) : Infinity;
+  const send: StitchHelper["send"] = async (target, parts) => {
+    const event: StitchPartsEvent = { Action: "stitchParts", ...target, Parts: parts };
+    const response = await client.send(
+      new InvokeCommand({ FunctionName: functionName, Payload: JSON.stringify(event) }),
+    );
+    const body = JSON.parse(
+      new TextDecoder().decode(response.Payload),
+    ) as StitchPartsLambdaResult & {
+      errorMessage?: string;
+      errorType?: string;
+    };
+    if (response.FunctionError) {
+      const error = new Error(
+        `[handler] stitchParts on ${functionName} failed: ${body.errorMessage ?? response.FunctionError}`,
+      );
+      if (body.errorType) error.name = body.errorType;
+      throw error;
+    }
+    return body.ETags;
+  };
+  return { send, maxInvocations };
+}
+
+async function handleStitchParts(
+  event: StitchPartsEvent,
+  deps?: HandlerDeps,
+): Promise<StitchPartsLambdaResult> {
+  const { Bucket, Key, UploadId, Parts } = event;
+  assertAllowedBuckets([
+    `s3://${Bucket}/${Key}`,
+    ...Parts.flatMap((part) => part.ranges.map((r) => r.uri)),
+  ]);
+  const ETags = await sendRangeParts(deps?.s3 ?? getS3Client(), { Bucket, Key, UploadId }, Parts);
+  return { Action: "stitchParts", ETags };
+}
+
+/**
  * Verify every S3 URI in the event resolves to the configured render bucket.
  * Throws `S3_URI_NOT_ALLOWED` (non-retryable) when a URI targets a different
  * bucket, preventing event injection from reading or writing arbitrary S3 data.
@@ -1083,10 +1168,14 @@ function getEventS3Uris(
 function validateEventS3Uris(
   event: PlanEvent | AudioEvent | RenderChunkEvent | AssembleEvent,
 ): void {
+  assertAllowedBuckets(getEventS3Uris(event));
+}
+
+function assertAllowedBuckets(uris: Iterable<string>): void {
   const allowedBucket = process.env.HYPERFRAMES_RENDER_BUCKET?.trim();
   if (!allowedBucket) return;
 
-  for (const uri of getEventS3Uris(event)) {
+  for (const uri of uris) {
     const { bucket } = parseS3Uri(uri);
     if (bucket !== allowedBucket) {
       const err = new Error(

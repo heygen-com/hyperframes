@@ -11,6 +11,8 @@ Starting from an item is faster and usually better than writing the effect yours
 
 ## Find and install
 
+There is no `hyperframes registry` command; searching is `catalog`, installing is `add`.
+
 ```bash
 npx hyperframes catalog --query "<what the beat should do, in English>" --json
 npx hyperframes add <name> --json        # prints the written files and the mount snippet

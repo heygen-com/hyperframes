@@ -6,6 +6,7 @@ import { liveTime, usePlayerStore } from "../store/playerStore";
 import { trackStudioEvent } from "../../utils/studioTelemetry";
 import { Tooltip } from "../../components/ui";
 import { useMountEffect } from "../../hooks/useMountEffect";
+import { useLinkedClipPreferences } from "../../utils/linkedClipPreferences";
 import { ShortcutsButton } from "./ShortcutsPanel";
 import type { ShortcutSection } from "./studioShortcuts";
 import { SpeedMenu } from "./SpeedMenu";
@@ -167,6 +168,8 @@ interface PlayerControlsProps {
   shortcutSections?: readonly ShortcutSection[];
 }
 
+const compositionFps = () => useLinkedClipPreferences.getState().compositionFps;
+
 export const PlayerControls = memo(function PlayerControls({
   onTogglePlay,
   onSeek,
@@ -202,7 +205,7 @@ export const PlayerControls = memo(function PlayerControls({
     if (!timeDisplayRef.current) return;
     const t = currentTimeRef.current;
     timeDisplayRef.current.textContent =
-      timeDisplayMode === "frame" ? formatFrameTime(t, duration) : formatTime(t);
+      timeDisplayMode === "frame" ? formatFrameTime(t, duration, compositionFps()) : formatTime(t);
   }, [duration, timeDisplayMode]);
 
   useMountEffect(() => {
@@ -212,7 +215,7 @@ export const PlayerControls = memo(function PlayerControls({
       const currentDuration = durationRef.current;
       const text =
         timeDisplayModeRef.current === "frame"
-          ? formatFrameTime(time, currentDuration)
+          ? formatFrameTime(time, currentDuration, compositionFps())
           : formatTime(time);
       if (timeDisplayRef.current.textContent !== text) timeDisplayRef.current.textContent = text;
     };

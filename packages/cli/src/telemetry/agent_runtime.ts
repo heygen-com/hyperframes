@@ -42,6 +42,8 @@ interface VendorRule {
   name: Exclude<AgentRuntime, null>;
   /** Check returns true when the named agent is driving the CLI. */
   check: (env: NodeJS.ProcessEnv) => boolean;
+  /** Narrower than `check` when `check` also matches a person in that editor's terminal or host. */
+  agentOnly?: (env: NodeJS.ProcessEnv) => boolean;
 }
 
 // Ordering matters: the FIRST rule that matches wins. Put more specific rules
@@ -93,6 +95,7 @@ const VENDOR_RULES: VendorRule[] = [
   {
     name: "cursor",
     check: (env) => Boolean(env["CURSOR_AGENT"]) || env["TERM_PROGRAM"] === "cursor",
+    agentOnly: (env) => Boolean(env["CURSOR_AGENT"]),
   },
   // Windsurf (Codeium) integrated terminal — exports TERM_PROGRAM=windsurf.
   // Attested across many independent detectors (nx
@@ -105,6 +108,7 @@ const VENDOR_RULES: VendorRule[] = [
   {
     name: "windsurf",
     check: (env) => env["TERM_PROGRAM"]?.toLowerCase() === "windsurf",
+    agentOnly: () => false,
   },
   // GitHub Copilot Coding Agent — runs inside GitHub Actions and the
   // workflow injects an additional marker to distinguish from generic CI.
@@ -123,6 +127,7 @@ const VENDOR_RULES: VendorRule[] = [
   {
     name: "replit",
     check: (env) => typeof env["REPL_ID"] === "string" || typeof env["REPLIT_USER"] === "string",
+    agentOnly: () => false,
   },
   // Nous Research Hermes Agent — cli.py:50 unconditionally executes
   //   os.environ["HERMES_QUIET"] = "1"
@@ -134,17 +139,13 @@ const VENDOR_RULES: VendorRule[] = [
     name: "hermes",
     check: (env) => typeof env["HERMES_QUIET"] === "string",
   },
-  // openclaw — multi-channel AI gateway. When openclaw spawns a CLI
-  // subprocess it builds the child env with OPENCLAW_STATE_DIR /
-  // OPENCLAW_CONFIG_PATH / OPENCLAW_DISABLE_AUTO_UPDATE set explicitly
-  // (extensions/qa-matrix/src/runners/contract/scenario-runtime-cli.ts:344-351).
-  // We key on OPENCLAW_STATE_DIR since it's a path scope-bound to openclaw.
+  // openclaw — multi-channel AI gateway. It sets OPENCLAW_CONFIG_PATH on the
+  // CLI subprocesses it spawns. Never name its state-dir var here: endpoint
+  // scanners flag that string as an IoC and quarantine the bundle (#5245).
   // Source: https://github.com/openclaw/openclaw
   {
     name: "openclaw",
-    check: (env) =>
-      typeof env["OPENCLAW_STATE_DIR"] === "string" ||
-      typeof env["OPENCLAW_CONFIG_PATH"] === "string",
+    check: (env) => typeof env["OPENCLAW_CONFIG_PATH"] === "string",
   },
   // Pi coding agent (https://pi.dev, https://github.com/earendil-works/pi).
   // packages/coding-agent/src/cli.ts:13 unconditionally executes
@@ -255,6 +256,12 @@ export function detectAgentRuntime(): AgentRuntime {
     if (rule.check(process.env)) return rule.name;
   }
   return null;
+}
+
+/** An agent is running this shell, not a person typing in an editor's terminal or a hosted workspace. */
+export function isAgentDriven(env: NodeJS.ProcessEnv = process.env): boolean {
+  if (isGeminiManagedAgent()) return true;
+  return VENDOR_RULES.some((rule) => (rule.agentOnly ?? rule.check)(env));
 }
 
 /** Observed harness marker, not proof of a vendor, benchmark, or human user. */

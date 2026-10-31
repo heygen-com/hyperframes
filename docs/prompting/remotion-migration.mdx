@@ -1,9 +1,10 @@
 ---
-title: Porting from Remotion
+title: "Move from Remotion to HyperFrames"
+sidebarTitle: "Move from Remotion"
 description: "What to say to migrate an existing Remotion (React) composition's source into HyperFrames HTML — and what to expect the agent to refuse."
 ---
 
-This is the last chapter of Level 6, and the last before the capstone level — bringing an existing Remotion project into everything you now know: brand systems, variables, editing, iteration, reference-matching, and export.
+Bring an existing Remotion project into HyperFrames, then use everything else here on it: brand, variables, editing and export.
 
 ## What this makes
 
@@ -52,15 +53,14 @@ A translation that "looks right" in preview can still measure meaningfully below
 ## Common failure modes
 
 **Asking for a fresh build with Remotion as inspiration.** If you don't have an actual Remotion source to translate, this isn't the skill — it's a normal build.
-- ❌ `/remotion-to-hyperframes make something like my Remotion intro`
-- ✅ `/hyperframes make an intro like this: [description]` — no Remotion source, no migration
+- **Avoid:** `/remotion-to-hyperframes make something like my Remotion intro`
+- **Instead:** `make an intro like this: [description]` — no Remotion source, no migration
 
 **Asking it to push past a lint blocker.** A `useState`-driven composition isn't a "translate it anyway, best effort" situation — it's a different problem (runtime interop), and forcing a translation produces something that looks plausible but isn't frame-accurate.
-- ❌ `just convert it, don't worry about the state stuff`
-- ✅ let the agent recommend the interop pattern, then decide whether that fits your case
+- **Avoid:** `just convert it, don't worry about the state stuff`
+- **Instead:** let the agent recommend the interop pattern, then decide whether that fits your case
 
 **Skipping validation on a non-trivial port.** A visual-only check misses timing/easing drift that only shows up in a frame-by-frame SSIM diff.
-- ❌ *(no request to validate — accepting on "looks right")*
-- ✅ `render both and report the SSIM diff`
+- **Avoid:** *(no request to validate — accepting on "looks right")*
+- **Instead:** `render both and report the SSIM diff`
 
-*Next: [Capstone](/prompting/capstone) — one prompt, one film, every technique in this guide, dissected frame by frame.*

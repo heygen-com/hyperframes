@@ -20,7 +20,7 @@
  */
 
 import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
   DEFAULT_CONFIG,
@@ -29,6 +29,7 @@ import {
   extractAudioMetadata,
   getFfprobeBinary,
   ManagedChildProcess,
+  removeScratch,
   renameWithRetry,
   runFfmpeg,
   trackChildProcess,
@@ -333,7 +334,7 @@ export async function padOrTrimAudioToVideoFrameCount(
       }`,
     };
   } finally {
-    for (const path of plan.cleanupPaths) rmSync(path, { force: true });
+    for (const path of plan.cleanupPaths) removeScratch(path);
   }
 
   let loweredDb = 0;
@@ -433,7 +434,7 @@ async function enforceAacTruePeak(input: EnforceAacTruePeakInput): Promise<{
       }
       if (truePeakDbfs <= AAC_DELIVERY_TRUE_PEAK_DBFS) {
         if (measuredPath !== correctedPath) return { success: true };
-        renameWithRetry(correctedPath, input.audioPath);
+        renameWithRetry(correctedPath, input.audioPath, { copyFallback: true });
         return { success: true, loweredDb: Number((-attenuationDb).toFixed(2)) };
       }
       if (pass === MAX_TRUE_PEAK_CORRECTION_PASSES) break;
@@ -479,7 +480,7 @@ async function enforceAacTruePeak(input: EnforceAacTruePeakInput): Promise<{
       )}`,
     };
   } finally {
-    if (scratchDir) rmSync(scratchDir, { recursive: true, force: true });
+    if (scratchDir) removeScratch(scratchDir);
   }
 }
 

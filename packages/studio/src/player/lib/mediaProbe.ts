@@ -1,5 +1,6 @@
 import { authoredSrcPath, resolveMediaPreviewUrl } from "../components/thumbnailUtils";
 import { TIMELINE_VIEWPORT_BUDGETS } from "./timelineViewportBudgets";
+import { mediaUrlSourceOptions, reportMediaFetchFailure } from "./mediaFetch";
 
 export interface MediaProbeResult {
   duration: number;
@@ -55,7 +56,7 @@ async function probeOne(url: string): Promise<MediaProbeResult | null> {
   if (!mb) return null;
 
   const input = new mb.Input({
-    source: new mb.UrlSource(url),
+    source: new mb.UrlSource(url, mediaUrlSourceOptions("probe")),
     formats: mb.ALL_FORMATS,
   });
   try {
@@ -73,7 +74,8 @@ async function probeOne(url: string): Promise<MediaProbeResult | null> {
       hasAudio: audioTracks.length > 0,
     };
     return result;
-  } catch {
+  } catch (error) {
+    reportMediaFetchFailure(error);
     return null;
   } finally {
     input.dispose();

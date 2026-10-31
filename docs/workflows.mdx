@@ -1,19 +1,31 @@
 ---
-title: "Choose what to make"
-sidebarTitle: "Choose what to make"
-description: "Start from the material you already have."
+title: "What do you want to make?"
+sidebarTitle: "What to make"
+description: "Pick the kind of video you want, from what you already have: a website, an idea, footage, a pull request, music or data."
 ---
 
+import { DocsVideo } from "/snippets/docs-video.jsx";
 import { WorkflowChooser } from "/snippets/workflow-chooser.jsx";
+
+Pick what you're starting from. Each guide shows finished videos, the requests that made them, and how to change them.
 
 <WorkflowChooser />
 
-When several source types matter equally, use **Direct a custom video**.
-You can also make a plain `/hyperframes` request; the agent works out the kind
-of video from what you ask for.
+<DocsVideo
+  title="Reference any video: copy its editing style, choose who's on camera, say what it's about"
+  src="https://static.heygen.ai/hyperframes-oss/docs/studio-demos/reference-demo-v2.mp4"
+  poster="/public/images/studio-app/reference-demo-v2.jpg"
+  aspect="16 / 10"
+  autoPlay
+  loop
+/>
 
-## Related topics
+**Have a video you like?** Start from it instead of choosing. In the Studio app, open **Reference** on Home and paste
+its link (YouTube, TikTok, Instagram or X), upload it, or pick one from the feed. The app copies its cuts, captions and
+effects (or only its motion graphics), asks who's on camera (you, or an AI avatar), and lets you swap the parts that
+should be yours. A video you only half like is still a better start than a blank page.
 
-- [Make your first video](/quickstart)
-- [Create a product or website video](/guides/product-launch-video)
-- [Direct a custom video](/guides/general-video)
+**Not sure which?** Describe the whole video in your own words. The agent works out the kind of video from what you ask
+for. With your own agent, start the message with `/hyperframes`.
+
+Coming from Remotion? [Port a Remotion composition](/guides/hyperframes-vs-remotion).

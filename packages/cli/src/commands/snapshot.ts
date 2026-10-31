@@ -1,13 +1,19 @@
 import {
   DEFAULT_CONFIG,
   buildZeroDurationDiagnostic,
+  downloadToTemp,
   evaluateHfDiagnostic,
+  extractMediaMetadata,
+  isHdrColorSpace,
+  sdrCanvasColourFilters,
 } from "@hyperframes/engine";
+import { parseTimeoutMs } from "../utils/timeoutArg.js";
 import type { Page } from "puppeteer-core";
 import { reportArtifacts } from "../utils/toolContext.js";
 import { withProjectLock } from "../utils/projectLock.js";
 import {
   parseSnapshotAt,
+  parseSnapshotFrames,
   parseSnapshotRange,
   sampleSnapshotRange,
   resolveSnapshotCompositionRange,
@@ -25,10 +31,19 @@ import {
 } from "@hyperframes/studio-server/history";
 import { pngDimensions } from "../utils/pngDimensions.js";
 import { runWithConcurrencyLimit } from "../utils/concurrency.js";
-import { CliRuntimeError, failCommand } from "../utils/commandResult.js";
+import { CliRuntimeError, CliUsageError, failCommand } from "../utils/commandResult.js";
 // fallow-ignore-file complexity
-import { defineCommand } from "citty";
-import { existsSync, mkdtempSync, readFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { defineCommand } from "../utils/defineCommand.js";
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  mkdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve, join, relative, isAbsolute, basename, posix } from "node:path";
 import {
@@ -45,8 +60,11 @@ import {
   type ZoomTarget,
 } from "../capture/captureCompositionFrame.js";
 import {
+  firstFrameColourArgs,
+  hdrToSdrToneMapFilter,
   isClipVisibleAt,
   isInClipWindow,
+  parseFirstFrameColour,
   readElementRateSpec,
   sourceTimeAt,
   timeAtSourceTime,
@@ -59,13 +77,15 @@ import {
   lintProject,
 } from "../utils/lintProject.js";
 import { formatLintFindings } from "../utils/lintFormat.js";
-import { normalizeErrorMessage } from "../utils/errorMessage.js";
+import { normalizeErrorMessage, atStep } from "../utils/errorMessage.js";
+import { describeSharpLoadFailure } from "../utils/sharpLoadFailure.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
 import { c } from "../ui/colors.js";
 import { writeCaptureFileSync } from "../capture/captureFile.js";
 import { runCancellableProcess } from "../utils/cancellableProcess.js";
 import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
 import { parseAngle, type Camera } from "./motionShotLayout.js";
+import { createFrameBank, type FrameWant, type PlannedFrame } from "./snapshotFrameBank.js";
 import type { Example } from "./_examples.js";
 import { loadInstalledSharp, loadOptionalPackage } from "../utils/optionalPackages.js";
 import { resolveLocalBrowserGpuMode, type BrowserGpuMode } from "../browser/gpuPolicy.js";
@@ -80,6 +100,8 @@ import {
   type ReviewSheets,
 } from "./snapshotReview.js";
 import { withMeta } from "../utils/updateCheck.js";
+import { trackSnapshotRun } from "../telemetry/events.js";
+import { failureMessage, jsonFailure } from "../utils/jsonError.js";
 
 // Runs IN THE BROWSER (serialized into page.evaluate). Tilt the whole stage so
 // the REAL painted pixels are viewed from an orthogonal angle (FINDING [10]:
@@ -122,10 +144,16 @@ const FFMPEG_EXTRACT_TIMEOUT_MS = 30_000;
 const FALLBACK_SEEK_LEAD_SECONDS = 5;
 const RENDER_READY_TIMEOUT_MS = DEFAULT_CONFIG.playerReadyTimeout;
 
+export function timeoutUnitHint(timeoutMs: number): string {
+  return timeoutMs < 1_000
+    ? ` --timeout is in milliseconds, so ${timeoutMs} is ${timeoutMs} ms; 45000 is 45 s.`
+    : "";
+}
+
 export async function renderNotReadyError(page: Page, timeoutMs: number): Promise<Error> {
   const diagnostic = await evaluateHfDiagnostic(page).then(buildZeroDurationDiagnostic, () => "");
   return new Error(
-    `The composition was not render-ready after ${timeoutMs}ms, so no frame was saved (raise --timeout if it loads slowly).\n${diagnostic}`,
+    `The composition was not render-ready after ${timeoutMs}ms, so no frame was saved (raise --timeout if it loads slowly).${timeoutUnitHint(timeoutMs)}\n${diagnostic}`,
   );
 }
 /** Each 4K decode is already multi-threaded, so a few at once fill the cores without exhausting memory. */
@@ -136,8 +164,45 @@ export function formatSnapshotTimestamp(time: number): string {
   return `${Number(time.toFixed(3))}s`;
 }
 
+/** The captured stills that are on disk with bytes, as absolute paths; the rest are missing. */
+export function snapshotsOnDisk(projectDir: string, paths: string[]) {
+  const written: string[] = [];
+  const missing: string[] = [];
+  for (const path of paths) {
+    const absolute = resolve(projectDir, path);
+    let size = 0;
+    try {
+      size = statSync(absolute).size;
+    } catch {
+      // absent: counted as missing below
+    }
+    (size > 0 ? written : missing).push(absolute);
+  }
+  return { written, missing };
+}
+
 export const SNAPSHOT_IMAGE_NAME =
   /^(?:(?:frame-\d+-|ref-(?:\d+-)?)?at-[\d.]+s\.png|pair-(?:\d+-)?at-[\d.]+s\.jpg|(?:beat-\d+|seam-\d+-\d+)-at-[\d.]+s\.png|(?:contact-sheet|review-beats|review-phone)(?:-\d+)?\.jpg|review-seam-\d+\.jpg)$/;
+
+/** Removes the stills an earlier run left in the folder, so two runs never mix; returns what it removed. */
+export function clearEarlierStills(snapshotDir: string): string[] {
+  const cleared: string[] = [];
+  try {
+    for (const file of readdirSync(snapshotDir)) {
+      if (!SNAPSHOT_IMAGE_NAME.test(file)) continue;
+      const path = resolve(snapshotDir, file);
+      rmSync(path, { force: true });
+      cleared.push(path);
+    }
+  } catch {
+    // best-effort: capture proceeds even if the folder cannot be cleaned
+  }
+  return cleared;
+}
+
+export function clearedNote(count: number, snapshotDir: string): string {
+  return `cleared ${count} stills from an earlier run in ${resolve(snapshotDir)}`;
+}
 
 /** --keep names a still by its millisecond label, so two distinct times may not share one. */
 function assertDistinctKeepNames(times: number[]): void {
@@ -146,7 +211,7 @@ function assertDistinctKeepNames(times: number[]): void {
     const label = formatSnapshotTimestamp(time);
     const other = timeByLabel.get(label);
     if (other !== undefined && other !== time) {
-      throw new Error(
+      throw new CliUsageError(
         `--keep would name both ${other} and ${time} at-${label}.png; pass times at least 1 ms apart`,
       );
     }
@@ -204,6 +269,58 @@ export function resolveSnapshotVideoRateSpec(input: {
   return readElementRateSpec({ getAttribute: (name) => attrs[name] ?? null });
 }
 
+export interface SnapshotVideoCandidate {
+  id: string;
+  src: string;
+  authoredStart: number;
+  authoredRate: string | undefined;
+  authoredAutomation: string | undefined;
+  defaultRate: number;
+  runtimeResolvedStart: number | null;
+  authoredDuration: number | null;
+  srcDuration: number;
+  mediaStart: number;
+  loop: boolean;
+  displayedSize: number;
+  devicePixelRatio: number;
+}
+
+/** The source frame a <video> shows at `time`, or null when the clip is not on screen then. */
+export function activeVideoAt(
+  candidate: SnapshotVideoCandidate,
+  time: number,
+  compositionDuration: number,
+) {
+  const start = resolveSnapshotVideoClipStart(candidate);
+  const playbackRate = resolveSnapshotVideoRateSpec(candidate);
+  const duration =
+    candidate.authoredDuration ??
+    (candidate.srcDuration > 0
+      ? Math.max(0, timeAtSourceTime(playbackRate, candidate.srcDuration - candidate.mediaStart))
+      : Number.POSITIVE_INFINITY);
+  let relTime = sourceTimeAt(playbackRate, time - start) + candidate.mediaStart;
+  if (
+    candidate.loop &&
+    candidate.srcDuration > candidate.mediaStart &&
+    relTime >= candidate.srcDuration
+  ) {
+    relTime =
+      candidate.mediaStart +
+      ((relTime - candidate.mediaStart) % (candidate.srcDuration - candidate.mediaStart));
+  }
+  const frameTime = resolveSnapshotVideoFrameTime({
+    globalTime: time,
+    clipStart: start,
+    clipDuration: duration,
+    relativeTime: relTime,
+    sourceDuration: candidate.srcDuration,
+    compositionDuration,
+  });
+  return frameTime === null
+    ? null
+    : { ...candidate, start, playbackRate, duration, relTime: frameTime };
+}
+
 export function requireSnapshotFfmpeg(ffmpegPath: string | undefined): string {
   if (ffmpegPath) return ffmpegPath;
   throw new Error(
@@ -259,12 +376,50 @@ export function containingSourceFrameIndex(timestamps: readonly number[], time: 
   return index;
 }
 
+class FrameExtractError extends Error {}
+
+const lastLine = (text: string) => text.trim().split("\n").at(-1) ?? "";
+
+const ffmpegFailure = (result: { stderr: string; code: number | null }) =>
+  lastLine(result.stderr) ||
+  (result.code === 255
+    ? "FFmpeg was stopped before it finished (exit code 255 with no error output means it was killed, such as by a time limit)"
+    : `exit code ${result.code}`);
+const processStderr = (error: unknown) =>
+  error instanceof Error && "stderr" in error && typeof error.stderr === "string"
+    ? error.stderr
+    : "";
+
+const REMOTE_VIDEO_DIR = join(tmpdir(), "hyperframes-snapshot-media");
+
+/** A local copy of a remote clip, since an FFmpeg built without network protocols (the Desktop app's) reads no URL. */
+export async function remoteVideoInput(url: string, download = downloadToTemp): Promise<string> {
+  try {
+    return await download(url, REMOTE_VIDEO_DIR, FFMPEG_EXTRACT_TIMEOUT_MS);
+  } catch {
+    return url;
+  }
+}
+
+export interface SourceProbeCache {
+  streams: Map<string, Promise<Record<string, unknown> | null>>;
+  packets: Map<string, { end: number; data: Promise<Record<string, unknown> | null> }>;
+  landings: Map<string, Promise<number | null>>;
+}
+
+export const createSourceProbeCache = (): SourceProbeCache => ({
+  streams: new Map(),
+  packets: new Map(),
+  landings: new Map(),
+});
+
 /** Keyframe seek plus the decoded-time threshold that selects the frame containing `time`, or null. */
 export async function probeContainingSourceFrameSeek(
   videoPath: string,
   time: number,
   holdLastFrame: boolean,
-): Promise<{ seek?: number; select?: number } | null> {
+  { cache, horizon = time }: { cache?: SourceProbeCache; horizon?: number } = {},
+): Promise<{ seek?: number; select?: number; decodesFrom?: number } | null> {
   const ffprobe = findFFprobe();
   // Without ffprobe, fall back to a plain seek: the first frame at or after `time`.
   if (!ffprobe) return { seek: time };
@@ -286,12 +441,16 @@ export async function probeContainingSourceFrameSeek(
       return typeof parsed === "object" && parsed !== null
         ? (parsed as Record<string, unknown>)
         : null;
-    } catch {
-      // An unreadable source blanks this one video, as a failed ffmpeg extraction does.
-      return null;
+    } catch (error) {
+      throw new FrameExtractError(
+        `FFprobe could not read ${videoPath}: ${lastLine(processStderr(error) || String(error))}`,
+      );
     }
   };
-  const data = await probe("%+#1", "stream=time_base,start_pts:format=start_time,duration");
+  const streamQuery = () => probe("%+#1", "stream=time_base,start_pts:format=start_time,duration");
+  const data = await (cache
+    ? (cache.streams.get(videoPath) ?? cache.streams.set(videoPath, streamQuery()).get(videoPath)!)
+    : streamQuery());
   if (data === null || !Array.isArray(data.streams)) return null;
   const stream: unknown = data.streams[0];
   if (
@@ -321,7 +480,18 @@ export async function probeContainingSourceFrameSeek(
   const startTicks =
     Math.abs(startPts * timeBase - formatStart) <= 1e-6 ? startPts : formatStart / timeBase;
   // An absolute end: edit-list preroll packets start before the video, so a relative window can stop short.
-  const packetData = await probe(`%${startTicks * timeBase + time + 1}`, "packet=pts,dts,flags");
+  const packetEnd = Math.max(time, horizon) + 1;
+  const packetQuery = () => probe(`%${startTicks * timeBase + packetEnd}`, "packet=pts,dts,flags");
+  const kept = cache?.packets.get(videoPath);
+  const packetData = await (kept && kept.end >= packetEnd
+    ? kept.data
+    : cache
+      ? (() => {
+          const data = packetQuery();
+          cache.packets.set(videoPath, { end: packetEnd, data });
+          return data;
+        })()
+      : packetQuery());
   if (packetData === null || !Array.isArray(packetData.packets)) return null;
   const packets: { pts: number; dts: number; key: boolean }[] = [];
   for (const packet of packetData.packets) {
@@ -344,7 +514,12 @@ export async function probeContainingSourceFrameSeek(
   // seek lands; a seek to exactly that keyframe trims its leading frames, so it is `start_t`.
   const ffmpeg = findFFmpeg();
   const landing = async (seek: number) => {
-    const raw = ffmpeg ? await probeSeekLanding(ffmpeg, videoPath, seek) : null;
+    const key = `${videoPath}\0${seek}`;
+    const asked =
+      cache?.landings.get(key) ??
+      (ffmpeg ? probeSeekLanding(ffmpeg, videoPath, seek) : Promise.resolve(null));
+    cache?.landings.set(key, asked);
+    const raw = await asked;
     return raw === null ? null : raw - startTicks * timeBase;
   };
   const candidates = packets.filter(
@@ -356,16 +531,18 @@ export async function probeContainingSourceFrameSeek(
     if (landed <= 0 || landed > frame) continue;
     // An index that places this keyframe after its own time lands on the one before; an accurate seek
     // to the keyframe's time decodes from there and drops everything before it.
-    if (landed < candidate.pts - 1e-6) return { seek: candidate.pts, select: mid - candidate.pts };
+    if (landed < candidate.pts - 1e-6)
+      return { seek: candidate.pts, select: mid - candidate.pts, decodesFrom: candidate.pts };
     const again = Math.abs(landed - candidate.pts) < 1e-6 ? landed : await landing(landed);
     if (again !== null && Math.abs(again - landed) < 1e-6)
-      return { seek: landed, select: mid - landed };
+      return { seek: landed, select: mid - landed, decodesFrom: landed };
   }
   // No usable keyframe landing: an accurate seek to the gap before the frame decodes up to it and drops the rest.
   // An exact frame time keeps start_t at 0; a time between frames would shift the select by the gap to the next frame.
   const from = timestamps.filter((t) => t > 0 && t <= mid - FALLBACK_SEEK_LEAD_SECONDS).at(-1) ?? 0;
+  const keyframeBefore = packets.filter((packet) => packet.key && packet.pts <= from).at(-1);
   return from > 0
-    ? { seek: from, select: mid - from }
+    ? { seek: from, select: mid - from, decodesFrom: keyframeBefore?.pts ?? 0 }
     : { select: mid - (timestamps.find((t) => t >= 0) ?? frame) };
 }
 
@@ -393,7 +570,72 @@ async function probeSeekLanding(
   }
 }
 
-class FrameExtractTimeoutError extends Error {}
+let warnedColourUnknown = false;
+
+function warnColourUnknownOnce(): void {
+  if (warnedColourUnknown) return;
+  warnedColourUnknown = true;
+  console.warn(
+    `   ${c.warn("⚠")} snapshot colours may differ from render: install ffmpeg/ffprobe so video colours can be matched`,
+  );
+}
+
+let warnedNoHdrFilters = false;
+
+function warnNoHdrFiltersOnce(): void {
+  if (warnedNoHdrFilters) return;
+  warnedNoHdrFilters = true;
+  console.warn(
+    `   ${c.warn("⚠")} A video in this project is HDR, but this ffmpeg has no zscale/tonemap (libzimg), so the still shows it as the browser does and will not match an SDR export. Install an ffmpeg with libzimg.`,
+  );
+}
+
+type VideoMetadata = Awaited<ReturnType<typeof extractMediaMetadata>>;
+
+/** The source's colour metadata and, for HDR footage, the SDR export's tone map, so a still matches the render. */
+async function videoColour(ffmpegPath: string, videoPath: string) {
+  const metadata: VideoMetadata | null = findFFprobe()
+    ? await extractMediaMetadata(videoPath)
+    : null;
+  if (!metadata) warnColourUnknownOnce();
+  const toneMap =
+    metadata && isHdrColorSpace(metadata.colorSpace)
+      ? hdrToSdrToneMapFilter(
+          metadata.colorSpace ?? {},
+          parseFirstFrameColour(
+            (
+              await runFfmpegOnce(
+                ffmpegPath,
+                firstFrameColourArgs(videoPath),
+                FFMPEG_EXTRACT_TIMEOUT_MS,
+              )
+            ).stderr,
+          ),
+        )
+      : null;
+  return { metadata, toneMap };
+}
+
+function frameFilters(
+  select: number | undefined,
+  displayedPixels: number,
+  metadata: VideoMetadata | null,
+  toneMapFilter: string | null,
+): string[] {
+  const filters: string[] = [];
+  if (select !== undefined) filters.push(`select=gte(t-start_t\\,${select})`);
+  if (metadata) {
+    if (toneMapFilter) filters.push(toneMapFilter);
+    filters.push(...sdrCanvasColourFilters(metadata, toneMapFilter !== null));
+  }
+  // Shrink so the short side still covers the displayed box at any rotation or fit; never enlarge.
+  if (displayedPixels > 0) {
+    filters.push(
+      `scale='min(iw,${displayedPixels})':'min(ih,${displayedPixels})':force_original_aspect_ratio=increase`,
+    );
+  }
+  return filters;
+}
 
 export async function extractVideoFrameToBuffer(
   videoPath: string,
@@ -412,27 +654,31 @@ export async function extractVideoFrameToBuffer(
       holdLastFrame,
     );
     if (seek === null) return null;
-    const args = ["-hide_banner", "-loglevel", "error"];
-    if (useVp9AlphaDecoder) args.push("-c:v", "libvpx-vp9");
-    if (seek.seek !== undefined) args.push("-ss", String(seek.seek));
-    args.push("-i", videoPath, "-map", "0:v:0");
-    const filters: string[] = [];
-    if (seek.select !== undefined) filters.push(`select=gte(t-start_t\\,${seek.select})`);
-    // Shrink so the short side still covers the displayed box at any rotation or fit; never enlarge.
-    if (displayedPixels > 0) {
-      filters.push(
-        `scale='min(iw,${displayedPixels})':'min(ih,${displayedPixels})':force_original_aspect_ratio=increase`,
-      );
+    const { metadata, toneMap } = await videoColour(ffmpegPath, videoPath);
+    const frameArgs = (toneMapFilter: string | null): string[] => {
+      const args = ["-hide_banner", "-loglevel", "error"];
+      if (useVp9AlphaDecoder) args.push("-c:v", "libvpx-vp9");
+      if (seek.seek !== undefined) args.push("-ss", String(seek.seek));
+      args.push("-i", videoPath, "-map", "0:v:0");
+      const filters = frameFilters(seek.select, displayedPixels, metadata, toneMapFilter);
+      if (filters.length > 0) args.push("-vf", filters.join(","));
+      args.push("-frames:v", "1", "-q:v", "2", "-y", outPath);
+      return args;
+    };
+    let result = await runFfmpegOnce(ffmpegPath, frameArgs(toneMap), FFMPEG_EXTRACT_TIMEOUT_MS);
+    if (toneMap && result.code !== 0 && /no such filter/i.test(result.stderr)) {
+      warnNoHdrFiltersOnce();
+      result = await runFfmpegOnce(ffmpegPath, frameArgs(null), FFMPEG_EXTRACT_TIMEOUT_MS);
     }
-    if (filters.length > 0) args.push("-vf", filters.join(","));
-    args.push("-frames:v", "1", "-q:v", "2", "-y", outPath);
-    const result = await runFfmpegOnce(ffmpegPath, args, FFMPEG_EXTRACT_TIMEOUT_MS);
+    const frameOf = `the frame of ${videoPath} at ${timeSeconds.toFixed(2)}s`;
     if (result.timedOut) {
-      throw new FrameExtractTimeoutError(
-        `FFmpeg timed out after ${FFMPEG_EXTRACT_TIMEOUT_MS / 1000}s extracting the frame of ${videoPath} at ${timeSeconds.toFixed(2)}s`,
+      throw new FrameExtractError(
+        `FFmpeg timed out after ${FFMPEG_EXTRACT_TIMEOUT_MS / 1000}s extracting ${frameOf}`,
       );
     }
-    if (result.code !== 0 || !existsSync(outPath)) return null;
+    if (result.code !== 0 || !existsSync(outPath)) {
+      throw new FrameExtractError(`FFmpeg could not extract ${frameOf}: ${ffmpegFailure(result)}`);
+    }
     return readFileSync(outPath);
   } finally {
     try {
@@ -443,19 +689,92 @@ export async function extractVideoFrameToBuffer(
   }
 }
 
-/** A timed-out clip becomes a finding naming it, so the other frames of the snapshot still land. */
-export async function extractVideoFrameOrWarn(
+/** The `select` that keeps the first frame at or after each of `offsets`: one stream, one frame per time. */
+export function selectFirstFrameAfterEach(offsets: number[]): string {
+  const sinceLast = "if(isnan(prev_selected_t)\\,-1\\,prev_selected_t-start_t)";
+  const open = offsets.map((offset) => `gte(t-start_t\\,${offset})*gt(${offset}\\,${sinceLast})`);
+  return `select=gt(${open.join("+")}\\,0)`;
+}
+
+/** One ffmpeg pass that writes every planned frame of a video: the source decodes from the earliest keyframe once.
+ * The frames share one displayed size. Throws unless each time got a frame of its own. */
+export async function decodeFramesInOnePass(
+  videoPath: string,
+  frames: PlannedFrame[],
+  useVp9AlphaDecoder = false,
+): Promise<Buffer[]> {
+  const tmp = mkdtempSync(join(tmpdir(), "hf-snapshot-frames-"));
+  try {
+    const ffmpegPath = requireSnapshotFfmpeg(findFFmpeg());
+    const { metadata, toneMap } = await videoColour(ffmpegPath, videoPath);
+    const start = Math.min(...frames.map((frame) => frame.seek));
+    // Times inside one source frame share an offset, and so a frame.
+    const byOffset = new Map<number, number[]>();
+    for (const [index, frame] of frames.entries()) {
+      const offset = Number((frame.seek + frame.select - start).toFixed(6));
+      byOffset.set(offset, [...(byOffset.get(offset) ?? []), index]);
+    }
+    const byTime = [...byOffset].sort(([a], [b]) => a - b);
+    const passArgs = (toneMapFilter: string | null): string[] => {
+      const rest = frameFilters(undefined, frames[0]!.displayedPixels, metadata, toneMapFilter);
+      const filters = [selectFirstFrameAfterEach(byTime.map(([offset]) => offset)), ...rest];
+      const args = ["-hide_banner", "-loglevel", "error"];
+      if (useVp9AlphaDecoder) args.push("-c:v", "libvpx-vp9");
+      args.push("-ss", String(start), "-i", videoPath, "-map", "0:v:0", "-vf", filters.join(","));
+      args.push("-fps_mode", "passthrough", "-frames:v", String(byTime.length));
+      args.push("-q:v", "2", "-y", join(tmp, "%d.png"));
+      return args;
+    };
+    // Each frame keeps the time limit it had when it decoded alone.
+    const timeoutMs = FFMPEG_EXTRACT_TIMEOUT_MS * frames.length;
+    let result = await runFfmpegOnce(ffmpegPath, passArgs(toneMap), timeoutMs);
+    if (toneMap && result.code !== 0 && /no such filter/i.test(result.stderr)) {
+      warnNoHdrFiltersOnce();
+      result = await runFfmpegOnce(ffmpegPath, passArgs(null), timeoutMs);
+    }
+    const what = `${frames.length} frames of ${videoPath}`;
+    if (result.timedOut) {
+      throw new FrameExtractError(`FFmpeg timed out after ${timeoutMs / 1000}s extracting ${what}`);
+    }
+    const written = (n: number) => join(tmp, `${n}.png`);
+    if (result.code !== 0 || !byTime.every((_, i) => existsSync(written(i + 1)))) {
+      throw new FrameExtractError(`FFmpeg could not extract ${what}: ${ffmpegFailure(result)}`);
+    }
+    const buffers: Buffer[] = [];
+    for (const [i, [, indexes]] of byTime.entries()) {
+      const png = readFileSync(written(i + 1));
+      for (const index of indexes) buffers[index] = png;
+    }
+    return buffers;
+  } finally {
+    try {
+      rmSync(tmp, { recursive: true, force: true });
+    } catch {
+      /* best-effort */
+    }
+  }
+}
+
+/** A clip whose frame fails becomes a finding naming it and why, so the other frames of the snapshot still land. */
+export async function frameOrWarn(
   warnings: string[],
-  ...args: Parameters<typeof extractVideoFrameToBuffer>
+  frame: () => Promise<Buffer | null>,
 ): Promise<Buffer | null> {
   try {
-    return await extractVideoFrameToBuffer(...args);
+    return await frame();
   } catch (error) {
-    if (!(error instanceof FrameExtractTimeoutError)) throw error;
+    if (!(error instanceof FrameExtractError)) throw error;
     warnings.push(error.message);
     console.warn(`   ${c.warn("⚠")} ${error.message}`);
     return null;
   }
+}
+
+export function extractVideoFrameOrWarn(
+  warnings: string[],
+  ...args: Parameters<typeof extractVideoFrameToBuffer>
+): Promise<Buffer | null> {
+  return frameOrWarn(warnings, () => extractVideoFrameToBuffer(...args));
 }
 
 export const examples: Example[] = [
@@ -473,6 +792,22 @@ export const examples: Example[] = [
   ],
 ];
 
+const DEFAULT_DESCRIBE_PROMPT =
+  "Describe this video composition frame in 1-2 sentences. Be specific and factual: what elements are visible, what text appears, is the frame blank/black/loading, what is the composition. Flag any obvious problems.";
+
+/**
+ * The Gemini prompt for `--describe`, or null when frames stay local. Opt-in:
+ * no flag and `--describe false` return null; a bare `--describe` (or `true`)
+ * uses the default prompt; any other value is the question to ask.
+ */
+function resolveDescribePrompt(value: unknown): string | null {
+  if (value === undefined || value === false) return null;
+  const text = String(value).trim();
+  if (text === "false") return null;
+  if (text === "" || text === "true") return DEFAULT_DESCRIBE_PROMPT;
+  return text;
+}
+
 /** `--zoom-scale`: the deviceScaleFactor used for zoomed crops. Defaults to 3;
  * falls back to the default for anything that doesn't parse as a positive number. */
 export function parseZoomScale(value: unknown): number {
@@ -480,16 +815,17 @@ export function parseZoomScale(value: unknown): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_ZOOM_SCALE;
 }
 
-/**
- * Seeking the timeline to EXACTLY `data-duration` renders blank — the runtime
- * treats t >= clip-end as past-end and unmounts the clip (verified on a V4 3D
- * artifact: t=8.0 of an 8s clip was pure white, t=7.76 showed the final hero).
- * So the "final frame" must be sampled just-before-end. The blank tail observed
- * spanned the last ~2.5% of the timeline, hence a 3%-of-duration nudge (floored
- * at 50ms so very short clips still back off a readable amount).
- */
+// Seeking to exactly the end renders blank, so the tail frame backs off 3% of the duration,
+// by at least 50 ms and at most 250 ms.
+const TAIL_BACKOFF_MIN_SECONDS = 0.05;
+const TAIL_BACKOFF_MAX_SECONDS = 0.25;
+
 export function tailFrameTime(duration: number): number {
-  return Math.max(0, duration - Math.max(0.05, duration * 0.03));
+  const backoff = Math.min(
+    TAIL_BACKOFF_MAX_SECONDS,
+    Math.max(TAIL_BACKOFF_MIN_SECONDS, duration * 0.03),
+  );
+  return Math.max(0, duration - backoff);
 }
 
 /**
@@ -545,7 +881,7 @@ export function serveCapturePage(projectDir: string, html: string, proxy: boolea
  * Render key frames from a composition as PNG screenshots.
  * The agent can Read these to verify its output visually.
  */
-async function captureSnapshots(
+export async function captureSnapshots(
   projectDir: string,
   opts: {
     frames?: number;
@@ -568,12 +904,17 @@ async function captureSnapshots(
     review?: boolean;
     /** Progress lines; `--json` sends them to stderr so stdout stays one envelope. */
     log?: (message: string) => void;
+    record?: boolean;
   },
 ): Promise<CapturedSnapshots> {
+  const startedAt = performance.now();
   const log = opts.log ?? ((message: string) => console.log(message));
   const { bundleWithLocalizedFonts } = await import("../utils/bundleWithLocalizedFonts.js");
 
-  const capture = await captureArtifactRevision(projectDir).catch(warnSnapshotsNotRecorded);
+  const capture =
+    opts.record === false
+      ? undefined
+      : await captureArtifactRevision(projectDir).catch(warnSnapshotsNotRecorded);
   const invocation = randomUUID();
   const artifacts: Array<{
     id: string;
@@ -595,6 +936,7 @@ async function captureSnapshots(
   const server = await serveCapturePage(projectDir, html, opts.autoProxy);
 
   const savedPaths: string[] = [];
+  let pairSheetFailure: string | null = null;
 
   try {
     const {
@@ -659,7 +1001,7 @@ async function captureSnapshots(
       });
 
       if (duration <= 0 && !opts.at?.length) {
-        return { paths: [], warnings };
+        return { paths: [], cleared: [], warnings, pairSheetsSkipped: false };
       }
 
       const readTiming = () =>
@@ -729,17 +1071,9 @@ async function captureSnapshots(
 
       const snapshotDir = opts.outputDir ?? artifactDirectory(projectDir, "snapshots");
       mkdirSync(snapshotDir, { recursive: true });
-      try {
-        const { readdirSync } = await import("node:fs");
-        for (const file of opts.keep ? [] : readdirSync(snapshotDir)) {
-          if (SNAPSHOT_IMAGE_NAME.test(file)) {
-            const path = resolve(snapshotDir, file);
-            replaced.push(path);
-            rmSync(path, { force: true });
-          }
-        }
-      } catch {
-        /* best-effort — proceed even if cleanup fails */
+      if (!opts.keep) replaced.push(...clearEarlierStills(snapshotDir));
+      if (replaced.length > 0) {
+        log(`   ${c.warn("⚠")} ${clearedNote(replaced.length, snapshotDir)}`);
       }
 
       // Chrome-headless ignores programmatic <video>.currentTime writes, so
@@ -781,6 +1115,12 @@ async function captureSnapshots(
         );
       }
       const alphaDecoderCache = new Map<string, Promise<boolean>>();
+      const remoteCopies = new Map<string, Promise<string>>();
+      const localCopy = (href: string): Promise<string> => {
+        const copy = remoteCopies.get(href) ?? remoteVideoInput(href);
+        remoteCopies.set(href, copy);
+        return copy;
+      };
       const shouldUseVp9AlphaDecoder = (filePath: string): Promise<boolean> => {
         if (!extractMediaMetadata) return Promise.resolve(false);
         const cached = alphaDecoderCache.get(filePath);
@@ -797,11 +1137,35 @@ async function captureSnapshots(
         console.warn(`   ${c.warn("⚠")} No player API — seeks will be skipped`);
       }
 
+      const sourceProbes = createSourceProbeCache();
+      const frameBank = createFrameBank({
+        probe: (path, time, holdLastFrame, horizon) =>
+          probeContainingSourceFrameSeek(path, time, holdLastFrame, {
+            cache: sourceProbes,
+            horizon,
+          }),
+        decode: async (path, frames) =>
+          decodeFramesInOnePass(
+            path,
+            frames,
+            /^https?:\/\//i.test(path) ? false : await shouldUseVp9AlphaDecoder(path),
+          ),
+      });
+      const plannedClips = new Set<string>();
+      const loopStartedAt = performance.now();
+      let seekMs = 0;
+      let videoMs = 0;
+
       for (let i = 0; i < positions.length; i++) {
         const time = positions[i]!;
+        console.error(`[hyperframes] snapshot: frame ${i + 1}/${positions.length} at ${time}s`);
 
         const seekOptions = { exactTime: true, waitForImagesMs: SCREENSHOT_IMAGE_WAIT_MS };
-        await seekCompositionTimelineOnly(page, time, seekOptions);
+        const seekStartedAt = performance.now();
+        await atStep(`seeking to ${time}s, frame ${i + 1} of ${positions.length}`, () =>
+          seekCompositionTimelineOnly(page, time, seekOptions),
+        );
+        seekMs += performance.now() - seekStartedAt;
 
         if (cameraExpr) await page.evaluate(cameraExpr);
 
@@ -840,42 +1204,18 @@ async function captureSnapshots(
               };
             });
           });
-          const compositionDuration = duration;
+          let unreadable = 0;
           const active = candidates.flatMap((candidate) => {
-            const start = resolveSnapshotVideoClipStart(candidate);
-            const playbackRate = resolveSnapshotVideoRateSpec(candidate);
-            const duration =
-              candidate.authoredDuration ??
-              (candidate.srcDuration > 0
-                ? Math.max(
-                    0,
-                    timeAtSourceTime(playbackRate, candidate.srcDuration - candidate.mediaStart),
-                  )
-                : Number.POSITIVE_INFINITY);
-            let relTime = sourceTimeAt(playbackRate, time - start) + candidate.mediaStart;
-            if (
-              candidate.loop &&
-              candidate.srcDuration > candidate.mediaStart &&
-              relTime >= candidate.srcDuration
-            ) {
-              relTime =
-                candidate.mediaStart +
-                ((relTime - candidate.mediaStart) % (candidate.srcDuration - candidate.mediaStart));
+            const video = activeVideoAt(candidate, time, duration);
+            if (!video) return [];
+            if (!candidate.id || !candidate.src) {
+              unreadable += 1;
+              return [];
             }
-            if (!candidate.id || !candidate.src) return [];
-            const frameTime = resolveSnapshotVideoFrameTime({
-              globalTime: time,
-              clipStart: start,
-              clipDuration: duration,
-              relativeTime: relTime,
-              sourceDuration: candidate.srcDuration,
-              compositionDuration,
-            });
-            return frameTime === null
-              ? []
-              : [{ ...candidate, start, playbackRate, duration, relTime: frameTime }];
+            return [video];
           });
 
+          const videoStartedAt = performance.now();
           const extracted = await runWithConcurrencyLimit(
             active,
             VIDEO_FRAME_EXTRACT_CONCURRENCY,
@@ -893,7 +1233,8 @@ async function captureSnapshots(
                   ffmpegInput = candidate;
                   inputIsLocal = true;
                 } else if (url.protocol === "http:" || url.protocol === "https:") {
-                  ffmpegInput = url.href;
+                  ffmpegInput = await localCopy(url.href);
+                  inputIsLocal = ffmpegInput !== url.href;
                 }
               } catch {
                 /* unresolvable src (e.g. blob:, data:) — skip */
@@ -904,16 +1245,39 @@ async function captureSnapshots(
               const useVp9AlphaDecoder = inputIsLocal
                 ? await shouldUseVp9AlphaDecoder(ffmpegInput)
                 : false;
-              const png = await extractVideoFrameOrWarn(
+              const displayedPixels = Math.ceil(
+                v.displayedSize *
+                  (opts.zoom ? (opts.zoomScale ?? DEFAULT_ZOOM_SCALE) : v.devicePixelRatio),
+              );
+              const wantAt = (t: number): FrameWant | null => {
+                const shown = activeVideoAt(v, t, duration);
+                if (!shown) return null;
+                const holdLastFrame =
+                  shown.srcDuration > 0 && shown.relTime >= shown.srcDuration - 1;
+                return { time: Math.max(0, shown.relTime), displayedPixels, holdLastFrame };
+              };
+              // Every time this clip will be asked for is planned at its first request, so one pass decodes them.
+              const planKey = `${v.id}\0${ffmpegInput}`;
+              if (!plannedClips.has(planKey)) {
+                plannedClips.add(planKey);
+                await frameBank.plan(
+                  ffmpegInput,
+                  positions.slice(i).flatMap((t) => wantAt(t) ?? []),
+                );
+              }
+              const want = wantAt(time)!;
+              const banked = await frameBank.take(ffmpegInput, want);
+              const png = await frameOrWarn(
                 warnings,
-                ffmpegInput,
-                Math.max(0, v.relTime),
-                useVp9AlphaDecoder,
-                v.srcDuration > 0 && v.relTime >= v.srcDuration - 1,
-                Math.ceil(
-                  v.displayedSize *
-                    (opts.zoom ? (opts.zoomScale ?? DEFAULT_ZOOM_SCALE) : v.devicePixelRatio),
-                ),
+                async () =>
+                  banked ??
+                  extractVideoFrameToBuffer(
+                    ffmpegInput,
+                    want.time,
+                    useVp9AlphaDecoder,
+                    want.holdLastFrame,
+                    want.displayedPixels,
+                  ),
               );
               if (!png) return null;
               return { videoId: v.id, dataUri: `data:image/png;base64,${png.toString("base64")}` };
@@ -921,11 +1285,12 @@ async function captureSnapshots(
           );
           const updates = extracted.filter((update) => update !== null);
 
-          if (active.length > 0 && updates.length < active.length) {
-            const missed = active.length - updates.length;
+          const onScreen = active.length + unreadable;
+          if (updates.length < onScreen) {
+            const missed = onScreen - updates.length;
             warnings.push(`${missed} video frames missing at ${time}s`);
             console.warn(
-              `   ${c.warn("⚠")} ${missed}/${active.length} active <video> frame(s) could not be extracted at ${time.toFixed(1)}s — those videos will appear black/stale in this snapshot`,
+              `   ${c.warn("⚠")} ${missed}/${onScreen} active <video> frame(s) could not be extracted at ${time.toFixed(1)}s — those videos will appear black/stale in this snapshot`,
             );
           }
 
@@ -944,6 +1309,7 @@ async function captureSnapshots(
               `   ${c.warn("⚠")} video frame injection failed at ${time.toFixed(1)}s — <video> elements will appear black/stale in this snapshot`,
             );
           }
+          videoMs += performance.now() - videoStartedAt;
         }
 
         warnUnsettledImages(await settleCompositionSeek(page, seekOptions), time, warnings);
@@ -987,7 +1353,9 @@ async function captureSnapshots(
         } else {
           writeCaptureFileSync(
             framePath,
-            await page.screenshot({ type: "png", omitBackground: true }),
+            await atStep(`capturing the frame at ${time}s`, () =>
+              page.screenshot({ type: "png", omitBackground: true }),
+            ),
           );
         }
         artifacts.push({
@@ -1010,23 +1378,33 @@ async function captureSnapshots(
         if (opts.against) {
           // Frame-exact reference frame beside the render, so a rebuild can be
           // checked against its footage without hand-rolled ffmpeg + montage.
-          const refPng = await extractVideoFrameToBuffer(opts.against, time);
+          const warned = warnings.length;
+          const refPng = await extractVideoFrameOrWarn(warnings, opts.against, time);
           if (!refPng) {
-            console.error(
-              `   ${c.warn("⚠")} --against has no frame at ${timeLabel} — reference pair skipped`,
-            );
+            const why = warnings.length > warned ? "" : ` has no frame at ${timeLabel}`;
+            console.error(`   ${c.warn("⚠")} --against${why} — reference pair skipped`);
           } else {
             const refPath = join(snapshotDir, `ref-${slot}.png`);
             writeCaptureFileSync(refPath, refPng);
             const pairPath = join(snapshotDir, `pair-${slot}.jpg`);
-            const { createContactSheet } = await import("../capture/contactSheet.js");
-            await createContactSheet([framePath, refPath], pairPath, {
-              cols: 2,
-              maxImages: 2,
-              cellWidth: 960,
-              labelMode: "custom",
-              labels: ["render", "reference"],
-            });
+            if (!pairSheetFailure) {
+              try {
+                const { createContactSheet } = await import("../capture/contactSheet.js");
+                await createContactSheet([framePath, refPath], pairPath, {
+                  cols: 2,
+                  maxImages: 2,
+                  cellWidth: 960,
+                  labelMode: "custom",
+                  labels: ["render", "reference"],
+                });
+              } catch (err) {
+                pairSheetFailure = describeSharpLoadFailure(err);
+                if (!pairSheetFailure) throw err;
+                console.error(
+                  `   ${c.warn("⚠")} Reference pair sheets skipped: ${pairSheetFailure}`,
+                );
+              }
+            }
           }
         }
         // Only the capture itself is a "snapshot": the reference frame and the
@@ -1035,6 +1413,23 @@ async function captureSnapshots(
         const rel = relative(projectDir, framePath);
         savedPaths.push(rel.startsWith("..") || isAbsolute(rel) ? framePath : rel);
       }
+      const loopMs = performance.now() - loopStartedAt;
+      const stageMs = {
+        open: loopStartedAt - startedAt,
+        seek: seekMs,
+        video: videoMs,
+        capture: Math.max(0, loopMs - seekMs - videoMs),
+      };
+      trackSnapshotRun({
+        frames: positions.length,
+        videoFrames: frameBank.stats.frames,
+        decodePasses: frameBank.stats.passes,
+        sharedFrames: frameBank.stats.sharedFrames,
+        longestDecodeSeconds: frameBank.stats.longestDecodeSeconds,
+        slowStage: (Object.keys(stageMs) as (keyof typeof stageMs)[]).reduce((a, b) =>
+          stageMs[b] > stageMs[a] ? b : a,
+        ),
+      });
       completed = true;
     } finally {
       await chromeBrowser.close();
@@ -1052,7 +1447,7 @@ async function captureSnapshots(
           log,
         )
       : false;
-    if (!recorded) {
+    if (!recorded && opts.record !== false) {
       const paths = [...replaced, ...artifacts.map((artifact) => artifact.image)];
       if (paths.length > 0) await forgetRecordedArtifacts(projectDir, paths).catch(() => undefined);
     }
@@ -1060,7 +1455,9 @@ async function captureSnapshots(
 
   return {
     paths: savedPaths,
+    cleared: replaced,
     warnings,
+    pairSheetsSkipped: pairSheetFailure !== null,
     ...(review && reviewList
       ? {
           review: {
@@ -1078,8 +1475,12 @@ async function captureSnapshots(
 interface CapturedSnapshots {
   /** Project-relative where possible, as printed. */
   paths: string[];
+  /** Stills of an earlier run this one removed from the folder before capturing. */
+  cleared: string[];
   /** Why a frame may differ from the composition: shown on the console and in `--json`. */
   warnings: string[];
+  /** --against wrote no pair sheets because sharp could not load. */
+  pairSheetsSkipped: boolean;
   review?: { plan: ReviewPlan; frames: Array<ReviewFrame & { path: string }> };
 }
 
@@ -1147,6 +1548,14 @@ function snapshotEnvelope(
     ok: true,
     outputDir,
     frames,
+    ...(captured.cleared.length > 0
+      ? {
+          cleared: {
+            count: captured.cleared.length,
+            note: clearedNote(captured.cleared.length, outputDir),
+          },
+        }
+      : {}),
     contactSheets: extra.contactSheets.map((sheet) => resolve(sheet)),
     ...(captured.warnings.length > 0 ? { warnings: captured.warnings } : {}),
     ...(extra.describedPath ? { descriptions: extra.describedPath } : {}),
@@ -1290,7 +1699,7 @@ export default defineCommand({
     describe: {
       type: "string",
       description:
-        "Gemini vision frame analysis. Runs by default when GEMINI_API_KEY is set. Pass a custom question (e.g. --describe 'Is the logo visible in every beat?') to override the default prompt, or --describe false to opt out.",
+        "Send each frame to Gemini for a vision description (off by default; needs GEMINI_API_KEY or GOOGLE_API_KEY). A bare --describe uses the default prompt; --describe 'Is the logo visible in every beat?' asks your own question.",
     },
     proxy: {
       type: "boolean",
@@ -1309,26 +1718,27 @@ export default defineCommand({
     const asJson = args.json === true;
     const log = (message: string) => (asJson ? console.error(message) : console.log(message));
     const fail = (message: string): never => {
-      if (asJson) console.log(JSON.stringify(withMeta({ ok: false, error: message }), null, 2));
+      if (asJson)
+        console.log(JSON.stringify(withMeta(jsonFailure("runtime_error", message)), null, 2));
       else log(message);
       failCommand();
     };
     if ([args.at, args.range, args.composition].filter((value) => value !== undefined).length > 1)
-      throw new Error("Use only one of --at, --range, or --composition");
+      throw new CliUsageError("Use only one of --at, --range, or --composition");
     const reviewMode = args.review === true;
     if (reviewMode) {
       const clash = (["at", "range", "zoom", "keep", "against"] as const).find(
         (flag) => args[flag] !== undefined && args[flag] !== false,
       );
-      if (clash) throw new Error(`--review picks its own frames; drop --${clash}`);
+      if (clash) throw new CliUsageError(`--review picks its own frames; drop --${clash}`);
     }
-    const frames = parseInt(args.frames as string, 10) || 5;
+    const frames = args.frames === undefined ? 5 : parseSnapshotFrames(String(args.frames));
     const range = args.range === undefined ? undefined : parseSnapshotRange(String(args.range));
     const atTimestamps = args.at === undefined ? undefined : parseSnapshotAt(String(args.at));
     if (args.keep === true && atTimestamps) assertDistinctKeepNames(atTimestamps);
     const composition =
       args.composition === undefined ? undefined : String(args.composition).trim();
-    if (composition === "") throw new Error("--composition requires a composition ID");
+    if (composition === "") throw new CliUsageError("--composition requires a composition ID");
     const project = resolveProject(args.dir);
     const lintResult = await lintProject(project.dir);
     if (hasDefinitiveEntryMismatch(lintResult)) {
@@ -1361,17 +1771,8 @@ export default defineCommand({
       }
       failCommand();
     }
-    const timeout = parseInt(args.timeout as string, 10) || RENDER_READY_TIMEOUT_MS;
-    // Gemini frame analysis runs by default (silently skipped if
-    // GEMINI_API_KEY is not set). `--describe "custom question"` overrides
-    // the default prompt with a targeted question. `--describe false` opts
-    // out entirely.
-    const describeArg =
-      args.describe === undefined
-        ? "true"
-        : String(args.describe) === "false"
-          ? null
-          : String(args.describe);
+    const timeout = parseTimeoutMs(args.timeout, RENDER_READY_TIMEOUT_MS);
+    const describePrompt = resolveDescribePrompt(args.describe);
 
     const camera = args.angle ? parseAngle(String(args.angle)) : undefined;
     const zoomTarget = args.zoom ? parseZoomTarget(String(args.zoom)) : undefined;
@@ -1417,21 +1818,33 @@ export default defineCommand({
           review: reviewMode,
           log,
         });
-        const paths = captured.paths;
-        const framePaths = paths.map((path) => resolve(project.dir, path));
+        const onDisk = snapshotsOnDisk(project.dir, captured.paths);
+        const paths = onDisk.written;
+        const framePaths = paths;
         reportArtifacts("snapshot", "frame", framePaths);
 
-        if (paths.length === 0) {
+        if (captured.paths.length === 0) {
           fail(`\n${c.error("✗")} Could not determine composition duration — no frames captured`);
         }
 
-        log(`\n${c.success("◇")}  ${paths.length} snapshots saved to ${snapshotDir}`);
+        const short = onDisk.missing.length > 0;
+        const mark = short ? c.error("✗") : c.success("◇");
+        const count = short ? `${paths.length} of ${captured.paths.length}` : String(paths.length);
+        log(`\n${mark}  ${count} snapshots saved to ${snapshotDir}`);
         for (const p of paths) {
           log(`   ${p}`);
         }
+        if (short) {
+          const gone = onDisk.missing.map((path) => `\n   missing: ${path}`).join("");
+          fail(
+            `${c.error("✗")} Only ${paths.length} of ${captured.paths.length} snapshots are on disk in ${snapshotDir}.${gone}`,
+          );
+        }
         if (against) {
           log(
-            `   ${c.dim("ref-*.png + pair-*.jpg")} beside each frame (reference frame, render | reference sheet)`,
+            captured.pairSheetsSkipped
+              ? `   ${c.dim("ref-*.png")} beside each frame (reference frame)`
+              : `   ${c.dim("ref-*.png + pair-*.jpg")} beside each frame (reference frame, render | reference sheet)`,
           );
         }
 
@@ -1465,34 +1878,28 @@ export default defineCommand({
           }
         } catch (err) {
           console.warn(
-            `   ${c.warn("⚠")} Contact sheet skipped: ${normalizeErrorMessage(err)}. Individual snapshot PNGs are still available.`,
+            `   ${c.warn("⚠")} Contact sheet skipped: ${describeSharpLoadFailure(err) ?? normalizeErrorMessage(err)}. Individual snapshot PNGs are still available.`,
           );
         }
 
         let describedPath: string | undefined;
-        // Gemini vision descriptions. Runs by default — see describeArg
-        // resolution above. `null` means the user explicitly opted out with
-        // `--describe false`; missing GEMINI_API_KEY logs a skip and continues.
-        if (describeArg !== null) {
+        // Gemini vision descriptions upload the frames, so they run only when
+        // --describe was passed. A missing key logs a skip and continues.
+        if (describePrompt !== null) {
           try {
             const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
             if (!geminiKey) {
-              if (args.describe !== undefined)
-                log(`   ${c.dim("--describe: GEMINI_API_KEY not set, skipping")}`);
+              log(`   ${c.dim("--describe: GEMINI_API_KEY or GOOGLE_API_KEY not set, skipping")}`);
             } else if (paths.length > 0) {
               log(`   ${c.dim("Describing frames with Gemini vision...")}`);
               const { GoogleGenAI } = await loadOptionalPackage("@google/genai", "--describe");
               const ai = new GoogleGenAI({ apiKey: geminiKey });
               const model = process.env.HYPERFRAMES_GEMINI_MODEL || "gemini-3.1-flash-lite-preview";
-              const customQuestion =
-                describeArg === "true"
-                  ? "Describe this video composition frame in 1-2 sentences. Be specific and factual: what elements are visible, what text appears, is the frame blank/black/loading, what is the composition. Flag any obvious problems."
-                  : describeArg;
 
               const descriptions: string[] = [
                 `# Snapshot Frame Descriptions`,
                 ``,
-                `**Question asked:** ${customQuestion}`,
+                `**Question asked:** ${describePrompt}`,
                 ``,
                 `Compare each description against your storyboard spec. A "black frame" or "loading screen" for a content beat is a bug.`,
                 ``,
@@ -1502,10 +1909,11 @@ export default defineCommand({
               // limit. Full 1920×1080 PNGs are typically 3-6 MB. Use sharp if it is
               // already there (never installed for this); otherwise skip files over the limit.
               let sharp: ReturnType<typeof loadInstalledSharp> = null;
+              let sharpFailure: string | null = null;
               try {
                 sharp = loadInstalledSharp("--describe");
-              } catch {
-                /* a copy that cannot load — fall back to size check */
+              } catch (err) {
+                sharpFailure = describeSharpLoadFailure(err);
               }
 
               const results = await Promise.allSettled(
@@ -1523,7 +1931,9 @@ export default defineCommand({
                     if (raw.length > 3_800_000)
                       return {
                         filename,
-                        desc: "file too large for Gemini — install sharp to enable auto-resize",
+                        desc: sharpFailure
+                          ? "file too large for Gemini — sharp failed to load, so it was not resized"
+                          : "file too large for Gemini — install sharp to enable auto-resize",
                       };
                     imageData = raw;
                   }
@@ -1535,7 +1945,7 @@ export default defineCommand({
                         role: "user",
                         parts: [
                           { inlineData: { mimeType, data: base64 } },
-                          { text: customQuestion },
+                          { text: describePrompt },
                         ],
                       },
                     ],
@@ -1581,8 +1991,8 @@ export default defineCommand({
     } catch (err) {
       // Already reported where it happened (fail() above).
       if (err instanceof CliRuntimeError && err.result.presented) throw err;
-      const msg = normalizeErrorMessage(err);
-      if (asJson) console.log(JSON.stringify(withMeta({ ok: false, error: msg }), null, 2));
+      const msg = failureMessage(err);
+      if (asJson) console.log(JSON.stringify(withMeta(jsonFailure("runtime_error", msg)), null, 2));
       else console.error(`\n${c.error("✗")} Snapshot failed: ${msg}`);
       failCommand();
     } finally {

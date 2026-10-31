@@ -1,9 +1,11 @@
 import { statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import {
+  DISTRIBUTED_FPS,
   formatRenderOutputTimestamp,
   fpsToNumber,
   isAspectAgnosticResolutionAlias,
+  isDistributedFps,
   normalizeResolutionFlag,
   parseFps,
   type CanvasResolution,
@@ -15,20 +17,24 @@ import {
   MAX_VP9_CPU_USED,
   MIN_VP9_CPU_USED,
   isVideoFrameFormat,
+  type ProresProfile,
   type VideoFrameFormat,
 } from "@hyperframes/engine";
 import { errorBox } from "../../ui/format.js";
+import { parseDeliveryFlags } from "../../utils/deliveryFlags.js";
 import { parseEnumFlag } from "../../cloud/parsing.js";
 import { failUsage } from "../../utils/commandResult.js";
 import { resolveProject } from "../../utils/project.js";
 import {
-  hasExplicitCompositionArg,
   parseGifLoopArg,
   parseHlsSegmentSecondsArg,
   resolveBrowserTimeoutMsArg,
-  resolveCompositionEntryArg,
   resolveDefaultFpsArg,
 } from "../../utils/renderArgs.js";
+import {
+  hasExplicitCompositionArg,
+  resolveCompositionEntryArg,
+} from "../../utils/compositionEntry.js";
 import { normalizeSkillSlug } from "../../telemetry/skill.js";
 import { loadProjectConfig } from "../../utils/projectConfig.js";
 import { type CatalogUsage, summarizeCatalogUsage } from "../../utils/catalogUsage.js";
@@ -80,7 +86,13 @@ export interface RenderCommandArgs {
   hdr?: boolean;
   sdr?: boolean;
   crf?: string;
+  start?: string;
+  end?: string;
   "video-bitrate"?: string;
+  "keyframe-interval"?: string;
+  "max-bitrate"?: string;
+  "buffer-size"?: string;
+  "prores-profile"?: string;
   "vp9-cpu-used"?: string;
   gpu?: boolean;
   "browser-gpu"?: boolean;
@@ -159,6 +171,11 @@ export interface RenderPlan {
   crf?: number;
   vp9CpuUsed?: number;
   videoBitrate?: string;
+  keyframeIntervalSeconds?: number;
+  range?: RenderRange;
+  proresProfile?: ProresProfile;
+  maxBitrate?: string;
+  bufferSize?: string;
   hdrMode: HdrMode;
   pageSideCompositing: boolean;
   experimentalFastCapture: boolean;
@@ -193,6 +210,53 @@ function formatFpsParseError(
 function parseRenderFormat(input: string): RenderFormat | undefined {
   if (!VALID_FORMAT.has(input)) return undefined;
   return RENDER_FORMATS.find((format) => format === input);
+}
+
+export interface RenderRange {
+  startSeconds: number;
+  endSeconds?: number;
+}
+
+function parseRenderRange(
+  args: Pick<RenderCommandArgs, "start" | "end">,
+  format: RenderFormat,
+  fps: Fps,
+  hdr: boolean | undefined,
+): RenderRange | undefined {
+  if (args.start === undefined && args.end === undefined) return undefined;
+  const seconds = (flag: string, raw: string): number => {
+    const parsed = raw.trim() === "" ? Number.NaN : Number(raw);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      errorBox(`Invalid ${flag}`, `Got "${raw}". Must be a number of seconds, 0 or more.`);
+      failUsage();
+    }
+    return parsed;
+  };
+  const startSeconds = args.start === undefined ? 0 : seconds("--start", args.start);
+  const endSeconds = args.end === undefined ? undefined : seconds("--end", args.end);
+  if (endSeconds !== undefined && endSeconds <= startSeconds) {
+    errorBox("Invalid range", `--end (${endSeconds}) must be after --start (${startSeconds}).`);
+    failUsage();
+  }
+  const limit = rangeLimit(format, fps, hdr);
+  if (limit) {
+    errorBox(
+      "A range renders what chunked renders can",
+      limit,
+      "Remove --start/--end to render the whole film.",
+    );
+    failUsage();
+  }
+  return { startSeconds, endSeconds };
+}
+
+function rangeLimit(format: RenderFormat, fps: Fps, hdr: boolean | undefined): string | undefined {
+  if (format !== "mp4") return `--start/--end render MP4 only, not ${format}.`;
+  if (fps.den !== 1 || !isDistributedFps(fps.num)) {
+    return `--start/--end need a whole frame rate in ${DISTRIBUTED_FPS.join(", ")}, not ${fps.num}/${fps.den}.`;
+  }
+  if (hdr) return "--start/--end render SDR only, not --hdr.";
+  return undefined;
 }
 
 function positiveInteger(raw: string, title: string, message: string, min = 1): number {
@@ -445,7 +509,7 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
         )
       : 1;
 
-  const rendersDir = resolve("renders");
+  const rendersDir = join(project.dir, "renders");
   const ext = FORMAT_EXT[format];
   const timestamp = formatRenderOutputTimestamp(now);
   const batchOutputTemplate = args.output
@@ -508,12 +572,32 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
     const flag = crf !== undefined ? "--crf" : "--video-bitrate";
     errorBox(
       "Unsupported ProRes rate control",
-      `${flag} does not apply to MOV. MOV uses a fixed alpha-preserving ProRes 4444 profile.`,
+      `${flag} does not apply to MOV. MOV rate is set by the ProRes profile; see --prores-profile.`,
       `Remove ${flag}, or choose MP4/WebM when you need CRF or target-bitrate control.`,
     );
     failUsage();
   }
 
+  const delivery = parseDeliveryFlags(args);
+  const { proresProfile, ...mp4Delivery } = delivery;
+  if (proresProfile !== undefined && format !== "mov") {
+    errorBox(
+      "ProRes profile applies to MOV",
+      `--prores-profile sets the ProRes profile of a MOV file, not ${format}.`,
+      "Remove it, or render --format mov.",
+    );
+    failUsage();
+  }
+  if (Object.keys(mp4Delivery).length > 0 && format !== "mp4") {
+    errorBox(
+      "Delivery options apply to MP4",
+      "--keyframe-interval, --max-bitrate and --buffer-size set how the MP4 encoder delivers the file.",
+      "Remove them, or render --format mp4.",
+    );
+    failUsage();
+  }
+
+  const range = parseRenderRange(args, format, fps, args.hdr);
   const quiet = args.quiet ?? false;
   const batchJson = args.json ?? false;
   return Object.freeze({
@@ -554,12 +638,14 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
     keepSegments: args["keep-segments"] ?? false,
     bestEffort: args["best-effort"] ?? true,
     batchJson,
-    effectiveQuiet: quiet || (batchPath != null && batchJson),
+    effectiveQuiet: quiet || batchJson,
     strictAll: args["strict-all"] ?? false,
     strictErrors: (args.strict ?? false) || (args["strict-all"] ?? false),
     crf,
     vp9CpuUsed,
     videoBitrate,
+    ...delivery,
+    range,
     hdrMode: args.sdr ? "force-sdr" : args.hdr ? "force-hdr" : "auto",
     pageSideCompositing: args["page-side-compositing"] !== false,
     experimentalFastCapture: args["experimental-fast-capture"] === true,

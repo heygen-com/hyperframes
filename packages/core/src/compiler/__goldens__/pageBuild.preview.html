@@ -80,7 +80,7 @@
   unicode-range: U+0000-00FF;
 }</style>
 <script data-hyperframes-preview-runtime="1" src=""></script>
-</head>
+<script>window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {}, {"card__hf1":{"accent":"#000001","title":"Card 1","size":41},"card__hf2":{"accent":"#000002","title":"Card 2","size":42},"card__hf3":{"accent":"#000003","title":"Card 3","size":43},"badge":{"tone":"silver"}});</script></head>
 <body>
 <div data-hf-id="hf-egjt" id="main" data-composition-id="main" data-width="320" data-height="180" data-start="0" data-duration="12">
 <div data-composition-file="compositions/card.html" data-height="180" data-width="320" data-hf-scene-no-swap="its script uses gsap.timeline({ paused: true }).from(" data-hf-scene="card__hf1" data-hf-original-composition-id="card" data-hf-id="hf-4uyr" class="clip" data-composition-id="card__hf1" data-start="2" data-duration="2" data-track-index="1" data-variable-values="{&quot;accent&quot;:&quot;#000001&quot;,&quot;title&quot;:&quot;Card 1&quot;,&quot;size&quot;:41}"><div style="width:320px;height:180px" data-hf-inner-root="true" data-hf-authored-id="card-root" data-hf-id="hf-hmcz" data-width="320" data-height="180" class="frame">
@@ -121,8 +121,7 @@
 </div>
 
 <script type="text/hf-after-fonts">window.__timelines = window.__timelines || {};
-window.__timelines.main = gsap.timeline({ paused: true });
-window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {}, { "card__hf1": { "accent": "#000001", "title": "Card 1", "size": 41 }, "card__hf2": { "accent": "#000002", "title": "Card 2", "size": 42 }, "card__hf3": { "accent": "#000003", "title": "Card 3", "size": 43 }, "badge": { "tone": "silver" } });</script><script type="text/hf-after-fonts" data-hf-scene="card__hf1">(function() {
+window.__timelines.main = gsap.timeline({ paused: true });</script><script type="text/hf-after-fonts" data-hf-scene="card__hf1">(function() {
   (function() {
     "use strict";
     (() => {
@@ -415,12 +414,16 @@ window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {},
   var __hfRootSelector = '[data-composition-id="card__hf1"]';
   var __hfRoot = null;
   var __hfRootSelectorPattern = `\\[\\s*data-composition-id\\s*=\\s*(?:"card"|'card')\\s*\\]`;
+  var __hfTimelineRootSelectorPattern = `\\[\\s*data-composition-id\\s*=\\s*(?:"card__hf1"|'card__hf1')\\s*\\]`;
   var __hfTimingSelectorPattern = `\\s*\\[\\s*data-(?:start|duration)\\s*=\\s*(?:"[^"]*"|'[^']*')\\s*\\]`;
   var __hfAuthoredRootSelector = __hfAuthoredRootId ? "[" + __hfAuthoredRootAttr + '="' + __hfEscapeAttr(__hfAuthoredRootId) + '"]' : "";
   var __hfAuthoredRootEntries = __hfAuthoredRootSelector ? [{ id: __hfAuthoredRootId, replacement: __hfAuthoredRootSelector }] : [];
   var __hfNormalizeSelector = function(selector) {
     if (!__hfCompId || typeof selector !== "string") return selector;
-    var normalized = selector.replace(new RegExp(__hfRootSelectorPattern + "(?:" + __hfTimingSelectorPattern + ")+", "g"), __hfRootSelector).replace(new RegExp("(?:" + __hfTimingSelectorPattern + ")+" + __hfRootSelectorPattern, "g"), __hfRootSelector);
+    var normalized = selector.replace(new RegExp(__hfRootSelectorPattern + "(?:" + __hfTimingSelectorPattern + ")+", "g"), __hfRootSelector).replace(new RegExp("(?:" + __hfTimingSelectorPattern + ")+" + __hfRootSelectorPattern, "g"), __hfRootSelector).replace(new RegExp(__hfRootSelectorPattern, "g"), __hfRootSelector);
+    if (__hfTimelineCompId !== __hfCompId) {
+      normalized = normalized.replace(new RegExp(__hfTimelineRootSelectorPattern, "g"), __hfRootSelector);
+    }
     return window.__hfSvgSelectorAliases.rewrite(normalized, __hfAuthoredRootEntries);
   };
   var __hfFindRoot = function() {
@@ -959,12 +962,16 @@ window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {},
   var __hfRootSelector = '[data-composition-id="card__hf2"]';
   var __hfRoot = null;
   var __hfRootSelectorPattern = `\\[\\s*data-composition-id\\s*=\\s*(?:"card"|'card')\\s*\\]`;
+  var __hfTimelineRootSelectorPattern = `\\[\\s*data-composition-id\\s*=\\s*(?:"card__hf2"|'card__hf2')\\s*\\]`;
   var __hfTimingSelectorPattern = `\\s*\\[\\s*data-(?:start|duration)\\s*=\\s*(?:"[^"]*"|'[^']*')\\s*\\]`;
   var __hfAuthoredRootSelector = __hfAuthoredRootId ? "[" + __hfAuthoredRootAttr + '="' + __hfEscapeAttr(__hfAuthoredRootId) + '"]' : "";
   var __hfAuthoredRootEntries = __hfAuthoredRootSelector ? [{ id: __hfAuthoredRootId, replacement: __hfAuthoredRootSelector }] : [];
   var __hfNormalizeSelector = function(selector) {
     if (!__hfCompId || typeof selector !== "string") return selector;
-    var normalized = selector.replace(new RegExp(__hfRootSelectorPattern + "(?:" + __hfTimingSelectorPattern + ")+", "g"), __hfRootSelector).replace(new RegExp("(?:" + __hfTimingSelectorPattern + ")+" + __hfRootSelectorPattern, "g"), __hfRootSelector);
+    var normalized = selector.replace(new RegExp(__hfRootSelectorPattern + "(?:" + __hfTimingSelectorPattern + ")+", "g"), __hfRootSelector).replace(new RegExp("(?:" + __hfTimingSelectorPattern + ")+" + __hfRootSelectorPattern, "g"), __hfRootSelector).replace(new RegExp(__hfRootSelectorPattern, "g"), __hfRootSelector);
+    if (__hfTimelineCompId !== __hfCompId) {
+      normalized = normalized.replace(new RegExp(__hfTimelineRootSelectorPattern, "g"), __hfRootSelector);
+    }
     return window.__hfSvgSelectorAliases.rewrite(normalized, __hfAuthoredRootEntries);
   };
   var __hfFindRoot = function() {
@@ -1503,12 +1510,16 @@ window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {},
   var __hfRootSelector = '[data-composition-id="card__hf3"]';
   var __hfRoot = null;
   var __hfRootSelectorPattern = `\\[\\s*data-composition-id\\s*=\\s*(?:"card"|'card')\\s*\\]`;
+  var __hfTimelineRootSelectorPattern = `\\[\\s*data-composition-id\\s*=\\s*(?:"card__hf3"|'card__hf3')\\s*\\]`;
   var __hfTimingSelectorPattern = `\\s*\\[\\s*data-(?:start|duration)\\s*=\\s*(?:"[^"]*"|'[^']*')\\s*\\]`;
   var __hfAuthoredRootSelector = __hfAuthoredRootId ? "[" + __hfAuthoredRootAttr + '="' + __hfEscapeAttr(__hfAuthoredRootId) + '"]' : "";
   var __hfAuthoredRootEntries = __hfAuthoredRootSelector ? [{ id: __hfAuthoredRootId, replacement: __hfAuthoredRootSelector }] : [];
   var __hfNormalizeSelector = function(selector) {
     if (!__hfCompId || typeof selector !== "string") return selector;
-    var normalized = selector.replace(new RegExp(__hfRootSelectorPattern + "(?:" + __hfTimingSelectorPattern + ")+", "g"), __hfRootSelector).replace(new RegExp("(?:" + __hfTimingSelectorPattern + ")+" + __hfRootSelectorPattern, "g"), __hfRootSelector);
+    var normalized = selector.replace(new RegExp(__hfRootSelectorPattern + "(?:" + __hfTimingSelectorPattern + ")+", "g"), __hfRootSelector).replace(new RegExp("(?:" + __hfTimingSelectorPattern + ")+" + __hfRootSelectorPattern, "g"), __hfRootSelector).replace(new RegExp(__hfRootSelectorPattern, "g"), __hfRootSelector);
+    if (__hfTimelineCompId !== __hfCompId) {
+      normalized = normalized.replace(new RegExp(__hfTimelineRootSelectorPattern, "g"), __hfRootSelector);
+    }
     return window.__hfSvgSelectorAliases.rewrite(normalized, __hfAuthoredRootEntries);
   };
   var __hfFindRoot = function() {

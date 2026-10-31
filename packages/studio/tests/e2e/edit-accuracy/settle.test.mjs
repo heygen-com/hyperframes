@@ -6,6 +6,7 @@ import {
   STILL_FRAMES,
   backgroundRequest,
   heldStill,
+  measureShown,
   networkBusy,
   seekBound,
   swapPending,
@@ -50,6 +51,13 @@ describe("settling on the shown preview", () => {
       false,
     );
     expect(await swapPending({ page: page(frame("/studio", false, true)), keys })).toBe(false);
+  });
+
+  it("calls a swap pending while Studio says the preview is changing, with no hidden preview yet", async () => {
+    const changing = (on) => ({ frames: () => [], evaluate: async () => on });
+    expect(await swapPending({ page: changing(true), keys })).toBe(true);
+    expect(await swapPending({ page: changing(false), keys })).toBe(false);
+    expect(await swapPending({ page: changing(true) }), "a case without keyframes").toBe(false);
   });
 
   it("never waits on a swap in a case without keyframes, so its undo keeps main's timing", async () => {
@@ -176,5 +184,40 @@ describe("the size auto-record keys hold", () => {
     expect(heldSize(keys, 5)).toEqual({ width: 440, height: 294 });
     expect(heldSize(keys, 2.5)).toBeUndefined();
     expect(heldSize(new Map(), 1)).toBeUndefined();
+  });
+});
+
+describe("the box a press is measured against", () => {
+  const quad = (x) => [
+    [x, 0],
+    [x + 1, 0],
+    [x + 1, 1],
+    [x, 1],
+  ];
+  const marker = (answers) => ({
+    evaluate: async () => answers.shift() ?? false,
+    dispose: async () => {},
+  });
+  const read = async () => ({ map: { toComp: (p) => p }, visible: quad(0) });
+  const page = (markers) => ({ $: async () => markers.shift() ?? null });
+
+  it("reads the waiting marker while a press waits for its replay, not the element under it", async () => {
+    const shown = await measureShown({ page: page([marker([true])]) }, "move", read, async () =>
+      quad(260),
+    );
+    expect(shown.m.visible[0][0]).toBe(260);
+    expect(shown.actual[0][0]).toBe(0);
+  });
+
+  it("reads the element when nothing waits", async () => {
+    const shown = await measureShown({ page: page([]) }, "move", read, async () => quad(260));
+    expect(shown.m.visible[0][0]).toBe(0);
+  });
+
+  it("reads again when the replay took the marker away between the two reads", async () => {
+    const shown = await measureShown({ page: page([marker([false])]) }, "move", read, async () =>
+      quad(260),
+    );
+    expect(shown.m.visible[0][0]).toBe(0);
   });
 });

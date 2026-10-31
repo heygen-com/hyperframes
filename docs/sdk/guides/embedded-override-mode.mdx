@@ -81,6 +81,11 @@ A `null` value is a removal marker. When the SDK serializes the composition it o
 
 Sub-composition elements use scoped IDs — `"hf-host/hf-leaf.text"` — where the host and leaf are separated by `/`.
 
+Periods in an authored ID stay part of that ID: editing `hf-title.main` produces
+`"hf-title.main.text"`, which restores the edit to that same element when reopened.
+Non-null whole-element values must be snapshots returned by `getOverrides()`. Opening a
+delta skips scalar values and incomplete snapshots under whole-element keys.
+
 ### Font and image variable overrides
 
 Variable overrides (from `setVariableValue`) live under the `var.{id}` key. Font and image values are objects, not strings:

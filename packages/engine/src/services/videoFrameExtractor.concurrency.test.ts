@@ -63,6 +63,8 @@ describe.skipIf(process.platform === "win32")("extractAllVideoFrames ffmpeg conc
       shim,
       [
         "#!/bin/sh",
+        // Capability probes (macOS asks for -hwaccels once) read no input and are not extractions.
+        `case " $* " in *" -i "*) ;; *) exec "${getFfmpegBinary()}" "$@" ;; esac`,
         'm="$HF_TEST_SHIM_DIR/running/$$"; : > "$m"',
         'ls "$HF_TEST_SHIM_DIR/running" | wc -l >> "$HF_TEST_SHIM_DIR/alive"',
         'case "$*" in *held-*) until [ -f "$HF_TEST_SHIM_DIR/release" ] || [ ! -d "$HF_TEST_SHIM_DIR" ]; do sleep 0.05; done ;; esac',

@@ -18,6 +18,7 @@ import {
   hasAutoStartVideos,
   hasScriptedAudioVolumeAutomation,
   hasVariableBoundMedia,
+  reportedLengthSource,
 } from "./probeStage.js";
 
 // ── Mocks for runProbeStage tests ────────────────────────────────────────────
@@ -160,6 +161,12 @@ mock.module("@hyperframes/engine", () => ({
     durationProbeSessions.push(session);
     return 5;
   },
+  getCompositionLengthSource: async () => ({
+    from: "media",
+    tag: "video",
+    src: "/private/customer/Full Source.mp4?token=x",
+    trimmed: false,
+  }),
   closeCaptureSession: async (session: MockSession) => {
     closeCaptureSessionCallCount++;
     closedSessions.push(session);
@@ -376,6 +383,22 @@ describe("hasVariableBoundMedia", () => {
 
     expect(hasVariableBoundMedia(audio, { title: "Row 02" })).toBe(false);
     expect(hasVariableBoundMedia(image, { hero_src: "row-02.png" })).toBe(true);
+  });
+
+  it("requires a browser probe when the mount sets the variable, with no render variables", () => {
+    const mount = (values: string) =>
+      `<div data-composition-id="clip" data-variable-values='${values}'>` +
+      `<video id="v" src="placeholder.mp4" data-var-src="src"></video></div>`;
+
+    expect(hasVariableBoundMedia(mount('{"src":"clip.mp4"}'), undefined)).toBe(true);
+    expect(hasVariableBoundMedia(mount('{"title":"Row 02"}'), undefined)).toBe(false);
+  });
+
+  it("requires a browser probe when the variable has a declared default", () => {
+    const declared = `<html data-composition-variables='[{"id":"src","type":"string","default":"clip.mp4"}]'><body>`;
+    const video = `<video id="v" src="placeholder.mp4" data-var-src="src"></video>`;
+
+    expect(hasVariableBoundMedia(`${declared}${video}</body></html>`, undefined)).toBe(true);
   });
 });
 
@@ -1034,6 +1057,45 @@ describe("runProbeStage — forceScreenshot threading", () => {
     expect(mediaPreflightComposition).toBe(input.composition);
   });
 
+  it("probes a video source write after an inner binding shadows its variable", async () => {
+    resetRetryMocks();
+    capturedCfgs.length = 0;
+    const { runProbeStage } = await import("./probeStage.js");
+    const input = makeProbeInput({});
+    input.composition.duration = 5;
+    input.composition.videos.push({
+      id: "clip",
+      src: "a.mp4",
+      start: 0,
+      end: 5,
+      mediaStart: 0,
+      loop: false,
+      hasAudio: false,
+    });
+    input.compiled.html = `<video id="clip" src="a.mp4"></video><img id="poster" src="a.png">
+      <script>const target = document.getElementById("clip");
+      { const target = document.getElementById("poster"); target.src = "b.png"; }
+      target.src = "b.mp4";</script>`;
+    browserMediaResults = [
+      {
+        id: "clip",
+        tagName: "video",
+        src: "b.mp4",
+        start: 0,
+        end: 5,
+        duration: 5,
+        mediaStart: 0,
+        loop: false,
+        hasAudio: false,
+        volume: 1,
+        muted: true,
+      },
+    ];
+    await runProbeStage(input);
+    expect(capturedCfgs.length).toBeGreaterThan(0);
+    expect(input.composition.videos[0]?.src).toBe("b.mp4");
+  });
+
   it("does not probe for img or script src mutations", async () => {
     resetRetryMocks();
     capturedCfgs.length = 0;
@@ -1400,5 +1462,25 @@ describe("runProbeStage — transient browser error retry (#1687)", () => {
     expect(closeCaptureSessionCallCount).toBe(0);
     expect(result.duration).toBe(5);
     expect(result.probeSession).not.toBeNull();
+  });
+});
+
+describe("reportedLengthSource", () => {
+  it("names a media clip by tag, trim and a hash of its file name, never its path", () => {
+    const reported = reportedLengthSource({
+      from: "media",
+      tag: "video",
+      src: "https://cdn.example/private/customer/Full Source.mp4?token=secret#t=2",
+      trimmed: false,
+    });
+    expect(reported).toEqual({
+      from: "media",
+      tag: "video",
+      trimmed: false,
+      srcHash: createHash("sha256").update("Full Source.mp4").digest("hex").slice(0, 12),
+    });
+    expect(JSON.stringify(reported)).not.toMatch(/customer|secret|Full Source/);
+    expect(reportedLengthSource({ from: "timeline" })).toEqual({ from: "timeline" });
+    expect(reportedLengthSource(null)).toBeNull();
   });
 });

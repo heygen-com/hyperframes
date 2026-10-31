@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/player",
-  "version": "0.8.200",
+  "version": "0.8.224",
   "description": "Embeddable web component for HyperFrames compositions",
   "repository": {
     "type": "git",
@@ -29,12 +29,13 @@
   },
   "scripts": {
     "build": "tsup && node scripts/verify-runtime-pin.mjs",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p tests/perf/tsconfig.json",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tests/perf/tsconfig.json && tsc --noEmit -p tests/playbench/tsconfig.json",
     "test": "vitest run",
     "test:browser-security": "bun run tests/browser/sandbox-origin.ts",
     "test:browser-raster": "bun run tests/browser/preview-raster-size.ts",
     "test:browser-box": "bun run tests/browser/player-box.ts",
-    "perf": "bun run tests/perf/index.ts"
+    "perf": "bun run tests/perf/index.ts",
+    "playbench": "bun run tests/playbench/run.ts"
   },
   "dependencies": {
     "@hyperframes/core": "workspace:*"

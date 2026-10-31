@@ -18,12 +18,13 @@
  */
 
 import { join } from "node:path";
-import { rmSync } from "node:fs";
 import type { Fps } from "@hyperframes/core";
 import {
   MIXED_AUDIO_FILENAME,
   audioFailureDiagnostics,
   processCompositionAudio,
+  removeScratch,
+  collectScratchLeftovers,
   type AudioProcessingFailure,
   type MixResult,
 } from "@hyperframes/engine";
@@ -89,7 +90,16 @@ function assertAudioNotInterrupted(failures: readonly AudioProcessingFailure[] |
   });
 }
 
-export async function runAudioStage(input: AudioStageInput): Promise<AudioStageResult> {
+export function runAudioStage(input: AudioStageInput): Promise<AudioStageResult> {
+  return collectScratchLeftovers(
+    () => runAudioStageScoped(input),
+    (left) => {
+      if (left.length > 0) input.log?.warn("[audio] scratch left behind", { count: left.length });
+    },
+  );
+}
+
+async function runAudioStageScoped(input: AudioStageInput): Promise<AudioStageResult> {
   const stageStart = Date.now();
   const pcmSourcePath = join(input.workDir, "audio-source.wav");
   const duration = (input.totalFrames * input.fps.den) / input.fps.num;
@@ -111,7 +121,7 @@ export async function runAudioStage(input: AudioStageInput): Promise<AudioStageR
     }
     return { ...result, audioLoweredDb, audioProcessMs: Date.now() - stageStart };
   } finally {
-    rmSync(pcmSourcePath, { force: true });
+    removeScratch(pcmSourcePath);
   }
 }
 

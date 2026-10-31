@@ -1,7 +1,7 @@
 import { setCommandExitCode, CliResultSignal } from "../utils/commandResult.js";
-import { defineCommand } from "citty";
+import { defineCommand } from "../utils/defineCommand.js";
 import { execFileSync, spawn } from "node:child_process";
-import * as clack from "@clack/prompts";
+import * as clack from "../ui/prompts.js";
 import { c } from "../ui/colors.js";
 import { diag } from "../ui/diagnostics.js";
 import { buildNpxCommand } from "../utils/npxCommand.js";
@@ -21,6 +21,7 @@ import { mirrorGlobalSkills } from "../utils/skillsMirror.js";
 import { invalidateSkillsCache } from "../utils/skillsUpdateCheck.js";
 import { trackSkillsInstallSkipped } from "../telemetry/events.js";
 import type { Example } from "./_examples.js";
+import { failureMessage, jsonFailure } from "../utils/jsonError.js";
 
 export const examples: Example[] = [
   ["Install all HyperFrames skills", "hyperframes skills"],
@@ -673,7 +674,7 @@ function reportUpdate(
  */
 function reportUpdateFailure(message: string, json: boolean): void {
   if (json) {
-    console.log(JSON.stringify(withMeta({ error: message }), null, 2));
+    console.log(JSON.stringify(withMeta(jsonFailure("runtime_error", message)), null, 2));
     return;
   }
   clack.log.error(c.error(message));
@@ -724,7 +725,7 @@ const updateCommand = defineCommand({
       const result = await updateSkills({ requested, refreshInstalled: true, strict: true });
       reportUpdate(result, requested, args.json === true);
     } catch (err) {
-      reportUpdateFailure(`Update failed: ${(err as Error).message}`, args.json === true);
+      reportUpdateFailure(`Update failed: ${failureMessage(err)}`, args.json === true);
       setCommandExitCode(1);
       return;
     }

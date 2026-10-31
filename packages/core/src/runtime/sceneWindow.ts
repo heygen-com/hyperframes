@@ -1,5 +1,6 @@
 import { SCENE_NO_SWAP_ATTR, SCENE_PART_ATTR, SCENE_PARTS_META } from "../sceneParts";
 import { STUDIO_PREVIEW_PARKED_SCENE_ATTR as PARKED } from "../studioPreviewMark";
+import { AUTHORED_DURATION_ATTR, AUTHORED_END_ATTR } from "./authoredTiming";
 import { parseElementDurationAttr, type ParkedTimelineScene } from "./timeline";
 import type { RuntimeTimelineClip } from "./types";
 
@@ -32,15 +33,19 @@ const parkable = (host: Element): boolean => {
   );
 };
 
+/** A host's window when its own attributes give it in seconds; a reference start or no length gives none. */
+export function ownWindow(host: Element): { start: number; end: number } | null {
+  const start = Number(host.getAttribute("data-start")?.trim() || Number.NaN);
+  const duration = ownDuration(host);
+  return Number.isFinite(start) && duration > 0 ? { start, end: start + duration } : null;
+}
+
 function windowedHosts(): Array<WindowedScene & { host: Element }> {
   if (!document.querySelector(`meta[name="${SCENE_PARTS_META}"]`)) return [];
   return Array.from(document.querySelectorAll(`[${SCENE_PART_ATTR}]:not(style, script)`))
     .flatMap((host) => {
-      const start = Number(host.getAttribute("data-start")?.trim() || Number.NaN);
-      const duration = ownDuration(host);
-      const name = host.getAttribute(SCENE_PART_ATTR)!;
-      const windowed = Number.isFinite(start) && duration > 0 && parkable(host);
-      return windowed ? [{ name, host, start, end: start + duration }] : [];
+      const own = parkable(host) ? ownWindow(host) : null;
+      return own ? [{ name: host.getAttribute(SCENE_PART_ATTR)!, host, ...own }] : [];
     })
     .sort((a, b) => a.start - b.start);
 }
@@ -115,10 +120,38 @@ export function parkFarScenesAtBoot(time = 0): void {
   }
 }
 
+// The runtime keeps a host's authored length under its own name, which an edit to the length replaces.
+const AUTHORED_COPY: Record<string, string> = {
+  "data-duration": AUTHORED_DURATION_ATTR,
+  "data-end": AUTHORED_END_ATTR,
+};
+
+/** A parked scene is timed by its stand-in: it takes the host attributes an edit changed, keeping the runtime's. */
+function retimeParked(placeholder: Element, before: Element, after: Element): void {
+  const changed = new Set(
+    [...before.getAttributeNames(), ...after.getAttributeNames()].filter(
+      (attr) => before.getAttribute(attr) !== after.getAttribute(attr),
+    ),
+  );
+  for (const attr of changed) {
+    const value = after.getAttribute(attr);
+    if (value === null) placeholder.removeAttribute(attr);
+    else placeholder.setAttribute(attr, value);
+    if (attr in AUTHORED_COPY) placeholder.removeAttribute(AUTHORED_COPY[attr]!);
+  }
+}
+
 /** Forgets what a swap replaced: the swapped scene's new markup is what a later mount puts back. */
 export function rememberScene(name: string, host: Element, scripts: Element[]): void {
-  if (!pristine.has(name)) return;
+  const old = pristine.get(name);
+  if (!old) return;
   parkedClips.delete(name);
+  const placeholder = hostOf(name);
+  if (placeholder && isParked(placeholder)) {
+    const template = document.createElement("template");
+    template.innerHTML = old.html;
+    retimeParked(placeholder, template.content.firstElementChild!, host);
+  }
   pristine.set(name, {
     html: host.outerHTML,
     scripts: scripts.map((el) => el.cloneNode(true) as Element),

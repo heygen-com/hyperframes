@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { signalProvider, type AudioSignal } from "@hyperframes/core/audio-analysis";
 import { analyzeSignal } from "../analyze.js";
-import { appleMuProvider, appleSoundProvider } from "./apple.js";
+import { appleMuProvider, appleSoundProvider, swiftcArgs } from "./apple.js";
 import { beatThisProvider } from "./beatThis.js";
 
 const dir = mkdtempSync(join(tmpdir(), "hf-providers-"));
@@ -75,7 +75,8 @@ describe.skipIf(process.platform === "win32")("beatThisProvider", () => {
       downbeats: "beat-this",
       bpm: "beat-this",
     });
-    expect(analysis.values.downbeats).toEqual({ times: [0.5, 2.5, 4.5], meter: 4 });
+    expect(analysis.values.downbeats).toMatchObject({ times: [0.5, 2.5, 4.5], meter: 4 });
+    expect((analysis.values.downbeats as { unheard: boolean[] }).unheard).toHaveLength(3);
     expect(analysis.values.bpm).toMatchObject({ value: 120 });
   });
 
@@ -112,6 +113,13 @@ describe("appleMuProvider", () => {
 });
 
 describe("appleSoundProvider", () => {
+  it("builds its helper with a module cache beside the helper, where an agent's sandbox may write", () => {
+    const args = swiftcArgs("/cache/helper.swift", "/cache/helper.tmp");
+    const cache = args[args.indexOf("-module-cache-path") + 1]!;
+    expect(cache).toMatch(/[/\\]\.cache[/\\]hyperframes[/\\]audio-helpers[/\\]module-cache$/);
+    expect(args.slice(-3)).toEqual(["/cache/helper.swift", "-o", "/cache/helper.tmp"]);
+  });
+
   it("is unavailable off macOS", async () => {
     const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
     Object.defineProperty(process, "platform", { value: "linux" });

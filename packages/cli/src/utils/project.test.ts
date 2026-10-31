@@ -23,6 +23,25 @@ describe("resolveProjectOrThrow", () => {
     expect(() => resolveProjectOrThrow(missing)).toThrowError(/Not a directory/);
   });
 
+  it("names the project folder when given a file inside it", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-file-arg-project-"));
+    try {
+      mkdirSync(join(dir, "assets"));
+      writeFileSync(join(dir, "index.html"), "<html></html>");
+      writeFileSync(join(dir, "assets", "music.mp3"), "x");
+      const file = join(dir, "assets", "music.mp3");
+      expect(() => resolveProjectOrThrow(file)).toThrowError(
+        expect.objectContaining({
+          title: "Not a directory: " + file,
+          hint: "music.mp3 is a file; this command takes the project folder.",
+          suggestion: "Pass the folder that holds index.html: " + dir,
+        }),
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("rejects a directory without index.html", () => {
     const dir = mkdtempSync(join(tmpdir(), "hf-empty-project-"));
     try {

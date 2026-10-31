@@ -1,13 +1,49 @@
 ---
-title: "Remove a background"
-description: "Turn footage of a person or a portrait image into transparent media you can layer over a HyperFrames scene."
+title: "Remove a video background"
+description: "Cut a person or any object out of a clip or picture so titles can pass behind them: in the Studio app with a right-click, or free on your computer with one command."
+sidebarTitle: "Remove background"
 ---
 
 import { DocsVideo } from "/snippets/docs-video.jsx";
 
-Use background removal when a person needs to appear over designed text,
-graphics, or another scene. HyperFrames runs the included human-segmentation
-model locally; it does not upload the source or require an API key.
+Cut a person out so titles can pass behind them, lift an object out of a shot, or replace what's behind. The basic
+cut-out runs on your computer: no upload, no account, no cost.
+
+<DocsVideo
+  title="A presenter cut out of a real room, shown against the original and magnified at the hard edges"
+  src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/remove-background-demo-v3.mp4"
+  poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/remove-background-demo-v1.jpg"
+/>
+
+*A presenter cut out of a real room, with the hard edges (hair, a shoulder a plant overlapped) magnified.*
+
+## In the Studio app
+
+Right-click a video or picture in the preview:
+
+- **Cut out object here** lifts out whatever you clicked, a person or a thing. On a video it follows that object
+  through the clip. Shift-click adds to the selection; on a picture, **B** brushes the edges. It runs on a Mac:
+  pictures on Apple silicon with macOS 14 or later, or Intel with macOS 13.3 or later; video on Apple silicon only.
+- **Remove background** keeps the person and drops the rest. It's free and runs on your computer, made for people on plain
+  backgrounds. With a HeyGen API key you can choose a cloud cut through HeyGen instead, paid from your API balance.
+
+Or just ask: "put the title behind her", "remove the cup from the table", "put her on a rainy street at night".
+
+## On the command line
+
+```bash
+npx hyperframes remove-background subject.mp4 -o subject.webm
+```
+
+The first run downloads the model; it needs FFmpeg. Pick the output by where it goes: `.webm` for HyperFrames and the
+web, `.mov` (ProRes 4444) for Premiere, Resolve or Final Cut, `.png` for a single photo.
+
+For text behind the person, make the cut-out and a background plate with a person-shaped hole in one pass, then
+stack: plate, your text or graphic, cut-out on top.
+
+```bash
+npx hyperframes remove-background subject.mp4 -o subject.webm --background-output plate.webm
+```
 
 <Frame caption="The same real frame before and after the local model. The softer hair and hand edges are the model’s actual limit on this source.">
   <img
@@ -16,110 +52,13 @@ model locally; it does not upload the source or require an API key.
   />
 </Frame>
 
+## When it works, and when it won't
 
-<DocsVideo
-  title="A presenter cut out of a real room, shown against the original and magnified at the hard edges"
-  src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/remove-background-demo-v3.mp4"
-  poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/remove-background-demo-v1.jpg"
-/>
+The free model is made for people: a clear subject, steady framing, some contrast with the background. Expect trouble
+with a held object (a dark mic or phone can vanish), fine hair over a busy background, and fast motion. For objects,
+use **Cut out object here** in the app instead.
 
-Every frame is real CLI output. The magnified panels sit on the hair edge and on
-a shoulder a plant used to overlap, because those are where matting usually fails.
-
-## Create the transparent file
-
-Make sure FFmpeg is installed, then run:
-
-```bash
-npx hyperframes remove-background subject.mp4 -o subject.webm
-```
-
-The first run downloads the model. Later runs reuse it.
-
-Choose the output by destination:
-
-| Output              | Use it for                                                       |
-| ------------------- | ---------------------------------------------------------------- |
-| Transparent `.webm` | A subject layered inside a web or HyperFrames composition        |
-| Transparent `.mov`  | A ProRes 4444 round trip through Premiere, Resolve, or Final Cut |
-| Transparent `.png`  | A single portrait image                                          |
-
-```bash
-npx hyperframes remove-background subject.mp4 -o subject.mov
-npx hyperframes remove-background portrait.jpg -o portrait.png
-```
-
-## Use the cutout
-
-Import the transparent file into the project and place it above the
-background, text, or graphic it should cover. Then check the complete clip,
-especially hair, hands, fast movement, and the first and last frames.
-
-If you animate the subject, animate a wrapper around the video. This keeps the
-transparent media and the composition’s timing behavior together.
-
-## Compositing patterns and pitfalls
-
-Keep the media element stable and animate a wrapper when the cutout must move,
-resize, or reveal. This avoids mixing media playback with the transform that
-controls the composition.
-
-When a cutout and its original background must remain frame-aligned, give both
-media elements the same `data-start` and playback offset. Hide or reveal them
-through wrappers instead of mounting one source later. Then scrub the cut point
-and check the rendered frame, not only normal playback.
-
-## Put something behind the subject
-
-For text-behind-subject or another three-layer effect, you can create both the
-foreground cutout and an inverse-alpha background plate in one pass:
-
-```bash
-npx hyperframes remove-background subject.mp4 \
-  -o subject.webm \
-  --background-output plate.webm
-```
-
-The plate keeps the original surroundings and leaves a transparent
-person-shaped hole. It is not an inpainted empty background. Place an opaque
-graphic or scene beneath the hole, then place `subject.webm` above it.
-
-`hyperframes check` judges text behind the cutout by the cutout's own alpha at
-each sample time. A word partly behind the subject is reported as info with the
-share it hides; a word 80% hidden, or two neighbouring words each half hidden,
-is an error. You do not need `data-layout-allow-occlusion` for this layering.
-
-## Know when it will work well
-
-The included model is designed for people. It works best with a clear human
-subject, stable framing, and reasonable contrast from the background.
-
-Use another segmentation or masking tool when:
-
-- the subject is a product, animal, or other object;
-- the person holds something, especially a dark microphone, phone, card, or
-  instrument: the model can drop all or part of it;
-- fine hair crosses a busy background;
-- frame-to-frame edge stability must meet high-end VFX standards;
-- you need the original background reconstructed after removing the person.
-
-Background removal is preprocessing. Run it once, keep the transparent result
-in the project, and reuse it.
-
-## Balance quality and speed
-
-`--device auto` chooses the best available local provider. Inspect the detected
-provider with:
-
-```bash
-npx hyperframes remove-background --info
-```
-
-For WebM output, `--quality balanced` is the default. Use `best` when the
-cutout sits directly over its original source and edge color must match; use
-`fast` for a smaller file over an unrelated background.
-
-## Common problems
+## Fixes, quality and speed
 
 | Problem                           | What to check                                                                                   |
 | --------------------------------- | ----------------------------------------------------------------------------------------------- |
@@ -130,11 +69,12 @@ cutout sits directly over its original source and edge color must match; use
 | The “background plate” has a hole | Expected: it is inverse alpha, not an inpainted clean plate.                                    |
 | Part of a held object is missing  | The model matches people, not what they hold. Use another matting tool for that shot.           |
 
-The [CLI reference](/packages/cli#remove-background) lists every flag and
-supported input.
+`--quality best` for a cut-out over its own original footage, `fast` for a smaller file over something unrelated;
+`--info` shows whether a fast local processor was found. To move the cut-out, animate a wrapper around the video,
+not the video itself. Every flag is in the [CLI reference](/packages/cli#remove-background).
 
 ## Related topics
 
+- [Add an AI avatar presenter](/guides/avatar-presenter)
 - [Use images and video](/guides/video-components)
-- [Add an avatar presenter](/guides/avatar-presenter)
-- [Apply media effects without changing the source file](/guides/media-effects)
+- [Apply media effects](/guides/media-effects)

@@ -108,6 +108,8 @@ export interface EngineConfig {
    * the runtime probe fires). Not intended to be set by callers.
    */
   forceScreenshotExplicitlyOptedOut?: boolean;
+  /** How long a BeginFrame capture may take to draw its first frame before the render retries by screenshot. */
+  beginFrameFirstFrameDeadlineMs?: number;
   /**
    * Low-memory render profile. When `true`, the orchestrator collapses the
    * pipeline to its cheapest shape on memory-constrained hosts: it skips the
@@ -183,9 +185,9 @@ export interface EngineConfig {
   streamingEncodeDurationCapEnabled: boolean;
 
   // ── FFmpeg timeouts ──────────────────────────────────────────────────
-  /** Timeout for FFmpeg frame encoding (ms). Default: 600_000 */
+  /** How long a disk-frame encode may go without a new frame before it is stopped (ms). Default: 600_000 */
   ffmpegEncodeTimeout: number;
-  /** FFmpeg mux/faststart timeout (ms); extraction waits this long for each new frame. Default: 300_000 */
+  /** How long any other FFmpeg step (audio, mux, extraction) may go without progress (ms). Default: 300_000 */
   ffmpegProcessTimeout: number;
   /**
    * Inactivity timeout for FFmpeg streaming encode (ms). The timer resets on
@@ -340,6 +342,7 @@ const OPTIONAL_ENGINE_CONFIG_FIELDS = [
   "expectedChromiumMajor",
   "pageSideCompositingAutoDisabled",
   "forceScreenshotExplicitlyOptedOut",
+  "beginFrameFirstFrameDeadlineMs",
   "streamingEncodeAutoDisabledOnWin32Compound",
   "runtimeManifestPath",
   "extractCacheDir",
@@ -449,6 +452,9 @@ function validateEngineConfigScalars(config: Record<string, unknown>): void {
   assertEngineConfigNumber(config, "jpegQuality", 0);
   if (typeof config.jpegQuality === "number" && config.jpegQuality > 100) {
     throw new Error("Engine config jpegQuality must be <= 100");
+  }
+  if (config.beginFrameFirstFrameDeadlineMs !== undefined) {
+    assertEngineConfigNumber(config, "beginFrameFirstFrameDeadlineMs", 1, true);
   }
 }
 

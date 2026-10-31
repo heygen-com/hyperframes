@@ -11,6 +11,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
+import { probeAudioTrack } from "./mediaMetadata.js";
 
 const SAMPLE_RATE = 4000;
 const PEAK_COUNT = 4000;
@@ -58,13 +59,17 @@ function computePeaks(floats: Float32Array, count: number): number[] {
   return peaks.map((p) => p / maxPeak);
 }
 
-export function decodeAudioPeaks(audioPath: string): Promise<number[]> {
+export async function decodeAudioPeaks(audioPath: string): Promise<number[]> {
+  const track = await probeAudioTrack(audioPath);
+  if (!track) throw new Error("no audio stream");
   return new Promise((resolvePromise, reject) => {
     const proc = spawn(
       findFfBinary("ffmpeg") ?? "ffmpeg",
       [
         "-i",
         audioPath,
+        "-map",
+        `0:a:${track.stream}`,
         "-af",
         "atrim=start_sample=1152",
         "-f",

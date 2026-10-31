@@ -1,11 +1,12 @@
 import { join, posix, relative, resolve } from "node:path";
 import { failCommand, setCommandExitCode } from "../utils/commandResult.js";
 import { existsSync } from "node:fs";
-import { defineCommand } from "citty";
-import * as clack from "@clack/prompts";
+import { defineCommand } from "../utils/defineCommand.js";
+import * as clack from "../ui/prompts.js";
 
 import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
+import { isUnattended } from "../utils/attendedTerminal.js";
 import {
   definitiveEntryMismatchComposition,
   hasDefinitiveEntryMismatch,
@@ -94,6 +95,9 @@ export default defineCommand({
     },
   },
   async run({ args }) {
+    if (args.yes !== true && isUnattended()) {
+      clack.confirmationRequired("hyperframes publish", "Pass --yes to publish without asking.");
+    }
     const rawArg = args.dir;
     const dir = resolve(rawArg ?? ".");
     const indexPath = join(dir, "index.html");
@@ -313,7 +317,7 @@ export default defineCommand({
         console.log(`  ${c.dim("Access")}     ${c.accent("Sign in required to claim")}`);
         console.log();
         console.log(
-          `  ${c.dim("Open the claim URL on hyperframes.dev, sign in, and claim the project to continue editing.")}`,
+          `  ${c.dim("Open the claim URL on hyperframes.studio, sign in, and claim the project to continue editing.")}`,
         );
         console.log();
         const visibilityTip =

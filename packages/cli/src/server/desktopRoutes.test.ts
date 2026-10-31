@@ -35,7 +35,7 @@ describe("open-in-desktop routes", () => {
     const body = await (
       await server(false, { installed: () => false }).app.request("/api/open-in-desktop")
     ).json();
-    const downloadUrl = desktopDownloadUrl();
+    const downloadUrl = desktopDownloadUrl(process.platform, "browser-editor");
     expect(body).toEqual({
       available: downloadUrl !== null,
       handoff: false,
@@ -45,10 +45,10 @@ describe("open-in-desktop routes", () => {
     });
   });
 
-  it("shows the button where the app is installed even without a download (Windows)", async () => {
+  it("shows the button where the app is installed even without a download (FreeBSD)", async () => {
     const get = async (installed: boolean) =>
       (
-        await server(true, { platform: "win32", installed: () => installed }).app.request(
+        await server(true, { platform: "freebsd", installed: () => installed }).app.request(
           "/api/open-in-desktop",
         )
       ).json();
@@ -56,10 +56,28 @@ describe("open-in-desktop routes", () => {
       available: true,
       handoff: true,
       downloadUrl: null,
-      os: "win32",
+      os: "freebsd",
       installed: true,
     });
     expect(await get(false)).toMatchObject({ available: false });
+  });
+
+  it("offers the Windows download, and the hand-off once the app is installed", async () => {
+    const get = async (installed: boolean) =>
+      (
+        await server(true, { platform: "win32", installed: () => installed }).app.request(
+          "/api/open-in-desktop",
+        )
+      ).json();
+    const downloadUrl = "https://hyperframes.studio/studio/download?os=windows&src=browser-editor";
+    expect(await get(false)).toEqual({
+      available: true,
+      handoff: false,
+      downloadUrl,
+      os: "win32",
+      installed: false,
+    });
+    expect(await get(true)).toMatchObject({ available: true, handoff: true, downloadUrl });
   });
 
   it("offers the hand-off only where the app is installed, so a press without it goes to the download", async () => {
@@ -73,7 +91,7 @@ describe("open-in-desktop routes", () => {
     expect(await get(false)).toEqual({
       available: true,
       handoff: false,
-      downloadUrl: desktopDownloadUrl("darwin"),
+      downloadUrl: "https://hyperframes.studio/studio/download?src=browser-editor",
       os: "darwin",
       installed: false,
     });

@@ -55,13 +55,17 @@ import {
   resolveAdaptersUsed,
   resolveDeShortBand,
   shouldClampDefaultDrawElement,
+  calibrationCaptureConfig,
   shouldPreferParallelDrawElement,
   shouldPreferSingleWorkerDrawElement,
+  initialDeClampReason,
+  resolveDeSingleMinFrames,
   isCaptureParallelStreamRouterEnabled,
   shouldSegmentCapture,
   SEGMENTED_MIN_SECONDS_AFTER_SOAK,
   resolveParallelCaptureMode,
   shouldStreamParallelCapture,
+  isAppleGpuDiskCapture,
   shouldUseStreamingEncode,
   resolveObservedCaptureMode,
   createCaptureObservabilityUpdater,
@@ -177,6 +181,93 @@ describe("executeDiskCaptureWithAdaptiveRetry — zero-progress bail (integratio
       expect(executeParallelCapture).toHaveBeenCalledTimes(1);
     } finally {
       rmSync(workDir, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    { interleaveFrames: true, strides: [3, 3, 3], starts: [10, 11, 12] },
+    {
+      interleaveFrames: undefined,
+      strides: [undefined, undefined, undefined],
+      starts: [10, 14, 18],
+    },
+  ])(
+    "hands workers $starts as start frames when interleaveFrames=$interleaveFrames",
+    async ({ interleaveFrames, strides, starts }) => {
+      vi.mocked(executeParallelCapture).mockResolvedValue([]);
+      vi.mocked(mergeWorkerFrames).mockResolvedValue(undefined);
+      const workDir = mkdtempSync(join(tmpdir(), "hf-dist-work-"));
+      const framesDir = mkdtempSync(join(tmpdir(), "hf-dist-frames-"));
+      try {
+        await executeDiskCaptureWithAdaptiveRetry({
+          serverUrl: "http://localhost:0",
+          workDir,
+          framesDir,
+          totalFrames: 12,
+          initialWorkerCount: 3,
+          allowRetry: false,
+          frameExt: "jpg",
+          captureOptions: {} as CaptureOptions,
+          createBeforeCaptureHook: () => null,
+          cfg: {} as EngineConfig,
+          log: makeLog(),
+          dedupPerfs: [],
+          frameRangeStart: 10,
+          interleaveFrames,
+        }).catch(() => {});
+        const tasks = vi.mocked(executeParallelCapture).mock.calls[0]?.[2] ?? [];
+        expect(tasks.map((t) => t.startFrame)).toEqual(starts);
+        expect(tasks.map((t) => t.frameStride)).toEqual(strides);
+      } finally {
+        rmSync(workDir, { recursive: true, force: true });
+        rmSync(framesDir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("retries a dead interleaved worker's frames as one stride task, not one batch per frame", async () => {
+    // 4 workers over 24 frames: worker 2 owns 2, 6, 10, 14, 18, 22 and dies after 10.
+    const workDir = mkdtempSync(join(tmpdir(), "hf-il-retry-work-"));
+    const framesDir = mkdtempSync(join(tmpdir(), "hf-il-retry-frames-"));
+    const write = (frames: number[]) =>
+      frames.forEach((i) =>
+        writeFileSync(join(framesDir, formatCaptureFrameName(i, "jpg")), "captured-frame"),
+      );
+    const all = Array.from({ length: 24 }, (_, i) => i);
+    vi.mocked(mergeWorkerFrames).mockResolvedValue(undefined);
+    vi.mocked(executeParallelCapture)
+      .mockImplementationOnce(async () => {
+        write(all.filter((i) => ![14, 18, 22].includes(i)));
+        throw new Error("Protocol error (Page.captureScreenshot): Target closed");
+      })
+      .mockImplementation(async () => {
+        write(all);
+        return [];
+      });
+    try {
+      await executeDiskCaptureWithAdaptiveRetry({
+        serverUrl: "http://localhost:0",
+        workDir,
+        framesDir,
+        totalFrames: 24,
+        initialWorkerCount: 4,
+        allowRetry: true,
+        frameExt: "jpg",
+        captureOptions: {} as CaptureOptions,
+        createBeforeCaptureHook: () => null,
+        cfg: {} as EngineConfig,
+        log: makeLog(),
+        dedupPerfs: [],
+        interleaveFrames: true,
+      });
+      expect(executeParallelCapture).toHaveBeenCalledTimes(2);
+      const retryTasks = vi.mocked(executeParallelCapture).mock.calls[1]?.[2] ?? [];
+      expect(retryTasks.map((t) => [t.startFrame, t.endFrame, t.frameStride])).toEqual([
+        [14, 23, 4],
+      ]);
+    } finally {
+      rmSync(workDir, { recursive: true, force: true });
+      rmSync(framesDir, { recursive: true, force: true });
     }
   });
 
@@ -1632,6 +1723,23 @@ describe("adaptive missing-frame retry helpers", () => {
     ]);
   });
 
+  it("packs each dead interleaved worker's frames into one stride task, offset by the chunk start", () => {
+    const missing = [2, 6, 10, 14, 3, 7]
+      .sort((x, y) => x - y)
+      .map((f) => ({ startFrame: f, endFrame: f + 1 }));
+    const tasks = (maxWorkers: number) =>
+      buildMissingFrameRetryBatches(missing, maxWorkers, "/w", 1, 100, 4).map((batch) =>
+        batch.map((t) => [t.startFrame, t.endFrame, t.frameStride, t.outputFrameOffset]),
+      );
+    expect(tasks(4)).toEqual([
+      [
+        [102, 115, 4, 100],
+        [103, 108, 4, 100],
+      ],
+    ]);
+    expect(tasks(1)).toEqual([[[102, 115, 4, 100]], [[103, 108, 4, 100]]]);
+  });
+
   it("retries a worker placeholder instead of accepting a truncated sequence", () => {
     const framesDir = makeFramesDir();
     for (let frameIndex = 0; frameIndex < 4; frameIndex++) {
@@ -1863,6 +1971,36 @@ describe("resolveDeviceScaleFactor", () => {
         outputResolution: "landscape",
       }),
     ).toThrow(/aspect ratio/);
+  });
+});
+
+describe("initialDeClampReason", () => {
+  const config = {
+    platform: "win32" as const,
+    browserGpuMode: "hardware" as const,
+    workerEncode: true,
+  };
+
+  it("labels a content gate from the compile stage as compile_gate, not disabled", () => {
+    expect(initialDeClampReason({ useDrawElement: false, deCompileGate: "3d", config })).toBe(
+      "compile_gate",
+    );
+  });
+
+  it("keeps config refusals and leaves an engaged render unlabeled", () => {
+    expect(initialDeClampReason({ useDrawElement: false, deCompileGate: undefined, config })).toBe(
+      "disabled",
+    );
+    expect(
+      initialDeClampReason({
+        useDrawElement: false,
+        deCompileGate: undefined,
+        config: { ...config, browserGpuMode: "software" },
+      }),
+    ).toBe("software_gpu");
+    expect(
+      initialDeClampReason({ useDrawElement: true, deCompileGate: undefined, config }),
+    ).toBeUndefined();
   });
 });
 
@@ -2807,6 +2945,15 @@ describe("shouldPreferSingleWorkerDrawElement (DE priority inversion)", () => {
     expect(shouldPreferSingleWorkerDrawElement({ ...eligible, totalFrames: 900 })).toBe(true);
   });
 
+  it("is off unless HF_DE_SINGLE_MIN_FRAMES sets a floor", () => {
+    expect(resolveDeSingleMinFrames({})).toBe(0);
+    expect(resolveDeSingleMinFrames({ HF_DE_SINGLE_MIN_FRAMES: "" })).toBe(0);
+    expect(resolveDeSingleMinFrames({ HF_DE_SINGLE_MIN_FRAMES: "900" })).toBe(900);
+    expect(
+      shouldPreferSingleWorkerDrawElement({ ...eligible, minFrames: resolveDeSingleMinFrames({}) }),
+    ).toBe(false);
+  });
+
   it("is disabled by minFrames <= 0 (HF_DE_SINGLE_MIN_FRAMES=0 kill switch)", () => {
     expect(shouldPreferSingleWorkerDrawElement({ ...eligible, minFrames: 0 })).toBe(false);
     expect(shouldPreferSingleWorkerDrawElement({ ...eligible, minFrames: -1 })).toBe(false);
@@ -3531,6 +3678,39 @@ describe("shouldStreamParallelCapture (non-DE parallel streaming router)", () =>
 
   it("skips HDR-layered and shader-transition routes", () => {
     expect(shouldStreamParallelCapture({ ...eligible, layeredOrEffectRoute: true })).toBe(false);
+  });
+});
+
+describe("calibrationCaptureConfig", () => {
+  const drawElementCfg = () => ({ ...createConfig(), useDrawElement: true });
+
+  it("measures screenshot capture, the mode parallel workers use", () => {
+    const cfg = drawElementCfg();
+    expect(calibrationCaptureConfig(cfg, {}).useDrawElement).toBe(false);
+    expect(cfg.useDrawElement).toBe(true);
+  });
+
+  it("keeps drawElement when parallel drawElement was opted into", () => {
+    const cfg = drawElementCfg();
+    expect(calibrationCaptureConfig(cfg, { PRODUCER_EXPERIMENTAL_FAST_CAPTURE: "true" })).toBe(cfg);
+    expect(calibrationCaptureConfig(cfg, { HF_DE_PARALLEL_STREAM: "true" })).toBe(cfg);
+  });
+});
+
+describe("isAppleGpuDiskCapture", () => {
+  const disk = {
+    platform: "darwin",
+    browserGpuMode: "hardware",
+    layered: false,
+    parallelStream: false,
+  } as const;
+
+  it("holds only for hardware-GPU Mac renders that write frames to disk", () => {
+    expect(isAppleGpuDiskCapture(disk)).toBe(true);
+    expect(isAppleGpuDiskCapture({ ...disk, layered: true })).toBe(false);
+    expect(isAppleGpuDiskCapture({ ...disk, parallelStream: true })).toBe(false);
+    expect(isAppleGpuDiskCapture({ ...disk, browserGpuMode: "software" })).toBe(false);
+    expect(isAppleGpuDiskCapture({ ...disk, platform: "win32" })).toBe(false);
   });
 });
 

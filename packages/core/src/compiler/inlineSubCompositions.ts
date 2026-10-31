@@ -27,6 +27,8 @@ import {
 import { warnUnknownEnumValues } from "../runtime/getVariables";
 import {
   createCompositionCssScoper,
+  AUTHORED_SOURCE_BEGIN,
+  AUTHORED_SOURCE_END,
   wrapInlineScriptWithErrorBoundary,
   scopedModulePrelude,
   wrapScopedCompositionScript,
@@ -627,7 +629,9 @@ export function inlineSubCompositions(
         const prelude = scriptCompositionId
           ? scopedModulePrelude(runtimeCompId || scopeCompId || scriptCompositionId, src)
           : "";
-        moduleScripts.push(prelude + (scriptEl.textContent || ""));
+        moduleScripts.push(
+          `${prelude}${AUTHORED_SOURCE_BEGIN}\n${scriptEl.textContent || ""}\n${AUTHORED_SOURCE_END}`,
+        );
       } else if (externalSrc) {
         if (!externalScriptSrcs.includes(externalSrc)) {
           externalScriptSrcs.push(externalSrc);
@@ -659,8 +663,8 @@ export function inlineSubCompositions(
     // Rewrite relative asset paths before inlining so ../foo.svg from
     // compositions/ resolves correctly when the content moves to root.
     const assetEls = innerRoot
-      ? innerRoot.querySelectorAll("[src], [href]")
-      : contentDoc.querySelectorAll("[src], [href]");
+      ? innerRoot.querySelectorAll("[src], [href], [srcset]")
+      : contentDoc.querySelectorAll("[src], [href], [srcset]");
     rewriteAssetPaths(
       assetEls,
       src,
@@ -688,6 +692,9 @@ export function inlineSubCompositions(
 
     if (innerRoot?.hasAttribute("data-timeline-locked")) {
       hostEl.setAttribute("data-timeline-locked", "");
+    }
+    if (innerRoot?.hasAttribute("data-no-timeline")) {
+      hostEl.setAttribute("data-no-timeline", "");
     }
 
     // Copy dimension attributes from inner root to host if missing

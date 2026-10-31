@@ -67,15 +67,16 @@ export async function closeTestChrome(
   await browser.disconnect().catch(() => undefined);
 }
 
-/** Shows `html` with the HyperFrames runtime; only its GSAP CDN script is served, nothing is fetched. */
+const GSAP_CDN_TAG = /<script src="[^"]*\/gsap\.min\.js"><\/script>/;
+
+/** Shows `html` with the HyperFrames runtime. Its GSAP CDN script tag is replaced by the script itself, so the
+ * page makes no request at all and `load` waits on nothing outside the page. */
 export async function showWithRuntime(page: Page, html: string): Promise<void> {
-  await page.setRequestInterception(true);
-  page.on("request", (request) =>
-    request.url().endsWith("/gsap.min.js")
-      ? request.respond({ body: readFileSync(require.resolve("gsap/dist/gsap.min.js"), "utf8") })
-      : request.abort("blockedbyclient"),
+  const gsap = readFileSync(require.resolve("gsap/dist/gsap.min.js"), "utf8");
+  await page.setContent(
+    html.replace(GSAP_CDN_TAG, () => `<script>${gsap}</script>`),
+    { waitUntil: "load" },
   );
-  await page.setContent(html, { waitUntil: "load" });
   await page.evaluate(readFileSync(require.resolve("@hyperframes/core/runtime"), "utf8"));
   await page.waitForFunction(() => "__player" in window);
 }

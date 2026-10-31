@@ -1,4 +1,4 @@
-import { failCommand } from "../../utils/commandResult.js";
+import { failCommand, failUsage } from "../../utils/commandResult.js";
 /**
  * `hyperframes cloud delete <render_id>` — soft-delete a cloud render.
  *
@@ -6,11 +6,12 @@ import { failCommand } from "../../utils/commandResult.js";
  * shortly after. There's no undo from the CLI side.
  */
 
-import { defineCommand } from "citty";
+import { defineCommand } from "../../utils/defineCommand.js";
 import { createCloudClient } from "../../cloud/index.js";
 import { reportApiError } from "../../cloud/errors.js";
 import { withMeta } from "../../utils/updateCheck.js";
 import { c } from "../../ui/colors.js";
+import { isUnattended } from "../../utils/attendedTerminal.js";
 import { errorBox } from "../../ui/format.js";
 
 export default defineCommand({
@@ -48,13 +49,13 @@ export default defineCommand({
       // safety check. Force the caller to opt in via `--no-confirm`
       // so cron jobs, CI shells, and JSON consumers can't soft-delete
       // by accident.
-      if (args.json || !process.stdin.isTTY) {
+      if (args.json || isUnattended()) {
         errorBox(
           "Confirmation required",
-          "delete cannot prompt for confirmation here — stdin isn't a TTY or --json was passed.",
+          "delete cannot prompt for confirmation here: this run cannot answer a prompt, or --json was passed.",
           "Re-run with --no-confirm to acknowledge the irreversible delete.",
         );
-        failCommand();
+        failUsage();
       }
       const ok = await confirmDelete(args.id);
       if (!ok) {
@@ -87,7 +88,7 @@ export default defineCommand({
 });
 
 async function confirmDelete(id: string): Promise<boolean> {
-  const clack = await import("@clack/prompts");
+  const clack = await import("../../ui/prompts.js");
   const answer = await clack.confirm({
     message: `Delete render ${id}? This is irreversible.`,
     initialValue: false,

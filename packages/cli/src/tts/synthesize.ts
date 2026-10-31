@@ -10,7 +10,7 @@ import {
   inferLangFromVoiceId,
   type SupportedLang,
 } from "./manager.js";
-import { findPython, hasPythonPackage } from "./python.js";
+import { findPython, hasPythonPackage, workingPythonEnv } from "./python.js";
 import { writeNewFileSync } from "../utils/writeNewFile.js";
 
 // ---------------------------------------------------------------------------
@@ -21,7 +21,7 @@ import { writeNewFileSync } from "../utils/writeNewFile.js";
 // We pass it conditionally so older installs that only accept `voice=`/`speed=`
 // continue to work (falling back to Kokoro's default phonemization).
 const SYNTH_SCRIPT = `
-import sys, json, inspect, re
+import sys, json, inspect, re, os, shutil, tempfile
 
 model_path = sys.argv[1]
 voices_path = sys.argv[2]
@@ -34,7 +34,27 @@ lang = sys.argv[7] if len(sys.argv) > 7 else ""
 import kokoro_onnx
 import soundfile as sf
 
-model = kokoro_onnx.Kokoro(model_path, voices_path)
+# espeak-ng reads its data with narrow-char Windows file calls, so a data folder
+# past 260 characters fails with "Error processing file ...phontab". Use a short copy.
+def espeak_config_for_long_data_path():
+    if os.name != "nt" or "espeak_config" not in inspect.signature(kokoro_onnx.Kokoro.__init__).parameters:
+        return {}
+    import espeakng_loader
+    from kokoro_onnx.config import EspeakConfig
+    source = espeakng_loader.get_data_path()
+    if len(source) < 200:
+        return {}
+    target = os.path.join(tempfile.gettempdir(), "hyperframes-espeak-ng-data")
+    if not os.path.isdir(target):
+        staging = target + "." + str(os.getpid())
+        shutil.copytree(source, staging)
+        try:
+            os.rename(staging, target)
+        except OSError:
+            shutil.rmtree(staging, ignore_errors=True)
+    return {"espeak_config": EspeakConfig(data_path=target)}
+
+model = kokoro_onnx.Kokoro(model_path, voices_path, **espeak_config_for_long_data_path())
 
 kwargs = {"voice": voice, "speed": speed}
 supports_lang = "lang" in inspect.signature(model.create).parameters
@@ -96,7 +116,7 @@ const ESPEAK_LANG_OVERRIDES: Partial<Record<SupportedLang, string>> = {
 // The filename carries a version suffix so older installs automatically
 // upgrade when the script body changes (e.g., adding the `lang` kwarg).
 const SCRIPT_DIR = join(homedir(), ".cache", "hyperframes", "tts");
-const SCRIPT_PATH = join(SCRIPT_DIR, "synth-v3.py");
+const SCRIPT_PATH = join(SCRIPT_DIR, "synth-v4.py");
 
 function ensureSynthScript(): string {
   if (!existsSync(SCRIPT_PATH)) {
@@ -169,13 +189,15 @@ export async function synthesize(
     );
   }
 
-  if (!hasPythonPackage(python, "kokoro_onnx")) {
-    throw new Error(
-      "The kokoro-onnx package is not installed. Run: pip install kokoro-onnx soundfile (or point HYPERFRAMES_PYTHON at a venv python that has them)",
-    );
-  }
-
-  if (!hasPythonPackage(python, "soundfile")) {
+  const pythonEnv = workingPythonEnv(python, ["kokoro_onnx", "soundfile"], {
+    ORT_DISABLE_TELEMETRY: "1",
+  });
+  if (!pythonEnv) {
+    if (!hasPythonPackage(python, "kokoro_onnx")) {
+      throw new Error(
+        "The kokoro-onnx package is not installed. Run: pip install kokoro-onnx soundfile (or point HYPERFRAMES_PYTHON at a venv python that has them)",
+      );
+    }
     throw new Error("The soundfile package is not installed. Run: pip install soundfile");
   }
 
@@ -202,7 +224,7 @@ export async function synthesize(
         encoding: "utf-8",
         timeout: 300_000,
         stdio: ["pipe", "pipe", "pipe"],
-        env: { ...process.env, ORT_DISABLE_TELEMETRY: "1" },
+        env: pythonEnv,
       },
     );
 

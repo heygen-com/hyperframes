@@ -527,7 +527,7 @@ export const ShowcaseWall = () => {
             display: "block",
             width: "100%",
             padding: 0,
-            border: "1px solid rgba(128,128,128,0.28)",
+            border: "1px solid var(--hf-border-color)",
             borderRadius: "11px",
             overflow: "hidden",
             background: "transparent",

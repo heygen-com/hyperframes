@@ -15,7 +15,7 @@ export type DesktopRoute = {
 
 /** The OS for the download, and what "this …" calls the machine. */
 const platformName = (os: string): string =>
-  os === "darwin" ? "Mac" : os === "linux" ? "Linux" : "your computer";
+  os === "darwin" ? "Mac" : os === "linux" ? "Linux" : os === "win32" ? "Windows" : "your computer";
 const deviceName = (os: string): string => (os === "darwin" ? "Mac" : "computer");
 
 const NOTE = "mt-0.5 text-step-12 text-text-2 text-pretty";
@@ -168,7 +168,7 @@ function DownloadStep({ progress, onDownload }: CardProps) {
   if (!progress.downloaded && !installed)
     return (
       <Step n={1} state={NOW} title={`Download HyperFrames for ${where}`}>
-        <p className={NOTE}>Free. Opens hyperframes.dev in a new tab.</p>
+        <p className={NOTE}>Free. Opens hyperframes.studio in a new tab.</p>
         <Button
           variant="primary"
           className="mt-2"

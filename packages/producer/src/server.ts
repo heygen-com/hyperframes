@@ -51,6 +51,9 @@ import {
 } from "@hyperframes/core";
 import { parseEncoderOptions } from "@hyperframes/studio-server/encoder-options";
 import { createRenderRequest, renderConfigFromRequest } from "./renderRequest.js";
+import { extractSafeRenderErrorCode } from "./services/safeRenderErrorCode.js";
+
+export { extractSafeRenderErrorCode };
 
 // ---------------------------------------------------------------------------
 // Types
@@ -91,6 +94,9 @@ interface RenderInput {
   maxRenderMs?: number;
   crf?: number;
   videoBitrate?: string;
+  keyframeIntervalSeconds?: number;
+  maxBitrate?: string;
+  bufferSize?: string;
   useGpu: boolean;
   debug: boolean;
   strictness: RenderConfig["strictness"];
@@ -124,26 +130,7 @@ interface PreparedRenderInput {
 }
 
 const DEFAULT_SERVER_FPS = { num: 30, den: 1 } as const;
-const SAFE_RENDER_ERROR_CODES = new Set<string>([
-  "ASSET_MEDIA_TYPE_MISMATCH",
-  "NOT_MEDIA_PAYLOAD",
-  "INVALID_VIDEO_METADATA",
-  "VIDEO_SOURCE_UNRENDERABLE",
-  "VIDEO_EXTRACTION_FAILED",
-  "ENCODER_INTERRUPTED",
-  "RENDER_TOO_SLOW",
-]);
-
-/**
- * Preserve only bounded producer error codes across JSON/SSE. Never derive a
- * code from the message: it may contain local paths or signed source URLs.
- */
-export function extractSafeRenderErrorCode(error: unknown): string | undefined {
-  if (typeof error !== "object" || error === null || !("code" in error)) return undefined;
-  const code = error.code;
-  return typeof code === "string" && SAFE_RENDER_ERROR_CODES.has(code) ? code : undefined;
-}
-
+const SSE_KEEPALIVE_MS = 30_000;
 export interface SafeRenderErrorMetadata {
   errorCode: string;
   errorOwner?: "system" | "user";
@@ -241,7 +228,8 @@ export function parseRenderOptions(body: Record<string, unknown>): Omit<RenderIn
     parseServerOutputDynamicRange(body.outputDynamicRange) ??
     fromRenderHdrMode(parseLegacyServerHdrMode(body.hdrMode));
   const encoder = parseEncoderOptions(body, format ?? "mp4");
-  const { crf, videoBitrate, videoFrameFormat } = encoder.ok ? encoder.options : {};
+  const { crf, videoBitrate, videoFrameFormat, keyframeIntervalSeconds, maxBitrate, bufferSize } =
+    encoder.ok ? encoder.options : {};
 
   const { variables, outputResolution, outputResolutionAspectAgnostic } =
     parseRenderOverrides(body);
@@ -254,6 +242,9 @@ export function parseRenderOptions(body: Record<string, unknown>): Omit<RenderIn
     maxRenderMs,
     crf,
     videoBitrate,
+    keyframeIntervalSeconds,
+    maxBitrate,
+    bufferSize,
     useGpu,
     debug,
     strictness,
@@ -316,6 +307,9 @@ function buildRenderJobConfig(input: RenderInput, outputPath: string, log: Produ
       maxRenderMs: input.maxRenderMs,
       crf: input.crf,
       videoBitrate: input.videoBitrate,
+      keyframeIntervalSeconds: input.keyframeIntervalSeconds,
+      maxBitrate: input.maxBitrate,
+      bufferSize: input.bufferSize,
       useGpu: input.useGpu,
       debug: input.debug,
       strictness: input.strictness,
@@ -859,6 +853,10 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
           }),
         });
       }
+      const reportProgress = createSseProgressReporter(stream, requestId);
+      const keepalive = setInterval(() => {
+        Promise.resolve(reportProgress(job, job.currentStage)).catch(() => {});
+      }, SSE_KEEPALIVE_MS);
       const release = await renderSemaphore.acquire();
 
       try {
@@ -866,9 +864,10 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
           job,
           input.projectDir,
           absoluteOutputPath,
-          createSseProgressReporter(stream, requestId),
+          reportProgress,
           abortController.signal,
-        );
+        ).finally(release);
+        clearInterval(keepalive);
 
         const fileSize = outputFileSize(absoluteOutputPath);
         const outputToken = store.register(absoluteOutputPath);
@@ -889,6 +888,7 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
           }),
         });
       } catch (error) {
+        clearInterval(keepalive);
         await writeRenderStreamFailure({
           error,
           job,
@@ -898,7 +898,6 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
           log,
         });
       } finally {
-        release();
         c.req.raw.signal.removeEventListener("abort", onRequestAbort);
         cleanupTempDir(cleanupProjectDir, log);
       }

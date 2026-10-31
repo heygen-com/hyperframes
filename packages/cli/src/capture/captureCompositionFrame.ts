@@ -1,9 +1,10 @@
+import { oneProcessOverPipe } from "@hyperframes/engine";
+import { SEEK_SETTLES_BEFORE_PROTOCOL_TIMEOUT_MS } from "./captureTimeout.js";
 import {
   rethrowAfterBrowserCleanup,
   launchManagedBrowser,
   resolveManagedGpuMode,
 } from "../browser/launch.js";
-import { oneProcessOverPipe } from "../browser/sandboxDenied.js";
 import { spawn } from "node:child_process";
 import type { Browser, Page } from "puppeteer-core";
 import type { InProcessRequest, InProcessResponse } from "../utils/staticProjectServer.js";
@@ -72,7 +73,7 @@ export interface SeekCompositionTimelineOptions {
   skipWebglDraws?: boolean;
 }
 
-type SeekBarrierOptions = { videoFrames: boolean };
+type SeekBarrierOptions = { videoFrames: boolean; timeoutMs: number };
 type FontWaitOptions = { ms: number; frames: number };
 
 type CompositionPageFunction =
@@ -336,8 +337,11 @@ export async function openSettledCompositionPage(
     options.onBrowserReady?.();
     const page = await chromeBrowser.newPage();
     await installPageFunctionGuard(page);
-    const { installMediaRenderIdBridge } = await import("@hyperframes/engine");
+    const { installMediaRenderIdBridge, forcePreservedDrawingBuffer } =
+      await import("@hyperframes/engine");
     await installMediaRenderIdBridge(page);
+    await page.evaluateOnNewDocument(forcePreservedDrawingBuffer);
+    await page.evaluateOnNewDocument("window.__HF_REPLAY_SKIPPED_FRAMES = true");
     await page.setViewport(viewport);
     if (answer) await answerPageInProcess(page, url, answer);
     await options.beforeNavigate?.(page);
@@ -558,7 +562,10 @@ export async function settleCompositionSeek(
         await Reflect.apply(waitForCompletion, window, [barrier]);
       }
     },
-    { videoFrames: options.waitForVideoFrames !== false },
+    {
+      videoFrames: options.waitForVideoFrames !== false,
+      timeoutMs: SEEK_SETTLES_BEFORE_PROTOCOL_TIMEOUT_MS,
+    },
   );
 
   const animationFrameSettle = options.animationFrameSettle ?? "race";

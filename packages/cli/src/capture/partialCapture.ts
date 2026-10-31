@@ -1,4 +1,5 @@
 import { ensureCaptureDirSync, writeCaptureFileSync } from "./captureFile.js";
+import { captureSiteName } from "./localPage.js";
 import { join } from "node:path";
 import { noDrops } from "./assetDownloader.js";
 import type {
@@ -26,6 +27,7 @@ export interface PartialCaptureState {
   assets: CaptureResult["assets"];
   dropped: CaptureResult["dropped"];
   warnings: string[];
+  webglStalled: boolean;
 }
 
 export function createPartialCaptureState(opts: CaptureOptions): PartialCaptureState {
@@ -64,6 +66,7 @@ export function createPartialCaptureState(opts: CaptureOptions): PartialCaptureS
     assets: [],
     dropped: noDrops(),
     warnings: [],
+    webglStalled: false,
   };
 }
 
@@ -72,7 +75,7 @@ export function writePartialCaptureBundle(
   state: PartialCaptureState,
   lastPhase: CaptureResult["lastPhase"],
 ): CaptureResult {
-  const hostname = new URL(opts.url).hostname.replace(/^www\./, "");
+  const hostname = captureSiteName(opts.url);
   const extractedDir = ensureCaptureDirSync(opts.outputDir, join(opts.outputDir, "extracted"));
   writeCaptureFileSync(join(extractedDir, "tokens.json"), serializeTokensForCapture(state.tokens));
   writeCaptureFileSync(

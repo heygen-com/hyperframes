@@ -196,6 +196,20 @@ function selectionGlobs(testConfig, key, fallback) {
   return strings(selection[1]);
 }
 
+// Literal inline `projects: [{ test: {...} }]`; a project without a literal test block selects nothing.
+function projectOptions(config) {
+  const start = config.match(/\bprojects:\s*\[/);
+  if (!start) return undefined;
+  const body = config.slice(start.index + start[0].length);
+  return [...body.matchAll(/\btest:\s*\{/g)].map((block) =>
+    flatOptions(
+      optionTokens(body.slice(block.index + block[0].length)).filter(
+        (token) => !/^\/[/*]/.test(token),
+      ),
+    ),
+  );
+}
+
 function runnerSelection(cwd, files, read) {
   const configurations = files.filter(
     (path) => posix.dirname(path) === cwd && /(?:vitest|vite)\.config\./.test(path),
@@ -207,18 +221,21 @@ function runnerSelection(cwd, files, read) {
       .map((name) => read(posix.join(cwd, `${name}.config.ts`)))
       .find((value) => value !== undefined) ?? "";
   const testConfig = testOptions(config);
-  if (/\bprojects:|\bworkspace:/.test(testConfig))
-    throw new Error(`Unsupported test projects in ${cwd}`);
-  return {
-    includes: selectionGlobs(testConfig, "include", ["**/*.test.{mjs,ts,tsx}"]),
-    excludes: selectionGlobs(testConfig, "exclude", ["**/node_modules/**", "**/.git/**"]),
-  };
+  if (/\bworkspace:/.test(testConfig)) throw new Error(`Unsupported test workspace in ${cwd}`);
+  const projects = /\bprojects:/.test(testConfig) ? projectOptions(config) : undefined;
+  return (projects ?? [testConfig]).map((options) => ({
+    includes: selectionGlobs(options, "include", ["**/*.test.{mjs,ts,tsx}"]),
+    excludes: selectionGlobs(options, "exclude", ["**/node_modules/**", "**/.git/**"]),
+  }));
 }
 
-function selectedByRunner(relative, args, { includes, excludes }) {
-  if (excludes.some((glob) => matches(relative, glob))) return false;
-  if (!includes.some((glob) => matches(relative, glob))) return false;
-  return args.length === 0 || args.some((arg) => relative.includes(arg));
+function selectedByRunner(relative, args, selections) {
+  const selected = selections.some(
+    ({ includes, excludes }) =>
+      includes.some((glob) => matches(relative, glob)) &&
+      !excludes.some((glob) => matches(relative, glob)),
+  );
+  return selected && (args.length === 0 || args.some((arg) => relative.includes(arg)));
 }
 
 function runnerArguments(tokens, node, command) {
@@ -257,7 +274,7 @@ function runnerTests(command, cwd, files, read) {
   const { node, vitest, args } = runner;
   const selection = vitest
     ? runnerSelection(cwd, files, read)
-    : { includes: ["**/*.test.{mjs,ts,tsx}"], excludes: [] };
+    : [{ includes: ["**/*.test.{mjs,ts,tsx}"], excludes: [] }];
   return files.filter((file) => {
     if (!TEST.test(file)) return false;
     const relative = posix.relative(cwd, file);

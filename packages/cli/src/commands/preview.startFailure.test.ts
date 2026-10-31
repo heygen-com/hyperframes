@@ -5,6 +5,11 @@ const ui = vi.hoisted(() => ({
   spinner: { start: vi.fn(), stop: vi.fn(), message: vi.fn() },
   error: vi.fn(),
 }));
+// A person at a terminal: the prompts and spinners these tests drive are refused otherwise.
+vi.mock("../utils/attendedTerminal.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../utils/attendedTerminal.js")>()),
+  isUnattended: () => false,
+}));
 vi.mock("@clack/prompts", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@clack/prompts")>();
   return {

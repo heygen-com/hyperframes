@@ -846,6 +846,7 @@ describe("renderLocal browser GPU config", () => {
     expect(producerState.resolveConfigCalls).toContainEqual({
       browserGpuMode: "auto",
       forceScreenshot: false,
+      beginFrameFirstFrameDeadlineMs: 20_000,
     });
     expect(producerState.createdJobs[0]?.producerConfig).toMatchObject({
       browserGpuMode: "auto",
@@ -888,6 +889,9 @@ describe("renderLocal browser GPU config", () => {
 
     expect(producerState.resolveConfigCalls).toContainEqual({ browserGpuMode: "auto" });
     expect(producerState.resolveConfigCalls[0]).not.toHaveProperty("forceScreenshot");
+    expect(producerState.resolveConfigCalls[0]).not.toHaveProperty(
+      "beginFrameFirstFrameDeadlineMs",
+    );
   });
 
   it("passes an explicit hardware override for default local browser GPU", async () => {
@@ -2160,12 +2164,17 @@ describe("render command explicit composition", () => {
     const preparationBlocked = new Promise<void>((resolve) => {
       releasePreparation = resolve;
     });
+    let markWrapperExited!: () => void;
+    const wrapperExited = new Promise<void>((resolve) => {
+      markWrapperExited = resolve;
+    });
     orphanCleanupState.parentPid = (pid) => (pid === process.pid ? wrapper.pid! : null);
     orphanCleanupState.identity = (pid) => (pid === wrapper.pid ? "wrapper-birth-token" : null);
     browserManagerState.onEnsure = async (signal) => {
       const exited = new Promise<void>((resolve) => wrapper.once("exit", () => resolve()));
       wrapper.kill("SIGTERM");
       await exited;
+      markWrapperExited();
       await new Promise<void>((resolve, reject) => {
         const onAbort = () => reject(signal?.reason);
         signal?.addEventListener("abort", onAbort, { once: true });
@@ -2190,11 +2199,14 @@ describe("render command explicit composition", () => {
       await expect(
         Promise.race([
           command,
-          new Promise<never>((_resolve, reject) =>
-            setTimeout(
-              () => reject(new Error("Setup cancellation timed out")),
-              process.platform === "linux" ? 1_000 : 3_000,
-            ),
+          wrapperExited.then(
+            () =>
+              new Promise<never>((_resolve, reject) =>
+                setTimeout(
+                  () => reject(new Error("Setup cancellation timed out")),
+                  process.platform === "linux" ? 1_000 : 3_000,
+                ),
+              ),
           ),
         ]),
       ).rejects.toThrow("render_cancelled_parent_exited");

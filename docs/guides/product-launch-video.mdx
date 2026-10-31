@@ -1,12 +1,13 @@
 ---
-title: "Create a product or website video"
-sidebarTitle: "Product or website"
-description: "Turn a product URL or launch brief into a promo, product tour, or social video."
+title: "Make a product launch video with AI"
+sidebarTitle: "Product launch"
+description: "Paste your product's URL and get a launch video built from its real screens, colors and words. Then change anything."
 ---
 
 import { DocsVideo } from "/snippets/docs-video.jsx";
 
-Give HyperFrames the real URL when the product, website, or brand should appear in the result.
+Paste your product's URL and you get a launch video built from what's really there: its screens, colors, fonts and
+words. HyperFrames is free, and a launch video takes the agent about 10 to 15 minutes to build.
 
 <DocsVideo
   title="A launch film built from huly.io, end to end"
@@ -14,72 +15,134 @@ Give HyperFrames the real URL when the product, website, or brand should appear 
   poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/product-launch-huly-v5.jpg"
 />
 
-Built from a real site. The screens are captured from
-huly.io, not mocked — which is the point: you give it a URL and it works from
-what is actually there.
+Built from huly.io. The screens are captured from the real site, not mocked.
 
-## Make the request
+## Make it
 
-Give the agent the real product URL and the result you want:
+**In the Studio app**, paste the URL into **Make something** with one line about the video, and choose **Let's go**.
+Turn on **Start with a storyboard** to approve the shots as stills before anything moves.
 
 ```text
-Using /hyperframes, make a 30-second launch video for https://example.com.
+A 30-second launch video for https://example.com.
 ```
 
-The agent captures the product and builds from what is actually there. Add an
-audience, required claim, or final action when one must be exact; you do not
-need to specify every scene. Ask for a storyboard first when you want to approve
-the shots before it animates.
+**Seen a launch you'd love to copy?** Open **Reference** on Home, paste its link (or pick one under **Pick a
+reference**), and add your URL: you get that structure and energy with your product in it. Reference uses your
+HeyGen API key, and the app asks for it the first time.
 
-## What should the video do?
+Add only what must be exact: the audience, a claim, the final action. Say **don't capture the website** when the
+video should use only your brief. With your own agent instead of the app, start the message with `/hyperframes`.
 
-- **Launch video** — turn real product evidence into a persuasive story with one clear action at the end.
-- **Product tour** — show one complete task through the product's real screens, from the first action to the result.
-- **Short social video** — prove one useful point quickly, show the evidence, and stop after the payoff.
+## Pick the kind
 
-A tour features the product as it exists. A launch video rearranges the same evidence into a persuasive story. A social video proves one point and ends.
+- **Launch video**: the product's real evidence arranged into a story with one clear action at the end.
+- **Product tour**: one complete task through the real screens, from the first click to the result.
+- **Short social video**: one useful point, its proof, then stop.
 
-If you already have approved wording, paste the script and say whether it must remain verbatim. Say **do not capture the website** when the video should use only the supplied brief.
+No product to show? Make a [faceless explainer](/guides/faceless-explainer) instead.
 
-Use a [faceless explainer](/guides/faceless-explainer) instead when there is no product to show and the visuals should be invented.
+## Prompts that work
 
-## What HyperFrames builds from
+When you want to set the structure, voice and music yourself:
 
-<div className="my-5 grid gap-3 sm:grid-cols-3">
-  <div className="border-b border-zinc-200 pb-3 dark:border-zinc-800">
-    <div className="font-medium">Real screens</div>
-    <div className="mt-1 text-sm text-zinc-500">
-      The interface and product states worth showing.
-    </div>
-  </div>
-  <div className="border-b border-zinc-200 pb-3 dark:border-zinc-800">
-    <div className="font-medium">Product language</div>
-    <div className="mt-1 text-sm text-zinc-500">Claims, features, proof, and the final action.</div>
-  </div>
-  <div className="border-b border-zinc-200 pb-3 dark:border-zinc-800">
-    <div className="font-medium">Brand system</div>
-    <div className="mt-1 text-sm text-zinc-500">Color, type, imagery, motion, and sound.</div>
-  </div>
-</div>
+> Make a 45-second 1920x1080 launch video for https://linear.app. Energetic but minimal, use the site's own palette and screenshots. Structure: hook stating the problem, 3 feature beats with UI captures and one-line captions, end card with logo + "Try it free". Female TTS voice, confident tone, subtle electronic BGM under -18dB.
 
-HyperFrames can animate captured product material or rebuild only the part that needs to move. A raw screen recording is not the default.
+<DocsVideo
+  title="Example product launch"
+  src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/example-product-launch-v2.mp4#t=0.1"
+  loop
+/>
+*A launch film made from this prompt.*
+
+### Say these when they matter
+
+Set the ones you care about and leave the rest to the agent.
+
+| Knob | What to say | Why it matters |
+| --- | --- | --- |
+| **Capture vs no capture** | Give a URL to capture the real site; give a script or brief when there is no site to capture | Capture borrows the real palette and screenshots; without it the visuals are invented, so name your brand colors |
+| **Palette source** | "use the site's own palette" | The agent builds from the captured brand tokens — you get the product's real colors, not a generic theme |
+| **Structure** | "hook stating the problem, N feature beats with captions, end card with CTA" | Naming the beats keeps the hook and CTA from getting dropped |
+| **Voice & tone** | "female TTS voice, confident" / "calm male voice" | Voice gender and tone are prompt words; the provider itself is the agent's decision — see [media and audio](/prompting/media-and-audio) for provider mechanics |
+| **BGM level** | "subtle electronic BGM under -18dB" (or "no BGM") | A stated ceiling keeps music under the voice; leave it off entirely for a teaser |
+| **Length & destination** | "~45 seconds", "9:16 for TikTok" | Sweet spot is 30-90s; destination sets the aspect (16:9 embed · 1:1 feed · 9:16 Shorts) |
+
+<Tip>
+  Duration and destination are the two cheapest, highest-leverage things to state. Everything else the agent will choose well if you stay quiet — see [the specification dial](/prompting/overview#how-much-to-specify) for how much to delegate.
+</Tip>
+
+### Variants
+
+<AccordionGroup>
+  <Accordion title="20-second vertical teaser (9:16)">
+    > Make a ~20-second 1080x1920 teaser for https://linear.app. Super minimal, just the hook. Beat 1 (0-4s): the problem in one line, big type. Beat 2 (4-16s): two feature beats, one UI capture each with a three-word caption. Beat 3 (16-20s): logo + "Try it free" end card, held still to the end. Use the site's own palette. Female TTS voice, confident; no BGM.
+
+    A teaser trades feature coverage for pace — fewer beats, one idea each. Keep the destination (Shorts / TikTok → 9:16) and let the agent scale the story to the shorter runtime.
+  </Accordion>
+  <Accordion title="Pasted script, no capture">
+    > Make a ~20-second 1920x1080 launch video from this script — use it verbatim: "Your CRM is three hours of busywork a day. AutoCRM logs every call, email, and meeting for you. 200 teams already switched. Try it free at autocrmhq.com." No site to capture — invent clean product-y visuals from the script. Male TTS voice, calm and confident; subtle BGM under -18dB.
+
+    With no URL there is nothing to capture: no screenshots, no site palette to borrow, so name your brand colors and fonts if you have them (or the agent invents a palette). Verbatim scripts set the duration — figure roughly 130 spoken words per minute, so a 30-second video wants a 65–70 word script. Saying "use it verbatim" settles whether the agent may restructure your words.
+
+
+  </Accordion>
+  <Accordion title="Site tour instead (same URL, tour brief)">
+    > Make a 30-second 1920x1080 tour of https://example.com built from its own screenshots. Calm, editorial pace — show the homepage, two inner pages, and the footer. Full narration, warm male voice. This is a showcase, not a sales pitch.
+
+    Reach for this when the goal is to *show the site*, not sell a product. It builds from captured screenshots and the site's brand assets. A launch or promo from the same URL is a different brief — ask to sell it.
+  </Accordion>
+</AccordionGroup>
+
+### Common mistakes
+
+**Hard-timing a verbatim script.** With supplied narration, the real TTS duration sets the length — a hard number forces the agent to cut or pad your words.
+- **Avoid:** `a 45-second launch video from this exact script: ...`
+- **Instead:** `a ~45-second launch video from this script: ...`
+
+**Dropping the structure.** Hook → value → evidence → CTA is there for a reason; drop the hook and the promo never answers "why should I care?"
+- **Avoid:** `skip the intro, just list all six features back to back`
+- **Instead:** `hook stating the problem, then 3 feature beats, then the CTA end card`
+
+**Assuming the agent knows your assets.** Without a URL to capture there's no site to read; an unnamed logo or color is invented.
+- **Avoid:** `use our brand colors`
+- **Instead:** `brand colors #5E6AD2 on off-black; logo at assets/logo.svg`
+
+<Card title="Practice it: Name the scene, say what it becomes" icon="graduation-cap" href="https://hyperframes.heygen.com/lessons/name-the-scene">
+  Free 20-minute lesson with a short video, a quiz and a brief to try. Swap taste words for things you can see: colors, speeds, moves, seconds.
+</Card>
+
+## Keep the product and its details connected
+
+A full interface shows where the task happens. A close-up makes the important action readable. Ask for both when isolated feature shots lose the sense of a complete product:
+
+```text
+Show the real workspace, bring the relevant chart and result forward,
+then carry the result back into the interface. Build the changing parts
+separately, with short explanations where needed. Keep the actual labels
+and values; do not invent controls or interactions.
+```
+
+For example, a monitoring film can establish the dashboard, draw its signal,
+reveal a diagnosis, and return that result to the report view. The product's
+real screens or supplied source must support that flow. The surrounding
+interface gives context; the close-up carries the labels and numbers the viewer
+needs to read.
+
+If a draft feels like slides, ask the agent to change what happens within each
+shot: reveal the signal, populate the result, or open the panel before moving
+on. Adding camera movement over the same still page does not show the action.
+Keep a short explanation of what changed rather than removing all text.
+
+For a color revision, name the background you want and ask the agent to adapt
+text and charts across every scene and transition. Check that labels remain
+readable and that a later animation does not bring the old background back.
 
 ## Review the result
 
 - Every product claim is current.
-- The shown states are realistic and use no private material.
-- The important interface remains readable while the video plays.
-- The opening proves the product quickly and the ending asks for one clear action.
+- The screens shown are realistic and use no private material.
+- The interface stays readable while the video plays.
+- Close-ups connect to the whole product, and components remain clear while moving between the two views.
+- The opening proves the product quickly, and the ending asks for one clear action.
 
-Ask the agent for a broader story revision. Use Studio for a direct visual or
-timing change. Render from the agent, Studio, or the CLI when the result is ready.
-
-<Card title="Finish and share" icon="circle-check" href="/guides/export-and-share">
-  Check the final project, render it from your preferred surface, and review the file.
-</Card>
-
-## Related topics
-
-- [Create a faceless explainer when there is no product to show](/guides/faceless-explainer)
-- [Edit the finished project in Studio](/studio)
-- [Prompt for product-launch videos](/prompting/product-launch)
+Then [change it](/studio-app/edit-with-the-agent): ask the agent, point at the picture in the Studio app, or edit by hand.

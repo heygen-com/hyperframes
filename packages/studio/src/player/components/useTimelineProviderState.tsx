@@ -444,7 +444,7 @@ export function useTimelineProviderState({
     dragActive: draggedClip?.started === true || resizingClip != null,
     displayDuration,
   });
-  const { major, minor, majorTickInterval } = useTimelineTicks(
+  const { major, minor, majorTickInterval, frameRate } = useTimelineTicks(
     displayDuration,
     pps,
     timeDisplayMode,
@@ -460,6 +460,7 @@ export function useTimelineProviderState({
     totalH: displayLayout.totalH,
     effectiveDuration,
     majorTickInterval,
+    tickFrameRate: frameRate,
     rangeSelection,
     marqueeRect,
     laneGapStrips,

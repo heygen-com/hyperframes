@@ -163,7 +163,8 @@ describe("closeCaptureSession", () => {
   afterEach(() => vi.restoreAllMocks());
 
   it("logs the blur's closing line once, before the page closes", async () => {
-    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const stdout = vi.spyOn(console, "log").mockImplementation(() => {});
     const order: string[] = [];
     vi.stubGlobal("window", {
       __hfMotionBlur: {
@@ -188,6 +189,7 @@ describe("closeCaptureSession", () => {
       "[motion-blur] on reasonCode=null movers=1 failedFrames=2 (session end)",
     ]);
     expect(order).toEqual(["read", "close"]);
+    expect(stdout).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
   });
 });

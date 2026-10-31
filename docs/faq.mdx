@@ -1,0 +1,159 @@
+---
+title: "HyperFrames FAQ"
+sidebarTitle: "FAQ"
+description: "Short answers to the questions people ask most about HyperFrames: cost, which agent to use, Windows, Studio, Remotion, rendering, audio, and fonts."
+keywords: ['pricing', 'price', 'cost', 'free', 'paid', 'subscription', 'plan', 'how much']
+---
+
+Short answers to the questions people ask the docs assistant most often. Each
+answer links to the page with the details.
+
+## Is HyperFrames free?
+
+Yes. The framework, CLI, and skills are open source under Apache 2.0, and
+rendering on your own computer is free and needs no account. Your AI agent's
+plan and optional HeyGen-hosted features, such as HeyGen voices, avatars, and
+cloud rendering, bill through their own accounts. See
+[what's free and what HeyGen adds](/guides/voice-and-audio#free-or-heygen-quality), and
+[Make videos with a free agent](/guides/free-agents) for an agent that costs nothing.
+
+## Can I use HyperFrames commercially?
+
+Yes. The [Apache 2.0 license](https://github.com/heygen-com/hyperframes/blob/main/LICENSE)
+lets you use, change, and distribute HyperFrames, including in commercial work,
+under its terms. Media you add, such as fonts, music, or footage, keeps its own
+license.
+
+## Which AI agent should I use?
+
+Any coding agent that supports skills works, including Claude Code, Codex,
+Cursor, Gemini CLI, GitHub Copilot, Google Antigravity, IBM Bob, and OpenCode.
+If you have none yet, start with Claude Code or Codex. Setup guides:
+[Claude Code](/guides/with-claude-code), [Codex](/guides/with-codex),
+[Cursor](/guides/with-cursor), and [other agents](/guides/skills).
+
+## Can I use it in the Claude or ChatGPT chat app?
+
+Yes, through the hosted HyperFrames connector. It creates and renders videos in
+your HeyGen account, with nothing installed on your computer. You give up the
+local project folder and Studio. Your chat product's plan decides whether you
+can add a custom connector. See [Make videos in Claude.ai or ChatGPT](/guides/mcp).
+
+## How do I install it?
+
+For Claude Code, install the plugin:
+
+```bash
+claude plugin marketplace add heygen-com/hyperframes
+claude plugin install hyperframes@hyperframes
+```
+
+For most other agents, run `npx skills add heygen-com/hyperframes` and choose
+**Core Skills**. Then start a new agent session. See
+[Make your first video](/quickstart).
+
+## Do I need a HeyGen account or API key?
+
+Not to make and render videos on your computer. You need one for HeyGen voices
+and music, avatars, cloud rendering, the hosted connector, and the Studio app.
+Sign in with `npx hyperframes auth login`. See
+[Authentication and API keys](/guides/authentication).
+
+## Does HyperFrames work on Windows?
+
+The CLI and the agent skills run on Windows, including rendering from
+PowerShell, and the HyperFrames Studio app has a Windows installer (64-bit Intel
+and AMD; see [Install the Studio app](/studio-app)). To edit in the browser instead,
+use `npx hyperframes preview`. For WSL
+rendering tips, see [The render is slow under WSL2](/help#the-render-is-slow-under-wsl2).
+
+## What is the difference between the Studio app and the browser editor?
+
+The **Studio app** is a desktop app for Mac, Windows and Linux: a chat with your agent, a
+preview, and an editor in one window, with no terminal needed. The **browser
+editor** is the editor that opens from any project when you run
+`npx hyperframes preview`. Both edit the same project files. See
+[Get the Studio app](/studio-app) and
+[Edit in the browser editor](/studio).
+
+## How is HyperFrames different from Remotion?
+
+Remotion videos are React components. HyperFrames videos are HTML, CSS, and
+JavaScript, timed with data attributes and a paused animation timeline.
+HyperFrames does not use or run Remotion. See
+[HyperFrames vs Remotion](/guides/hyperframes-vs-remotion) and
+[Move from Remotion to HyperFrames](/prompting/remotion-migration).
+
+## How do I preview and render a video?
+
+Inside the project folder, open the live preview:
+
+```bash
+npx hyperframes preview
+```
+
+Then render the MP4:
+
+```bash
+npx hyperframes render --output final.mp4
+```
+
+Rendering needs FFmpeg. Run `npx hyperframes doctor` to check your machine. See
+[Render from the command line](/guides/rendering).
+
+## How long does a render take?
+
+It depends on length, resolution, and effects. In one measured example, a
+300-frame 1920×1080 composition rendered in 9.8 seconds, and in 25 seconds with
+one expensive CSS declaration left in. Use `--quality draft` for a faster review
+render. See [Fix a slow preview or render](/guides/performance).
+
+## Can it add voiceover, music, and sound effects?
+
+Yes. Ask the agent for them in your request. With a HeyGen account it uses HeyGen
+voices and a 10,000-track music catalog. Without one, voice uses Kokoro on your
+computer, music is tracks you add (or local generation if you install it), and
+sound effects come from a bundled set.
+See [Add voiceover, music, sound effects and captions](/guides/voice-and-audio).
+
+## Can it add captions to my video?
+
+Yes. Give the agent your talking-head footage and ask for captions. It
+transcribes the speech, times each word, and adds captions without changing the
+footage. See [Add captions to a video with AI](/guides/captions-and-recuts).
+
+## Can I use my own fonts?
+
+Yes. Put the font file in the project and declare it with `@font-face`. A font
+the project does not declare can fall back to a default face in the render, and
+`npx hyperframes lint` reports it. See the
+[font lint rules](/reference/lint-rules#fonts).
+
+## Can I render in the cloud or on my own servers?
+
+Yes. `hyperframes cloud render` renders on HeyGen's cloud and bills credits to
+your HeyGen account. You can also render on your own AWS Lambda or Google Cloud
+Run, or in Docker. See [Choose a rendering path](/deploy/overview).
+
+## Does HyperFrames send my video to HeyGen?
+
+Not when you preview and render locally: the project stays on your computer.
+Cloud rendering uploads the project to HeyGen, and the hosted connector builds it
+in your HeyGen account. The CLI sends usage data, such as command names and
+render performance, which stays anonymous until you sign in. It never sends
+project names or video content. Turn it off with `npx hyperframes telemetry disable`. Your
+AI agent sends your prompts to its own provider. See
+[the telemetry reference](/packages/cli#telemetry).
+
+## Something failed. What do I check first?
+
+Run these in the project folder and give the agent the full output:
+
+```bash
+npx hyperframes doctor
+npx hyperframes lint
+npx hyperframes check
+```
+
+See [Troubleshooting](/help) for specific errors, and
+[Share feedback](/help#share-feedback) to report a bug.

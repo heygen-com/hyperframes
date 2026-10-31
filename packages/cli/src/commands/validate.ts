@@ -5,7 +5,7 @@ import { launchManagedBrowser, resolveManagedGpuMode } from "../browser/launch.j
 // window drifting as the file is edited, hence the file-level suppression.
 // fallow-ignore-file code-duplication
 import { failCommand, setCommandExitCode } from "../utils/commandResult.js";
-import { defineCommand } from "citty";
+import { defineCommand } from "../utils/defineCommand.js";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
@@ -25,6 +25,7 @@ import {
   seekCompositionTimeline,
   waitForRuntimeReady,
 } from "../capture/captureCompositionFrame.js";
+import { failureMessage, jsonFailure } from "../utils/jsonError.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -614,7 +615,10 @@ function emitFailureReport(message: string, asJson: boolean): void {
   if (asJson) {
     console.log(
       JSON.stringify(
-        withMeta({ ok: false, error: message, errors: [], warnings: [] }, { deprecated: true }),
+        withMeta(
+          { ...jsonFailure("runtime_error", message), errors: [], warnings: [] },
+          { deprecated: true },
+        ),
         null,
         2,
       ),
@@ -668,7 +672,7 @@ Examples:
       setCommandExitCode(exitCode);
       return;
     } catch (err: unknown) {
-      const message = normalizeErrorMessage(err);
+      const message = failureMessage(err);
       emitFailureReport(message, asJson);
       failCommand();
     }

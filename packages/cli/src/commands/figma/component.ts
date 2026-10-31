@@ -4,7 +4,7 @@
  * Phase-1 asset import, packaged as a registry item.
  */
 
-import { defineCommand } from "citty";
+import { defineCommand } from "../../utils/defineCommand.js";
 import {
   createFigmaClient,
   FigmaClientError,

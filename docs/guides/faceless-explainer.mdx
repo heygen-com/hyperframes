@@ -1,6 +1,6 @@
 ---
-title: "Create a faceless explainer"
-sidebarTitle: "Faceless explainer"
+title: "Make an explainer video with AI"
+sidebarTitle: "Explainer"
 description: "Turn notes, an article, or a difficult idea into a visual explanation without product footage."
 ---
 
@@ -18,18 +18,40 @@ Start from a topic, article, or notes. HyperFrames invents the typography, diagr
 Kinetic type, an abstract graphic, a diagram, and a data-visualisation — all
 invented from the text. There is no source video anywhere in this.
 
-## Make the request
+## Explainers made with HyperFrames
 
-Attach or paste the source material:
+Any style works. The same request comes back as a woodblock print, a 3D tutorial or a hand-drawn diagram depending on
+what you show it.
+
+<div className="hf-shelf">
+  <div>
+    <DocsVideo portrait title="The journey of k" src="https://static.heygen.ai/hyperframes-oss/homepage/showcase/hq/k-v1.mp4" poster="https://static.heygen.ai/hyperframes-oss/homepage/showcase/poster/k-v1.jpg" />
+    <p><strong>The journey of "k"</strong>: how one letter crosses the ocean. Woodblock prints, made with the skills.</p>
+  </div>
+  <div>
+    <DocsVideo portrait title="How phone GPS works" src="https://static.heygen.ai/hyperframes-oss/docs/films/gps-explainer-v1.mp4" poster="/public/images/films/gps-explainer-v1.jpg" />
+    <p><strong>How phone GPS works</strong>: made in the Studio app from a reference video, in its style.</p>
+  </div>
+  <div>
+    <DocsVideo portrait title="Axe chop" src="https://static.heygen.ai/hyperframes-oss/homepage/showcase/hq/axe-v1.mp4" poster="https://static.heygen.ai/hyperframes-oss/homepage/showcase/poster/axe-v1.jpg" />
+    <p><strong>Axe chop</strong>: a 3D how-to, step by step.</p>
+  </div>
+</div>
+
+## Make it
+
+**Start from an explainer you like.** In the Studio app, open **Reference** on Home and paste its link (YouTube,
+TikTok, Instagram or X), upload the file, or choose one under **Pick a reference**. Then say what yours is about: you
+get that pacing and drawing style, about your topic. You don't have to love all of it; one thing you like is
+enough to start from. Reference uses your HeyGen API key, and the app asks for it the first time.
+
+**Or describe it** in **Make something**, with your notes attached or pasted:
 
 ```text
-Using /hyperframes, turn these notes into a short visual explainer for a
-general audience: [paste notes]
+Turn these notes into a 60-second explainer for people new to the topic: [paste notes]
 ```
 
-Say which facts or wording must stay exact, and ask the agent to propose the
-teaching angle first if you want to choose it. A topic alone is enough to begin;
-a script is useful only when its words are already approved.
+Say which facts or wording must stay exact. With your own agent instead of the app, start the message with `/hyperframes`.
 
 ## How should the idea land?
 
@@ -49,6 +71,115 @@ HyperFrames does not turn each paragraph into a scene. It finds the teaching spi
 
 The visuals share one coherent language and develop with the explanation. A diagram should reveal a mechanism; a chart should prove a claim; motion should show what changes.
 
+## Prompts that work
+
+Paste your text into one message.
+That is enough for a finished explainer. No site, no footage, no design
+decisions yet.
+
+Verified, from the [examples](/prompting/examples) page — a ~60-second vertical
+explainer from pasted text:
+
+> Turn this into a ~60-second 1080x1920 vertical explainer: [paste your text]. One idea per scene, big typography, diagrams over stock footage, brand color #FF5533 on off-black. Male TTS voice, calm. Embedded captions, keywords highlighted in the brand color.
+
+<DocsVideo
+  title="Example explainer"
+  src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/example-explainer.mp4#t=0.1"
+  portrait
+  loop
+/>
+*Made from the prompt above.*
+
+
+Note the `~`. When you supply a script, the runtime follows the spoken words. So
+ask for *about* a minute, not exactly one. See the
+[anatomy](/prompting/overview#the-shape-of-a-strong-prompt) for the rest of the skeleton.
+
+### Say these when they matter
+
+You can steer all of these from the prompt, before you have learned any
+technique.
+
+| Knob | What to say | Why it matters |
+| --- | --- | --- |
+| **Verbatim vs summarized** | "use my wording verbatim" or "restructure it freely" | Verbatim keeps your voice but locks the word count. Summarized lets it cut and reorder for pace. |
+| **Duration** | "~60 seconds", never "60 seconds" | With a script, the narration sets the real length. A hard number forces the agent to trim or pad the words. |
+| **Scene density** | "one idea per scene" | A faceless scene has one invented focal to animate. Two ideas leave nothing to build the motion around. It reads as a text dump. |
+| **Angle** | "concept" / "how-to" / "listicle" / "story" | The angle decides the story shape. The agent reshapes your text into it instead of reading your paragraphs in order. |
+| **Caption style** | "embedded captions, keywords highlighted in the accent color" | Captions are burned in. Naming the highlight color ties them to your palette instead of a default pill. |
+| **Palette** | "brand color #FF5533 on off-black" | There is no site to borrow from, so the agent picks a palette. A named accent and ground personalize it. |
+| **Voice** | "male TTS voice, calm" / "warm female voice" | Gender and tone are prompt words. The provider is the agent's decision. |
+
+<Tip>
+  Scene density is the single biggest quality lever here. "One idea per scene"
+  turns a dense paragraph into a paced sequence. The agent reorders and
+  compresses your text to hit it. That is what makes an explainer teach instead
+  of recite.
+</Tip>
+
+### Variants
+
+<AccordionGroup>
+  <Accordion title="30-second landscape topic explainer (16:9)">
+    > Make a ~30-second 1920x1080 explainer on how HTTPS keeps a request private, for a non-technical audience — the takeaway: your data is sealed before it leaves the browser. Concept angle: one idea per scene, big geometric type, a simple lock-and-key diagram as the centerpiece (swap the metaphor with the topic). Near-black ink on off-white with a deep-blue accent. Female TTS voice, warm and clear. Embedded captions, key terms highlighted in the accent color.
+
+    Shorter runtime, landscape for YouTube or an embed. Fewer scenes means the
+    topic has to compress. Naming the takeaway tells the agent what to keep.
+
+<DocsVideo
+  title="Variant explainer landscape"
+  src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/variant-explainer-landscape.mp4#t=0.1"
+  loop
+/>
+*Rendered from this prompt with the topic swapped to HTTP caching (cache diagram as the metaphor), unedited — 26s, because the narration sets the length.*
+
+  </Accordion>
+  <Accordion title="Listicle">
+    > Make a ~45-second 1080x1920 listicle: "5 habits of fast-shipping teams". Listicle angle — one habit per scene, each with a big number and a one-line label, escalating energy toward #1. Off-black with a lime accent. Male TTS voice, upbeat. Embedded captions, the habit label highlighted each scene.
+
+    The listicle angle gives each item its own scene. Every scene reuses the same
+    number-and-label shape. The result reads as a countdown, not a wall of
+    points.
+  </Accordion>
+  <Accordion title="How-to with diagrams">
+    > Make a ~60-second 1920x1080 how-to on setting up a CI pipeline, for developers. How-to angle: one step per scene, each built around a simple node-and-arrow diagram that draws on as the narration explains it. Charcoal with a teal accent. Calm male TTS voice. Embedded captions, the step name highlighted.
+
+    A how-to leans on diagrams as the load-bearing visual. Describe the diagram
+    *shape* per step — "node-and-arrow", or "a pipeline that fills left to
+    right". Let the agent invent the specifics.
+  </Accordion>
+</AccordionGroup>
+
+### Common mistakes
+
+**"60 seconds" instead of "~60 seconds".** Same rule as on the
+[product launch page](/guides/product-launch-video#prompts-that-work). It bites
+harder here, because the script is the whole video. You cannot know a supplied
+script's spoken duration until the TTS renders.
+
+- **Avoid:** `a 60-second explainer from this text: ...`
+- **Instead:** `a ~60-second explainer from this text: ...`
+
+**Cramming ideas into a scene.** Every faceless visual is invented around a
+single focal. Overload the scene and there is no clear thing to animate.
+
+- **Avoid:** `explain all five caching layers in one scene`
+- **Instead:** `one idea per scene — one caching layer at a time`
+
+**Asking it to capture or pull real imagery.** There is no capture step. A
+faceless explainer invents its visuals.
+
+- **Avoid:** `pull screenshots from the site and explain the feature`
+- **Instead:** that's a site or product video — give it the URL
+  ([product launch](/guides/product-launch-video#prompts-that-work))
+
+**Leaving the look unspecified when you care.** There is no brand to read, so
+the agent picks the palette. If you have colors, name them.
+
+- **Avoid:** `make it look on-brand`
+- **Instead:** `brand color #FF5533 on off-black`
+
+
 ## Review whether it teaches
 
 - The opening creates a question, tension, or surprise.
@@ -58,7 +189,7 @@ The visuals share one coherent language and develop with the explanation. A diag
 - The ending lands the sentence you wanted the viewer to remember.
 
 Ask the agent when the teaching sequence or evidence must change. Use
-Studio for a precise visual, timing, or animation correction.
+the browser editor for a precise visual, timing, or animation correction.
 
 <Card title="Finish and share" icon="circle-check" href="/guides/export-and-share">
   Check the final project, render through your preferred surface, and review the file.
@@ -66,5 +197,4 @@ Studio for a precise visual, timing, or animation correction.
 
 ## Related topics
 
-- [Prompt for explainers](/prompting/explainers)
 - [Create a product video from real screens](/guides/product-launch-video)

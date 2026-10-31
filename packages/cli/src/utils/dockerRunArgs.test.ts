@@ -296,6 +296,20 @@ describe("buildDockerRunArgs", () => {
     expect(args[loopIdx + 1]).toBe("0");
   });
 
+  it("forwards the delivery options to the container only when set", () => {
+    const args = buildDockerRunArgs({
+      ...FIXED_INPUT,
+      options: { ...BASE, keyframeIntervalSeconds: 2, maxBitrate: "8M", bufferSize: "12M" },
+    });
+    const after = (flag: string) => args[args.indexOf(flag) + 1];
+    expect(after("--keyframe-interval")).toBe("2");
+    expect(after("--max-bitrate")).toBe("8M");
+    expect(after("--buffer-size")).toBe("12M");
+    const plain = buildDockerRunArgs({ ...FIXED_INPUT, options: BASE });
+    expect(plain).not.toContain("--max-bitrate");
+    expect(plain).not.toContain("--keyframe-interval");
+  });
+
   it("forwards --video-bitrate to the container when set", () => {
     const args = buildDockerRunArgs({
       ...FIXED_INPUT,

@@ -23,7 +23,10 @@ function hostile(codecName: string, representativeMime: string | null): AssetCod
   return { codecName, browserHostile: true, representativeMime, hasAlpha: false };
 }
 
-async function loadHelper(map: MediaCodecMap): Promise<{
+async function loadHelper(
+  map: MediaCodecMap,
+  sourceFacts: Record<string, unknown> = {},
+): Promise<{
   injectMediaCodecMapIntoHtml: typeof import("./mediaProxyPreview.js").injectMediaCodecMapIntoHtml;
   mediaProxyDemand: typeof import("./mediaCodecMap.js").mediaProxyDemand;
   resolveProxy: ReturnType<typeof vi.fn>;
@@ -35,7 +38,7 @@ async function loadHelper(map: MediaCodecMap): Promise<{
   // replaced, so this asserts the shipped policy rather than a copy of it.
   vi.doMock("./mediaCodecMap.js", async () => ({
     ...(await vi.importActual<typeof import("./mediaCodecMap.js")>("./mediaCodecMap.js")),
-    scanProjectMediaCodecMap: async () => map,
+    scanProjectMedia: async () => ({ codecMap: map, sourceFacts }),
   }));
   const { injectMediaCodecMapIntoHtml } = await import("./mediaProxyPreview.js");
   const { mediaProxyDemand } = await import("./mediaCodecMap.js");
@@ -53,6 +56,33 @@ afterEach(() => {
   vi.doUnmock("./proxyTranscoder.js");
   vi.doUnmock("./mediaCodecMap.js");
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+});
+
+describe("injectMediaCodecMapIntoHtml source facts", () => {
+  const facts = { "/videos/cam.mp4": { width: 3840, height: 2160, bitDepth: 10, bitrate: 0 } };
+
+  it("hands the page the sizes of its videos, and no codec map when none is hostile", async () => {
+    const { injectMediaCodecMapIntoHtml } = await loadHelper({}, facts);
+
+    const html = await injectMediaCodecMapIntoHtml(
+      "<html><head></head><body></body></html>",
+      tmpProject(),
+      [{ html: "<html></html>" }],
+    );
+
+    expect(html).toContain("window.__HF_MEDIA_SOURCE_FACTS__=");
+    expect(html).toContain('"/videos/cam.mp4"');
+    expect(html).not.toContain("__HF_MEDIA_CODEC_MAP__");
+  });
+
+  it("leaves the page untouched when there is nothing to say about its videos", async () => {
+    const { injectMediaCodecMapIntoHtml } = await loadHelper({}, {});
+    const page = "<html><head></head><body></body></html>";
+
+    expect(await injectMediaCodecMapIntoHtml(page, tmpProject(), [{ html: "<html></html>" }])).toBe(
+      page,
+    );
+  });
 });
 
 describe("injectMediaCodecMapIntoHtml pre-warm", () => {

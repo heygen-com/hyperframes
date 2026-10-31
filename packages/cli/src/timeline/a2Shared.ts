@@ -18,6 +18,7 @@ import { resolveRef } from "./resolveRef.js";
 import { parseTimeExpression } from "./timeExpr.js";
 import { setCommandExitCode } from "../utils/commandResult.js";
 import { parseSetAssignments, type SetAssignment } from "./a2Mutations.js";
+import { jsonFailure } from "../utils/jsonError.js";
 
 export type MutationVerb = "move" | "trim" | "split" | "delete" | "set" | "duplicate";
 
@@ -52,8 +53,9 @@ export const allRows = (timeline: ProjectTimeline): TimelineRow[] =>
 
 export function refusal(reason: string, fix: string, json: boolean): void {
   setCommandExitCode(2);
-  const payload = { ok: false, reason, fix };
-  console.error(json ? JSON.stringify(payload, null, 2) : `${reason}; ${fix}.`);
+  if (json)
+    console.log(JSON.stringify({ ...jsonFailure("refused", reason, fix), reason, fix }, null, 2));
+  else console.error(`${reason}; ${fix}.`);
 }
 
 export const isFileChanged = (error: unknown): error is Error =>
@@ -462,6 +464,7 @@ function duplicateMutation(
     context.resolved.target,
     `${splitBaseId(context.row)}-copy`,
     time.seconds,
+    context.row.duration,
   );
   if (!duplicate.matched) {
     return { ok: false, reason: `${context.ref} was not found`, fix: "choose an existing clip" };

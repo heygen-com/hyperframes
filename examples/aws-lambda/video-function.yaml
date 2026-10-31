@@ -62,6 +62,10 @@ Resources:
               - Effect: Allow
                 Action: lambda:GetAccountSettings
                 Resource: "*"
+              # Stitch helpers, should this function ever run an assemble.
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${ProjectName}-video"
       Tags:
         - Key: Project
           Value: !Ref ProjectName
@@ -95,6 +99,7 @@ Resources:
           TMPDIR: /tmp
           HYPERFRAMES_RENDER_BUCKET: !Ref RenderBucket
           HYPERFRAMES_LAMBDA_RESERVED_CONCURRENCY: !Ref ReservedConcurrency
+          HYPERFRAMES_STITCH_FUNCTION: !Sub "${ProjectName}-video"
       Tags:
         - Key: Project
           Value: !Ref ProjectName

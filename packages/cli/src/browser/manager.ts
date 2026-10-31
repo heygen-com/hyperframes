@@ -229,6 +229,8 @@ export interface BrowserResult {
 export interface EnsureBrowserOptions {
   onProgress?: (downloadedBytes: number, totalBytes: number) => void;
   downloadStallMs?: number;
+  // Stalled-download attempts; default 3 on a terminal, 1 elsewhere (see ensureBrowser).
+  downloadAttempts?: number;
   downloadBaseUrl?: string;
   // Re-download the managed build even when cached; only its version dir is replaced.
   force?: boolean;
@@ -542,15 +544,52 @@ async function ensureLinuxArmBrowser(options?: EnsureBrowserOptions): Promise<Br
  * With `preferManagedChrome`: env var -> OUR pinned cache -> auto-download
  * (puppeteer-cache preference and system Chrome are both skipped).
  */
+const BROWSER_WAIT_NOTICE_MS = 15_000;
+
+/** Runs `task`, saying so every 15 s while it is still going, so a first-use download is never silent. */
+export async function withBrowserWaitNotice<T>(
+  task: Promise<T>,
+  notify: (message: string) => void = console.warn,
+  everyMs = BROWSER_WAIT_NOTICE_MS,
+): Promise<T> {
+  const timer = setInterval(
+    () =>
+      notify(
+        "[hyperframes] Still getting Chrome ready; the first use downloads it. " +
+          "Set HYPERFRAMES_BROWSER_PATH to use an installed Chrome instead.",
+      ),
+    everyMs,
+  );
+  timer.unref();
+  try {
+    return await task;
+  } finally {
+    clearInterval(timer);
+  }
+}
+
 export async function ensureBrowser(options?: EnsureBrowserOptions): Promise<BrowserResult> {
-  if (options?.signal) return ensureBrowserInOwnedProcess(options);
-  return ensureBrowserInCurrentProcess(options);
+  // Tools that time out at 120 s lose to three stalled attempts (~4 min); one stall then a clear error wins.
+  const resolved = {
+    ...options,
+    downloadAttempts: options?.downloadAttempts ?? (process.stdout.isTTY ? DOWNLOAD_ATTEMPTS : 1),
+  };
+  const task = resolved.signal
+    ? ensureBrowserInOwnedProcess(resolved)
+    : ensureBrowserInCurrentProcess(resolved);
+  return resolved.onProgress ? task : withBrowserWaitNotice(task);
 }
 
 // fallow-ignore-next-line complexity
 async function ensureBrowserInCurrentProcess(
   options?: EnsureBrowserOptions,
 ): Promise<BrowserResult> {
+  const configured = browserPathFromEnv();
+  if (configured && !existsSync(configured.path)) {
+    throw new Error(
+      `${configured.name} is set to ${configured.path}, which does not exist. Fix the path or unset it.`,
+    );
+  }
   const fromEnv = findFromEnv();
   if (fromEnv) return fromEnv;
 
@@ -600,6 +639,7 @@ async function ensureBrowserInOwnedProcess(options: EnsureBrowserOptions): Promi
       {
         force: options.force,
         preferManagedChrome: options.preferManagedChrome,
+        downloadAttempts: options.downloadAttempts,
       },
       {
         signal,
@@ -689,7 +729,7 @@ function wrapDownloadFailureWithBrowserPathHint(
     `Failed to install chrome-headless-shell ${managedChromeVersion()}: ${original}${unzipErrors}\n\n` +
     `Point hyperframes at an already-installed Chrome/Chromium instead:\n\n` +
     `  export HYPERFRAMES_BROWSER_PATH="${example}"\n\n` +
-    `Then re-run your command. Any Chrome build works for the screenshot ` +
+    `Run \`hyperframes doctor\` to see which Chrome was found. Then re-run your command. Any Chrome build works for the screenshot ` +
     `capture path; install a real chrome-headless-shell later if you need the ` +
     `perf-optimized BeginFrame path. Alternatively, run inside the hyperframes ` +
     `Docker image which ships a compatible headless-shell.`;
@@ -699,13 +739,17 @@ function wrapDownloadFailureWithBrowserPathHint(
 const DOWNLOAD_STALL_MS = 60_000;
 const DOWNLOAD_ATTEMPTS = 3;
 
-async function retryOnStall<T>(run: () => Promise<T>, clear: () => void): Promise<T> {
+export async function retryOnStall<T>(
+  run: () => Promise<T>,
+  clear: () => void,
+  attempts = DOWNLOAD_ATTEMPTS,
+): Promise<T> {
   for (let attempt = 1; ; attempt++) {
     try {
       return await run();
     } catch (err) {
-      if (!(err instanceof BrowserDownloadStalledError) || attempt >= DOWNLOAD_ATTEMPTS) throw err;
-      console.warn(`[hyperframes] ${err.message} Retrying (${attempt}/${DOWNLOAD_ATTEMPTS - 1}).`);
+      if (!(err instanceof BrowserDownloadStalledError) || attempt >= attempts) throw err;
+      console.warn(`[hyperframes] ${err.message} Retrying (${attempt}/${attempts - 1}).`);
       clear();
     }
   }
@@ -804,6 +848,7 @@ async function downloadBrowser(options?: EnsureBrowserOptions): Promise<BrowserR
           ),
         ),
       clearStaging,
+      options?.downloadAttempts,
     );
     assertExecutableUnpacked(stagingDir, staged.executablePath);
     unzipLog.lines = [];
@@ -861,7 +906,7 @@ function moveStagedInstallIntoCache(
     if (replaced) renameSync(aside, target);
     throw err;
   }
-  if (replaced) rmSync(aside, { recursive: true, force: true });
+  if (replaced) removeLeftover(aside);
   return join(target, relative(staged.path, staged.executablePath));
 }
 
@@ -872,7 +917,7 @@ const REPLACED_PREFIX = ".chrome-replaced-";
 const isInstallLeftover = (name: string) =>
   name.startsWith(STAGING_PREFIX) || name.startsWith(REPLACED_PREFIX);
 
-function removeInstallLeftovers(): boolean {
+function removeInstallLeftovers(tolerateLocked = true): boolean {
   let names: string[];
   try {
     names = readdirSync(CACHE_ROOT_DIR);
@@ -881,9 +926,17 @@ function removeInstallLeftovers(): boolean {
     throw err;
   }
   const leftovers = names.filter(isInstallLeftover);
-  for (const name of leftovers)
-    rmSync(join(CACHE_ROOT_DIR, name), { recursive: true, force: true });
+  for (const name of leftovers) removeLeftover(join(CACHE_ROOT_DIR, name), tolerateLocked);
   return leftovers.length > 0;
+}
+
+// A running Chrome keeps its debug.log open and Windows refuses to unlink it; the next sweep retries.
+function removeLeftover(path: string, tolerateLocked = true): void {
+  try {
+    rmSync(path, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+  } catch (err) {
+    if (!tolerateLocked || (!isErrno(err, "EBUSY") && !isErrno(err, "EPERM"))) throw err;
+  }
 }
 
 export async function sweepKilledInstalls(): Promise<void> {
@@ -894,7 +947,7 @@ export async function sweepKilledInstalls(): Promise<void> {
 
 // Deletes the managed Chrome cache and interrupted-install leftovers; true when any of them existed.
 export function clearBrowser(): boolean {
-  const removedLeftovers = removeInstallLeftovers();
+  const removedLeftovers = removeInstallLeftovers(false);
   if (!existsSync(CACHE_DIR)) return removedLeftovers;
   rmSync(CACHE_DIR, { recursive: true, force: true });
   return true;

@@ -1,4 +1,4 @@
-import { failCommand } from "../../utils/commandResult.js";
+import { failCommand, failUsage } from "../../utils/commandResult.js";
 /**
  * `hyperframes cloud render` — orchestrate a cloud-rendered HyperFrames
  * composition end-to-end:
@@ -28,7 +28,7 @@ import { failCommand } from "../../utils/commandResult.js";
  * HeyGen's external API OpenAPI spec; never hand-edit it.
  */
 
-import { defineCommand } from "citty";
+import { defineCommand } from "../../utils/defineCommand.js";
 
 import {
   detectAspectRatioFromHtml,
@@ -79,7 +79,11 @@ import type {
   HyperframesRenderDetail,
 } from "../../cloud/index.js";
 import { isAbsolute, relative, resolve as resolvePath } from "node:path";
-import { existsSync } from "node:fs";
+import { statSync } from "node:fs";
+import {
+  compositionEntryErrorMessage,
+  parseCompositionEntryArg,
+} from "../../utils/compositionEntry.js";
 
 const VALID_QUALITY = ["draft", "standard", "high"] as const;
 const VALID_FORMAT = ["mp4", "webm", "mov"] as const;
@@ -267,6 +271,7 @@ export default defineCommand({
       args["variables-file"],
       args["strict-variables"] ?? false,
       project,
+      args.composition,
     );
 
     const client = await createCloudClient();
@@ -379,7 +384,7 @@ function validateIdempotencyKey(key: string | undefined): void {
   if (key === undefined) return;
   if (!IDEMPOTENCY_KEY_RE.test(key)) {
     errorBox("Invalid --idempotency-key", `Got "${key}". Must be 1-255 chars from [A-Za-z0-9_:.-]`);
-    failCommand();
+    failUsage();
   }
 }
 
@@ -389,7 +394,7 @@ export function validateDryRunSource(source: ProjectInputSource, dryRun: boolean
     "Invalid --dry-run input",
     "--dry-run inspects a local project directory and cannot be combined with --asset-id or --url.",
   );
-  failCommand();
+  failUsage();
 }
 
 // ---------------------------------------------------------------------------
@@ -420,7 +425,7 @@ function resolveProjectInput(opts: {
   const count = Number(explicit.dir) + Number(explicit.assetId) + Number(explicit.url);
   if (count > 1) {
     errorBox("Conflicting inputs", "Pass only one of: project dir, --asset-id, --url.");
-    failCommand();
+    failUsage();
   }
   if (explicit.assetId) return { kind: "asset_id", assetId: opts.assetId };
   if (explicit.url) return { kind: "url", url: opts.url };
@@ -461,17 +466,14 @@ export function resolveAspectRatioForSubmit(
   }
 
   const dir = project.dir ?? ".";
-  const entryRelative = compositionArg ?? "index.html";
-  const entryPath = resolvePath(dir, entryRelative);
-
-  if (!existsSync(entryPath)) {
-    errorBox(
-      "Composition not found",
-      `Entry file "${entryRelative}" does not exist in ${dir}.`,
-      "Pass --composition with a path that exists inside the project, or omit it to use index.html.",
-    );
+  const entry = parseCompositionEntryArg(compositionArg ?? "index.html", dir, statSync);
+  if (!entry.ok) {
+    const { title, message, hint } = compositionEntryErrorMessage(entry.error);
+    errorBox(title, message, hint);
     failCommand();
   }
+  const entryRelative = entry.value ?? "index.html";
+  const entryPath = resolvePath(dir, entryRelative);
 
   const detection = detectAspectRatioFromHtml(entryPath);
 
@@ -537,6 +539,7 @@ function resolveVariablesAndValidateIfLocal(
   filePath: string | undefined,
   strict: boolean,
   source: ProjectInputSource,
+  composition: string | undefined,
 ): Record<string, unknown> | undefined {
   const variables = resolveVariablesArg(inline, filePath);
   if (!variables || Object.keys(variables).length === 0) return variables;
@@ -545,11 +548,9 @@ function resolveVariablesAndValidateIfLocal(
   // lives on the server side, so we send the variables as-is and let
   // the API surface any mismatch via `hyperframes_project_invalid`.
   if (source.kind !== "dir") return variables;
-  // `resolveProject` calls process.exit on a missing/invalid dir, so
-  // there's no need to wrap this in try/catch — if it returns, the
-  // index.html is present. The earlier impl had a dead try/catch.
-  const { indexPath } = resolveProject(source.dir);
-  const issues = validateVariablesAgainstProject(indexPath, variables);
+  const project = resolveProject(source.dir);
+  const entryPath = resolvePath(project.dir, composition ?? "index.html");
+  const issues = validateVariablesAgainstProject(entryPath, variables);
   reportVariableIssues(issues, { strict, quiet: false });
   return variables;
 }
@@ -662,9 +663,8 @@ async function offloadMedia(
       apiBaseUrl: resolveCloudBaseUrl(),
       upload,
       entryPath,
-      onFile: asJson
-        ? undefined
-        : (item) => console.log(c.dim(`   ${describeOffload(item, !upload)}`)),
+      onFile: (item) =>
+        (asJson ? console.error : console.log)(c.dim(`   ${describeOffload(item, !upload)}`)),
     });
   } catch (err) {
     reportApiError("Media upload failed", err);

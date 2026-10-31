@@ -8,8 +8,10 @@ import {
   getTimelinePixelsPerSecond,
   getTimelineZoomPercent,
   MIN_TIMELINE_ZOOM_PERCENT,
+  TIMELINE_RANGE_MARGIN_PX,
   timelineZoomPercentToSlider,
   timelineSliderToZoomPercent,
+  zoomToSelectedClips,
 } from "./timelineZoom";
 
 const FIT_PPS = 12;
@@ -150,6 +152,52 @@ describe("computePinnedZoomPercent", () => {
     expect(computePinnedZoomPercent(50, 0)).toBe(100);
     expect(computePinnedZoomPercent(-5, 20)).toBe(100);
     expect(computePinnedZoomPercent(50, Number.POSITIVE_INFINITY)).toBe(100);
+  });
+});
+
+const VIEW = { viewportWidth: 1080, contentOrigin: 32, fitPixelsPerSecond: 10 };
+
+describe("zoomToSelectedClips", () => {
+  const usable = VIEW.viewportWidth - VIEW.contentOrigin - TIMELINE_RANGE_MARGIN_PX * 2;
+
+  it("returns the span and the percent that fits it between the margins", () => {
+    expect(zoomToSelectedClips({ ...VIEW, clips: [{ start: 10, end: 20 }] })).toEqual({
+      start: 10,
+      end: 20,
+      zoomPercent: (usable / 10 / VIEW.fitPixelsPerSecond) * 100,
+    });
+  });
+
+  it("unions several clips and skips a zero-length entry", () => {
+    expect(
+      zoomToSelectedClips({
+        ...VIEW,
+        clips: [
+          { start: 28, end: 30 },
+          { start: 10, end: 12 },
+          { start: 0, end: 0 },
+        ],
+      }),
+    ).toEqual({
+      start: 10,
+      end: 30,
+      zoomPercent: (usable / 20 / VIEW.fitPixelsPerSecond) * 100,
+    });
+  });
+
+  it("returns null when nothing selectable is passed or the timeline is collapsed", () => {
+    expect(zoomToSelectedClips({ ...VIEW, clips: [] })).toBeNull();
+    expect(zoomToSelectedClips({ ...VIEW, clips: [{ start: 4, end: 4 }] })).toBeNull();
+    expect(
+      zoomToSelectedClips({
+        ...VIEW,
+        viewportWidth: VIEW.contentOrigin,
+        clips: [{ start: 0, end: 1 }],
+      }),
+    ).toBeNull();
+    expect(
+      zoomToSelectedClips({ ...VIEW, viewportWidth: 0, clips: [{ start: 0, end: 1 }] }),
+    ).toBeNull();
   });
 });
 

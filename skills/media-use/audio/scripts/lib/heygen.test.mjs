@@ -5,11 +5,13 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  billingRefusal,
   heygenAuthHeaders,
   heygenAuthMethod,
   heygenBase,
   heygenCredential,
   heygenJSON,
+  heygenMessage,
   loadEnvFromDir,
 } from "./heygen.mjs";
 
@@ -17,7 +19,10 @@ const HEYGEN_ENV = [
   "HEYGEN_ACCESS_TOKEN",
   "HEYGEN_API_KEY",
   "HYPERFRAMES_API_KEY",
-  "HEYGEN_CONFIG_DIR",
+  "HYPERFRAMES_CONFIG_DIR",
+  "HYPERFRAMES_ENV",
+  "HYPERFRAMES_OAUTH_CLIENT_ID",
+  "HYPERFRAMES_OAUTH_TOKEN_URL",
   "HEYGEN_API_BASE",
   "HEYGEN_ALLOW_HTTP",
 ];
@@ -61,11 +66,13 @@ test("heygenAuthHeaders tags OAuth requests as CLI traffic and with the media-us
   withCleanHeygenEnv(() => {
     const dir = mkdtempSync(join(tmpdir(), "heygen-cred-"));
     try {
-      process.env.HEYGEN_CONFIG_DIR = dir;
+      process.env.HYPERFRAMES_CONFIG_DIR = dir;
       writeFileSync(
         join(dir, "credentials"),
         JSON.stringify({
           oauth: {
+            client_id: "Zg3LF4FCLoeJoGs2YqMtZ17g",
+            token_endpoint: "https://api2.heygen.com/v1/oauth/token",
             access_token: "at_test",
             expires_at: "2099-01-01T00:00:00Z",
           },
@@ -76,6 +83,31 @@ test("heygenAuthHeaders tags OAuth requests as CLI traffic and with the media-us
         "X-HeyGen-Source": "cli",
         "X-HeyGen-Client-Source": "media-use",
       });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+test("development audio uses the development client and isolated store", () => {
+  withCleanHeygenEnv(() => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-dev-cred-"));
+    try {
+      process.env.HYPERFRAMES_CONFIG_DIR = dir;
+      process.env.HYPERFRAMES_ENV = "dev";
+      mkdirSync(join(dir, "dev"));
+      writeFileSync(
+        join(dir, "dev", "credentials"),
+        JSON.stringify({
+          oauth: {
+            access_token: "dev-at",
+            client_id: "9QoaiwCZov9O0cAkC4OZbR4p",
+            token_endpoint: "https://api2.dev.heygen.com/v1/oauth/token",
+          },
+        }),
+      );
+      assert.equal(heygenBase(), "https://api.dev.heygen.com/v3");
+      assert.equal(heygenAuthHeaders().Authorization, "Bearer dev-at");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -106,11 +138,13 @@ test("heygenAuthMethod returns oauth for a live OAuth credential", () => {
   withCleanHeygenEnv(() => {
     const dir = mkdtempSync(join(tmpdir(), "heygen-cred-"));
     try {
-      process.env.HEYGEN_CONFIG_DIR = dir;
+      process.env.HYPERFRAMES_CONFIG_DIR = dir;
       writeFileSync(
         join(dir, "credentials"),
         JSON.stringify({
           oauth: {
+            client_id: "Zg3LF4FCLoeJoGs2YqMtZ17g",
+            token_endpoint: "https://api2.heygen.com/v1/oauth/token",
             access_token: "at_test",
             expires_at: "2099-01-01T00:00:00Z",
           },
@@ -127,8 +161,34 @@ test("heygenAuthMethod returns null with no credential at all", () => {
   withCleanHeygenEnv(() => {
     const dir = mkdtempSync(join(tmpdir(), "heygen-cred-"));
     try {
-      process.env.HEYGEN_CONFIG_DIR = dir; // no credentials file written
+      process.env.HYPERFRAMES_CONFIG_DIR = dir; // no credentials file written
       assert.equal(heygenAuthMethod(), null);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+test("an expired or foreign OAuth login never falls back to a saved API wallet", () => {
+  withCleanHeygenEnv(() => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-auth-payer-"));
+    try {
+      process.env.HYPERFRAMES_CONFIG_DIR = dir;
+      const credential = {
+        api_key: "other-wallet",
+        oauth: {
+          client_id: "Zg3LF4FCLoeJoGs2YqMtZ17g",
+          token_endpoint: "https://api2.heygen.com/v1/oauth/token",
+          access_token: "expired",
+          expires_at: "2000-01-01T00:00:00Z",
+        },
+      };
+      writeFileSync(join(dir, "credentials"), JSON.stringify(credential));
+      assert.deepEqual(heygenCredential(), { expired: true });
+      credential.oauth.expires_at = "2099-01-01T00:00:00Z";
+      credential.oauth.client_id = "shared-heygen-client";
+      writeFileSync(join(dir, "credentials"), JSON.stringify(credential));
+      assert.deepEqual(heygenCredential(), { expired: true });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -175,7 +235,7 @@ test("heygenAuthMethod returns null when the credentials path is a folder", () =
     const dir = mkdtempSync(join(tmpdir(), "heygen-cred-"));
     try {
       mkdirSync(join(dir, "credentials"));
-      process.env.HEYGEN_CONFIG_DIR = dir;
+      process.env.HYPERFRAMES_CONFIG_DIR = dir;
       assert.equal(heygenAuthMethod(), null);
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -188,7 +248,7 @@ test("heygenAuthMethod returns null when the credentials path is a symlink loop"
     const dir = mkdtempSync(join(tmpdir(), "heygen-cred-"));
     try {
       symlinkSync(join(dir, "credentials"), join(dir, "credentials"));
-      process.env.HEYGEN_CONFIG_DIR = dir;
+      process.env.HYPERFRAMES_CONFIG_DIR = dir;
       assert.equal(heygenAuthMethod(), null);
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -200,8 +260,8 @@ test("heygenAuthHeaders says to fix an unreadable credentials path, and to log i
   withCleanHeygenEnv(() => {
     const dir = mkdtempSync(join(tmpdir(), "heygen-cred-"));
     try {
-      process.env.HEYGEN_CONFIG_DIR = dir;
-      assert.throws(() => heygenAuthHeaders(), /no HeyGen credentials/);
+      process.env.HYPERFRAMES_CONFIG_DIR = dir;
+      assert.throws(() => heygenAuthHeaders(), /no HyperFrames credentials/);
       mkdirSync(join(dir, "credentials"));
       assert.equal(heygenCredential(), null);
       assert.throws(
@@ -276,12 +336,12 @@ test("a base that isn't HeyGen's gets no stored or host OAuth credential, only a
   withCleanHeygenEnv(() => {
     const dir = mkdtempSync(join(tmpdir(), "heygen-cred-"));
     try {
-      process.env.HEYGEN_CONFIG_DIR = dir;
+      process.env.HYPERFRAMES_CONFIG_DIR = dir;
       writeFileSync(join(dir, "credentials"), JSON.stringify({ api_key: "hg_stored" }));
       process.env.HEYGEN_ACCESS_TOKEN = "at_host";
       process.env.HEYGEN_API_BASE = "https://proxy.example.com";
       assert.equal(heygenCredential(), null);
-      assert.throws(() => heygenAuthHeaders(), /no HeyGen credentials/);
+      assert.throws(() => heygenAuthHeaders(), /no HyperFrames credentials/);
       // HeyGen's own hosts keep every credential source.
       process.env.HEYGEN_API_BASE = "https://api-canary.heygen.com";
       assert.equal(heygenAuthMethod(), "oauth");
@@ -289,4 +349,35 @@ test("a base that isn't HeyGen's gets no stored or host OAuth credential, only a
       rmSync(dir, { recursive: true, force: true });
     }
   });
+});
+
+test("a refused HyperFrames-plan call becomes one line with the billing command", () => {
+  const refused = (code) => ({
+    status: 402,
+    body: JSON.stringify({ error: { code, message: "raw" } }),
+  });
+  assert.equal(
+    heygenMessage(refused("hf_subscription_required")),
+    "This needs a HyperFrames plan. Run `npx hyperframes billing subscribe`: it opens the page and waits.",
+  );
+  assert.equal(
+    heygenMessage(refused("hf_usage_exhausted")),
+    "Out of HyperFrames credits. Run `npx hyperframes billing top-up`: it opens the page and waits.",
+  );
+  assert.match(
+    heygenMessage({ status: 403, body: JSON.stringify({ error: { code: "api_key_required" } }) }),
+    /Nothing was charged/,
+  );
+  // Every other failure keeps HeyGen's own words.
+  assert.equal(
+    billingRefusal({
+      status: 400,
+      body: JSON.stringify({ error: { code: "invalid_parameter", message: "bad voice" } }),
+    }),
+    null,
+  );
+  assert.equal(
+    heygenMessage({ status: 400, body: JSON.stringify({ error: { message: "bad voice" } }) }),
+    "bad voice",
+  );
 });

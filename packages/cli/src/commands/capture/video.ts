@@ -286,7 +286,8 @@ export async function runVideoMode(args: VideoModeArgs): Promise<void> {
       console.log(`     Delete the file and re-run to refetch.`);
       return;
     }
-    console.error(`${c.error("✗")} download failed: ${(e as Error).message}`);
+    const message = (e as Error).message.replace(/\r/g, "").replace(/\n/g, "");
+    console.error(`${c.error("✗")} download failed: ${message}`);
     setCommandExitCode(1);
   }
 }

@@ -44,7 +44,7 @@ function project(name: string, bpm: number | null, seconds = 12): string {
   return dir;
 }
 
-async function runBeats(dir: string): Promise<{ exitCode: number; out: string }> {
+async function runBeats(dir: string, json = true): Promise<{ exitCode: number; out: string }> {
   const command = (await import("./beats.js")).default as unknown as {
     run: (context: { args: Record<string, unknown> }) => Promise<void>;
   };
@@ -54,7 +54,7 @@ async function runBeats(dir: string): Promise<{ exitCode: number; out: string }>
   const error = vi.spyOn(console, "error").mockImplementation(capture);
   let exitCode = 0;
   try {
-    await command.run({ args: { dir, json: true } });
+    await command.run({ args: { dir, json } });
   } catch (thrown) {
     exitCode = (thrown as { result?: { exitCode?: number } }).result?.exitCode ?? -1;
   } finally {
@@ -88,6 +88,48 @@ describe.skipIf(!canDecode)("hyperframes beats", () => {
     expect(report).toMatchObject({ ok: true, file: "beats/assets/song.wav.json" });
     expect(report.count).toBe(times.length);
     expect(Math.abs(report.bpm - 120)).toBeLessThanOrEqual(1);
+  });
+
+  it("analyses an audio file given directly and writes nothing", async () => {
+    const dir = project("file-arg", 120);
+    const song = join(dir, "assets", "song.wav");
+    const { exitCode, out } = await runBeats(song, true);
+    expect(exitCode).toBe(0);
+    const report = JSON.parse(out) as {
+      ok: boolean;
+      file: string;
+      bpm: number;
+      beatTimes: number[];
+    };
+    expect(report).toMatchObject({ ok: true, file: song });
+    expect(report.beatTimes.length).toBeGreaterThan(18);
+    expect(Math.abs(report.bpm - 120)).toBeLessThanOrEqual(1);
+    expect(existsSync(join(dir, "beats"))).toBe(false);
+  });
+
+  it("tells a composition file argument to pass its folder", async () => {
+    const dir = project("html-arg", 120);
+    const { exitCode, out } = await runBeats(join(dir, "index.html"));
+    expect(exitCode).toBe(1);
+    expect(out).toContain(`hyperframes beats ${JSON.stringify(dir)}`);
+    expect(out).not.toContain("hyperframes audio");
+  });
+
+  it("answers --json with no track, not a failure, when the composition has no music", async () => {
+    const dir = project("no-track", 120);
+    writeFileSync(join(dir, "index.html"), `<div data-composition-id="main"></div>`);
+    const { exitCode, out } = await runBeats(dir);
+    expect(exitCode).toBe(0);
+    expect(JSON.parse(out)).toEqual({ ok: true, track: null, file: null, count: 0, bpm: null });
+    expect(existsSync(join(dir, "beats"))).toBe(false);
+  });
+
+  it("still tells a person with no music track how to mark one", async () => {
+    const dir = project("no-track-person", 120);
+    writeFileSync(join(dir, "index.html"), `<div data-composition-id="main"></div>`);
+    const { exitCode, out } = await runBeats(dir, false);
+    expect(exitCode).toBe(1);
+    expect(out).toMatch(/No music track found/);
   });
 
   it("writes nothing for a track with no steady beat", async () => {

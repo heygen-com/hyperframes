@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { runCommand } from "citty";
 import {
   existsSync,
@@ -14,6 +15,11 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const errorsBesideProgress = () =>
+  vi
+    .mocked(console.error)
+    .mock.calls.filter(([line]) => !String(line).startsWith("[hyperframes] snapshot:"));
 
 const capture = vi.hoisted(() => ({
   evaluate: vi.fn(),
@@ -51,6 +57,7 @@ vi.mock("@hyperframes/engine", () => ({
 
 import snapshotCommand, { SNAPSHOT_IMAGE_NAME } from "./snapshot.js";
 import { planReview, reviewFrames } from "./snapshotReview.js";
+import { findFFmpeg, findFFprobe } from "../browser/ffmpeg.js";
 import { historyDeps } from "../utils/historyOwner.js";
 import { openProjectHistory } from "@hyperframes/studio-server/history";
 
@@ -121,7 +128,7 @@ describe("snapshot contact sheet failures", () => {
         }),
       ).resolves.toBeDefined();
 
-      expect(console.error).not.toHaveBeenCalled();
+      expect(errorsBesideProgress()).toEqual([]);
       for (const [index, time] of ["0.5", "1"].entries()) {
         const frame = join(project, "snapshots", `frame-0${index}-at-${time}s.png`);
         expect(readFileSync(frame)).toEqual(Buffer.from("captured PNG"));
@@ -159,7 +166,7 @@ describe("snapshot contact sheet failures", () => {
     );
     expect(console.log).toHaveBeenCalledWith(expect.stringContaining("contact-sheet.jpg"));
     expect(console.warn).not.toHaveBeenCalled();
-    expect(console.error).not.toHaveBeenCalled();
+    expect(errorsBesideProgress()).toEqual([]);
   });
 
   it("builds the sheet from this run's frames, not another frame-*.png in the folder", async () => {
@@ -209,6 +216,86 @@ describe("snapshot contact sheet failures", () => {
     },
   );
 
+  describe("--against when the pair sheet cannot be made", () => {
+    const ffmpeg = findFFmpeg();
+    const noFfmpeg = !ffmpeg || !findFFprobe();
+    const sharpBlocked = [
+      'Could not load the "sharp" module using the win32-x64 runtime',
+      "ERR_DLOPEN_FAILED: An Application Control policy has blocked this file.",
+      "Possible solutions:",
+    ].join("\n");
+
+    function againstArgs(reference: string) {
+      return {
+        rawArgs: [
+          project,
+          ...["--at", "0.5,1", "--no-end", "--describe", "false"],
+          ...["--against", reference, "--output", join(project, "snapshots")],
+        ],
+      };
+    }
+
+    function makeReference(): string {
+      const reference = join(project, "reference.mp4");
+      execFileSync(ffmpeg!, [
+        ...["-hide_banner", "-loglevel", "error", "-f", "lavfi"],
+        ...["-i", "testsrc=d=2:r=24:s=160x90", "-pix_fmt", "yuv420p", reference],
+      ]);
+      return reference;
+    }
+
+    it.skipIf(noFfmpeg)(
+      "warns once when sharp cannot load and keeps every frame and reference",
+      async () => {
+        const reference = makeReference();
+        const pairSheet = vi.fn(async () => {
+          throw new Error(sharpBlocked);
+        });
+        vi.doMock("../capture/contactSheet.js", () => ({
+          createContactSheet: pairSheet,
+          createSnapshotContactSheet: vi.fn(async () => {
+            throw new Error(sharpBlocked);
+          }),
+        }));
+
+        await expect(runCommand(snapshotCommand, againstArgs(reference))).resolves.toBeDefined();
+
+        const out = join(project, "snapshots");
+        for (const slot of ["00-at-0.5s", "01-at-1s"]) {
+          expect(readFileSync(join(out, `frame-${slot}.png`))).toEqual(Buffer.from("captured PNG"));
+          expect(existsSync(join(out, `ref-${slot}.png`))).toBe(true);
+        }
+        expect(readdirSync(out).filter((name) => name.startsWith("pair-"))).toEqual([]);
+        expect(pairSheet).toHaveBeenCalledOnce();
+        expect(errorsBesideProgress()).toHaveLength(1);
+        expect(console.error).toHaveBeenCalledWith(
+          expect.stringContaining("Reference pair sheets skipped: Windows App Control"),
+        );
+        const logged = vi.mocked(console.log).mock.calls.map((call) => String(call[0]));
+        expect(logged.some((line) => line.includes("ref-*.png"))).toBe(true);
+        expect(logged.some((line) => line.includes("pair-*.jpg"))).toBe(false);
+      },
+    );
+
+    it.skipIf(noFfmpeg)("still fails the snapshot for any other pair sheet error", async () => {
+      const reference = makeReference();
+      vi.doMock("../capture/contactSheet.js", () => ({
+        createContactSheet: vi.fn(async () => {
+          throw new Error("Unable to decode image for pair sheet");
+        }),
+      }));
+
+      await expect(runCommand(snapshotCommand, againstArgs(reference))).rejects.toThrow(
+        "Command failed",
+      );
+      expect(console.error).toHaveBeenCalledWith(
+        expect.stringContaining("Snapshot failed: Unable to decode image for pair sheet"),
+      );
+      expect(capture.closeBrowser).toHaveBeenCalledOnce();
+      expect(capture.closeServer).toHaveBeenCalledOnce();
+    });
+  });
+
   it("keeps and records the captured frames when another process holds history", async () => {
     const args = {
       rawArgs: [
@@ -243,7 +330,7 @@ describe("snapshot contact sheet failures", () => {
           join(project, "snapshots", `frame-0${index}-at-${time}s.png`),
         ),
       );
-      expect(console.error).not.toHaveBeenCalled();
+      expect(errorsBesideProgress()).toEqual([]);
       expect(console.warn).not.toHaveBeenCalledWith(expect.stringContaining("not recorded"));
     } finally {
       historyDeps.ownerWaitMs = previousWait;
@@ -289,6 +376,47 @@ describe("snapshot contact sheet failures", () => {
         "a described frame",
       );
       expect(loadSharp).not.toHaveBeenCalledWith("--describe");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it.each([
+    ["no --describe flag", [], null],
+    ["--describe false", ["--describe", "false"], null],
+    ["a bare --describe", ["--describe"], "Describe this video composition frame"],
+    ["--describe with a question", ["--describe", "Is the logo visible?"], "Is the logo visible?"],
+  ])("with a Gemini key set, %s", async (_, describeArgs, prompt) => {
+    vi.stubEnv("GEMINI_API_KEY", "test-key");
+    vi.stubEnv("GOOGLE_API_KEY", "test-key");
+    const generateContent = vi.fn(async (_request: unknown) => ({ text: "a described frame" }));
+    const loadOptionalPackage = vi.fn(async () => ({
+      GoogleGenAI: class {
+        models = { generateContent };
+      },
+    }));
+    vi.doMock("../utils/optionalPackages.js", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../utils/optionalPackages.js")>()),
+      loadInstalledSharp: () => null,
+      loadOptionalPackage,
+    }));
+    const { default: command } = await import("./snapshot.js");
+    const output = join(project, "snapshots");
+
+    try {
+      await runCommand(command, {
+        rawArgs: [project, ...["--at", "0.5,1", "--no-end", "-o", output], ...describeArgs],
+      });
+
+      if (prompt === null) {
+        expect(loadOptionalPackage).not.toHaveBeenCalled();
+        expect(generateContent).not.toHaveBeenCalled();
+        expect(existsSync(join(output, "descriptions.md"))).toBe(false);
+      } else {
+        expect(generateContent).toHaveBeenCalledTimes(2);
+        expect(JSON.stringify(generateContent.mock.calls[0]?.[0])).toContain(prompt);
+        expect(readFileSync(join(output, "descriptions.md"), "utf8")).toContain(prompt);
+      }
     } finally {
       vi.unstubAllEnvs();
     }

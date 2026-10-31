@@ -142,6 +142,12 @@ export function applyOverrideSet(parsed: ParsedDocument, overrides: OverrideSet)
   for (const [key, value] of entries) {
     const path = keyToPath(key);
     if (!path) continue;
+    if (
+      value !== null &&
+      /^\/elements\/[^/]+$/.test(path) &&
+      !isElementSnapshotOverride(key, value)
+    )
+      continue;
     if (value === null) {
       patches.push({ op: "remove", path });
     } else {
@@ -166,9 +172,13 @@ export function applyOverrideSet(parsed: ParsedDocument, overrides: OverrideSet)
 export function isElementSnapshotOverride(
   key: string,
   value: OverrideSet[string],
-): value is Record<string, unknown> & { siblingIndex: number } {
+): value is Record<string, unknown> & { html: string; siblingIndex: number } {
   if (value === null || typeof value !== "object") return false;
-  return /^\/elements\/[^/]+$/.test(keyToPath(key) ?? "") && typeof value.siblingIndex === "number";
+  return (
+    /^\/elements\/[^/]+$/.test(keyToPath(key) ?? "") &&
+    typeof value.html === "string" &&
+    typeof value.siblingIndex === "number"
+  );
 }
 
 function restoreOverridePositions(parsed: ParsedDocument, overrides: OverrideSet): void {

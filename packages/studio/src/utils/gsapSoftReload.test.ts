@@ -379,6 +379,49 @@ describe("applySoftReloadFinalization", () => {
     expect(contentWindow.__timelines.root).toBe(mockTimeline);
   });
 
+  describe("play state", () => {
+    function playerThatLogs(playing: boolean) {
+      const calls: string[] = [];
+      const player = {
+        getTime: () => 2.0,
+        isPlaying: () => playing,
+        seek: vi.fn(() => calls.push("seek")),
+        play: vi.fn(() => calls.push("play")),
+      };
+      const built = buildMockIframe({
+        __player: player,
+        __hfForceTimelineRebind: vi.fn(() => calls.push("rebind")),
+        __hfStudioManualEditsApply: vi.fn(() => calls.push("edits")),
+      });
+      return { ...built, player, calls };
+    }
+
+    it("resumes playing once the timeline is rebuilt when an edit lands during playback", () => {
+      const { iframe, calls } = playerThatLogs(true);
+
+      expect(applySoftReloadFinalization(iframe, 2.0)).toBe(true);
+
+      expect(calls).toEqual(["seek", "rebind", "edits", "play"]);
+    });
+
+    it("leaves a paused player paused", () => {
+      const { iframe, player } = playerThatLogs(false);
+
+      expect(applySoftReloadFinalization(iframe, 2.0)).toBe(true);
+
+      expect(player.seek).toHaveBeenCalledWith(2.0);
+      expect(player.play).not.toHaveBeenCalled();
+    });
+
+    it("resumes after a script soft reload too, which shares the finalization", () => {
+      const { iframe, calls } = playerThatLogs(true);
+
+      expect(applySoftReload(iframe, SCRIPT_TEXT)).toBe("applied");
+
+      expect(calls.at(-1)).toBe("play");
+    });
+  });
+
   it("runs inside __hfSuppressSceneMutations when the runtime provides it", () => {
     const suppress = vi.fn(<T>(fn: () => T): T => fn());
     const { iframe, contentWindow } = buildMockIframe({

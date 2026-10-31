@@ -38,9 +38,10 @@ import {
   validateVariablesAgainstSchema,
 } from "../../utils/variables.js";
 import { normalizeErrorMessage } from "../../utils/errorMessage.js";
-import { warnOnDimensionMismatch } from "./_dimensions.js";
+import { resolveOutputResolutionFromSize } from "./_dimensions.js";
 import { runWithConcurrencyLimit } from "../../utils/concurrency.js";
 import { requireStack } from "./state.js";
+import type { DeliveryFlagValues } from "../../utils/deliveryFlags.js";
 
 // Dynamic-import the SDK so tsup keeps it out of the static-import head of
 // the CLI bundle. See sites.ts loadSDK() for the full rationale.
@@ -49,7 +50,7 @@ async function loadSDK(): Promise<typeof import("@hyperframes/aws-lambda/sdk")> 
 }
 
 /** Arguments accepted by `hyperframes lambda render-batch`. */
-export interface RenderBatchArgs {
+export interface RenderBatchArgs extends DeliveryFlagValues {
   projectDir: string;
   stackName: string;
   /** Path to the JSONL batch file. Each line is a {@link BatchEntry}. */
@@ -177,13 +178,15 @@ export async function runRenderBatch(args: RenderBatchArgs): Promise<void> {
     failCommand();
   }
 
-  warnOnDimensionMismatch({
-    projectDir,
-    cliWidth: args.width,
-    cliHeight: args.height,
-    outputResolution: args.outputResolution,
-    quiet: args.json,
-  });
+  args = {
+    ...args,
+    outputResolution: resolveOutputResolutionFromSize({
+      projectDir,
+      cliWidth: args.width,
+      cliHeight: args.height,
+      outputResolution: args.outputResolution,
+    }),
+  };
 
   // Pre-validate every entry's variables against the composition's
   // schema. Mismatches print as warnings; strict mode aborts before any
@@ -359,6 +362,10 @@ export function buildLambdaBatchRenderConfig(
     chunkSize: args.chunkSize,
     maxParallelChunks: args.maxParallelChunks,
     targetChunkFrames: args.targetChunkFrames,
+    keyframeIntervalSeconds: args.keyframeIntervalSeconds,
+    proresProfile: args.proresProfile,
+    maxBitrate: args.maxBitrate,
+    bufferSize: args.bufferSize,
     workerConcurrency,
     runtimeCap: "lambda",
   };

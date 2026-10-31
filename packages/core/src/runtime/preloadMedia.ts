@@ -3,6 +3,9 @@ import { createRuntimeStartTimeResolver } from "./startResolver";
 import { readMediaRenderId } from "./renderFrameSibling";
 import { defersMedia } from "./timedClipHide";
 import { swallow } from "./diagnostics";
+import { mediaElementTime } from "./mediaClock";
+
+const MEDIA_EDGE_SECONDS = 0.1;
 
 type PreloadableMedia = Pick<
   HTMLMediaElement,
@@ -39,7 +42,7 @@ export function prepareUpcomingMedia(media: HTMLMediaElement, isUpcoming: () => 
     const start = readMediaStart(media);
     if (Math.abs(media.currentTime - start) <= 0.02) return;
     try {
-      media.currentTime = start;
+      media.currentTime = mediaElementTime(start);
     } catch (error) {
       swallow("runtime.preload.playbackStart", error);
     }
@@ -72,8 +75,19 @@ export function stopMediaDownload(media: HTMLMediaElement): void {
   media.load();
 }
 
+function wholeFileBuffered(media: HTMLMediaElement): boolean {
+  const { buffered, duration } = media;
+  return (
+    Number.isFinite(duration) &&
+    duration > 0 &&
+    buffered.length === 1 &&
+    buffered.start(0) <= MEDIA_EDGE_SECONDS &&
+    buffered.end(0) >= duration - MEDIA_EDGE_SECONDS
+  );
+}
+
 export function releaseMedia(media: HTMLMediaElement): void {
-  if (media.querySelector("source")) return;
+  if (media.querySelector("source") || wholeFileBuffered(media)) return;
   const src = media.getAttribute("src");
   stopMediaDownload(media);
   if (src !== null) media.setAttribute("src", src);

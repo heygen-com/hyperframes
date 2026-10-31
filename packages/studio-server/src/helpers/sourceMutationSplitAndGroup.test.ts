@@ -3,6 +3,7 @@ import { parseHTML } from "linkedom";
 import { describe, expect, it } from "vitest";
 import { readMediaOffsetSeconds } from "@hyperframes/parsers/media-duration";
 import {
+  removeElementFromHtml,
   splitElementInHtml,
   relinkSplitHalvesInHtml,
   unwrapElementsFromHtml,
@@ -20,6 +21,32 @@ describe("splitElementInHtml — hfId clone isolation", () => {
     expect(occurrences).toBe(1);
     expect(document.getElementById("clip2")?.getAttribute("data-hf-id")).toMatch(/^hf-/);
     expect(document.getElementById("clip2")?.getAttribute("data-hf-id")).not.toBe("hf-abc123");
+  });
+});
+
+// A second split at the same playhead: the first one wrote the left half's end rounded to the millisecond (2.346 for a
+// playhead at 2.3456), so the same cut lands a fraction inside that edge and its sliver rounded to data-duration="0".
+describe("splitElementInHtml — a cut at an existing edge", () => {
+  const clip = (start: number, duration: number) =>
+    `<html><body><div data-composition-id="root"><div id="a" class="clip" data-start="${start}" data-duration="${duration}"></div></div></body></html>`;
+  const durations = (html: string) =>
+    [...parseHTML(html).document.querySelectorAll(".clip")].map((el) =>
+      Number(el.getAttribute("data-duration")),
+    );
+
+  it("leaves the file as it was when the cut is within the split margin of either edge", () => {
+    for (const at of [2.3456, 2.346, 1, 1.0004, 2.33]) {
+      const source = clip(1, 1.346);
+      const result = splitElementInHtml(source, { id: "a" }, at, "a-split");
+      expect(result.matched, `a cut at ${at}`).toBe(false);
+      expect(result.html, `a cut at ${at}`).toBe(source);
+    }
+  });
+
+  it("still cuts at the margin itself, and no half it writes is ever zero long", () => {
+    const result = splitElementInHtml(clip(1, 1.346), { id: "a" }, 1.03, "a-split");
+    expect(result.matched).toBe(true);
+    expect(durations(result.html)).toEqual([0.03, 1.316]);
   });
 });
 
@@ -511,5 +538,25 @@ describe("relinkSplitHalvesInHtml", () => {
   it("leaves unlinked splits byte-identical", () => {
     const source = '<div><img id="i" data-start="0" data-duration="4"></div>';
     expect(relinkSplitHalvesInHtml(source, ["i"])).toBe(source);
+  });
+});
+
+describe("splitElementInHtml — id CSS rules across repeated cuts", () => {
+  it("keeps one rule set per live id when a clip is cut again and again", () => {
+    let html =
+      "<html><head><style>#a{opacity:.5;width:10px}#a:hover,#a.on{opacity:1}.clip:not(#a-cut){filter:blur(2px)}</style></head><body>" +
+      '<div id="root" data-composition-id="m"><video id="a" src="a.mp4" data-start="0" data-duration="60" ' +
+      'data-track-index="0"></video></div></body></html>';
+    for (let i = 0; i < 5; i++) {
+      const tail = splitElementInHtml(html, { id: "a" }, 20 + i, `a-${i + 2}`);
+      const middle = splitElementInHtml(tail.html, { id: "a" }, 10 + i, "a-cut");
+      html = removeElementFromHtml(middle.html, { id: "a-cut" });
+    }
+    const css = /<style>([\s\S]*?)<\/style>/.exec(html)?.[1] ?? "";
+    // two rules per live id, none left by the removed cut piece
+    const live = html.match(/<video\b/g)?.length ?? 0;
+    expect(css.match(/\{/g)).toHaveLength(live * 2 + 1);
+    expect(css).not.toContain("#a-cut{");
+    expect(css).toContain(".clip:not(#a-cut){filter:blur(2px)}");
   });
 });

@@ -27,9 +27,21 @@ describe("createCaptureWatchdog", () => {
     watchdog.dispose();
   });
 
+  it("starts its clock when the capture's browser is up, so a first-run Chrome download is not counted", async () => {
+    vi.useFakeTimers();
+    const watchdog = createCaptureWatchdog(1000);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(watchdog.expired()).toBe(false);
+    watchdog.registerBrowser({ close: vi.fn().mockResolvedValue(undefined) });
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(watchdog.expired()).toBe(true);
+    watchdog.dispose();
+  });
+
   it("observes a losing attempt rejection instead of leaving it unhandled", async () => {
     vi.useFakeTimers();
     const watchdog = createCaptureWatchdog(1);
+    watchdog.registerBrowser({ close: vi.fn().mockResolvedValue(undefined) });
     const work = new Promise<void>((_resolve, reject) => {
       setTimeout(() => reject(new Error("browser closed")), 10);
     });

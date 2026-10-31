@@ -5,6 +5,7 @@ import { parseGsapScript } from "../../../../parsers/src/gsapParser.ts";
 import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { COMPOSITION, FIXTURE_CDN, PLAYHEAD, localAsset } from "./grid.mjs";
+import { traceBench } from "./trace.mjs";
 import {
   angleOf,
   centre,
@@ -320,8 +321,16 @@ async function hiddenTarget(page, selector = "#target") {
   return false;
 }
 
+// Studio's own word that the preview is about to change: a reload asked for, loading, or an undo or redo in flight.
+const previewChanging = (page) =>
+  Promise.resolve()
+    .then(() => page.evaluate(() => document.documentElement.hasAttribute("data-preview-changing")))
+    .catch(() => false);
+
 // Keyframed cases only: waiting out the swap lands a later undo in the preview's burst of requests.
-export const swapPending = (ctx) => Boolean(ctx.keys) && hiddenTarget(ctx.page, ctx.selector);
+export const swapPending = async (ctx) =>
+  Boolean(ctx.keys) &&
+  ((await previewChanging(ctx.page)) || (await hiddenTarget(ctx.page, ctx.selector)));
 
 // fallow-ignore-next-line complexity
 const netMoved = (start, now) =>
@@ -678,13 +687,14 @@ async function waitingQuad(page, map) {
   return quad;
 }
 
-export async function sample(ctx, gesture, point, pointerScreen) {
+/** The box as the preview shows it: the waiting marker's quad while a press waits for its replay, else the element. */
+export async function measureShown(ctx, gesture, read = measure, quadOf = contentQuad) {
   for (;;) {
     const waiting = await ctx.page.$("[data-dom-edit-press-waiting]");
     try {
-      const m = await measure(ctx);
+      const m = await read(ctx);
       if (gesture === "crop") m.outline = await cropOutline(ctx, m.map);
-      const quad = waiting && (await contentQuad(waiting)).map(m.map.toComp);
+      const quad = waiting && (await quadOf(waiting)).map(m.map.toComp);
       // Replay removes the marker before moving the element. Do not combine a pre-replay
       // element read with a post-replay marker read into a position nobody displayed.
       if (
@@ -692,12 +702,16 @@ export async function sample(ctx, gesture, point, pointerScreen) {
         !(await waiting.evaluate((e) => e.hasAttribute("data-dom-edit-press-waiting")))
       )
         continue;
-      const shown = quad ? { ...m, quad, visible: quad } : m;
-      return { m: shown, actual: m.visible, p: point(shown), c: m.map.toComp(pointerScreen) };
+      return { m: quad ? { ...m, quad, visible: quad } : m, actual: m.visible };
     } finally {
       await waiting?.dispose();
     }
   }
+}
+
+export async function sample(ctx, gesture, point, pointerScreen) {
+  const { m, actual } = await measureShown(ctx, gesture);
+  return { m, actual, p: point(m), c: m.map.toComp(pointerScreen) };
 }
 
 const TRACE_CATEGORIES = ["toplevel", "devtools.timeline", "blink.user_timing"];
@@ -881,9 +895,11 @@ export async function pointerGesture(ctx, gesture, pre, route) {
   await ctx.page.mouse.move(press[0], press[1]);
   await startFrames(ctx.page, ctx.selector ?? "#target");
   await nextFrame(ctx.page, 2);
+  traceBench("press", { gesture });
   await ctx.page.mouse.down();
   await nextFrame(ctx.page);
   const s0 = await sample(ctx, gesture, g.point, press);
+  traceBench("pressed", { gesture, jump: pre && quadDistance(s0.m.visible, pre.visible) });
   await recording(ctx.page, true);
   const errors = [];
   let last = s0;
@@ -903,6 +919,7 @@ export async function pointerGesture(ctx, gesture, pre, route) {
   }
   const rec = await recording(ctx.page, false);
   const smooth = smoothness(rec);
+  traceBench("release", { gesture, worst: Math.max(...errors) });
   await ctx.page.mouse.up();
   const lastQuad = gesture === "crop" ? last.m.outline : last.m.visible;
   return {
@@ -969,11 +986,28 @@ export async function serveFixtureAssetsLocally(page) {
 }
 
 /**
+ * Takes evidence screenshots into `evidence.shots` only when `shots` is on (the gate's confirmation re-runs); an
+ * error screen is always kept. Studio fills the viewport; capturing beyond it makes Chrome resize the page.
+ */
+export function shooter(page, evidence, shots) {
+  evidence.shots = {};
+  return async (name) => {
+    if (!shots && name !== "error") return;
+    evidence.shots[name] = await page.screenshot({
+      type: "jpeg",
+      quality: 70,
+      captureBeyondViewport: false,
+      optimizeForSpeed: true,
+    });
+  };
+}
+
+/**
  * Studio open on the case in a fresh browser context, snapping off, at the case's zoom, target selected;
  * `drive` measures the rest. A failure keeps a screenshot, and the context always closes.
  */
 // fallow-ignore-next-line complexity
-export async function inStudio({ browser, spec, dir, files, url, evidence }, drive) {
+export async function inStudio({ browser, spec, dir, files, url, evidence, shots = true }, drive) {
   const context = await browser.createBrowserContext();
   const page = await context.newPage();
   await serveFixtureAssetsLocally(page);
@@ -988,11 +1022,16 @@ export async function inStudio({ browser, spec, dir, files, url, evidence }, dri
   };
   const consoleErrors = [];
   page.on("pageerror", (e) => consoleErrors.push(e.message));
-  evidence.shots = {};
-  const shoot = async (name) =>
-    (evidence.shots[name] = await page.screenshot({ type: "jpeg", quality: 70 }));
+  page.on(
+    "console",
+    (m) =>
+      m.text().startsWith("[hf-reload]") && traceBench("reload", { line: m.text().slice(0, 400) }),
+  );
+  const shoot = shooter(page, evidence, shots);
   try {
     await page.setViewport(VIEWPORT);
+    if (process.env.HF_WRITE_TRACE)
+      await page.evaluateOnNewDocument(() => localStorage.setItem("hf-reload-debug", "1"));
     await page.evaluateOnNewDocument(installWebMcpHost, "__editBench");
     await page.evaluateOnNewDocument(instrumentPage);
     if (spec.slowSaves) await page.evaluateOnNewDocument(slowSaves, spec.slowSaves);

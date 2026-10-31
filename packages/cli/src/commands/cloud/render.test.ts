@@ -11,7 +11,7 @@ import {
   validateDryRunSource,
   type ProjectInputSource,
 } from "./render.js";
-import { CliRuntimeError } from "../../utils/commandResult.js";
+import { CliRuntimeError, CliUsageError } from "../../utils/commandResult.js";
 
 const cliEntry = resolve(fileURLToPath(import.meta.url), "..", "..", "..", "cli.ts");
 
@@ -39,11 +39,11 @@ describe("validateDryRunSource", () => {
   it("accepts a local directory and rejects already-uploaded sources", () => {
     expect(() => validateDryRunSource({ kind: "dir", dir: "." }, true)).not.toThrow();
     expect(() => validateDryRunSource({ kind: "asset_id", assetId: "asst_123" }, true)).toThrow(
-      CliRuntimeError,
+      CliUsageError,
     );
     expect(() =>
       validateDryRunSource({ kind: "url", url: "https://example.com/project.zip" }, true),
-    ).toThrow(CliRuntimeError);
+    ).toThrow(CliUsageError);
   });
 });
 
@@ -245,5 +245,16 @@ describe("resolveAspectRatioForSubmit — local dir", () => {
         true,
       ),
     ).toThrow(CliRuntimeError);
+  });
+
+  it("names the resolved entry path and project directory when the entry is missing", () => {
+    const dir = writeComposition(1920, 1080);
+    const printed = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    expect(() =>
+      resolveAspectRatioForSubmit({ kind: "dir", dir }, "missing.html", undefined, true),
+    ).toThrow(CliRuntimeError);
+    const output = printed.mock.calls.flat().join("\n");
+    expect(output).toContain(`resolves to ${resolve(dir, "missing.html")}`);
+    expect(output).toContain(`project directory ${resolve(dir)}`);
   });
 });

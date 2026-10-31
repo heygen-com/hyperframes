@@ -42,12 +42,28 @@ describe("Studio child-process options", () => {
   it("hides the waveform FFmpeg console window", async () => {
     const proc = new EventEmitter() as EventEmitter & { stdout: EventEmitter };
     proc.stdout = new EventEmitter();
-    spawnMock.mockReturnValue(proc);
+    spawnMock.mockImplementation(() => {
+      queueMicrotask(() => {
+        proc.stdout.emit("data", Buffer.from(new Float32Array([0.5]).buffer));
+        proc.emit("close", 0);
+      });
+      return proc;
+    });
+    execFileMock.mockImplementation(
+      (
+        _command: string,
+        _args: string[],
+        _options: unknown,
+        callback: (...args: unknown[]) => void,
+      ) =>
+        callback(
+          null,
+          JSON.stringify({ streams: [{ codec_type: "audio", codec_name: "aac" }] }),
+          "",
+        ),
+    );
 
-    const peaks = decodeAudioPeaks("/tmp/audio.wav");
-    proc.stdout.emit("data", Buffer.from(new Float32Array([0.5]).buffer));
-    proc.emit("close", 0);
-    await peaks;
+    await decodeAudioPeaks("/tmp/audio.wav");
 
     expect(spawnMock.mock.calls[0]?.[2]).toEqual(expect.objectContaining({ windowsHide: true }));
   });

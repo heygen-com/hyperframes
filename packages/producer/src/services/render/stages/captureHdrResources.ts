@@ -22,6 +22,7 @@ import {
   type CaptureSession,
   decodePngToRgb48le,
   extractMediaMetadata,
+  ffmpegSeekSeconds,
   getCgroupMemoryLimitMb,
   normalizeObjectFit,
   queryElementStacking,
@@ -32,6 +33,7 @@ import {
   runFfmpeg,
   type TimelineExtractionWindow,
   type VideoMetadata,
+  videoStartOnMediaTimeline,
 } from "@hyperframes/engine";
 import { fpsToFfmpegArg, fpsToNumber } from "@hyperframes/core";
 import type { ProducerLogger } from "../../../logger.js";
@@ -42,7 +44,7 @@ import {
 } from "../../hdrCompositor.js";
 import type { HdrDiagnostics, RenderJob } from "../../renderOrchestrator.js";
 import type { CompositionMetadata } from "../shared.js";
-import { createHdrFrameWindows } from "../../hdrFrameWindows.js";
+import { createHdrFrameWindows, type HdrFrameWindows } from "../../hdrFrameWindows.js";
 import { encoderFailureError } from "../encoderInterruption.js";
 
 function tempDirSafePrefix(id: string): string {
@@ -425,7 +427,7 @@ export async function extractHdrVideoFrames(args: {
   let scratchBytes = 0;
   const extractionWindows = new Map<
     string,
-    { window: HdrExtractionWindow; videoStreamLeadSeconds?: number }
+    { window: HdrExtractionWindow; metadata: VideoMetadata }
   >();
   for (const [videoId, srcPath] of prep.hdrVideoSrcPaths) {
     const video = composition.videos.find((v) => v.id === videoId);
@@ -441,10 +443,7 @@ export async function extractHdrVideoFrames(args: {
       initialWindow,
       abortSignal,
     );
-    extractionWindows.set(videoId, {
-      window,
-      videoStreamLeadSeconds: metadata.videoStreamLeadSeconds,
-    });
+    extractionWindows.set(videoId, { window, metadata });
     prep.hdrVideoStartTimes.set(videoId, window.compositionStart);
     const frameSize = dims.width * dims.height * 6;
     const frames = window.finalFrameOnly ? 1 : Math.ceil(window.durationSeconds * fps);
@@ -463,17 +462,18 @@ export async function extractHdrVideoFrames(args: {
       const video = composition.videos.find((v) => v.id === videoId);
       const planned = extractionWindows.get(videoId);
       if (!video || !planned) continue;
-      const { window } = planned;
+      const { window, metadata } = planned;
       mkdirSync(framesDir, { recursive: true });
       const frameDir = mkdtempSync(join(framesDir, `hdr_${tempDirSafePrefix(videoId)}-`));
       createdFrameDirs.add(frameDir);
       const dims = prep.hdrExtractionDims.get(videoId) ?? { width, height };
       const frameSize = dims.width * dims.height * 6;
       const extractionMediaStart = window.extractionMediaStart ?? window.mediaStart;
+      const ffmpegSeek = ffmpegSeekSeconds(metadata, extractionMediaStart);
       const scale = `scale=${dims.width}:${dims.height}:force_original_aspect_ratio=increase,crop=${dims.width}:${dims.height}`;
       const firstTick = window.finalFrameOnly
         ? 0
-        : await probeFirstTick(srcPath, extractionMediaStart, fps, runFfmpegImpl, abortSignal);
+        : await probeFirstTick(srcPath, ffmpegSeek, fps, runFfmpegImpl, abortSignal);
       const totalFrames = window.finalFrameOnly
         ? 1
         : Math.max(1, Math.ceil(window.durationSeconds * fps - firstTick - 1e-9)) +
@@ -489,10 +489,19 @@ export async function extractHdrVideoFrames(args: {
           const ffmpegArgs = window.finalFrameOnly
             ? // Decode before seeking for the one-frame path. Input-side seeking can
               // return zero frames for valid unindexed/negative-base transports.
-              ["-i", srcPath, "-ss", String(extractionMediaStart), "-frames:v", "1", "-vf", scale]
+              [
+                "-i",
+                srcPath,
+                "-ss",
+                String(Math.max(0, ffmpegSeek)),
+                "-frames:v",
+                "1",
+                "-vf",
+                scale,
+              ]
             : hdrWindowFfmpegArgs({
                 srcPath,
-                mediaStart: extractionMediaStart,
+                ffmpegSeek,
                 fps,
                 fpsArg: fpsToFfmpegArg(job.config.fps),
                 firstTick,
@@ -531,19 +540,20 @@ export async function extractHdrVideoFrames(args: {
       }
       first.release();
       if (video.loop) (await windows.lease(totalFrames - 1))?.release();
+      const held = holdFirstFrameUntilStreamStarts(windows, firstTick);
       out.set(videoId, {
         dir: frameDir,
-        windows,
+        windows: held,
         width: dims.width,
         height: dims.height,
         frameSize,
         get frameCount() {
-          return windows.totalFrames;
+          return held.totalFrames;
         },
         scratch: Buffer.allocUnsafe(frameSize),
         loop: video.loop,
         mediaStart: extractionMediaStart,
-        videoStreamLeadSeconds: planned.videoStreamLeadSeconds,
+        videoStartSeconds: videoStartOnMediaTimeline(metadata),
       });
     }
     return { sources: out, estimatedBytes, releaseReservation };
@@ -561,12 +571,13 @@ export async function extractHdrVideoFrames(args: {
 }
 
 /**
- * One window as one FFmpeg pass on the clip's own tick grid: seek to a whole second before the
- * window (so timestamp rounding matches the clip's), pin `fps` to the clip's first tick, trim the lead-in.
+ * One window as one FFmpeg pass on the clip's own tick grid: seek to a whole second before the window
+ * (so timestamp rounding matches the clip's), pin `fps` to the clip's first tick, trim the lead-in,
+ * and write only the frames the graph emits (CFR sync would pad from pts 0 with the window's first).
  */
 function hdrWindowFfmpegArgs(a: {
   srcPath: string;
-  mediaStart: number;
+  ffmpegSeek: number;
   fps: number;
   fpsArg: string;
   firstTick: number;
@@ -580,9 +591,22 @@ function hdrWindowFfmpegArgs(a: {
   const filters = [`fps=${a.fpsArg}:start_time=${(a.firstTick / a.fps).toFixed(6)}`, a.scale];
   if (trim > 0) filters.push(`trim=start_frame=${trim}`);
   return [
-    ...["-ss", (a.mediaStart + seekFrame / a.fps).toFixed(6), "-i", a.srcPath],
-    ...["-vf", filters.join(","), "-frames:v", String(a.frames)],
+    ...["-ss", (a.ffmpegSeek + seekFrame / a.fps).toFixed(6), "-i", a.srcPath],
+    ...["-vf", filters.join(","), "-frames:v", String(a.frames), "-fps_mode", "passthrough"],
   ];
+}
+
+function holdFirstFrameUntilStreamStarts(
+  windows: HdrFrameWindows,
+  firstTick: number,
+): HdrFrameWindows {
+  return {
+    get totalFrames() {
+      return firstTick + windows.totalFrames;
+    },
+    lease: (frameIndex) => windows.lease(Math.max(0, frameIndex - firstTick)),
+    close: () => windows.close(),
+  };
 }
 
 /**

@@ -21,6 +21,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { CliUsageError } from "../../utils/commandResult.js";
 
 /** Throws with a clear hint when the SAM CLI is not on PATH. */
 function assertSamAvailable(): void {
@@ -83,7 +84,7 @@ export function parseReservedConcurrency(raw: unknown): number | undefined {
   if (raw === "none") return -1;
   const n = Number(raw);
   if (!Number.isInteger(n) || n < 1) {
-    throw new Error(
+    throw new CliUsageError(
       `[lambda] --concurrency must be a positive integer or "none"; got ${String(raw)}`,
     );
   }

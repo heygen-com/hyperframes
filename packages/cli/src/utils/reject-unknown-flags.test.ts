@@ -20,6 +20,7 @@ const cmd = {
     gifLoop: { type: "string" },
     docker: { type: "boolean" },
     workers: { type: "string", alias: ["w"] },
+    json: { type: "boolean" },
   },
 } as unknown as CommandDef<ArgsDef>;
 
@@ -57,9 +58,41 @@ describe("assertKnownFlags", () => {
     expect(ok(["--", "--anything-goes-here"])).not.toThrow();
   });
 
+  it("rejects --json on a command that does not declare it, as a usage error", () => {
+    const plain = { args: { output: { type: "string" } } } as unknown as CommandDef<ArgsDef>;
+    expect(() => assertKnownFlags(plain, ["--json"], "preview")).toThrow(
+      expect.objectContaining({
+        message: "hyperframes preview has no JSON output.",
+        code: "json_unsupported",
+        result: expect.objectContaining({ exitCode: 2 }),
+      }),
+    );
+  });
+
+  it("suggests the declared flag an unknown one most likely means", () => {
+    expect(() => assertKnownFlags(cmd, ["--out", "x"], "render")).toThrow(
+      expect.objectContaining({
+        code: "unknown_flag",
+        hint: "Did you mean --output? Run 'hyperframes render --help' to see its flags.",
+      }),
+    );
+  });
+
   it("checks each char of a combined short group", () => {
     expect(ok(["-ow"])).not.toThrow(); // both known aliases
     expect(ok(["-ox"])).toThrow(/Unknown flag: -x/); // x unknown
+  });
+
+  it("takes a negative number as a value, in the space and equals forms", () => {
+    expect(ok(["--workers", "-18"])).not.toThrow();
+    expect(ok(["--workers=-18"])).not.toThrow();
+    expect(ok(["--workers", "-0.5", "--output", "-.25"])).not.toThrow();
+    expect(ok(["-w", "-3"])).not.toThrow();
+  });
+
+  it("still rejects a dash token that only starts like a number", () => {
+    expect(ok(["--workers", "-1x"])).toThrow(/Unknown flag: -1/);
+    expect(ok(["--workers", "-1-2"])).toThrow(/Unknown flag: -1/);
   });
 });
 
@@ -100,6 +133,11 @@ describe("guardSwallowedFlagValues", () => {
 
   it("does not reject an ordinary value, even one that starts with a dash but isn't a known flag", () => {
     expect(guard(["--output", "-out.mp4"])).not.toThrow();
+  });
+
+  it("does not take a negative number for a swallowed flag", () => {
+    expect(guard(["--output", "-18"])).not.toThrow();
+    expect(guard(["--output", "-0.5"])).not.toThrow();
   });
 
   it("does not reject a trailing bare string flag with nothing after it", () => {
@@ -183,6 +221,27 @@ describe("guardSwallowedFlagValues end-to-end (via citty's real runCommand + the
     expect(capturedArgs).toBeUndefined();
   });
 
+  it("passes a negative value in both forms through the real pipeline", async () => {
+    let captured: Record<string, unknown> | undefined;
+    const testCommand: CommandDef<any> = {
+      meta: { name: "test-cmd" },
+      args: { lufs: { type: "string" }, json: { type: "boolean" } },
+      setup: ({ rawArgs, cmd }) => assertKnownFlags({ args: cmd.args }, rawArgs),
+      run: ({ args }) => {
+        captured = args;
+      },
+    };
+    const wrapped = await wrapTestCommand(testCommand);
+    for (const rawArgs of [
+      ["--lufs=-18", "--json"],
+      ["--lufs", "-18", "--json"],
+    ]) {
+      captured = undefined;
+      await runCommand(wrapped, { rawArgs });
+      expect(captured).toEqual(expect.objectContaining({ lufs: "-18", json: true }));
+    }
+  });
+
   it("rewrites correctly with a positional argument ahead of the flags (check's own opt-in)", async () => {
     let capturedArgs: Record<string, unknown> | undefined;
     const testCommand: CommandDef<any> = {
@@ -232,10 +291,13 @@ describe("guardSwallowedFlagValues end-to-end (via citty's real runCommand + the
     }
   });
 
-  it("leaves stdout genuinely empty on the real built CLI, not just presented:true internally", () => {
+  it("prints no usage on stdout, only the --json error envelope, on the real CLI", () => {
     const res = runCli(["catalog", "--query", "--json"]);
-    expect(res.status).toBe(1);
+    expect(res.status).toBe(2);
     expect(res.stderr).toContain("Missing value for --query");
-    expect(res.stdout).toBe("");
+    expect(JSON.parse(res.stdout)).toMatchObject({
+      ok: false,
+      error: { code: "usage_error", message: expect.stringContaining("Missing value for --query") },
+    });
   });
 });

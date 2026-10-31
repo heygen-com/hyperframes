@@ -9,7 +9,7 @@ import { parseHTML } from "linkedom";
 import { interpolateVolumeGain } from "@hyperframes/core/media-volume-envelope";
 import { redactTelemetryString } from "@hyperframes/core";
 import { defaultLogger } from "../logger.js";
-import { NotMediaPayloadError } from "@hyperframes/engine";
+import { NotMediaPayloadError, _setDownloadFetchForTests } from "@hyperframes/engine";
 import {
   collectExternalAssets,
   compileForRender,
@@ -29,6 +29,8 @@ import {
   resolveCompositionDurations,
 } from "./htmlCompiler.js";
 import { validateNoSystemFonts } from "./render/planValidation.js";
+
+const PAGE_URL = "http://localhost:4000/index.html";
 
 describe("discoverMediaFromBrowser", () => {
   async function discover(
@@ -56,6 +58,7 @@ describe("discoverMediaFromBrowser", () => {
     }
     const previousDocument = Reflect.get(globalThis, "document");
     Reflect.set(globalThis, "document", document);
+    Reflect.set(globalThis, "location", { href: PAGE_URL });
     try {
       return await discoverMediaFromBrowser({
         evaluate: async (collect) => {
@@ -128,32 +131,21 @@ describe("discoverMediaFromBrowser", () => {
     });
   });
 
-  it("reports no source for a blank src even though the browser resolves it to the page URL", async () => {
-    const { document } = parseHTML(
-      `<video id="empty" src="" data-start="0" data-end="1"></video>
-       <video id="real" src="clip.mp4" data-start="0" data-end="1"></video>`,
-    );
-    const resolved = {
-      empty: "http://localhost:4000/index.html",
-      real: "http://localhost:4000/clip.mp4",
-    };
-    for (const [id, value] of Object.entries(resolved)) {
-      const element = document.getElementById(id);
-      if (element) Object.defineProperty(element, "src", { value });
-    }
-    const previousDocument = Reflect.get(globalThis, "document");
-    Reflect.set(globalThis, "document", document);
-    try {
-      const media = await discoverMediaFromBrowser({
-        evaluate: async (collect) => collect(),
-      } as never);
-      expect(media.find((item) => item.id === "empty")?.src).toBe("");
+  it.each(["", " ", "#", "#t=1", "?", "?x=1"])(
+    "reports no source for src=%j, which the browser resolves to the page URL",
+    async (authored) => {
+      const media = await discover(
+        `<video id="page" src="${authored}" data-start="0" data-end="1"></video>
+         <video id="real" src="clip.mp4" data-start="0" data-end="1"></video>`,
+        {
+          page: `http://localhost:4000/index.html${authored.trim()}`,
+          real: "http://localhost:4000/clip.mp4",
+        },
+      );
+      expect(media.find((item) => item.id === "page")?.src).toBe("");
       expect(media.find((item) => item.id === "real")?.src).toBe("http://localhost:4000/clip.mp4");
-    } finally {
-      if (previousDocument === undefined) Reflect.deleteProperty(globalThis, "document");
-      else Reflect.set(globalThis, "document", previousDocument);
-    }
-  });
+    },
+  );
 
   it("keeps strict timing parsing self-contained after Puppeteer serializes the callback", async () => {
     const media = await discover(
@@ -869,7 +861,8 @@ describe("detectRenderModeHints", () => {
       entryPath,
       `<!doctype html><html><body>
   <div data-composition-id="scene" data-width="100" data-height="100" data-duration="1">
-    <img id="sibling" src="sibling.png" />
+    <img id="sibling" src="sibling.png" srcset="sibling.png 1x" />
+    <picture><source id="responsive" srcset="sibling.png 1x, root.png 2x"><img src="root.png"></picture>
     <img id="root" src="root.png" />
   </div>
 </body></html>`,
@@ -882,6 +875,12 @@ describe("detectRenderModeHints", () => {
       "compositions/sibling.png",
     );
     expect(document.querySelector("#root")?.getAttribute("src")).toBe("root.png");
+    expect(document.querySelector("#sibling")?.getAttribute("srcset")).toBe(
+      "compositions/sibling.png 1x",
+    );
+    expect(document.querySelector("#responsive")?.getAttribute("srcset")).toBe(
+      "compositions/sibling.png 1x, root.png 2x",
+    );
   });
 
   it("reads the root's data-fx-chain as the composition's master chain, apart from any clip", async () => {
@@ -1319,6 +1318,66 @@ describe("system-primary font normalization", () => {
 });
 
 describe("local font embedding", () => {
+  it("deduplicates assembled scene fonts before embedding and keeps the last descriptor order", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-repeated-scene-fonts-"));
+    mkdirSync(join(projectDir, "fonts"));
+    writeFileSync(join(projectDir, "fonts/shared.woff2"), Buffer.alloc(128 * 1024, 0x41));
+    const face = (display: string) =>
+      `@font-face { font-family: "SceneFont"; src: url("fonts/shared.woff2"); font-display: ${display}; }`;
+    for (let i = 0; i < 3; i++) {
+      writeFileSync(
+        join(projectDir, `scene-${i}.html`),
+        `<html><head><style>${face(i === 1 ? "block" : "swap")}</style></head><body>
+          <div data-composition-id="scene-${i}" data-width="640" data-height="360" data-duration="1">Scene ${i}</div>
+        </body></html>`,
+      );
+    }
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<html><head></head><body><div data-composition-id="root" data-width="640" data-height="360" data-duration="3">
+        ${Array.from({ length: 3 }, (_, i) => `<div class="clip" data-composition-id="scene-${i}" data-composition-src="scene-${i}.html" data-start="${i}" data-duration="1"></div>`).join("")}
+      </div></body></html>`,
+    );
+    try {
+      const compiled = await compileForRender(
+        projectDir,
+        join(projectDir, "index.html"),
+        projectDir,
+      );
+      const { document } = parseHTML(compiled.html);
+      const css = [...document.querySelectorAll("style")].map((el) => el.textContent).join("\n");
+      expect(css.match(/font-display:\s*swap/g)).toHaveLength(1);
+      expect(css.match(/font-display:\s*block/g)).toHaveLength(1);
+      expect(css.indexOf("block")).toBeLessThan(css.indexOf("swap"));
+      expect(Buffer.byteLength(compiled.html)).toBeLessThan(450 * 1024);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it("retains font rules inside conditional and inactive styles", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-conditional-fonts-"));
+    const face =
+      '@font-face { font-family: "SceneFont"; src: url("data:font/woff2;base64,QQ=="); }';
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<html><head>
+      <style>${face}</style><style media="print">${face}</style>
+      <style>@media print { ${face} }</style><style title="alternate">${face}</style>
+      </head><body><div data-composition-id="root" data-width="640" data-height="360" data-duration="1">Text</div>
+      <template><style>${face}</style></template></body></html>`,
+    );
+    try {
+      const compiled = await compileForRender(
+        projectDir,
+        join(projectDir, "index.html"),
+        projectDir,
+      );
+      expect(compiled.html.match(/@font-face/g)).toHaveLength(5);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
   it("embeds one font file once when sub-compositions use equivalent relative paths", async () => {
     const projectDir = mkdtempSync(join(tmpdir(), "hf-local-font-dedupe-"));
     const assetsDir = join(projectDir, "assets");
@@ -1893,11 +1952,16 @@ describe("crossorigin attribute stripping", () => {
 // avoid invoking ffprobe / the full compileForRender pipeline. fetch is patched
 // in-process for success cases; the unit lane's refused network covers fallback.
 
+// Downloads go through the engine's fetch seam, not the global fetch.
+const stubDownloadFetch = {
+  set fetch(impl: unknown) {
+    _setDownloadFetchForTests(impl as never);
+  },
+};
+
 describe("localizeRemoteMediaSources", () => {
   it("rewrites remote <video> src to _remote_media path when download succeeds", async () => {
-    const orig = globalThis.fetch;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (globalThis as any).fetch = async () => validTestMediaResponse();
+    stubDownloadFetch.fetch = async () => validTestMediaResponse();
     try {
       const dl = mkdtempSync(join(tmpdir(), "hf-dl-ok-"));
       const html = `<video id="v1" src="https://media-ok.example.com/a/clip.mp4" data-start="0" data-end="10" muted></video>`;
@@ -1906,8 +1970,7 @@ describe("localizeRemoteMediaSources", () => {
       expect(result).toContain("_remote_media/");
       expect(remoteMediaAssets.size).toBe(1);
     } finally {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (globalThis as any).fetch = orig;
+      _setDownloadFetchForTests();
     }
   });
 
@@ -1921,11 +1984,9 @@ describe("localizeRemoteMediaSources", () => {
   });
 
   it("logs only a safe fingerprint and host for a signed-URL media failure", async () => {
-    const originalFetch = globalThis.fetch;
     const originalWarn = defaultLogger.warn;
     const warnings: unknown[] = [];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (globalThis as any).fetch = async () =>
+    stubDownloadFetch.fetch = async () =>
       new Response("<!doctype html><html><body>expired</body></html>", { status: 200 });
     defaultLogger.warn = (message, meta) => warnings.push({ message, meta });
     try {
@@ -1943,17 +2004,14 @@ describe("localizeRemoteMediaSources", () => {
       expect(serialized).not.toContain("customer.mp4");
       expect(serialized).not.toContain("super-secret-signature");
     } finally {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (globalThis as any).fetch = originalFetch;
+      _setDownloadFetchForTests();
       defaultLogger.warn = originalWarn;
     }
   });
 
   it("deduplicates: two tags with the same src URL → one download", async () => {
-    const orig = globalThis.fetch;
     let fetchCount = 0;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (globalThis as any).fetch = async () => {
+    stubDownloadFetch.fetch = async () => {
       fetchCount++;
       return validTestMediaResponse();
     };
@@ -1964,8 +2022,7 @@ describe("localizeRemoteMediaSources", () => {
       await localizeRemoteMediaSources(html, dl);
       expect(fetchCount).toBe(1);
     } finally {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (globalThis as any).fetch = orig;
+      _setDownloadFetchForTests();
     }
   });
 
@@ -1979,9 +2036,7 @@ describe("localizeRemoteMediaSources", () => {
   });
 
   it("localizes remote <source> children of a <video>", async () => {
-    const orig = globalThis.fetch;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (globalThis as any).fetch = async () => validTestMediaResponse();
+    stubDownloadFetch.fetch = async () => validTestMediaResponse();
     try {
       const dl = mkdtempSync(join(tmpdir(), "hf-dl-src-"));
       const html = `<video id="rec" data-start="0" data-end="5" muted>
@@ -1992,15 +2047,12 @@ describe("localizeRemoteMediaSources", () => {
       expect(result).not.toContain("https://src-ok.example.com/");
       expect(remoteMediaAssets.size).toBe(2);
     } finally {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (globalThis as any).fetch = orig;
+      _setDownloadFetchForTests();
     }
   });
 
   it("rewrites src in both double-quoted and single-quoted attributes", async () => {
-    const orig = globalThis.fetch;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (globalThis as any).fetch = async () => validTestMediaResponse();
+    stubDownloadFetch.fetch = async () => validTestMediaResponse();
     try {
       const dl = mkdtempSync(join(tmpdir(), "hf-dl-quotes-"));
       const html = `<video id="v1" src="https://q.example.com/c/dq.mp4" data-start="0" data-end="10" muted></video>
@@ -2009,8 +2061,7 @@ describe("localizeRemoteMediaSources", () => {
       expect(result).not.toContain("https://q.example.com/");
       expect(result.match(/_remote_media\//g)?.length).toBe(2);
     } finally {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (globalThis as any).fetch = orig;
+      _setDownloadFetchForTests();
     }
   });
 
@@ -2039,9 +2090,7 @@ describe("localizeRemoteMediaSources", () => {
 
 describe("localizeRemoteImageSources", () => {
   it("rewrites remote <img> src to _remote_media path when download succeeds", async () => {
-    const orig = globalThis.fetch;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (globalThis as any).fetch = async () => validTestImageResponse();
+    stubDownloadFetch.fetch = async () => validTestImageResponse();
     try {
       const dl = mkdtempSync(join(tmpdir(), "hf-img-ok-"));
       const html = `<img class="hero" src="https://img-ok.example.com/photo.png" />`;
@@ -2050,8 +2099,7 @@ describe("localizeRemoteImageSources", () => {
       expect(result).toContain("_remote_media/");
       expect(remoteMediaAssets.size).toBe(1);
     } finally {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (globalThis as any).fetch = orig;
+      _setDownloadFetchForTests();
     }
   });
 
@@ -2065,10 +2113,8 @@ describe("localizeRemoteImageSources", () => {
   });
 
   it("deduplicates: two <img> tags with the same src URL → one download", async () => {
-    const orig = globalThis.fetch;
     let fetchCount = 0;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (globalThis as any).fetch = async () => {
+    stubDownloadFetch.fetch = async () => {
       fetchCount++;
       return validTestImageResponse();
     };
@@ -2079,8 +2125,7 @@ describe("localizeRemoteImageSources", () => {
       await localizeRemoteImageSources(html, dl);
       expect(fetchCount).toBe(1);
     } finally {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (globalThis as any).fetch = orig;
+      _setDownloadFetchForTests();
     }
   });
 
@@ -2102,9 +2147,7 @@ describe("localizeRemoteImageSources", () => {
   });
 
   it("rewrites both double-quoted and single-quoted src attributes", async () => {
-    const orig = globalThis.fetch;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (globalThis as any).fetch = async () => validTestImageResponse();
+    stubDownloadFetch.fetch = async () => validTestImageResponse();
     try {
       const dl = mkdtempSync(join(tmpdir(), "hf-img-quotes-"));
       const html = `<img src="https://q-img.example.com/dq.png" />
@@ -2113,8 +2156,7 @@ describe("localizeRemoteImageSources", () => {
       expect(result).not.toContain("https://q-img.example.com/");
       expect(result.match(/_remote_media\//g)?.length).toBe(2);
     } finally {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (globalThis as any).fetch = orig;
+      _setDownloadFetchForTests();
     }
   });
 
@@ -2123,10 +2165,8 @@ describe("localizeRemoteImageSources", () => {
     // `src`. We must localise what Chrome actually paints (the real `src`),
     // not the `data-src` URL — matching `data-src` would download an asset the
     // render never shows and could break the loader's runtime swap.
-    const orig = globalThis.fetch;
     let fetchCount = 0;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (globalThis as any).fetch = async () => {
+    stubDownloadFetch.fetch = async () => {
       fetchCount++;
       return validTestImageResponse();
     };
@@ -2139,17 +2179,14 @@ describe("localizeRemoteImageSources", () => {
       expect(result).not.toContain("https://cdn.example.com/placeholder.png");
       expect(fetchCount).toBe(1);
     } finally {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (globalThis as any).fetch = orig;
+      _setDownloadFetchForTests();
     }
   });
 
   it("handles src attribute not as the first attribute (agent-pipeline shape)", async () => {
     // The 02_kobe astral-pipeline composition that surfaced this bug emits
     // <img> tags with `class` before `src`. Regex must not assume src position.
-    const orig = globalThis.fetch;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (globalThis as any).fetch = async () => validTestImageResponse();
+    stubDownloadFetch.fetch = async () => validTestImageResponse();
     try {
       const dl = mkdtempSync(join(tmpdir(), "hf-img-attr-order-"));
       const html = `<img class="kobe-cutout" alt="kobe" src="https://astral.example.com/d828bca.png" />`;
@@ -2158,8 +2195,7 @@ describe("localizeRemoteImageSources", () => {
       expect(result).toContain("_remote_media/");
       expect(remoteMediaAssets.size).toBe(1);
     } finally {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (globalThis as any).fetch = orig;
+      _setDownloadFetchForTests();
     }
   });
 });
@@ -2170,9 +2206,7 @@ describe("localizeRemoteFontFaces", () => {
   const FONT_URL = "https://gen-os-static.s3.us-east-2.amazonaws.com/fonts/komika-axis.ttf";
 
   it("rewrites @font-face url() inside <style> to _remote_media/ path", async () => {
-    const orig = globalThis.fetch;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (globalThis as any).fetch = async () => new Response(new Uint8Array(16), { status: 200 });
+    stubDownloadFetch.fetch = async () => new Response(new Uint8Array(16), { status: 200 });
     try {
       const dl = mkdtempSync(join(tmpdir(), "hf-ff-"));
       const html = `<style>
@@ -2186,14 +2220,12 @@ describe("localizeRemoteFontFaces", () => {
       expect(result).toContain("_remote_media/");
       expect(remoteMediaAssets.size).toBe(1);
     } finally {
-      globalThis.fetch = orig;
+      _setDownloadFetchForTests();
     }
   });
 
   it("ignores url() references outside @font-face (e.g. background-image)", async () => {
-    const orig = globalThis.fetch;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (globalThis as any).fetch = async () => new Response(new Uint8Array(16), { status: 200 });
+    stubDownloadFetch.fetch = async () => new Response(new Uint8Array(16), { status: 200 });
     try {
       const dl = mkdtempSync(join(tmpdir(), "hf-ff-bg-"));
       const BG_URL = "https://cdn.example.com/bg.png";
@@ -2206,14 +2238,12 @@ body { background-image: url("${BG_URL}"); }
       expect(result).not.toContain(FONT_URL);
       expect(result).toContain(BG_URL);
     } finally {
-      globalThis.fetch = orig;
+      _setDownloadFetchForTests();
     }
   });
 
   it("preserves original URL when download fails", async () => {
-    const orig = globalThis.fetch;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (globalThis as any).fetch = async () => new Response(null, { status: 403 });
+    stubDownloadFetch.fetch = async () => new Response(null, { status: 403 });
     try {
       const dl = mkdtempSync(join(tmpdir(), "hf-ff-fail-"));
       const FAIL_URL = "https://fail-font.example.com/f.ttf";
@@ -2222,15 +2252,13 @@ body { background-image: url("${BG_URL}"); }
       expect(result).toContain(FAIL_URL);
       expect(remoteMediaAssets.size).toBe(0);
     } finally {
-      globalThis.fetch = orig;
+      _setDownloadFetchForTests();
     }
   });
 
   it("deduplicates: same font URL in two @font-face blocks → 1 download", async () => {
-    const orig = globalThis.fetch;
     let fetchCount = 0;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (globalThis as any).fetch = async () => {
+    stubDownloadFetch.fetch = async () => {
       fetchCount++;
       return new Response(new Uint8Array(16), { status: 200 });
     };
@@ -2245,7 +2273,7 @@ body { background-image: url("${BG_URL}"); }
       expect(fetchCount).toBe(1);
       expect(remoteMediaAssets.size).toBe(1);
     } finally {
-      globalThis.fetch = orig;
+      _setDownloadFetchForTests();
     }
   });
 
@@ -2303,9 +2331,7 @@ body { margin: 0; }
 }
 h1 { font-size: 2rem; }`;
 
-    const orig = globalThis.fetch;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (globalThis as any).fetch = async (url: string) => {
+    stubDownloadFetch.fetch = async (url: string) => {
       if (url === STYLESHEET_URL) {
         return new Response(fakeCss, { status: 200 });
       }
@@ -2328,15 +2354,13 @@ h1 { font-size: 2rem; }`;
       expect(result).toContain("_remote_media/");
       expect(remoteMediaAssets.size).toBe(1);
     } finally {
-      globalThis.fetch = orig;
+      _setDownloadFetchForTests();
     }
   });
 
   it("keeps <link> tag when external stylesheet fetch fails (graceful degradation)", async () => {
     const STYLESHEET_URL = "https://down.example.com/fonts.css";
-    const orig = globalThis.fetch;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (globalThis as any).fetch = async () => new Response(null, { status: 503 });
+    stubDownloadFetch.fetch = async () => new Response(null, { status: 503 });
     try {
       const dl = mkdtempSync(join(tmpdir(), "hf-ff-extfail-"));
       const html = `<link rel="stylesheet" href="${STYLESHEET_URL}">`;
@@ -2346,16 +2370,14 @@ h1 { font-size: 2rem; }`;
       expect(result).toContain("<link");
       expect(remoteMediaAssets.size).toBe(0);
     } finally {
-      globalThis.fetch = orig;
+      _setDownloadFetchForTests();
     }
   });
 
   it("rejects a stylesheet redirect to a private host before the second request", async () => {
     const STYLESHEET_URL = "https://styles.example.com/fonts.css";
-    const orig = globalThis.fetch;
     let fetchCount = 0;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (globalThis as any).fetch = async () => {
+    stubDownloadFetch.fetch = async () => {
       fetchCount++;
       return new Response(null, {
         status: 302,
@@ -2371,18 +2393,16 @@ h1 { font-size: 2rem; }`;
       expect(result).toBe(html);
       expect(remoteMediaAssets.size).toBe(0);
     } finally {
-      globalThis.fetch = orig;
+      _setDownloadFetchForTests();
     }
   });
 
   it("does not log a signed stylesheet path or query on failure", async () => {
     const STYLESHEET_URL =
       "https://styles.example.com/private/customer.css?X-Amz-Signature=super-secret";
-    const originalFetch = globalThis.fetch;
     const originalWarn = defaultLogger.warn;
     const warnings: unknown[] = [];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (globalThis as any).fetch = async () =>
+    stubDownloadFetch.fetch = async () =>
       new Response(null, { status: 503, statusText: STYLESHEET_URL });
     defaultLogger.warn = (message, meta) => warnings.push({ message, meta });
     try {
@@ -2396,16 +2416,14 @@ h1 { font-size: 2rem; }`;
       expect(serialized).not.toContain("customer.css");
       expect(serialized).not.toContain("super-secret");
     } finally {
-      globalThis.fetch = originalFetch;
+      _setDownloadFetchForTests();
       defaultLogger.warn = originalWarn;
     }
   });
 
   it("keeps <link> tag when external stylesheet has no @font-face rules", async () => {
     const STYLESHEET_URL = "https://cdn.example.com/reset.css";
-    const orig = globalThis.fetch;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (globalThis as any).fetch = async () =>
+    stubDownloadFetch.fetch = async () =>
       new Response("body { margin: 0; } h1 { color: blue; }", { status: 200 });
     try {
       const dl = mkdtempSync(join(tmpdir(), "hf-ff-noff-"));
@@ -2416,7 +2434,7 @@ h1 { font-size: 2rem; }`;
       expect(result).toContain("<link");
       expect(remoteMediaAssets.size).toBe(0);
     } finally {
-      globalThis.fetch = orig;
+      _setDownloadFetchForTests();
     }
   });
 
@@ -2425,9 +2443,7 @@ h1 { font-size: 2rem; }`;
     const FONT_FILE_URL = "https://use.typekit.net/af/font.woff2";
     const fontCss = `@font-face { font-family: "AdobeFont"; src: url("${FONT_FILE_URL}") format("woff2"); }`;
 
-    const orig = globalThis.fetch;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (globalThis as any).fetch = async (url: string) => {
+    stubDownloadFetch.fetch = async (url: string) => {
       if (url === FONT_CDN_URL) return new Response(fontCss, { status: 200 });
       return new Response(new Uint8Array(16), { status: 200 });
     };
@@ -2444,7 +2460,7 @@ h1 { font-size: 2rem; }`;
       expect(result).toContain("_remote_media/");
       expect(remoteMediaAssets.size).toBe(1);
     } finally {
-      globalThis.fetch = orig;
+      _setDownloadFetchForTests();
     }
   });
 });
@@ -2796,6 +2812,18 @@ describe("sub-composition variable injection (render path, #2064)", () => {
     const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
     expect(compiled.html).toMatch(/window\.__hfVariablesByComp\s*=\s*Object\.assign/);
     expect(compiled.html).toContain("#00ff00");
+  });
+
+  it("writes the table in <head>, so it runs before the composition scripts that wait for fonts", async () => {
+    const projectDir = writeSubCompVarProject(`data-variable-values='{"color":"#00ff00"}'`);
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    const { document } = parseHTML(compiled.html);
+    const tables = [...document.querySelectorAll("script")].filter((s) =>
+      s.textContent?.includes("__hfVariablesByComp = Object.assign"),
+    );
+    expect(tables.map((s) => [s.parentElement?.tagName, s.getAttribute("type")])).toEqual([
+      ["HEAD", null],
+    ]);
   });
 
   it("still injects the declared default even with no per-instance override", async () => {

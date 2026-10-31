@@ -506,7 +506,7 @@ export const NLEPreview = memo(function NLEPreview({
         >
           <div
             ref={stageRef}
-            className="relative shrink-0 pointer-events-auto"
+            className="relative shrink-0 pointer-events-auto shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_4px_32px_rgba(0,0,0,0.7)]"
             style={{
               width: `${stageSize.width}px`,
               height: `${stageSize.height}px`,

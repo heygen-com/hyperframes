@@ -19,6 +19,7 @@ import {
   markSeen,
   readAppTurns,
   readSeen,
+  seenPath,
   unseenTurns,
 } from "./appHistory.js";
 import { readRecord, writeRecord } from "./projectRecords.js";
@@ -63,6 +64,21 @@ beforeEach(() => {
 });
 
 describe("app history", () => {
+  it("keeps the seen record under LOCALAPPDATA on Windows", () => {
+    const localAppData = mkdtempSync(join(tmpdir(), "hf-localappdata-"));
+    vi.stubEnv("LOCALAPPDATA", localAppData);
+    const platform = Object.getOwnPropertyDescriptor(process, "platform");
+    Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+    try {
+      const dir = mkdtempSync(join(tmpdir(), "hf-project-"));
+      handedOverAt(dir, "2026-10-01T00:00:00Z");
+      expect(seenPath(dir).startsWith(join(localAppData, "hyperframes", "catch-up"))).toBe(true);
+      expect(readSeen(dir).at).toBe(Date.parse("2026-10-01T00:00:00Z"));
+    } finally {
+      if (platform) Object.defineProperty(process, "platform", platform);
+    }
+  });
+
   it("reads the turns, skipping lines that are not one", () => {
     const dir = project([
       turn("2026-01-01T10:00:00Z", "bigger title"),

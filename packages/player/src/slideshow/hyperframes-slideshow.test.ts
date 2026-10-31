@@ -1,5 +1,6 @@
 // fallow-ignore-file code-duplication
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { mediaElementTime } from "@hyperframes/core/runtime/media-clock";
 import { handleRuntimeMessage } from "../runtime-message-handler.js";
 import {
   childrenMayStillArrive,
@@ -939,7 +940,7 @@ describe("<hyperframes-slideshow> presenter mode", () => {
     });
     await tick();
 
-    expect(video.currentTime).toBe(12.5);
+    expect(video.currentTime).toBe(mediaElementTime(12.5));
     expect(video.muted).toBe(true);
     expect(video.volume).toBe(0.8);
     expect(video.playbackRate).toBe(1.25);
@@ -981,7 +982,7 @@ describe("<hyperframes-slideshow> presenter mode", () => {
     });
     await tick();
 
-    expect(video.currentTime).toBe(4);
+    expect(video.currentTime).toBe(mediaElementTime(4));
     expect(video.muted).toBe(true);
 
     presenterChannel.close();
@@ -1023,7 +1024,7 @@ describe("<hyperframes-slideshow> presenter mode", () => {
     await tick();
 
     expect(play).toHaveBeenCalledTimes(1);
-    expect(video.currentTime).toBe(2);
+    expect(video.currentTime).toBe(mediaElementTime(2));
     expect(video.muted).toBe(true);
     const buttonTexts = Array.from(
       el.querySelectorAll("button") as NodeListOf<HTMLButtonElement>,

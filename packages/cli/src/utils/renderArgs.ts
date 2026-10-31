@@ -11,8 +11,8 @@ import { failUsage } from "./commandResult.js";
  * `timeout: 0` footguns at the rate of "one per missing branch".
  */
 
-import { readFileSync, realpathSync, type Stats } from "node:fs";
-import { isAbsolute, relative, resolve, sep } from "node:path";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { parseFps } from "@hyperframes/core";
 import { errorBox } from "../ui/format.js";
 import { readCompositionFps } from "./compositionFps.js";
@@ -126,128 +126,6 @@ export function pageNavigationTimeoutMs(minimumTimeoutMs = 0): number {
     configured > 0 ? configured : DEFAULT_CONFIG.pageNavigationTimeout,
     minimumTimeoutMs,
   );
-}
-
-// ── --composition ──────────────────────────────────────────────────────
-
-export type CompositionEntryParseError =
-  | { kind: "outside-project"; entryFile: string }
-  | { kind: "not-found"; entryFile: string }
-  | { kind: "not-a-file"; entryFile: string };
-
-export type CompositionEntryParseResult =
-  | { ok: true; value: string | undefined }
-  | { ok: false; error: CompositionEntryParseError };
-
-function normalizeCompositionEntryArg(raw: string | undefined): string | undefined {
-  const trimmed = raw?.trim().replace(/^\.\//, "") || undefined;
-  return !trimmed || trimmed === "." ? undefined : trimmed;
-}
-
-export function hasExplicitCompositionArg(raw: string | undefined): boolean {
-  return normalizeCompositionEntryArg(raw) !== undefined;
-}
-
-/**
- * Parse and validate `--composition <path>` into a project-relative
- * entry file (or `undefined` for the index.html default).
- *
- *   - `undefined` / `""` / `"."` / `"./"` → undefined (defaults to
- *     index.html). Issue #1199: the prior code threaded `.` straight
- *     through and the producer's `readFileSync` blew up with
- *     `EISDIR: illegal operation on a directory, read`.
- *   - Other strings are resolved against `projectDir`, checked for
- *     containment, existence, and isFile() via the injected `stat`
- *     adapter. The adapter shape lets unit tests inject fixtures
- *     without touching the filesystem.
- */
-export function parseCompositionEntryArg(
-  raw: string | undefined,
-  projectDir: string,
-  stat: (path: string) => Stats,
-  real: (path: string) => string = realpathOrSame,
-): CompositionEntryParseResult {
-  const trimmed = normalizeCompositionEntryArg(raw);
-  // Normalize the project-root shorthands to "no entry override" so the
-  // producer falls back to index.html instead of statSync-ing the dir
-  // and later blowing up with EISDIR inside readFileSync().
-  if (!trimmed) return { ok: true, value: undefined };
-
-  const absProjectDir = resolve(projectDir);
-  const entryPath = resolve(absProjectDir, trimmed);
-  // An absolute entry may name the project through a symlink (macOS /tmp), so try both spellings of each.
-  const relativeEntry = [absProjectDir, real(absProjectDir)]
-    .flatMap((root) => [entryPath, real(entryPath)].map((path) => relative(root, path)))
-    .find((rel) => rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
-  if (relativeEntry === undefined) {
-    return { ok: false, error: { kind: "outside-project", entryFile: trimmed } };
-  }
-
-  let entryStat: Stats;
-  try {
-    entryStat = stat(entryPath);
-  } catch {
-    return { ok: false, error: { kind: "not-found", entryFile: trimmed } };
-  }
-  if (!entryStat.isFile()) {
-    // Directory paths slip past existsSync downstream and explode with
-    // `EISDIR: illegal operation on a directory, read` inside the
-    // producer's readFileSync. Reject here with an actionable message.
-    return { ok: false, error: { kind: "not-a-file", entryFile: trimmed } };
-  }
-  return { ok: true, value: relativeEntry.split(sep).join("/") };
-}
-
-function realpathOrSame(path: string): string {
-  try {
-    return realpathSync(path);
-  } catch {
-    return path;
-  }
-}
-
-function compositionEntryErrorMessage(error: CompositionEntryParseError): {
-  title: string;
-  message: string;
-  hint?: string;
-} {
-  switch (error.kind) {
-    case "outside-project":
-      return {
-        title: "Invalid composition path",
-        message: `Entry file must stay inside the project directory: ${error.entryFile}`,
-      };
-    case "not-found":
-      return {
-        title: "Composition not found",
-        message: `"${error.entryFile}" does not exist in the project directory.`,
-        hint: "Pass a path to a .html file relative to the project root (e.g. compositions/intro.html).",
-      };
-    case "not-a-file":
-      return {
-        title: "Invalid composition path",
-        message: `"${error.entryFile}" is a directory, not an .html file.`,
-        hint: "Pass a path to a .html file (e.g. compositions/intro.html), or omit --composition to render index.html.",
-      };
-  }
-}
-
-/**
- * Side-effecting wrapper around `parseCompositionEntryArg`. Exits the
- * process with a friendly error box on validation failure.
- */
-export function resolveCompositionEntryArg(
-  raw: string | undefined,
-  projectDir: string,
-  stat: (path: string) => Stats,
-): string | undefined {
-  const result = parseCompositionEntryArg(raw, projectDir, stat);
-  if (!result.ok) {
-    const { title, message, hint } = compositionEntryErrorMessage(result.error);
-    errorBox(title, message, hint);
-    failUsage();
-  }
-  return result.value;
 }
 
 // ── default fps ────────────────────────────────────────────────────────

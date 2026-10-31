@@ -493,6 +493,40 @@ describe("HyperframesRenderStack — snapshot", () => {
     expect(samActions).toContain("lambda:GetAccountSettings");
   }, 30000);
 
+  it("lets assemble invoke exactly the stitch helper it names, in CDK and SAM", () => {
+    const cdkFunction = Object.values(
+      SYNTHED.template.findResources("AWS::Lambda::Function"),
+    )[0] as {
+      Properties: { Environment: { Variables: Record<string, unknown> } };
+    };
+    expect(cdkFunction.Properties.Environment.Variables.HYPERFRAMES_STITCH_FUNCTION).toBe(
+      "hyperframes-render",
+    );
+    const cdkInvoke = Object.values(SYNTHED.template.findResources("AWS::IAM::Policy"))
+      .flatMap(policyStatements)
+      .filter((statement) => statement.Action === "lambda:InvokeFunction");
+    expect(JSON.stringify(cdkInvoke.map((s) => s.Resource))).toContain(
+      ":function:hyperframes-render",
+    );
+
+    const samFunction = requireRecordProperty(
+      requireRecordProperty(readSamResources(), "RenderFunction", "SAM RenderFunction"),
+      "Properties",
+      "SAM function properties",
+    ) as { Environment: { Variables: Record<string, unknown> }; Policies: unknown[] };
+    // The YAML parser drops the !If and !Sub tags and keeps [condition, then, else].
+    const [, withVideo, without] = samFunction.Environment.Variables
+      .HYPERFRAMES_STITCH_FUNCTION as string[];
+    expect([withVideo, without]).toEqual(["${ProjectName}-video", "${ProjectName}-render"]);
+    const samInvoke = samFunction.Policies.flatMap(
+      (policy) => (policy as { Statement?: Record<string, unknown>[] }).Statement ?? [],
+    ).filter((statement) => statement.Action === "lambda:InvokeFunction");
+    expect(samInvoke).toHaveLength(1);
+    const [, grantWithVideo, grantWithout] = samInvoke[0]!.Resource as string[];
+    expect(grantWithVideo!.endsWith(`:function:${withVideo}`)).toBe(true);
+    expect(grantWithout!.endsWith(`:function:${without}`)).toBe(true);
+  }, 30000);
+
   it("fails at once when a chunk cannot fit the worker timeout, in CDK and SAM", () => {
     for (const definition of [SYNTHED.definition, readSamDefinition()]) {
       for (const name of ["Plan", "PlanV2"]) {

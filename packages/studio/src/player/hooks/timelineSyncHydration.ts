@@ -9,6 +9,7 @@
  * an argument, so each is callable — and readable — on its own.
  */
 
+import { withSelectorIndexPass } from "../../utils/sourceScopedSelectorIndex";
 import { createTimelineDomNodeResolver, findClipElementById } from "../lib/timelineElementHelpers";
 import { usePlayerStore } from "../store/playerStore";
 import type { TimelineElement, DomClipChild, SubCompositionHostState } from "../store/playerStore";
@@ -214,15 +215,17 @@ export function buildTimelineElementsFromClips(
   iframeDoc: Document | null,
 ): TimelineElement[] {
   const resolveHost = iframeDoc ? createTimelineDomNodeResolver(iframeDoc) : null;
-  return clips.map((clip, index) => {
-    const hostEl = resolveHost?.(clip, index) ?? null;
-    return createTimelineElementFromManifestClip({
-      clip,
-      fallbackIndex: index,
-      doc: iframeDoc,
-      hostEl,
+  const build = () =>
+    clips.map((clip, index) => {
+      const hostEl = resolveHost?.(clip, index) ?? null;
+      return createTimelineElementFromManifestClip({
+        clip,
+        fallbackIndex: index,
+        doc: iframeDoc,
+        hostEl,
+      });
     });
-  });
+  return iframeDoc ? withSelectorIndexPass(iframeDoc, build) : build();
 }
 
 /**

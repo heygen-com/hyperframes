@@ -1,5 +1,5 @@
 import { quantizePreviewProxyBox, type PreviewProxyBox } from "@hyperframes/core";
-import { ensureDOMParser } from "./dom.js";
+import { parseHTML } from "linkedom";
 
 const DEFAULT_VIEWPORT = { width: 1920, height: 1080 } as const;
 const MAX_VIEWPORT_DIMENSION = 4096;
@@ -19,8 +19,7 @@ function parseViewportDimension(value: string | null): number | null {
  * can distinguish "no declared dimensions" from "declared 1920×1080".
  */
 export function findCompositionDimensions(html: string): { width: number; height: number } | null {
-  ensureDOMParser();
-  const doc = new DOMParser().parseFromString(html, "text/html");
+  const { document: doc } = parseHTML(html);
   const root = doc.querySelector("[data-composition-id][data-width][data-height]");
   if (!root) return null;
   const width = parseViewportDimension(root.getAttribute("data-width"));

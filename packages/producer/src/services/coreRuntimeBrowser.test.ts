@@ -491,6 +491,62 @@ describe("core runtime browser contract", () => {
     30_000,
   );
 
+  it("keeps a root with no data-duration on screen after its GSAP timeline ends", async () => {
+    const filmPage = await browser.newPage();
+    try {
+      await filmPage.setViewport({ width: 320, height: 180 });
+      await filmPage.setContent(`<!doctype html>
+        <style>html, body { margin: 0; background: rgb(0, 0, 0); }</style>
+        <div data-composition-id="root" data-width="320" data-height="180"
+          style="position:relative;width:320px;height:180px;background:rgb(255,0,0)">
+          <audio data-start="0" data-duration="6"></audio>
+        </div>`);
+      await filmPage.addScriptTag({
+        path: resolve(import.meta.dirname, "../../../core/node_modules/gsap/dist/gsap.min.js"),
+      });
+      await filmPage.addScriptTag({
+        content:
+          "window.__timelines = { root: gsap.timeline({ paused: true }).to({}, { duration: 2 }) };",
+      });
+      await filmPage.addScriptTag({ content: readFileSync(RUNTIME_PATH, "utf8") });
+      await filmPage.waitForFunction(() => window.__playerReady && window.__renderReady);
+      const shown = await filmPage.evaluate(() => {
+        window.__player!.renderSeek!(4);
+        return window.__player!.getDuration();
+      });
+      expect(shown).toBeGreaterThan(4);
+      expect(await redPixels(filmPage)).toBe(320 * 180);
+    } finally {
+      await filmPage.close();
+    }
+  }, 30_000);
+
+  // In a frame the runtime stamps GSAP targets with the timeline's length at bind, for Studio's
+  // timeline list; video metadata can make the composition longer afterwards.
+  it("keeps a clip inside a discovery-stamped wrapper on screen past the stamp's end", async () => {
+    const hostPage = await browser.newPage();
+    try {
+      await hostPage.setViewport({ width: 320, height: 180 });
+      await hostPage.setContent(`<style>html, body { margin: 0; } iframe { border: 0; }</style>
+        <iframe width="320" height="180" srcdoc="<style>html, body { margin: 0; background: rgb(0, 0, 0); }</style>
+          <div data-composition-id='root' data-duration='6' data-width='320' data-height='180'
+            style='position:relative;width:320px;height:180px'>
+            <div id='wrap' data-start='0' data-duration='2' data-hf-autostamped='1'
+              style='position:absolute;inset:0'>
+              <div class='clip' data-start='0' data-duration='6'
+                style='position:absolute;inset:0;background:rgb(255,0,0)'></div>
+            </div>
+          </div>"></iframe>`);
+      const frame = (await (await hostPage.waitForSelector("iframe"))!.contentFrame())!;
+      await frame.addScriptTag({ content: readFileSync(RUNTIME_PATH, "utf8") });
+      await frame.waitForFunction(() => window.__playerReady && window.__renderReady);
+      await frame.evaluate(() => window.__player!.seek(4));
+      expect(await redPixels(hostPage)).toBe(320 * 180);
+    } finally {
+      await hostPage.close();
+    }
+  }, 30_000);
+
   it("paints nothing of a hidden scene, even a child or SVG shape set visible inline", async () => {
     const filmPage = await openFilm(
       `<div class="clip" data-start="2" data-duration="1" style="position:absolute;inset:0">
@@ -516,6 +572,27 @@ describe("core runtime browser contract", () => {
       await filmPage.close();
     }
   }, 30_000);
+
+  // HTML ignores `/>` on a custom element, so every later sibling ends up inside the group.
+  it.each([
+    ["an unmuted", 320 * 180, ""],
+    ["a muted", 0, " data-hidden"],
+  ])(
+    "a clip written after %s self-closed audio group paints %i red pixels",
+    async (_, red, mute) => {
+      const filmPage = await openFilm(
+        `<hf-audio-group id="sfx" data-label="SFX"${mute} />
+      <div class="clip" data-start="0" data-duration="3" style="position:absolute;inset:0;background:rgb(255,0,0)"></div>`,
+      );
+      try {
+        await filmPage.evaluate(() => window.__player!.renderSeek!(1));
+        expect(await redPixels(filmPage)).toBe(red);
+      } finally {
+        await filmPage.close();
+      }
+    },
+    30_000,
+  );
 
   it.each([
     ["an older shader build", 320 * 180, "window.HyperShader = {};"],

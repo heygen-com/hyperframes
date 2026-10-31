@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve } from "node:path";
-import { defineCommand } from "citty";
+import { defineCommand } from "../utils/defineCommand.js";
 import {
   EXTRACT_CACHE_MIN_AGE_MS,
   directorySizeBytes,

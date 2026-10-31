@@ -35,7 +35,7 @@ function detectProvider(): ClipboardProvider | undefined {
   ];
   const cmd = process.platform === "win32" ? "where" : "which";
   for (const p of candidates) {
-    const result = spawnSync(cmd, [p.cmd], { stdio: "ignore" });
+    const result = spawnSync(cmd, [p.cmd], { stdio: "ignore", windowsHide: true });
     if (result.status === 0) return p;
   }
   return undefined;
@@ -53,6 +53,7 @@ export function copyToClipboard(text: string): boolean {
       encoding: "utf-8",
       stdio: ["pipe", "ignore", "ignore"],
       timeout: COPY_TIMEOUT_MS,
+      windowsHide: true,
     });
     return res.status === 0;
   } catch {

@@ -4,7 +4,8 @@
  */
 
 import { execFile } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { removeScratch } from "@hyperframes/core/remove-scratch";
 import { dirname, join } from "node:path";
 import { getFfmpegBinary } from "../utils/ffmpegBinaries.js";
 import { runFfmpeg, type RunFfmpegResult } from "../utils/runFfmpeg.js";
@@ -64,10 +65,15 @@ function supportsSettsDuration(binary = getFfmpegBinary()): Promise<boolean> {
   let supported = settsDurationSupport.get(binary);
   if (!supported) {
     supported = new Promise((resolve) => {
-      execFile(binary, ["-hide_banner", "-h", "bsf=setts"], (error, stdout) => {
-        // A binary that cannot even print help fails the encode with its own error, not this one.
-        resolve(error !== null || stdout.includes("duration"));
-      });
+      execFile(
+        binary,
+        ["-hide_banner", "-h", "bsf=setts"],
+        { windowsHide: true },
+        (error, stdout) => {
+          // A binary that cannot even print help fails the encode with its own error, not this one.
+          resolve(error !== null || stdout.includes("duration"));
+        },
+      );
     });
     settsDurationSupport.set(binary, supported);
   }
@@ -166,6 +172,6 @@ export async function encodeAac(
     const slowest = Math.max(...results.map((result) => result.durationMs));
     return { ...muxed, durationMs: slowest + muxed.durationMs };
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   }
 }

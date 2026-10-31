@@ -1,9 +1,13 @@
-import { bandFramesOf, medianInterval, rhythm } from "@hyperframes/core/audio-analysis";
-import { asSignal, levels, median, mixed, round } from "./signal.js";
-import type { Entry, Music, MusicSegment, Piece } from "./types.js";
+import {
+  bandFramesOf,
+  medianInterval,
+  rhythm,
+  type AudioSignal,
+} from "@hyperframes/core/audio-analysis";
+import { ABSENT_DB, asSignal, levels, median, mixed, round } from "./signal.js";
+import type { Ambience, Entry, Music, MusicSegment, Piece } from "./types.js";
 
 const HOP = 0.1;
-const ABSENT_DB = -55;
 const CUT_DB = 25;
 const RUNNING_FRAMES = 200;
 const LEVEL_WINDOW = 0.4;
@@ -21,6 +25,10 @@ const FADE_DB = 10;
 const FADE_WINDOW = 3;
 const ENERGY_WINDOW = 30;
 const LEADING_SHARE = 0.2;
+const TONAL_SHARE = 0.4;
+const DENSE_WINDOW = 2;
+const DENSE_SHARE = 0.5;
+const STEADY = 0.5;
 
 export interface MusicInput {
   /** Every pitched stem, by name: bass, guitar, piano, other. */
@@ -117,6 +125,54 @@ function runs(db: Float32Array): { segments: Run[]; breaks: Run[] } {
   };
 }
 
+function soundShare(fine: Float32Array, run: Run): Float32Array {
+  const a = Math.round(run.start / HOP);
+  const b = Math.min(fine.length, Math.round(run.end / HOP));
+  const heard = new Float64Array(b - a + 1);
+  for (let f = a; f < b; f++) heard[f - a + 1] = heard[f - a]! + (fine[f]! >= ABSENT_DB ? 1 : 0);
+  const half = Math.round(DENSE_WINDOW / 2 / HOP);
+  const out = new Float32Array(b - a);
+  for (let f = a; f < b; f++) {
+    const lo = Math.max(a, f - half);
+    const hi = Math.min(b, f + half + 1);
+    out[f - a] = (heard[hi - a]! - heard[lo - a]!) / (hi - lo);
+  }
+  return out;
+}
+
+function steadyEdges(fine: Float32Array, part: Span): Span {
+  const steady = Math.round(STEADY / HOP);
+  const a = Math.round(part.start / HOP);
+  const b = Math.min(fine.length, Math.round(part.end / HOP));
+  const holds = (f: number) => {
+    for (let k = f; k < f + steady; k++) if (k >= b || fine[k]! < ABSENT_DB) return false;
+    return true;
+  };
+  let start = a;
+  while (start < b && !holds(start)) start++;
+  let end = b;
+  while (end > start && !holds(end - steady)) end--;
+  return start < end ? { ...part, start: start * HOP, end: end * HOP } : part;
+}
+
+function sustainedParts(fine: Float32Array, run: Run): Run[] {
+  if (run.end - run.start <= DENSE_WINDOW) {
+    const a = Math.round(run.start / HOP);
+    const b = Math.max(a + 1, Math.min(fine.length, Math.round(run.end / HOP)));
+    let heard = 0;
+    for (let f = a; f < b; f++) if (fine[f]! >= ABSENT_DB) heard++;
+    return heard / (b - a) >= DENSE_SHARE ? [run] : [];
+  }
+  const dense = soundShare(fine, run);
+  const a = Math.round(run.start / HOP);
+  const sparse = new Uint8Array(fine.length);
+  dense.forEach((share, i) => (sparse[a + i] = share < DENSE_SHARE ? 1 : 0));
+  return candidates(sparse, a, a + dense.length)
+    .filter((part) => !part.quiet)
+    .map((part) => steadyEdges(fine, part))
+    .map(({ start, end }) => ({ start, end: Math.min(end, run.end) }));
+}
+
 function chromaOf(chroma: Float64Array[], fps: number, run: Run): Float64Array {
   const a = Math.floor(run.start * fps);
   const b = Math.max(a + 1, Math.min(chroma.length, Math.ceil(run.end * fps)));
@@ -124,6 +180,18 @@ function chromaOf(chroma: Float64Array[], fps: number, run: Run): Float64Array {
   for (let f = a; f < b; f++) chroma[f]?.forEach((v, k) => (sum[k]! += v));
   const norm = Math.hypot(...sum);
   return norm ? sum.map((v) => v / norm) : sum;
+}
+
+function medianTopThreePitchShare(chroma: Float64Array[], fps: number, run: Run): number {
+  const a = Math.floor(run.start * fps);
+  const b = Math.min(chroma.length, Math.ceil(run.end * fps));
+  const held: number[] = [];
+  for (let f = a; f < b; f++) {
+    const sorted = [...chroma[f]!].sort((x, y) => y - x);
+    const total = sorted.reduce((n, v) => n + v, 0);
+    if (total > 0) held.push((sorted[0]! + sorted[1]! + sorted[2]!) / total);
+  }
+  return median(held);
 }
 
 const dot = (a: Float64Array, b: Float64Array) => a.reduce((n, v, k) => n + v * b[k]!, 0);
@@ -154,6 +222,17 @@ function bpmOf(beats: readonly number[], run: Run): number | null {
   return interval ? Math.round(60 / interval) : null;
 }
 
+function beatsInRun(signal: AudioSignal, run: Run): number[] {
+  const samples = signal.channels[0]!;
+  if (run.start === 0 && run.end === samples.length / signal.sampleRate)
+    return rhythm(signal).beats.times;
+  const excerpt = samples.subarray(
+    Math.floor(run.start * signal.sampleRate),
+    Math.ceil(run.end * signal.sampleRate),
+  );
+  return rhythm(asSignal(excerpt, signal.sampleRate)).beats.times;
+}
+
 const sameTempo = (a: number | null, b: number | null) =>
   a === null || b === null || Math.abs(a - b) / Math.max(a, b) <= SAME_TEMPO;
 
@@ -175,7 +254,17 @@ interface Heard {
   print: Float64Array;
   mix: Record<string, number>;
   bpm: number | null;
+  tonality: number;
 }
+
+const leading = (mix: Record<string, number>) =>
+  Object.entries(mix)
+    .filter(([, share]) => share >= LEADING_SHARE)
+    .sort((a, b) => b[1] - a[1])
+    .map(([name]) => name);
+
+const isMusic = (heard: Heard) =>
+  heard.bpm !== null || heard.tonality >= TONAL_SHARE || leading(heard.mix).length > 1;
 
 const alike = (p: Known, heard: Heard, piece: number, mix: number) =>
   dot(p.print, heard.print) >= piece &&
@@ -201,10 +290,7 @@ function pieceOf(
 function newPiece(id: number, heard: Heard): Known {
   return {
     id,
-    instruments: Object.entries(heard.mix)
-      .filter(([, share]) => share >= LEADING_SHARE)
-      .sort((a, b) => b[1] - a[1])
-      .map(([name]) => name),
+    instruments: leading(heard.mix),
     bpm: heard.bpm,
     firstAt: round(heard.run.start),
     print: heard.print,
@@ -212,37 +298,78 @@ function newPiece(id: number, heard: Heard): Known {
   };
 }
 
-function energyCurve(melodic: Float32Array, sampleRate: number, duration: number) {
+function liesBetweenMusic(found: Run[], gap: Run, musical: Set<Run>): boolean {
+  const after = found.findIndex((run) => run.start >= gap.end);
+  return after > 0 && musical.has(found[after - 1]!) && musical.has(found[after]!);
+}
+
+function energyCurve(
+  melodic: Float32Array,
+  sampleRate: number,
+  duration: number,
+  musical: Set<Run>,
+) {
   const energy = [];
   for (let start = 0; start < duration; start += ENERGY_WINDOW) {
     const end = Math.min(duration, start + ENERGY_WINDOW);
-    const power = energyOf(melodic, sampleRate, { start, end });
+    const overlaps = [...musical]
+      .map((run) => ({ start: Math.max(start, run.start), end: Math.min(end, run.end) }))
+      .filter((run) => run.end > run.start);
+    if (!overlaps.length) continue;
+    const power =
+      overlaps.reduce(
+        (sum, run) => sum + energyOf(melodic, sampleRate, run) * (run.end - run.start),
+        0,
+      ) /
+      (end - start);
     energy.push({
       start,
-      end: round(end),
+      end: Math.min(round(end), round(duration, 3)),
       db: power > 0 ? Math.round(10 * Math.log10(power)) : -120,
     });
   }
   return energy;
 }
 
-export function readMusic(input: MusicInput): { music: Music; beats: number[] } {
+export function readMusic(input: MusicInput): {
+  music: Music;
+  ambience: Ambience[];
+  beats: number[];
+} {
   const melodic = mixed(Object.values(input.stems));
   const db = levels(melodic, input.sampleRate, HOP, LEVEL_WINDOW);
-  const { segments: found, breaks } = runs(db);
+  const duration = melodic.length / input.sampleRate;
+  const fine = levels(melodic, input.sampleRate, HOP, HOP);
+  const { segments: whole, breaks } = runs(db);
+  for (const run of whole) run.end = Math.min(run.end, duration);
+  const found = whole.flatMap((run) => sustainedParts(fine, run));
   const frames = bandFramesOf(asSignal(melodic, input.sampleRate));
-  const beats = rhythm(
-    asSignal(input.drums ? mixed([melodic, input.drums]) : melodic, input.sampleRate),
-  ).beats.times;
+  const rhythmic = asSignal(
+    input.drums ? mixed([melodic, input.drums]) : melodic,
+    input.sampleRate,
+  );
+  const beats = rhythm(rhythmic).beats.times;
   const pieces: Known[] = [];
   const segments: MusicSegment[] = [];
+  const ambience: Ambience[] = [];
+  const musical = new Set<Run>();
   for (const run of found) {
     const heard: Heard = {
       run,
       print: chromaOf(frames.chroma, frames.chromaFps, run),
       mix: shares(input, run),
-      bpm: bpmOf(beats, run),
+      bpm: bpmOf(beatsInRun(rhythmic, run), { start: 0, end: run.end - run.start }),
+      tonality: medianTopThreePitchShare(frames.chroma, frames.chromaFps, run),
     };
+    if (!isMusic(heard)) {
+      ambience.push({
+        start: round(run.start),
+        end: Math.min(round(run.end), round(duration, 3)),
+        db: Math.round(10 * Math.log10(Math.max(1e-12, energyOf(melodic, input.sampleRate, run)))),
+      });
+      continue;
+    }
+    musical.add(run);
     const previous = segments[segments.length - 1];
     let piece = pieceOf(pieces, previous, heard);
     let entry: Entry;
@@ -254,7 +381,7 @@ export function readMusic(input: MusicInput): { music: Music; beats: number[] } 
     }
     segments.push({
       start: round(run.start),
-      end: round(run.end),
+      end: Math.min(round(run.end), round(duration, 3)),
       piece: piece.id,
       entry,
       bpm: heard.bpm,
@@ -265,9 +392,12 @@ export function readMusic(input: MusicInput): { music: Music; beats: number[] } 
     music: {
       segments,
       pieces: pieces.map(({ print: _print, mix: _mix, ...piece }) => piece),
-      breaks: breaks.map((b) => ({ start: round(b.start), end: round(b.end) })),
-      energy: energyCurve(melodic, input.sampleRate, db.length * HOP),
+      breaks: breaks
+        .filter((b) => liesBetweenMusic(found, b, musical))
+        .map((b) => ({ start: round(b.start), end: round(b.end) })),
+      energy: energyCurve(melodic, input.sampleRate, duration, musical),
     },
+    ambience,
     beats,
   };
 }

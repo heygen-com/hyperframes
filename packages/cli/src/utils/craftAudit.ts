@@ -29,7 +29,7 @@ const CRAFT_THRESHOLDS = {
 
 const T = CRAFT_THRESHOLDS;
 const ZERO_BBOX: CheckBbox = { x: 0, y: 0, width: 0, height: 0 };
-const WORD_RUNS = /[\p{L}\p{M}\p{N}%$]+/gu;
+const WORD_RUNS = /[\p{L}\p{M}\p{N}%$]+(?:['’][\p{L}\p{M}\p{N}]+)*/gu;
 // Chinese and Japanese have no spaces; a dictionary segmenter counts their words like an English line's.
 const WORD_SEGMENTER = new Intl.Segmenter("ja", { granularity: "word" });
 
@@ -115,7 +115,17 @@ function filmFinding(
 
 export function detectFirstFrameEmpty(frames: CraftFrame[]): CraftFinding[] {
   const first = frames[0];
-  if (!first || first.time > 1e-3 || first.painted) return [];
+  if (!first || first.time > 1e-3) return [];
+  if (first.coveredBy) {
+    return [
+      filmFinding(
+        "first_frame_empty",
+        0,
+        `Frame 0 is covered by ${first.coveredBy}: an opaque element over the canvas hides every other clip, and the first frame is the thumbnail on social players. Move it below the content; see canvas_covered.`,
+      ),
+    ];
+  }
+  if (first.painted) return [];
   return [
     filmFinding(
       "first_frame_empty",
@@ -217,14 +227,13 @@ function readableBlocks(frame: CraftFrame, readHeight: number): Map<number, Bloc
     const block = blocks.get(part.block);
     if (!block) {
       blocks.set(part.block, {
-        text: part.text,
+        text: part.blockText,
         rect,
         selector: part.blockSelector,
         sourceFile: part.sourceFile,
       });
       continue;
     }
-    block.text = `${block.text} ${part.text}`;
     block.rect = {
       left: Math.min(block.rect.left, rect.left),
       top: Math.min(block.rect.top, rect.top),

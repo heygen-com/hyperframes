@@ -51,6 +51,21 @@ describe("buildLambdaRenderConfig — aspect-agnostic wire threading", () => {
     expect(config.outputResolutionAspectAgnostic).toBeUndefined();
   });
 
+  it("sends the delivery options on the wire and nothing when they are unset", () => {
+    const config = buildLambdaRenderConfig(
+      { ...BASE_ARGS, keyframeIntervalSeconds: 2, maxBitrate: "8M", bufferSize: "12M" },
+      undefined,
+    );
+    expect(config).toMatchObject({
+      keyframeIntervalSeconds: 2,
+      maxBitrate: "8M",
+      bufferSize: "12M",
+    });
+    expect(
+      JSON.parse(JSON.stringify(buildLambdaRenderConfig(BASE_ARGS, undefined))),
+    ).not.toHaveProperty("maxBitrate");
+  });
+
   it("carries variables verbatim through the wire config", () => {
     const config = buildLambdaRenderConfig(BASE_ARGS, { alice: "hello" });
     expect(config.variables).toEqual({ alice: "hello" });

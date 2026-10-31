@@ -28,6 +28,14 @@ export type LambdaAction = "plan" | "audio" | "renderChunk" | "assemble";
 export interface WarmEvent {
   Action: "warm";
 }
+/** Assemble hands a helper part of the final mp4's multipart upload: each part's S3 ranges, in order. */
+export interface StitchPartsEvent {
+  Action: "stitchParts";
+  Bucket: string;
+  Key: string;
+  UploadId: string;
+  Parts: { partNumber: number; ranges: { uri: string; start: number; end: number }[] }[];
+}
 /** Transport protocol selected for one complete distributed render. */
 export type LambdaPlanProtocol = "v1" | "v2";
 
@@ -45,6 +53,7 @@ export type LambdaEvent =
   | RenderChunkEvent
   | AssembleEvent
   | WarmEvent
+  | StitchPartsEvent
   | { Payload: LambdaEvent }
   | { Input: LambdaEvent };
 
@@ -239,8 +248,14 @@ export interface WarmLambdaResult {
   Action: "warm";
 }
 
+export interface StitchPartsLambdaResult {
+  Action: "stitchParts";
+  ETags: string[];
+}
+
 export type LambdaResult =
   | WarmLambdaResult
+  | StitchPartsLambdaResult
   | PlanLambdaResult
   | AudioLambdaResult
   | RenderChunkLambdaResult
