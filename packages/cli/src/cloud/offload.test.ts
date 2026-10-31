@@ -158,6 +158,30 @@ describe("offloadHeavyMedia", () => {
     expect(second.get("index.html")!.toString()).toContain("https://assets.example/1/clip.mp4");
   });
 
+  it("leaves heavy files nothing references out of the archive, but keeps one a variable names", async () => {
+    const dir = project({
+      "index.html": html(`<video src="clip.mp4"></video>`),
+      "clip.mp4": HEAVY,
+      "assets/guide.mov": HEAVY,
+      "assets/plate.png": HEAVY,
+      "assets/small.txt": "notes",
+    });
+    const fileMap = stagePublishFiles(dir, OFFLOAD_MIN_BYTES);
+
+    await offloadHeavyMedia(dir, fileMap, {
+      apiBaseUrl: "https://api.example",
+      upload: fakeUpload(),
+      cachePath: cachePath(),
+      variablesText: JSON.stringify({ photo: "assets/plate.png" }),
+    });
+
+    expect([...fileMap.keys()].sort()).toEqual([
+      "assets/plate.png",
+      "assets/small.txt",
+      "index.html",
+    ]);
+  });
+
   describe("a dry run (no upload)", () => {
     const opts = { apiBaseUrl: "https://api.example" };
     const files = { "index.html": html(`<video src="clip.mp4"></video>`), "clip.mp4": HEAVY };
@@ -456,7 +480,7 @@ describe("offloadHeavyMedia", () => {
 
     expect(prepared?.equals(nested)).toBe(true);
     expect(fileMap.has("compositions/logo.gif")).toBe(false);
-    expect(fileMap.has("logo.gif")).toBe(true);
+    expect(fileMap.has("logo.gif")).toBe(false);
   });
 
   it("hashes and encodes media over 4 GiB from disk, never reading it whole", async () => {
@@ -704,11 +728,12 @@ describe("offloadHeavyMedia", () => {
     }
   });
 
-  it("keeps a heavy file no reference names in the zip, since --variables can pick it at render time", async () => {
+  it("keeps a heavy file only a --variables value names, and drops the one nothing names", async () => {
     const dir = project({
       "index.html": html(`<video data-var-src="clip" src="media/a.mp4"></video>`),
       "media/a.mp4": HEAVY,
       "media/b.mp4": HEAVY,
+      "media/c.mp4": HEAVY,
     });
     const fileMap = buildPublishFileMap(dir);
     const upload = fakeUpload();
@@ -717,11 +742,13 @@ describe("offloadHeavyMedia", () => {
       apiBaseUrl: "https://api.example",
       upload,
       cachePath: cachePath(),
+      variablesText: JSON.stringify({ clip: "media/b.mp4" }),
     });
 
     expect(report.map((item) => item.path)).toEqual(["media/a.mp4"]);
     expect(upload).toHaveBeenCalledTimes(1);
     expect(fileMap.has("media/b.mp4")).toBe(true);
+    expect(fileMap.has("media/c.mp4")).toBe(false);
   });
 
   it("keeps a heavy file a script builds from split strings in the zip", async () => {

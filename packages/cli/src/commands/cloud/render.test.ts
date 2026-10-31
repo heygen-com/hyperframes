@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, truncateSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, truncateSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 import {
   assertArchiveFits,
+  resolveCloudFpsArg,
   resolveAspectRatioForSubmit,
   validateDryRunSource,
   type ProjectInputSource,
@@ -34,6 +35,30 @@ function writeComposition(width: number, height: number): string {
   );
   return dir;
 }
+
+describe("resolveCloudFpsArg", () => {
+  const withFps = (fps: string) => {
+    const dir = writeComposition(1920, 1080);
+    writeFileSync(
+      join(dir, "index.html"),
+      `<!doctype html><html><body><div data-composition-id="main" data-fps="${fps}" data-width="1920" data-height="1080"></div></body></html>`,
+    );
+    return { kind: "dir", dir } as const;
+  };
+
+  it("reads the root data-fps when --fps is absent", () => {
+    expect(resolveCloudFpsArg(withFps("24"), undefined, undefined)).toBe("24");
+  });
+  it("lets an explicit --fps win", () => {
+    expect(resolveCloudFpsArg(withFps("24"), "60", undefined)).toBe("60");
+  });
+  it("leaves the server default when data-fps is absent or fractional", () => {
+    expect(
+      resolveCloudFpsArg({ kind: "dir", dir: writeComposition(1, 1) }, undefined, undefined),
+    ).toBeUndefined();
+    expect(resolveCloudFpsArg(withFps("29.97"), undefined, undefined)).toBeUndefined();
+  });
+});
 
 describe("validateDryRunSource", () => {
   it("accepts a local directory and rejects already-uploaded sources", () => {
@@ -147,6 +172,11 @@ describe("cloud render --dry-run with heavy media", () => {
 describe("cloud render --dry-run with a file over 4 GiB left in the zip", () => {
   it("reports it as over the limit without reading it", () => {
     const dir = writeComposition(1920, 1080);
+    // A mention nothing can rewrite keeps the file in the zip.
+    writeFileSync(
+      join(dir, "index.html"),
+      `<!-- raw/take.mov -->${readFileSync(join(dir, "index.html"), "utf-8")}`,
+    );
     mkdirSync(join(dir, "raw"));
     writeFileSync(join(dir, "raw", "take.mov"), "");
     truncateSync(join(dir, "raw", "take.mov"), 2 ** 32 + 1);

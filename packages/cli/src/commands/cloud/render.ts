@@ -36,6 +36,7 @@ import {
 } from "../../cloud/detectAspectRatio.js";
 import { c } from "../../ui/colors.js";
 import { errorBox, formatBytes, formatDuration } from "../../ui/format.js";
+import { resolveDefaultFpsArg } from "../../utils/renderArgs.js";
 import { resolveProject, type ProjectDir } from "../../utils/project.js";
 import { normalizeErrorMessage } from "../../utils/errorMessage.js";
 import {
@@ -119,7 +120,10 @@ export default defineCommand({
   meta: { name: "render", description: "Render a HyperFrames composition in the cloud" },
   args: {
     dir: { type: "positional", required: false, description: "Project directory (default: .)" },
-    fps: { type: "string", description: "Frames per second (1-240). Default: 30." },
+    fps: {
+      type: "string",
+      description: "Frames per second (1-240). Default: the composition's root data-fps, else 30.",
+    },
     quality: { type: "string", description: "draft | standard | high (default: standard)" },
     format: { type: "string", description: "mp4 | webm | mov (default: mp4)" },
     "page-motion-blur": {
@@ -220,7 +224,6 @@ export default defineCommand({
   // fallow-ignore-next-line complexity
   async run({ args }) {
     const asJson = Boolean(args.json);
-    const fps = parseIntFlag(args.fps, { flag: "--fps", min: 1, max: 240 });
     const quality = parseEnumFlag(args.quality, VALID_QUALITY, { flag: "--quality" });
     const format = parseEnumFlag(args.format, VALID_FORMAT, { flag: "--format" });
     const pageMotionBlur = parseEnumFlag(args["page-motion-blur"], ["off"] as const, {
@@ -245,6 +248,12 @@ export default defineCommand({
       url: args.url,
     });
     validateDryRunSource(project, args["dry-run"] ?? false);
+
+    const fps = parseIntFlag(resolveCloudFpsArg(project, args.fps, args.composition), {
+      flag: "--fps",
+      min: 1,
+      max: 240,
+    });
 
     // Aspect ratio is derived from the composition's authored dimensions: for
     // a local dir we parse the entry HTML and auto-detect, so the user rarely
@@ -277,8 +286,12 @@ export default defineCommand({
     const client = await createCloudClient();
     const preparedArchive =
       project.kind === "dir"
-        ? await prepareLocalArchive(project, args.composition, asJson, (file) =>
-            uploadAssetViaDirectUpload({ client, ...file }),
+        ? await prepareLocalArchive(
+            project,
+            args.composition,
+            asJson,
+            (file) => uploadAssetViaDirectUpload({ client, ...file }),
+            variables && JSON.stringify(variables),
           )
         : undefined;
 
@@ -590,6 +603,7 @@ async function prepareLocalArchive(
   composition: string | undefined,
   asJson: boolean,
   upload?: OffloadOptions["upload"],
+  variablesText?: string,
 ): Promise<PreparedLocalArchive> {
   const project = resolveProject(source.dir);
   if (!asJson) {
@@ -597,7 +611,7 @@ async function prepareLocalArchive(
     console.log(`${c.accent("◆")}  Zipping ${c.accent(project.name)}`);
   }
   const { fileMap, entryPath } = stageProjectFiles(project, composition);
-  const offloaded = await offloadMedia(project, fileMap, entryPath, asJson, upload);
+  const offloaded = await offloadMedia(project, fileMap, entryPath, asJson, upload, variablesText);
 
   // Media left on disk barely compresses: past the limit, its size is the report and nothing is read.
   const onDiskBytes = [...fileMap.values()]
@@ -656,6 +670,7 @@ async function offloadMedia(
   entryPath: string,
   asJson: boolean,
   upload: OffloadOptions["upload"],
+  variablesText?: string,
 ): Promise<OffloadedMedia[]> {
   let offloaded: OffloadedMedia[];
   try {
@@ -663,6 +678,7 @@ async function offloadMedia(
       apiBaseUrl: resolveCloudBaseUrl(),
       upload,
       entryPath,
+      variablesText,
       onFile: (item) =>
         (asJson ? console.error : console.log)(c.dim(`   ${describeOffload(item, !upload)}`)),
     });
@@ -679,6 +695,23 @@ async function offloadMedia(
     }
   }
   return offloaded;
+}
+
+/** --fps, else the entry's root data-fps (the owner local render uses), else the server default. */
+export function resolveCloudFpsArg(
+  source: ProjectInputSource,
+  fps: string | undefined,
+  composition: string | undefined,
+): string | undefined {
+  if (source.kind !== "dir") return fps;
+  const resolved = resolveDefaultFpsArg(
+    fps,
+    source.dir,
+    resolvePath(source.dir, "index.html"),
+    composition,
+  );
+  // The cloud API takes whole frame rates; a fractional data-fps (29.97) leaves it to the server.
+  return resolved !== undefined && /^\d+$/.test(resolved) ? resolved : fps;
 }
 
 export function assertArchiveFits(sizeBytes: number, largestFiles: ArchiveFileSummary[]): void {

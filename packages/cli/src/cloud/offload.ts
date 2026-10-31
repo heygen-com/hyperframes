@@ -165,6 +165,8 @@ export interface OffloadOptions {
   /** Overrides the renderer's GIF preparation for tests. */
   gifPrep?: GifPrep;
   onFile?: (item: OffloadedMedia) => void;
+  /** Render-time --variables as JSON text: a file named there is used at render time and stays. */
+  variablesText?: string;
 }
 
 type MediaKind = "video" | "audio" | "image";
@@ -714,10 +716,11 @@ export async function offloadHeavyMedia(
   };
   const urls = new Map<string, string>();
   const report: OffloadedMedia[] = [];
+  let referenced = new Set<string>();
   try {
     await prepareEntryGifs(ctx, fileMap);
     // Only files a reference points at: one used through render-time --variables must stay in the zip.
-    const referenced = referencedFiles(ctx.absDir, fileMap);
+    referenced = referencedFiles(ctx.absDir, fileMap);
     for (const [path, file] of [...fileMap].sort(([a], [b]) => a.localeCompare(b))) {
       if (!referenced.has(path)) continue;
       const item = await offloadFile(ctx, path, file);
@@ -733,7 +736,26 @@ export async function offloadHeavyMedia(
 
   if (urls.size > 0) rewriteReferences(ctx.absDir, fileMap, (key) => urls.get(key) ?? null);
   dropReplacedFiles(fileMap, report, ctx.preparedGifSources, [...urls.values()]);
+  dropUnusedHeavyFiles(ctx, referenced, [...urls.values()]);
   return report;
+}
+
+/** Working files (guides, plates) nothing points at would only push the zip past the upload limit. */
+function dropUnusedHeavyFiles(
+  ctx: OffloadContext,
+  referenced: Set<string>,
+  assetUrls: string[],
+): void {
+  const { fileMap } = ctx;
+  const withoutUrls = (text: string) =>
+    assetUrls.reduce((acc, url) => acc.replaceAll(url, ""), text);
+  const code = withoutUrls(scriptCode(fileMap));
+  const variables = ctx.opts.variablesText ?? "";
+  for (const [path, file] of [...fileMap]) {
+    if (referenced.has(path) || stagedSize(file) < OFFLOAD_MIN_BYTES) continue;
+    if (variables.includes(basename(path))) continue;
+    if (!isStillMentioned(fileMap, path, code, withoutUrls)) fileMap.delete(path);
+  }
 }
 
 function dropReplacedFiles(
