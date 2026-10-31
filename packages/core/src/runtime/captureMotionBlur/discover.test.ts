@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { discoverMovers } from "./discover";
+import { discoverMovers, scanMovers } from "./discover";
 
 // jsdom lays nothing out: each element's rect follows the x its fake timeline writes.
 function element(parent: Element, id: string, size = 10, tag = "div"): HTMLElement {
@@ -301,6 +301,60 @@ describe("discoverMovers", () => {
     scene.getBoundingClientRect = () => ({ width: 100, height: 100 }) as DOMRect;
     fast.style.opacity = "0.5";
     expect(discoverMovers({ scene, durationSeconds: 1, fps: 30, seek }).movers).toEqual([fast]);
+  });
+});
+
+describe("scanMovers callback dependency", () => {
+  it("ignores a callback-only style change whose box stays fixed", () => {
+    const scene = document.createElement("div");
+    const mover = element(scene, "mover");
+    const label = element(scene, "label");
+    let callbacks = 0;
+    let seeks = 0;
+    const seek = (t: number, suppressEvents: boolean): void => {
+      seeks++;
+      mover.style.transform = `translateX(${300 * t}px)`;
+      if (!suppressEvents) {
+        callbacks++;
+        label.style.opacity = String(t);
+      }
+    };
+
+    const found = scanMovers({ scene, durationSeconds: 1, fps: 30, seek, events: true });
+
+    expect(found.movers).toEqual([mover]);
+    expect(found.readEvents).toBe(false);
+    expect({ callbacks, seeks }).toEqual({ callbacks: 31, seeks: 62 });
+    expect(mover.getBoundingClientRect().left).toBe(300);
+    expect(label.getBoundingClientRect().left).toBe(0);
+  });
+
+  it("compares the same mover by identity after a callback inserts an earlier sibling", () => {
+    const scene = document.createElement("div");
+    const mover = element(scene, "mover");
+    let inserted: HTMLElement | undefined;
+    let callbacks = 0;
+    let seeks = 0;
+    const seek = (t: number, suppressEvents: boolean): void => {
+      seeks++;
+      mover.style.transform = `translateX(${300 * t}px)`;
+      if (!suppressEvents) {
+        callbacks++;
+        if (t > 0 && !inserted) {
+          inserted = document.createElement("span");
+          inserted.id = "inserted";
+          scene.insertBefore(inserted, mover);
+        }
+      }
+    };
+
+    const found = scanMovers({ scene, durationSeconds: 1, fps: 30, seek, events: true });
+
+    expect(found.movers).toEqual([mover]);
+    expect(found.readEvents).toBe(false);
+    expect({ callbacks, seeks }).toEqual({ callbacks: 31, seeks: 62 });
+    expect([...scene.children]).toEqual([inserted, mover]);
+    expect(mover.getBoundingClientRect().left).toBe(300);
   });
 });
 
