@@ -451,7 +451,9 @@ export function videoExtractionSourceLabel(src: string, baseDir: string): string
   const lib = WINDOWS_ABSOLUTE.test(path) ? win32 : { isAbsolute, relative, basename, normalize };
   const relativePath = lib.isAbsolute(path) ? lib.relative(baseDir, path) : lib.normalize(path);
   const label =
-    relativePath.startsWith("..") || lib.isAbsolute(relativePath) ? lib.basename(path) : relativePath;
+    relativePath.startsWith("..") || lib.isAbsolute(relativePath)
+      ? lib.basename(path)
+      : relativePath;
   return label.replace(/\\/g, "/");
 }
 
