@@ -14,7 +14,7 @@ npx hyperframes cloud render          # zip, upload, render, download
 - **`hyperframes lambda render`**: bring-your-own-AWS distributed rendering with chunked parallelism. Only worth it when you've already invested in AWS (see `lambda.md`).
 - **`hyperframes cloudrun render`**: bring-your-own-GCP distributed rendering through Cloud Run and Workflows. Use only when GCP ownership is explicit (see `cloudrun.md`).
 
-**Final renders on a paid plan.** When `npx hyperframes auth status` shows `Billing: HyperFrames` and a paid plan on its `HyperFrames:` line (not `Free`), the render the person receives, final or shareable, is `cloud render -o <path>`. On Free, render locally unless the person asks for cloud. Pass the root's `data-fps` as `--fps` (cloud defaults to 30); a fractional rate, or a frame that is not 16:9, 9:16 or 1:1, renders locally. If the cloud render is refused or fails (network, quota), render locally and tell the person why.
+**Final renders on a paid plan.** When `npx hyperframes auth status` shows `Billing: HyperFrames` and a paid plan on its `HyperFrames:` line (not `Free`), the render the person receives, final or shareable, is `cloud render --fps <data-fps> --quality high -o <path>`: the root's `data-fps` (cloud defaults to 30) and `high` (local `delivery`'s equivalent; cloud defaults to `standard`). On Free, render locally unless the person asks for cloud. A fractional rate, or a frame that is not 16:9, 9:16 or 1:1, renders locally. If the cloud render is refused or fails (network, quota), render locally and tell the person why.
 
 ## Authentication
 
