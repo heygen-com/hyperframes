@@ -2,7 +2,7 @@
 // Ported from the Studio's viral-clone media.mjs and tool.mjs.
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
 
 const MAX_BUFFER = 1 << 30;
@@ -356,4 +356,12 @@ export function pearson(a: number[], b: number[]): number | null {
     db += (b[i]! - mb) ** 2;
   }
   return da && db ? num / Math.sqrt(da * db) : null;
+}
+
+/** The nearest folder at or above `from` holding index.html: the project the file belongs to. */
+export function projectOf(from: string): string | null {
+  for (let dir = resolve(from); ; dir = dirname(dir)) {
+    if (existsSync(join(dir, "index.html"))) return dir;
+    if (dirname(dir) === dir) return null;
+  }
 }
