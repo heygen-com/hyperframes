@@ -349,6 +349,30 @@ describe("runCaptureSegmentedStage", () => {
     expect(closeCaptureSession.mock.calls.map((c) => c[0])).toContain(probeSession);
   });
 
+  it("closes a risky probe once when several workers open sessions together", async () => {
+    closeCaptureSession.mockClear();
+    const probeSession = {
+      ...fakeStageInput({ totalFrames: 1 }).probeSession,
+      deRiskFrames: new Set([2]),
+    };
+    const result = await runCaptureSegmentedStage({
+      ...fakeStageInput({ totalFrames: 6 }),
+      probeSession: probeSession as never,
+      segmentFrames: 3,
+      workerCount: 2,
+      segmentDir: join(fixtureRoot, "risk-probe-workers"),
+      deps: {
+        spawnEncoder: mock(async () => okEncoder()),
+        captureFrame: mock(async () => ({ buffer: Buffer.alloc(1) })),
+        concat: mock(async () => ({ success: true as const })),
+        closeSession: mock(async () => {}),
+        removeFile: () => {},
+      },
+    });
+    expect(result.success).toBe(true);
+    expect(closeCaptureSession.mock.calls.filter((c) => c[0] === probeSession)).toHaveLength(1);
+  });
+
   it("skips completed segments and still concats all of them in order", async () => {
     const stableDir = join(fixtureRoot, "stable");
     const spawned: string[] = [];

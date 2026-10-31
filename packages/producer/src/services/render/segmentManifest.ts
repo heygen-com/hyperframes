@@ -23,6 +23,7 @@ export interface SegmentManifestEntry {
 export interface SegmentManifest {
   version: 1;
   planHash: string;
+  forceScreenshot: boolean;
   totalFrames: number;
   segmentFrames: number;
   completed: SegmentManifestEntry[];
@@ -114,6 +115,7 @@ function isManifest(value: unknown): value is SegmentManifest {
   return (
     Reflect.get(value, "version") === 1 &&
     hasString(value, "planHash") &&
+    typeof Reflect.get(value, "forceScreenshot") === "boolean" &&
     hasNumber(value, "totalFrames") &&
     hasNumber(value, "segmentFrames") &&
     Array.isArray(completed) &&
@@ -167,18 +169,19 @@ export async function probeSegmentFrameCount(
 }
 
 /**
- * Indices safe to skip on resume. A segment counts only if the hash matches,
- * the file exists at the recorded size, and its frame count equals the slice
- * length. Anything else re-captures — the cost of re-capturing a good segment
- * is minutes; the cost of reusing a bad one is a silently wrong video.
+ * Indices safe to skip on resume. A segment counts only if the hash and mode
+ * match, the file exists at the recorded size, and its frame count equals the
+ * slice length. Anything else re-captures — the cost of re-capturing a good
+ * segment is minutes; the cost of reusing a bad one is a silently wrong video.
  */
 export async function validateCompletedSegments(
   manifest: SegmentManifest,
-  expectedHash: string,
+  expected: Pick<SegmentManifest, "planHash" | "forceScreenshot">,
   probeFrames: (path: string) => Promise<number | null>,
 ): Promise<Set<number>> {
   const ok = new Set<number>();
-  if (manifest.planHash !== expectedHash) return ok;
+  if (manifest.planHash !== expected.planHash) return ok;
+  if (manifest.forceScreenshot !== expected.forceScreenshot) return ok;
   for (const entry of manifest.completed) {
     if (!existsSync(entry.path)) continue;
     const size = statSync(entry.path).size;

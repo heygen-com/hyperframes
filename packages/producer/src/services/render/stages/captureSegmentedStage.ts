@@ -298,8 +298,9 @@ function defaultSessionFactory(input: CaptureSegmentedStageInput): SessionFactor
     create: async () => {
       const probeCannotCaptureEveryFrame = Boolean(probeSession?.deRiskFrames?.size);
       if (probeSession && probeCannotCaptureEveryFrame) {
-        await closeCaptureSession(probeSession).catch(() => {});
+        const riskyProbe = probeSession;
         probeSession = null;
+        await closeCaptureSession(riskyProbe).catch(() => {});
       }
       const session = probeSession ?? (await openSegmentedSession(input));
       if (probeSession) {
