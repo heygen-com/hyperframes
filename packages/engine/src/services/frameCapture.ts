@@ -3654,7 +3654,6 @@ const STATIC_VERIFY_REFERENCE_STRIDE = 24;
 // capture count so a long composition cannot spend minutes proving an
 // optimization before the real render starts. Exhaustion fails closed: dedup is
 // disabled and normal capture proceeds.
-// Floor; the budget grows with planned shots x first-shot time.
 const STATIC_VERIFY_MAX_MS = 15_000;
 const STATIC_VERIFY_HEADROOM = 1.5;
 const STATIC_VERIFY_CEILING_MS = 300_000;
