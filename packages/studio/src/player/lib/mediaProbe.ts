@@ -136,26 +136,29 @@ export async function probeMissingSourceDurations<
 >(
   elements: T[],
   projectId: string | null,
-  apply: (key: string, durationSeconds: number) => void,
+  apply: (durations: ReadonlyMap<string, number>) => void,
 ): Promise<void> {
-  const needs = elements.flatMap((el) => {
+  const keysBySource = new Map<string, string[]>();
+  for (const el of elements) {
     if (
       !el.src ||
       el.sourceDuration != null ||
       !["video", "audio"].includes(el.tag.toLowerCase())
     ) {
-      return [];
+      continue;
     }
     const source = resolveProbeSource(el.src, projectId);
-    return !getCachedProbe(source) && !hasFreshFailure(normalizeUrl(source))
-      ? [{ el, source }]
-      : [];
-  });
-  if (needs.length === 0) return;
+    if (getCachedProbe(source) || hasFreshFailure(normalizeUrl(source))) continue;
+    const keys = keysBySource.get(source);
+    if (keys) keys.push(el.key ?? el.id);
+    else keysBySource.set(source, [el.key ?? el.id]);
+  }
+  // One apply per file, not per clip: a film that cuts one file into many clips would otherwise write the store
+  // once per clip, and each write re-runs every subscriber.
   await Promise.allSettled(
-    needs.map(async ({ el, source }) => {
+    [...keysBySource].map(async ([source, keys]) => {
       const result = await probeMediaUrl(source);
-      if (result) apply(el.key ?? el.id, result.duration);
+      if (result) apply(new Map(keys.map((key) => [key, result.duration])));
     }),
   );
 }
