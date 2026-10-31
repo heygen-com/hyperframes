@@ -4,6 +4,7 @@ import { mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
+import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
 import { createInspectorServer } from "../src/server";
 
@@ -11,7 +12,7 @@ const project = mkdtempSync(join(tmpdir(), "hf-inspector-"));
 
 function start(env?: NodeJS.ProcessEnv) {
   const server = spawn("bun", ["src/server.ts", project, "0"], {
-    cwd: new URL("..", import.meta.url).pathname,
+    cwd: fileURLToPath(new URL("..", import.meta.url)),
     stdio: ["ignore", "pipe", "pipe"],
     env,
   });
@@ -122,9 +123,9 @@ it("importing the server does not listen", () => {
 it("starts when the entry path is a symlink", async () => {
   const dir = mkdtempSync(join(tmpdir(), "hf-bin-"));
   const link = join(dir, "hyperframes-inspector");
-  symlinkSync(new URL("../src/server.ts", import.meta.url).pathname, link);
+  symlinkSync(fileURLToPath(new URL("../src/server.ts", import.meta.url)), link);
   const child = spawn("bun", [link, project, "0"], {
-    cwd: new URL("..", import.meta.url).pathname,
+    cwd: fileURLToPath(new URL("..", import.meta.url)),
     stdio: ["ignore", "pipe", "pipe"],
   });
   const lines = createInterface({ input: child.stdout! });
