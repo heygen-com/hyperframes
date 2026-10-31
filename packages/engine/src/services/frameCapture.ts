@@ -3649,11 +3649,10 @@ export async function computeStaticFrameSet(
 // sampleCount, so that knob's effect on density stays monotonic (see below).
 const STATIC_VERIFY_REFERENCE_STRIDE = 24;
 
-// Verification uses full-page screenshots, whose cost scales with canvas size
-// and page complexity rather than frame count. Bound wall time as well as the
-// capture count so a long composition cannot spend minutes proving an
-// optimization before the real render starts. Exhaustion fails closed: dedup is
-// disabled and normal capture proceeds.
+// Wall budget for verification: 15 s is the floor; above it the budget is 1.5x
+// planned shots x the first shot's seek+capture time, capped at 300 s (nothing
+// was gained past 600 s on a 4K job). Exhaustion fails closed: dedup is
+// disabled for the unverified runs and normal capture proceeds.
 const STATIC_VERIFY_MAX_MS = 15_000;
 const STATIC_VERIFY_HEADROOM = 1.5;
 const STATIC_VERIFY_CEILING_MS = 300_000;
@@ -3958,9 +3957,9 @@ export async function verifyStaticFramesSafe(
     );
     if (spent >= budget) return "time_budget";
     if (stats.screenshots >= hardCap) return "count_budget";
+    const shotStart = now();
     await seekToFrame(frameIdx);
     stats.screenshots++;
-    const shotStart = now();
     const buf = await capture(page, session.options);
     if (stats.screenshots === 1) firstShotMs = now() - shotStart;
     return buf;
