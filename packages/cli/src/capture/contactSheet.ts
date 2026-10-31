@@ -304,7 +304,7 @@ export async function createSvgContactSheet(
   if (svgPaths.length === 0) return [];
   const sharp = await loadSharp("contact sheets");
 
-  const svgFileNames = svgPaths.map((p) => p.split("/").pop()!);
+  const svgFileNames = svgPaths.map((p) => basename(p));
 
   // Render ALL SVGs to PNG thumbnails first, then paginate the sheets
   const thumbSize = 200;
