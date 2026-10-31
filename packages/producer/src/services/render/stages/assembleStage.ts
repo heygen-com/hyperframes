@@ -61,7 +61,7 @@ export function recordLimiterAttenuation(job: RenderJob, audioLoweredDb: number 
   if (audioLoweredDb === undefined) return;
   job.audioLoweredDb = audioLoweredDb;
   const ceiling = `−${Math.abs(AAC_DELIVERY_TRUE_PEAK_DBFS)} dBTP`;
-  (job.config.logger ?? defaultLogger).info(
+  (job.config.logger ?? defaultLogger).warn(
     `Audio lowered by ${audioLoweredDb.toFixed(1)} dB to stay under ${ceiling}`,
     { audioLoweredDb },
   );

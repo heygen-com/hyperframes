@@ -1756,7 +1756,7 @@ How it uses the machine, and when it gives up:
 | `--strict-variables`                                     | off                                        | Fail rather than warn on an undeclared or mistyped variable key                                                    |
 | `--batch-concurrency` / `--batch-fail-fast`              | `1` / off                                  | Batch rows at once, and whether the first failure stops the rest                                                   |
 | `--debug`                                                | off                                        | Keep intermediates and write diagnostics under the Producer `.debug` directory                                     |
-| `--quiet`                                                | off                                        | Less output                                                                                                        |
+| `--quiet`                                                | off                                        | Less output; warnings, including delivery audio gain reductions, remain visible                                     |
 | `--skill`                                                | —                                          | Record which authoring workflow started this render, in usage telemetry                                            |
 
 Low-memory detection reads **host** RAM, not cgroup or container limits, so

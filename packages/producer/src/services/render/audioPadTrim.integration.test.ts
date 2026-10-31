@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { getFfmpegBinary, muxVideoWithAudio } from "@hyperframes/engine";
 import { padOrTrimAudioToVideoFrameCount } from "./audioPadTrim.js";
+import { runAudioStage } from "./stages/audioStage.js";
 
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true })));
@@ -45,6 +46,86 @@ const hasFfmpeg = (() => {
 })();
 
 describe.skipIf(!hasFfmpeg)("audio pad real-media packet contract", () => {
+  it.each([
+    { frameCount: 91, fps: { num: 30, den: 1 } },
+    { frameCount: 31, fps: { num: 30000, den: 1001 } },
+  ])(
+    "copies frame-fitted AAC without another encode at $fps.num/$fps.den",
+    async ({ frameCount, fps }) => {
+      const dir = mkdtempSync(join(tmpdir(), "hf-aac-copy-"));
+      dirs.push(dir);
+      const source = join(dir, "source.wav");
+      const duration = (frameCount * fps.den) / fps.num;
+      execFileSync(getFfmpegBinary(), [
+        "-nostdin",
+        "-v",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        `aevalsrc=0.15*sin(2*PI*73*t)+0.02*sin(2*PI*997*t)|0.12*sin(2*PI*101*t)+0.03*sin(2*PI*1601*t):s=48000:d=${duration + 0.1}:c=stereo`,
+        "-c:a",
+        "pcm_f32le",
+        source,
+      ]);
+      const mixed = await runAudioStage({
+        projectDir: dir,
+        workDir: dir,
+        compiledDir: dir,
+        totalFrames: frameCount,
+        fps,
+        ffmpegProcessTimeout: 30_000,
+        audioGain: 1,
+        audios: [
+          {
+            id: "stereo",
+            src: source,
+            start: 0,
+            end: duration,
+            mediaStart: 0,
+            volume: 1,
+            type: "audio",
+          },
+        ],
+        abortSignal: undefined,
+        assertNotAborted: () => {},
+      });
+      expect(mixed.hasAudio, mixed.audioError).toBe(true);
+      const normalized = await padOrTrimAudioToVideoFrameCount({
+        audioPath: mixed.audioOutputPath,
+        outputPath: join(dir, "normalized.m4a"),
+        videoPath: join(dir, "video.mp4"),
+        probeVideoFrameInfo: async () => ({ frameCount, fpsNum: fps.num, fpsDen: fps.den }),
+      });
+      expect(normalized.success, normalized.error).toBe(true);
+      expect(normalized.operation).toBe("copy");
+      const packetHashes = (path: string) =>
+        execFileSync(
+          "ffprobe",
+          [
+            "-v",
+            "error",
+            "-select_streams",
+            "a:0",
+            "-show_packets",
+            "-show_data_hash",
+            "sha256",
+            "-show_entries",
+            "packet=data_hash",
+            "-of",
+            "csv=p=0",
+            path,
+          ],
+          { encoding: "utf8" },
+        )
+          .split("\n")
+          .filter((line) => line.includes("SHA256:"));
+      const originalPackets = packetHashes(mixed.audioOutputPath);
+      expect(originalPackets.length).toBeGreaterThan(1);
+      expect(packetHashes(normalized.outputPath)).toEqual(originalPackets);
+    },
+  );
+
   it("normalizes a tiny raw-ADTS pad without an oversized terminal packet", async () => {
     const dir = mkdtempSync(join(tmpdir(), "hf-pad-"));
     dirs.push(dir);

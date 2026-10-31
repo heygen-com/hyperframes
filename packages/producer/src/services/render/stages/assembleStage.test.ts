@@ -26,7 +26,8 @@ vi.mock("../shared.js", () => ({
   updateJobStatus: vi.fn(),
 }));
 
-import { runAssembleStage } from "./assembleStage.js";
+import { recordLimiterAttenuation, runAssembleStage } from "./assembleStage.js";
+import { createConsoleLogger } from "../../../logger.js";
 import { EncoderInterruptedError } from "../encoderInterruption.js";
 
 function makeInput(overrides: Partial<AssembleStageInput> = {}): AssembleStageInput {
@@ -316,7 +317,7 @@ describe("runAssembleStage limiter honesty", () => {
     await runAssembleStage(input);
 
     expect(input.job.audioLoweredDb).toBe(1.44);
-    expect(logger.info).toHaveBeenCalledWith("Audio lowered by 1.4 dB to stay under −1 dBTP", {
+    expect(logger.warn).toHaveBeenCalledWith("Audio lowered by 1.4 dB to stay under −1 dBTP", {
       audioLoweredDb: 1.44,
     });
   });
@@ -325,5 +326,25 @@ describe("runAssembleStage limiter honesty", () => {
     const input = makeInput();
     await runAssembleStage(input);
     expect(input.job).not.toHaveProperty("audioLoweredDb");
+  });
+
+  it("keeps an audible gain change visible with the CLI's quiet logger", () => {
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const info = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const input = makeInput();
+      input.job.config.logger = createConsoleLogger("warn");
+
+      recordLimiterAttenuation(input.job, 1.44);
+
+      expect(warning).toHaveBeenCalledWith(
+        '[WARN] Audio lowered by 1.4 dB to stay under −1 dBTP {"audioLoweredDb":1.44}',
+      );
+      expect(input.job.audioLoweredDb).toBe(1.44);
+      expect(info).not.toHaveBeenCalled();
+    } finally {
+      warning.mockRestore();
+      info.mockRestore();
+    }
   });
 });
