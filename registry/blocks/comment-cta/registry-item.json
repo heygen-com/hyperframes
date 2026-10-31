@@ -1,0 +1,107 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "comment-cta",
+  "type": "hyperframes:block",
+  "title": "Comment Keyword CTA",
+  "description": "Vertical comment-to-get call to action: 'Comment GUIDE' lands with a bouncing arrow, the keyword types into a comment box, Post presses and the comment appears, then the promised direct message arrives. Keyword, handle, promise line, message, colors and placement are variables; everything stays inside the 9:16 safe zone",
+  "tags": ["social", "cta", "comments", "dm", "overlay", "vertical", "creator"],
+  "dimensions": {
+    "width": 1080,
+    "height": 1920
+  },
+  "duration": 7,
+  "variables": [
+    {
+      "id": "keyword",
+      "type": "string",
+      "role": "content",
+      "label": "Keyword",
+      "description": "The word viewers are asked to comment. One short word in capitals reads best; the pill shrinks to fit up to about 12 characters.",
+      "default": "GUIDE"
+    },
+    {
+      "id": "prompt",
+      "type": "string",
+      "role": "content",
+      "label": "Prompt",
+      "description": "Words above the keyword.",
+      "default": "Comment"
+    },
+    {
+      "id": "promise",
+      "type": "string",
+      "role": "content",
+      "label": "Promise",
+      "description": "What commenters get, under the keyword. Leave empty to hide the line.",
+      "default": "and I will send you the free guide"
+    },
+    {
+      "id": "handle",
+      "type": "string",
+      "role": "content",
+      "label": "Creator handle",
+      "description": "Account named in the comment box placeholder and as the sender of the direct message.",
+      "default": "@yourhandle"
+    },
+    {
+      "id": "commenter",
+      "type": "string",
+      "role": "content",
+      "label": "Commenter",
+      "description": "Username on the posted comment.",
+      "default": "you"
+    },
+    {
+      "id": "message",
+      "type": "string",
+      "role": "content",
+      "label": "Direct message",
+      "description": "The message that arrives after the comment is posted, delivering the promise. Leave empty to end on the posted comment.",
+      "default": "Here is your free guide"
+    },
+    {
+      "id": "accent",
+      "type": "color",
+      "role": "style",
+      "label": "Accent",
+      "description": "Keyword pill, caret, Post label and message icon.",
+      "default": "#0a84ff"
+    },
+    {
+      "id": "surface",
+      "type": "color",
+      "role": "style",
+      "label": "Card color",
+      "description": "Background of the comment box, the posted comment and the message.",
+      "default": "#ffffff"
+    },
+    {
+      "id": "ink",
+      "type": "color",
+      "role": "style",
+      "label": "Text color",
+      "description": "Text inside the comment box, the posted comment and the message.",
+      "default": "#111111"
+    },
+    {
+      "id": "placement",
+      "type": "enum",
+      "role": "style",
+      "label": "Placement",
+      "description": "Where the stack sits inside the 9:16 safe zone.",
+      "default": "lower",
+      "options": [
+        { "value": "lower", "label": "Lower" },
+        { "value": "center", "label": "Center" },
+        { "value": "upper", "label": "Upper" }
+      ]
+    }
+  ],
+  "files": [
+    {
+      "path": "comment-cta.html",
+      "target": "compositions/comment-cta.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}
