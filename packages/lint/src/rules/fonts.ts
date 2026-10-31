@@ -30,6 +30,8 @@ const GENERIC_FAMILIES = new Set([
   "revert",
 ]);
 
+const CSS_WIDE_KEYWORDS = new Set(["inherit", "initial", "unset", "revert"]);
+
 function parseFontCss(css: string): postcss.Root | null {
   try {
     return postcss.parse(css);
@@ -214,6 +216,35 @@ export const fontRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
           `Font ${aliased.length === 1 ? "family" : "families"} will be substituted at render time: ${aliased.join(", ")}. ` +
           "In distributed/Lambda rendering system-font capture is disabled, so these fonts will fall " +
           "back to OS defaults. Embed explicit @font-face declarations instead.",
+      },
+    ];
+  },
+
+  // system_font_inter_in_cloud — cloud renders have no host fonts, so the producer puts Inter first there.
+  ({ styles, locate }) => {
+    const properties = collectFontCustomProperties(styles);
+    const stacks = new Set<string>();
+    const locations: SourceLocation[] = [];
+    for (const style of styles) {
+      parseFontCss(style.content)?.walkDecls(/^font-family$/i, (decl) => {
+        if (isFontFaceDeclaration(decl)) return;
+        const primary = resolveUsedFontNames(decl.value, properties)[0];
+        if (!primary || !GENERIC_FAMILIES.has(primary) || CSS_WIDE_KEYWORDS.has(primary)) return;
+        stacks.add(decl.value.trim());
+        locations.push(locate(style, decl.source?.start?.offset));
+      });
+    }
+    if (stacks.size === 0) return [];
+    return [
+      {
+        ...(locations.length === 1 ? locations[0] : {}),
+        code: "system_font_inter_in_cloud",
+        severity: "warning",
+        message:
+          `Text set in a system font stack (${[...stacks].join("; ")}) renders in this computer's font locally, ` +
+          "as in the preview, but in Inter on cloud renders, which have no system fonts.",
+        fixHint:
+          "Put a named font first (Inter, or a family with an @font-face) so local and cloud renders match.",
       },
     ];
   },
