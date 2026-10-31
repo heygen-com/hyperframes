@@ -7,8 +7,7 @@ import { addCatchUpNote, markSeen, readSeen, seenPath } from "./appHistory.js";
 import { createProjectConfig } from "./projectConfig.js";
 import { writeRecord } from "./projectRecords.js";
 
-// The HyperFrames desktop app (not "Studio"): `open -b` on macOS, its executable elsewhere. Other builds of it can
-// be named in HYPERFRAMES_DESKTOP_BUNDLE_IDS and HYPERFRAMES_DESKTOP_APP_NAMES (comma-separated), looked for after it.
+// The HyperFrames desktop app, then builds named in HYPERFRAMES_DESKTOP_BUNDLE_IDS / _APP_NAMES (comma-separated).
 const list = (name: string): string[] =>
   (process.env[name] ?? "")
     .split(",")
