@@ -8,7 +8,7 @@
 
 import { audioGroupsById, isMemberGroupHidden, isSelfOrAncestorHidden } from "./mediaHidden.js";
 import { copyFileSync, existsSync, linkSync, mkdirSync, rmSync } from "fs";
-import { basename, isAbsolute, join, normalize, relative } from "path";
+import { basename, isAbsolute, join, normalize, relative, win32 } from "path";
 import { cpus } from "os";
 import { createConcurrencyLimit } from "../utils/concurrencyLimit.js";
 import { parseHTML } from "linkedom";
@@ -434,9 +434,13 @@ export interface VideoExtractionFailure {
   source?: string;
 }
 
-/** A clip's src as a producer-facing error may print it: no host, query, fragment or absolute path. */
+const URL_SCHEME = /^[a-z][a-z0-9+.-]+:/i;
+const WINDOWS_ABSOLUTE = /^([a-zA-Z]:[\\/]|\\\\)/;
+
+/** A clip's src as a producer-facing error may print it: no scheme payload, host, query, fragment or absolute path. */
 export function videoExtractionSourceLabel(src: string, baseDir: string): string {
-  if (isHttpUrl(src)) {
+  if (/^(data|blob):/i.test(src)) return "inline video";
+  if (URL_SCHEME.test(src)) {
     try {
       return basename(decodeURIComponent(new URL(src).pathname)) || "remote video";
     } catch {
@@ -444,9 +448,10 @@ export function videoExtractionSourceLabel(src: string, baseDir: string): string
     }
   }
   const path = src.split(/[?#]/)[0]!;
-  const relativePath = isAbsolute(path) ? relative(baseDir, path) : normalize(path);
+  const lib = WINDOWS_ABSOLUTE.test(path) ? win32 : { isAbsolute, relative, basename, normalize };
+  const relativePath = lib.isAbsolute(path) ? lib.relative(baseDir, path) : lib.normalize(path);
   const label =
-    relativePath.startsWith("..") || isAbsolute(relativePath) ? basename(path) : relativePath;
+    relativePath.startsWith("..") || lib.isAbsolute(relativePath) ? lib.basename(path) : relativePath;
   return label.replace(/\\/g, "/");
 }
 

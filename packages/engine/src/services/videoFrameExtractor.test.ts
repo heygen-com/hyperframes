@@ -637,6 +637,20 @@ describe("video extraction failure taxonomy and bounded retry", () => {
     expect(videoExtractionSourceLabel("https://cdn.example/v/c%201.mp4?Signature=s", "/proj")).toBe(
       "c 1.mp4",
     );
+    expect(videoExtractionSourceLabel("HTTPS://cdn.example/v/d.mp4?Signature=s", "/proj")).toBe(
+      "d.mp4",
+    );
+  });
+
+  it("never prints a scheme payload, username or drive path for a source that is not a project file", () => {
+    expect(videoExtractionSourceLabel("file:///Users/me/private/a.mp4", "/proj")).toBe("a.mp4");
+    expect(videoExtractionSourceLabel("data:video/mp4;base64,AAAA", "/proj")).toBe("inline video");
+    expect(videoExtractionSourceLabel("blob:https://cdn.example/1f3a", "/proj")).toBe(
+      "inline video",
+    );
+    expect(videoExtractionSourceLabel("ftp://host.example/pub/e.mp4", "/proj")).toBe("e.mp4");
+    expect(videoExtractionSourceLabel("C:\\Users\\me\\private\\f.mp4", "/proj")).toBe("f.mp4");
+    expect(videoExtractionSourceLabel("C:\\proj\\assets\\g.mp4", "C:\\proj")).toBe("assets/g.mp4");
   });
 
   it("reports which clip failed when a source file is missing", async () => {
