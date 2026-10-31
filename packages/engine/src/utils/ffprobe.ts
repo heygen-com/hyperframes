@@ -522,7 +522,6 @@ export function videoStartOnMediaTimeline(
   return (metadata.videoStreamLeadSeconds ?? 0) + (metadata.mediaTimeOffsetSeconds ?? 0);
 }
 
-/** A time as ffmpeg/ffprobe read it: plain decimal, never `8.88e-16` (their parsers reject exponents). */
 export function formatFfmpegSeconds(seconds: number): string {
   const text = String(seconds);
   return text.includes("e") ? String(+seconds.toFixed(6)) : text;
