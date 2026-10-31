@@ -118,6 +118,7 @@ export interface CompiledComposition {
   audios: AudioElement[];
   images: ImageElement[];
   droppedMediaIds: Set<string>;
+  gradedCanvas: boolean;
   masterFxChain?: string;
   unresolvedCompositions: UnresolvedElement[];
   /** Assets that resolve outside projectDir. Keys are the path used in HTML, values are absolute filesystem paths. */
@@ -2236,7 +2237,7 @@ export async function compileForRender(
   // within one composition file: two scenes declaring `<video id="clip">` — or
   // two bare `<video>`s, both auto-numbered `hf-video-0` — collapsed into one
   // entry and injected frames onto whichever element came first. See #3340.
-  const { videos, audios, images, droppedMediaIds } = collectRenderMedia(html);
+  const { videos, audios, images, droppedMediaIds, gradedCanvas } = collectRenderMedia(html);
   const masterFxChain = parseMasterFxChain(html);
 
   // Advisory video checks (sparse keyframes, VFR). Fire-and-forget — these spawn
@@ -2294,6 +2295,7 @@ export async function compileForRender(
     audios,
     images,
     droppedMediaIds,
+    gradedCanvas,
     ...(masterFxChain ? { masterFxChain } : {}),
     unresolvedCompositions,
     externalAssets,

@@ -221,6 +221,7 @@ export {
 // ── Media processing ───────────────────────────────────────────────────────────
 export {
   parseVideoElements,
+  hasGradedCanvas,
   parseImageElements,
   extractVideoFramesRange,
   extractAllVideoFrames,
@@ -487,6 +488,7 @@ export {
   getHdrEncoderColorParams,
   analyzeCompositionHdr,
   findHdrAutoPromotion,
+  gradingKeepsSdr,
   formatHdrAutoPromotionWarning,
   sanitizeHdrAutoPromotionAsset,
   DEFAULT_HDR10_MASTERING,

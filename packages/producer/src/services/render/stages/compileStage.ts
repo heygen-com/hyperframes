@@ -298,6 +298,7 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
     videos: compiled.videos,
     audios: compiled.audios,
     images: compiled.images,
+    gradedCanvas: compiled.gradedCanvas,
     masterFxChain: compiled.masterFxChain,
     width: compiled.width,
     height: compiled.height,

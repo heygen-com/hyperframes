@@ -12,6 +12,7 @@ import { basename, join } from "path";
 import { cpus } from "os";
 import { createConcurrencyLimit } from "../utils/concurrencyLimit.js";
 import { parseHTML } from "linkedom";
+import { HF_COLOR_GRADING_ATTR } from "@hyperframes/core";
 import { isPathInside } from "@hyperframes/parsers/asset-paths";
 import { resolveProjectRelativeSrc } from "@hyperframes/parsers/asset-resolution";
 import { alphaDecoderFor } from "@hyperframes/parsers/media-alpha";
@@ -104,6 +105,7 @@ export interface VideoElement {
   loop: boolean;
   hasAudio: boolean;
   hidden?: boolean;
+  graded?: boolean;
 }
 
 export interface ExtractedFrames {
@@ -844,6 +846,7 @@ export function parseVideoElements(html: string): VideoElement[] {
       (isAudibleVideoElement(el) && isMemberGroupHidden(groupsById, el))
         ? { hidden: true }
         : {}),
+      ...(el.hasAttribute(HF_COLOR_GRADING_ATTR) ? { graded: true } : {}),
     });
   }
 
@@ -855,6 +858,14 @@ export interface ImageElement {
   src: string;
   start: number;
   end: number;
+  graded?: boolean;
+}
+
+export function hasGradedCanvas(html: string): boolean {
+  return (
+    parseHTML(unwrapTemplate(html)).document.querySelector(`canvas[${HF_COLOR_GRADING_ATTR}]`) !==
+    null
+  );
 }
 
 export function parseImageElements(html: string): ImageElement[] {
@@ -894,7 +905,13 @@ export function parseImageElements(html: string): ImageElement[] {
       end = Infinity;
     }
 
-    images.push({ id, src, start, end });
+    images.push({
+      id,
+      src,
+      start,
+      end,
+      ...(el.hasAttribute(HF_COLOR_GRADING_ATTR) ? { graded: true } : {}),
+    });
   }
 
   return images;
