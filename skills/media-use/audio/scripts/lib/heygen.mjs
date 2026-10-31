@@ -137,11 +137,9 @@ function resolveCredential() {
   }
   const oauth = cred.oauth;
   if (oauth?.access_token) {
-    const expectedClient =
-      process.env.HYPERFRAMES_OAUTH_CLIENT_ID || "Zg3LF4FCLoeJoGs2YqMtZ17g";
+    const expectedClient = process.env.HYPERFRAMES_OAUTH_CLIENT_ID || "Zg3LF4FCLoeJoGs2YqMtZ17g";
     const expectedTokenEndpoint =
-      process.env.HYPERFRAMES_OAUTH_TOKEN_URL ||
-      "https://api2.heygen.com/v1/oauth/token";
+      process.env.HYPERFRAMES_OAUTH_TOKEN_URL || "https://api2.heygen.com/v1/oauth/token";
     if (
       !expectedClient ||
       oauth.client_id !== expectedClient ||

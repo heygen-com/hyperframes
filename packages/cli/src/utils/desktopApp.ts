@@ -14,7 +14,10 @@ const list = (name: string): string[] =>
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
-const bundleIds = (): string[] => ["dev.hyperframes.desktop", ...list("HYPERFRAMES_DESKTOP_BUNDLE_IDS")];
+const bundleIds = (): string[] => [
+  "dev.hyperframes.desktop",
+  ...list("HYPERFRAMES_DESKTOP_BUNDLE_IDS"),
+];
 const appNames = (): string[] => ["HyperFrames", ...list("HYPERFRAMES_DESKTOP_APP_NAMES")];
 const DEFAULT_APP = "the HyperFrames desktop app";
 const STUDIO_PAGE = "https://hyperframes.studio/studio";
@@ -135,7 +138,9 @@ function desktopApps({
   };
   return appNames().flatMap((name, i) => {
     const executable = where(name);
-    return executable && exists(executable) ? [{ executable, name: i === 0 ? DEFAULT_APP : name }] : [];
+    return executable && exists(executable)
+      ? [{ executable, name: i === 0 ? DEFAULT_APP : name }]
+      : [];
   });
 }
 

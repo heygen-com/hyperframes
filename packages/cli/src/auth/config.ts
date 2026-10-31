@@ -19,24 +19,15 @@ export function resolveClientId(): string {
 }
 
 export function tokenEndpoint(): string {
-  return (
-    process.env["HYPERFRAMES_OAUTH_TOKEN_URL"] ||
-    "https://api2.heygen.com/v1/oauth/token"
-  );
+  return process.env["HYPERFRAMES_OAUTH_TOKEN_URL"] || "https://api2.heygen.com/v1/oauth/token";
 }
 
 export function authorizeEndpoint(): string {
-  return (
-    process.env["HYPERFRAMES_OAUTH_AUTHORIZE_URL"] ||
-    "https://app.heygen.com/oauth/authorize"
-  );
+  return process.env["HYPERFRAMES_OAUTH_AUTHORIZE_URL"] || "https://app.heygen.com/oauth/authorize";
 }
 
 export function revokeEndpoint(): string {
-  return (
-    process.env["HYPERFRAMES_OAUTH_REVOKE_URL"] ||
-    "https://api2.heygen.com/v1/oauth/revoke"
-  );
+  return process.env["HYPERFRAMES_OAUTH_REVOKE_URL"] || "https://api2.heygen.com/v1/oauth/revoke";
 }
 
 export function deviceAuthorizationEndpoint(): string {

@@ -31,9 +31,7 @@ export const HEYGEN_CLIENT_SOURCE = "hyperframes";
 
 export function apiBaseUrl(): string {
   const override = process.env["HEYGEN_API_URL"];
-  return override && override.length > 0
-    ? override.replace(/\/+$/, "")
-    : "https://api.heygen.com";
+  return override && override.length > 0 ? override.replace(/\/+$/, "") : "https://api.heygen.com";
 }
 
 export type BillingType = "wallet" | "subscription" | "usage_based" | string;
