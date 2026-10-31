@@ -1,0 +1,314 @@
+<!doctype html>
+<html
+  lang="en"
+  data-composition-variables='[{"id":"title","type":"string","label":"Story Title","default":"Terminal Embers"},{"id":"mood","type":"string","label":"Ambient Mood","default":"Rainy Lo-Fi Evening"},{"id":"scene1","type":"string","label":"Scene 1: The Settling Room","default":"The cursor blinks slower now. The last build succeeded, and the quiet room wraps around the screens soft glow."},{"id":"scene2","type":"string","label":"Scene 2: Sensory Atmosphere","default":"Rain taps a steady rhythm against cold window glass. Steam rises faintly from an evening mug, cooling with the night."},{"id":"scene3","type":"string","label":"Scene 3: Drifting into Sleep","default":"Keyboards sleep. Shadows soften into stillness. Let the thoughts untangle as sleep pulls the curtain shut."}]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>DreamFrame Ambient Bedtime Story</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;1,400&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      :root {
+        --bg-dark: #07090e;
+        --text-gold: #f6d365;
+        --text-primary: #f0f4fc;
+        --text-muted: #94a3b8;
+        --accent-glow: rgba(88, 166, 255, 0.25);
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--bg-dark);
+        font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+      }
+      #dreamframe-root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      /* Cinematic Background Photo Layer with Ken Burns scale */
+      .bg-layer {
+        position: absolute;
+        top: -40px;
+        left: -40px;
+        width: 2000px;
+        height: 1160px;
+        background-image: url('assets/bedroom-ambient.svg');
+        background-size: cover;
+        background-position: center;
+        filter: brightness(0.72) contrast(1.05);
+        transform-origin: center center;
+      }
+      /* Dark vignette and atmospheric mood overlay */
+      .vignette-overlay {
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(circle at center, rgba(10, 14, 24, 0.2) 0%, rgba(5, 7, 12, 0.85) 100%),
+                    linear-gradient(to top, rgba(5, 7, 12, 0.95) 0%, rgba(5, 7, 12, 0.1) 40%, rgba(5, 7, 12, 0.4) 100%);
+        pointer-events: none;
+      }
+      /* Header Banner */
+      .header-badge {
+        position: absolute;
+        top: 60px;
+        left: 80px;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        background: rgba(15, 23, 42, 0.65);
+        backdrop-filter: blur(16px);
+        padding: 12px 24px;
+        border-radius: 9999px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+      }
+      .brand-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #58a6ff;
+        box-shadow: 0 0 12px #58a6ff;
+      }
+      .brand-text {
+        font-size: 18px;
+        font-weight: 600;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: #e2e8f0;
+      }
+      .mood-tag {
+        font-size: 15px;
+        color: #94a3b8;
+        border-left: 1px solid rgba(255, 255, 255, 0.15);
+        padding-left: 14px;
+      }
+      /* Title Card */
+      .story-title-card {
+        position: absolute;
+        top: 140px;
+        left: 80px;
+        font-family: 'Playfair Display', serif;
+        font-size: 52px;
+        font-weight: 600;
+        color: #ffffff;
+        text-shadow: 0 4px 24px rgba(0, 0, 0, 0.7);
+        letter-spacing: -0.01em;
+        max-width: 1200px;
+      }
+      /* Cinematic Captions Container */
+      .captions-container {
+        position: absolute;
+        bottom: 80px;
+        left: 80px;
+        right: 80px;
+        height: 200px;
+        display: flex;
+        align-items: flex-end;
+      }
+      .scene-card {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(11, 15, 25, 0.75);
+        backdrop-filter: blur(20px);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-left: 5px solid #58a6ff;
+        border-radius: 16px;
+        padding: 32px 40px;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+        opacity: 0;
+        transform: translateY(30px);
+      }
+      .scene-meta {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 12px;
+      }
+      .scene-step {
+        font-size: 13px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.15em;
+        color: #58a6ff;
+      }
+      .scene-headline {
+        font-size: 14px;
+        font-weight: 500;
+        color: #94a3b8;
+      }
+      .scene-text {
+        font-family: 'Playfair Display', serif;
+        font-size: 32px;
+        line-height: 1.45;
+        color: #f8fafc;
+        font-style: italic;
+      }
+      /* Sleep Final Vignette Fade */
+      .sleep-curtain {
+        position: absolute;
+        inset: 0;
+        background: #040508;
+        opacity: 0;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="dreamframe-root"
+      data-composition-id="dreamframe-bedtime"
+      data-start="0"
+      data-duration="15"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="bg" class="bg-layer"></div>
+      <div class="vignette-overlay"></div>
+
+      <div id="headerBadge" class="header-badge">
+        <div class="brand-dot"></div>
+        <span class="brand-text">DreamFrame</span>
+        <span id="moodText" class="mood-tag">Rainy Lo-Fi Evening</span>
+      </div>
+
+      <h1 id="storyTitle" class="story-title-card">Terminal Embers</h1>
+
+      <div class="captions-container">
+        <!-- Scene 1: The Settling Room -->
+        <div id="scene1Card" class="scene-card">
+          <div class="scene-meta">
+            <span class="scene-step">Scene 1</span>
+            <span class="scene-headline">The Settling Room</span>
+          </div>
+          <p id="scene1Text" class="scene-text">
+            The cursor blinks slower now. The last build succeeded, and the quiet room wraps around the screen's soft glow.
+          </p>
+        </div>
+
+        <!-- Scene 2: Sensory Atmosphere -->
+        <div id="scene2Card" class="scene-card">
+          <div class="scene-meta">
+            <span class="scene-step">Scene 2</span>
+            <span class="scene-headline">Sensory Atmosphere</span>
+          </div>
+          <p id="scene2Text" class="scene-text">
+            Rain taps a steady rhythm against cold window glass. Steam rises faintly from an evening mug, cooling with the night.
+          </p>
+        </div>
+
+        <!-- Scene 3: Drifting into Sleep -->
+        <div id="scene3Card" class="scene-card">
+          <div class="scene-meta">
+            <span class="scene-step">Scene 3</span>
+            <span class="scene-headline">Drifting into Sleep</span>
+          </div>
+          <p id="scene3Text" class="scene-text">
+            Keyboards sleep. Shadows soften into stillness. Let the thoughts untangle as sleep pulls the curtain shut.
+          </p>
+        </div>
+      </div>
+
+      <div id="sleepCurtain" class="sleep-curtain"></div>
+    </div>
+
+    <script>
+      // Apply variables if passed via HyperFrames host
+      if (typeof window.__variables === "object" && window.__variables !== null) {
+        if (window.__variables.title) document.getElementById("storyTitle").textContent = window.__variables.title;
+        if (window.__variables.mood) document.getElementById("moodText").textContent = window.__variables.mood;
+        if (window.__variables.scene1) document.getElementById("scene1Text").textContent = window.__variables.scene1;
+        if (window.__variables.scene2) document.getElementById("scene2Text").textContent = window.__variables.scene2;
+        if (window.__variables.scene3) document.getElementById("scene3Text").textContent = window.__variables.scene3;
+      }
+
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      // Ken Burns Slow Panning & Gentle Zoom across the 15-second story
+      tl.fromTo(
+        "#bg",
+        { scale: 1.0, x: 0, y: 0 },
+        { scale: 1.15, x: -60, y: -30, duration: 15, ease: "sine.inOut" },
+        0
+      );
+
+      // Header entrance
+      tl.fromTo(
+        "#headerBadge",
+        { opacity: 0, y: -20 },
+        { opacity: 1, y: 0, duration: 1.2, ease: "power2.out" },
+        0.2
+      );
+
+      // Title Card reveal
+      tl.fromTo(
+        "#storyTitle",
+        { opacity: 0, y: 15 },
+        { opacity: 1, y: 0, duration: 1.5, ease: "power2.out" },
+        0.5
+      );
+
+      // Scene 1: 0.8s - 4.6s
+      tl.to(
+        "#scene1Card",
+        { opacity: 1, y: 0, duration: 0.9, ease: "power3.out" },
+        0.8
+      );
+      tl.to(
+        "#scene1Card",
+        { opacity: 0, y: -20, duration: 0.6, ease: "power3.in" },
+        4.4
+      );
+
+      // Scene 2: 5.0s - 9.6s
+      tl.to(
+        "#scene2Card",
+        { opacity: 1, y: 0, duration: 0.9, ease: "power3.out" },
+        5.0
+      );
+      tl.to(
+        "#scene2Card",
+        { opacity: 0, y: -20, duration: 0.6, ease: "power3.in" },
+        9.4
+      );
+
+      // Scene 3: 10.0s - 14.8s
+      tl.to(
+        "#scene3Card",
+        { opacity: 1, y: 0, duration: 0.9, ease: "power3.out" },
+        10.0
+      );
+      tl.to(
+        "#scene3Card",
+        { opacity: 0, y: -10, duration: 0.8, ease: "power2.in" },
+        14.2
+      );
+
+      // Gentle Sleep Fade
+      tl.to(
+        "#sleepCurtain",
+        { opacity: 0.85, duration: 1.8, ease: "power2.inOut" },
+        13.2
+      );
+
+      window.__timelines["dreamframe-bedtime"] = tl;
+      tl.seek(0);
+    </script>
+  </body>
+</html>

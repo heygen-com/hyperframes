@@ -1,0 +1,66 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "dreamframe-bedtime",
+  "type": "hyperframes:block",
+  "title": "DreamFrame Ambient Bedtime Story",
+  "description": "A personalized, cinematic bedtime wind-down composition. Features an ambient room backdrop with Ken Burns camera panning, celestial glassmorphic badges, mood indicators, and a three-stage poetic narrative fade (The Settling Room, Sensory Atmosphere, Drifting into Sleep).",
+  "tags": [
+    "storytelling",
+    "ambient",
+    "ken-burns",
+    "bedtime",
+    "cinematic",
+    "narrative",
+    "poetry",
+    "lofi"
+  ],
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 15,
+  "variables": [
+    {
+      "id": "title",
+      "type": "string",
+      "label": "Story Title",
+      "default": "Terminal Embers"
+    },
+    {
+      "id": "mood",
+      "type": "string",
+      "label": "Ambient Mood",
+      "default": "Rainy Lo-Fi Evening"
+    },
+    {
+      "id": "scene1",
+      "type": "string",
+      "label": "Scene 1: The Settling Room",
+      "default": "The cursor blinks slower now. The last build succeeded, and the quiet room wraps around the screen's soft glow."
+    },
+    {
+      "id": "scene2",
+      "type": "string",
+      "label": "Scene 2: Sensory Atmosphere",
+      "default": "Rain taps a steady rhythm against cold window glass. Steam rises faintly from an evening mug, cooling with the night."
+    },
+    {
+      "id": "scene3",
+      "type": "string",
+      "label": "Scene 3: Drifting into Sleep",
+      "default": "Keyboards sleep. Shadows soften into stillness. Let the thoughts untangle as sleep pulls the curtain shut."
+    }
+  ],
+  "files": [
+    {
+      "path": "dreamframe-bedtime.html",
+      "target": "compositions/dreamframe-bedtime/dreamframe-bedtime.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "assets/bedroom-ambient.svg",
+      "target": "compositions/dreamframe-bedtime/assets/bedroom-ambient.svg",
+      "type": "hyperframes:asset"
+    }
+  ]
+}

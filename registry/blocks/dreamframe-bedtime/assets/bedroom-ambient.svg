@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" width="1920" height="1080">
+  <defs>
+    <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0a0f1d"/>
+      <stop offset="70%" stop-color="#141e30"/>
+      <stop offset="100%" stop-color="#243b55"/>
+    </linearGradient>
+    <linearGradient id="roomGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#111520"/>
+      <stop offset="100%" stop-color="#0a0c12"/>
+    </linearGradient>
+    <radialGradient id="lampGlow" cx="0.8" cy="0.45" r="0.4">
+      <stop offset="0%" stop-color="#ffb347" stop-opacity="0.6"/>
+      <stop offset="40%" stop-color="#ff7e40" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#ff7e40" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="moonGlow" cx="0.3" cy="0.25" r="0.2">
+      <stop offset="0%" stop-color="#e0e8ff" stop-opacity="0.9"/>
+      <stop offset="30%" stop-color="#a0b8ef" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#141e30" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Room Interior Background -->
+  <rect width="1920" height="1080" fill="url(#roomGrad)"/>
+
+  <!-- Large Panorama Window -->
+  <rect x="240" y="100" width="1040" height="660" rx="20" fill="url(#skyGrad)" stroke="#1a2233" stroke-width="12"/>
+
+  <!-- Stars and Distant City Skyline -->
+  <circle cx="480" cy="220" r="2.5" fill="#ffffff" opacity="0.8"/>
+  <circle cx="720" cy="180" r="1.5" fill="#ffffff" opacity="0.6"/>
+  <circle cx="950" cy="250" r="2" fill="#ffffff" opacity="0.7"/>
+  <circle cx="360" cy="300" r="1.5" fill="#ffffff" opacity="0.5"/>
+  <circle cx="820" cy="290" r="2" fill="#ffffff" opacity="0.6"/>
+  <circle cx="610" cy="140" r="3" fill="url(#moonGlow)"/>
+
+  <!-- Distant City Silhouettes -->
+  <path d="M 240,680 L 280,680 L 280,560 L 330,560 L 330,680 L 410,680 L 410,510 L 470,510 L 470,680 L 580,680 L 580,540 L 630,540 L 630,680 L 750,680 L 750,490 L 820,490 L 820,680 L 920,680 L 920,570 L 980,570 L 980,680 L 1120,680 L 1120,530 L 1180,530 L 1180,680 L 1280,680 L 1280,760 L 240,760 Z" fill="#0c1220" opacity="0.85"/>
+
+  <!-- Window Rain Streaks -->
+  <g stroke="#ffffff" stroke-width="1.2" opacity="0.22" stroke-linecap="round">
+    <line x1="300" y1="200" x2="280" y2="280"/>
+    <line x1="390" y1="350" x2="375" y2="440"/>
+    <line x1="500" y1="180" x2="485" y2="270"/>
+    <line x1="620" y1="310" x2="600" y2="400"/>
+    <line x1="740" y1="210" x2="725" y2="300"/>
+    <line x1="860" y1="360" x2="840" y2="450"/>
+    <line x1="990" y1="190" x2="975" y2="280"/>
+    <line x1="1100" y1="330" x2="1080" y2="420"/>
+  </g>
+
+  <!-- Window Frame Beams -->
+  <line x1="760" y1="100" x2="760" y2="760" stroke="#182030" stroke-width="8"/>
+  <line x1="240" y1="460" x2="1280" y2="460" stroke="#182030" stroke-width="8"/>
+
+  <!-- Cozy Low Bed / Mattress -->
+  <path d="M 280,780 L 1100,780 L 1150,960 L 230,960 Z" fill="#1e2638"/>
+  <path d="M 290,750 L 850,750 C 890,750 910,770 910,810 L 910,860 L 290,860 Z" fill="#2c374d" opacity="0.9"/>
+  <!-- Pillows -->
+  <rect x="330" y="700" width="220" height="110" rx="20" fill="#3a4863"/>
+  <rect x="580" y="700" width="220" height="110" rx="20" fill="#3a4863"/>
+
+  <!-- Bookshelf & Ambient Lamp on Right Table -->
+  <rect x="1380" y="580" width="340" height="340" rx="8" fill="#171d2b"/>
+  <!-- Books -->
+  <rect x="1420" y="630" width="24" height="110" fill="#4d5f80" rx="3"/>
+  <rect x="1450" y="615" width="28" height="125" fill="#7a4e65" rx="3"/>
+  <rect x="1485" y="640" width="22" height="100" fill="#3e6f7d" rx="3"/>
+  <rect x="1515" y="620" width="32" height="120" fill="#8d744a" rx="3"/>
+
+  <!-- Warm Reading Lamp -->
+  <path d="M 1630,680 L 1630,550 L 1610,550 L 1640,490 L 1670,490 L 1650,550 L 1630,550" fill="#d4af37"/>
+  <!-- Lamp Shade Glow -->
+  <polygon points="1600,530 1680,530 1720,610 1560,610" fill="#ffaa44" opacity="0.9"/>
+  <circle cx="1640" cy="560" r="450" fill="url(#lampGlow)"/>
+
+  <!-- Steam rising from tea cup on table -->
+  <ellipse cx="1450" cy="820" rx="22" ry="14" fill="#a0a8b8"/>
+  <path d="M 1445,800 Q 1440,780 1450,765 Q 1460,750 1448,735" stroke="#ffffff" stroke-width="2.5" fill="none" opacity="0.4" stroke-linecap="round"/>
+
+  <!-- Soft Floor Reflection -->
+  <rect x="0" y="940" width="1920" height="140" fill="#08090d"/>
+  <ellipse cx="960" cy="980" rx="800" ry="60" fill="#141c2c" opacity="0.3"/>
+</svg>
