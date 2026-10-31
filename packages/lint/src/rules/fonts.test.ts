@@ -285,6 +285,14 @@ p { FONT-FAMILY: "Real Brand", sans-serif !important; }
       expect(findings).toHaveLength(0);
     });
 
+    it("does not flag the revert-layer keyword", async () => {
+      const html = `<div data-composition-id="test" data-width="1920" data-height="1080">
+        <style>.title { font-family: revert-layer; }</style>
+      </div>`;
+      const findings = await findByCode(html, "font_family_without_font_face");
+      expect(findings).toHaveLength(0);
+    });
+
     it("does not treat !important as part of a generic font family", async () => {
       const html = `<div data-composition-id="test" data-width="1920" data-height="1080">
         <style>body { font-family: 'Inter', cursive !important; }</style>
