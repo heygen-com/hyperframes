@@ -19,7 +19,6 @@ export type AudioClockSource =
     }
   | {
       currentTimeSeconds: number;
-      /** The time is the WebAudio context's, not a held position. */
       webAudio?: boolean;
     };
 
@@ -226,7 +225,6 @@ export class TransportClock {
     return "monotonic";
   }
 
-  /** The clock the playhead follows, as the playback health reading names it. */
   followedClock(): "audio" | "webaudio" | "monotonic" {
     if (this.getSource() === "monotonic") return "monotonic";
     return this._audioSource && "webAudio" in this._audioSource && this._audioSource.webAudio

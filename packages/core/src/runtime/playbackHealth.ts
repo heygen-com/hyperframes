@@ -19,7 +19,6 @@ export type PlaybackHealthInput = {
   /** A playing video is waiting for data. */
   waiting: boolean;
   frozen?: boolean;
-  /** The clock the film's time came from this tick. */
   clock: "audio" | "webaudio" | "monotonic";
   /** Anything that changes how heavy a frame is to draw (window size, zoom). */
   layoutKey: string;

@@ -282,7 +282,6 @@ export type RuntimePreviewHealthMessage = {
     frozenShare: number;
     gapP50Ms: number;
     gapP95Ms: number;
-    /** The clock the film's time came from at the newest tick. */
     clockSource: "audio" | "webaudio" | "monotonic";
     mode: "play";
   } | null;
