@@ -143,6 +143,28 @@ it("maps Codex windows by duration and exposes its reported plan tier", () => {
     planTier: "pro",
     session: { usedPercent: 25, remainingPercent: 75, resetsAt: "1970-01-01T02:00:00.000Z" },
     weekly: { usedPercent: 85, remainingPercent: 15, resetsAt: "1970-01-01T01:00:00.000Z" },
+    monthly: null,
+  });
+});
+it("maps a 30-day Codex allowance to a monthly window", () => {
+  expect(
+    parseCodexUsage(
+      JSON.stringify({
+        plan_type: "free",
+        rate_limit: {
+          primary_window: { used_percent: 72, limit_window_seconds: 2592000, reset_at: 7200 },
+          secondary_window: null,
+        },
+      }),
+    ),
+  ).toEqual({
+    status: "known",
+    spend: null,
+    harness: "codex",
+    planTier: "free",
+    session: null,
+    weekly: null,
+    monthly: { usedPercent: 72, remainingPercent: 28, resetsAt: "1970-01-01T02:00:00.000Z" },
   });
 });
 it.each([undefined, null])(
@@ -164,6 +186,7 @@ it.each([undefined, null])(
       planTier: null,
       session: null,
       weekly: { usedPercent: 85, remainingPercent: 15, resetsAt: null },
+      monthly: null,
     });
   },
 );
@@ -183,6 +206,7 @@ it("converts Codex relative resets using the supplied observation time", () => {
     harness: "codex",
     planTier: null,
     weekly: null,
+    monthly: null,
     session: { usedPercent: 10, remainingPercent: 90, resetsAt: "1970-01-01T00:01:00.000Z" },
   });
 });
@@ -214,6 +238,18 @@ it("rejects duplicate Codex durations instead of overwriting a window", () => {
         rate_limit: {
           primary_window: { used_percent: 90, limit_window_seconds: 18000 },
           secondary_window: { used_percent: 10, limit_window_seconds: 18000 },
+        },
+      }),
+    ),
+  ).toEqual({ status: "unknown", reason: "invalid_usage_response" });
+});
+it("rejects duplicate monthly Codex durations instead of overwriting a window", () => {
+  expect(
+    parseCodexUsage(
+      JSON.stringify({
+        rate_limit: {
+          primary_window: { used_percent: 90, limit_window_seconds: 2592000 },
+          secondary_window: { used_percent: 10, limit_window_seconds: 2592000 },
         },
       }),
     ),
