@@ -40,16 +40,17 @@ export interface LoopbackHandle {
   result: Promise<LoopbackResult>;
   /** Redirect URI to pass to /v1/oauth/authorize. */
   redirectUri: string;
+  timeoutLabel: string;
   /** Stop the server early (e.g. user cancels). */
   close: () => Promise<void>;
 }
 
 const CALLBACK_PATH = "/oauth/callback";
-// Sign-in can include Stripe checkout; matches pacific's 60-minute plan-checkout handoff.
-const DEFAULT_TIMEOUT_MS = 60 * 60 * 1000;
+const SIGN_IN_WITH_CHECKOUT_TIMEOUT_MS = 60 * 60 * 1000;
 
 export async function startLoopback(opts: LoopbackOptions): Promise<LoopbackHandle> {
-  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const timeoutMs = opts.timeoutMs ?? SIGN_IN_WITH_CHECKOUT_TIMEOUT_MS;
+  const timeoutLabel = `${timeoutMs / 60_000} minutes`;
 
   let resolveResult!: (value: LoopbackResult) => void;
   let rejectResult!: (err: Error) => void;
@@ -89,14 +90,14 @@ export async function startLoopback(opts: LoopbackOptions): Promise<LoopbackHand
   };
 
   const timer = setTimeout(() => {
-    rejectResult(new Error(`OAuth callback timed out after ${timeoutMs}ms`));
+    rejectResult(new Error(`OAuth callback timed out after ${timeoutLabel}`));
     void close();
   }, timeoutMs);
 
   // When result settles, drain the timer + shutdown.
   result.finally(close).catch(() => {});
 
-  return { result, redirectUri, close };
+  return { result, redirectUri, timeoutLabel, close };
 }
 
 async function listen(server: Server, port: number): Promise<void> {

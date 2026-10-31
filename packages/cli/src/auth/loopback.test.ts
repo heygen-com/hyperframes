@@ -101,7 +101,8 @@ describe("auth/loopback", () => {
     handle.result.catch(settled);
     await vi.advanceTimersByTimeAsync(CHECKOUT_WINDOW_MS - 1);
     expect(settled).not.toHaveBeenCalled();
-    const rejected = expect(handle.result).rejects.toThrow(/timed out/i);
+    expect(handle.timeoutLabel).toBe("60 minutes");
+    const rejected = expect(handle.result).rejects.toThrow(/timed out after 60 minutes/i);
     await vi.advanceTimersByTimeAsync(1);
     await rejected;
   });

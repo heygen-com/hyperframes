@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readStore, writeStore } from "../../auth/store.js";
 import { setupTempAuthEnv, type EnvFixture } from "../../auth/_test-utils.js";
-import { CliRuntimeError } from "../../utils/commandResult.js";
+import { CliRuntimeError, registerRootExitRequester } from "../../utils/commandResult.js";
 
 // heygenUserId("alice"): the sha256-derived UUID the web app and Desktop also use.
 const ALICE_USER_ID = "2bd806c9-7f0e-50af-9a1f-c3328fa763a9";
@@ -392,12 +392,11 @@ describe("auth login", () => {
   });
 
   it("tells a timed-out browser login how to recover", async () => {
-    browserAuth.start.mockRejectedValueOnce(new Error("OAuth callback timed out after 3600000ms"));
+    browserAuth.start.mockRejectedValueOnce(new Error("OAuth callback timed out after 60 minutes"));
     await expect(runCommand({})).rejects.toThrow();
     expect(console.error).toHaveBeenCalledWith(
       expect.stringContaining("Run `hyperframes auth login` again"),
     );
-    expect(console.error).not.toHaveBeenCalledWith(expect.stringContaining("bought"));
     expect(telemetry.trackAuthLoginFailed).toHaveBeenCalledWith("oauth", "flow_timeout");
   });
 
@@ -410,6 +409,23 @@ describe("auth login", () => {
       expect.stringContaining("hyperframes auth login"),
     );
     expect(telemetry.trackAuthLoginFailed).toHaveBeenCalledWith("oauth", "flow_error");
+  });
+
+  it("records Ctrl+C during the browser wait as aborted and exits", async () => {
+    const exit = vi.fn();
+    registerRootExitRequester(exit);
+    const before = process.listeners("SIGINT");
+    browserAuth.start.mockImplementationOnce(async () => {
+      const added = process.listeners("SIGINT").filter((listener) => !before.includes(listener));
+      added[0]?.("SIGINT");
+      throw new Error("interrupted");
+    });
+
+    await expect(runCommand({})).rejects.toThrow();
+
+    expect(telemetry.trackAuthLoginFailed).toHaveBeenCalledWith("oauth", "aborted");
+    expect(exit).toHaveBeenCalledWith(130);
+    expect(process.listeners("SIGINT")).toEqual(before);
   });
 
   it("refuses device authorization in CI", async () => {

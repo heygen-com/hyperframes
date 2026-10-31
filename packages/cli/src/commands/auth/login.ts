@@ -1,4 +1,4 @@
-import { failCommand, failUsage } from "../../utils/commandResult.js";
+import { failCommand, failUsage, requestCliExit } from "../../utils/commandResult.js";
 import { envFlagEnabled, isAttendedTerminal, isCI } from "../../utils/attendedTerminal.js";
 import { isAgentDriven } from "../../telemetry/agent_runtime.js";
 /**
@@ -221,6 +221,12 @@ async function runOAuthLogin(): Promise<void> {
   const { trackAuthLoginStarted, trackAuthLoginFailed } = await import("../../telemetry/index.js");
   trackAuthLoginStarted("oauth");
 
+  const recordCancel = (): void => {
+    trackAuthLoginFailed("oauth", "aborted");
+    requestCliExit(130);
+  };
+  process.once("SIGINT", recordCancel);
+
   let tokens;
   try {
     ({ tokens } = await startAuthorizationCodeFlow());
@@ -237,6 +243,8 @@ async function runOAuthLogin(): Promise<void> {
       console.error("Run `hyperframes auth login` again.");
     }
     failCommand();
+  } finally {
+    process.off("SIGINT", recordCancel);
   }
 
   await reportIdentity(issuedCredential(tokens));
