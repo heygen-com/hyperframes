@@ -20,8 +20,7 @@ export const HEYGEN_BASE = "https://api.heygen.com/v3";
 // in the clear, so it needs $HEYGEN_ALLOW_HTTP=1, the heygen CLI's own rule.
 export function heygenBase() {
   const host = process.env.HEYGEN_API_BASE?.trim().replace(/\/+$/, "");
-  if (!host)
-    return process.env.HYPERFRAMES_ENV === "dev" ? "https://api.dev.heygen.com/v3" : HEYGEN_BASE;
+  if (!host) return HEYGEN_BASE;
   if (host.startsWith("http://") && process.env.HEYGEN_ALLOW_HTTP !== "1")
     throw new Error(
       `HEYGEN_API_BASE (${host}) uses HTTP, which sends the key in plaintext. Set HEYGEN_ALLOW_HTTP=1 to allow it.`,
@@ -139,13 +138,10 @@ function resolveCredential() {
   const oauth = cred.oauth;
   if (oauth?.access_token) {
     const expectedClient =
-      process.env.HYPERFRAMES_OAUTH_CLIENT_ID ||
-      (process.env.HYPERFRAMES_ENV === "dev"
-        ? "9QoaiwCZov9O0cAkC4OZbR4p"
-        : "Zg3LF4FCLoeJoGs2YqMtZ17g");
+      process.env.HYPERFRAMES_OAUTH_CLIENT_ID || "Zg3LF4FCLoeJoGs2YqMtZ17g";
     const expectedTokenEndpoint =
       process.env.HYPERFRAMES_OAUTH_TOKEN_URL ||
-      `https://api2.${process.env.HYPERFRAMES_ENV === "dev" ? "dev." : ""}heygen.com/v1/oauth/token`;
+      "https://api2.heygen.com/v1/oauth/token";
     if (
       !expectedClient ||
       oauth.client_id !== expectedClient ||
