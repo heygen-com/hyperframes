@@ -790,6 +790,7 @@ export const examples: Example[] = [
     "Pair each frame with the reference footage at the same time",
     "snapshot --at 1.5,4.3,8.1 --against ref.mp4",
   ],
+  ["Refresh the committed golden baselines", "snapshot --update-golden"],
 ];
 
 const DEFAULT_DESCRIBE_PROMPT =
@@ -1713,6 +1714,12 @@ export default defineCommand({
         "Use hardware browser GPU capture; pass --no-browser-gpu for deterministic SwiftShader (default: auto-detect, PRODUCER_BROWSER_GPU_MODE overrides)",
       default: undefined,
     },
+    "update-golden": {
+      type: "boolean",
+      description:
+        "Refresh the committed golden baselines (golden/<compositionId>/<timeMs>.png) instead of capturing review snapshots; --at refreshes only those times and keeps the other baselines",
+      default: false,
+    },
   },
   async run({ args }) {
     const asJson = args.json === true;
@@ -1773,6 +1780,34 @@ export default defineCommand({
     }
     const timeout = parseTimeoutMs(args.timeout, RENDER_READY_TIMEOUT_MS);
     const describePrompt = resolveDescribePrompt(args.describe);
+
+    if (args["update-golden"] === true) {
+      try {
+        const { runGoldenGate } = await import("../golden/baseline.js");
+        const summary = await withProjectLock(project.dir, "snapshot", () =>
+          runGoldenGate(project, {
+            update: true,
+            at: atTimestamps,
+            timeoutMs: timeout,
+            autoProxy: args.proxy as boolean | undefined,
+            browserGpuMode: resolveLocalBrowserGpuMode(args["browser-gpu"] as boolean | undefined),
+          }),
+        );
+        console.log(
+          `${c.success("◇")}  ${summary.baselines.length} golden baseline(s) written for ${c.accent(summary.compositionId)}`,
+        );
+        for (const baseline of summary.baselines) console.log(`   ${baseline}`);
+        console.log(
+          `   ${c.dim(`Commit golden/${summary.compositionId}/ and gate with hyperframes check --golden`)}`,
+        );
+      } catch (err) {
+        console.error(
+          `\n${c.error("✗")} Golden baseline update failed: ${normalizeErrorMessage(err)}`,
+        );
+        failCommand();
+      }
+      return;
+    }
 
     const camera = args.angle ? parseAngle(String(args.angle)) : undefined;
     const zoomTarget = args.zoom ? parseZoomTarget(String(args.zoom)) : undefined;

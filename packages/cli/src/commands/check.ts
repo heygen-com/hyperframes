@@ -38,6 +38,7 @@ import {
 } from "../utils/checkPipeline.js";
 import type { CaptionZoneOptions, FrameCheckOptions, LayoutOptions } from "../utils/checkTypes.js";
 import { resolveLocalBrowserGpuMode } from "../browser/gpuPolicy.js";
+import type { GoldenGateOptions, GoldenSummary } from "../golden/baseline.js";
 import { preResolveHostileMediaProxies, type PreparedMediaFile } from "../utils/checkBrowser.js";
 import { parseTimeoutMs } from "../utils/timeoutArg.js";
 import { failureMessage, jsonFailure } from "../utils/jsonError.js";
@@ -47,26 +48,36 @@ import { failureCodes } from "../utils/checkFailureCodes.js";
 export const examples: Example[] = [
   ["Run the full verification gate", "hyperframes check"],
   ["Output one agent-readable envelope", "hyperframes check --json"],
+  ["Gate against committed golden baselines", "hyperframes check --golden"],
+  ["Refresh the golden baselines", "hyperframes check --update-golden"],
   ["Persist the five audited contrast frames", "hyperframes check --snapshots"],
   ["Also fail on warnings", "hyperframes check --strict"],
   ["Make only the browser-playable video copies, then exit", "hyperframes check --prepare-media"],
 ];
 
 type SavedCheck = Pick<ArtifactRecord, "id" | "revision" | "report" | "attribution">;
-type SavedCheckReport = CheckReport & { saved?: SavedCheck };
+type GoldenCheckReport = CheckReport & { golden?: GoldenSummary };
+type SavedCheckReport = GoldenCheckReport & { saved?: SavedCheck };
+type FinishCheckReport = (report: CheckReport) => Promise<GoldenCheckReport>;
 
 export interface CheckCommandDependencies {
   resolveProject(dir: string | undefined): ProjectDir;
-  runPipeline(project: ProjectDir, options: CheckOptions): Promise<SavedCheckReport>;
+  runPipeline(
+    project: ProjectDir,
+    options: CheckOptions,
+    finish?: FinishCheckReport,
+  ): Promise<SavedCheckReport>;
   prepareMedia(project: ProjectDir, options: CheckOptions): Promise<PreparedMediaFile[]>;
   withMeta(value: object): object;
+  runGolden?(project: ProjectDir, options: GoldenGateOptions): Promise<GoldenSummary>;
 }
 
 const DEFAULT_COMMAND_DEPENDENCIES: CheckCommandDependencies = {
   resolveProject,
-  async runPipeline(project, options) {
+  async runPipeline(project, options, finish) {
     const capturing = captureArtifactRevision(project.dir).catch(warnNotRecorded);
-    const report = await runCheckPipeline(project, options);
+    const checked = await runCheckPipeline(project, options);
+    const report = finish ? await finish(checked) : checked;
     const images = (files: readonly string[]) => files.map((file) => resolve(project.dir, file));
     reportArtifacts("check", "frame", images(report.snapshots.files));
     reportArtifacts("check", "finding", images(report.snapshots.findingFiles));
@@ -248,6 +259,22 @@ const CHECK_COMMAND_ARGS = {
     description: "Save contrast-pass PNGs under .hyperframes/artifacts/snapshots/",
     default: false,
   },
+  golden: {
+    type: "boolean",
+    description:
+      "Also gate against committed golden baselines (golden/<compositionId>/<timeMs>.png): re-capture at the manifest times, pixel-diff, and fail on regressions",
+    default: false,
+  },
+  "update-golden": {
+    type: "boolean",
+    description: "Refresh the golden baselines from the current render instead of gating",
+    default: false,
+  },
+  "golden-threshold": {
+    type: "string",
+    description:
+      "Per-channel pixel tolerance for the golden gate, 0-1 (default: golden.json threshold, else 0.1)",
+  },
   "caption-zone": {
     type: "string",
     description:
@@ -280,36 +307,7 @@ export function createCheckCommand(
 
       const reported = untilReported();
       try {
-        const options = parseCheckOptions(args);
-        const project = dependencies.resolveProject(args.dir);
-        if (!asJson) {
-          console.log(`${c.accent("◆")}  Checking ${c.accent(project.name)}`);
-        }
-        if (args["prepare-media"] === true) {
-          await runPrepareMedia(dependencies, project, options, asJson);
-          return;
-        }
-        recordLastCheck({ at: new Date().toISOString(), codes: {} });
-        const report = await withProjectLock(project.dir, "check", () =>
-          dependencies.runPipeline(project, options),
-        );
-        recordLastCheck({
-          at: new Date().toISOString(),
-          exitCode: checkExitCode(report),
-          codes: failureCodes(report),
-        });
-        if (asJson) {
-          console.log(JSON.stringify(dependencies.withMeta(report), null, 2));
-        } else {
-          printHumanReport(report);
-          if (report.saved) {
-            console.log(`Report: ${report.saved.report}`);
-            console.log(
-              `Revision: ${report.saved.revision ?? "none"} (${report.saved.attribution})`,
-            );
-          }
-        }
-        setCommandExitCode(checkExitCode(report));
+        await executeCheck(dependencies, args, asJson);
       } catch (error) {
         recordLastCheck({
           at: new Date().toISOString(),
@@ -400,6 +398,66 @@ async function runPrepareMedia(
   setCommandExitCode(failed.length === 0 ? 0 : 1);
 }
 
+async function withGoldenSummary(
+  dependencies: CheckCommandDependencies,
+  project: ProjectDir,
+  goldenOptions: GoldenGateOptions,
+  report: CheckReport,
+): Promise<GoldenCheckReport> {
+  const runGolden = dependencies.runGolden ?? (await import("../golden/baseline.js")).runGoldenGate;
+  const golden = await runGolden(project, goldenOptions);
+  return { ...report, ok: report.ok && golden.ok, golden };
+}
+
+function emitCheckReport(
+  dependencies: CheckCommandDependencies,
+  report: SavedCheckReport,
+  asJson: boolean,
+): void {
+  if (asJson) {
+    console.log(JSON.stringify(dependencies.withMeta(report), null, 2));
+    return;
+  }
+  printHumanReport(report, report.golden);
+  if (report.saved) {
+    console.log(`Report: ${report.saved.report}`);
+    console.log(`Revision: ${report.saved.revision ?? "none"} (${report.saved.attribution})`);
+  }
+}
+
+async function executeCheck(
+  dependencies: CheckCommandDependencies,
+  args: Record<string, unknown>,
+  asJson: boolean,
+): Promise<void> {
+  const options = parseCheckOptions(args);
+  const goldenOptions = parseGoldenGateArgs(args, options);
+  const project = dependencies.resolveProject(typeof args.dir === "string" ? args.dir : undefined);
+  if (!asJson) {
+    console.log(`${c.accent("◆")}  Checking ${c.accent(project.name)}`);
+  }
+  if (args["prepare-media"] === true) {
+    await runPrepareMedia(dependencies, project, options, asJson);
+    return;
+  }
+  const finish: FinishCheckReport | undefined = goldenOptions
+    ? (checked) => withGoldenSummary(dependencies, project, goldenOptions, checked)
+    : undefined;
+  recordLastCheck({ at: new Date().toISOString(), codes: {} });
+  const report = await withProjectLock(project.dir, "check", () =>
+    finish
+      ? dependencies.runPipeline(project, options, finish)
+      : dependencies.runPipeline(project, options),
+  );
+  recordLastCheck({
+    at: new Date().toISOString(),
+    exitCode: checkExitCode(report),
+    codes: failureCodes(report),
+  });
+  emitCheckReport(dependencies, report, asJson);
+  setCommandExitCode(checkExitCode(report));
+}
+
 function checkReview(): ToolContext["checkReview"] {
   return readToolContext().checkReview;
 }
@@ -451,6 +509,31 @@ export function parseCheckRange(value: unknown): [number, number] | undefined {
   )
     throw new CliUsageError("Invalid --range: use non-negative start,end with end > start");
   return [start, end];
+}
+
+export function parseGoldenGateArgs(
+  args: Record<string, unknown>,
+  options: Pick<CheckOptions, "timeout" | "autoProxy" | "browserGpuMode">,
+): GoldenGateOptions | undefined {
+  const update = args["update-golden"] === true;
+  if (args.golden !== true && !update) return undefined;
+  return {
+    update,
+    threshold: parseGoldenThreshold(args["golden-threshold"]),
+    timeoutMs: options.timeout,
+    autoProxy: options.autoProxy,
+    browserGpuMode: options.browserGpuMode,
+  };
+}
+
+export function parseGoldenThreshold(value: unknown): number | undefined {
+  if (value === undefined || value === null) return undefined;
+  const raw = typeof value === "string" ? value.trim() : "";
+  const parsed = parseNumberStrict(raw);
+  if (parsed === null || parsed < 0 || parsed > 1) {
+    throw new Error("Invalid --golden-threshold: expected a number from 0 to 1");
+  }
+  return parsed;
 }
 
 const CAPTION_ZONE_FIELDS = new Set(["x0", "y0", "x1", "y1", "severity", "seek"]);
@@ -659,7 +742,7 @@ function browserSkippedLine(report: CheckReport): string {
     : "Browser session never ran — layout, motion, and contrast below are empty placeholders, not a clean pass.";
 }
 
-function printHumanReport(report: CheckReport): void {
+function printHumanReport(report: CheckReport, golden?: GoldenSummary): void {
   if (report.scope) {
     console.log(
       `Scope: ${report.scope.range ? report.scope.range.join("–") + "s" : "full timeline"}; ${report.scope.hiddenFindings} findings hidden by component filter. Counts/status include hidden findings.`,
@@ -678,9 +761,48 @@ function printHumanReport(report: CheckReport): void {
   printCraftSection(report);
   printSection("Audio", report.audio);
   printSnapshotSection(report);
+  if (golden) printGoldenSection(golden);
+  printCheckVerdict(report.ok && (golden?.ok ?? true));
+}
+
+function printCheckVerdict(ok: boolean): void {
   console.log();
-  const label = report.ok ? c.success("Check passed") : c.error("Check failed");
-  console.log(`${report.ok ? c.success("◇") : c.error("◇")}  ${label}`);
+  const label = ok ? c.success("Check passed") : c.error("Check failed");
+  console.log(`${ok ? c.success("◇") : c.error("◇")}  ${label}`);
+}
+
+function printGoldenSection(golden: GoldenSummary): void {
+  console.log();
+  console.log(c.bold("Golden"));
+  if (golden.updated) {
+    console.log(
+      `  ${c.success("◇")} ${golden.baselines.length} baseline(s) written for ${golden.compositionId}`,
+    );
+    for (const baseline of golden.baselines) console.log(`    ${c.dim(baseline)}`);
+    return;
+  }
+  if (golden.ok) {
+    console.log(
+      `  ${c.success("◇")} ${golden.compared}/${golden.compared} frame(s) match the committed baselines`,
+    );
+    return;
+  }
+  for (const failure of golden.failed) {
+    const detail =
+      failure.reason === "pixel-diff"
+        ? `${(failure.diffRatio * 100).toFixed(3)}% pixels differ (max channel delta ${failure.maxDelta})`
+        : failure.reason;
+    console.log(`  ${c.error("✗")} t=${failure.time}s ${detail}`);
+  }
+  console.log(
+    `  ${c.dim(`${golden.failed.length} of ${golden.compared} frame(s) regressed vs golden/${golden.compositionId}/`)}`,
+  );
+  if (golden.diffSheet) {
+    console.log(`  ${c.dim(`Diff sheet: ${golden.diffSheet}`)}`);
+  }
+  console.log(
+    `  ${c.dim("Intended change? Refresh baselines with hyperframes check --update-golden")}`,
+  );
 }
 
 function isEmptySection(section: CheckSection): boolean {

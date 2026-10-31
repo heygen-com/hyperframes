@@ -45,6 +45,7 @@ import {
   type CheckFindingFrameRequest,
   type CheckOptions,
   type CheckReport,
+  type CheckSection,
   type ContrastAuditEntry,
   type MotionSpecResolution,
 } from "../utils/checkPipeline.js";
@@ -64,6 +65,7 @@ import type {
 } from "../utils/layoutAudit.js";
 import type { CraftFrame, SeekClock } from "../utils/checkTypes.js";
 import type { ProjectDir } from "../utils/project.js";
+import type { GoldenSummary } from "../golden/baseline.js";
 
 const PROJECT: ProjectDir = {
   dir: "/project",
@@ -3750,6 +3752,199 @@ it("applies transition sample limits within the requested range", async () => {
   });
   expect(report.layout.transitionSamples).toEqual([7.8, 8]);
   expect(report.layout.transitionSamplesDropped).toBe(3);
+});
+
+describe("golden gate flags", () => {
+  it("parses --golden-threshold and rejects out-of-range values", async () => {
+    const { parseGoldenThreshold } = await import("./check.js");
+    expect(parseGoldenThreshold(undefined)).toBeUndefined();
+    expect(parseGoldenThreshold("0")).toBe(0);
+    expect(parseGoldenThreshold("0.25")).toBe(0.25);
+    expect(parseGoldenThreshold("1")).toBe(1);
+    expect(() => parseGoldenThreshold("1.5")).toThrow("Invalid --golden-threshold");
+    expect(() => parseGoldenThreshold("-0.1")).toThrow("Invalid --golden-threshold");
+    expect(() => parseGoldenThreshold("0.1px")).toThrow("Invalid --golden-threshold");
+    expect(() => parseGoldenThreshold("")).toThrow("Invalid --golden-threshold");
+  });
+
+  it("only enables the gate for --golden or --update-golden", async () => {
+    const { parseGoldenGateArgs } = await import("./check.js");
+    const base = { timeout: 3000, autoProxy: undefined, browserGpuMode: undefined };
+    expect(parseGoldenGateArgs({}, base)).toBeUndefined();
+    expect(parseGoldenGateArgs({ "golden-threshold": "0.2" }, base)).toBeUndefined();
+    expect(parseGoldenGateArgs({ golden: true }, base)).toEqual(
+      expect.objectContaining({ update: false, timeoutMs: 3000 }),
+    );
+    expect(parseGoldenGateArgs({ "update-golden": true, "golden-threshold": "0.2" }, base)).toEqual(
+      expect.objectContaining({ update: true, threshold: 0.2 }),
+    );
+  });
+});
+
+describe("golden gate wiring", () => {
+  function passingReport(): CheckReport {
+    const section: CheckSection = {
+      ok: true,
+      errorCount: 0,
+      warningCount: 0,
+      infoCount: 0,
+      findings: [],
+    };
+    return {
+      ok: true,
+      strict: false,
+      browserSkipped: false,
+      lint: { ...section, filesScanned: 1 },
+      runtime: { ...section },
+      layout: {
+        ...section,
+        findings: [],
+        duration: 1,
+        samples: [0.5],
+        transitionSamples: [],
+        transitionSamplesDropped: 0,
+        tolerance: 2,
+        totalIssueCount: 0,
+        truncated: false,
+      },
+      motion: { ...section, enabled: false, samples: 0 },
+      contrast: { ...section, findings: [], enabled: true, samples: [0.5], checked: 1, passed: 1 },
+      craft: { ...section, enabled: false, step: 0, samples: 0 },
+      audio: { ...section },
+      snapshots: { enabled: false, files: [], times: [], findingFiles: [] },
+      hdr: { autoPromotion: null, inspection: "available" },
+    };
+  }
+
+  it("fails an otherwise passing check when the golden gate regresses", async () => {
+    const logs: string[] = [];
+    vi.spyOn(console, "log").mockImplementation((line?: unknown) => {
+      logs.push(String(line));
+    });
+    const runGolden = vi.fn(async () => ({
+      ok: false,
+      updated: false,
+      compositionId: "intro",
+      compared: 2,
+      times: [0, 1.5],
+      failed: [
+        {
+          id: "intro",
+          time: 1.5,
+          timeMs: 1500,
+          maxDelta: 210,
+          diffRatio: 0.0042,
+          reason: "pixel-diff" as const,
+        },
+      ],
+      diffSheet: "golden-diff/intro/contact-sheet.jpg",
+      baselines: ["golden/intro/0.png", "golden/intro/1500.png"],
+    }));
+    const command = createCheckCommand({
+      resolveProject: () => PROJECT,
+      runPipeline: async (_project, _options, finish) =>
+        finish ? finish(passingReport()) : passingReport(),
+      prepareMedia: vi.fn(async () => []),
+      withMeta: (value) => value,
+      runGolden,
+    });
+
+    await runCommand(command, { rawArgs: ["--json", "--golden"] });
+
+    expect(runGolden).toHaveBeenCalledWith(PROJECT, expect.objectContaining({ update: false }));
+    const payload = JSON.parse(logs.join("\n"));
+    expect(payload.ok).toBe(false);
+    expect(payload.golden.failed).toEqual([
+      expect.objectContaining({ id: "intro", time: 1.5, maxDelta: 210 }),
+    ]);
+    expect(payload.golden.diffSheet).toBe("golden-diff/intro/contact-sheet.jpg");
+    expect(consumeCommandResult().exitCode).toBe(1);
+  });
+
+  it("hands the pipeline the golden result before the report is saved", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const runGolden = vi.fn(async () => ({
+      ok: false,
+      updated: false,
+      compositionId: "intro",
+      compared: 1,
+      times: [1.5],
+      failed: [
+        {
+          id: "intro",
+          time: 1.5,
+          timeMs: 1500,
+          maxDelta: 210,
+          diffRatio: 0.0042,
+          reason: "pixel-diff" as const,
+        },
+      ],
+      diffSheet: null,
+      baselines: ["golden/intro/1500.png"],
+    }));
+    let saved: (CheckReport & { golden?: GoldenSummary }) | undefined;
+    const command = createCheckCommand({
+      resolveProject: () => PROJECT,
+      runPipeline: async (_project, _options, finish) => {
+        saved = finish ? await finish(passingReport()) : passingReport();
+        return saved;
+      },
+      prepareMedia: vi.fn(async () => []),
+      withMeta: (value) => value,
+      runGolden,
+    });
+
+    await runCommand(command, { rawArgs: ["--golden"] });
+
+    expect(saved?.ok).toBe(false);
+    expect(saved?.golden).toEqual(expect.objectContaining({ ok: false, compared: 1 }));
+    expect(consumeCommandResult().exitCode).toBe(1);
+  });
+
+  it("does not run the golden gate when not requested", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const runGolden = vi.fn();
+    const command = createCheckCommand({
+      resolveProject: () => PROJECT,
+      runPipeline: async (_project, _options, finish) =>
+        finish ? finish(passingReport()) : passingReport(),
+      prepareMedia: vi.fn(async () => []),
+      withMeta: (value) => value,
+      runGolden,
+    });
+
+    await runCommand(command, { rawArgs: ["--json"] });
+
+    expect(runGolden).not.toHaveBeenCalled();
+    expect(consumeCommandResult().exitCode).toBe(0);
+  });
+
+  it("keeps a passing exit code when --update-golden refreshes baselines", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const runGolden = vi.fn(async () => ({
+      ok: true,
+      updated: true,
+      compositionId: "intro",
+      compared: 2,
+      times: [0, 1.5],
+      failed: [],
+      diffSheet: null,
+      baselines: ["golden/intro/0.png", "golden/intro/1500.png"],
+    }));
+    const command = createCheckCommand({
+      resolveProject: () => PROJECT,
+      runPipeline: async (_project, _options, finish) =>
+        finish ? finish(passingReport()) : passingReport(),
+      prepareMedia: vi.fn(async () => []),
+      withMeta: (value) => value,
+      runGolden,
+    });
+
+    await runCommand(command, { rawArgs: ["--json", "--update-golden"] });
+
+    expect(runGolden).toHaveBeenCalledWith(PROJECT, expect.objectContaining({ update: true }));
+    expect(consumeCommandResult().exitCode).toBe(0);
+  });
 });
 
 describe("check stopped by a signal", () => {
