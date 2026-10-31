@@ -5,6 +5,7 @@ import type { CaptureSession } from "./frameCapture.js";
 import type { SubTimelineWaitMemo } from "../types.js";
 import {
   buildZeroDurationDiagnostic,
+  captureDeVerificationFrames,
   pollHfReady,
   captureFramesBatchPipelined,
   captureFrameToBufferPipelined,
@@ -724,5 +725,40 @@ describe("HF_READY_DIAGNOSTIC_EXPR (evaluated as real JS, not via a fake fixture
     const result = await runDiagnosticExpr({});
     expect(result.pendingBuildReadyKeys).toEqual([]);
     expect(result.rejectedBuildReadyKeys).toEqual([]);
+  });
+});
+
+describe("captureDeVerificationFrames", () => {
+  it("waits for the colour-grading LUTs after injecting video frames, before every truth screenshot", async () => {
+    const log: string[] = [];
+    const cdp = {
+      send: vi.fn(async () => {
+        log.push("screenshot");
+        return { data: "" };
+      }),
+    };
+    const page = {
+      createCDPSession: async () => cdp,
+      evaluate: vi.fn(async (fn: unknown) => {
+        const src = String(fn);
+        if (src.includes("waitForActiveLuts")) log.push("luts");
+        else if (src.includes("data-start")) return [];
+        return undefined;
+      }),
+    };
+    const session = {
+      options: { fps: 30, width: 8, height: 8, format: "jpeg", compositionDurationSeconds: 10 },
+      onBeforeCapture: async () => {
+        log.push("inject");
+      },
+    } as unknown as CaptureSession;
+
+    await captureDeVerificationFrames(session, page as never, () => {});
+
+    expect(session.deVerifyFrames?.size).toBeGreaterThan(0);
+    log.forEach((entry, i) => {
+      if (entry === "inject") expect(log.slice(i + 1, i + 3)).toEqual(["luts", "screenshot"]);
+    });
+    expect(log).toContain("inject");
   });
 });
