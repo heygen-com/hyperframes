@@ -233,7 +233,7 @@ export const TimelineToolbar = memo(function TimelineToolbar({
           {/* Divider: tool-mode | editing-actions */}
           <div aria-hidden="true" className="mx-1 h-4 w-px bg-neutral-800" />
           <LinkedSelectionToggle />
-          <Tooltip label={timelineSnapEnabled ? "Snapping on (N)" : "Snapping off (N)"}>
+          <Tooltip label={timelineSnapEnabled ? "Snapping on" : "Snapping off"} shortcut="N">
             <button
               type="button"
               onClick={() => setTimelineSnapEnabled(!timelineSnapEnabled)}
@@ -286,18 +286,19 @@ export const TimelineToolbar = memo(function TimelineToolbar({
                       ? "Select an animated element to add keyframes"
                       : keyframeIsMotionPath
                         ? keyframeWillExtend
-                          ? "Extend motion path to playhead (K)"
+                          ? "Extend motion path to playhead"
                           : keyframeState === "active"
-                            ? "Remove waypoint from motion path (K)"
-                            : "Add waypoint to motion path (K)"
+                            ? "Remove waypoint from motion path"
+                            : "Add waypoint to motion path"
                         : keyframeState === "active"
-                          ? "Remove keyframe at playhead (K)"
+                          ? "Remove keyframe at playhead"
                           : keyframeState === "inactive"
                             ? keyframeWillExtend
-                              ? "Add keyframe at playhead, extends animation (K)"
-                              : "Add keyframe at playhead (K)"
-                            : "Add keyframe (K)"
+                              ? "Add keyframe at playhead, extends animation"
+                              : "Add keyframe at playhead"
+                            : "Add keyframe"
                 }
+                shortcut={keyframePathEndpoint || !onToggleKeyframe ? undefined : "K"}
               >
                 <button
                   type="button"
@@ -393,11 +394,12 @@ export const TimelineToolbar = memo(function TimelineToolbar({
                 <Tooltip
                   label={
                     canSplit
-                      ? `Split at playhead (${splitShortcut})`
+                      ? "Split at playhead"
                       : splittable
                         ? "Move the playhead inside the clip to split"
                         : "Select a clip to split"
                   }
+                  shortcut={canSplit ? splitShortcut : undefined}
                 >
                   <button
                     type="button"

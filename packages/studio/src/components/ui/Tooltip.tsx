@@ -14,6 +14,7 @@ import {
 } from "react";
 import { cn } from "./cn";
 import { floatingMotion, POPUP_LAYER } from "./Menu";
+import { ShortcutKey } from "./ShortcutKey";
 
 interface TooltipProps {
   label: string;
@@ -25,6 +26,7 @@ interface TooltipProps {
   side?: "top" | "bottom" | "left" | "right";
   /** Wraps a long label at a reading width and cuts it at this many lines with an ellipsis. Unset, one line. */
   lines?: number;
+  shortcut?: string;
 }
 
 /** Matches the old bubble's gap from its trigger, and its viewport margin. */
@@ -38,6 +40,7 @@ export function Tooltip({
   side = "top",
   disabled = false,
   lines,
+  shortcut,
 }: TooltipProps) {
   const [open, setOpen] = useState(false);
   const boxRef = useRef<HTMLSpanElement>(null);
@@ -73,6 +76,11 @@ export function Tooltip({
                 style={{ "--tooltip-lines": lines } as CSSProperties}
               >
                 {label}
+              </span>
+            ) : shortcut ? (
+              <span className="inline-flex items-center gap-1.5">
+                {label}
+                <ShortcutKey>{shortcut}</ShortcutKey>
               </span>
             ) : (
               label
