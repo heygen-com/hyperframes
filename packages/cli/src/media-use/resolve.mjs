@@ -588,10 +588,10 @@ async function run() {
     ...(searchResult.metadata?.transparent != null && {
       transparent: searchResult.metadata.transparent,
     }),
-    ...(entity && { entity }),
+    ...(entity && !variant && { entity }),
     provenance: {
       provider: searchResult.metadata?.provider || "unknown",
-      prompt: intent,
+      prompt: variant ? `${intent} [${variant}]` : intent,
       // Keep auth method sparse for non-HeyGen providers.
       ...heygenAuthMethodFor(searchResult.metadata?.provider),
       ...searchResult.metadata?.provenance,
@@ -602,7 +602,7 @@ async function run() {
   regenerateIndex(projectDir);
   // Promote fetched assets into the global cache for reuse.
   try {
-    cachePut(fullPath, record);
+    if (!variant) cachePut(fullPath, record);
   } catch {
     // promotion is best-effort; a resolve still succeeds locally
   }
