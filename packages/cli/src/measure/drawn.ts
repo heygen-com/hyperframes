@@ -74,7 +74,7 @@ export function contrast(px: Uint8Array, w: number, h: number): Float32Array {
   return out;
 }
 
-const inkOf = (px: Uint8Array, w: number, h: number) => {
+export const inkOf = (px: Uint8Array, w: number, h: number) => {
   const c = contrast(px, w, h);
   return Uint8Array.from(c, (v) => (v > INK_CONTRAST ? 1 : 0));
 };

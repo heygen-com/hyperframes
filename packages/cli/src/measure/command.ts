@@ -41,6 +41,7 @@ export const roiArg = {
 } as const;
 export const outArg = {
   type: "string",
+  alias: "output",
   description: "Folder for pictures (default .hyperframes/measure/<op>)",
 } as const;
 export const jsonArg = {

@@ -89,6 +89,7 @@ const { values: args } = parseArgs({
     type: { type: "string", short: "t" },
     intent: { type: "string", short: "i" },
     entity: { type: "string", short: "e" },
+    variant: { type: "string" },
     project: { type: "string", short: "p", default: "." },
     adopt: { type: "boolean", default: false },
     candidates: { type: "boolean", default: false },
@@ -124,6 +125,8 @@ Options:
   --type, -t      Media type (required)
   --intent, -i    What you need (required)
   --entity, -e    Entity name for cache matching (optional)
+  --variant       With --type logo: the brand's other artwork, e.g. wordmark,
+                  mono, light, dark (default: the full-colour mark)
   --project, -p   Project directory (default: .)
   --adopt         Adopt all existing assets/ files into the manifest
   --candidates    List reusable assets (project + global cache) for --type; no
@@ -153,6 +156,7 @@ Options:
 const projectDir = resolve(args.project);
 const type = args.type;
 const intent = args.intent;
+const variant = args.variant || null;
 const entity = args.entity || null;
 
 if (args.adopt) {
@@ -345,8 +349,9 @@ function localizeImportedRecord(record, localPath) {
 }
 
 async function run() {
-  // A forced provider bypasses reuse and pins the provider cascade.
-  const forced = !!args.provider;
+  // A forced provider bypasses reuse and pins the provider cascade; so does a variant,
+  // since reuse is keyed on the intent and would hand back the default artwork.
+  const forced = !!args.provider || !!variant;
 
   // 1. project manifest — exact-prompt match
   const projectHit = forced ? null : findByPrompt(projectDir, intent, type);
@@ -422,6 +427,7 @@ async function run() {
   const localOnly = args["local-only"];
   const ctx = {
     entity,
+    variant,
     projectDir,
     localOnly,
     provider: args.provider,
