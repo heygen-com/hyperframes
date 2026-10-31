@@ -45,6 +45,7 @@ jobs:
 
       - name: Play both edits in Safari
         working-directory: packages/player/tests/playbench
+        shell: bash # -o pipefail, so the tee below cannot hide a failed --assert
         run: |
           sw_vers
           # a failed edit must not hide the other one's numbers

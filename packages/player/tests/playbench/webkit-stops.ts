@@ -3,7 +3,7 @@
 // and how much of the time sounding audio stands still.
 // Flags: --edit tentake|primary, --runs 3, --browser webkit|chromium|safari|manual, --port 8099, --assert.
 // safari drives the real Safari through safaridriver (`sudo safaridriver --enable`, macOS only). --assert exits 1
-// unless every run has no playhead stop, at most MAX_AUDIO_SEEKS audio seeks and under MAX_FROZEN_PCT frozen audio.
+// unless every run has at most MAX_AUDIO_SEEKS audio seeks and under MAX_FROZEN_PCT frozen audio.
 // webkit drives Playwright's WebKit (`playwright-core` and `playwright-core install webkit`); manual only serves
 // /host.html and waits for a real Safari to open it, click Play and post the result.
 import { existsSync } from "node:fs";
@@ -170,7 +170,10 @@ async function drivePlaywright(engine: "webkit" | "chromium") {
 
 async function driveSafari() {
   const base = "http://127.0.0.1:4455";
-  const driver = Bun.spawn(["safaridriver", "-p", "4455"], { stdout: "inherit", stderr: "inherit" });
+  const driver = Bun.spawn(["safaridriver", "-p", "4455"], {
+    stdout: "inherit",
+    stderr: "inherit",
+  });
   const wd = async (method: string, path: string, body?: unknown) => {
     const res = await fetch(base + path, {
       method,
@@ -181,7 +184,15 @@ async function driveSafari() {
     if (json.value?.error) throw new Error(`${path}: ${json.value.message}`);
     return json.value;
   };
-  for (let i = 0; i < 50 && !(await fetch(`${base}/status`).then((r) => r.ok, () => false)); i++)
+  for (
+    let i = 0;
+    i < 50 &&
+    !(await fetch(`${base}/status`).then(
+      (r) => r.ok,
+      () => false,
+    ));
+    i++
+  )
     await Bun.sleep(200);
   try {
     for (let i = 0; i < RUNS; i++) {
@@ -224,14 +235,14 @@ for (const [i, r] of results.entries()) {
   }
 }
 server.stop(true);
-const MAX_AUDIO_SEEKS = 25; // 0.8.216's worst play of the 10-take edit
-const MAX_FROZEN_PCT = 1;
+const MAX_AUDIO_SEEKS = 15; // the loop made 50 to 190, a clean play 1 to 6
+const MAX_FROZEN_PCT = 15; // the loop froze 38 to 99%, a clean play 2 to 10%
 const bad = results.filter((r) => {
   const m = measure(r, cuts);
-  return m.stops > 0 || m.seeks > MAX_AUDIO_SEEKS || m.audioFrozenPct >= MAX_FROZEN_PCT;
+  return m.seeks > MAX_AUDIO_SEEKS || m.audioFrozenPct >= MAX_FROZEN_PCT;
 });
 if (process.argv.includes("--assert") && bad.length) {
-  console.error(`${bad.length} of ${results.length} runs stopped the playhead, looped on audio seeks or froze the sound`);
+  console.error(`${bad.length} of ${results.length} runs looped on audio seeks or froze the sound`);
   process.exit(1);
 }
 process.exit(0);

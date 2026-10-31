@@ -9,18 +9,12 @@ const MEDIA_STEER_STEPS: readonly (readonly [lag: number, steer: number])[] = [
   [0.1, 0.1],
 ];
 const MEDIA_STEER_RELEASE_SECONDS = 0.01;
-// Audio never steers past 10%, where speech changes tempo; a lag held past 100 ms is seeked instead.
-const AUDIO_MAX_STEER = 0.1;
-const AUDIO_STEER_LIMIT_SECONDS = 0.1;
+// Audio is never steered (a rate change shifts speech tempo, and WebKit's output starts 150 to 400 ms after
+// play() or a seek, so a lag below this is the start, which a seek only renews): a lag past this is seeked.
+const AUDIO_SEEK_SECONDS = 0.65;
 
 /** Direction (+1 fast, -1 slow) an element is being steered in; absent when it plays at its authored rate. */
 const steering = new WeakMap<HTMLMediaElement, number>();
-/** Started or seeked, not yet moving in tolerance: its lag is its own output latency, which a seek only renews. */
-const catchingUp = new WeakSet<HTMLMediaElement>();
-
-export function markMediaRestarted(el: HTMLMediaElement): void {
-  catchingUp.add(el);
-}
 
 /** Rate or seek for media `offset` s behind (+) or ahead (-); a lag still growing (`settled` false) never seeks. */
 export function steerMedia(
@@ -31,12 +25,9 @@ export function steerMedia(
   audioOnly = el.tagName === "AUDIO",
 ): { rate: number; seek: boolean } {
   const lag = Math.abs(offset);
-  if (settled && lag <= MEDIA_SYNC_TOLERANCE_SECONDS) catchingUp.delete(el);
-  const seekable = !catchingUp.has(el) || lag > MEDIA_HARD_SYNC_SECONDS;
-  if (audioOnly && settled && lag > AUDIO_STEER_LIMIT_SECONDS && seekable) {
+  if (audioOnly) {
     steering.delete(el);
-    catchingUp.add(el);
-    return { rate: baseRate, seek: true };
+    return { rate: baseRate, seek: settled && lag > AUDIO_SEEK_SECONDS };
   }
   const direction = Math.sign(offset);
   const current = steering.get(el);
@@ -46,14 +37,12 @@ export function steerMedia(
     return { rate: baseRate, seek: false };
   }
   const step = MEDIA_STEER_STEPS.find(([from]) => lag > from)?.[1] ?? MEDIA_STEER;
-  const steer = audioOnly ? Math.min(step, AUDIO_MAX_STEER) : step;
-  return { rate: baseRate * (1 + direction * steer), seek: false };
+  return { rate: baseRate * (1 + direction * step), seek: false };
 }
 
 /** Drop `el`'s steering: it was seeked, paused or replaced, so its old offset says nothing. */
 export function forgetSteering(el: HTMLMediaElement): void {
   steering.delete(el);
-  catchingUp.delete(el);
 }
 
 export function isSteering(el: HTMLMediaElement): boolean {

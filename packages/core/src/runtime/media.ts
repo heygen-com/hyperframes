@@ -16,7 +16,6 @@ import { registerSeekCompletion } from "./adapters/seek-dispatch.js";
 import { cutToHostSlots, type HostSlot } from "../mediaTiming.js";
 import {
   forgetSteering,
-  markMediaRestarted,
   isSteering,
   MEDIA_HARD_SYNC_SECONDS,
   MEDIA_SYNC_TOLERANCE_SECONDS,
@@ -756,7 +755,6 @@ export function syncRuntimeMedia(params: {
             }
           }
           holdSeekBarrierUntilVideoLands(el);
-          markMediaRestarted(el);
         }
         playRequested.delete(el);
         heldAhead.delete(el);
@@ -787,7 +785,6 @@ export function syncRuntimeMedia(params: {
         // fire between `load()` and `addEventListener` attachment, wedging
         // the element waiting for a callback that never came.
         markPlayRequested(el);
-        markMediaRestarted(el);
         // Offset read after any seek above; a loop could wrap a lap before the sample.
         if (isNonLoopVideo)
           videoStarts.set(el, {

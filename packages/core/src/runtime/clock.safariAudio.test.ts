@@ -91,6 +91,6 @@ describe("an audio clock whose output starts late, as Safari's does", () => {
     const run = playAudioClock(10);
     expect(run.seeks).toBe(0);
     expect(run.time).toBeGreaterThan(9.5);
-    expect(Math.abs(run.time - run.audioTime)).toBeLessThan(0.1);
+    expect(Math.abs(run.time - run.audioTime)).toBeLessThan(0.65);
   });
 });
