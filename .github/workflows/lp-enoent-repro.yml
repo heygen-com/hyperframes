@@ -1,0 +1,72 @@
+# Repro-only: long streaming renders with frame-file tracing, to find what removes frame_#.jpg mid-capture.
+name: ENOENT frame repro
+on:
+  pull_request:
+    paths:
+      [
+        ".github/workflows/lp-enoent-repro.yml",
+        ".github/workflows/fixtures/frame-fs-trace.cjs",
+        ".github/workflows/fixtures/enoent-video.html",
+      ]
+permissions:
+  contents: read
+jobs:
+  render:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+        run: [1, 2, 3]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    env:
+      HF_TRACE_FRAME_FS: "1"
+      HYPERFRAMES_NO_TELEMETRY: "1"
+      DO_NOT_TRACK: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - if: runner.os == 'Windows'
+        uses: ./.github/actions/install-ffmpeg-windows
+      - if: runner.os == 'Linux'
+        run: sudo apt-get -qq update && sudo apt-get -qq install -y ffmpeg
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - shell: bash
+        run: bun install --frozen-lockfile --linker=hoisted
+      - shell: bash
+        run: |
+          bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
+          bun run --cwd packages/core build
+          bun run --filter @hyperframes/player build
+          bun run --filter @hyperframes/studio build
+          bun run --filter @hyperframes/inspector build
+          bun run --filter @hyperframes/cli build
+      - name: Two concurrent video renders and a snapshot, traced
+        shell: bash
+        env:
+          HYPERFRAMES_EXTRACT_CACHE_MAX_MB: "50"
+        run: |
+          TRACE="--require $GITHUB_WORKSPACE/.github/workflows/fixtures/frame-fs-trace.cjs"
+          CLI="$GITHUB_WORKSPACE/packages/cli/dist/cli.js"
+          mk() { mkdir -p "$RUNNER_TEMP/$1"; sed "s/DUR/$2/g" .github/workflows/fixtures/enoent-video.html > "$RUNNER_TEMP/$1/index.html"
+                 ffmpeg -loglevel error -f lavfi -i "testsrc2=size=1280x720:rate=30:duration=$2" -vf "hue=h=$3" -pix_fmt yuv420p -c:v libx264 -preset ultrafast "$RUNNER_TEMP/$1/clip.mp4"; }
+          mk long 240 0; mk short 60 120; mk snap 90 240
+          set +e
+          (cd "$RUNNER_TEMP/long" && NODE_OPTIONS="$TRACE" node "$CLI" render --fps 30 --quality standard --workers 3 --output out.mp4 > render.log 2>&1; echo "long rc=$?" >> render.log) &
+          LONG=$!
+          sleep 90
+          (cd "$RUNNER_TEMP/short" && NODE_OPTIONS="$TRACE" node "$CLI" render --fps 30 --quality standard --workers 2 --output out.mp4 > render.log 2>&1; echo "short rc=$?" >> render.log)
+          (cd "$RUNNER_TEMP/snap" && NODE_OPTIONS="$TRACE" node "$CLI" snapshot . --at 5,30,60,85 --no-end > render.log 2>&1; echo "snap rc=$?" >> render.log)
+          wait $LONG
+          for r in long short snap; do echo "== $r"; tail -1 "$RUNNER_TEMP/$r/render.log"; grep -E "READ FAILED|ENOENT" "$RUNNER_TEMP/$r/render.log" | head -3; done
+          echo "== removals of anything the long render owns, by other processes"
+          LPID=$(grep -m1 -oE "tracing on, pid [0-9]+" "$RUNNER_TEMP/long/render.log" | awk '{print $4}')
+          cat "$RUNNER_TEMP"/{short,snap}/render.log | grep "\[frame-fs\]" | grep -E "rmSync|rm |rmdir|unlink" | cut -c1-400 | head -40
+          mkdir -p "$RUNNER_TEMP/logs" && for r in long short snap; do cp "$RUNNER_TEMP/$r/render.log" "$RUNNER_TEMP/logs/$r.log"; done
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: enoent-${{ matrix.os }}-${{ matrix.run }}
+          path: ${{ runner.temp }}/logs/

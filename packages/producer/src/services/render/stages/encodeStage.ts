@@ -333,7 +333,24 @@ async function readLandedFrame(workerPath: string | undefined, mergedPath: strin
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
   }
-  return readFile(mergedPath);
+  try {
+    return await readFile(mergedPath);
+  } catch (error) {
+    if (process.env.HF_TRACE_FRAME_FS === "1") {
+      const { existsSync, readdirSync } = await import("node:fs");
+      const { dirname, basename } = await import("node:path");
+      const near = (dir: string, name: string) =>
+        existsSync(dir)
+          ? readdirSync(dir).filter(
+              (f) => Math.abs(parseInt(f.slice(6)) - parseInt(name.slice(6))) < 4,
+            )
+          : "NO DIR";
+      process.stderr.write(
+        `[frame-fs] READ FAILED worker=${workerPath} merged=${mergedPath} workerNear=${JSON.stringify(workerPath ? near(dirname(workerPath), basename(workerPath)) : null)} mergedNear=${JSON.stringify(near(dirname(mergedPath), basename(mergedPath)))}\n`,
+      );
+    }
+    throw error;
+  }
 }
 
 /**

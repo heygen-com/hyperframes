@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: #101418; }
+      .tile { position: absolute; width: 160px; height: 160px; border-radius: 24px; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="240" data-width="1920" data-height="1080"></div>
+    <script>
+      const root = document.getElementById("root");
+      const tl = gsap.timeline({ paused: true });
+      for (let i = 0; i < 40; i++) {
+        const tile = document.createElement("div");
+        tile.className = "tile";
+        tile.style.background = `hsl(${i * 9}, 70%, 55%)`;
+        tile.style.left = `${(i % 10) * 190 + 20}px`;
+        tile.style.top = `${Math.floor(i / 10) * 260 + 40}px`;
+        root.appendChild(tile);
+        tl.to(tile, { rotation: 360 * 40, x: 60, duration: 240, ease: "none" }, 0);
+        tl.to(tile, { opacity: 0.3, yoyo: true, repeat: 119, duration: 1, ease: "sine.inOut" }, 0);
+      }
+      window.__timelines = { main: tl };
+    </script>
+  </body>
+</html>
