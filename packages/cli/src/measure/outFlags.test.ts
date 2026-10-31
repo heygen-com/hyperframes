@@ -17,6 +17,8 @@ describe("output folder flags", () => {
     ["snapshot", snapshot, "output"],
   ])("%s takes --out, --output and --output-dir", (_name, def, key) => {
     const spellings = new Set([key, ...aliases(def, key)]);
-    expect([...spellings].sort()).toEqual(["out", "output", "output-dir"].concat(key === "output" ? ["o"] : []).sort());
+    expect([...spellings].sort()).toEqual(
+      ["out", "output", "output-dir"].concat(key === "output" ? ["o"] : []).sort(),
+    );
   });
 });

@@ -1562,7 +1562,9 @@ globalThis.fetch = async (url, init) => {
   assert.equal(variant.provenance.variant, "wordmark");
   const otherProject = mkdtempSync(join(tmpdir(), "mu-resolve-other-"));
   for (const project of [tmp, otherProject]) {
-    const plain = JSON.parse(spawnResolve([...base, "--project", project], { nodeArgs }).stdout.trim());
+    const plain = JSON.parse(
+      spawnResolve([...base, "--project", project], { nodeArgs }).stdout.trim(),
+    );
     assert.equal(plain.provenance.variant, "default", `default logo in ${project}`);
   }
   rmSync(otherProject, { recursive: true, force: true });
