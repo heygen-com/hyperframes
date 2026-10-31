@@ -1,7 +1,9 @@
 #!/usr/bin/env bun
 // Plays an edit in WebKit and counts how often the playhead stands still at the cuts, how often audio is seeked,
 // and how much of the time sounding audio stands still.
-// Flags: --edit tentake|primary, --runs 3, --browser webkit|chromium|manual, --port 8099.
+// Flags: --edit tentake|primary, --runs 3, --browser webkit|chromium|safari|manual, --port 8099, --assert.
+// safari drives the real Safari through safaridriver (`sudo safaridriver --enable`, macOS only). --assert exits 1
+// unless every run has no playhead stop, at most MAX_AUDIO_SEEKS audio seeks and under MAX_FROZEN_PCT frozen audio.
 // webkit drives Playwright's WebKit (`playwright-core` and `playwright-core install webkit`); manual only serves
 // /host.html and waits for a real Safari to open it, click Play and post the result.
 import { existsSync } from "node:fs";
@@ -166,8 +168,46 @@ async function drivePlaywright(engine: "webkit" | "chromium") {
   await browser.close();
 }
 
+async function driveSafari() {
+  const base = "http://127.0.0.1:4455";
+  const driver = Bun.spawn(["safaridriver", "-p", "4455"], { stdout: "inherit", stderr: "inherit" });
+  const wd = async (method: string, path: string, body?: unknown) => {
+    const res = await fetch(base + path, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const json = (await res.json()) as { value: any }; // oxlint-disable-line no-explicit-any
+    if (json.value?.error) throw new Error(`${path}: ${json.value.message}`);
+    return json.value;
+  };
+  for (let i = 0; i < 50 && !(await fetch(`${base}/status`).then((r) => r.ok, () => false)); i++)
+    await Bun.sleep(200);
+  try {
+    for (let i = 0; i < RUNS; i++) {
+      const { sessionId } = await wd("POST", "/session", {
+        capabilities: { alwaysMatch: { browserName: "safari" } },
+      });
+      const s = `/session/${sessionId}`;
+      try {
+        await wd("POST", `${s}/url`, { url: `${origin}/host.html` });
+        await Bun.sleep(8000); // media load
+        const done = new Promise<void>((r) => (resolveResult = r));
+        const btn = await wd("POST", `${s}/element`, { using: "css selector", value: "#go" });
+        await wd("POST", `${s}/element/${Object.values(btn)[0]}/click`, {});
+        await done;
+      } finally {
+        await wd("DELETE", s).catch(() => {});
+      }
+    }
+  } finally {
+    driver.kill();
+  }
+}
+
 const engine = arg("browser", "webkit");
 if (engine === "webkit" || engine === "chromium") await drivePlaywright(engine);
+else if (engine === "safari") await driveSafari();
 else {
   console.log(`open ${origin}/host.html in Safari, click Play (${RUNS} runs)`);
   while (results.length < RUNS) await new Promise<void>((r) => (resolveResult = r));
@@ -184,4 +224,14 @@ for (const [i, r] of results.entries()) {
   }
 }
 server.stop(true);
+const MAX_AUDIO_SEEKS = 25; // 0.8.216's worst play of the 10-take edit
+const MAX_FROZEN_PCT = 1;
+const bad = results.filter((r) => {
+  const m = measure(r, cuts);
+  return m.stops > 0 || m.seeks > MAX_AUDIO_SEEKS || m.audioFrozenPct >= MAX_FROZEN_PCT;
+});
+if (process.argv.includes("--assert") && bad.length) {
+  console.error(`${bad.length} of ${results.length} runs stopped the playhead, looped on audio seeks or froze the sound`);
+  process.exit(1);
+}
 process.exit(0);
