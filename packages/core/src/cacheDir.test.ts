@@ -22,11 +22,11 @@ describe("hyperframesCacheDir", () => {
   });
 });
 
-/** Source files under every package's src, tests left out. */
+/** Source files under every package's src, tests and test helpers left out. */
 function sources(dir: string): string[] {
   return readdirSync(dir, { recursive: true, withFileTypes: true })
     .filter((entry) => entry.isFile() && /\.(m?[jt]sx?)$/.test(entry.name))
-    .filter((entry) => !/\.test\.|__tests__/.test(join(entry.parentPath, entry.name)))
+    .filter((entry) => !/\.test[.-]|__tests__/.test(join(entry.parentPath, entry.name)))
     .map((entry) => join(entry.parentPath, entry.name));
 }
 
