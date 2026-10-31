@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { Timeline } from "./Timeline";
 import { installTimelineMountEnv } from "./timelineMountTestEnv";
 import { usePlayerStore } from "../store/playerStore";
-import { CLIP_Y, RULER_H, TRACK_H, TRACKS_BOTTOM_PAD, TRACKS_TOP_PAD } from "./timelineLayout";
+import { CLIP_Y, RULER_H, TRACK_H, TRACKS_TOP_PAD } from "./timelineLayout";
 import {
   mountThreeTrackTimeline,
   dragTimelineFixtureAsset,
@@ -46,7 +46,7 @@ async function mountCanvas(trackPadding?: TimelineProps["trackPadding"]) {
 describe("Timeline trackPadding", () => {
   it("keeps Studio's pads by default", async () => {
     expect(await mountCanvas()).toEqual({
-      height: `${RULER_H + TRACKS_TOP_PAD + TRACK_H + TRACKS_BOTTOM_PAD}px`,
+      height: `${RULER_H + TRACKS_TOP_PAD + TRACK_H + TRACK_H}px`,
       firstRowTop: `${RULER_H + TRACKS_TOP_PAD}px`,
     });
   });

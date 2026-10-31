@@ -1,4 +1,4 @@
-import { RULER_H, CLIP_Y, TRACK_H, type TimelineRowGeometry } from "./timelineLayout";
+import { RULER_H, CLIP_Y, type TimelineRowGeometry } from "./timelineLayout";
 import { rectsOverlap, type Rect } from "../../utils/marqueeGeometry";
 import { queryTimelineClipIndex, type TimelineClipIndex } from "../lib/timelineClipIndex";
 import type { TimelineElement } from "../store/playerStore";
@@ -79,7 +79,7 @@ export function getTimelineClipRect(
     left: contentOrigin + clip.start * pps,
     top: rowGeometry.getRowTop(row) + CLIP_Y,
     width: Math.max(clip.duration * pps, MIN_CLIP_W),
-    height: TRACK_H - CLIP_Y * 2,
+    height: rowGeometry.trackHeight - CLIP_Y * 2,
   };
 }
 

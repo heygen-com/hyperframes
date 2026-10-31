@@ -8,7 +8,6 @@ import type { DraggedClipState } from "./timelineClipDragTypes";
 import { useTimelineTrackDerivations } from "./useTimelineTrackDerivations";
 import { buildTimelineTrackInsertLayout } from "./timelineTrackInsertLayout";
 import {
-  TRACK_H,
   createTimelineRowGeometry,
   type TimelineRowGeometry,
   type TimelineTrackPadding,
@@ -18,6 +17,7 @@ import {
 import type { TimelineTrackGroupInfo } from "./useTimelineTrackDerivations";
 import { groupAutomationElement } from "./groupAutomationElement";
 import { AUTOMATION_LANE_H } from "./automationLaneHeight";
+import { useTimelineTrackHeight } from "./useTimelineTrackHeight";
 
 /** Automation rows the GROUP itself owns — its `data-automation`, not its members'. */
 function groupOwnLaneCount(group: TimelineTrackGroupInfo): number {
@@ -140,23 +140,24 @@ function computeLaneCounts(
 
 /** Group anchor rows have no elements of their own (`groupTimelineTracks`
  *  pushes them as `[anchorKey, []]`), so `trackHeights` — which only ever
- *  looks at a row's clips — always gives them TRACK_H. Override those
- *  specific rows post-hoc: TRACK_H while collapsed, plus the group's own
+ *  looks at a row's clips — always gives them the base track height. Override
+ *  those specific rows post-hoc: the base height while collapsed, plus the group's own
  *  automation rows once its `∿` is open. */
 function applyGroupStripHeights(
   tracks: readonly (readonly [number, readonly TimelineElement[]])[],
   rowHeights: number[],
   groups: readonly TimelineTrackGroupInfo[],
   expandedLaneOwnerIds: ReadonlySet<string>,
+  trackHeight: number,
 ): number[] {
   if (groups.length === 0) return rowHeights;
   const groupByAnchor = new Map(groups.map((group) => [group.anchorKey, group]));
   return tracks.map(([track], index) => {
     const group = groupByAnchor.get(track);
-    if (!group || !expandedLaneOwnerIds.has(group.id)) return rowHeights[index] ?? TRACK_H;
+    if (!group || !expandedLaneOwnerIds.has(group.id)) return rowHeights[index] ?? trackHeight;
     // The group's own automation rows, which its `∿` discloses. A row sized
     // without them clipped every lane it had just promised in the count.
-    return TRACK_H + groupOwnLaneCount(group) * AUTOMATION_LANE_H;
+    return trackHeight + groupOwnLaneCount(group) * AUTOMATION_LANE_H;
   });
 }
 
@@ -172,6 +173,7 @@ function useTimelineRowHeights(
   const padBottom = trackPadding?.bottom;
   const expandedClipIds = usePlayerStore((s) => s.expandedClipIds);
   const expandedLaneOwnerIds = usePlayerStore((s) => s.expandedLaneOwnerIds);
+  const trackHeight = useTimelineTrackHeight();
   const { laneCounts, rowGeometry } = useMemo(() => {
     const laneCounts = computeLaneCounts(tracks, gsapAnimations);
     // Keyframe lanes follow only the active clip, so a track with several
@@ -203,9 +205,10 @@ function useTimelineRowHeights(
     });
     const rowHeights = applyGroupStripHeights(
       tracks,
-      trackHeights(heightTracks, expandedClipIds),
+      trackHeights(heightTracks, expandedClipIds, trackHeight),
       groups,
       expandedLaneOwnerIds,
+      trackHeight,
     );
     return {
       laneCounts,
@@ -213,11 +216,13 @@ function useTimelineRowHeights(
         tracks.map(([track]) => track),
         rowHeights,
         { top: padTop, bottom: padBottom },
+        trackHeight,
       ),
     };
   }, [
     padTop,
     padBottom,
+    trackHeight,
     expandedClipIds,
     expandedLaneOwnerIds,
     gsapAnimations,
@@ -285,7 +290,7 @@ function useDisplayRowHeights(
     () =>
       displayTrackOrder.map((track) => {
         const row = rowGeometry.getRowIndex(track);
-        return row < 0 ? TRACK_H : rowGeometry.getRowHeight(row);
+        return row < 0 ? rowGeometry.trackHeight : rowGeometry.getRowHeight(row);
       }),
     [displayTrackOrder, rowGeometry],
   );
@@ -335,8 +340,14 @@ export function useTimelineDisplayLayout(
   const displayTrackOrder = useDisplayTrackOrder(draggedClip, trackOrder);
   const displayRowHeights = useDisplayRowHeights(displayTrackOrder, rowGeometry);
   const displayRowGeometry = useMemo(
-    () => createTimelineRowGeometry(displayTrackOrder, displayRowHeights, rowGeometry.padding),
-    [displayTrackOrder, displayRowHeights, rowGeometry.padding],
+    () =>
+      createTimelineRowGeometry(
+        displayTrackOrder,
+        displayRowHeights,
+        rowGeometry.padding,
+        rowGeometry.trackHeight,
+      ),
+    [displayTrackOrder, displayRowHeights, rowGeometry.padding, rowGeometry.trackHeight],
   );
   let draggedRowKey: number | undefined;
   if (draggedClip?.started) {
