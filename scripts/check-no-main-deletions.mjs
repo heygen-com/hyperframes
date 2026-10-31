@@ -21,6 +21,7 @@
  */
 
 import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 const BASE_FLAG = "--base";
 
@@ -2163,4 +2164,4 @@ function main() {
   process.exit(1);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) main();
+if (process.argv[1] === fileURLToPath(import.meta.url)) main();
