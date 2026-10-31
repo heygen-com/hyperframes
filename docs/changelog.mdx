@@ -9,6 +9,22 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.225"
+  description="Released - 2026-10-31"
+  tags={["Release", "Engine", "CLI"]}
+>
+Exports no longer drop frames from nested video clips that start on a frame boundary. The CLI fills mask boxes from the picture behind, and billing top-up opens the pricing page.
+
+## Fixes
+
+- **Engine:** Nested video clips on a frame boundary export every source frame ([47fe68562](https://github.com/heygen-com/hyperframes/commit/47fe68562f39d91b4d9280dff41ae43d67805fae), [#6893](https://github.com/heygen-com/hyperframes/pull/6893)).
+- **CLI:** Billing top-up opens the pricing page ([4d44c0d0a](https://github.com/heygen-com/hyperframes/commit/4d44c0d0ab459e4defad0954480a0798f353e421), [#6887](https://github.com/heygen-com/hyperframes/pull/6887)).
+- **CLI:** Fill --mask boxes from the picture behind and crop generated clips to the requested aspect ([919e138fc](https://github.com/heygen-com/hyperframes/commit/919e138fc25c5ae3dc6bc3ca46adc7f6b52cd0c8), [#6892](https://github.com/heygen-com/hyperframes/pull/6892)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.224...v0.8.225).
+</Update>
+
+<Update
   label="HyperFrames v0.8.224"
   description="Released - 2026-10-31"
   tags={["Release", "Skills", "CLI", "Core"]}
