@@ -2282,6 +2282,10 @@ Opens a browser for OAuth:
 hyperframes auth login
 ```
 
+The command waits up to 60 minutes for you to finish in the browser, including
+choosing a plan and checking out. Press Ctrl+C to cancel. If it times out, run
+it again.
+
 Pass `--api-key` when you want a long-lived HeyGen API key instead. The key is
 verified against `GET /v3/users/me` before the command reports success, so a
 rejected key is never left on disk.

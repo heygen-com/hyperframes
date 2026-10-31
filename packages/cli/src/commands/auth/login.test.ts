@@ -391,6 +391,27 @@ describe("auth login", () => {
     expect(telemetry.trackAuthLoginCompleted).toHaveBeenCalledWith("oauth", "b@example.com");
   });
 
+  it("tells a timed-out browser login how to recover", async () => {
+    browserAuth.start.mockRejectedValueOnce(new Error("OAuth callback timed out after 3600000ms"));
+    await expect(runCommand({})).rejects.toThrow();
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining("Run `hyperframes auth login` again"),
+    );
+    expect(console.error).not.toHaveBeenCalledWith(expect.stringContaining("bought"));
+    expect(telemetry.trackAuthLoginFailed).toHaveBeenCalledWith("oauth", "flow_timeout");
+  });
+
+  it("does not offer the recovery line for other browser login failures", async () => {
+    browserAuth.start.mockRejectedValueOnce(
+      new Error("OAuth state mismatch — possible CSRF, aborting."),
+    );
+    await expect(runCommand({})).rejects.toThrow();
+    expect(console.error).not.toHaveBeenCalledWith(
+      expect.stringContaining("hyperframes auth login"),
+    );
+    expect(telemetry.trackAuthLoginFailed).toHaveBeenCalledWith("oauth", "flow_error");
+  });
+
   it("refuses device authorization in CI", async () => {
     process.env["CI"] = "true";
     await expect(runCommand({ device: true })).rejects.toThrow(/Invalid command usage/);

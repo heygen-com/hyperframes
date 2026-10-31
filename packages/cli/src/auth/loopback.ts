@@ -10,7 +10,7 @@
  * redirect URI's port is just a placeholder — the actual port the
  * server lands on is what matters at runtime.
  *
- * Times out after 120s. Validates `state` matches the value we
+ * Times out after 60 minutes. Validates `state` matches the value we
  * generated. Renders a small "you can close this window" page back
  * to the browser before shutting down.
  */
@@ -22,7 +22,7 @@ import { AddressInfo } from "node:net";
 export interface LoopbackOptions {
   /** Expected `state` value — flow fails if it doesn't match. */
   state: string;
-  /** Timeout in ms (default 120s). */
+  /** Timeout in ms (default 60 minutes). */
   timeoutMs?: number;
   /** Override port for tests (default 0 = ephemeral). */
   port?: number;
@@ -45,7 +45,8 @@ export interface LoopbackHandle {
 }
 
 const CALLBACK_PATH = "/oauth/callback";
-const DEFAULT_TIMEOUT_MS = 300_000;
+// Sign-in can include Stripe checkout; matches pacific's 60-minute plan-checkout handoff.
+const DEFAULT_TIMEOUT_MS = 60 * 60 * 1000;
 
 export async function startLoopback(opts: LoopbackOptions): Promise<LoopbackHandle> {
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;

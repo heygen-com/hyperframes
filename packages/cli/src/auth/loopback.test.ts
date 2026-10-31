@@ -1,10 +1,12 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { get } from "node:http";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { startLoopback, type LoopbackHandle } from "./loopback.js";
 
 describe("auth/loopback", () => {
   let active: LoopbackHandle | null = null;
 
   afterEach(async () => {
+    vi.useRealTimers();
     if (active) {
       await active.close().catch(() => {});
       active = null;
@@ -72,5 +74,35 @@ describe("auth/loopback", () => {
     expect(res.status).toBe(404);
     // Flow is still waiting — kill it via timeout.
     await expect(handle.result).rejects.toThrow(/timed out/i);
+  });
+
+  // Literal on purpose: pins the default. Sign-in can include Stripe checkout.
+  const CHECKOUT_WINDOW_MS = 60 * 60 * 1000;
+
+  it("accepts a callback after a slow checkout and leaves no timer behind", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const handle = await startLoopback({ state: "s" });
+    active = handle;
+    await vi.advanceTimersByTimeAsync(CHECKOUT_WINDOW_MS - 1_000);
+    // node:http, not fetch: undici registers its own timers, which would pollute the count.
+    get(`${handle.redirectUri}?code=the_code&state=s`).on("error", () => {});
+    await expect(handle.result).resolves.toMatchObject({ code: "the_code" });
+    // Checked before any explicit close(): the flow must clean up after itself on success,
+    // or the CLI stays alive for the whole window after "Signed in".
+    expect(vi.getTimerCount()).toBe(0);
+    await handle.close();
+  });
+
+  it("gives up at the checkout window, not before", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const handle = await startLoopback({ state: "s" });
+    active = handle;
+    const settled = vi.fn();
+    handle.result.catch(settled);
+    await vi.advanceTimersByTimeAsync(CHECKOUT_WINDOW_MS - 1);
+    expect(settled).not.toHaveBeenCalled();
+    const rejected = expect(handle.result).rejects.toThrow(/timed out/i);
+    await vi.advanceTimersByTimeAsync(1);
+    await rejected;
   });
 });

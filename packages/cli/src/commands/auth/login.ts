@@ -230,8 +230,12 @@ async function runOAuthLogin(): Promise<void> {
     // the user never completes the browser step (closed the tab / walked away).
     // That is the dominant non-error dropout, so split it from real failures
     // (IdP misconfig, network) instead of lumping everything as flow_error.
-    trackAuthLoginFailed("oauth", /timed out/i.test(message) ? "flow_timeout" : "flow_error");
+    const timedOut = /timed out/i.test(message);
+    trackAuthLoginFailed("oauth", timedOut ? "flow_timeout" : "flow_error");
     console.error(c.error(`Sign-in failed: ${message}`));
+    if (timedOut) {
+      console.error("Run `hyperframes auth login` again.");
+    }
     failCommand();
   }
 
