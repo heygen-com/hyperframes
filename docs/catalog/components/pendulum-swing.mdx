@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Pendulum Swing</h1>
+  <p>Content hangs from a fixed pivot and swings into rest with gravity-damped oscillation, like a hanging sign settling on its hook.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/pendulum-swing.json"
   compositionId="pendulum-swing"
   compositionSrc="compositions/components/pendulum-swing.html"
   title="Pendulum Swing"
-  description="Content hangs from a fixed pivot and swings into rest with gravity-damped oscillation, like a hanging sign settling on its hook."
   variables={[{"id":"pivot","type":"enum","role":"layout","label":"Pivot","description":"Where the content hangs from. The swing rotates about this point, so the top edge stays pinned.","default":"top-center","options":[{"value":"top-center","label":"Top center"},{"value":"top-left","label":"Top left"},{"value":"top-right","label":"Top right"}]},{"id":"amplitude","type":"enum","role":"motion","label":"Amplitude","description":"How far the first swing reaches before it settles. Every later swing scales with it, so the pendulum still comes to rest upright.","default":"standard","options":[{"value":"gentle","label":"Gentle"},{"value":"standard","label":"Standard"},{"value":"wide","label":"Wide"}]},{"id":"direction","type":"enum","role":"motion","label":"Direction","description":"Which side the pendulum swings in from: right lifts the first swing clockwise, left mirrors it.","default":"right","options":[{"value":"right","label":"Right"},{"value":"left","label":"Left"}]},{"id":"tone","type":"enum","role":"style","label":"Tone","description":"Content colour: ink for light frames, paper for dark ones, accent rides --brand.","default":"ink","options":[{"value":"ink","label":"Ink"},{"value":"paper","label":"Paper"},{"value":"accent","label":"Accent"}]}]}
   meta={{"category":"Motion Scenes","badge":"Stable","codeLines":130}}
   attribution={{"path":"registry/components/pendulum-swing","tags":["motion-primitive","physics","swing","settle","reveal"]}}
@@ -165,7 +169,9 @@ That writes one file: `compositions/components/pendulum-swing.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -208,6 +214,4 @@ Tagged `motion-primitive` `physics` `swing` `settle` `reveal`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

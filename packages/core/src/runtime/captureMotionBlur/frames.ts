@@ -14,6 +14,7 @@ export interface FrameRequest {
   movers: HTMLElement[];
   reader: ReturnType<typeof createPoseReader>;
   seek: (t: number) => void;
+  restore?: (t: number) => void;
   t: number;
   /** Pose reads across the shutter; the taps between them are interpolated. */
   reads: number;
@@ -40,7 +41,7 @@ export function readMoverFrames(req: FrameRequest): { els: HTMLElement[]; frames
     r.reset();
     visible.forEach((el, i) => poses[i]?.push(r.pose(el)));
   }
-  seek(t);
+  (req.restore ?? seek)(t);
   r.reset();
   const frames = visible.map((el, i) => {
     const pad = req.pads?.get(el) ?? 0;

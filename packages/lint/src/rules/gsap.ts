@@ -253,7 +253,10 @@ function hiddenSetTargetSelectors(target: string, aliases: Map<string, string>):
   return parts
     .flatMap((part) => {
       const trimmed = part.trim();
-      const resolved = /^(["'`])([^"'`]+)\1$/.exec(trimmed)?.[2] ?? aliases.get(trimmed);
+      const resolved =
+        /^(["'`])([^"'`]+)\1$/.exec(trimmed)?.[2] ??
+        /^[\w$.]+\.querySelector(?:All)?\(\s*(["'`])([^"'`]+)\1\s*\)$/.exec(trimmed)?.[2] ??
+        aliases.get(trimmed);
       return resolved === undefined ? [] : resolved.split(",");
     })
     .map((selector) => selector.trim())
@@ -270,8 +273,13 @@ function extractStandaloneHiddenSelectors(script: string): Set<string> {
   )) {
     aliases.set(match[1] ?? "", match[3] ?? "");
   }
+  for (const match of source.matchAll(
+    /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*[\w$.]+\.querySelector(?:All)?\(\s*(["'`])([^"'`]+)\2\s*\)/g,
+  )) {
+    aliases.set(match[1] ?? "", match[3] ?? "");
+  }
   const pattern =
-    /gsap\.set\s*\(\s*(\[[^[\]]*\]|"[^"]*"|'[^']*'|`[^`]*`|[^,()[\]]+?)\s*,\s*\{([\s\S]*?)\}\s*\)/g;
+    /gsap\.set\s*\(\s*(\[[^[\]]*\]|"[^"]*"|'[^']*'|`[^`]*`|[\w$.]+\.querySelector(?:All)?\(\s*(?:"[^"]*"|'[^']*'|`[^`]*`)\s*\)|[^,()[\]]+?)\s*,\s*\{([\s\S]*?)\}\s*\)/g;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(source)) !== null) {
     // Skip callback/handler bodies; keep IIFEs (they run at parse time).
@@ -1194,7 +1202,14 @@ export const gsapRules: LintRule<LintContext>[] = [
               (win.fromPropertyValues !== undefined && isHiddenGsapState(win.fromPropertyValues))),
         );
         if (startsHiddenAtZero) continue;
-        if (selectors.some((selector) => authoredHiddenSelectors.has(selector))) continue;
+        if (
+          selectors.some((selector) =>
+            [...authoredHiddenSelectors].some(
+              (hidden) => hidden === selector || targetedSelectorTokens(hidden).has(selector),
+            ),
+          )
+        )
+          continue;
         const firstVisible = visibilityWindows.find((win) => makesOverlayVisible(win));
         if (!firstVisible) continue;
         const selector =

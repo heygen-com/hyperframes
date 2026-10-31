@@ -53,6 +53,10 @@ function isOptionalNumberArray(v: unknown): boolean {
   return v === undefined || (Array.isArray(v) && v.every((n) => typeof n === "number"));
 }
 
+function isOptionalFiniteNumber(v: unknown): v is number | undefined {
+  return v === undefined || (typeof v === "number" && Number.isFinite(v));
+}
+
 function isOptionalBoolean(v: unknown): v is boolean | undefined {
   return v === undefined || typeof v === "boolean";
 }
@@ -84,6 +88,7 @@ function isSlideRef(v: unknown): v is SlideRef {
   if (!isRecord(v)) return false;
   const r = v;
   if (typeof r["sceneId"] !== "string") return false;
+  if (![r["startTime"], r["endTime"]].every(isOptionalFiniteNumber)) return false;
   if (!isOptionalNumberArray(r["fragments"])) return false;
   if (
     r["hotspots"] !== undefined &&

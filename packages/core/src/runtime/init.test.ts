@@ -612,6 +612,25 @@ describe("initSandboxRuntimeModular", () => {
       }
     });
 
+    it("leaves hidden clips alone on every jump when the page has no timeline", () => {
+      document.body.innerHTML =
+        `<div data-composition-id="main" data-root="true" data-start="0" data-duration="10" data-width="1920" data-height="1080">` +
+        `<video id="first" src="a.mp4" data-start="0" data-duration="2" data-track-index="0"></video>` +
+        `<video id="second" src="a.mp4" data-start="2" data-duration="8" data-track-index="0"></video>` +
+        `</div>`;
+      window.__timelines = {};
+      initSandboxRuntimeModular();
+      const query = vi.spyOn(document, "querySelectorAll");
+      const looked = () =>
+        query.mock.calls.filter(([selector]) => selector === "[data-hf-clip-hidden]").length;
+      try {
+        for (const t of [0.5, 1, 1.5, 3, 6]) window.__player?.seek(t);
+        expect(looked()).toBe(0);
+      } finally {
+        query.mockRestore();
+      }
+    });
+
     it("styles a hidden clip visible once while playing toward its start, far scene included", () => {
       document.body.innerHTML =
         `<div data-composition-id="main" data-root="true" data-start="0" data-duration="10" data-width="1920" data-height="1080">` +

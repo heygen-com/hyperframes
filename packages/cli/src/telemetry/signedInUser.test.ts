@@ -1,26 +1,27 @@
-import { mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { signedInHeygenUsername } from "./signedInUser.js";
 
 describe("signedInHeygenUsername", () => {
   let dir: string;
-  const saved = process.env["HEYGEN_CONFIG_DIR"];
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), "hf-signed-in-"));
-    process.env["HEYGEN_CONFIG_DIR"] = dir;
+    vi.stubEnv("HYPERFRAMES_CONFIG_DIR", dir);
+    vi.stubEnv("HYPERFRAMES_ENV", "prod");
+    vi.stubEnv("HEYGEN_CONFIG_DIR", join(dir, "heygen"));
   });
 
   afterEach(() => {
-    if (saved === undefined) delete process.env["HEYGEN_CONFIG_DIR"];
-    else process.env["HEYGEN_CONFIG_DIR"] = saved;
+    vi.unstubAllEnvs();
     rmSync(dir, { recursive: true, force: true });
   });
 
-  const write = (contents: unknown, mtime: number) => {
-    const file = join(dir, "credentials");
+  const write = (contents: unknown, mtime: number, root = dir) => {
+    mkdirSync(root, { recursive: true });
+    const file = join(root, "credentials");
     writeFileSync(file, typeof contents === "string" ? contents : JSON.stringify(contents));
     utimesSync(file, mtime, mtime);
   };
@@ -41,6 +42,22 @@ describe("signedInHeygenUsername", () => {
     write({ api_key: "hg_x" }, 2001);
     expect(signedInHeygenUsername()).toBeUndefined();
     rmSync(join(dir, "credentials"));
+    expect(signedInHeygenUsername()).toBeUndefined();
+  });
+
+  it("uses the selected OAuth environment without falling back to HeyGen or production", () => {
+    write({ api_key: "hg_other", user: { username: "Other" } }, 2000, join(dir, "heygen"));
+    expect(signedInHeygenUsername()).toBeUndefined();
+    write({ oauth: { access_token: "test-prod" }, user: { username: "Alice" } }, 2000);
+    write(
+      { oauth: { access_token: "test-dev" }, user: { username: "Bob" } },
+      2000,
+      join(dir, "dev"),
+    );
+    expect(signedInHeygenUsername()).toBe("Alice");
+    vi.stubEnv("HYPERFRAMES_ENV", "dev");
+    expect(signedInHeygenUsername()).toBe("Bob");
+    rmSync(join(dir, "dev", "credentials"));
     expect(signedInHeygenUsername()).toBeUndefined();
   });
 });

@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Shared Axis Z</h1>
+  <p>Scale-based shared-axis transition for focus shifts and context depth.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/shared-axis-z.json"
   compositionId="shared-axis-z"
   compositionSrc="compositions/components/shared-axis-z.html"
   title="Shared Axis Z"
-  description="Scale-based shared-axis transition for focus shifts and context depth."
   variables={[{"id":"direction","type":"enum","role":"motion","label":"Direction","description":"Which way the words travel along the z axis: in swells up from small, out settles down from large.","default":"in","options":[{"value":"in","label":"In"},{"value":"out","label":"Out"}]},{"id":"depth","type":"enum","role":"motion","label":"Depth","description":"Scales how far the words start from their final size, so the push covers a shorter or longer run in the same time.","default":"standard","options":[{"value":"shallow","label":"Shallow"},{"value":"standard","label":"Standard"},{"value":"deep","label":"Deep"}]},{"id":"tone","type":"enum","role":"style","label":"Tone","description":"Word colour: ink for light frames, paper for dark ones, accent rides --brand.","default":"ink","options":[{"value":"ink","label":"Ink"},{"value":"paper","label":"Paper"},{"value":"accent","label":"Accent"}]}]}
   meta={{"category":"Typography & Text","badge":"Stable","codeLines":97}}
   attribution={{"path":"registry/components/shared-axis-z","tags":["motion-primitive","typography"]}}
@@ -132,7 +136,9 @@ That writes one file: `compositions/components/shared-axis-z.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -174,6 +180,4 @@ Tagged `motion-primitive` `typography`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

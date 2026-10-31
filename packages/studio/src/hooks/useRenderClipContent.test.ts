@@ -105,6 +105,35 @@ describe("useRenderClipContent", () => {
     return unwrapPeakMarks(content);
   }
 
+  it("keeps one renderer while the timeline's elements change, so no clip redraws for it", () => {
+    const projectIdRef = { current: "my-project" };
+    const compIdToSrc = new Map<string, string>();
+    const renderers: unknown[] = [];
+    function Harness() {
+      renderers.push(
+        useRenderClipContent({
+          projectIdRef,
+          compIdToSrc,
+          activePreviewUrl: null,
+          effectiveTimelineDuration: 12,
+        }),
+      );
+      return null;
+    }
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() => root.render(React.createElement(Harness)));
+    act(() =>
+      usePlayerStore.setState({
+        elements: [{ id: "a", tag: "audio", start: 0, duration: 1, track: 1 }],
+      }),
+    );
+    act(() => root.unmount());
+
+    expect(new Set(renderers).size).toBe(1);
+  });
+
   function renderRaw(el: TimelineElement): ReactNode {
     const host = document.createElement("div");
     document.body.append(host);

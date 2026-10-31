@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Shared Axis Y</h1>
+  <p>Per-word vertical shared-axis transition for sharp editorial swaps.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/shared-axis-y.json"
   compositionId="shared-axis-y"
   compositionSrc="compositions/components/shared-axis-y.html"
   title="Shared Axis Y"
-  description="Per-word vertical shared-axis transition for sharp editorial swaps."
   variables={[{"id":"direction","type":"enum","role":"motion","label":"Direction","description":"Which side of the baseline the words travel in from.","default":"up","options":[{"value":"up","label":"Up"},{"value":"down","label":"Down"}]},{"id":"distance","type":"enum","role":"motion","label":"Distance","description":"Scales the vertical offset, so the words cover a shorter or longer run in the same time.","default":"standard","options":[{"value":"close","label":"Close"},{"value":"standard","label":"Standard"},{"value":"far","label":"Far"}]},{"id":"tone","type":"enum","role":"style","label":"Tone","description":"Word colour: ink for light frames, paper for dark ones, accent rides --brand.","default":"ink","options":[{"value":"ink","label":"Ink"},{"value":"paper","label":"Paper"},{"value":"accent","label":"Accent"}]}]}
   meta={{"category":"Typography & Text","badge":"Stable","codeLines":98}}
   attribution={{"path":"registry/components/shared-axis-y","tags":["motion-primitive","typography"]}}
@@ -133,7 +137,9 @@ That writes one file: `compositions/components/shared-axis-y.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -175,6 +181,4 @@ Tagged `motion-primitive` `typography`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

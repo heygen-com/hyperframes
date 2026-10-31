@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Camera Punch-In</h1>
+  <p>Dynamic zoom, slide, and 3D tilt-pan helpers for any wrapper (video, include, card) with cubic-easing defaults and an edge-defocus pulse overlay</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/yt-camera-move.json"
   compositionId="yt-camera-move"
   compositionSrc="compositions/components/yt-camera-move.html"
   title="Camera Punch-In"
-  description="Dynamic zoom, slide, and 3D tilt-pan helpers for any wrapper (video, include, card) with cubic-easing defaults and an edge-defocus pulse overlay"
   variables={[]}
   meta={{"category":"Camera","badge":"Stable","codeLines":175}}
   attribution={{"path":"registry/components/yt-camera-move","tags":["camera","zoom","effect","creator"]}}
@@ -210,7 +214,9 @@ That writes one file: `compositions/components/yt-camera-move.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -229,6 +235,4 @@ Tagged `camera` `zoom` `effect` `creator`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

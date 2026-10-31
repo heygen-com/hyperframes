@@ -981,6 +981,33 @@ describe("spawnStreamingEncoder lifecycle and cleanup", () => {
     await encoder.close();
   });
 
+  it("reports how long writeFrame waited for FFmpeg to drain", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const { spawn, calls } = createSpawnSpy();
+      vi.resetModules();
+      vi.doMock("child_process", () => ({ spawn }));
+
+      const { spawnStreamingEncoder } = await import("./streamingEncoder.js");
+      const dir = mkdtempSync(join(tmpdir(), "se-drain-wait-"));
+      const encoder = await spawnStreamingEncoder(join(dir, "out.mp4"), baseOptions);
+      const proc = calls[0]!.proc;
+
+      expect(await encoder.writeFrame(validJpeg)).toBe(true);
+      proc.stdin.write = (_chunk: Buffer): boolean => false;
+      const writePromise = encoder.writeFrame(validJpeg);
+      await Promise.resolve();
+      vi.setSystemTime(Date.now() + 40);
+      proc.stdin.emit("drain");
+      expect(await writePromise).toBe(true);
+
+      process.nextTick(() => proc.emit("close", 0));
+      expect((await encoder.close()).drainWaitMs).toBe(40);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("does not accumulate process close listeners across repeated back-pressured writes", async () => {
     const { spawn, calls } = createSpawnSpy();
     vi.resetModules();

@@ -1,5 +1,4 @@
 import { timeAtSourceTime, type RateSpec } from "../speedRamp.js";
-import { MEDIA_HARD_SYNC_SECONDS } from "./mediaSteer.js";
 import { playRangeHoldTime } from "./protocol.js";
 
 export type TransportClockSnapshot = {
@@ -77,7 +76,6 @@ export class TransportClock {
       }
     }
 
-    // Monotonic fallback
     this._applyStallCorrection();
     const elapsed = (this._nowMs() - this._playStartMs) / 1000;
     const t = this._baseTime + elapsed * this._rate;
@@ -90,16 +88,12 @@ export class TransportClock {
   ): number | null {
     const { el, compositionStart, mediaStart, rate } = source;
     if (el.paused || !Number.isFinite(el.currentTime)) return null;
-    if (el.seeking) return this._lastNow;
+    if (el.seeking) return null;
     const spec = rate ?? 1;
     const time = timeAtSourceTime(spec, el.currentTime - mediaStart) + compositionStart;
-    return time >= this._lastNow ? time : this._heldTimeWhenBehind(el, this._lastNow - time, spec);
-  }
-
-  private _heldTimeWhenBehind(el: HTMLMediaElement, behind: number, spec: RateSpec): number | null {
-    if (el.loop && behind > timeAtSourceTime(spec, el.duration) / 2) return null;
-    const buffering = el.readyState < HAVE_FUTURE_DATA;
-    return buffering || behind <= MEDIA_HARD_SYNC_SECONDS ? this._lastNow : null;
+    if (time >= this._lastNow) return time;
+    const wrapped = el.loop && this._lastNow - time > timeAtSourceTime(spec, el.duration) / 2;
+    return !wrapped && el.readyState < HAVE_FUTURE_DATA ? this._lastNow : null;
   }
 
   /** Folds a >500ms gap since the last read into `_playStartMs` so it's never reported as played time. */

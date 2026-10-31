@@ -11,6 +11,15 @@ describe("applyDotEnv", () => {
     expect(env).toEqual({ KEPT: "outer", GEMINI_KEY: "abc", PLAIN: "x" });
   });
 
+  it("reads a comment after an empty value as no value", () => {
+    const env: NodeJS.ProcessEnv = {};
+    applyDotEnv(
+      "GEMINI_API_KEY= # paste your key here\nOPENROUTER_API_KEY=\t# later\nHASH=#abc",
+      env,
+    );
+    expect(env).toEqual({ GEMINI_API_KEY: "", OPENROUTER_API_KEY: "", HASH: "#abc" });
+  });
+
   it("never takes the feedback email from a project file", () => {
     const env: NodeJS.ProcessEnv = {};
     applyDotEnv("HYPERFRAMES_FEEDBACK_EMAIL=someone@example.com\nOTHER=1", env);

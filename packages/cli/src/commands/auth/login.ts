@@ -1,12 +1,13 @@
 import { failCommand, failUsage } from "../../utils/commandResult.js";
-import { envFlagEnabled, isAttendedTerminal } from "../../utils/attendedTerminal.js";
+import { envFlagEnabled, isAttendedTerminal, isCI } from "../../utils/attendedTerminal.js";
+import { isAgentDriven } from "../../telemetry/agent_runtime.js";
 /**
  * `hyperframes auth login` — sign in to HeyGen.
  *
  * Default: OAuth 2.0 + PKCE via a loopback callback. The CLI opens
  * the user's browser, captures the authorization code on an
  * ephemeral 127.0.0.1 port, exchanges it for tokens, and persists
- * them to `~/.heygen/credentials`.
+ * them to `~/.hyperframes/credentials`.
  *
  * `--api-key`: opts into the legacy long-lived API-key path.
  *
@@ -114,8 +115,12 @@ function isRemoteOrHeadless(): boolean {
     process.env["BROWSER"] === "none" ||
     process.env["HF_NO_BROWSER"] === "1" ||
     remoteEnvironment ||
-    process.stdout.isTTY !== true,
+    (process.stdout.isTTY !== true && !agentShellOnThisMachine()),
   );
+}
+
+function agentShellOnThisMachine(): boolean {
+  return !isCI() && isAgentDriven();
 }
 
 function assertAttendedDeviceFlow(): void {

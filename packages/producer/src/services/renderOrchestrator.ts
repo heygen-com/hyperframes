@@ -134,7 +134,13 @@ import {
   resolveDeliveryEncoderOptions,
   validateDeliveryEncoderConfig,
 } from "./render/deliveryEncoder.js";
-import { createMemorySampler, type MemorySampler, updateJobStatus } from "./render/shared.js";
+import {
+  createMemorySampler,
+  describeWorkerPhases,
+  forgetWorkerPhases,
+  type MemorySampler,
+  updateJobStatus,
+} from "./render/shared.js";
 import { frameCacheOptions } from "./render/frameCacheBudget.js";
 import { buildRenderErrorDetails } from "./render/cleanup.js";
 import { publishRenderFailure } from "./render/renderEventPublisher.js";
@@ -521,6 +527,11 @@ export interface RenderPerfSummary {
    * captured the most frames when parallel workers report separately.
    */
   captureP50Ms?: number;
+  /** Per-frame capture phases, frame-weighted across sessions; encoder wait is FFmpeg back-pressure. */
+  captureSeekAvgMs?: number;
+  captureBeforeCaptureAvgMs?: number;
+  captureScreenshotAvgMs?: number;
+  encoderWaitAvgMs?: number;
   /** Worst sub-composition timeline wait outcome across sessions. */
   subTimelineWait?: SubTimelineWaitOutcome;
   capturePeakMs?: number;
@@ -1194,6 +1205,8 @@ export function frameStallRule(
     firstProgressMs: Math.max(FIRST_FRAME_STALL_MS, noProgressMs),
     complete: () => (job.framesRendered ?? 0) >= totalFrames,
     tailMs: Math.max(TAIL_STALL_MS, noProgressMs),
+    detail: () => describeWorkerPhases(job),
+    attemptOpened: () => forgetWorkerPhases(job),
   };
 }
 
@@ -2294,6 +2307,17 @@ export function shouldPreferSingleWorkerDrawElement(args: {
   );
 }
 
+/** Why drawElement is off before capture; the compile stage's content gates are not config refusals. */
+export function initialDeClampReason(args: {
+  useDrawElement: boolean;
+  deCompileGate: string | undefined;
+  config: Parameters<typeof explainDrawElementDisabled>[0];
+}): string | undefined {
+  if (args.useDrawElement) return undefined;
+  if (args.deCompileGate) return "compile_gate";
+  return explainDrawElementDisabled(args.config);
+}
+
 /**
  * The session kept drawElement but left some frames to a screenshot session. Only the
  * single-worker streaming capture hands those over, so parallel drawElement must not be chosen.
@@ -3273,14 +3297,16 @@ async function executeRenderPipeline(input: {
     // "Why not drawElement", explaining nothing). Re-derived from the same
     // inputs `resolveConfig` used, so it cannot disagree with the decision.
     // Later clamps overwrite this: a more specific reason always wins.
-    let deClampReason: string | undefined = cfg.useDrawElement
-      ? undefined
-      : explainDrawElementDisabled({
-          platform: process.platform,
-          browserGpuMode: cfg.browserGpuMode,
-          workerEncode: cfg.enableDrawElementWorkerEncode,
-          chromeCeiling: chromeMajorCeiling(),
-        });
+    let deClampReason = initialDeClampReason({
+      useDrawElement: cfg.useDrawElement,
+      deCompileGate,
+      config: {
+        platform: process.platform,
+        browserGpuMode: cfg.browserGpuMode,
+        workerEncode: cfg.enableDrawElementWorkerEncode,
+        chromeCeiling: chromeMajorCeiling(),
+      },
+    });
     // "inverted" = fired and held; "reverted" = fired but the self-verify
     // retry rolled back to the parallel path; undefined = never fired.
     let deWorkerInversion: "inverted" | "reverted" | undefined;
@@ -3472,6 +3498,7 @@ async function executeRenderPipeline(input: {
           assertNotAborted,
           // Local staging can use links; distributed plan() alone requires real copies.
           materializeSymlinks: false,
+          onProgress,
         }),
     );
     const {
@@ -4721,6 +4748,7 @@ async function executeRenderPipeline(input: {
       perfStages.captureFrameMs = hdrRes.captureDurationMs;
       perfStages.captureSetupMs = Math.max(0, Date.now() - stage4Start - hdrRes.captureDurationMs);
       perfStages.encodeMs = hdrRes.encodeMs;
+      perfStages.encoderDrainWaitMs = hdrRes.encoderDrainWaitMs ?? 0;
     } else {
       // ── Standard capture paths (SDR or DOM-only HDR) ──────────────────
       // Streaming encode mode pipes frame buffers directly to FFmpeg stdin,
@@ -4922,6 +4950,7 @@ async function executeRenderPipeline(input: {
           perfStages.captureFrameMs = Date.now() - captureFrameStart;
           perfStages.captureSetupMs = Math.max(0, perfStages.captureMs - perfStages.captureFrameMs);
           perfStages.encodeMs = segmentedRes.encodeMs;
+          perfStages.encoderDrainWaitMs = segmentedRes.encoderDrainWaitMs ?? 0;
           log.info(
             `[Render] Segmented capture complete: ${segmentedRes.segments} segment(s) concatenated.`,
             {
@@ -5178,6 +5207,7 @@ async function executeRenderPipeline(input: {
           perfStages.captureFrameMs = captureFrameMs;
           perfStages.captureSetupMs = Math.max(0, perfStages.captureMs - captureFrameMs);
           perfStages.encodeMs = streamingRes.encodeMs; // Overlapped with capture
+          perfStages.encoderDrainWaitMs = streamingRes.encoderDrainWaitMs ?? 0;
         } else {
           if (capturePlan.kind === "sdr_streaming") {
             capturePlan = replanAfterFailure(capturePlan, { kind: "streaming_unavailable" });

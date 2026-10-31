@@ -2201,6 +2201,37 @@ describe("bundleToSingleHtml", () => {
   );
 
   it.each([true, false])(
+    "resolves mounted scene srcset candidates from their scene with inlineAssets %s",
+    async (inlineAssets) => {
+      const dataUrl = inlinedAs("image/svg+xml", '<svg xmlns="http://www.w3.org/2000/svg"/>');
+      const dir = makeTempProject({
+        "index.html": `<html><body><div data-composition-id="root" data-width="320" data-height="180" data-duration="1" data-no-timeline><div data-composition-id="scene" data-composition-src="scenes/scene.html" data-start="0" data-duration="1"></div></div></body></html>`,
+        "scenes/scene.html": `<div data-composition-id="scene" data-duration="1" data-no-timeline><picture><source id="photo" srcset="hero,red.png?v=2#sprite 1x, ${dataUrl} 2x"><img src="fallback.png"></picture><img id="srcset-only" srcset="hero,red.png 1x, assets/root.png 2x"></div>`,
+        "scenes/hero,red.png": "scene-red-image",
+        "hero,red.png": "root-blue-image",
+        "scenes/fallback.png": "fallback-image",
+        "assets/root.png": "root-image",
+      });
+      try {
+        const bundled = await bundleToSingleHtml(dir, { inlineAssets });
+        const { document } = parseHTML(bundled);
+        const sceneImage = inlineAssets
+          ? inlinedAs("image/png", "scene-red-image")
+          : "scenes/hero%2Cred.png";
+        const rootImage = inlineAssets ? inlinedAs("image/png", "root-image") : "assets/root.png";
+        expect(document.getElementById("photo")?.getAttribute("srcset")).toBe(
+          `${sceneImage}${inlineAssets ? "#sprite" : "?v=2#sprite"} 1x, ${dataUrl} 2x`,
+        );
+        expect(document.getElementById("srcset-only")?.getAttribute("srcset")).toBe(
+          `${sceneImage} 1x, ${rootImage} 2x`,
+        );
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.each([true, false])(
     "preserves srcset URL commas with inlineAssets %s",
     async (inlineAssets) => {
       const srcset = `${inlinedAs("image/svg+xml", '<svg xmlns="http://www.w3.org/2000/svg"/>')} 1x, https://cdn.example/hero,blue.png 2x`;

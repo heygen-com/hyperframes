@@ -1,11 +1,11 @@
 /**
- * Chain resolver for HeyGen credentials.
+ * Chain resolver for HyperFrames credentials.
  *
  * Priority — first non-empty wins:
  *   1. `HEYGEN_API_KEY` env (matches heygen-cli)
  *   2. `HYPERFRAMES_API_KEY` env (alias for parity with other tools)
  *   3. `HEYGEN_ACCESS_TOKEN` env (host-managed OAuth)
- *   4. `~/.heygen/credentials` (JSON) — unexpired OAuth, else api_key
+ *   4. `~/.hyperframes/credentials` (JSON) — bound OAuth or an explicit API key
  *
  * Absent sources fall through. Broken files surface `ErrInvalidStore` immediately;
  * silently falling back would mask user configuration errors.
@@ -13,11 +13,12 @@
  * Expiry policy: an OAuth access_token whose `expires_at` is in the
  * past (60s skew) is considered expired. If a `refresh_token` is also
  * present, callers can still use it via `refreshable: true`. Otherwise
- * the api_key (if any) wins, else `ErrLoginExpired`, not `ErrNotConfigured`.
+ * session requires sign-in; a saved API key never replaces expired OAuth.
  */
 
 import { isHeaderSafe, readStore } from "./store.js";
 import { ErrInvalidStore, ErrLoginExpired, ErrNotConfigured, isAuthError } from "./errors.js";
+import { assertOAuthIdentity } from "./config.js";
 
 type EnvSource = "env" | "env_alias" | "env_oauth";
 type CredentialSource = EnvSource | "file_json" | "file_legacy";
@@ -79,12 +80,14 @@ export async function resolveCredential(opts: ResolveOptions = {}): Promise<Reso
 
   const fileSource: CredentialSource = source === "file_legacy" ? "file_legacy" : "file_json";
 
+  if (credentials.oauth) assertOAuthIdentity(credentials.oauth);
   const oauth = credentials.oauth ? pickOAuth(credentials.oauth, now, fileSource) : null;
   if (oauth) return oauth;
+  if (credentials.oauth) throw ErrLoginExpired();
   if (credentials.api_key) {
     return { type: "api_key", key: credentials.api_key, source: fileSource };
   }
-  throw credentials.oauth ? ErrLoginExpired() : ErrNotConfigured();
+  throw ErrNotConfigured();
 }
 
 function headerSafeEnv(name: string): string | undefined {

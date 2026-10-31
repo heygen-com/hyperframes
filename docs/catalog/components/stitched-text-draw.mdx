@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Stitched Text Draw</h1>
+  <p>Text drawn as thread stitches: a single-stroke display alphabet draws via attribute-driven dashoffset with stitch-tuned dash patterns, seeded angle jitter, needle-hole dots, a leading needle, and a thread-tail overshoot per letter.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/stitched-text-draw.json"
   compositionId="stitched-text-draw"
   compositionSrc="compositions/components/stitched-text-draw.html"
   title="Stitched Text Draw"
-  description="Text drawn as thread stitches: a single-stroke display alphabet draws via attribute-driven dashoffset with stitch-tuned dash patterns, seeded angle jitter, needle-hole dots, a leading needle, and a thread-tail overshoot per letter."
   variables={[{"id":"text","type":"string","role":"content","label":"Text","description":"Uppercased A-Z 0-9 and space, clamped to 12 characters.","default":"STITCH"},{"id":"stitch","type":"enum","role":"style","label":"Stitch","description":"Dash/gap scale, thread width, and jitter amplitude.","default":"fine","options":[{"value":"fine","label":"Fine"},{"value":"coarse","label":"Coarse"}]},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Thread color: green rides --brand, blue rides --accent, violet rides --accent-2.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"Optional departure. Default none: the stitched word holds until the frame cuts.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
   meta={{"category":"Motion Scenes","badge":"Stable","codeLines":865}}
   attribution={{"path":"registry/components/stitched-text-draw","tags":["motion-primitive","experiment","type","craft","stitch","deterministic"]}}
@@ -900,7 +904,9 @@ That writes one file: `compositions/components/stitched-text-draw.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -942,6 +948,4 @@ Tagged `motion-primitive` `experiment` `type` `craft` `stitch` `deterministic`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

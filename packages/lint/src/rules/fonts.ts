@@ -47,7 +47,7 @@ function isFontFaceDeclaration(decl: postcss.Declaration): boolean {
   return false;
 }
 
-function extractFontFaceFamilies(styles: Array<{ content: string }>): Set<string> {
+export function extractFontFaceFamilies(styles: Array<{ content: string }>): Set<string> {
   const families = new Set<string>();
   for (const style of styles) {
     parseFontCss(style.content)?.walkDecls(/^font-family$/i, (decl) => {
@@ -57,6 +57,13 @@ function extractFontFaceFamilies(styles: Array<{ content: string }>): Set<string
     });
   }
   return families;
+}
+
+function declaredFontFamilies(
+  styles: Array<{ content: string }>,
+  options: { projectFontFamilies?: string[] },
+): Set<string> {
+  return new Set([...extractFontFaceFamilies(styles), ...(options.projectFontFamilies ?? [])]);
 }
 
 // Function tokens and unresolved var() references are not literal family names.
@@ -160,7 +167,7 @@ function extractGoogleFontFamiliesFromUrl(rawUrl: string): string[] {
   return families;
 }
 
-function collectGoogleFontFamilies(
+export function collectGoogleFontFamilies(
   source: string,
   styles: Array<{ content: string }>,
 ): Set<string> {
@@ -195,7 +202,7 @@ export const fontRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   // so there is nothing for the author to act on.
   ({ styles, options }) => {
     if (!options.distributed) return [];
-    const declared = extractFontFaceFamilies(styles);
+    const declared = declaredFontFamilies(styles, options);
     const used = extractUsedFontFamilies(styles);
     const aliased = collectAliasedFonts(used, declared);
     if (aliased.length === 0) return [];
@@ -215,7 +222,7 @@ export const fontRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   ({ styles, source, rawSource, options, locate }) => {
     if (isRegistrySourceFile(options.filePath) || isRegistryInstalledFile(rawSource)) return [];
     const findings: HyperframeLintFinding[] = [];
-    const declared = extractFontFaceFamilies(styles);
+    const declared = declaredFontFamilies(styles, options);
     const used = extractUsedFontFamilies(styles);
     const googleFonts = collectGoogleFontFamilies(source, styles);
 

@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Star Rating Fill</h1>
+  <p>A token-driven star row whose colored layer sweeps to a rating, preserves the fractional final star, and can count the value in sync.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/star-rating-fill.json"
   compositionId="star-rating-fill"
   compositionSrc="compositions/components/star-rating-fill.html"
   title="Star Rating Fill"
-  description="A token-driven star row whose colored layer sweeps to a rating, preserves the fractional final star, and can count the value in sync."
   variables={[{"id":"rating","type":"number","role":"content","label":"Rating","description":"Target rating in star units from 0 to 5.","default":4.8,"min":0,"max":5,"step":0.1},{"id":"starCount","type":"number","role":"layout","label":"Star count","description":"Number of stars shown in the row.","default":5,"min":1,"max":10,"step":1},{"id":"showValue","type":"enum","role":"content","label":"Show value","description":"Show or hide the synchronized numeric rating.","default":"yes","options":[{"value":"yes","label":"Yes"},{"value":"no","label":"No"}]}]}
   meta={{"category":"Data","badge":"Stable","codeLines":298}}
   attribution={{"path":"registry/components/star-rating-fill","tags":["data","rating","stars","fractional","fill","prove"]}}
@@ -333,7 +337,9 @@ That writes one file: `compositions/components/star-rating-fill.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -374,6 +380,4 @@ Tagged `data` `rating` `stars` `fractional` `fill` `prove`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

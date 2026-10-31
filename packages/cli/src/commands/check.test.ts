@@ -2800,6 +2800,7 @@ describe("check pipeline", () => {
                 blockSelector: "#title",
                 sourceFile: "compositions/stat.html",
                 text: "Every team gets one shared calendar now",
+                blockText: "Every team gets one shared calendar now",
                 opacity: 1,
                 fontPx: 96,
                 rect: { left: 160, top: 380, width: 1600, height: 220 },

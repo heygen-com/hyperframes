@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Data Chart</h1>
+  <p>Animated bar + line chart with staggered reveal, NYT-style typography, and value labels</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/data-chart.json"
   compositionId="data-chart"
   compositionSrc="compositions/data-chart.html"
   title="Data Chart"
-  description="Animated bar + line chart with staggered reveal, NYT-style typography, and value labels"
   variables={[]}
   meta={{"duration":15,"width":1920,"height":1080,"category":"Data","badge":"Stable","codeLines":457}}
   attribution={{"path":"registry/blocks/data-chart","tags":["data","chart","statistics"]}}
@@ -492,7 +496,9 @@ That writes one file: `compositions/data-chart.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -530,6 +536,4 @@ Tagged `data` `chart` `statistics`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

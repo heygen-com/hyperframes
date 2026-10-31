@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Stagger Cascade</h1>
+  <p>A responsive grid of tile cards that fades and travels into place with an evenly spaced per-item GSAP stagger. The ordered cascade is the only visual mechanic.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/stagger-cascade.json"
   compositionId="stagger-cascade"
   compositionSrc="compositions/components/stagger-cascade.html"
   title="Stagger Cascade"
-  description="A responsive grid of tile cards that fades and travels into place with an evenly spaced per-item GSAP stagger. The ordered cascade is the only visual mechanic."
   variables={[{"id":"itemCount","type":"number","role":"layout","label":"Item count","description":"Number of tiles in the responsive grid.","default":6,"min":3,"max":12,"step":1},{"id":"stagger","type":"number","role":"motion","label":"Stagger","description":"Delay between consecutive tile entrances.","default":60,"min":20,"max":150,"step":1,"unit":"ms"},{"id":"direction","type":"enum","role":"motion","label":"Direction","description":"Direction each tile travels into its resting position.","default":"up","options":[{"value":"up","label":"Up"},{"value":"down","label":"Down"},{"value":"left","label":"Left"},{"value":"right","label":"Right"}]}]}
   meta={{"category":"Effects","badge":"Stable","codeLines":258}}
   attribution={{"path":"registry/components/stagger-cascade","tags":["effects","grid","stagger","entrance","exhibit"]}}
@@ -293,7 +297,9 @@ That writes one file: `compositions/components/stagger-cascade.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -334,6 +340,4 @@ Tagged `effects` `grid` `stagger` `entrance` `exhibit`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

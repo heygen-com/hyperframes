@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Page Slide</h1>
+  <p>A transitions.dev-inspired page slide primitive with outgoing and incoming panels</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/page-slide.json"
   compositionId="page-slide"
   compositionSrc="compositions/components/page-slide.html"
   title="Page Slide"
-  description="A transitions.dev-inspired page slide primitive with outgoing and incoming panels"
   variables={[{"id":"label_a","type":"string","role":"content","label":"Outgoing label","description":"Label printed on the page that slides out.","default":"Dashboard"},{"id":"label_b","type":"string","role":"content","label":"Incoming label","description":"Label printed on the page that slides in.","default":"Analytics"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Gradient family painted on the incoming page. The outgoing page stays slate.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"corner","type":"enum","role":"style","label":"Corner","description":"Corner radius of the frame the pages slide inside.","default":"round","options":[{"value":"square","label":"Square"},{"value":"soft","label":"Soft"},{"value":"round","label":"Round"}]}]}
   meta={{"category":"Motion Primitives","badge":"Stable","codeLines":120}}
   attribution={{"path":"registry/components/page-slide","tags":["video-primitive","transition-primitive","transitions-dev-port","page","slide"]}}
@@ -155,7 +159,9 @@ That writes one file: `compositions/components/page-slide.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -198,6 +204,4 @@ Tagged `video-primitive` `transition-primitive` `transitions-dev-port` `page` `s
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

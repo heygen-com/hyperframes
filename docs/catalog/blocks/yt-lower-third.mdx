@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>YouTube Lower Third</h1>
+  <p>Animated YouTube subscribe lower third with avatar and channel info</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/yt-lower-third.json"
   compositionId="yt-lower-third"
   compositionSrc="compositions/yt-lower-third.html"
   title="YouTube Lower Third"
-  description="Animated YouTube subscribe lower third with avatar and channel info"
   variables={[]}
   meta={{"duration":4.5,"width":1920,"height":1080,"category":"Social Overlays","badge":"Stable","codeLines":242}}
   attribution={{"path":"registry/blocks/yt-lower-third","tags":["social","overlay","youtube"]}}
@@ -277,7 +281,9 @@ That writes `compositions/yt-lower-third.html`, plus 1 supporting file under `as
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -308,6 +314,4 @@ Tagged `social` `overlay` `youtube`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Text Along a Path</h1>
+  <p>Handwriting flowing along any SVG path with a per-character reveal; the path is the only geometry input</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/hw-path-text.json"
   compositionId="hw-path-text"
   compositionSrc="compositions/hw-path-text.html"
   title="Text Along a Path"
-  description="Handwriting flowing along any SVG path with a per-character reveal; the path is the only geometry input"
   variables={[]}
   meta={{"duration":6,"width":1920,"height":1080,"category":"Typography & Text","badge":"Stable","codeLines":194}}
   attribution={{"path":"registry/blocks/hw-path-text","tags":["handwritten","typography","path","overlay"]}}
@@ -229,7 +233,9 @@ That writes `compositions/hw-path-text.html`, plus 1 supporting file under `asse
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -260,6 +266,4 @@ Tagged `handwritten` `typography` `path` `overlay`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

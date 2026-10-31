@@ -263,6 +263,25 @@ describe.each(["direct", "preview"])("hyperframes history (%s)", (mode) => {
     expect(diff).toMatch(/-A\n\\ No newline at end of file\n\+A2/);
   });
 
+  it("--diff names a video it never keeps, one line, and still shows the page's change", async () => {
+    const { hf, json, write } = await setup();
+    await hf("begin", "--who", "claude", "--label", "Import clip");
+    write("clip.mp4", "video bytes the history only hashes");
+    write("index.html", "A2");
+    const { entry } = await json("end");
+
+    const shown = await hf("show", entry.id, "--diff");
+
+    expect(shown.code, shown.err).toBe(0);
+    expect(shown.out).toContain("Media clip.mp4 changed, not kept in history");
+    expect(shown.out).toMatch(/-A\n\\ No newline at end of file\n\+A2/);
+    const peeked = await hf("peek", entry.id, "clip.mp4");
+    expect([peeked.code, peeked.err]).toEqual([
+      2,
+      "clip.mp4 is video or audio: the history keeps that it changed, not its bytes",
+    ]);
+  });
+
   it.each([false, true])("shows a large text diff completely (json=%s)", async (json) => {
     const { hf, turn } = await setup();
     const before = `before-${"a".repeat(600_000)}-end-before\n`;

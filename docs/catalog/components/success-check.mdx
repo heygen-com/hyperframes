@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Success Check</h1>
+  <p>A success check primitive with ring pop, path draw, and subtle rotate blur</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/success-check.json"
   compositionId="success-check"
   compositionSrc="compositions/components/success-check.html"
   title="Success Check"
-  description="A success check primitive with ring pop, path draw, and subtle rotate blur"
   variables={[{"id":"tint","type":"enum","role":"style","label":"Tint","description":"Colour pair, a pale halo behind a saturated mark. green and amber are literal state colours; blue and violet ride the composition theme tokens.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"},{"value":"amber","label":"Amber"}]},{"id":"size","type":"enum","role":"layout","label":"Size","description":"Diameter of the halo and of the mark inside it.","default":"standard","options":[{"value":"small","label":"Small"},{"value":"standard","label":"Standard"},{"value":"large","label":"Large"}]},{"id":"ring","type":"enum","role":"style","label":"Ring","description":"Opacity of the circle the tick sits in.","default":"standard","options":[{"value":"subtle","label":"Subtle"},{"value":"standard","label":"Standard"},{"value":"bold","label":"Bold"}]},{"id":"spin","type":"enum","role":"motion","label":"Spin","description":"Multiplies the rotation the timeline drives, so the mark swings less or more into place.","default":"standard","options":[{"value":"subtle","label":"Subtle"},{"value":"standard","label":"Standard"},{"value":"bold","label":"Bold"}]}]}
   meta={{"category":"Motion Primitives","badge":"Stable","codeLines":135}}
   attribution={{"path":"registry/components/success-check","tags":["video-primitive","transition-primitive","transitions-dev-port","success","check"]}}
@@ -170,7 +174,9 @@ That writes one file: `compositions/components/success-check.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -213,6 +219,4 @@ Tagged `video-primitive` `transition-primitive` `transitions-dev-port` `success`
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

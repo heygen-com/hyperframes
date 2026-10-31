@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>SVG Stroke Trace</h1>
+  <p>An authored SVG path draws from its measured length, holds with subtle drift, and optionally fills when the path is closed.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/svg-stroke-trace.json"
   compositionId="svg-stroke-trace"
   compositionSrc="compositions/components/svg-stroke-trace.html"
   title="SVG Stroke Trace"
-  description="An authored SVG path draws from its measured length, holds with subtle drift, and optionally fills when the path is closed."
   variables={[{"id":"path","type":"string","role":"content","label":"Path","description":"SVG path data for the authored mark.","default":"M 92 328 C 178 142 292 138 366 276 C 430 396 500 414 558 262 C 622 94 724 112 786 274 C 836 406 894 376 930 194"},{"id":"stroke_width","type":"number","role":"style","label":"Stroke width","description":"Width of the traced stroke in SVG viewBox units.","default":12,"min":2,"max":32,"step":1},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Color used by the trace and optional fill.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"Optional departure. Default none: the finished mark holds until the frame cuts.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
   meta={{"category":"Motion Scenes","badge":"Stable","codeLines":229}}
   attribution={{"path":"registry/components/svg-stroke-trace","tags":["motion-primitive","intro","reveal","svg","stroke","line-draw"]}}
@@ -264,7 +268,9 @@ That writes one file: `compositions/components/svg-stroke-trace.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -306,6 +312,4 @@ Tagged `motion-primitive` `intro` `reveal` `svg` `stroke` `line-draw`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

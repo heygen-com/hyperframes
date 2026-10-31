@@ -1,10 +1,18 @@
+import { oauthIdentity } from "./config.js";
 import { promises as fs } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setupTempAuthEnv } from "./_test-utils.js";
 import { isAuthError } from "./errors.js";
 import { resolveCredential, tryResolveCredential } from "./resolver.js";
-import { writeStore } from "./store.js";
+import { writeStore as writeUnboundStore, type Credentials } from "./store.js";
+
+async function writeStore(credentials: Credentials): Promise<void> {
+  await writeUnboundStore({
+    ...credentials,
+    ...(credentials.oauth ? { oauth: { ...oauthIdentity(), ...credentials.oauth } } : {}),
+  });
+}
 
 describe("auth/resolver", () => {
   let fixture: Awaited<ReturnType<typeof setupTempAuthEnv>>;
@@ -102,15 +110,20 @@ describe("auth/resolver", () => {
     if (r.type === "oauth") expect(r.refreshable).toBe(true);
   });
 
-  it("skips expired non-refreshable oauth and falls through to api_key", async () => {
+  it("refuses an expired OAuth login without switching to the stored API wallet", async () => {
     const past = new Date(Date.now() - 60 * 60 * 1000).toISOString();
     await writeStore({
       api_key: "fallback",
       oauth: { access_token: "stale-at", expires_at: past },
     });
-    const r = await resolveCredential();
-    expect(r.type).toBe("api_key");
-    if (r.type === "api_key") expect(r.key).toBe("fallback");
+    await expect(resolveCredential()).rejects.toMatchObject({ code: "LOGIN_EXPIRED" });
+  });
+
+  it("requires a new login for an unbound or foreign OAuth credential", async () => {
+    await writeUnboundStore({ api_key: "fallback", oauth: { access_token: "legacy" } });
+    await expect(resolveCredential()).rejects.toMatchObject({ code: "LOGIN_EXPIRED" });
+    await writeStore({ oauth: { access_token: "foreign", client_id: "shared-heygen-cli" } });
+    await expect(resolveCredential()).rejects.toMatchObject({ code: "LOGIN_EXPIRED" });
   });
 
   it("reports an expired login with no refresh token as expired, not as never signed in", async () => {

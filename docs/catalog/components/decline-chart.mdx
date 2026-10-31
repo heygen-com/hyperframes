@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Decline Chart</h1>
+  <p>A metric line draws downward as its value counts down and the ambient background darkens in lockstep.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/decline-chart.json"
   compositionId="decline-chart"
   compositionSrc="compositions/components/decline-chart.html"
   title="Decline Chart"
-  description="A metric line draws downward as its value counts down and the ambient background darkens in lockstep."
   variables={[{"id":"label","type":"string","role":"content","label":"Metric label","description":"Label shown above the declining value.","default":"Retention"},{"id":"start_value","type":"number","role":"content","label":"Start value","description":"Metric value at the start of the decline.","default":82,"min":0,"max":100,"step":1},{"id":"end_value","type":"number","role":"content","label":"End value","description":"Metric value at the bottom of the decline.","default":34,"min":0,"max":100,"step":1}]}
   meta={{"category":"Data","badge":"Stable","codeLines":276}}
   attribution={{"path":"registry/components/decline-chart","tags":["motion-primitive","data","chart","decline","metric","problem"]}}
@@ -311,7 +315,9 @@ That writes one file: `compositions/components/decline-chart.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -352,6 +358,4 @@ Tagged `motion-primitive` `data` `chart` `decline` `metric` `problem`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

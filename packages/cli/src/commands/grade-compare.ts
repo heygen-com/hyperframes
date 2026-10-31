@@ -7,6 +7,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { readJsonFileText } from "../utils/jsonFlag.js";
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import {
@@ -214,7 +215,7 @@ export function parseGradesFile(filePath: string): GradeCompareCell[] {
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(readFileSync(filePath, "utf-8"));
+    parsed = JSON.parse(readJsonFileText(filePath));
   } catch (err) {
     throw new Error(`Could not parse grades JSON: ${normalizeErrorMessage(err)}`);
   }

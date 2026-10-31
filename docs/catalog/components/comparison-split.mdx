@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Comparison Split</h1>
+  <p>Two full-bleed panels compare before and after states as a persistent divider wipes the vivid after layer over the muted before layer and rests at a configurable split.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/comparison-split.json"
   compositionId="comparison-split"
   compositionSrc="compositions/components/comparison-split.html"
   title="Comparison Split"
-  description="Two full-bleed panels compare before and after states as a persistent divider wipes the vivid after layer over the muted before layer and rests at a configurable split."
   variables={[{"id":"split","type":"number","role":"layout","label":"Split position","description":"Target resting position of the comparison divider.","default":50,"min":0,"max":100,"step":1,"unit":"%"},{"id":"orientation","type":"enum","role":"layout","label":"Orientation","description":"Axis and direction used by the comparison wipe.","default":"horizontal","options":[{"value":"horizontal","label":"Horizontal"},{"value":"vertical","label":"Vertical"}]},{"id":"labelA","type":"string","role":"content","label":"Before label","description":"Caption shown on the base before panel.","default":"Before"},{"id":"labelB","type":"string","role":"content","label":"After label","description":"Caption shown on the revealed after panel.","default":"After"}]}
   meta={{"category":"Effects","badge":"Stable","codeLines":449}}
   attribution={{"path":"registry/components/comparison-split","tags":["prop","ui-props","compare","holdable","before-after","wipe"]}}
@@ -484,7 +488,9 @@ That writes one file: `compositions/components/comparison-split.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -526,6 +532,4 @@ Tagged `prop` `ui-props` `compare` `holdable` `before-after` `wipe`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Separator</h1>
+  <p>A one-pixel structural separator with horizontal and vertical variants plus a seek-safe progress reveal</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/separator.json"
   compositionId="separator"
   compositionSrc="compositions/components/separator.html"
   title="Separator"
-  description="A one-pixel structural separator with horizontal and vertical variants plus a seek-safe progress reveal"
   variables={[{"id":"orientation","type":"enum","role":"layout","label":"Orientation","description":"Which way the rule runs, and so which way the reveal travels.","default":"horizontal","options":[{"value":"horizontal","label":"Horizontal"},{"value":"vertical","label":"Vertical"}]},{"id":"thickness","type":"enum","role":"style","label":"Thickness","description":"Size of the rule across its short edge, from a 1px hairline to a 4px bar.","default":"hairline","options":[{"value":"hairline","label":"Hairline"},{"value":"medium","label":"Medium"},{"value":"bold","label":"Bold"}]},{"id":"tone","type":"enum","role":"style","label":"Tone","description":"Colour of the revealed fill: neutral grey, the theme accent, or the warning hue.","default":"neutral","options":[{"value":"neutral","label":"Neutral"},{"value":"accent","label":"Accent"},{"value":"warning","label":"Warning"}]}]}
   meta={{"category":"Motion Primitives","badge":"Stable","codeLines":238}}
   attribution={{"path":"registry/components/separator","tags":["video-primitive","separator","layout"]}}
@@ -273,7 +277,9 @@ That writes one file: `compositions/components/separator.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -315,6 +321,4 @@ Tagged `video-primitive` `separator` `layout`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

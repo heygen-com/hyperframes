@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Chat Message</h1>
+  <p>One message arrives on the measured entry - scale 0.75, 0.12s, growing from its sender's corner. The type is an enum switched like marker-highlight's style: a received or sent bubble with a real tail, a large emoji row, an image, or a link card with title and domain. The atom that chat-thread builds conversations from</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/chat-message.json"
   compositionId="chat-message"
   compositionSrc="compositions/components/chat-message.html"
   title="Chat Message"
-  description="One message arrives on the measured entry - scale 0.75, 0.12s, growing from its sender's corner. The type is an enum switched like marker-highlight's style: a received or sent bubble with a real tail, a large emoji row, an image, or a link card with title and domain. The atom that chat-thread builds conversations from"
   variables={[{"id":"type","type":"enum","role":"content","label":"Type","description":"Which message form arrives.","default":"sent","options":[{"value":"recv","label":"Received"},{"value":"sent","label":"Sent"},{"value":"emoji","label":"Emoji"},{"value":"img","label":"Image"},{"value":"card","label":"Link card"}]},{"id":"text","type":"string","role":"content","label":"Text","description":"Bubble text, or the emoji row for the Emoji type.","default":"wait look 👀"},{"id":"cardTitle","type":"string","role":"content","label":"Card title","description":"Link-card title (Link card type only).","default":"HyperFrames — Write HTML, render pixel-perfect video"},{"id":"cardDomain","type":"string","role":"content","label":"Card domain","description":"Link-card domain line (Link card type only).","default":"hyperframes.heygen.com"},{"id":"tail","type":"enum","role":"style","label":"Tail","description":"The bubble tail anchoring the message to its side.","default":"on","options":[{"value":"on","label":"On"},{"value":"off","label":"Off"}]},{"id":"delivered","type":"enum","role":"content","label":"Delivered","description":"The receipt under a sent message.","default":"on","options":[{"value":"on","label":"On"},{"value":"off","label":"Off"}]}]}
   meta={{"category":"Motion Primitives","badge":"Stable","codeLines":304}}
   attribution={{"author":"Miao Yang","path":"registry/components/chat-message","tags":["video-primitive","chat","mock-ui","message"]}}
@@ -339,7 +343,9 @@ That writes one file: `compositions/components/chat-message.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -385,6 +391,4 @@ Created by Miao Yang.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

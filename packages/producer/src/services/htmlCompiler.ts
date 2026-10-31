@@ -2007,7 +2007,7 @@ function rebaseDirectEntryAssetPaths(html: string, projectDir: string, htmlPath:
   const { document } = parseHTML(html);
   const assetExists = (path: string) => existsSync(resolve(projectDir, path));
   rewriteAssetPaths(
-    document.querySelectorAll("[src], [href]"),
+    document.querySelectorAll("[src], [href], [srcset]"),
     entryPath,
     (el: Element, attr: string) => el.getAttribute(attr),
     (el: Element, attr: string, value: string) => el.setAttribute(attr, value),

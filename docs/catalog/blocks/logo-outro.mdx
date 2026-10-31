@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Logo Outro</h1>
+  <p>Cinematic logo reveal with piece-by-piece assembly, glow bloom, tagline fade-in, and URL pill</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/logo-outro.json"
   compositionId="logo-outro"
   compositionSrc="compositions/logo-outro.html"
   title="Logo Outro"
-  description="Cinematic logo reveal with piece-by-piece assembly, glow bloom, tagline fade-in, and URL pill"
   variables={[]}
   meta={{"duration":6,"width":1920,"height":1080,"category":"Blocks","badge":"Stable","codeLines":226}}
   attribution={{"path":"registry/blocks/logo-outro","tags":["branding","outro","logo"]}}
@@ -261,7 +265,9 @@ That writes one file: `compositions/logo-outro.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -299,6 +305,4 @@ Tagged `branding` `outro` `logo`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

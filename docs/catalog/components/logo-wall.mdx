@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Logo Wall</h1>
+  <p>A trusted-by wall of placeholder lettermark logos that fades and scales into place with a deterministic per-cell stagger.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/logo-wall.json"
   compositionId="logo-wall"
   compositionSrc="compositions/components/logo-wall.html"
   title="Logo Wall"
-  description="A trusted-by wall of placeholder lettermark logos that fades and scales into place with a deterministic per-cell stagger."
   variables={[{"id":"rows","type":"number","role":"layout","label":"Rows","description":"Number of logo rows in the wall.","default":3,"min":2,"max":4,"step":1},{"id":"cols","type":"number","role":"layout","label":"Columns","description":"Number of logo columns in the wall.","default":5,"min":3,"max":6,"step":1},{"id":"stagger","type":"number","role":"motion","label":"Stagger","description":"Delay between consecutive logo cell entrances.","default":45,"min":20,"max":75,"step":1,"unit":"ms"}]}
   meta={{"category":"Data","badge":"Stable","codeLines":299}}
   attribution={{"path":"registry/components/logo-wall","tags":["data","logos","social-proof","stagger","prove"]}}
@@ -334,7 +338,9 @@ That writes one file: `compositions/components/logo-wall.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -375,6 +381,4 @@ Tagged `data` `logos` `social-proof` `stagger` `prove`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

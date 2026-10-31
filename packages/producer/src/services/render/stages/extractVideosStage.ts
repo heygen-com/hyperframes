@@ -60,7 +60,12 @@ import {
   collectVideoReadinessSkipIds,
   type RenderJob,
 } from "../../renderOrchestrator.js";
-import { materializeExtractedFramesForCompiledDir, type CompositionMetadata } from "../shared.js";
+import {
+  materializeExtractedFramesForCompiledDir,
+  reportExtractProgress,
+  type CompositionMetadata,
+} from "../shared.js";
+import type { ProgressCallback } from "../../renderOrchestrator.js";
 import { REMOTE_MEDIA_SUBDIR } from "../../htmlCompiler.js";
 import { resolveRenderFpsConfig } from "../../fileServer.js";
 import type { ProducerLogger } from "../../../logger.js";
@@ -92,6 +97,7 @@ export interface ExtractVideosStageInput {
   materializeSymlinks?: boolean;
   deferRangeExtraction?: boolean;
   urlByAbsentLocalPath?: ReadonlyMap<string, string>;
+  onProgress?: ProgressCallback;
 }
 
 export interface ExtractVideosStageResult {
@@ -504,6 +510,8 @@ export async function runExtractVideosStage(
         safeVideoExtractionSourceLogMetadata(v.src),
       );
     }
+    let framesPlanned = 0;
+    let framesDone = 0;
     extractionResult = await extractAllVideoFrames(
       composition.videos,
       projectDir,
@@ -521,6 +529,11 @@ export async function runExtractVideosStage(
         deferRangeExtraction,
         contentKeyedDirs: [join(compiledDir, REMOTE_MEDIA_SUBDIR)],
         urlByAbsentLocalPath,
+        onProgress: ({ planned = 0, done = 0 }) => {
+          framesPlanned += planned;
+          framesDone += done;
+          reportExtractProgress(job, framesDone, framesPlanned, input.onProgress);
+        },
       },
       abortSignal,
       cfg,

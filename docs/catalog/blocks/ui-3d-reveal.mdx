@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>3D UI Reveal</h1>
+  <p>Perspective 3D reveal animation for UI elements</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/ui-3d-reveal.json"
   compositionId="ui-3d-reveal"
   compositionSrc="compositions/ui-3d-reveal.html"
   title="3D UI Reveal"
-  description="Perspective 3D reveal animation for UI elements"
   variables={[]}
   meta={{"duration":13,"width":1920,"height":1080,"category":"Showcases","badge":"Stable","codeLines":2764}}
   attribution={{"path":"registry/blocks/ui-3d-reveal","tags":["showcase","3d","reveal"]}}
@@ -2799,7 +2803,9 @@ That writes one file: `compositions/ui-3d-reveal.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -2830,6 +2836,4 @@ Tagged `showcase` `3d` `reveal`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

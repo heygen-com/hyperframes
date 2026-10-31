@@ -90,11 +90,21 @@ describe.skipIf(!canDecode)("hyperframes beats", () => {
     expect(Math.abs(report.bpm - 120)).toBeLessThanOrEqual(1);
   });
 
-  it("points a media file argument to hyperframes audio instead of reading it as a project", async () => {
-    const song = join(project("file-arg", 120), "assets", "song.wav");
-    const { exitCode, out } = await runBeats(song);
-    expect(exitCode).toBe(1);
-    expect(out).toContain(`hyperframes audio ${JSON.stringify(song)} --only beats --json`);
+  it("analyses an audio file given directly and writes nothing", async () => {
+    const dir = project("file-arg", 120);
+    const song = join(dir, "assets", "song.wav");
+    const { exitCode, out } = await runBeats(song, true);
+    expect(exitCode).toBe(0);
+    const report = JSON.parse(out) as {
+      ok: boolean;
+      file: string;
+      bpm: number;
+      beatTimes: number[];
+    };
+    expect(report).toMatchObject({ ok: true, file: song });
+    expect(report.beatTimes.length).toBeGreaterThan(18);
+    expect(Math.abs(report.bpm - 120)).toBeLessThanOrEqual(1);
+    expect(existsSync(join(dir, "beats"))).toBe(false);
   });
 
   it("tells a composition file argument to pass its folder", async () => {

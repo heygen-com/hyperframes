@@ -517,13 +517,12 @@ async function renderDetail(slots: string[], wrapped = false): Promise<string> {
 }
 
 for (const wrapped of [false, true]) {
-  test(`the install block renders once, between the description and the preview stage (${wrapped ? "as Mintlify wraps children" : "bare slots"})`, async () => {
+  test(`the install block renders once, above the preview stage, under the page's own title (${wrapped ? "as Mintlify wraps children" : "bare slots"})`, async () => {
     const html = await renderDetail(["code", "install", "docs"], wrapped);
     const at = (needle: string) => html.indexOf(needle);
-    assert.ok(
-      at("X title") !== -1 && at("MARK-install") !== -1 && at('class="hf-ve-stage"') !== -1,
-    );
-    assert.ok(at("X title") < at("MARK-install"), "install comes after the title");
+    assert.ok(at("MARK-install") !== -1 && at('class="hf-ve-stage"') !== -1);
+    // The page writes the H1 and standfirst itself, so the server HTML has them (generate-catalog-pages.ts).
+    assert.ok(!html.includes("<h1"), "the component draws no title of its own");
     assert.ok(at("MARK-install") < at('class="hf-ve-stage"'), "install comes before the stage");
     assert.equal(html.split("MARK-install").length - 1, 1, "install is rendered once");
     assert.ok(at("MARK-docs") > at('class="hf-ve-stage"'), "the other slots stay below the stage");

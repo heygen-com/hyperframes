@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Signup Flow</h1>
+  <p>A composed signup flow with social action, email field, password field, and submit button</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/signup-flow.json"
   compositionId="signup-flow"
   compositionSrc="compositions/components/signup-flow.html"
   title="Signup Flow"
-  description="A composed signup flow with social action, email field, password field, and submit button"
   variables={[]}
   meta={{"category":"Effects","badge":"Stable","codeLines":80}}
   attribution={{"path":"registry/components/signup-flow","tags":["ui-flow","signup","form"]}}
@@ -115,7 +119,9 @@ That writes one file: `compositions/components/signup-flow.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -135,6 +141,4 @@ Tagged `ui-flow` `signup` `form`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

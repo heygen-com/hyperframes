@@ -278,6 +278,14 @@ describe("registry resolver", () => {
       );
     });
 
+    it("names the closest items when the requested one is not in the registry", async () => {
+      mockFetch();
+      const baseUrl = uniqueBaseUrl();
+      await expect(resolveItemWithDependencies("alpha-gamma-reveal", { baseUrl })).rejects.toThrow(
+        /Item "alpha-gamma-reveal" not found in registry\. Closest: alpha, gamma\. Available: /,
+      );
+    });
+
     it("throws a clear cycle error for circular dependencies", async () => {
       mockFetch({ dependencies: { alpha: ["gamma"], beta: ["alpha"], gamma: ["beta"] } });
       const baseUrl = uniqueBaseUrl();

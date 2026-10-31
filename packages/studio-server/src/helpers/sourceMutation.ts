@@ -12,7 +12,11 @@ import {
   mintHfId,
   walkCompositionDescendants,
 } from "@hyperframes/parsers/hf-ids";
-import { readClipTiming, writeClipTiming } from "@hyperframes/core/composition-contract";
+import {
+  readClipTiming,
+  SPLIT_BOUNDARY_EPSILON_S,
+  writeClipTiming,
+} from "@hyperframes/core/composition-contract";
 import { relinkSplitHalves } from "@hyperframes/core/media-link";
 import { parseStyleDecls, patchStyleAttrString } from "./sourceStyleMutation.js";
 
@@ -455,7 +459,11 @@ export function splitElementInHtml(
     start = fallbackTiming.start;
     duration = fallbackTiming.duration;
   }
-  if (duration <= 0 || splitTime <= start || splitTime >= start + duration) {
+  if (
+    duration <= 0 ||
+    splitTime < start + SPLIT_BOUNDARY_EPSILON_S ||
+    splitTime > start + duration - SPLIT_BOUNDARY_EPSILON_S
+  ) {
     return { html: source, matched: false, newId: null };
   }
 

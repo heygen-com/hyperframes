@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Distortion Transitions</h1>
+  <p>Showcase of warp and distortion transitions</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/transitions-distortion.json"
   compositionId="transitions-distortion"
   compositionSrc="compositions/transitions-distortion.html"
   title="Distortion Transitions"
-  description="Showcase of warp and distortion transitions"
   variables={[]}
   meta={{"duration":21,"width":1920,"height":1080,"category":"CSS Transitions","badge":"Stable","codeLines":385}}
   attribution={{"path":"registry/blocks/transitions-distortion","tags":["transition","showcase"]}}
@@ -420,7 +424,9 @@ That writes one file: `compositions/transitions-distortion.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -451,6 +457,4 @@ Tagged `transition` `showcase`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

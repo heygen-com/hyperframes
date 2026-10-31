@@ -27,6 +27,7 @@ export interface PartialCaptureState {
   assets: CaptureResult["assets"];
   dropped: CaptureResult["dropped"];
   warnings: string[];
+  webglStalled: boolean;
 }
 
 export function createPartialCaptureState(opts: CaptureOptions): PartialCaptureState {
@@ -65,6 +66,7 @@ export function createPartialCaptureState(opts: CaptureOptions): PartialCaptureS
     assets: [],
     dropped: noDrops(),
     warnings: [],
+    webglStalled: false,
   };
 }
 

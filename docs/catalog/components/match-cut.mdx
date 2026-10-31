@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Match Cut</h1>
+  <p>A circle accelerates into a hard single-frame scene swap, matches the incoming circle exactly, and continues into a smaller resting pose.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/match-cut.json"
   compositionId="match-cut"
   compositionSrc="compositions/components/match-cut.html"
   title="Match Cut"
-  description="A circle accelerates into a hard single-frame scene swap, matches the incoming circle exactly, and continues into a smaller resting pose."
   variables={[{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Color shared by the matched circles.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"label_a","type":"string","role":"content","label":"Scene A label","description":"Text inside the outgoing button.","default":"Start"},{"id":"label_b","type":"string","role":"content","label":"Scene B label","description":"Result text revealed after the cut.","default":"Done"}]}
   meta={{"category":"Effects","badge":"Stable","codeLines":309}}
   attribution={{"path":"registry/components/match-cut","tags":["motion-primitive","transition","match-cut","hard-cut","continuity"]}}
@@ -344,7 +348,9 @@ That writes one file: `compositions/components/match-cut.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -385,6 +391,4 @@ Tagged `motion-primitive` `transition` `match-cut` `hard-cut` `continuity`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Screen Flow Carousel</h1>
+  <p>Two to five app screens ride a horizontal rail: one primary at center, neighbors receded, advancing on cues with a velocity-matched throw and a smooth long-tail catch while a mono caption swaps with each advance. Screens are slots with token skeleton defaults.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/screen-flow-carousel.json"
   compositionId="screen-flow-carousel"
   compositionSrc="compositions/components/screen-flow-carousel.html"
   title="Screen Flow Carousel"
-  description="Two to five app screens ride a horizontal rail: one primary at center, neighbors receded, advancing on cues with a velocity-matched throw and a smooth long-tail catch while a mono caption swaps with each advance. Screens are slots with token skeleton defaults."
   variables={[{"id":"screens","type":"number","role":"content","label":"Screens","description":"How many screens ride the rail.","default":3,"min":2,"max":5,"step":1},{"id":"captions","type":"string","role":"content","label":"Captions","description":"Comma-separated caption per screen. Blank entries use the authored defaults.","default":""},{"id":"cues","type":"string","role":"timing","label":"Cues","description":"Comma-separated advance times in seconds from mount start. Blank entries use the authored even rhythm.","default":""},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Token the active ring, caption dot, and skeleton accents ride.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"Optional departure. Default none: the final screen holds until the cut.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
   meta={{"category":"Product Demo","badge":"Stable","codeLines":576}}
   attribution={{"path":"registry/components/screen-flow-carousel","tags":["product-demo","feature-tour","carousel","rail","slot","screens"]}}
@@ -611,7 +615,9 @@ That writes one file: `compositions/components/screen-flow-carousel.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -654,6 +660,4 @@ Tagged `product-demo` `feature-tour` `carousel` `rail` `slot` `screens`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

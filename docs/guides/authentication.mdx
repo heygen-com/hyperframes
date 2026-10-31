@@ -37,7 +37,9 @@ Signing in is the same OAuth step as creating an account — new users land on t
   </Step>
 </Steps>
 
-The credential lives in `~/.heygen/credentials` (mode `0600`) — no per-repo `.env` to manage. Browser OAuth is a `hyperframes auth login` feature. The separate [`heygen` CLI](https://github.com/heygen-com/heygen-cli) (its own install — there's no `npx heygen`) is API-key-only, so `heygen auth login` just stores a key you paste. Both read the same `~/.heygen/credentials`, so signing in with one carries to the other.
+HyperFrames uses its own public OAuth client and stores credentials in `~/.hyperframes/credentials` (mode `0600`). Sign in again after upgrading from the shared HeyGen login. The separate [`heygen` CLI](https://github.com/heygen-com/heygen-cli) keeps its own login in `~/.heygen`; HyperFrames does not move or delete it. An expired HyperFrames OAuth session requires refresh or sign-in and never selects a saved API key instead. An explicit API-key login or environment key selects API-key billing.
+
+`auth status` verifies identity. For a dedicated HyperFrames OAuth login it reports the billing product, but the HyperFrames balance is unavailable here: `/v3/users/me` returns generic HeyGen account billing fields. Those raw fields remain in JSON and are not presented as the HyperFrames balance. Host-injected or custom-client OAuth is reported as an unverified billing product.
 
 <Tip>
   No account is needed to try HyperFrames locally. With no credential, voice can
@@ -54,12 +56,11 @@ sound retrieval. It resolves first-match-wins:
 2. `HEYGEN_ACCESS_TOKEN` — an OAuth token a host app injects
 3. `HEYGEN_API_KEY` — environment variable
 4. `HYPERFRAMES_API_KEY` — alias, for parity with other tools
-5. `~/.heygen/credentials` — written by `hyperframes auth login` (or `heygen auth login`)
+5. `~/.hyperframes/credentials` — written by `hyperframes auth login`
 
 A nearby project `.env` can supply the keys, but never `HEYGEN_API_BASE`. Point at a different config directory
-with `HEYGEN_CONFIG_DIR`. The `hyperframes` CLI's own commands check the API keys before `HEYGEN_ACCESS_TOKEN`; see
-the [CLI reference](/packages/cli). `media-use resolve` searches through the separate `heygen` CLI, which resolves its
-own credential.
+with `HYPERFRAMES_CONFIG_DIR`. The `hyperframes` CLI's own commands check the API keys before `HEYGEN_ACCESS_TOKEN`; see
+the [CLI reference](/packages/cli). When `media-use` invokes the separate `heygen` executable, it supplies an isolated temporary credential containing the selected access token. That helper cannot refresh a HyperFrames grant or pick up another HeyGen login.
 
 ## Providers used by agent workflows
 
@@ -70,7 +71,7 @@ vision key is available.
 
 | Capability | Provider order | Key(s) — first match wins | Local dependency |
 |------------|----------------|---------------------------|------------------|
-| **Voice (TTS)** | HeyGen → ElevenLabs → Kokoro | `HEYGEN_API_KEY` → `HYPERFRAMES_API_KEY` → `~/.heygen` · then `ELEVENLABS_API_KEY` | Kokoro: `pip install kokoro-onnx soundfile` |
+| **Voice (TTS)** | HeyGen → ElevenLabs → Kokoro | `HEYGEN_API_KEY` → `HYPERFRAMES_API_KEY` → `~/.hyperframes` · then `ELEVENLABS_API_KEY` | Kokoro: `pip install kokoro-onnx soundfile` |
 | **Music (BGM)** | HeyGen library → Lyria → MusicGen | HeyGen credential (above) · then `GEMINI_API_KEY` → `GOOGLE_API_KEY` | MusicGen: `pip install transformers torch soundfile numpy` |
 | **Sound effects** | HeyGen library → bundled library | HeyGen credential (above) | bundled — no deps |
 | **Capture descriptions** | OpenRouter → Gemini | `OPENROUTER_API_KEY` → `GEMINI_API_KEY` | None; optional for [website capture](/guides/product-launch-video) |
@@ -145,7 +146,9 @@ to a shared space with `--space`.
 | `HEYGEN_ACCESS_TOKEN` | OAuth token a host app injects; never refreshed or saved. |
 | `HEYGEN_API_BASE` | A host app's gateway for media workflows; never read from a project `.env`. |
 | `HEYGEN_API_URL` | API base URL for `hyperframes` CLI commands (default `https://api.heygen.com`). |
-| `HEYGEN_CONFIG_DIR` | Credentials directory (default `~/.heygen`). |
+| `HYPERFRAMES_CONFIG_DIR` | HyperFrames credentials root (default `~/.hyperframes`). |
+| `HYPERFRAMES_ENV` | `prod` (default) or `dev`; switches OAuth and API defaults together. Dev credentials live under the root’s `dev/` directory. |
+| `HYPERFRAMES_OAUTH_CLIENT_ID` | Override the public client ID for a controlled OAuth environment. |
 | `ELEVENLABS_API_KEY` | ElevenLabs TTS, used when no HeyGen credential is present. |
 | `GEMINI_API_KEY` / `GOOGLE_API_KEY` | Explicit Gemini TTS selection and Lyria music generation; capture descriptions use `GEMINI_API_KEY`. |
 | `GOOGLE_APPLICATION_CREDENTIALS` / `GCS_CREDS` | Gemini TTS service-account JSON file path / injected JSON. Used when neither API key is set. |

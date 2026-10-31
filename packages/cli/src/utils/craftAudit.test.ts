@@ -24,6 +24,8 @@ interface Shown {
   captions?: boolean;
   /** Block key; defaults to the element's own key. */
   block?: number;
+  /** The block's rendered text; defaults to `text`. */
+  blockText?: string;
 }
 
 function part(shown: Shown): CraftTextPart {
@@ -35,6 +37,7 @@ function part(shown: Shown): CraftTextPart {
     blockSelector: `#t${shown.block ?? shown.key}`,
     sourceFile: "compositions/scene.html",
     text: shown.text,
+    blockText: shown.blockText ?? shown.text,
     opacity: 1,
     fontPx,
     rect: { left: 100, top: 100 + shown.key * 10, width: 800, height: fontPx * 1.2 },
@@ -144,6 +147,7 @@ describe("line_unread", () => {
       key: 10 + index,
       block: 1,
       text,
+      blockText: words.join(" "),
       from: 2,
       to: 2.6,
     }));
@@ -151,6 +155,20 @@ describe("line_unread", () => {
     const findings = await detectLineUnread(film(8, shown), 8, CANVAS, probeFor(shown));
     expect(findings).toHaveLength(1);
     expect(findings[0]).toMatchObject({ selector: "#t1", words: 7 });
+  });
+
+  it("counts a line split into one span per glyph by its words, not its letters", async () => {
+    const line = "That camera move at 0:12 though";
+    const shown: Shown[] = Array.from(line.replaceAll(" ", ""), (text, index) => ({
+      key: 10 + index,
+      block: 1,
+      text,
+      blockText: line,
+      from: 0,
+      to: 5.5,
+    }));
+    shown.push({ key: 2, text: "End card here", from: 6, to: 12 });
+    expect(await detectLineUnread(film(12, shown), 12, CANVAS, probeFor(shown))).toEqual([]);
   });
 
   it("skips text too small to be a reading line", async () => {

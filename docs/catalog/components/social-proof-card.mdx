@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Social Proof Card</h1>
+  <p>The app-store close as one mountable scene: wordmark, five stars, a proof line, three feature icons and a CTA capsule build in a quiet stagger and hold - measured from reference ad footage. For an animated star sweep use star-rating-fill; for a quote card use testimonial-proof-card; for a bare lockup use cta-lockup</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/social-proof-card.json"
   compositionId="social-proof-card"
   compositionSrc="compositions/components/social-proof-card.html"
   title="Social Proof Card"
-  description="The app-store close as one mountable scene: wordmark, five stars, a proof line, three feature icons and a CTA capsule build in a quiet stagger and hold - measured from reference ad footage. For an animated star sweep use star-rating-fill; for a quote card use testimonial-proof-card; for a bare lockup use cta-lockup"
   variables={[{"id":"brand","type":"string","role":"content","label":"Brand","description":"Wordmark at the top of the card.","default":"HyperFrames"},{"id":"proof","type":"string","role":"content","label":"Proof line","description":"Social-proof line under the stars.","default":"12,000+ creators"},{"id":"cta","type":"string","role":"content","label":"CTA","description":"Label on the closing capsule.","default":"Start rendering free"},{"id":"f1","type":"string","role":"content","label":"Feature 1","description":"First feature, | breaks the line.","default":"Write|plain HTML"},{"id":"f2","type":"string","role":"content","label":"Feature 2","description":"Second feature, | breaks the line.","default":"Render|pixel-perfect"},{"id":"f3","type":"string","role":"content","label":"Feature 3","description":"Third feature, | breaks the line.","default":"Own|every line"}]}
   meta={{"category":"Motion Scenes","badge":"Stable","codeLines":230}}
   attribution={{"author":"Miao Yang","path":"registry/components/social-proof-card","tags":["motion-primitive","social-proof","end-card","cta","vertical"]}}
@@ -265,7 +269,9 @@ That writes one file: `compositions/components/social-proof-card.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -311,6 +317,4 @@ Created by Miao Yang.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

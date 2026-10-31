@@ -139,6 +139,8 @@ const PROJECT_FILES = new Set([
   "REVIEW.md",
   "STORYLINES.md",
   "assets/transcript.json",
+  "transcript.json",
+  "REVERSE.md",
   "asset-descriptions.md",
   "extracted/page.html",
   "extracted/visible-text.txt",
