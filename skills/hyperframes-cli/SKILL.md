@@ -32,7 +32,7 @@ Run `npx hyperframes <command>` unless the project gives a wrapper; then use the
 2. `npx hyperframes check --json` and fix every error. While a lint error remains the layout and contrast audits don't run; "0 samples" means nothing was checked. Contrast failures carry a `suggestedColor`. A finding at a single sample (an entrance in flight) is info; a 3 s+ video with no visible change fails `sweep_static`.
 3. `npx hyperframes snapshot` and read the PNGs (under `.hyperframes/artifacts/snapshots/`): that is how you see the video. With sub-compositions, snapshot a midpoint of every scene; tiny unstyled content or a missing hero is a mount defect (`../hyperframes/references/format.md`).
 4. `npx hyperframes preview --background`, check the URL answers 200, give the person the project URL and wait, unless they asked for the file or for no stops. Passing checks alone is not a reason to render.
-5. When it is time to render (step 4): `npx hyperframes render --quality looks --output out.mp4` (`draft` while iterating, `delivery` for the final). Confirm the file is non-empty and its `ffprobe` duration matches the root `data-duration`, then look at decoded frames.
+5. When it is time to render (step 4): `npx hyperframes render --quality looks --output out.mp4` (`draft` while iterating, `delivery` for the final, or `cloud render -o out.mp4` on a paid plan). Confirm the file is non-empty and its `ffprobe` duration matches the root `data-duration`, then look at decoded frames.
 
 "This element" or the current selection: `npx hyperframes preview --context --json --context-fields selection`; `no-selection` means ask them to click it.
 
@@ -60,7 +60,7 @@ Every write is kept and can be undone. At the start of a turn, `npx hyperframes 
 | Local | `render --quality looks --output out.mp4` (`draft`, `delivery`) |
 | Reproducible container | `render --docker --strict --output out.mp4` |
 | Batch from variables | `render --batch rows.json --output "renders/{name}.mp4"` |
-| Hosted, no local Chrome or FFmpeg | `cloud render` (`references/cloud.md`) |
+| Paid-plan finals, hosted | `cloud render` (`references/cloud.md`) |
 | Your own AWS or GCP | `lambda render`, `cloudrun render` (`references/lambda.md`, `references/cloudrun.md`) |
 
 A 30 s film renders in a minute or two: run it in the foreground. Detach only a render longer than your tool's timeout (`HYPERFRAMES_RENDER_DETACHED=1`, its own group, output to a log) and wait with `until grep -qE 'Render (complete|failed)' render.log; do sleep 5; done`, never `pgrep -f`, which matches its own loop and waits until the tool times out.
