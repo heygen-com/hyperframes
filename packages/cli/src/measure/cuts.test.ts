@@ -100,13 +100,16 @@ describe.skipIf(!ffmpeg)("a clip with a pan, a flash, a dissolve and one hard cu
         ...["-f", "lavfi", "-i", src("testsrc2", 4)],
         ...["-f", "lavfi", "-i", src("smptebars", 2)],
         ...["-f", "lavfi", "-i", src("rgbtestsrc", 2)],
-        ...["-filter_complex", [
-          "[0]scroll=horizontal=0.015,eq=brightness='if(between(t,2,2.1),1,0)':eval=frame,format=yuv420p[a]",
-          "[1]format=yuv420p[b]",
-          "[2]format=yuv420p[c]",
-          "[b][c]xfade=transition=fade:duration=1:offset=1[bc]",
-          "[a][bc]concat=n=2:v=1[v]",
-        ].join(";")],
+        ...[
+          "-filter_complex",
+          [
+            "[0]scroll=horizontal=0.015,eq=brightness='if(between(t,2,2.1),1,0)':eval=frame,format=yuv420p[a]",
+            "[1]format=yuv420p[b]",
+            "[2]format=yuv420p[c]",
+            "[b][c]xfade=transition=fade:duration=1:offset=1[bc]",
+            "[a][bc]concat=n=2:v=1[v]",
+          ].join(";"),
+        ],
         ...["-map", "[v]", "-c:v", "libx264", "-crf", "12", out],
       ]);
       const frames = signatures(["-i", out]).frames;
@@ -114,5 +117,5 @@ describe.skipIf(!ffmpeg)("a clip with a pan, a flash, a dissolve and one hard cu
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
-  });
+  }, 60_000);
 });

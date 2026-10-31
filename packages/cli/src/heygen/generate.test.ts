@@ -14,7 +14,8 @@ vi.mock("../cloud/auth.js", () => ({
 
 vi.stubEnv("HEYGEN_API_KEY", "k");
 
-const { checkRequest, foldShort, generate, parseMask, structureRatio, urlOf } = await import("./generate.js");
+const { checkRequest, foldShort, generate, parseMask, structureRatio, urlOf } =
+  await import("./generate.js");
 const { checkLimit, creditsOf, priceOf } = await import("./pricing.js");
 const ffmpeg = findFFmpeg();
 const project = mkdtempSync(join(tmpdir(), "hf-generate-test-"));
