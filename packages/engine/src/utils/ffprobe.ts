@@ -522,6 +522,12 @@ export function videoStartOnMediaTimeline(
   return (metadata.videoStreamLeadSeconds ?? 0) + (metadata.mediaTimeOffsetSeconds ?? 0);
 }
 
+/** A time as ffmpeg/ffprobe read it: plain decimal, never `8.88e-16` (their parsers reject exponents). */
+export function formatFfmpegSeconds(seconds: number): string {
+  const text = String(seconds);
+  return text.includes("e") ? String(+seconds.toFixed(6)) : text;
+}
+
 export function ffmpegSeekSeconds(
   metadata: Pick<VideoMetadata, "mediaTimeOffsetSeconds">,
   mediaTime: number,
@@ -1104,7 +1110,7 @@ async function extractFinalPacketDuration(
       "-select_streams",
       "v:0",
       "-read_intervals",
-      `${intervalStart}%${streamEnd}`,
+      `${formatFfmpegSeconds(intervalStart)}%${formatFfmpegSeconds(streamEnd)}`,
       "-show_entries",
       "packet=pts_time,duration_time",
       "-of",
@@ -1200,7 +1206,8 @@ export async function extractFinalVideoFrameTimestamp(
       return parseFinalTimestamp(stdout);
     };
     const timestamp =
-      (await probe(`${intervalStart}%${streamEnd}`)) ?? (await probe(/* full scan */));
+      (await probe(`${formatFfmpegSeconds(intervalStart)}%${formatFfmpegSeconds(streamEnd)}`)) ??
+      (await probe(/* full scan */));
     if (timestamp === undefined) {
       throw new Error("[FFmpeg] ffprobe found no decodable final video frame");
     }
@@ -1442,7 +1449,7 @@ export async function keyframeGapSeconds(
     filePath,
     [
       ...["-select_streams", "v:0", "-show_entries", "packet=pts_time", "-of", "csv=p=0"],
-      ...["-read_intervals", `${seekSeconds}%+#1`],
+      ...["-read_intervals", `${formatFfmpegSeconds(seekSeconds)}%+#1`],
     ],
     signal,
   );
