@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   assertSafeCompositionId,
@@ -41,7 +41,7 @@ describe("golden path conventions", () => {
     expect(timeMsFromSeconds(2.0004)).toBe(2000);
     expect(goldenTimeFileName(1500)).toBe("1500.png");
     expect(goldenBaselinePath("/proj", "intro", 1500)).toBe(
-      join("/proj", "golden", "intro", "1500.png"),
+      resolve("/proj", "golden", "intro", "1500.png"),
     );
   });
 

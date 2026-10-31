@@ -10,18 +10,11 @@ export interface RawImage {
 }
 
 export interface PixelDiffOptions {
-  /**
-   * Per-channel intensity tolerance as a fraction of 255 (default 0.1).
-   * A pixel only counts as different when at least one channel deviates
-   * by more than `threshold * 255`.
-   */
+  /** Per-channel tolerance as a fraction of 255 (default 0.1). */
   threshold?: number;
   /**
-   * Treat 1px edge shifts as anti-aliasing noise and exclude them from the
-   * failure count (default true). A differing pixel is classified as
-   * anti-aliasing when each side finds a matching pixel for the other
-   * side's color within its own 8-neighborhood — the signature of font /
-   * shape rasterization jitter, not a layout or color regression.
+   * Exclude 1px edge shifts from the failure count (default true). A pixel is
+   * anti-aliasing when each side finds the other's color in its 8-neighborhood.
    */
   ignoreAntialiasing?: boolean;
 }
