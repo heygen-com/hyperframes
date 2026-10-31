@@ -45,7 +45,41 @@ export function parseSourceDocument(raw: string): {
   return { document, wrappedFragment: !hasDocumentShell };
 }
 
+/** Drops the rules that style `id` alone (every selector in the list names it), in each style sheet of the page. */
+function dropCssRulesForId(document: Document, id: string): void {
+  const idToken = `#${id}`;
+  const namesId = (selector: string) => {
+    let found = false;
+    selectorParser((selectors) => {
+      selectors.walkIds((node) => {
+        if (node.value === id) found = true;
+      });
+    }).processSync(selector);
+    return found;
+  };
+  for (const styleEl of document.querySelectorAll("style")) {
+    const css = styleEl.textContent ?? "";
+    if (!css.includes(idToken)) continue;
+    let root: postcss.Root;
+    try {
+      root = postcss.parse(css);
+    } catch {
+      continue;
+    }
+    let dropped = false;
+    root.walkRules((rule) => {
+      if (rule.selectors.length > 0 && rule.selectors.every(namesId)) {
+        rule.remove();
+        dropped = true;
+      }
+    });
+    if (dropped) styleEl.textContent = root.toString();
+  }
+}
+
+// A clone's rules replace whatever an earlier piece of that id left behind, so repeated cuts keep one set per id.
 function duplicateCssRulesForId(document: Document, originalId: string, newId: string): void {
+  dropCssRulesForId(document, newId);
   const idToken = `#${originalId}`;
   const transform = selectorParser((selectors) => {
     selectors.walkIds((node) => {
@@ -161,7 +195,9 @@ export function removeElementsFromHtml(
   for (const target of targets) {
     const element = findTargetElement(document, target);
     if (!element) continue;
+    const id = element.getAttribute("id");
     removeElementWithGsapCascade(document, element);
+    if (id && !document.getElementById(id)) dropCssRulesForId(document, id);
     removed = true;
   }
   if (!removed) return source;
