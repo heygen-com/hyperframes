@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { forgetSteering, isSteering, steerMedia } from "./mediaSteer";
+import { forgetSteering, isSteering, markMediaRestarted, steerMedia } from "./mediaSteer";
 
 const media = (tag: "audio" | "video") => document.createElement(tag);
 
@@ -18,6 +18,13 @@ describe("steerMedia", () => {
     expect(steerMedia(el, 0.35, 1, false).rate).toBeCloseTo(1.1, 9);
     expect(steerMedia(el, 0.35, 1, true)).toEqual({ rate: 1, seek: true });
     expect(isSteering(el)).toBe(false);
+  });
+
+  it("steers the lag a start left in audio, but still seeks one past hard sync", () => {
+    const el = media("audio");
+    markMediaRestarted(el);
+    expect(steerMedia(el, 0.3, 1, true).rate).toBeCloseTo(1.1, 9);
+    expect(steerMedia(el, 0.8, 1, true)).toEqual({ rate: 1, seek: true });
   });
 
   it("keeps steering until nearly back, and forgets on request", () => {

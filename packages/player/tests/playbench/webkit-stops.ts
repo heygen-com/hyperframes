@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
-// Plays an edit in WebKit and counts how often the playhead stands still at the cuts.
-// Flags: --edit tentake|primary, --runs 3, --browser webkit|manual, --port 8099.
+// Plays an edit in WebKit and counts how often the playhead stands still at the cuts, how often audio is seeked,
+// and how much of the time sounding audio stands still.
+// Flags: --edit tentake|primary, --runs 3, --browser webkit|chromium|manual, --port 8099.
 // webkit drives Playwright's WebKit (`playwright-core` and `playwright-core install webkit`); manual only serves
 // /host.html and waits for a real Safari to open it, click Play and post the result.
 import { existsSync } from "node:fs";
@@ -32,15 +33,17 @@ const HOST = `<!doctype html><meta charset="utf-8">
 <button id="go">Play</button>
 <hyperframes-player id="p" src="/comp.html" width="720" height="1280"></hyperframes-player>
 <script>
-  var p = document.getElementById("p"), samples = [], t0 = 0, done = false;
+  var p = document.getElementById("p"), samples = [], t0 = 0, done = false, seeks = 0;
   function finish() {
     if (done) return; done = true;
-    var body = JSON.stringify({ t0: t0, end: performance.now(), samples: samples });
+    var body = JSON.stringify({ t0: t0, end: performance.now(), samples: samples, seeks: seeks });
     fetch("/result", { method: "POST", body: body }).then(function () { window.__done = true; });
   }
   p.addEventListener("ended", finish);
   document.getElementById("go").onclick = function () {
     t0 = performance.now(); p.play();
+    var doc = p.shadowRoot.querySelector("iframe").contentWindow.document;
+    [].forEach.call(doc.querySelectorAll("audio"), function (a) { a.addEventListener("seeking", function () { seeks++; }); });
     (function tick() {
       if (done) return;
       var w = p.shadowRoot.querySelector("iframe").contentWindow, t = w.__player && w.__player.getTime ? w.__player.getTime() : p.currentTime;
@@ -53,7 +56,28 @@ const HOST = `<!doctype html><meta charset="utf-8">
 </script>
 <script src="/player.js"></script>`;
 
-type Result = { t0: number; end: number; samples: [number, number, string?][] };
+type Result = { t0: number; end: number; samples: [number, number, string?][]; seeks?: number };
+
+/** Share of sounding-audio time an element's clock stood still for more than STOP_MS. */
+function audioFrozenPct(s: Result["samples"]): number {
+  let playing = 0;
+  let frozen = 0;
+  const since = new Map<string, { time: string; at: number; prev: number }>();
+  for (const [at, , els] of s) {
+    for (const entry of (els ?? "").split(" ").filter(Boolean)) {
+      const [id, rest] = entry.split(":");
+      const time = rest!.replace(/S?\d$/, "");
+      const last = since.get(id!);
+      if (last) playing += at - last.prev;
+      if (!last || last.time !== time) since.set(id!, { time, at, prev: at });
+      else {
+        if (at - last.at > STOP_MS) frozen += at - Math.max(last.prev, last.at + STOP_MS);
+        last.prev = at;
+      }
+    }
+  }
+  return playing > 0 ? Math.round((frozen / playing) * 1000) / 10 : 0;
+}
 
 /** Stops are runs where the playhead stood still for more than STOP_MS, each tied to the cut it started at. */
 export function measure(r: Result, cuts: number[]) {
@@ -69,6 +93,8 @@ export function measure(r: Result, cuts: number[]) {
   const perCut = cuts.map((c) => stops.filter((x) => x.at >= c - 0.3 && x.at < c + 1.5));
   const played = (r.end - r.t0) / 1000;
   return {
+    seeks: r.seeks ?? 0,
+    audioFrozenPct: audioFrozenPct(s),
     stops: stops.length,
     stopsPerCut: stops.length / cuts.length,
     longestMs: Math.round(Math.max(0, ...stops.map((x) => x.ms))),
@@ -119,11 +145,14 @@ const server = Bun.serve({
 const cuts = edit.takes.slice(1).map((t) => t.start);
 const origin = `http://127.0.0.1:${server.port}`;
 
-async function drivePlaywright() {
+async function drivePlaywright(engine: "webkit" | "chromium") {
   const name = "playwright-core"; // not a dependency: installed by hand, so kept out of the type check
-  const { webkit } = (await import(name)) as { webkit: any }; // oxlint-disable-line no-explicit-any
-  const browser = await webkit.launch();
-  console.log(`WebKit ${browser.version()}`);
+  const pw = (await import(name)) as Record<string, any>; // oxlint-disable-line no-explicit-any
+  const browser = await pw[engine]!.launch({
+    executablePath: process.env.PLAYBENCH_BROWSER_PATH,
+    args: engine === "chromium" ? ["--autoplay-policy=no-user-gesture-required"] : [],
+  });
+  console.log(`${engine} ${browser.version()}`);
   for (let i = 0; i < RUNS; i++) {
     const page = await browser.newPage();
     await page.goto(`${origin}/host.html`);
@@ -137,7 +166,8 @@ async function drivePlaywright() {
   await browser.close();
 }
 
-if (arg("browser", "webkit") === "webkit") await drivePlaywright();
+const engine = arg("browser", "webkit");
+if (engine === "webkit" || engine === "chromium") await drivePlaywright(engine);
 else {
   console.log(`open ${origin}/host.html in Safari, click Play (${RUNS} runs)`);
   while (results.length < RUNS) await new Promise<void>((r) => (resolveResult = r));

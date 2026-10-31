@@ -15,6 +15,12 @@ const AUDIO_STEER_LIMIT_SECONDS = 0.1;
 
 /** Direction (+1 fast, -1 slow) an element is being steered in; absent when it plays at its authored rate. */
 const steering = new WeakMap<HTMLMediaElement, number>();
+/** Started or seeked, not yet moving in tolerance: its lag is its own output latency, which a seek only renews. */
+const catchingUp = new WeakSet<HTMLMediaElement>();
+
+export function markMediaRestarted(el: HTMLMediaElement): void {
+  catchingUp.add(el);
+}
 
 /** Rate or seek for media `offset` s behind (+) or ahead (-); a lag still growing (`settled` false) never seeks. */
 export function steerMedia(
@@ -25,8 +31,11 @@ export function steerMedia(
   audioOnly = el.tagName === "AUDIO",
 ): { rate: number; seek: boolean } {
   const lag = Math.abs(offset);
-  if (audioOnly && settled && lag > AUDIO_STEER_LIMIT_SECONDS) {
+  if (settled && lag <= MEDIA_SYNC_TOLERANCE_SECONDS) catchingUp.delete(el);
+  const seekable = !catchingUp.has(el) || lag > MEDIA_HARD_SYNC_SECONDS;
+  if (audioOnly && settled && lag > AUDIO_STEER_LIMIT_SECONDS && seekable) {
     steering.delete(el);
+    catchingUp.add(el);
     return { rate: baseRate, seek: true };
   }
   const direction = Math.sign(offset);
@@ -44,6 +53,7 @@ export function steerMedia(
 /** Drop `el`'s steering: it was seeked, paused or replaced, so its old offset says nothing. */
 export function forgetSteering(el: HTMLMediaElement): void {
   steering.delete(el);
+  catchingUp.delete(el);
 }
 
 export function isSteering(el: HTMLMediaElement): boolean {
