@@ -1562,7 +1562,7 @@ type StreamingGateConfig = Pick<
 
 /**
  * Decide whether captured frames stream into ffmpeg (bounded scratch) or land
- * on disk as raw RGBA (`frames × w × h × 4` bytes). Every `false` names the
+ * on disk as compressed images (see estimateDiskCaptureBytes). Every `false` names the
  * gate that fired so the log line and telemetry can attribute disk-path
  * renders. Order matters and mirrors the historical predicate:
  * config → format → duration validity → duration cap → parallel override →
@@ -1628,6 +1628,21 @@ export function shouldUseStreamingEncode(
     durationSeconds,
     forceParallelStream,
   ).enabled;
+}
+
+/** Single-worker disk plans stay on disk: they are there because streaming is not eligible. */
+export function shouldDegradeDiskCaptureToStreaming(args: {
+  planKind: CapturePlan["kind"];
+  workerCount: number;
+  diskHeadroomAvailable: boolean;
+  streamingEligible: boolean;
+}): boolean {
+  return (
+    args.planKind === "sdr_disk" &&
+    args.workerCount > 1 &&
+    !args.diskHeadroomAvailable &&
+    args.streamingEligible
+  );
 }
 
 /**
@@ -4603,6 +4618,37 @@ async function executeRenderPipeline(input: {
       hasShaderTransitions: compiled.hasShaderTransitions,
       isPngSequence,
     });
+    // The multi-worker disk plan cannot fit in free disk; single-worker
+    // streaming can finish the render. Runs after the strategy checkpoint so
+    // telemetry records the degrade rather than hiding the rejected plan.
+    if (
+      shouldDegradeDiskCaptureToStreaming({
+        planKind: capturePlan.kind,
+        workerCount: capturePlan.workerCount,
+        diskHeadroomAvailable: inspectDiskCaptureHeadroom(
+          framesDir,
+          totalFrames,
+          buildCaptureOptions(),
+        ).available,
+        streamingEligible: shouldUseStreamingEncode(cfg, outputFormat, 1, job.duration),
+      })
+    ) {
+      log.info(
+        `[Render] Disk capture lacks headroom for ~${totalFrames} frames at ${framesDir}; ` +
+          `degrading ${capturePlan.workerCount}-worker disk capture to single-worker streaming.`,
+      );
+      capturePlan = replanAfterFailure(capturePlan, { kind: "disk_headroom" });
+      syncCapturePlan();
+      updateCaptureObservability({
+        workerCount: capturePlan.workerCount,
+        useStreamingEncode: capturePlan.kind === "sdr_streaming",
+        forceScreenshot: capturePlan.forceScreenshot,
+      });
+      observability.checkpoint("capture_strategy", "disk_headroom_degraded", {
+        plan: capturePlan.kind,
+        workerCount: capturePlan.workerCount,
+      });
+    }
     const encoderHdr = hasHdrContent ? effectiveHdr : undefined;
     // png-sequence has no encoder, but the rest of the orchestrator still
     // reads `preset.quality` for `effectiveQuality` and `preset.codec` for
