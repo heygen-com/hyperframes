@@ -77,17 +77,36 @@ export function describeRejectedPythonOverride(): string | null {
   return `HYPERFRAMES_PYTHON="${override}" was rejected: ${validation.reason}`;
 }
 
-/** True if `import <pkg>` succeeds — actually executes the module. */
-export function hasPythonPackage(python: string, pkg: string): boolean {
+function withoutPythonPath(): NodeJS.ProcessEnv {
+  const { PYTHONPATH: _foreign, ...env } = process.env;
+  return env;
+}
+
+function runs(python: string, code: string, env: NodeJS.ProcessEnv): boolean {
   try {
-    execFileSync(python, ["-c", `import ${pkg}`], {
-      stdio: ["pipe", "pipe", "pipe"],
-      timeout: 10_000,
-    });
+    execFileSync(python, ["-c", code], { stdio: ["pipe", "pipe", "pipe"], timeout: 10_000, env });
     return true;
   } catch {
     return false;
   }
+}
+
+function environmentThatRuns(python: string, code: string): NodeJS.ProcessEnv | null {
+  return [process.env, withoutPythonPath()].find((env) => runs(python, code, env)) ?? null;
+}
+
+export function workingPythonEnv(
+  python: string,
+  modules: string[],
+  extra: NodeJS.ProcessEnv = {},
+): NodeJS.ProcessEnv | null {
+  const env = environmentThatRuns(python, `import ${modules.join(", ")}`);
+  return env && { ...env, ...extra };
+}
+
+/** True if `import <pkg>` succeeds — actually executes the module. */
+export function hasPythonPackage(python: string, pkg: string): boolean {
+  return environmentThatRuns(python, `import ${pkg}`) !== null;
 }
 
 /**
@@ -100,13 +119,5 @@ export function hasPythonModules(modules: string[]): boolean {
   if (!python) return false;
   const list = JSON.stringify(modules);
   const probe = `import importlib.util,sys; sys.exit(0 if all(importlib.util.find_spec(m) for m in ${list}) else 1)`;
-  try {
-    execFileSync(python, ["-c", probe], {
-      stdio: ["pipe", "pipe", "pipe"],
-      timeout: 10_000,
-    });
-    return true;
-  } catch {
-    return false;
-  }
+  return environmentThatRuns(python, probe) !== null;
 }

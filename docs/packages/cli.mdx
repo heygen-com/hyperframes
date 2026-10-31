@@ -28,11 +28,12 @@ npm install -g hyperframes
 | Bring in source material | [`capture`](#capture), [`media-use`](#media-use), [`transcribe`](#transcribe), [`tts`](#tts), [`remove-background`](#remove-background), [`media-treatment`](#media-treatment), [`beats`](#beats), [`audio`](#audio), [`normalize-audio`](#normalize-audio), [`models`](#models) |
 | Look at it, or share it  | [`preview`](#preview), [`present`](#present-and-play), [`play`](#present-and-play), [`publish`](#publish), [`open`](#open-and-catch-up), [`catch-up`](#open-and-catch-up)                                                        |
 | Find problems            | [`lint`](#lint), [`check`](#check), [`snapshot`](#snapshot), [`keyframes`](#keyframes), [`compare`](#compare-and-grade-compare), [`grade-compare`](#compare-and-grade-compare)                                                   |
+| Rebuild a video          | [`measure`](#measure), [`diff`](#diff)                                                                                                                                                                                            |
 | Edit from the terminal   | [`timeline`](#timeline), [`history`](#history)                                                                                                                                                                                   |
 | Make a file              | [`render`](#render), [`benchmark`](#benchmark)                                                                                                                                                                                   |
 | Render somewhere else    | [`cloud`](#hyperframes-cloud), [`lambda`](#hyperframes-lambda), [`cloudrun`](#hyperframes-cloudrun)                                                                                                                              |
 | Fix your setup           | [`doctor`](#doctor), [`browser`](#browser), [`upgrade`](#upgrade), [`docs`](#docs), [`info`](#info-and-compositions), [`compositions`](#info-and-compositions), [`clean`](#clean)                                                                   |
-| Connect other tools      | [`auth`](#hyperframes-auth), [`skills`](#skills), [`usage`](#usage), [`figma`](#figma-and-events), [`events`](#figma-and-events), [`telemetry`](#telemetry), [`feedback`](#feedback)                                                                            |
+| Connect other tools      | [`auth`](#hyperframes-auth), [`billing`](#billing), [`skills`](#skills), [`usage`](#usage), [`figma`](#figma-and-events), [`events`](#figma-and-events), [`telemetry`](#telemetry), [`feedback`](#feedback)                                                                            |
 
 `validate`, `inspect`, and `layout` still work but are
 [deprecated](#deprecated-validate-inspect-and-layout). Use `check` instead.
@@ -84,6 +85,11 @@ machine-readable `code` and, when there is a next step, a `hint`:
 
 Some commands add their own fields next to `error`, such as `findings` from
 `lint` or `reason` and `fix` from a refused `timeline` edit.
+
+**The project `.env`.** The `.env` in the current directory sets only the CLI's own
+settings: `HEYGEN_API_KEY`, `HYPERFRAMES_API_KEY`, `ELEVENLABS_API_KEY`, `FIGMA_TOKEN`, and the
+vision keys, models, Vertex settings and timeout, and the telemetry opt-outs `HYPERFRAMES_NO_TELEMETRY` and `DO_NOT_TRACK`. A variable already in your environment wins. Any
+other key in the file is ignored, and one line on stderr names them.
 
 **Flags, not prompts.** A missing required flag fails immediately with a usage
 example rather than waiting for input. Two commands are interactive on a TTY:
@@ -682,19 +688,22 @@ and are copied to `~/.media/` so other projects can reuse them. Sound effects
 under CC BY get their credit written to `.media/audio/sfx/CREDITS.md`.
 
 **What needs an account, and what can cost money.** The HeyGen sources run
-through the separate `heygen` CLI, signed in with `heygen auth login --oauth`.
-Searching the music, image, and icon catalogs is free. Text to speech and avatar
-video draw on a free allowance when you are signed in with OAuth, then on your
-HeyGen billing, so an agent should ask before generating them. When a
+through the separate `heygen` executable using the login selected by
+`hyperframes auth login`. It receives a temporary access-token credential and
+cannot read the separate HeyGen login or refresh a HyperFrames grant.
+The server decides feature eligibility and charges. An explicit API-key credential
+uses API-key billing. When a
 host app sets `HEYGEN_API_BASE` and `HEYGEN_API_KEY`, HeyGen calls go through that
 host instead and are charged to its key. The `codex` image fallback uses your
 ChatGPT subscription. Openverse, theSVG, GitHub, favicons, color grades, and the
 local generators cost nothing. `doctor` exits 1 only when ffmpeg, ffprobe, or the
 bundled sounds are missing; HeyGen problems are listed with a fix but do not fail it.
 
-`media-use` sends anonymous usage events — the media type, which source won, and
+`media-use` sends usage events — the media type, which source won, and
 whether it reused a file, never your intent text or paths — and honors the same
-opt-outs as [`telemetry`](#telemetry).
+opt-outs as [`telemetry`](#telemetry). They are anonymous until you sign in to
+HeyGen; after that they are linked to your account, as described under
+[`telemetry`](#telemetry).
 
 See [Voice, sound, and captions](/guides/voice-and-audio) and
 [Color grading](/guides/media-effects#fix-and-grade-the-color) for the workflows around these assets, and
@@ -708,10 +717,11 @@ them.
 ```bash
 npx hyperframes beats [dir]
 npx hyperframes beats [dir] --json   # { ok, file, count, bpm }
+npx hyperframes beats <file> --json  # { ok, file, count, bpm, beatTimes }
 ```
 
-`beats` takes the project folder, not a media file. For the beats of one audio
-or video file, run `npx hyperframes audio <file> --only beats --json`.
+Given an audio or video file instead of a folder, `beats` analyses that file
+with the same tracker and prints the result; it writes nothing.
 
 `beats` finds the music track — an `<audio>` element with
 `data-timeline-role="music"`, or an id like `music`, `bgm`, or `soundtrack` —
@@ -1292,6 +1302,27 @@ last 3 s (a held end card) or time when an element marked `data-hold` is on
 screen, and it stays quiet when `sweep_static` already reports the sweep or a
 whole-composition `keepsMoving` assertion sets its own limit.
 
+#### Audio findings
+
+The `audio` section checks the clips the render mixes. It runs even when lint
+stops the browser pass, and remote sources are not fetched.
+
+| Code                           | Severity | Triggers when                                                                                                | Fix                                                                                          |
+| ------------------------------ | -------- | ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
+| `audio_source_unreadable`      | error    | The file cannot be read as audio, so the render's mix fails and the render stops.                            | Point `src` at a file with an audio track, or re-export it.                                  |
+| `audio_source_rejected`        | error    | The file has no audio track, so render stops before it starts.                                               | Point `src` at a file with audio, or remove `data-has-audio="true"` from a `<video>`.        |
+| `audio_starts_past_source_end` | warning  | `data-media-start` is at or past the file's length, so the clip plays nothing.                               | Lower `data-media-start` below the file's length.                                            |
+| `audio_clip_silent`            | warning  | The file is silent for the whole part the clip plays.                                                        | Check the file has sound there, or move `data-media-start` to where it does.                 |
+| `audio_none`                   | info     | No clip plays audio and no unmuted `<video>` has an audio track.                                             | Nothing for a silent film; otherwise add the `<audio>`.                                      |
+| `audio_check_unavailable`      | info     | The audio check itself failed, and the message says why, so the clips were not checked.                      | Re-run; if it repeats, run `hyperframes doctor`.                                             |
+| `audio_src_not_found`          | error    | An `<audio src>` names a file that is not in the project, so the render is silent. Reported by `lint`.        | Add the file or fix the path.                                                                |
+
+Each media probe (the audio metadata render uses, and render's media-type rule)
+runs at most once per file; whether a `<video>` has sound is probed on each use.
+The check runs alongside the browser pass, up to four files at a time. A clip
+longer than 3 s is first sampled at three 1-second spots and decoded in full
+only if all three are silent.
+
 #### Mark intentional layout choices
 
 When the audit is wrong because the layout is deliberate, say so in the HTML and
@@ -1474,6 +1505,59 @@ session, and it is where new work should go. Their flags are unchanged — run
 `npx hyperframes inspect --help` if you are maintaining automation that still
 calls them.
 
+## Rebuild an existing video
+
+These commands serve the `reverse-any-video` skill: measure a video, have HeyGen
+draft its timeline, then score your rebuild against it.
+
+### `measure`
+
+Measures a video file and prints JSON. Each measurement is a subcommand; run
+`npx hyperframes measure <subcommand> --help` for its flags.
+
+```bash
+npx hyperframes measure probe ref.mp4
+npx hyperframes measure cuts ref.mp4
+npx hyperframes measure frames ref.mp4 --events
+npx hyperframes measure face ref.mp4 --start 1 --end 2.5
+```
+
+| Subcommand   | What it reports                                                                         |
+| ------------ | --------------------------------------------------------------------------------------- |
+| `probe`      | Displayed size, frame rate, duration, sound, and what to fix before rebuilding          |
+| `cuts`       | Hard cuts from the frame-to-frame difference, and the shots between them                |
+| `events`     | Cuts, flashes, appears, disappears and holds; `--map` adds the sound's hits             |
+| `frames`     | Frames as pictures: chosen moments, an overview sheet, a range, or strips around events |
+| `extract`    | A still or a clip cut from the video, cropped to a region, as project media             |
+| `curve`      | Each move of one element: start, duration, overshoot and the closest GSAP ease          |
+| `energy`     | How much two clips move, and whether at the same moments                                |
+| `look`       | Brightness, contrast, saturation and warmth, alone or against another video             |
+| `face`       | The face's size and position over a window                                              |
+| `sync`       | The lag between mouth motion and the voice                                              |
+
+### `diff`
+
+Scores a render, or a project folder without rendering it, against the original
+video frame by frame: SSIM, the worst moments, missed and extra cuts, duration
+and the sound's offset. It exits non-zero when the scores fall under the bar.
+
+```bash
+npx hyperframes diff original.mp4 renders/final.mp4
+npx hyperframes diff original.mp4 . --at 0.5,2.4,3.1
+npx hyperframes diff original.mp4 renders/final.mp4 --segments segments.md --sbs
+```
+
+| Flag                                      | Description                                                          |
+| ----------------------------------------- | -------------------------------------------------------------------- |
+| `--at`                                    | Compare only these seconds                                           |
+| `--range`                                 | Compare every frame of `start,end` seconds                           |
+| `--segments`                              | A verdict per `## S01 · a–b s` segment of a file                     |
+| `--drawn`                                 | Score one drawn element's box `x,y,w,h[,a-b]` by itself (repeatable) |
+| `--min-mean` / `--min-p05` / `--min-cell` | The SSIM bars to pass                                                |
+| `--sbs`                                   | Also write an original-beside-yours video                            |
+| `--out`                                   | Folder for the sheet and log (default `.hyperframes/diff/<yours>`)   |
+| `--json`                                  | Print one JSON result                                                |
+
 ## Edit from the command line
 
 ### `timeline`
@@ -1644,6 +1728,7 @@ Quality and file size:
 | `--crf`                | from `--quality`| Override MP4/WebM encoder CRF, 0–51. Lower is better quality. Not with `--video-bitrate`; rejected for MOV. |
 | `--video-bitrate`      | from `--quality`| Target MP4/WebM bitrate, e.g. `10M` or `5000k`. Not with `--crf`; rejected for MOV.                       |
 | `--keyframe-interval`  | encoder default | MP4 only. A keyframe at least every N seconds, e.g. `2`, so a player can seek or switch rendition at that spacing. |
+| `--start`, `--end`    | whole film      | Render only the seconds between them, as an MP4 that starts at 0 with that span's audio. MP4 at 24, 25, 30 or 60 fps, SDR only. |
 | `--max-bitrate`        | uncapped        | MP4 only. Peak video bitrate cap, e.g. `8M`, held alongside the `--crf` or `--quality` target rather than replacing it. |
 | `--buffer-size`        | 2 × `--max-bitrate` | MP4 only. Buffer the cap is measured over, e.g. `16M`. Needs `--max-bitrate`. |
 | `--vp9-cpu-used`       | encoder default | libvpx-vp9 speed/quality trade-off for WebM, -8 to 8. Env: `PRODUCER_VP9_CPU_USED`.                       |
@@ -1672,7 +1757,7 @@ How it uses the machine, and when it gives up:
 | `--batch-concurrency` / `--batch-fail-fast`              | `1` / off                                  | Batch rows at once, and whether the first failure stops the rest                                                   |
 | `--debug`                                                | off                                        | Keep intermediates and write diagnostics under the Producer `.debug` directory                                     |
 | `--quiet`                                                | off                                        | Less output                                                                                                        |
-| `--skill`                                                | —                                          | Record which authoring workflow started this render, in anonymous telemetry                                        |
+| `--skill`                                                | —                                          | Record which authoring workflow started this render, in usage telemetry                                            |
 
 Low-memory detection reads **host** RAM, not cgroup or container limits, so
 containerised callers — including `--docker` — should set
@@ -1962,12 +2047,13 @@ npx hyperframes docs [topic]
 ```
 
 Topics: `data-attributes`, `examples`, `rendering`, `gsap`, `troubleshooting`,
-`compositions`. Run it bare to list them.
+`compositions`, `motion-blur`. Run it bare to list them.
 
 ### `feedback`
 
-Send feedback about how it went. It is anonymous unless the app that launched
-the CLI attaches your email (below).
+Send feedback about how it went. It rides the same usage telemetry, so it is
+anonymous until you sign in to HeyGen and linked to your account after that. An
+app that launches the CLI can also attach your email (below).
 
 ```bash
 npx hyperframes feedback --rating 10
@@ -2021,10 +2107,16 @@ values are never collected, except short self-identifying names: `AGENT`,
 the `<app>/<version>/<channel>` tag an app that launches the CLI sets, sent as
 `client` so reports from that app can be told apart.
 
-Nothing personally identifying is collected until you sign in. When you run
-`hyperframes auth login`, your HeyGen account email — or username, if the
-account has no email — is linked to your usage, and your prior anonymous usage
-is stitched to it. Nothing else personal, and only once you choose to sign in.
+Nothing personally identifying is collected until you sign in. **Signed-in usage
+is not anonymous.** When you run `hyperframes auth login`, your usage is linked
+to your HeyGen account from then on: it is keyed on an id derived from your
+HeyGen username (the same id the HyperFrames web app and Desktop use), and your
+account email and username are stored with it. While you are signed in, every
+event carries that id and your username. Anonymous usage from before the first
+sign-in is merged in, unless an older CLI version had already linked the install
+to your email; that earlier history stays on its own profile. `media-use` links the same way when it finds a
+signed-in HeyGen account. Nothing else personal is added, and the opt-outs below
+still turn all of it off.
 
 Turn it all off with `HYPERFRAMES_NO_TELEMETRY=1` or the command above.
 [Feedback collection](/help#share-feedback) explains the post-render prompt and the
@@ -2143,6 +2235,24 @@ goes only to that provider's own usage endpoint. The command sends no telemetry
 and skips the update check. The numbers are a snapshot: they do not reserve
 allowance or estimate what the next video will cost.
 
+### `billing`
+
+Opens the HyperFrames plans or credits page in the browser, then waits until the
+account shows the change, so an agent's run carries on by itself. The page is on
+the web app for `HYPERFRAMES_ENV`: hyperframes.studio, or dev.hyperframes.dev
+with `HYPERFRAMES_ENV=dev`.
+
+```bash
+npx hyperframes billing subscribe
+npx hyperframes billing top-up --needed 180
+```
+
+| Flag        | Description                                                                |
+| ----------- | -------------------------------------------------------------------------- |
+| `--needed`  | Credits the waiting step needs; `top-up` waits until the balance covers it |
+| `--tool`    | The step that is waiting, shown on the page                                |
+| `--timeout` | Seconds to wait (default 600)                                              |
+
 ### `figma` and `events`
 
 `npx hyperframes figma` imports through the Figma REST API, with three
@@ -2150,21 +2260,22 @@ subcommands: `asset` (export an image or SVG), `tokens` (pull design tokens),
 and `component` (import an editable component). Run it bare for usage. See
 [Figma integration](/guides/figma) for setup and examples.
 
-`npx hyperframes events` lets an installed workflow skill emit an anonymous
-usage event (`--skill`, `--event`, `--outcome`). Nothing calls it by hand.
+`npx hyperframes events` lets an installed workflow skill emit a usage event
+(`--skill`, `--event`, `--outcome`). Like the rest of [`telemetry`](#telemetry),
+it is anonymous until you sign in. Nothing calls it by hand.
 
 ## hyperframes auth
 
-Sign in to HeyGen and manage credentials. They live in `~/.heygen/credentials`
-(mode `0600`) and are **shared with the `heygen` CLI** — sign in with one and
-the other picks up the session.
+Sign into your HeyGen account through the dedicated HyperFrames OAuth client.
+Credentials live in `~/.hyperframes/credentials` (mode `0600`), independently
+of the `heygen` CLI. A previous shared login requires a fresh HyperFrames sign-in.
 
 First match wins:
 
 1. `HEYGEN_API_KEY`
 2. `HYPERFRAMES_API_KEY` (a HyperFrames alias for the same thing)
 3. `HEYGEN_ACCESS_TOKEN` (an OAuth token a host app injects; never refreshed or saved)
-4. `~/.heygen/credentials`
+4. `~/.hyperframes/credentials`
 
 ### `auth login`
 
@@ -2224,7 +2335,9 @@ hyperframes auth logout --yes            # no prompt
 | `HYPERFRAMES_API_KEY` | Alias for `HEYGEN_API_KEY`.                      |
 | `HEYGEN_ACCESS_TOKEN` | OAuth token from a host app; never refreshed.    |
 | `HEYGEN_API_URL`      | API base URL (default `https://api.heygen.com`). |
-| `HEYGEN_CONFIG_DIR`   | Credentials directory (default `~/.heygen`).     |
+| `HYPERFRAMES_CONFIG_DIR` | Credentials root (default `~/.hyperframes`). |
+| `HYPERFRAMES_ENV` | `prod` (default) or `dev`; selects matching OAuth/API hosts and a separate dev credential directory. |
+| `HYPERFRAMES_OAUTH_CLIENT_ID` | Override the selected public OAuth client. |
 
 For the keys other capabilities use — ElevenLabs and Gemini for voice and music
 fallback, OpenRouter and Gemini for capture — and how the skills prioritize

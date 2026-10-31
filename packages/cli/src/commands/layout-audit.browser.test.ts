@@ -3262,6 +3262,55 @@ describe("layout-audit.browser occlusion", () => {
     );
   });
 
+  it("lets data-layout-allow-occlusion on the covering element silence text_occluded", () => {
+    const issues = (overlayAttrs?: string) =>
+      auditOcclusionScene({
+        overlayAttrs,
+        overlayStyle: { backgroundColor: "rgb(10, 10, 10)" },
+        topmostId: "overlay",
+      });
+
+    expect(issues().some((issue) => issue.code === "text_occluded")).toBe(true);
+    expect(
+      issues("data-layout-allow-occlusion").some((issue) => issue.code === "text_occluded"),
+    ).toBe(false);
+  });
+
+  it("honours the flag on a graded video whose topmost element is its canvas stand-in", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="headline">Headline copy</div>
+        <video id="cutout" data-layout-allow-occlusion></video>
+        <canvas id="overlay" data-hf-color-grading-canvas></canvas>
+      </div>
+    `;
+    installOcclusionGeometry({
+      styleOverrides: { overlay: { backgroundColor: "rgb(10, 10, 10)" } },
+      headlineTextRect: rect({ left: 200, top: 500, width: 600, height: 80 }),
+      topmostId: "overlay",
+    });
+    installAuditScript();
+    expect(runAudit().some((issue) => issue.code === "text_occluded")).toBe(false);
+  });
+
+  it("still flags a cover inside a flagged wrapper that also holds the text", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="card" data-layout-allow-occlusion>
+          <div id="headline">Headline copy</div>
+          <div id="overlay"></div>
+        </div>
+      </div>
+    `;
+    installOcclusionGeometry({
+      styleOverrides: { overlay: { backgroundColor: "rgb(10, 10, 10)" } },
+      headlineTextRect: rect({ left: 200, top: 500, width: 600, height: 80 }),
+      topmostId: "overlay",
+    });
+    installAuditScript();
+    expect(runAudit().some((issue) => issue.code === "text_occluded")).toBe(true);
+  });
+
   it("respects the data-layout-allow-occlusion opt-out", () => {
     const issues = auditOcclusionScene({
       headlineAttrs: "data-layout-allow-occlusion",

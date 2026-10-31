@@ -1,8 +1,8 @@
 /**
  * Capture motion blur, in preview and render. Root attributes: data-motion-blur="on"|"off",
  * -shutter (0–720°, default 240), -samples (2–64; unset: at least 32, more for a long smear),
- * -events="on" (run timeline callbacks at sub-frame samples). PAGE_MOTION_BLUR_OFF_GLOBAL (engine blur, or a preview that
- * could not blur) turns all off.
+ * -events="on" (callbacks run in the scan, and in pose reads when they move a mover).
+ * PAGE_MOTION_BLUR_OFF_GLOBAL (engine blur, or a preview that could not blur) turns all off.
  *
  * Per frame: read movers' poses across the shutter (seeks, no paint), capture the root and crop
  * the movers, hide them and capture the background, then redraw each along its path.
@@ -36,7 +36,7 @@ import {
 import { swallow } from "../diagnostics";
 import { createCompositor, type MoverFrame } from "./composite";
 import { readMotionBlurSettings } from "../../motionBlurSettings";
-import { discoverMovers } from "./discover";
+import { scanMovers } from "./discover";
 import { createFilterTier } from "./filterTier";
 import { readMoverFrames } from "./frames";
 import { createPoseReader } from "./pose";
@@ -238,20 +238,24 @@ function createInstance(host: CaptureMotionBlurHost, config: Config, form: HtmlI
   }
 
   const seek = (t: number): void => host.seek(t, !config.events);
+  let readEvents = false;
+  const readSeek = (t: number): void => host.seek(t, !readEvents);
 
   function discover(restoreTo: number): void {
     scannedTimeline = host.timeline();
     const duration = host.durationSeconds();
     const defects = createDefectScan(root, isAccelerated);
     const s0 = performance.now();
-    const found = discoverMovers({
+    const found = scanMovers({
       scene: root,
       durationSeconds: duration,
       fps: host.fps,
-      seek,
+      seek: host.seek,
+      events: config.events,
       onStep: (i, steps) => defects.sample(i, steps, (i / steps) * duration),
     });
     seek(restoreTo);
+    readEvents = found.readEvents;
     scanDefect = defects.result();
     faceNow = defects.facesNow;
     movers = found.movers;
@@ -266,7 +270,8 @@ function createInstance(host: CaptureMotionBlurHost, config: Config, form: HtmlI
     return readMoverFrames({
       movers,
       reader,
-      seek,
+      seek: readSeek,
+      restore: readEvents ? undefined : host.holdFrame?.(),
       t,
       reads,
       shutterSeconds: config.shutterDeg / 360 / host.fps,

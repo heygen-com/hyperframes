@@ -8,6 +8,7 @@ import fs, {
   readFileSync,
   readdirSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
@@ -221,12 +222,20 @@ describe("downloadFile", () => {
 });
 
 describe("stalled downloads", () => {
-  // A host whose every connection stops after `cut` bytes until the idle timeout fires.
+  async function onDisk(path: string, bytes: number): Promise<void> {
+    while (!(existsSync(path) && statSync(path).size >= bytes)) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+  }
+
+  // A host whose every connection stops after `cut` bytes. Its idle timeout fires once those
+  // bytes are in `part`, never on a clock, so a slow disk cannot turn a stall into no progress.
   function stallingHost(
     content: Buffer,
     cut: number,
     honourRange: boolean,
     ranges: (string | undefined)[],
+    part: string,
   ) {
     return ((_url: string, optionsOrCallback: unknown, maybeCallback?: unknown) => {
       const callback = (
@@ -247,13 +256,12 @@ describe("stalled downloads", () => {
           : {}),
       };
       class FakeRequest extends EventEmitter {
-        private timeout: ReturnType<typeof setTimeout> | undefined;
-        setTimeout(ms: number, onTimeout: () => void): this {
-          this.timeout = setTimeout(onTimeout, ms);
+        onTimeout: (() => void) | undefined;
+        setTimeout(_ms: number, onTimeout: () => void): this {
+          this.onTimeout = onTimeout;
           return this;
         }
         destroy(error: Error): void {
-          clearTimeout(this.timeout);
           response.destroy(error);
           this.emit("error", error);
         }
@@ -263,10 +271,8 @@ describe("stalled downloads", () => {
       const end = Math.min(start + cut, content.length);
       queueMicrotask(() => {
         response.write(content.subarray(start, end));
-        if (end === content.length) {
-          clearTimeout((request as unknown as { timeout: ReturnType<typeof setTimeout> }).timeout);
-          response.end();
-        }
+        if (end === content.length) response.end();
+        else void onDisk(part, end).then(() => request.onTimeout?.());
       });
       return request as unknown as ClientRequest;
     }) as typeof httpsGet;
@@ -275,10 +281,10 @@ describe("stalled downloads", () => {
   it("resumes a download that stalls at the same byte count on every connection", async () => {
     const content = Buffer.from(Array.from({ length: 1000 }, (_, i) => i % 251));
     const ranges: (string | undefined)[] = [];
-    mockGet.mockImplementation(stallingHost(content, 300, true, ranges));
     const dir = mkdtempSync(join(tmpdir(), "hyperframes-download-"));
     tempDirs.push(dir);
     const dest = join(dir, "model.onnx");
+    mockGet.mockImplementation(stallingHost(content, 300, true, ranges, `${dest}.part`));
     const progress: number[] = [];
 
     await downloadFile("https://example.test/model.onnx", dest, {
@@ -411,10 +417,10 @@ describe("stalled downloads", () => {
   it("gives up when a retry brings no new bytes", async () => {
     const content = Buffer.alloc(1000, 7);
     const ranges: (string | undefined)[] = [];
-    mockGet.mockImplementation(stallingHost(content, 300, false, ranges));
     const dir = mkdtempSync(join(tmpdir(), "hyperframes-download-"));
     tempDirs.push(dir);
     const dest = join(dir, "model.onnx");
+    mockGet.mockImplementation(stallingHost(content, 300, false, ranges, `${dest}.part`));
 
     await expect(
       downloadFile("https://example.test/model.onnx", dest, { timeoutMs: 10 }),

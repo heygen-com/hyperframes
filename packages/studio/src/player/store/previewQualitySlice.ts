@@ -21,6 +21,7 @@ export interface PlaybackHealth {
   worstFrameMs: number;
   skippedShare?: number;
   waitingShare?: number;
+  frozenShare?: number;
   gapP50Ms?: number;
   gapP95Ms?: number;
   mode: "play";
@@ -129,6 +130,7 @@ export function parsePlaybackHealth(value: unknown): PlaybackHealth | null {
     worstFrameMs: worstFrameMs as number,
     skippedShare: optionalNumber(extra.skippedShare),
     waitingShare: optionalNumber(extra.waitingShare),
+    frozenShare: optionalNumber(extra.frozenShare),
     gapP50Ms: optionalNumber(extra.gapP50Ms),
     gapP95Ms: optionalNumber(extra.gapP95Ms),
     mode: "play",

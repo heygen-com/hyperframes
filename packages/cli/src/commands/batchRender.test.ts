@@ -85,6 +85,27 @@ describe("resolveOutputTemplate", () => {
 });
 
 describe("prepareBatchRender", () => {
+  it.each(["utf8", "utf16le"] as const)("reads a %s batch file with a BOM", (encoding) => {
+    const batchPath = join(tmpDir, "rows.json");
+    writeFileSync(batchPath, '\uFEFF[{"name":"Café","title":"Hello\\uFEFFworld"}]', encoding);
+    const prepared = prepareBatchRender({
+      batchPath,
+      outputTemplate: join(tmpDir, "renders", "{name}.mp4"),
+      indexPath: writeIndex(),
+      strictVariables: false,
+      quiet: true,
+      json: false,
+    });
+
+    expect(prepared.rows).toEqual([
+      {
+        index: 0,
+        variables: { name: "Café", title: "Hello\uFEFFworld" },
+        outputPath: resolve(tmpDir, "renders", "Café.mp4"),
+      },
+    ]);
+  });
+
   it("resolves output paths and the manifest path", () => {
     const batchPath = writeJson("rows.json", '[{"name":"Alice"},{"name":"Bob"}]');
     const outDir = join(tmpDir, "renders");

@@ -379,6 +379,12 @@ export function containingSourceFrameIndex(timestamps: readonly number[], time: 
 class FrameExtractError extends Error {}
 
 const lastLine = (text: string) => text.trim().split("\n").at(-1) ?? "";
+
+const ffmpegFailure = (result: { stderr: string; code: number | null }) =>
+  lastLine(result.stderr) ||
+  (result.code === 255
+    ? "FFmpeg was stopped before it finished (exit code 255 with no error output means it was killed, such as by a time limit)"
+    : `exit code ${result.code}`);
 const processStderr = (error: unknown) =>
   error instanceof Error && "stderr" in error && typeof error.stderr === "string"
     ? error.stderr
@@ -395,11 +401,24 @@ export async function remoteVideoInput(url: string, download = downloadToTemp): 
   }
 }
 
+export interface SourceProbeCache {
+  streams: Map<string, Promise<Record<string, unknown> | null>>;
+  packets: Map<string, { end: number; data: Promise<Record<string, unknown> | null> }>;
+  landings: Map<string, Promise<number | null>>;
+}
+
+export const createSourceProbeCache = (): SourceProbeCache => ({
+  streams: new Map(),
+  packets: new Map(),
+  landings: new Map(),
+});
+
 /** Keyframe seek plus the decoded-time threshold that selects the frame containing `time`, or null. */
 export async function probeContainingSourceFrameSeek(
   videoPath: string,
   time: number,
   holdLastFrame: boolean,
+  { cache, horizon = time }: { cache?: SourceProbeCache; horizon?: number } = {},
 ): Promise<{ seek?: number; select?: number; decodesFrom?: number } | null> {
   const ffprobe = findFFprobe();
   // Without ffprobe, fall back to a plain seek: the first frame at or after `time`.
@@ -428,7 +447,10 @@ export async function probeContainingSourceFrameSeek(
       );
     }
   };
-  const data = await probe("%+#1", "stream=time_base,start_pts:format=start_time,duration");
+  const streamQuery = () => probe("%+#1", "stream=time_base,start_pts:format=start_time,duration");
+  const data = await (cache
+    ? (cache.streams.get(videoPath) ?? cache.streams.set(videoPath, streamQuery()).get(videoPath)!)
+    : streamQuery());
   if (data === null || !Array.isArray(data.streams)) return null;
   const stream: unknown = data.streams[0];
   if (
@@ -458,7 +480,18 @@ export async function probeContainingSourceFrameSeek(
   const startTicks =
     Math.abs(startPts * timeBase - formatStart) <= 1e-6 ? startPts : formatStart / timeBase;
   // An absolute end: edit-list preroll packets start before the video, so a relative window can stop short.
-  const packetData = await probe(`%${startTicks * timeBase + time + 1}`, "packet=pts,dts,flags");
+  const packetEnd = Math.max(time, horizon) + 1;
+  const packetQuery = () => probe(`%${startTicks * timeBase + packetEnd}`, "packet=pts,dts,flags");
+  const kept = cache?.packets.get(videoPath);
+  const packetData = await (kept && kept.end >= packetEnd
+    ? kept.data
+    : cache
+      ? (() => {
+          const data = packetQuery();
+          cache.packets.set(videoPath, { end: packetEnd, data });
+          return data;
+        })()
+      : packetQuery());
   if (packetData === null || !Array.isArray(packetData.packets)) return null;
   const packets: { pts: number; dts: number; key: boolean }[] = [];
   for (const packet of packetData.packets) {
@@ -481,7 +514,12 @@ export async function probeContainingSourceFrameSeek(
   // seek lands; a seek to exactly that keyframe trims its leading frames, so it is `start_t`.
   const ffmpeg = findFFmpeg();
   const landing = async (seek: number) => {
-    const raw = ffmpeg ? await probeSeekLanding(ffmpeg, videoPath, seek) : null;
+    const key = `${videoPath}\0${seek}`;
+    const asked =
+      cache?.landings.get(key) ??
+      (ffmpeg ? probeSeekLanding(ffmpeg, videoPath, seek) : Promise.resolve(null));
+    cache?.landings.set(key, asked);
+    const raw = await asked;
     return raw === null ? null : raw - startTicks * timeBase;
   };
   const candidates = packets.filter(
@@ -639,9 +677,7 @@ export async function extractVideoFrameToBuffer(
       );
     }
     if (result.code !== 0 || !existsSync(outPath)) {
-      throw new FrameExtractError(
-        `FFmpeg could not extract ${frameOf}: ${lastLine(result.stderr) || `exit code ${result.code}`}`,
-      );
+      throw new FrameExtractError(`FFmpeg could not extract ${frameOf}: ${ffmpegFailure(result)}`);
     }
     return readFileSync(outPath);
   } finally {
@@ -702,9 +738,7 @@ export async function decodeFramesInOnePass(
     }
     const written = (n: number) => join(tmp, `${n}.png`);
     if (result.code !== 0 || !byTime.every((_, i) => existsSync(written(i + 1)))) {
-      throw new FrameExtractError(
-        `FFmpeg could not extract ${what}: ${lastLine(result.stderr) || `exit code ${result.code}`}`,
-      );
+      throw new FrameExtractError(`FFmpeg could not extract ${what}: ${ffmpegFailure(result)}`);
     }
     const buffers: Buffer[] = [];
     for (const [i, [, indexes]] of byTime.entries()) {
@@ -847,7 +881,7 @@ export function serveCapturePage(projectDir: string, html: string, proxy: boolea
  * Render key frames from a composition as PNG screenshots.
  * The agent can Read these to verify its output visually.
  */
-async function captureSnapshots(
+export async function captureSnapshots(
   projectDir: string,
   opts: {
     frames?: number;
@@ -870,13 +904,17 @@ async function captureSnapshots(
     review?: boolean;
     /** Progress lines; `--json` sends them to stderr so stdout stays one envelope. */
     log?: (message: string) => void;
+    record?: boolean;
   },
 ): Promise<CapturedSnapshots> {
   const startedAt = performance.now();
   const log = opts.log ?? ((message: string) => console.log(message));
   const { bundleWithLocalizedFonts } = await import("../utils/bundleWithLocalizedFonts.js");
 
-  const capture = await captureArtifactRevision(projectDir).catch(warnSnapshotsNotRecorded);
+  const capture =
+    opts.record === false
+      ? undefined
+      : await captureArtifactRevision(projectDir).catch(warnSnapshotsNotRecorded);
   const invocation = randomUUID();
   const artifacts: Array<{
     id: string;
@@ -1099,8 +1137,13 @@ async function captureSnapshots(
         console.warn(`   ${c.warn("⚠")} No player API — seeks will be skipped`);
       }
 
+      const sourceProbes = createSourceProbeCache();
       const frameBank = createFrameBank({
-        probe: probeContainingSourceFrameSeek,
+        probe: (path, time, holdLastFrame, horizon) =>
+          probeContainingSourceFrameSeek(path, time, holdLastFrame, {
+            cache: sourceProbes,
+            horizon,
+          }),
         decode: async (path, frames) =>
           decodeFramesInOnePass(
             path,
@@ -1404,7 +1447,7 @@ async function captureSnapshots(
           log,
         )
       : false;
-    if (!recorded) {
+    if (!recorded && opts.record !== false) {
       const paths = [...replaced, ...artifacts.map((artifact) => artifact.image)];
       if (paths.length > 0) await forgetRecordedArtifacts(projectDir, paths).catch(() => undefined);
     }

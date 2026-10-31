@@ -5,6 +5,9 @@ import { readStore, writeStore } from "../../auth/store.js";
 import { setupTempAuthEnv, type EnvFixture } from "../../auth/_test-utils.js";
 import { CliRuntimeError } from "../../utils/commandResult.js";
 
+// heygenUserId("alice"): the sha256-derived UUID the web app and Desktop also use.
+const ALICE_USER_ID = "2bd806c9-7f0e-50af-9a1f-c3328fa763a9";
+
 // Mock only AuthClient — keep the real store/resolver so the test
 // exercises the actual on-disk rollback / persistence behavior.
 // `verifyState` controls what `getCurrentUser` returns per test:
@@ -106,6 +109,8 @@ describe("auth login", () => {
         "REMOTE_CONTAINERS",
         "GITPOD_WORKSPACE_ID",
         "container",
+        "CLAUDECODE",
+        "CLAUDE_CODE_ENTRYPOINT",
       ].map((key) => [key, process.env[key]]),
     );
     for (const key of Object.keys(runtimeEnv)) delete process.env[key];
@@ -127,6 +132,7 @@ describe("auth login", () => {
     for (const token of Object.keys(usersByToken)) delete usersByToken[token];
     for (const fn of Object.values(telemetry)) fn.mockClear();
     for (const fn of Object.values(deviceAuth)) fn.mockClear();
+    for (const fn of Object.values(browserAuth)) fn.mockClear();
     vi.spyOn(console, "log").mockImplementation(() => {});
     vi.spyOn(console, "error").mockImplementation(() => {});
   });
@@ -245,18 +251,23 @@ describe("auth login", () => {
     expect(onDisk.future_credential).toEqual({ token: "owned_by_other_cli" });
   });
 
-  it("attributes a successful login to the account email", async () => {
-    verifyState.user = { email: "alice@example.com", username: "alice" };
+  it("attributes a successful login to the username's HyperFrames user id", async () => {
+    verifyState.user = { email: "Alice@Example.com", username: "alice" };
     await runLogin("hg_goodkey456");
-    expect(telemetry.identifyUser).toHaveBeenCalledWith("alice@example.com");
-    expect(telemetry.trackAuthLoginCompleted).toHaveBeenCalledWith("api_key", "alice@example.com");
+    expect(telemetry.identifyUser).toHaveBeenCalledWith(ALICE_USER_ID, {
+      email: "alice@example.com",
+      heygen_username: "alice",
+    });
+    expect(telemetry.trackAuthLoginCompleted).toHaveBeenCalledWith("api_key", ALICE_USER_ID);
   });
 
-  it("falls back to username when the account has no email", async () => {
-    verifyState.user = { username: "alice" };
+  it("falls back to the email when the account has no username", async () => {
+    verifyState.user = { email: "alice@example.com" };
     await runLogin("hg_goodkey456");
-    expect(telemetry.identifyUser).toHaveBeenCalledWith("alice");
-    expect(telemetry.trackAuthLoginCompleted).toHaveBeenCalledWith("api_key", "alice");
+    expect(telemetry.identifyUser).toHaveBeenCalledWith("alice@example.com", {
+      email: "alice@example.com",
+    });
+    expect(telemetry.trackAuthLoginCompleted).toHaveBeenCalledWith("api_key", "alice@example.com");
   });
 
   it("does not identify when the identity probe returns nothing", async () => {
@@ -307,6 +318,21 @@ describe("auth login", () => {
     process.env[name] = "true";
     await expect(runCommand({})).rejects.toThrow(/Invalid command usage/);
     expect(deviceAuth.start).not.toHaveBeenCalled();
+  });
+
+  it("lets a coding agent on this machine open the browser sign-in without a terminal", async () => {
+    process.env["CLAUDECODE"] = "1";
+    Object.defineProperty(process.stdout, "isTTY", { configurable: true, value: undefined });
+    await runCommand({});
+    expect(browserAuth.start).toHaveBeenCalledOnce();
+  });
+
+  it("keeps a coding agent in CI off the browser sign-in", async () => {
+    process.env["CLAUDECODE"] = "1";
+    process.env["CI"] = "true";
+    Object.defineProperty(process.stdout, "isTTY", { configurable: true, value: undefined });
+    await expect(runCommand({})).rejects.toThrow(/Invalid command usage/);
+    expect(browserAuth.start).not.toHaveBeenCalled();
   });
 
   it("opens verification_uri_complete without asking the user to re-enter the code", async () => {

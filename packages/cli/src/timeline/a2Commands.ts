@@ -4,6 +4,7 @@ import {
   type AppliedFileMutation,
 } from "@hyperframes/studio-server";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
+import { readJsonFileText, readJsonStdinText } from "../utils/jsonFlag.js";
 import { readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describeProject, type ProjectTimeline, type TimelineRow } from "./describeProject.js";
@@ -167,8 +168,8 @@ function applyPlanEdit(
 
 type EditPlan = { ok: true; edits: unknown[] } | { ok: false; reason: string; fix: string };
 
-function readEditPlan(file: string): EditPlan {
-  const raw = file === "-" ? readFileSync(0, "utf-8") : readFileSync(file, "utf-8");
+export function readEditPlan(file: string): EditPlan {
+  const raw = file === "-" ? readJsonStdinText() : readJsonFileText(file);
   try {
     const edits: unknown = JSON.parse(raw);
     return Array.isArray(edits)
@@ -283,7 +284,7 @@ type UndoInput =
 function readUndoInput(input: string): UndoInput {
   let raw: string;
   try {
-    raw = readFileSync(input, "utf-8");
+    raw = readJsonFileText(input);
   } catch {
     raw = input;
   }

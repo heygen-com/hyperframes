@@ -2,6 +2,7 @@ export { createStudioApi } from "./createStudioApi.js";
 export { MAX_UPLOAD_BYTES } from "./routes/files.js";
 export {
   createProjectSignature,
+  createProjectSignatureAsync,
   affectsProjectSignature,
   STUDIO_SIGNATURE_MANIFEST_PATHS,
 } from "./helpers/projectSignature.js";

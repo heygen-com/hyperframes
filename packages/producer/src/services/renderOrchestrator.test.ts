@@ -58,6 +58,7 @@ import {
   calibrationCaptureConfig,
   shouldPreferParallelDrawElement,
   shouldPreferSingleWorkerDrawElement,
+  initialDeClampReason,
   resolveDeSingleMinFrames,
   isCaptureParallelStreamRouterEnabled,
   shouldSegmentCapture,
@@ -1970,6 +1971,36 @@ describe("resolveDeviceScaleFactor", () => {
         outputResolution: "landscape",
       }),
     ).toThrow(/aspect ratio/);
+  });
+});
+
+describe("initialDeClampReason", () => {
+  const config = {
+    platform: "win32" as const,
+    browserGpuMode: "hardware" as const,
+    workerEncode: true,
+  };
+
+  it("labels a content gate from the compile stage as compile_gate, not disabled", () => {
+    expect(initialDeClampReason({ useDrawElement: false, deCompileGate: "3d", config })).toBe(
+      "compile_gate",
+    );
+  });
+
+  it("keeps config refusals and leaves an engaged render unlabeled", () => {
+    expect(initialDeClampReason({ useDrawElement: false, deCompileGate: undefined, config })).toBe(
+      "disabled",
+    );
+    expect(
+      initialDeClampReason({
+        useDrawElement: false,
+        deCompileGate: undefined,
+        config: { ...config, browserGpuMode: "software" },
+      }),
+    ).toBe("software_gpu");
+    expect(
+      initialDeClampReason({ useDrawElement: true, deCompileGate: undefined, config }),
+    ).toBeUndefined();
   });
 });
 

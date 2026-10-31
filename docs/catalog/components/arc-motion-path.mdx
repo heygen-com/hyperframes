@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Arc Motion Path</h1>
+  <p>A GSAP MotionPath primitive that flies a callout along a curved arc with autorotation.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/arc-motion-path.json"
   compositionId="arc-motion-path"
   compositionSrc="compositions/components/arc-motion-path.html"
   title="Arc Motion Path"
-  description="A GSAP MotionPath primitive that flies a callout along a curved arc with autorotation."
   variables={[]}
   meta={{"category":"Motion Primitives","badge":"Stable","codeLines":99}}
   attribution={{"path":"registry/components/arc-motion-path","tags":["video-primitive","motionpath","gsap-plugin","hyperframes-native"]}}
@@ -134,7 +138,9 @@ That writes one file: `compositions/components/arc-motion-path.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -154,6 +160,4 @@ Tagged `video-primitive` `motionpath` `gsap-plugin` `hyperframes-native`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

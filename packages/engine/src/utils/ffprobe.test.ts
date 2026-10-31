@@ -5,7 +5,12 @@ import { mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "fs
 import { tmpdir } from "os";
 import { basename, join, resolve } from "path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { extractMediaMetadata, extractPngMetadataFromBuffer, parseFrameRate } from "./ffprobe.js";
+import {
+  extractMediaMetadata,
+  extractPngMetadataFromBuffer,
+  formatFfmpegSeconds,
+  parseFrameRate,
+} from "./ffprobe.js";
 
 function crc32(buf: Buffer): number {
   let crc = 0xffffffff;
@@ -2233,5 +2238,19 @@ describe.skipIf(!HAS_FFPROBE)("VP8/VP9 decoded alpha plane probe on real files",
     const other = await extractMediaMetadata(mpeg4);
     expect(other.videoCodec).toBe("mpeg4");
     expect("alphaPlaneDecoded" in other).toBe(false);
+  });
+});
+
+describe("formatFfmpegSeconds", () => {
+  it("never writes an exponent, which ffmpeg and ffprobe reject", () => {
+    expect(formatFfmpegSeconds(8.881784197001252e-16)).toBe("0");
+    expect(formatFfmpegSeconds(-8.881784197001252e-16)).toBe("0");
+    expect(formatFfmpegSeconds(1.5e-7)).toBe("0");
+  });
+
+  it("keeps ordinary times exactly as String() writes them", () => {
+    expect(formatFfmpegSeconds(1.35)).toBe("1.35");
+    expect(formatFfmpegSeconds(4.666666666666667)).toBe("4.666666666666667");
+    expect(formatFfmpegSeconds(0)).toBe("0");
   });
 });

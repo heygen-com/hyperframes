@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Stop Motion Cadence</h1>
+  <p>The stepped-time law as a demo primitive: one driver quantizes timeline time to floor(t &#42; fps) / fps and feeds ALL motion; four token paper-cut shapes throw-and-land with squash on hits, 2-frame boil jitter seeded per step, and sparkle accents living exactly 2 to 3 frames.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/stop-motion-cadence.json"
   compositionId="stop-motion-cadence"
   compositionSrc="compositions/components/stop-motion-cadence.html"
   title="Stop Motion Cadence"
-  description="The stepped-time law as a demo primitive: one driver quantizes timeline time to floor(t * fps) / fps and feeds ALL motion; four token paper-cut shapes throw-and-land with squash on hits, 2-frame boil jitter seeded per step, and sparkle accents living exactly 2 to 3 frames."
   variables={[{"id":"fps","type":"enum","role":"timing","label":"Cadence","description":"Stepped-time cadence in frames per second.","default":"10","options":[{"value":"8","label":"8 fps"},{"value":"10","label":"10 fps"},{"value":"12","label":"12 fps"}]},{"id":"boil","type":"enum","role":"style","label":"Boil","description":"2-frame edge jitter, seeded per step. Off holds dead still.","default":"on","options":[{"value":"on","label":"On"},{"value":"off","label":"Off"}]},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Lead shape color: green rides --brand, blue rides --accent, violet rides --accent-2.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"Optional departure. Default none: the settled collage holds until the frame cuts.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
   meta={{"category":"Motion Scenes","badge":"Stable","codeLines":467}}
   attribution={{"path":"registry/components/stop-motion-cadence","tags":["motion-primitive","time-law","stop-motion","stepped","boil","deterministic","experiment"]}}
@@ -502,7 +506,9 @@ That writes one file: `compositions/components/stop-motion-cadence.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -544,6 +550,4 @@ Tagged `motion-primitive` `time-law` `stop-motion` `stepped` `boil` `determinist
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

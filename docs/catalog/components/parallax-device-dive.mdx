@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Parallax Device Dive</h1>
+  <p>A canonical phone rises into view before the camera pushes through its screen and layered app UI expands to fill the frame.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/parallax-device-dive.json"
   compositionId="parallax-device-dive"
   compositionSrc="compositions/components/parallax-device-dive.html"
   title="Parallax Device Dive"
-  description="A canonical phone rises into view before the camera pushes through its screen and layered app UI expands to fill the frame."
   variables={[{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Highlight color used throughout the app UI.","default":"blue","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"app_title","type":"string","role":"content","label":"App title","description":"Title displayed in the app header.","default":"Dashboard"}]}
   meta={{"category":"Effects","badge":"Stable","codeLines":451}}
   attribution={{"path":"registry/components/parallax-device-dive","tags":["motion-primitive","camera","device","phone","parallax","transition"]}}
@@ -486,7 +490,9 @@ That writes one file: `compositions/components/parallax-device-dive.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -526,6 +532,4 @@ Tagged `motion-primitive` `camera` `device` `phone` `parallax` `transition`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

@@ -221,6 +221,7 @@ export {
 // ── Media processing ───────────────────────────────────────────────────────────
 export {
   parseVideoElements,
+  hasGradedCanvas,
   parseImageElements,
   extractVideoFramesRange,
   extractAllVideoFrames,
@@ -381,7 +382,6 @@ export {
 export {
   _setDownloadFetchForTests,
   assertPublicHttpsUrl,
-  isBlockedNetworkHost,
   downloadToTemp,
   fetchPublicHttpsText,
   isHttpUrl,
@@ -392,6 +392,7 @@ export {
   type UrlDownloadTelemetry,
   type PublicHttpsTextOptions,
 } from "./utils/urlDownloader.js";
+export { isBlockedNetworkHost } from "./utils/networkPolicy.js";
 export {
   runFfmpeg,
   formatFfmpegError,
@@ -487,6 +488,7 @@ export {
   getHdrEncoderColorParams,
   analyzeCompositionHdr,
   findHdrAutoPromotion,
+  gradingKeepsSdr,
   formatHdrAutoPromotionWarning,
   sanitizeHdrAutoPromotionAsset,
   DEFAULT_HDR10_MASTERING,

@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Halftone Dissolve</h1>
+  <p>Scene A dissolves into scene B through a growing halftone dot field: accent ink dots pop onto a fixed grid smallest-first, each opens into a window onto B, until the windows merge and B fully replaces A.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/halftone-dissolve.json"
   compositionId="halftone-dissolve"
   compositionSrc="compositions/components/halftone-dissolve.html"
   title="Halftone Dissolve"
-  description="Scene A dissolves into scene B through a growing halftone dot field: accent ink dots pop onto a fixed grid smallest-first, each opens into a window onto B, until the windows merge and B fully replaces A."
   variables={[{"id":"dot_size","type":"enum","role":"style","label":"Dot size","description":"Grid pitch for the halftone field.","default":"medium","options":[{"value":"small","label":"Small"},{"value":"medium","label":"Medium"},{"value":"large","label":"Large"}]},{"id":"direction","type":"enum","role":"timing","label":"Direction","description":"Threshold ordering: ltr sweeps left to right, center grows from the middle, noise scatters.","default":"ltr","options":[{"value":"ltr","label":"Left to right"},{"value":"center","label":"Center out"},{"value":"noise","label":"Noise"}]},{"id":"dissolve_at","type":"number","role":"timing","label":"Dissolve at","description":"Seconds from mount start when the dissolve begins.","default":1.1,"min":0.2,"max":10,"step":0.1,"unit":"s"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Ink dot color: green rides --brand, blue rides --accent, violet rides --accent-2.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"Optional departure. Default none: scene B holds until the frame cuts.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
   meta={{"category":"Effects","badge":"Stable","codeLines":420}}
   attribution={{"path":"registry/components/halftone-dissolve","tags":["motion-primitive","transition","texture","halftone","dissolve"]}}
@@ -455,7 +459,9 @@ That writes one file: `compositions/components/halftone-dissolve.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -498,6 +504,4 @@ Tagged `motion-primitive` `transition` `texture` `halftone` `dissolve`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

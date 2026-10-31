@@ -19,6 +19,8 @@ function sandbox() {
   const home = join(root, "home");
   mkdirSync(home, { recursive: true });
   process.env.HOME = home;
+  delete process.env.HYPERFRAMES_CONFIG_DIR;
+  delete process.env.HYPERFRAMES_ENV;
   process.env.HYPERFRAMES_MEDIA_HOME = home;
   return { root, home };
 }
@@ -181,10 +183,13 @@ test("track identifies a signed-in HeyGen account once and still sends events", 
       join(home, ".hyperframes/config.json"),
       JSON.stringify({ anonymousId: "anon-1" }),
     );
-    mkdirSync(join(home, ".heygen"), { recursive: true });
+    mkdirSync(join(home, ".hyperframes"), { recursive: true });
     writeFileSync(
-      join(home, ".heygen/credentials"),
-      JSON.stringify({ user: { email: "alice@example.com", username: "alice" } }),
+      join(home, ".hyperframes/credentials"),
+      JSON.stringify({
+        api_key: "hg_test",
+        user: { email: "alice@example.com", username: "alice" },
+      }),
     );
 
     await track("media_use_resolve", { type: "bgm", source: "search" });
@@ -193,9 +198,19 @@ test("track identifies a signed-in HeyGen account once and still sends events", 
     const batch = parseFetchBodies(calls);
     const identify = batch.filter((item) => item.event === "$identify");
     assert.equal(identify.length, 1);
-    assert.equal(identify[0].distinct_id, "alice@example.com");
+    // heygenUserId("alice"): the same id the CLI's own login identify uses.
+    assert.equal(identify[0].distinct_id, "2bd806c9-7f0e-50af-9a1f-c3328fa763a9");
     assert.equal(identify[0].properties.$anon_distinct_id, "anon-1");
-    assert.equal(batch.filter((item) => item.event === "media_use_resolve").length, 2);
+    assert.deepEqual(identify[0].properties.$set, {
+      email: "alice@example.com",
+      heygen_username: "alice",
+    });
+    const resolves = batch.filter((item) => item.event === "media_use_resolve");
+    assert.equal(resolves.length, 2);
+    assert.ok(resolves.every((item) => item.properties.heygen_username === "alice"));
+    assert.ok(
+      resolves.every((item) => item.distinct_id === "2bd806c9-7f0e-50af-9a1f-c3328fa763a9"),
+    );
   } finally {
     globalThis.fetch = originalFetch;
     restoreEnv(savedEnv);
@@ -204,7 +219,50 @@ test("track identifies a signed-in HeyGen account once and still sends events", 
   }
 });
 
-test("track identifies with a lowercased email regardless of stored casing", async () => {
+test("track uses the selected dev HyperFrames account instead of a HeyGen or production login", async () => {
+  const savedEnv = { ...process.env };
+  const originalFetch = globalThis.fetch;
+  const { root, home } = sandbox();
+  const calls = [];
+  globalThis.fetch = async (url, options) => {
+    calls.push({ url, options });
+    return { ok: true };
+  };
+  try {
+    withoutTelemetryOptOut();
+    process.env.HYPERFRAMES_CONFIG_DIR = join(home, "hf-auth");
+    process.env.HYPERFRAMES_ENV = "dev";
+    process.env.HEYGEN_CONFIG_DIR = join(home, "heygen");
+    for (const [dir, email] of [
+      [process.env.HEYGEN_CONFIG_DIR, "other@example.com"],
+      [process.env.HYPERFRAMES_CONFIG_DIR, "prod@example.com"],
+      [join(process.env.HYPERFRAMES_CONFIG_DIR, "dev"), "dev@example.com"],
+    ]) {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        join(dir, "credentials"),
+        JSON.stringify({
+          oauth: { access_token: "test-access" },
+          user: { email, username: email },
+        }),
+      );
+    }
+    await track("media_use_resolve", { type: "voice" });
+    const identify = parseFetchBodies(calls).filter((item) => item.event === "$identify");
+    assert.equal(identify.length, 1);
+    assert.equal(identify[0].properties.$set.heygen_username, "dev@example.com");
+    const event = parseFetchBodies(calls).find((item) => item.event === "media_use_resolve");
+    assert.equal(event.properties.heygen_username, "dev@example.com");
+    assert.equal(event.distinct_id, identify[0].distinct_id);
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreEnv(savedEnv);
+    rmSync(root, { recursive: true, force: true });
+    __resetTelemetryForTest();
+  }
+});
+
+test("track falls back to a lowercased email when the account has no username", async () => {
   const savedEnv = { ...process.env };
   const originalFetch = globalThis.fetch;
   const { root, home } = sandbox();
@@ -220,10 +278,10 @@ test("track identifies with a lowercased email regardless of stored casing", asy
       join(home, ".hyperframes/config.json"),
       JSON.stringify({ anonymousId: "anon-3" }),
     );
-    mkdirSync(join(home, ".heygen"), { recursive: true });
+    mkdirSync(join(home, ".hyperframes"), { recursive: true });
     writeFileSync(
-      join(home, ".heygen/credentials"),
-      JSON.stringify({ user: { email: "Alice@Example.com", username: "alice" } }),
+      join(home, ".hyperframes/credentials"),
+      JSON.stringify({ api_key: "hg_test", user: { email: "Alice@Example.com" } }),
     );
 
     await track("media_use_resolve", { type: "bgm", source: "search" });
@@ -269,6 +327,7 @@ test("track does not identify when signed out", async () => {
     );
     assert.equal(batch[0].event, "media_use_resolve");
     assert.equal(batch[0].distinct_id, "anon-2");
+    assert.equal(batch[0].properties.heygen_username, undefined);
   } finally {
     globalThis.fetch = originalFetch;
     restoreEnv(savedEnv);

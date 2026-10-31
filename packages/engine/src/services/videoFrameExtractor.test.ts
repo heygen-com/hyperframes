@@ -16,6 +16,7 @@ import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import {
   parseVideoElements,
+  hasGradedCanvas,
   parseImageElements,
   extractAllVideoFrames,
   extractVideoFramesRange,
@@ -23,6 +24,7 @@ import {
   createFrameLookupTable,
   FrameLookupTable,
   rebaseVideoToWindow,
+  alignClipStartToFirstOutputFrame,
   resolveFrameFormat,
   codecMayHaveAlpha,
   decoderForCodec,
@@ -190,6 +192,14 @@ describe("resolveVideoExtractionDuration", () => {
     // composition second 2 is 3s into the authored lane: source 4.6586
     const seconds = clip.mediaStart + sourceTimeAt(clip.playbackRate ?? 1, 2 - clip.start);
     expect(seconds).toBeCloseTo(4.6586, 3);
+  });
+
+  it("leaves media start untouched for a nested clip whose start sums to a frame boundary with float dust", () => {
+    // 3.3 + 1.3666666666666667 = 4.666666666666666, frame 140 at 30 fps
+    const clip = video({ start: 3.3 + 1.3666666666666667, end: 8, mediaStart: 1.35 });
+    alignClipStartToFirstOutputFrame(clip, 30);
+    expect(clip.mediaStart).toBe(1.35);
+    expect(clip.start).toBe(140 / 30);
   });
 
   it("snaps a float-noise composition start to the timeline origin so the first frame is kept", () => {
@@ -738,6 +748,25 @@ describe("resolveFrameFormat", () => {
 });
 
 describe("parseVideoElements", () => {
+  it("marks a graded video and image, and only those", () => {
+    const html = `<video id="g" src="g.mp4" data-color-grading='{"preset":"clean-studio"}'></video>
+      <video id="p" src="p.mp4"></video>
+      <img id="gi" src="gi.png" data-color-grading='{"adjust":{"exposure":0.2}}'>
+      <img id="pi" src="pi.png">`;
+    expect(parseVideoElements(html).map(({ id, graded }) => [id, graded])).toEqual([
+      ["g", true],
+      ["p", undefined],
+    ]);
+    expect(parseImageElements(html).map(({ id, graded }) => [id, graded])).toEqual([
+      ["gi", true],
+      ["pi", undefined],
+    ]);
+    expect(hasGradedCanvas(html)).toBe(false);
+    expect(
+      hasGradedCanvas(`<canvas data-color-grading='{"preset":"clean-studio"}'></canvas>`),
+    ).toBe(true);
+  });
+
   it.each([
     {
       label: "valueless playback-start",
@@ -4416,4 +4445,213 @@ describe("parseVideoElements hidden flag", () => {
       ["b", undefined],
     ]);
   });
+});
+
+describe.skipIf(!HAS_FFMPEG)("a clip stored on a non-square pixel grid", () => {
+  const FIXTURE_DIR = mkdtempSync(join(tmpdir(), "hf-sar-"));
+  const SOURCE = join(FIXTURE_DIR, "anamorphic.mp4");
+
+  beforeAll(async () => {
+    const result = await runFfmpeg([
+      "-y",
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=red:s=64x64:d=1:r=10",
+      "-vf",
+      "setsar=1/2",
+      "-c:v",
+      "libx264",
+      "-pix_fmt",
+      "yuv420p",
+      SOURCE,
+    ]);
+    if (!result.success) throw new Error(`fixture synthesis failed: ${result.stderr.slice(-400)}`);
+  }, 30_000);
+
+  afterAll(() => rmSync(FIXTURE_DIR, { recursive: true, force: true }), 30_000);
+
+  it("keeps the display shape of a rotated clip, whose autorotate swaps the pixel aspect", async () => {
+    const rotated = join(FIXTURE_DIR, "rotated.mp4");
+    // `-display_rotation` is an ffmpeg 6 input option; older builds take the same rotation as metadata.
+    const rotateWith = (args: string[]) =>
+      runFfmpeg(["-y", "-v", "error", ...args, "-c", "copy", rotated]);
+    let synth = await rotateWith(["-display_rotation:v:0", "90", "-i", SOURCE]);
+    if (!synth.success) synth = await rotateWith(["-i", SOURCE, "-metadata:s:v:0", "rotate=90"]);
+    expect(synth.success).toBe(true);
+    const outDir = join(FIXTURE_DIR, "out-rot");
+    mkdirSync(outDir, { recursive: true });
+    const video: VideoElement = {
+      id: "r",
+      src: rotated,
+      start: 0,
+      end: 1,
+      mediaStart: 0,
+      loop: false,
+      hasAudio: false,
+    };
+    const result = await extractAllVideoFrames([video], FIXTURE_DIR, {
+      fps: 10,
+      outputDir: outDir,
+    });
+    expect(result.errors).toEqual([]);
+    const probe = spawnSync("ffprobe", [
+      "-v",
+      "error",
+      "-show_entries",
+      "stream=width,height",
+      "-of",
+      "csv=p=0",
+      "--",
+      result.extracted[0]!.framePaths.get(0)!,
+    ]);
+    expect(probe.stdout.toString().trim()).toBe("128,64");
+  });
+
+  it("extracts frames at the shape Chrome displays, not the stored grid", async () => {
+    const outDir = join(FIXTURE_DIR, "out");
+    mkdirSync(outDir, { recursive: true });
+    const video: VideoElement = {
+      id: "v",
+      src: SOURCE,
+      start: 0,
+      end: 1,
+      mediaStart: 0,
+      loop: false,
+      hasAudio: false,
+    };
+    const result = await extractAllVideoFrames([video], FIXTURE_DIR, {
+      fps: 10,
+      outputDir: outDir,
+    });
+    expect(result.errors).toEqual([]);
+    const probe = spawnSync("ffprobe", [
+      "-v",
+      "error",
+      "-show_entries",
+      "stream=width,height",
+      "-of",
+      "csv=p=0",
+      "--",
+      result.extracted[0]!.framePaths.get(0)!,
+    ]);
+    expect(probe.stdout.toString().trim()).toBe("32,64");
+  });
+});
+
+// Each source frame N is a flat gray of 3N, so the frame a render shows reads straight off a pixel.
+describe.skipIf(!HAS_FFMPEG)("a clip whose data-start is off the frame grid", () => {
+  const FIXTURE_DIR = mkdtempSync(join(tmpdir(), "hf-offgrid-start-"));
+  const SOURCE = join(FIXTURE_DIR, "numbered.mp4");
+  const FPS = 30;
+
+  beforeAll(async () => {
+    const result = await runFfmpeg([
+      "-y",
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=black:s=64x64:d=6:r=30",
+      "-vf",
+      "format=gray,geq=lum='N*3'",
+      "-c:v",
+      "libx264",
+      "-crf",
+      "0",
+      "-g",
+      "30",
+      "-pix_fmt",
+      "yuv420p",
+      SOURCE,
+    ]);
+    if (!result.success) throw new Error(`fixture synthesis failed: ${result.stderr.slice(-400)}`);
+  }, 30_000);
+
+  afterAll(() => rmSync(FIXTURE_DIR, { recursive: true, force: true }), 30_000);
+
+  async function sourceFramesShown(
+    start: number,
+    outputFrames: number[],
+  ): Promise<(number | null)[]> {
+    const outDir = join(FIXTURE_DIR, `out-${start}`);
+    mkdirSync(outDir, { recursive: true });
+    const video: VideoElement = {
+      id: "v",
+      src: SOURCE,
+      start,
+      end: start + 1.9,
+      mediaStart: start,
+      loop: false,
+      hasAudio: false,
+    };
+    const result = await extractAllVideoFrames([video], FIXTURE_DIR, {
+      fps: FPS,
+      outputDir: outDir,
+    });
+    expect(result.errors).toEqual([]);
+    const table = createFrameLookupTable([video], result.extracted, FPS);
+    return outputFrames.map((n) => {
+      const path = table.getFrame("v", n / FPS);
+      return path ? Math.round(readFirstFramePixel(path, 0, 0)[0] / 3) : null;
+    });
+  }
+
+  it("keeps a looped clip on the same source frame after every wrap", async () => {
+    const loopSource = join(FIXTURE_DIR, "loop.mp4");
+    const synth = await runFfmpeg([
+      "-y",
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=black:s=64x64:d=2:r=30",
+      "-vf",
+      "format=gray,geq=lum='N*4'",
+      "-c:v",
+      "libx264",
+      "-crf",
+      "0",
+      "-pix_fmt",
+      "yuv420p",
+      loopSource,
+    ]);
+    expect(synth.success).toBe(true);
+    const outDir = join(FIXTURE_DIR, "out-loop");
+    mkdirSync(outDir, { recursive: true });
+    const video: VideoElement = {
+      id: "v",
+      src: loopSource,
+      start: 0.35,
+      end: 6.35,
+      mediaStart: 1,
+      loop: true,
+      hasAudio: false,
+    };
+    const result = await extractAllVideoFrames([video], FIXTURE_DIR, {
+      fps: FPS,
+      outputDir: outDir,
+      timelineEnd: 6,
+    });
+    expect(result.errors).toEqual([]);
+    const table = createFrameLookupTable([video], result.extracted, FPS);
+    const shown = [0, 1, 2, 3, 4].map((wrap) => {
+      const path = table.getFrame("v", (12 + wrap * FPS + 1) / FPS);
+      return path ? Math.round(readFirstFramePixel(path, 0, 0)[0] / 4) : null;
+    });
+    expect(new Set(shown).size).toBe(1);
+  }, 60_000);
+
+  it.each([1.95, 2.0001, 1.999999])(
+    "shows source frame N at output frame N for data-start=data-media-start=%s",
+    async (start) => {
+      const shown = await sourceFramesShown(start, [61, 62, 63, 64, 65]);
+      expect(shown).toEqual([61, 62, 63, 64, 65]);
+    },
+    60_000,
+  );
 });

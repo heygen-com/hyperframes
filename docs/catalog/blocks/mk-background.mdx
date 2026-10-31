@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Minimal Gradient Background</h1>
+  <p>Procedural soft-blob gradient backdrop in a minimalist presentation style: two radial blobs drifting over a base color, with an animatable rounded-card bar mask and optional frosted-glass mode</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/mk-background.json"
   compositionId="mk-background"
   compositionSrc="compositions/mk-background.html"
   title="Minimal Gradient Background"
-  description="Procedural soft-blob gradient backdrop in a minimalist presentation style: two radial blobs drifting over a base color, with an animatable rounded-card bar mask and optional frosted-glass mode"
   variables={[]}
   meta={{"duration":10,"width":1920,"height":1080,"category":"Blocks","badge":"Stable","codeLines":235}}
   attribution={{"path":"registry/blocks/mk-background","tags":["background","gradient","minimal","professional","presentation"]}}
@@ -270,7 +274,9 @@ That writes one file: `compositions/mk-background.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -301,6 +307,4 @@ Tagged `background` `gradient` `minimal` `professional` `presentation`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Scan Band</h1>
+  <p>A diagonal distortion band sweeps once across a clean wordmark, revealing clipped red and cyan offsets only inside the moving band.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/scan-band.json"
   compositionId="scan-band"
   compositionSrc="compositions/components/scan-band.html"
   title="Scan Band"
-  description="A diagonal distortion band sweeps once across a clean wordmark, revealing clipped red and cyan offsets only inside the moving band."
   variables={[{"id":"wordmark","type":"string","role":"content","label":"Wordmark","description":"Text displayed by the scan effect.","default":"HYPERFRAMES"},{"id":"band_angle","type":"number","role":"layout","label":"Band angle","description":"Diagonal angle of the distortion band in degrees.","default":12,"min":-30,"max":30,"step":1,"unit":"deg"}]}
   meta={{"category":"Typography & Text","badge":"Stable","codeLines":216}}
   attribution={{"path":"registry/components/scan-band","tags":["motion-primitive","typography","scan","chromatic","distortion","wordmark"]}}
@@ -251,7 +255,9 @@ That writes one file: `compositions/components/scan-band.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -291,6 +297,4 @@ Tagged `motion-primitive` `typography` `scan` `chromatic` `distortion` `wordmark
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

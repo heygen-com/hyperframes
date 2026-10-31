@@ -575,6 +575,23 @@ export interface HyperframesConfig {
    * telemetry rows of the renders it describes.
    */
   recentRenders?: RecentRenderRecord[];
+  /** The newest local `check`: exit code and its top error codes, which `hyperframes feedback` attaches. */
+  lastCheck?: LastCheckRecord;
+}
+
+/** The newest `check` in {@link HyperframesConfig.lastCheck}; codes and counts only, no content or paths. */
+export interface LastCheckRecord {
+  at: string;
+  /** Absent while the check has not finished: it is still running, or was stopped. */
+  exitCode?: number;
+  codes: Record<string, number>;
+}
+
+/** Remember the newest check so a later `hyperframes feedback` can name why it failed. */
+export function recordLastCheck(lastCheck: LastCheckRecord): void {
+  const config = readConfigFresh();
+  config.lastCheck = lastCheck;
+  writeConfig(config);
 }
 
 /** One entry in {@link HyperframesConfig.recentRenders}. */

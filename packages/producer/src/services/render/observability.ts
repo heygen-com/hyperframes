@@ -613,6 +613,8 @@ export interface StageStallRule {
   complete?: () => boolean;
   /** Allowed silence once `complete()` holds; defaults to `noProgressMs`. */
   tailMs?: number;
+  detail?: () => string | undefined;
+  attemptOpened?: () => void;
 }
 
 /**
@@ -624,10 +626,10 @@ export class RenderStageStalledError extends CaptureFailure {
   readonly owner = "system" as const;
   readonly retryable = false as const;
 
-  constructor(phase: string, silentMs: number, progress: number) {
+  constructor(phase: string, silentMs: number, progress: number, detail?: string) {
     super({
       kind: "protocol_timeout",
-      message: `[Render] ${phase} stalled: no progress for ${silentMs}ms (stuck at ${progress}).`,
+      message: `[Render] ${phase} stalled: no progress for ${silentMs}ms (stuck at ${progress}).${detail ? ` ${detail}` : ""}`,
     });
     this.name = "RenderStageStalledError";
   }
@@ -641,6 +643,7 @@ const STALL_POLL_MS = 5_000;
 // A trip aborts the open attempt and gives the stage one more window to retry or settle; a trip with
 // no live attempt fails the stage.
 function watchStall(phase: string, rule: StageStallRule) {
+  const detail = rule.detail ?? (() => undefined);
   let last = rule.progress();
   let budgetMs = rule.firstProgressMs;
   let lastChangeAt = Date.now();
@@ -662,7 +665,7 @@ function watchStall(phase: string, rule: StageStallRule) {
         }
         if (current !== last) return restartWindow(rule.noProgressMs);
         if (Date.now() - lastChangeAt < budgetMs) return;
-        const error = new RenderStageStalledError(phase, budgetMs, current);
+        const error = new RenderStageStalledError(phase, budgetMs, current, detail());
         if (attempt && !attempt.signal.aborted) {
           attempt.abort(error);
           return restartWindow(rule.noProgressMs);
@@ -676,6 +679,7 @@ function watchStall(phase: string, rule: StageStallRule) {
   const openAttempt: OpenStallAttempt = (parent) => {
     attempt = new AbortController();
     inTail = false;
+    rule.attemptOpened?.();
     restartWindow(rule.firstProgressMs);
     return parent ? AbortSignal.any([parent, attempt.signal]) : attempt.signal;
   };

@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Morph Text</h1>
+  <p>Gooey text morph — cycles through an editable word list using SVG threshold + GSAP-driven blur for a fluid, satisfying transition effect</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/morph-text.json"
   compositionId="morph-text"
   compositionSrc="compositions/components/morph-text.html"
   title="Morph Text"
-  description="Gooey text morph — cycles through an editable word list using SVG threshold + GSAP-driven blur for a fluid, satisfying transition effect"
   variables={[]}
   meta={{"category":"Typography & Text","badge":"Stable","codeLines":234}}
   attribution={{"path":"registry/components/morph-text","tags":["text","text-effect","typography","morph","gooey","kinetic","animation"]}}
@@ -269,7 +273,9 @@ That writes one file: `compositions/components/morph-text.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -288,6 +294,4 @@ Tagged `text` `text-effect` `typography` `morph` `gooey` `kinetic` `animation`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

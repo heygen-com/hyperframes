@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Worley Noise</h1>
+  <p>A field of drifting cells, light at their centres and dark at their edges. A WebGPU shader from the Shaders library (shaders.com, MIT).</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/worley-noise.json"
   compositionId="worley-noise"
   compositionSrc="compositions/worley-noise.html"
   title="Worley Noise"
-  description="A field of drifting cells, light at their centres and dark at their edges. A WebGPU shader from the Shaders library (shaders.com, MIT)."
   variables={[]}
   meta={{"duration":2,"width":1920,"height":1080,"category":"Texture","badge":"Stable","codeLines":31}}
   attribution={{"path":"registry/blocks/worley-noise","tags":["webgpu","webgpu-shader","background","texture","noise","cells","monochrome"]}}
@@ -68,7 +72,9 @@ That writes `compositions/worley-noise.html`, plus 2 supporting files under `com
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -99,6 +105,4 @@ Tagged `webgpu` `webgpu-shader` `background` `texture` `noise` `cells` `monochro
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

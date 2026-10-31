@@ -1043,6 +1043,31 @@ window.__afterTimeline = window.__timelines.scene;
     );
   });
 
+  it("scopes an authored root id compounded with its own composition id for both host shapes", () => {
+    const scope = '[data-composition-id="scene__hf1"]';
+    const scoped = scopeCssToComposition(
+      '#root[data-composition-id="scene"] .title { x: 1; }',
+      "scene",
+      scope,
+      "root",
+    );
+    expect(scoped).toContain(`${scope} [data-hf-authored-id="root"] .title`);
+    expect(scoped).toContain(`[data-hf-authored-id="root"]${scope} .title`);
+  });
+
+  it("keeps a pseudo-element valid on both alternatives of a compounded authored root", () => {
+    const scope = '[data-composition-id="scene__hf1"]';
+    const scoped = scopeCssToComposition(
+      '#root[data-composition-id="scene"]::before { content: ""; }',
+      "scene",
+      scope,
+      "root",
+    );
+    expect(scoped).not.toContain(":is(");
+    expect(scoped).toContain(`${scope} [data-hf-authored-id="root"]::before`);
+    expect(scoped).toContain(`[data-hf-authored-id="root"]${scope}::before`);
+  });
+
   it("still uses descendant selector for non-root selectors with authoredRootId", () => {
     const scoped = scopeCssToComposition(
       ".child-element { color: red; }",

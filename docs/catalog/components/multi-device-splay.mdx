@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Multi Device Splay</h1>
+  <p>Phone, tablet, and desktop product mockups fan from a centered stack into a proud splayed arrangement with a subtle idle float.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/multi-device-splay.json"
   compositionId="multi-device-splay"
   compositionSrc="compositions/components/multi-device-splay.html"
   title="Multi Device Splay"
-  description="Phone, tablet, and desktop product mockups fan from a centered stack into a proud splayed arrangement with a subtle idle float."
   variables={[{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Shared accent color used by all three product screens.","default":"blue","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]}]}
   meta={{"category":"Motion Scenes","badge":"Stable","codeLines":727}}
   attribution={{"path":"registry/components/multi-device-splay","tags":["motion-primitive","device","phone","tablet","desktop","splay"]}}
@@ -762,7 +766,9 @@ That writes one file: `compositions/components/multi-device-splay.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -801,6 +807,4 @@ Tagged `motion-primitive` `device` `phone` `tablet` `desktop` `splay`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

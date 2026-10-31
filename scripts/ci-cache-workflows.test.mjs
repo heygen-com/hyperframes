@@ -10,29 +10,28 @@ const load = (path) => parse(readFileSync(path, "utf8"));
 const workflows = readdirSync(workflowsDir)
   .filter((file) => /\.ya?ml$/.test(file))
   .map((file) => ({ file, doc: load(join(workflowsDir, file)) }));
-const events = (on) =>
-  typeof on === "string" ? [on] : Array.isArray(on) ? on : Object.keys(on ?? {});
+const cacheWrites = (list) =>
+  list.flatMap(({ file, doc }) =>
+    Object.entries(doc.jobs ?? {}).flatMap(([name, job]) =>
+      (job.steps ?? [])
+        .map((step) => String(step.with?.["cache-to"] ?? ""))
+        .filter((to) => to.includes("type=gha"))
+        .map((to) => ({ id: `${file} ${name}`, to, matrix: Boolean(job.strategy?.matrix) })),
+    ),
+  );
 
-const dispatchOnly = ["fast-video-validation.yml"];
-const ungatedCacheWrites = (list) =>
-  list
-    .filter(({ file }) => !dispatchOnly.includes(file))
-    .flatMap(({ file, doc }) =>
-      Object.entries(doc.jobs ?? {}).flatMap(([name, job]) =>
-        (job.steps ?? [])
-          .map((step) => String(step.with?.["cache-to"] ?? ""))
-          .filter((to) => to.includes("type=gha") && !to.includes("github.event_name == 'push'"))
-          .map(() => `${file} ${name}`),
-      ),
-    );
-
-// The Actions cache holds 10 GB; per-PR image exports evict the bun cache and leave installs cold.
-test("only pushes to main write image layers to the Actions cache", () => {
-  for (const file of dispatchOnly) {
-    const { doc } = workflows.find((w) => w.file === file);
-    assert.deepEqual(events(doc.on), ["workflow_dispatch"], `${file} must stay dispatch-only`);
-  }
-  assert.deepEqual(ungatedCacheWrites(workflows), []);
+// The Actions cache holds 10 GB. Per-PR exports evicted the bun cache; every shard of a main push
+// exporting its own copy of the same layers evicted the release's prebuilt ffmpeg.
+test("one job of a push to main writes each image cache", () => {
+  const writes = cacheWrites(workflows);
+  const ids = (list) => list.map((w) => w.id);
+  assert.deepEqual(ids(writes.filter((w) => !w.to.includes("github.event_name == 'push'"))), []);
+  assert.deepEqual(
+    ids(writes.filter((w) => w.matrix && !w.to.includes("strategy.job-index == 0"))),
+    [],
+  );
+  const scopes = writes.map((w) => w.to.match(/scope=([\w-]+)/)?.[1]);
+  assert.deepEqual(scopes, [...new Set(scopes)]);
 });
 
 test("preflight installs without downloading ffmpeg or Chrome", () => {

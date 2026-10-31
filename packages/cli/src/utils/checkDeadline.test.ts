@@ -1,5 +1,10 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { CheckDeadline, CheckDeadlineError, CheckStoppedError } from "./checkDeadline.js";
+import {
+  CheckDeadline,
+  CheckDeadlineError,
+  CheckStoppedError,
+  idleWindow,
+} from "./checkDeadline.js";
 
 afterEach(() => vi.useRealTimers());
 
@@ -188,6 +193,24 @@ it("an expired check names the step it was on", async () => {
       "while checking samples (layout sample at 2.5s). Seconds per phase",
     );
     await vi.advanceTimersByTimeAsync(120_000);
+    await failed;
+  } finally {
+    await deadline.close();
+  }
+});
+
+it("a check waits as long as the --timeout it was given before it counts as idle, and says so", async () => {
+  vi.useFakeTimers();
+  expect(idleWindow(10_000)).toBe(120_000);
+  expect(idleWindow(400_000)).toBe(410_000);
+  const deadline = new CheckDeadline(idleWindow(400_000));
+  deadline.start();
+  try {
+    const sample = deadline.run(() => rejectOnAbort(deadline.signal));
+    const failed = expect(sample).rejects.toThrow("no progress for 410 s");
+    await vi.advanceTimersByTimeAsync(300_000);
+    expect(deadline.signal.aborted).toBe(false);
+    await vi.advanceTimersByTimeAsync(110_000);
     await failed;
   } finally {
     await deadline.close();

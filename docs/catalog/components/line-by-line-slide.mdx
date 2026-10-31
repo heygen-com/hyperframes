@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Line-by-Line Slide</h1>
+  <p>Each line enters from the left with staggered slide and exits to the right.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/line-by-line-slide.json"
   compositionId="line-by-line-slide"
   compositionSrc="compositions/components/line-by-line-slide.html"
   title="Line-by-Line Slide"
-  description="Each line enters from the left with staggered slide and exits to the right."
   variables={[{"id":"size","type":"enum","role":"layout","label":"Size","description":"Type size of the whole stack.","default":"standard","options":[{"value":"compact","label":"Compact"},{"value":"standard","label":"Standard"},{"value":"display","label":"Display"}]},{"id":"tone","type":"enum","role":"style","label":"Tone","description":"Line colour: ink for light frames, paper for dark ones, accent rides the brand token.","default":"ink","options":[{"value":"ink","label":"Ink"},{"value":"paper","label":"Paper"},{"value":"accent","label":"Accent"}]},{"id":"density","type":"enum","role":"layout","label":"Density","description":"The gap between lines, from a tight block to an airy stack.","default":"standard","options":[{"value":"fine","label":"Fine"},{"value":"standard","label":"Standard"},{"value":"coarse","label":"Coarse"}]},{"id":"direction","type":"enum","role":"motion","label":"Direction","description":"Which side the lines slide in from as the timeline drives the offset.","default":"left","options":[{"value":"left","label":"Left"},{"value":"right","label":"Right"}]}]}
   meta={{"category":"Typography & Text","badge":"Stable","codeLines":105}}
   attribution={{"path":"registry/components/line-by-line-slide","tags":["motion-primitive","typography"]}}
@@ -140,7 +144,9 @@ That writes one file: `compositions/components/line-by-line-slide.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -183,6 +189,4 @@ Tagged `motion-primitive` `typography`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

@@ -115,6 +115,8 @@ declare global {
       owner?: string;
     };
     __HF_PARITY_MODE?: boolean;
+    /** Set by still-capture pages: seeks replay skipped frames at the composition fps, as a render does. */
+    __HF_REPLAY_SKIPPED_FRAMES?: boolean;
     /** Legacy debug-only fps hint. Render-mode runtime fps uses __HF_EXPORT_RENDER_SEEK_CONFIG.fps. */
     __HF_FPS?: number;
     __HF_MAX_DURATION_SEC?: number;
@@ -139,7 +141,10 @@ declare global {
      * Await GPU work registered synchronously by `hf-seek` listeners through
      * `event.detail.waitUntil(...)`; `videoFrames: false` skips the video-frame holds.
      */
-    __hfWaitForSeekCompletion?: (options?: { videoFrames?: boolean }) => Promise<void>;
+    __hfWaitForSeekCompletion?: (options?: {
+      videoFrames?: boolean;
+      timeoutMs?: number;
+    }) => Promise<void>;
     /**
      * Canonical root-timeline start for a media element. Snapshot capture uses
      * this runtime-owned resolver so reference expressions, authored timing

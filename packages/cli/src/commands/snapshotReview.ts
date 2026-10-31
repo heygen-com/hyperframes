@@ -94,17 +94,33 @@ export function resolveReviewTimeline(
     return to > from ? [roundMs(from), roundMs(to)] : null;
   };
   const scenes: ReviewScene[] = [];
-  const rows = topLevelElements(toDomNode(target as unknown as Element)).filter((node) => {
-    const kind = trackKindOf(node).kind;
-    return kind === "video" || kind === "graphics";
-  });
-  rows.forEach((node, index) => {
+  const notes: string[] = [];
+  const sceneRows = (root: ReturnType<typeof toDomNode>) =>
+    topLevelElements(root).filter((node) => {
+      const kind = trackKindOf(node).kind;
+      return kind === "video" || kind === "graphics";
+    });
+  sceneRows(toDomNode(target as unknown as Element)).forEach((node, index) => {
     const interval = span(node.el);
-    if (interval)
-      scenes.push({ id: sceneId(node.el, index), start: interval[0], end: interval[1] });
+    if (!interval) return;
+    const id = sceneId(node.el, index);
+    scenes.push({ id, start: interval[0], end: interval[1] });
+    const inner = node.el.getAttribute("data-composition-id");
+    const innerScenes = inner
+      ? sceneRows(node).flatMap((row, rowIndex) => {
+          const inside = span(row.el);
+          return inside
+            ? [{ id: sceneId(row.el, rowIndex), start: inside[0], end: inside[1] }]
+            : [];
+        })
+      : [];
+    if (inner && innerScenes.length >= 2 && seamTimes(innerScenes, interval).length > 0) {
+      notes.push(
+        `${id} holds several timed clips; run --review --composition ${inner} to review its cuts.`,
+      );
+    }
   });
   const beats: ReviewBeat[] = [];
-  const notes: string[] = [];
   for (const el of Array.from((target as unknown as Element).querySelectorAll("[data-beat]"))) {
     const name = el.getAttribute("data-beat")?.trim() || sceneId(el, beats.length);
     const timed = el.hasAttribute("data-start") || el.hasAttribute("data-composition-id");

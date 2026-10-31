@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>ASCII Trail Reveal</h1>
+  <p>An authored S-curve sweeps through a deterministic ASCII grid, flipping cells away to reveal a labeled panel.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/ascii-trail-reveal.json"
   compositionId="ascii-trail-reveal"
   compositionSrc="compositions/components/ascii-trail-reveal.html"
   title="ASCII Trail Reveal"
-  description="An authored S-curve sweeps through a deterministic ASCII grid, flipping cells away to reveal a labeled panel."
   variables={[{"id":"label","type":"string","role":"content","label":"Panel label","description":"Text shown on the revealed panel.","default":"The reveal"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Color used by the trail and revealed panel.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"trail_width","type":"enum","role":"layout","label":"Trail width","description":"Width of the cell reveal tail around the authored path.","default":"narrow","options":[{"value":"narrow","label":"Narrow"},{"value":"wide","label":"Wide"}]}]}
   meta={{"category":"Data","badge":"Stable","codeLines":380}}
   attribution={{"path":"registry/components/ascii-trail-reveal","tags":["motion-primitive","intro","reveal","ascii","trail","grid"]}}
@@ -415,7 +419,9 @@ That writes one file: `compositions/components/ascii-trail-reveal.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -456,6 +462,4 @@ Tagged `motion-primitive` `intro` `reveal` `ascii` `trail` `grid`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

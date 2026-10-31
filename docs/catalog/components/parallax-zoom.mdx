@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Parallax Zoom</h1>
+  <p>Center card scales up to fill the frame while siblings parallax outward — inspired by the eBay Playbook hero transition</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/parallax-zoom.json"
   compositionId="parallax-zoom"
   compositionSrc="compositions/components/parallax-zoom.html"
   title="Parallax Zoom"
-  description="Center card scales up to fill the frame while siblings parallax outward — inspired by the eBay Playbook hero transition"
   variables={[]}
   meta={{"category":"Effects","badge":"Stable","codeLines":99}}
   attribution={{"path":"registry/components/parallax-zoom","tags":["transition","zoom","parallax","grid","hero"]}}
@@ -134,7 +138,9 @@ That writes one file: `compositions/components/parallax-zoom.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -154,6 +160,4 @@ Tagged `transition` `zoom` `parallax` `grid` `hero`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

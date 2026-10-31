@@ -15,10 +15,7 @@ source /fetch.sh
 
 license() { mkdir -p "$PREFIX/share/licenses/$1" && cp "${@:2}" "$PREFIX/share/licenses/$1/"; }
 
-read -r x264_commit x264_url < <(awk '$1 == "x264" { print $2, $3 }' /build/sources.txt)
-retry git clone -q "$x264_url" "$SRC/x264"
-git -C "$SRC/x264" checkout -q "$x264_commit"
-[ "$(git -C "$SRC/x264" rev-parse HEAD)" = "$x264_commit" ]
+fetch x264
 (cd "$SRC/x264" && ./configure --prefix="$DEPS" --enable-static --enable-pic --disable-cli &&
   make -j"$JOBS" && make install)
 license x264 "$SRC/x264/COPYING"

@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Camera Scan Gate</h1>
+  <p>A camera and QR recognition moment with a viewfinder sweep, bracket lock, confirmation pulse, and verified next beat.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/camera-scan-gate.json"
   compositionId="camera-scan-gate"
   compositionSrc="compositions/components/camera-scan-gate.html"
   title="Camera Scan Gate"
-  description="A camera and QR recognition moment with a viewfinder sweep, bracket lock, confirmation pulse, and verified next beat."
   variables={[{"id":"scanColor","type":"string","role":"style","label":"Scan color","description":"Any CSS color value used by the scan line and recognition glow.","default":"var(--brand)"},{"id":"targetLabel","type":"string","role":"content","label":"Target label","description":"Confirmation label revealed at recognition lock. Blank hides the line.","default":"Verified"},{"id":"sweepSpeed","type":"number","role":"timing","label":"Sweep speed","description":"Speed multiplier for the scan sweep phase only.","default":1,"min":0.8,"max":1.6,"step":0.1,"unit":"x"}]}
   meta={{"category":"Camera","badge":"Stable","codeLines":522}}
   attribution={{"path":"registry/components/camera-scan-gate","tags":["prop","ui-props","camera","qr","scan","recognition","interaction","demonstrate"]}}
@@ -557,7 +561,9 @@ That writes one file: `compositions/components/camera-scan-gate.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -598,6 +604,4 @@ Tagged `prop` `ui-props` `camera` `qr` `scan` `recognition` `interaction` `demon
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

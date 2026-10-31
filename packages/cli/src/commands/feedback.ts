@@ -12,7 +12,7 @@ import {
 } from "../telemetry/events.js";
 import { shouldTrack } from "../telemetry/client.js";
 import { getDoctorSummary } from "../telemetry/feedback.js";
-import { readConfig, type RecentRenderRecord } from "../telemetry/config.js";
+import { readConfig, type LastCheckRecord, type RecentRenderRecord } from "../telemetry/config.js";
 import { publishProjectArchive } from "../utils/publishProject.js";
 import { submitCatalogSearchMiss, submitFeedback } from "../utils/submitFeedback.js";
 import { buildIssueUrl, HYPERFRAMES_REPO_URL } from "../utils/feedbackIssue.js";
@@ -57,10 +57,24 @@ export function buildTelemetryJoinKeys(input: {
   feedbackId: string;
   anonymousId: string;
   recentRenders?: RecentRenderRecord[];
+  lastCheck?: LastCheckRecord;
+  now?: number;
 }): string {
   const parts = [`fid=${input.feedbackId}`, `tid=${input.anonymousId}`];
   if (input.recentRenders?.length) {
     parts.push(`renders=${input.recentRenders.map((r) => `${r.id}${r.ok ? "" : "!"}`).join(",")}`);
+  }
+  if (input.lastCheck) {
+    const codes = Object.entries(input.lastCheck.codes).map(
+      ([code, n]) => `${code.slice(0, 24)}*${n}`,
+    );
+    const result =
+      input.lastCheck.exitCode === undefined ? "unfinished" : `exit${input.lastCheck.exitCode}`;
+    parts.push(`check=${result}${codes.length ? `:${codes.join(",")}` : ""}`);
+    const minutes = Math.round(
+      ((input.now ?? Date.now()) - Date.parse(input.lastCheck.at)) / 60_000,
+    );
+    if (Number.isFinite(minutes) && minutes >= 0) parts.push(`check_age=${minutes}m`);
   }
   return parts.join(" ");
 }
@@ -298,6 +312,7 @@ export default defineCommand({
       feedbackId,
       anonymousId: config.anonymousId,
       recentRenders: config.recentRenders,
+      lastCheck: config.lastCheck,
     });
     const envWithJoinKeys = doctorSummary ? `${doctorSummary} ${joinKeys}` : joinKeys;
 

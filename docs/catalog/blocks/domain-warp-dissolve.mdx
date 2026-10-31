@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Domain Warp Dissolve</h1>
+  <p>Shader transition with fractal noise domain warping</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/domain-warp-dissolve.json"
   compositionId="domain-warp-dissolve"
   compositionSrc="compositions/domain-warp-dissolve.html"
   title="Domain Warp Dissolve"
-  description="Shader transition with fractal noise domain warping"
   variables={[]}
   meta={{"duration":4,"width":1920,"height":1080,"category":"Shader Transitions","badge":"Stable","codeLines":380}}
   attribution={{"path":"registry/blocks/domain-warp-dissolve","tags":["transition","shader"]}}
@@ -415,7 +419,9 @@ That writes one file: `compositions/domain-warp-dissolve.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -446,6 +452,4 @@ Tagged `transition` `shader`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Nebula</h1>
+  <p>A small world of pink and blue gas swirls inside a sphere on black. A WebGPU shader from the Shaders library (shaders.com, MIT).</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/nebula.json"
   compositionId="nebula"
   compositionSrc="compositions/nebula.html"
   title="Nebula"
-  description="A small world of pink and blue gas swirls inside a sphere on black. A WebGPU shader from the Shaders library (shaders.com, MIT)."
   variables={[]}
   meta={{"duration":2,"width":1920,"height":1080,"category":"Blocks","badge":"Stable","codeLines":31}}
   attribution={{"path":"registry/blocks/nebula","tags":["webgpu","webgpu-shader","object","space","nebula","sphere"]}}
@@ -68,7 +72,9 @@ That writes `compositions/nebula.html`, plus 2 supporting files under `compositi
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -99,6 +105,4 @@ Tagged `webgpu` `webgpu-shader` `object` `space` `nebula` `sphere`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

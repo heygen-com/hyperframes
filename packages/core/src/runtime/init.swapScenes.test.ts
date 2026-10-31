@@ -1924,6 +1924,28 @@ describe("the preview's scene window", () => {
     }
   });
 
+  it("settles when a scene it would retire cannot be retired, instead of planning it again forever", async () => {
+    bootWindowed([S0, S1, S2], trackingRoot().root);
+    await tick();
+    window.__hfSceneAnimations = { s0: [made.a1] };
+    window.__timelines.elsewhere = made.a1;
+    try {
+      await seekAndSettle(5);
+      const host = sceneHost("s0");
+      const has = host.hasAttribute.bind(host);
+      let asks = 0;
+      host.hasAttribute = (name: string) => {
+        // A runaway plan starves every timer; seeking back to s0 is what ends it, so a failure fails, not hangs.
+        if (name === "data-hf-scene-no-swap" && ++asks === 1000) window.__player?.seek(0.5);
+        return has(name);
+      };
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(asks).toBeLessThan(100);
+    } finally {
+      delete window.__hfSceneAnimations;
+    }
+  });
+
   it("shows a scene mounted again after the visibility pass hid it by display and it unmounted", async () => {
     const leaf: Scene = { ...S2, body: "<p>two</p>", extraAttrs: ' style="position: static"' };
     bootWindowed([S0, S1, leaf], trackingRoot().root);

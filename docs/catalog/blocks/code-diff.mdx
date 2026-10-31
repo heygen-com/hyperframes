@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Code Diff</h1>
+  <p>An edit shown as a colored diff — removed lines collapse in red, added lines expand in green.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/code-diff.json"
   compositionId="code-diff"
   compositionSrc="compositions/code-diff.html"
   title="Code Diff"
-  description="An edit shown as a colored diff — removed lines collapse in red, added lines expand in green."
   variables={[]}
   meta={{"duration":6,"width":1920,"height":1080,"category":"Code Animations","badge":"Stable","codeLines":816}}
   attribution={{"path":"registry/blocks/code-diff","tags":["code","code-animation","diff","developer"]}}
@@ -851,7 +855,9 @@ That writes one file: `compositions/code-diff.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -882,6 +888,4 @@ Tagged `code` `code-animation` `diff` `developer`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

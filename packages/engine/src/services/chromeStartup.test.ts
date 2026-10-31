@@ -102,6 +102,8 @@ describe("explainChromeLaunchFailure for a browser Windows refuses to run", () =
     expect(explained.message).toContain(executablePath);
     expect(explained.message).toContain("error -4094");
     expect(explained.message).toContain("browser ensure --force");
+    expect(explained.message).toContain("Application Control");
+    expect(explained.message).toContain("HYPERFRAMES_BROWSER_PATH");
     expect(explained.cause).toBe(refused);
     expect(existsSync(marker)).toBe(false);
   });

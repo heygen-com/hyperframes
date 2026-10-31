@@ -82,6 +82,15 @@ function docs(repeat = 1) {
   });
 }
 
+function docsForSnippet(motionDev: string) {
+  return motionContextToDocs(
+    {
+      nodes: [{ nodeId: "1:2", nodeName: "Box", codeSnippets: { motionDev } }],
+    },
+    { selectorFor: () => "#box" },
+  );
+}
+
 describe("motionContextToDocs", () => {
   it("produces one doc per animated node with caller-supplied selectors", () => {
     const out = docs();
@@ -125,6 +134,57 @@ describe("motionContextToDocs", () => {
     const opacity = headline?.tracks.find((t) => t.property === "opacity");
     expect(opacity?.values).toEqual([0, 0, 1, 1]);
     expect(opacity?.times).toEqual([0, 0.0686, 0.2273, 1]);
+  });
+
+  it("keeps y values and timing separate when opacity appears first", () => {
+    const out = docsForSnippet(
+      '<motion.div initial={{ opacity: 0, y: 120, }} animate={{ opacity: [0, 0, 1, 1], y: [120, 120, 0, 0], }} transition={{ opacity: { duration: 4.5, times: [0, 0.0444, 0.1333, 1], ease: ["linear", "easeOut", "linear"], repeat: Infinity }, y: { duration: 4.5, times: [0, 0.0444, 0.2222, 1], ease: ["linear", "easeOut", "linear"], repeat: Infinity }, }} />',
+    );
+    const opacity = out[0]?.tracks.find((track) => track.property === "opacity");
+    const y = out[0]?.tracks.find((track) => track.property === "y");
+
+    expect(opacity?.values).toEqual([0, 0, 1, 1]);
+    expect(opacity?.times).toEqual([0, 0.0444, 0.1333, 1]);
+    expect(y?.values).toEqual([120, 120, 0, 0]);
+    expect(y?.times).toEqual([0, 0.0444, 0.2222, 1]);
+  });
+
+  it("keeps opacity values and timing separate when y appears first", () => {
+    const out = docsForSnippet(
+      '<motion.div initial={{ y: 120, opacity: 0, }} animate={{ y: [120, 120, 0, 0], opacity: [0, 0, 1, 1], }} transition={{ y: { duration: 4.5, times: [0, 0.0444, 0.2222, 1], ease: ["linear", "easeOut", "linear"], repeat: Infinity }, opacity: { duration: 4.5, times: [0, 0.0444, 0.1333, 1], ease: ["linear", "easeOut", "linear"], repeat: Infinity }, }} />',
+    );
+    const y = out[0]?.tracks.find((track) => track.property === "y");
+    const opacity = out[0]?.tracks.find((track) => track.property === "opacity");
+
+    expect(y?.values).toEqual([120, 120, 0, 0]);
+    expect(y?.times).toEqual([0, 0.0444, 0.2222, 1]);
+    expect(opacity?.values).toEqual([0, 0, 1, 1]);
+    expect(opacity?.times).toEqual([0, 0.0444, 0.1333, 1]);
+  });
+
+  it("uses each suffix property's own transition duration and ease", () => {
+    const out = docsForSnippet(
+      '<motion.div animate={{ opacity: [0, 1], y: [120, 0], }} transition={{ opacity: { duration: 2.25, times: [0, 1], ease: "easeIn" }, y: { duration: 4.5, times: [0, 1], ease: "easeOut" }, }} />',
+    );
+    const opacity = out[0]?.tracks.find((track) => track.property === "opacity");
+    const y = out[0]?.tracks.find((track) => track.property === "y");
+
+    expect(opacity).toMatchObject({ duration: 2.25, ease: ["easeIn"] });
+    expect(y).toMatchObject({ duration: 4.5, ease: ["easeOut"] });
+  });
+
+  it("does not read arrays or scalars from longer transition keys", () => {
+    const out = docsForSnippet(
+      '<motion.div animate={{ y: [120, 120, 0, 0], }} transition={{ y: { retimes: [0, 0.01, 0.02, 1], times: [0, 0.0444, 0.2222, 1], preduration: 9, duration: 4.5, preease: "anticipate", ease: "easeOut" }, }} />',
+    );
+
+    expect(out[0]?.tracks[0]).toMatchObject({
+      property: "y",
+      values: [120, 120, 0, 0],
+      times: [0, 0.0444, 0.2222, 1],
+      ease: ["easeOut", "easeOut", "easeOut"],
+      duration: 4.5,
+    });
   });
 
   it("preserves bezier easing arrays and applies the requested repeat", () => {

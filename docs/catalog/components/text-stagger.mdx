@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Text Stagger</h1>
+  <p>A transitions.dev-inspired text stagger primitive with enter, shimmer, and exit-ready words</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/text-stagger.json"
   compositionId="text-stagger"
   compositionSrc="compositions/components/text-stagger.html"
   title="Text Stagger"
-  description="A transitions.dev-inspired text stagger primitive with enter, shimmer, and exit-ready words"
   variables={[{"id":"text","type":"string","role":"content","label":"Text","description":"Headline copy. Every whitespace-separated word becomes one staggered span.","default":"Build motion systems fast"},{"id":"size","type":"number","role":"layout","label":"Size","description":"Type size of every word in pixels, clamped to 24-160. Line height stays proportional.","default":74,"min":24,"max":160,"step":1,"unit":"px"},{"id":"tone","type":"enum","role":"style","label":"Tone","description":"Base word colour: ink for light frames, paper for dark ones.","default":"ink","options":[{"value":"ink","label":"Ink"},{"value":"paper","label":"Paper"}]},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Colour of the shimmer the second timeline step sweeps across the words.","default":"blue","options":[{"value":"blue","label":"Blue"},{"value":"green","label":"Green"},{"value":"violet","label":"Violet"}]}]}
   meta={{"category":"Motion Primitives","badge":"Stable","codeLines":132}}
   attribution={{"path":"registry/components/text-stagger","tags":["video-primitive","transition-primitive","transitions-dev-port","text","stagger"]}}
@@ -167,7 +171,9 @@ That writes one file: `compositions/components/text-stagger.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -210,6 +216,4 @@ Tagged `video-primitive` `transition-primitive` `transitions-dev-port` `text` `s
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

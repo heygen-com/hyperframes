@@ -1,8 +1,10 @@
+import { gsapCdnDist } from "@hyperframes/core/gsap-cdn";
 import { EventEmitter } from "node:events";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TimeoutError, type Page } from "puppeteer-core";
 import {
   gotoWhenSent,
+  explainProxyRefusal,
   isNavigationTimeoutError,
   navigateForCapture,
   networkIdleAttemptTimeoutMs,
@@ -286,7 +288,7 @@ describe("waitForPageReady", () => {
 /** A page whose goto keeps Puppeteer's contract: a non-zero timeout rejects the navigation. */
 function fakeChromePage() {
   const session = Object.assign(new EventEmitter(), {
-    send: async () => undefined,
+    send: async (_method: string, _params?: Record<string, unknown>) => undefined,
     detach: vi.fn(async () => undefined),
   });
   let load: (response: unknown) => void = () => undefined;
@@ -323,6 +325,37 @@ function fakeChromePage() {
 describe("gotoWhenSent", () => {
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it("answers the page's request for jsDelivr GSAP from the bundled copy, and lets any other request go", async () => {
+    const chrome = fakeChromePage();
+    const sent: Array<[string, Record<string, unknown> | undefined]> = [];
+    chrome.session.send = async (method: string, params?: Record<string, unknown>) => {
+      sent.push([method, params]);
+    };
+    const opened = gotoWhenSent(chrome.page, "http://127.0.0.1:1/", 10_000);
+    await vi.waitFor(() => expect(sent.map(([method]) => method)).toContain("Fetch.enable"));
+    chrome.session.emit("Fetch.requestPaused", {
+      requestId: "gsap",
+      request: { url: `${gsapCdnDist()}gsap.min.js` },
+    });
+    chrome.session.emit("Fetch.requestPaused", {
+      requestId: "other",
+      request: { url: "https://cdn.example/lib.js" },
+    });
+    await vi.waitFor(() =>
+      expect(sent.map(([method]) => method)).toContain("Fetch.continueRequest"),
+    );
+    const fulfilled = sent.find(([method]) => method === "Fetch.fulfillRequest")?.[1];
+    expect(fulfilled).toMatchObject({ requestId: "gsap", responseCode: 200 });
+    expect(Buffer.from(String(fulfilled?.body), "base64").toString()).toContain("GreenSock");
+    expect(sent.find(([method]) => method === "Fetch.continueRequest")?.[1]).toEqual({
+      requestId: "other",
+    });
+    chrome.navigate();
+    chrome.send();
+    chrome.load({ status: () => 200 });
+    await opened;
   });
 
   it("gives the page its whole budget after a cold Chrome is slow to send the request", async () => {
@@ -463,5 +496,59 @@ describe("settleAcrossNavigation", () => {
     await expect(page.evaluate(read)).rejects.toThrow("boom");
     expect(reads).toHaveBeenCalledTimes(1);
     expect(waitForNetworkIdle).not.toHaveBeenCalled();
+  });
+});
+
+describe("a proxy that was in the way", () => {
+  const failWith = async (message: string, url = "https://shop.example.com/") => {
+    const goto = vi.fn().mockRejectedValue(new Error(message));
+    return (await navigateForCapture({ goto }, url, 120_000).then(
+      () => undefined,
+      (err: unknown) => err,
+    )) as Error;
+  };
+
+  it("that refused the tunnel to the site is named, with the code kept", async () => {
+    const failure = await failWith(
+      "net::ERR_TUNNEL_CONNECTION_FAILED at https://shop.example.com/x?q=1",
+    );
+    expect(failure.message).toBe(
+      "Your network's proxy refused the connection to shop.example.com. Ask whoever runs it to allow shop.example.com. (net::ERR_TUNNEL_CONNECTION_FAILED)",
+    );
+    expect((failure.cause as Error).message).toContain("/x?q=1");
+  });
+
+  it("that could not be reached itself is not asked to allow the site", async () => {
+    const failure = await failWith("net::ERR_PROXY_CONNECTION_FAILED at https://shop.example.com/");
+    expect(failure.message).toBe(
+      "Could not reach your network's proxy. Check the proxy address and that the proxy is running, or ask whoever runs it. (net::ERR_PROXY_CONNECTION_FAILED)",
+    );
+    expect(failure.message).not.toContain("allow");
+  });
+
+  it("names no raw address when the site's cannot be read", () => {
+    const failure = explainProxyRefusal(
+      new Error("net::ERR_TUNNEL_CONNECTION_FAILED"),
+      "not a url at all",
+    ) as Error;
+    expect(failure.message).toContain("connection to the site");
+    expect(failure.message).not.toContain("not a url");
+  });
+
+  it("is named after a networkidle2 timeout falls back too", async () => {
+    const goto = vi
+      .fn()
+      .mockRejectedValueOnce(new TimeoutError("Navigation timeout of 30000 ms exceeded"))
+      .mockRejectedValueOnce(new Error("net::ERR_TUNNEL_CONNECTION_FAILED at https://a.example/"));
+    await expect(navigateForCapture({ goto }, "https://a.example/", 120_000)).rejects.toThrow(
+      /proxy refused the connection to a\.example/,
+    );
+  });
+
+  it("leaves every other failure as it was", async () => {
+    const name = new Error("net::ERR_NAME_NOT_RESOLVED at https://nope.example/");
+    expect(explainProxyRefusal(name, "https://nope.example/")).toBe(name);
+    const goto = vi.fn().mockRejectedValue(name);
+    await expect(navigateForCapture({ goto }, "https://nope.example/", 120_000)).rejects.toBe(name);
   });
 });

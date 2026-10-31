@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Stripes</h1>
+  <p>Bold black and white diagonal stripes slide across the frame. A WebGPU shader from the Shaders library (shaders.com, MIT).</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/stripes.json"
   compositionId="stripes"
   compositionSrc="compositions/stripes.html"
   title="Stripes"
-  description="Bold black and white diagonal stripes slide across the frame. A WebGPU shader from the Shaders library (shaders.com, MIT)."
   variables={[]}
   meta={{"duration":2,"width":1920,"height":1080,"category":"Blocks","badge":"Stable","codeLines":31}}
   attribution={{"path":"registry/blocks/stripes","tags":["webgpu","webgpu-shader","background","pattern","stripes","monochrome"]}}
@@ -68,7 +72,9 @@ That writes `compositions/stripes.html`, plus 2 supporting files under `composit
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -99,6 +105,4 @@ Tagged `webgpu` `webgpu-shader` `background` `pattern` `stripes` `monochrome`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

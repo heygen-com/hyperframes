@@ -526,3 +526,37 @@ export function* rhythmSteps(signal: AudioSignal): Steps<Rhythm> {
   entry.rhythm ??= yield* rhythmOf(entry.frames);
   return entry.rhythm;
 }
+
+const SPAN_SECONDS = 6;
+
+export interface BeatEvidence {
+  confidence: number;
+  lift: number;
+}
+
+/** Steady-beat confidence over six seconds around each time, and its onset's lift there, at any level. */
+export function localBeatEvidence(
+  signal: AudioSignal,
+  times: readonly number[],
+  beatSeconds?: number,
+): BeatEvidence[] {
+  const { broad, fps } = onsetCurves(bandFramesOf(signal));
+  const half = Math.round((SPAN_SECONDS / 2) * fps);
+  const whole = beatSeconds ?? medianInterval(times) ?? 0;
+  if (whole * fps < 2) return times.map(() => ({ confidence: 0, lift: 0 }));
+  const local = smoothed(broad, whole * fps);
+  return times.map((t) => {
+    const centre = Math.round((t - ONSET_LAG_SECONDS) * fps);
+    const from = Math.max(0, centre - half);
+    const to = Math.min(broad.length, centre + half);
+    const near = times.filter((other) => Math.abs(other - t) * fps <= half);
+    const lag = Math.round((beatSeconds ?? medianInterval(near) ?? whole) * fps);
+    const ac = autocorrelation(broad.subarray(from, to), lag + 1);
+    const clarity = Math.max(ac[lag - 1] ?? 0, ac[lag] ?? 0, ac[lag + 1] ?? 0);
+    const span = local.subarray(from, to);
+    const mean = span.reduce((sum, v) => sum + v, 0) / (span.length || 1);
+    const peak = Math.max(...[-2, -1, 0, 1, 2].map((d) => local[centre + d] ?? 0));
+    const lift = mean > 0 ? peak / mean - 1 : 0;
+    return { confidence: beatConfidence(clarity, lift), lift };
+  });
+}

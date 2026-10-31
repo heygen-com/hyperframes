@@ -1050,6 +1050,10 @@ describe("render telemetry events", () => {
       stageCaptureSetupMs: 1860,
       stageCaptureFrameMs: 3240,
       captureAvgMs: 27,
+      captureSeekAvgMs: 6,
+      captureBeforeCaptureAvgMs: 2,
+      captureScreenshotAvgMs: 15,
+      encoderWaitAvgMs: 4,
     });
 
     expect(trackEvent).toHaveBeenCalledWith(
@@ -1059,6 +1063,10 @@ describe("render telemetry events", () => {
         stage_capture_setup_ms: 1860,
         stage_capture_frame_ms: 3240,
         capture_avg_ms: 27,
+        capture_seek_avg_ms: 6,
+        capture_before_capture_avg_ms: 2,
+        capture_screenshot_avg_ms: 15,
+        encoder_wait_avg_ms: 4,
       }),
       undefined,
     );
@@ -1395,11 +1403,14 @@ describe("auth login telemetry events", () => {
   });
 
   it("identifyUser emits a $identify alias linking the anon install to the identity", () => {
-    identifyUser("alice@example.com");
+    identifyUser("user-id-1", { email: "alice@example.com", heygen_username: "alice" });
     expect(trackEvent).toHaveBeenCalledWith(
       "$identify",
-      { $anon_distinct_id: "anon-test-123" },
-      "alice@example.com",
+      {
+        $anon_distinct_id: "anon-test-123",
+        $set: { email: "alice@example.com", heygen_username: "alice" },
+      },
+      "user-id-1",
     );
   });
 

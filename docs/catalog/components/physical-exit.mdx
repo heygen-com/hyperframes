@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Physical Exit</h1>
+  <p>A card exits with physical momentum in toss, drop, or slide mode, carrying acceleration and rotation through the final offscreen pose without fading.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/physical-exit.json"
   compositionId="physical-exit"
   compositionSrc="compositions/components/physical-exit.html"
   title="Physical Exit"
-  description="A card exits with physical momentum in toss, drop, or slide mode, carrying acceleration and rotation through the final offscreen pose without fading."
   variables={[{"id":"mode","type":"enum","role":"motion","label":"Exit mode","description":"Physical behavior used to carry the card offscreen.","default":"toss","options":[{"value":"toss","label":"Toss"},{"value":"drop","label":"Drop"},{"value":"slide","label":"Slide"}]},{"id":"text","type":"string","role":"content","label":"Card text","description":"Word displayed on the exiting card.","default":"Later"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Color applied to the card edge.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]}]}
   meta={{"category":"Motion Scenes","badge":"Stable","codeLines":247}}
   attribution={{"path":"registry/components/physical-exit","tags":["motion-primitive","exit","momentum","toss","drop","slide"]}}
@@ -282,7 +286,9 @@ That writes one file: `compositions/components/physical-exit.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -323,6 +329,4 @@ Tagged `motion-primitive` `exit` `momentum` `toss` `drop` `slide`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

@@ -52,7 +52,7 @@ function mountTimingFilm() {
   initSandboxRuntimeModular();
   step(40);
   let land = () => {};
-  registerSeekCompletion(new Promise<void>((resolve) => (land = resolve)));
+  registerSeekCompletion(new Promise<void>((resolve) => (land = resolve)), "hf-seek");
   posts.length = 0;
   const editTiming = async () => {
     document.getElementById("clip")!.setAttribute("data-duration", "12");

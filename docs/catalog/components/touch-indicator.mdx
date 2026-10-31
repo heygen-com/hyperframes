@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Touch Indicator</h1>
+  <p>A translucent contact-circle gesture actor for mobile UI scenes: it touches the glass on the frame the host target responds, then lifts. Tap or swipe, picked by variable.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/touch-indicator.json"
   compositionId="touch-indicator"
   compositionSrc="compositions/components/touch-indicator.html"
   title="Touch Indicator"
-  description="A translucent contact-circle gesture actor for mobile UI scenes: it touches the glass on the frame the host target responds, then lifts. Tap or swipe, picked by variable."
   variables={[{"id":"gesture","type":"enum","label":"Gesture","default":"tap","options":[{"value":"tap","label":"Tap"},{"value":"swipe","label":"Swipe"}]},{"id":"polarity","type":"enum","label":"Polarity","default":"light","options":[{"value":"light","label":"Light (on dark UI)"},{"value":"dark","label":"Dark (on light UI)"}]},{"id":"targetX","type":"number","label":"Target X","default":50,"min":0,"max":100,"unit":"%"},{"id":"targetY","type":"number","label":"Target Y","default":55,"min":0,"max":100,"unit":"%"}]}
   meta={{"category":"Cursors","badge":"Stable","codeLines":250}}
   attribution={{"path":"registry/components/touch-indicator","tags":["cursor","motion-primitive","mobile","gesture","touch","pointer"]}}
@@ -285,7 +289,9 @@ That writes one file: `compositions/components/touch-indicator.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -327,6 +333,4 @@ Tagged `cursor` `motion-primitive` `mobile` `gesture` `touch` `pointer`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

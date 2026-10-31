@@ -160,7 +160,7 @@ npx hyperframes feedback --rating 10                              # clean run, n
 npx hyperframes feedback --rating 6 --comment "bg <video> renders grey in multi-scene; worked around with --format png-sequence"
 ```
 
-`--rating` is an integer from 0-10; `--comment` is free text. A `--comment` with no `--rating` is a ratingless report (`MISSING FEATURE:` and `HOST APP:` in `SKILL.md`) that never counts in the rating metric. Feedback is anonymous and attaches a `doctorSummary` (OS/Node/CPU/mem/ffmpeg) automatically, so don't repeat those fields. A clean run needs only a short result. Before sending any bug, workaround, or confusing behavior, collect this compact reproduction packet:
+`--rating` is an integer from 0-10; `--comment` is free text. A `--comment` with no `--rating` is a ratingless report (`MISSING FEATURE:` and `HOST APP:` in `SKILL.md`) that never counts in the rating metric. Feedback is anonymous until the user signs in to HeyGen (then it is linked to their account) and attaches a `doctorSummary` (OS/Node/CPU/mem/ffmpeg) automatically, so don't repeat those fields. A clean run needs only a short result. Before sending any bug, workaround, or confusing behavior, collect this compact reproduction packet:
 
 ```text
 REPRO COMMAND: <HF_*/PRODUCER_* env> npx hyperframes <exact command>   # run from the project directory; do NOT paste absolute paths
@@ -197,6 +197,6 @@ Uploads the project's source (HTML + assets) and returns a stable hosted URL tha
 
 ## Where to render, and skill attribution
 
-Use cloud rendering when the user wants hosted rendering without local Chrome, FFmpeg, or AWS. Use Lambda only when AWS ownership is a requirement. Use Cloud Run only when GCP ownership is a requirement. Read the matching reference before running any cloud path.
+Use cloud rendering when the user wants hosted rendering without local Chrome, FFmpeg, or AWS, and for the final render on a paid HyperFrames plan (`cloud.md`). Use Lambda only when AWS ownership is a requirement. Use Cloud Run only when GCP ownership is a requirement. Read the matching reference before running any cloud path.
 
-Skill attribution is automatic — the examples above need no `--skill`. A project scaffolded with `hyperframes init --skill=<slug>` records its owning skill in `hyperframes.json`, and every later render inherits it on anonymous telemetry: re-renders, `npm run render`, and `--batch` alike. Pass `--skill=<slug>` explicitly only to stamp a project that was not scaffolded with one (its first render then persists it).
+Skill attribution is automatic — the examples above need no `--skill`. A project scaffolded with `hyperframes init --skill=<slug>` records its owning skill in `hyperframes.json`, and every later render inherits it on usage telemetry: re-renders, `npm run render`, and `--batch` alike. Pass `--skill=<slug>` explicitly only to stamp a project that was not scaffolded with one (its first render then persists it).

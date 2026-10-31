@@ -2,6 +2,7 @@ import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { relative, resolve } from "node:path";
 import {
   absoluteLoudnessPlan,
+  absoluteOutcome,
   audioNormalizationPlan,
   audioTags,
   DEFAULT_TARGET_LUFS,
@@ -169,7 +170,7 @@ async function plannedNormalization(
   if (options.reference === undefined) {
     const targetTag = byId(tags, options.target, "Target");
     const plan = await measuredAbsolutePlan(projectDir, targetTag, parsedLufs(options.lufs));
-    const withinTolerance = targetTag.volume > 0 && Math.abs(plan.changeDb) <= tolerance;
+    const withinTolerance = targetTag.volume > 0 && absoluteOutcome(plan, tolerance) === "matched";
     return { targetTag, withinTolerance, plan: { mode: "absolute", ...plan } };
   }
   const { referenceTag, targetTag } = selectedTags(tags, options.reference, options.target);
@@ -189,7 +190,9 @@ async function normalizeAudio(options: NormalizeAudioOptions): Promise<Normalize
     tolerance,
   );
   const filePath = resolve(project.dir, targetTag.file);
-  const wrote = options.write && !withinTolerance;
+  const heldByLimit =
+    plan.mode === "absolute" && targetTag.volume > 0 && absoluteOutcome(plan, tolerance) === "held";
+  const wrote = options.write && !withinTolerance && !heldByLimit;
   if (wrote) {
     writeAtomically(
       filePath,
@@ -225,6 +228,15 @@ function printHumanResult(result: NormalizeAudioResult): void {
     console.log(
       c.success(`Already matched within ${result.tolerance.toFixed(1)} LU; no change needed.`),
     );
+    return;
+  }
+
+  if (
+    result.mode === "absolute" &&
+    result.previousVolume > 0 &&
+    absoluteOutcome(result, result.tolerance) === "held"
+  ) {
+    console.log(c.dim("Cannot get closer to the target; the gain is unchanged."));
     return;
   }
 

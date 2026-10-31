@@ -44,6 +44,20 @@ function shadowPlayerReachable(iframe: HTMLIFrameElement | null): boolean {
   }
 }
 
+function shadowPagePhase(iframe: HTMLIFrameElement | null): string {
+  const doc = iframe?.contentDocument;
+  if (!doc || doc.URL === "about:blank") return "no-page";
+  const win = iframe!.contentWindow as unknown as Record<string, unknown>;
+  if (doc.readyState === "loading") return "page-loading";
+  if (win.__hfStartupError) return "startup-error";
+  if (!win.__hyperframes) return "runtime-not-run";
+  if (!win.__hyperframeRuntimeBootstrapped) return "scripts-waiting";
+  return "no-player";
+}
+
+const pageGotTo = (iframe: HTMLIFrameElement | null) =>
+  shadowPlayerReachable(iframe) ? "" : ` Its page had got to: ${shadowPagePhase(iframe)}.`;
+
 function isDocumentHidden(): boolean {
   return typeof document !== "undefined" && document.visibilityState === "hidden";
 }
@@ -123,6 +137,7 @@ export function useShadowPreviewReload({
         : pendingCommitRef.current?.gen !== gen
           ? "its timeline to be ready"
           : "its loaders to clear";
+      const got = pageGotTo(shadowIframeRef.current);
       shadowGenRef.current += 1;
       stopPendingShadow();
       shadowIframeRef.current = null;
@@ -130,7 +145,7 @@ export function useShadowPreviewReload({
       pendingSeekRef.current = null;
       setPreviewSlots(planShadowDiscard);
       setPreviewReloading(false);
-      const message = `The preview did not reload (${cause}). It was still waiting for ${waitingFor}. The previous preview is still showing.`;
+      const message = `The preview did not reload (${cause}). It was still waiting for ${waitingFor}.${got} The previous preview is still showing.`;
       logReload("shadow-failed", { cause, waitingFor });
       const refused = refusedPreviewStatus(cause);
       const pageMissingNow = refused !== null && refused < 500;

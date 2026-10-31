@@ -65,22 +65,12 @@ if (rootVersionRequested) {
   process.exit(0);
 }
 
-// Capture treats CWD as project data too: its early loader must use the same
-// allowlist/opt-out as output ancestors, before browser selection can observe it.
-const { applyDotEnv, CAPTURE_ENV_KEYS } = await import("./utils/dotEnv.js");
+// The working directory is project data: load only the settings a project `.env` may supply,
+// before browser selection can observe the environment.
+const { loadProjectDotEnv } = await import("./utils/dotEnv.js");
 const captureEnv = argv[commandWordIndex(argv)] === "capture";
 if (!captureEnv || process.env.HYPERFRAMES_NO_CAPTURE_DOTENV !== "1") {
-  try {
-    const { readFileSync } = await import("node:fs");
-    const envPath = resolve(process.cwd(), ".env");
-    applyDotEnv(
-      readFileSync(envPath, "utf-8"),
-      process.env,
-      captureEnv ? CAPTURE_ENV_KEYS : undefined,
-    );
-  } catch {
-    /* .env not present — fine, env vars may be set another way */
-  }
+  loadProjectDotEnv(process.cwd(), process.env, (line) => console.error(line));
 }
 
 // ── Lazy imports ────────────────────────────────────────────────────────────
@@ -98,7 +88,7 @@ import {
   markCommandDelivered,
 } from "./utils/render-success-state.js";
 import { resolveCommandUsage, type ResolvedCommandUsage } from "./utils/commandUsageResolution.js";
-import { closestMatch } from "./utils/didYouMean.js";
+import { closestMatch, synonymMatch } from "./utils/didYouMean.js";
 import { jsonErrorBody, watchOutput, writeJsonFailure } from "./utils/jsonError.js";
 import { isDevMode } from "./utils/env.js";
 import {
@@ -107,6 +97,7 @@ import {
   CliUsageError,
   USAGE_EXIT_CODE,
   consumeCommandResult,
+  endProcess,
   outputWritten,
   registerRootExitCodeSanitizer,
   registerRootExitRequester,
@@ -185,6 +176,9 @@ const commandLoaders = {
     import("./commands/media-treatment.js").then((m) => m.mediaTreatmentCommand),
   "grade-compare": () => import("./commands/grade-compare.js").then((m) => m.default),
   compare: () => import("./commands/compare.js").then((m) => m.default),
+  diff: () => import("./commands/diff.js").then((m) => m.default),
+  measure: () => import("./commands/measure.js").then((m) => m.default),
+  billing: () => import("./commands/billing.js").then((m) => m.default),
   capture: () => import("./commands/capture.js").then((m) => m.default),
   lambda: () => import("./commands/lambda.js").then((m) => m.default),
   cloudrun: () => import("./commands/cloudrun.js").then((m) => m.default),
@@ -380,7 +374,13 @@ registerRootExitRequester((exitCode) => {
     presented: true,
   }).finally(async () => {
     await outputWritten();
-    process.exit(exitCode);
+    endProcess(exitCode, {
+      exit: (code) => process.exit(code),
+      setExitCode: (code) => {
+        process.exitCode = code;
+      },
+      later: setTimeout,
+    });
   });
 });
 
@@ -542,7 +542,10 @@ async function unknownCommandError(requested: ResolvedCommandUsage): Promise<Cli
   const group = ["hyperframes", ...requested.path].join(" ");
   const declared = requested.command.subCommands;
   const subCommands = typeof declared === "function" ? await declared() : await declared;
-  const match = closestMatch(word, Object.keys(subCommands ?? {}));
+  const names = Object.keys(subCommands ?? {});
+  const match =
+    (requested.path.length === 0 ? synonymMatch(word, names) : undefined) ??
+    closestMatch(word, names);
   console.error(`Unknown command: ${word}`);
   if (match) console.error(`Did you mean '${group} ${match}'?`);
   console.error("");

@@ -12,6 +12,7 @@ import { basename, join } from "path";
 import { cpus } from "os";
 import { createConcurrencyLimit } from "../utils/concurrencyLimit.js";
 import { parseHTML } from "linkedom";
+import { HF_COLOR_GRADING_ATTR } from "@hyperframes/core";
 import { isPathInside } from "@hyperframes/parsers/asset-paths";
 import { resolveProjectRelativeSrc } from "@hyperframes/parsers/asset-resolution";
 import { alphaDecoderFor } from "@hyperframes/parsers/media-alpha";
@@ -45,6 +46,7 @@ import {
   extractFinalVideoFrameTimestamp,
   extractMediaMetadata,
   ffmpegSeekSeconds,
+  formatFfmpegSeconds,
   keyframeGapSeconds,
   mediaFileIdentity,
   readMetadataCache,
@@ -69,7 +71,7 @@ import {
   UrlDownloadError,
   writeUrlDownloadTelemetry,
 } from "../utils/urlDownloader.js";
-import { runFfmpeg, type RunFfmpegResult } from "../utils/runFfmpeg.js";
+import { ffmpegStatsReader, runFfmpeg, type RunFfmpegResult } from "../utils/runFfmpeg.js";
 import {
   isFfmpegFilterAvailable,
   isFfmpegHwaccelAvailable,
@@ -104,6 +106,7 @@ export interface VideoElement {
   loop: boolean;
   hasAudio: boolean;
   hidden?: boolean;
+  graded?: boolean;
 }
 
 export interface ExtractedFrames {
@@ -292,6 +295,7 @@ export interface ExtractionOptions {
   collectProbeFailures?: boolean;
   /** Extract only these runs of output frames, named as a full extraction names them. CFR only. */
   frameRanges?: readonly FrameRange[];
+  onProgress?: (progress: { planned?: number; done?: number }) => void;
   /** A short decode of a remote source, only to count its frames: it waits on the network, so it runs wider. */
   tailProbe?: boolean;
   /**
@@ -843,6 +847,7 @@ export function parseVideoElements(html: string): VideoElement[] {
       (isAudibleVideoElement(el) && isMemberGroupHidden(groupsById, el))
         ? { hidden: true }
         : {}),
+      ...(el.hasAttribute(HF_COLOR_GRADING_ATTR) ? { graded: true } : {}),
     });
   }
 
@@ -854,6 +859,14 @@ export interface ImageElement {
   src: string;
   start: number;
   end: number;
+  graded?: boolean;
+}
+
+export function hasGradedCanvas(html: string): boolean {
+  return (
+    parseHTML(unwrapTemplate(html)).document.querySelector(`canvas[${HF_COLOR_GRADING_ATTR}]`) !==
+    null
+  );
 }
 
 export function parseImageElements(html: string): ImageElement[] {
@@ -893,7 +906,13 @@ export function parseImageElements(html: string): ImageElement[] {
       end = Infinity;
     }
 
-    images.push({ id, src, start, end });
+    images.push({
+      id,
+      src,
+      start,
+      end,
+      ...(el.hasAttribute(HF_COLOR_GRADING_ATTR) ? { graded: true } : {}),
+    });
   }
 
   return images;
@@ -990,6 +1009,18 @@ interface SegmentedExtraction {
   segments: readonly FrameRange[];
   gate: typeof inExtractionSlot;
   runOptions: { signal?: AbortSignal; timeout: number };
+  onProgress?: ExtractionOptions["onProgress"];
+}
+
+function framesWrittenReader(onProgress: ExtractionOptions["onProgress"]) {
+  if (!onProgress) return undefined;
+  let seen = 0;
+  const read = ffmpegStatsReader(({ frames }) => {
+    if (frames === undefined || frames <= seen) return;
+    onProgress({ done: frames - seen });
+    seen = frames;
+  });
+  return (chunk: string) => read(chunk);
 }
 
 /** Split runs so no single ffmpeg process extracts more than `segmentFrames` frames. */
@@ -1029,12 +1060,12 @@ async function runSegmentedExtraction(job: SegmentedExtraction): Promise<RunFfmp
               ...decodeArgs,
               "-noaccurate_seek",
               "-ss",
-              String(job.ffmpegSeek(seek)),
+              formatFfmpegSeconds(job.ffmpegSeek(seek)),
               "-i",
               videoPath,
               // Read one frame past the segment and keep exactly its own frames.
               "-t",
-              String((frames + 1) / fps),
+              formatFfmpegSeconds((frames + 1) / fps),
               "-frames:v",
               String(frames),
               "-start_number",
@@ -1044,6 +1075,7 @@ async function runSegmentedExtraction(job: SegmentedExtraction): Promise<RunFfmp
             {
               ...job.runOptions,
               signal,
+              onStderr: framesWrittenReader(job.onProgress),
               timeout: stallTimeoutMs(
                 job.runOptions.timeout,
                 await leadInSecondsUnlessAborted(videoPath, seek, signal),
@@ -1176,11 +1208,25 @@ async function extractVideoFramesRangeUnredacted(
     // sample. This is intentionally reserved for the one-frame path: input
     // seeking is faster, but valid unindexed transports (notably MPEG-TS with
     // a negative timestamp base) can seek to EOF and emit zero frames.
-    args.push("-i", videoPath, "-ss", String(Math.max(0, ffmpegSeek(startTime))), "-frames:v", "1");
+    args.push(
+      "-i",
+      videoPath,
+      "-ss",
+      formatFfmpegSeconds(Math.max(0, ffmpegSeek(startTime))),
+      "-frames:v",
+      "1",
+    );
   } else {
     // An accurate seek drops the frame on screen at startTime; the fps sampling below needs it.
     if (sampleAtOutputFps) args.push("-noaccurate_seek");
-    args.push("-ss", String(ffmpegSeek(startTime)), "-i", videoPath, "-t", String(duration));
+    args.push(
+      "-ss",
+      formatFfmpegSeconds(ffmpegSeek(startTime)),
+      "-i",
+      videoPath,
+      "-t",
+      formatFfmpegSeconds(duration),
+    );
   }
 
   const vfFilters: string[] = [];
@@ -1188,6 +1234,9 @@ async function extractVideoFramesRangeUnredacted(
     vfFilters.push("format=nv12");
   }
   const samplingAt = vfFilters.length;
+  if (metadata.sampleAspectRatio) {
+    vfFilters.push("scale=trunc(iw*sar/2)*2:ih", "setsar=1");
+  }
   // Each slot takes the last frame starting at or before its time. Ticks of 2 ms or finer
   // first shift half a tick, absorbing container rounding (WebM/MKV use whole ms).
   const samplingFilters = (seek: number): string[] =>
@@ -1255,11 +1304,13 @@ async function extractVideoFramesRangeUnredacted(
             segmentFrames,
           ),
           runOptions,
+          onProgress: options.onProgress,
         })
       : inExtractionSlot(
           async () =>
             runFfmpeg([...hwaccel, ...args, ...filterArgsFor(startTime), ...encodeArgs], {
               ...runOptions,
+              onStderr: framesWrittenReader(options.onProgress),
               timeout: stallTimeoutMs(
                 ffmpegProcessTimeout,
                 options.finalFrameOnly
@@ -1270,6 +1321,11 @@ async function extractVideoFramesRangeUnredacted(
             }),
           signal,
         );
+  options.onProgress?.({
+    planned: options.frameRanges
+      ? options.frameRanges.reduce((sum, range) => sum + range.frames, 0)
+      : totalFrames,
+  });
   let processResult = await extract(decodeWithVideoToolbox ? ["-hwaccel", "videotoolbox"] : []);
   const ffmpegExitedFailing =
     processResult.terminationReason === "exit" &&
@@ -1467,6 +1523,23 @@ const FINAL_FRAME_LOGICAL_DURATION_SECONDS = 1e-6;
 
 export function isVideoPastTimelineEnd(video: Pick<VideoElement, "start">, timelineEnd: number) {
   return video.start >= timelineEnd;
+}
+
+export function alignClipStartToFirstOutputFrame(video: VideoElement, fps: number): void {
+  if (video.loop || !Number.isFinite(video.start) || video.start < 0 || !(fps > 0)) return;
+  const position = exportClipWindow(video.start, Infinity, fps).start * fps;
+  const firstFrame =
+    Math.abs(position - Math.round(position)) < 1e-6 ? Math.round(position) : Math.ceil(position);
+  const shift = firstFrame / fps - video.start;
+  // Float dust (a sum landing a hair off the grid) snaps the start; it never reaches mediaStart.
+  if (Math.abs(shift) < 1e-9) {
+    video.start = firstFrame / fps;
+    return;
+  }
+  const playbackRate = normalizeRateSpec(video.playbackRate);
+  video.mediaStart += sourceTimeAt(playbackRate, shift);
+  video.playbackRate = shiftRateLane(playbackRate, shift);
+  video.start += shift;
 }
 
 /** Move a clip to its extraction window; a rate lane is shifted so it keeps integrating from the new origin. */
@@ -2593,6 +2666,7 @@ export async function extractAllVideoFrames(
       }
       try {
         const metadata = videoMetadata[index] ?? (await extractMediaMetadata(videoPath));
+        alignClipStartToFirstOutputFrame(video, fps);
         const initialWindow = resolveVideoExtractionWindow(video, metadata, options.timelineEnd);
         const window = await resolveFinalFrameExtractionWindow(
           videoPath,

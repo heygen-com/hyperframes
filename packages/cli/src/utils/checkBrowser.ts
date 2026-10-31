@@ -1,4 +1,5 @@
 import type { CheckDeadline } from "./checkDeadline.js";
+import { SEEK_SETTLES_BEFORE_PROTOCOL_TIMEOUT_MS } from "../capture/captureTimeout.js";
 import { logCheckProgress } from "./checkProgress.js";
 import { BrowserCleanupError, closeManagedBrowser, onStopSignal } from "../browser/launch.js";
 import { collectMotionBlurDrafts, dropMotionBlurConsoleEcho } from "./checkMotionBlur.js";
@@ -51,6 +52,7 @@ import {
   decideMediaProxyEligibility,
   proxyVariantFor,
   scanProjectMediaCodecMap,
+  shouldPrewarmProxy,
 } from "@hyperframes/studio-server/media-codec-map";
 import {
   FfmpegUnavailableError,
@@ -100,6 +102,7 @@ interface RuntimeDraft {
   line?: number;
   count?: number;
   abortedImage?: boolean;
+  networkChanged?: boolean;
   fixHint?: string;
 }
 
@@ -165,6 +168,8 @@ function startCopyHeartbeat(
 } {
   const startedAt = Date.now();
   const latest = new Map<number, ProxyProgress>();
+  const total = cached.filter((isCached) => !isCached).length;
+  let finished = 0;
   const timer = setInterval(() => {
     for (const [index, { doneSeconds, totalSeconds }] of latest) {
       if (cached[index]) continue;
@@ -172,14 +177,17 @@ function startCopyHeartbeat(
         ? `${Math.min(100, Math.floor((doneSeconds / totalSeconds) * 100))}%`
         : "";
       console.error(
-        `[hyperframes] browser-playable copy of ${sources[index]!.file}: ${done || `${Math.floor(doneSeconds)}s done`} (${elapsedText(Date.now() - startedAt)} so far)`,
+        `[hyperframes] making browser-playable copies: ${finished} of ${total} done. ${sources[index]!.file}: ${done || `${Math.floor(doneSeconds)}s done`} (${elapsedText(Date.now() - startedAt)} so far)`,
       );
     }
   }, COPY_HEARTBEAT_MS);
   timer.unref();
   return {
     progress: (index, progress) => void latest.set(index, progress),
-    settled: (index) => void latest.delete(index),
+    settled: (index) => {
+      latest.delete(index);
+      if (!cached[index]) finished += 1;
+    },
     stop: () => clearInterval(timer),
   };
 }
@@ -213,7 +221,7 @@ export async function preResolveHostileMediaProxies(
     return none;
   }
   const hostileEntries = Object.entries(codecMap).filter(
-    ([, facts]) => decideMediaProxyEligibility(facts).eligible,
+    ([, facts]) => decideMediaProxyEligibility(facts).eligible && shouldPrewarmProxy(facts),
   );
   if (hostileEntries.length === 0) return none;
 
@@ -393,7 +401,7 @@ export async function runBrowserCheck(
     const rootAnchor = await resolveRootAnchor(page);
     deadline?.keepPartial(() => ({
       runtimeFindings: dropFailedProxyEchoes(
-        keepBrokenImageAborts(drafts, new Set()),
+        keepFailedNetworkChanges(keepBrokenImageAborts(drafts, new Set()), new Set()),
         failedPaths,
       ).map((draft) => runtimeFinding(draft, rootAnchor)),
     }));
@@ -428,12 +436,16 @@ export async function runBrowserCheck(
     const helper = await helperOpen?.catch(() => undefined);
     const merged = helper ? mergeHelperDrafts(sampleLog, helper.sampleLog) : drafts;
     const broken = await abortedImagesStillBroken(page, merged);
+    const unreachable = await networkChangesStillFailing(merged);
     return {
       ...result,
       timings: { ...result.timings, launchSettleMs },
       renderReadyTimedOut: session.renderReadyTimedOut,
       runtimeFindings: dropFailedProxyEchoes(
-        dropMotionBlurConsoleEcho(keepBrokenImageAborts(merged, broken), blur),
+        dropMotionBlurConsoleEcho(
+          keepFailedNetworkChanges(keepBrokenImageAborts(merged, broken), unreachable),
+          blur,
+        ),
         failedPaths,
       ).map((draft) => runtimeFinding(draft, rootAnchor)),
     };
@@ -806,6 +818,13 @@ function wireRuntimeListeners(page: Page, drafts: RuntimeDraft[], clock: Runtime
   wireNetworkListeners(page, drafts, clock);
 }
 
+export function keepFailedNetworkChanges(
+  drafts: RuntimeDraft[],
+  failing: Set<string>,
+): RuntimeDraft[] {
+  return drafts.filter((draft) => !draft.networkChanged || failing.has(draft.url ?? ""));
+}
+
 /** Check's scrubs cancel image loads: an aborted image failed only if an `<img>` shows it and its decode fails. */
 export function keepBrokenImageAborts(drafts: RuntimeDraft[], broken: Set<string>): RuntimeDraft[] {
   return drafts.filter((draft) => !draft.abortedImage || broken.has(draft.url ?? ""));
@@ -850,6 +869,27 @@ function decodedPath(url: URL | undefined): string | undefined {
 }
 
 const IMAGE_DECODE_CAP_MS = 5000;
+
+export async function networkChangesStillFailing(drafts: RuntimeDraft[]): Promise<Set<string>> {
+  const urls = [
+    ...new Set(drafts.filter((draft) => draft.networkChanged).map((draft) => draft.url ?? "")),
+  ];
+  const failing = await Promise.all(
+    urls.map(async (url) => {
+      try {
+        const response = await fetch(url, {
+          headers: { Range: "bytes=0-0" },
+          signal: AbortSignal.timeout(5000),
+        });
+        await response.body?.cancel();
+        return response.status >= 400;
+      } catch {
+        return true;
+      }
+    }),
+  );
+  return new Set(urls.filter((_, i) => failing[i]));
+}
 
 async function abortedImagesStillBroken(page: Page, drafts: RuntimeDraft[]): Promise<Set<string>> {
   const urls = drafts.filter((draft) => draft.abortedImage).map((draft) => draft.url ?? "");
@@ -897,6 +937,7 @@ function wireNetworkListeners(page: Page, drafts: RuntimeDraft[], clock: Runtime
       ...clock.now(),
       url,
       abortedImage: failure === "net::ERR_ABORTED" && request.resourceType() === "image",
+      networkChanged: failure === "net::ERR_NETWORK_CHANGED",
     });
   });
   page.on("response", (response) => {
@@ -964,9 +1005,12 @@ export function createPageDriver(
         screenshotFollows ? SCREENSHOT_SEEK_OPTIONS : AUDIT_SEEK_OPTIONS,
       );
     },
-    seekGeometry: async (time) => {
+    seekGeometry: async (time, { draws = false } = {}) => {
       clock.at(time);
-      await seekCompositionTimeline(page, time, DENSE_GEOMETRY_SEEK_OPTIONS);
+      const options = draws
+        ? { ...DENSE_GEOMETRY_SEEK_OPTIONS, skipWebglDraws: false }
+        : DENSE_GEOMETRY_SEEK_OPTIONS;
+      await seekCompositionTimeline(page, time, options);
     },
     collectLayout: (time, tolerance, layout) => collectLayout(page, time, tolerance, layout),
     collectOverlap: (time) => collectOverlap(page, time),
@@ -1027,7 +1071,13 @@ async function collectCraftFilm(page: Page): Promise<CraftFilm> {
 }
 
 const CRAFT_PART_NUMBERS = ["key", "block", "opacity", "fontPx"] as const;
-const CRAFT_PART_STRINGS = ["selector", "blockSelector", "sourceFile", "text"] as const;
+const CRAFT_PART_STRINGS = [
+  "selector",
+  "blockSelector",
+  "sourceFile",
+  "text",
+  "blockText",
+] as const;
 const CRAFT_RECT_NUMBERS = ["left", "top", "width", "height"] as const;
 
 function parseCraftTextPart(value: unknown): CraftTextPart[] {
@@ -1221,6 +1271,7 @@ async function overlapGridInPage(
     fallback: boolean;
     skipDraws: boolean;
     videoFrames: boolean;
+    timeoutMs: number;
   },
   seek: typeof seekInPage,
   anchors: typeof anchorsInPage,
@@ -1228,11 +1279,15 @@ async function overlapGridInPage(
   const audit = Reflect.get(window, "__hyperframesOverlapAudit");
   const waitForCompletion = Reflect.get(window, "__hfWaitForSeekCompletion");
   const samples: OverlapGridSample[] = [];
+  const deadline = performance.now() + grid.timeoutMs;
   for (const time of grid.times) {
     console.debug(`${grid.marker}${time}`);
     seek(time, grid.fallback, false, grid.skipDraws);
     if (typeof waitForCompletion === "function") {
-      await Reflect.apply(waitForCompletion, window, [{ videoFrames: grid.videoFrames }]);
+      const timeoutMs = Math.max(0, deadline - performance.now());
+      await Reflect.apply(waitForCompletion, window, [
+        { videoFrames: grid.videoFrames, timeoutMs },
+      ]);
     }
     const result: unknown =
       typeof audit === "function" ? Reflect.apply(audit, window, [{ time }]) : [];
@@ -1256,6 +1311,7 @@ async function collectOverlapGrid(page: Page, times: number[]): Promise<Anchored
     fallback: DENSE_GEOMETRY_SEEK_OPTIONS.fallbackToBridgeAndTimelines,
     skipDraws: DENSE_GEOMETRY_SEEK_OPTIONS.skipWebglDraws,
     videoFrames: DENSE_GEOMETRY_SEEK_OPTIONS.waitForVideoFrames,
+    timeoutMs: SEEK_SETTLES_BEFORE_PROTOCOL_TIMEOUT_MS,
   };
   const samples = (await page.evaluate(
     `(${overlapGridInPage})(${JSON.stringify(grid)}, ${seekInPage}, ${anchorsInPage})`,
@@ -1998,6 +2054,10 @@ function assignOptionalLayoutFields(issue: LayoutIssue, value: Record<string, un
   if (overflow) issue.overflow = overflow;
   const coveredFraction = numberValue(value, "coveredFraction");
   if (coveredFraction !== null) issue.coveredFraction = coveredFraction;
+  const lifetime = recordField(value, "lifetime");
+  const start = lifetime ? numberValue(lifetime, "start") : null;
+  const end = lifetime ? numberValue(lifetime, "end") : null;
+  if (start !== null && end !== null) issue.lifetime = { start, end };
 }
 
 function recordField(value: unknown, key: string): Record<string, unknown> | null {

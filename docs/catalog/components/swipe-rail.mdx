@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Swipe Rail</h1>
+  <p>A contact circle leads a horizontal card rail through a fast drag, momentum carry, and settled snap to the next card.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/swipe-rail.json"
   compositionId="swipe-rail"
   compositionSrc="compositions/components/swipe-rail.html"
   title="Swipe Rail"
-  description="A contact circle leads a horizontal card rail through a fast drag, momentum carry, and settled snap to the next card."
   variables={[{"id":"card_count","type":"number","role":"content","label":"Card count","description":"Number of cards rendered in the rail.","default":4,"min":3,"max":5,"step":1},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Active color used by the focused card and contact circle.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"card_label_prefix","type":"string","role":"content","label":"Card label prefix","description":"Text placed before each card number.","default":"Feature"}]}
   meta={{"category":"Motion Scenes","badge":"Stable","codeLines":358}}
   attribution={{"path":"registry/components/swipe-rail","tags":["motion-primitive","interaction","gesture","swipe","cards","rail"]}}
@@ -393,7 +397,9 @@ That writes one file: `compositions/components/swipe-rail.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -434,6 +440,4 @@ Tagged `motion-primitive` `interaction` `gesture` `swipe` `cards` `rail`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

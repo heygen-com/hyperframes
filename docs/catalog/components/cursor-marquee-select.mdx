@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Marquee Select Cursor</h1>
+  <p>A cursor drags a selection rectangle across a photo grid; each tile rings and pops a check the frame the rectangle touches it, while a pill counts the selection up.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/cursor-marquee-select.json"
   compositionId="cursor-marquee-select"
   compositionSrc="compositions/components/cursor-marquee-select.html"
   title="Marquee Select Cursor"
-  description="A cursor drags a selection rectangle across a photo grid; each tile rings and pops a check the frame the rectangle touches it, while a pill counts the selection up."
   variables={[{"id":"accent","type":"color","role":"style","label":"Accent","default":"#0a84ff"},{"id":"start_x","type":"number","role":"layout","label":"Drag start X","default":20.5,"min":0,"max":100,"step":0.5,"unit":"%"},{"id":"start_y","type":"number","role":"layout","label":"Drag start Y","default":25.5,"min":0,"max":100,"step":0.5,"unit":"%"},{"id":"end_x","type":"number","role":"layout","label":"Drag end X","default":57,"min":0,"max":100,"step":0.5,"unit":"%"},{"id":"end_y","type":"number","role":"layout","label":"Drag end Y","default":52,"min":0,"max":100,"step":0.5,"unit":"%"},{"id":"pill_label","type":"string","role":"content","label":"Pill label","default":"selected"}]}
   meta={{"category":"Cursors","badge":"Stable","codeLines":1048}}
   attribution={{"path":"registry/components/cursor-marquee-select","tags":["cursor","motion-primitive","select","marquee","grid","product-demo"]}}
@@ -1083,7 +1087,9 @@ That writes one file: `compositions/components/cursor-marquee-select.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -1127,6 +1133,4 @@ Tagged `cursor` `motion-primitive` `select` `marquee` `grid` `product-demo`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

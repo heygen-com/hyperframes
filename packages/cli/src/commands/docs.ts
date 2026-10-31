@@ -43,6 +43,10 @@ const TOPICS: Record<string, TopicEntry> = {
     file: "compositions.md",
     description: "Composition structure, nesting, and variables",
   },
+  "motion-blur": {
+    file: "motion-blur.md",
+    description: "Shutter smear on fast movers: attributes, tiers, checks",
+  },
 };
 
 function docsDir(): string {

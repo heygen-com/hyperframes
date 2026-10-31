@@ -263,6 +263,7 @@ describe("initSandboxRuntimeModular", () => {
     delete window.__playerReady;
     delete window.__renderReady;
     delete (window as { __HF_EXPORT_RENDER_SEEK_CONFIG?: unknown }).__HF_EXPORT_RENDER_SEEK_CONFIG;
+    delete window.__HF_REPLAY_SKIPPED_FRAMES;
     delete window.__hfTimelinesBuilding;
     delete (window as { THREE?: unknown }).THREE;
     delete (window as { __hfAutoNoopRegistered?: boolean }).__hfAutoNoopRegistered;
@@ -606,6 +607,25 @@ describe("initSandboxRuntimeModular", () => {
         // Past the line's span: its tween at 3 s draws for the first time while the line is hidden.
         window.__player?.seek(6);
         expect([beforeTheTween, looked()]).toEqual([0, 1]);
+      } finally {
+        query.mockRestore();
+      }
+    });
+
+    it("leaves hidden clips alone on every jump when the page has no timeline", () => {
+      document.body.innerHTML =
+        `<div data-composition-id="main" data-root="true" data-start="0" data-duration="10" data-width="1920" data-height="1080">` +
+        `<video id="first" src="a.mp4" data-start="0" data-duration="2" data-track-index="0"></video>` +
+        `<video id="second" src="a.mp4" data-start="2" data-duration="8" data-track-index="0"></video>` +
+        `</div>`;
+      window.__timelines = {};
+      initSandboxRuntimeModular();
+      const query = vi.spyOn(document, "querySelectorAll");
+      const looked = () =>
+        query.mock.calls.filter(([selector]) => selector === "[data-hf-clip-hidden]").length;
+      try {
+        for (const t of [0.5, 1, 1.5, 3, 6]) window.__player?.seek(t);
+        expect(looked()).toBe(0);
       } finally {
         query.mockRestore();
       }
@@ -1198,6 +1218,36 @@ describe("initSandboxRuntimeModular", () => {
       rawFpsSource: "render-options",
       rawFps: 60,
     });
+  });
+
+  it("gives a still the value playback shows when its capture page asks to replay skipped frames", () => {
+    const zoomFilm = () => {
+      const params = { z: 1 };
+      const timeline = gsap.timeline({ paused: true });
+      timeline.to(params, { z: 1.45, duration: 0.3, ease: "power4.out" }, 0.573);
+      timeline.set(params, { z: 1.04 }, 0.8);
+      timeline.to(params, { z: 1.12, duration: 1.39, ease: "power1.in" }, 0.869);
+      return { params, timeline };
+    };
+    const played = zoomFilm();
+    for (let frame = 0; frame <= 56; frame++) played.timeline.totalTime(frame / 60, true);
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "3");
+    root.setAttribute("data-fps", "60");
+    root.setAttribute("data-width", "640");
+    root.setAttribute("data-height", "360");
+    document.body.appendChild(root);
+    const still = zoomFilm();
+    window.__timelines = { main: still.timeline as unknown as RuntimeTimelineLike };
+    window.__HF_REPLAY_SKIPPED_FRAMES = true;
+
+    initSandboxRuntimeModular();
+    window.__player?.renderSeek(56 / 60);
+
+    expect(still.params.z).toBeCloseTo(played.params.z, 9);
   });
 
   it("activates a nested outro on frame 584 when its authored start rounds just above it", () => {
@@ -3955,6 +4005,16 @@ describe("initSandboxRuntimeModular", () => {
     expect(startedAt.length).toBeGreaterThan(0);
     expect(startedAt[0]).toBeLessThan(1);
     expect(startedAt[0]).toBeGreaterThanOrEqual(1 - 0.02);
+  });
+
+  it("primes a clip that starts later inside the tap on iOS, so a late start is not refused", () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 26_5 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148",
+    );
+    const { sfx } = mountLateSfx();
+    window.__player?.play();
+    expect(sfx.play).toHaveBeenCalledTimes(1);
+    expect(sfx.pause).toHaveBeenCalledTimes(1);
   });
 
   const setRate = (playbackRate: number) =>

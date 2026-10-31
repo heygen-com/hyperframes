@@ -2,10 +2,19 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { processCompositionAudio, type AudioFailureDiagnostic } from "@hyperframes/engine";
+import {
+  CaptureFailure,
+  processCompositionAudio,
+  type AudioFailureDiagnostic,
+} from "@hyperframes/engine";
 import { applyDistributedAudioWarningPolicy } from "../../../producer/src/services/distributed/plan.js";
 import { buildSyntheticRenderJob } from "../../../producer/src/services/distributed/shared.js";
-import { createRenderJob, executeRenderJob, type RenderJob } from "@hyperframes/producer";
+import {
+  createRenderJob,
+  executeRenderJob,
+  RenderQualityError,
+  type RenderJob,
+} from "@hyperframes/producer";
 import { runAudioStage } from "../../../producer/src/services/render/stages/audioStage.js";
 import { renderFailureDiagnostic, renderMachineDiagnostic } from "./renderDiagnostic.js";
 
@@ -88,6 +97,51 @@ describe("render diagnostic wire", () => {
     expect(JSON.parse(line.slice("@hf-diagnostic ".length)).audioFailures[0].subprocess).toEqual(
       {},
     );
+    expect(line).not.toContain(PRIVATE);
+  });
+
+  it.each([
+    [
+      new RenderQualityError([
+        { code: "audio_processing_failed", message: PRIVATE, stage: "capture-readiness" },
+      ]),
+      "AUDIO_PROCESSING_FAILED",
+    ],
+    [
+      Object.assign(new Error(`Video extraction failed ${PRIVATE}`), {
+        code: "VIDEO_SOURCE_UNRENDERABLE",
+      }),
+      "VIDEO_SOURCE_UNRENDERABLE",
+    ],
+    [new Error(`[HDR] No Chrome binary found [ACME_LAUNCH] ${PRIVATE}`), "RENDER_FAILED"],
+    [
+      Object.assign(new Error(`ENOENT: no such file, open '${PRIVATE}'`), { code: "ENOENT" }),
+      "ENOENT",
+    ],
+    [new Error(`EPERM: operation not permitted, rename '${PRIVATE}'`), "EPERM"],
+    [
+      new CaptureFailure({
+        kind: "transient_browser",
+        message: `[Parallel] Capture failed: Worker 0: [FrameCapture] Composition has zero duration. ${PRIVATE}`,
+      }),
+      "COMPOSITION_ZERO_DURATION",
+    ],
+    [
+      new CaptureFailure({ kind: "authoring", message: PRIVATE, pageErrorLines: [PRIVATE] }),
+      "PAGE_ERROR",
+    ],
+    [
+      new CaptureFailure({ kind: "protocol_timeout", message: PRIVATE }),
+      "CAPTURE_PROTOCOL_TIMEOUT",
+    ],
+    [new Error(PRIVATE), "RENDER_FAILED"],
+  ])("names a failed render's code without its words (%#)", (error, code) => {
+    const line = capture(() => renderFailureDiagnostic(undefined, error, false));
+    expect(JSON.parse(line.slice("@hf-diagnostic ".length))).toEqual({
+      version: 1,
+      operation: "render",
+      code,
+    });
     expect(line).not.toContain(PRIVATE);
   });
 

@@ -62,6 +62,7 @@ export type RuntimeStateMessage = {
   currentTime: number;
   ended: boolean;
   isPlaying: boolean;
+  buffering: boolean;
   muted: boolean;
   playbackRate: number;
 };
@@ -278,6 +279,7 @@ export type RuntimePreviewHealthMessage = {
     worstFrameMs: number;
     skippedShare: number;
     waitingShare: number;
+    frozenShare: number;
     gapP50Ms: number;
     gapP95Ms: number;
     mode: "play";

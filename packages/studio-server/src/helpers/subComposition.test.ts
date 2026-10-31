@@ -20,6 +20,28 @@ function makeTempProject(files: Record<string, string>): string {
 }
 
 describe("buildSubCompositionHtml", () => {
+  it.each([
+    ["template", (body: string) => `<template>${body}</template>`],
+    ["document", (body: string) => `<!doctype html><html><body>${body}</body></html>`],
+    ["fragment", (body: string) => body],
+  ])("rebases responsive images in a %s preview", (_, wrap) => {
+    const dir = makeTempProject({
+      "index.html": "<!doctype html><html><head></head><body></body></html>",
+      "scenes/scene.html": wrap(
+        '<div data-composition-id="scene"><picture><source id="source" srcset="hero.svg 1x, assets/root.svg 2x"><img src="assets/root.svg"></picture><img id="image" srcset="hero.svg 1x"></div>',
+      ),
+      "scenes/hero.svg": "scene-image",
+      "hero.svg": "root-decoy-image",
+      "assets/root.svg": "root-image",
+    });
+    const html = buildSubCompositionHtml(dir, "scenes/scene.html", "/runtime.js", "/preview/");
+    const { document } = parseHTML(html ?? "");
+    expect(document.querySelector("#source")?.getAttribute("srcset")).toBe(
+      "scenes/hero.svg 1x, assets/root.svg 2x",
+    );
+    expect(document.querySelector("#image")?.getAttribute("srcset")).toBe("scenes/hero.svg 1x");
+  });
+
   it("loads the default gsap version when the project head has no gsap", () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html><html><head><title>Host</title></head><body></body></html>`,

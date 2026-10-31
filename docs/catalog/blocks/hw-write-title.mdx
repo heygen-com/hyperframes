@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Handwritten Write-On Title</h1>
+  <p>True glyph write-on: filled Caveat letterforms revealed by baked per-glyph centerline strokes traced in real stroke order with a curvature-adaptive pen-velocity ease (fast on straights, slow into curves, inter-stroke pen lifts); optional squiggle underline; boils</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/hw-write-title.json"
   compositionId="hw-write-title"
   compositionSrc="compositions/hw-write-title.html"
   title="Handwritten Write-On Title"
-  description="True glyph write-on: filled Caveat letterforms revealed by baked per-glyph centerline strokes traced in real stroke order with a curvature-adaptive pen-velocity ease (fast on straights, slow into curves, inter-stroke pen lifts); optional squiggle underline; boils"
   variables={[]}
   meta={{"duration":6,"width":1920,"height":1080,"category":"Typography & Text","badge":"Stable","codeLines":500}}
   attribution={{"path":"registry/blocks/hw-write-title","tags":["handwritten","typography","title-card","write-on","overlay"]}}
@@ -535,7 +539,9 @@ That writes `compositions/hw-write-title.html`, plus 2 supporting files under `a
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -566,6 +572,4 @@ Tagged `handwritten` `typography` `title-card` `write-on` `overlay`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

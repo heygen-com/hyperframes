@@ -437,8 +437,17 @@ jobs:
             studio_shard: 2/2
           - lane: core
             packages: --filter @hyperframes/core --filter @hyperframes/player --filter @hyperframes/shader-transitions
-          - lane: engine-cli
+          # Engine and CLI ran one after the other in a single lane (about 5 + 11 min), 16 min of a 16 min deadline;
+          # each half runs the same two packages with Vitest's --shard, so the lanes end together.
+          - lane: engine-cli-1
             packages: --filter @hyperframes/engine --filter @hyperframes/cli
+            test_shard: 1/2
+            process_tests: true
+          - lane: engine-cli-2
+            packages: --filter @hyperframes/engine --filter @hyperframes/cli
+            test_shard: 2/2
+            process_tests: true
+            once_checks: true
             runtime_contract: true
 
     steps:
@@ -451,8 +460,8 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ inputs.ref || github.sha }}
-          # Only the engine-cli lane reads an LFS file (engine's ffprobe test parses a producer HDR PNG).
-          lfs: ${{ matrix.lane == 'engine-cli' }}
+          # Only the engine-cli lanes read an LFS file (engine's ffprobe test parses a producer HDR PNG).
+          lfs: ${{ matrix.process_tests == true }}
 
       # -----------------------------------------------------------------
       # Install FFmpeg so vitest suites that gate on `HAS_FFMPEG`
@@ -500,7 +509,7 @@ jobs:
           bun run --cwd packages/core build
 
       - name: Prepare browser for process tests
-        if: matrix.lane == 'engine-cli'
+        if: matrix.process_tests
         shell: pwsh
         run: node --import tsx packages/cli/scripts/prepare-process-test-browser.mjs
 
@@ -518,25 +527,25 @@ jobs:
         # Each package starts its own Vitest pool. Bound every pool so concurrent
         # package scripts cannot oversubscribe the hosted Windows runner.
         # timeout-minutes did not fire on a hung run, so the script enforces the 16 minutes itself.
-        run: ./scripts/ci/run-with-deadline.ps1 -Minutes 16 -Command 'bun run ${{ matrix.packages }} test -- --maxWorkers=2 --reporter=verbose'
+        run: ./scripts/ci/run-with-deadline.ps1 -Minutes 16 -Command 'bun run ${{ matrix.packages }} test -- --maxWorkers=2 --reporter=verbose ${{ matrix.test_shard && format('--shard={0}', matrix.test_shard) || '' }}'
 
       - name: Verify waveform cache writes on Windows
-        if: matrix.lane == 'engine-cli'
+        if: matrix.once_checks
         shell: pwsh
         run: bun run --cwd packages/studio-server test -- src/helpers/waveform.test.ts src/helpers/waveform.file-race.test.ts --maxWorkers=2
 
       - name: Verify producer lint entry reads on Windows
-        if: matrix.lane == 'engine-cli'
+        if: matrix.once_checks
         shell: pwsh
         run: bunx vitest run packages/producer/src/services/hyperframeLint.file-race.test.ts --maxWorkers=2
 
       - name: Verify Windows frame staging
-        if: matrix.lane == 'engine-cli'
+        if: matrix.once_checks
         shell: pwsh
         run: bunx vitest run packages/producer/src/services/windowsFrameStaging.test.ts --maxWorkers=2
 
       - name: Verify catalog file operations on Windows
-        if: matrix.lane == 'engine-cli'
+        if: matrix.once_checks
         shell: pwsh
         run: bunx vitest run scripts/catalog/catalog-payload-assets.file-race.test.ts scripts/catalog/catalog-payload-assets.cache-race.test.ts --maxWorkers=2
 

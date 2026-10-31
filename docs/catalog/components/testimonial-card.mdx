@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Testimonial Card</h1>
+  <p>Reveals a customer quote at reading pace, then settles its avatar, author name, and handle beneath as a clean proof beat.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/testimonial-card.json"
   compositionId="testimonial-card"
   compositionSrc="compositions/components/testimonial-card.html"
   title="Testimonial Card"
-  description="Reveals a customer quote at reading pace, then settles its avatar, author name, and handle beneath as a clean proof beat."
   variables={[{"id":"quote","type":"string","role":"content","label":"Quote","description":"Customer testimonial copy revealed at reading pace.","default":"This changed how we ship."},{"id":"author","type":"string","role":"content","label":"Author","description":"Name attributed to the testimonial.","default":"Ken Tanaka"},{"id":"handle","type":"string","role":"content","label":"Handle","description":"Role or social handle shown beneath the author name.","default":"@ken"},{"id":"rating","type":"number","role":"content","label":"Rating","description":"Visible customer rating from zero to five stars.","default":5,"min":0,"max":5,"step":0.1}]}
   meta={{"category":"Effects","badge":"Stable","codeLines":329}}
   attribution={{"path":"registry/components/testimonial-card","tags":["prop","ui-props","testimonial","social-proof","quote","prove"]}}
@@ -364,7 +368,9 @@ That writes one file: `compositions/components/testimonial-card.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -406,6 +412,4 @@ Tagged `prop` `ui-props` `testimonial` `social-proof` `quote` `prove`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

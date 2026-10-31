@@ -790,7 +790,7 @@ export default defineCommand({
       description:
         "Owning authoring skill slug (e.g. hyperframes). Stamped into " +
         "hyperframes.json so every render of this project is attributed to it on " +
-        "anonymous telemetry, without re-passing --skill on each render. Ignored unless it is a slug.",
+        "usage telemetry, without re-passing --skill on each render. Ignored unless it is a slug.",
     },
   },
   async run({ args }) {

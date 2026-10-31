@@ -12,6 +12,7 @@ vi.mock("../telemetry/events.js", () => ({
 
 import { contrastRatio, parseColorRGBA } from "./contrast-bg.js";
 import { createCheckCommand, parseCheckRange } from "./check.js";
+import { readConfig } from "../telemetry/config.js";
 import { CheckDeadlineError, CheckStoppedError } from "../utils/checkDeadline.js";
 import { trackCommandFailures } from "../utils/command-failure-tracking.js";
 import type { CommandDef } from "citty";
@@ -1567,6 +1568,77 @@ describe("check pipeline", () => {
     expect(report.contrast).toMatchObject({ ok: true, errorCount: 0, findings: [] });
   });
 
+  it("says in plain words that a lint error is why the browser pass was skipped", async () => {
+    const lint = lintWith(
+      "error",
+      "root_missing_composition_id",
+      "Root needs data-composition-id.",
+    );
+    const { report } = await runScenario(fakeDriver(), {}, { lint });
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const command = createCheckCommand({
+      resolveProject: () => PROJECT,
+      runPipeline: vi.fn(async () => report),
+      prepareMedia: vi.fn(async () => []),
+      withMeta: (value) => value,
+    });
+
+    await runViaCli(command, { rawArgs: [] });
+
+    const said = log.mock.calls.map((call) => String(call[0])).join("\n");
+    expect(said).toContain("Browser validation skipped because of the lint error above");
+    expect(said).not.toContain("Browser session never ran");
+  });
+
+  describe("remembers the newest check for hyperframes feedback", () => {
+    const run = (runPipeline: () => Promise<CheckReport>) =>
+      runViaCli(
+        createCheckCommand({
+          resolveProject: () => PROJECT,
+          runPipeline: vi.fn(runPipeline),
+          prepareMedia: vi.fn(async () => []),
+          withMeta: (value) => value,
+        }),
+        { rawArgs: [] },
+      );
+
+    it("keeps the error codes of a failed check", async () => {
+      const lint = lintWith(
+        "error",
+        "root_missing_composition_id",
+        "Root needs data-composition-id.",
+      );
+      const { report } = await runScenario(fakeDriver(), {}, { lint });
+      await run(async () => report);
+
+      expect(readConfig().lastCheck).toMatchObject({
+        exitCode: 1,
+        codes: { root_missing_composition_id: 1 },
+      });
+    });
+
+    it("records a check that threw as a failure, not the check before it", async () => {
+      await run(async () => (await runScenario(fakeDriver(), {}, {})).report);
+      await run(async () => {
+        throw new Error("browser died");
+      });
+
+      expect(readConfig().lastCheck).toMatchObject({ exitCode: 1, codes: { runtime_error: 1 } });
+    });
+
+    it("leaves a check that never finished as unfinished, with when it started", async () => {
+      const { report } = await runScenario(fakeDriver(), {}, {});
+      await run(async () => report);
+      let finish!: (value: CheckReport) => void;
+      const running = run(() => new Promise<CheckReport>((resolve) => (finish = resolve)));
+      await vi.waitFor(() => expect(readConfig().lastCheck?.exitCode).toBeUndefined());
+
+      expect(readConfig().lastCheck?.at).toMatch(/^\d{4}-\d\d-\d\dT/);
+      finish(report);
+      await running;
+    });
+  });
+
   it("marks browserSkipped true when the linter itself crashes", async () => {
     const { deps } = dependencies(fakeDriver());
     deps.lintProject = vi.fn(async () => {
@@ -2267,6 +2339,42 @@ describe("check pipeline", () => {
     }
   });
 
+  it("a check given a long --timeout is not ended as idle after 120 s of waiting for its page", async () => {
+    vi.useFakeTimers();
+    try {
+      let aborted!: AbortSignal;
+      const driver = fakeDriver({
+        collectOverlapGrid: vi.fn(
+          () =>
+            new Promise<never>((_, reject) =>
+              aborted.addEventListener("abort", () => reject(aborted.reason)),
+            ),
+        ),
+      });
+      const { deps } = dependencies(driver);
+      deps.runBrowserCheck = async (_project, options, motion, deadline) => {
+        aborted = deadline!.signal;
+        deadline!.start();
+        return runAuditGrid(driver, options, motion, undefined, deadline!.enter);
+      };
+      const pending = runCheckPipeline(
+        PROJECT,
+        { ...DEFAULT_CHECK_OPTIONS, timeout: 400_000 },
+        deps,
+      );
+      await vi.advanceTimersByTimeAsync(300_000);
+      expect(aborted.aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(110_000);
+      const report = await pending;
+      const failure = report.runtime.findings.find(
+        (finding) => finding.code === "check_runtime_failure",
+      );
+      expect(failure?.message).toContain("no progress for 410 s");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("a deadline keeps the layout findings the finished samples already made", async () => {
     vi.useFakeTimers();
     try {
@@ -2692,6 +2800,7 @@ describe("check pipeline", () => {
                 blockSelector: "#title",
                 sourceFile: "compositions/stat.html",
                 text: "Every team gets one shared calendar now",
+                blockText: "Every team gets one shared calendar now",
                 opacity: 1,
                 fontPx: 96,
                 rect: { left: 160, top: 380, width: 1600, height: 220 },
@@ -2731,6 +2840,20 @@ describe("check pipeline", () => {
 
       const strict = await runScenario(craftDriver(), { strict: true });
       expect(checkExitCode(strict.report)).toBe(0);
+    });
+
+    it("seeks each craft frame with WebGL draws on, so a redrawn canvas reads as moving", async () => {
+      const driver = craftDriver();
+      await runScenario(driver);
+      const painted = new Set(
+        vi
+          .mocked(driver.seekGeometry)
+          .mock.calls.flatMap(([time, seek]) => (seek?.draws ? [time] : [])),
+      );
+      const sampled = vi.mocked(driver.collectCraftFrame!).mock.calls.map(([time]) => time);
+
+      expect(sampled.length).toBeGreaterThan(0);
+      expect(sampled.every((time) => painted.has(time))).toBe(true);
     });
 
     it("re-measures a short line between dense samples before judging it", async () => {

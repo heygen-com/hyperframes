@@ -5,6 +5,9 @@ import { BrowserCleanupError, closeManagedBrowser } from "../browser/launch.js";
 import type { CheckBrowserResult } from "./checkTypes.js";
 
 const CHECK_IDLE_MS = 120_000;
+
+export const idleWindow = (timeoutMs: number): number =>
+  Math.max(CHECK_IDLE_MS, timeoutMs + 10_000);
 const SCRIPT_START = "[hyperframes:script:start] ";
 const SCRIPT_FINISH = "[hyperframes:script:finish] ";
 
@@ -40,7 +43,7 @@ export class CheckStoppedError extends Error {
   }
 }
 
-/** Ends a check that makes no progress for CHECK_IDLE_MS; each phase entered or operation settled restarts it. */
+/** Ends a check that makes no progress for its idle window; each phase entered or operation settled restarts it. */
 export class CheckDeadline {
   private readonly abort = new AbortController();
   private readonly operations = new Set<Promise<unknown>>();
@@ -56,7 +59,7 @@ export class CheckDeadline {
   private readonly spent = new Map<CheckPhase, number>();
   private readonly partials: Array<() => Partial<CheckBrowserResult>> = [];
 
-  constructor() {
+  constructor(private readonly idleMs = CHECK_IDLE_MS) {
     this.expiry = new Promise((_, reject) => {
       this.rejectExpiry = reject;
     });
@@ -90,7 +93,7 @@ export class CheckDeadline {
       const seconds = ((phase === this.work?.phase ? ms + open : ms) / 1000).toFixed(1);
       return `${PHASE_LABELS[phase]} ${seconds}${BEFORE_DEADLINE.has(phase) ? " (before the deadline)" : ""}`;
     });
-    return ` (no progress for ${CHECK_IDLE_MS / 1000} s after Chrome was ready), while ${PHASE_LABELS[this.work.phase]}${this.work.detail ? ` (${this.work.detail})` : ""}. Seconds per phase: ${parts.join(", ")}.`;
+    return ` (no progress for ${this.idleMs / 1000} s after Chrome was ready), while ${PHASE_LABELS[this.work.phase]}${this.work.detail ? ` (${this.work.detail})` : ""}. Seconds per phase: ${parts.join(", ")}.`;
   }
 
   start = (): void => {
@@ -104,7 +107,7 @@ export class CheckDeadline {
     clearTimeout(this.timer);
     this.timer = setTimeout(
       () => this.expire(new CheckDeadlineError(this.scripts.at(-1), this.describe())),
-      CHECK_IDLE_MS,
+      this.idleMs,
     );
   }
 

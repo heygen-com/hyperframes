@@ -1,11 +1,23 @@
-import { describe, expect, it } from "vitest";
-import { applyDotEnv } from "./dotEnv.js";
+import { describe, expect, it, vi } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { applyDotEnv, loadProjectDotEnv } from "./dotEnv.js";
 
 describe("applyDotEnv", () => {
   it("copies a project's keys without overwriting what is already set", () => {
     const env: NodeJS.ProcessEnv = { KEPT: "outer" };
     applyDotEnv('export GEMINI_KEY="abc" # note\nKEPT=inner\n# comment\nPLAIN=x #c', env);
     expect(env).toEqual({ KEPT: "outer", GEMINI_KEY: "abc", PLAIN: "x" });
+  });
+
+  it("reads a comment after an empty value as no value", () => {
+    const env: NodeJS.ProcessEnv = {};
+    applyDotEnv(
+      "GEMINI_API_KEY= # paste your key here\nOPENROUTER_API_KEY=\t# later\nHASH=#abc",
+      env,
+    );
+    expect(env).toEqual({ GEMINI_API_KEY: "", OPENROUTER_API_KEY: "", HASH: "#abc" });
   });
 
   it("never takes the feedback email from a project file", () => {
@@ -82,5 +94,53 @@ describe("applyDotEnv quoted multiline values", () => {
     applyDotEnv("KEY='line1\r\nline2'\r\nAFTER=2", env);
     expect(env.KEY).toBe("line1\nline2");
     expect(env.AFTER).toBe("2");
+  });
+});
+
+describe("loadProjectDotEnv", () => {
+  const projectWith = (content: string): string => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-dotenv-"));
+    writeFileSync(join(dir, ".env"), content);
+    return dir;
+  };
+
+  it("sets the CLI's own settings and ignores every other key, naming them once", () => {
+    const dir = projectWith(
+      "GEMINI_API_KEY=abc\nNODE_OPTIONS=--require ./x.js\nHTTPS_PROXY=http://example.test\nNODE_OPTIONS=again\n",
+    );
+    try {
+      const env: NodeJS.ProcessEnv = {};
+      const warn = vi.fn();
+      loadProjectDotEnv(dir, env, warn);
+      expect(env).toEqual({ GEMINI_API_KEY: "abc" });
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0]?.[0]).toContain("NODE_OPTIONS, HTTPS_PROXY");
+      expect(warn.mock.calls[0]?.[0]).not.toContain("example.test");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps a telemetry opt-out from the project .env", () => {
+    const dir = projectWith("HYPERFRAMES_NO_TELEMETRY=1\nDO_NOT_TRACK=1\n");
+    try {
+      const env: NodeJS.ProcessEnv = {};
+      loadProjectDotEnv(dir, env, vi.fn());
+      expect(env).toEqual({ HYPERFRAMES_NO_TELEMETRY: "1", DO_NOT_TRACK: "1" });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("says nothing when every key is one the CLI reads, or there is no .env", () => {
+    const dir = projectWith("OPENROUTER_API_KEY=k\n");
+    try {
+      const warn = vi.fn();
+      loadProjectDotEnv(dir, {}, warn);
+      loadProjectDotEnv(join(dir, "missing"), {}, warn);
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

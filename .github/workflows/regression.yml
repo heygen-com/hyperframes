@@ -156,10 +156,9 @@ jobs:
           load: true
           tags: hyperframes-producer:test
           cache-from: type=gha,scope=regression-test-image
-          # PR matrices can fan out across many stacked branches at once. Let
-          # them consume the shared cache, but keep a single writer on main so
-          # concurrent exports cannot exhaust the Actions cache service.
-          cache-to: ${{ github.event_name == 'push' && 'type=gha,mode=max,scope=regression-test-image' || '' }}
+          # One writer: the first shard of a main push. Every shard rebuilds the same layers with
+          # different digests, so each export added ~1.3 GB and evicted the rest of the 10 GB cache.
+          cache-to: ${{ github.event_name == 'push' && strategy.job-index == 0 && 'type=gha,mode=max,scope=regression-test-image' || '' }}
 
       - name: "Run regression shard: ${{ matrix.shard }} (${{ matrix.mode }})"
         run: |

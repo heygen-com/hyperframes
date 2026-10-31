@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { consumeCommandResult } from "../utils/commandResult.js";
-import { runIds } from "./a2Commands.js";
+import { readEditPlan, runIds } from "./a2Commands.js";
 
 const hooks = vi.hoisted(() => ({ minting: undefined as (() => void) | undefined }));
 vi.mock("@hyperframes/parsers/hf-ids", async (importOriginal) => {
@@ -49,5 +49,15 @@ describe("timeline ids", () => {
       error: { code: "refused", message: "file changed since the timeline was read" },
       reason: "file changed since the timeline was read",
     });
+  });
+});
+
+describe("timeline apply plan file", () => {
+  it("reads an edit plan saved with a UTF-8 BOM", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-timeline-plan-"));
+    dirs.push(dir);
+    const file = join(dir, "plan.json");
+    writeFileSync(file, '\uFEFF[{"op":"trim"}]');
+    expect(readEditPlan(file)).toEqual({ ok: true, edits: [{ op: "trim" }] });
   });
 });

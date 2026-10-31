@@ -684,7 +684,7 @@ describe("assemble()", () => {
 
   it("cfr re-encode keeps the chunks' rate control", () => {
     expect(cfrRateControlArgs({})).toEqual(["-preset", "medium", "-crf", "18"]);
-    expect(cfrRateControlArgs({ quality: "high" })).toEqual(["-preset", "slow", "-crf", "15"]);
+    expect(cfrRateControlArgs({ quality: "high" })).toEqual(["-preset", "fast", "-crf", "15"]);
     expect(cfrRateControlArgs({ quality: "standard", crf: 12 })).toEqual([
       "-preset",
       "medium",

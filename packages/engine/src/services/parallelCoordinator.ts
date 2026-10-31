@@ -31,7 +31,7 @@ import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { assertSwiftShader } from "../utils/assertSwiftShader.js";
 import { readWebGlVendorInfoFromCanvas } from "../utils/readWebGlVendorInfoFromCanvas.js";
 import { resolveHeadlessShellPath } from "./browserManager.js";
-import { getSystemTotalMb } from "./systemMemory.js";
+import { getCgroupCpuLimit, getSystemTotalMb } from "./systemMemory.js";
 import {
   CaptureFailure,
   classifyCaptureFailure,
@@ -148,11 +148,14 @@ const MEMORY_PER_WORKER_MB = 1536;
 // Parent-process V8 heap the coordinator itself needs regardless of worker
 // count (compile artifacts, puppeteer sessions, encoder state).
 const HEAP_RESERVED_MB = 1024;
-// Parent-process V8 heap consumed per worker (protocol buffers + in-flight
-// frame buffers). Derived from the field OOM: 6 workers exhausted a ~4GB
-// default heap ⇒ >~500MB/worker + base. Caps auto sizing; an explicit
-// `--workers N` is still the operator's call.
-const HEAP_PER_WORKER_MB = 640;
+// Parent heap per worker, by --trace-gc in a 10 GB container (10-28): 21 MB on a short film, 228 MB on a 1080×1920
+// video-heavy one (427 → 1,110 MB from 1 to 4 workers). 320 keeps 1.4× over that; `--workers N` still overrides.
+const HEAP_PER_WORKER_MB = 320;
+// The desktop app keeps the old figure: its 4,192 MB heap is where 5 workers ran out (#5149). A packaged app runs the
+// CLI on its own plain Node, so it is known by the client tag it sets on every CLI call, or by Electron itself.
+const DESKTOP_HEAP_PER_WORKER_MB = 640;
+const inDesktopApp = () =>
+  Boolean(process.versions.electron) || /^desktop\//.test(process.env.HYPERFRAMES_CLIENT ?? "");
 // Apple-GPU disk capture measured ~15-25 MB parent heap per worker; 14 cores kept gaining to 8.
 const APPLE_DISK_HEAP_PER_WORKER_MB = 128;
 const APPLE_DISK_CORES_PER_WORKER = 1.75;
@@ -332,10 +335,19 @@ export function computeWorkerSizing(
     1,
     Math.floor(
       (heapLimitMb - HEAP_RESERVED_MB) /
-        (appleDisk ? APPLE_DISK_HEAP_PER_WORKER_MB : HEAP_PER_WORKER_MB),
+        (appleDisk
+          ? APPLE_DISK_HEAP_PER_WORKER_MB
+          : inDesktopApp()
+            ? DESKTOP_HEAP_PER_WORKER_MB
+            : HEAP_PER_WORKER_MB),
     ),
   );
-  const cpuBasedWorkers = Math.max(1, cpuCount - 2);
+  // A CPU quota (docker --cpus) bounds workers at its whole CPUs: at 3.5, 3 beat 2 and 4 (johnny, 10-28).
+  const cpuQuota = getCgroupCpuLimit();
+  const cpuBasedWorkers = Math.max(
+    1,
+    cpuQuota === null ? cpuCount - 2 : Math.min(cpuCount - 2, Math.floor(cpuQuota)),
+  );
   const memoryBasedWorkers = Math.max(1, Math.floor((totalMemoryMb * 0.5) / MEMORY_PER_WORKER_MB));
   const frameBasedWorkers = Math.floor(totalFrames / MIN_FRAMES_PER_WORKER);
   const captureCostMultiplier = Math.max(1, config?.captureCostMultiplier ?? 1);

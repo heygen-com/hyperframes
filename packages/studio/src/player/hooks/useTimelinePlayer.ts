@@ -134,7 +134,7 @@ export function useTimelinePlayer({
         (key, durationSeconds) => {
           usePlayerStore.setState((state) => {
             const idx = state.elements.findIndex((e) => (e.key ?? e.id) === key);
-            if (idx === -1 || state.elements[idx].sourceDuration != null) return {};
+            if (idx === -1 || state.elements[idx].sourceDuration != null) return state;
             const patched = state.elements.slice();
             patched[idx] = { ...state.elements[idx], sourceDuration: durationSeconds };
             return { elements: patched };

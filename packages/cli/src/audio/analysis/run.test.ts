@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
-import type { Moments, Onsets } from "@hyperframes/core/audio-analysis";
+import type { AudioCapability, Moments, Onsets } from "@hyperframes/core/audio-analysis";
+import type { MarkedBeats } from "./analyze.js";
 import { formatReport } from "./format.js";
 import { analyzeTargets, previewTarget } from "./run.js";
 
@@ -195,6 +196,90 @@ describe.skipIf(!ffmpeg)("analyzeTargets", () => {
     expect(report.items[0]!.window).toEqual({ from: 3, to: 4.7 });
     const windowOnly = await analyzeTargets([target()], { capabilities: ["moments"] });
     expect(report.items[0]!.moments).toEqual(windowOnly.items[0]!.moments);
+  });
+
+  it("reads a window's beats, bars and tempo off the whole clip, so a short window still has them", async () => {
+    const path = wav("click-bed.wav", 16, (t) => hit(0)(t % 0.5));
+    const clip = { from: 0, seconds: 16 };
+    const at = (window: { from: number; seconds: number }, withClip: boolean) => ({
+      path,
+      file: "click-bed.wav",
+      ref: "#bed",
+      kind: "audio" as const,
+      placement: null,
+      window,
+      ...(withClip && { clip }),
+    });
+    const request = { capabilities: ["beats", "downbeats", "bpm"] as AudioCapability[] };
+    const [whole, windowed, alone] = await Promise.all([
+      analyzeTargets([at(clip, true)], request),
+      analyzeTargets([at({ from: 6, seconds: 3 }, true)], request),
+      analyzeTargets([at({ from: 6, seconds: 3 }, false)], request),
+    ]);
+    const beatsOf = (report: typeof whole) => report.items[0]!.beats as MarkedBeats;
+    const inWindow = (t: number) => t >= 6 && t < 9;
+    expect(beatsOf(alone).times).toEqual([]);
+    expect(beatsOf(windowed).times.length).toBeGreaterThanOrEqual(5);
+    expect(beatsOf(windowed).times).toEqual(beatsOf(whole).times.filter(inWindow));
+    expect(beatsOf(windowed).unheard).toEqual(beatsOf(windowed).times.map(() => false));
+    expect((windowed.items[0]!.downbeats as MarkedBeats).times).toEqual(
+      (whole.items[0]!.downbeats as MarkedBeats).times.filter(inWindow),
+    );
+    expect((windowed.items[0]!.bpm as { value: number }).value).toBeCloseTo(120, 0);
+    expect(windowed.items[0]!.window).toEqual({ from: 6, to: 9 });
+  });
+
+  it("answers no steady beat, and no tempo, for a window where only noise plays", async () => {
+    // noise() repeats in a short cycle, which reads as a pulse; hiss needs a generator that does not
+    let state = 0x9e3779b9;
+    const hiss = () => {
+      state ^= state << 13;
+      state ^= state >>> 17;
+      state ^= state << 5;
+      return (state >>> 0) / 2 ** 31 - 1;
+    };
+    const path = wav("hiss-gap.wav", 24, (t) =>
+      t >= 8 && t < 16 ? 0.05 * hiss() : hit(0)(t % 0.5),
+    );
+    const target = {
+      path,
+      file: "hiss-gap.wav",
+      ref: "#bed",
+      kind: "audio" as const,
+      placement: null,
+      // 6 s: long enough that the window's own reading is "no steady beat", not "too short"
+      window: { from: 9, seconds: 6 },
+      clip: { from: 0, seconds: 24 },
+    };
+    const [item] = (await analyzeTargets([target], { capabilities: ["beats", "downbeats", "bpm"] }))
+      .items;
+    expect(item!.beats).toMatchObject({ times: [], reason: "no steady beat" });
+    expect((item!.downbeats as MarkedBeats).times).toEqual([]);
+    expect(item!.bpm).toEqual({ value: null, curve: [] });
+  });
+
+  it("reads a section far quieter than the clip's loudest from the window itself, as before", async () => {
+    // loud clicks for 10 s, then the same clicks 40 dB under them: the clip's grid has no beats there
+    const quiet = 10 ** (-40 / 20);
+    const path = wav("quiet-section.wav", 30, (t) => (t < 10 ? 1 : quiet) * hit(0)(t % 0.5));
+    const at = (clip: { from: number; seconds: number } | null) => ({
+      path,
+      file: "quiet-section.wav",
+      ref: "#bed",
+      kind: "audio" as const,
+      placement: null,
+      window: { from: 14, seconds: 8 },
+      ...(clip && { clip }),
+    });
+    const request = { capabilities: ["beats", "bpm"] as AudioCapability[] };
+    const [withClip, alone] = await Promise.all([
+      analyzeTargets([at({ from: 0, seconds: 30 })], request),
+      analyzeTargets([at(null)], request),
+    ]);
+    const beats = withClip.items[0]!.beats as MarkedBeats;
+    expect(beats.times.length).toBeGreaterThanOrEqual(15);
+    expect(beats.times).toEqual((alone.items[0]!.beats as MarkedBeats).times);
+    expect((withClip.items[0]!.bpm as { value: number }).value).toBeCloseTo(120, 0);
   });
 
   it.each([

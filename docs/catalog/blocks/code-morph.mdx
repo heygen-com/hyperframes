@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Code Morph</h1>
+  <p>One snippet transforms into another — tokens glide between positions, leavers fade out, enterers fade in. Shiki Magic Move re-driven as a paused GSAP timeline.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/code-morph.json"
   compositionId="code-morph"
   compositionSrc="compositions/code-morph.html"
   title="Code Morph"
-  description="One snippet transforms into another — tokens glide between positions, leavers fade out, enterers fade in. Shiki Magic Move re-driven as a paused GSAP timeline."
   variables={[]}
   meta={{"duration":7,"width":1920,"height":1080,"category":"Code Animations","badge":"Stable","codeLines":1216}}
   attribution={{"path":"registry/blocks/code-morph","tags":["code","code-animation","morph","refactor","developer"]}}
@@ -1251,7 +1255,9 @@ That writes one file: `compositions/code-morph.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -1282,6 +1288,4 @@ Tagged `code` `code-animation` `morph` `refactor` `developer`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>
