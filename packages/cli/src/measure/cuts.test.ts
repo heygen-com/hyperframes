@@ -60,7 +60,6 @@ describe("findCuts on moving pictures", () => {
   const still = (v: number, n: number) => Array.from({ length: n }, () => frame(v));
 
   it("leaves a fast move drawn on twos alone: every other frame changes by 20", () => {
-    // Held frames change by 0, so the moving ones used to read as a run of cuts.
     expect(cutsIn(Array.from({ length: 60 }, (_, i) => (i % 2 ? 0 : 20)))).toEqual([]);
   });
 
