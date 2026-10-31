@@ -74,6 +74,12 @@ describe("redactTelemetryString", () => {
     expect(out).not.toContain("xxx");
   });
 
+  it("does not cut an astral character in half when truncating", () => {
+    const out = redactTelemetryString(`render failed ${"🎬".repeat(20)}`, 18);
+    expect(out).toBe("render failed 🎬…");
+    expect(out.isWellFormed()).toBe(true);
+  });
+
   // Named explicitly in review: a relative path with NO `./` prefix was
   // missed by both the absolute rule (needs a leading slash) and the `./`
   // rule (needs the dot), so it reached telemetry completely unredacted.
