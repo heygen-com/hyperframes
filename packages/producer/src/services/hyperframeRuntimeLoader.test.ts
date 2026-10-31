@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { dirname, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
 
@@ -33,7 +33,7 @@ describe("resolveHyperframeManifestPath", () => {
     // dist/index.js. In source, SIBLING_MANIFEST_PATH is next to this file.
     // This verifies the path construction is correct.
     expect(SIBLING_PATH).toBe(resolve(THIS_DIR, "hyperframe.manifest.json"));
-    expect(SIBLING_PATH).toContain("producer/src/services/hyperframe.manifest.json");
+    expect(SIBLING_PATH).toContain(join("producer", "src", "services", "hyperframe.manifest.json"));
   });
 
   it("prefers sibling path when it exists, otherwise picks the first existing candidate", async () => {
