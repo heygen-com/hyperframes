@@ -26,6 +26,12 @@
       "types": "./dist/helpers/safePath.d.ts",
       "environments": ["bun", "node"]
     },
+    "./request-identity": {
+      "source": "./src/helpers/requestIdentity.ts",
+      "runtime": "./dist/helpers/requestIdentity.js",
+      "types": "./dist/helpers/requestIdentity.d.ts",
+      "environments": ["bun", "node"]
+    },
     "./hf-ids": {
       "source": "./src/helpers/hfIdPersist.ts",
       "runtime": "./dist/helpers/hfIdPersist.js",

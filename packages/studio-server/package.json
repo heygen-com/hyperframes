@@ -33,6 +33,12 @@
       "import": "./src/helpers/safePath.ts",
       "types": "./src/helpers/safePath.ts"
     },
+    "./request-identity": {
+      "bun": "./src/helpers/requestIdentity.ts",
+      "node": "./dist/helpers/requestIdentity.js",
+      "import": "./src/helpers/requestIdentity.ts",
+      "types": "./src/helpers/requestIdentity.ts"
+    },
     "./hf-ids": {
       "bun": "./src/helpers/hfIdPersist.ts",
       "node": "./dist/helpers/hfIdPersist.js",
@@ -121,6 +127,10 @@
       "./safe-path": {
         "import": "./dist/helpers/safePath.js",
         "types": "./dist/helpers/safePath.d.ts"
+      },
+      "./request-identity": {
+        "import": "./dist/helpers/requestIdentity.js",
+        "types": "./dist/helpers/requestIdentity.d.ts"
       },
       "./hf-ids": {
         "import": "./dist/helpers/hfIdPersist.js",

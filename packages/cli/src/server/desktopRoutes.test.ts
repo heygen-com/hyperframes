@@ -1,7 +1,8 @@
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
 import { desktopDownloadUrl, type DesktopOpenResult } from "../utils/desktopApp.js";
-import { mountDesktopRoutes, sameOriginPost } from "./desktopRoutes.js";
+import { mountDesktopRoutes } from "./desktopRoutes.js";
+import { sameOriginPost } from "@hyperframes/studio-server/request-identity";
 
 const STUDIO = {
   host: "localhost:3002",

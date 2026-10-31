@@ -14,6 +14,7 @@ export default defineConfig({
     "helpers/finiteMutation": "src/helpers/finiteMutation.ts",
     "helpers/sourceMutation": "src/helpers/sourceMutation.ts",
     "helpers/safePath": "src/helpers/safePath.ts",
+    "helpers/requestIdentity": "src/helpers/requestIdentity.ts",
     "helpers/hfIdPersist": "src/helpers/hfIdPersist.ts",
     "helpers/encoderOptions": "src/helpers/encoderOptions.ts",
     "history/index": "src/history/index.ts",
