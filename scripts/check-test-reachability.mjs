@@ -256,7 +256,11 @@ function runnerKind(command) {
   return undefined;
 }
 
-function runnerCommand(command) {
+// A shard runs part of the same file set; the matrix runs every shard, so it selects what the unsharded run does.
+const SHARD_FLAG = /\s--shard=(?:"\$\w+"|\d+\/\d+)(?=\s|$)/;
+
+function runnerCommand(shardedCommand) {
+  const command = shardedCommand.replace(SHARD_FLAG, "");
   const kind = runnerKind(command);
   if (!kind) return undefined;
   const tokens = command.match(/"[^"]*"|'[^']*'|\S+/g).map((s) => s.replace(/^["']|["']$/g, ""));

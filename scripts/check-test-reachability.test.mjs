@@ -193,6 +193,15 @@ test("negated filter globs exclude only under some-with-excludes, and fail close
   assert.match(check(tree)["scripts/parity.test.mjs"].join("\n"), /CI filters exclude skills/);
 });
 
+test("a sharded vitest run selects what the unsharded run does", () => {
+  for (const flag of ['--shard="$SHARD"', "--shard=1/2"]) {
+    const tree = fixture(`vitest run ${flag}`, '"**"');
+    assert.equal(check(tree)["scripts/parity.test.mjs"], undefined);
+  }
+  const tree = fixture('vitest run --shard="$SHARD" "$OTHER"', '"**"');
+  assert.match(check(tree)["scripts/parity.test.mjs"][0], /no CI runner/);
+});
+
 test("runner verbs must match exactly", () => {
   const tree = fixture("vitest run-anything", '"**"');
   assert.match(check(tree)["scripts/parity.test.mjs"][0], /no CI runner/);
