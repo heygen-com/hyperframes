@@ -303,6 +303,7 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
     const htmlEl = el as HTMLElement;
     return {
       id: htmlEl.id || null,
+      className: el.getAttribute("class") || null,
       tagName: el.tagName.toLowerCase(),
       selector: buildElementSelector(el),
       label: buildElementLabel(el),
@@ -343,6 +344,13 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
     deps.postMessage({ source: "hf-preview", type: "element-hovered", elementInfo: info });
   }
 
+  function onPickViewportChange(): void {
+    if (!pickModeActive || !pickModeHighlightEl?.isConnected) return;
+    const info = extractElementInfo(pickModeHighlightEl);
+    setLastHoveredInfo(info);
+    deps.postMessage({ source: "hf-preview", type: "element-hovered", elementInfo: info });
+  }
+
   function onPickClick(event: MouseEvent): void {
     if (!pickModeActive) return;
     event.preventDefault();
@@ -379,6 +387,8 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
     document.addEventListener("mousemove", onPickMouseMove, true);
     document.addEventListener("click", onPickClick, true);
     document.addEventListener("keydown", onPickKeyDown, true);
+    document.addEventListener("scroll", onPickViewportChange, true);
+    window.addEventListener("resize", onPickViewportChange);
     emitPickerRuntimeEvent("hyperframe:picker:mode", { isPickMode: true, timestamp: Date.now() });
   }
 
@@ -397,6 +407,8 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
     document.removeEventListener("mousemove", onPickMouseMove, true);
     document.removeEventListener("click", onPickClick, true);
     document.removeEventListener("keydown", onPickKeyDown, true);
+    document.removeEventListener("scroll", onPickViewportChange, true);
+    window.removeEventListener("resize", onPickViewportChange);
     emitPickerRuntimeEvent("hyperframe:picker:mode", { isPickMode: false, timestamp: Date.now() });
   }
 
