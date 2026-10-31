@@ -24,6 +24,7 @@ export interface PlaybackHealth {
   frozenShare?: number;
   gapP50Ms?: number;
   gapP95Ms?: number;
+  clockSource?: "audio" | "webaudio" | "monotonic";
   mode: "play";
 }
 
@@ -115,6 +116,8 @@ export function parsePreviewCopies(value: unknown): PreviewCopies | null {
 }
 
 const optionalNumber = (n: unknown) => (typeof n === "number" ? n : undefined);
+const CLOCK_SOURCES = ["audio", "webaudio", "monotonic"] as const;
+const optionalClock = (clock: unknown) => CLOCK_SOURCES.find((known) => known === clock);
 
 export function parsePlaybackHealth(value: unknown): PlaybackHealth | null {
   if (typeof value !== "object" || value === null) return null;
@@ -133,6 +136,7 @@ export function parsePlaybackHealth(value: unknown): PlaybackHealth | null {
     frozenShare: optionalNumber(extra.frozenShare),
     gapP50Ms: optionalNumber(extra.gapP50Ms),
     gapP95Ms: optionalNumber(extra.gapP95Ms),
+    clockSource: optionalClock(extra.clockSource),
     mode: "play",
   };
 }

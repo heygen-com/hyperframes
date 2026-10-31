@@ -5627,7 +5627,7 @@ export function initSandboxRuntimeModular(): void {
       ) {
         const webAudioTime = webAudio.getTime();
         if (webAudioTime >= 0) {
-          clock.attachAudioSource({ currentTimeSeconds: webAudioTime });
+          clock.attachAudioSource({ currentTimeSeconds: webAudioTime, webAudio: true });
         }
       } else {
         const source = followedOrLongestRunningAudio(clock.audioElement());
@@ -5782,6 +5782,7 @@ export function initSandboxRuntimeModular(): void {
             ({ el }) => el.tagName === "VIDEO" && !el.paused && el.readyState < 3,
           ),
           frozen: hasFrozenPicture(mediaClipsInWindow, t),
+          clock: clock.followedClock(),
           layoutKey: `${window.innerWidth}x${window.innerHeight}@${window.devicePixelRatio}`,
         });
       }

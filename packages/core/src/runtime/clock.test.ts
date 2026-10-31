@@ -284,6 +284,21 @@ describe("TransportClock", () => {
       expect(clock.getSource()).toBe("audio");
     });
 
+    it("names the clock it follows: an audio element, WebAudio, or neither", () => {
+      const { clock } = createClock({ duration: 10 });
+      expect(clock.followedClock()).toBe("monotonic");
+      clock.play();
+      expect(clock.followedClock()).toBe("monotonic");
+      clock.attachAudioSource({ el: createMockAudioEl(3.5, false), compositionStart: 0, mediaStart: 0 });
+      expect(clock.followedClock()).toBe("audio");
+      clock.attachAudioSource({ currentTimeSeconds: 2, webAudio: true });
+      expect(clock.followedClock()).toBe("webaudio");
+      clock.attachAudioSource({ currentTimeSeconds: 2 });
+      expect(clock.followedClock()).toBe("audio");
+      clock.detachAudioSource();
+      expect(clock.followedClock()).toBe("monotonic");
+    });
+
     it("falls back to monotonic when audio is paused", () => {
       const { clock, advance } = createClock({ duration: 10 });
       const audioEl = createMockAudioEl(3.5, true);

@@ -24,6 +24,7 @@ type Health = {
   frozenShare: number;
   gapP50Ms: number;
   gapP95Ms: number;
+  clockSource: string;
 } | null;
 const healths = (): Health[] =>
   posted.mock.calls.map(([message]) =>
@@ -48,6 +49,7 @@ function play(
       playing: true,
       hidden: false,
       waiting: false,
+      clock: "monotonic",
       layoutKey: "a",
       ...over,
     });
@@ -64,6 +66,7 @@ beforeEach(() => {
     playing: false,
     hidden: false,
     waiting: false,
+    clock: "monotonic",
     layoutKey: "a",
   });
   restartPlaybackHealth();
@@ -111,6 +114,15 @@ describe("playback health", () => {
     expect(waiting?.frozenShare).toBe(0);
     expect(waiting?.skippedShare).toBeLessThan(0.05);
     expect(waiting?.gapP95Ms).toBeLessThan(20);
+  });
+
+  it("says which clock the film's time came from", () => {
+    play(1000, 6);
+    expect(healths().at(-1)?.clockSource).toBe("monotonic");
+    play(7000, 2, { clock: "audio" });
+    expect(healths().at(-1)?.clockSource).toBe("audio");
+    play(9000, 2, { clock: "webaudio" });
+    expect(healths().at(-1)?.clockSource).toBe("webaudio");
   });
 
   it("reports a frozen picture as its own share and leaves the choppy rule alone", () => {

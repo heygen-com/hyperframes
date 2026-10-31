@@ -19,6 +19,8 @@ export type PlaybackHealthInput = {
   /** A playing video is waiting for data. */
   waiting: boolean;
   frozen?: boolean;
+  /** The clock the film's time came from this tick. */
+  clock: "audio" | "webaudio" | "monotonic";
   /** Anything that changes how heavy a frame is to draw (window size, zoom). */
   layoutKey: string;
 };
@@ -33,6 +35,7 @@ let warmEndMs = 0;
 let key = "";
 let posted = false;
 let postedAtMs = 0;
+let clockSource: PlaybackHealthInput["clock"] = "monotonic";
 
 function post(health: RuntimePreviewHealthMessage["health"]): void {
   postRuntimeMessage({ source: "hf-preview", type: "preview-health", health });
@@ -88,6 +91,7 @@ function measure(nowMs: number, fps: number, rate: number): void {
     frozenShare: Math.round((frozenMs / spanMs) * 1000) / 1000,
     gapP50Ms: gapAt(0.5),
     gapP95Ms: gapAt(0.95),
+    clockSource,
     mode: "play",
   });
 }
@@ -120,6 +124,7 @@ export function notePlaybackFrame(input: PlaybackHealthInput): void {
     return;
   }
   if (nowMs < warmEndMs) return;
+  clockSource = input.clock;
   samples.push({
     atMs: nowMs,
     gapMs,
