@@ -14,8 +14,7 @@ const MEDIA_STEER_RELEASE_SECONDS = 0.01;
 // Audio never steers past 10%, where speech changes tempo; a lag held past 100 ms is seeked instead.
 const AUDIO_MAX_STEER = 0.1;
 const AUDIO_STEER_LIMIT_SECONDS = 0.1;
-// WebKit's audio output starts 150 to 400 ms late, so a lag under this is the start, not drift.
-const WEBKIT_AUDIO_SEEK_SECONDS = 0.65;
+const WEBKIT_AUDIO_START_LAG_SECONDS = 0.65;
 
 /** Direction (+1 fast, -1 slow) an element is being steered in; absent when it plays at its authored rate. */
 const steering = new WeakMap<HTMLMediaElement, number>();
@@ -37,7 +36,7 @@ export function steerMedia(
   const lag = Math.abs(offset);
   if (audioOnly && isWebKit()) {
     steering.delete(el);
-    return { rate: baseRate, seek: settled && lag > WEBKIT_AUDIO_SEEK_SECONDS };
+    return { rate: baseRate, seek: settled && lag > WEBKIT_AUDIO_START_LAG_SECONDS };
   }
   if (settled && lag <= MEDIA_SYNC_TOLERANCE_SECONDS) catchingUp.delete(el);
   const seekable = !catchingUp.has(el) || lag > MEDIA_HARD_SYNC_SECONDS;
