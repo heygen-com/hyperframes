@@ -76,7 +76,7 @@
     "@types/node": "^25.0.10",
     "esbuild": "^0.28.2",
     "fallow": "^3.34.1",
-    "happy-dom": "^20.9.0",
+    "happy-dom": "^20.14.6",
     "knip": "^6.0.3",
     "lefthook": "^2.1.4",
     "oxfmt": "^0.41.0",
