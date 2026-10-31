@@ -1,3 +1,4 @@
+import * as readout from "./domEditGestureReadoutState";
 import { createPreviewGestureStarts } from "./previewGestureStarts";
 import { trackPreviewEditResult } from "../../utils/previewFeatureUsage";
 // fallow-ignore-file code-duplication
@@ -40,6 +41,7 @@ import {
   hasDomEditRotationChanged,
   lockDragToDominantAxis,
   movesGesture,
+  isDomEditGestureTap,
   resolveDomEditRotationGesture,
 } from "./domEditOverlayGestures";
 import { resolveCenterResizeSize } from "./domEditResizeLocal";
@@ -57,13 +59,6 @@ import { logDrag, logDragSettle, readDragPositions } from "../../utils/dragDebug
 import { createGroupDragMover } from "./groupDragMove";
 import { DomEditSaveQueueOpenError } from "../../utils/domEditSaveQueue";
 import { beginStudioPendingEdit } from "../../utils/studioPendingEdits";
-
-function isTap(g: { startX: number; startY: number; travelled?: boolean }, e: React.PointerEvent) {
-  return (
-    !g.travelled &&
-    Math.hypot(e.clientX - g.startX, e.clientY - g.startY) < BLOCKED_MOVE_THRESHOLD_PX
-  );
-}
 
 function logGestureCommitFailure(message: string, error: unknown): void {
   if (error instanceof DomEditSaveQueueOpenError) return;
@@ -147,13 +142,13 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     }
 
     if (groupG) {
-      if (!isTap(groupG, e)) groupG.travelled = true;
+      if (!isDomEditGestureTap(groupG, e)) groupG.travelled = true;
       moveGroupDrag(groupG, e);
       return;
     }
 
     if (!g || !sel) return;
-    if (!isTap(g, e)) g.travelled = true;
+    if (!isDomEditGestureTap(g, e)) g.travelled = true;
     let dx = e.clientX - g.startX;
     let dy = e.clientY - g.startY;
 
@@ -170,6 +165,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         actualAngle: g.actualRotation,
         snap: e.shiftKey,
       });
+      readout.updateGestureReadoutAngle(g.readout, rotated.angle);
       applyRotationDraft(sel.element, rotated.angle, g.plainRotation);
       return;
     }
@@ -234,7 +230,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
 
       const nextBoxLeft = g.originLeft + dx;
       const nextBoxTop = g.originTop + dy;
-      setDraftOverlayRect({
+      const draftRect = {
         left: nextBoxLeft,
         top: nextBoxTop,
         width: g.originWidth,
@@ -242,7 +238,9 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         editScaleX: g.editScaleX,
         editScaleY: g.editScaleY,
         angle: g.actualRotation,
-      });
+      };
+      readout.updateGestureReadout(g.readout, draftRect);
+      setDraftOverlayRect(draftRect);
       if (box) {
         box.style.left = `${nextBoxLeft}px`;
         box.style.top = `${nextBoxTop}px`;
@@ -286,6 +284,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         box.style.width = `${draftRect.width}px`;
         box.style.height = `${draftRect.height}px`;
       }
+      readout.updateGestureReadoutSize(g.readout, draftRect, writtenSize);
       setDraftOverlayRect(draftRect);
     }
   };
@@ -316,7 +315,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       const rawDy = e.clientY - groupG.startY;
       // Consume the release click so it cannot deselect the moved group.
       opts.suppressNextBoxClickRef.current = true;
-      if (isTap(groupG, e)) {
+      if (isDomEditGestureTap(groupG, e)) {
         restoreGroupPathOffsets(groupG);
         if (e.shiftKey) {
           opts.onCanvasMouseDown(e as unknown as React.MouseEvent<HTMLDivElement>, {
@@ -378,7 +377,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     if (!g || !sel) return;
     const movedDistance = Math.hypot(e.clientX - g.startX, e.clientY - g.startY);
 
-    if (g.kind === "drag" && isTap(g, e)) {
+    if (g.kind === "drag" && isDomEditGestureTap(g, e)) {
       if (g.pathOffsetMember) restoreManualOffsetDragMembers([g.pathOffsetMember]);
       if (box) {
         box.style.left = `${g.originLeft}px`;

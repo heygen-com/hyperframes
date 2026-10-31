@@ -39,6 +39,7 @@ import type { ZOrderAction, ZOrderPatch } from "./canvasContextMenuZOrder";
 import { getPreviewTargetFromPointer } from "../../utils/studioPreviewHelpers";
 import { logSelect } from "../../utils/selectDebug";
 import { useOffCanvasIndicators } from "./useOffCanvasIndicators";
+import { DomEditGestureReadout } from "./DomEditGestureReadout";
 
 // Re-exports for external consumers — preserving existing import paths.
 export {
@@ -540,6 +541,11 @@ export const DomEditOverlay = memo(function DomEditOverlay({
           onBoxClick={handleBoxClick}
         />
       )}
+      <DomEditGestureReadout
+        gestureRef={gestureRef}
+        overlayRef={overlayRef}
+        iframeRef={iframeRef}
+      />
       <ChildRectOutlines rects={compRect.width > 0 ? childRects : []} />
       {/* Mounted here rather than with the selection chrome: the chrome does
           not render for every selection, and the toolbar belongs to the
