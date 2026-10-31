@@ -165,7 +165,6 @@ export interface OffloadOptions {
   /** Overrides the renderer's GIF preparation for tests. */
   gifPrep?: GifPrep;
   onFile?: (item: OffloadedMedia) => void;
-  /** Render-time --variables as JSON text: a file named there is used at render time and stays. */
   variablesText?: string;
 }
 
@@ -740,7 +739,6 @@ export async function offloadHeavyMedia(
   return report;
 }
 
-/** Working files (guides, plates) nothing points at would only push the zip past the upload limit. */
 function dropUnusedHeavyFiles(
   ctx: OffloadContext,
   referenced: Set<string>,

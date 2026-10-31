@@ -704,12 +704,8 @@ export function resolveCloudFpsArg(
   composition: string | undefined,
 ): string | undefined {
   if (source.kind !== "dir") return fps;
-  const resolved = resolveDefaultFpsArg(
-    fps,
-    source.dir,
-    resolvePath(source.dir, "index.html"),
-    composition,
-  );
+  const { dir } = resolveProject(source.dir);
+  const resolved = resolveDefaultFpsArg(fps, dir, resolvePath(dir, "index.html"), composition);
   // The cloud API takes whole frame rates; a fractional data-fps (29.97) leaves it to the server.
   return resolved !== undefined && /^\d+$/.test(resolved) ? resolved : fps;
 }
