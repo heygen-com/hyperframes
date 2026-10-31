@@ -14,6 +14,9 @@ import {
 const RUNTIME_PATH = resolve(import.meta.dirname, "../../../core/dist/hyperframe.runtime.iife.js");
 const PNG_1PX =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==";
+const CSS_SEEK_CASES = ["seek", "renderSeek"].flatMap((method) =>
+  [false, true].flatMap((hidden) => [0, 150].map((loadDelay) => ({ method, hidden, loadDelay }))),
+);
 
 // A tenth of a second of 8 kHz, 8-bit mono silence.
 function silentWav(): Buffer {
@@ -198,6 +201,113 @@ describe("core runtime browser contract", () => {
       animationTime: 1000,
     });
   });
+
+  it.each(CSS_SEEK_CASES)(
+    "anchors authored pseudo and shadow CSS to clip time across loads ($method, hidden=$hidden, loadDelay=$loadDelay)",
+    async ({ method, hidden, loadDelay }) => {
+      const cssPage = await browser.newPage();
+      try {
+        await cssPage.setContent(`<!doctype html>
+              <style>
+                @keyframes slide { from { transform: translateX(0); } to { transform: translateX(100px); } }
+                #light, #pseudo::before, #pseudo::after { animation: slide 4s linear both; }
+                #pseudo::before, #pseudo::after { content: "x"; display: inline-block; }
+              </style>
+              <div data-composition-id="root" data-start="0" data-duration="10" data-width="320" data-height="180">
+                <div id="clip" class="clip" data-start="1" data-duration="9" style="${hidden ? "display:none" : ""}">
+                  <div id="wrapper" class="clip" data-duration="8">
+                    <div id="light"></div><div id="pseudo"></div><div id="host"></div>
+                  </div>
+                </div>
+              </div>`);
+        await cssPage.evaluate(async (delay) => {
+          const host = document.getElementById("host");
+          if (!host) throw new Error("Missing shadow host");
+          const outer = host.attachShadow({ mode: "open" });
+          const nestedHost = document.createElement("div");
+          outer.appendChild(nestedHost);
+          const inner = nestedHost.attachShadow({ mode: "open" });
+          inner.innerHTML = `<style>
+                @keyframes slide { from { transform: translateX(0); } to { transform: translateX(100px); } }
+                #shadow, #shadow::before { animation: slide 4s linear both; }
+                #shadow::before { content: "x"; display: inline-block; }
+                </style><div id="shadow"></div>`;
+          document.getAnimations();
+          inner.getAnimations();
+          await new Promise((resolveDelay) => setTimeout(resolveDelay, delay));
+        }, loadDelay);
+        if (method === "renderSeek") {
+          await cssPage.evaluate(() => {
+            window.__HF_EXPORT_RENDER_SEEK_CONFIG = { fps: 30, fpsSource: "render-options" };
+          });
+        }
+        await cssPage.addScriptTag({ content: readFileSync(RUNTIME_PATH, "utf8") });
+        await cssPage.waitForFunction(() => window.__playerReady && window.__renderReady);
+        const { samples, sameAnimations } = await cssPage.evaluate(async (seekMethod) => {
+          const fixtureTargets = () => {
+            const player = window.__player;
+            const wrapper = document.getElementById("wrapper");
+            const pseudo = document.getElementById("pseudo");
+            const light = document.getElementById("light");
+            const shadow = document
+              .getElementById("host")
+              ?.shadowRoot?.firstElementChild?.shadowRoot?.getElementById("shadow");
+            if (!player || !wrapper || !pseudo || !light || !shadow)
+              throw new Error("Incomplete fixture");
+            return { player, wrapper, pseudo, light, shadow };
+          };
+          const { player, wrapper, pseudo, light, shadow } = fixtureTargets();
+          const seek = async (time: number) => {
+            if (seekMethod === "seek") player.seek?.(time);
+            else player.renderSeek?.(time);
+            await window.__hfWaitForSeekCompletion?.();
+          };
+          const x = (element: Element, pseudoElement?: string) => {
+            const transform = getComputedStyle(element, pseudoElement).transform;
+            return transform === "none" ? 0 : new DOMMatrixReadOnly(transform).m41;
+          };
+          const read = () => [
+            x(light),
+            x(pseudo, "::before"),
+            x(pseudo, "::after"),
+            x(shadow),
+            x(shadow, "::before"),
+          ];
+          const results: number[][] = [];
+          for (const time of [3, 2, 3, 0, 3]) {
+            await seek(time);
+            results.push(read());
+            await new Promise((resolveDelay) => setTimeout(resolveDelay, 100));
+            results.push(read());
+          }
+          const handles = [...document.getAnimations(), ...shadow.getAnimations()];
+          for (const start of ["2", null]) {
+            if (start === null) wrapper.removeAttribute("data-start");
+            else wrapper.setAttribute("data-start", start);
+            await seek(3);
+            results.push(read());
+          }
+          const live = [...document.getAnimations(), ...shadow.getAnimations()];
+          return {
+            samples: results,
+            sameAnimations: handles.length > 0 && handles.every((handle) => live.includes(handle)),
+          };
+        }, method);
+        expect(sameAnimations).toBe(true);
+        for (const [index, sample] of samples.entries()) {
+          for (const [target, position] of sample.entries()) {
+            expect(
+              position,
+              `hidden=${hidden}, loadDelay=${loadDelay}, sample=${index}, target=${target}`,
+            ).toBeCloseTo([50, 50, 25, 25, 50, 50, 0, 0, 50, 50, 25, 50][index], 3);
+          }
+        }
+      } finally {
+        await cssPage.close();
+      }
+    },
+    30_000,
+  );
 
   it.each([24, 30, 60, 30_000 / 1_001])(
     "keeps the real public player running across a seek at %s fps",

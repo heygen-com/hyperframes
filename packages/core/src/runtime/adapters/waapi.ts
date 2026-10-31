@@ -1,12 +1,23 @@
 import type { RuntimeDeterministicAdapter } from "../types";
 import { swallow } from "../diagnostics";
 import { holdAnimationAt } from "./_holdAnimationAt";
+import {
+  type AuthoredCssAnimations,
+  clipStartSeconds,
+  cssClip,
+  isCssAnimation,
+  isKeyframeEffect,
+} from "./cssAnimation";
 
 const isBrowserCreatedCss = (animation: Animation): boolean =>
-  (typeof CSSAnimation !== "undefined" && animation instanceof CSSAnimation) ||
+  isCssAnimation(animation) ||
   (typeof CSSTransition !== "undefined" && animation instanceof CSSTransition);
 
-export function createWaapiAdapter(): RuntimeDeterministicAdapter {
+export function createWaapiAdapter(params?: {
+  resolveStartSeconds?: (element: Element) => number;
+  readPageAnimations?: () => Animation[];
+  authored?: AuthoredCssAnimations;
+}): RuntimeDeterministicAdapter {
   let didDiscover = false;
   let lastSeekTimeMs = 0;
   let animateHookInstalled = false;
@@ -19,15 +30,13 @@ export function createWaapiAdapter(): RuntimeDeterministicAdapter {
   let originalAnimate: Element["animate"] | undefined;
   let installedAnimate: Element["animate"] | undefined;
   const animations = new Set<Animation>();
-  let baselines = new WeakMap<
-    Animation,
-    {
-      compositionTimeMs: number;
-      animationTimeMs: number;
-    }
-  >();
+  type Baseline = { compositionTimeMs: number; animationTimeMs: number };
+  type ClipBaseline = { target: Element };
+  let baselines = new WeakMap<Animation, Baseline | ClipBaseline>();
 
-  const snapshotAnimations = (read = () => document.getAnimations()) => {
+  const snapshotAnimations = (
+    read = params?.readPageAnimations ?? (() => document.getAnimations()),
+  ) => {
     if (!document.getAnimations) return [];
     try {
       return read();
@@ -35,6 +44,25 @@ export function createWaapiAdapter(): RuntimeDeterministicAdapter {
       return [];
     }
   };
+
+  const authoredTarget = (animation: Animation): Element | null => {
+    const effect = animation.effect;
+    return isCssAnimation(animation) &&
+      params?.authored?.has(animation) &&
+      isKeyframeEffect(effect) &&
+      effect.target
+      ? effect.target
+      : null;
+  };
+
+  const anchorOf = (baseline: Baseline | ClipBaseline): Baseline =>
+    "target" in baseline
+      ? {
+          compositionTimeMs:
+            clipStartSeconds(cssClip(baseline.target), params?.resolveStartSeconds) * 1000,
+          animationTimeMs: 0,
+        }
+      : baseline;
 
   const readAnimationTimeMs = (animation: Animation) => {
     const raw = Number(animation.currentTime);
@@ -59,12 +87,17 @@ export function createWaapiAdapter(): RuntimeDeterministicAdapter {
       return existing;
     }
 
-    const baseline = {
-      compositionTimeMs,
-      animationTimeMs: didDiscover
-        ? normalizeInitialAnimationTimeMs(readAnimationTimeMs(animation), compositionTimeMs)
-        : readAnimationTimeMs(animation),
-    };
+    const target = authoredTarget(animation);
+    const baseline = target
+      ? { target }
+      : {
+          compositionTimeMs,
+          animationTimeMs: isCssAnimation(animation)
+            ? 0
+            : didDiscover
+              ? normalizeInitialAnimationTimeMs(readAnimationTimeMs(animation), compositionTimeMs)
+              : readAnimationTimeMs(animation),
+        };
     baselines.set(animation, baseline);
     return baseline;
   };
@@ -140,8 +173,26 @@ export function createWaapiAdapter(): RuntimeDeterministicAdapter {
     if (!timing) return {};
     const endTimeMs = Number(timing.endTime);
     if (!Number.isFinite(endTimeMs)) return { unbounded: true };
-    const compositionStartSeconds = (baselines.get(animation)?.compositionTimeMs ?? 0) / 1000;
+    const target = authoredTarget(animation);
+    const baseline = baselines.get(animation) ?? (target ? { target } : undefined);
+    const compositionStartSeconds = baseline ? anchorOf(baseline).compositionTimeMs / 1000 : 0;
     return { endSeconds: compositionStartSeconds + endTimeMs / 1000 };
+  };
+
+  const seekAnimation = (animation: Animation, timeMs: number) => {
+    if (animation.playState === "idle" && isBrowserCreatedCss(animation)) {
+      animations.delete(animation);
+      return;
+    }
+    if (params?.authored?.drivenByCssAdapter(animation)) return;
+    const baseline = anchorOf(ensureBaseline(animation, didDiscover ? timeMs : 0));
+    const localTimeMs = baseline.animationTimeMs + Math.max(0, timeMs - baseline.compositionTimeMs);
+    holdAnimationAt(
+      animation,
+      localTimeMs,
+      "runtime.adapters.waapi.site1",
+      "runtime.adapters.waapi.site2",
+    );
   };
 
   return {
@@ -156,34 +207,18 @@ export function createWaapiAdapter(): RuntimeDeterministicAdapter {
       lastSeekTimeMs = timeMs;
       // document.getAnimations() is surprisingly expensive in Chromium even
       // when it returns [], and renderSeek calls this adapter once per frame.
-      // After an empty discover, skip the per-frame global scan until authored
-      // code creates a WAAPI animation via Element.animate (hooked above).
-      if (!didDiscover || animations.size > 0) {
+      // An empty page stays idle unless it authors CSS or creates a WAAPI animation.
+      if (!didDiscover || animations.size > 0 || params?.authored?.hasAny()) {
         trackAnimations(snapshotAnimations(ctx.pageAnimations), didDiscover ? timeMs : 0);
       }
-      for (const animation of animations) {
-        if (animation.playState === "idle" && isBrowserCreatedCss(animation)) {
-          animations.delete(animation);
-          continue;
-        }
-        const baseline = didDiscover
-          ? ensureBaseline(animation, timeMs)
-          : ensureBaseline(animation, 0);
-        const localTimeMs =
-          baseline.animationTimeMs + Math.max(0, timeMs - baseline.compositionTimeMs);
-        holdAnimationAt(
-          animation,
-          localTimeMs,
-          "runtime.adapters.waapi.site1",
-          "runtime.adapters.waapi.site2",
-        );
-      }
+      for (const animation of animations) seekAnimation(animation, timeMs);
     },
     pause: (ctx) => {
       if (!didDiscover) {
         trackAnimations(snapshotAnimations(ctx?.pageAnimations), lastSeekTimeMs);
       }
       for (const animation of animations) {
+        if (params?.authored?.drivenByCssAdapter(animation)) continue;
         try {
           animation.pause();
         } catch (err) {

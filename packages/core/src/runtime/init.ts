@@ -52,6 +52,7 @@ import {
 import { initRuntimeAnalytics, emitAnalyticsEvent } from "./analytics";
 import { injectCompositionCssVariables } from "./getVariables";
 import { createCssAdapter } from "./adapters/css";
+import { createAuthoredCssAnimations } from "./adapters/cssAnimation";
 import {
   createGsapAdapter,
   holdFrameMarks,
@@ -459,9 +460,9 @@ const SLOW_IDLE_HEARTBEAT_MS = 1000;
 const HIDDEN_TRANSPORT_TICK_MS = 16;
 
 // One document.getAnimations() per seek and the pause after it, read on first use, shared by all adapters.
-function pageAnimationsForOnePass(): () => Animation[] {
+function pageAnimationsForOnePass(read: () => Animation[]): () => Animation[] {
   let list: Animation[] | undefined;
-  return () => (list ??= document.getAnimations());
+  return () => (list ??= read());
 }
 
 // A `<video>` joins only for a gain `el.volume` cannot express or a root master chain: capture is a one-way door.
@@ -3898,6 +3899,10 @@ export function initSandboxRuntimeModular(): void {
     postState(true);
   };
 
+  const authoredCss = createAuthoredCssAnimations();
+  const readPageAnimations = () =>
+    [document, ...authoredCss.shadowRoots()].flatMap((scope) => scope.getAnimations());
+
   const runAdapters = (
     method: "discover" | "pause" | "play",
     timeSeconds = 0,
@@ -4923,9 +4928,14 @@ export function initSandboxRuntimeModular(): void {
       canonicalFps: () => state.canonicalFps,
       exportRenderSeek: () => Boolean(window.__HF_EXPORT_RENDER_SEEK_CONFIG),
     }),
-    createWaapiAdapter(),
     createCssAdapter({
       resolveStartSeconds: (element) => resolveStartForElement(element, 0),
+      authored: authoredCss,
+    }),
+    createWaapiAdapter({
+      resolveStartSeconds: (element) => resolveStartForElement(element, 0),
+      readPageAnimations,
+      authored: authoredCss,
     }),
     createAnimeJsAdapter(),
     createLottieAdapter({
@@ -5383,7 +5393,24 @@ export function initSandboxRuntimeModular(): void {
     }
     hideClipsAgain?.();
     tweensRenderedThrough.time = Math.max(tweensRenderedThrough.time, t);
-    const pageAnimations = pageAnimationsForOnePass();
+    // Restore timed display hides before collecting CSS animations created by this seek.
+    if (authoredCss.hasAny()) {
+      withTimingResolver(() => {
+        const visibleAt = timedVisibilityAt(revision);
+        const rootComp = resolveRootCompositionElement();
+        for (const node of queryForTransport("[data-start]")) {
+          if (
+            isStylableElement(node) &&
+            displayBeforeHide.has(node) &&
+            !node.closest("[data-hidden]") &&
+            visibleAt(node, t) &&
+            clipChainVisibleAt(node.parentElement, t, visibleAt, rootComp)
+          )
+            restoreDisplay(node);
+        }
+      });
+    }
+    const pageAnimations = pageAnimationsForOnePass(readPageAnimations);
     for (const adapter of state.deterministicAdapters) {
       if (adapter.name === "gsap" && tl) continue;
       try {
