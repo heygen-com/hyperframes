@@ -1,5 +1,5 @@
 // fallow-ignore-file code-duplication
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { mediaElementTime } from "./mediaClock";
 import {
   evictMediaSyncState,
@@ -2412,7 +2412,14 @@ describe("syncRuntimeMedia", () => {
       expect(clip.el.playbackRate).toBeCloseTo(1.03, 9);
     });
 
-    describe("sounding audio past 0.65 s behind", () => {
+    describe("sounding audio past 0.65 s behind in WebKit", () => {
+      beforeEach(() => {
+        vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15",
+        );
+      });
+      afterEach(() => vi.restoreAllMocks());
+
       const tickDipping = (clip: RuntimeMediaClip, timeSeconds: number, dips: boolean) => {
         const seekUnderDip = vi.fn(() => dips);
         syncRuntimeMedia({

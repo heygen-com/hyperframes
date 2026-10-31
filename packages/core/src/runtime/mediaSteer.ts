@@ -1,3 +1,5 @@
+import { isWebKit } from "./mediaClock";
+
 /** Drift a playing element may carry before sync pulls it back onto the playhead. */
 export const MEDIA_SYNC_TOLERANCE_SECONDS = 0.04;
 export const MEDIA_HARD_SYNC_SECONDS = 0.5;
@@ -9,9 +11,10 @@ const MEDIA_STEER_STEPS: readonly (readonly [lag: number, steer: number])[] = [
   [0.1, 0.1],
 ];
 const MEDIA_STEER_RELEASE_SECONDS = 0.01;
-// Audio is never steered (a rate change shifts speech tempo, and WebKit's output starts 150 to 400 ms after
-// play() or a seek, so a lag below this is the start, which a seek only renews): a lag past this is seeked.
-const AUDIO_SEEK_SECONDS = 0.65;
+// Audio is never steered (a rate change shifts speech tempo): a lag past this is seeked. WebKit's output starts
+// 150 to 400 ms after play() or a seek, so a lower lag there is the start, which a seek only renews.
+const AUDIO_SEEK_SECONDS = 0.1;
+const WEBKIT_AUDIO_SEEK_SECONDS = 0.65;
 
 /** Direction (+1 fast, -1 slow) an element is being steered in; absent when it plays at its authored rate. */
 const steering = new WeakMap<HTMLMediaElement, number>();
@@ -27,7 +30,10 @@ export function steerMedia(
   const lag = Math.abs(offset);
   if (audioOnly) {
     steering.delete(el);
-    return { rate: baseRate, seek: settled && lag > AUDIO_SEEK_SECONDS };
+    return {
+      rate: baseRate,
+      seek: settled && lag > (isWebKit() ? WEBKIT_AUDIO_SEEK_SECONDS : AUDIO_SEEK_SECONDS),
+    };
   }
   const direction = Math.sign(offset);
   const current = steering.get(el);

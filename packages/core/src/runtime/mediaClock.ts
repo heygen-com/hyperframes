@@ -8,3 +8,9 @@ export function startsSoundOnlyInsideATap(): boolean {
   const { userAgent, maxTouchPoints } = navigator;
   return /iP(hone|ad|od)/.test(userAgent) || (/Macintosh/.test(userAgent) && maxTouchPoints > 1);
 }
+
+/** Safari and every iOS browser; Chromium user agents also say AppleWebKit, but say Chrome/ or Edg/ too. */
+export function isWebKit(): boolean {
+  const { userAgent } = navigator;
+  return /AppleWebKit/.test(userAgent) && !/Chrom(e|ium)\/|Edg\/|Android/.test(userAgent);
+}

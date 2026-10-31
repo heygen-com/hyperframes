@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TransportClock } from "./clock";
 import { syncRuntimeMedia, type RuntimeMediaClip } from "./media";
 
@@ -83,7 +83,14 @@ function playAudioClock(seconds: number) {
 }
 
 describe("an audio clock whose output starts late, as Safari's does", () => {
+  beforeEach(() => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15",
+    );
+  });
+
   afterEach(() => {
+    vi.restoreAllMocks();
     document.body.innerHTML = "";
   });
 
