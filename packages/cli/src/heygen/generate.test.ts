@@ -14,7 +14,7 @@ vi.mock("../cloud/auth.js", () => ({
 
 vi.stubEnv("HEYGEN_API_KEY", "k");
 
-const { checkRequest, generate, parseMask, structureRatio, urlOf } = await import("./generate.js");
+const { checkRequest, foldShort, generate, parseMask, structureRatio, urlOf } = await import("./generate.js");
 const { checkLimit, creditsOf, priceOf } = await import("./pricing.js");
 const ffmpeg = findFFmpeg();
 const project = mkdtempSync(join(tmpdir(), "hf-generate-test-"));
@@ -335,7 +335,7 @@ describe("generate", () => {
     };
     await expect(generate(request)).rejects.toMatchObject({
       message: `--motion ${guide} has a cut at 1.00 s`,
-      fix: "guide has a cut at 1.00 s: generate 0–1.00 s and 1.00–2.00 s as two shots, each with its own --motion clip",
+      fix: "guide has a cut at 1.00 s: generate 0–1.00 s and 1.00–2.00 s as two shots, each with its own --motion clip, or pass --allow-cuts for a guide you have checked",
     });
     expect(fetched).not.toHaveBeenCalled();
     expect(existsSync(request.out)).toBe(false);
@@ -513,5 +513,14 @@ describe("generate", () => {
     expect(() => checkLimit(shot, 30)).toThrow("about 72 credits, over --max-credits 30");
     expect(() => checkLimit(null, 30)).toThrow("cannot be priced ahead");
     expect(() => checkLimit(null, undefined)).not.toThrow();
+  });
+});
+
+describe("foldShort", () => {
+  it("folds a piece under half a second into its neighbour", () => {
+    expect(foldShort([4, 4.2, 8], 10)).toEqual([4.2, 8]);
+    expect(foldShort([0.2, 5], 10)).toEqual([5]);
+    expect(foldShort([5, 9.8], 10)).toEqual([5]);
+    expect(foldShort([2, 2.1, 2.2, 6], 10)).toEqual([2.2, 6]);
   });
 });

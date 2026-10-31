@@ -15,7 +15,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
-import { confirmsCut, cutsIn, frameChanges, signatures } from "./cuts.js";
+import { classifiedCuts, confirmsCut, frameChanges, signatures } from "./cuts.js";
 import {
   drawnFrames,
   drawnVerdict,
@@ -173,6 +173,8 @@ export interface CutReport {
   /** The original's cuts with no cut within a frame of them in yours. */
   missing: number[];
   extra: number[];
+  /** The original's flashes, whips and fast moves: changes that are not a new shot, so never missing or extra. */
+  not_cuts: { t: number; kind: "flash" | "fast" }[];
   pass: boolean;
 }
 
@@ -458,8 +460,10 @@ function outline(px: Uint8Array, w: number, [x, y, bw, bh]: number[], t = 3) {
 }
 
 function cutReport(ref: Clip, yours: Clip, k0: number, fps: number): CutReport {
-  const [da, db] = [ref, yours].map((c) => frameChanges(signatures(c.input, c.filters).frames));
-  const [a, b] = [cutsIn(da!), cutsIn(db!)];
+  const [fa, fb] = [ref, yours].map((c) => signatures(c.input, c.filters).frames);
+  const [da, db] = [frameChanges(fa!), frameChanges(fb!)];
+  const [all, b] = [classifiedCuts(fa!), classifiedCuts(fb!).filter((c) => !c.kind)];
+  const a = all.filter((c) => !c.kind);
   const used = new Set<number>();
   const missing: number[] = [];
   for (const cut of a) {
@@ -475,6 +479,7 @@ function cutReport(ref: Clip, yours: Clip, k0: number, fps: number): CutReport {
     yours: b.map((c) => t(c.frame)),
     missing: missing.map(t),
     extra: extra.map((c) => t(c.frame)),
+    not_cuts: all.flatMap((c) => (c.kind ? [{ t: t(c.frame), kind: c.kind }] : [])),
     pass: missing.length === 0 && extra.length === 0,
   };
 }

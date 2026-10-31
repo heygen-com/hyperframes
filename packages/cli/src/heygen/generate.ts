@@ -35,6 +35,8 @@ export interface GenerateRequest {
   audio?: string;
   /** video: a clip whose camera and body motion the shot follows (the original's same stretch, up to 15 s). */
   motion?: string;
+  /** video: skip the one-shot check of the motion clip (a guide a person has looked at). */
+  allowCuts?: boolean;
   /** video: regions of the motion clip blanked before it is sent (its drawn text), so the shot does not copy them. */
   masks?: Mask[];
   /** video: the shot starts from this picture. */
@@ -391,15 +393,30 @@ export function fitAspect(out: string, aspect: string): string | undefined {
   return `HeyGen returned ${width}x${height} for ${aspect}; cropped to ${w}x${h} (centre), not stretched`;
 }
 
+const MIN_SHOT_S = 0.5;
+
+/** The cuts left once every piece under MIN_SHOT_S is folded into its neighbour: a stray frame is not a shot. */
+export function foldShort(cuts: number[], length: number): number[] {
+  const kept = [...cuts];
+  for (;;) {
+    const edges = [0, ...kept, length];
+    const short = edges.slice(1).findIndex((e, i) => e - edges[i]! < MIN_SHOT_S);
+    if (short < 0 || !kept.length) return kept;
+    kept.splice(short ? short - 1 : 0, 1);
+  }
+}
+
 const COUNT = ["", "one", "two", "three", "four", "five", "six"];
 
 /**
  * Refuses a --motion clip holding more than one shot before anything is sent: HeyGen follows the guide's cut into
  * a cut of its own, so each shot is its own generation.
  */
-function checkGuide(r: Pick<GenerateRequest, "motion">): void {
-  if (!r.motion) return;
-  const { cuts, length } = cutsInside(r.motion, GUIDE_MAX_S);
+function checkGuide(r: Pick<GenerateRequest, "motion" | "allowCuts">): void {
+  if (!r.motion || r.allowCuts) return;
+  const found = cutsInside(r.motion, GUIDE_MAX_S);
+  const { length } = found;
+  const cuts = foldShort(found.cuts, length);
   if (!cuts.length) return;
   const s = (t: number) => t.toFixed(2);
   const and = (items: string[]) => `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
@@ -409,7 +426,7 @@ function checkGuide(r: Pick<GenerateRequest, "motion">): void {
   const shots = edges.slice(1).map((e, i) => `${i ? s(edges[i]!) : "0"}–${s(e)} s`);
   throw new Fix(
     `--motion ${r.motion} has ${at}`,
-    `guide has ${at}: generate ${and(shots)} as ${COUNT[shots.length] ?? shots.length} shots, each with its own --motion clip`,
+    `guide has ${at}: generate ${and(shots)} as ${COUNT[shots.length] ?? shots.length} shots, each with its own --motion clip, or pass --allow-cuts for a guide you have checked`,
   );
 }
 

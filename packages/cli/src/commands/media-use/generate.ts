@@ -75,6 +75,11 @@ export default defineCommand({
       type: "string",
       description: "video: a clip whose camera and body motion the shot follows (up to 15 s)",
     },
+    "allow-cuts": {
+      type: "boolean",
+      description: "video: send a --motion clip that reads as several shots (one you have checked)",
+      default: false,
+    },
     mask: {
       type: "string",
       description:
@@ -127,6 +132,7 @@ export default defineCommand({
         firstFrame: args["first-frame"],
         audio: args.audio,
         motion: args.motion,
+        allowCuts: args["allow-cuts"],
         masks: repeated(rawArgs, "--mask").map(parseMask),
         photo: args.photo,
         script: args.script,
