@@ -77,14 +77,14 @@ export async function createSession(options: CreateSessionOptions = {}): Promise
   const coreMlTemp = choice.label === "CoreML" ? trackCoreMlTemp() : undefined;
   // A signal stops the run through the CLI's shutdown, which releases the session so CoreML removes its temp files.
   // Releasing it while a frame is inside it aborts the process, so the stop waits for that frame and refuses the next.
-  if (coreMlTemp) drainToExit();
+  const undrain = coreMlTemp ? drainToExit() : undefined;
   let stopped = false;
   let inFlight: Promise<unknown> | undefined;
   let released = false;
   const release = async () => {
     if (released || !session) return;
     released = true;
-    await session.release();
+    await session.release().finally(undrain);
   };
   const unregister =
     coreMlTemp &&
@@ -98,12 +98,16 @@ export async function createSession(options: CreateSessionOptions = {}): Promise
   try {
     session = await tryCreate(choice.providers);
   } catch (err) {
-    if (choice.providers[0] === "cpu") throw err;
+    if (choice.providers[0] === "cpu") {
+      undrain?.();
+      throw err;
+    }
     options.onProgress?.(
       `${choice.label} provider failed (${(err as Error).message}); falling back to CPU.`,
     );
     session = await tryCreate(["cpu"]).catch((error: unknown) => {
       unregister?.();
+      undrain?.();
       throw error;
     });
     providerUsed = "CPU";
@@ -114,6 +118,7 @@ export async function createSession(options: CreateSessionOptions = {}): Promise
   const inputName = session.inputNames[0];
   const outputName = session.outputNames[0];
   if (!inputName || !outputName) {
+    undrain?.();
     throw new Error("ONNX session is missing input or output bindings");
   }
 
