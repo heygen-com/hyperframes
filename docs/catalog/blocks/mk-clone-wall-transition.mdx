@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Text Clone Wall Transition</h1>
+  <p>Overlay transition: a tiled word wall covers the frame, inverts via difference blending, and clears — hard-cut the content beneath while covered</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/mk-clone-wall-transition.json"
   compositionId="mk-clone-wall-transition"
   compositionSrc="compositions/mk-clone-wall-transition.html"
   title="Text Clone Wall Transition"
-  description="Overlay transition: a tiled word wall covers the frame, inverts via difference blending, and clears — hard-cut the content beneath while covered"
   variables={[]}
   meta={{"duration":2.4,"width":1920,"height":1080,"category":"CSS Transitions","badge":"Stable","codeLines":225}}
   attribution={{"path":"registry/blocks/mk-clone-wall-transition","tags":["transition","typography","wipe"]}}
@@ -260,7 +264,9 @@ That writes one file: `compositions/mk-clone-wall-transition.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -291,6 +297,4 @@ Tagged `transition` `typography` `wipe`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

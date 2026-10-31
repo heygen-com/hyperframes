@@ -411,6 +411,25 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
     expect(host.hasAttribute("data-timeline-locked")).toBe(true);
   });
 
+  it("propagates data-no-timeline from inner root to host element", () => {
+    const stillSubComp = `<!doctype html>
+<html><head></head><body>
+  <div id="captions" data-composition-id="captions" data-no-timeline data-width="1920" data-height="1080">
+    <span>Hello</span>
+  </div>
+</body></html>`;
+
+    const document = makeHostDocument("captions");
+    const host = document.querySelector('[data-composition-src="intro.html"]')!;
+
+    inlineSubCompositions(document, [host], {
+      resolveHtml: () => stillSubComp,
+      parseHtml: (html) => parseHTML(html).document,
+    });
+
+    expect(host.hasAttribute("data-no-timeline")).toBe(true);
+  });
+
   it("producer path propagates data-hf-authored-id to host when inner root has id", () => {
     const document = makeHostDocument("intro");
     const host = document.querySelector('[data-composition-src="intro.html"]')!;

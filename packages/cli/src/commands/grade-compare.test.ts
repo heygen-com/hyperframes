@@ -57,6 +57,22 @@ describe("parseGradesFile", () => {
     }
   });
 
+  it("parses a grades file saved with a UTF-8 BOM", () => {
+    const dir = tempDir();
+    try {
+      const file = join(dir, "grades.json");
+      writeFileSync(
+        file,
+        `\uFEFF${JSON.stringify([{ label: "warm", grading: { preset: "warm-daylight" } }])}`,
+      );
+      expect(parseGradesFile(file)).toEqual([
+        { label: "warm", grading: { preset: "warm-daylight" } },
+      ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("errors clearly for missing or invalid grades files", () => {
     const dir = tempDir();
     try {

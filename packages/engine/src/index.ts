@@ -381,7 +381,6 @@ export {
 export {
   _setDownloadFetchForTests,
   assertPublicHttpsUrl,
-  isBlockedNetworkHost,
   downloadToTemp,
   fetchPublicHttpsText,
   isHttpUrl,
@@ -392,6 +391,7 @@ export {
   type UrlDownloadTelemetry,
   type PublicHttpsTextOptions,
 } from "./utils/urlDownloader.js";
+export { isBlockedNetworkHost } from "./utils/networkPolicy.js";
 export {
   runFfmpeg,
   formatFfmpegError,

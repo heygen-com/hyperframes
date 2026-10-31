@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Context Menu Cursor</h1>
+  <p>A cursor right-clicks a file, a context menu blooms from its tip, the hover highlight tracks the item under it, and the chosen action plays out: duplicate, rename, move to trash, or a confirmation toast.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/cursor-context-menu.json"
   compositionId="cursor-context-menu"
   compositionSrc="compositions/components/cursor-context-menu.html"
   title="Context Menu Cursor"
-  description="A cursor right-clicks a file, a context menu blooms from its tip, the hover highlight tracks the item under it, and the chosen action plays out: duplicate, rename, move to trash, or a confirmation toast."
   variables={[{"id":"items","type":"string","role":"content","label":"Menu items","default":"Open,Rename,Duplicate,Share,Move to Trash"},{"id":"pick","type":"number","role":"content","label":"Chosen item (0 = first)","default":2,"min":0,"max":9,"step":1},{"id":"tone","type":"enum","role":"style","label":"Tone","default":"light","options":[{"value":"light","label":"Light"},{"value":"dark","label":"Dark"}]}]}
   meta={{"category":"Cursors","badge":"Stable","codeLines":562}}
   attribution={{"path":"registry/components/cursor-context-menu","tags":["cursor","motion-primitive","menu","right-click","desktop","files"]}}
@@ -597,7 +601,9 @@ That writes one file: `compositions/components/cursor-context-menu.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -638,6 +644,4 @@ Tagged `cursor` `motion-primitive` `menu` `right-click` `desktop` `files`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

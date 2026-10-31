@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Animated Bar Chart</h1>
+  <p>A compact data card with deterministic bar growth and value callouts.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/animated-bar-chart.json"
   compositionId="animated-bar-chart"
   compositionSrc="compositions/components/animated-bar-chart.html"
   title="Animated Bar Chart"
-  description="A compact data card with deterministic bar growth and value callouts."
   variables={[]}
   meta={{"category":"Data","badge":"Stable","codeLines":98}}
   attribution={{"path":"registry/components/animated-bar-chart","tags":["data"]}}
@@ -133,7 +137,9 @@ That writes one file: `compositions/components/animated-bar-chart.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -153,6 +159,4 @@ Tagged `data`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

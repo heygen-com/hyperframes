@@ -25,6 +25,7 @@ import { c } from "../ui/colors.js";
 import { errorBox } from "../ui/format.js";
 import {
   inlineJsonHint,
+  unreadableJsonHint,
   JsonFlagReadError,
   readJsonFlagText,
   type JsonFlagIO,
@@ -91,7 +92,10 @@ export function parseVariablesArg(
   return { ok: true, value: parsed as Record<string, unknown> };
 }
 
-function variablesErrorMessage(error: VariablesParseError): { title: string; message: string } {
+export function variablesErrorMessage(error: VariablesParseError): {
+  title: string;
+  message: string;
+} {
   switch (error.kind) {
     case "conflict":
       return {
@@ -101,7 +105,7 @@ function variablesErrorMessage(error: VariablesParseError): { title: string; mes
     case "read-error":
       return {
         title: "Could not read the variables JSON",
-        message: `${error.path}: ${error.cause}`,
+        message: `${error.path}: ${error.cause}${unreadableJsonHint("--variables", error.path)}`,
       };
     case "parse-error":
       return {

@@ -38,6 +38,7 @@ export interface DiscoverOptions {
   /** Seek the composition (timeline + adapters) to a time. */
   seek: (t: number) => void;
   onStep?: (i: number, steps: number) => void;
+  onStepBoxes?: (i: number, boxes: ReadonlyArray<DOMRect | undefined>) => void;
 }
 
 export interface Discovery {
@@ -187,6 +188,7 @@ export function discoverMovers({
   fps,
   seek,
   onStep,
+  onStepBoxes,
 }: DiscoverOptions): Discovery {
   seek(0);
   const all = [...scene.querySelectorAll("*")].filter(isHtmlElement);
@@ -230,6 +232,7 @@ export function discoverMovers({
       dynamic.add(el);
       rects[j] = el.getBoundingClientRect();
     });
+    onStepBoxes?.(i, rects);
     const away = fresh.filter(
       (j) => edgeShift(baseRects[j], rects[j]) / framesPerStep >= MIN_SPEED,
     );
@@ -269,4 +272,52 @@ export function discoverMovers({
   const movers = candidates.filter((el) => !candidates.some((o) => o !== el && o.contains(el)));
   const translationOnly = movers.length > 0 && movers.every((el) => !notPlain.has(el));
   return { movers, dynamic, pads, translationOnly };
+}
+
+export interface ScanOptions extends Omit<DiscoverOptions, "seek"> {
+  seek: (t: number, suppressEvents: boolean) => void;
+  events: boolean;
+}
+
+/** Every changing element's box, at 1/64 px, as one number per step. */
+function boxesKey(boxes: ReadonlyArray<DOMRect | undefined>): number {
+  let h = 0x811c9dc5;
+  const mix = (v: number): void => {
+    h = Math.imul(h ^ v, 0x01000193);
+  };
+  boxes.forEach((b, j) => {
+    if (!b) return;
+    for (const v of [j, b.left, b.top, b.width, b.height]) mix(Math.round(v * 64));
+  });
+  return h;
+}
+
+/** Discovery, and whether pose reads need callbacks: when they change an element's style or box. */
+export function scanMovers({
+  seek,
+  events,
+  onStep,
+  ...scan
+}: ScanOptions): Discovery & { readEvents: boolean } {
+  const quiet = (t: number): void => seek(t, true);
+  if (!events) return { ...discoverMovers({ ...scan, seek: quiet, onStep }), readEvents: false };
+  // Loud first: run after the silent scan, it starts at the end and fires a one-off call once more.
+  const loud: number[] = [];
+  const found = discoverMovers({
+    ...scan,
+    seek: (t) => seek(t, false),
+    onStep,
+    onStepBoxes: (i, boxes) => {
+      loud[i] = boxesKey(boxes);
+    },
+  });
+  let differs = false;
+  discoverMovers({
+    ...scan,
+    seek: quiet,
+    onStepBoxes: (i, boxes) => {
+      differs ||= boxesKey(boxes) !== loud[i];
+    },
+  });
+  return { ...found, readEvents: differs };
 }

@@ -5,6 +5,7 @@ import {
   HistoryBusyError,
   HistoryIdError,
   HistoryRefusedError,
+  isUncopiedMedia,
   type HistoryEntry,
   type HistoryListItem,
   type HistoryResult,
@@ -196,6 +197,10 @@ function print(json: boolean, data: object, text: string): void {
 async function textDiff(reader: Reader, entry: HistoryEntry): Promise<string> {
   const out: string[] = [];
   for (const file of entry.files) {
+    if (isUncopiedMedia(file.path)) {
+      out.push(`Media ${file.path} changed, not kept in history`);
+      continue;
+    }
     const sides = await Promise.all(
       [file.before, file.after].map((hash) => (hash ? reader.blob(hash) : Buffer.alloc(0))),
     );
@@ -451,6 +456,10 @@ export default defineCommand({
             if (!args.path) return print(args.json, { files }, Object.keys(files).join("\n"));
             const hash = files[args.path];
             if (!hash) throw new Refusal(`${args.path} did not exist then`);
+            if (isUncopiedMedia(args.path))
+              throw new Refusal(
+                `${args.path} is video or audio: the history keeps that it changed, not its bytes`,
+              );
             process.stdout.write(await reader.blob(hash));
           }),
       ),

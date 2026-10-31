@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>RGB Glitch Text</h1>
+  <p>RGB-offset text copies jitter briefly for a controlled glitch window.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/rgb-glitch-text.json"
   compositionId="rgb-glitch-text"
   compositionSrc="compositions/components/rgb-glitch-text.html"
   title="RGB Glitch Text"
-  description="RGB-offset text copies jitter briefly for a controlled glitch window."
   variables={[{"id":"text","type":"string","role":"content","label":"Text","description":"The word shown on all three stacked copies.","default":"GLITCH","maxLength":24},{"id":"intensity","type":"enum","role":"motion","label":"Intensity","description":"Scales the red and cyan offsets the timeline drives, so the split reads as a hairline or a hard tear.","default":"standard","options":[{"value":"subtle","label":"Subtle"},{"value":"standard","label":"Standard"},{"value":"extreme","label":"Extreme"}]},{"id":"tone","type":"enum","role":"style","label":"Tone","description":"Colour of the solid copy the two ghosts split away from: ink for light frames, paper for dark ones, accent rides --brand.","default":"ink","options":[{"value":"ink","label":"Ink"},{"value":"paper","label":"Paper"},{"value":"accent","label":"Accent"}]}]}
   meta={{"category":"Typography & Text","badge":"Stable","codeLines":110}}
   attribution={{"path":"registry/components/rgb-glitch-text","tags":["motion-primitive","typography"]}}
@@ -145,7 +149,9 @@ That writes one file: `compositions/components/rgb-glitch-text.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -187,6 +193,4 @@ Tagged `motion-primitive` `typography`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

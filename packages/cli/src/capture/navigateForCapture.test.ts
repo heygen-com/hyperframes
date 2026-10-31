@@ -1,3 +1,4 @@
+import { gsapCdnDist } from "@hyperframes/core/gsap-cdn";
 import { EventEmitter } from "node:events";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TimeoutError, type Page } from "puppeteer-core";
@@ -287,7 +288,7 @@ describe("waitForPageReady", () => {
 /** A page whose goto keeps Puppeteer's contract: a non-zero timeout rejects the navigation. */
 function fakeChromePage() {
   const session = Object.assign(new EventEmitter(), {
-    send: async () => undefined,
+    send: async (_method: string, _params?: Record<string, unknown>) => undefined,
     detach: vi.fn(async () => undefined),
   });
   let load: (response: unknown) => void = () => undefined;
@@ -324,6 +325,37 @@ function fakeChromePage() {
 describe("gotoWhenSent", () => {
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it("answers the page's request for jsDelivr GSAP from the bundled copy, and lets any other request go", async () => {
+    const chrome = fakeChromePage();
+    const sent: Array<[string, Record<string, unknown> | undefined]> = [];
+    chrome.session.send = async (method: string, params?: Record<string, unknown>) => {
+      sent.push([method, params]);
+    };
+    const opened = gotoWhenSent(chrome.page, "http://127.0.0.1:1/", 10_000);
+    await vi.waitFor(() => expect(sent.map(([method]) => method)).toContain("Fetch.enable"));
+    chrome.session.emit("Fetch.requestPaused", {
+      requestId: "gsap",
+      request: { url: `${gsapCdnDist()}gsap.min.js` },
+    });
+    chrome.session.emit("Fetch.requestPaused", {
+      requestId: "other",
+      request: { url: "https://cdn.example/lib.js" },
+    });
+    await vi.waitFor(() =>
+      expect(sent.map(([method]) => method)).toContain("Fetch.continueRequest"),
+    );
+    const fulfilled = sent.find(([method]) => method === "Fetch.fulfillRequest")?.[1];
+    expect(fulfilled).toMatchObject({ requestId: "gsap", responseCode: 200 });
+    expect(Buffer.from(String(fulfilled?.body), "base64").toString()).toContain("GreenSock");
+    expect(sent.find(([method]) => method === "Fetch.continueRequest")?.[1]).toEqual({
+      requestId: "other",
+    });
+    chrome.navigate();
+    chrome.send();
+    chrome.load({ status: () => 200 });
+    await opened;
   });
 
   it("gives the page its whole budget after a cold Chrome is slow to send the request", async () => {

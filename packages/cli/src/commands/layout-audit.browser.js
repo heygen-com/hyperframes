@@ -1303,10 +1303,25 @@
     }
   }
 
-  function isOpaqueOccluder(element, x, y) {
+  // A mask changes painting, not hit-testing, and its alpha is not modelled: a masked layer is never proven opaque.
+  // A mask on an ancestor of both the layer and `covered` masks them alike, so the walk stops there.
+  function hasMaskImage(layer, covered) {
+    for (
+      let current = layer;
+      current && !current.contains(covered);
+      current = current.parentElement
+    ) {
+      const style = getComputedStyle(current);
+      if ((style.maskImage || style.webkitMaskImage || "none") !== "none") return true;
+    }
+    return false;
+  }
+
+  function isOpaqueOccluder(element, x, y, covered) {
     const opacity = opacityChain(element);
     if (opacity < OCCLUDING_ALPHA) return false;
     if (IGNORE_TAGS.has(element.tagName)) return false;
+    if (hasMaskImage(element, covered)) return false;
     if (element.tagName === "IMG") {
       const alpha = imageAlphaAt(element, x, y);
       if (alpha !== null) return alpha * opacity >= OCCLUDING_ALPHA;
@@ -1388,7 +1403,7 @@
       if (isCrossSceneTransitionOverlap(element, hit)) continue;
       const matte = seenMattes && matteFrameFor(hit);
       if (matte && !seenMattes.has(matte)) seenMattes.set(matte, hit);
-      if (isOpaqueOccluder(hit, x, y)) return hit;
+      if (isOpaqueOccluder(hit, x, y, element)) return hit;
     }
     return null;
   }
@@ -1605,6 +1620,48 @@
     return false;
   }
 
+  const COMPOSITION_HOST = "[data-composition-src], [data-composition-id], [data-composition-file]";
+
+  // The global window [start, end) the element's own timed clip is on screen, or null when any timing
+  // up the chain is not a plain number. Each timed composition host moves its children's clock to its
+  // start minus its in-point, and an in-point host cuts them to its own slot (startResolver.ts).
+  function nonNegativeNumber(value) {
+    const number = value === null || value.trim() === "" ? NaN : Number(value);
+    return Number.isFinite(number) && number >= 0 ? number : null;
+  }
+
+  function clipLifetime(element) {
+    const own = element.closest("[data-start]");
+    if (!own) return null;
+    const start = Number(own.getAttribute("data-start"));
+    const duration = Number(own.getAttribute("data-duration"));
+    if (!Number.isFinite(start) || !(duration > 0)) return null;
+    const hosts = [];
+    for (let host = own.parentElement; host; host = host.parentElement) {
+      if (host.matches(COMPOSITION_HOST) && host.hasAttribute("data-start")) hosts.unshift(host);
+    }
+    let offset = 0;
+    let cutStart = -Infinity;
+    let cutEnd = Infinity;
+    for (const host of hosts) {
+      const hostStart = Number(host.getAttribute("data-start"));
+      if (!Number.isFinite(hostStart)) return null;
+      const inPoint =
+        nonNegativeNumber(host.getAttribute("data-playback-start")) ??
+        nonNegativeNumber(host.getAttribute("data-media-start")) ??
+        0;
+      if (inPoint > 0) {
+        const hostEnd = Number(host.getAttribute("data-end"));
+        const hostDuration = Number(host.getAttribute("data-duration")) || hostEnd - hostStart;
+        cutStart = Math.max(cutStart, offset + hostStart);
+        if (hostDuration > 0) cutEnd = Math.min(cutEnd, offset + hostStart + hostDuration);
+      }
+      offset += hostStart - inPoint;
+    }
+    const from = Math.max(start + offset, cutStart);
+    return { start: from, end: Math.max(from, Math.min(start + duration + offset, cutEnd)) };
+  }
+
   // text_occluded: atomic labels flag at any hit; prose needs coveredFraction >= proseCoverageFloor (default 0.15).
   function occludedTextIssue(element, time, proseCoverageFloor, matteResults) {
     if (hasAllowOcclusionFlag(element)) return null;
@@ -1708,8 +1765,10 @@
       )
         continue;
       // Last: an opaque check reads a video's frame, which a backdrop under its content never needs.
+      const matte = matteFrameFor(cover);
+      if (matte && matteCoverage([rootRect], [matte]) < COVER_CANVAS_SHARE) continue;
       const rect = toRect(cover.getBoundingClientRect());
-      if (!isOpaqueOccluder(cover, rect.left + rect.width / 2, rect.top + rect.height / 2))
+      if (!isOpaqueOccluder(cover, rect.left + rect.width / 2, rect.top + rect.height / 2, root))
         continue;
       return {
         code: "canvas_covered",
@@ -2550,7 +2609,11 @@
         if (clipped) issues.push(clipped);
         issues.push(...textOverflowIssues(element, root, rootRect, time, tolerance, clipped));
         const occluded = occludedTextIssue(element, time, proseCoverageFloor, matteResults);
-        if (occluded) issues.push(occluded);
+        if (occluded) {
+          const lifetime = clipLifetime(element);
+          if (lifetime) occluded.lifetime = lifetime;
+          issues.push(occluded);
+        }
         const invisible = invisibleTextIssue(element, time);
         if (invisible) issues.push(invisible);
       }
@@ -2716,6 +2779,7 @@
           ...craftAnchor(element),
           blockSelector: craftAnchor(block).selector,
           text: textContentFor(element, true),
+          blockText: textContentFor(block, false),
           opacity: round(opacityChain(element)),
           fontPx: round(renderedFontPx(element, getComputedStyle(element))),
           rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },

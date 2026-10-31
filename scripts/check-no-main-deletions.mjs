@@ -2080,6 +2080,14 @@ export const ALLOWED_DELETIONS = new Map([
     ".github/workflows/lambda-ffmpeg.yml",
     "the ffmpeg build moves into lambda-arm64-image.yml, which also builds and smokes the image",
   ],
+  [
+    "skills/remotion-to-hyperframes/scripts/frame_strip.sh",
+    "remotion-to-hyperframes now compares with `hyperframes diff` instead of its own shell scripts",
+  ],
+  [
+    "skills/remotion-to-hyperframes/scripts/render_diff.sh",
+    "remotion-to-hyperframes now compares with `hyperframes diff` instead of its own shell scripts",
+  ],
 ]);
 
 export function parseBase(argv, fallback = "origin/main") {

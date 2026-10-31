@@ -3721,6 +3721,61 @@ describe("SVG draw-on rules", () => {
     expect(finding).toBeUndefined();
   });
 
+  describe("gsap_fullscreen_overlay_starts_visible — a scene child hidden through a scoped query", () => {
+    const scene = (hide: string) => `
+<html><body>
+  <div data-composition-id="scene" data-width="1920" data-height="1080">
+    <div class="ov" style="position:absolute;inset:0;background:#fff"></div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const root = document.querySelector('[data-composition-id="scene"]');
+    ${hide}
+    const tl = gsap.timeline({ paused: true });
+    tl.to(".ov", { opacity: 1, duration: 0.5 }, 1).to(".ov", { opacity: 0, duration: 0.5 }, 3);
+    window.__timelines["scene"] = tl;
+  </script>
+</body></html>`;
+    const flagged = async (html: string) =>
+      (await lintHyperframeHtml(html)).findings.some(
+        (f) => f.code === "gsap_fullscreen_overlay_starts_visible",
+      );
+
+    it("accepts gsap.set on a querySelector call with a literal selector", async () => {
+      expect(await flagged(scene('gsap.set(root.querySelector(".ov"), { opacity: 0 });'))).toBe(
+        false,
+      );
+    });
+
+    it("accepts gsap.set on a variable bound to a querySelector call", async () => {
+      expect(
+        await flagged(scene('const ov = root.querySelector(".ov"); gsap.set(ov, { opacity: 0 });')),
+      ).toBe(false);
+    });
+
+    it("accepts a descendant selector inside the query", async () => {
+      expect(
+        await flagged(
+          scene(
+            'gsap.set(document.querySelector("[data-composition-id=scene] .ov"), { opacity: 0 });',
+          ),
+        ),
+      ).toBe(false);
+    });
+
+    it("accepts a querySelector variable written without semicolons", async () => {
+      expect(
+        await flagged(
+          scene('const ov = root.querySelector(".ov")\n    gsap.set(ov, { opacity: 0 })'),
+        ),
+      ).toBe(false);
+    });
+
+    it("still flags an overlay nothing hides at zero", async () => {
+      expect(await flagged(scene(""))).toBe(true);
+    });
+  });
+
   describe("gsap_fullscreen_overlay_starts_visible — the from() shape is not a defect", () => {
     const overlay = (style: string, script: string) => `
 <html><body>

@@ -10,6 +10,7 @@
 
 import type { TimelineElement } from "../store/playerStore";
 import type { ClipManifestClip, IframeWindow, TimelineLike } from "./playbackTypes";
+import { withSelectorIndexPass } from "../../utils/sourceScopedSelectorIndex";
 import { resolveCssStackingContextId } from "@hyperframes/core/runtime/stacking-context";
 import { readClipTiming } from "@hyperframes/core/composition-contract";
 import { readMasterFxChain } from "@hyperframes/core/audio-groups";
@@ -231,6 +232,14 @@ export function createTimelineElementFromManifestClip(params: {
  * Shared helper — used by onIframeLoad fallback, handleMessage, and enrichMissingCompositions.
  */
 export function parseTimelineFromDOM(
+  doc: Document,
+  rootDuration: number,
+  timelines?: Readonly<Record<string, TimelineLike>>,
+): TimelineElement[] {
+  return withSelectorIndexPass(doc, () => scanTimelineFromDOM(doc, rootDuration, timelines));
+}
+
+function scanTimelineFromDOM(
   doc: Document,
   rootDuration: number,
   timelines?: Readonly<Record<string, TimelineLike>>,

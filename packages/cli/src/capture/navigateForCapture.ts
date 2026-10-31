@@ -1,4 +1,6 @@
 import type { CDPSession, HTTPResponse, Page } from "puppeteer-core";
+import { gsapCdnDist } from "@hyperframes/core/gsap-cdn";
+import { bundledGsapFor } from "../server/gsapVendor.js";
 import {
   isDegradableEvaluateTimeoutError,
   isNavigationTimeoutError,
@@ -180,6 +182,28 @@ const SENT_OR_ANSWERED_WITHOUT_NETWORK = [
   "Network.responseReceived",
 ] as const;
 
+async function serveBundledGsap(cdp: CDPSession): Promise<void> {
+  cdp.on("Fetch.requestPaused", ({ requestId, request }) => {
+    const bundled = bundledGsapFor(request.url);
+    void (
+      bundled
+        ? cdp.send("Fetch.fulfillRequest", {
+            requestId,
+            responseCode: 200,
+            responseHeaders: [
+              { name: "Content-Type", value: bundled.contentType },
+              { name: "Access-Control-Allow-Origin", value: "*" },
+            ],
+            body: bundled.body.toString("base64"),
+          })
+        : cdp.send("Fetch.continueRequest", { requestId })
+    ).catch(() => undefined);
+  });
+  await cdp.send("Fetch.enable", {
+    patterns: [{ urlPattern: `${gsapCdnDist()}*`, requestStage: "Request" }],
+  });
+}
+
 export async function gotoWhenSent(
   page: Page,
   url: string,
@@ -190,6 +214,7 @@ export async function gotoWhenSent(
   const cdp = await page.createCDPSession();
   try {
     await cdp.send("Network.enable");
+    await serveBundledGsap(cdp);
     const sent = documentRequestSent(cdp);
     const unfinished = unfinishedPageLoadRequests(cdp);
     const navigation = page.goto(url, { waitUntil: "domcontentloaded", timeout: 0 });

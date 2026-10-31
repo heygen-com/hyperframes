@@ -319,6 +319,29 @@ export function reportFrameProgress(
   });
 }
 
+const lastExtractReportAt = new WeakMap<RenderJob, number>();
+
+/** Frames ffmpeg has written for the source videos, 10% to 20%. */
+export function reportExtractProgress(
+  job: RenderJob,
+  done: number,
+  total: number,
+  onProgress: ProgressCallback | undefined,
+): void {
+  if (total <= 0) return;
+  const frames = Math.min(done, total);
+  reportThrottled(
+    lastExtractReportAt,
+    job,
+    "Extracting video frames",
+    10 + (10 * frames) / total,
+    onProgress,
+    frames === total,
+    { code: "extract_video", done: frames, total },
+    "preprocessing",
+  );
+}
+
 const lastEncodeReportAt = new WeakMap<RenderJob, number>();
 
 /** Frames ffmpeg has encoded, from where capture left the bar up to 90%; same cadence as capture. */
@@ -366,7 +389,17 @@ export function reportAssembleProgress(
   );
 }
 
-const workerPhasesByJob = new WeakMap<RenderJob, Map<number, string>>();
+const workerPhasesByJob = new WeakMap<object, Map<number, string>>();
+
+export function forgetWorkerPhases(job: object): void {
+  workerPhasesByJob.delete(job);
+}
+
+export function describeWorkerPhases(job: object): string | undefined {
+  const phases = workerPhasesByJob.get(job);
+  if (!phases?.size) return undefined;
+  return `Last phase per worker: ${[...phases].map(([id, phase]) => `worker ${id} ${phase}`).join(", ")}.`;
+}
 
 /** Browser warm-up before the first frame, from the parallel workers' phase events. */
 export function reportWorkerStartup(

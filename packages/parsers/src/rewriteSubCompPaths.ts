@@ -16,6 +16,7 @@
 // submodule so Windows builds don't emit backslash-separated paths (or worse,
 // drive-letter-prefixed artifacts from `resolve("/", ...)`).
 import { posix } from "path";
+import { rewriteSrcsetUrls } from "./srcset.js";
 const { join, resolve, dirname } = posix;
 
 import {
@@ -111,6 +112,12 @@ export function rewriteAssetPaths<T>(
         setAttr(el, attr, rewritten);
       }
     }
+    const srcset = getAttr(el, "srcset");
+    if (!srcset) continue;
+    const rewritten = rewriteSrcsetUrls(srcset, (url) =>
+      rewriteAssetPath(compSrcPath, url, assetExists),
+    );
+    if (rewritten !== srcset) setAttr(el, "srcset", rewritten);
   }
 }
 

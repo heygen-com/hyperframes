@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Sheet Spring-Up</h1>
+  <p>A bottom sheet rushes up from below the frame on a real spring sampled frame by frame from reference footage, overshooting its resting place and settling back without an approximated ease</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/sheet-spring-up.json"
   compositionId="sheet-spring-up"
   compositionSrc="compositions/components/sheet-spring-up.html"
   title="Sheet Spring-Up"
-  description="A bottom sheet rushes up from below the frame on a real spring sampled frame by frame from reference footage, overshooting its resting place and settling back without an approximated ease"
   variables={[{"id":"width","type":"number","role":"style","label":"Width","description":"Sheet width in pixels.","default":668,"min":400,"max":900,"step":4,"unit":"px"},{"id":"radius","type":"number","role":"style","label":"Radius","description":"Sheet corner radius.","default":34,"min":16,"max":48,"step":1,"unit":"px"},{"id":"tone","type":"enum","role":"style","label":"Tone","description":"Light is the reference near-white sheet; dark is the raised surface token.","default":"light","options":[{"value":"light","label":"Light"},{"value":"dark","label":"Dark"}]}]}
   meta={{"category":"Motion Primitives","badge":"Stable","codeLines":243}}
   attribution={{"author":"Miao Yang","path":"registry/components/sheet-spring-up","tags":["video-primitive","sheet","spring","mock-ui","overlay"]}}
@@ -278,7 +282,9 @@ That writes one file: `compositions/components/sheet-spring-up.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -322,6 +328,4 @@ Created by Miao Yang.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

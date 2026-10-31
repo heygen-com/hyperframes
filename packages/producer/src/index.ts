@@ -24,6 +24,12 @@ export {
   type RenderPerfSummary,
   type ProgressCallback,
 } from "./services/renderOrchestrator.js";
+export {
+  renderSpan,
+  RenderSpanUnsupportedError,
+  spanFrameRange,
+  type RenderSpanResult,
+} from "./services/distributed/renderSpan.js";
 export { extractSafeRenderErrorCode } from "./services/safeRenderErrorCode.js";
 export {
   RENDER_JOB_DIR,

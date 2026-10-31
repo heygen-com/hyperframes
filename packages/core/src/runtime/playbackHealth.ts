@@ -18,11 +18,12 @@ export type PlaybackHealthInput = {
   hidden: boolean;
   /** A playing video is waiting for data. */
   waiting: boolean;
+  frozen?: boolean;
   /** Anything that changes how heavy a frame is to draw (window size, zoom). */
   layoutKey: string;
 };
 
-type Sample = { atMs: number; gapMs: number; drawn: boolean; waiting: boolean };
+type Sample = { atMs: number; gapMs: number; drawn: boolean; waiting: boolean; frozen: boolean };
 type Last = { ms: number; film: number; frame: number };
 
 const FORWARD_JUMP_SECONDS = 0.5;
@@ -70,6 +71,7 @@ function measure(nowMs: number, fps: number, rate: number): void {
   const due = (spanMs / 1000) * fps * rate;
   const skipped = due > 0 ? 1 - Math.min(drawn, due) / due : 0;
   const waitingMs = samples.reduce((sum, s) => sum + (s.waiting ? s.gapMs : 0), 0);
+  const frozenMs = samples.reduce((sum, s) => sum + (s.frozen ? s.gapMs : 0), 0);
   const droppedShare = Math.max(skipped, waitingMs / spanMs);
   const gaps = samples.map((sample) => sample.gapMs).sort((a, b) => a - b);
   const gapAt = (share: number) => Math.round(gaps[Math.ceil(share * gaps.length) - 1] ?? 0);
@@ -83,6 +85,7 @@ function measure(nowMs: number, fps: number, rate: number): void {
     worstFrameMs: Math.round(Math.max(...samples.map((sample) => sample.gapMs))),
     skippedShare: Math.round(skipped * 1000) / 1000,
     waitingShare: Math.round((waitingMs / spanMs) * 1000) / 1000,
+    frozenShare: Math.round((frozenMs / spanMs) * 1000) / 1000,
     gapP50Ms: gapAt(0.5),
     gapP95Ms: gapAt(0.95),
     mode: "play",
@@ -117,6 +120,12 @@ export function notePlaybackFrame(input: PlaybackHealthInput): void {
     return;
   }
   if (nowMs < warmEndMs) return;
-  samples.push({ atMs: nowMs, gapMs, drawn: frame !== previous.frame, waiting: input.waiting });
+  samples.push({
+    atMs: nowMs,
+    gapMs,
+    drawn: frame !== previous.frame,
+    waiting: input.waiting,
+    frozen: input.frozen === true,
+  });
   measure(nowMs, fps, rate);
 }

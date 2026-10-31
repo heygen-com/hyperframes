@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Lower Third — Side Rule</h1>
+  <p>Cardless lower third with a vertical accent bar; condensed display name + mono role, text-shadowed for footage</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/lt-side-rule.json"
   compositionId="lt-side-rule"
   compositionSrc="compositions/lt-side-rule.html"
   title="Lower Third — Side Rule"
-  description="Cardless lower third with a vertical accent bar; condensed display name + mono role, text-shadowed for footage"
   variables={[]}
   meta={{"duration":4.8,"width":1920,"height":1080,"category":"Lower Thirds","badge":"Stable","codeLines":113}}
   attribution={{"path":"registry/blocks/lt-side-rule","tags":["lower-third","overlay","podcast","interview","minimal"]}}
@@ -148,7 +152,9 @@ That writes one file: `compositions/lt-side-rule.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -179,6 +185,4 @@ Tagged `lower-third` `overlay` `podcast` `interview` `minimal`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

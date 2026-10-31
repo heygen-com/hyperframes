@@ -19,7 +19,12 @@ type MinimalEngineConfig = {
 };
 
 const writeFrame = mock((_buffer: Buffer) => true);
-const closeEncoder = mock(async () => ({ success: true, durationMs: 123, fileSize: 42 }));
+const closeEncoder = mock(async () => ({
+  success: true,
+  durationMs: 123,
+  fileSize: 42,
+  drainWaitMs: 7,
+}));
 const spawnStreamingEncoder = mock(async () => ({
   writeFrame,
   close: closeEncoder,
@@ -1193,6 +1198,7 @@ describe("runCaptureHdrStage", () => {
     );
     expect(closeEncoder).toHaveBeenCalledTimes(1);
     expect(result.encodeMs).toBe(123);
+    expect(result.encoderDrainWaitMs).toBe(7);
   });
 
   it("wraps HDR capture failures with the browser console buffer", async () => {

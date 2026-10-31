@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Pill Karaoke</h1>
+  <p>Pill-shaped container with per-word karaoke color highlight</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/caption-pill-karaoke.json"
   compositionId="caption-pill-karaoke"
   compositionSrc="compositions/components/caption-pill-karaoke.html"
   title="Pill Karaoke"
-  description="Pill-shaped container with per-word karaoke color highlight"
   variables={[]}
   meta={{"category":"Captions","badge":"Stable","codeLines":382}}
   attribution={{"path":"registry/components/caption-pill-karaoke","tags":["captions","caption-style","karaoke","pill"]}}
@@ -417,7 +421,9 @@ That writes one file: `compositions/components/caption-pill-karaoke.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -436,6 +442,4 @@ Tagged `captions` `caption-style` `karaoke` `pill`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

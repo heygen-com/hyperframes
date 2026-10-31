@@ -51,6 +51,7 @@ export interface DockerRenderOptions {
   vp9CpuUsed?: number;
   videoBitrate?: string;
   keyframeIntervalSeconds?: number;
+  range?: { startSeconds: number; endSeconds?: number };
   proresProfile?: string;
   maxBitrate?: string;
   bufferSize?: string;
@@ -148,6 +149,13 @@ export function buildDockerRunArgs(input: DockerRunArgsInput): string[] {
     ...(options.vp9CpuUsed != null ? ["--vp9-cpu-used", String(options.vp9CpuUsed)] : []),
     ...(options.videoBitrate ? ["--video-bitrate", options.videoBitrate] : []),
     ...(options.proresProfile ? ["--prores-profile", options.proresProfile] : []),
+    ...(options.range
+      ? [
+          "--start",
+          String(options.range.startSeconds),
+          ...(options.range.endSeconds != null ? ["--end", String(options.range.endSeconds)] : []),
+        ]
+      : []),
     ...(options.keyframeIntervalSeconds != null
       ? ["--keyframe-interval", String(options.keyframeIntervalSeconds)]
       : []),

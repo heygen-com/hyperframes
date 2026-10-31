@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Badge Pop</h1>
+  <p>A transitions.dev-inspired notification badge pop with elastic scale and count reveal</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/badge-pop.json"
   compositionId="badge-pop"
   compositionSrc="compositions/components/badge-pop.html"
   title="Badge Pop"
-  description="A transitions.dev-inspired notification badge pop with elastic scale and count reveal"
   variables={[{"id":"count","type":"string","role":"style","label":"Count","description":"Text shown inside the notification badge, up to four characters.","default":"3","maxLength":4},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Colour family of the badge.","default":"red","options":[{"value":"red","label":"Red"},{"value":"blue","label":"Blue"},{"value":"green","label":"Green"},{"value":"violet","label":"Violet"}]},{"id":"surface","type":"enum","role":"style","label":"Surface","description":"Chrome of the button and the badge ring: light for bright frames, dark for dark ones.","default":"light","options":[{"value":"light","label":"Light"},{"value":"dark","label":"Dark"}]}]}
   meta={{"category":"Motion Primitives","badge":"Stable","codeLines":148}}
   attribution={{"path":"registry/components/badge-pop","tags":["video-primitive","transition-primitive","transitions-dev-port","badge","microinteraction"]}}
@@ -183,7 +187,9 @@ That writes one file: `compositions/components/badge-pop.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -225,6 +231,4 @@ Tagged `video-primitive` `transition-primitive` `transitions-dev-port` `badge` `
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

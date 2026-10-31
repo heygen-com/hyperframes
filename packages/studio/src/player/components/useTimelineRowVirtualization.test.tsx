@@ -54,3 +54,48 @@ it("leaves the viewport still when a live preview lane is removed before the com
   expect(scroll.scrollTop).toBe(160);
   act(() => root.unmount());
 });
+
+// A long project settling hands the rows a new geometry with the same rows on many commits; each scrollTop read
+// forced a layout of every clip.
+it("reads no scroll position for a new geometry that places every row where it was", () => {
+  const scroll = document.createElement("div");
+  let reads = 0;
+  let top = 160;
+  Object.defineProperty(scroll, "scrollTop", {
+    get: () => (reads++, top),
+    set: (value: number) => void (top = value),
+  });
+  const scrollRef = { current: scroll };
+  const root = createRoot(document.createElement("div"));
+  function Probe({ geometry }: { geometry: TimelineRowGeometry }) {
+    useTimelineRowVirtualization({
+      scrollRef,
+      rowGeometry: geometry,
+      sessionEpoch: 0,
+      viewport: {
+        scrollTop: 160,
+        scrollLeft: 0,
+        clientWidth: 800,
+        clientHeight: 200,
+        scrollWidth: 800,
+        scrollHeight: 600,
+        isScrolling: false,
+      },
+      elements: [],
+      selectedElementId: null,
+      lastScrollLeftRef: { current: 0 },
+      syncScrollViewport: () => {},
+    });
+    return null;
+  }
+  const rows = () => createTimelineRowGeometry([0, 1, 2], [48, 48, 48]);
+  act(() => root.render(<Probe geometry={rows()} />));
+  reads = 0;
+  for (let i = 0; i < 3; i += 1) act(() => root.render(<Probe geometry={rows()} />));
+  expect(reads, "no layout read for the same rows").toBe(0);
+  act(() =>
+    root.render(<Probe geometry={createTimelineRowGeometry([0, 9, 1, 2], [48, 48, 48, 48])} />),
+  );
+  expect(reads, "a row added still keeps the view anchored").toBeGreaterThan(0);
+  act(() => root.unmount());
+});

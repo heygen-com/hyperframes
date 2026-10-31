@@ -31,6 +31,7 @@ import {
   type CaptureSession,
   type EngineConfig,
   type StreamingEncoder,
+  type StreamingEncoderResult,
 } from "@hyperframes/engine";
 import type { FileServerHandle } from "../../fileServer.js";
 import type { ProducerLogger } from "../../../logger.js";
@@ -124,6 +125,7 @@ export type CaptureSegmentedStageResult =
   | {
       success: true;
       encodeMs: number;
+      encoderDrainWaitMs?: number;
       probeSession: null;
       lastBrowserConsole: string[];
       workerCount: number;
@@ -226,8 +228,11 @@ async function captureSegmentFrames(
   }
 }
 
-/** Capture one segment into its own encoder. Returns the encoder's encode ms. */
-async function captureSegment(ctx: SegmentCaptureContext, segment: SegmentSlice): Promise<number> {
+/** Capture one segment into its own encoder. Returns the encoder's result. */
+async function captureSegment(
+  ctx: SegmentCaptureContext,
+  segment: SegmentSlice,
+): Promise<StreamingEncoderResult> {
   const segmentPath = segmentOutputPath(ctx.segmentDir, segment.index);
   let encoder: StreamingEncoder;
   try {
@@ -260,7 +265,7 @@ async function captureSegment(ctx: SegmentCaptureContext, segment: SegmentSlice)
       // finished; absent only in unit tests, whose fake encoder writes none.
       bytes: existsSync(segmentPath) ? statSync(segmentPath).size : 0,
     });
-    return encodeResult.durationMs;
+    return encodeResult;
   } finally {
     // A throw above (capture failure, abort, write error) leaves ffmpeg
     // running; close() is idempotent so this is safe next to the success
@@ -367,6 +372,7 @@ interface SegmentWorker {
 /** Counters shared by every worker; JS is single-threaded, so += is safe. */
 interface SegmentTotals {
   encodeMs: number;
+  encoderDrainWaitMs: number;
   segmentRetries: number;
   browserRecycles: number;
 }
@@ -493,7 +499,12 @@ async function retryAfterTargetLoss(
   // so a retry also restarts the cadence clock. Intended: the fresh browser
   // is as new as a cadence restart would have made it.
   await recycleWorkerSession(run, worker, "retry");
-  run.totals.encodeMs += await captureSegment(worker.ctx, segment);
+  addSegmentEncode(run.totals, await captureSegment(worker.ctx, segment));
+}
+
+function addSegmentEncode(totals: SegmentTotals, result: StreamingEncoderResult): void {
+  totals.encodeMs += result.durationMs;
+  totals.encoderDrainWaitMs += result.drainWaitMs ?? 0;
 }
 
 async function runOneSegment(
@@ -510,7 +521,7 @@ async function runOneSegment(
     segmentIndex: segment.index,
   });
   try {
-    run.totals.encodeMs += await captureSegment(worker.ctx, segment);
+    addSegmentEncode(run.totals, await captureSegment(worker.ctx, segment));
   } catch (err) {
     if (err instanceof SegmentEncoderSpawnError) return onSegmentSpawnFailure(run, err, segment);
     await retryAfterTargetLoss(run, worker, err, segment, segmentPath);
@@ -566,7 +577,7 @@ export async function runCaptureSegmentedStage(
   const run: SegmentRun = {
     input,
     deps,
-    totals: { encodeMs: 0, segmentRetries: 0, browserRecycles: 0 },
+    totals: { encodeMs: 0, encoderDrainWaitMs: 0, segmentRetries: 0, browserRecycles: 0 },
     segments,
     pending,
     segmentDir,
@@ -632,6 +643,7 @@ export async function runCaptureSegmentedStage(
   return {
     success: true,
     encodeMs: run.totals.encodeMs,
+    encoderDrainWaitMs: run.totals.encoderDrainWaitMs,
     probeSession: null,
     lastBrowserConsole,
     workerCount: run.workerCount,

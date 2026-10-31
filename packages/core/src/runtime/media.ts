@@ -247,6 +247,7 @@ export function evictMediaSyncState(el: HTMLMediaElement): void {
   lastRuntimeAppliedVolume.delete(el);
   forgetSteering(el);
   heldAhead.delete(el);
+  forgetOutPoint(el);
   videoStarts.delete(el);
 }
 
@@ -319,14 +320,74 @@ const MIN_NATIVE_PLAYBACK_RATE = 1 / 16;
 const VIDEO_LEAD_HOLD_SECONDS = 0.1;
 const heldAhead = new WeakSet<HTMLMediaElement>();
 
+// Where a browser reports presented frames, a video nearing its out-point is paused on the last
+// frame before it, so a cut shows every frame up to the out-point and none past it.
+const OUT_POINT_WATCH_SECONDS = 0.5;
+const outPointWatch = new WeakMap<HTMLMediaElement, number>();
+const heldAtOutPoint = new WeakMap<HTMLMediaElement, number>();
+const lastFrameBefore = new WeakMap<HTMLMediaElement, { outPoint: number; at: number }>();
+const reportsFrames = (el: HTMLMediaElement): el is HTMLVideoElement =>
+  typeof (el as HTMLVideoElement).requestVideoFrameCallback === "function";
+
+function watchOutPoint(el: HTMLVideoElement, outPoint: number): void {
+  if (outPointWatch.get(el) === outPoint) return;
+  outPointWatch.set(el, outPoint);
+  let previous: number | null = null;
+  let shortestStep = Number.POSITIVE_INFINITY;
+  let longestStep = 0;
+  const onFrame = (_now: number, frame: VideoFrameCallbackMetadata) => {
+    if (outPointWatch.get(el) !== outPoint) return;
+    if (el.paused) {
+      outPointWatch.delete(el);
+      return;
+    }
+    // A seek between two frames is not a frame step; a dropped frame or an uneven cadence is a longer one.
+    const gap = previous === null ? Number.NaN : frame.mediaTime - previous;
+    if (gap > 0 && gap < VIDEO_LEAD_HOLD_SECONDS) {
+      shortestStep = Math.min(shortestStep, gap);
+      longestStep = Math.max(longestStep, gap);
+      const framesLeft = Math.floor((outPoint - 0.001 - frame.mediaTime) / shortestStep);
+      lastFrameBefore.set(el, { outPoint, at: frame.mediaTime + framesLeft * shortestStep });
+    }
+    previous = frame.mediaTime;
+    if (frame.mediaTime + (longestStep || MEDIA_SYNC_TOLERANCE_SECONDS) < outPoint - 0.001) {
+      el.requestVideoFrameCallback(onFrame);
+      return;
+    }
+    outPointWatch.delete(el);
+    heldAtOutPoint.set(el, outPoint);
+    heldAhead.add(el);
+    el.pause();
+  };
+  el.requestVideoFrameCallback(onFrame);
+}
+
+function forgetOutPoint(el: HTMLMediaElement): void {
+  outPointWatch.delete(el);
+  heldAtOutPoint.delete(el);
+  lastFrameBefore.delete(el);
+}
+
+/** Where a watched video is held: on the last frame before its out-point once its cadence is known. */
+function outPointHoldTime(el: HTMLMediaElement, outPoint: number, watched: boolean): number {
+  if (!watched) return outPoint - MEDIA_SYNC_TOLERANCE_SECONDS;
+  const last = lastFrameBefore.get(el);
+  return last?.outPoint === outPoint ? last.at : outPoint;
+}
+
 // A muted video's clock is its audio track, which starts tens of ms after play(), so an upcoming
 // video starts that early, hidden, by the delay learned from earlier starts.
 let videoStartLatency: number | null = null;
-const videoStarts = new WeakMap<HTMLMediaElement, { offset: number; lead: number; at: number }>();
+const videoStarts = new WeakMap<
+  HTMLMediaElement,
+  { offset: number; lead: number; at: number; weight: number }
+>();
+let playheadWasRunning = false;
 
 /** Test-only seam. */
 export function resetVideoStartLatency(): void {
   videoStartLatency = null;
+  playheadWasRunning = false;
 }
 
 /** A quarter second in: its lag plus how early it started, capped at 0.1 s. */
@@ -334,7 +395,7 @@ function learnVideoStartLatency(el: HTMLMediaElement, time: number, offset: numb
   const start = videoStarts.get(el);
   if (!start || time < start.at) return;
   videoStarts.delete(el);
-  const sample = (offset - start.offset) / rate + start.lead;
+  const sample = ((offset - start.offset) / rate + start.lead) * start.weight;
   const averaged = videoStartLatency === null ? sample : (videoStartLatency + sample) / 2;
   videoStartLatency = Math.min(0.1, Math.max(0, averaged));
 }
@@ -393,6 +454,9 @@ export function syncRuntimeMedia(params: {
   getCompositionDuration: () => number;
 }): void {
   const forceMuteAll = !!(params.outputMuted || params.userMuted);
+  // A start at Play also waits on the playhead's start, so it counts half.
+  const startWeight = playheadWasRunning ? 1 : 0.5;
+  playheadWasRunning = params.playing && params.clockAdvancing !== false;
   for (const clip of params.clips) {
     const { el } = clip;
     if (!el.isConnected) continue;
@@ -596,15 +660,27 @@ export function syncRuntimeMedia(params: {
       // strict and force sync and is steered by rate; hard sync (>0.5s) and audio past its steer
       // limit seek. A paused transport pauses it below, so a seek that pauses mid-playback lands it.
       if (el.tagName === "VIDEO" && !isHeldVideoTail) {
+        const outPoint = mediaSourceTimeAt(clip, clip.end);
+        const watched = reportsFrames(el);
+        if (
+          watched &&
+          playing &&
+          !clip.loop &&
+          !el.paused &&
+          outPoint - currentElTime <= OUT_POINT_WATCH_SECONDS * baseRate
+        )
+          watchOutPoint(el, outPoint);
+        const atOutPoint = heldAtOutPoint.get(el) === outPoint;
         // A loop's playhead wraps before its element, so its offset jumps by a lap: steering owns loops.
         const ahead =
           !clip.loop &&
           (offset < -VIDEO_LEAD_HOLD_SECONDS ||
-            currentElTime >= mediaSourceTimeAt(clip, clip.end) - MEDIA_SYNC_TOLERANCE_SECONDS);
+            atOutPoint ||
+            currentElTime >= outPointHoldTime(el, outPoint, watched));
         if (!playing || (!ahead && offset >= -MEDIA_SYNC_TOLERANCE_SECONDS)) heldAhead.delete(el);
-        else if (ahead && !el.paused) {
+        else if (ahead && (!el.paused || atOutPoint)) {
           heldAhead.add(el);
-          el.pause();
+          if (!el.paused) el.pause();
         }
       }
       const holdingAhead = heldAhead.has(el);
@@ -682,6 +758,7 @@ export function syncRuntimeMedia(params: {
         }
         playRequested.delete(el);
         heldAhead.delete(el);
+        forgetOutPoint(el);
         videoStarts.delete(el);
       } else if (!playing) {
         holdSeekBarrierUntilVideoLands(el);
@@ -711,6 +788,7 @@ export function syncRuntimeMedia(params: {
         // Offset read after any seek above; a loop could wrap a lap before the sample.
         if (isNonLoopVideo)
           videoStarts.set(el, {
+            weight: startWeight,
             offset: relTime - (el.currentTime || 0),
             lead: Math.max(0, clip.start - params.timeSeconds) / params.playbackRate,
             at: Math.max(params.timeSeconds, clip.start) + 0.25 * params.playbackRate,

@@ -143,7 +143,8 @@ export function heygenUserId(username) {
 // casing never splits one person). `heygen_username` is the cross-project join
 // column for the Snowflake event table.
 function heygenAccount() {
-  const file = join(process.env.HEYGEN_CONFIG_DIR || join(homedir(), ".heygen"), "credentials");
+  const root = process.env.HYPERFRAMES_CONFIG_DIR || join(homedir(), ".hyperframes");
+  const file = join(root, ...(process.env.HYPERFRAMES_ENV === "dev" ? ["dev"] : []), "credentials");
   try {
     if (!existsSync(file)) return null;
     const raw = readFileSync(file, "utf8").trim();

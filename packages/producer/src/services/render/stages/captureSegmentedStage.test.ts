@@ -265,7 +265,7 @@ describe("runCaptureSegmentedStage", () => {
           written.push({ segment: outputPath, frame: buf.readUInt32BE(0) });
           return true;
         },
-        close: async () => ({ success: true, durationMs: 5, fileSize: 1 }),
+        close: async () => ({ success: true, durationMs: 5, fileSize: 1, drainWaitMs: 2 }),
         getExitStatus: () => "success" as const,
         getExitError: () => undefined,
       };
@@ -286,6 +286,9 @@ describe("runCaptureSegmentedStage", () => {
     });
 
     expect(result.success).toBe(true);
+    if (!result.success) throw new Error("unreachable");
+    expect(result.encodeMs).toBe(15);
+    expect(result.encoderDrainWaitMs).toBe(6);
     expect(encoders).toEqual([
       segmentOutputPath(join(fixtureRoot, "segments"), 0),
       segmentOutputPath(join(fixtureRoot, "segments"), 1),

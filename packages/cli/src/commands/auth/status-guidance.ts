@@ -12,6 +12,8 @@ import { c } from "../../ui/colors.js";
 export interface UnconfiguredContext {
   /** A human can act on guidance now — a TTY, or a coding agent driving the CLI. */
   interactive: boolean;
+  /** A coding agent runs this; the person reads what it relays. */
+  agent?: boolean;
 }
 
 /** The local engine a workflow will fall back to, and whether it's ready. */
@@ -58,10 +60,8 @@ function offlineEngineLines(engines?: OfflineEngineLine[]): string[] {
 /**
  * Human guidance for an unconfigured machine — registration-first.
  * Both paths use `npx hyperframes` (zero-install via npm): browser OAuth
- * (sign-in / sign-up) and `--api-key` both write `~/.heygen`. The separate
- * `heygen` CLI shares that file but needs its own install (no `npx heygen`),
- * so it's left to the docs — not dangled here as a command a fresh machine
- * can't run. Names the local fallback so "no key" never reads as a failure,
+ * (sign-in / sign-up) and `--api-key` both write the isolated HyperFrames store.
+ * Names the local fallback so "no key" never reads as a failure,
  * and never steers users toward a per-repo `.env`. Mirrors the
  * media-use skill's Preflight section.
  */
@@ -69,6 +69,11 @@ export function buildUnconfiguredLines(
   ctx: UnconfiguredContext,
   engines?: OfflineEngineLine[],
 ): string[] {
+  if (ctx.agent)
+    return [
+      c.warn("Not signed in to HeyGen."),
+      `Ask the person to run ${c.accent("! npx hyperframes auth login")} in this prompt, then wait until they say it is done.`,
+    ];
   if (!ctx.interactive) {
     return [
       c.warn("Not signed in to HeyGen (non-interactive)."),
@@ -80,7 +85,7 @@ export function buildUnconfiguredLines(
   return [
     c.warn("Not signed in to HeyGen — voice & music will use local engines (free, offline)."),
     "",
-    "Sign in or sign up (browser OAuth, writes ~/.heygen — no per-repo .env):",
+    "Sign in or sign up (browser OAuth, writes ~/.hyperframes — no per-repo .env):",
     `  ${c.accent("npx hyperframes auth login")}            ${c.dim("# browser sign-in / sign-up")}`,
     "",
     "Or paste an existing HeyGen API key (get one at app.heygen.com/settings/api):",

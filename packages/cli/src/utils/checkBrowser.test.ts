@@ -16,6 +16,7 @@ import {
   matchComponentFindings,
   captureOverviewShot,
   keepBrokenImageAborts,
+  keepFailedNetworkChanges,
   preResolveHostileMediaProxies,
   dropFailedProxyEchoes,
   runBrowserCheck,
@@ -1089,6 +1090,34 @@ describe("collectSeekClock", () => {
   });
 });
 
+describe("keepFailedNetworkChanges", () => {
+  const draft = (url: string, networkChanged: boolean) => ({
+    code: "request_failed",
+    severity: "error" as const,
+    message: `Failed to load ${url}`,
+    time: 31,
+    url,
+    networkChanged,
+  });
+
+  it("drops a request the network change cut when the file loads again, and keeps every other failure", () => {
+    const cut = draft("http://h/assets/clip.mp4", true);
+    const gone = draft("http://h/assets/gone.mp4", true);
+    const refused = draft("http://h/assets/refused.mp4", false);
+    const kept = keepFailedNetworkChanges(
+      [cut, gone, refused],
+      new Set(["http://h/assets/gone.mp4"]),
+    );
+    expect(kept).toEqual([gone, refused]);
+  });
+
+  it("drops every cut request when nothing is re-asked, as a check out of time reports", () => {
+    const cut = draft("http://h/assets/clip.mp4", true);
+    const refused = draft("http://h/assets/refused.mp4", false);
+    expect(keepFailedNetworkChanges([cut, refused], new Set())).toEqual([refused]);
+  });
+});
+
 describe("keepBrokenImageAborts", () => {
   const draft = (url: string, abortedImage: boolean) => ({
     code: "request_failed",
@@ -1631,13 +1660,13 @@ describe("preResolveHostileMediaProxies", () => {
     expect(mocks.resolveProxy).not.toHaveBeenCalled();
   });
 
-  it("pre-resolves an alpha VP9 asset through the Chromium-compatible VP8 proxy", async () => {
+  it("pre-resolves an alpha asset through the Chromium-compatible VP8 proxy", async () => {
     const projectDir = mkProjectDir();
     mocks.scanProjectMediaCodecMap.mockResolvedValue({
-      "/alpha.webm": {
-        codecName: "vp9",
+      "/alpha.mov": {
+        codecName: "prores",
         browserHostile: true,
-        representativeMime: 'video/webm; codecs="vp09.00.10.08"',
+        representativeMime: null,
         hasAlpha: true,
       },
     });
@@ -1647,9 +1676,31 @@ describe("preResolveHostileMediaProxies", () => {
     expect(mocks.resolveProxy).toHaveBeenCalledTimes(1);
     expect(mocks.resolveProxy).toHaveBeenCalledWith(
       projectDir,
-      join(projectDir, "alpha.webm"),
+      join(projectDir, "alpha.mov"),
       "vp8",
     );
+  });
+
+  it("does not copy VP9 or AV1 videos, which Chrome plays (alpha included)", async () => {
+    const projectDir = mkProjectDir();
+    mocks.scanProjectMediaCodecMap.mockResolvedValue({
+      "/cutout.webm": {
+        codecName: "vp9",
+        browserHostile: true,
+        representativeMime: 'video/webm; codecs="vp09.00.10.08"',
+        hasAlpha: true,
+      },
+      "/clip.mp4": {
+        codecName: "av1",
+        browserHostile: true,
+        representativeMime: 'video/mp4; codecs="av01.0.08M.08"',
+        hasAlpha: false,
+      },
+    });
+
+    await preResolveHostileMediaProxies(projectDir, "<html></html>");
+
+    expect(mocks.resolveProxy).not.toHaveBeenCalled();
   });
 
   it("is a no-op when the codec map has no hostile entries", async () => {

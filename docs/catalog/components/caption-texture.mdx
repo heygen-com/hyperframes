@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Texture</h1>
+  <p>Flowing texture mask over large uppercase text — ships with 6 textures (lava, marble, metal, wood, concrete, rock), configurable via the texture variable</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/caption-texture.json"
   compositionId="caption-texture"
   compositionSrc="compositions/components/caption-texture.html"
   title="Texture"
-  description="Flowing texture mask over large uppercase text — ships with 6 textures (lava, marble, metal, wood, concrete, rock), configurable via the texture variable"
   variables={[{"id":"texture","type":"string","default":"lava"}]}
   meta={{"category":"Captions","badge":"Stable","codeLines":210}}
   attribution={{"path":"registry/components/caption-texture","tags":["captions","caption-style","texture","mask"]}}
@@ -245,7 +249,9 @@ That writes `compositions/components/caption-texture.html`, plus 6 supporting fi
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -284,6 +290,4 @@ Tagged `captions` `caption-style` `texture` `mask`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

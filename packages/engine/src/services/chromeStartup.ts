@@ -109,8 +109,9 @@ export async function explainChromeLaunchFailure(
   if (code === "UNKNOWN" && syscall === "spawn")
     return new Error(
       `Windows refused to start the browser${executablePath ? ` at ${executablePath}` : ""} (error ${errno ?? "unknown"}, spawn UNKNOWN). ` +
-        "Security software may be blocking it, or the computer may be out of memory. " +
-        "Close other apps and retry; if it persists, run `hyperframes browser ensure --force` to download it again.",
+        "Windows Application Control or security software may be blocking it, or the computer may be out of memory. " +
+        "Close other apps and retry. If a policy blocks the file, allow that path or set HYPERFRAMES_BROWSER_PATH to a Chrome or Edge your policy allows; " +
+        "if the file is damaged, run `hyperframes browser ensure --force` to download it again.",
       { cause: error },
     );
   if (!executablePath) return error;

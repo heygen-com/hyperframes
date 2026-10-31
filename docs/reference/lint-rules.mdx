@@ -816,6 +816,7 @@ Source: `packages/lint/src/rules/slideshow.ts`.
 **Error.** A slideshow island contains invalid JSON or a structure that does not match the manifest schema.
 
 **Fix:** Make the `<script type="application/hyperframes-slideshow+json">` block valid JSON matching the SlideshowManifest schema.
+If supplied, `startTime` and `endTime` must be finite JSON numbers. Quoted numbers such as `"0"`, `null`, and overflowing values such as `1e400` are invalid.
 
 ### `slideshow_unresolved_ref`
 
@@ -906,6 +907,12 @@ Source: the project lint pass in `packages/lint/src/project.ts`, `packages/lint/
 **Error.** A CSS `mask-image` or `-webkit-mask-image` declaration references files that are not in the project, so the texture mask fails to load. In valid CSS, comments and text inside other declarations, such as `content` strings, are ignored.
 
 **Fix:** Add the missing mask file(s) to the project, or update the `mask-image` URL.
+
+### `missing_stylesheet_asset`
+
+**Warning.** A `url()` in a linked local stylesheet does not resolve beside that stylesheet. Browsers resolve `url()` from the stylesheet's own folder, so the font or image 404s and the render falls back silently. When the file exists in a parent folder, the fix hint names the working path.
+
+**Fix:** Change the `url()` to be relative to the stylesheet (for example `../assets/fonts/x.ttf` from `styles/main.css`), or add the file.
 
 ### `inaccessible_media_url`
 

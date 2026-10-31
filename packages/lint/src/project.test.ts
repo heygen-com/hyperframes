@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { ChildProcess, execFile } from "node:child_process";
 import { mkdirSync, mkdtempSync, writeFileSync, rmSync, symlinkSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import type { HyperframeLintFinding } from "./types.js";
 import { lintProject } from "./project.js";
@@ -399,6 +399,71 @@ describe("missing_or_empty_sub_composition", () => {
   });
 });
 
+describe("missing_stylesheet_asset", () => {
+  const lintLinked = async (css: string, files: Record<string, string> = {}) => {
+    const project = makeProject(
+      validHtml().replace(
+        "<body>",
+        '<head><link rel="stylesheet" href="styles/main.css"></head><body>',
+      ),
+    );
+    mkdirSync(join(project, "styles"), { recursive: true });
+    writeFileSync(join(project, "styles/main.css"), css);
+    for (const [name, body] of Object.entries(files)) {
+      mkdirSync(dirname(join(project, name)), { recursive: true });
+      writeFileSync(join(project, name), body);
+    }
+    const { results } = await lintProject(project);
+    return results
+      .flatMap((entry) => entry.result.findings)
+      .filter((finding) => finding.code === "missing_stylesheet_asset");
+  };
+
+  it("names the path that exists when a url() is relative to the wrong folder", async () => {
+    const findings = await lintLinked('@font-face{font-family:X;src:url("assets/fonts/x.ttf")}', {
+      "assets/fonts/x.ttf": "font",
+    });
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({ severity: "warning" });
+    expect(findings[0]?.message).toContain("assets/fonts/x.ttf");
+    expect(findings[0]?.fixHint).toContain("../assets/fonts/x.ttf");
+  });
+
+  it("hints the encoded url when the encoded file is in a parent folder", async () => {
+    const findings = await lintLinked('@font-face{src:url("fonts/Open%20Sans.ttf")}', {
+      "fonts/Open Sans.ttf": "font",
+    });
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.fixHint).toContain("../fonts/Open%20Sans.ttf");
+  });
+
+  it("asks for the file when it exists nowhere", async () => {
+    const findings = await lintLinked(".a{background:url(nope.png)}");
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.fixHint).toContain("Add");
+  });
+
+  it("stays quiet for urls that resolve beside the stylesheet, remote, data and placeholder urls", async () => {
+    const css = [
+      '@font-face{src:url("../assets/fonts/x.ttf")}',
+      ".a{background:url(img/a.png)} .b{background:url(https://cdn.example/b.png)}",
+      ".c{background:url(data:image/png;base64,AAAA)} .d{background:url(#frag)}",
+      ".e{background:url(${asset})}",
+      '@font-face{src:url("fonts/Open%20Sans.ttf")}',
+    ].join("\n");
+    const findings = await lintLinked(css, {
+      "assets/fonts/x.ttf": "font",
+      "styles/img/a.png": "png",
+      "styles/fonts/Open Sans.ttf": "font",
+    });
+
+    expect(findings).toEqual([]);
+  });
+});
+
 describe("texture_mask_asset_not_found declarations", () => {
   it("still reports a missing inline mask beside a malformed declaration", async () => {
     const project = makeProject(
@@ -501,6 +566,46 @@ describe("template shell style sources", () => {
   });
 });
 
+describe("local script files", () => {
+  const registryFindings = async (project: string) =>
+    (await lintProject(project)).results
+      .flatMap((entry) => entry.result.findings)
+      .filter((finding) => finding.code === "missing_timeline_registry");
+
+  function projectWithScript(script: string, attrs = ""): string {
+    const project = makeProject(
+      `<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="10"></div>
+  <script ${attrs} src="animation.js"></script>
+</body></html>`,
+    );
+    writeFileSync(join(project, "animation.js"), script);
+    return project;
+  }
+
+  it("counts a timeline registered in a local script file", async () => {
+    const registered = projectWithScript(
+      'window.__timelines = window.__timelines || {};\nwindow.__timelines["main"] = gsap.timeline({ paused: true });',
+    );
+    expect(await registryFindings(registered)).toEqual([]);
+    expect(await registryFindings(projectWithScript("console.log('no timeline')"))).toHaveLength(1);
+  });
+
+  it("reads a module script file as a module", async () => {
+    const project = projectWithScript(
+      'import { gsap } from "gsap";\nwindow.__timelines = window.__timelines || {};\nwindow.__timelines["main"] = gsap.timeline({ paused: true });',
+      'type="module"',
+    );
+
+    const codes = (await lintProject(project)).results
+      .flatMap((entry) => entry.result.findings)
+      .map((finding) => finding.code);
+
+    expect(codes).not.toContain("invalid_inline_script_syntax");
+    expect(codes).not.toContain("missing_timeline_registry");
+  });
+});
+
 describe("sub-composition stylesheet links", () => {
   function projectWithSharedFonts(compDir: string, href: string): string {
     const project = makeProject(validHtml());
@@ -539,6 +644,77 @@ describe("sub-composition stylesheet links", () => {
     expect(
       await fontFaceFindings(projectWithSharedFonts("compositions", "assets/fonts.css")),
     ).toEqual([]);
+  });
+
+  it("counts a font the root's linked stylesheet declares for a sub-composition that only uses it", async () => {
+    const project = makeProject(
+      validHtml().replace(
+        "<body>",
+        '<head><link rel="stylesheet" href="assets/fonts.css"></head><body>',
+      ),
+    );
+    mkdirSync(join(project, "assets"), { recursive: true });
+    writeFileSync(
+      join(project, "assets", "fonts.css"),
+      "@font-face{font-family:'Repro';src:local('Repro')}",
+    );
+    mkdirSync(join(project, "compositions"), { recursive: true });
+    const scene = (family: string) => `<template>
+  <style>#scene-title{font-family:'${family}'}</style>
+  <div id="root" data-composition-id="scene" data-width="1920" data-height="1080" data-duration="1">
+    <h1 id="scene-title">Hello</h1>
+  </div>
+  <script>window.__timelines["scene"] = gsap.timeline({ paused: true });</script>
+</template>`;
+    writeFileSync(join(project, "compositions", "scene.html"), scene("Repro"));
+    expect(await fontFaceFindings(project)).toEqual([]);
+    writeFileSync(join(project, "compositions", "scene.html"), scene("Nowhere"));
+    expect(await fontFaceFindings(project)).toHaveLength(1);
+  });
+
+  it("counts a Google Fonts link in the root for a sub-composition that uses the family", async () => {
+    const project = makeProject(
+      validHtml().replace(
+        "<body>",
+        '<head><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lobster+Two"></head><body>',
+      ),
+      {
+        "scene.html": `<template>
+  <style>#scene-title{font-family:'Lobster Two'}</style>
+  <div id="root" data-composition-id="scene" data-width="1920" data-height="1080" data-duration="1"><h1 id="scene-title">Hello</h1></div>
+  <script>window.__timelines["scene"] = gsap.timeline({ paused: true });</script>
+</template>`,
+      },
+    );
+    expect(await fontFaceFindings(project)).toEqual([]);
+  });
+
+  it("counts a font a mounted composition declares, and ignores one only an unmounted file declares", async () => {
+    const mount = (file: string) =>
+      `<div id="${file}" data-composition-id="${file}" data-composition-src="compositions/${file}.html" data-start="0" data-duration="1"></div>`;
+    const composition = (id: string, css: string) => `<template>
+  <style>${css}</style>
+  <div id="root" data-composition-id="${id}" data-width="1920" data-height="1080" data-duration="1"><h1 id="${id}-title">Hello</h1></div>
+  <script>window.__timelines["${id}"] = gsap.timeline({ paused: true });</script>
+</template>`;
+    const files = (declaring: string) => ({
+      "scene.html": composition("scene", "#scene-title{font-family:'Repro'}"),
+      [`${declaring}.html`]: composition(
+        declaring,
+        "@font-face{font-family:'Repro';src:local('Repro')}",
+      ),
+    });
+    const withHosts = (...hosts: string[]) =>
+      validHtml().replace("</body>", `${hosts.join("")}</body>`);
+
+    expect(
+      await fontFaceFindings(
+        makeProject(withHosts(mount("scene"), mount("fonts")), files("fonts")),
+      ),
+    ).toEqual([]);
+    expect(
+      await fontFaceFindings(makeProject(withHosts(mount("scene")), files("unused"))),
+    ).toHaveLength(1);
   });
 
   it("reads the stylesheet next to the sub-composition when both exist", async () => {

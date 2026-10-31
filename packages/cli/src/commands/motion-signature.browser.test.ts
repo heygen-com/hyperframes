@@ -110,6 +110,18 @@ function mockMediaPixels(read: () => number): void {
   } as unknown as CanvasRenderingContext2D);
 }
 
+function mockUnreadableMedia(): void {
+  const getContextSpy = vi.spyOn(HTMLCanvasElement.prototype, "getContext") as unknown as {
+    mockReturnValue(value: CanvasRenderingContext2D): void;
+  };
+  getContextSpy.mockReturnValue({
+    drawImage() {},
+    getImageData() {
+      throw new DOMException("tainted canvas", "SecurityError");
+    },
+  } as unknown as CanvasRenderingContext2D);
+}
+
 const ROOT = { left: 0, top: 0, width: 640, height: 360 };
 const COUNTDOWN = { left: 280, top: 140, width: 80, height: 48 };
 const ZERO_BOX = { left: 0, top: 0, width: 0, height: 0 };
@@ -154,6 +166,22 @@ describe("motion-signature.browser media and geometry channels", () => {
     const collect = installScript();
     const before = collect();
     pixelValue = 220;
+
+    expect(collect()).not.toBe(before);
+  });
+
+  it("changes the sweep fingerprint when an img whose pixels cannot be read swaps its source", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <img id="frame" src="https://cdn.example/a.png" />
+      </div>
+    `;
+    installFixture({ rects: { root: ROOT, frame: ROOT } });
+    mockUnreadableMedia();
+
+    const collect = installScript();
+    const before = collect();
+    document.getElementById("frame")?.setAttribute("src", "https://cdn.example/b.png");
 
     expect(collect()).not.toBe(before);
   });

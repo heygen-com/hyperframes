@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Gallery Tunnel</h1>
+  <p>An infinite corridor of panels: a square tunnel receding to a vanishing point, its floor, ceiling and walls tiled with saturated colour slabs and caller-supplied images that swell toward camera and exit past you, the far end dissolving into fog.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/gallery-tunnel.json"
   compositionId="gallery-tunnel"
   compositionSrc="compositions/gallery-tunnel.html"
   title="Gallery Tunnel"
-  description="An infinite corridor of panels: a square tunnel receding to a vanishing point, its floor, ceiling and walls tiled with saturated colour slabs and caller-supplied images that swell toward camera and exit past you, the far end dissolving into fog."
   variables={[{"id":"images","type":"string","label":"Image slots: comma-separated paths, tiled into the panels (e.g. assets/shot-1.png,assets/shot-2.png)","default":"","placeholder":"assets/shot-1.png,assets/shot-2.png"},{"id":"imageMix","type":"number","label":"Image share of filled slots (0 = all colour, 1 = all images)","default":0.5,"min":0,"max":1,"step":0.05},{"id":"speed","type":"number","label":"Flight speed","default":3,"min":0,"max":8,"step":0.1,"unit":"segments/s"},{"id":"palette","type":"string","label":"Slab palette: comma-separated hex colours","default":"#FF6A00,#AB54F7,#EA3737,#0072E3,#00AA3C,#FFB200"},{"id":"grid","type":"number","label":"Grid density: slots per wall face per axis (2 = 4 per face, 16 per segment)","default":2,"min":1,"max":4,"step":1},{"id":"fill","type":"number","label":"Slot fill rate","default":0.5,"min":0,"max":1,"step":0.05},{"id":"fog","type":"number","label":"Fog distance: depth at which the corridor reaches pure backdrop","default":14.25,"min":3,"max":14.5,"step":0.25,"unit":"segments"},{"id":"edgeColor","type":"color","label":"Edge line colour","default":"#B0B0B0"},{"id":"edgeOpacity","type":"number","label":"Edge line opacity","default":0.5,"min":0,"max":1,"step":0.05},{"id":"backdrop","type":"color","label":"Backdrop and fog colour","default":"#000000"}]}
   meta={{"duration":12,"width":1920,"height":1080,"category":"Showcases","badge":"Experimental","codeLines":454}}
   attribution={{"path":"registry/blocks/gallery-tunnel","tags":["webgl","3d","background","showcase","depth","loop"]}}
@@ -489,7 +493,9 @@ That writes one file: `compositions/gallery-tunnel.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -564,6 +570,4 @@ Tagged `webgl` `3d` `background` `showcase` `depth` `loop`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

@@ -2069,15 +2069,18 @@ export interface IsolatedComposition {
   elementId: string | null;
 }
 
-// Runs in the page. False once every inline, template and same-origin script is read and none
-// mentions __timelines or imports code; an unreadable or module script, or a page still loading, answers true.
+// Runs in the page. False once every script is read and none can register an id still waited on;
+// an unreadable, module or importing script, a computed key, or a page still loading answers true.
 export async function authorScriptsMayRegisterTimelines(
   runtimeAttr: string,
   authoredBegin: string,
   authoredEnd: string,
+  skipIds: readonly string[] = [],
 ): Promise<boolean> {
   if (document.readyState !== "complete") return true;
-  const memo = globalThis as { __hfAuthorScan?: boolean };
+  const memo = globalThis as {
+    __hfAuthorScan?: { opaque: boolean; mentions: boolean; ids: string[] };
+  };
   memo.__hfAuthorScan ??= await (async () => {
     const scripts = [
       ...Array.from(document.querySelectorAll("script")),
@@ -2085,34 +2088,62 @@ export async function authorScriptsMayRegisterTimelines(
         Array.from(t.content.querySelectorAll("script")),
       ),
     ].filter((script) => !script.hasAttribute(runtimeAttr));
+    const scan = { opaque: false, mentions: false, ids: [] as string[] };
     // Code that imports another file may register through it, which is not read here.
-    const mayRegister = (code: string) =>
-      code.includes("__timelines") || /\bimport\s*\(|^\s*import\s*[\w{*"']/m.test(code);
+    const mayImport = (code: string) => /\bimport\s*\(|^\s*import\s*[\w{*"']/m.test(code);
+    const read = (code: string) => {
+      if (mayImport(code)) scan.opaque = true;
+      if (!code.includes("__timelines")) return;
+      scan.mentions = true;
+      const literalKey = /__timelines\s*(?:\[\s*(["'])((?:(?!\1).)+)\1\s*\]|\.([A-Za-z_$][\w$]*))/g;
+      const rest = code
+        .replace(/__timelines\s*=\s*(?:window\.__timelines\s*\|\|\s*)?\{\s*\}/g, "")
+        .replace(literalKey, (_m, _q, bracketId, dotId) => {
+          scan.ids.push(bracketId ?? dotId);
+          return "";
+        });
+      if (rest.includes("__timelines")) scan.opaque = true;
+    };
     for (const script of scripts) {
-      if (script.type === "module") return true;
+      if (script.type === "module") return { ...scan, opaque: true };
       if (!script.src) {
         const text = script.textContent ?? "";
-        const authored = text.includes(authoredBegin)
-          ? text
-              .split(authoredBegin)
-              .slice(1)
-              .map((region) => region.split(authoredEnd)[0])
-              .join("\n")
-          : text;
-        if (mayRegister(authored)) return true;
+        read(
+          text.includes(authoredBegin)
+            ? text
+                .split(authoredBegin)
+                .slice(1)
+                .map((region) => region.split(authoredEnd)[0])
+                .join("\n")
+            : text,
+        );
         continue;
       }
       const url = new URL(script.src, location.href);
-      if (url.origin !== location.origin) return true;
+      if (url.origin !== location.origin) return { ...scan, opaque: true };
       try {
-        if (mayRegister(await (await fetch(url)).text())) return true;
+        read(await (await fetch(url)).text());
       } catch {
-        return true;
+        return { ...scan, opaque: true };
       }
     }
-    return false;
+    return scan;
   })();
-  return memo.__hfAuthorScan;
+  const { opaque, mentions, ids } = memo.__hfAuthorScan;
+  if (opaque) return true;
+  if (!mentions) return false;
+  const timelines = (window as { __timelines?: Record<string, unknown> }).__timelines ?? {};
+  return Array.from(document.querySelectorAll("[data-composition-id]")).some((host) => {
+    const id = host.getAttribute("data-composition-id");
+    const authoredId = host.getAttribute("data-hf-original-composition-id") ?? id;
+    return (
+      id &&
+      !host.hasAttribute("data-no-timeline") &&
+      !timelines[id] &&
+      !skipIds.includes(id) &&
+      ids.includes(authoredId ?? id)
+    );
+  });
 }
 
 export interface SubTimelinePollOptions {
@@ -2182,6 +2213,7 @@ export async function pollSubCompositionTimelines(
           RUNTIME_BOOTSTRAP_ATTR,
           AUTHORED_SOURCE_BEGIN,
           AUTHORED_SOURCE_END,
+          knownUnregisteredIds,
         )));
     if (ready || shouldStop?.()) break;
     const now = Date.now();

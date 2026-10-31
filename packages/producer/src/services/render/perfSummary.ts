@@ -242,6 +242,15 @@ function aggregateChromeMemory(perfs: CapturePerfSummary[]): RenderPerfSummary["
   };
 }
 
+function frameWeightedAvgMs(
+  perfs: CapturePerfSummary[],
+  avgOf: (perf: CapturePerfSummary) => number,
+): number | undefined {
+  const frames = perfs.reduce((sum, p) => sum + p.frames, 0);
+  if (frames === 0) return undefined;
+  return Math.round(perfs.reduce((sum, p) => sum + avgOf(p) * p.frames, 0) / frames);
+}
+
 function aggregateDedup(perfs: CapturePerfSummary[]): RenderPerfSummary["staticDedup"] {
   if (perfs.length === 0) return undefined;
   const armed = perfs.some((p) => p.staticDedupArmed);
@@ -407,6 +416,13 @@ export function buildRenderPerfSummary(input: {
       if (withSamples.length === 0) return undefined;
       return withSamples.reduce((a, b) => (b.frames > a.frames ? b : a)).p50TotalMs;
     })(),
+    captureSeekAvgMs: frameWeightedAvgMs(input.dedupPerfs, (p) => p.avgSeekMs),
+    captureBeforeCaptureAvgMs: frameWeightedAvgMs(input.dedupPerfs, (p) => p.avgBeforeCaptureMs),
+    captureScreenshotAvgMs: frameWeightedAvgMs(input.dedupPerfs, (p) => p.avgScreenshotMs),
+    encoderWaitAvgMs:
+      input.perfStages.encoderDrainWaitMs !== undefined && input.totalFrames > 0
+        ? Math.round(input.perfStages.encoderDrainWaitMs / input.totalFrames)
+        : undefined,
     peakRssMb: Math.round(input.peakRssBytes / (1024 * 1024)),
     peakHeapUsedMb: Math.round(input.peakHeapUsedBytes / (1024 * 1024)),
     staticDedup: aggregateDedup(input.dedupPerfs),

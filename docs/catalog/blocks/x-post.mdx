@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>X Post Card</h1>
+  <p>Animated X/Twitter post card overlay with engagement metrics</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/x-post.json"
   compositionId="x-post"
   compositionSrc="compositions/x-post.html"
   title="X Post Card"
-  description="Animated X/Twitter post card overlay with engagement metrics"
   variables={[]}
   meta={{"duration":5,"width":1920,"height":1080,"category":"Social Overlays","badge":"Stable","codeLines":442}}
   attribution={{"path":"registry/blocks/x-post","tags":["social","overlay","twitter"]}}
@@ -477,7 +481,9 @@ That writes one file: `compositions/x-post.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -508,6 +514,4 @@ Tagged `social` `overlay` `twitter`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

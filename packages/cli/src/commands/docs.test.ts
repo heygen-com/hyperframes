@@ -48,3 +48,18 @@ describe("docs examples topic", () => {
     }
   });
 });
+
+describe("docs topics", () => {
+  const source = readFileSync(
+    join(REPO_ROOT, "packages", "cli", "src", "commands", "docs.ts"),
+    "utf8",
+  );
+
+  it("has a file for every topic it lists, including motion-blur", () => {
+    const files = [...source.matchAll(/file: "([^"]+)"/g)].map((match) => match[1] ?? "");
+    expect(files).toContain("motion-blur.md");
+    for (const file of files) {
+      expect(readdirSync(join(REPO_ROOT, "packages", "cli", "src", "docs"))).toContain(file);
+    }
+  });
+});

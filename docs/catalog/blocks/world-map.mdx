@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>World Map</h1>
+  <p>Animated world choropleth with country-by-country reveal, tooltip labels, and rotating globe inset — D3 Natural Earth projection</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/world-map.json"
   compositionId="world-map"
   compositionSrc="compositions/world-map.html"
   title="World Map"
-  description="Animated world choropleth with country-by-country reveal, tooltip labels, and rotating globe inset — D3 Natural Earth projection"
   variables={[]}
   meta={{"duration":14,"width":1920,"height":1080,"category":"Data","badge":"Stable","codeLines":435}}
   attribution={{"path":"registry/blocks/world-map","tags":["data","map","geography","world","choropleth"]}}
@@ -470,7 +474,9 @@ That writes one file: `compositions/world-map.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -501,6 +507,4 @@ Tagged `data` `map` `geography` `world` `choropleth`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

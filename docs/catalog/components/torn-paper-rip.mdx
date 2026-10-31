@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Torn Paper Rip</h1>
+  <p>A fibrous paper tear runs across the frame: the torn sheet shows its white paper core along the edge and lifts away on a soft shadow, leaving the next scene standing.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/torn-paper-rip.json"
   compositionId="torn-paper-rip"
   compositionSrc="compositions/components/torn-paper-rip.html"
   title="Torn Paper Rip"
-  description="A fibrous paper tear runs across the frame: the torn sheet shows its white paper core along the edge and lifts away on a soft shadow, leaving the next scene standing."
   variables={[{"id":"direction","type":"enum","role":"motion","label":"Direction","description":"Which way the tear travels across the frame.","default":"left-to-right","options":[{"value":"left-to-right","label":"Left to right"},{"value":"right-to-left","label":"Right to left"}]},{"id":"tone","type":"enum","role":"style","label":"Paper tone","description":"Color of the exposed paper cross-section riding the tear.","default":"cream","options":[{"value":"cream","label":"Cream"},{"value":"kraft","label":"Kraft"},{"value":"white","label":"White"}]},{"id":"roughness","type":"number","role":"style","label":"Roughness","description":"How jagged and fibrous the tear edge is. Low is a clean deckle edge, high is roughly torn.","default":55,"min":20,"max":90,"step":1}]}
   meta={{"category":"Effects","badge":"Stable","codeLines":412}}
   attribution={{"path":"registry/components/torn-paper-rip","tags":["torn paper","paper rip","paper tear","transition","texture","motion-primitive"]}}
@@ -447,7 +451,9 @@ That writes one file: `compositions/components/torn-paper-rip.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -488,6 +494,4 @@ Tagged `torn paper` `paper rip` `paper tear` `transition` `texture` `motion-prim
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

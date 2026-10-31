@@ -861,7 +861,8 @@ describe("detectRenderModeHints", () => {
       entryPath,
       `<!doctype html><html><body>
   <div data-composition-id="scene" data-width="100" data-height="100" data-duration="1">
-    <img id="sibling" src="sibling.png" />
+    <img id="sibling" src="sibling.png" srcset="sibling.png 1x" />
+    <picture><source id="responsive" srcset="sibling.png 1x, root.png 2x"><img src="root.png"></picture>
     <img id="root" src="root.png" />
   </div>
 </body></html>`,
@@ -874,6 +875,12 @@ describe("detectRenderModeHints", () => {
       "compositions/sibling.png",
     );
     expect(document.querySelector("#root")?.getAttribute("src")).toBe("root.png");
+    expect(document.querySelector("#sibling")?.getAttribute("srcset")).toBe(
+      "compositions/sibling.png 1x",
+    );
+    expect(document.querySelector("#responsive")?.getAttribute("srcset")).toBe(
+      "compositions/sibling.png 1x, root.png 2x",
+    );
   });
 
   it("reads the root's data-fx-chain as the composition's master chain, apart from any clip", async () => {

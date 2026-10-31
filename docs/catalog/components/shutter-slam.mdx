@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Shutter Slam</h1>
+  <p>One word thrown through six single-property beats under integrated shutter blur — two translate slams, a scale punch, then a full turn about each axis — on the measured easing of the After Effects export the shutter model was fitted to</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/shutter-slam.json"
   compositionId="shutter-slam"
   compositionSrc="compositions/components/shutter-slam.html"
   title="Shutter Slam"
-  description="One word thrown through six single-property beats under integrated shutter blur — two translate slams, a scale punch, then a full turn about each axis — on the measured easing of the After Effects export the shutter model was fitted to"
   variables={[{"id":"text","type":"string","role":"content","label":"Word","description":"The word driven through the six beats.","default":"MOTION"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Word color.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"blur","type":"enum","role":"motion","label":"Blur","description":"Integrate each frame over the shutter window, or capture one instant per frame.","default":"shutter","options":[{"value":"shutter","label":"Shutter"},{"value":"none","label":"None"}]},{"id":"cues","type":"string","role":"motion","label":"Cues","description":"Comma seconds from mount start for each of the six beats; empty keeps the authored rhythm.","default":""},{"id":"exit","type":"enum","role":"motion","label":"Exit","description":"How the word leaves.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
   meta={{"category":"Effects","badge":"Stable","codeLines":869}}
   attribution={{"path":"registry/components/shutter-slam","tags":["effect","motion-blur","shutter","after-effects","slam","animation"]}}
@@ -904,7 +908,9 @@ That writes one file: `compositions/components/shutter-slam.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -923,6 +929,4 @@ Tagged `effect` `motion-blur` `shutter` `after-effects` `slam` `animation`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

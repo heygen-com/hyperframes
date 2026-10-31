@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Split-Flap Board</h1>
+  <p>Solari-style departure board: every cell walks its drum forward through the intervening characters of a fixed alphabet until it lands on its target, so the text resolves as a mechanical cascade instead of a fade.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/split-flap-board.json"
   compositionId="split-flap-board"
   compositionSrc="compositions/split-flap-board.html"
   title="Split-Flap Board"
-  description="Solari-style departure board: every cell walks its drum forward through the intervening characters of a fixed alphabet until it lands on its target, so the text resolves as a mechanical cascade instead of a fade."
   variables={[{"id":"boardText","type":"string","label":"Board text","default":"NOW BOARDING","maxLength":24},{"id":"flapAlphabet","type":"string","label":"Flap alphabet (drum order)","default":" ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.,'","maxLength":64},{"id":"flipDuration","type":"number","label":"Seconds per flap","default":0.09,"min":0.03,"max":1.2,"step":0.01,"unit":"s"},{"id":"cellStagger","type":"number","label":"Per-cell start stagger","default":0.05,"min":0,"max":0.5,"step":0.01,"unit":"s"},{"id":"cellCount","type":"number","label":"Cells on the board","default":12,"min":1,"max":24,"step":1}]}
   meta={{"duration":3.5,"width":1920,"height":1080,"category":"Typography & Text","badge":"Stable","codeLines":346}}
   attribution={{"path":"registry/blocks/split-flap-board","tags":["text","kinetic","mechanical","split-flap","solari","departure-board","reveal"]}}
@@ -381,7 +385,9 @@ That writes one file: `compositions/split-flap-board.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -436,6 +442,4 @@ Tagged `text` `kinetic` `mechanical` `split-flap` `solari` `departure-board` `re
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

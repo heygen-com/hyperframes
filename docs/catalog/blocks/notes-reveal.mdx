@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Notes Reveal</h1>
+  <p>A personal note is typed character by character in a notes app - caret riding every letter, the page scrolling up on measured settle curves as each line lands - then cuts to a hand-lettered paper card with a marker headline and a ticked checklist</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/notes-reveal.json"
   compositionId="notes-reveal"
   compositionSrc="compositions/notes-reveal.html"
   title="Notes Reveal"
-  description="A personal note is typed character by character in a notes app - caret riding every letter, the page scrolling up on measured settle curves as each line lands - then cuts to a hand-lettered paper card with a marker headline and a ticked checklist"
   variables={[{"id":"titleL1","type":"string","role":"content","label":"Note title line 1","description":"First line of the note title.","default":"Things nobody told me"},{"id":"titleL2","type":"string","role":"content","label":"Note title line 2","description":"Second line of the note title.","default":"about video."},{"id":"noteLine1","type":"string","role":"content","label":"Note body line 1","description":"First typed line of the note. The seven body lines are the bulk of the video: they must be about the brand this video promotes, not about video-making.","default":"my videos sucked"},{"id":"noteLine2","type":"string","role":"content","label":"Note body line 2","description":"Second typed line of the note.","default":"my tools cost $$$"},{"id":"noteLine3","type":"string","role":"content","label":"Note body line 3","description":"Third typed line of the note.","default":"and re-edits never end."},{"id":"noteLine4","type":"string","role":"content","label":"Note body line 4","description":"Fourth typed line of the note — the turn, where the brand enters.","default":"then i tried writing html only"},{"id":"noteLine5","type":"string","role":"content","label":"Note body line 5","description":"Fifth typed line of the note — name the brand here.","default":"started HyperFrames three weeks ago"},{"id":"noteLine6","type":"string","role":"content","label":"Note body line 6","description":"Sixth typed line of the note.","default":"the grind is gone, but more than that —"},{"id":"noteLine7","type":"string","role":"content","label":"Note body line 7","description":"Last typed line of the note — the payoff.","default":"I ship videos weekly."},{"id":"cardTop","type":"string","role":"content","label":"Card headline top","description":"First marker line on the closing card. The underline follows its last word.","default":"THE POWER"},{"id":"cardMid","type":"string","role":"content","label":"Card headline middle","description":"Short connector line between the two headline lines, centred on the card.","default":"OF"},{"id":"cardBottom","type":"string","role":"content","label":"Card headline bottom","description":"Last marker line on the closing card. Its first word is ringed.","default":"ONE FILE"},{"id":"check1Label","type":"string","role":"content","label":"Checklist 1 label","description":"Typewriter label of the first checklist row.","default":"WRITE"},{"id":"check1Value","type":"string","role":"content","label":"Checklist 1 value","description":"Marker value of the first checklist row.","default":"HTML"},{"id":"check2Label","type":"string","role":"content","label":"Checklist 2 label","description":"Typewriter label of the second checklist row.","default":"RENDER"},{"id":"check2Value","type":"string","role":"content","label":"Checklist 2 value","description":"Marker value of the second checklist row.","default":"IN 4K"},{"id":"check3Label","type":"string","role":"content","label":"Checklist 3 label","description":"Typewriter label of the third checklist row.","default":"SHIP"},{"id":"check3Value","type":"string","role":"content","label":"Checklist 3 value","description":"Marker value of the third checklist row.","default":"TODAY"},{"id":"brandLogo","type":"image","role":"content","label":"Brand logo","description":"Transparent mark of the brand this video promotes, in the sign-off strip under the card.","portrays":["subject_logo"],"default":"assets/hyperframes-logo-black.svg"},{"id":"brandDomain","type":"string","role":"content","label":"Sign-off domain","description":"Domain of the brand this video promotes, closing the sign-off strip. Use the real domain, or a call to action when no domain fits.","portrays":["subject_domain"],"default":"hyperframes.heygen.com"}]}
   meta={{"duration":24.85,"width":1080,"height":1920,"category":"Showcases","badge":"Stable","codeLines":1661}}
   attribution={{"author":"Miao Yang","path":"registry/blocks/notes-reveal","tags":["showcase","mock-ui","notes","typing","vertical","ad-template"]}}
@@ -1696,7 +1700,9 @@ That writes `compositions/notes-reveal.html`, plus 5 supporting files under `ass
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -1768,6 +1774,4 @@ Created by Miao Yang.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Vertical Media Filler</h1>
+  <p>Portrait media filling a widescreen frame via blurred-scale, mirror, or copy side fills; grid texture and foreground contrast lift (images inside the block; keep live footage in the host)</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/yt-vertical-fill.json"
   compositionId="yt-vertical-fill"
   compositionSrc="compositions/yt-vertical-fill.html"
   title="Vertical Media Filler"
-  description="Portrait media filling a widescreen frame via blurred-scale, mirror, or copy side fills; grid texture and foreground contrast lift (images inside the block; keep live footage in the host)"
   variables={[]}
   meta={{"duration":8,"width":1920,"height":1080,"category":"Blocks","badge":"Stable","codeLines":228}}
   attribution={{"path":"registry/blocks/yt-vertical-fill","tags":["placeholder","vertical","media"]}}
@@ -263,7 +267,9 @@ That writes one file: `compositions/yt-vertical-fill.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -294,6 +300,4 @@ Tagged `placeholder` `vertical` `media`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

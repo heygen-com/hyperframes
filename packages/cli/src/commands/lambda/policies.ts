@@ -21,7 +21,7 @@ import { CliUsageError, failUsage, setCommandExitCode } from "../../utils/comman
  * checked-in policy still covers the CLI's needs with `policies validate`.
  */
 
-import { readFileSync } from "node:fs";
+import { readJsonFileText } from "../../utils/jsonFlag.js";
 import { c } from "../../ui/colors.js";
 import { failureMessage, jsonFailure } from "../../utils/jsonError.js";
 
@@ -334,7 +334,7 @@ export interface ValidateResult {
  *     not by our matcher. We end-anchor only.
  */
 export function validatePolicy(policyPath: string): ValidateResult {
-  const raw = readFileSync(policyPath, "utf-8");
+  const raw = readJsonFileText(policyPath);
   const parsed = JSON.parse(raw) as { Statement?: unknown };
   const statements: Array<{
     Effect?: string;

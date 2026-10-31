@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { readJsonFlag } from "./jsonFlag.js";
+import { readJsonFileText, readJsonFlag } from "./jsonFlag.js";
 
 const io = {
   readFile: (path: string) => {
@@ -25,6 +25,22 @@ describe("readJsonFlag", () => {
     );
   });
 
+  it("points a value with its braces stripped, read as a missing file, at the file and stdin forms", () => {
+    expect(() => readJsonFlag("--grading", "preset:skin-soft", io)).toThrow(
+      /Could not read --grading: preset:skin-soft: ENOENT.*PowerShell.*--grading payload\.json/,
+    );
+  });
+
+  it("does not call a missing Windows drive path inline JSON", () => {
+    expect(() => readJsonFlag("--grading", "C:\\clips\\grade.json", io)).toThrow(/no such file$/);
+  });
+
+  it("says stdin was empty instead of a JSON parse error", () => {
+    expect(() => readJsonFlag("--grading", "-", { ...io, readStdin: () => "\n" })).toThrow(
+      /Could not read --grading: stdin: nothing was piped in/,
+    );
+  });
+
   it("names the flag and path when the file cannot be read", () => {
     expect(() => readJsonFlag("--grading", "missing.json", io)).toThrow(
       /Could not read --grading: missing\.json: ENOENT/,
@@ -40,6 +56,8 @@ describe("readJsonFlag file encodings", () => {
       writeFileSync(join(dir, "u16.json"), Buffer.from('\uFEFF{"a":2}', "utf16le"));
       expect(readJsonFlag("--grading", join(dir, "bom.json"))).toEqual({ a: 1 });
       expect(readJsonFlag("--grading", join(dir, "u16.json"))).toEqual({ a: 2 });
+      expect(JSON.parse(readJsonFileText(join(dir, "bom.json")))).toEqual({ a: 1 });
+      expect(JSON.parse(readJsonFileText(join(dir, "u16.json")))).toEqual({ a: 2 });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

@@ -227,14 +227,13 @@ function readableBlocks(frame: CraftFrame, readHeight: number): Map<number, Bloc
     const block = blocks.get(part.block);
     if (!block) {
       blocks.set(part.block, {
-        text: part.text,
+        text: part.blockText,
         rect,
         selector: part.blockSelector,
         sourceFile: part.sourceFile,
       });
       continue;
     }
-    block.text = `${block.text} ${part.text}`;
     block.rect = {
       left: Math.min(block.rect.left, rect.left),
       top: Math.min(block.rect.top, rect.top),

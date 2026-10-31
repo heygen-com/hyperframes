@@ -23,6 +23,32 @@ describe("splitElementInHtml — hfId clone isolation", () => {
   });
 });
 
+// A second split at the same playhead: the first one wrote the left half's end rounded to the millisecond (2.346 for a
+// playhead at 2.3456), so the same cut lands a fraction inside that edge and its sliver rounded to data-duration="0".
+describe("splitElementInHtml — a cut at an existing edge", () => {
+  const clip = (start: number, duration: number) =>
+    `<html><body><div data-composition-id="root"><div id="a" class="clip" data-start="${start}" data-duration="${duration}"></div></div></body></html>`;
+  const durations = (html: string) =>
+    [...parseHTML(html).document.querySelectorAll(".clip")].map((el) =>
+      Number(el.getAttribute("data-duration")),
+    );
+
+  it("leaves the file as it was when the cut is within the split margin of either edge", () => {
+    for (const at of [2.3456, 2.346, 1, 1.0004, 2.33]) {
+      const source = clip(1, 1.346);
+      const result = splitElementInHtml(source, { id: "a" }, at, "a-split");
+      expect(result.matched, `a cut at ${at}`).toBe(false);
+      expect(result.html, `a cut at ${at}`).toBe(source);
+    }
+  });
+
+  it("still cuts at the margin itself, and no half it writes is ever zero long", () => {
+    const result = splitElementInHtml(clip(1, 1.346), { id: "a" }, 1.03, "a-split");
+    expect(result.matched).toBe(true);
+    expect(durations(result.html)).toEqual([0.03, 1.316]);
+  });
+});
+
 describe("splitElementInHtml", () => {
   const source = `<!DOCTYPE html><html><head><style>#box { position: absolute; top: 100px; background: red; }</style></head><body><div data-composition-id="root"><div id="box" class="clip" data-start="1" data-duration="6">Hello</div></div></body></html>`;
 

@@ -116,6 +116,36 @@ describe("releasing a clip's download", () => {
     expect(video.getAttribute("src")).toBe("a.mp4");
   });
 
+  it("keeps a clip whose whole file is buffered", () => {
+    const video = document.createElement("video");
+    video.setAttribute("src", "a.mp4");
+    Object.defineProperty(video, "duration", { value: 6.67 });
+    Object.defineProperty(video, "buffered", {
+      value: { length: 1, start: () => 0, end: () => 6.67 },
+    });
+    video.load = vi.fn();
+
+    releaseMedia(video);
+    expect(video.load).not.toHaveBeenCalled();
+    expect(video.getAttribute("src")).toBe("a.mp4");
+  });
+
+  it.each([
+    [0, 15],
+    [430, 2642],
+  ])("releases a clip with only %s-%s s of a long file buffered", (from, to) => {
+    const video = document.createElement("video");
+    video.setAttribute("src", "a.mp4");
+    Object.defineProperty(video, "duration", { value: 2642 });
+    Object.defineProperty(video, "buffered", {
+      value: { length: 1, start: () => from, end: () => to },
+    });
+    video.load = vi.fn();
+
+    releaseMedia(video);
+    expect(video.load).toHaveBeenCalledTimes(1);
+  });
+
   it("leaves a clip on <source> children, their order and its markup untouched", () => {
     const video = document.createElement("video");
     video.innerHTML =

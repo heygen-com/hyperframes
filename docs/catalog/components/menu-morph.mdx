@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Menu Morph</h1>
+  <p>A transitions.dev-inspired hamburger and plus-menu morph primitive for compact action menus</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/menu-morph.json"
   compositionId="menu-morph"
   compositionSrc="compositions/components/menu-morph.html"
   title="Menu Morph"
-  description="A transitions.dev-inspired hamburger and plus-menu morph primitive for compact action menus"
   variables={[{"id":"actions","type":"string","role":"content","label":"Actions","description":"Comma separated labels for the pills that fan out under the button. Up to six.","default":"Text, Image, Audio"},{"id":"tone","type":"enum","role":"style","label":"Tone","description":"Colour of the round button behind the white bars.","default":"ink","options":[{"value":"ink","label":"Ink"},{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"size","type":"number","role":"layout","label":"Button size","description":"Diameter of the round button in pixels. The bars scale with it.","default":68,"min":52,"max":112,"step":4,"unit":"px"}]}
   meta={{"category":"Motion Primitives","badge":"Stable","codeLines":161}}
   attribution={{"path":"registry/components/menu-morph","tags":["video-primitive","transition-primitive","transitions-dev-port","menu","morph"]}}
@@ -196,7 +200,9 @@ That writes one file: `compositions/components/menu-morph.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -238,6 +244,4 @@ Tagged `video-primitive` `transition-primitive` `transitions-dev-port` `menu` `m
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

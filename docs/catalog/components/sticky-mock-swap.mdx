@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Sticky Mock Swap</h1>
+  <p>A pinned product mock cross-fades through accent-tinted feature states while matching captions rise, hold, and exit beside it.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/sticky-mock-swap.json"
   compositionId="sticky-mock-swap"
   compositionSrc="compositions/components/sticky-mock-swap.html"
   title="Sticky Mock Swap"
-  description="A pinned product mock cross-fades through accent-tinted feature states while matching captions rise, hold, and exit beside it."
   variables={[{"id":"captions","type":"string","role":"content","label":"Captions","description":"Comma-separated feature captions shown beside the pinned mock.","default":"Instant previews,Zero config,Ship on Friday"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Accent tint used across the mock states.","default":"violet","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]}]}
   meta={{"category":"Product Demo","badge":"Stable","codeLines":465}}
   attribution={{"path":"registry/components/sticky-mock-swap","tags":["motion-primitive","product-demo","sticky","mock","crossfade","feature-tour"]}}
@@ -500,7 +504,9 @@ That writes one file: `compositions/components/sticky-mock-swap.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -540,6 +546,4 @@ Tagged `motion-primitive` `product-demo` `sticky` `mock` `crossfade` `feature-to
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

@@ -295,6 +295,20 @@ describe.runIf(executablePath)("layout audit in Chromium", () => {
     expect(codes).toContain("text_not_painted");
   });
 
+  it("does not call text occluded by a cover that a CSS mask paints through", async () => {
+    const cover = (style: string) =>
+      `<div style="position:absolute;inset:0;background:#123;${style}"></div>`;
+    const maskedAway = "mask-image:linear-gradient(transparent,transparent)";
+    const text = heading(300, "Seen through");
+    expect(await auditCodes(stage(text + cover("")))).toContain("text_occluded");
+    expect(await auditCodes(stage(text + cover(maskedAway)))).not.toContain("text_occluded");
+    const wrapped = `<div style="position:absolute;inset:0;${maskedAway}">${cover("")}</div>`;
+    expect(await auditCodes(stage(text + wrapped))).not.toContain("text_occluded");
+    const fade = "mask-image:linear-gradient(black,black)";
+    const sharedMask = `<div style="position:absolute;inset:0;${fade}">${text}${cover("")}</div>`;
+    expect(await auditCodes(stage(sharedMask))).toContain("text_occluded");
+  });
+
   it("reports text positioned outside the ancestor background", async () => {
     const codes = await auditCodes(
       gradientHeading('<span style="position:relative;top:150px">Gradient text</span>'),

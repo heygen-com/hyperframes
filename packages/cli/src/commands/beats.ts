@@ -21,7 +21,7 @@ import { c } from "../ui/colors.js";
 export const examples: Example[] = [
   ["Generate the beat file for the current project", "hyperframes beats"],
   ["Generate for a specific directory", "hyperframes beats ./my-video"],
-  ["Beats of a single audio file", "hyperframes audio music.mp3 --only beats --json"],
+  ["Beats of a single audio or video file", "hyperframes beats music.mp3 --json"],
 ];
 
 function fail(message: string): never {
@@ -96,24 +96,54 @@ function report(file: string, result: MusicBeatAnalysis, json: boolean): void {
   );
 }
 
+async function analyzeFile(audioPath: string, json: boolean): Promise<void> {
+  const result = await analyzeMusicFromSignal(await decode(audioPath));
+  if (result.beatTimes.length === 0) fail(`No beats detected in ${audioPath}.`);
+  if (json) {
+    console.log(
+      JSON.stringify(
+        {
+          ok: true,
+          file: audioPath,
+          count: result.beatTimes.length,
+          bpm: result.bpm,
+          beatTimes: result.beatTimes,
+        },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+  console.log(
+    c.success(
+      `✓ ${result.beatTimes.length} beats in ${audioPath} (bpm ${result.bpm ?? "?"}, ${result.bpmConfidence})`,
+    ),
+  );
+}
+
 export default defineCommand({
   meta: {
     name: "beats",
-    description: "Detect beats in the music track and write beats/<audio>.json",
+    description:
+      "Detect beats in the project music track (writes beats/<audio>.json) or in one audio file",
   },
   args: {
-    dir: { type: "positional", description: "Project directory", required: false },
+    dir: {
+      type: "positional",
+      description: "Project directory, or one audio or video file to analyse",
+      required: false,
+    },
     json: { type: "boolean", description: "Output result as JSON", default: false },
   },
   async run({ args }) {
     if (args.dir && existsSync(resolve(args.dir)) && statSync(resolve(args.dir)).isFile()) {
-      const file = JSON.stringify(args.dir);
-      fail(
-        /\.html?$/i.test(args.dir)
-          ? `${args.dir} is a file; beats takes the project folder: hyperframes beats ${JSON.stringify(dirname(args.dir))}`
-          : `${args.dir} is a file; beats takes a project folder. ` +
-              `For one audio or video file run: hyperframes audio ${file} --only beats --json`,
-      );
+      if (/\.html?$/i.test(args.dir)) {
+        fail(
+          `${args.dir} is a file; beats takes the project folder: hyperframes beats ${JSON.stringify(dirname(args.dir))}`,
+        );
+      }
+      return await analyzeFile(resolve(args.dir), Boolean(args.json));
     }
     const project = resolveProject(args.dir);
     const target = resolveMusicTarget(project);

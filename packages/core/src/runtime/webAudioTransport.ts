@@ -228,6 +228,7 @@ const FOLLOWED_EVENTS = ["playing", "seeked", "ratechange"] as const;
 
 // A pause to scrub or a reschedule mid-play keeps the output awake; a real idle lets it sleep.
 const IDLE_SUSPEND_MS = 10000;
+const SHORT_DECODE_SECONDS = 0.25;
 
 export class WebAudioTransport {
   private _ctx: AudioContext | null = null;
@@ -394,6 +395,14 @@ export class WebAudioTransport {
     // the same bad payload on every generation.
     try {
       const audioBuffer = await this._ctx.decodeAudioData(arrayBuffer);
+      // A file whose container timescale disagrees with its stream decodes short; its element plays it whole.
+      if (
+        Number.isFinite(el.duration) &&
+        el.duration - audioBuffer.duration > SHORT_DECODE_SECONDS
+      ) {
+        this._failedSrcs.add(src);
+        return null;
+      }
       this._bufferCache.set(src, audioBuffer);
       return audioBuffer;
     } catch (err) {

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { readFileSync, unlinkSync } from "node:fs";
 
 // CI exports HYPERFRAMES_NO_TELEMETRY=1 (and users may set DO_NOT_TRACK), which
 // makes shouldTrack() short-circuit — and it caches that decision for the module's
@@ -280,12 +281,11 @@ describe("telemetry queue delivery", () => {
     expect(batch[0]?.event).toBe("cli_command_result");
   });
 
-  it("flushSync hands the queue to a detached child that carries the payload", async () => {
+  it("flushSync hands the queue to a detached child that reads the payload from a file", async () => {
     spawnMock.mockClear();
     trackEvent("render_complete", { quality: "draft" });
     flushSync();
 
-    // The child was spawned detached with the batch inlined into its -e script.
     expect(spawnMock).toHaveBeenCalledTimes(1);
     const [execPath, args, opts] = spawnMock.mock.calls[0] as unknown as [
       string,
@@ -294,15 +294,40 @@ describe("telemetry queue delivery", () => {
     ];
     expect(execPath).toBe(process.execPath);
     expect(args[0]).toBe("-e");
-    expect(args[1]).toContain("render_complete");
-    expect(args[1]).toMatch(/[0-9a-f-]{36}/); // event uuid rides along
+    const body = readFileSync(args[2] as string, "utf8");
+    expect(body).toContain("render_complete");
+    expect(body).toMatch(/[0-9a-f-]{36}/); // event uuid rides along
     expect(opts).toMatchObject({ detached: true, windowsHide: true });
+    unlinkSync(args[2] as string);
 
     // Queue handed to the child — nothing left for a regular flush.
     const fetchMock = vi.fn(() => Promise.resolve(new Response("")));
     vi.stubGlobal("fetch", fetchMock);
     await flush();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("flushSync keeps a batch over the Windows 32,767-char command-line limit off the command line", () => {
+    spawnMock.mockClear();
+    for (let i = 0; i < 40; i += 1) trackEvent("render_observation", { note: "x".repeat(1_000) });
+    flushSync();
+
+    const [, args] = spawnMock.mock.calls[0] as unknown as [string, string[]];
+    const body = readFileSync(args[2] as string, "utf8");
+    unlinkSync(args[2] as string);
+    expect(body.length).toBeGreaterThan(32_767);
+    expect(args.join(" ").length).toBeLessThan(32_767);
+  });
+
+  it("flushSync warns when the child cannot be started", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    spawnMock.mockImplementationOnce(() => {
+      throw new Error("spawn failed");
+    });
+    trackEvent("render_complete", { quality: "draft" });
+    flushSync();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("spawn failed"));
+    warn.mockRestore();
   });
 });
 
