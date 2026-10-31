@@ -1,18 +1,7 @@
 /**
- * Sample-accurate volume automation.
- *
- * The audio mixer's primary path for time-varying volume bakes the envelope
- * directly into the prepared PCM rather than encoding it as an FFmpeg `volume`
- * expression. The expression approach nests one `if(lt(t,...))` per keyframe and
- * overflows FFmpeg's expression evaluator past ~95 levels (a dense GSAP fade
- * emits hundreds of keyframes), which fails the whole mix and drops the audio
- * track. Multiplying the samples in-house has no such ceiling, is exact at every
- * sample, and keeps the downstream ffmpeg `amix`/AAC encode untouched — so the
- * output (and the golden baselines) only change where a fade is actually applied.
- *
- * The prepared tracks are always `pcm_s16le`, 48 kHz, stereo (see
- * `extractAudioSegment`). Anything else is rejected so
- * the caller can fall back to the expression path rather than corrupting audio.
+ * Bake volume automation into PCM without FFmpeg's expression nesting limit.
+ * Prepared tracks use float WAVs so a boost keeps its headroom until downstream
+ * group and master gain. The reader also accepts 16-bit PCM.
  */
 
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";

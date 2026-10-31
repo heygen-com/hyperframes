@@ -905,10 +905,7 @@ describe("processCompositionAudio", () => {
   });
 
   it("hands the volume envelope to the FX pass instead of ducking the file after it", async () => {
-    // The FX pass writes 16-bit PCM, so a chain that overshoots full scale is
-    // clipped there. Ducking afterwards bakes that distortion in even though
-    // the lane pulls the track well down; the envelope has to travel into the
-    // FX pass and land on its float output.
+    // Apply the lane in the FX pass and mix its baked output at unity.
     const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-base-"));
     const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
     tempDirs.push(baseDir, workDir);
