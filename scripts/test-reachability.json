@@ -56,6 +56,17 @@
         "package.json#script#producer:test:integration": "8bb545947f4f8fef3bd5c6c9b1bcb394c7c942d7a3ab90cf4540c662572a278e"
       },
       "reason": "Both unit and integration matrix lanes discover tests under src and tests; workflow and runner sources are pinned to invalidate changed selection."
+    },
+    {
+      "cwd": "packages/cli",
+      "command": "vitest run --shard=${{ matrix.shard }}/2",
+      "tests": ["packages/cli/src/**/*.test.ts"],
+      "sources": {
+        "packages/cli/vitest.config.ts": "9bd2a87aaf33d3cd7fc397c30ae914468a3731a6fae1ffe7cdd1bf3450cbe900",
+        ".github/workflows/ci.yml#job#test-cli": "66a1249d0d3f0e6f72adb4c22bf7f76b7a8dabcee3204b6bf8cbcc636a9d7cb4",
+        "packages/cli/package.json#script#test": "ad6cd6b8acf39571390d7bc1772410249266fa406be150a22f0065827e400496"
+      },
+      "reason": "The cli test script is split into two vitest shards by a matrix; both run in one job, so every file the config's three projects select (src/**/*.test.ts) runs in one of them. Config, job and script are pinned."
     }
   ]
 }
