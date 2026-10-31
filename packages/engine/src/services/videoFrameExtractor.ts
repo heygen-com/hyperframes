@@ -8,7 +8,7 @@
 
 import { audioGroupsById, isMemberGroupHidden, isSelfOrAncestorHidden } from "./mediaHidden.js";
 import { copyFileSync, existsSync, linkSync, mkdirSync, rmSync } from "fs";
-import { basename, join } from "path";
+import { basename, isAbsolute, join, normalize, relative } from "path";
 import { cpus } from "os";
 import { createConcurrencyLimit } from "../utils/concurrencyLimit.js";
 import { parseHTML } from "linkedom";
@@ -430,6 +430,24 @@ export interface VideoExtractionFailure {
   error: string;
   /** ffmpeg's last stderr lines, without paths or URLs: what a producer-facing error may say. */
   ffmpegReason?: string;
+  /** The clip's file, project-relative; a remote source shows only its file name. Safe for producer-facing errors. */
+  source?: string;
+}
+
+/** A clip's src as a producer-facing error may print it: no host, query, fragment or absolute path. */
+export function videoExtractionSourceLabel(src: string, baseDir: string): string {
+  if (isHttpUrl(src)) {
+    try {
+      return basename(decodeURIComponent(new URL(src).pathname)) || "remote video";
+    } catch {
+      return "remote video";
+    }
+  }
+  const path = src.split(/[?#]/)[0]!;
+  const relativePath = isAbsolute(path) ? relative(baseDir, path) : normalize(path);
+  const label =
+    relativePath.startsWith("..") || isAbsolute(relativePath) ? basename(path) : relativePath;
+  return label.replace(/\\/g, "/");
 }
 
 export type VideoExtractionFailureStatusClass =
@@ -2817,10 +2835,16 @@ export async function extractAllVideoFrames(
     breakdown.cacheAgedPartialsCleared = gcStats.agedPartialsRemoved;
   }
 
+  const srcById = new Map(videos.map((video) => [video.id, video.src]));
   return {
     success: errors.length === 0,
     extracted,
-    errors,
+    errors: errors.map((failure) => {
+      const src = srcById.get(failure.videoId);
+      return src === undefined
+        ? failure
+        : { ...failure, source: videoExtractionSourceLabel(src, baseDir) };
+    }),
     totalFramesExtracted,
     durationMs: Date.now() - startTime,
     phaseBreakdown: breakdown,

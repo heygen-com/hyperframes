@@ -33,6 +33,7 @@ import {
   getFrameAtTime,
   analyzeClipMediaFit,
   classifyVideoExtractionError,
+  videoExtractionSourceLabel,
   runVideoExtractionWithRetry,
   VideoSourceExtractionError,
   type VideoElement,
@@ -627,6 +628,40 @@ describe("video extraction failure taxonomy and bounded retry", () => {
       ),
     ).rejects.toMatchObject({ kind: "ffmpeg_timeout", retryable: true });
     expect(attempts).toBe(1);
+  });
+
+  it("names a failed clip by its project-relative file, never a host, query or absolute path", () => {
+    expect(videoExtractionSourceLabel("assets/clips/a.mp4", "/proj")).toBe("assets/clips/a.mp4");
+    expect(videoExtractionSourceLabel("/proj/assets/a.mp4?x=1", "/proj")).toBe("assets/a.mp4");
+    expect(videoExtractionSourceLabel("/elsewhere/private/b.mp4", "/proj")).toBe("b.mp4");
+    expect(videoExtractionSourceLabel("https://cdn.example/v/c%201.mp4?Signature=s", "/proj")).toBe(
+      "c 1.mp4",
+    );
+  });
+
+  it("reports which clip failed when a source file is missing", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-extract-names-"));
+    try {
+      const result = await extractAllVideoFrames(
+        [
+          {
+            id: "v1",
+            src: "assets/missing.mp4",
+            start: 0,
+            end: 1,
+            mediaStart: 0,
+            loop: false,
+            hasAudio: false,
+          },
+        ],
+        dir,
+        { fps: 30, outputDir: join(dir, "out") },
+      );
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]).toMatchObject({ videoId: "v1", source: "assets/missing.mp4" });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 
