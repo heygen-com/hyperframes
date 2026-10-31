@@ -1624,7 +1624,7 @@ export default defineCommand({
     },
     output: {
       type: "string",
-      alias: ["o", "out"],
+      alias: ["o", "out", "output-dir"],
       description:
         "Directory to write snapshots into (default: unique directory under <project>/.hyperframes/artifacts/snapshots)",
     },
