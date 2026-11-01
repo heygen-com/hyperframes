@@ -6,11 +6,7 @@ export type VideoLayerQualification =
 
 const EDGE_EPSILON_SECONDS = 1e-3;
 
-/**
- * Whether one video can be composited by ffmpeg under the page capture instead of injected
- * frame by frame: it alone fills the whole timeline at normal speed, played once, ungraded.
- * Layout (full canvas, nothing painted over or under it wrongly) is checked in the page.
- */
+/** One video that alone fills the whole timeline at normal speed, ungraded; layout is checked in the page. */
 export function qualifyVideoLayer(
   videos: readonly VideoElement[],
   compositionDuration: number,

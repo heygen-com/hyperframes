@@ -1208,10 +1208,7 @@ export interface VideoLayerInput {
   filters: string[];
 }
 
-/**
- * ffmpeg input + filters that show the same frames and colour as extraction, for an encoder that
- * composites the source video itself. Undefined when the source needs a path this does not cover.
- */
+/** ffmpeg input and filters showing the same frames and colour as extraction; undefined if unsupported. */
 export async function buildVideoLayerInput(
   videoPath: string,
   startTime: number,
