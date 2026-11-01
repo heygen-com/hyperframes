@@ -796,6 +796,9 @@
       // recordSample to coalesce display-rate events onto authored frames;
       // the import and helper insertion shift the untouched functions' lines.
       "packages/studio/src/hooks/useGestureRecording.ts",
+      // useShadowPreviewReload.ts: the reload hook is inherited large React control flow; this change only wires in
+      // useShadowReloadRetry (no new branch here), and touching the file makes fallow report the whole hook.
+      "packages/studio/src/player/hooks/useShadowPreviewReload.ts",
       // sourcePatcher.ts: resolveSourceFile / splitInlineStyleDeclarations /
       // patch*InTag pre-date this PR; only the PatchOperation type gained two
       // optional fields, but the line-shift fingerprint re-flags the inherited
