@@ -551,7 +551,9 @@ describe("a proxy that was in the way", () => {
       .mockRejectedValue(new Error("net::ERR_ABORTED at https://cdn.example/arabic.woff2"));
     await expect(
       navigateForCapture({ goto }, "https://cdn.example/arabic.woff2", 120_000),
-    ).rejects.toThrow(/cdn\.example answered with a file download.*assets\/fonts/);
+    ).rejects.toThrow(
+      /cdn\.example stopped loading as a page.*file download such as a font.*assets\/fonts.*net::ERR_ABORTED/,
+    );
   });
 
   it("leaves every other failure as it was", async () => {

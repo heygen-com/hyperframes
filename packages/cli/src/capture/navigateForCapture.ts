@@ -17,7 +17,7 @@ const PROXY_FAILURES = {
   "net::ERR_PROXY_CONNECTION_FAILED": () =>
     "Could not reach your network's proxy. Check the proxy address and that the proxy is running, or ask whoever runs it.",
   "net::ERR_ABORTED": (host: string) =>
-    `${host} answered with a file download (a font, image or other asset), not a web page, so there is nothing to capture. Capture a page that uses the file; its fonts are saved to assets/fonts.`,
+    `${host} stopped loading as a page. This usually means the URL is a file download such as a font, not a web page. Capture a page that uses the file; its fonts are saved to assets/fonts.`,
 } as const;
 const PROXY_FAILURE = new RegExp(Object.keys(PROXY_FAILURES).join("|"));
 
