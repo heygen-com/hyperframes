@@ -1310,6 +1310,89 @@ describe("layout-audit.browser coordinate-frame findings", () => {
     expect(issues.find((issue) => issue.selector === "#bleed")).toMatchObject({ severity: "info" });
   });
 
+  describe("webgl_draws_while_inactive", () => {
+    function mountScenes(hidden: boolean): HTMLCanvasElement {
+      document.body.innerHTML = `
+        <div id="root" data-composition-id="main" data-width="640" data-height="360">
+          <div id="scene2" data-composition-id="scene2" data-start="4" data-duration="2" ${hidden ? "data-hf-clip-hidden" : ""}>
+            <canvas id="shader" width="640" height="360"></canvas>
+          </div>
+        </div>
+      `;
+      installGeometry({
+        root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+        scene2: rect({ left: 0, top: 0, width: 640, height: 360 }),
+        shader: rect({ left: 0, top: 0, width: 640, height: 360 }),
+      });
+      installAuditScript();
+      return document.getElementById("shader") as HTMLCanvasElement;
+    }
+
+    const draw = (canvas: HTMLCanvasElement) =>
+      (
+        window as unknown as { __hyperframesRecordWebglDraw: (canvas: HTMLCanvasElement) => void }
+      ).__hyperframesRecordWebglDraw(canvas);
+
+    it("names the scene whose canvas draws while its clip is hidden", () => {
+      draw(mountScenes(true));
+
+      const found = runAudit().filter((issue) => issue.code === "webgl_draws_while_inactive");
+
+      expect(found).toHaveLength(1);
+      expect(found[0]).toMatchObject({ severity: "warning", selector: "#shader" });
+      expect(found[0]?.message).toContain("scene2");
+    });
+
+    it("judges a draw by the state it was made in, and reports it once", () => {
+      draw(mountScenes(false));
+      document.getElementById("scene2")?.setAttribute("data-hf-clip-hidden", "");
+      expect(runAudit().some((issue) => issue.code === "webgl_draws_while_inactive")).toBe(false);
+
+      draw(document.getElementById("shader") as HTMLCanvasElement);
+      expect(runAudit().filter((i) => i.code === "webgl_draws_while_inactive")).toHaveLength(1);
+      expect(runAudit().some((issue) => issue.code === "webgl_draws_while_inactive")).toBe(false);
+    });
+
+    function installFakeWebgl(): { drawn: unknown[]; context: { canvas: unknown } } {
+      const drawn: unknown[] = [];
+      class FakeContext {
+        canvas: unknown;
+        drawArrays(...args: unknown[]) {
+          drawn.push(args);
+        }
+      }
+      (window as unknown as Record<string, unknown>).WebGLRenderingContext = FakeContext;
+      return { drawn, context: new FakeContext() };
+    }
+
+    it("lets an OffscreenCanvas context draw, and reports nothing for it", () => {
+      const { drawn, context } = installFakeWebgl();
+      mountScenes(true);
+      context.canvas = { width: 64, height: 64 };
+
+      (context as unknown as { drawArrays(mode: number): void }).drawArrays(4);
+
+      expect(drawn).toEqual([[4]]);
+      expect(runAudit().some((issue) => issue.code === "webgl_draws_while_inactive")).toBe(false);
+    });
+
+    it("checks a canvas's visibility once per sample, however many draws it makes", () => {
+      const { context } = installFakeWebgl();
+      const canvas = mountScenes(false);
+      const closest = vi.spyOn(canvas, "closest");
+      context.canvas = canvas;
+
+      for (let i = 0; i < 50; i++)
+        (context as unknown as { drawArrays(mode: number): void }).drawArrays(4);
+      expect(closest).toHaveBeenCalledTimes(1);
+
+      runAudit();
+      closest.mockClear();
+      (context as unknown as { drawArrays(mode: number): void }).drawArrays(4);
+      expect(closest).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe("canvas_content_at_edge", () => {
     // One grey RGBA pixel per entry: a 1px-thick band, read the same along every edge.
     function edgeLine(levels: number[]): Uint8ClampedArray {
