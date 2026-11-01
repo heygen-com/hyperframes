@@ -1,6 +1,7 @@
 import {
   DEFAULT_CONFIG,
   buildZeroDurationDiagnostic,
+  isTransientBrowserError,
   downloadToTemp,
   evaluateHfDiagnostic,
   extractMediaMetadata,
@@ -340,6 +341,17 @@ interface SnapshotCompositePage {
     quality: number;
     clip: { x: number; y: number; width: number; height: number };
   }): Promise<Uint8Array>;
+}
+
+export async function screenshotOnceMore<T>(shoot: () => Promise<T>): Promise<T> {
+  try {
+    return await shoot();
+  } catch (err) {
+    if (!isTransientBrowserError(err)) throw err;
+    return shoot().catch(() => {
+      throw err;
+    });
+  }
 }
 
 /** Recapture canvas composites once the decoded video overlays have been injected. */
@@ -1371,7 +1383,7 @@ export async function captureSnapshots(
           writeCaptureFileSync(
             framePath,
             await atStep(`capturing the frame at ${time}s`, () =>
-              page.screenshot({ type: "png", omitBackground: true }),
+              screenshotOnceMore(() => page.screenshot({ type: "png", omitBackground: true })),
             ),
           );
         }

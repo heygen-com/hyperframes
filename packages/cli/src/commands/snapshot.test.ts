@@ -142,6 +142,13 @@ describe("transparent snapshot capture", () => {
     expect(source).toContain('page.screenshot({ type: "png", omitBackground: true })');
   });
 
+  it("shoots each frame through the one-retry wrapper", () => {
+    const source = readFileSync(new URL("./snapshot.ts", import.meta.url), "utf8");
+    expect(source).toContain(
+      'screenshotOnceMore(() => page.screenshot({ type: "png", omitBackground: true }))',
+    );
+  });
+
   it("exposes --proxy and forwards it to the snapshot page server", () => {
     const source = readFileSync(new URL("./snapshot.ts", import.meta.url), "utf8");
     expect(source).toContain("proxy: {");
