@@ -1017,8 +1017,6 @@ function referenceEdits(
 type Edit = { at: number; end: number; text: string };
 type ReferenceEditor = (text: string, syntax: ReferenceSyntax) => Edit[];
 
-// Edits from every editor are read from the original text and applied once, so no reading
-// rewrites another's output; where two start together the earlier editor wins.
 function rewriteWith(
   editors: readonly ReferenceEditor[],
 ): (text: string, syntax?: ReferenceSyntax, normalizeEntities?: boolean) => string {
@@ -1050,7 +1048,6 @@ const MAX_REST = 256;
 // Where a reference ends inside text: its end, `)`, a query or fragment, a srcset comma or width/density.
 const REFERENCE_END = /^(?:$|\)(?=$|[\s;,])|[?#]|,\s|\s+\d+(?:\.\d+)?[wx](?![\w.]))/;
 
-// HTML reads a bare path beside itself only where that file exists, else from the project root (rewriteAssetPath).
 function reaches(targets: ReadonlySet<string>, path: string): boolean {
   for (let i = 0; i <= path.length; i++)
     if (REFERENCE_END.test(path.slice(i)) && targets.has(path.slice(0, i))) return true;
