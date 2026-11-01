@@ -23,6 +23,7 @@ import { setPreviewReloading } from "../previewReloading";
 import { announcePreviewPromoted } from "../sceneSwap";
 import { afterStudioPendingEdits, isStudioEditSaving } from "../../utils/studioPendingEdits";
 import { usePlayerStore } from "../store/playerStore";
+import { READY_TIMEOUT_CAUSE, useShadowReloadRetry } from "./useShadowReloadRetry";
 
 // One wait budget for a shadow: the player's 8s asset cap plus its 0.42s loader fade
 // leaves about 6.5s for the document load and runtime boot. Nothing shorter may fail the swap.
@@ -117,6 +118,7 @@ export function useShadowPreviewReload({
   const shadowUrlRef = useRef("");
   const savesAtRequestRef = useRef(0);
   const beginShadowReloadRef = useRef<(url: string) => void>(() => {});
+  const retry = useShadowReloadRetry(shadowGenRef, shadowUrlRef, beginShadowReloadRef);
   const promoteWhenReadyRef = useRef<(gen: number) => void>(() => {});
   const [previewSlots, setPreviewSlots] = useState<PreviewIframeSlot[]>([{ gen: 0, role: "live" }]);
 
@@ -139,6 +141,7 @@ export function useShadowPreviewReload({
           : "its loaders to clear";
       const got = pageGotTo(shadowIframeRef.current);
       shadowGenRef.current += 1;
+      const failedGen = shadowGenRef.current;
       stopPendingShadow();
       shadowIframeRef.current = null;
       isRefreshingRef.current = false;
@@ -151,8 +154,9 @@ export function useShadowPreviewReload({
       const pageMissingNow = refused !== null && refused < 500;
       (pageMissingNow ? console.warn : console.error)(`[studio] ${message}`);
       onReloadFailedRef.current?.(message);
+      retry.afterFailure(cause, failedGen);
     },
-    [stopPendingShadow, isRefreshingRef, pendingSeekRef],
+    [stopPendingShadow, retry, isRefreshingRef, pendingSeekRef],
   );
 
   const gestureSavesOnScreen = useCallback(() => {
@@ -313,7 +317,7 @@ export function useShadowPreviewReload({
           armReadyTimerRef.current(gen);
           return;
         }
-        failShadow(gen, "it took too long to load");
+        failShadow(gen, READY_TIMEOUT_CAUSE);
       }, SHADOW_READY_TIMEOUT_MS);
     },
     [failShadow],
@@ -323,6 +327,7 @@ export function useShadowPreviewReload({
 
   const beginShadowReload = useCallback(
     (url: string) => {
+      retry.started();
       shadowGenRef.current += 1;
       const gen = shadowGenRef.current;
       stopPendingShadow();
@@ -335,12 +340,13 @@ export function useShadowPreviewReload({
       // Thumbnails of the edit wait for the new preview instead of competing with it.
       setPreviewReloading(true);
     },
-    [stopPendingShadow, armReadyTimer, gestureSavesOnScreen],
+    [retry, stopPendingShadow, armReadyTimer, gestureSavesOnScreen],
   );
   beginShadowReloadRef.current = beginShadowReload;
 
   // Composition switch (not an edit reload): drop any in-flight shadow.
   const resetPreviewSlots = useCallback(() => {
+    retry.cancel();
     shadowGenRef.current += 1;
     stopPendingShadow();
     shadowIframeRef.current = null;
@@ -349,7 +355,7 @@ export function useShadowPreviewReload({
     usePlayerStore.getState().setTimelineReady(false);
     setPreviewSlots(planShadowDiscard);
     setPreviewReloading(false);
-  }, [stopPendingShadow, isRefreshingRef, pendingSeekRef]);
+  }, [retry, stopPendingShadow, isRefreshingRef, pendingSeekRef]);
 
   // Hiding the tab pauses the budget; showing it again restarts the full budget for a pending shadow.
   useMountEffect(() => {
@@ -364,6 +370,7 @@ export function useShadowPreviewReload({
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
       document.removeEventListener("visibilitychange", onVisibilityChange);
+      retry.cancel();
       stopPendingShadow();
       setPreviewReloading(false);
     };
