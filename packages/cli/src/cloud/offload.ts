@@ -487,7 +487,9 @@ function scriptCode(fileMap: Map<string, StagedFile>): string {
     const text = textOf(path, content);
     if (text === undefined) continue;
     if (/\.html?$/i.test(path)) {
-      for (const script of parseHTML(text).document.querySelectorAll("script:not([src])")) {
+      const { document } = parseHTML(text);
+      const pages = [document, ...[...document.querySelectorAll("template")].map((t) => t.content)];
+      for (const script of pages.flatMap((p) => [...p.querySelectorAll("script:not([src])")])) {
         parts.push(script.textContent ?? "");
       }
     } else if (/\.(m?js|cjs|json)$/i.test(path)) parts.push(text);
@@ -526,6 +528,7 @@ interface FilePlan {
   segments?: PlayedSegment[];
 }
 
+// fallow-ignore-next-line complexity
 async function planFile(
   ctx: OffloadContext,
   path: string,
@@ -755,9 +758,21 @@ function dropReplacedFiles(
   }
 }
 
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** A path ending in the file's name; one that names another folder's file of that name does not count. */
+function namesFile(text: string, path: string): boolean {
+  const tokens = text.match(new RegExp(`[\\w./-]*${escapeRegExp(basename(path))}`, "g")) ?? [];
+  return tokens.some((token) => {
+    const tail = token.replace(/^[./]+/, "");
+    return path === tail || path.endsWith(`/${tail}`);
+  });
+}
+
 /**
- * Whether a reference rewriting could not replace may still load the file: its name anywhere, or its
- * stem and extension both in script code, which can join them at runtime ("clip" + ".mp4").
+ * Whether a reference rewriting could not replace may still load the file: a path ending in its name,
+ * or in script code its stem as a string of its own with the extension there too, which can join them
+ * at runtime ("clip" + ".mp4"). A stem that is only a word in the code ("host", "vo") is no such string.
  */
 function isStillMentioned(
   fileMap: Map<string, StagedFile>,
@@ -766,12 +781,13 @@ function isStillMentioned(
   withoutUrls: (text: string) => string,
 ): boolean {
   const ext = extname(path);
-  if (code.includes(basename(path, ext)) && code.includes(ext.slice(1))) return true;
+  const stem = new RegExp(`["'\`/]${escapeRegExp(basename(path, ext))}\\.?["'\`$]`);
+  if (stem.test(code) && code.includes(ext.slice(1))) return true;
   const name = basename(path);
   for (const [entryPath, content] of fileMap) {
     const contentText = textOf(entryPath, content);
     if (entryPath === path || !contentText?.includes(name)) continue;
-    if (withoutUrls(contentText).includes(name)) return true;
+    if (namesFile(withoutUrls(contentText), path)) return true;
   }
   return false;
 }
@@ -858,13 +874,21 @@ function rewriteCssEntry(absDir: string, entryPath: string, css: string, urlFor:
   return result.modified ? result.css : null;
 }
 
+// A composition keeps its scene in a <template>: selectors stop at it, and template.content is a copy.
+const TEMPLATE_RE = /(<template\b[^>]*>)([\s\S]*?)(<\/template>)/gi;
+
+// fallow-ignore-next-line complexity
 function rewriteHtmlEntry(
   absDir: string,
   entryPath: string,
-  html: string,
+  source: string,
   urlFor: UrlFor,
   fileMap: Map<string, StagedFile>,
 ): string | null {
+  const html = source.replace(TEMPLATE_RE, (full, open: string, inner: string, close: string) => {
+    const next = rewriteHtmlEntry(absDir, entryPath, inner, urlFor, fileMap);
+    return next === null ? full : open + next + close;
+  });
   const referrerAbsDir = resolve(absDir, dirname(entryPath));
   // Sub-composition srcs resolve the way the renderer inlines them.
   const resolveTarget: HtmlAttributeResolver = (raw) =>
@@ -883,7 +907,8 @@ function rewriteHtmlEntry(
     script.textContent = next;
     scripts = true;
   }
-  return attrs || srcsets || styles || scripts ? document.toString() : null;
+  if (attrs || srcsets || styles || scripts) return document.toString();
+  return html === source ? null : html;
 }
 
 // A plain string literal: no escapes, interpolation or line breaks.
