@@ -85,7 +85,7 @@ function maskFilters(masks: Mask[], fps: number, stale: Mask[]): string {
     const when = mask.window ? `:enable='between(t,${mask.window[0]},${mask.window[1]})'` : "";
     const [w2, h2] = [w - (w % 2), h - (h % 2)];
     const fill = stale.includes(mask)
-      ? `scale=3:3,gblur=sigma=1,scale=${w2}:${h2}:flags=bicubic`
+      ? `scale=3:3:flags=area,scale=${w2}:${h2}:flags=bicubic`
       : `tmedian=radius=${radius}`;
     return `[v${i}]split[a${i}][b${i}];[b${i}]crop=${w2}:${h2}:${x}:${y},${fill}[m${i}];[a${i}][m${i}]overlay=${x}:${y}${when}[v${i + 1}]`;
   });
