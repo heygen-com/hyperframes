@@ -1,5 +1,5 @@
 import { failCommand } from "./commandResult.js";
-import { existsSync, statSync } from "node:fs";
+import { accessSync, existsSync, statSync } from "node:fs";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { errorBox } from "../ui/format.js";
 import { trackCommandFailure } from "../telemetry/events.js";
@@ -55,12 +55,24 @@ export function resolveProjectOrThrow(
   if (!existsSync(dir)) {
     throw new InvalidProjectError("Not a directory: " + dir);
   }
-  if (options.requireIndex !== false && !existsSync(indexPath)) {
-    throw new InvalidProjectError(
-      "No composition found in " + dir,
-      "No index.html file found.",
-      "Run npx hyperframes init to create a new composition.",
-    );
+  if (options.requireIndex !== false) {
+    try {
+      accessSync(indexPath);
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code !== "ENOENT" && code !== "ENOTDIR") {
+        throw new InvalidProjectError(
+          "Cannot read " + dir,
+          `index.html could not be checked (${code}): the folder exists but this process may not open it.`,
+          "Check the folder's permissions, or on macOS allow your terminal or agent access to that folder (Files and Folders).",
+        );
+      }
+      throw new InvalidProjectError(
+        "No composition found in " + dir,
+        "No index.html file found.",
+        "Run npx hyperframes init to create a new composition.",
+      );
+    }
   }
 
   return { dir, name, indexPath };

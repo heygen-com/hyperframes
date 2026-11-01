@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, basename } from "node:path";
 import { InvalidProjectError, resolveLintTarget, resolveProjectOrThrow } from "./project.js";
@@ -41,6 +41,23 @@ describe("resolveProjectOrThrow", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+    "says a folder it may not open is unreadable, not that it holds no composition",
+    () => {
+      const dir = mkdtempSync(join(tmpdir(), "hf-unreadable-project-"));
+      try {
+        writeFileSync(join(dir, "index.html"), "<html></html>");
+        chmodSync(dir, 0o444);
+        expect(() => resolveProjectOrThrow(dir)).toThrowError(
+          expect.objectContaining({ title: "Cannot read " + dir }),
+        );
+      } finally {
+        chmodSync(dir, 0o755);
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("rejects a directory without index.html", () => {
     const dir = mkdtempSync(join(tmpdir(), "hf-empty-project-"));
