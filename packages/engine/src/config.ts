@@ -70,6 +70,8 @@ export interface EngineConfig {
    * `HF_STATIC_DEDUP` in {false,0,off}. Only arms in screenshot capture mode.
    */
   staticFrameDedup: boolean;
+  /** Opt-in `HF_VIDEO_LAYER_PASSTHROUGH`: ffmpeg composites a full-canvas source video under the page capture. */
+  videoLayerPassthrough: boolean;
   /**
    * Use drawElementImage for frame capture (requires the CanvasDrawElement
    * Chrome flag, added globally in buildChromeArgs). Default ON, clamped in
@@ -301,6 +303,7 @@ export const DEFAULT_CONFIG: EngineConfig = {
   protocolTimeout: 300_000,
   forceScreenshot: false,
   staticFrameDedup: true,
+  videoLayerPassthrough: false,
   useDrawElement: true,
   enableDrawElementWorkerEncode: true,
   // Auto-detected per host in `resolveConfig`; defaults off for the raw
@@ -354,6 +357,7 @@ const BOOLEAN_ENGINE_CONFIG_FIELDS = [
   "enableBrowserPool",
   "forceScreenshot",
   "staticFrameDedup",
+  "videoLayerPassthrough",
   "useDrawElement",
   "enableDrawElementWorkerEncode",
   "lowMemoryMode",
@@ -876,6 +880,10 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
 
     forceScreenshot: envBool("PRODUCER_FORCE_SCREENSHOT", DEFAULT_CONFIG.forceScreenshot),
     staticFrameDedup: resolveStaticFrameDedup(),
+    videoLayerPassthrough: envBool(
+      "HF_VIDEO_LAYER_PASSTHROUGH",
+      DEFAULT_CONFIG.videoLayerPassthrough,
+    ),
     useDrawElement: envBool("PRODUCER_EXPERIMENTAL_FAST_CAPTURE", DEFAULT_CONFIG.useDrawElement),
     enableDrawElementWorkerEncode: envBool(
       "HF_DE_WORKER_ENCODE",
