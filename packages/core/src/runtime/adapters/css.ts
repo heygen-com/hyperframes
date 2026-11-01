@@ -1,11 +1,19 @@
 import type { RuntimeDeterministicAdapter } from "../types";
 import { swallow } from "../diagnostics";
-import { isHtmlElement } from "../domRealm";
 import { holdAnimationAt } from "./_holdAnimationAt";
+import {
+  type AuthoredCssAnimations,
+  createAuthoredCssAnimations,
+  isCssAnimation,
+  isKeyframeEffect,
+  splitNames,
+} from "./cssAnimation";
 
 export function createCssAdapter(params?: {
   resolveStartSeconds?: (element: Element) => number;
+  authored?: AuthoredCssAnimations;
 }): RuntimeDeterministicAdapter {
+  const authored = params?.authored ?? createAuthoredCssAnimations();
   let entries: Array<{
     el: HTMLElement;
     baseDelay: string;
@@ -27,17 +35,24 @@ export function createCssAdapter(params?: {
     }
   };
 
+  const liveAnimationTarget = (animation: Animation, canTellCss: boolean): Element | null => {
+    if (canTellCss && !isCssAnimation(animation)) return null;
+    const effect = animation.effect;
+    return isKeyframeEffect(effect) && effect.target && !effect.pseudoElement
+      ? effect.target
+      : null;
+  };
+
   const readLiveAnimations = (pageAnimations?: () => Animation[]): Map<Element, Animation[]> => {
     const byElement = new Map<Element, Animation[]>();
     if (entries.length === 0) return byElement;
     const canTellCss = typeof CSSAnimation !== "undefined";
     for (const animation of safeGetAnimations(document, pageAnimations)) {
-      if (canTellCss && !(animation instanceof CSSAnimation)) continue;
-      const effect = animation.effect as KeyframeEffect | null;
-      if (!effect?.target || effect.pseudoElement) continue;
-      const list = byElement.get(effect.target);
-      if (list) list.push(animation);
-      else byElement.set(effect.target, [animation]);
+      const target = liveAnimationTarget(animation, canTellCss);
+      if (!target) continue;
+      const list = byElement.get(target) ?? [];
+      byElement.set(target, list);
+      if (!canTellCss || authored.drivenByCssAdapter(animation)) list.push(animation);
     }
     return byElement;
   };
@@ -63,7 +78,7 @@ export function createCssAdapter(params?: {
         .map((v) => Number.parseFloat(v) / (v.trim().endsWith("ms") ? 1000 : 1));
     const durations = seconds(style.animationDuration);
     const delays = seconds(style.animationDelay);
-    const names = style.animationName.split(",");
+    const names = splitNames(style.animationName);
     let cycleSeconds = 0;
     names.forEach((name, i) => {
       if (name.trim() === "none") return;
@@ -143,6 +158,27 @@ export function createCssAdapter(params?: {
     }
   };
 
+  const seekEntry = (
+    entry: (typeof entries)[number],
+    live: Map<Element, Animation[]>,
+    time: number,
+  ) => {
+    if (!entry.el.isConnected) return;
+    const start = resolveEntryStartSeconds(entry.el);
+    const localTimeMs = Math.max(0, time - start) * 1000;
+    if (entry.handles?.length || live.has(entry.el)) {
+      if (entry.el.style.animationDelay !== entry.baseDelay) restoreInlineStyles(entry);
+      seekAnimations(entry.handles ?? [], localTimeMs);
+      return;
+    }
+
+    // No live CSSAnimation (no WAAPI, a hidden clip): pause keeps this pose for the next one.
+    entry.el.style.animationPlayState = "paused";
+    entry.el.style.animationDelay = entry.delays
+      .map((delay) => `${Number((delay - localTimeMs / 1000).toFixed(3))}s`)
+      .join(", ");
+  };
+
   return {
     name: "css",
     discover: () => {
@@ -150,19 +186,15 @@ export function createCssAdapter(params?: {
       for (const entry of entries) restoreInlineStyles(entry);
       const known = new Map(entries.map((entry) => [entry.el, entry.handles]));
       entries = [];
-      const all = document.querySelectorAll("*");
-      for (const rawEl of all) {
-        if (!isHtmlElement(rawEl)) continue;
-        const style = window.getComputedStyle(rawEl);
-        if (!style.animationName || style.animationName === "none") continue;
+      authored.discover((el, style) => {
         entries.push({
-          el: rawEl,
-          baseDelay: rawEl.style.animationDelay || "",
-          basePlayState: rawEl.style.animationPlayState || "",
+          el,
+          baseDelay: el.style.animationDelay || "",
+          basePlayState: el.style.animationPlayState || "",
           ...readAnimationTimes(style),
-          handles: known.get(rawEl),
+          handles: known.get(el),
         });
-      }
+      });
     },
     getAnimationCycleEndSeconds: () => {
       let end = 0;
@@ -193,22 +225,7 @@ export function createCssAdapter(params?: {
       const live = readLiveAnimations(ctx.pageAnimations);
       // All playState reads before any write: each read flushes the style a write dirties.
       for (const entry of entries) entry.handles = keepHandles(entry.handles, live.get(entry.el));
-      for (const entry of entries) {
-        if (!entry.el.isConnected) continue;
-        const start = resolveEntryStartSeconds(entry.el);
-        const localTimeMs = Math.max(0, time - start) * 1000;
-        if (entry.handles?.length) {
-          if (entry.el.style.animationDelay !== entry.baseDelay) restoreInlineStyles(entry);
-          seekAnimations(entry.handles, localTimeMs);
-          continue;
-        }
-
-        // No live CSSAnimation (no WAAPI, a hidden clip): pause keeps this pose for the next one.
-        entry.el.style.animationPlayState = "paused";
-        entry.el.style.animationDelay = entry.delays
-          .map((delay) => `${Number((delay - localTimeMs / 1000).toFixed(3))}s`)
-          .join(", ");
-      }
+      for (const entry of entries) seekEntry(entry, live, time);
     },
     pause: (ctx) => {
       const live = readLiveAnimations(ctx?.pageAnimations);
