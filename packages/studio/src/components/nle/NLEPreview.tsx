@@ -46,6 +46,8 @@ interface NLEPreviewProps extends Pick<
   portrait?: boolean;
   directUrl?: string;
   suppressLoadingOverlay?: boolean;
+  /** "none": the host draws its own loader over the preview; Studio draws neither of its own. */
+  loadingUi?: "studio" | "none";
   onStageRef?: (ref: React.RefObject<HTMLDivElement | null>) => void;
   /** Reports the authored composition size measured from the loaded preview. */
   onCompositionSizeChange?: (size: PreviewCompositionSize | null) => void;
@@ -126,6 +128,7 @@ export const NLEPreview = memo(function NLEPreview({
   portrait,
   directUrl,
   suppressLoadingOverlay,
+  loadingUi,
   onStageRef,
   onCompositionSizeChange,
   fillBox,
@@ -544,6 +547,7 @@ export const NLEPreview = memo(function NLEPreview({
                   onPainted={(details) => reportPreviewFirstFrame(slot, details)}
                   portrait={portrait}
                   suppressLoadingOverlay={suppressLoadingOverlay}
+                  loadingUi={loadingUi}
                   style={
                     directUrl?.includes("/components/")
                       ? { position: "absolute", inset: 0, zIndex: 1 }

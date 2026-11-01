@@ -36,7 +36,10 @@ interface PlayerProps {
   onPainted?: (details: { iframe: HTMLIFrameElement; startedAt: number; loadId: number }) => void;
   portrait?: boolean;
   style?: React.CSSProperties;
+  /** Skips only the composition cover (a later load); the asset wait still shows. A host's own loader: loadingUi. */
   suppressLoadingOverlay?: boolean;
+  /** "none": the host draws its own loader, so Studio draws neither overlay; loading is still reported. */
+  loadingUi?: "studio" | "none";
   noLoadTimeout?: boolean;
 }
 
@@ -155,6 +158,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       portrait,
       style,
       suppressLoadingOverlay,
+      loadingUi = "studio",
       noLoadTimeout,
     },
     ref,
@@ -470,16 +474,18 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       return () => clearTimeout(timer);
     }, [projectId]);
 
-    const showCompositionOverlay =
+    const compositionWaitShown =
       !suppressLoadingOverlay &&
       !compositionOverlayDeferred &&
       shouldShowCompositionLoadingOverlay(compositionLoading);
-    const showAssetOverlay =
-      assetOverlayVisible && !shaderTransitionLoading && !showCompositionOverlay && !previewError;
+    const assetWaitShown =
+      assetOverlayVisible && !shaderTransitionLoading && !compositionWaitShown && !previewError;
+    const showCompositionOverlay = compositionWaitShown && loadingUi === "studio";
+    const showAssetOverlay = assetWaitShown && loadingUi === "studio";
 
     useEffect(() => {
-      onCompositionLoadingChange?.(showCompositionOverlay || showAssetOverlay);
-    }, [onCompositionLoadingChange, showCompositionOverlay, showAssetOverlay]);
+      onCompositionLoadingChange?.(compositionWaitShown || assetWaitShown);
+    }, [onCompositionLoadingChange, compositionWaitShown, assetWaitShown]);
 
     return (
       <div
