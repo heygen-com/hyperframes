@@ -2240,22 +2240,22 @@
     const drawn = [...webglDraws].filter((canvas) => canvas?.isConnected);
     webglDraws.clear();
     return drawn.map((canvas) => {
-        const scene =
-          canvas.closest("[data-composition-id]:not([data-width])") ??
-          canvas.closest("[data-composition-id]");
-        const name = scene?.getAttribute("data-composition-id") || uniqueSelectorFor(canvas);
-        return {
-          code: "webgl_draws_while_inactive",
-          severity: "warning",
-          time,
-          selector: uniqueSelectorFor(canvas),
-          containerSelector: uniqueSelectorFor(root),
-          message: `Scene "${name}" draws WebGL while it is not on screen, so every seek pays for it.`,
-          rect: toRect(canvas.getBoundingClientRect()),
-          fixHint:
-            "Draw only while the scene is active (its data-start to data-start + data-duration), or skip the draw in your hf-seek listener when the scene is hidden.",
-        };
-      });
+      const scene =
+        canvas.closest("[data-composition-id]:not([data-width])") ??
+        canvas.closest("[data-composition-id]");
+      const name = scene?.getAttribute("data-composition-id") || uniqueSelectorFor(canvas);
+      return {
+        code: "webgl_draws_while_inactive",
+        severity: "warning",
+        time,
+        selector: uniqueSelectorFor(canvas),
+        containerSelector: uniqueSelectorFor(root),
+        message: `Scene "${name}" draws WebGL while it is not on screen, so every seek pays for it.`,
+        rect: toRect(canvas.getBoundingClientRect()),
+        fixHint:
+          "Draw only while the scene is active (its data-start to data-start + data-duration), or skip the draw in your hf-seek listener when the scene is hidden.",
+      };
+    });
   }
 
   // Soft prior only — the counterfactual attach test (below) is what makes detachment a finding.
