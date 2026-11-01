@@ -2254,3 +2254,40 @@ describe("formatFfmpegSeconds", () => {
     expect(formatFfmpegSeconds(0)).toBe("0");
   });
 });
+
+describe("the audio tail probe's read interval", () => {
+  it("starts at a plain decimal when the duration is a hair over one second", async () => {
+    const probe = {
+      kind: "exit" as const,
+      code: 0,
+      stdout: JSON.stringify({
+        streams: [
+          {
+            codec_type: "audio",
+            codec_name: "aac",
+            sample_rate: "48000",
+            channels: 2,
+            start_time: "0.000000",
+            duration: "1.000001",
+          },
+        ],
+        format: {
+          format_name: "mov,mp4,m4a,3gp,3g2,mj2",
+          start_time: "0.000000",
+          duration: "1.000001",
+        },
+      }),
+    };
+    const { spawn, calls } = createSpawnSpy([probe, { kind: "exit", code: 0, stdout: "" }]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { extractAudioMetadata } = await import("./ffprobe.js");
+    await extractAudioMetadata("/probe-tail/asset.m4a");
+    const intervals = calls.flatMap((call) => {
+      const at = call.args.indexOf("-read_intervals");
+      return at === -1 ? [] : [call.args[at + 1]!];
+    });
+    expect(intervals.length).toBeGreaterThan(0);
+    for (const interval of intervals) expect(interval.split("%")[0]).toMatch(/^\d+(\.\d+)?$/);
+  });
+});
