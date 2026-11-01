@@ -393,7 +393,7 @@ export function fitAspect(out: string, aspect: string): string | undefined {
   return `HeyGen returned ${width}x${height} for ${aspect}; cropped to ${w}x${h} (centre), not stretched`;
 }
 
-const MIN_SHOT_S = 0.5;
+const MIN_SHOT_S = 0.15;
 
 export function foldShort(cuts: number[], length: number): number[] {
   const kept = [...cuts];

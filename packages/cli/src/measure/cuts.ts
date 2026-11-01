@@ -89,7 +89,7 @@ const tones = (frame: Uint8Array) => {
   return bins.map((n) => n / frame.length);
 };
 
-/** A whip keeps its tones and a transition to another shot does not: the share of pixels the two have in common. */
+/** The share of pixels two pictures have in common by tone, wherever they sit in the frame. */
 const sharedTones = (a: Uint8Array, b: Uint8Array) => {
   const after = tones(b);
   return tones(a).reduce((sum, share, bin) => sum + Math.min(share, after[bin]!), 0);
@@ -103,11 +103,11 @@ export function classifiedCuts(frames: Uint8Array[]): Cut[] {
     const back = (a: number, b: number) =>
       frames[a] && frames[b] ? meanAbsDiff(frames[a]!, frames[b]!) < RETURNED * c.change : false;
     if (c.frames > MAX_CUT_FRAMES) {
-      const before = frames[c.frame - 1];
-      const after = frames[end];
+      const before = frames[c.frame - 1]!;
+      // A whip keeps its tones the whole way; a wipe or a transition to another shot does not.
       const sameShot =
         isHeld(neighbours(diffs, c.frame, end)) ||
-        (before && after ? sharedTones(before, after) >= SAME_TONES : false);
+        frames.slice(c.frame, end + 1).every((f) => sharedTones(before, f) >= SAME_TONES);
       return sameShot ? { ...c, kind: "fast" as const } : c;
     }
     const returns = Array.from({ length: FLASH_FRAMES }, (_, k) => k + 1).some(

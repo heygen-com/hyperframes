@@ -100,6 +100,12 @@ describe("findCuts on moving pictures", () => {
     ]);
   });
 
+  it("keeps a wipe through black between two matching pictures as a cut", () => {
+    // johnny 9.43 s: two views of one map, so the pictures either side share their tones.
+    const frames = [...still(120, 20), ...slide(120, 0, 3), ...still(125, 20)];
+    expect(classifiedCuts(frames).map((c) => [c.frame, c.kind])).toEqual([[20, undefined]]);
+  });
+
   it("calls a five-frame whip that keeps its tones a fast move", () => {
     const half = (a: number, b: number) =>
       new Uint8Array(SIG_W * SIG_H).map((_, i) => (i % SIG_W < SIG_W / 2 ? a : b));
