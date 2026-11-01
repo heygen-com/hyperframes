@@ -234,7 +234,9 @@ function byStem(analysis: ReadAudio): string[] {
       ? analysis.stems.flatMap((stem) => stemBlock(stem, width))
       : ["stems: all silent"]),
     ...(analysis.stems.some((stem) => stem.description) ? [DESCRIPTIONS_NOTE] : []),
-    ...(description ? ["", `bgm prompt: ${description.bgmPrompt}`] : []),
+    ...(description
+      ? ["", `bgm prompt: ${description.bgmPrompt ?? "none, the recording has no music"}`]
+      : []),
     "",
   ];
 }

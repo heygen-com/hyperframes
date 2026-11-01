@@ -119,8 +119,8 @@ export interface AudibleStem {
 
 export interface Description {
   overall: string;
-  /** The music alone as a prompt for a music generator or a library search: no voice, no seconds. */
-  bgmPrompt: string;
+  /** The music alone as a prompt for a music generator or a library search: no voice, no seconds; null without music. */
+  bgmPrompt: string | null;
 }
 
 export interface ReadAudio {

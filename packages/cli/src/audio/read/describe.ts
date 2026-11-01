@@ -53,7 +53,7 @@ function overallPrompt({ duration, bpm, stems, breaks }: Measured): string {
     "",
     "From these, answer in two parts, plain text, each starting with its label on a new line.",
     "OVERALL: at most four sentences: what the soundtrack holds (voice, music, other sound), the music's style, instruments and feel, and how it is arranged over time, using the measured times.",
-    'BGM PROMPT: one paragraph describing only the music, as a prompt for a music generator: style, tempo, instruments, feel, and how it develops from start to end in order ("opens with…, then…, then…, ends with…"). No voice, no sound effects, no seconds or timestamps.',
+    'BGM PROMPT: one paragraph describing only the music, as a prompt for a music generator: style, tempo, instruments, feel, and how it develops from start to end in order ("opens with…, then…, then…, ends with…"). No voice, no sound effects, no seconds or timestamps. Music means instruments or a beat carrying a tune or a groove; foley, clicks, pops, whooshes and other sound effects are not music, even when they come in a rhythm. If the soundtrack has no music, write BGM PROMPT: none.',
   ].join("\n");
 }
 
@@ -62,8 +62,9 @@ function parseOverall(text: string): Description | null {
   const bgmPrompt = /BGM PROMPT:\s*([\s\S]*)$/i.exec(text)?.[1];
   const clean = (s: string | undefined) =>
     s?.replace(/\*\*/g, "").replace(/\s+/g, " ").trim() ?? "";
-  const description = { overall: clean(overall), bgmPrompt: clean(bgmPrompt) };
-  return description.overall && description.bgmPrompt ? description : null;
+  const prompt = clean(bgmPrompt);
+  if (!clean(overall) || !prompt) return null;
+  return { overall: clean(overall), bgmPrompt: /^none\.?$/i.test(prompt) ? null : prompt };
 }
 
 const isMp3 = (bytes: Buffer) =>
