@@ -79,6 +79,45 @@ function visibilityOf(ids: string[]): string[] {
   return ids.map((id) => (document.getElementById(id) as HTMLElement).style.visibility);
 }
 
+describe("the loading panel", () => {
+  async function panelSeenDuringPrewarm(): Promise<boolean> {
+    stubGsap();
+    stubWebGl();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    mountScenes(["s1", "s2"]);
+    let seen = false;
+    const watch = new MutationObserver((records) => {
+      for (const record of records)
+        for (const node of record.addedNodes)
+          if (node instanceof HTMLElement && node.hasAttribute("data-hyper-shader-loading"))
+            seen = true;
+    });
+    watch.observe(document.body, { childList: true, subtree: true });
+    init({
+      bgColor: "#000",
+      scenes: ["s1", "s2"],
+      transitions: [{ time: 2, duration: 0.8, shader: "domain-warp" }],
+    });
+    await prewarmDone();
+    await Promise.resolve();
+    watch.disconnect();
+    return seen;
+  }
+
+  afterEach(() => {
+    delete (window as { __HF_REPLAY_SKIPPED_FRAMES?: boolean }).__HF_REPLAY_SKIPPED_FRAMES;
+  });
+
+  it("covers a live preview while its transitions prepare", async () => {
+    expect(await panelSeenDuringPrewarm()).toBe(true);
+  });
+
+  it("is never added to a still-capture page, so snapshot and check do not see it", async () => {
+    (window as { __HF_REPLAY_SKIPPED_FRAMES?: boolean }).__HF_REPLAY_SKIPPED_FRAMES = true;
+    expect(await panelSeenDuringPrewarm()).toBe(false);
+  });
+});
+
 describe("preview outside a transition", () => {
   it("leaves the runtime's hide on shader scenes after the prewarm on a paused page", async () => {
     stubGsap();
