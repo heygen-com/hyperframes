@@ -75,13 +75,16 @@ describe("studio key resolver", () => {
     expect(getStudioKey("mute")).toBe("m");
     expect(getStudioKey("razorTool")).toBe("b");
     setStudioKeys({ mute: "x", razorTool: "x" });
-    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledTimes(2);
   });
 
   it("refuses a key that is not one character", () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
-    setStudioKeys({ mute: "ctrl" });
+    setStudioKeys({ razorTool: "y", mute: "ctrl" });
     expect(getStudioKey("mute")).toBe("m");
+    expect(getStudioKey("razorTool")).toBe("b");
+    setStudioKeys({ razorTool: "y", toString: "z" } as never);
+    expect(getStudioKey("razorTool")).toBe("b");
   });
 
   it("still lets the keys Studio already shares (K stop/keyframe, S split/snap) share", () => {

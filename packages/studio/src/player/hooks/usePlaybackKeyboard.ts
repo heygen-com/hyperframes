@@ -8,7 +8,11 @@
 
 import { useRef, useCallback } from "react";
 import { useCaptionStore } from "../../captions/store";
-import { shouldIgnorePlaybackShortcutEvent, SHUTTLE_SPEEDS } from "../lib/playbackShortcuts";
+import {
+  razorClaimsKey,
+  shouldIgnorePlaybackShortcutEvent,
+  SHUTTLE_SPEEDS,
+} from "../lib/playbackShortcuts";
 import { canvasNudgeKeysClaimed } from "../../utils/canvasNudgeGate";
 import { usePlayerStore } from "../store/playerStore";
 import { getStudioKeys } from "../components/studioShortcuts";
@@ -28,12 +32,27 @@ interface UsePlaybackKeyboardParams {
   seek: (time: number, options?: { keepPlaying?: boolean }) => void;
 }
 
-// The razor tool owns plain "a" (return to select) while it's armed; this
-// can't rely on defaultPrevented since both listeners register on window and
-// fire in an order this hook doesn't control. Shift+A and Alt+A are left for
-// the in-point seek below, since only plain A means "exit the razor".
-function shouldRazorClaimPlainA(e: KeyboardEvent): boolean {
-  return !e.shiftKey && !e.altKey && usePlayerStore.getState().activeTool === "razor";
+function handleWorkAreaKey(
+  e: KeyboardEvent,
+  key: string,
+  getAdapter: () => PlaybackAdapter | null,
+  seek: UsePlaybackKeyboardParams["seek"],
+): boolean {
+  if (razorClaimsKey(e, key)) return false;
+  const keys = getStudioKeys();
+  const store = usePlayerStore.getState();
+  const time = () => getAdapter()?.getTime() ?? store.currentTime;
+  const end = () => store.outPoint ?? getAdapter()?.getDuration() ?? store.duration;
+  const actions: Record<string, () => void> = {
+    [keys.inPoint]: () => store.setInPoint(e.shiftKey ? null : time()),
+    [keys.outPoint]: () => store.setOutPoint(e.shiftKey ? null : time()),
+    [keys.seekToIn]: () => seek(store.inPoint ?? 0, { keepPlaying: true }),
+    [keys.seekToOut]: () => seek(end(), { keepPlaying: true }),
+  };
+  if (!Object.hasOwn(actions, key)) return false;
+  e.preventDefault();
+  actions[key]();
+  return true;
 }
 
 export function usePlaybackKeyboard({
@@ -166,32 +185,7 @@ export function usePlaybackKeyboard({
         shuttle("forward");
         return;
       }
-      if (key === keys.inPoint) {
-        e.preventDefault();
-        const t = getAdapter()?.getTime() ?? usePlayerStore.getState().currentTime;
-        usePlayerStore.getState().setInPoint(e.shiftKey ? null : t);
-        return;
-      }
-      if (key === keys.outPoint) {
-        e.preventDefault();
-        const t = getAdapter()?.getTime() ?? usePlayerStore.getState().currentTime;
-        usePlayerStore.getState().setOutPoint(e.shiftKey ? null : t);
-        return;
-      }
-      if (key === keys.seekToIn) {
-        if (shouldRazorClaimPlainA(e)) return;
-        e.preventDefault();
-        seek(usePlayerStore.getState().inPoint ?? 0, { keepPlaying: true });
-        return;
-      }
-      if (key === keys.seekToOut) {
-        e.preventDefault();
-        const { outPoint } = usePlayerStore.getState();
-        seek(outPoint ?? getAdapter()?.getDuration() ?? usePlayerStore.getState().duration, {
-          keepPlaying: true,
-        });
-        return;
-      }
+      handleWorkAreaKey(e, key, getAdapter, seek);
     },
     [pause, shuttle, stepFrames, togglePlay, getAdapter, seek],
   );

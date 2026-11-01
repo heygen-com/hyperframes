@@ -383,4 +383,20 @@ describe("usePlaybackKeyboard — keys the host can remap", () => {
     expect(spies.play).not.toHaveBeenCalled();
     expect(spies.playBackward).not.toHaveBeenCalled();
   });
+
+  it("with the razor armed, jump-to-in still answers when razor-back-to-select moved", () => {
+    setStudioKeys({ exitRazor: "x" });
+    usePlayerStore.setState({ activeTool: "razor", inPoint: 2 });
+    const { dispatch, spies } = setupHook();
+    press(dispatch, "a");
+    expect(spies.seek).toHaveBeenCalledWith(2, { keepPlaying: true });
+  });
+
+  it("with the razor armed, a remapped jump-to-in key still answers", () => {
+    setStudioKeys({ seekToIn: "q" });
+    usePlayerStore.setState({ activeTool: "razor", inPoint: 3 });
+    const { dispatch, spies } = setupHook();
+    press(dispatch, "q");
+    expect(spies.seek).toHaveBeenCalledWith(3, { keepPlaying: true });
+  });
 });

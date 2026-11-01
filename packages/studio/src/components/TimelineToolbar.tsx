@@ -232,7 +232,13 @@ export const TimelineToolbar = memo(function TimelineToolbar({
           {/* Divider: tool-mode | editing-actions */}
           <div aria-hidden="true" className="mx-1 h-4 w-px bg-neutral-800" />
           <LinkedSelectionToggle />
-          <Tooltip label={timelineSnapEnabled ? `Snapping on (${keyHint("timelineSnap", keys)})` : `Snapping off (${keyHint("timelineSnap", keys)})`}>
+          <Tooltip
+            label={
+              timelineSnapEnabled
+                ? `Snapping on (${keyHint("timelineSnap", keys)})`
+                : `Snapping off (${keyHint("timelineSnap", keys)})`
+            }
+          >
             <button
               type="button"
               onClick={() => setTimelineSnapEnabled(!timelineSnapEnabled)}

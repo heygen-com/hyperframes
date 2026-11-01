@@ -139,7 +139,11 @@ export const SnapToolbar = memo(function SnapToolbar() {
             : "bg-black/40 text-white/60 hover:bg-black/60 hover:text-white/80"
         }`}
         onClick={toggleSnap}
-        title={prefs.snapEnabled ? `Snap enabled (${keyHint("snap", keys)})` : `Snap disabled (${keyHint("snap", keys)})`}
+        title={
+          prefs.snapEnabled
+            ? `Snap enabled (${keyHint("snap", keys)})`
+            : `Snap disabled (${keyHint("snap", keys)})`
+        }
         aria-label="Toggle snap"
       >
         <MagnetStraight size={16} weight={prefs.snapEnabled ? "fill" : "regular"} />

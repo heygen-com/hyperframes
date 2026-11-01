@@ -161,7 +161,9 @@ export const ClipContextMenu = memo(function ClipContextMenu({
             }}
           >
             <span>{splitLabel}</span>
-            <span className="text-neutral-500 text-[10px] ml-3">{splitShortcut ?? keyHint("split", keys)}</span>
+            <span className="text-neutral-500 text-[10px] ml-3">
+              {splitShortcut ?? keyHint("split", keys)}
+            </span>
           </button>
         )}
         {tools && splitLabel && (

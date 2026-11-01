@@ -71,7 +71,9 @@ export function GestureRecordBadge({
 }: GestureRecordBadgeProps) {
   const recordKey = keyHint("record", useStudioKeys());
   const recording = recordingState === "recording";
-  const label = recording ? `Stop gesture recording (${recordKey})` : `Record gesture (${recordKey})`;
+  const label = recording
+    ? `Stop gesture recording (${recordKey})`
+    : `Record gesture (${recordKey})`;
 
   return (
     <button

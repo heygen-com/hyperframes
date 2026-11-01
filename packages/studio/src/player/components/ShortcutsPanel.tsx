@@ -4,7 +4,7 @@ import { Popover, Tooltip } from "../../components/ui";
 import { flatActive, flatIdle } from "../../components/timelineToolbarStyles";
 import { usePlayerStore } from "../store/playerStore";
 import { useCompositionFps } from "../../utils/linkedClipPreferences";
-import { buildShortcutSections, useStudioKeys, type ShortcutSection } from "./studioShortcuts";
+import { useShortcutSections, type ShortcutSection } from "./studioShortcuts";
 
 interface ShortcutsPanelProps {
   disabled: boolean;
@@ -30,8 +30,7 @@ export const ShortcutsPanel = memo(function ShortcutsPanel({
   onSeek,
   sections: hostSections,
 }: ShortcutsPanelProps) {
-  const keys = useStudioKeys();
-  const sections = hostSections ?? buildShortcutSections(keys);
+  const sections = useShortcutSections(hostSections);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [jumpFrame, setJumpFrame] = useState("");
   const compositionFps = useCompositionFps();
