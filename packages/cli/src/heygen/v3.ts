@@ -179,7 +179,7 @@ async function call(
   const data = isRecord(value) && isRecord(value.data) ? value.data : value;
   if (!isRecord(data))
     throw new Fix(`HeyGen answered ${route} with no job`, "run the same command again");
-  const id = data.id ?? data.job_id ?? data.video_id ?? data.generation_id;
+  const id = data.id ?? data.job_id ?? data.video_id ?? data.generation_id ?? data.lipsync_id;
   return {
     ...data,
     id: typeof id === "string" ? id : "",

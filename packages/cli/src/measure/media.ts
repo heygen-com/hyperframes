@@ -86,6 +86,17 @@ const rate = (text: string | undefined): number => {
   return b ? (a ?? 0) / b : (a ?? 0);
 };
 
+/** A sound's length in seconds. */
+export function probeSeconds(path: string): number {
+  if (!existsSync(path)) throw new Fix(`no file at ${path}`, "pass a sound from the project");
+  const text = execFileSync(
+    ffprobeBin(),
+    ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", "--", path],
+    { maxBuffer: MAX_BUFFER, windowsHide: true },
+  ).toString();
+  return Number(text) || 0;
+}
+
 /** Size (as displayed, rotation applied), clock and sound of a video. */
 // fallow-ignore-next-line complexity
 export function probeVideo(path: string): VideoInfo {

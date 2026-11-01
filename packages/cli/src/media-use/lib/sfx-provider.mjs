@@ -1,6 +1,29 @@
+import { heygenSearch } from "./heygen-search.mjs";
 import { OpenverseUnavailableError, searchOpenverseSfx } from "./openverse.mjs";
 
 export const OPENVERSE_SFX_PROVIDER = "openverse.audio";
+
+export const heygenSfxProvider = {
+  async search(intent) {
+    // Good effects score 0.5-0.67, under the server's default floor of 0.7.
+    const results = heygenSearch("audio sounds list", intent, {
+      type: "sound_effects",
+      minScore: 0.4,
+    });
+    if (!results) return null;
+    const best = results[0];
+    return {
+      url: best.audio_url,
+      source: "search",
+      metadata: {
+        description: best.description || intent,
+        duration: best.duration || null,
+        provider: "heygen.audio.sounds",
+        provenance: { track_id: best.id, score: best.score, query: intent },
+      },
+    };
+  },
+};
 
 export const sfxProvider = {
   async search(intent) {

@@ -1,7 +1,7 @@
 // Prices before a paid call, from the HyperFrames app's creation pricing (hyperframes-internal
 // packages/desktop/shared/creationPricing.mjs, 2026-10-22). HeyGen charges in units of $1/60, rounded up; the label
 // rounds up to the cent. Routes HeyGen does not price ahead say so instead of guessing.
-import { Fix, probeVideo, round } from "../measure/media.js";
+import { Fix, probeSeconds, probeVideo, round } from "../measure/media.js";
 import { GUIDE_MAX_S, type GenerateRequest } from "./generate.js";
 
 export interface Price {
@@ -39,14 +39,19 @@ const VIDEO_REF_768P_PER_S = 0.05;
 // A reference shot's first two pictures are included; each one after them bills on its own line.
 const VIDEO_INCLUDED_IMAGES = 2;
 const VIDEO_EXTRA_IMAGE = 0.02;
-// The price book's HyperFrames rows (experiment-framework price_book rules.json, 2026-10-28).
-const HF_VIDEO_768P_PER_S = 12;
-const HF_VIDEO_REF_768P_PER_S = 100 / 3;
-const HF_VIDEO_EXTRA_IMAGE = 40 / 3;
-const HF_AVATAR_IV_PHOTO_PER_S = 800 / 60;
+// The price book's HyperFrames rows (experiment-framework price_book rules.json, 2026-10-30).
+const HF_VIDEO_768P_PER_S = 18;
+const HF_VIDEO_REF_768P_PER_S = 50;
+const HF_VIDEO_EXTRA_IMAGE = 20;
+const HF_AVATAR_IV_PHOTO_PER_S = 1155 / 60;
+const HF_AVATAR_IV_TWIN_PER_S = 2415 / 60;
+// Billed on the whole video, not the voice: measured 2026-11-01, a 13.75 s shot took 97 credits.
+const HF_LIPSYNC_SPEED_PER_S = 7;
 const MUSIC_PER_TRACK = 0.08;
 const AVATAR_IV_PER_MIN = 4.83;
 const SCRIPT_WORDS_PER_S = 2;
+const HF_TTS_PER_S = 1;
+const SPEECH_CHARS_PER_S = { zh: 5, en: 15 };
 
 // fallow-ignore-next-line complexity
 export function priceOf(r: GenerateRequest): Price {
@@ -79,24 +84,39 @@ export function priceOf(r: GenerateRequest): Price {
         seconds * HF_VIDEO_768P_PER_S,
       );
     }
+    case "lipsync": {
+      const seconds = r.video ? probeVideo(r.video).pictureDuration : 0;
+      return {
+        usd: null,
+        list: null,
+        credits: seconds * HF_LIPSYNC_SPEED_PER_S,
+        basis: `lipsync at speed, ${round(seconds, 2)} s at ${HF_LIPSYNC_SPEED_PER_S} credits a second`,
+      };
+    }
     case "avatar": {
       const words = (r.script ?? "").split(/\s+/).filter(Boolean).length;
-      const seconds = Math.max(1, Math.floor(words / SCRIPT_WORDS_PER_S));
+      const seconds = r.audio
+        ? probeSeconds(r.audio)
+        : Math.max(1, Math.floor(words / SCRIPT_WORDS_PER_S));
       return at(
         Math.ceil(seconds * AVATAR_IV_PER_MIN) / 60,
-        `avatar video, about ${seconds} s from ${words} words at $4.83 a minute`,
-        seconds * HF_AVATAR_IV_PHOTO_PER_S,
+        `avatar video, about ${round(seconds, 1)} s${r.audio ? "" : ` from ${words} words`} at $4.83 a minute`,
+        seconds * (r.avatar ? HF_AVATAR_IV_TWIN_PER_S : HF_AVATAR_IV_PHOTO_PER_S),
       );
     }
     case "music":
       return at(MUSIC_PER_TRACK, "lyria-3-pro, $0.08 a track");
-    case "voice":
+    case "voice": {
+      const text = r.script ?? "";
+      const cjk = (text.match(/\p{Script=Han}/gu) ?? []).length;
+      const seconds = cjk / SPEECH_CHARS_PER_S.zh + (text.length - cjk) / SPEECH_CHARS_PER_S.en;
       return {
         usd: null,
         list: null,
-        credits: null,
-        basis: "HeyGen does not price catalog speech ahead; it is charged per character",
+        credits: seconds * HF_TTS_PER_S,
+        basis: `about ${round(seconds, 1)} s of speech at ${HF_TTS_PER_S} credit a second, an estimate: it is charged per character`,
       };
+    }
   }
 }
 
