@@ -1021,6 +1021,14 @@ export class WebAudioTransport {
     }
   }
 
+  /** Drops the routed element's source once a decoded buffer plays in its place; the element then sounds natively. */
+  releaseRouted(el: HTMLMediaElement): void {
+    const routed = this._activeSources.find((s) => s.el === el && s.sourceKind === "media-element");
+    if (!routed) return;
+    this._activeSources.splice(this._activeSources.indexOf(routed), 1);
+    this.dispose(routed);
+  }
+
   /**
    * Rebases the composition-time reference frame before swapping rate so
    * `getTime()` stays continuous across the change. Sources scheduled to

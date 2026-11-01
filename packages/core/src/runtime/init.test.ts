@@ -5923,6 +5923,43 @@ describe("initSandboxRuntimeModular", () => {
   // returns a node that outputs silence per the Web Audio spec rather than
   // throwing, so the composition played through with visuals animating and no
   // sound, and nothing was logged.
+  describe("bare audio in WebKit", () => {
+    useMockAudioContext();
+
+    const SAFARI =
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15";
+
+    const startRouted = async (userAgent?: string) => {
+      if (userAgent) vi.spyOn(navigator, "userAgent", "get").mockReturnValue(userAgent);
+      const audio = mountAudio("/assets/track.mp3");
+      vi.spyOn(WebAudioTransport.prototype, "scheduleMediaElementPlayback").mockResolvedValue({
+        el: audio,
+      } as never);
+      vi.spyOn(WebAudioTransport.prototype, "decodeAudioElement").mockResolvedValue(
+        {} as AudioBuffer,
+      );
+      const schedule = vi
+        .spyOn(WebAudioTransport.prototype, "schedulePlayback")
+        .mockResolvedValue({} as never);
+      const release = vi.spyOn(WebAudioTransport.prototype, "releaseRouted");
+      await startPlayback();
+      return { audio, schedule, release };
+    };
+
+    it("hands the sound to a decoded buffer on the context clock once it is decoded", async () => {
+      const { audio, schedule, release } = await startRouted(SAFARI);
+      await vi.waitFor(() => expect(release).toHaveBeenCalledWith(audio));
+      expect(schedule).toHaveBeenCalledTimes(1);
+    });
+
+    it("leaves the element on its route elsewhere", async () => {
+      const { schedule, release } = await startRouted();
+      await Promise.resolve();
+      expect(schedule).not.toHaveBeenCalled();
+      expect(release).not.toHaveBeenCalled();
+    });
+  });
+
   describe("cross-origin audio without a CORS opt-in", () => {
     useMockAudioContext();
 
