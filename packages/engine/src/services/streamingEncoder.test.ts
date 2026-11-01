@@ -1396,3 +1396,29 @@ describe.skipIf(spawnSync("ffmpeg", ["-version"]).status !== 0)(
     }, 30_000);
   },
 );
+
+describe("buildStreamingArgs video layer", () => {
+  const layer = { inputArgs: ["-ss", "0", "-i", "film.mp4", "-t", "10"], filters: ["fps=30"] };
+  const withLayer = { ...baseSdr, imageFormat: "png" as const, videoLayer: layer };
+
+  it("overlays the piped frames on the source video and maps the result", () => {
+    const args = buildStreamingArgs(withLayer, "/tmp/out.mp4");
+    expect(args.indexOf("-i")).toBeLessThan(args.indexOf("film.mp4"));
+    const graph = args[args.indexOf("-filter_complex") + 1] ?? "";
+    expect(graph).toMatch(
+      /^\[1:v\]fps=30,format=gbrp\[v\];\[0:v\]format=rgba\[o\];\[v\]\[o\]overlay=/,
+    );
+    expect(args[args.indexOf("-map") + 1]).toBe("[vout]");
+    expect(args).not.toContain("-vf");
+  });
+
+  it.each([
+    ["JPEG frames", { imageFormat: "jpeg" as const }],
+    ["GPU encode", { useGpu: true }],
+    ["vp9", { codec: "vp9" as const }],
+  ])("refuses %s", (_name, over) => {
+    expect(() => buildStreamingArgs({ ...withLayer, ...over }, "/tmp/out.mp4", "nvenc")).toThrow(
+      /videoLayer needs/,
+    );
+  });
+});

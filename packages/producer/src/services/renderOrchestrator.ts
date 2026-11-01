@@ -3476,29 +3476,42 @@ async function executeRenderPipeline(input: {
 
     // Opt-in: one full-canvas video is composited by ffmpeg instead of injected frame by frame.
     let videoLayerPlan: VideoLayerPlan | undefined;
-    if (
-      cfg.videoLayerPassthrough &&
-      outputFormat === "mp4" &&
-      !job.config.useGpu &&
-      !needsAlpha &&
-      rendersSdrOnly(job.config, composition) &&
-      shouldUseStreamingEncode(cfg, outputFormat, 1, probeResult.duration) &&
-      probeSession?.isInitialized
-    ) {
-      videoLayerPlan = await planVideoLayerPassthrough({
-        videos: composition.videos,
-        duration: probeResult.duration,
-        fps: job.config.fps,
-        canvas: { width, height },
-        page: probeSession.page,
-        projectDir,
-        compiledDir: join(workDir, "compiled"),
-      });
-      if (videoLayerPlan.videoId === undefined) {
-        log.info(`[Render] Video layer passthrough off: ${videoLayerPlan.reason}`);
+    if (cfg.videoLayerPassthrough) {
+      const gates = {
+        mp4: outputFormat === "mp4",
+        software_encode: !job.config.useGpu,
+        opaque_output: !needsAlpha,
+        sdr:
+          rendersSdrOnly(job.config, composition) ||
+          ((job.config.hdrMode === undefined || job.config.hdrMode === "auto") &&
+            composition.images.length === 0),
+        streaming: shouldUseStreamingEncode(cfg, outputFormat, 1, probeResult.duration),
+        probe_page: probeSession?.isInitialized === true,
+      };
+      const failed = Object.entries(gates).find(([, ok]) => !ok)?.[0];
+      if (failed || !probeSession) {
+        log.info(`[Render] Video layer passthrough off: ${failed ?? "probe_page"}`);
       } else {
-        cfg.useDrawElement = false;
-        captureForceScreenshot = true;
+        videoLayerPlan = await planVideoLayerPassthrough({
+          videos: composition.videos,
+          duration: probeResult.duration,
+          fps: job.config.fps,
+          canvas: { width, height },
+          page: probeSession.page,
+          projectDir,
+          compiledDir: join(workDir, "compiled"),
+        });
+        if (videoLayerPlan.videoId === undefined) {
+          log.info(`[Render] Video layer passthrough off: ${videoLayerPlan.reason}`);
+        } else {
+          cfg.useDrawElement = false;
+          cfg.forceScreenshot = true;
+          captureForceScreenshot = true;
+          // The probe page was opened for plain JPEG capture; capture needs a transparent PNG session.
+          const opened = probeSession;
+          probeSession = null;
+          await closeCaptureSession(opened);
+        }
       }
     }
     const videoLayer = videoLayerPlan?.videoId === undefined ? undefined : videoLayerPlan;

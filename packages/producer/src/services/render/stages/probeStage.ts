@@ -391,14 +391,17 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
   );
   const hasVariableMedia = hasVariableBoundMedia(compiled.html, job.config.variables);
   const hasInsertedMedia = hasRuntimeMediaChanges(compiled.html);
-  const needsBrowser = probeRequiresBrowser({
-    durationSeconds: composition.duration,
-    unresolvedCompositionCount: compiled.unresolvedCompositions.length,
-    hasAutoStart,
-    hasScriptedAudio,
-    hasVariableMedia,
-    hasInsertedMedia,
-  });
+  // The passthrough layout check reads the live page, so the opt-in always launches the probe.
+  const needsBrowser =
+    cfg.videoLayerPassthrough ||
+    probeRequiresBrowser({
+      durationSeconds: composition.duration,
+      unresolvedCompositionCount: compiled.unresolvedCompositions.length,
+      hasAutoStart,
+      hasScriptedAudio,
+      hasVariableMedia,
+      hasInsertedMedia,
+    });
 
   try {
     if (needsBrowser) {
