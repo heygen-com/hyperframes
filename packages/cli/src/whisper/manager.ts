@@ -169,10 +169,9 @@ async function buildFromSource(
 
   if (!existsSync(BUILD_DIR)) {
     onProgress?.("Downloading whisper.cpp...");
-    mkdirSync(hyperframesCacheDir("whisper"), {
-      recursive: true,
-    });
-    await stoppableExecFile("git", ["clone", "--depth", "1", WHISPER_REPO, BUILD_DIR], {
+    mkdirSync(BUILD_DIR, { recursive: true });
+    await stoppableExecFile("git", ["clone", "--depth", "1", WHISPER_REPO, "."], {
+      cwd: BUILD_DIR,
       stdio: "ignore",
       timeout: 60_000,
       env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
