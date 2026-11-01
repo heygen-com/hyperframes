@@ -139,7 +139,6 @@ export interface OffloadedMedia {
   /** What happened (or, on a dry run, would happen) to the file. */
   action: "upload" | "reencode" | "cached";
   url?: string;
-  /** The uploaded or cached asset; absent on a dry run that has nothing to name. */
   asset_id?: string;
   /** Seconds of the source kept when only the parts the composition plays are uploaded. */
   trimmed_to_seconds?: number;
