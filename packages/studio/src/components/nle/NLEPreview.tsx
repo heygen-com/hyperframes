@@ -28,7 +28,11 @@ import {
 } from "./previewZoom";
 import { RULER_GUTTER_PX, usePreviewGuidesStore } from "../editor/previewGuidesStore";
 import { PreviewZoomOverlay, usePreviewNavigator } from "./PreviewZoomOverlay";
-import { PREVIEW_STAGE_INSET_PX, resolvePreviewStageSize, SHADOW_IFRAME_STYLE } from "./previewStage";
+import {
+  PREVIEW_STAGE_INSET_PX,
+  resolvePreviewStageSize,
+  SHADOW_IFRAME_STYLE,
+} from "./previewStage";
 import { usePreviewFirstFrameTelemetry } from "../../player/hooks/usePreviewFirstFrameTelemetry";
 import { PreviewPoster, usePreviewPoster } from "./PreviewPoster";
 interface NLEPreviewProps extends Pick<
@@ -68,7 +72,6 @@ export function getPreviewPlayerKey({
 
 const ZOOM_HUD_TIMEOUT_MS = 1200;
 const ZOOM_SETTLE_MS = 200;
-
 
 export const NLEPreview = memo(function NLEPreview({
   projectId,
