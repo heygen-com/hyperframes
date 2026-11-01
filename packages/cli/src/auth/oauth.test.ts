@@ -2,7 +2,9 @@ import { oauthIdentity } from "./config.js";
 import { promises as fs } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setupTempAuthEnv } from "./_test-utils.js";
+import { openBrowser } from "./browser.js";
 import { isAuthError } from "./errors.js";
+import { startLoopback } from "./loopback.js";
 import {
   parseTokenResponse,
   persistFreshOAuth,
@@ -23,6 +25,7 @@ vi.mock("./loopback.js", () => ({
       redirectUri: "http://127.0.0.1:12345/oauth/callback",
     }),
     redirectUri: "http://127.0.0.1:12345/oauth/callback",
+    timeoutLabel: "60 minutes",
     close: vi.fn(async () => {}),
   })),
 }));
@@ -408,6 +411,37 @@ describe("auth/oauth", () => {
         expect(msg).not.toContain("cv_leak");
         expect(msg).toContain("<redacted>");
       }
+    });
+  });
+
+  describe("startAuthorizationCodeFlow listener", () => {
+    const loopbackStub = (timeoutLabel: string) => ({
+      result: new Promise<never>(() => {}),
+      redirectUri: "http://127.0.0.1:12345/oauth/callback",
+      timeoutLabel,
+      close: vi.fn(async () => {}),
+    });
+
+    it("closes the listener when the browser step throws", async () => {
+      const loopback = loopbackStub("60 minutes");
+      vi.mocked(startLoopback).mockResolvedValueOnce(loopback);
+      vi.mocked(openBrowser).mockRejectedValueOnce(new Error("no browser"));
+
+      await expect(startAuthorizationCodeFlow()).rejects.toThrow("no browser");
+
+      expect(loopback.close).toHaveBeenCalled();
+    });
+
+    it("states the listener's own limit while waiting", async () => {
+      const log = vi.spyOn(console, "log").mockImplementation(() => {});
+      vi.mocked(startLoopback).mockResolvedValueOnce({
+        ...loopbackStub("7 minutes"),
+        result: Promise.reject(new Error("stop here")),
+      });
+
+      await expect(startAuthorizationCodeFlow()).rejects.toThrow("stop here");
+
+      expect(log).toHaveBeenCalledWith(expect.stringContaining("up to 7 minutes"));
     });
   });
 

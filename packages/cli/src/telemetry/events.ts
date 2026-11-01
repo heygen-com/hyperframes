@@ -859,7 +859,7 @@ export type AuthLoginFailureReason =
   | "flow_timeout" // OAuth callback wait elapsed (user closed the tab / walked away)
   | "rejected" // backend rejected the supplied API key (401)
   | "invalid_input" // key was empty, header-unsafe, or too short
-  | "aborted"; // prompt cancelled, or no key arrived on stdin before timeout
+  | "aborted"; // prompt or browser wait cancelled, or no key arrived on stdin before timeout
 
 export function trackAuthLoginStarted(method: AuthLoginMethod, distinctId?: string): void {
   trackEvent("auth_login_started", { method }, distinctId);
