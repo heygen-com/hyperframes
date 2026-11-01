@@ -213,7 +213,7 @@ const musicSummary = (music: Music) =>
     : "music: none";
 
 function stemBlock(stem: AudibleStem, width: number): string[] {
-  const head = `${stem.name.padEnd(width)}  ${stem.db} dB · ${stem.spans.map(spanText).join(", ") || "only in blips"}`;
+  const head = `${stem.name.padEnd(width)}  ${stem.db} dB · ${stem.spans.map(spanText).join(", ")}`;
   return stem.description ? [head, `  ${stem.description}`] : [head];
 }
 

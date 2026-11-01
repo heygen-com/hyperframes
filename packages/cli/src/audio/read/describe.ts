@@ -6,7 +6,7 @@ import { join } from "node:path";
 import type { Span } from "@hyperframes/core/audio-analysis";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { runFile } from "../analysis/providers/shared.js";
-import type { AudibleStem, Description } from "./types.js";
+import { MELODIC_GROUP, type AudibleStem, type Description } from "./types.js";
 
 const MODEL = "gemini-4-argon";
 const MODEL_ENV = "HYPERFRAMES_READ_AUDIO_MODEL";
@@ -25,8 +25,12 @@ const spansText = (spans: readonly Span[]) =>
 function stemPrompt(name: string, duration: number): string {
   const withTimes = process.env[STEM_TIMES_ENV] === "1";
   return [
-    `This audio is one stem, "${name}", that an audio separator split out of a ${seconds(duration)} s soundtrack.`,
-    "It holds only what the separator put in this stem.",
+    `This audio is ${
+      name === MELODIC_GROUP
+        ? `the "${name}" part: the piano, guitar and other stems an audio separator split out of a ${seconds(duration)} s soundtrack, mixed together`
+        : `one stem, "${name}", that an audio separator split out of a ${seconds(duration)} s soundtrack`
+    }.`,
+    "It holds only what the separator put in it.",
     `Describe what it holds and what it does: instrument or sound, rhythm or pattern, feel, and how it changes over time${
       withTimes
         ? ", with the second of each change (enters, changes, stops, returns) where you can hear it; otherwise summarise without times."
@@ -50,7 +54,7 @@ export interface Measured {
 function overallPrompt({ duration, bpm, stems, breaks }: Measured): string {
   const facts = [
     bpm ? `tempo about ${bpm} BPM` : null,
-    ...stems.map((s) => `${s.name} stem heard ${spansText(s.spans)}`),
+    ...stems.map((s) => `${s.name} heard ${spansText(s.spans)}`),
     breaks.length ? `music breaks ${spansText(breaks)}` : null,
   ].filter(Boolean);
   return [
@@ -181,9 +185,10 @@ export async function describeStems(
   cacheDir: string,
   warnings: string[],
 ): Promise<Described> {
+  const heard = measured.stems.filter((stem) => stem.spans.length > 0);
   const asks: Ask[] = [
     { label: "the recording", path: recording, prompt: overallPrompt(measured) },
-    ...measured.stems.map((stem) => ({
+    ...heard.map((stem) => ({
       label: `stem ${stem.name}`,
       path: stemPaths[stem.name]!,
       prompt: stemPrompt(stem.name, measured.duration),
@@ -195,9 +200,9 @@ export async function describeStems(
   if (overall && !description)
     warnings.push("the recording not described: the answer had no OVERALL and GENERATOR parts");
   return {
-    stems: measured.stems.map((stem, i) => ({
+    stems: measured.stems.map((stem) => ({
       ...stem,
-      description: perStem[i]?.replace(/\s+/g, " ").trim() || null,
+      description: perStem[heard.indexOf(stem)]?.replace(/\s+/g, " ").trim() || null,
     })),
     description,
   };
