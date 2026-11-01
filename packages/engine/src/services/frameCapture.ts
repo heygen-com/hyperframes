@@ -3306,14 +3306,7 @@ async function prepareFrameForCapture(
   session.captureStep = "waiting for page seek handlers";
   await waitForPendingSeekCompletion(page);
   session.captureStep = "loading color-grading LUTs";
-  await page.evaluate(async () => {
-    const runtime = (
-      window as Window & {
-        __hf?: { colorGrading?: { waitForActiveLuts?: () => Promise<number> } };
-      }
-    ).__hf?.colorGrading;
-    await runtime?.waitForActiveLuts?.();
-  });
+  await waitForColorGradingLuts(page);
   const beforeCaptureMs = Date.now() - beforeCaptureStart;
 
   // Page-side compositing three-phase protocol:
@@ -3381,6 +3374,18 @@ export function computeAuthoredClipBoundaryFrames(
     }
   }
   return frames;
+}
+
+/** A graded frame paints ungraded until the LUT has loaded, so wait before every screenshot. */
+async function waitForColorGradingLuts(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    const runtime = (
+      window as Window & {
+        __hf?: { colorGrading?: { waitForActiveLuts?: () => Promise<number> } };
+      }
+    ).__hf?.colorGrading;
+    await runtime?.waitForActiveLuts?.();
+  });
 }
 
 async function computeClipBoundaryFrames(page: Page, fps: number): Promise<Set<number>> {
@@ -5454,7 +5459,7 @@ export async function seekDeVerifyTruth(
   );
 }
 
-async function captureDeVerificationFrames(
+export async function captureDeVerificationFrames(
   session: CaptureSession,
   page: Page,
   logInitPhase: (phase: string) => void,
@@ -5539,6 +5544,7 @@ async function captureDeVerificationFrames(
       // it, <video> elements screenshot black and every video comp would
       // false-positive into the screenshot fallback.
       await injectFrames?.(truthPage, t);
+      await waitForColorGradingLuts(truthPage);
       // The first screenshot forces a frame, which runs rAF-driven callbacks (a count-up lands
       // a tick after seek()); waiting on rAF via evaluate deadlocks, headless fires it only
       // when a frame is produced.
