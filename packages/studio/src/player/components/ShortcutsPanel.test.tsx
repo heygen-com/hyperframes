@@ -59,6 +59,119 @@ function panelOf(trigger: HTMLButtonElement): HTMLElement {
 }
 
 describe("ShortcutsPanel", () => {
+  it("toggles with ? and lists the shortcut in the panel", () => {
+    const { trigger } = renderPanel();
+    const pressQuestion = () => {
+      const event = new KeyboardEvent("keydown", {
+        key: "?",
+        code: "Slash",
+        shiftKey: true,
+        bubbles: true,
+        cancelable: true,
+      });
+      act(() => document.body.dispatchEvent(event));
+      return event;
+    };
+
+    expect(pressQuestion().defaultPrevented).toBe(true);
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    expect(panelOf(trigger).textContent).toContain("Keyboard shortcuts");
+    expect(panelOf(trigger).textContent).toContain("?");
+
+    pressQuestion();
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    pressQuestion();
+    act(() =>
+      document.body.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Escape",
+          bubbles: true,
+        }),
+      ),
+    );
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it.each([
+    "<input />",
+    "<textarea></textarea>",
+    '<div contenteditable="true"><span>text</span></div>',
+    '<div contenteditable="plaintext-only"><span>text</span></div>',
+  ])("leaves ? to text editing in %s, both open and closed", (html) => {
+    const { trigger } = renderPanel();
+    const container = document.createElement("div");
+    container.innerHTML = html;
+    document.body.append(container);
+    const target = container.querySelector("span") ?? container.firstElementChild;
+    if (!(target instanceof HTMLElement)) throw new Error("missing editable target");
+    const pressQuestion = () => {
+      const event = new KeyboardEvent("keydown", {
+        key: "?",
+        shiftKey: true,
+        bubbles: true,
+        cancelable: true,
+      });
+      act(() => target.dispatchEvent(event));
+      expect(event.defaultPrevented).toBe(false);
+    };
+
+    pressQuestion();
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    openPanel(trigger);
+    pressQuestion();
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("leaves ? to an input inside a shadow root", () => {
+    const { trigger } = renderPanel();
+    const host = document.createElement("div");
+    const shadow = host.attachShadow({ mode: "open" });
+    const input = document.createElement("input");
+    shadow.append(input);
+    document.body.append(host);
+    const event = new KeyboardEvent("keydown", {
+      key: "?",
+      bubbles: true,
+      composed: true,
+      cancelable: true,
+    });
+    act(() => input.dispatchEvent(event));
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(event.defaultPrevented).toBe(false);
+  });
+
+  it.each([
+    { repeat: true },
+    { isComposing: true },
+    { ctrlKey: true },
+    { metaKey: true },
+    { altKey: true },
+    { key: "/" },
+  ])("ignores a non-shortcut question-mark event: %j", (init) => {
+    const { trigger } = renderPanel();
+    const event = new KeyboardEvent("keydown", {
+      key: "?",
+      bubbles: true,
+      cancelable: true,
+      ...init,
+    });
+    act(() => document.body.dispatchEvent(event));
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(event.defaultPrevented).toBe(false);
+  });
+
+  it("respects a question-mark event already handled by another control", () => {
+    const { trigger } = renderPanel();
+    const event = new KeyboardEvent("keydown", {
+      key: "?",
+      bubbles: true,
+      cancelable: true,
+    });
+    event.preventDefault();
+    act(() => document.body.dispatchEvent(event));
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+  });
+
   it.each(["page", "button", "panel"] as const)(
     "closes with Escape from the %s-focused position",
     (focusPosition) => {
