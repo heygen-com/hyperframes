@@ -12,7 +12,6 @@ export function unheldPoster(el: Element): string | null {
   return heldPosters.has(el) ? (heldPosters.get(el)?.poster ?? null) : el.getAttribute("poster");
 }
 
-// A swap takes well under a second; a copy still not drawing by now is a real stall.
 const STILL_STANDS_IN_MS = 2000;
 
 /** The video shows a still while its new copy loads, so the film need not wait for it. */
