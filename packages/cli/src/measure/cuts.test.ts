@@ -24,6 +24,22 @@ describe("cutsIn", () => {
     ]);
   });
 
+  it("finds a jump cut in a nearly still take with a few small moves around it", () => {
+    // dan 9.743 s: most neighbours hold, and the few that move are about 1.5.
+    const few = { 24: 1.5, 26: 1.5, 27: 1.5, 33: 1.5, 35: 1.5 };
+    expect(cutsIn(changes(60, 0.3, { ...few, 30: 11.3 }))).toEqual([
+      { frame: 30, frames: 1, change: 11.3, soft: true },
+    ]);
+  });
+
+  it("finds a cut in live footage where only a few neighbours move, however much", () => {
+    // zaro 1050: the moving neighbours are about 5.8.
+    const few = { 24: 5.8, 26: 5.8, 27: 5.8, 33: 5.8, 35: 5.8 };
+    expect(cutsIn(changes(60, 0.3, { ...few, 30: 20 }))).toEqual([
+      { frame: 30, frames: 1, change: 20 },
+    ]);
+  });
+
   it("leaves a smaller change among moving frames or a stepped animation alone", () => {
     // Hands moving: neighbours up to 5, so 11 is not alone.
     expect(cutsIn(changes(60, 1, { 25: 5, 30: 11 }))).toEqual([]);
@@ -72,6 +88,28 @@ describe("findCuts on moving pictures", () => {
   it("keeps a quick insert shot as two cuts, not two flashes", () => {
     const frames = [...still(100, 20), ...still(30, 8), ...still(100, 20)];
     expect(findCuts(frames).map((c) => c.frame)).toEqual([20, 28]);
+  });
+
+  const slide = (from: number, to: number, n: number) =>
+    Array.from({ length: n }, (_, k) => frame(from + ((to - from) * (k + 1)) / (n + 1)));
+
+  it("keeps a five-frame transition to another shot as a cut", () => {
+    const frames = [...still(40, 20), ...slide(40, 220, 4), ...still(220, 20)];
+    expect(classifiedCuts(frames).map((c) => [c.frame, c.frames, c.kind])).toEqual([
+      [20, 5, undefined],
+    ]);
+  });
+
+  it("calls a five-frame whip that keeps its tones a fast move", () => {
+    const half = (a: number, b: number) =>
+      new Uint8Array(SIG_W * SIG_H).map((_, i) => (i % SIG_W < SIG_W / 2 ? a : b));
+    const swap = Array.from({ length: 6 }, (_, k) => half(k % 2 ? 30 : 200, k % 2 ? 200 : 30));
+    const frames = [
+      ...Array.from({ length: 20 }, () => swap[0]!),
+      ...swap,
+      ...Array.from({ length: 20 }, () => swap[5]!),
+    ];
+    expect(classifiedCuts(frames).map((c) => c.kind)).toEqual(["fast"]);
   });
 
   it("calls a light flash a flash and the cut after it a cut", () => {
