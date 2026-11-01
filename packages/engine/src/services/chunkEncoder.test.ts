@@ -1061,6 +1061,18 @@ describe("buildEncoderArgs GPU preset mapping", () => {
     expect(presetArg(args)).toBe("p1");
   });
 
+  it("gives an NVENC build that lists only legacy presets a legacy preset, not p4", () => {
+    const legacy = new Set(["default", "slow", "medium", "fast", "hp", "hq"]);
+    const args = buildEncoderArgs(
+      { ...baseOptions, codec: "h264", preset: "medium", quality: 18, useGpu: true },
+      inputArgs,
+      "out.mp4",
+      "nvenc",
+      legacy,
+    );
+    expect(presetArg(args)).toBe("medium");
+  });
+
   it("translates the standard medium preset to NVENC p4", () => {
     const args = buildEncoderArgs(
       { ...baseOptions, codec: "h264", preset: "medium", quality: 18, useGpu: true },
