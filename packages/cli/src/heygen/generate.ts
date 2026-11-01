@@ -75,37 +75,19 @@ export function parseMask(text: string): Mask {
 }
 
 /**
- * Fills a box from the pixels around it (ffmpeg delogo): no letter survives, but the box is smeared. Delogo needs a
- * pixel of picture on every side, so boxes are kept 1 px inside the frame.
+ * A box's temporal median over about a second either side: moving text becomes the picture behind it. A stale box
+ * takes the colours of its own frame instead, shrunk until no letter survives.
  */
-function delogoFilters(masks: Mask[], width: number, height: number): string {
-  return masks
-    .flatMap(({ box: [x, y, w, h], window }) => {
-      const [x0, y0] = [Math.max(1, x), Math.max(1, y)];
-      const [x1, y1] = [Math.min(width - 2, x + w), Math.min(height - 2, y + h)];
-      if (x1 - x0 < 1 || y1 - y0 < 1) return [];
-      const when = window ? `:enable='between(t,${window[0]},${window[1]})'` : "";
-      return [`delogo=x=${x0}:y=${y0}:w=${x1 - x0}:h=${y1 - y0}${when}`];
-    })
-    .join(",");
-}
-
-/** A box's temporal median over about a second either side: moving text becomes the picture behind it. */
-function maskFilters(masks: Mask[], fps: number, stale: Mask[], size: Size): string {
+function maskFilters(masks: Mask[], fps: number, stale: Mask[]): string {
   const radius = Math.min(127, Math.max(2, Math.round(fps)));
   const steps = masks.map((mask, i) => {
-    const { box, window } = mask;
-    const [x, y, w, h] = box;
-    const when = window ? `:enable='between(t,${window[0]},${window[1]})'` : "";
+    const [x, y, w, h] = mask.box;
+    const when = mask.window ? `:enable='between(t,${mask.window[0]},${mask.window[1]})'` : "";
     const [w2, h2] = [w - (w % 2), h - (h % 2)];
-    const edges = stale.includes(mask) && delogoFilters([{ box }], size.width, size.height);
-    const short = Math.min(w2, h2);
-    const blur = Math.min(Math.max(2, Math.round(short / 10)), short >> 2);
-    const soften = blur ? `,boxblur=${blur}:2` : "";
-    const fill = edges
-      ? `${edges},crop=${w2}:${h2}:${x}:${y}${soften}`
-      : `crop=${w2}:${h2}:${x}:${y},tmedian=radius=${radius}`;
-    return `[v${i}]split[a${i}][b${i}];[b${i}]${fill}[m${i}];[a${i}][m${i}]overlay=${x}:${y}${when}[v${i + 1}]`;
+    const fill = stale.includes(mask)
+      ? `scale=3:3:flags=area,scale=${w2}:${h2}:flags=bicubic`
+      : `tmedian=radius=${radius}`;
+    return `[v${i}]split[a${i}][b${i}];[b${i}]crop=${w2}:${h2}:${x}:${y},${fill}[m${i}];[a${i}][m${i}]overlay=${x}:${y}${when}[v${i + 1}]`;
   });
   return `[0:v]null[v0];${steps.join(";")}`;
 }
@@ -387,7 +369,7 @@ function staleMasks(path: string, { width, height }: Size, masks: Mask[]): Mask[
   });
 }
 
-/** A copy of the guide with each mask's box filled: the temporal median, and delogo's smear where text stays put. */
+/** A copy of the guide with each mask's box filled: the temporal median, then the frame's colours where text stays put. */
 function fillMasks(path: string, masks: Mask[], work: string): string {
   const info = probeVideo(path);
   const stale = staleMasks(path, info, masks);
@@ -401,12 +383,15 @@ function fillMasks(path: string, masks: Mask[], work: string): string {
     return out;
   };
   const median = encode(path, "median.mp4", [
-    ...["-t", "15", "-filter_complex", maskFilters(masks, info.fps, stale, info)],
+    ...["-t", "15", "-filter_complex", maskFilters(masks, info.fps, stale)],
     ...["-map", `[v${masks.length}]`],
   ]);
   const left = structured(median, info, masks).map((s) => s.mask);
   if (!left.length) return median;
-  return encode(median, "delogo.mp4", ["-vf", delogoFilters(left, info.width, info.height)]);
+  return encode(median, "filled.mp4", [
+    ...["-filter_complex", maskFilters(left, info.fps, left)],
+    ...["-map", `[v${left.length}]`],
+  ]);
 }
 
 /**
