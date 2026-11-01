@@ -17,25 +17,30 @@ export interface TemplatePack {
 
 // ponytail: packs are pinned here, so a new pack ships with a CLI release; move to a public index if templates change faster.
 export const TEMPLATES: Record<string, TemplatePack> = {
-  "fern-brand-explained": {
-    id: "M9004",
-    sha256: "59b2e6fc22e17a0a6133f4cf0465ecbc199fbbd2196b1c8f544b084eae67d733",
-    bytes: 20171637,
-  },
-  "kurzgesagt-science-explainer": {
+  "big-questions": {
     id: "M9003",
-    sha256: "a508e7f1ab5fef59c2958f3e2d95deb334ea7a068b1177d585d72159c324468c",
-    bytes: 25563134,
+    sha256: "930c40664a201b5ebd04c458fcbeee3cda3d1cd7a8127a0c28750c55a8b1003c",
+    bytes: 25560207,
   },
-  "vox-america-explained": {
-    id: "M9001",
-    sha256: "4d93fd4e215bbbc1751f942dfc7cbf2bb2534bcb7b78c4132e1d1fc4a2ccdc64",
-    bytes: 36704855,
-  },
-  "xiaolin-yikouqi": {
+  "long-story-short": {
     id: "M9002",
-    sha256: "f8f8aa292a4132355cfc98ff3b62c9e0c60d0da92167b8b53538b2e87987895f",
-    bytes: 152166727,
+    sha256: "b2eef554322c6782759913a83a2885c6ea9dc8a5d710c2eebf49b8a9484ce4df",
+    bytes: 152171350,
+  },
+  manhunt: {
+    id: "M9005",
+    sha256: "3194bff79adf22fd645a522b812edb6147620eed499ef73cfb03850e913c24ec",
+    bytes: 5968498,
+  },
+  "paper-trail": {
+    id: "M9001",
+    sha256: "654e42f747f5fc31675a66ec4bbd210db6ab52aefeb7031915a2b3399ddd4944",
+    bytes: 36707442,
+  },
+  "under-the-hood": {
+    id: "M9004",
+    sha256: "b9aeaca877235e7d07a596d158df8c5d450780fa4b018f8ca5ce7c7bb847193b",
+    bytes: 20173989,
   },
 };
 

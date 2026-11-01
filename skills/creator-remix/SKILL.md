@@ -1,24 +1,25 @@
 ---
 name: creator-remix
-description: Make a new episode in a top creator's series format - Vox-style America explainers, 小Lin 「一口气了解」, Kurzgesagt-style science films, Fern-style brand stories - on the person's topic. Use for "an episode of", "in the style of", 「用小林的模板做一集」. One video to copy is reverse-any-video.
+description: Make a new episode in a proven video style - Paper Trail, Long Story Short, Big Questions, Under the Hood, Manhunt - on the person's topic. Use for "an episode of", "in the style of", 「用这个风格做一集」. One video to copy is reverse-any-video.
 metadata:
   internal: true
 ---
 
 **Plugin installs:** Before setup or freshness commands, follow [plugin execution rules](../hyperframes/references/plugin-installation.md) when this skill is inside a HyperFrames plugin.
 
-# A new episode from a creator's template
+# A new episode from a style template
 
-A good episode is one the series' own viewers would take for the next upload: its structure, pacing, look, graphics and sound, on a new topic, in the person's own voice and, when the series has a presenter, their own face. Never use a creator's face, voice, footage, logo or show name.
+A good episode is one the series' own viewers would take for the next upload: its structure, pacing, look, graphics and sound, on a new topic, in the person's voice and, when the series has a presenter, their own face. Never use a creator's face, voice, footage, logo or show name.
 
 Creator templates are a HyperFrames Pro feature. The CLI pulls them and the server checks the plan.
 
 | Template | Slug | Series | Makes | The person brings |
 | --- | --- | --- | --- | --- |
-| Vox-style America, explained | `vox-america-explained` | `america-explained` | English explainer on one American policy or history question | Voice |
-| 小Lin 一口气了解 | `xiaolin-yikouqi` | `yikouqi` | 中文主持人讲透一个国家、商品或机构 | Voice and face |
-| Kurzgesagt-style science film | `kurzgesagt-science-explainer` | `science-explainer` | English fully drawn science explainer | Voice |
-| Fern-style brand explained | `fern-brand-explained` | `brand-explained` | English breakdown of a brand or design, in one graphic world with real 3D | Voice |
+| Paper Trail | `paper-trail` | `american-policy` | English explainer on one American policy or history question | Voice |
+| Long Story Short (长话短说) | `long-story-short` | `deep-dive` | 中文主持人讲透一个国家、商品或机构 | Voice and face |
+| Big Questions | `big-questions` | `science-explainer` | English fully drawn science explainer | Voice |
+| Under the Hood | `under-the-hood` | `brand-explained` | English breakdown of a brand or design, in one graphic world with real 3D | Voice |
+| Manhunt | `manhunt` | `crime-hunt` | English reconstruction of a hunt or a closed case, in a dark 3D world | Voice |
 
 ## Start
 

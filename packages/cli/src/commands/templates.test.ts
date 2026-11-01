@@ -106,7 +106,7 @@ describe("pullTemplate", () => {
     mkdirSync(join(src, "a"));
     writeFileSync(join(src, "x.md"), "x");
     const out = join(dir, "evil.tar.gz");
-    execFileSync("tar", ["-czf", out, "-C", join(src, "a"), "../x.md"]);
+    execFileSync("tar", ["-czPf", out, "-C", join(src, "a"), "../x.md"]); // -P: GNU tar strips the ../ otherwise
     const evil = readFileSync(out);
     pin(evil);
     serve({}, evil);
