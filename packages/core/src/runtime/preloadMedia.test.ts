@@ -130,6 +130,20 @@ describe("releasing a clip's download", () => {
     expect(video.getAttribute("src")).toBe("a.mp4");
   });
 
+  it("frees a clip whose whole file is buffered when asked to", () => {
+    const video = document.createElement("video");
+    video.setAttribute("src", "a.mp4");
+    Object.defineProperty(video, "duration", { value: 6.67 });
+    Object.defineProperty(video, "buffered", {
+      value: { length: 1, start: () => 0, end: () => 6.67 },
+    });
+    video.load = vi.fn();
+
+    releaseMedia(video, true);
+    expect(video.load).toHaveBeenCalledTimes(1);
+    expect(video.getAttribute("src")).toBe("a.mp4");
+  });
+
   it.each([
     [0, 15],
     [430, 2642],
