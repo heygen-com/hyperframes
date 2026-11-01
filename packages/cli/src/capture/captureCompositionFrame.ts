@@ -69,6 +69,7 @@ export interface SeekCompositionTimelineOptions {
   settleMs?: number;
   waitForImagesMs?: number;
   waitForVideoFrames?: boolean;
+  seekSettleTimeoutMs?: number;
   // Box-only reads: software GL spends about a second per frame on draws nothing here looks at.
   skipWebglDraws?: boolean;
 }
@@ -564,7 +565,7 @@ export async function settleCompositionSeek(
     },
     {
       videoFrames: options.waitForVideoFrames !== false,
-      timeoutMs: SEEK_SETTLES_BEFORE_PROTOCOL_TIMEOUT_MS,
+      timeoutMs: options.seekSettleTimeoutMs ?? SEEK_SETTLES_BEFORE_PROTOCOL_TIMEOUT_MS,
     },
   );
 

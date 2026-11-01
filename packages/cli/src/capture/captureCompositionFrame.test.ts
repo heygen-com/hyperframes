@@ -137,6 +137,17 @@ describe("seekCompositionTimeline", () => {
     expect(evaluate).toHaveBeenCalledTimes(4);
   });
 
+  it("lets a caller bound how long a seek may stay unsettled", async () => {
+    const { page, evaluate } = fakeSeekPage();
+
+    await settleCompositionSeek(page, { seekSettleTimeoutMs: 20_000 });
+
+    expect(evaluate).toHaveBeenNthCalledWith(1, expect.any(Function), {
+      videoFrames: true,
+      timeoutMs: 20_000,
+    });
+  });
+
   it("waitForFontsMs: 0 disables the post-seek font wait", async () => {
     const { page, evaluate } = fakeSeekPage();
 

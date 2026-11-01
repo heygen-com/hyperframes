@@ -1160,7 +1160,11 @@ export async function captureSnapshots(
         const time = positions[i]!;
         console.error(`[hyperframes] snapshot: frame ${i + 1}/${positions.length} at ${time}s`);
 
-        const seekOptions = { exactTime: true, waitForImagesMs: SCREENSHOT_IMAGE_WAIT_MS };
+        const seekOptions = {
+          exactTime: true,
+          waitForImagesMs: SCREENSHOT_IMAGE_WAIT_MS,
+          seekSettleTimeoutMs: opts.timeout ?? RENDER_READY_TIMEOUT_MS,
+        };
         const seekStartedAt = performance.now();
         await atStep(`seeking to ${time}s, frame ${i + 1} of ${positions.length}`, () =>
           seekCompositionTimelineOnly(page, time, seekOptions),
