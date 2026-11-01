@@ -1,7 +1,7 @@
 import {
   DEFAULT_CONFIG,
   buildZeroDurationDiagnostic,
-  classifyCaptureFailure,
+  isTransientBrowserError,
   downloadToTemp,
   evaluateHfDiagnostic,
   extractMediaMetadata,
@@ -343,13 +343,14 @@ interface SnapshotCompositePage {
   }): Promise<Uint8Array>;
 }
 
-/** Shoots once more when Chrome drops a screenshot mid-paint, the error the engine's renders retry too. */
 export async function screenshotOnceMore<T>(shoot: () => Promise<T>): Promise<T> {
   try {
     return await shoot();
   } catch (err) {
-    if (classifyCaptureFailure(err).kind !== "transient_browser") throw err;
-    return shoot();
+    if (!isTransientBrowserError(err)) throw err;
+    return shoot().catch(() => {
+      throw err;
+    });
   }
 }
 

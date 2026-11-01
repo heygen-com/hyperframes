@@ -17,6 +17,15 @@ describe("screenshotOnceMore", () => {
     expect(shoot).toHaveBeenCalledTimes(2);
   });
 
+  it("reports the first drop when the second try fails differently", async () => {
+    const first = dropped();
+    const shoot = vi
+      .fn()
+      .mockRejectedValueOnce(first)
+      .mockRejectedValueOnce(new Error("Target closed"));
+    await expect(screenshotOnceMore(shoot)).rejects.toBe(first);
+  });
+
   it("does not retry a screenshot that fails the same way every time", async () => {
     const zero = new Error(
       "Protocol error (Page.captureScreenshot): Cannot take screenshot with 0 width.",
