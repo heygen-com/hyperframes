@@ -44,6 +44,11 @@ import {
   walkDir,
 } from "../helpers/safePath.js";
 import { backupPathForResponse, snapshotBeforeWrite } from "../helpers/backupJournal.js";
+import {
+  RootCompositionRemovedError,
+  rootCompositionRefusal,
+  rootCompositionRemovedMessage,
+} from "../helpers/rootCompositionGuard.js";
 import { projectDirMissing } from "../helpers/projectDirMissing.js";
 import {
   createWriteToken,
@@ -406,7 +411,10 @@ function projectHtmlIds(projectDir: string): Set<string> {
 }
 
 type ElementPatchCommitResult =
-  | { error: "duplicate" | "forbidden" | "not-found" | "conflict"; sourceFile: string }
+  | {
+      error: "duplicate" | "forbidden" | "not-found" | "conflict" | "root-composition-removed";
+      sourceFile: string;
+    }
   | { durable: boolean; files: ElementPatchBatchFileResult[] };
 
 /**
@@ -428,6 +436,8 @@ export function commitElementPatchBatches(
     try {
       return foldAndCommitElementPatchBatches(projectDir, batches, writeFile, requestToken);
     } catch (error) {
+      if (error instanceof RootCompositionRemovedError)
+        return { error: "root-composition-removed", sourceFile: error.sourceFile };
       if (!(error instanceof FileChangedError)) throw error;
       if (attempt === PATCH_CONFLICT_ATTEMPTS)
         return { error: "conflict", sourceFile: error.sourceFile };
@@ -554,6 +564,8 @@ function writeMutationResult(
   html: string,
   original: string,
 ): { backupPath: string | null; version: string } | Response {
+  const refusal = rootCompositionRefusal(filePath, original, html);
+  if (refusal) return c.json({ error: refusal }, 422);
   const backup = snapshotBeforeWrite(projectDir, absPath);
   if (backup.error) return c.json({ error: `backup failed: ${backup.error}` }, 500);
   if (readFileSync(absPath, "utf-8") !== original) {
@@ -610,6 +622,8 @@ function elementPatchBatchCommitErrorResponse(
     return c.json({ error: "file changed", conflict: true, sourceFile }, 409);
   if (error === "not-found") return c.json({ error, sourceFile }, 404);
   if (error === "forbidden") return c.json({ error, sourceFile }, 403);
+  if (error === "root-composition-removed")
+    return c.json({ error: rootCompositionRemovedMessage(sourceFile), sourceFile }, 422);
   return c.json({ error: "duplicate source file", sourceFile }, 400);
 }
 
@@ -2925,6 +2939,12 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
             409,
           );
         }
+        const refusal = rootCompositionRefusal(
+          res.filePath,
+          currentContent.toString("utf-8"),
+          body.toString("utf-8"),
+        );
+        if (refusal) return c.json({ error: refusal }, 422);
         backup = snapshotBeforeWrite(res.project.dir, res.absPath);
         if (backup.error) return c.json({ error: `backup failed: ${backup.error}` }, 500);
         const mode = fstatSync(fd).mode;
