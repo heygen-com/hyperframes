@@ -1,6 +1,7 @@
 import {
   DEFAULT_CONFIG,
   buildZeroDurationDiagnostic,
+  classifyCaptureFailure,
   downloadToTemp,
   evaluateHfDiagnostic,
   extractMediaMetadata,
@@ -340,6 +341,16 @@ interface SnapshotCompositePage {
     quality: number;
     clip: { x: number; y: number; width: number; height: number };
   }): Promise<Uint8Array>;
+}
+
+/** Shoots once more when Chrome drops a screenshot mid-paint, the error the engine's renders retry too. */
+export async function screenshotOnceMore<T>(shoot: () => Promise<T>): Promise<T> {
+  try {
+    return await shoot();
+  } catch (err) {
+    if (classifyCaptureFailure(err).kind !== "transient_browser") throw err;
+    return shoot();
+  }
 }
 
 /** Recapture canvas composites once the decoded video overlays have been injected. */
@@ -1371,7 +1382,7 @@ export async function captureSnapshots(
           writeCaptureFileSync(
             framePath,
             await atStep(`capturing the frame at ${time}s`, () =>
-              page.screenshot({ type: "png", omitBackground: true }),
+              screenshotOnceMore(() => page.screenshot({ type: "png", omitBackground: true })),
             ),
           );
         }
