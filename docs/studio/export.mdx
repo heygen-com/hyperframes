@@ -4,8 +4,9 @@ description: "In the browser editor: set up and run renders in the Renders panel
 sidebarTitle: "Export and slideshows"
 ---
 
-**Export** in the header starts a render straight away, with the settings in the **Renders** panel on the right. So
-set those first.
+**Export** in the header immediately renders the open composition with the defaults: MP4, standard quality, 30 fps, the composition’s authored size, and GPU encoding off.
+
+To use saved settings, open the **Renders** panel, choose the delivery settings, and click **Export** inside that panel. The panel restores your saved basic and advanced settings; they do not change the header’s defaults.
 
 <Frame caption="The Renders panel contains delivery settings and the render queue.">
   <img
@@ -18,13 +19,23 @@ set those first.
 
 | Setting | Choose |
 | --- | --- |
-| **Format** | **MP4** for sharing and uploading; **WebM** for the web and transparent overlays; **MOV** (ProRes) when another editor needs a high-quality master |
+| **Format** | **MP4** for sharing and uploading; **WebM** for the web and transparent overlays; **MOV** (ProRes) when another editor needs a high-quality master; **GIF** for a silent animated image |
 | **Resolution** | **Auto** keeps the project's size. Bigger renders are slower and don't sharpen low-resolution footage |
 | **Frame rate** | 30 unless the destination or the footage needs 24 or 60 |
 | **Quality** | Hidden for MOV, which always uses ProRes quality |
 | **Use GPU encoding** | Faster on machines that support it |
 
 **About video formats**, next to the settings, explains the choices.
+
+## Advanced video settings
+
+In **Renders**, expand **Advanced** to set rate control, source video frames, or HDR for MP4, WebM, and MOV exports.
+
+- **Rate control** uses either CRF or a video bitrate, such as `10M`. MOV uses fixed ProRes quality instead. Choose **Quality preset** or clear the bitrate to remove a custom rate.
+- **Source video frames** chooses Auto, JPG, or PNG for extracted video frames; it does not change the output file format.
+- **HDR** chooses Auto, Force on, or Force off. Choosing Auto removes that override. HDR output requires MP4 with native HDR video or images.
+
+GIF exports have no audio and support up to 30 fps. Use **Loop count** to choose the number of repeats; `0` repeats forever. Advanced video settings are hidden for GIF.
 
 ## The render queue
 

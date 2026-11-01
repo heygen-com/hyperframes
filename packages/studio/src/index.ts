@@ -143,7 +143,11 @@ export {
   getPersistedRenderSettings,
   persistRenderSettings,
 } from "./components/renders/renderSettings";
-export type { PersistedRenderSettings } from "./components/renders/renderSettings";
+export type {
+  PersistedRenderSettings,
+  AdvancedRenderSettings,
+  RateControl,
+} from "./components/renders/renderSettings";
 
 // Hooks
 export { useElementPicker } from "./hooks/useElementPicker";
