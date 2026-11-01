@@ -3444,6 +3444,11 @@ export function initSandboxRuntimeModular(): void {
   let lastSyncedMediaTimeSeconds: number | null = null;
   let mediaClipsInWindow: RuntimeMediaClip[] = [];
   // Clips due now that could not play: every track holds until they can, so none runs on alone.
+  // Play waits this long for a clip with no data, then runs on and lets the clip catch up; mid-film it holds.
+  const START_WAIT_MS = 300;
+  let startWaitUntilMs: number | null = null;
+  let catchingUp = false;
+  let resumingFromBuffering = false;
 
   // The one definition of "media the transport drives": timed itself, or hosted
   // by a composition whose timing it inherits. Both the media cache and the
@@ -4778,6 +4783,10 @@ export function initSandboxRuntimeModular(): void {
       flushHeldSeek();
       const resumingStarved = bufferingFor.length > 0;
       bufferingFor = [];
+      if (!resumingFromBuffering) {
+        startWaitUntilMs = performance.now() + START_WAIT_MS;
+        catchingUp = false;
+      }
       const tl = state.capturedTimeline;
       if (clock.isPlaying()) return;
       const dur = getSafeTimelineDurationSeconds(tl, 0);
@@ -4812,6 +4821,8 @@ export function initSandboxRuntimeModular(): void {
     pause: () => {
       const wasBuffering = bufferingFor.length > 0;
       bufferingFor = [];
+      startWaitUntilMs = null;
+      catchingUp = false;
       if (clock.isPlaying()) haltPlayback();
       else if (wasBuffering) postState(true);
     },
@@ -5661,6 +5672,13 @@ export function initSandboxRuntimeModular(): void {
         const source = followedOrLongestRunningAudio(clock.audioElement());
         if (source && !audioMayDrivePlayhead(source.el)) {
           if (clock.hasAudioSource()) clock.detachAudioSource();
+        } else if (
+          source &&
+          catchingUp &&
+          source.el.readyState < HTMLMediaElement.HAVE_FUTURE_DATA
+        ) {
+          // Past the start wait the playhead runs on its own clock while this track catches up.
+          if (clock.hasAudioSource()) clock.detachAudioSource();
         } else if (source && !source.el.paused) {
           clock.attachAudioSource({
             el: source.el,
@@ -5888,14 +5906,25 @@ export function initSandboxRuntimeModular(): void {
       }
       // After media sync, so a clip that just fell due was asked to play, and fetch, before it holds.
       const notReady = mediaNotReadyAt(state.currentTime);
-      if (clock.isPlaying() && notReady.length > 0) {
+      if (startWaitUntilMs !== null && performance.now() >= startWaitUntilMs) {
+        startWaitUntilMs = null;
+        catchingUp = notReady.length > 0;
+      }
+      if (notReady.length === 0) catchingUp = false;
+      if (clock.isPlaying() && notReady.length > 0 && !catchingUp) {
         bufferingFor = notReady;
         haltPlayback(true);
       } else if (
         bufferingFor.length > 0 &&
-        !mediaNotReadyAt(state.currentTime, canResumeFrom).some((el) => bufferingFor.includes(el))
+        (catchingUp ||
+          !mediaNotReadyAt(state.currentTime, canResumeFrom).some((el) => bufferingFor.includes(el)))
       ) {
-        transport.play();
+        resumingFromBuffering = true;
+        try {
+          transport.play();
+        } finally {
+          resumingFromBuffering = false;
+        }
       }
       postState(false);
     } finally {
