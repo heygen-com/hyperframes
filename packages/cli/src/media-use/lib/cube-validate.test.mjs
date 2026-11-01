@@ -28,9 +28,14 @@ test("accepts a valid minimal 3D cube LUT", () => {
 });
 
 test("rejects oversize LUTs with the core parser message", () => {
-  const result = validateCube("LUT_3D_SIZE 65", { maxSize: 64 });
+  const result = validateCube("LUT_3D_SIZE 66");
   assert.equal(result.ok, false);
-  assert.match(result.error, /LUT_3D_SIZE 65 exceeds max 64/);
+  assert.match(result.error, /LUT_3D_SIZE 66 exceeds max 65/);
+});
+
+test("accepts the 65-point cube that grading tools export", () => {
+  const rows = Array.from({ length: 65 ** 3 }, () => "0 0 0").join("\n");
+  assert.deepEqual(validateCube(`LUT_3D_SIZE 65\n${rows}`), { ok: true, size: 65 });
 });
 
 test("rejects data rows before LUT_3D_SIZE", () => {
@@ -96,7 +101,7 @@ test("CLI exits zero for valid files and non-zero for invalid files", () => {
     const valid = join(dir, "valid.cube");
     const invalid = join(dir, "invalid.cube");
     writeFileSync(valid, IDENTITY_2);
-    writeFileSync(invalid, "LUT_3D_SIZE 65");
+    writeFileSync(invalid, "LUT_3D_SIZE 66");
 
     const out = execFileSync(
       process.execPath,
@@ -117,7 +122,7 @@ test("CLI exits zero for valid files and non-zero for invalid files", () => {
             stdio: "pipe",
           },
         ),
-      (err) => err.status === 1 && String(err.stderr).includes("exceeds max 64"),
+      (err) => err.status === 1 && String(err.stderr).includes("exceeds max 65"),
     );
   } finally {
     rmSync(dir, { recursive: true, force: true });

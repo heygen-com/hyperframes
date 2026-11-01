@@ -30,7 +30,7 @@ export class CubeLutParseError extends Error {
 
 const DEFAULT_DOMAIN_MIN: CubeLutVec3 = [0, 0, 0];
 const DEFAULT_DOMAIN_MAX: CubeLutVec3 = [1, 1, 1];
-export const DEFAULT_MAX_CUBE_LUT_SIZE = 64;
+export const DEFAULT_MAX_CUBE_LUT_SIZE = 65;
 
 function stripComment(line: string): string {
   let inQuote = false;

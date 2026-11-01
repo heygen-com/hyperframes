@@ -102,9 +102,12 @@ describe("cube LUT parsing", () => {
       `),
     ).toThrow("Expected 8 LUT rows");
 
-    expect(() => parseCubeLut("LUT_3D_SIZE 65", { maxSize: 64 })).toThrow(
-      "LUT_3D_SIZE 65 exceeds max 64",
-    );
+    expect(() => parseCubeLut("LUT_3D_SIZE 66")).toThrow("LUT_3D_SIZE 66 exceeds max 65");
+  });
+
+  it("accepts the 65-point cube that grading tools export", () => {
+    const rows = Array.from({ length: 65 ** 3 }, () => "0 0 0").join("\n");
+    expect(parseCubeLut(`LUT_3D_SIZE 65\n${rows}`).size).toBe(65);
   });
 
   it("reports invalid numbers as cube parse errors", () => {
