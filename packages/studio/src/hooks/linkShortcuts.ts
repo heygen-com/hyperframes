@@ -2,24 +2,25 @@ import { usePlayerStore } from "../player";
 import type { TimelineEditCallbacks } from "../player/components/timelineCallbacks";
 import { resolveLinkMenuItems } from "../player/components/clipMenuLinkItems";
 import { isTypingTarget } from "../utils/typingTarget";
+import { keyHint, matchesKey } from "../player/components/studioShortcuts";
 
 export interface LinkShortcutCallbacks {
   handleLinkEdit?: TimelineEditCallbacks["onLinkEdit"];
   handleTimelineElementDeleteOnly?: TimelineEditCallbacks["onDeleteElementOnly"];
 }
 
-const isDeleteKey = (event: KeyboardEvent) => event.key === "Backspace" || event.key === "Delete";
-const hasMod = (event: KeyboardEvent) => event.metaKey || event.ctrlKey;
+// The clip menu names one combo per item, so both delete combos resolve to deleteLinked.
+const ACTIONS = [
+  ["linkToggle", "linkToggle"],
+  ["detachAudio", "detachAudio"],
+  ["deleteLinked", "deleteLinked"],
+  ["deleteLinkedAlt", "deleteLinked"],
+] as const;
 
-const SHORTCUTS: ReadonlyArray<[string, (event: KeyboardEvent) => boolean]> = [
-  ["⌘L", (e) => hasMod(e) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "l"],
-  ["⌥⇧D", (e) => !hasMod(e) && e.altKey && e.shiftKey && e.code === "KeyD"],
-  ["⌥⌫", (e) => !hasMod(e) && e.altKey && !e.shiftKey && isDeleteKey(e)],
-];
-
-function shortcutOf(event: KeyboardEvent): string | null {
-  return SHORTCUTS.find(([, matches]) => matches(event))?.[0] ?? null;
-}
+const shortcutOf = (event: KeyboardEvent): string | null => {
+  const hit = ACTIONS.find(([action]) => matchesKey(event, action));
+  return hit ? keyHint(hit[1]) : null;
+};
 
 /** ⌘L unlink/link, ⌥⇧D detach audio, ⌥⌫ delete one linked clip — the clip menu's shortcuts. */
 export function dispatchLinkShortcut(event: KeyboardEvent, cb: LinkShortcutCallbacks): boolean {

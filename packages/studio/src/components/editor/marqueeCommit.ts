@@ -1,4 +1,5 @@
 import type { DomSelectionResult } from "../../hooks/useDomSelectionTypes";
+import { matchesKey } from "../../player/components/studioShortcuts";
 import { trackPreviewFeatureUsed } from "../../utils/previewFeatureUsage";
 // fallow-ignore-file code-duplication
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -233,7 +234,7 @@ export function useMarqueeGestures<T>(deps: MarqueeGesturesDeps<T>): MarqueeGest
 
   useEffect(() => {
     const cancelBandBeforeHostEscape = (e: KeyboardEvent) => {
-      if (e.key !== "Escape" || !marqueeRef.current) return;
+      if (!matchesKey(e, "cancel") || !marqueeRef.current) return;
       e.preventDefault();
       e.stopPropagation();
       cancel();

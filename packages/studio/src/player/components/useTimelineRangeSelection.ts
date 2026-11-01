@@ -1,4 +1,5 @@
 import { useRef, useState, useCallback, useEffect } from "react";
+import { matchesKey } from "./studioShortcuts";
 import {
   applyTimelineAutoScrollStep,
   resolveTimelineAutoScrollLoopAction,
@@ -537,13 +538,13 @@ export function useTimelineRangeSelection({
   // otherwise it clears any lingering multi-selection.
   useEffect(() => {
     const onBandEscape = (e: KeyboardEvent) => {
-      if (e.key !== "Escape" || !(marqueeRef.current || isRangeSelecting.current)) return;
+      if (!matchesKey(e, "cancel") || !(marqueeRef.current || isRangeSelecting.current)) return;
       e.preventDefault();
       e.stopPropagation();
       cancelActiveGesture(true, true);
     };
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
+      if (!matchesKey(e, "cancel")) return;
       const store = usePlayerStore.getState();
       if (isDragging.current) {
         cancelActiveGesture(true, true);

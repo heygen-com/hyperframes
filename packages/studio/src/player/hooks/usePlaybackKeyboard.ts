@@ -15,7 +15,8 @@ import {
 } from "../lib/playbackShortcuts";
 import { canvasNudgeKeysClaimed } from "../../utils/canvasNudgeGate";
 import { usePlayerStore } from "../store/playerStore";
-import { getStudioKeys } from "../components/studioShortcuts";
+import { keyOf, matchesKey, type StudioKeyAction } from "../components/studioShortcuts";
+import { resolveCanvasNudgeDelta } from "../../components/editor/domEditNudge";
 import { stepFrameTime } from "../lib/time";
 import { useLinkedClipPreferences } from "../../utils/linkedClipPreferences";
 import type { PlaybackAdapter } from "../lib/playbackTypes";
@@ -32,26 +33,53 @@ interface UsePlaybackKeyboardParams {
   seek: (time: number, options?: { keepPlaying?: boolean }) => void;
 }
 
+const FRAME_STEPS = {
+  frameBack: -1,
+  frameForward: 1,
+  frameBackTen: -10,
+  frameForwardTen: 10,
+} as const;
+const PLAYBACK_ACTIONS = [
+  "playPause",
+  ...(Object.keys(FRAME_STEPS) as Array<keyof typeof FRAME_STEPS>),
+  "mute",
+  "loop",
+  "pause",
+  "shuttleBack",
+  "shuttleForward",
+  "inPoint",
+  "clearInPoint",
+  "outPoint",
+  "clearOutPoint",
+  "seekToIn",
+  "seekToOut",
+] as const satisfies readonly StudioKeyAction[];
+type PlaybackAction = (typeof PLAYBACK_ACTIONS)[number];
+
+const playbackActionOf = (e: KeyboardEvent): PlaybackAction | undefined =>
+  PLAYBACK_ACTIONS.find((action) => matchesKey(e, action));
+
 function handleWorkAreaKey(
   e: KeyboardEvent,
-  key: string,
+  action: PlaybackAction,
   getAdapter: () => PlaybackAdapter | null,
   seek: UsePlaybackKeyboardParams["seek"],
 ): boolean {
-  if (razorClaimsKey(e, key)) return false;
-  const keys = getStudioKeys();
   const store = usePlayerStore.getState();
   const time = () => getAdapter()?.getTime() ?? store.currentTime;
   const end = () => store.outPoint ?? getAdapter()?.getDuration() ?? store.duration;
-  const actions: Record<string, () => void> = {
-    [keys.inPoint]: () => store.setInPoint(e.shiftKey ? null : time()),
-    [keys.outPoint]: () => store.setOutPoint(e.shiftKey ? null : time()),
-    [keys.seekToIn]: () => seek(store.inPoint ?? 0, { keepPlaying: true }),
-    [keys.seekToOut]: () => seek(end(), { keepPlaying: true }),
+  const actions: Partial<Record<PlaybackAction, () => void>> = {
+    inPoint: () => store.setInPoint(time()),
+    clearInPoint: () => store.setInPoint(null),
+    outPoint: () => store.setOutPoint(time()),
+    clearOutPoint: () => store.setOutPoint(null),
+    seekToIn: () => seek(store.inPoint ?? 0, { keepPlaying: true }),
+    seekToOut: () => seek(end(), { keepPlaying: true }),
   };
-  if (!Object.hasOwn(actions, key)) return false;
+  const run = actions[action];
+  if (!run || razorClaimsKey(e)) return false;
   e.preventDefault();
-  actions[key]();
+  run();
   return true;
 }
 
@@ -127,65 +155,43 @@ export function usePlaybackKeyboard({
       ) {
         return;
       }
-      const key = e.key.toLowerCase();
-      const keys = getStudioKeys();
-      pressedKeysRef.current.add(key);
-      if (e.code === "Space") {
+      pressedKeysRef.current.add(e.key.toLowerCase());
+      const action = playbackActionOf(e);
+      if (!action) return;
+      if (action === "playPause") {
         e.preventDefault();
         togglePlay();
         return;
       }
-      // A nudgeable canvas selection owns the arrow keys (DomEditOverlay moves
-      // the element); frame-stepping would double-handle the same keystroke.
-      const arrowStep = e.code === "ArrowLeft" || e.code === "ArrowRight";
-      if (arrowStep && canvasNudgeKeysClaimed()) return;
-      if (e.code === "ArrowLeft") {
+      if (action in FRAME_STEPS) {
+        // A nudgeable canvas selection owns the arrow keys (DomEditOverlay moves
+        // the element); frame-stepping would double-handle the same keystroke.
+        if (canvasNudgeKeysClaimed() && resolveCanvasNudgeDelta(e)) return;
         e.preventDefault();
-        stepFrames(e.shiftKey ? -10 : -1);
-        return;
-      }
-      if (e.code === "ArrowRight") {
-        e.preventDefault();
-        stepFrames(e.shiftKey ? 10 : 1);
+        stepFrames(FRAME_STEPS[action as keyof typeof FRAME_STEPS]);
         return;
       }
       if (e.repeat) return;
-      if (key === keys.mute) {
+      if (action === "mute" || action === "loop") {
         e.preventDefault();
         const state = usePlayerStore.getState();
-        state.setAudioMuted(!state.audioMuted);
+        if (action === "mute") state.setAudioMuted(!state.audioMuted);
+        else state.setLoopEnabled(!state.loopEnabled);
         return;
       }
-      if (key === keys.shuttleForward && e.shiftKey) {
-        e.preventDefault();
-        const state = usePlayerStore.getState();
-        state.setLoopEnabled(!state.loopEnabled);
-        return;
-      }
-      if (key === keys.pause) {
+      if (action === "pause") {
         e.preventDefault();
         pause();
         return;
       }
-      if (key === keys.shuttleBack) {
+      if (action === "shuttleBack" || action === "shuttleForward") {
         e.preventDefault();
-        if (pressedKeysRef.current.has(keys.pause)) {
-          stepFrames(-1);
-          return;
-        }
-        shuttle("backward");
+        const direction = action === "shuttleBack" ? -1 : 1;
+        if (pressedKeysRef.current.has(keyOf("pause"))) stepFrames(direction);
+        else shuttle(direction < 0 ? "backward" : "forward");
         return;
       }
-      if (key === keys.shuttleForward) {
-        e.preventDefault();
-        if (pressedKeysRef.current.has(keys.pause)) {
-          stepFrames(1);
-          return;
-        }
-        shuttle("forward");
-        return;
-      }
-      handleWorkAreaKey(e, key, getAdapter, seek);
+      handleWorkAreaKey(e, action, getAdapter, seek);
     },
     [pause, shuttle, stepFrames, togglePlay, getAdapter, seek],
   );

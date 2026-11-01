@@ -1,5 +1,12 @@
 import { useSyncExternalStore } from "react";
-import { comboClashKey, comboText, formatCombo, matchCombo, parseCombo } from "./studioCombo";
+import {
+  type ComboEvent,
+  comboClashKey,
+  comboText,
+  formatCombo,
+  matchCombo,
+  parseCombo,
+} from "./studioCombo";
 
 /** Every single-character bare key Studio answers, by action. */
 export const DEFAULT_STUDIO_KEYS = {
@@ -25,6 +32,46 @@ export const DEFAULT_STUDIO_KEYS = {
   snap: "s",
   grid: "g",
   timelineSnap: "n",
+  playPause: "Space",
+  frameBack: "ArrowLeft",
+  frameForward: "ArrowRight",
+  frameBackTen: "shift+ArrowLeft",
+  frameForwardTen: "shift+ArrowRight",
+  loop: "shift+l",
+  clearInPoint: "shift+i",
+  clearOutPoint: "shift+o",
+  undo: "mod+z",
+  redo: "mod+shift+z",
+  redoAlt: "ctrl+y",
+  tabCompositions: "mod+1",
+  tabAssets: "mod+2",
+  group: "mod+g",
+  ungroup: "mod+shift+g",
+  copy: "mod+c",
+  paste: "mod+v",
+  cut: "mod+x",
+  duplicate: "mod+d",
+  linkToggle: "mod+l",
+  detachAudio: "alt+shift+d",
+  deleteLinked: "alt+Backspace",
+  deleteLinkedAlt: "alt+Delete",
+  deleteSelected: "Delete",
+  deleteSelectedAlt: "Backspace",
+  resetKeyframes: "Backspace",
+  nudgeLeft: "ArrowLeft",
+  nudgeRight: "ArrowRight",
+  nudgeUp: "ArrowUp",
+  nudgeDown: "ArrowDown",
+  nudgeLeftTen: "shift+ArrowLeft",
+  nudgeRightTen: "shift+ArrowRight",
+  nudgeUpTen: "shift+ArrowUp",
+  nudgeDownTen: "shift+ArrowDown",
+  captionSelectAll: "mod+a",
+  pickupClip: "Space",
+  pickupUp: "ArrowUp",
+  pickupDown: "ArrowDown",
+  pickupDrop: "Enter",
+  cancel: "Escape",
 };
 
 export type StudioKeyAction = keyof typeof DEFAULT_STUDIO_KEYS;
@@ -35,6 +82,14 @@ const SHARED_BY_DESIGN: ReadonlyArray<readonly [StudioKeyAction, StudioKeyAction
   ["seekToIn", "exitRazor"],
   ["split", "snap"],
   ["audioGain", "grid"],
+  ["playPause", "pickupClip"],
+  ["frameBack", "nudgeLeft"],
+  ["frameForward", "nudgeRight"],
+  ["frameBackTen", "nudgeLeftTen"],
+  ["frameForwardTen", "nudgeRightTen"],
+  ["nudgeUp", "pickupUp"],
+  ["nudgeDown", "pickupDown"],
+  ["deleteSelectedAlt", "resetKeyframes"],
 ];
 
 let current: StudioKeys = DEFAULT_STUDIO_KEYS;
@@ -105,8 +160,11 @@ export const keyHint = (action: StudioKeyAction, keys: StudioKeys = current) =>
   formatCombo(parseCombo(keys[action])!);
 
 /** True when the event is the combo the host (or the default) set for this action. */
-export const matchesKey = (e: KeyboardEvent, action: StudioKeyAction) =>
+export const matchesKey = (e: ComboEvent, action: StudioKeyAction) =>
   matchCombo(e, parseCombo(current[action])!);
+
+/** The key a combo ends in, for holds that track a key rather than an event. */
+export const keyOf = (action: StudioKeyAction) => parseCombo(current[action])!.key;
 
 export function buildShortcutSections(keys: StudioKeys): readonly ShortcutSection[] {
   const k = (action: StudioKeyAction) => keyHint(action, keys);
@@ -114,14 +172,14 @@ export function buildShortcutSections(keys: StudioKeys): readonly ShortcutSectio
     {
       title: "Playback",
       hints: [
-        { key: "Space", label: "Play / Pause" },
+        { key: k("playPause"), label: "Play / Pause" },
         { key: k("shuttleBack"), label: "Play backward" },
         { key: k("pause"), label: "Stop" },
         { key: k("shuttleForward"), label: "Play forward" },
         { key: k("mute"), label: "Toggle mute" },
-        { key: `⇧${k("shuttleForward")}`, label: "Toggle loop" },
-        { key: "←/→", label: "Step 1 frame" },
-        { key: "⇧←/⇧→", label: "Step 10 frames" },
+        { key: k("loop"), label: "Toggle loop" },
+        { key: `${k("frameBack")}/${k("frameForward")}`, label: "Step 1 frame" },
+        { key: `${k("frameBackTen")}/${k("frameForwardTen")}`, label: "Step 10 frames" },
         { key: k("fullscreen"), label: "Toggle fullscreen" },
       ],
     },
@@ -129,27 +187,27 @@ export function buildShortcutSections(keys: StudioKeys): readonly ShortcutSectio
       title: "Keyframes (when an element is selected)",
       hints: [
         { key: k("addKeyframe"), label: "Add / remove keyframe at playhead" },
-        { key: "Del", label: "Delete selected keyframe" },
+        { key: k("deleteSelected"), label: "Delete selected keyframe" },
         { key: k("record"), label: "Record gesture" },
       ],
     },
     {
       title: "Editing",
       hints: [
-        { key: "⌘Z", label: "Undo" },
-        { key: "⌘⇧Z", label: "Redo" },
-        { key: "⌘C", label: "Copy element" },
-        { key: "⌘V", label: "Paste element" },
-        { key: "⌘X", label: "Cut element" },
+        { key: k("undo"), label: "Undo" },
+        { key: k("redo"), label: "Redo" },
+        { key: k("copy"), label: "Copy element" },
+        { key: k("paste"), label: "Paste element" },
+        { key: k("cut"), label: "Cut element" },
         { key: k("split"), label: "Split clip at playhead" },
         { key: k("zoomSelection"), label: "Zoom timeline to selected clips" },
         { key: k("audioGain"), label: "Audio Gain for clips with sound" },
         { key: "⇧Click", label: "Razor tool: split all tracks" },
         { key: k("selectLeftward"), label: "Select clips starting before the playhead" },
         { key: k("selectRightward"), label: "Select clips running at or after the playhead" },
-        { key: "⌘G", label: "Group elements" },
-        { key: "⌘⇧G", label: "Ungroup" },
-        { key: "Del", label: "Delete selected element (no keyframe selected)" },
+        { key: k("group"), label: "Group elements" },
+        { key: k("ungroup"), label: "Ungroup" },
+        { key: k("deleteSelected"), label: "Delete selected element (no keyframe selected)" },
       ],
     },
     {
@@ -181,17 +239,17 @@ export function buildShortcutSections(keys: StudioKeys): readonly ShortcutSectio
     {
       title: "Panels",
       hints: [
-        { key: "⌘1", label: "Compositions tab" },
-        { key: "⌘2", label: "Assets tab" },
+        { key: k("tabCompositions"), label: "Compositions tab" },
+        { key: k("tabAssets"), label: "Assets tab" },
       ],
     },
     {
       title: "Work area",
       hints: [
         { key: k("inPoint"), label: "Set in-point" },
-        { key: `⇧${k("inPoint")}`, label: "Clear in-point" },
+        { key: k("clearInPoint"), label: "Clear in-point" },
         { key: k("outPoint"), label: "Set out-point" },
-        { key: `⇧${k("outPoint")}`, label: "Clear out-point" },
+        { key: k("clearOutPoint"), label: "Clear out-point" },
         { key: k("seekToIn"), label: "Jump to in-point" },
         { key: k("seekToOut"), label: "Jump to out-point" },
       ],

@@ -61,17 +61,25 @@ export function comboText(c: Combo): string {
   return [...mods.filter(Boolean), c.key].join("+");
 }
 
-function charMatches(e: KeyboardEvent, c: Combo): boolean {
+// Space is the only named key whose e.key differs from its name.
+const namedMatches = (e: ComboEvent, name: string) =>
+  e.code === name || e.key === (name === "Space" ? " " : name);
+
+function charMatches(e: ComboEvent, c: Combo): boolean {
   if (e.key.toLowerCase() === c.key) return true;
   // Option rewrites e.key on macOS (Option+D is "∂"), so fall back to the physical key.
   const code = /^[0-9]$/.test(c.key) ? `Digit${c.key}` : `Key${c.key.toUpperCase()}`;
   return e.altKey && /^[a-z0-9]$/.test(c.key) && e.code === code;
 }
 
-export function matchCombo(e: KeyboardEvent, c: Combo): boolean {
-  if (e.shiftKey !== c.shift || e.altKey !== c.alt) return false;
-  const modsOk = c.mod ? e.metaKey || e.ctrlKey : e.metaKey === c.meta && e.ctrlKey === c.ctrl;
-  return modsOk && (c.named ? e.code === c.key : charMatches(e, c));
+export type ComboEvent = Pick<KeyboardEvent, "key" | "altKey" | "ctrlKey" | "metaKey" | "shiftKey"> & {
+  code?: string;
+};
+
+export function matchCombo(e: ComboEvent, c: Combo): boolean {
+  if (!!e.shiftKey !== c.shift || !!e.altKey !== c.alt) return false;
+  const modsOk = c.mod ? e.metaKey || e.ctrlKey : !!e.metaKey === c.meta && !!e.ctrlKey === c.ctrl;
+  return modsOk && (c.named ? namedMatches(e, c.key) : charMatches(e, c));
 }
 
 export function formatCombo(c: Combo): string {

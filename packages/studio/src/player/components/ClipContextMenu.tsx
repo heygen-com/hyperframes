@@ -215,7 +215,7 @@ export const ClipContextMenu = memo(function ClipContextMenu({
             }}
           >
             <span>{selectionSize > 1 ? `Copy ${selectionSize} clips` : "Copy"}</span>
-            <span className="text-neutral-500 text-[10px] ml-3">⌘C</span>
+            <span className="text-neutral-500 text-[10px] ml-3">{keyHint("copy", keys)}</span>
           </button>
         )}
         {onPaste && (
@@ -231,7 +231,7 @@ export const ClipContextMenu = memo(function ClipContextMenu({
             }}
           >
             <span>Paste</span>
-            <span className="text-neutral-500 text-[10px] ml-3">⌘V</span>
+            <span className="text-neutral-500 text-[10px] ml-3">{keyHint("paste", keys)}</span>
           </button>
         )}
         {onDuplicate && (
@@ -245,7 +245,7 @@ export const ClipContextMenu = memo(function ClipContextMenu({
             }}
           >
             <span>{selectionSize > 1 ? `Duplicate ${selectionSize} clips` : "Duplicate"}</span>
-            <span className="text-neutral-500 text-[10px] ml-3">⌘D</span>
+            <span className="text-neutral-500 text-[10px] ml-3">{keyHint("duplicate", keys)}</span>
           </button>
         )}
       </div>

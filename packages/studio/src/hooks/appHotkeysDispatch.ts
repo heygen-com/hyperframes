@@ -9,7 +9,7 @@ import { shouldIgnoreHistoryShortcut } from "../utils/studioHelpers";
 import { canSplitElement } from "../utils/timelineElementSplit";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import { razorClaimsKey } from "../player/lib/playbackShortcuts";
-import { getStudioKeys, keyHint } from "../player/components/studioShortcuts";
+import { getStudioKeys, keyHint, matchesKey } from "../player/components/studioShortcuts";
 import { zoomTimelineToSelectedClips } from "../player/components/timelineZoomInput";
 import { openAudioGainDialog } from "../player/components/audioGainDialogStore";
 import type { LinkShortcutCallbacks } from "./linkShortcuts";
@@ -19,18 +19,11 @@ import type { LinkShortcutCallbacks } from "./linkShortcuts";
 // hook still owns the actual keydown listeners and calls into these.
 
 function handleUndoRedoKey(event: KeyboardEvent, onUndo: () => void, onRedo: () => void): boolean {
-  const key = event.key.toLowerCase();
-  if (key === "z" && !event.shiftKey) {
-    event.preventDefault();
-    onUndo();
-    return true;
-  }
-  if ((key === "z" && event.shiftKey) || (event.ctrlKey && !event.metaKey && key === "y")) {
-    event.preventDefault();
-    onRedo();
-    return true;
-  }
-  return false;
+  const isUndo = matchesKey(event, "undo");
+  if (!isUndo && !matchesKey(event, "redo") && !matchesKey(event, "redoAlt")) return false;
+  event.preventDefault();
+  (isUndo ? onUndo : onRedo)();
+  return true;
 }
 
 export interface HotkeyCallbacks extends LinkShortcutCallbacks {
@@ -60,17 +53,79 @@ function timelineOwnsKey(event: KeyboardEvent): boolean {
   return event.target instanceof Element && event.target.closest("[data-studio-timeline]") !== null;
 }
 
-/** Exported for tests, like dispatchPlainKey below: lets the Cmd+C/Cmd+V
- *  arbitration between an automation range and the clip clipboard be asserted
- *  without standing up the whole hook. */
+function dispatchTabKey(event: KeyboardEvent): boolean {
+  const tab = matchesKey(event, "tabCompositions")
+    ? ["tab_compositions", "compositions"]
+    : matchesKey(event, "tabAssets")
+      ? ["tab_assets", "assets"]
+      : null;
+  if (!tab) return false;
+  event.preventDefault();
+  trackStudioEvent("keyboard_shortcut", { action: tab[0] });
+  useDockLayoutStore.getState().activatePanel(tab[1] as "compositions" | "assets");
+  return true;
+}
+
+function dispatchGroupKey(event: KeyboardEvent, cb: HotkeyCallbacks): boolean {
+  const group = matchesKey(event, "group");
+  if (!group && !matchesKey(event, "ungroup")) return false;
+  if (isTypingTarget(event.target)) return false;
+  event.preventDefault();
+  if (cb.readOnlyPreview) return true;
+  if (group) cb.onGroupSelection?.();
+  else cb.onUngroupSelection?.();
+  return true;
+}
+
+function dispatchClipboardKey(event: KeyboardEvent, cb: HotkeyCallbacks): boolean {
+  if (isEditableTarget(event.target)) return false;
+  const copy = matchesKey(event, "copy");
+  const paste = matchesKey(event, "paste");
+  const cut = matchesKey(event, "cut");
+  const duplicate = matchesKey(event, "duplicate");
+  if (!copy && !paste && !cut && !duplicate) return false;
+  // An active automation range owns copy/paste: this capture listener runs before its own, so without
+  // this both clipboards raced the same key. No preventDefault, so the downstream handler still sees it.
+  if (automationOwnsKey(event)) return true;
+  if (copy) {
+    if (cb.handleCopy()) {
+      event.preventDefault();
+      trackStudioEvent("keyboard_shortcut", { action: "copy" });
+    }
+    return true;
+  }
+  if (cb.readOnlyPreview && cb.domEditSelectionRef.current !== null && !timelineOwnsKey(event)) {
+    event.preventDefault();
+    return true;
+  }
+  const hasSelection = usePlayerStore.getState().selectedElementId || cb.domEditSelectionRef.current;
+  if (paste) {
+    event.preventDefault();
+    trackStudioEvent("keyboard_shortcut", { action: "paste" });
+    void cb.handlePaste();
+  } else if (cut && hasSelection) {
+    event.preventDefault();
+    trackStudioEvent("keyboard_shortcut", { action: "cut" });
+    void cb.handleCut();
+  } else if (duplicate) {
+    // Own this key even with nothing selected, or the browser's bookmark shortcut fires over the editor.
+    event.preventDefault();
+    if (usePlayerStore.getState().selectedElementId) {
+      trackStudioEvent("keyboard_shortcut", { action: "duplicate" });
+      void cb.handleDuplicate();
+    }
+  }
+  return true;
+}
+
+/** Exported for tests: the shortcuts that act on the editor, each read as a combo at event time. */
 export function dispatchModifierKey(
   event: KeyboardEvent,
-  key: string,
+  _key: string,
   cb: HotkeyCallbacks,
 ): boolean {
-  if (
-    !shouldIgnoreHistoryShortcut(event.target) &&
-    handleUndoRedoKey(
+  if (!shouldIgnoreHistoryShortcut(event.target)) {
+    const handled = handleUndoRedoKey(
       event,
       () => {
         trackStudioEvent("keyboard_shortcut", { action: "undo" });
@@ -80,92 +135,26 @@ export function dispatchModifierKey(
         trackStudioEvent("keyboard_shortcut", { action: "redo" });
         void cb.handleRedo();
       },
-    )
-  )
-    return true;
-
-  if (event.key === "1") {
-    event.preventDefault();
-    trackStudioEvent("keyboard_shortcut", { action: "tab_compositions" });
-    useDockLayoutStore.getState().activatePanel("compositions");
-    return true;
+    );
+    if (handled) return true;
   }
-  if (event.key === "2") {
-    event.preventDefault();
-    trackStudioEvent("keyboard_shortcut", { action: "tab_assets" });
-    useDockLayoutStore.getState().activatePanel("assets");
-    return true;
-  }
-
-  if (key === "g" && !event.altKey && !isTypingTarget(event.target)) {
-    event.preventDefault();
-    if (cb.readOnlyPreview) return true;
-    if (event.shiftKey) cb.onUngroupSelection?.();
-    else cb.onGroupSelection?.();
-    return true;
-  }
-
-  if (!event.shiftKey && !event.altKey && !isEditableTarget(event.target)) {
-    // An active automation range owns Cmd+C/Cmd+V, same as Delete below: this
-    // capture listener runs before useAutomationSelectionKeyboard's, so without
-    // this both clipboards raced the same key. No preventDefault, so the
-    // downstream handler still sees it.
-    if (automationOwnsKey(event)) return true;
-    if (key === "c") {
-      if (cb.handleCopy()) {
-        event.preventDefault();
-        trackStudioEvent("keyboard_shortcut", { action: "copy" });
-      }
-      return true;
-    }
-    const previewOwnsMutation =
-      cb.readOnlyPreview && cb.domEditSelectionRef.current !== null && !timelineOwnsKey(event);
-    if (previewOwnsMutation && ["v", "x", "d"].includes(key)) {
-      event.preventDefault();
-      return true;
-    }
-    if (key === "v") {
-      event.preventDefault();
-      trackStudioEvent("keyboard_shortcut", { action: "paste" });
-      void cb.handlePaste();
-      return true;
-    }
-    if (key === "x") {
-      if (usePlayerStore.getState().selectedElementId || cb.domEditSelectionRef.current) {
-        event.preventDefault();
-        trackStudioEvent("keyboard_shortcut", { action: "cut" });
-        void cb.handleCut();
-      }
-      return true;
-    }
-    if (key === "d") {
-      // Always own this key here, even with nothing selected — otherwise the
-      // browser's own Cmd+D (bookmark this page) fires over the editor.
-      event.preventDefault();
-      if (usePlayerStore.getState().selectedElementId) {
-        trackStudioEvent("keyboard_shortcut", { action: "duplicate" });
-        void cb.handleDuplicate();
-      }
-      return true;
-    }
-  }
-  return false;
+  return dispatchTabKey(event) || dispatchGroupKey(event, cb) || dispatchClipboardKey(event, cb);
 }
 
 // fallow-ignore-next-line complexity
 /** Exported for tests: the unmodified-key half of the dispatcher, so the
  *  Delete arbitration between keyframes, an automation range and the clip can
  *  be asserted without standing up the whole hook. */
-export function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCallbacks): void {
+export function dispatchPlainKey(event: KeyboardEvent, _key: string, cb: HotkeyCallbacks): void {
   if (ownsPlainKeys(event.target)) return;
   const keys = getStudioKeys();
-  if (key === keys.zoomSelection && !event.shiftKey && !event.altKey) {
+  if (matchesKey(event, "zoomSelection")) {
     if (!zoomTimelineToSelectedClips()) return;
     event.preventDefault();
     return;
   }
 
-  if (key === keys.fullscreen && !event.shiftKey && !event.altKey) {
+  if (matchesKey(event, "fullscreen")) {
     event.preventDefault();
     if (document.fullscreenElement) void document.exitFullscreen();
     else
@@ -173,7 +162,7 @@ export function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCa
     return;
   }
 
-  if (event.key === keys.split && !event.altKey) {
+  if (matchesKey(event, "split")) {
     // Reserve bare `s` for Split even when the current selection cannot split,
     // so secondary listeners do not reinterpret the same key as Snap toggle.
     event.preventDefault();
@@ -204,46 +193,43 @@ export function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCa
   }
 
   // Only with a sound clip selected, so bare G still reaches the canvas grid toggle otherwise.
-  if (key === keys.audioGain && !event.shiftKey && !event.altKey) {
+  if (matchesKey(event, "audioGain")) {
     if (!cb.readOnlyPreview && openAudioGainDialog()) {
       event.preventDefault();
       return;
     }
   }
 
-  if (key === keys.razorTool && !event.shiftKey && !event.altKey) {
+  if (matchesKey(event, "razorTool")) {
     event.preventDefault();
     const { activeTool, setActiveTool } = usePlayerStore.getState();
     setActiveTool(activeTool === "razor" ? "select" : "razor");
     return;
   }
 
-  if (key === keys.selectTool && !event.shiftKey && !event.altKey) {
+  if (matchesKey(event, "selectTool")) {
     event.preventDefault();
     usePlayerStore.getState().setActiveTool("select");
     return;
   }
 
-  if (
-    (key === keys.selectLeftward || key === keys.selectRightward) &&
-    !event.shiftKey &&
-    !event.altKey
-  ) {
+  const leftward = matchesKey(event, "selectLeftward");
+  if (leftward || matchesKey(event, "selectRightward")) {
     event.preventDefault();
     const store = usePlayerStore.getState();
-    if (key === keys.selectLeftward) store.selectLeftward();
+    if (leftward) store.selectLeftward();
     else store.selectRightward();
     return;
   }
 
   // CapCut returns to the select tool with "A"; playback's seek-to-in asks the same razorClaimsKey.
-  if (razorClaimsKey(event, key)) {
+  if (razorClaimsKey(event)) {
     event.preventDefault();
     usePlayerStore.getState().setActiveTool("select");
     return;
   }
 
-  if (event.key === "Escape") {
+  if (matchesKey(event, "cancel")) {
     const { activeTool, selectedElementId, setActiveTool, setSelectedElementId } =
       usePlayerStore.getState();
     if (activeTool === "razor") {
@@ -254,7 +240,7 @@ export function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCa
     }
   }
 
-  if ((event.key === "Delete" || event.key === "Backspace") && !event.altKey) {
+  if (matchesKey(event, "deleteSelected") || matchesKey(event, "deleteSelectedAlt")) {
     if (usePlayerStore.getState().selectedKeyframes.size > 0) {
       cb.onDeleteSelectedKeyframes();
       usePlayerStore.getState().clearSelectedKeyframes();
@@ -266,7 +252,7 @@ export function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCa
     // is what lets the document-level handler still see the key instead of
     // the press reaching the clip delete below.
     if (usePlayerStore.getState().automationSelection) return;
-    if (event.key === "Backspace") {
+    if (matchesKey(event, "resetKeyframes")) {
       const { selectedElementId, keyframeCache } = usePlayerStore.getState();
       if (selectedElementId && keyframeCache.has(selectedElementId) && cb.onResetKeyframes()) {
         event.preventDefault();
@@ -299,7 +285,7 @@ export function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCa
     return;
   }
 
-  if (event.key === keys.record && !event.shiftKey && !event.altKey && cb.onToggleRecording) {
+  if (matchesKey(event, "record") && cb.onToggleRecording) {
     event.preventDefault();
     cb.onToggleRecording();
   }

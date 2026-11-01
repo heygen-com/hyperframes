@@ -6,6 +6,7 @@ import type { DomEditSelection } from "../components/editor/domEditing";
 import { clearAutomationClipboard, copyRange } from "../player/components/automationClipboard";
 import { VOLUME_RANGE } from "@hyperframes/core/audio-automation";
 import type { TimelineElement } from "../player/store/timelineElement";
+import { useDockLayoutStore } from "../components/dock/dockLayoutStore";
 import { setStudioKeys } from "../player/components/studioShortcuts";
 import { useAudioGainDialogStore } from "../player/components/audioGainDialogStore";
 import {
@@ -639,5 +640,81 @@ describe("editor keys the host can remap", () => {
     const split = press("t");
     dispatchPlainKey(split, "t", cb);
     expect(split.defaultPrevented).toBe(true);
+  });
+});
+
+describe("every app shortcut is a remappable combo", () => {
+  const dock = vi.fn();
+  const ev = (init: KeyboardEventInit) =>
+    new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init });
+  const select = () => {
+    usePlayerStore.setState({ elements: [bgmElement], selectedElementId: "bgm" });
+  };
+  const rows: Array<{
+    action: string;
+    combo: string;
+    press: KeyboardEventInit;
+    moved: KeyboardEventInit;
+    hit: (cb: ReturnType<typeof callbacks>) => unknown;
+  }> = [
+    { action: "undo", combo: "mod+u", press: { key: "z", metaKey: true }, moved: { key: "u", metaKey: true }, hit: (c) => c.handleUndo },
+    { action: "redo", combo: "mod+shift+u", press: { key: "z", metaKey: true, shiftKey: true }, moved: { key: "u", metaKey: true, shiftKey: true }, hit: (c) => c.handleRedo },
+    { action: "redoAlt", combo: "ctrl+shift+y", press: { key: "y", ctrlKey: true }, moved: { key: "y", ctrlKey: true, shiftKey: true }, hit: (c) => c.handleRedo },
+    { action: "copy", combo: "mod+shift+c", press: { key: "c", metaKey: true }, moved: { key: "c", metaKey: true, shiftKey: true }, hit: (c) => c.handleCopy },
+    { action: "paste", combo: "mod+shift+v", press: { key: "v", metaKey: true }, moved: { key: "v", metaKey: true, shiftKey: true }, hit: (c) => c.handlePaste },
+    { action: "cut", combo: "mod+shift+x", press: { key: "x", metaKey: true }, moved: { key: "x", metaKey: true, shiftKey: true }, hit: (c) => c.handleCut },
+    { action: "duplicate", combo: "mod+shift+d", press: { key: "d", metaKey: true }, moved: { key: "d", metaKey: true, shiftKey: true }, hit: (c) => c.handleDuplicate },
+    { action: "group", combo: "mod+shift+k", press: { key: "g", metaKey: true }, moved: { key: "k", metaKey: true, shiftKey: true }, hit: (c) => c.onGroupSelection },
+    { action: "ungroup", combo: "mod+shift+j", press: { key: "g", metaKey: true, shiftKey: true }, moved: { key: "j", metaKey: true, shiftKey: true }, hit: (c) => c.onUngroupSelection },
+    { action: "tabCompositions", combo: "mod+3", press: { key: "1", metaKey: true }, moved: { key: "3", metaKey: true }, hit: () => dock },
+  ];
+
+  beforeEach(() => {
+    dock.mockClear();
+    useDockLayoutStore.setState({ activatePanel: dock });
+  });
+
+  it.each(rows)("$action answers its default and only its new combo once moved", (row) => {
+    for (const [init, expected] of [[row.press, true], [row.moved, false]] as const) {
+      select();
+      const cb = callbacks({ handleCopy: vi.fn(() => true) });
+      dispatchModifierKey(ev(init), (init.key ?? "").toLowerCase(), cb);
+      expect(Boolean(vi.mocked(row.hit(cb) as never).mock.calls.length), row.action).toBe(expected);
+      dock.mockClear();
+    }
+    setStudioKeys({ [row.action]: row.combo } as never);
+    for (const [init, expected] of [[row.press, false], [row.moved, true]] as const) {
+      select();
+      const cb = callbacks({ handleCopy: vi.fn(() => true) });
+      dispatchModifierKey(ev(init), (init.key ?? "").toLowerCase(), cb);
+      expect(Boolean(vi.mocked(row.hit(cb) as never).mock.calls.length), row.action).toBe(expected);
+      dock.mockClear();
+    }
+  });
+
+  it("Delete, Backspace and the cancel key are combos too", () => {
+    select();
+    let cb = callbacks();
+    dispatchPlainKey(ev({ key: "Delete", code: "Delete" }), "delete", cb);
+    expect(cb.handleTimelineElementsDelete).toHaveBeenCalledTimes(1);
+    setStudioKeys({ deleteSelected: "x", deleteSelectedAlt: "shift+x" });
+    cb = callbacks();
+    dispatchPlainKey(ev({ key: "Delete", code: "Delete" }), "delete", cb);
+    dispatchPlainKey(ev({ key: "Backspace", code: "Backspace" }), "backspace", cb);
+    expect(cb.handleTimelineElementsDelete).not.toHaveBeenCalled();
+    dispatchPlainKey(ev({ key: "x", code: "KeyX" }), "x", cb);
+    expect(cb.handleTimelineElementsDelete).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancel (Escape by default) returns the armed razor to select, and only the new key does once moved", () => {
+    usePlayerStore.getState().setActiveTool("razor");
+    dispatchPlainKey(ev({ key: "Escape", code: "Escape" }), "escape", callbacks());
+    expect(usePlayerStore.getState().activeTool).toBe("select");
+    setStudioKeys({ cancel: "q" });
+    usePlayerStore.getState().setActiveTool("razor");
+    dispatchPlainKey(ev({ key: "Escape", code: "Escape" }), "escape", callbacks());
+    expect(usePlayerStore.getState().activeTool).toBe("razor");
+    dispatchPlainKey(ev({ key: "q", code: "KeyQ" }), "q", callbacks());
+    expect(usePlayerStore.getState().activeTool).toBe("select");
   });
 });

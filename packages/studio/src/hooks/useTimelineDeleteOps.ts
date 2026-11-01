@@ -2,6 +2,7 @@ import { buildProjectApiPath } from "../utils/projectRouting";
 // Timeline clip deletion: the marquee/multi path and the single-clip wrapper
 // the context menu uses. Extracted verbatim from useTimelineEditing.ts to keep
 // it under the studio 600-line cap, following useTimelineAssetDropOps.
+import { keyHint } from "../player/components/studioShortcuts";
 import { useCallback, useRef, type MutableRefObject, type RefObject } from "react";
 import type { TimelineElement } from "../player";
 import { usePlayerStore } from "../player";
@@ -216,7 +217,7 @@ export function useTimelineDeleteOps({
         if (rippleChanges && !rippleFailed && !rippleNoticeShownRef.current) {
           rippleNoticeShownRef.current = true;
           showToast(
-            "Ripple closed the gap on the main track. Undo (⌘Z) restores it, or turn off " +
+            `Ripple closed the gap on the main track. Undo (${keyHint("undo")}) restores it, or turn off ` +
               "Ripple in the timeline toolbar.",
             "info",
           );

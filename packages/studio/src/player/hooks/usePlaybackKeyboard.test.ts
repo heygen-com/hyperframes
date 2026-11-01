@@ -199,7 +199,7 @@ describe("usePlaybackKeyboard — keyboard layout independence (#834)", () => {
     expect(spies.seek).toHaveBeenCalledWith(1.5, { keepPlaying: true });
   });
 
-  it("Shift+A still seeks to the in-point while the razor is armed, since only plain A exits the razor", () => {
+  it("Shift+A is a different combo from A: it neither jumps to the in-point nor exits the razor", () => {
     const { dispatch, spies } = setupHook();
     usePlayerStore.setState({ inPoint: 1.5, activeTool: "razor" });
 
@@ -207,7 +207,8 @@ describe("usePlaybackKeyboard — keyboard layout independence (#834)", () => {
       dispatch(keydown({ code: "KeyA", key: "a", shiftKey: true }));
     });
 
-    expect(spies.seek).toHaveBeenCalledWith(1.5, { keepPlaying: true });
+    expect(spies.seek).not.toHaveBeenCalled();
+    expect(usePlayerStore.getState().activeTool).toBe("razor");
   });
 });
 
@@ -369,7 +370,7 @@ describe("usePlaybackKeyboard — keys the host can remap", () => {
     expect(spies.play).not.toHaveBeenCalled();
     press(dispatch, "y");
     expect(spies.play).toHaveBeenCalledTimes(1);
-    press(dispatch, "y", true);
+    press(dispatch, "l", true);
     expect(usePlayerStore.getState().loopEnabled).toBe(true);
   });
 
@@ -398,5 +399,46 @@ describe("usePlaybackKeyboard — keys the host can remap", () => {
     const { dispatch, spies } = setupHook();
     press(dispatch, "q");
     expect(spies.seek).toHaveBeenCalledWith(3, { keepPlaying: true });
+  });
+});
+
+describe("usePlaybackKeyboard: space, arrows, loop and clear keys are combos", () => {
+  const send = (dispatch: HookHandle["dispatch"], init: Partial<Parameters<typeof keydown>[0]>) =>
+    act(() => {
+      dispatch(keydown({ code: "", key: "", ...init }));
+    });
+
+  it("Space, arrows (Shift = 10), Shift+L and Shift+I answer by default", () => {
+    const { dispatch, spies } = setupHook();
+    usePlayerStore.setState({ isPlaying: false, inPoint: 1, loopEnabled: false });
+    send(dispatch, { code: "Space", key: " " });
+    expect(spies.play).toHaveBeenCalledTimes(1);
+    send(dispatch, { code: "ArrowRight", key: "ArrowRight", shiftKey: true });
+    send(dispatch, { code: "ArrowLeft", key: "ArrowLeft" });
+    expect(spies.seek).toHaveBeenCalledTimes(2);
+    send(dispatch, { code: "KeyL", key: "L", shiftKey: true });
+    expect(usePlayerStore.getState().loopEnabled).toBe(true);
+    send(dispatch, { code: "KeyI", key: "I", shiftKey: true });
+    expect(usePlayerStore.getState().inPoint).toBeNull();
+  });
+
+  it("a remapped key answers and the old one does not", () => {
+    setStudioKeys({ playPause: "p", frameForward: "x", loop: "mod+shift+u", clearInPoint: "shift+y" });
+    const { dispatch, spies } = setupHook();
+    usePlayerStore.setState({ isPlaying: false, inPoint: 1, loopEnabled: false });
+    send(dispatch, { code: "Space", key: " " });
+    send(dispatch, { code: "ArrowRight", key: "ArrowRight" });
+    send(dispatch, { code: "KeyL", key: "L", shiftKey: true });
+    send(dispatch, { code: "KeyI", key: "I", shiftKey: true });
+    expect(spies.play).not.toHaveBeenCalled();
+    expect(spies.seek).not.toHaveBeenCalled();
+    expect(usePlayerStore.getState().loopEnabled).toBe(false);
+    expect(usePlayerStore.getState().inPoint).toBe(1);
+    send(dispatch, { code: "KeyP", key: "p" });
+    expect(spies.play).toHaveBeenCalledTimes(1);
+    send(dispatch, { code: "KeyX", key: "x" });
+    expect(spies.seek).toHaveBeenCalledTimes(1);
+    send(dispatch, { code: "KeyY", key: "Y", shiftKey: true });
+    expect(usePlayerStore.getState().inPoint).toBeNull();
   });
 });

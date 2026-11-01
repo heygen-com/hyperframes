@@ -1,5 +1,5 @@
 import { useEffect, useCallback } from "react";
-import { getStudioKey } from "../player/components/studioShortcuts";
+import { matchesKey } from "../player/components/studioShortcuts";
 import { isTypingTarget } from "../utils/typingTarget";
 
 interface KeyframeKeyboardOptions {
@@ -12,8 +12,7 @@ export function useKeyframeKeyboard({ enabled, onAddKeyframe }: KeyframeKeyboard
     (e: KeyboardEvent) => {
       if (!enabled || !onAddKeyframe) return;
       if (isTypingTarget(document.activeElement)) return;
-      if (e.metaKey || e.ctrlKey) return; // never shadow browser/system combos
-      if (e.key.toLowerCase() !== getStudioKey("addKeyframe")) return;
+      if (!matchesKey(e, "addKeyframe")) return;
       // K is also playback's stop key: claiming it here keeps playback from also pausing.
       e.preventDefault();
       e.stopImmediatePropagation();

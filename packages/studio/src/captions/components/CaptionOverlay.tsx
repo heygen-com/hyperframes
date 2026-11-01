@@ -2,7 +2,8 @@ import { memo, useEffect, useState, useCallback, useRef } from "react";
 import { useLivePreviewIframe } from "../../player/store/previewIframeStore";
 import { useCaptionStore } from "../store";
 import { usePlayerStore } from "../../player";
-import { shouldHandleCaptionNudgeKey, isEditableEventTarget } from "../keyboard";
+import { resolveCaptionNudge, isEditableEventTarget } from "../keyboard";
+import { matchesKey } from "../../player/components/studioShortcuts";
 import {
   readWordBoxes,
   getWordEl,
@@ -171,7 +172,7 @@ export const CaptionOverlay = memo(function CaptionOverlay({ iframeRef }: Captio
       const { selectedSegmentIds: sel, model: m } = store;
 
       // Escape: cancel an in-flight drag first, else clear the selection.
-      if (e.key === "Escape") {
+      if (matchesKey(e, "cancel")) {
         if (cancelActiveDrag()) {
           e.preventDefault();
           scheduleTick();
@@ -185,28 +186,20 @@ export const CaptionOverlay = memo(function CaptionOverlay({ iframeRef }: Captio
       }
 
       // ⌘A / Ctrl+A selects every caption word (unless typing in a field).
-      if (
-        (e.metaKey || e.ctrlKey) &&
-        e.key.toLowerCase() === "a" &&
-        !e.shiftKey &&
-        !e.altKey &&
-        !isEditableEventTarget(e.target)
-      ) {
+      if (matchesKey(e, "captionSelectAll") && !isEditableEventTarget(e.target)) {
         e.preventDefault();
         store.selectAll();
         return;
       }
 
       if (sel.size === 0 || !m) return;
-      const arrow = e.key;
       // Pass the event target so arrows inside inputs keep their native
       // behavior instead of nudging the canvas word.
-      if (!shouldHandleCaptionNudgeKey(e, e.target)) return;
+      const nudge = resolveCaptionNudge(e, e.target);
+      if (!nudge) return;
 
       e.preventDefault();
-      const step = e.shiftKey ? 10 : 1;
-      const dx = arrow === "ArrowLeft" ? -step : arrow === "ArrowRight" ? step : 0;
-      const dy = arrow === "ArrowUp" ? -step : arrow === "ArrowDown" ? step : 0;
+      const { dx, dy } = nudge;
 
       const iframe = iframeRef.current;
       const win = iframe?.contentWindow;
