@@ -393,7 +393,6 @@ export function fitAspect(out: string, aspect: string): string | undefined {
   return `HeyGen returned ${width}x${height} for ${aspect}; cropped to ${w}x${h} (centre), not stretched`;
 }
 
-/** The shape a shot should come back in: the aspect asked for, else its first frame's, else widescreen. */
 function aspectOf(r: GenerateRequest): string {
   if (r.aspect || !r.firstFrame) return r.aspect ?? "16:9";
   const { width, height } = probeVideo(r.firstFrame);
