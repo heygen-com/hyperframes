@@ -2209,9 +2209,11 @@
   // Canvases that drew WebGL while hidden since the last audit, judged when the draw happens; the author's own
   // hf-seek loop decides what draws.
   const webglDraws = (window.__hyperframesWebglDraws ??= new Set());
+  let judgedThisSample = new WeakSet();
   const drawGate = Symbol.for("hyperframes.webglDrawGate");
   window.__hyperframesRecordWebglDraw = (canvas) => {
-    if (!canvas || webglDraws.has(canvas)) return;
+    if (typeof canvas?.closest !== "function" || judgedThisSample.has(canvas)) return;
+    judgedThisSample.add(canvas);
     if (canvas.closest(RUNTIME_HIDDEN_CLIP) || canvas.checkVisibility?.() === false) {
       webglDraws.add(canvas);
     }
@@ -2230,7 +2232,9 @@
       const draw = proto[method];
       if (typeof draw !== "function") continue;
       proto[method] = function (...args) {
-        if (!window[drawGate]?.skip) window.__hyperframesRecordWebglDraw(this.canvas);
+        try {
+          if (!window[drawGate]?.skip) window.__hyperframesRecordWebglDraw(this.canvas);
+        } catch {}
         return draw.apply(this, args);
       };
     }
@@ -2239,6 +2243,7 @@
   function inactiveWebglIssues(root, time) {
     const drawn = [...webglDraws].filter((canvas) => canvas?.isConnected);
     webglDraws.clear();
+    judgedThisSample = new WeakSet();
     return drawn.map((canvas) => {
       const scene =
         canvas.closest("[data-composition-id]:not([data-width])") ??
