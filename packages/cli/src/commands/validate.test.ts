@@ -181,6 +181,14 @@ describe("shouldIgnoreRequestFailure", () => {
     ).toBe(true);
   });
 
+  it("ignores the aborted fetch of a proxy-swapped source in any video container", () => {
+    for (const ext of ["mkv", "m4v", "mts", "m2ts", "avi", "mpg", "MKV"]) {
+      const url = `http://127.0.0.1:3000/Caf%C3%A9%20%C3%A9t%C3%A9.${ext}`;
+      expect(shouldIgnoreRequestFailure(url, "net::ERR_ABORTED", "fetch")).toBe(true);
+      expect(shouldIgnoreRequestFailure(url, "net::ERR_FAILED", "fetch")).toBe(false);
+    }
+  });
+
   it("keeps non-media and non-aborted failures reportable", () => {
     expect(
       shouldIgnoreRequestFailure("http://127.0.0.1:3000/assets/map.png", "net::ERR_ABORTED"),
