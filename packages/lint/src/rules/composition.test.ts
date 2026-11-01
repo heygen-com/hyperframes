@@ -1355,6 +1355,15 @@ describe("composition rules", () => {
       expect(finding).toBeDefined();
     });
 
+    it("checks a declaration on a template-fragment composition root", async () => {
+      const html = `<template><div id="main" data-composition-id="main" data-no-timeline data-width="1920" data-height="1080" data-duration="10" data-composition-variables='broken'></div></template>`;
+      const result = await lintHyperframeHtml(html, { isSubComposition: true });
+      const finding = result.findings.find(
+        (f) => f.code === "invalid_composition_variables_declaration",
+      );
+      expect(finding).toBeDefined();
+    });
+
     it("warns when data-composition-variables is unparseable JSON", async () => {
       const html = `<html data-composition-variables='[{not json'><body><div data-composition-id="x"></div></body></html>`;
       const result = await lintHyperframeHtml(html);
