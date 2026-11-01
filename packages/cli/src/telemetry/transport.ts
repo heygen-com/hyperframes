@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 import { unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { diag } from "../ui/diagnostics.js";
 import { POSTHOG_API_KEY } from "./posthogKey.js";
 import { readConfig } from "./config.js";
 import { hostAnswers } from "../utils/hostAnswers.js";
@@ -190,12 +189,10 @@ export function flushSync(): void {
     );
     // Let the parent exit without waiting for the child
     child.unref();
-  } catch (error) {
+  } catch {
     try {
       unlinkSync(file);
     } catch {}
-    diag.warn(
-      `hyperframes: telemetry was not sent (${error instanceof Error ? error.message : error})`,
-    );
+    // Dropped silently: an unwritable scratch folder must never reach the user's terminal.
   }
 }
