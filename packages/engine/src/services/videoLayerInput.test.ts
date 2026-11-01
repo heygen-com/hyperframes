@@ -61,7 +61,7 @@ describe.skipIf(!HAS_FFMPEG)(
       await encoder.close();
       const counted = spawnSync("ffprobe", [
         ...["-v", "error", "-count_frames", "-select_streams", "v:0"],
-        ...["-show_entries", "stream=nb_read_frames", "-of", "csv=p=0", out],
+        ...["-show_entries", "stream=nb_read_frames", "-of", "csv=p=0", "--", out],
       ]);
       expect(Number(counted.stdout.toString().trim())).toBe(pageFrames);
     });
