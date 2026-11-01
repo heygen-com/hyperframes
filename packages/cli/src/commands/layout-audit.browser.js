@@ -2206,9 +2206,16 @@
     return issues;
   }
 
-  // Canvases whose WebGL context drew since the last audit; the author's own hf-seek loop decides what draws.
+  // Canvases that drew WebGL while hidden since the last audit, judged when the draw happens; the author's own
+  // hf-seek loop decides what draws.
   const webglDraws = (window.__hyperframesWebglDraws ??= new Set());
   const drawGate = Symbol.for("hyperframes.webglDrawGate");
+  window.__hyperframesRecordWebglDraw = (canvas) => {
+    if (!canvas || webglDraws.has(canvas)) return;
+    if (canvas.closest(RUNTIME_HIDDEN_CLIP) || canvas.checkVisibility?.() === false) {
+      webglDraws.add(canvas);
+    }
+  };
   for (const name of ["WebGLRenderingContext", "WebGL2RenderingContext"]) {
     const proto = window[name]?.prototype;
     if (!proto || proto.__hyperframesDrawCount) continue;
@@ -2223,7 +2230,7 @@
       const draw = proto[method];
       if (typeof draw !== "function") continue;
       proto[method] = function (...args) {
-        if (!window[drawGate]?.skip) webglDraws.add(this.canvas);
+        if (!window[drawGate]?.skip) window.__hyperframesRecordWebglDraw(this.canvas);
         return draw.apply(this, args);
       };
     }
@@ -2232,11 +2239,7 @@
   function inactiveWebglIssues(root, time) {
     const drawn = [...webglDraws].filter((canvas) => canvas?.isConnected);
     webglDraws.clear();
-    return drawn
-      .filter(
-        (canvas) => canvas.closest(RUNTIME_HIDDEN_CLIP) || canvas.checkVisibility?.() === false,
-      )
-      .map((canvas) => {
+    return drawn.map((canvas) => {
         const scene =
           canvas.closest("[data-composition-id]:not([data-width])") ??
           canvas.closest("[data-composition-id]");
