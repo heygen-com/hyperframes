@@ -59,6 +59,9 @@ export interface Mask {
   window?: [number, number];
 }
 
+type Size = { width: number; height: number };
+const RING_MOVED = 6;
+
 /** `x,y,w,h` or `x,y,w,h,a-b` (seconds of the motion clip). */
 export function parseMask(text: string): Mask {
   const m =
@@ -88,14 +91,40 @@ function delogoFilters(masks: Mask[], width: number, height: number): string {
 }
 
 /** A box's temporal median over about a second either side: moving text becomes the picture behind it. */
-function maskFilters(masks: Mask[], fps: number): string {
+function maskFilters(masks: Mask[], fps: number, stale: Mask[], size: Size): string {
   const radius = Math.min(127, Math.max(2, Math.round(fps)));
-  const steps = masks.map(({ box: [x, y, w, h], window }, i) => {
+  const steps = masks.map((mask, i) => {
+    const { box, window } = mask;
+    const [x, y, w, h] = box;
     const when = window ? `:enable='between(t,${window[0]},${window[1]})'` : "";
     const [w2, h2] = [w - (w % 2), h - (h % 2)];
-    return `[v${i}]split[a${i}][b${i}];[b${i}]crop=${w2}:${h2}:${x}:${y},tmedian=radius=${radius}[m${i}];[a${i}][m${i}]overlay=${x}:${y}${when}[v${i + 1}]`;
+    const edges = stale.includes(mask) && delogoFilters([{ box }], size.width, size.height);
+    const blur = Math.max(2, Math.round(Math.min(w2, h2) / 10));
+    const fill = edges
+      ? `${edges},crop=${w2}:${h2}:${x}:${y},boxblur=${blur}:2`
+      : `crop=${w2}:${h2}:${x}:${y},tmedian=radius=${radius}`;
+    return `[v${i}]split[a${i}][b${i}];[b${i}]${fill}[m${i}];[a${i}][m${i}]overlay=${x}:${y}${when}[v${i + 1}]`;
   });
   return `[0:v]null[v0];${steps.join(";")}`;
+}
+
+/** The middle pixel change between two grey frames in a ring round a box. */
+export function ringChange(
+  a: Uint8Array,
+  b: Uint8Array,
+  width: number,
+  [x, y, w, h]: Mask["box"],
+): number {
+  const height = a.length / width;
+  const pad = Math.max(w, h) >> 1;
+  const changes: number[] = [];
+  for (let py = Math.max(0, y - pad); py < Math.min(height, y + h + pad); py += 4)
+    for (let px = Math.max(0, x - pad); px < Math.min(width, x + w + pad); px += 4) {
+      if (px >= x && px < x + w && py >= y && py < y + h) continue;
+      const i = py * width + px;
+      changes.push(Math.abs(a[i]! - b[i]!));
+    }
+  return changes.sort((m, n) => m - n)[changes.length >> 1] ?? 0;
 }
 
 /** Mean absolute pixel step inside a box and in a ring around it: the box holds more edges when inside > ring. */
@@ -340,9 +369,23 @@ function structured(clip: string, guide: { width: number; height: number }, mask
   });
 }
 
+/** The masks whose surroundings change, where the camera moves: a median over time would freeze old frames in them. */
+function staleMasks(path: string, { width, height }: Size, masks: Mask[]): Mask[] {
+  const gray = runFfmpeg(["-i", path, "-vf", "fps=2", "-pix_fmt", "gray", "-f", "rawvideo", "-"]);
+  const frame = (i: number) => gray.subarray(i * width * height, (i + 1) * width * height);
+  const count = Math.floor(gray.length / (width * height));
+  return masks.filter(({ box, window }) => {
+    const seconds = Array.from({ length: Math.max(0, count - 1) }, (_, i) => i).filter(
+      (i) => !window || (i / 2 >= window[0] - 1 && i / 2 <= window[1] + 1),
+    );
+    return seconds.some((i) => ringChange(frame(i), frame(i + 1), width, box) >= RING_MOVED);
+  });
+}
+
 /** A copy of the guide with each mask's box filled: the temporal median, and delogo's smear where text stays put. */
 function fillMasks(path: string, masks: Mask[], work: string): string {
   const info = probeVideo(path);
+  const stale = staleMasks(path, info, masks);
   const encode = (from: string, name: string, filter: string[]) => {
     const out = join(work, name);
     runFfmpeg([
@@ -353,7 +396,7 @@ function fillMasks(path: string, masks: Mask[], work: string): string {
     return out;
   };
   const median = encode(path, "median.mp4", [
-    ...["-t", "15", "-filter_complex", maskFilters(masks, info.fps)],
+    ...["-t", "15", "-filter_complex", maskFilters(masks, info.fps, stale, info)],
     ...["-map", `[v${masks.length}]`],
   ]);
   const left = structured(median, info, masks).map((s) => s.mask);

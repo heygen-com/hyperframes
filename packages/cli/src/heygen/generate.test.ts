@@ -14,7 +14,7 @@ vi.mock("../cloud/auth.js", () => ({
 
 vi.stubEnv("HEYGEN_API_KEY", "k");
 
-const { checkRequest, foldShort, generate, parseMask, structureRatio, urlOf } =
+const { checkRequest, foldShort, generate, parseMask, ringChange, structureRatio, urlOf } =
   await import("./generate.js");
 const { checkLimit, creditsOf, priceOf } = await import("./pricing.js");
 const ffmpeg = findFFmpeg();
@@ -205,6 +205,41 @@ describe("generate", () => {
       expect(diff).toBeLessThan(12);
     },
   );
+
+  it.skipIf(!ffmpeg)(
+    "fills a masked box from the current frame while the picture changes",
+    async () => {
+      const guide = shots("changing.mp4", [
+        "color=c=0x202020:d=1.5",
+        "color=c=0xc0c0c0:d=0.5",
+        "color=c=0x202020:d=1.5",
+      ]);
+      const sent = answers(guide);
+      await generate({
+        type: "video",
+        out: join(project, "assets/changing-out.mp4"),
+        prompt: "p",
+        motion: guide,
+        allowCuts: true,
+        masks: [parseMask("30,90,120,50,1.6-1.9")],
+      });
+      const [video] = sent[0]!.reference_videos as { data: string }[];
+      const sentClip = join(project, "changing-sent.mp4");
+      writeFileSync(sentClip, Buffer.from(video!.data, "base64"));
+      const box = execFileSync(ffmpeg!, [
+        ...["-v", "error", "-ss", "1.75", "-i", sentClip, "-frames:v", "1"],
+        ...["-vf", "crop=120:50:30:90,format=gray", "-f", "rawvideo", "-"],
+      ]);
+      expect(box.reduce((a, v) => a + v, 0) / box.length).toBeGreaterThan(150);
+    },
+  );
+
+  it("reads how much the picture round a box changed, whatever moves inside it", () => {
+    const [a, b] = [new Uint8Array(100 * 100).fill(50), new Uint8Array(100 * 100).fill(50)];
+    for (let y = 40; y < 60; y++) for (let x = 40; x < 60; x++) b[y * 100 + x] = 200;
+    expect(ringChange(a, b, 100, [40, 40, 20, 20])).toBe(0);
+    expect(ringChange(a, b.fill(90), 100, [40, 40, 20, 20])).toBe(40);
+  });
 
   it("reads a box with more edges than its surroundings as structure", () => {
     const flat = new Uint8Array(100 * 100).fill(100);
