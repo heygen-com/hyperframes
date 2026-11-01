@@ -1,5 +1,6 @@
 import { useRef, useState, useCallback, useMemo, useEffect } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
+import { markTimelineMotion } from "./timelineMotion";
 import {
   applyTimelineAutoScrollStep,
   resolveTimelineAutoScrollLoopAction,
@@ -201,6 +202,7 @@ export function useTimelineClipDrag({
   const [resizingClip, setResizingClipState] = useState<ResizingClipState | null>(null);
   const resizingClipRef = useRef<ResizingClipState | null>(null);
   const publishResizingClip = useCallback((next: ResizingClipState | null) => {
+    if (next) markTimelineMotion();
     resizingClipRef.current = next;
     setResizingClipState(next);
   }, []);
