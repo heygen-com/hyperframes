@@ -2206,6 +2206,55 @@
     return issues;
   }
 
+  // Canvases whose WebGL context drew since the last audit; the author's own hf-seek loop decides what draws.
+  const webglDraws = (window.__hyperframesWebglDraws ??= new Set());
+  const drawGate = Symbol.for("hyperframes.webglDrawGate");
+  for (const name of ["WebGLRenderingContext", "WebGL2RenderingContext"]) {
+    const proto = window[name]?.prototype;
+    if (!proto || proto.__hyperframesDrawCount) continue;
+    proto.__hyperframesDrawCount = true;
+    for (const method of [
+      "clear",
+      "drawArrays",
+      "drawElements",
+      "drawArraysInstanced",
+      "drawElementsInstanced",
+    ]) {
+      const draw = proto[method];
+      if (typeof draw !== "function") continue;
+      proto[method] = function (...args) {
+        if (!window[drawGate]?.skip) webglDraws.add(this.canvas);
+        return draw.apply(this, args);
+      };
+    }
+  }
+
+  function inactiveWebglIssues(root, time) {
+    const drawn = [...webglDraws].filter((canvas) => canvas?.isConnected);
+    webglDraws.clear();
+    return drawn
+      .filter(
+        (canvas) => canvas.closest(RUNTIME_HIDDEN_CLIP) || canvas.checkVisibility?.() === false,
+      )
+      .map((canvas) => {
+        const scene =
+          canvas.closest("[data-composition-id]:not([data-width])") ??
+          canvas.closest("[data-composition-id]");
+        const name = scene?.getAttribute("data-composition-id") || uniqueSelectorFor(canvas);
+        return {
+          code: "webgl_draws_while_inactive",
+          severity: "warning",
+          time,
+          selector: uniqueSelectorFor(canvas),
+          containerSelector: uniqueSelectorFor(root),
+          message: `Scene "${name}" draws WebGL while it is not on screen, so every seek pays for it.`,
+          rect: toRect(canvas.getBoundingClientRect()),
+          fixHint:
+            "Draw only while the scene is active (its data-start to data-start + data-duration), or skip the draw in your hf-seek listener when the scene is hidden.",
+        };
+      });
+  }
+
   // Soft prior only — the counterfactual attach test (below) is what makes detachment a finding.
   const CONNECTOR_NAME = /\b(conn(ector)?|arrow|edge|link|flow|wire)\b/i;
   const CONNECTOR_SKIP_CONTAINERS = "defs, marker, clipPath, mask, symbol, pattern";
@@ -2631,6 +2680,7 @@
     issues.push(...escaped.issues);
     issues.push(...panelOutOfCanvasIssues(root, rootRect, time, tolerance, escaped.flagged));
     issues.push(...canvasEdgeIssues(root, rootRect, time, tolerance));
+    issues.push(...inactiveWebglIssues(root, time));
     issues.push(...connectorDetachmentIssues(root, rootRect, time));
     issues.push(...connectorOrphanIssues(root, rootRect, time));
     return issues;
