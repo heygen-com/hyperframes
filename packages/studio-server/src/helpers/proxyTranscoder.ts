@@ -26,7 +26,7 @@ import {
   sourceSizeBytes,
   writeCopyIndex,
 } from "./proxyCacheKey.js";
-import { acquireCopyLock } from "./proxyLock.js";
+import { acquireCopyLock, CopyLockStalledError } from "./proxyLock.js";
 import { PROXY_VARIANT_CONFIG, type ProxyVariant } from "./mediaCodecMap.js";
 import { mkdirWithinProject, realpath, realProjectRoot } from "./safePath.js";
 
@@ -892,7 +892,15 @@ async function transcodeToCache(
       writeCopyIndex(fastIndexPath(cachePath), sameContent);
       return sameContent;
     }
-    const release = await acquireCopyLock(cachePath, job.abandoned.signal);
+    const release = await acquireCopyLock(
+      cachePath,
+      job.abandoned.signal,
+      TRANSCODE_STALL_MS,
+    ).catch((error: unknown) => {
+      throw error instanceof CopyLockStalledError
+        ? new ProxyTranscodeError(error.message, null, "")
+        : error;
+    });
     if (!release) return cachePath;
     const tempPath = join(cacheDir, `.tmp-${randomUUID()}-${basename(cachePath)}`);
     try {
