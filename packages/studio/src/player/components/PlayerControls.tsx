@@ -112,7 +112,7 @@ const FullscreenButton = memo(function FullscreenButton({
   onToggleFullscreen: () => void;
 }) {
   return (
-    <Tooltip label={isFullscreen ? "Exit fullscreen (F)" : "Enter fullscreen (F)"}>
+    <Tooltip label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"} shortcut="F">
       <button
         type="button"
         onClick={() => {
