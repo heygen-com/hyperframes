@@ -143,9 +143,13 @@ the others down.
 - `data-volume`, a `volume` lane, fades and a group fader each scale only their
   own track or group. Doubling a voice moves the voice +6 dB; how much the whole
   mix moves depends on what else is playing at that moment.
-- Nothing limits the sum. Loud tracks that overlap can pass 0 dBFS and clip in
-  the exported AAC. Leave headroom, or put a `limiter` or `truepeak` on the
-  [master bus](#the-master-bus-data-fx-chain-on-the-composition-root).
+- Nothing limits the sum. Loud tracks that overlap can pass 0 dBFS. Leave headroom,
+  or put a `truepeak` on the
+  [master bus](#the-master-bus-data-fx-chain-on-the-composition-root); a `limiter`
+  can let fast peaks through.
+- Export keeps the delivered file under -1 dBTP. If a peak passes that, it lowers
+  the **whole mix** by one flat amount, quiet passages included, and the CLI prints
+  an `audio_lowered` warning.
 - The render's master gain, `PRODUCER_AUDIO_GAIN` (default `1`), multiplies the
   finished sum once, before the master bus chain.
 - To check a level, compare the export against its source scaled by the

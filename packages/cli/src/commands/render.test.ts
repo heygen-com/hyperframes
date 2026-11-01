@@ -534,6 +534,29 @@ describe("renderLocal browser GPU config", () => {
     expect(cpuSamplerState.samplers.map((s) => s.stopped)).toEqual([true, true]);
   });
 
+  it("warns that the whole mix was lowered, and the render still completes", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    producerState.executeImpl = async (job: { audioLoweredDb?: number }) => {
+      job.audioLoweredDb = 7.3;
+    };
+
+    const result = await renderLocal(PROJECT_DIR, "/tmp/out.mp4", {
+      fps: { num: 30, den: 1 },
+      quality: "standard",
+      format: "mp4",
+      gpu: false,
+      browserGpuMode: "software",
+      hdrMode: "auto",
+      quiet: true,
+      throwOnError: true,
+    });
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("[audio_lowered] Audio lowered 7.3"));
+    expect(result?.outcome).toBe("completed");
+    expect(result?.warnings?.map((warning) => warning.code)).toEqual(["audio_lowered"]);
+    warn.mockRestore();
+  });
+
   it("cleans orphaned browser trees before starting a local render", async () => {
     orphanCleanupState.killed = 1;
 
