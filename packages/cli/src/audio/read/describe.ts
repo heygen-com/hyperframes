@@ -6,12 +6,10 @@ import { join } from "node:path";
 import type { Span } from "@hyperframes/core/audio-analysis";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { runFile } from "../analysis/providers/shared.js";
-import { MELODIC_GROUP, type AudibleStem, type Description } from "./types.js";
+import type { AudibleStem, Description } from "./types.js";
 
 const MODEL = "gemini-4-argon";
 const MODEL_ENV = "HYPERFRAMES_READ_AUDIO_MODEL";
-/** "1" asks each stem's description for the second of each change it hears; off until that is judged accurate. */
-const STEM_TIMES_ENV = "HYPERFRAMES_READ_AUDIO_STEM_TIMES";
 const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
 const TIMEOUT_MS = 180_000;
 const ATTEMPTS = 2;
@@ -23,24 +21,14 @@ const spansText = (spans: readonly Span[]) =>
   spans.map((s) => `${seconds(s.start)}–${seconds(s.end)}`).join(", ") || "never";
 
 function stemPrompt(name: string, duration: number): string {
-  const withTimes = process.env[STEM_TIMES_ENV] === "1";
   return [
-    `This audio is ${
-      name === MELODIC_GROUP
-        ? `the "${name}" part: the piano, guitar and other stems an audio separator split out of a ${seconds(duration)} s soundtrack, mixed together`
-        : `one stem, "${name}", that an audio separator split out of a ${seconds(duration)} s soundtrack`
-    }.`,
-    "It holds only what the separator put in it.",
-    `Describe what it holds and what it does: instrument or sound, rhythm or pattern, feel, and how it changes over time${
-      withTimes
-        ? ", with the second of each change (enters, changes, stops, returns) where you can hear it; otherwise summarise without times."
-        : "."
-    }`,
-    "If it is near empty or only bleed from other parts, say so in one sentence.",
-    withTimes
-      ? "Do not list sound effects and do not list individual hits or notes."
-      : "Do not list sound effects.",
-    `Plain text, at most ${withTimes ? "four" : "three"} sentences.`,
+    `This audio is one stem, "${name}", that an audio separator split out of a ${seconds(duration)} s soundtrack.`,
+    "It holds only what the separator put in this stem.",
+    "Describe what it holds: instruments or sounds, rhythm or pattern, feel, and how it changes over time, with the second of each change (enters, changes, stops, returns) where you can hear it.",
+    "If it holds sound effects (whoosh, hit, riser, click and the like), name each kind and roughly when.",
+    "Do not list individual beats or notes.",
+    "If it is near empty or only bleed from other stems, say so in one sentence.",
+    "Plain text, at most five sentences.",
   ].join(" ");
 }
 
@@ -58,21 +46,24 @@ function overallPrompt({ duration, bpm, stems, breaks }: Measured): string {
     breaks.length ? `music breaks ${spansText(breaks)}` : null,
   ].filter(Boolean);
   return [
-    `This is a ${seconds(duration)} s soundtrack.`,
-    `Measured facts, in seconds; trust these times over your own estimates: ${facts.join("; ")}.`,
-    "Answer in two parts, plain text, each starting with its label on a new line.",
-    "OVERALL: at most four sentences: what the recording holds (voice, music, other sound), the music's style, instruments and feel, and how it is arranged over time, using the measured times. Do not list sound effects.",
-    "GENERATOR: one line describing only the music as a prompt for a music generator: style, tempo, instruments, feel and arrangement. No voice, no sound effects, no times.",
+    `An audio separator split a ${seconds(duration)} s soundtrack into stems, and a listener described each stem alone.`,
+    `Measured facts, in seconds; trust these over the descriptions' times: ${facts.join("; ")}.`,
+    "The descriptions:",
+    ...stems.map((s) => `${s.name}: ${s.description}`),
+    "",
+    "From these, answer in two parts, plain text, each starting with its label on a new line.",
+    "OVERALL: at most four sentences: what the soundtrack holds (voice, music, other sound), the music's style, instruments and feel, and how it is arranged over time, using the measured times.",
+    'BGM PROMPT: one paragraph describing only the music, as a prompt for a music generator: style, tempo, instruments, feel, and how it develops from start to end in order ("opens with…, then…, then…, ends with…"). No voice, no sound effects, no seconds or timestamps.',
   ].join("\n");
 }
 
 function parseOverall(text: string): Description | null {
-  const overall = /OVERALL:\s*([\s\S]*?)(?:\n\s*\**GENERATOR:|$)/i.exec(text)?.[1];
-  const generator = /GENERATOR:\s*([\s\S]*)$/i.exec(text)?.[1];
+  const overall = /OVERALL:\s*([\s\S]*?)(?:\n\s*\**BGM PROMPT:|$)/i.exec(text)?.[1];
+  const bgmPrompt = /BGM PROMPT:\s*([\s\S]*)$/i.exec(text)?.[1];
   const clean = (s: string | undefined) =>
     s?.replace(/\*\*/g, "").replace(/\s+/g, " ").trim() ?? "";
-  const description = { overall: clean(overall), generator: clean(generator) };
-  return description.overall && description.generator ? description : null;
+  const description = { overall: clean(overall), bgmPrompt: clean(bgmPrompt) };
+  return description.overall && description.bgmPrompt ? description : null;
 }
 
 const isMp3 = (bytes: Buffer) =>
@@ -98,17 +89,29 @@ interface Answer {
   error?: { message?: string };
 }
 
-async function generate(model: string, key: string, audio: Buffer, prompt: string) {
+const retryable = (status: number) => status === 429 || status >= 500;
+
+/** The answer's text, or why there is none. */
+async function textOf(response: Response): Promise<{ text: string } | { failure: string }> {
+  const answer = (await response.json().catch(() => ({}))) as Answer;
+  if (!response.ok)
+    return {
+      failure: `HTTP ${response.status}${answer.error?.message ? `: ${answer.error.message}` : ""}`,
+    };
+  const parts = answer.candidates?.[0]?.content?.parts ?? [];
+  const text = parts
+    .map((p) => p.text ?? "")
+    .join("")
+    .trim();
+  return text ? { text } : { failure: "an empty answer" };
+}
+
+async function generate(model: string, key: string, audio: Buffer | null, prompt: string) {
+  const sound = audio
+    ? [{ inlineData: { mimeType: "audio/mpeg", data: audio.toString("base64") } }]
+    : [];
   const body = JSON.stringify({
-    contents: [
-      {
-        role: "user",
-        parts: [
-          { inlineData: { mimeType: "audio/mpeg", data: audio.toString("base64") } },
-          { text: prompt },
-        ],
-      },
-    ],
+    contents: [{ role: "user", parts: [...sound, { text: prompt }] }],
   });
   let failure = "";
   for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
@@ -118,24 +121,18 @@ async function generate(model: string, key: string, audio: Buffer, prompt: strin
       body,
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
-    const answer = (await response.json().catch(() => ({}))) as Answer;
-    if (response.ok) {
-      const text = answer.candidates?.[0]?.content?.parts
-        ?.map((p) => p.text ?? "")
-        .join("")
-        .trim();
-      if (text) return text;
-      failure = "an empty answer";
-    } else
-      failure = `HTTP ${response.status}${answer.error?.message ? `: ${answer.error.message}` : ""}`;
-    if (!response.ok && response.status !== 429 && response.status < 500) break;
+    const result = await textOf(response);
+    if ("text" in result) return result.text;
+    failure = result.failure;
+    if (!response.ok && !retryable(response.status)) break;
   }
   throw new Error(failure);
 }
 
 interface Ask {
   label: string;
-  path: string;
+  /** The audio the model listens to; null for a question about text alone. */
+  path: string | null;
   prompt: string;
 }
 
@@ -150,8 +147,9 @@ async function answers(asks: Ask[], cacheDir: string, warnings: string[]) {
     const texts = await Promise.all(
       asks.map(async ({ label, path, prompt }) => {
         try {
-          const audio = await mp3Of(path, scratch);
-          const id = createHash("sha256").update(model).update(prompt).update(audio).digest("hex");
+          const audio = path ? await mp3Of(path, scratch) : null;
+          const hash = createHash("sha256").update(model).update(prompt);
+          const id = (audio ? hash.update(audio) : hash).digest("hex");
           const file = join(dir, `${id.slice(0, 24)}.txt`);
           if (existsSync(file)) return readFileSync(file, "utf8");
           const text = await generate(model, key, audio, prompt);
@@ -177,33 +175,42 @@ export interface Described {
   description: Description | null;
 }
 
-/** Each audible stem described alone, and the whole recording once, by Gemini. */
+/** Each stem described alone by a model listening to it, then the whole and a BGM prompt written from those descriptions. */
 export async function describeStems(
-  recording: string,
   stemPaths: Record<string, string>,
   measured: Measured,
   cacheDir: string,
   warnings: string[],
 ): Promise<Described> {
   const heard = measured.stems.filter((stem) => stem.spans.length > 0);
-  const asks: Ask[] = [
-    { label: "the recording", path: recording, prompt: overallPrompt(measured) },
-    ...heard.map((stem) => ({
+  const perStem = await answers(
+    heard.map((stem) => ({
       label: `stem ${stem.name}`,
       path: stemPaths[stem.name]!,
       prompt: stemPrompt(stem.name, measured.duration),
     })),
-  ];
-  const texts = await answers(asks, cacheDir, warnings);
-  const [overall, ...perStem] = texts;
+    cacheDir,
+    warnings,
+  );
+  const stems = measured.stems.map((stem) => ({
+    ...stem,
+    description: perStem[heard.indexOf(stem)]?.replace(/\s+/g, " ").trim() || null,
+  }));
+  const described = stems.filter((stem) => stem.description);
+  if (!described.length) return { stems, description: null };
+  const [overall] = await answers(
+    [
+      {
+        label: "the soundtrack",
+        path: null,
+        prompt: overallPrompt({ ...measured, stems: described }),
+      },
+    ],
+    cacheDir,
+    warnings,
+  );
   const description = overall ? parseOverall(overall) : null;
   if (overall && !description)
-    warnings.push("the recording not described: the answer had no OVERALL and GENERATOR parts");
-  return {
-    stems: measured.stems.map((stem) => ({
-      ...stem,
-      description: perStem[heard.indexOf(stem)]?.replace(/\s+/g, " ").trim() || null,
-    })),
-    description,
-  };
+    warnings.push("the soundtrack not described: the answer had no OVERALL and BGM PROMPT parts");
+  return { stems, description };
 }

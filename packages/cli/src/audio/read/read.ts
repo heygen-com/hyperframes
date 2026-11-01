@@ -28,14 +28,7 @@ import {
   spanDb,
 } from "./signal.js";
 import { DRUM_STEM, VOICE_STEM, cachedStems, fetchStems, stemsAccess } from "./stems.js";
-import {
-  MELODIC_GROUP,
-  READ_VERSION,
-  type AudibleStem,
-  type Music,
-  type ReadAudio,
-  type Voice,
-} from "./types.js";
+import { READ_VERSION, type AudibleStem, type Music, type ReadAudio, type Voice } from "./types.js";
 import { voiceFromActivity, voiceFromWords, type TimedWord } from "./voice.js";
 
 export interface ReadOptions {
@@ -123,7 +116,6 @@ function heardStems(tracks: Record<string, Float32Array>): AudibleStem[] {
 }
 
 const VOICE_FREE = "no-vocals.wav";
-const MELODIC_STEMS = ["piano", "guitar", "other"];
 
 /** Stems summed at full quality into one file next to them, made once. */
 async function mixedFile(paths: string[], out: string, warnings: string[]) {
@@ -161,21 +153,6 @@ const voiceFreeMix = (stemPaths: Record<string, string>, warnings: string[]) =>
     join(dirname(stemPaths[VOICE_STEM]!), VOICE_FREE),
     warnings,
   );
-
-/** Vocals, drums, bass and the melodic stems mixed into one: the groups everything is read by. */
-async function grouped(
-  stemPaths: Record<string, string>,
-  warnings: string[],
-): Promise<Record<string, string>> {
-  const melodic = await mixedFile(
-    MELODIC_STEMS.map((name) => stemPaths[name]!),
-    join(dirname(stemPaths[VOICE_STEM]!), `${MELODIC_GROUP}.wav`),
-    warnings,
-  );
-  if (!melodic) return stemPaths;
-  const rest = Object.entries(stemPaths).filter(([name]) => !MELODIC_STEMS.includes(name));
-  return { ...Object.fromEntries(rest), [MELODIC_GROUP]: melodic };
-}
 
 function tempoOf(music: Music | null): number | null {
   const longest = [...(music?.segments ?? [])]
@@ -300,13 +277,13 @@ async function fromStems(
   return { voice: read, stems, effects, music: music && onlyThe(stems, music), ambience };
 }
 
-const SHORTEST_GROUP = 2;
-const SMALLEST_GROUP_SHARE = 0.05;
+const SHORTEST_STEM = 2;
+const SMALLEST_STEM_SHARE = 0.05;
 
-/** A group heard for under two seconds, or under 5% of the recording, is left out of the reading. */
+/** A stem heard for under two seconds, or under 5% of the recording, is left out of the reading. */
 function heardLongEnough(stem: AudibleStem, duration: number): boolean {
   const heard = stem.spans.reduce((n, span) => n + span.end - span.start, 0);
-  return heard >= SHORTEST_GROUP && heard >= SMALLEST_GROUP_SHARE * duration;
+  return heard >= SHORTEST_STEM && heard >= SMALLEST_STEM_SHARE * duration;
 }
 
 function onlyThe(stems: readonly AudibleStem[], music: Music): Music {
@@ -324,9 +301,7 @@ function onlyThe(stems: readonly AudibleStem[], music: Music): Music {
 const transcribeHint = (file: string) => `run hyperframes transcribe ${file} and pass --transcript`;
 
 async function described(
-  path: string,
   stemPaths: Record<string, string>,
-  groups: Record<string, string>,
   read: ReadAudio,
   cacheDir: string,
   quality: AnalysisQuality,
@@ -346,8 +321,7 @@ async function described(
     return located;
   }
   const { stems, description } = await describeStems(
-    path,
-    groups,
+    stemPaths,
     {
       duration: read.duration,
       bpm: read.bpm,
@@ -390,10 +364,9 @@ async function analyze(
     ? voiceFromWords(words, pitch, levelOf)
     : voiceFromActivity(voiceSamples, READ_RATE, pitch, levelOf);
   if (stemPaths) {
-    const groups = await grouped(stemPaths, warnings);
-    const read = await fromStems(groups, voice, voiceSamples, mix);
+    const read = await fromStems(stemPaths, voice, voiceSamples, mix);
     const analysis = { ...about, ...read, bpm: tempoOf(read.music), warnings };
-    return described(path, stemPaths, groups, analysis, cacheDir, quality);
+    return described(stemPaths, analysis, cacheDir, quality);
   }
   warnings.push("without stems, effects under speech are not found and music is not read");
   const effects = findEffects({

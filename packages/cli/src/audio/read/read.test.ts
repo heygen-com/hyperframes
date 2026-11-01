@@ -194,7 +194,7 @@ describe.skipIf(!ffmpeg)("readAudio", () => {
     expect(stemKeys[1]).toBe(stemKeys[0]);
     expect(analysis).toMatchObject({
       separation: "stems",
-      stems: ["vocals", "melodic"].map((name) => ({
+      stems: ["vocals", "piano"].map((name) => ({
         name,
         db: expect.any(Number),
         spans: expect.any(Array),
@@ -215,11 +215,10 @@ describe.skipIf(!ffmpeg)("readAudio", () => {
     expect(analysis.music!.breaks.map((b) => Math.round(b.start))).toEqual([5]);
     expect(analysis.music!.segments.map((s) => s.entry)).toEqual(["start", "resumes"]);
     const text = readFileSync(textPath, "utf8");
-    expect(text).toMatch(/\nvocals +-\d+ dB · [\d.–, ]+\nmelodic +-\d+ dB · [\d.–, ]+\n/);
+    expect(text).toMatch(/\nvocals +-\d+ dB · [\d.–, ]+\npiano +-\d+ dB · [\d.–, ]+\n/);
     expect(text).toContain("effect   boom (drums, S1): low");
     expect(analysis.ambience).toEqual([]);
     expect(existsSync(join(cacheDir, "stems"))).toBe(true);
-    expect(existsSync(join(cacheDir, "..", "..", analysis.stemsDir!, "melodic.wav"))).toBe(true);
     await readAudio(path, "episode.wav", { cacheDir, quality: "best" });
     expect(stemCalls).toBe(2);
   });
@@ -254,7 +253,7 @@ describe.skipIf(!ffmpeg)("readAudio", () => {
     ]);
     expect(analysis.ambience![0]!.db).toBeLessThan(-45);
     const text = readFileSync(textPath, "utf8");
-    expect(text).not.toContain("melodic");
+    expect(text).not.toMatch(/\nother +-\d+ dB/);
     expect(text).toMatch(/ambience quiet, -\d+ dBFS/);
     expect(text).not.toContain("piece");
     expect(formatRead(analysis, [2, 3])).toContain("ambience quiet");
