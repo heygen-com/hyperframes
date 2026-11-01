@@ -5,7 +5,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useTimelinePlayer } from "../../player/hooks/useTimelinePlayer";
 import { NLEPreview, getPreviewPlayerKey } from "./NLEPreview";
-import { resolvePreviewStageSize } from "./previewStageSize";
+import { resolvePreviewStageSize } from "./previewStage";
 import { readPreviewComplexity } from "../../player/hooks/usePreviewFirstFrameTelemetry";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
