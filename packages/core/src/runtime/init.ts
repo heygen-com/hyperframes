@@ -158,7 +158,7 @@ import {
   forgetPositionEdit,
   installPositionEditsSeekReapply,
 } from "./positionEdits";
-import { unheldPoster, unproxiedSrc } from "./proxySrc";
+import { stillStandsIn, unheldPoster, unproxiedSrc } from "./proxySrc";
 import { applyVariableBindings, unproxiedMediaSrc } from "./applyVariableBindings";
 import { createColorGradingRuntime, type RuntimeColorGradingApi } from "./colorGrading";
 import { COLOR_GRADING_AUTHORED_OPACITY_ATTR } from "../colorGrading";
@@ -5694,6 +5694,7 @@ export function initSandboxRuntimeModular(): void {
               isInClipWindow(t, start, end) &&
               !hasDataAhead(el) &&
               isPlayableTrack(el) &&
+              !stillStandsIn(el) &&
               !webAudio.ownsElement(el),
           )
           .map(({ el }) => el);
