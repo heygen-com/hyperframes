@@ -31,6 +31,7 @@ import {
 import type { CompositionMetadata } from "../shared.js";
 import type { ProducerLogger } from "../../../logger.js";
 import { encoderFailureError } from "../encoderInterruption.js";
+import { limitDeliveryPeaks } from "../audioDeliveryLimit.js";
 import { constrainAacTruePeak } from "../audioPadTrim.js";
 
 export interface AudioStageInput {
@@ -108,6 +109,15 @@ async function runAudioStageScoped(input: AudioStageInput): Promise<AudioStageRe
     let audioLoweredDb: number | undefined;
     if (result.hasAudio) {
       const guardStart = Date.now();
+      const limited = await limitDeliveryPeaks({
+        audioPath: result.audioOutputPath,
+        sourcePath: pcmSourcePath,
+        targetDurationSeconds: duration,
+        signal: input.abortSignal,
+        timeoutMs: input.ffmpegProcessTimeout,
+        warn: (message, details) => input.log?.warn?.(message, details),
+      });
+      if (!limited.success) throw encoderFailureError("Audio true-peak limit failed", limited);
       const peak = await constrainAacTruePeak({
         audioPath: result.audioOutputPath,
         sourcePath: pcmSourcePath,
