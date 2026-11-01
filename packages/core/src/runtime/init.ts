@@ -485,7 +485,7 @@ function decodesFirst(el: HTMLMediaElement): boolean {
     isWebKit() &&
     isAudioElement(el) &&
     !el.loop &&
-    !(el.duration > DECODE_FIRST_MAX_SECONDS) &&
+    el.duration <= DECODE_FIRST_MAX_SECONDS &&
     typeof readElementRateSpec(el) === "number" &&
     readElementPlaybackRate(el) === 1
   );
@@ -6064,7 +6064,7 @@ export function initSandboxRuntimeModular(): void {
       !state.webAudioMediaDisabled &&
       webAudioReady &&
       clock.isPlaying() &&
-      webAudio.hasBoundedActiveSources()
+      (webAudio.hasBoundedActiveSources() || webAudio.hasHandedOverSources())
     ) {
       webAudio.stopAll();
       scheduleWebAudioForActiveClips();

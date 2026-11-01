@@ -5932,9 +5932,10 @@ describe("initSandboxRuntimeModular", () => {
     const startRouted = async (userAgent?: string) => {
       if (userAgent) vi.spyOn(navigator, "userAgent", "get").mockReturnValue(userAgent);
       const audio = mountAudio("/assets/track.mp3");
-      vi.spyOn(WebAudioTransport.prototype, "scheduleMediaElementPlayback").mockResolvedValue({
-        el: audio,
-      } as never);
+      Object.defineProperty(audio, "duration", { value: 10 });
+      const capture = vi
+        .spyOn(WebAudioTransport.prototype, "scheduleMediaElementPlayback")
+        .mockResolvedValue({ el: audio } as never);
       vi.spyOn(WebAudioTransport.prototype, "decodeAudioElement").mockResolvedValue(
         {} as AudioBuffer,
       );
@@ -5943,13 +5944,26 @@ describe("initSandboxRuntimeModular", () => {
         .mockResolvedValue({} as never);
       const release = vi.spyOn(WebAudioTransport.prototype, "releaseRouted");
       await startPlayback();
-      return { audio, schedule, release };
+      return { audio, schedule, release, capture };
     };
 
     it("hands the sound to a decoded buffer on the context clock once it is decoded", async () => {
       const { audio, schedule, release } = await startRouted(SAFARI);
       await vi.waitFor(() => expect(release).toHaveBeenCalledWith(audio));
       expect(schedule).toHaveBeenCalledTimes(1);
+    });
+
+    it("returns a handed-over track to its element when the speed changes, to hold its pitch", async () => {
+      const { audio, schedule, release, capture } = await startRouted(SAFARI);
+      await vi.waitFor(() => expect(release).toHaveBeenCalledWith(audio));
+      vi.spyOn(WebAudioTransport.prototype, "hasHandedOverSources").mockReturnValue(true);
+      schedule.mockClear();
+      capture.mockClear();
+
+      setRate(1.5);
+
+      await vi.waitFor(() => expect(capture).toHaveBeenCalled());
+      expect(schedule).not.toHaveBeenCalled();
     });
 
     it("leaves the element on its route elsewhere", async () => {
