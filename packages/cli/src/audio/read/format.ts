@@ -217,6 +217,9 @@ function stemBlock(stem: AudibleStem, width: number): string[] {
   return stem.description ? [head, `  ${stem.description}`] : [head];
 }
 
+const DESCRIPTIONS_NOTE =
+  "(descriptions are a model listening to each stem: what the sound is and what its effects sound like. Their times are approximate; the measured spans above and the timed lines below are exact.)";
+
 /** With stems: the whole first, then each stem with where it plays and what it holds. */
 function byStem(analysis: ReadAudio): string[] {
   const { description } = analysis;
@@ -230,7 +233,8 @@ function byStem(analysis: ReadAudio): string[] {
     ...(analysis.stems.length
       ? analysis.stems.flatMap((stem) => stemBlock(stem, width))
       : ["stems: all silent"]),
-    ...(description ? ["", `music for a generator: ${description.generator}`] : []),
+    ...(analysis.stems.some((stem) => stem.description) ? [DESCRIPTIONS_NOTE] : []),
+    ...(description ? ["", `bgm prompt: ${description.bgmPrompt}`] : []),
     "",
   ];
 }

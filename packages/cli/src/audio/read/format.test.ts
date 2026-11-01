@@ -58,7 +58,7 @@ describe("formatRead", () => {
       voiceFreeMix: ".hyperframes/read-audio/stems/abc/no-vocals.wav",
       description: {
         overall: "A voice over a ragtime bed.",
-        generator: "playful ragtime, 103 BPM",
+        bgmPrompt: "playful ragtime, 103 BPM",
       },
       stems: [
         {
@@ -91,7 +91,7 @@ describe("formatRead", () => {
       },
     };
     const text = formatRead(analysis);
-    expect(text.split("\n").slice(0, 11)).toEqual([
+    expect(text.split("\n").slice(0, 12)).toEqual([
       "talk.wav · 4.0 s · 103 BPM",
       "overall: A voice over a ragtime bed.",
       "voice-free mix: .hyperframes/read-audio/stems/abc/no-vocals.wav",
@@ -100,8 +100,9 @@ describe("formatRead", () => {
       "vocals  -18 dB · 0.75–4.5",
       "  A man speaks.",
       "guitar  -38 dB · 18.5–19.75",
+      expect.stringMatching(/^\(descriptions are a model listening to each stem/),
       "",
-      "music for a generator: playful ragtime, 103 BPM",
+      "bgm prompt: playful ragtime, 103 BPM",
       "",
     ]);
     expect(text).toContain("40 hits of the music's own drums left out");
