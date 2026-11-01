@@ -104,10 +104,10 @@ export function classifiedCuts(frames: Uint8Array[]): Cut[] {
       frames[a] && frames[b] ? meanAbsDiff(frames[a]!, frames[b]!) < RETURNED * c.change : false;
     if (c.frames > MAX_CUT_FRAMES) {
       const before = frames[c.frame - 1]!;
-      // A whip keeps its tones the whole way; a wipe or a transition to another shot does not.
-      const sameShot =
-        isHeld(neighbours(diffs, c.frame, end)) ||
-        frames.slice(c.frame, end + 1).every((f) => sharedTones(before, f) >= SAME_TONES);
+      const whipKeepsTones = frames
+        .slice(c.frame, end + 1)
+        .every((f) => sharedTones(before, f) >= SAME_TONES);
+      const sameShot = isHeld(neighbours(diffs, c.frame, end)) || whipKeepsTones;
       return sameShot ? { ...c, kind: "fast" as const } : c;
     }
     const returns = Array.from({ length: FLASH_FRAMES }, (_, k) => k + 1).some(
