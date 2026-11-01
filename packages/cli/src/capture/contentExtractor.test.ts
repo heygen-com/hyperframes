@@ -524,7 +524,7 @@ describe("captionImagesWithGemini — Vertex AI provider", () => {
     expect(clientOptions[0]).toMatchObject({
       vertexai: true,
       project: "prefab-kit-000000",
-      location: "us-central1",
+      location: "global",
       googleAuthOptions: { credentials: JSON.parse(SERVICE_ACCOUNT) },
     });
     expect(clientOptions[0]).not.toHaveProperty("apiKey");
@@ -579,7 +579,7 @@ describe("captionImagesWithGemini — Vertex AI provider", () => {
     expect(generateContentMock).toHaveBeenCalledTimes(1);
     expect(thinkingConfig).toEqual({ thinkingBudget: 0 });
     // The API's flash-lite preview id is not resolvable on Vertex, so the default differs.
-    expect(model).toBe("gemini-2.5-flash");
+    expect(model).toBe("gemini-3.1-flash-lite");
   });
 
   it("skips captioning when the service account is unparseable, without echoing it", async () => {
