@@ -26,22 +26,18 @@ export class CopyLockStalledError extends Error {
   }
 }
 
-/** The newest change among the lock and the owner's temp and piece files: how recently the owner did anything. */
 function lastActivityMs(cachePath: string, lockPath: string): number {
   const name = basename(cachePath);
   const stem = basename(cachePath, extname(cachePath));
   const mine = (file: string) =>
     file === basename(lockPath) ||
-    (file.startsWith(".tmp-") && file.endsWith(`-${name}`)) ||
+    (file.startsWith(".tmp-") && (file.endsWith(`-${name}`) || file.includes(`-.part-${stem}-`))) ||
     file.startsWith(`.part-${stem}-`);
   let newest = 0;
   for (const file of readdirSync(dirname(cachePath))) {
     if (!mine(file)) continue;
-    try {
-      newest = Math.max(newest, statSync(join(dirname(cachePath), file)).mtimeMs);
-    } catch {
-      // gone between the listing and the stat
-    }
+    const changed = statSync(join(dirname(cachePath), file), { throwIfNoEntry: false })?.mtimeMs;
+    newest = Math.max(newest, changed ?? 0);
   }
   return newest;
 }
@@ -77,8 +73,7 @@ function pause(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
-/** The right to make the copy at `cachePath`; null once another process finished it. Takes over a dead owner's lock,
- * and gives up on a live one that has changed nothing for `stallMs` (a hung or recycled-pid owner). */
+/** The right to make the copy at `cachePath`; null once another process finished it; throws on a stalled live owner. */
 export async function acquireCopyLock(
   cachePath: string,
   signal: AbortSignal,

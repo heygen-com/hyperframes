@@ -27,6 +27,17 @@ const within = <T>(work: Promise<T>, ms: number) =>
   ]);
 
 describe("acquireCopyLock", () => {
+  it("keeps waiting while the owner writes a piece of a long source", async () => {
+    const cachePath = staleLock("c.mp4");
+    writeFileSync(join(dir, ".tmp-1234-.part-c-0.mp4"), "x");
+    const abort = new AbortController();
+
+    const waiting = acquireCopyLock(cachePath, abort.signal, 60_000);
+    setTimeout(() => abort.abort(new Error("stopped")), 400);
+
+    await expect(within(waiting, 3_000)).rejects.toThrow("stopped");
+  });
+
   it("gives up on a live owner that has made no progress for the stall window, naming the copy", async () => {
     const cachePath = staleLock("a.mp4");
 
