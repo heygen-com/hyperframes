@@ -779,6 +779,12 @@ The declaration may use a quoted or unquoted family name. If `font-family` is th
 
 **Fix:** Bundle the font with `@font-face` and a project-local file instead of relying on OS fonts.
 
+### `system_font_inter_in_cloud`
+
+**Warning.** A `font-family` starts with a system font (`system-ui`, `-apple-system`, `sans-serif` and the like). A local render uses this computer's font, as the preview does; a cloud render has no system fonts, so it puts Inter first and the text renders in Inter, with different widths.
+
+**Fix:** Put a named font first (Inter, or a family with an `@font-face`) so local and cloud renders match.
+
 ## Textures
 
 Source: `packages/lint/src/rules/textures.ts`.
