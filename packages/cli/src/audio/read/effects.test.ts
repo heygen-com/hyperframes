@@ -192,4 +192,40 @@ describe("findEffects", () => {
     expect(Math.abs(event!.overMusicDb! - (event!.peakDb - bedDb))).toBeLessThanOrEqual(1);
     expect(event!.riseDb).toBe(event!.overMusicDb);
   });
+
+  it("leaves a sound that recurs in the drums while music plays to the music, and keeps rare or standout ones there and everything outside it", () => {
+    const kick =
+      (at: number, gain = 0.3) =>
+      (t: number) =>
+        t < at ? 0 : gain * Math.exp(-(t - at) / 0.08) * Math.sin(2 * Math.PI * 60 * (t - at));
+    const hits = Array.from({ length: 12 }, (_, i) => 0.5 + i * 0.5);
+    const drums = track(10, ...hits.map((at) => kick(at)), click(3.25), kick(8.5));
+    const { events, drumHits } = findEffects({
+      sources: [{ samples: drums, stem: "drums", playsIn: [{ start: 0, end: 7 }] }],
+      sampleRate: READ_RATE,
+      mix: drums,
+      music: null,
+      beats: [],
+      speech: [],
+    });
+    expect(events.map((e) => [Math.round(e.t * 10) / 10, e.stem])).toEqual([
+      [3.3, "drums"],
+      [8.5, "drums"],
+    ]);
+    expect(drumHits).toBe(12);
+  });
+
+  it("names the stem of a mixed track a sound came from", () => {
+    const piano = track(4, () => 0);
+    const other = track(4, boom(2));
+    const [event] = findEffects({
+      sources: [{ samples: other, parts: { piano, other } }],
+      sampleRate: READ_RATE,
+      mix: other,
+      music: null,
+      beats: [],
+      speech: [],
+    }).events;
+    expect(event!.stem).toBe("other");
+  });
 });

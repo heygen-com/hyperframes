@@ -7,12 +7,15 @@ import {
   renameSync,
   writeFileSync,
 } from "node:fs";
-import { basename, extname, join } from "node:path";
+import { basename, dirname, extname, join, relative } from "node:path";
+import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { loudness, type AnalysisQuality, type Span } from "@hyperframes/core/audio-analysis";
 import { loadTranscript } from "../../whisper/normalize.js";
-import { findEffects } from "./effects.js";
+import { runFile } from "../analysis/providers/shared.js";
+import { describeStems, geminiKey } from "./describe.js";
+import { findEffects, type EffectSource } from "./effects.js";
 import { formatRead } from "./format.js";
-import { readMusic } from "./music.js";
+import { activeSpans, readMusic } from "./music.js";
 import { pitchTrack } from "./pitch.js";
 import {
   PITCH_RATE,
@@ -25,7 +28,7 @@ import {
   spanDb,
 } from "./signal.js";
 import { DRUM_STEM, VOICE_STEM, cachedStems, fetchStems, stemsAccess } from "./stems.js";
-import { READ_VERSION, type ReadAudio, type AudibleStem, type Voice } from "./types.js";
+import { READ_VERSION, type AudibleStem, type Music, type ReadAudio, type Voice } from "./types.js";
 import { voiceFromActivity, voiceFromWords, type TimedWord } from "./voice.js";
 
 export interface ReadOptions {
@@ -103,9 +106,51 @@ async function stemsFor(
 
 function heardStems(tracks: Record<string, Float32Array>): AudibleStem[] {
   return Object.entries(tracks)
-    .map(([name, samples]) => ({ name, db: levelWhileHeardDb(samples, READ_RATE) }))
-    .filter((stem): stem is AudibleStem => stem.db !== null)
+    .flatMap(([name, samples]) => {
+      const db = levelWhileHeardDb(samples, READ_RATE);
+      return db === null
+        ? []
+        : [{ name, db, spans: activeSpans(samples, READ_RATE), description: null }];
+    })
     .sort((a, b) => b.db - a.db || a.name.localeCompare(b.name));
+}
+
+const VOICE_FREE = "no-vocals.wav";
+
+/** Every stem but the voice, mixed at full quality next to the stems. */
+async function voiceFreeMix(stemPaths: Record<string, string>, warnings: string[]) {
+  const others = Object.entries(stemPaths).filter(([name]) => name !== VOICE_STEM);
+  const out = join(dirname(others[0]![1]), VOICE_FREE);
+  if (existsSync(out)) return out;
+  const ffmpeg = findFfBinary("ffmpeg", { configuredMustExist: true });
+  if (!ffmpeg) {
+    warnings.push(`no ${VOICE_FREE}: ffmpeg is required; run: npx hyperframes doctor`);
+    return null;
+  }
+  const temporary = `${out}.${process.pid}.tmp.wav`;
+  try {
+    await runFile(
+      ffmpeg,
+      [
+        ...["-v", "error", "-y"],
+        ...others.flatMap(([, path]) => ["-i", path]),
+        ...["-filter_complex", `amix=inputs=${others.length}:normalize=0`, temporary],
+      ],
+      { windowsHide: true, maxBuffer: 8 * 1024 * 1024 },
+    );
+    renameSync(temporary, out);
+    return out;
+  } catch (error) {
+    warnings.push(`no ${VOICE_FREE}: ${error instanceof Error ? error.message : error}`);
+    return null;
+  }
+}
+
+function tempoOf(music: Music | null): number | null {
+  const longest = [...(music?.segments ?? [])]
+    .filter((m) => m.bpm !== null)
+    .sort((a, b) => b.end - b.start - (a.end - a.start))[0];
+  return longest?.bpm ?? null;
 }
 
 async function decodedStems(stemPaths: Record<string, string>) {
@@ -181,6 +226,21 @@ function againstMusic(
   return { ...voice, sentences };
 }
 
+function effectSources(
+  pitched: Record<string, Float32Array>,
+  drums: Float32Array | null,
+  bed: Float32Array | null,
+  music: Music | null,
+  ambience: Span[] | null,
+): EffectSource[] {
+  const segments = music?.segments ?? [];
+  const playing = [...segments, ...(music?.breaks ?? [])];
+  return [
+    ...(drums ? [{ samples: drums, stem: DRUM_STEM, playsIn: playing }] : []),
+    ...(bed ? [{ samples: bed, heldBy: [...segments, ...(ambience ?? [])], parts: pitched }] : []),
+  ];
+}
+
 /** Effects from the drums and from the bed where it plays neither music nor ambience, each level from the whole recording. */
 async function fromStems(
   stemPaths: Record<string, string>,
@@ -194,10 +254,7 @@ async function fromStems(
   const segments = music?.segments ?? [];
   const everythingElse = mixed(present([bed, drums]));
   const effects = findEffects({
-    sources: [
-      ...(drums ? [{ samples: drums }] : []),
-      ...(bed ? [{ samples: bed, heldBy: [...segments, ...(ambience ?? [])] }] : []),
-    ],
+    sources: effectSources(pitched, drums, bed, music, ambience),
     sampleRate: READ_RATE,
     mix,
     music: bed && everythingElse,
@@ -212,6 +269,42 @@ async function fromStems(
 
 const transcribeHint = (file: string) => `run hyperframes transcribe ${file} and pass --transcript`;
 
+async function described(
+  path: string,
+  stemPaths: Record<string, string>,
+  read: ReadAudio,
+  cacheDir: string,
+  quality: AnalysisQuality,
+): Promise<ReadAudio> {
+  const warnings = [...read.warnings];
+  const project = dirname(dirname(cacheDir));
+  const mix = await voiceFreeMix(stemPaths, warnings);
+  const located = {
+    ...read,
+    stemsDir: `${relative(project, dirname(stemPaths[VOICE_STEM]!))}/`,
+    voiceFreeMix: mix && relative(project, mix),
+    warnings,
+  };
+  if (quality === "fast") return located;
+  if (!geminiKey()) {
+    warnings.push("stems not described: set GEMINI_API_KEY or GOOGLE_API_KEY");
+    return located;
+  }
+  const { stems, description } = await describeStems(
+    path,
+    stemPaths,
+    {
+      duration: read.duration,
+      bpm: read.bpm,
+      stems: read.stems,
+      breaks: read.music?.breaks ?? [],
+    },
+    cacheDir,
+    warnings,
+  );
+  return { ...located, stems, description };
+}
+
 async function analyze(
   path: string,
   file: string,
@@ -219,6 +312,7 @@ async function analyze(
   transcript: string | null,
   stemDir: string,
   quality: AnalysisQuality,
+  cacheDir: string,
 ): Promise<ReadAudio> {
   const warnings: string[] = [];
   const stemPaths = await stemsFor(path, stemDir, quality, warnings);
@@ -240,8 +334,11 @@ async function analyze(
   const voice = words.length
     ? voiceFromWords(words, pitch, levelOf)
     : voiceFromActivity(voiceSamples, READ_RATE, pitch, levelOf);
-  if (stemPaths)
-    return { ...about, ...(await fromStems(stemPaths, voice, voiceSamples, mix)), warnings };
+  if (stemPaths) {
+    const read = await fromStems(stemPaths, voice, voiceSamples, mix);
+    const analysis = { ...about, ...read, bpm: tempoOf(read.music), warnings };
+    return described(path, stemPaths, analysis, cacheDir, quality);
+  }
   warnings.push("without stems, effects under speech are not found and music is not read");
   const effects = findEffects({
     sources: [{ samples: voiceSamples }],
@@ -268,6 +365,10 @@ function base(
     duration,
     separation: stemPaths ? "stems" : "mix",
     stems: [],
+    stemsDir: null,
+    voiceFreeMix: null,
+    bpm: null,
+    description: null,
     transcript: transcript ? basename(transcript) : null,
   };
 }
@@ -297,11 +398,17 @@ export async function readAudio(
       (entry.analysis.separation !== "stems" || cachedStems(stemDir) !== null) &&
       entry.analysis.version === READ_VERSION &&
       entry.transcriptKey === transcriptKey &&
-      !stemsNowPossible
+      !stemsNowPossible &&
+      !(
+        entry.analysis.separation === "stems" &&
+        !entry.analysis.description &&
+        quality !== "fast" &&
+        geminiKey()
+      )
     )
       return { analysis: entry.analysis, textPath, jsonPath, cached: true };
   }
-  const analysis = await analyze(path, file, sha, transcript, stemDir, quality);
+  const analysis = await analyze(path, file, sha, transcript, stemDir, quality, options.cacheDir);
   writeAtomic(jsonPath, JSON.stringify({ analysis, transcriptKey } satisfies CacheEntry));
   writeAtomic(textPath, formatRead(analysis));
   return { analysis, textPath, jsonPath, cached: false };

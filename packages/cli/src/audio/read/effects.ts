@@ -26,6 +26,11 @@ const GAP = 0.03;
 const SHORTEST_REFERENCE = 0.2;
 const SAME_ONSET = 0.03;
 const SPEECH_SLACK = 0.1;
+const LIKE_SOUND = 0.9;
+const RECURS = 3;
+const STANDOUT_WINDOW = 4;
+const STANDOUT_DB = 6;
+const ENTRANCE_SLACK = 0.1;
 
 interface Found {
   t: number;
@@ -223,10 +228,7 @@ function cosine(a: Float64Array, b: Float64Array): number {
   return na && nb ? dot / Math.sqrt(na * nb) : 0;
 }
 
-interface Measured extends Found {
-  kind: EffectKind;
-  band: Band;
-  print: Float64Array;
+interface Measured extends Shaped {
   group: number;
 }
 
@@ -284,6 +286,11 @@ export interface EffectSource {
   samples: Float32Array;
   /** Where this track plays music or ambience: a sound that starts or peaks inside one belongs to it, not an effect. */
   heldBy?: readonly Span[];
+  /** While music plays here, a sound that keeps recurring in this track is the music's own, unless it stands out. */
+  playsIn?: readonly Span[];
+  stem?: string;
+  /** The stems mixed into this track, to name the one a sound came from. */
+  parts?: Record<string, Float32Array>;
 }
 
 export interface EffectInput {
@@ -310,10 +317,19 @@ interface Shaped extends Found {
   kind: EffectKind;
   band: Band;
   print: Float64Array;
+  stem: string | null;
+  inMusic: boolean;
+}
+
+function loudestPart(parts: Record<string, Float32Array>, sampleRate: number, f: Found): string {
+  const end = Math.max(f.t + 0.05, Math.min(f.end, f.t + 0.4));
+  return Object.entries(parts)
+    .map(([name, samples]) => [name, spanDb(samples, sampleRate, f.t, end)] as const)
+    .sort((a, b) => b[1] - a[1])[0]![0];
 }
 
 function foundIn(
-  { samples: source, heldBy = [] }: EffectSource,
+  { samples: source, heldBy = [], playsIn = [], stem, parts }: EffectSource,
   input: EffectInput,
   mixDb: Float32Array,
 ): Shaped[] {
@@ -328,7 +344,13 @@ function foundIn(
   const bands = found.length ? bandFramesOf(asSignal(source, input.sampleRate)).bands : [];
   return found.map((f) => {
     const power = shape(bands, f.t, Math.min(f.end, f.t + 0.4));
-    return { ...f, ...kindOf(f, power), print: printOf(power) };
+    return {
+      ...f,
+      ...kindOf(f, power),
+      print: printOf(power),
+      stem: parts ? loudestPart(parts, input.sampleRate, f) : (stem ?? null),
+      inMusic: playsIn.some((span) => f.t >= span.start - ENTRANCE_SLACK && f.t < span.end),
+    };
   });
 }
 
@@ -390,6 +412,27 @@ function drumGroups(members: Map<number, Measured[]>, beats: readonly number[]):
   return drums;
 }
 
+function alikeSounds(a: Measured, b: Measured): boolean {
+  const ratio = (a.end - a.t) / Math.max(1e-3, b.end - b.t);
+  return ratio >= 0.5 && ratio <= 2 && cosine(a.print, b.print) >= LIKE_SOUND;
+}
+
+/** Sounds in a track while its music plays that recur there, and do not stand out over the hits around them: the music's own. */
+function musicHits(sounds: readonly Measured[]): Set<Measured> {
+  const playing = sounds.filter((m) => m.inMusic);
+  const own = new Set<Measured>();
+  for (const m of playing) {
+    const same = playing.filter((o) => o.stem === m.stem);
+    const recurs = same.filter((o) => alikeSounds(m, o)).length >= RECURS;
+    const around = same
+      .filter((o) => o !== m && Math.abs(o.t - m.t) <= STANDOUT_WINDOW)
+      .map((o) => o.peakDb);
+    const standsOut = around.length > 0 && m.peakDb >= quantile(around, 0.9) + STANDOUT_DB;
+    if (recurs && !standsOut) own.add(m);
+  }
+  return own;
+}
+
 function effectOf(m: Measured, group: string, kind: EffectKind, levels: Levels): Effect {
   return {
     t: round(m.t),
@@ -401,12 +444,15 @@ function effectOf(m: Measured, group: string, kind: EffectKind, levels: Levels):
     tail: round(m.end - m.peak),
     ...levels,
     count: 1,
+    stem: m.stem,
   };
 }
 
 export function findEffects(input: EffectInput): Effects {
   const mixDb = levels(input.mix, input.sampleRate, HOP);
-  const sounds = measured(input, mixDb);
+  const all = measured(input, mixDb);
+  const own = musicHits(all);
+  const sounds = all.filter((m) => !own.has(m));
   const members = new Map<number, Measured[]>();
   for (const m of sounds) members.set(m.group, [...(members.get(m.group) ?? []), m]);
   const drums = drumGroups(members, input.beats);
@@ -431,6 +477,6 @@ export function findEffects(input: EffectInput): Effects {
     } else
       events.push(effectOf(m, group, kindOfGroup.get(group) ?? m.kind, levelsOf(input, mixDb, m)));
   }
-  const drumHits = [...drums].reduce((n, id) => n + members.get(id)!.length, 0);
+  const drumHits = [...drums].reduce((n, id) => n + members.get(id)!.length, own.size);
   return { events, groups, drumHits };
 }
