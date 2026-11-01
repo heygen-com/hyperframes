@@ -1208,7 +1208,7 @@ cover every finding from the full check.
 | `--max-issues`                               | Findings to print or return after static collapse (default 80)                                                              |
 | `--collapse-static` / `--no-collapse-static` | Fold a repeated static finding into one row (default: on)                                                                    |
 | `--tolerance`                                | Allowed overflow in px before reporting (default 2)                                                                         |
-| `--timeout`                                  | Render-ready budget in ms; also raises page navigation above its 10s floor (default 3000)                                   |
+| `--timeout`                                  | Render-ready budget in ms; also raises page navigation above its 10s floor (default 45000, as snapshot and render)                                   |
 | `--no-contrast`                              | Skip the WCAG pass while iterating                                                                                         |
 | `--strict`                                   | Exit non-zero on warnings too (default: errors only)                                                                        |
 | `--caption-zone "<x0=..;y0=..;x1=..;y1=..>"` | Opt-in band gate. Flags a text element's DOM box that overlaps the fractional band. Optional `severity` and `seek`.         |
