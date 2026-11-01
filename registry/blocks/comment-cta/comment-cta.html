@@ -1,0 +1,471 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        background: transparent;
+        overflow: hidden;
+      }
+      body {
+        width: 1080px;
+        height: 1920px;
+      }
+      #cc-root {
+        --cc-accent: #0a84ff;
+        --cc-surface: #ffffff;
+        --cc-ink: #111111;
+        --cc-ink-dim: rgba(17, 17, 17, 0.45);
+
+        position: relative;
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        background: transparent;
+        font-family:
+          "Inter",
+          -apple-system,
+          sans-serif;
+      }
+      /* 9:16 safe zone: clear of the top bar (270px), the caption and audio
+         label (bottom 420px) and the like/comment/share column (right ~160px). */
+      #cc-zone {
+        position: absolute;
+        top: 270px;
+        bottom: 420px;
+        left: 160px;
+        width: 760px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-end;
+      }
+      #cc-zone.cc-center {
+        justify-content: center;
+      }
+      #cc-zone.cc-upper {
+        justify-content: flex-start;
+      }
+      #cc-stack {
+        width: 760px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+      #cc-prompt {
+        font-size: 68px;
+        font-weight: 700;
+        line-height: 1.1;
+        color: #ffffff;
+        text-shadow: 0 4px 24px rgba(0, 0, 0, 0.55);
+        text-align: center;
+      }
+      #cc-keyword-row {
+        margin-top: 18px;
+        display: flex;
+        align-items: center;
+        gap: 22px;
+      }
+      #cc-keyword {
+        padding: 10px 44px 14px;
+        border-radius: 28px;
+        background: var(--cc-accent);
+        color: #ffffff;
+        font-weight: 800;
+        line-height: 1.1;
+        letter-spacing: 0.02em;
+        white-space: nowrap;
+        box-shadow: 0 10px 36px rgba(0, 0, 0, 0.35);
+      }
+      #cc-arrow {
+        width: 72px;
+        height: 72px;
+        flex: none;
+        filter: drop-shadow(0 4px 14px rgba(0, 0, 0, 0.5));
+      }
+      #cc-promise {
+        margin-top: 22px;
+        max-width: 760px;
+        font-size: 42px;
+        font-weight: 600;
+        line-height: 1.25;
+        color: #ffffff;
+        text-shadow: 0 3px 18px rgba(0, 0, 0, 0.55);
+        text-align: center;
+      }
+      #cc-posted {
+        margin-top: 48px;
+        width: 760px;
+        display: flex;
+        align-items: center;
+        gap: 22px;
+        padding: 22px 30px 22px 22px;
+        border-radius: 40px;
+        background: var(--cc-surface);
+        box-shadow: 0 10px 36px rgba(0, 0, 0, 0.3);
+      }
+      .cc-avatar {
+        flex: none;
+        width: 68px;
+        height: 68px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #8e9aaf, #5c677d);
+      }
+      #cc-posted-body {
+        flex: 1;
+        min-width: 0;
+      }
+      #cc-commenter {
+        font-size: 28px;
+        font-weight: 700;
+        color: var(--cc-ink);
+      }
+      #cc-posted-text {
+        margin-top: 2px;
+        font-size: 40px;
+        font-weight: 600;
+        color: var(--cc-ink);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      #cc-composer {
+        margin-top: 20px;
+        width: 760px;
+        height: 116px;
+        display: flex;
+        align-items: center;
+        gap: 22px;
+        padding: 0 34px 0 22px;
+        border-radius: 58px;
+        background: var(--cc-surface);
+        box-shadow: 0 10px 36px rgba(0, 0, 0, 0.3);
+      }
+      #cc-field {
+        position: relative;
+        flex: 1;
+        min-width: 0;
+        height: 56px;
+      }
+      #cc-placeholder,
+      #cc-typed {
+        position: absolute;
+        left: 0;
+        top: 0;
+        right: 0;
+        font-size: 38px;
+        line-height: 56px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      #cc-placeholder {
+        font-size: 31px;
+        color: var(--cc-ink-dim);
+        font-weight: 500;
+      }
+      #cc-typed {
+        color: var(--cc-ink);
+        font-weight: 600;
+      }
+      #cc-typed .ch {
+        opacity: 0;
+      }
+      #cc-caret {
+        position: absolute;
+        left: 0;
+        top: 8px;
+        width: 4px;
+        height: 40px;
+        border-radius: 2px;
+        background: var(--cc-accent);
+        opacity: 0;
+      }
+      #cc-post {
+        flex: none;
+        font-size: 36px;
+        font-weight: 700;
+        color: var(--cc-accent);
+      }
+      /* The incoming direct message sits at the top of the safe zone, or at the bottom
+         when the stack itself is placed at the top. */
+      #cc-dm {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 760px;
+        display: flex;
+        align-items: center;
+        gap: 24px;
+        padding: 24px 30px 24px 24px;
+        border-radius: 40px;
+        background: var(--cc-surface);
+        box-shadow: 0 14px 40px rgba(0, 0, 0, 0.35);
+      }
+      #cc-zone.cc-upper #cc-dm {
+        top: auto;
+        bottom: 0;
+      }
+      #cc-dm-icon {
+        flex: none;
+        width: 76px;
+        height: 76px;
+        border-radius: 50%;
+        background: var(--cc-accent);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      #cc-plane {
+        width: 44px;
+        height: 44px;
+      }
+      #cc-dm-body {
+        flex: 1;
+        min-width: 0;
+      }
+      #cc-dm-from {
+        font-size: 28px;
+        font-weight: 700;
+        color: var(--cc-ink);
+      }
+      #cc-dm-text {
+        margin-top: 2px;
+        font-size: 36px;
+        font-weight: 600;
+        color: var(--cc-ink);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="cc-root"
+      data-composition-id="comment-cta"
+      data-composition-variables='[
+        { "id": "keyword", "type": "string", "role": "content", "label": "Keyword", "description": "The word viewers are asked to comment. One short word in capitals reads best; the pill shrinks to fit up to about 12 characters.", "default": "GUIDE" },
+        { "id": "prompt", "type": "string", "role": "content", "label": "Prompt", "description": "Words above the keyword.", "default": "Comment" },
+        { "id": "promise", "type": "string", "role": "content", "label": "Promise", "description": "What commenters get, under the keyword. Leave empty to hide the line.", "default": "and I will send you the free guide" },
+        { "id": "handle", "type": "string", "role": "content", "label": "Creator handle", "description": "Account named in the comment box placeholder and as the sender of the direct message.", "default": "@yourhandle" },
+        { "id": "commenter", "type": "string", "role": "content", "label": "Commenter", "description": "Username on the posted comment.", "default": "you" },
+        { "id": "message", "type": "string", "role": "content", "label": "Direct message", "description": "The message that arrives after the comment is posted, delivering the promise. Leave empty to end on the posted comment.", "default": "Here is your free guide" },
+        { "id": "accent", "type": "color", "role": "style", "label": "Accent", "description": "Keyword pill, caret, Post label and message icon.", "default": "#0a84ff" },
+        { "id": "surface", "type": "color", "role": "style", "label": "Card color", "description": "Background of the comment box, the posted comment and the message.", "default": "#ffffff" },
+        { "id": "ink", "type": "color", "role": "style", "label": "Text color", "description": "Text inside the comment box, the posted comment and the message.", "default": "#111111" },
+        { "id": "placement", "type": "enum", "role": "style", "label": "Placement", "description": "Where the stack sits inside the 9:16 safe zone.", "default": "lower", "options": [ { "value": "lower", "label": "Lower" }, { "value": "center", "label": "Center" }, { "value": "upper", "label": "Upper" } ] }
+      ]'
+      data-start="0"
+      data-duration="7"
+      data-width="1080"
+      data-height="1920"
+    >
+      <div
+        id="cc-drv"
+        class="clip"
+        data-start="0"
+        data-duration="7"
+        data-track-index="0"
+        style="position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none"
+      ></div>
+
+      <div id="cc-zone">
+        <div id="cc-dm">
+          <div id="cc-dm-icon">
+            <svg id="cc-plane" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path
+                d="M21 3 3 10.5l7.2 2.8L13 21 21 3zM10.2 13.3 15 8.5"
+                stroke="#ffffff"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </div>
+          <div id="cc-dm-body">
+            <div id="cc-dm-from"></div>
+            <div id="cc-dm-text"></div>
+          </div>
+        </div>
+        <div id="cc-stack">
+          <div id="cc-prompt"></div>
+          <div id="cc-keyword-row">
+            <div id="cc-keyword"></div>
+            <svg id="cc-arrow" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path
+                d="M12 4v15M5.5 12.5 12 19l6.5-6.5"
+                stroke="#ffffff"
+                stroke-width="3"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </div>
+          <div id="cc-promise"></div>
+
+          <div id="cc-posted">
+            <div class="cc-avatar"></div>
+            <div id="cc-posted-body">
+              <div id="cc-commenter"></div>
+              <div id="cc-posted-text"></div>
+            </div>
+          </div>
+
+          <div id="cc-composer">
+            <div class="cc-avatar"></div>
+            <div id="cc-field">
+              <div id="cc-placeholder"></div>
+              <div id="cc-typed"></div>
+              <div id="cc-caret"></div>
+            </div>
+            <div id="cc-post">Post</div>
+          </div>
+        </div>
+      </div>
+
+      <script>
+        (function () {
+          window.__timelines = window.__timelines || {};
+
+          var vars =
+            window.__hyperframes && window.__hyperframes.getVariables
+              ? window.__hyperframes.getVariables()
+              : {};
+          function text(id, fallback) {
+            return typeof vars[id] === "string" ? vars[id].trim() : fallback;
+          }
+
+          var keyword = text("keyword", "GUIDE") || "GUIDE";
+          var handle = text("handle", "@yourhandle");
+          var promise = text("promise", "and I will send you the free guide");
+          var message = text("message", "Here is your free guide");
+          var placement = text("placement", "lower");
+
+          var root = document.getElementById("cc-root");
+          ["accent", "surface", "ink"].forEach(function (id) {
+            if (typeof vars[id] === "string" && vars[id]) {
+              root.style.setProperty("--cc-" + id, vars[id]);
+            }
+          });
+          if (placement === "center" || placement === "upper") {
+            document.getElementById("cc-zone").classList.add("cc-" + placement);
+          }
+
+          document.getElementById("cc-prompt").textContent = text("prompt", "Comment");
+          var pill = document.getElementById("cc-keyword");
+          pill.textContent = keyword;
+          var chars = Array.from(keyword);
+          // Sized from the character count rather than measured, so the pill and arrow stay
+          // inside the 760px column even when a wider fallback font replaces Inter.
+          pill.style.fontSize = Math.max(56, Math.min(132, Math.floor(780 / chars.length))) + "px";
+
+          var promiseEl = document.getElementById("cc-promise");
+          promiseEl.textContent = promise;
+          if (!promise) promiseEl.style.display = "none";
+
+          document.getElementById("cc-placeholder").textContent =
+            "Add a comment" + (handle ? " for " + handle : "") + "…";
+          document.getElementById("cc-commenter").textContent = text("commenter", "you");
+          document.getElementById("cc-posted-text").textContent = keyword;
+          var typed = document.getElementById("cc-typed");
+          chars.forEach(function (ch) {
+            var span = document.createElement("span");
+            span.className = "ch";
+            span.textContent = ch;
+            typed.appendChild(span);
+          });
+          var typedChars = typed.querySelectorAll(".ch");
+
+          var dm = document.getElementById("cc-dm");
+          document.getElementById("cc-dm-from").textContent = handle || "New message";
+          document.getElementById("cc-dm-text").textContent = message;
+          if (!message) dm.style.display = "none";
+
+          var DUR = parseFloat(document.getElementById("cc-drv").dataset.duration) || 7;
+          var OUT = Math.min(0.5, Math.max(0.25, DUR * 0.06));
+
+          var prompt = "#cc-prompt",
+            row = "#cc-keyword-row",
+            arrow = "#cc-arrow",
+            composer = "#cc-composer",
+            posted = "#cc-posted";
+
+          gsap.set([prompt, row, "#cc-promise", composer, posted], { opacity: 0, y: 30 });
+          gsap.set("#cc-post", { opacity: 0.35 });
+          // The message drops in from above, or rises from below when the stack is on top.
+          var dmFrom = placement === "upper" ? 40 : -40;
+          gsap.set(dm, { opacity: 0, y: dmFrom });
+          gsap.set("#cc-plane", { opacity: 0, x: -22, y: 22 });
+
+          var tl = gsap.timeline({ paused: true });
+
+          // Headline: prompt, then the keyword pill pops, then the arrow nudges down.
+          tl.to(prompt, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" }, 0.15);
+          tl.to(row, { opacity: 1, y: 0, duration: 0.5, ease: "back.out(1.7)" }, 0.3);
+          tl.to(arrow, { y: 10, duration: 0.3, ease: "sine.inOut", yoyo: true, repeat: 3 }, 0.8);
+          if (promise) {
+            tl.to("#cc-promise", { opacity: 1, y: 0, duration: 0.45, ease: "power2.out" }, 0.5);
+          }
+
+          // Comment box rises, the caret blinks, then the keyword types in.
+          tl.to(composer, { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" }, 0.65);
+          tl.to(
+            "#cc-caret",
+            { opacity: 1, duration: 0.01, yoyo: true, repeat: 3, repeatDelay: 0.22 },
+            1.0,
+          );
+          var t = 1.85;
+          var delay = Math.min(0.09, 0.9 / chars.length);
+          tl.to("#cc-placeholder", { opacity: 0, duration: 0.08, ease: "none" }, t);
+          tl.to("#cc-post", { opacity: 1, duration: 0.15, ease: "none" }, t);
+          tl.to(typedChars, { opacity: 1, duration: 0.01, stagger: delay, ease: "none" }, t);
+          t += chars.length * delay + 0.3;
+
+          // Post: the button presses, the box clears and the comment lands above it.
+          tl.to("#cc-post", { scale: 0.88, duration: 0.1, ease: "power2.out" }, t);
+          tl.to("#cc-post", { scale: 1, duration: 0.35, ease: "elastic.out(1, 0.45)" }, t + 0.1);
+          tl.to(typed, { opacity: 0, duration: 0.15, ease: "none" }, t + 0.12);
+          tl.to("#cc-placeholder", { opacity: 1, duration: 0.2, ease: "none" }, t + 0.3);
+          tl.to("#cc-post", { opacity: 0.35, duration: 0.2, ease: "none" }, t + 0.3);
+          tl.to(posted, { opacity: 1, y: 0, duration: 0.45, ease: "back.out(1.5)" }, t + 0.15);
+
+          // The promise is kept: a direct message from the creator arrives and the plane lands.
+          if (message) {
+            var td = t + 1.0;
+            tl.to(dm, { opacity: 1, y: 0, duration: 0.5, ease: "back.out(1.4)" }, td);
+            tl.to(
+              "#cc-plane",
+              { opacity: 1, x: 0, y: 0, duration: 0.45, ease: "power3.out" },
+              td + 0.15,
+            );
+            tl.to("#cc-dm-icon", { scale: 1.12, duration: 0.15, ease: "power2.out" }, td + 0.6);
+            tl.to(
+              "#cc-dm-icon",
+              { scale: 1, duration: 0.3, ease: "elastic.out(1, 0.5)" },
+              td + 0.75,
+            );
+          }
+
+          tl.to(
+            ["#cc-stack", dm],
+            { opacity: 0, y: -18, duration: OUT, ease: "power2.in" },
+            DUR - OUT - 0.05,
+          );
+          tl.set(root, { visibility: "hidden" }, DUR - 0.02);
+
+          window.__timelines["comment-cta"] = tl;
+        })();
+      </script>
+    </div>
+  </body>
+</html>
