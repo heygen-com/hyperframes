@@ -234,6 +234,59 @@ describe("generate", () => {
     },
   );
 
+  it.skipIf(!ffmpeg).each([2, 4, 6])(
+    "fills a %i px wide box while the picture changes",
+    async (width) => {
+      const guide = shots(`narrow-${width}.mp4`, [
+        "color=c=0x202020:d=1.5",
+        "color=c=0xc0c0c0:d=0.5",
+        "color=c=0x202020:d=1.5",
+      ]);
+      const sent = answers(guide);
+      await generate({
+        type: "video",
+        out: join(project, `assets/narrow-${width}-out.mp4`),
+        prompt: "p",
+        motion: guide,
+        allowCuts: true,
+        masks: [parseMask(`20,20,${width},20,1.6-1.9`)],
+      });
+      expect(sent).toHaveLength(1);
+    },
+  );
+
+  it.skipIf(!ffmpeg)("reads only the seconds of the guide it sends", async () => {
+    const guide = join(project, "tail.mp4");
+    execFileSync(ffmpeg!, [
+      ...["-v", "error", "-y", "-f", "lavfi", "-i", "color=c=gray:s=180x320:r=30:d=16"],
+      "-vf",
+      "geq=lum='128+100*sin(X/3)*sin(Y/3)':cb=128:cr=128," +
+        "drawbox=x='30+t*40':y=100:w=20:h=30:color=white:t=fill," +
+        "eq=brightness='if(gt(t,15),0.5,0)':eval=frame",
+      ...["-pix_fmt", "yuv420p", guide],
+    ]);
+    const sent = answers(textured("tail-answer.mp4", "180x320", false));
+    await generate({
+      type: "video",
+      out: join(project, "assets/tail-out.mp4"),
+      prompt: "p",
+      motion: guide,
+      allowCuts: true,
+      masks: [parseMask("30,90,120,50")],
+    });
+    const [video] = sent[0]!.reference_videos as { data: string }[];
+    const sentClip = join(project, "tail-sent.mp4");
+    writeFileSync(sentClip, Buffer.from(video!.data, "base64"));
+    expect(probeVideo(sentClip).duration).toBeLessThanOrEqual(15.1);
+    const box = (f: string) =>
+      execFileSync(ffmpeg!, [
+        ...["-v", "error", "-ss", "1.5", "-i", f, "-frames:v", "1"],
+        ...["-vf", "crop=120:50:30:90,format=gray", "-f", "rawvideo", "-"],
+      ]);
+    const [got, clean] = [box(sentClip), box(textured("tail-clean.mp4", "180x320", false))];
+    expect(got.reduce((a, v, i) => a + Math.abs(v - clean[i]!), 0) / got.length).toBeLessThan(12);
+  });
+
   it("reads how much the picture round a box changed, whatever moves inside it", () => {
     const [a, b] = [new Uint8Array(100 * 100).fill(50), new Uint8Array(100 * 100).fill(50)];
     for (let y = 40; y < 60; y++) for (let x = 40; x < 60; x++) b[y * 100 + x] = 200;

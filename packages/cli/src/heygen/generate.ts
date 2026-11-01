@@ -99,9 +99,11 @@ function maskFilters(masks: Mask[], fps: number, stale: Mask[], size: Size): str
     const when = window ? `:enable='between(t,${window[0]},${window[1]})'` : "";
     const [w2, h2] = [w - (w % 2), h - (h % 2)];
     const edges = stale.includes(mask) && delogoFilters([{ box }], size.width, size.height);
-    const blur = Math.max(2, Math.round(Math.min(w2, h2) / 10));
+    const short = Math.min(w2, h2);
+    const blur = Math.min(Math.max(2, Math.round(short / 10)), short >> 2);
+    const soften = blur ? `,boxblur=${blur}:2` : "";
     const fill = edges
-      ? `${edges},crop=${w2}:${h2}:${x}:${y},boxblur=${blur}:2`
+      ? `${edges},crop=${w2}:${h2}:${x}:${y}${soften}`
       : `crop=${w2}:${h2}:${x}:${y},tmedian=radius=${radius}`;
     return `[v${i}]split[a${i}][b${i}];[b${i}]${fill}[m${i}];[a${i}][m${i}]overlay=${x}:${y}${when}[v${i + 1}]`;
   });
@@ -371,7 +373,10 @@ function structured(clip: string, guide: { width: number; height: number }, mask
 
 /** The masks whose surroundings change, where the camera moves: a median over time would freeze old frames in them. */
 function staleMasks(path: string, { width, height }: Size, masks: Mask[]): Mask[] {
-  const gray = runFfmpeg(["-i", path, "-vf", "fps=2", "-pix_fmt", "gray", "-f", "rawvideo", "-"]);
+  const gray = runFfmpeg([
+    ...["-t", String(GUIDE_MAX_S), "-i", path],
+    ...["-vf", "fps=2", "-pix_fmt", "gray", "-f", "rawvideo", "-"],
+  ]);
   const frame = (i: number) => gray.subarray(i * width * height, (i + 1) * width * height);
   const count = Math.floor(gray.length / (width * height));
   return masks.filter(({ box, window }) => {
