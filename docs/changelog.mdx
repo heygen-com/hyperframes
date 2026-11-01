@@ -18,6 +18,7 @@ One loud moment no longer turns down a whole export. Only its peaks come down, s
 ## Fixes
 
 - **Producer:** An export over the ceiling limits its peaks and keeps the mix's level ([d1d631f60](https://github.com/heygen-com/hyperframes/commit/d1d631f60a6cc949c572831927c7fe86455b21f8), [#6940](https://github.com/heygen-com/hyperframes/pull/6940)).
+  A mix far over the ceiling now gets several dB of limiting on those peaks, which can be audible on dense material, and the export can differ from its preview there.
 - **Core:** Music keeps playing while a preview video swaps to a new copy ([89a595316](https://github.com/heygen-com/hyperframes/commit/89a595316176b78ec96b94b57eada22fd1458a62), [#6937](https://github.com/heygen-com/hyperframes/pull/6937)).
 - **CLI:** A render says when it lowered the whole mix, and how to keep the level ([f9e8cab67](https://github.com/heygen-com/hyperframes/commit/f9e8cab67d948adbc115d3f3a0b271659e2521da), [#6938](https://github.com/heygen-com/hyperframes/pull/6938)).
 
