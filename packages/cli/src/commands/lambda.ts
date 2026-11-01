@@ -83,6 +83,20 @@ ${c.bold("REQUIREMENTS:")}
   • bun on PATH (used to build the handler ZIP)
 `;
 
+async function loadLambdaSdkForCommand(subcommand: string): Promise<void> {
+  try {
+    await import("@hyperframes/aws-lambda/sdk");
+  } catch (error) {
+    if (isMissingPackageError(error, "@hyperframes/aws-lambda")) {
+      console.error(
+        missingPackageMessage("@hyperframes/aws-lambda", `hyperframes lambda ${subcommand}`),
+      );
+      failCommand();
+    }
+    throw error;
+  }
+}
+
 export default defineCommand({
   meta: { name: "lambda", description: "Deploy and drive renders on AWS Lambda" },
   args: {
@@ -247,28 +261,9 @@ export default defineCommand({
     const regionFlag = args.region as string | undefined;
     if (regionFlag) process.env.AWS_REGION = regionFlag;
 
-    // The lambda subverbs dynamic-import `@hyperframes/aws-lambda` at call
-    // time. We keep aws-lambda as a workspace devDependency (not a runtime
-    // dep) so the published CLI install stays small for users who don't
-    // deploy to Lambda. These subverbs need it and get a friendly hint when it
-    // is missing; `deploy` reports that itself and `destroy` needs only SAM.
-    const verbsNeedingSDK = new Set(["sites", "render", "render-batch", "progress"]);
-    if (verbsNeedingSDK.has(subcommand)) {
-      try {
-        await import("@hyperframes/aws-lambda/sdk");
-      } catch (err) {
-        if (isMissingPackageError(err, "@hyperframes/aws-lambda")) {
-          console.error(
-            missingPackageMessage("@hyperframes/aws-lambda", `hyperframes lambda ${subcommand}`),
-          );
-          failCommand();
-        }
-        throw err;
-      }
-    }
-
     switch (subcommand) {
       case "deploy": {
+        const lambdaMemoryMb = parsePositiveInt(args.memory, "--memory");
         const { runDeploy } = await import("./lambda/deploy.js");
         const { parseReservedConcurrency } = await import("./lambda/sam.js");
         await runDeploy({
@@ -277,7 +272,7 @@ export default defineCommand({
           awsProfile: args.profile as string | undefined,
           reservedConcurrency: parseReservedConcurrency(args.concurrency),
           chromeSource: parseChromeSource(args["chrome-source"]),
-          lambdaMemoryMb: parsePositiveInt(args.memory, "--memory"),
+          lambdaMemoryMb,
           videoArch: parseVideoArch(args["video-arch"]),
           skipBuild: Boolean(args["skip-build"]),
           warm: args.warm !== false,
@@ -298,6 +293,7 @@ export default defineCommand({
           );
           failUsage();
         }
+        await loadLambdaSdkForCommand("sites");
         const { runSitesCreate } = await import("./lambda/sites.js");
         await runSitesCreate({
           projectDir,
@@ -321,16 +317,25 @@ export default defineCommand({
           console.error("[lambda render] --width and --height are required.");
           failUsage();
         }
-        const fpsRaw = parseIntFlag(args.fps) ?? defaultCloudFps(projectDir);
+        const fpsRaw = parseIntFlag(args.fps, "--fps") ?? defaultCloudFps(projectDir);
         if (!isDistributedFps(fpsRaw)) {
           console.error(
             `[lambda render] --fps must be one of ${DISTRIBUTED_FPS.join(", ")}; got ${fpsRaw}.`,
           );
           failUsage();
         }
-        const { runRender } = await import("./lambda/render.js");
+        const chunkSize = parsePositiveInt(args["chunk-size"], "--chunk-size");
+        const maxParallelChunks = parsePositiveInt(
+          args["max-parallel-chunks"],
+          "--max-parallel-chunks",
+        );
+        const targetChunkFrames = parsePositiveInt(
+          args["target-chunk-frames"],
+          "--target-chunk-frames",
+        );
+        const waitIntervalMs = parsePositiveInt(args["wait-interval-ms"], "--wait-interval-ms");
         const renderResolution = parseOutputResolution(args["output-resolution"]);
-        await runRender({
+        const renderOptions = {
           projectDir,
           stackName,
           siteId: args["site-id"] as string | undefined,
@@ -343,9 +348,9 @@ export default defineCommand({
           codec: parseCodec(args.codec),
           quality: parseQuality(args.quality),
           ...parseDeliveryFlags(args),
-          chunkSize: parsePositiveInt(args["chunk-size"], "--chunk-size"),
-          maxParallelChunks: parsePositiveInt(args["max-parallel-chunks"], "--max-parallel-chunks"),
-          targetChunkFrames: parsePositiveInt(args["target-chunk-frames"], "--target-chunk-frames"),
+          chunkSize,
+          maxParallelChunks,
+          targetChunkFrames,
           executionName: args["execution-name"] as string | undefined,
           outputKey: args["output-key"] as string | undefined,
           variables: args.variables as string | undefined,
@@ -353,8 +358,11 @@ export default defineCommand({
           strictVariables: Boolean(args["strict-variables"]),
           json: Boolean(args.json),
           wait: Boolean(args.wait),
-          waitIntervalMs: parsePositiveInt(args["wait-interval-ms"], "--wait-interval-ms") ?? 5000,
-        });
+          waitIntervalMs: waitIntervalMs ?? 5000,
+        };
+        await loadLambdaSdkForCommand("render");
+        const { runRender } = await import("./lambda/render.js");
+        await runRender(renderOptions);
         return;
       }
       case "render-batch": {
@@ -378,16 +386,25 @@ export default defineCommand({
           console.error("[lambda render-batch] --width and --height are required.");
           failUsage();
         }
-        const fpsRaw = parseIntFlag(args.fps) ?? defaultCloudFps(projectDir);
+        const fpsRaw = parseIntFlag(args.fps, "--fps") ?? defaultCloudFps(projectDir);
         if (!isDistributedFps(fpsRaw)) {
           console.error(
             `[lambda render-batch] --fps must be one of ${DISTRIBUTED_FPS.join(", ")}; got ${fpsRaw}.`,
           );
           failUsage();
         }
-        const { runRenderBatch } = await import("./lambda/render-batch.js");
+        const chunkSize = parsePositiveInt(args["chunk-size"], "--chunk-size");
+        const maxParallelChunks = parsePositiveInt(
+          args["max-parallel-chunks"],
+          "--max-parallel-chunks",
+        );
+        const targetChunkFrames = parsePositiveInt(
+          args["target-chunk-frames"],
+          "--target-chunk-frames",
+        );
+        const maxConcurrent = parsePositiveInt(args["max-concurrent"], "--max-concurrent");
         const batchResolution = parseOutputResolution(args["output-resolution"]);
-        await runRenderBatch({
+        const renderBatchOptions = {
           projectDir,
           stackName,
           batch,
@@ -401,14 +418,17 @@ export default defineCommand({
           codec: parseCodec(args.codec),
           quality: parseQuality(args.quality),
           ...parseDeliveryFlags(args),
-          chunkSize: parsePositiveInt(args["chunk-size"], "--chunk-size"),
-          maxParallelChunks: parsePositiveInt(args["max-parallel-chunks"], "--max-parallel-chunks"),
-          targetChunkFrames: parsePositiveInt(args["target-chunk-frames"], "--target-chunk-frames"),
-          maxConcurrent: parsePositiveInt(args["max-concurrent"], "--max-concurrent"),
+          chunkSize,
+          maxParallelChunks,
+          targetChunkFrames,
+          maxConcurrent,
           strictVariables: Boolean(args["strict-variables"]),
           dryRun: Boolean(args["dry-run"]),
           json: Boolean(args.json),
-        });
+        };
+        await loadLambdaSdkForCommand("render-batch");
+        const { runRenderBatch } = await import("./lambda/render-batch.js");
+        await runRenderBatch(renderBatchOptions);
         return;
       }
       case "progress": {
@@ -419,6 +439,7 @@ export default defineCommand({
           );
           failUsage();
         }
+        await loadLambdaSdkForCommand("progress");
         const { runProgress } = await import("./lambda/progress.js");
         await runProgress({ target, stackName, json: Boolean(args.json) });
         return;
@@ -451,10 +472,21 @@ export default defineCommand({
   },
 });
 
-function parseIntFlag(raw: unknown): number | undefined {
+function parseIntFlag(raw: unknown, flagName: string): number | undefined {
   if (raw === undefined || raw === null || raw === "") return undefined;
-  const n = Number.parseInt(String(raw), 10);
-  return Number.isFinite(n) ? n : undefined;
+  const token = String(raw);
+  if (!/^-?\d+$/.test(token)) {
+    throw new CliUsageError(
+      `[lambda] ${flagName} must be a whole integer token; got ${JSON.stringify(token)}`,
+    );
+  }
+  const n = Number.parseInt(token, 10);
+  if (!Number.isSafeInteger(n)) {
+    throw new CliUsageError(
+      `[lambda] ${flagName} must be a safe integer; got ${JSON.stringify(token)}`,
+    );
+  }
+  return n;
 }
 
 /**
@@ -463,9 +495,9 @@ function parseIntFlag(raw: unknown): number | undefined {
  * the SDK and producing opaque AWS validation errors mid-render.
  */
 function parsePositiveInt(raw: unknown, flagName: string): number | undefined {
-  const n = parseIntFlag(raw);
+  const n = parseIntFlag(raw, flagName);
   if (n === undefined) return undefined;
-  if (!Number.isInteger(n) || n < 1) {
+  if (n < 1) {
     throw new CliUsageError(`[lambda] ${flagName} must be a positive integer; got ${n}`);
   }
   return n;

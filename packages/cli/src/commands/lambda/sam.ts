@@ -82,8 +82,14 @@ export function locateSamTemplate(repoRoot: string): string {
 export function parseReservedConcurrency(raw: unknown): number | undefined {
   if (raw === undefined || raw === null || raw === "") return undefined;
   if (raw === "none") return -1;
-  const n = Number(raw);
-  if (!Number.isInteger(n) || n < 1) {
+  const token = String(raw);
+  if (!/^-?\d+$/.test(token)) {
+    throw new CliUsageError(
+      `[lambda] --concurrency must be a positive integer or "none"; got ${String(raw)}`,
+    );
+  }
+  const n = Number.parseInt(token, 10);
+  if (!Number.isSafeInteger(n) || n < 1) {
     throw new CliUsageError(
       `[lambda] --concurrency must be a positive integer or "none"; got ${String(raw)}`,
     );

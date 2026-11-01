@@ -109,6 +109,18 @@ export function missingCloudRunAdapterMessage(subcommand: string): string {
   return missingPackageMessage("@hyperframes/gcp-cloud-run", `hyperframes cloudrun ${subcommand}`);
 }
 
+async function loadCloudRunAdapterForCommand(subcommand: string): Promise<CloudRunAdapter> {
+  try {
+    return await loadCloudRunAdapter();
+  } catch (error) {
+    if (isMissingCloudRunAdapterError(error)) {
+      console.error(missingCloudRunAdapterMessage(subcommand));
+      failCommand();
+    }
+    throw error;
+  }
+}
+
 export default defineCommand({
   meta: { name: "cloudrun", description: "Deploy and drive renders on Google Cloud Run" },
   args: {
@@ -225,25 +237,6 @@ export default defineCommand({
       console.log(HELP);
       return;
     }
-    const verbsNeedingAdapter = new Set([
-      "deploy",
-      "sites",
-      "render",
-      "render-batch",
-      "progress",
-      "destroy",
-    ]);
-    if (verbsNeedingAdapter.has(subcommand)) {
-      try {
-        await loadCloudRunAdapter();
-      } catch (error) {
-        if (isMissingCloudRunAdapterError(error)) {
-          console.error(missingCloudRunAdapterMessage(subcommand));
-          failCommand();
-        }
-        throw error;
-      }
-    }
     switch (subcommand) {
       case "deploy":
         return runDeploy(args);
@@ -329,9 +322,11 @@ async function runDeploy(args: Record<string, unknown>): Promise<void> {
     console.error("[cloudrun deploy] --project <gcp-project-id> is required.");
     failUsage();
   }
+  const maxInstances = parsePositiveInt(args["max-instances"], "--max-instances");
+  const timeout = parsePositiveInt(args.timeout, "--timeout");
   const region = (args.region as string | undefined) ?? "us-central1";
   const repo = (args.repo as string | undefined) ?? "hyperframes";
-  const { getTerraformModuleDir } = await loadCloudRunAdapter();
+  const { getTerraformModuleDir } = await loadCloudRunAdapterForCommand("deploy");
   const tfDir = getTerraformModuleDir();
   const repoRoot = findRepoRoot(tfDir);
 
@@ -406,7 +401,12 @@ async function runDeploy(args: Record<string, unknown>): Promise<void> {
   run("terraform", ["init", "-input=false"], { cwd: tfDir });
   run(
     "terraform",
-    ["apply", "-input=false", "-auto-approve", ...machineVars(args, project, region, image)],
+    [
+      "apply",
+      "-input=false",
+      "-auto-approve",
+      ...machineVars(args, project, region, image, maxInstances, timeout),
+    ],
     { cwd: tfDir },
   );
 
@@ -436,6 +436,8 @@ function machineVars(
   project: string,
   region: string,
   image: string,
+  maxInstances: number | undefined,
+  timeout: number | undefined,
 ): string[] {
   const vars = [
     "-var",
@@ -447,8 +449,6 @@ function machineVars(
   ];
   const cpu = args.cpu as string | undefined;
   const memory = args.memory as string | undefined;
-  const maxInstances = parsePositiveInt(args["max-instances"], "--max-instances");
-  const timeout = parsePositiveInt(args.timeout, "--timeout");
   if (cpu) vars.push("-var", `cpu=${cpu}`);
   if (memory) vars.push("-var", `memory=${memory}`);
   if (maxInstances !== undefined) vars.push("-var", `max_instances=${maxInstances}`);
@@ -499,8 +499,8 @@ async function runSites(args: Record<string, unknown>): Promise<void> {
     console.error("[cloudrun sites create] usage: hyperframes cloudrun sites create <projectDir>");
     failUsage();
   }
+  const { deploySite } = await loadCloudRunAdapterForCommand("sites");
   const state = readState(args);
-  const { deploySite } = await loadCloudRunAdapter();
   const handle = await deploySite({
     projectDir: resolve(projectDir),
     bucketName: state.bucketName,
@@ -523,7 +523,7 @@ function resolveCloudRunFps(
   projectDir: string,
   command: "render" | "render-batch",
 ): DistributedFps {
-  const fps = parseIntFlag(args.fps) ?? defaultCloudFps(projectDir);
+  const fps = parseIntFlag(args.fps, "--fps") ?? defaultCloudFps(projectDir);
   if (isDistributedFps(fps)) return fps;
   console.error(
     `[cloudrun ${command}] --fps must be one of ${DISTRIBUTED_FPS.join(", ")}; got ${fps}.`,
@@ -550,9 +550,8 @@ async function runRender(args: Record<string, unknown>): Promise<void> {
   const variables = resolveAndValidateVariables(args, resolve(projectDir));
   const config = buildRenderConfig(args, fps, width, height, variables);
   const intervalMs = parsePositiveInt(args["wait-interval-ms"], "--wait-interval-ms") ?? 5000;
+  const { renderToCloudRun, getRenderProgress } = await loadCloudRunAdapterForCommand("render");
   const state = readState(args);
-
-  const { renderToCloudRun, getRenderProgress } = await loadCloudRunAdapter();
   const handle = await renderToCloudRun({
     projectDir: resolve(projectDir),
     config: config as Parameters<typeof renderToCloudRun>[0]["config"],
@@ -606,7 +605,7 @@ async function runProgress(args: Record<string, unknown>): Promise<void> {
     console.error("[cloudrun progress] usage: hyperframes cloudrun progress <executionName>");
     failUsage();
   }
-  const { getRenderProgress } = await loadCloudRunAdapter();
+  const { getRenderProgress } = await loadCloudRunAdapterForCommand("progress");
   const progress = await getRenderProgress({ executionName });
   if (args.json) {
     console.log(JSON.stringify(progress, null, 2));
@@ -653,6 +652,8 @@ async function runRenderBatch(args: Record<string, unknown>): Promise<void> {
     failUsage();
   }
   const fps = resolveCloudRunFps(args, projectDir, "render-batch");
+  const maxConcurrent =
+    parsePositiveInt(args["max-concurrent"], "--max-concurrent") ?? DEFAULT_BATCH_MAX_CONCURRENT;
   buildRenderConfig(args, fps, width, height, undefined);
   if (!existsSync(resolve(batchPath))) {
     console.error(`[cloudrun render-batch] batch file not found: ${batchPath}`);
@@ -675,10 +676,8 @@ async function runRenderBatch(args: Record<string, unknown>): Promise<void> {
     return;
   }
 
-  const maxConcurrent =
-    parsePositiveInt(args["max-concurrent"], "--max-concurrent") ?? DEFAULT_BATCH_MAX_CONCURRENT;
+  const { deploySite, renderToCloudRun } = await loadCloudRunAdapterForCommand("render-batch");
   const state = readState(args);
-  const { deploySite, renderToCloudRun } = await loadCloudRunAdapter();
 
   // Upload the project once; every entry reuses the same content-addressed
   // site handle so the tar+upload cost is paid a single time.
@@ -765,8 +764,6 @@ function parseBatchFile(path: string): BatchEntry[] {
 
 // fallow-ignore-next-line complexity
 async function runDestroy(args: Record<string, unknown>): Promise<void> {
-  const { getTerraformModuleDir } = await loadCloudRunAdapter();
-  const tfDir = getTerraformModuleDir();
   const state = existsSync(statePath())
     ? (JSON.parse(readFileSync(statePath(), "utf8")) as Partial<StackState>)
     : {};
@@ -777,6 +774,8 @@ async function runDestroy(args: Record<string, unknown>): Promise<void> {
     console.error("[cloudrun destroy] --project is required (or deploy first to cache it).");
     failUsage();
   }
+  const { getTerraformModuleDir } = await loadCloudRunAdapterForCommand("destroy");
+  const tfDir = getTerraformModuleDir();
   const vars = [
     "-var",
     `project_id=${project}`,
@@ -890,15 +889,26 @@ function parseOutputResolution(raw: unknown): {
 // ── parse helpers ─────────────────────────────────────────────────────────
 
 // fallow-ignore-next-line complexity
-function parseIntFlag(raw: unknown): number | undefined {
+function parseIntFlag(raw: unknown, flagName: string): number | undefined {
   if (raw === undefined || raw === null || raw === "") return undefined;
-  const n = Number.parseInt(String(raw), 10);
-  return Number.isFinite(n) ? n : undefined;
+  const token = String(raw);
+  if (!/^-?\d+$/.test(token)) {
+    throw new CliUsageError(
+      `[cloudrun] ${flagName} must be a whole integer token; got ${JSON.stringify(token)}`,
+    );
+  }
+  const n = Number.parseInt(token, 10);
+  if (!Number.isSafeInteger(n)) {
+    throw new CliUsageError(
+      `[cloudrun] ${flagName} must be a safe integer; got ${JSON.stringify(token)}`,
+    );
+  }
+  return n;
 }
 function parsePositiveInt(raw: unknown, flagName: string): number | undefined {
-  const n = parseIntFlag(raw);
+  const n = parseIntFlag(raw, flagName);
   if (n === undefined) return undefined;
-  if (!Number.isInteger(n) || n < 1) {
+  if (n < 1) {
     throw new CliUsageError(`[cloudrun] ${flagName} must be a positive integer; got ${n}`);
   }
   return n;
