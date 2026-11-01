@@ -3454,20 +3454,8 @@ export async function computeStaticFrameSet(
       }
       const intervals: Array<{ start: number; end: number; spatial: boolean }> = [];
       let tweenCount = 0;
-      // totalDuration() (NOT duration()): a repeat/yoyo tween animates past one iteration;
-      // a repeating timeline is marked opaque over its whole span (conservative).
-      // A GSAP tl.call() is a zero-duration tween whose vars wire the callback as
-      // onComplete (and onReverseComplete, fired on backward crossing — GSAP has
-      // no separate "undo" callback, so both directions invoke the SAME forward
-      // side effect). A one-shot DOM mutation driven this way (e.g. a counter's
-      // textContent) is not seek-idempotent: crossing it during the static-dedup
-      // verifier's own arm-time seeking permanently mutates the page, and that
-      // corruption can leak into a LATER, unrelated static run's real capture
-      // (the verifier's mismatch check only catches drift within the run being
-      // checked, not contamination from a run checked afterward). No reliable
-      // way to tell a DOM-mutating call() from a harmless one (analytics ping,
-      // class toggle with no visual effect) without executing it, so disqualify
-      // the whole comp on ANY call() rather than risk shipping wrong pixels.
+      // totalDuration(), not duration(): repeat/yoyo tweens animate past one iteration.
+      // Any tl.call() disqualifies the comp: its DOM side effects are not seek-idempotent.
       let hasTimelineCall = false;
       function walk(tl: AnyTween, offset: number): void {
         if (typeof tl.getChildren !== "function") return;
@@ -3489,12 +3477,7 @@ export async function computeStaticFrameSet(
               // vars below; this span is a conservative (spatial) placeholder for the
               // repeat/yoyo overrun, which a per-child walk doesn't otherwise cover.
               intervals.push({ start, end: start + total, spatial: true });
-              // Still descend for hasTimelineCall even though the repeating
-              // span is already opaque (its frames are excluded from dedup
-              // regardless): a call() inside it is a review-flagged detection
-              // gap otherwise — the arm-time verifier can still forward-seek
-              // through this span while checking a LATER static run, firing
-              // the call() and corrupting the page (review).
+              // Still descend: a call() inside the repeating span would otherwise go undetected.
               walk(child, start);
             } else {
               walk(child, start);
