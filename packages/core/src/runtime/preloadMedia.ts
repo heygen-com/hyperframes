@@ -86,7 +86,6 @@ function wholeFileBuffered(media: HTMLMediaElement): boolean {
   );
 }
 
-/** `whenBuffered`: free a fully buffered clip too, whose decoder otherwise stays until the page ends. */
 export function releaseMedia(media: HTMLMediaElement, whenBuffered = false): void {
   if (media.querySelector("source") || (!whenBuffered && wholeFileBuffered(media))) return;
   const src = media.getAttribute("src");
