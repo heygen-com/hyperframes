@@ -159,8 +159,8 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       portrait,
       style,
       suppressLoadingOverlay,
-      loadingUi,
       noLoadTimeout,
+      ...host
     },
     ref,
   ) => {
@@ -481,8 +481,8 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       shouldShowCompositionLoadingOverlay(compositionLoading);
     const assetWaitShown =
       assetOverlayVisible && !shaderTransitionLoading && !compositionWaitShown && !previewError;
-    const showCompositionOverlay = studioDraws(compositionWaitShown, loadingUi);
-    const showAssetOverlay = studioDraws(assetWaitShown, loadingUi);
+    const showCompositionOverlay = studioDraws(compositionWaitShown, host.loadingUi);
+    const showAssetOverlay = studioDraws(assetWaitShown, host.loadingUi);
 
     useEffect(() => {
       onCompositionLoadingChange?.(compositionWaitShown || assetWaitShown);
