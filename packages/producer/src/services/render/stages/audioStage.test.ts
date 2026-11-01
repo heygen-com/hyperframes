@@ -14,6 +14,8 @@ const { processCompositionAudioMock, constrainAacTruePeakMock } = vi.hoisted(() 
 }));
 
 vi.mock("../audioPadTrim.js", () => ({ constrainAacTruePeak: constrainAacTruePeakMock }));
+const limitDeliveryPeaksMock = vi.hoisted(() => vi.fn(async () => ({ success: true })));
+vi.mock("../audioDeliveryLimit.js", () => ({ limitDeliveryPeaks: limitDeliveryPeaksMock }));
 
 vi.mock("@hyperframes/engine", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@hyperframes/engine")>();
@@ -73,6 +75,18 @@ describe("runAudioStage", () => {
       );
     },
   );
+
+  it("limits the mix's peaks before the whole-mix cut measures it", async () => {
+    processCompositionAudioMock.mockResolvedValueOnce({ success: true, tracksProcessed: 1 });
+    limitDeliveryPeaksMock.mockClear();
+    constrainAacTruePeakMock.mockClear();
+
+    await runAudioStage(makeInput());
+
+    expect(limitDeliveryPeaksMock.mock.invocationCallOrder[0]).toBeLessThan(
+      constrainAacTruePeakMock.mock.invocationCallOrder[0] as number,
+    );
+  });
 
   it("keeps PCM through the encoded peak check and removes it afterwards", async () => {
     const input = makeInput();
