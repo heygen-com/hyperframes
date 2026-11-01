@@ -97,7 +97,6 @@ export interface ExtractVideosStageInput {
    */
   materializeSymlinks?: boolean;
   deferRangeExtraction?: boolean;
-  /** Videos ffmpeg composites itself: no frames extracted, still probed for their sound. */
   skipFrameExtractionIds?: readonly string[];
   urlByAbsentLocalPath?: ReadonlyMap<string, string>;
   onProgress?: ProgressCallback;

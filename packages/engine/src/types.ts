@@ -173,7 +173,6 @@ export interface CaptureOptions {
   fps: Fps;
   format?: "jpeg" | "png";
   transparent?: boolean;
-  /** Elements left out of every capture (their pixels come from elsewhere), with the page background cleared. */
   hiddenElementIds?: string[];
   quality?: number;
   /**

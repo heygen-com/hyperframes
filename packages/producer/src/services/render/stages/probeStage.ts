@@ -391,7 +391,6 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
   );
   const hasVariableMedia = hasVariableBoundMedia(compiled.html, job.config.variables);
   const hasInsertedMedia = hasRuntimeMediaChanges(compiled.html);
-  // The passthrough layout check reads the live page, so the opt-in always launches the probe.
   const needsBrowser =
     cfg.videoLayerPassthrough ||
     probeRequiresBrowser({
