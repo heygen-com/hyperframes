@@ -1,0 +1,105 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "mascot-rig",
+  "type": "hyperframes:component",
+  "title": "Mascot Rig",
+  "description": "A speech-bubble mascot built as a layered SVG rig that changes expression and pose on cue - happy, sad or surprised, looking around, blinking, pointing, waving, cheering, drooping and perking up. Mount it to play one action, or cue it from your own timeline through a small window.mascotRig API that scopes every cue to one rig, so several mascots can share a page",
+  "tags": [
+    "character",
+    "mascot",
+    "character-animation",
+    "expression",
+    "gesture",
+    "explainer",
+    "svg",
+    "video-primitive"
+  ],
+  "author": "Tugra Avci",
+  "variables": [
+    {
+      "id": "action",
+      "type": "enum",
+      "role": "content",
+      "label": "Action",
+      "description": "What the mascot does after it pops in and glances around.",
+      "default": "wave",
+      "options": [
+        {
+          "value": "wave",
+          "label": "Wave"
+        },
+        {
+          "value": "cheer",
+          "label": "Cheer"
+        },
+        {
+          "value": "point-left",
+          "label": "Point left"
+        },
+        {
+          "value": "point-right",
+          "label": "Point right"
+        },
+        {
+          "value": "sad",
+          "label": "Sad"
+        },
+        {
+          "value": "surprised",
+          "label": "Surprised"
+        }
+      ]
+    },
+    {
+      "id": "size",
+      "type": "number",
+      "role": "style",
+      "label": "Size",
+      "description": "Rig height as a percentage of the frame's short side.",
+      "default": 72,
+      "min": 20,
+      "max": 100,
+      "step": 1,
+      "unit": "%"
+    },
+    {
+      "id": "body",
+      "type": "color",
+      "role": "style",
+      "label": "Body",
+      "description": "Body and arm fill.",
+      "default": "#ececed"
+    },
+    {
+      "id": "ink",
+      "type": "color",
+      "role": "style",
+      "label": "Ink",
+      "description": "Outlines, eyes, mouth, brows and feet.",
+      "default": "#18181b"
+    },
+    {
+      "id": "cheek",
+      "type": "color",
+      "role": "style",
+      "label": "Cheeks",
+      "description": "Cheek fill, shown on the happy mood.",
+      "default": "#c6c6c7"
+    },
+    {
+      "id": "accent",
+      "type": "color",
+      "role": "style",
+      "label": "Accent",
+      "description": "The antenna dot, the one accent element.",
+      "default": "#ff5b36"
+    }
+  ],
+  "files": [
+    {
+      "path": "mascot-rig.html",
+      "target": "compositions/components/mascot-rig.html",
+      "type": "hyperframes:snippet"
+    }
+  ]
+}
