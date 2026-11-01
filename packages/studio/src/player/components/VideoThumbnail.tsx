@@ -104,6 +104,18 @@ function useVideoThumbnailSnapshot(
   return selectThumbnailSnapshot(posterSnapshot, richSnapshot, shownSnapshot);
 }
 
+function useRangeHeldDuringTrim(
+  sourceStart: number | undefined,
+  sourceRangeDuration: number | undefined,
+  duration: number,
+) {
+  const range = useMemo(
+    () => ({ sourceStart, sourceRangeDuration, duration }),
+    [duration, sourceRangeDuration, sourceStart],
+  );
+  return useValueAtRest(range);
+}
+
 /** Sparse, bounded video frames supplied by the shared thumbnail scheduler. */
 export const VideoThumbnail = memo(function VideoThumbnail({
   videoSrc,
@@ -122,12 +134,7 @@ export const VideoThumbnail = memo(function VideoThumbnail({
       computeThumbnailStrip(container.width, 16 / 9, container.height).frameCount,
     ),
   );
-  const rangeHeldDuringTrim = useValueAtRest(
-    useMemo(
-      () => ({ sourceStart, sourceRangeDuration, duration }),
-      [duration, sourceRangeDuration, sourceStart],
-    ),
-  );
+  const rangeHeldDuringTrim = useRangeHeldDuringTrim(sourceStart, sourceRangeDuration, duration);
   const requestProps = useMemo(
     () => ({ videoSrc, ...rangeHeldDuringTrim, projectId, sessionEpoch, priority }),
     [priority, projectId, rangeHeldDuringTrim, sessionEpoch, videoSrc],
