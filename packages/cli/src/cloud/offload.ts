@@ -781,7 +781,6 @@ function dropReplacedFiles(
 
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-/** A path ending in the file's name; one that names another folder's file of that name does not count. */
 function namesFile(text: string, path: string): boolean {
   const tokens = text.match(new RegExp(`[\\w./-]*${escapeRegExp(basename(path))}`, "g")) ?? [];
   return tokens.some((token) => {
@@ -790,11 +789,7 @@ function namesFile(text: string, path: string): boolean {
   });
 }
 
-/**
- * Whether a reference rewriting could not replace may still load the file: a path ending in its name,
- * or in script code its stem as a string of its own with the extension there too, which can join them
- * at runtime ("clip" + ".mp4"). A stem that is only a word in the code ("host", "vo") is no such string.
- */
+/** A path ending in its name, or in script code its stem as a string with the extension nearby ("clip" + ".mp4"). */
 function isStillMentioned(
   fileMap: Map<string, StagedFile>,
   path: string,
@@ -895,8 +890,7 @@ function rewriteCssEntry(absDir: string, entryPath: string, css: string, urlFor:
   return result.modified ? result.css : null;
 }
 
-// A composition keeps its scene in a <template>: selectors stop at it, and template.content is a copy.
-const TEMPLATE_RE = /(<template\b[^>]*>)([\s\S]*?)(<\/template>)/gi;
+const TEMPLATE_SCENE_RE = /(<template\b[^>]*>)([\s\S]*?)(<\/template>)/gi;
 
 // fallow-ignore-next-line complexity
 function rewriteHtmlEntry(
@@ -906,12 +900,14 @@ function rewriteHtmlEntry(
   urlFor: UrlFor,
   fileMap: Map<string, StagedFile>,
 ): string | null {
-  const html = source.replace(TEMPLATE_RE, (full, open: string, inner: string, close: string) => {
-    const next = rewriteHtmlEntry(absDir, entryPath, inner, urlFor, fileMap);
-    return next === null ? full : open + next + close;
-  });
+  const html = source.replace(
+    TEMPLATE_SCENE_RE,
+    (full, open: string, inner: string, close: string) => {
+      const next = rewriteHtmlEntry(absDir, entryPath, inner, urlFor, fileMap);
+      return next === null ? full : open + next + close;
+    },
+  );
   const referrerAbsDir = resolve(absDir, dirname(entryPath));
-  // Sub-composition srcs resolve the way the renderer inlines them.
   const resolveTarget: HtmlAttributeResolver = (raw) =>
     localTarget(raw, (clean) => rewriteAssetPath(entryPath, clean, (p) => fileMap.has(p)), urlFor);
   const { document } = parseHTML(html);

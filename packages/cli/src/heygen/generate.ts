@@ -1,7 +1,6 @@
-// New media on HeyGen for `media-use generate`: a still (optionally edited from a reference), a shot (optionally from
-// a first frame), a shot's mouth redone to a voice, a person speaking from one photo, a voice reading text, or music.
-// Every call is priced first with --plan, keyed for idempotency, downloaded into the project and recorded in the media
-// ledger as generated.
+// New media on HeyGen for `media-use generate`: a still, a shot, a shot's mouth redone to a voice, a person speaking
+// from one photo, a voice, or music. Every call is priced first with --plan, keyed for idempotency, downloaded into
+// the project and recorded in the media ledger as generated.
 import { randomUUID } from "node:crypto";
 import {
   existsSync,
@@ -34,10 +33,7 @@ export interface GenerateRequest {
   prompt?: string;
   /** image: pictures the result is edited from or styled after. video: the person or things to keep in the shot. */
   references?: string[];
-  /**
-   * video: speech the person in the references says. The model takes it as a reference and re-paces it, so the lips
-   * follow the shot's own track, not this file. lipsync and avatar: the exact voice, which stays as it is.
-   */
+  /** video: speech as a reference, which the model re-paces. lipsync and avatar: the exact voice, kept as it is. */
   audio?: string;
   /** lipsync: the shot whose mouth is redone. */
   video?: string;
@@ -175,7 +171,6 @@ const ROUTES: Record<GenerateType, Route> = {
     poll: (id) => `/v3/models/videos/${id}`,
     // fallow-ignore-next-line complexity
     body: (r, media) => {
-      // A person speaking given audio is a reference shot: the references show who, the audio guides the speech.
       const spoken = !!r.audio || !!r.references?.length || !!r.motion;
       if (spoken && r.firstFrame)
         throw new Fix(
@@ -204,7 +199,6 @@ const ROUTES: Record<GenerateType, Route> = {
     ledger: "video",
     ext: [".mp4", ".mov", ".webm"],
   },
-  // The voice stays exactly as given and only the mouth changes, so the shot lands on the voice from its first frame.
   lipsync: {
     path: "/v3/lipsyncs",
     poll: (id) => `/v3/lipsyncs/${id}`,
@@ -231,7 +225,6 @@ const ROUTES: Record<GenerateType, Route> = {
             image: media(need(r.photo, "--photo", "--photo assets/presenter.png"), "image"),
             ...(r.prompt ? { motion_prompt: r.prompt } : {}),
           }),
-      // A finished voice stays exactly as it is and the lips land on it; a script is read in a voice.
       ...(r.audio
         ? { audio_asset_id: media(r.audio, "audio").asset_id }
         : {

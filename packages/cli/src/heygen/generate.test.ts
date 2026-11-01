@@ -569,7 +569,7 @@ describe("generate", () => {
       ...["-v", "error", "-y", "-f", "lavfi", "-i", "color=c=red:s=64x36"],
       ...["-frames:v", "1", photo],
     ]);
-    const audio = join(project, "avatar-voice.mp3");
+    const audio = join(project, "avatar-voice.wav");
     execFileSync(ffmpeg!, [
       ...["-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=6", audio],
     ]);
@@ -586,12 +586,12 @@ describe("generate", () => {
     await generate({ type: "avatar", avatar: "look1", audio, out });
     expect(sent[0]).toMatchObject({
       type: "image",
-      audio_asset_id: "asset-avatar-voice.mp3",
+      audio_asset_id: "asset-avatar-voice.wav",
       motion_prompt: "talks with both hands",
     });
     expect(sent[0]).not.toHaveProperty("script");
     expect(sent[1]).toMatchObject({ type: "avatar", avatar_id: "look1" });
-    expect(creditsOf(priceOf({ type: "avatar", photo, audio, out }))).toBe(117);
+    expect(creditsOf(priceOf({ type: "avatar", photo, audio, out }))).toBe(116);
     expect(() => checkRequest({ type: "avatar", photo, out })).toThrow("--script");
   });
 
