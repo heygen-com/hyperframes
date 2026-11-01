@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_CONFIG } from "@hyperframes/engine";
 
 const trackCheckReport = vi.fn();
 vi.mock("../telemetry/events.js", () => ({
@@ -495,6 +496,24 @@ describe("skip contrast in motion", () => {
       expect(call).toEqual([expect.any(Number), undefined, true]);
     }
   });
+});
+
+it("waits for the composition as long as snapshot and render do unless --timeout says otherwise", async () => {
+  const { report } = await runScenario(fakeDriver());
+  const runPipeline = vi.fn(async (_project: ProjectDir, _options: CheckOptions) => report);
+  vi.spyOn(console, "log").mockImplementation(() => undefined);
+  const command = createCheckCommand({
+    resolveProject: () => PROJECT,
+    runPipeline,
+    prepareMedia: vi.fn(async () => []),
+    withMeta: (value) => value,
+  });
+
+  await runCommand(command, { rawArgs: ["--json"] });
+  await runCommand(command, { rawArgs: ["--json", "--timeout", "20s"] });
+
+  expect(runPipeline.mock.calls[0]?.[1].timeout).toBe(DEFAULT_CONFIG.playerReadyTimeout);
+  expect(runPipeline.mock.calls[1]?.[1].timeout).toBe(20_000);
 });
 
 it("parses the caption-zone grammar and enables the frame gate", async () => {
