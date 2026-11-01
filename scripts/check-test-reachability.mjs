@@ -242,9 +242,7 @@ function runnerArguments(tokens, node, command) {
   const tail = tokens.slice(node ? tokens.indexOf("--test") + 1 : 2);
   if (
     tail.some(
-      (token) =>
-        token.startsWith("-") &&
-        !["--coverage", "--passWithNoTests", "--shard=1/1"].includes(token),
+      (token) => token.startsWith("-") && !["--coverage", "--passWithNoTests"].includes(token),
     )
   )
     throw new Error(`Unsupported test option: ${command}`);
@@ -258,11 +256,7 @@ function runnerKind(command) {
   return undefined;
 }
 
-// A matrix of shards together runs every file, so `--shard=N/M` does not narrow what a runner reaches.
-const SHARD = /--shard=(?:\d+|\$\{\{\s*matrix\.[\w-]+\s*\}\})\/\d+/g;
-
-function runnerCommand(rawCommand) {
-  const command = rawCommand.replace(SHARD, "--shard=1/1");
+function runnerCommand(command) {
   const kind = runnerKind(command);
   if (!kind) return undefined;
   const tokens = command.match(/"[^"]*"|'[^']*'|\S+/g).map((s) => s.replace(/^["']|["']$/g, ""));

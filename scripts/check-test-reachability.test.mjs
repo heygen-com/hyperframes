@@ -99,21 +99,6 @@ test("unknown runner options and config formats fail closed", () => {
   assert.throws(() => check(tree), /Unsupported runner config/);
 });
 
-test("a sharded runner still reaches its files and an unknown option still fails closed", () => {
-  const sharded = "vitest run --shard=${{ matrix.shard }}/2";
-  const tree = fixture(sharded, '"**"');
-  tree["scripts/parity.test.mjs"] = "";
-  assert.deepEqual(check(tree), {});
-  tree[".github/workflows/ci.yml"] = fixture("vitest run --shard=1/2", '"**"')[
-    ".github/workflows/ci.yml"
-  ];
-  assert.deepEqual(check(tree), {});
-  tree[".github/workflows/ci.yml"] = fixture("vitest run --retry=2", '"**"')[
-    ".github/workflows/ci.yml"
-  ];
-  assert.throws(() => check(tree), /Unsupported test option/);
-});
-
 test("custom runner mappings require matching commands and unchanged producer sources", () => {
   const tree = fixture("node custom.mjs", '"**"');
   tree["custom.mjs"] = "original runner";
