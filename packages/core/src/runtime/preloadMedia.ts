@@ -86,8 +86,8 @@ function wholeFileBuffered(media: HTMLMediaElement): boolean {
   );
 }
 
-export function releaseMedia(media: HTMLMediaElement): void {
-  if (media.querySelector("source") || wholeFileBuffered(media)) return;
+export function releaseMedia(media: HTMLMediaElement, whenBuffered = false): void {
+  if (media.querySelector("source") || (!whenBuffered && wholeFileBuffered(media))) return;
   const src = media.getAttribute("src");
   stopMediaDownload(media);
   if (src !== null) media.setAttribute("src", src);
