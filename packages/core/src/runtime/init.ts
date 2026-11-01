@@ -3441,6 +3441,11 @@ export function initSandboxRuntimeModular(): void {
   let mediaClipsInWindow: RuntimeMediaClip[] = [];
   // Clips due now that could not play: every track holds until they can, so none runs on alone.
   let bufferingFor: HTMLMediaElement[] = [];
+  // Play waits this long for a clip with no data, then runs on and lets the clip catch up; mid-film it holds.
+  const START_WAIT_MS = 300;
+  let startWaitUntilMs: number | null = null;
+  let catchingUpFor: HTMLMediaElement[] = [];
+  let resumingFromBuffering = false;
 
   // The one definition of "media the transport drives": timed itself, or hosted
   // by a composition whose timing it inherits. Both the media cache and the
@@ -4771,6 +4776,10 @@ export function initSandboxRuntimeModular(): void {
     play: () => {
       flushHeldSeek();
       bufferingFor = [];
+      if (!resumingFromBuffering) {
+        startWaitUntilMs = performance.now() + START_WAIT_MS;
+        catchingUpFor = [];
+      }
       const tl = state.capturedTimeline;
       if (clock.isPlaying()) return;
       const dur = getSafeTimelineDurationSeconds(tl, 0);
@@ -4803,6 +4812,8 @@ export function initSandboxRuntimeModular(): void {
     pause: () => {
       const wasBuffering = bufferingFor.length > 0;
       bufferingFor = [];
+      startWaitUntilMs = null;
+      catchingUpFor = [];
       if (clock.isPlaying()) haltPlayback();
       else if (wasBuffering) postState(true);
     },
@@ -5652,6 +5663,13 @@ export function initSandboxRuntimeModular(): void {
         const source = followedOrLongestRunningAudio(clock.audioElement());
         if (source && !audioMayDrivePlayhead(source.el)) {
           if (clock.hasAudioSource()) clock.detachAudioSource();
+        } else if (
+          source &&
+          catchingUpFor.includes(source.el) &&
+          source.el.readyState < HTMLMediaElement.HAVE_FUTURE_DATA
+        ) {
+          // Past the start wait the playhead runs on its own clock while this track catches up.
+          if (clock.hasAudioSource()) clock.detachAudioSource();
         } else if (source && !source.el.paused) {
           clock.attachAudioSource({
             el: source.el,
@@ -5698,6 +5716,14 @@ export function initSandboxRuntimeModular(): void {
               !webAudio.ownsElement(el),
           )
           .map(({ el }) => el);
+
+  // Data at a lagging clip's own position says nothing: its sync seek is about to land past what it has.
+  const CAUGHT_UP_SECONDS = 0.25;
+  const lagsThePlayhead = (el: HTMLMediaElement, t: number): boolean => {
+    const clip = mediaClipsInWindow.find((c) => c.el === el);
+    if (!clip || !isInClipWindow(t, clip.start, clip.end)) return false;
+    return Math.abs(el.currentTime - mediaSourceTimeAt(clip, t)) > CAUGHT_UP_SECONDS;
+  };
 
   const transportTick = () => {
     if (state.tornDown || inTransportTick) return;
@@ -5871,11 +5897,24 @@ export function initSandboxRuntimeModular(): void {
       }
       // After media sync, so a clip that just fell due was asked to play, and fetch, before it holds.
       const notReady = mediaNotReadyAt(state.currentTime);
-      if (clock.isPlaying() && notReady.length > 0) {
-        bufferingFor = notReady;
+      if (startWaitUntilMs !== null && performance.now() >= startWaitUntilMs) {
+        startWaitUntilMs = null;
+        catchingUpFor = notReady;
+      }
+      catchingUpFor = catchingUpFor.filter(
+        (el) => notReady.includes(el) || lagsThePlayhead(el, state.currentTime),
+      );
+      const mustWaitFor = notReady.filter((el) => !catchingUpFor.includes(el));
+      if (clock.isPlaying() && mustWaitFor.length > 0) {
+        bufferingFor = mustWaitFor;
         haltPlayback();
-      } else if (bufferingFor.length > 0 && !notReady.some((el) => bufferingFor.includes(el))) {
-        transport.play();
+      } else if (bufferingFor.length > 0 && !mustWaitFor.some((el) => bufferingFor.includes(el))) {
+        resumingFromBuffering = true;
+        try {
+          transport.play();
+        } finally {
+          resumingFromBuffering = false;
+        }
       }
       postState(false);
     } finally {

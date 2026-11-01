@@ -323,17 +323,19 @@ describe("the audio the playhead follows", () => {
     expect(window.__player!.getTime()).toBeGreaterThan(1.4);
   });
 
-  it("holds the playhead for a playing clip that has no data until it has some", async () => {
+  it("holds the playhead for a playing clip that has no data for the start wait, then plays on", async () => {
     await playStarved();
     stepFrames(1);
     const held = window.__player!.getTime();
-    stepFrames(5 * 60);
+    stepFrames(15);
     expect(window.__player!.getTime()).toBe(held);
+    stepFrames(90);
+    expect(window.__player!.getTime()).toBeGreaterThan(held + 0.5);
   });
 
   it("plays on from where it held once a clip's late data arrives", async () => {
     const late = await playStarved();
-    stepFrames(5 * 60);
+    stepFrames(10);
     const before = window.__player!.getTime();
     expect(before).toBeLessThan(0.1);
     late.readyState = 4;
