@@ -97,6 +97,7 @@ describe("manifest io", () => {
     const manifest: SegmentManifest = {
       version: 1,
       planHash: "0123456789abcdef",
+      forceScreenshot: false,
       totalFrames: 7,
       segmentFrames: 3,
       completed: [
@@ -133,6 +134,21 @@ describe("manifest io", () => {
     expect(readSegmentManifest(dir)).toBeNull();
   });
 
+  it("does not resume from a manifest that does not record its capture mode", () => {
+    dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
+    writeFileSync(
+      join(dir, "segments.json"),
+      JSON.stringify({
+        version: 1,
+        planHash: "h",
+        totalFrames: 3,
+        segmentFrames: 3,
+        completed: [],
+      }),
+    );
+    expect(readSegmentManifest(dir)).toBeNull();
+  });
+
   it("segmentDirFor nests under renders/.hf-segments", () => {
     dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
     expect(segmentDirFor("/p/renders", "abc")).toBe("/p/renders/.hf-segments/abc");
@@ -140,6 +156,7 @@ describe("manifest io", () => {
 });
 
 describe("validateCompletedSegments", () => {
+  const unforced = (planHash: string) => ({ planHash, forceScreenshot: false });
   let dir = "";
   afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
@@ -153,6 +170,7 @@ describe("validateCompletedSegments", () => {
     const manifest: SegmentManifest = {
       version: 1,
       planHash: "h",
+      forceScreenshot: false,
       totalFrames: 9,
       segmentFrames: 3,
       completed: [
@@ -169,7 +187,7 @@ describe("validateCompletedSegments", () => {
       ],
     };
     const probe = async (p: string) => (p === ok ? 3 : p === short ? 2 : null);
-    expect([...(await validateCompletedSegments(manifest, "h", probe))]).toEqual([0]);
+    expect([...(await validateCompletedSegments(manifest, unforced("h"), probe))]).toEqual([0]);
   });
 
   it("rejects a segment whose size no longer matches the manifest", async () => {
@@ -181,13 +199,14 @@ describe("validateCompletedSegments", () => {
     const manifest: SegmentManifest = {
       version: 1,
       planHash: "h",
+      forceScreenshot: false,
       totalFrames: 3,
       segmentFrames: 3,
       completed: [
         { index: 0, startFrame: 0, endFrame: 3, path: truncated, bytes: 999, completedAt: "" },
       ],
     };
-    expect((await validateCompletedSegments(manifest, "h", async () => 3)).size).toBe(0);
+    expect((await validateCompletedSegments(manifest, unforced("h"), async () => 3)).size).toBe(0);
   });
 
   it("skips nothing when the plan hash differs", async () => {
@@ -200,12 +219,39 @@ describe("validateCompletedSegments", () => {
     const manifest: SegmentManifest = {
       version: 1,
       planHash: "old",
+      forceScreenshot: false,
       totalFrames: 3,
       segmentFrames: 3,
       completed: [{ index: 0, startFrame: 0, endFrame: 3, path: good, bytes: 2, completedAt: "" }],
     };
-    expect((await validateCompletedSegments(manifest, "old", async () => 3)).size).toBe(1);
-    expect((await validateCompletedSegments(manifest, "new", async () => 3)).size).toBe(0);
+    expect((await validateCompletedSegments(manifest, unforced("old"), async () => 3)).size).toBe(
+      1,
+    );
+    expect((await validateCompletedSegments(manifest, unforced("new"), async () => 3)).size).toBe(
+      0,
+    );
+  });
+
+  it("skips nothing when the segments were captured in another capture mode", async () => {
+    dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
+    const good = join(dir, "segment_00000.mp4");
+    writeFileSync(good, "xx");
+    const screenshotManifest: SegmentManifest = {
+      version: 1,
+      planHash: "h",
+      forceScreenshot: true,
+      totalFrames: 3,
+      segmentFrames: 3,
+      completed: [{ index: 0, startFrame: 0, endFrame: 3, path: good, bytes: 2, completedAt: "" }],
+    };
+    const resume = (forceScreenshot: boolean) =>
+      validateCompletedSegments(
+        screenshotManifest,
+        { planHash: "h", forceScreenshot },
+        async () => 3,
+      );
+    expect((await resume(true)).size).toBe(1);
+    expect((await resume(false)).size).toBe(0);
   });
 });
 
