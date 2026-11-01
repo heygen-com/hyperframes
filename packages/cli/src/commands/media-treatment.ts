@@ -460,6 +460,18 @@ function queryIncludingTemplates(root: Document | Element, selector: string): El
   return [];
 }
 
+function describeMediaInDocument(document: Document): string {
+  const media = queryIncludingTemplates(document, "video, img, canvas");
+  if (media.length === 0) return "The file has no <video>, <img> or <canvas> yet.";
+  const shown = media.slice(0, 5).map((element) => {
+    const tag = element.tagName.toLowerCase();
+    const id = element.getAttribute("id");
+    return id ? `${tag}#${id}` : `${tag}[src="${element.getAttribute("src") ?? ""}"]`;
+  });
+  const more = media.length > shown.length ? ` and ${media.length - shown.length} more` : "";
+  return `Media in the file: ${shown.join(", ")}${more}.`;
+}
+
 type MediaTarget = { element: Element; selectorIndex: number; tag: GradingSourceTag };
 
 function selectMediaElements(
@@ -473,7 +485,9 @@ function selectMediaElements(
   } catch {
     throw new Error(`Invalid selector: ${selector}`);
   }
-  if (matches.length === 0) throw new Error(`Selector did not match: ${selector}`);
+  if (matches.length === 0) {
+    throw new Error(`Selector did not match: ${selector}. ${describeMediaInDocument(document)}`);
+  }
   if (selectorIndex !== undefined && !matches[selectorIndex]) {
     throw new Error(`--selector-index ${selectorIndex} is outside ${matches.length} matches`);
   }

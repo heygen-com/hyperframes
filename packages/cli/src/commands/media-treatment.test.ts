@@ -222,6 +222,24 @@ describe("applyMediaTreatmentToHtml", () => {
     expect(result.html).toContain("data-color-grading=");
   });
 
+  it("says what media the file has when the selector matches none", () => {
+    expect(() => applyMediaTreatmentToHtml(VIDEO, { selector: "#prepared", grading: {} })).toThrow(
+      "Selector did not match: #prepared. Media in the file: video#hero.",
+    );
+    expect(() =>
+      applyMediaTreatmentToHtml(SEGMENTS, { selector: "#prepared", grading: {} }),
+    ).toThrow('video[src="a.mp4"], video[src="b.mp4"].');
+  });
+
+  it("says the file has no media yet when preparation added none", () => {
+    expect(() =>
+      applyMediaTreatmentToHtml("<!doctype html><html><body></body></html>", {
+        selector: "#prepared",
+        grading: {},
+      }),
+    ).toThrow("Selector did not match: #prepared. The file has no <video>, <img> or <canvas> yet.");
+  });
+
   it("treats every video a selector matches alike", () => {
     const result = applyMediaTreatmentToHtml(SEGMENTS, {
       selector: "video",
