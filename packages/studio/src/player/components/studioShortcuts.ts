@@ -1,3 +1,5 @@
+import { useSyncExternalStore } from "react";
+
 /** Bare keys Studio's hotkeys bind; the shortcuts list names them from here. */
 export const STUDIO_PLAIN_KEYS = {
   fullscreen: "f",
@@ -7,6 +9,91 @@ export const STUDIO_PLAIN_KEYS = {
   audioGain: "g",
   zoomSelection: "z",
 } as const;
+
+/** Every single-character bare key Studio answers, by action. Modifier chords, Space, arrows and Escape stay fixed. */
+export const DEFAULT_STUDIO_KEYS = {
+  ...STUDIO_PLAIN_KEYS,
+  mute: "m",
+  pause: "k",
+  shuttleBack: "j",
+  shuttleForward: "l",
+  inPoint: "i",
+  outPoint: "o",
+  seekToIn: "a",
+  seekToOut: "e",
+  selectTool: "v",
+  razorTool: "b",
+  selectLeftward: "[",
+  selectRightward: "]",
+  exitRazor: "a",
+  snap: "s",
+  grid: "g",
+  timelineSnap: "n",
+};
+
+export type StudioKeyAction = keyof typeof DEFAULT_STUDIO_KEYS;
+export type StudioKeys = Readonly<Record<StudioKeyAction, string>>;
+
+// Pairs that already share a key today because one handler yields to the other by context.
+const SHARED_BY_DESIGN: ReadonlyArray<readonly [StudioKeyAction, StudioKeyAction]> = [
+  ["pause", "addKeyframe"],
+  ["seekToIn", "exitRazor"],
+  ["split", "snap"],
+  ["audioGain", "grid"],
+];
+
+let current: StudioKeys = DEFAULT_STUDIO_KEYS;
+const listeners = new Set<() => void>();
+let warned = false;
+
+const sharedByDesign = (a: StudioKeyAction, b: StudioKeyAction) =>
+  SHARED_BY_DESIGN.some(([x, y]) => (x === a && y === b) || (x === b && y === a));
+
+function findClash(keys: StudioKeys): string | null {
+  const actions = Object.keys(keys) as StudioKeyAction[];
+  for (const [i, a] of actions.entries()) {
+    for (const b of actions.slice(i + 1)) {
+      if (keys[a] === keys[b] && !sharedByDesign(a, b)) return `${a} and ${b} both on "${keys[a]}"`;
+    }
+  }
+  return null;
+}
+
+function resolve(overrides: Partial<Record<StudioKeyAction, string>>): StudioKeys {
+  const next: Record<string, string> = { ...DEFAULT_STUDIO_KEYS };
+  for (const [action, key] of Object.entries(overrides)) {
+    if (action in next && typeof key === "string" && [...key].length === 1) {
+      next[action] = key.toLowerCase();
+    } else warn(`ignoring key for "${action}"`);
+  }
+  const clash = findClash(next as StudioKeys);
+  if (!clash) return next as StudioKeys;
+  warn(clash);
+  return DEFAULT_STUDIO_KEYS;
+}
+
+function warn(reason: string) {
+  if (warned) return;
+  warned = true;
+  console.warn(`Studio keys: using defaults, ${reason}`);
+}
+
+/** Replaces the whole host key map ({ [action]: character }); null restores the defaults. */
+export function setStudioKeys(overrides: Partial<Record<StudioKeyAction, string>> | null) {
+  if (!overrides) warned = false;
+  current = overrides ? resolve(overrides) : DEFAULT_STUDIO_KEYS;
+  for (const listener of listeners) listener();
+}
+
+export const getStudioKeys = (): StudioKeys => current;
+export const getStudioKey = (action: StudioKeyAction): string => current[action];
+
+function subscribe(listener: () => void) {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+export const useStudioKeys = (): StudioKeys => useSyncExternalStore(subscribe, getStudioKeys);
 
 export interface ShortcutHint {
   key: string;
@@ -20,31 +107,36 @@ export interface ShortcutSection {
 
 const hintKey = (key: string) => key.toUpperCase();
 
+export const keyHint = (action: StudioKeyAction, keys: StudioKeys = current) =>
+  hintKey(keys[action]);
+
 export const SPLIT_SHORTCUT_HINT = hintKey(STUDIO_PLAIN_KEYS.split);
 export const ZOOM_SELECTION_SHORTCUT_HINT = hintKey(STUDIO_PLAIN_KEYS.zoomSelection);
 
-/** What PlayerControls' shortcuts panel lists unless an embedder passes its own sections. */
-export const DEFAULT_SHORTCUT_SECTIONS: readonly ShortcutSection[] = [
+/** The shortcuts panel's sections, naming the keys the host has set. */
+export function buildShortcutSections(keys: StudioKeys): readonly ShortcutSection[] {
+  const k = (action: StudioKeyAction) => keyHint(action, keys);
+  return [
   {
     title: "Playback",
     hints: [
       { key: "Space", label: "Play / Pause" },
-      { key: "J", label: "Play backward" },
-      { key: "K", label: "Stop" },
-      { key: "L", label: "Play forward" },
-      { key: "M", label: "Toggle mute" },
-      { key: "⇧L", label: "Toggle loop" },
+      { key: k("shuttleBack"), label: "Play backward" },
+      { key: k("pause"), label: "Stop" },
+      { key: k("shuttleForward"), label: "Play forward" },
+      { key: k("mute"), label: "Toggle mute" },
+      { key: `⇧${k("shuttleForward")}`, label: "Toggle loop" },
       { key: "←/→", label: "Step 1 frame" },
       { key: "⇧←/⇧→", label: "Step 10 frames" },
-      { key: hintKey(STUDIO_PLAIN_KEYS.fullscreen), label: "Toggle fullscreen" },
+      { key: k("fullscreen"), label: "Toggle fullscreen" },
     ],
   },
   {
     title: "Keyframes (when an element is selected)",
     hints: [
-      { key: hintKey(STUDIO_PLAIN_KEYS.addKeyframe), label: "Add / remove keyframe at playhead" },
+      { key: k("addKeyframe"), label: "Add / remove keyframe at playhead" },
       { key: "Del", label: "Delete selected keyframe" },
-      { key: hintKey(STUDIO_PLAIN_KEYS.record), label: "Record gesture" },
+      { key: k("record"), label: "Record gesture" },
     ],
   },
   {
@@ -55,12 +147,12 @@ export const DEFAULT_SHORTCUT_SECTIONS: readonly ShortcutSection[] = [
       { key: "⌘C", label: "Copy element" },
       { key: "⌘V", label: "Paste element" },
       { key: "⌘X", label: "Cut element" },
-      { key: SPLIT_SHORTCUT_HINT, label: "Split clip at playhead" },
-      { key: ZOOM_SELECTION_SHORTCUT_HINT, label: "Zoom timeline to selected clips" },
-      { key: hintKey(STUDIO_PLAIN_KEYS.audioGain), label: "Audio Gain for clips with sound" },
+      { key: k("split"), label: "Split clip at playhead" },
+      { key: k("zoomSelection"), label: "Zoom timeline to selected clips" },
+      { key: k("audioGain"), label: "Audio Gain for clips with sound" },
       { key: "⇧Click", label: "Razor tool: split all tracks" },
-      { key: "[", label: "Select clips starting before the playhead" },
-      { key: "]", label: "Select clips running at or after the playhead" },
+      { key: k("selectLeftward"), label: "Select clips starting before the playhead" },
+      { key: k("selectRightward"), label: "Select clips running at or after the playhead" },
       { key: "⌘G", label: "Group elements" },
       { key: "⌘⇧G", label: "Ungroup" },
       { key: "Del", label: "Delete selected element (no keyframe selected)" },
@@ -102,12 +194,19 @@ export const DEFAULT_SHORTCUT_SECTIONS: readonly ShortcutSection[] = [
   {
     title: "Work area",
     hints: [
-      { key: "I", label: "Set in-point" },
-      { key: "⇧I", label: "Clear in-point" },
-      { key: "O", label: "Set out-point" },
-      { key: "⇧O", label: "Clear out-point" },
-      { key: "A", label: "Jump to in-point" },
-      { key: "E", label: "Jump to out-point" },
+      { key: k("inPoint"), label: "Set in-point" },
+      { key: `⇧${k("inPoint")}`, label: "Clear in-point" },
+      { key: k("outPoint"), label: "Set out-point" },
+      { key: `⇧${k("outPoint")}`, label: "Clear out-point" },
+      { key: k("seekToIn"), label: "Jump to in-point" },
+      { key: k("seekToOut"), label: "Jump to out-point" },
     ],
   },
 ];
+}
+
+export const getShortcutSections = () => buildShortcutSections(current);
+
+export const DEFAULT_SHORTCUT_SECTIONS: readonly ShortcutSection[] = buildShortcutSections(
+  DEFAULT_STUDIO_KEYS,
+);

@@ -11,6 +11,7 @@ import { useCaptionStore } from "../../captions/store";
 import { shouldIgnorePlaybackShortcutEvent, SHUTTLE_SPEEDS } from "../lib/playbackShortcuts";
 import { canvasNudgeKeysClaimed } from "../../utils/canvasNudgeGate";
 import { usePlayerStore } from "../store/playerStore";
+import { getStudioKeys } from "../components/studioShortcuts";
 import { stepFrameTime } from "../lib/time";
 import { useLinkedClipPreferences } from "../../utils/linkedClipPreferences";
 import type { PlaybackAdapter } from "../lib/playbackTypes";
@@ -108,6 +109,7 @@ export function usePlaybackKeyboard({
         return;
       }
       const key = e.key.toLowerCase();
+      const keys = getStudioKeys();
       pressedKeysRef.current.add(key);
       if (e.code === "Space") {
         e.preventDefault();
@@ -129,60 +131,60 @@ export function usePlaybackKeyboard({
         return;
       }
       if (e.repeat) return;
-      if (key === "m") {
+      if (key === keys.mute) {
         e.preventDefault();
         const state = usePlayerStore.getState();
         state.setAudioMuted(!state.audioMuted);
         return;
       }
-      if (key === "l" && e.shiftKey) {
+      if (key === keys.shuttleForward && e.shiftKey) {
         e.preventDefault();
         const state = usePlayerStore.getState();
         state.setLoopEnabled(!state.loopEnabled);
         return;
       }
-      if (key === "k") {
+      if (key === keys.pause) {
         e.preventDefault();
         pause();
         return;
       }
-      if (key === "j") {
+      if (key === keys.shuttleBack) {
         e.preventDefault();
-        if (pressedKeysRef.current.has("k")) {
+        if (pressedKeysRef.current.has(keys.pause)) {
           stepFrames(-1);
           return;
         }
         shuttle("backward");
         return;
       }
-      if (key === "l") {
+      if (key === keys.shuttleForward) {
         e.preventDefault();
-        if (pressedKeysRef.current.has("k")) {
+        if (pressedKeysRef.current.has(keys.pause)) {
           stepFrames(1);
           return;
         }
         shuttle("forward");
         return;
       }
-      if (key === "i") {
+      if (key === keys.inPoint) {
         e.preventDefault();
         const t = getAdapter()?.getTime() ?? usePlayerStore.getState().currentTime;
         usePlayerStore.getState().setInPoint(e.shiftKey ? null : t);
         return;
       }
-      if (key === "o") {
+      if (key === keys.outPoint) {
         e.preventDefault();
         const t = getAdapter()?.getTime() ?? usePlayerStore.getState().currentTime;
         usePlayerStore.getState().setOutPoint(e.shiftKey ? null : t);
         return;
       }
-      if (key === "a") {
+      if (key === keys.seekToIn) {
         if (shouldRazorClaimPlainA(e)) return;
         e.preventDefault();
         seek(usePlayerStore.getState().inPoint ?? 0, { keepPlaying: true });
         return;
       }
-      if (key === "e") {
+      if (key === keys.seekToOut) {
         e.preventDefault();
         const { outPoint } = usePlayerStore.getState();
         seek(outPoint ?? getAdapter()?.getDuration() ?? usePlayerStore.getState().duration, {

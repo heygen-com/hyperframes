@@ -1,4 +1,5 @@
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
+import { keyHint, useStudioKeys } from "../../player/components/studioShortcuts";
 
 export type GestureRecordingState = "idle" | "recording" | "preview";
 
@@ -29,6 +30,7 @@ export function GestureRecordPanelButton({
   recordingDuration,
   onToggleRecording,
 }: GestureRecordPanelButtonProps) {
+  const recordKey = keyHint("record", useStudioKeys());
   const recording = recordingState === "recording";
   const track = useTrackDesignInput();
 
@@ -49,8 +51,8 @@ export function GestureRecordPanelButton({
       >
         <GestureRecordIcon recording={recording} />
         {recording
-          ? `Stop recording ${(recordingDuration ?? 0).toFixed(1)}s -- press R`
-          : "Record gesture (R) -- move pointer to capture motion"}
+          ? `Stop recording ${(recordingDuration ?? 0).toFixed(1)}s -- press ${recordKey}`
+          : `Record gesture (${recordKey}) -- move pointer to capture motion`}
       </button>
     </div>
   );
@@ -67,8 +69,9 @@ export function GestureRecordBadge({
   recordingState,
   onToggleRecording,
 }: GestureRecordBadgeProps) {
+  const recordKey = keyHint("record", useStudioKeys());
   const recording = recordingState === "recording";
-  const label = recording ? "Stop gesture recording (R)" : "Record gesture (R)";
+  const label = recording ? `Stop gesture recording (${recordKey})` : `Record gesture (${recordKey})`;
 
   return (
     <button

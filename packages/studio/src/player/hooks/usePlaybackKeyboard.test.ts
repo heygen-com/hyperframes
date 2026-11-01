@@ -3,14 +3,16 @@
 
 import React, { act, useEffect } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { usePlaybackKeyboard } from "./usePlaybackKeyboard";
 import { usePlayerStore } from "../store/playerStore";
+import { setStudioKeys } from "../components/studioShortcuts";
 import { useLinkedClipPreferences } from "../../utils/linkedClipPreferences";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 afterEach(() => {
+  setStudioKeys(null);
   document.body.innerHTML = "";
   usePlayerStore.getState().reset();
   useLinkedClipPreferences.getState().setCompositionFps(30);
@@ -321,5 +323,64 @@ describe("usePlaybackKeyboard — frame step", () => {
     });
 
     expect(spies.seek).toHaveBeenCalledWith((frame + 1) / fps);
+  });
+});
+
+describe("usePlaybackKeyboard — keys the host can remap", () => {
+  beforeEach(() => usePlayerStore.setState({ audioMuted: false, loopEnabled: false }));
+
+  const press = (dispatch: HookHandle["dispatch"], key: string, shiftKey = false) =>
+    act(() => {
+      dispatch(keydown({ code: `Key${key.toUpperCase()}`, key, shiftKey }));
+    });
+
+  it("answers every default key", () => {
+    const { dispatch, release, spies } = setupHook();
+    press(dispatch, "m");
+    expect(usePlayerStore.getState().audioMuted).toBe(true);
+    press(dispatch, "l", true);
+    expect(usePlayerStore.getState().loopEnabled).toBe(true);
+    press(dispatch, "k");
+    expect(spies.pause).toHaveBeenCalledTimes(1);
+    act(() => release(keyup({ code: "KeyK", key: "k" })));
+    press(dispatch, "j");
+    expect(spies.playBackward).toHaveBeenCalledTimes(1);
+    press(dispatch, "i");
+    expect(usePlayerStore.getState().inPoint).not.toBeNull();
+    press(dispatch, "o");
+    expect(usePlayerStore.getState().outPoint).not.toBeNull();
+    press(dispatch, "a");
+    press(dispatch, "e");
+    expect(spies.seek).toHaveBeenCalledTimes(2);
+  });
+
+  it("a remapped key answers and the old one does not", () => {
+    setStudioKeys({ mute: "x", seekToIn: "u", shuttleForward: "y" });
+    const { dispatch, spies } = setupHook();
+    press(dispatch, "m");
+    expect(usePlayerStore.getState().audioMuted).toBe(false);
+    press(dispatch, "x");
+    expect(usePlayerStore.getState().audioMuted).toBe(true);
+    press(dispatch, "a");
+    expect(spies.seek).not.toHaveBeenCalled();
+    press(dispatch, "u");
+    expect(spies.seek).toHaveBeenCalledTimes(1);
+    press(dispatch, "l");
+    expect(spies.play).not.toHaveBeenCalled();
+    press(dispatch, "y");
+    expect(spies.play).toHaveBeenCalledTimes(1);
+    press(dispatch, "y", true);
+    expect(usePlayerStore.getState().loopEnabled).toBe(true);
+  });
+
+  it("holding the remapped stop key still frame-steps with the remapped shuttle keys", () => {
+    setStudioKeys({ pause: "p", shuttleForward: "y" });
+    const { dispatch, spies } = setupHook();
+    press(dispatch, "p");
+    press(dispatch, "y");
+    press(dispatch, "j");
+    expect(spies.seek).toHaveBeenCalledTimes(2);
+    expect(spies.play).not.toHaveBeenCalled();
+    expect(spies.playBackward).not.toHaveBeenCalled();
   });
 });

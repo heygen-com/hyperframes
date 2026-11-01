@@ -6,6 +6,7 @@ import type { DomEditSelection } from "../components/editor/domEditing";
 import { clearAutomationClipboard, copyRange } from "../player/components/automationClipboard";
 import { VOLUME_RANGE } from "@hyperframes/core/audio-automation";
 import type { TimelineElement } from "../player/store/timelineElement";
+import { setStudioKeys } from "../player/components/studioShortcuts";
 import { useAudioGainDialogStore } from "../player/components/audioGainDialogStore";
 import {
   cancelTimelineZoom,
@@ -55,6 +56,8 @@ const chord = (key: string) =>
   new KeyboardEvent("keydown", { key, metaKey: true, bubbles: true, cancelable: true });
 
 afterEach(() => {
+  setStudioKeys(null);
+  usePlayerStore.getState().setActiveTool("select");
   clearAutomationClipboard();
   usePlayerStore.getState().clearAutomationSelection();
   usePlayerStore.setState({
@@ -581,5 +584,60 @@ describe("dispatchPlainKey — G opens Audio Gain", () => {
     dispatchPlainKey(event, "g", callbacks());
     expect(useAudioGainDialogStore.getState().targetKeys).toBeNull();
     expect(event.defaultPrevented).toBe(false);
+  });
+});
+
+describe("editor keys the host can remap", () => {
+  const dispatch = (key: string) => {
+    const event = press(key);
+    dispatchPlainKey(event, key.toLowerCase(), callbacks());
+    return event;
+  };
+  const tool = () => usePlayerStore.getState().activeTool;
+
+  it("answers every default key", () => {
+    dispatch("b");
+    expect(tool()).toBe("razor");
+    dispatch("a");
+    expect(tool()).toBe("select");
+    dispatch("b");
+    dispatch("v");
+    expect(tool()).toBe("select");
+    const original = usePlayerStore.getState().selectLeftward;
+    const left = vi.fn();
+    usePlayerStore.setState({ selectLeftward: left });
+    dispatch("[");
+    usePlayerStore.setState({ selectLeftward: original });
+    expect(left).toHaveBeenCalledTimes(1);
+  });
+
+  it("a remapped key answers and the old one does not", () => {
+    setStudioKeys({ razorTool: "y", selectTool: "u", exitRazor: "q" });
+    dispatch("b");
+    expect(tool()).toBe("select");
+    expect(dispatch("y").defaultPrevented).toBe(true);
+    expect(tool()).toBe("razor");
+    dispatch("a");
+    expect(tool()).toBe("razor");
+    dispatch("q");
+    expect(tool()).toBe("select");
+    dispatch("y");
+    dispatch("v");
+    expect(tool()).toBe("razor");
+    dispatch("u");
+    expect(tool()).toBe("select");
+  });
+
+  it("split, fullscreen and record follow the map", () => {
+    setStudioKeys({ split: "t", record: "w" });
+    const cb = callbacks({ onToggleRecording: vi.fn() });
+    dispatchPlainKey(press("r"), "r", cb);
+    expect(cb.onToggleRecording).not.toHaveBeenCalled();
+    dispatchPlainKey(press("w"), "w", cb);
+    expect(cb.onToggleRecording).toHaveBeenCalledTimes(1);
+    expect(press("s").defaultPrevented).toBe(false);
+    const split = press("t");
+    dispatchPlainKey(split, "t", cb);
+    expect(split.defaultPrevented).toBe(true);
   });
 });

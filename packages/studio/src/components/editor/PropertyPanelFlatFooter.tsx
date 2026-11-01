@@ -1,4 +1,5 @@
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
+import { keyHint, useStudioKeys } from "../../player/components/studioShortcuts";
 
 export function PropertyPanelFlatFooter({
   onAskAgent,
@@ -13,9 +14,10 @@ export function PropertyPanelFlatFooter({
 }) {
   const track = useTrackDesignInput();
   const recording = recordingState === "recording";
+  const recordKey = keyHint("record", useStudioKeys());
   const recordTitle = recording
     ? `Stop recording ${(recordingDuration ?? 0).toFixed(1)}s`
-    : "Record gesture (R)";
+    : `Record gesture (${recordKey})`;
 
   return (
     // No border-t here: every possible element immediately above this footer
