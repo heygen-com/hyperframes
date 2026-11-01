@@ -32,7 +32,19 @@ const RENDER_MIME: Record<string, string> = {
   ".gif": "image/gif",
 };
 const RENDER_EXTENSIONS = Object.keys(RENDER_MIME);
-const RENDER_ARTIFACT_EXTENSIONS = [...RENDER_EXTENSIONS, ".meta.json"];
+const RENDER_SIDECAR_EXTENSIONS = RENDER_EXTENSIONS.map(
+  (extension) => `${extension}.hf-render.json`,
+);
+const RENDER_ARTIFACT_EXTENSIONS = [
+  ...RENDER_EXTENSIONS,
+  ".meta.json",
+  ...RENDER_SIDECAR_EXTENSIONS,
+];
+
+export function renderArtifactPaths(outputPath: string): string[] {
+  const base = outputPath.replace(/\.(mp4|webm|mov|gif)$/, "");
+  return RENDER_ARTIFACT_EXTENSIONS.map((extension) => `${base}${extension}`);
+}
 
 function resolveRenderArtifacts(directories: readonly string[], jobId: string): string[] | null {
   const artifacts = [...new Set(directories)]

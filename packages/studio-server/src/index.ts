@@ -1,5 +1,6 @@
 export { createStudioApi } from "./createStudioApi.js";
 export { MAX_UPLOAD_BYTES } from "./routes/files.js";
+export { renderArtifactPaths } from "./routes/render.js";
 export {
   createProjectSignature,
   createProjectSignatureAsync,

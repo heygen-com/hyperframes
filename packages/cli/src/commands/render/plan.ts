@@ -120,6 +120,8 @@ export interface RenderCommandArgs {
   "low-memory-mode"?: boolean;
   "experimental-fast-capture"?: boolean;
   "frames-cache-dir"?: string;
+  provenance?: boolean;
+  "provenance-path"?: string;
 }
 
 export interface RenderPlan {
@@ -182,6 +184,8 @@ export interface RenderPlan {
   variablesArg?: string;
   variablesFileArg?: string;
   strictVariables: boolean;
+  /** undefined writes no sidecar, true writes it next to the output, a string relocates it. */
+  provenance?: string | true;
   environment: Readonly<Record<string, string>>;
   /** Names of HF_-/HYPERFRAMES_-prefixed env vars present at plan time (never values), capped at 20. */
   hfEnvOverrides: readonly string[];
@@ -286,6 +290,15 @@ function resolveHfEnvOverrides(): readonly string[] {
     .filter((name) => HF_ENV_OVERRIDE_RE.test(name) && !CLI_INTERNAL_HF_ENV_KEYS.has(name))
     .sort()
     .slice(0, MAX_REPORTED_ENV_OVERRIDES);
+}
+
+export function parseProvenanceArgs(
+  enabled: boolean | undefined,
+  path: string | undefined,
+): string | true | undefined {
+  const trimmed = path?.trim();
+  if (trimmed) return resolve(trimmed);
+  return enabled === true ? true : undefined;
 }
 
 /** Parse and validate command input into an immutable execution plan. */
@@ -578,6 +591,23 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
     failUsage();
   }
 
+  const provenance = parseProvenanceArgs(args.provenance, args["provenance-path"]);
+  if (typeof provenance === "string" && batchPath) {
+    errorBox(
+      "Invalid provenance",
+      "--provenance-path cannot be combined with --batch. " +
+        "Use --provenance and each batch row writes its own <output>.hf-render.json.",
+    );
+    failUsage();
+  }
+  if (typeof provenance === "string" && useDocker) {
+    errorBox(
+      "Invalid provenance",
+      "--provenance-path is not supported with --docker. " +
+        "Use --provenance to write the sidecar next to the output in the mounted output directory.",
+    );
+    failUsage();
+  }
   const delivery = parseDeliveryFlags(args);
   const { proresProfile, ...mp4Delivery } = delivery;
   if (proresProfile !== undefined && format !== "mov") {
@@ -652,6 +682,7 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
     variablesArg: args.variables,
     variablesFileArg: args["variables-file"],
     strictVariables: args["strict-variables"] ?? false,
+    provenance,
     environment: Object.freeze(environment),
     hfEnvOverrides,
   });
