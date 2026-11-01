@@ -104,7 +104,6 @@ function useVideoThumbnailSnapshot(
   return selectThumbnailSnapshot(posterSnapshot, richSnapshot, shownSnapshot);
 }
 
-/** The decode request's inputs; the trimmed range stays at its last rest value while a trim moves. */
 function useRangeHeldDuringTrim(
   props: Required<
     Pick<VideoThumbnailProps, "videoSrc" | "duration" | "projectId" | "sessionEpoch" | "priority">
