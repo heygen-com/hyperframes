@@ -708,28 +708,23 @@ export async function installWithCorruptArchiveRecovery<T>(
  * chrome-headless-shell download is broken. Sibling failure mode: #2078
  * (SIGTRAP at launch), same remediation, different trigger.
  */
-function browserPathHintForPlatform(): string {
-  if (process.platform === "darwin") {
-    return "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
-  }
-  if (process.platform === "win32") {
-    return "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
-  }
-  return "/usr/bin/google-chrome";
-}
-
 function wrapDownloadFailureWithBrowserPathHint(
   cause: unknown,
   unzipLog: readonly string[],
 ): Error {
   const original = normalizeErrorMessage(cause);
   const unzipErrors = unzipLog.length > 0 ? ` Unzip errors: ${unzipLog.join("; ")}` : "";
-  const example = browserPathHintForPlatform();
+  const installed = findSystemBrowser()?.executablePath;
+  const pointAt = installed
+    ? `Point hyperframes at the Chrome already installed here instead:\n\n` +
+      `  export HYPERFRAMES_BROWSER_PATH="${installed}"\n\n` +
+      `Run \`hyperframes doctor\` to see which Chrome was found. Then re-run your command. `
+    : `No Chrome or Chromium was found on this machine. Install Google Chrome, then set ` +
+      `HYPERFRAMES_BROWSER_PATH to its executable and re-run your command. `;
   const message =
     `Failed to install chrome-headless-shell ${managedChromeVersion()}: ${original}${unzipErrors}\n\n` +
-    `Point hyperframes at an already-installed Chrome/Chromium instead:\n\n` +
-    `  export HYPERFRAMES_BROWSER_PATH="${example}"\n\n` +
-    `Run \`hyperframes doctor\` to see which Chrome was found. Then re-run your command. Any Chrome build works for the screenshot ` +
+    pointAt +
+    `Any Chrome build works for the screenshot ` +
     `capture path; install a real chrome-headless-shell later if you need the ` +
     `perf-optimized BeginFrame path. Alternatively, run inside the hyperframes ` +
     `Docker image which ships a compatible headless-shell.`;
