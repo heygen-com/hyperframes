@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { initSandboxRuntimeModular } from "./init";
+import { heldPosters } from "./proxySrc";
 import { createMockTimeline, resetRuntimeFixtureDom } from "./runtimeSeekFixture.test-helpers";
 
 function audio(id: string, duration: number, readyState: { value: number; bufferedTo?: number }) {
@@ -26,12 +27,12 @@ function audio(id: string, duration: number, readyState: { value: number; buffer
   return el;
 }
 
-function playPodcast(voiceStart = 0) {
+function playPodcast(voiceStart = 0, voiceTag = "audio") {
   resetRuntimeFixtureDom();
   document.body.innerHTML =
     '<div data-composition-id="main" data-root="true" data-duration="10">' +
     '<audio id="music" data-start="0" data-duration="10" src="/music.m4a"></audio>' +
-    `<audio id="voice" data-start="${voiceStart}" data-duration="4" src="/voice.m4a"></audio>` +
+    `<${voiceTag} id="voice" data-start="${voiceStart}" data-duration="4" src="/voice.m4a"></${voiceTag}>` +
     "</div>";
   const voiceReady: { value: number; bufferedTo?: number } = { value: 1 };
   const music = audio("music", 10, { value: 4 });
@@ -78,6 +79,26 @@ it("a track not ready pauses everything with Buffering, and resumes when it can 
   expect(music.paused).toBe(false);
   expect(voice.paused).toBe(false);
   expect(states.at(-1)).toEqual({ isPlaying: true, buffering: false });
+});
+
+it("the music plays on while a video shows a still across a copy swap", () => {
+  const { music, voice, states, playFor } = playPodcast(0, "video");
+  heldPosters.set(voice, { poster: null, since: performance.now() });
+
+  playFor(1);
+  expect(window.__player!.getTime()).toBeGreaterThan(0.9);
+  expect(music.paused).toBe(false);
+  expect(states.at(-1)).toEqual({ isPlaying: true, buffering: false });
+});
+
+it("a copy that never lands stops standing in, and the film waits for it", () => {
+  const { music, voice, states, playFor } = playPodcast(0, "video");
+  heldPosters.set(voice, { poster: null, since: performance.now() - 60_000 });
+
+  playFor(1);
+  expect(window.__player!.getTime()).toBeLessThan(0.1);
+  expect(music.paused).toBe(true);
+  expect(states.at(-1)).toEqual({ isPlaying: true, buffering: true });
 });
 
 it("holds on the frame a slow tick skips into a clip with no data, after asking it to play", () => {

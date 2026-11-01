@@ -235,12 +235,12 @@ function holdShownFrame(el: HTMLMediaElement): void {
   if (!isVideoElement(el) || heldPosters.has(el)) return;
   const still = stillOf(el);
   if (!still) return;
-  heldPosters.set(el, el.getAttribute("poster"));
+  heldPosters.set(el, { poster: el.getAttribute("poster"), since: performance.now() });
   el.setAttribute("poster", still);
   const letGo = () => {
     for (const type of RELEASE_EVENTS) el.removeEventListener(type, release);
     letGoOfStill.delete(el);
-    const authored = heldPosters.get(el) ?? null;
+    const authored = heldPosters.get(el)?.poster ?? null;
     heldPosters.delete(el);
     if (authored === null) el.removeAttribute("poster");
     else el.setAttribute("poster", authored);
