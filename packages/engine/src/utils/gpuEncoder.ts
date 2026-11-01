@@ -265,9 +265,15 @@ const QSV_PRESET_MAP: Record<string, string> = {
  * - `videotoolbox`, `vaapi`, `amf`, `null`: no remap (they either ignore
  *   `-preset` entirely or accept the libx264 vocabulary).
  */
-export function mapPresetForGpuEncoder(encoder: GpuEncoder, preset: string): string {
+export function mapPresetForGpuEncoder(
+  encoder: GpuEncoder,
+  preset: string,
+  nvencPresets?: ReadonlySet<string>,
+): string {
   switch (encoder) {
     case "nvenc":
+      if (nvencPresets && nvencPresets.size > 0 && !nvencPresets.has("p4"))
+        return legacyNvencPreset(preset, nvencPresets);
       if (/^p[1-7]$/.test(preset)) return preset;
       return NVENC_PRESET_MAP[preset] ?? "p4";
     case "qsv":
@@ -275,4 +281,72 @@ export function mapPresetForGpuEncoder(encoder: GpuEncoder, preset: string): str
     default:
       return preset;
   }
+}
+
+// Builds on an older NVENC SDK list `default slow medium fast hp hq ...` and reject p1..p7.
+const LEGACY_NVENC_PRESET_MAP: Record<string, string> = {
+  ultrafast: "hp",
+  superfast: "hp",
+  veryfast: "hp",
+  faster: "fast",
+  fast: "fast",
+  medium: "medium",
+  slow: "slow",
+  slower: "slow",
+  veryslow: "slow",
+  placebo: "slow",
+};
+
+function legacyNvencPreset(preset: string, accepted: ReadonlySet<string>): string {
+  if (accepted.has(preset) && !/^p[1-7]$/.test(preset)) return preset;
+  const mapped = LEGACY_NVENC_PRESET_MAP[preset] ?? "medium";
+  return accepted.has(mapped) ? mapped : "default";
+}
+
+/** The names an encoder lists under its `-preset` option in `ffmpeg -h encoder=<name>`. */
+export function parseEncoderPresetNames(helpText: string): ReadonlySet<string> {
+  const names = new Set<string>();
+  let inPreset = false;
+  for (const line of helpText.split(/\r?\n/)) {
+    if (/^\s{1,3}-\S/.test(line)) {
+      inPreset = /^\s{1,3}-preset\s/.test(line);
+      continue;
+    }
+    const entry = inPreset ? /^\s{4,}([a-z][a-z0-9_]*)\s+-?\d+\s+[E.]\S{3}/.exec(line) : null;
+    if (entry) names.add(entry[1]!);
+  }
+  return names;
+}
+
+let cachedNvencPresets: Promise<ReadonlySet<string>> | undefined = undefined;
+
+/** The presets this ffmpeg's h264_nvenc takes; empty when it cannot be read, which keeps the pN names. */
+export function getCachedNvencPresets(): Promise<ReadonlySet<string>> {
+  cachedNvencPresets ??= readNvencPresets();
+  return cachedNvencPresets;
+}
+
+async function readNvencPresets(): Promise<ReadonlySet<string>> {
+  try {
+    const ffmpeg = spawn(getFfmpegBinary(), ["-hide_banner", "-h", "encoder=h264_nvenc"], {
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    });
+    trackChildProcess(ffmpeg);
+    let stdout = "";
+    ffmpeg.stdout.on("data", (data) => {
+      stdout += data.toString();
+    });
+    const outcome = await new ManagedChildProcess(ffmpeg, {
+      deadlineAtMs: Date.now() + GPU_PROBE_TIMEOUT_MS,
+      terminationGraceMs: GPU_PROBE_KILL_GRACE_MS,
+    }).wait();
+    return outcome.reason === "exit" ? parseEncoderPresetNames(stdout) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+export function resetCachedNvencPresets() {
+  cachedNvencPresets = undefined;
 }

@@ -103,6 +103,18 @@ describe("buildStreamingArgs", () => {
       expectSingleHvc1Tag(args);
     });
 
+    it("gives an NVENC build that lists only legacy presets a legacy preset, not p4", () => {
+      const legacy = new Set(["default", "slow", "medium", "fast", "hp", "hq"]);
+      const args = buildStreamingArgs(
+        { ...baseSdr, codec: "h265", useGpu: true, preset: "medium" },
+        "/tmp/out.mp4",
+        "nvenc",
+        legacy,
+      );
+
+      expect(args[args.indexOf("-preset") + 1]).toBe("medium");
+    });
+
     it("keeps the software tag when a detected GPU is disabled", () => {
       const args = buildStreamingArgs({ ...baseSdr, codec: "h265" }, "/tmp/out.mp4", "nvenc");
 
