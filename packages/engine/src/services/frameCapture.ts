@@ -3420,6 +3420,7 @@ export function isStaticDedupFrameAnalysisSafe(totalFrames: number): boolean {
 export async function computeStaticFrameSet(
   page: Page,
   fps: number,
+  ignoredVideoIds: readonly string[] = [],
 ): Promise<{
   totalFrames: number;
   staticFrameSet: Set<number>;
@@ -3433,131 +3434,138 @@ export async function computeStaticFrameSet(
   eligible: boolean;
   reason: string;
 }> {
-  const result = await page.evaluate((spatialProps: readonly string[]) => {
-    type AnyTween = {
-      startTime(): number;
-      duration(): number;
-      totalDuration?(): number;
-      getChildren?(nested: boolean, tweens: boolean, timelines: boolean): AnyTween[];
-      vars?: Record<string, unknown>;
-    };
-    // Passed in from SPATIAL_TWEEN_PROPERTIES rather than declared here, so the list
-    // stays the one this module's own tests exercise (the matching code itself must
-    // stay inline — this closure is serialized and runs in the page realm).
-    const SPATIAL_PROPS = new Set(spatialProps);
-    function isSpatial(vars: Record<string, unknown> | undefined): boolean {
-      if (!vars) return false;
-      for (const key of Object.keys(vars)) if (SPATIAL_PROPS.has(key)) return true;
-      return false;
-    }
-    const intervals: Array<{ start: number; end: number; spatial: boolean }> = [];
-    let tweenCount = 0;
-    // totalDuration() (NOT duration()): a repeat/yoyo tween animates past one iteration;
-    // a repeating timeline is marked opaque over its whole span (conservative).
-    // A GSAP tl.call() is a zero-duration tween whose vars wire the callback as
-    // onComplete (and onReverseComplete, fired on backward crossing — GSAP has
-    // no separate "undo" callback, so both directions invoke the SAME forward
-    // side effect). A one-shot DOM mutation driven this way (e.g. a counter's
-    // textContent) is not seek-idempotent: crossing it during the static-dedup
-    // verifier's own arm-time seeking permanently mutates the page, and that
-    // corruption can leak into a LATER, unrelated static run's real capture
-    // (the verifier's mismatch check only catches drift within the run being
-    // checked, not contamination from a run checked afterward). No reliable
-    // way to tell a DOM-mutating call() from a harmless one (analytics ping,
-    // class toggle with no visual effect) without executing it, so disqualify
-    // the whole comp on ANY call() rather than risk shipping wrong pixels.
-    let hasTimelineCall = false;
-    function walk(tl: AnyTween, offset: number): void {
-      if (typeof tl.getChildren !== "function") return;
-      // A timeline with an onUpdate callback can drive motion without any
-      // visible tween (e.g. setting x/y from Math.random inside onUpdate).
-      // Mark its entire span as animated so those frames are never deduped.
-      if (typeof tl.vars?.onUpdate === "function") {
-        const total = typeof tl.totalDuration === "function" ? tl.totalDuration() : 0;
-        // onUpdate can move anything (e.g. x/y from Math.random) — conservatively spatial.
-        if (total > 0) intervals.push({ start: offset, end: offset + total, spatial: true });
+  const result = await page.evaluate(
+    (spatialProps: readonly string[], ignored: string[]) => {
+      type AnyTween = {
+        startTime(): number;
+        duration(): number;
+        totalDuration?(): number;
+        getChildren?(nested: boolean, tweens: boolean, timelines: boolean): AnyTween[];
+        vars?: Record<string, unknown>;
+      };
+      // Passed in from SPATIAL_TWEEN_PROPERTIES rather than declared here, so the list
+      // stays the one this module's own tests exercise (the matching code itself must
+      // stay inline — this closure is serialized and runs in the page realm).
+      const SPATIAL_PROPS = new Set(spatialProps);
+      function isSpatial(vars: Record<string, unknown> | undefined): boolean {
+        if (!vars) return false;
+        for (const key of Object.keys(vars)) if (SPATIAL_PROPS.has(key)) return true;
+        return false;
       }
-      for (const child of tl.getChildren(false, true, true)) {
-        const start = offset + (typeof child.startTime === "function" ? child.startTime() : 0);
-        const single = typeof child.duration === "function" ? child.duration() : 0;
-        const total = typeof child.totalDuration === "function" ? child.totalDuration() : single;
-        if (typeof child.getChildren === "function") {
-          if (total > single + 1e-6) {
-            // A repeating nested timeline's own children are walked for their real
-            // vars below; this span is a conservative (spatial) placeholder for the
-            // repeat/yoyo overrun, which a per-child walk doesn't otherwise cover.
-            intervals.push({ start, end: start + total, spatial: true });
-            // Still descend for hasTimelineCall even though the repeating
-            // span is already opaque (its frames are excluded from dedup
-            // regardless): a call() inside it is a review-flagged detection
-            // gap otherwise — the arm-time verifier can still forward-seek
-            // through this span while checking a LATER static run, firing
-            // the call() and corrupting the page (review).
-            walk(child, start);
+      const intervals: Array<{ start: number; end: number; spatial: boolean }> = [];
+      let tweenCount = 0;
+      // totalDuration() (NOT duration()): a repeat/yoyo tween animates past one iteration;
+      // a repeating timeline is marked opaque over its whole span (conservative).
+      // A GSAP tl.call() is a zero-duration tween whose vars wire the callback as
+      // onComplete (and onReverseComplete, fired on backward crossing — GSAP has
+      // no separate "undo" callback, so both directions invoke the SAME forward
+      // side effect). A one-shot DOM mutation driven this way (e.g. a counter's
+      // textContent) is not seek-idempotent: crossing it during the static-dedup
+      // verifier's own arm-time seeking permanently mutates the page, and that
+      // corruption can leak into a LATER, unrelated static run's real capture
+      // (the verifier's mismatch check only catches drift within the run being
+      // checked, not contamination from a run checked afterward). No reliable
+      // way to tell a DOM-mutating call() from a harmless one (analytics ping,
+      // class toggle with no visual effect) without executing it, so disqualify
+      // the whole comp on ANY call() rather than risk shipping wrong pixels.
+      let hasTimelineCall = false;
+      function walk(tl: AnyTween, offset: number): void {
+        if (typeof tl.getChildren !== "function") return;
+        // A timeline with an onUpdate callback can drive motion without any
+        // visible tween (e.g. setting x/y from Math.random inside onUpdate).
+        // Mark its entire span as animated so those frames are never deduped.
+        if (typeof tl.vars?.onUpdate === "function") {
+          const total = typeof tl.totalDuration === "function" ? tl.totalDuration() : 0;
+          // onUpdate can move anything (e.g. x/y from Math.random) — conservatively spatial.
+          if (total > 0) intervals.push({ start: offset, end: offset + total, spatial: true });
+        }
+        for (const child of tl.getChildren(false, true, true)) {
+          const start = offset + (typeof child.startTime === "function" ? child.startTime() : 0);
+          const single = typeof child.duration === "function" ? child.duration() : 0;
+          const total = typeof child.totalDuration === "function" ? child.totalDuration() : single;
+          if (typeof child.getChildren === "function") {
+            if (total > single + 1e-6) {
+              // A repeating nested timeline's own children are walked for their real
+              // vars below; this span is a conservative (spatial) placeholder for the
+              // repeat/yoyo overrun, which a per-child walk doesn't otherwise cover.
+              intervals.push({ start, end: start + total, spatial: true });
+              // Still descend for hasTimelineCall even though the repeating
+              // span is already opaque (its frames are excluded from dedup
+              // regardless): a call() inside it is a review-flagged detection
+              // gap otherwise — the arm-time verifier can still forward-seek
+              // through this span while checking a LATER static run, firing
+              // the call() and corrupting the page (review).
+              walk(child, start);
+            } else {
+              walk(child, start);
+            }
           } else {
-            walk(child, start);
-          }
-        } else {
-          tweenCount++;
-          intervals.push({ start, end: start + total, spatial: isSpatial(child.vars) });
-          if (
-            total <= 1e-6 &&
-            (typeof child.vars?.onComplete === "function" ||
-              typeof child.vars?.onReverseComplete === "function")
-          ) {
-            hasTimelineCall = true;
+            tweenCount++;
+            intervals.push({ start, end: start + total, spatial: isSpatial(child.vars) });
+            if (
+              total <= 1e-6 &&
+              (typeof child.vars?.onComplete === "function" ||
+                typeof child.vars?.onReverseComplete === "function")
+            ) {
+              hasTimelineCall = true;
+            }
           }
         }
       }
-    }
-    const w = window as unknown as {
-      __timelines?: Record<string, AnyTween>;
-      __hf?: { duration?: number };
-      __hfHasFrameSources?: () => boolean;
-    };
-    for (const tl of Object.values(w.__timelines || {})) {
-      if (tl && typeof tl.getChildren === "function") walk(tl, 0);
-    }
-    const hasVideo = !!document.querySelector("video");
-    const hasCanvas = !!document.querySelector("canvas");
-    const hasFrameSources = w.__hfHasFrameSources?.() ?? false;
-    const hasIframe = !!document.querySelector("iframe");
-    // A non-numeric data-start (reference expression like "intro+0.5") can't be turned
-    // into a clip-cut boundary by computeClipBoundaryFrames' parseFloat, so the cut goes
-    // unprotected and could be deduped into the previous scene. Disqualify the comp.
-    const hasUnresolvableClipStart = Array.from(document.querySelectorAll("[data-start]")).some(
-      (el) => {
-        const v = (el as HTMLElement).dataset.start;
-        return v != null && v.trim() !== "" && !Number.isFinite(parseFloat(v));
-      },
-    );
-    // Non-GSAP animation (CSS @keyframes / transitions / WAAPI) surfaces via
-    // getAnimations(); any running/paused one can change content without a tween.
-    let hasNonGsapAnim = false;
-    try {
-      const docAnims = (document as unknown as { getAnimations?: () => Animation[] }).getAnimations;
-      if (typeof docAnims === "function") {
-        hasNonGsapAnim = docAnims.call(document).some((a) => {
-          const t = a as Animation & { playState?: string };
-          return t.playState === "running" || t.playState === "paused";
-        });
+      const w = window as unknown as {
+        __timelines?: Record<string, AnyTween>;
+        __hf?: { duration?: number };
+        __hfHasFrameSources?: () => boolean;
+      };
+      for (const tl of Object.values(w.__timelines || {})) {
+        if (tl && typeof tl.getChildren === "function") walk(tl, 0);
       }
-    } catch {
-      hasNonGsapAnim = true;
-    }
-    return {
-      intervals,
-      tweenCount,
-      duration: w.__hf?.duration ?? 0,
-      hasVideo,
-      hasCanvas,
-      hasFrameSources,
-      hasIframe,
-      hasNonGsapAnim,
-      hasUnresolvableClipStart,
-      hasTimelineCall,
-    };
-  }, SPATIAL_TWEEN_PROPERTIES);
+      const hasVideo = Array.from(document.querySelectorAll("video")).some(
+        (v) => !ignored.includes(v.id),
+      );
+      const hasCanvas = !!document.querySelector("canvas");
+      const hasFrameSources = w.__hfHasFrameSources?.() ?? false;
+      const hasIframe = !!document.querySelector("iframe");
+      // A non-numeric data-start (reference expression like "intro+0.5") can't be turned
+      // into a clip-cut boundary by computeClipBoundaryFrames' parseFloat, so the cut goes
+      // unprotected and could be deduped into the previous scene. Disqualify the comp.
+      const hasUnresolvableClipStart = Array.from(document.querySelectorAll("[data-start]")).some(
+        (el) => {
+          const v = (el as HTMLElement).dataset.start;
+          return v != null && v.trim() !== "" && !Number.isFinite(parseFloat(v));
+        },
+      );
+      // Non-GSAP animation (CSS @keyframes / transitions / WAAPI) surfaces via
+      // getAnimations(); any running/paused one can change content without a tween.
+      let hasNonGsapAnim = false;
+      try {
+        const docAnims = (document as unknown as { getAnimations?: () => Animation[] })
+          .getAnimations;
+        if (typeof docAnims === "function") {
+          hasNonGsapAnim = docAnims.call(document).some((a) => {
+            const t = a as Animation & { playState?: string };
+            return t.playState === "running" || t.playState === "paused";
+          });
+        }
+      } catch {
+        hasNonGsapAnim = true;
+      }
+      return {
+        intervals,
+        tweenCount,
+        duration: w.__hf?.duration ?? 0,
+        hasVideo,
+        hasCanvas,
+        hasFrameSources,
+        hasIframe,
+        hasNonGsapAnim,
+        hasUnresolvableClipStart,
+        hasTimelineCall,
+      };
+    },
+    SPATIAL_TWEEN_PROPERTIES,
+    [...ignoredVideoIds],
+  );
 
   const {
     intervals,
@@ -4031,7 +4039,11 @@ async function armStaticDedup(
     session.options.motionBlur.samplesPerFrame === undefined &&
     !session.motionBlurNonSpatialFrames
   ) {
-    sharedStaticFrameStats = await computeStaticFrameSet(page, fpsToNumber(session.options.fps));
+    sharedStaticFrameStats = await computeStaticFrameSet(
+      page,
+      fpsToNumber(session.options.fps),
+      session.options.hiddenElementIds,
+    );
     session.motionBlurNonSpatialFrames = sharedStaticFrameStats.nonSpatialOnlyFrameSet;
   }
   // Idempotent: the drawElement init path arms dedup BEFORE canvas injection
@@ -4083,7 +4095,9 @@ async function armStaticDedup(
     return;
   }
   const fps = fpsToNumber(session.options.fps);
-  const stats = sharedStaticFrameStats ?? (await computeStaticFrameSet(page, fps));
+  const stats =
+    sharedStaticFrameStats ??
+    (await computeStaticFrameSet(page, fps, session.options.hiddenElementIds));
   if (!stats.eligible || stats.staticFrameSet.size === 0) {
     session.staticDedupSkipReason = "ineligible";
     logInitPhase(`static-frame dedup: disabled (${stats.reason})`);
