@@ -155,7 +155,7 @@ describe("color grading", () => {
     expect(capabilities.palettes.map(({ id }) => id)).toContain("handheld-green");
     expect(capabilities.animatable.map(({ path }) => path)).toContain("effects.kuwahara");
     expect(capabilities.palette).toEqual({ minColors: 2, maxColors: 6, colorFormat: "#rrggbb" });
-    expect(capabilities.lut).toMatchObject({ format: "3d-cube", maxCubeSize: 64 });
+    expect(capabilities.lut).toMatchObject({ format: "3d-cube", maxCubeSize: 65 });
     expect(capabilities.effects.find(({ key }) => key === "ascii")).toMatchObject({
       supportsPalette: true,
       renderLane: "single-pass",
