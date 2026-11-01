@@ -565,7 +565,10 @@ export async function settleCompositionSeek(
     },
     {
       videoFrames: options.waitForVideoFrames !== false,
-      timeoutMs: options.seekSettleTimeoutMs ?? SEEK_SETTLES_BEFORE_PROTOCOL_TIMEOUT_MS,
+      timeoutMs: Math.min(
+        options.seekSettleTimeoutMs ?? SEEK_SETTLES_BEFORE_PROTOCOL_TIMEOUT_MS,
+        SEEK_SETTLES_BEFORE_PROTOCOL_TIMEOUT_MS,
+      ),
     },
   );
 

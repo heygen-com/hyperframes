@@ -1654,7 +1654,7 @@ export default defineCommand({
     },
     timeout: {
       type: "string",
-      description: `Ms to wait for the composition to become render-ready (default: ${RENDER_READY_TIMEOUT_MS})`,
+      description: `Ms to wait for the composition to become render-ready, and for each still's seek to settle, up to 170 s (default: ${RENDER_READY_TIMEOUT_MS})`,
       default: String(RENDER_READY_TIMEOUT_MS),
     },
     angle: {
