@@ -180,7 +180,7 @@ function fileUrlAsPath(src: string): string {
 // `/c/Users/...`: agents on Windows write what their Git Bash shell prints. A project file of that name wins.
 function gitBashFile(src: string): string | undefined {
   if (process.platform !== "win32" || !/^\/[a-zA-Z]\//.test(src)) return undefined;
-  const path = `${src[1]}:${src.slice(2)}`;
+  const path = resolve(`${src[1]}:${src.slice(2)}`);
   return existsSync(path) ? path : undefined;
 }
 
