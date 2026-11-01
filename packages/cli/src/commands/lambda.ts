@@ -269,6 +269,7 @@ export default defineCommand({
 
     switch (subcommand) {
       case "deploy": {
+        const lambdaMemoryMb = parsePositiveInt(args.memory, "--memory");
         const { runDeploy } = await import("./lambda/deploy.js");
         const { parseReservedConcurrency } = await import("./lambda/sam.js");
         await runDeploy({
@@ -277,7 +278,7 @@ export default defineCommand({
           awsProfile: args.profile as string | undefined,
           reservedConcurrency: parseReservedConcurrency(args.concurrency),
           chromeSource: parseChromeSource(args["chrome-source"]),
-          lambdaMemoryMb: parsePositiveInt(args.memory, "--memory"),
+          lambdaMemoryMb,
           videoArch: parseVideoArch(args["video-arch"]),
           skipBuild: Boolean(args["skip-build"]),
           warm: args.warm !== false,
@@ -321,13 +322,23 @@ export default defineCommand({
           console.error("[lambda render] --width and --height are required.");
           failUsage();
         }
-        const fpsRaw = parseIntFlag(args.fps) ?? defaultCloudFps(projectDir);
+        const fpsRaw = parseIntFlag(args.fps, "--fps") ?? defaultCloudFps(projectDir);
         if (!isDistributedFps(fpsRaw)) {
           console.error(
             `[lambda render] --fps must be one of ${DISTRIBUTED_FPS.join(", ")}; got ${fpsRaw}.`,
           );
           failUsage();
         }
+        const chunkSize = parsePositiveInt(args["chunk-size"], "--chunk-size");
+        const maxParallelChunks = parsePositiveInt(
+          args["max-parallel-chunks"],
+          "--max-parallel-chunks",
+        );
+        const targetChunkFrames = parsePositiveInt(
+          args["target-chunk-frames"],
+          "--target-chunk-frames",
+        );
+        const waitIntervalMs = parsePositiveInt(args["wait-interval-ms"], "--wait-interval-ms");
         const { runRender } = await import("./lambda/render.js");
         const renderResolution = parseOutputResolution(args["output-resolution"]);
         await runRender({
@@ -343,9 +354,9 @@ export default defineCommand({
           codec: parseCodec(args.codec),
           quality: parseQuality(args.quality),
           ...parseDeliveryFlags(args),
-          chunkSize: parsePositiveInt(args["chunk-size"], "--chunk-size"),
-          maxParallelChunks: parsePositiveInt(args["max-parallel-chunks"], "--max-parallel-chunks"),
-          targetChunkFrames: parsePositiveInt(args["target-chunk-frames"], "--target-chunk-frames"),
+          chunkSize,
+          maxParallelChunks,
+          targetChunkFrames,
           executionName: args["execution-name"] as string | undefined,
           outputKey: args["output-key"] as string | undefined,
           variables: args.variables as string | undefined,
@@ -353,7 +364,7 @@ export default defineCommand({
           strictVariables: Boolean(args["strict-variables"]),
           json: Boolean(args.json),
           wait: Boolean(args.wait),
-          waitIntervalMs: parsePositiveInt(args["wait-interval-ms"], "--wait-interval-ms") ?? 5000,
+          waitIntervalMs: waitIntervalMs ?? 5000,
         });
         return;
       }
@@ -378,13 +389,23 @@ export default defineCommand({
           console.error("[lambda render-batch] --width and --height are required.");
           failUsage();
         }
-        const fpsRaw = parseIntFlag(args.fps) ?? defaultCloudFps(projectDir);
+        const fpsRaw = parseIntFlag(args.fps, "--fps") ?? defaultCloudFps(projectDir);
         if (!isDistributedFps(fpsRaw)) {
           console.error(
             `[lambda render-batch] --fps must be one of ${DISTRIBUTED_FPS.join(", ")}; got ${fpsRaw}.`,
           );
           failUsage();
         }
+        const chunkSize = parsePositiveInt(args["chunk-size"], "--chunk-size");
+        const maxParallelChunks = parsePositiveInt(
+          args["max-parallel-chunks"],
+          "--max-parallel-chunks",
+        );
+        const targetChunkFrames = parsePositiveInt(
+          args["target-chunk-frames"],
+          "--target-chunk-frames",
+        );
+        const maxConcurrent = parsePositiveInt(args["max-concurrent"], "--max-concurrent");
         const { runRenderBatch } = await import("./lambda/render-batch.js");
         const batchResolution = parseOutputResolution(args["output-resolution"]);
         await runRenderBatch({
@@ -401,10 +422,10 @@ export default defineCommand({
           codec: parseCodec(args.codec),
           quality: parseQuality(args.quality),
           ...parseDeliveryFlags(args),
-          chunkSize: parsePositiveInt(args["chunk-size"], "--chunk-size"),
-          maxParallelChunks: parsePositiveInt(args["max-parallel-chunks"], "--max-parallel-chunks"),
-          targetChunkFrames: parsePositiveInt(args["target-chunk-frames"], "--target-chunk-frames"),
-          maxConcurrent: parsePositiveInt(args["max-concurrent"], "--max-concurrent"),
+          chunkSize,
+          maxParallelChunks,
+          targetChunkFrames,
+          maxConcurrent,
           strictVariables: Boolean(args["strict-variables"]),
           dryRun: Boolean(args["dry-run"]),
           json: Boolean(args.json),
@@ -451,10 +472,21 @@ export default defineCommand({
   },
 });
 
-function parseIntFlag(raw: unknown): number | undefined {
+function parseIntFlag(raw: unknown, flagName: string): number | undefined {
   if (raw === undefined || raw === null || raw === "") return undefined;
-  const n = Number.parseInt(String(raw), 10);
-  return Number.isFinite(n) ? n : undefined;
+  const token = String(raw);
+  if (!/^-?\d+$/.test(token)) {
+    throw new CliUsageError(
+      `[lambda] ${flagName} must be a whole integer token; got ${JSON.stringify(token)}`,
+    );
+  }
+  const n = Number.parseInt(token, 10);
+  if (!Number.isFinite(n) || !Number.isInteger(n)) {
+    throw new CliUsageError(
+      `[lambda] ${flagName} must be a finite integer; got ${JSON.stringify(token)}`,
+    );
+  }
+  return n;
 }
 
 /**
@@ -463,7 +495,7 @@ function parseIntFlag(raw: unknown): number | undefined {
  * the SDK and producing opaque AWS validation errors mid-render.
  */
 function parsePositiveInt(raw: unknown, flagName: string): number | undefined {
-  const n = parseIntFlag(raw);
+  const n = parseIntFlag(raw, flagName);
   if (n === undefined) return undefined;
   if (!Number.isInteger(n) || n < 1) {
     throw new CliUsageError(`[lambda] ${flagName} must be a positive integer; got ${n}`);
