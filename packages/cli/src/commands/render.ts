@@ -137,6 +137,7 @@ import { macosOldChromeCrashRemediation } from "../browser/macosOldChromeCrash.j
 import { windowsChromeCrashRemediation } from "../browser/windowsCrash.js";
 import { killOrphanedProcessesForRender } from "../utils/orphanCleanup.js";
 import { createRenderCancellationScope } from "../utils/renderCancellation.js";
+import { audioLoweredWarning } from "../utils/audioLoweredWarning.js";
 import {
   markRenderSucceeded,
   runPostRenderStep,
@@ -1254,6 +1255,8 @@ async function executeLocalRender(
       console.warn(c.warn(`  [${warning.code}] ${warning.message}`));
     }
   }
+  const audioLowered = audioLoweredWarning(job.audioLoweredDb);
+  if (audioLowered) console.warn(c.warn(`  [${audioLowered.code}] ${audioLowered.message}`));
   runPostRenderStep("trackRenderMetrics", () =>
     trackRenderMetrics(job, elapsed, options, false, cpuUsage),
   );
@@ -1290,7 +1293,10 @@ async function executeLocalRender(
     renderTimeMs: elapsed,
     durationMs,
     outcome,
-    warnings: job.warnings.map((warning) => ({ code: warning.code, message: warning.message })),
+    warnings: [
+      ...job.warnings.map((warning) => ({ code: warning.code, message: warning.message })),
+      ...(audioLowered ? [audioLowered] : []),
+    ],
   };
 }
 
