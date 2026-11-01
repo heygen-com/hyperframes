@@ -31,7 +31,12 @@ import {
 } from "@hyperframes/studio-server/history";
 import { pngDimensions } from "../utils/pngDimensions.js";
 import { runWithConcurrencyLimit } from "../utils/concurrency.js";
-import { CliRuntimeError, CliUsageError, failCommand } from "../utils/commandResult.js";
+import {
+  CliRuntimeError,
+  CliUsageError,
+  failCommand,
+  scheduleCliExit,
+} from "../utils/commandResult.js";
 // fallow-ignore-file complexity
 import { defineCommand } from "../utils/defineCommand.js";
 import {
@@ -1797,6 +1802,7 @@ export default defineCommand({
     log(`${c.accent("◆")}  Capturing ${label} from ${c.accent(project.name)}${angleLabel}`);
 
     let managedSnapshotDir: string | undefined;
+    let exitCode = 0;
     try {
       const snapshotDir = args.output
         ? resolve(String(args.output))
@@ -1993,6 +1999,7 @@ export default defineCommand({
         }
       });
     } catch (err) {
+      exitCode = 1;
       // Already reported where it happened (fail() above).
       if (err instanceof CliRuntimeError && err.result.presented) throw err;
       const msg = failureMessage(err);
@@ -2002,6 +2009,7 @@ export default defineCommand({
     } finally {
       if (managedSnapshotDir)
         await finishSnapshotRun(project.dir, managedSnapshotDir).catch(warnSnapshotsNotRecorded);
+      scheduleCliExit(exitCode);
     }
   },
 });
