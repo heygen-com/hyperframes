@@ -5717,6 +5717,14 @@ export function initSandboxRuntimeModular(): void {
           )
           .map(({ el }) => el);
 
+  // Data at a lagging clip's own position says nothing: its sync seek is about to land past what it has.
+  const CAUGHT_UP_SECONDS = 0.25;
+  const lagsThePlayhead = (el: HTMLMediaElement, t: number): boolean => {
+    const clip = mediaClipsInWindow.find((c) => c.el === el);
+    if (!clip || !isInClipWindow(t, clip.start, clip.end)) return false;
+    return Math.abs(el.currentTime - mediaSourceTimeAt(clip, t)) > CAUGHT_UP_SECONDS;
+  };
+
   const transportTick = () => {
     if (state.tornDown || inTransportTick) return;
     inTransportTick = true;
@@ -5893,7 +5901,9 @@ export function initSandboxRuntimeModular(): void {
         startWaitUntilMs = null;
         catchingUpFor = notReady;
       }
-      catchingUpFor = catchingUpFor.filter((el) => notReady.includes(el));
+      catchingUpFor = catchingUpFor.filter(
+        (el) => notReady.includes(el) || lagsThePlayhead(el, state.currentTime),
+      );
       const mustWaitFor = notReady.filter((el) => !catchingUpFor.includes(el));
       if (clock.isPlaying() && mustWaitFor.length > 0) {
         bufferingFor = mustWaitFor;

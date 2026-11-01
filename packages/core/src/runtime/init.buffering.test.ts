@@ -129,33 +129,24 @@ it("a copy that never lands stops standing in, and the film waits for it through
   expect(states.at(-1)).toEqual({ isPlaying: true, buffering: true });
 });
 
-it("after a start that ran on without data, the next clip without data holds again once the first one has it", () => {
-  const { voiceReady, states, playFor } = playPodcast();
+it("a clip catching up stays that way until it has data at the playhead, so its sync seek holds nothing", () => {
+  const { voice, voiceReady, states, playFor } = playPodcast();
+  let position = 0;
+  Object.defineProperty(voice, "currentTime", { get: () => position, set: () => {} });
 
   playFor(1);
   voiceReady.value = 4;
-  playFor(0.2);
-  expect(states.at(-1)).toEqual({ isPlaying: true, buffering: false });
+  playFor(0.05);
   voiceReady.value = 1;
-  playFor(0.2);
-  expect(states.at(-1)).toEqual({ isPlaying: true, buffering: true });
-});
-
-it("a clip due while another catches up from the start still holds, then plays with the first one still cold", () => {
-  const { voiceReady, states, playFor } = playPodcast(0.5, "audio", 1);
-
-  playFor(0.45);
+  playFor(0.1);
   expect(states.at(-1)).toEqual({ isPlaying: true, buffering: false });
-  playFor(0.45);
-  expect(states.at(-1)).toEqual({ isPlaying: true, buffering: true });
-  const heldAt = window.__player!.getTime();
-  playFor(0.3);
-  expect(window.__player!.getTime()).toBe(heldAt);
 
+  position = window.__player!.getTime();
   voiceReady.value = 4;
-  playFor(0.3);
-  expect(states.at(-1)).toEqual({ isPlaying: true, buffering: false });
-  expect(window.__player!.getTime()).toBeGreaterThan(heldAt);
+  playFor(0.05);
+  voiceReady.value = 1;
+  playFor(0.1);
+  expect(states.at(-1)).toEqual({ isPlaying: true, buffering: true });
 });
 
 it("holds on the frame a slow tick skips into a clip with no data, after asking it to play", () => {
