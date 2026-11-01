@@ -1,6 +1,7 @@
 import { scanHtmlOpeningTags, decodeAuthoredAttribute } from "./htmlAttributeSpans.js";
 import { closeSync, constants, existsSync, fstatSync, openSync, readFileSync } from "node:fs";
 import { isAbsolute, join, posix, relative, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 import { decodeUrlPathVariants } from "./composition.js";
 import { rewriteAssetPath } from "./rewriteSubCompPaths.js";
 
@@ -166,13 +167,30 @@ function reanchoredCandidates(variant: string, baseDir: string, compiledDir?: st
     : [join(baseDir, stripped)];
 }
 
+// A file: URL names a path on this machine; one that names no local path stays as written and reads as missing.
+function fileUrlAsPath(src: string): string {
+  if (!/^file:/i.test(src)) return src;
+  try {
+    return fileURLToPath(src);
+  } catch {
+    return src;
+  }
+}
+
+// `/c/Users/...`: agents on Windows write what their Git Bash shell prints. A project file of that name wins.
+function gitBashFile(src: string): string | undefined {
+  if (process.platform !== "win32" || !/^\/[a-zA-Z]\//.test(src)) return undefined;
+  const path = `${src[1]}:${src.slice(2)}`;
+  return existsSync(path) ? path : undefined;
+}
+
 /** Resolves a media `src` like a browser URL (`..` clamps at the project root); a miss returns the base-dir join. */
 export function resolveProjectRelativeSrc(
   src: string,
   baseDir: string,
   compiledDir?: string,
 ): string {
-  const cleanSrc = cleanAssetUrl(src);
+  const cleanSrc = fileUrlAsPath(cleanAssetUrl(src));
 
   // A leading slash is an origin-root URL served from the project root, unless the absolute path exists.
   if (isAbsolute(cleanSrc) && existsSync(cleanSrc)) return cleanSrc;
@@ -185,7 +203,7 @@ export function resolveProjectRelativeSrc(
     if (compiledDir) candidates.add(join(compiledDir, variant));
     candidates.add(join(baseDir, variant));
   }
-  return [...candidates].find(existsSync) ?? join(baseDir, cleanSrc);
+  return [...candidates].find(existsSync) ?? gitBashFile(cleanSrc) ?? join(baseDir, cleanSrc);
 }
 
 function maskRange(src: string, pattern: RegExp): string {
