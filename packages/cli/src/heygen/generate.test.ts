@@ -260,6 +260,47 @@ describe("generate", () => {
     },
   );
 
+  const still = (name: string, size: string) => {
+    const path = join(project, name);
+    execFileSync(ffmpeg!, [
+      ...["-v", "error", "-y", "-f", "lavfi", "-i", `color=c=red:s=${size}`],
+      ...["-frames:v", "1", path],
+    ]);
+    return path;
+  };
+
+  it.skipIf(!ffmpeg)("crops to the first frame's shape when no --aspect is passed", async () => {
+    answers(textured("first-wide.mp4", "1344x768", false));
+    const r = await generate({
+      type: "video",
+      out: join(project, "assets/first-out.mp4"),
+      prompt: "p",
+      firstFrame: still("first.png", "120x90"),
+    });
+    const { width, height } = probeVideo(r.out);
+    expect([width, height]).toEqual([1024, 768]);
+  });
+
+  it.skipIf(!ffmpeg)("keeps a portrait shot from a phone photo stored sideways", async () => {
+    const first = still("phone.jpg", "160x90");
+    const jpeg = readFileSync(first);
+    // An Exif segment with Orientation=6: the file holds landscape pixels, the picture is portrait.
+    const exif = "ffe10022457869660000" + "4d4d002a00000008000101120003000000010006000000000000";
+    writeFileSync(
+      first,
+      Buffer.concat([jpeg.subarray(0, 2), Buffer.from(exif, "hex"), jpeg.subarray(2)]),
+    );
+    answers(textured("first-tall.mp4", "90x160", false));
+    const r = await generate({
+      type: "video",
+      out: join(project, "assets/phone-out.mp4"),
+      prompt: "p",
+      firstFrame: first,
+    });
+    const { width, height } = probeVideo(r.out);
+    expect([width, height]).toEqual([90, 160]);
+  });
+
   it.skipIf(!ffmpeg)("blanks the motion clip's masked regions before sending it", async () => {
     // A guide with white letters at 40,100 over a moving picture; the mask covers them for its first 0.5 s.
     const guide = join(project, "titled.mp4");

@@ -262,6 +262,20 @@ function needFile(path: string): void {
     throw new Fix(`no file at ${path}`, "pass a picture or sound from the project");
 }
 
+const shrink = (path: string, out: string) =>
+  runFfmpeg([
+    "-y",
+    "-i",
+    path,
+    "-vf",
+    "scale='min(2048,iw)':'min(2048,ih)':force_original_aspect_ratio=decrease",
+    "-q:v",
+    "3",
+    "-frames:v",
+    "1",
+    out,
+  ]);
+
 /**
  * A picture or a sound as the routes take it inline, pictures shrunk to 2048 px so the body stays small, a motion
  * clip with its masks filled.
@@ -273,19 +287,7 @@ function inline(work: string, masks: Mask[] = []): Media {
       work,
       `in-${Math.random().toString(36).slice(2)}.${{ image: "jpg", audio: "mp3", video: "mp4" }[kind]}`,
     );
-    if (kind === "image")
-      runFfmpeg([
-        "-y",
-        "-i",
-        path,
-        "-vf",
-        "scale='min(2048,iw)':'min(2048,ih)':force_original_aspect_ratio=decrease",
-        "-q:v",
-        "3",
-        "-frames:v",
-        "1",
-        out,
-      ]);
+    if (kind === "image") shrink(path, out);
     else if (kind === "audio")
       runFfmpeg(["-y", "-i", path, "-vn", "-ac", "1", "-c:a", "libmp3lame", "-b:a", "128k", out]);
     // A guide clip only needs its motion: 720 px on the long side, no sound, at most 15 s.
@@ -391,6 +393,14 @@ export function fitAspect(out: string, aspect: string): string | undefined {
   ]);
   renameSync(fitted, out);
   return `HeyGen returned ${width}x${height} for ${aspect}; cropped to ${w}x${h} (centre), not stretched`;
+}
+
+function aspectOf(r: GenerateRequest, work: string): string {
+  if (r.aspect || !r.firstFrame) return r.aspect ?? "16:9";
+  const sent = join(work, "first-frame.jpg");
+  shrink(r.firstFrame, sent);
+  const { width, height } = probeVideo(sent);
+  return `${width}:${height}`;
 }
 
 const MIN_SHOT_S = 0.15;
@@ -502,14 +512,12 @@ export async function generate(
         cuts = null;
       }
     const notes: string[] = [];
-    if (r.type === "video" && (r.aspect || !r.firstFrame))
+    if (r.type === "video")
       try {
-        const note = fitAspect(out, r.aspect ?? "16:9");
+        const note = fitAspect(out, aspectOf(r, work));
         if (note) notes.push(note);
       } catch (e) {
-        notes.push(
-          `kept HeyGen's size, could not crop to ${r.aspect ?? "16:9"}: ${e instanceof Error ? e.message : e}`,
-        );
+        notes.push(`kept HeyGen's size, could not crop: ${e instanceof Error ? e.message : e}`);
       }
     if (r.masks?.length && r.motion)
       try {

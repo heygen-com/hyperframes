@@ -158,7 +158,7 @@ import {
   forgetPositionEdit,
   installPositionEditsSeekReapply,
 } from "./positionEdits";
-import { unproxiedSrc } from "./proxySrc";
+import { unheldPoster, unproxiedSrc } from "./proxySrc";
 import { applyVariableBindings, unproxiedMediaSrc } from "./applyVariableBindings";
 import { createColorGradingRuntime, type RuntimeColorGradingApi } from "./colorGrading";
 import { COLOR_GRADING_AUTHORED_OPACITY_ATTR } from "../colorGrading";
@@ -385,9 +385,12 @@ const writtenShape = (el: Element): string =>
   JSON.stringify([
     Array.from(el.attributes, ({ name, value }) => [
       name,
-      name === "class" ? ownClasses(value) : value,
+      name === "class" ? ownClasses(value) : name === "poster" ? unheldPoster(el) : value,
     ])
-      .filter(([name, value]) => !RUNTIME_MEDIA_ATTRS.has(name!) && !(name === "class" && !value))
+      .filter(
+        ([name, value]) =>
+          !RUNTIME_MEDIA_ATTRS.has(name!) && !((name === "class" || name === "poster") && !value),
+      )
       .sort(([a], [b]) => (a! < b! ? -1 : 1)),
     el.hasAttribute("data-var-src") ? null : unproxiedSrc(el),
     el.innerHTML,
@@ -3142,7 +3145,10 @@ export function initSandboxRuntimeModular(): void {
       if (el.preload !== "none") {
         el.preload = "none";
         // Frees a clip the window armed; on one the parser started, it would only restart the fetch.
-        if (decided) withoutOwnTimingRecords(el, () => releaseMedia(el));
+        if (decided)
+          withoutOwnTimingRecords(el, () =>
+            releaseMedia(el, window.__HF_RELEASE_PASSED_MEDIA === true),
+          );
       }
     } else if (!visible || decided === undefined) {
       // Not a clip a jump lands on: the media sync arms that one, and load() would undo its seek.

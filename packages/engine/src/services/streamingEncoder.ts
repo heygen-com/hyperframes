@@ -473,7 +473,7 @@ export function buildStreamingArgs(
       );
       args.push(
         "-filter_complex",
-        `${video};[0:v]format=rgba[o];[v][o]overlay=format=gbrp,${tail}[vout]`,
+        `${video};[0:v]format=rgba[o];[v][o]overlay=eof_action=endall:format=gbrp,${tail}[vout]`,
         "-map",
         "[vout]",
       );
