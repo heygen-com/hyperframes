@@ -1265,7 +1265,11 @@ async function initDrawElementOrTransparentBackground(
       await finalizeDrawElementInit(session, page, logInitPhase, { transparent, forceDE });
     }
   } else if (capturesAlpha(session.options)) {
-    await initTransparentBackground(session.page);
+    const hideElementIds = session.options.hiddenElementIds ?? [];
+    await initTransparentBackground(session.page, {
+      clearCompositionRoot: hideElementIds.length > 0,
+      hideElementIds,
+    });
   }
 }
 

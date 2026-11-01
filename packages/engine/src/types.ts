@@ -173,6 +173,8 @@ export interface CaptureOptions {
   fps: Fps;
   format?: "jpeg" | "png";
   transparent?: boolean;
+  /** Elements left out of every capture (their pixels come from elsewhere), with the page background cleared. */
+  hiddenElementIds?: string[];
   quality?: number;
   /**
    * Opt into sub-frame multi-sample motion blur (issue #4010). Absent means off and the

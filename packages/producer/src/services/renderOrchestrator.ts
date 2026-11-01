@@ -223,6 +223,11 @@ import { runCompileStage } from "./render/stages/compileStage.js";
 import { runProbeStage } from "./render/stages/probeStage.js";
 import { validateRenderDuration } from "./render/planValidation.js";
 import { runExtractVideosStage } from "./render/stages/extractVideosStage.js";
+import { rendersSdrOnly } from "./render/hdrMode.js";
+import {
+  planVideoLayerPassthrough,
+  type VideoLayerPlan,
+} from "./render/videoLayerPassthroughPlan.js";
 import { runAudioStage } from "./render/stages/audioStage.js";
 import { inspectDiskCaptureHeadroom, runCaptureStage } from "./render/stages/captureStage.js";
 import {
@@ -3469,6 +3474,35 @@ async function executeRenderPipeline(input: {
       beginFrameStalled: probeResult.beginFrameStalled,
     });
 
+    // Opt-in: one full-canvas video is composited by ffmpeg instead of injected frame by frame.
+    let videoLayerPlan: VideoLayerPlan | undefined;
+    if (
+      cfg.videoLayerPassthrough &&
+      outputFormat === "mp4" &&
+      !job.config.useGpu &&
+      !needsAlpha &&
+      rendersSdrOnly(job.config, composition) &&
+      shouldUseStreamingEncode(cfg, outputFormat, 1, probeResult.duration) &&
+      probeSession?.isInitialized
+    ) {
+      videoLayerPlan = await planVideoLayerPassthrough({
+        videos: composition.videos,
+        duration: probeResult.duration,
+        fps: job.config.fps,
+        canvas: { width, height },
+        page: probeSession.page,
+        projectDir,
+        compiledDir: join(workDir, "compiled"),
+      });
+      if (videoLayerPlan.videoId === undefined) {
+        log.info(`[Render] Video layer passthrough off: ${videoLayerPlan.reason}`);
+      } else {
+        cfg.useDrawElement = false;
+        captureForceScreenshot = true;
+      }
+    }
+    const videoLayer = videoLayerPlan?.videoId === undefined ? undefined : videoLayerPlan;
+
     // ── Stage 2: Video frame extraction ─────────────────────────────────
     updateJobStatus(job, "preprocessing", "Extracting video frames", 10, onProgress, {
       code: "extract_video",
@@ -3487,6 +3521,7 @@ async function executeRenderPipeline(input: {
           cfg,
           log,
           composition,
+          skipFrameExtractionIds: videoLayer ? [videoLayer.videoId] : [],
           abortSignal: executionSignal,
           assertNotAborted,
           // Local staging can use links; distributed plan() alone requires real copies.
@@ -3674,8 +3709,9 @@ async function executeRenderPipeline(input: {
       width,
       height,
       fps: job.config.fps,
-      format: captureImageFormat,
-      transparent: needsAlpha,
+      format: videoLayer ? "png" : captureImageFormat,
+      transparent: needsAlpha || videoLayer !== undefined,
+      ...(videoLayer ? { hiddenElementIds: [videoLayer.videoId] } : {}),
       quality:
         captureImageFormat === "png" ? undefined : resolveCaptureJpegQuality(job.config.quality),
       variables: job.config.variables,
@@ -4141,6 +4177,7 @@ async function executeRenderPipeline(input: {
         }
       },
     );
+    if (videoLayer) workerCount = 1;
     // DE priority inversion — see shouldPreferSingleWorkerDrawElement for the
     // policy and benchmark rationale (eligibility resolved above, before
     // calibration; a comp the engine's init-time gates refuse is never
@@ -5013,6 +5050,7 @@ async function executeRenderPipeline(input: {
                   vp9CpuUsed: cfg.vp9CpuUsed,
                   useGpu: job.config.useGpu,
                   imageFormat: captureOptions.format || "jpeg",
+                  ...(videoLayer ? { videoLayer: videoLayer.layer } : {}),
                   hdr: preset.hdr,
                   // HLS only: force an IDR every `gopSize` frames so the
                   // assemble stage's `-c copy` segmentation cuts exactly on

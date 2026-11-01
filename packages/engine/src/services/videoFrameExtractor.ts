@@ -1148,7 +1148,7 @@ export async function extractVideoFramesRange(
   }
 }
 
-export interface VideoFilterChainInput {
+interface VideoFilterChainInput {
   metadata: VideoMetadata;
   format: CacheFrameFormat;
   ffmpegFps: string;
@@ -1162,7 +1162,7 @@ export interface VideoFilterChainInput {
 }
 
 /** The one place that decides which source frame a slot shows and how its colour is converted. */
-export function videoFilterChain(input: VideoFilterChainInput): (seek: number) => string[] {
+function videoFilterChain(input: VideoFilterChainInput): (seek: number) => string[] {
   const { metadata, format, ffmpegFps, sampleAtOutputFps, keepsHdrForChrome, toneMapFrom } = input;
   const toneMappedToSdr = toneMapFrom !== undefined;
   const head: string[] = [];
@@ -1218,9 +1218,11 @@ export async function buildVideoLayerInput(
   duration: number,
   fps: Fps,
   canvas: { width: number; height: number },
+  fit: "fill" | "cover" = "fill",
 ): Promise<VideoLayerInput | undefined> {
   const metadata = await extractMediaMetadata(videoPath);
   if (
+    startTime + duration > resolvePlayableVideoDuration(metadata) + 1e-3 ||
     isHdrColorSpaceUtil(metadata.colorSpace) ||
     metadata.isVFR ||
     metadata.hasAlpha ||
@@ -1238,7 +1240,11 @@ export async function buildVideoLayerInput(
   });
   const filters = chain(startTime);
   if (metadata.width !== canvas.width || metadata.height !== canvas.height) {
-    filters.push(`scale=${canvas.width}:${canvas.height}:flags=bicubic`);
+    filters.push(
+      fit === "cover"
+        ? `scale=${canvas.width}:${canvas.height}:force_original_aspect_ratio=increase:flags=bicubic,crop=${canvas.width}:${canvas.height}`
+        : `scale=${canvas.width}:${canvas.height}:flags=bicubic`,
+    );
   }
   return {
     inputArgs: [
