@@ -46,9 +46,10 @@ it("clones whisper.cpp inside its build dir, with no cache path on the command l
   const { ensureWhisper: ensure, WhisperUnavailableError: Unavailable } =
     await import("./manager.js");
   calls.exec.mockImplementation((command: string, args: string[]) => {
-    if (command === "which" && args[0] === "brew") throw new Error("not available");
-    if (command === "which" && args[0] === "whisper-cli") throw new Error("not available");
-    if (command === "which" || command === "where") return `/bin/${args[0]}\n`;
+    const lookup = command === "which" || command === "where";
+    if (lookup && (args[0] === "brew" || args[0] === "whisper-cli"))
+      throw new Error("not available");
+    if (lookup) return `/bin/${args[0]}\n`;
     if (command === "git" && args[0] === "clone") throw new Error("stop after the clone");
     return "";
   });
