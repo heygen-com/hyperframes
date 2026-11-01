@@ -1328,11 +1328,13 @@ describe("layout-audit.browser coordinate-frame findings", () => {
       return document.getElementById("shader") as HTMLCanvasElement;
     }
 
-    const drawn = () =>
-      (window as unknown as { __hyperframesWebglDraws: Set<Element> }).__hyperframesWebglDraws;
+    const draw = (canvas: HTMLCanvasElement) =>
+      (
+        window as unknown as { __hyperframesRecordWebglDraw: (canvas: HTMLCanvasElement) => void }
+      ).__hyperframesRecordWebglDraw(canvas);
 
     it("names the scene whose canvas draws while its clip is hidden", () => {
-      drawn().add(mountScenes(true));
+      draw(mountScenes(true));
 
       const found = runAudit().filter((issue) => issue.code === "webgl_draws_while_inactive");
 
@@ -1341,12 +1343,12 @@ describe("layout-audit.browser coordinate-frame findings", () => {
       expect(found[0]?.message).toContain("scene2");
     });
 
-    it("stays quiet for a canvas drawing on screen, and reports a draw once", () => {
-      drawn().add(mountScenes(false));
+    it("judges a draw by the state it was made in, and reports it once", () => {
+      draw(mountScenes(false));
+      document.getElementById("scene2")?.setAttribute("data-hf-clip-hidden", "");
       expect(runAudit().some((issue) => issue.code === "webgl_draws_while_inactive")).toBe(false);
 
-      drawn().add(document.getElementById("shader") as HTMLCanvasElement);
-      document.getElementById("scene2")?.setAttribute("data-hf-clip-hidden", "");
+      draw(document.getElementById("shader") as HTMLCanvasElement);
       expect(runAudit().filter((i) => i.code === "webgl_draws_while_inactive")).toHaveLength(1);
       expect(runAudit().some((issue) => issue.code === "webgl_draws_while_inactive")).toBe(false);
     });
