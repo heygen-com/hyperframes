@@ -110,7 +110,7 @@
     "linkedom": "^0.18.12",
     "puppeteer": "~25.11.0",
     "puppeteer-core": "^25.11.0",
-    "undici": "7.25.0"
+    "undici": "7.30.1"
   },
   "devDependencies": {
     "@types/node": "^25.0.10",
