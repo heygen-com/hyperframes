@@ -1,17 +1,12 @@
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
+import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
 import { basename, join } from "node:path";
 import { processIsAlive } from "../utils/processTree.js";
 
 const COMPILED_MODEL = /^onnxruntime-.*\.mlmodelc?$/;
 
-const COREML_TEMP_MANIFESTS = join(
-  homedir(),
-  ".cache",
-  "hyperframes",
-  "background-removal",
-  "coreml-temp",
-);
+const COREML_TEMP_MANIFESTS = hyperframesCacheDir("background-removal", "coreml-temp");
 
 interface Manifest {
   pid: number;

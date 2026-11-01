@@ -92,8 +92,8 @@ describe("installSherpaRuntime", () => {
       expect(await sherpaRuntimeLoadError(dir)).toBe(
         "libonnxruntime.so: cannot open shared object",
       );
-      const run = vi.fn(async (args: string[]) =>
-        fakeRuntime(args[args.indexOf("--prefix") + 1]!, LOADS),
+      const run = vi.fn(async (_args: string[], _signal?: AbortSignal, cwd?: string) =>
+        fakeRuntime(cwd!, LOADS),
       );
 
       expect(await installSherpaRuntime({ run, dir })).toEqual({
@@ -125,8 +125,8 @@ describe("installSherpaRuntime", () => {
   it("fails with the loader's error when the reinstalled runtime still does not load", async () => {
     const dir = mkdtempSync(join(tmpdir(), "hf-sherpa-runtime-"));
     try {
-      const run = vi.fn(async (args: string[]) =>
-        fakeRuntime(args[args.indexOf("--prefix") + 1]!, BROKEN),
+      const run = vi.fn(async (_args: string[], _signal?: AbortSignal, cwd?: string) =>
+        fakeRuntime(cwd!, BROKEN),
       );
       await expect(installSherpaRuntime({ run, dir })).rejects.toThrow(
         "The sherpa-onnx runtime was reinstalled but still does not load (libonnxruntime.so: cannot open shared object). Use --engine whisper for now.",

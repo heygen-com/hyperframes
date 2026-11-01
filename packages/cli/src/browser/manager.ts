@@ -24,6 +24,7 @@ import { BrowserDownloadStalledError, installInChild } from "./installInChild.js
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { runRenderSetupWorker } from "../utils/cancellableProcess.js";
 import { unzipArchive } from "./unzipArchive.js";
+import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
 
 type PuppeteerBrowsers = typeof import("@puppeteer/browsers");
 
@@ -39,8 +40,8 @@ async function loadPuppeteerBrowsers(): Promise<PuppeteerBrowsers> {
   }
 }
 
-const CACHE_ROOT_DIR = join(homedir(), ".cache", "hyperframes");
-const CACHE_DIR = join(homedir(), ".cache", "hyperframes", "chrome");
+const CACHE_ROOT_DIR = hyperframesCacheDir();
+const CACHE_DIR = hyperframesCacheDir("chrome");
 const ARCHIVE_PLUS_UNPACKED_SHELL_MB = 512;
 // Puppeteer's managed cache — where `@puppeteer/browsers install
 // chrome-headless-shell` (and `puppeteer install`) drop binaries. The engine's

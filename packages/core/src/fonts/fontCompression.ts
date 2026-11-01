@@ -10,8 +10,9 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { hyperframesCacheDir } from "../cacheDir.js";
 
 const { compress } = wawoff2 as {
   compress: (input: Buffer | Uint8Array) => Promise<Uint8Array>;
@@ -41,7 +42,7 @@ function defaultCacheDir(): string {
     process.env.HYPERFRAMES_FONT_CACHE_DIR ??
     (process.env.AWS_LAMBDA_FUNCTION_NAME
       ? join(tmpdir(), "hyperframes", "fonts")
-      : join(homedir(), ".cache", "hyperframes", "fonts"));
+      : hyperframesCacheDir("fonts"));
   return join(root, "local-compression-v1");
 }
 

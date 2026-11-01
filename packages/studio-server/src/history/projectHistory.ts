@@ -12,7 +12,6 @@ import {
   realpathSync,
   rmSync,
 } from "node:fs";
-import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import {
@@ -64,9 +63,10 @@ import {
   type LogRecord,
   type Manifest,
 } from "./historyLog.js";
+import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
 
 /** Where hosts keep project histories unless told otherwise: outside every project, so no tidy-up takes one away. */
-export const DEFAULT_HISTORY_ROOT = join(homedir(), ".cache", "hyperframes", "history");
+export const DEFAULT_HISTORY_ROOT = hyperframesCacheDir("history");
 
 export interface ProjectHistoryOptions {
   projectDir: string;

@@ -11,14 +11,14 @@ import {
   renameSync,
   unlinkSync,
 } from "node:fs";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { downloadFile } from "../../utils/download.js";
 import { isMissingPackageError } from "../../utils/missingPackage.js";
 import { VERSION } from "../../version.js";
+import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
 
 const DOCS_URL = "https://hyperframes.heygen.com/deploy/aws-lambda";
-const HANDLER_CACHE_DIR = join(homedir(), ".cache", "hyperframes", "lambda-handler");
+const HANDLER_CACHE_DIR = hyperframesCacheDir("lambda-handler");
 
 type AdapterSdk = typeof import("@hyperframes/aws-lambda/sdk");
 

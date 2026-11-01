@@ -611,15 +611,30 @@ describe("install", () => {
   function setup() {
     const cache = mkdtempSync(join(tmpdir(), "hf-optional-"));
     const dir = join(cache, "pkg@1.0.0");
-    const stubNpm = async (args: string[]) => {
+    const stubNpm = async (_args: string[], prefix: string) => {
       await new Promise((r) => setTimeout(r, 50));
-      const prefix = args[args.indexOf("--prefix") + 1] as string;
       if (!existsSync(prefix)) throw new Error("ENOENT: staging dir vanished mid-install");
       mkdirSync(join(prefix, "node_modules", name), { recursive: true });
       writeFileSync(join(prefix, "node_modules", name, "package.json"), "{}");
     };
     return { cache, dir, stubNpm };
   }
+
+  it("runs npm inside the staging dir, with no path on its command line", async () => {
+    const { cache, dir } = setup();
+    const seen: { args: string[]; cwd: string }[] = [];
+    try {
+      await install(dir, name, version, async (args, cwd) => {
+        seen.push({ args, cwd });
+      });
+      expect(seen).toHaveLength(1);
+      expect(seen[0]!.args).not.toContain("--prefix");
+      expect(seen[0]!.args.some((arg) => arg.includes(cache))).toBe(false);
+      expect(seen[0]!.cwd.startsWith(`${dir}.tmp-`)).toBe(true);
+    } finally {
+      rmSync(cache, { recursive: true, force: true });
+    }
+  });
 
   it("gives each overlapping install in one process its own staging dir", async () => {
     const { cache, dir, stubNpm } = setup();
