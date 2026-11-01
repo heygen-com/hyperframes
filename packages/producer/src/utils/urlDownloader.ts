@@ -5,6 +5,7 @@
 export {
   downloadToTemp,
   fetchPublicHttpsText,
+  fetchPublicHttpsBytes,
   isHttpUrl,
   safeDownloadUrlIdentity,
   writeUrlDownloadTelemetry,
