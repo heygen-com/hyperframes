@@ -1122,7 +1122,7 @@ export async function extractVideoFramesRange(
   }
 }
 
-export interface VideoFilterChainInput {
+interface VideoFilterChainInput {
   metadata: VideoMetadata;
   format: CacheFrameFormat;
   ffmpegFps: string;
@@ -1136,7 +1136,7 @@ export interface VideoFilterChainInput {
 }
 
 /** The one place that decides which source frame a slot shows and how its colour is converted. */
-export function videoFilterChain(input: VideoFilterChainInput): (seek: number) => string[] {
+function videoFilterChain(input: VideoFilterChainInput): (seek: number) => string[] {
   const { metadata, format, ffmpegFps, sampleAtOutputFps, keepsHdrForChrome, toneMapFrom } = input;
   const toneMappedToSdr = toneMapFrom !== undefined;
   const head: string[] = [];
@@ -1161,7 +1161,7 @@ export function videoFilterChain(input: VideoFilterChainInput): (seek: number) =
   if (input.sdrToHdrTransfer) {
     // Fps sampling runs before the colorspace remap so only kept frames are converted. The
     // remap is pointwise, so the result is identical either way for the SDR inputs it applies
-    // to; revisit if format=nv12 (HDR source on macOS) ever combines with it.
+    // to (it never meets nv12, which is HDR-only); revisit if the two ever combine.
     tail.push(SDR_TO_HDR_COLORSPACE_FILTER);
   }
   if (toneMapFrom) {
