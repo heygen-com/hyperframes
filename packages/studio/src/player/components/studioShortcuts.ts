@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { comboClashKey, comboText, formatCombo, matchCombo, parseCombo } from "./studioCombo";
 
 /** Every single-character bare key Studio answers, by action. */
 export const DEFAULT_STUDIO_KEYS = {
@@ -44,9 +45,10 @@ const sharedByDesign = (a: StudioKeyAction, b: StudioKeyAction) =>
 
 function findClash(keys: StudioKeys): string | null {
   const actions = Object.keys(keys) as StudioKeyAction[];
+  const clashKey = (action: StudioKeyAction) => comboClashKey(parseCombo(keys[action])!);
   for (const [i, a] of actions.entries()) {
     for (const b of actions.slice(i + 1)) {
-      if (keys[a] === keys[b] && !sharedByDesign(a, b)) return `${a} and ${b} both on "${keys[a]}"`;
+      if (clashKey(a) === clashKey(b) && !sharedByDesign(a, b)) return `${a} and ${b} both on "${keys[a]}"`;
     }
   }
   return null;
@@ -54,18 +56,13 @@ function findClash(keys: StudioKeys): string | null {
 
 function resolve(overrides: Partial<Record<StudioKeyAction, string>>): StudioKeys {
   const next: Record<string, string> = { ...DEFAULT_STUDIO_KEYS };
-  for (const [action, key] of Object.entries(overrides)) {
-    if (
-      !Object.hasOwn(DEFAULT_STUDIO_KEYS, action) ||
-      typeof key !== "string" ||
-      [...key].length !== 1
-    ) {
-      console.warn(
-        `Studio keys: using defaults, "${action}" is not a known action with one character`,
-      );
+  for (const [action, text] of Object.entries(overrides)) {
+    const combo = typeof text === "string" ? parseCombo(text) : null;
+    if (!Object.hasOwn(DEFAULT_STUDIO_KEYS, action) || !combo) {
+      console.warn(`Studio keys: using defaults, "${action}" is not a known action with a valid combo`);
       return DEFAULT_STUDIO_KEYS;
     }
-    next[action] = key.toLowerCase();
+    next[action] = comboText(combo);
   }
   const clash = findClash(next as StudioKeys);
   if (!clash) return next as StudioKeys;
@@ -104,10 +101,12 @@ export interface ShortcutSection {
   hints: readonly ShortcutHint[];
 }
 
-const hintKey = (key: string) => key.toUpperCase();
-
 export const keyHint = (action: StudioKeyAction, keys: StudioKeys = current) =>
-  hintKey(keys[action]);
+  formatCombo(parseCombo(keys[action])!);
+
+/** True when the event is the combo the host (or the default) set for this action. */
+export const matchesKey = (e: KeyboardEvent, action: StudioKeyAction) =>
+  matchCombo(e, parseCombo(current[action])!);
 
 export function buildShortcutSections(keys: StudioKeys): readonly ShortcutSection[] {
   const k = (action: StudioKeyAction) => keyHint(action, keys);
