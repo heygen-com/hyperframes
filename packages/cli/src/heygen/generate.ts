@@ -403,7 +403,7 @@ function aspectOf(r: GenerateRequest, work: string): string {
   return `${width}:${height}`;
 }
 
-const MIN_SHOT_S = 0.5;
+const MIN_SHOT_S = 0.15;
 
 export function foldShort(cuts: number[], length: number): number[] {
   const kept = [...cuts];
