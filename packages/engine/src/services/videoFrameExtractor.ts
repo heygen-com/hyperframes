@@ -35,6 +35,7 @@ import {
   parseStrictFiniteTimingNumber,
   readMediaStart,
   toFps,
+  type Fps,
   type FpsInput,
   firstFrameColourArgs,
   hdrToSdrToneMapFilter,
@@ -1147,7 +1148,7 @@ export async function extractVideoFramesRange(
   }
 }
 
-interface VideoFilterChainInput {
+export interface VideoFilterChainInput {
   metadata: VideoMetadata;
   format: CacheFrameFormat;
   ffmpegFps: string;
@@ -1161,7 +1162,7 @@ interface VideoFilterChainInput {
 }
 
 /** The one place that decides which source frame a slot shows and how its colour is converted. */
-function videoFilterChain(input: VideoFilterChainInput): (seek: number) => string[] {
+export function videoFilterChain(input: VideoFilterChainInput): (seek: number) => string[] {
   const { metadata, format, ffmpegFps, sampleAtOutputFps, keepsHdrForChrome, toneMapFrom } = input;
   const toneMappedToSdr = toneMapFrom !== undefined;
   const head: string[] = [];
@@ -1200,6 +1201,58 @@ function videoFilterChain(input: VideoFilterChainInput): (seek: number) => strin
     }
   }
   return (seek) => [...head, ...sampling(seek), ...tail];
+}
+
+export interface VideoLayerInput {
+  inputArgs: string[];
+  filters: string[];
+}
+
+/**
+ * ffmpeg input + filters that show the same frames and colour as extraction, for an encoder that
+ * composites the source video itself. Undefined when the source needs a path this does not cover.
+ */
+export async function buildVideoLayerInput(
+  videoPath: string,
+  startTime: number,
+  duration: number,
+  fps: Fps,
+  canvas: { width: number; height: number },
+): Promise<VideoLayerInput | undefined> {
+  const metadata = await extractMediaMetadata(videoPath);
+  if (
+    isHdrColorSpaceUtil(metadata.colorSpace) ||
+    metadata.isVFR ||
+    metadata.hasAlpha ||
+    codecMayHaveAlpha(metadata.videoCodec)
+  ) {
+    return undefined;
+  }
+  const chain = videoFilterChain({
+    metadata,
+    format: "png",
+    ffmpegFps: fpsToFfmpegArg(fps),
+    sampleAtOutputFps: true,
+    keepsHdrForChrome: false,
+    isHdr: false,
+  });
+  const filters = chain(startTime);
+  if (metadata.width !== canvas.width || metadata.height !== canvas.height) {
+    filters.push(`scale=${canvas.width}:${canvas.height}:flags=bicubic`);
+  }
+  return {
+    inputArgs: [
+      "-noaccurate_seek",
+      "-ss",
+      formatFfmpegSeconds(ffmpegSeekSeconds(metadata, startTime)),
+      ...urlInputArgs(videoPath),
+      "-i",
+      videoPath,
+      "-t",
+      formatFfmpegSeconds(duration),
+    ],
+    filters,
+  };
 }
 
 async function extractVideoFramesRangeUnredacted(

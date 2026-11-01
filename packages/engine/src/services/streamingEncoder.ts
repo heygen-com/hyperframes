@@ -45,6 +45,7 @@ import {
 } from "../utils/sdrCaptureColor.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { fpsToFfmpegArg, fpsToNumber, type Fps } from "@hyperframes/core";
+import type { VideoLayerInput } from "./videoFrameExtractor.js";
 import { appendVp9CpuUsedArg } from "./vp9Options.js";
 import { appendSoftwareEncoderThreadsArg } from "./softwareEncoderThreads.js";
 import { appendRenderProvenanceArgs } from "../utils/renderProvenance.js";
@@ -170,6 +171,8 @@ export interface StreamingEncoderOptions {
   useGpu?: boolean;
   imageFormat?: "jpeg" | "png";
   hdr?: { transfer: import("../utils/hdr.js").HdrTransfer };
+  /** A source video ffmpeg composites under the piped RGBA frames; see `buildVideoLayerInput`. */
+  videoLayer?: VideoLayerInput;
   /** When set, use rawvideo input instead of image2pipe. For HDR PQ-encoded frames. */
   rawInputFormat?: "rgb48le";
   /**
@@ -287,9 +290,19 @@ export function buildStreamingArgs(
       "-",
     );
   }
+  if (options.videoLayer) args.push(...options.videoLayer.inputArgs);
   args.push("-r", fpsToFfmpegArg(fps));
 
   const shouldUseGpu = useGpu && gpuEncoder !== null;
+  if (
+    options.videoLayer &&
+    (imageFormat !== "png" ||
+      options.rawInputFormat ||
+      shouldUseGpu ||
+      (codec !== "h264" && codec !== "h265"))
+  ) {
+    throw new Error("videoLayer needs software h264/h265 and PNG frames");
+  }
   appendRateCapArgs(args, options);
 
   if (codec === "h264" || codec === "h265") {
@@ -450,6 +463,20 @@ export function buildStreamingArgs(
       if (vfIdx !== -1) {
         args[vfIdx + 1] = `${frameFilter},${args[vfIdx + 1]}`;
       }
+    } else if (options.videoLayer) {
+      const video = `[1:v]${options.videoLayer.filters.join(",")},format=gbrp[v]`;
+      const tail = withEvenDimensionPad(
+        SDR_RGB_TO_TAGGED_BT709_FILTER,
+        pixelFormat,
+        options.width,
+        options.height,
+      );
+      args.push(
+        "-filter_complex",
+        `${video};[0:v]format=rgba[o];[v][o]overlay=format=gbrp,${tail}[vout]`,
+        "-map",
+        "[vout]",
+      );
     } else {
       // Pad odd dimensions up to even so 4:2:0 encoders (software and
       // nvenc/videotoolbox/qsv/amf) don't abort with "height not divisible by 2".
