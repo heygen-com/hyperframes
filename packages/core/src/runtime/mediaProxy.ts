@@ -211,9 +211,14 @@ function restoreOriginal(el: HTMLMediaElement): void {
   lightElements.delete(el);
   evictMediaSyncState(el);
   restartPlaybackHealth();
-  holdShownFrame(el);
-  if (original === null) el.removeAttribute("src");
-  else el.setAttribute("src", original);
+  if (original === null) {
+    // No file loads, so no event would ever let a held still go.
+    letGoOfStill.get(el)?.();
+    el.removeAttribute("src");
+  } else {
+    holdShownFrame(el);
+    el.setAttribute("src", original);
+  }
   el.load();
 }
 
@@ -222,6 +227,7 @@ const HELD_STILL_WIDTH = 640;
 const HAVE_CURRENT_DATA = 2;
 // The new file can draw (and is not seeking), or it failed and holding would freeze the picture.
 const RELEASE_EVENTS = ["loadeddata", "seeked", "error"] as const;
+const letGoOfStill = new WeakMap<HTMLMediaElement, () => void>();
 
 /** A swapped source empties the video until the new file decodes, which shows black. Until then it shows a still
  * of the frame it had, as its poster. */
@@ -231,15 +237,19 @@ function holdShownFrame(el: HTMLMediaElement): void {
   if (!still) return;
   heldPosters.set(el, el.getAttribute("poster"));
   el.setAttribute("poster", still);
-  const release = (event: Event) => {
-    if (event.type !== "error" && (el.readyState < HAVE_CURRENT_DATA || el.seeking)) return;
+  const letGo = () => {
     for (const type of RELEASE_EVENTS) el.removeEventListener(type, release);
+    letGoOfStill.delete(el);
     const authored = heldPosters.get(el) ?? null;
     heldPosters.delete(el);
     if (authored === null) el.removeAttribute("poster");
     else el.setAttribute("poster", authored);
   };
+  const release = (event: Event) => {
+    if (event.type === "error" || (el.readyState >= HAVE_CURRENT_DATA && !el.seeking)) letGo();
+  };
   for (const type of RELEASE_EVENTS) el.addEventListener(type, release);
+  letGoOfStill.set(el, letGo);
 }
 
 /** The frame the video shows, as a JPEG data URL; null with no frame yet or one the page may not read. */

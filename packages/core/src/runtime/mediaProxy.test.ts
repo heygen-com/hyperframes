@@ -1076,6 +1076,30 @@ describe("preview quality: lighter copies of heavy files", () => {
     expect(posters).toEqual([STILL]);
   });
 
+  it("lets go of a held still when the original has no src to put back", async () => {
+    const { video, setPreviewQuality, setProxyDisplayScale } = await stage({ "/video.mp4": HEAVY });
+    const el = video();
+    el.removeAttribute("src");
+    el.append(Object.assign(document.createElement("source"), { src: "/video.mp4" }));
+    Object.defineProperty(el, "currentSrc", {
+      configurable: true,
+      value: el.querySelector("source")!.src,
+    });
+    el.setAttribute("poster", "/cover.jpg");
+    setPreviewQuality(0.5);
+    await settle();
+    expect(isProxied(el)).toBe(true);
+    showingFrame(el);
+    setProxyDisplayScale(0.5);
+    await settle();
+    expect(el.getAttribute("poster")).toBe(STILL);
+
+    setPreviewQuality(1);
+
+    expect(el.hasAttribute("src")).toBe(false);
+    expect(el.getAttribute("poster")).toBe("/cover.jpg");
+  });
+
   it("lightens a video that appears after the level was lowered", async () => {
     const { video, setPreviewQuality, maybeProxyProactively } = await stage({
       "/video.mp4": HEAVY,
