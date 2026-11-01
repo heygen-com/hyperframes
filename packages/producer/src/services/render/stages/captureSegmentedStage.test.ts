@@ -252,6 +252,11 @@ describe("segmentOutputPath", () => {
   it("zero-pads so lexical order equals frame order", () => {
     expect(segmentOutputPath("/w/segments", 7)).toBe("/w/segments/segment_00007.mp4");
   });
+
+  it("uses the container extension when provided, stripping any leading dot", () => {
+    expect(segmentOutputPath("/w/segments", 7, "mov")).toBe("/w/segments/segment_00007.mov");
+    expect(segmentOutputPath("/w/segments", 7, ".mov")).toBe("/w/segments/segment_00007.mov");
+  });
 });
 
 describe("runCaptureSegmentedStage", () => {
@@ -316,6 +321,41 @@ describe("runCaptureSegmentedStage", () => {
       lockGopForChunkConcat: true,
       gopSize: 1,
     });
+  });
+
+  it("names segments with .mov extension when rendering mov or ProRes", async () => {
+    const encoders: string[] = [];
+    const spawnEncoder = mock(async (outputPath: string) => {
+      encoders.push(outputPath);
+      return {
+        writeFrame: async () => true,
+        finish: async () => ({
+          success: true as const,
+          framesWritten: 7,
+          encodeTimeMs: 1,
+          drainWaitMs: 0,
+        }),
+      };
+    });
+    const concat = mock(async () => ({ success: true as const, duration: 1 }));
+    const input = fakeStageInput({
+      videoOnlyPath: join(fixtureRoot, "video-only.mov"),
+      outputFormat: "mov",
+      deps: { spawnEncoder, concat },
+    });
+    const res = await runCaptureSegmentedStage(input);
+    expect(res.success).toBe(true);
+    expect(encoders).toEqual([
+      join(fixtureRoot, "segments", "segment_00000.mov"),
+      join(fixtureRoot, "segments", "segment_00001.mov"),
+      join(fixtureRoot, "segments", "segment_00002.mov"),
+    ]);
+    expect(concat).toHaveBeenCalledWith(
+      encoders,
+      join(fixtureRoot, "video-only.mov"),
+      undefined,
+      expect.anything(),
+    );
   });
 
   it("does not capture on a probe that left frames to a screenshot session", async () => {
