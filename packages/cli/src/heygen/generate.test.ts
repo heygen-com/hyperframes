@@ -287,6 +287,34 @@ describe("generate", () => {
     expect(got.reduce((a, v, i) => a + Math.abs(v - clean[i]!), 0) / got.length).toBeLessThan(12);
   });
 
+  it.skipIf(!ffmpeg)("leaves no streaks in a box filled while the picture changes", async () => {
+    const guide = join(project, "stripes.mp4");
+    execFileSync(ffmpeg!, [
+      ...["-v", "error", "-y", "-f", "lavfi", "-i", "color=c=gray:s=180x320:r=30:d=3"],
+      "-vf",
+      "geq=lum='if(lt(mod(X,40),20),220,40)':cb=128:cr=128," +
+        "eq=brightness='if(gt(t,1.5),0.2,0)':eval=frame",
+      ...["-pix_fmt", "yuv420p", guide],
+    ]);
+    const sent = answers(textured("stripes-answer.mp4", "180x320", false));
+    await generate({
+      type: "video",
+      out: join(project, "assets/stripes-out.mp4"),
+      prompt: "p",
+      motion: guide,
+      allowCuts: true,
+      masks: [parseMask("30,90,120,50,1.0-2.0")],
+    });
+    const [video] = sent[0]!.reference_videos as { data: string }[];
+    const sentClip = join(project, "stripes-sent.mp4");
+    writeFileSync(sentClip, Buffer.from(video!.data, "base64"));
+    const gray = execFileSync(ffmpeg!, [
+      ...["-v", "error", "-ss", "1.2", "-i", sentClip, "-frames:v", "1"],
+      ...["-vf", "format=gray", "-f", "rawvideo", "-"],
+    ]);
+    expect(structureRatio(gray, 180, [30, 90, 120, 50]).inside).toBeLessThan(6);
+  });
+
   it("reads how much the picture round a box changed, whatever moves inside it", () => {
     const [a, b] = [new Uint8Array(100 * 100).fill(50), new Uint8Array(100 * 100).fill(50)];
     for (let y = 40; y < 60; y++) for (let x = 40; x < 60; x++) b[y * 100 + x] = 200;
