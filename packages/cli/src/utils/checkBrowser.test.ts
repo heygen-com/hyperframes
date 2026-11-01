@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 // fallow-ignore-file code-duplication
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_CONFIG } from "@hyperframes/engine";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os, { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -23,6 +24,7 @@ import {
   collectSeekClock,
   mergeHelperDrafts,
   samplingBrowserCount,
+  RENDER_READY_WARNING_SUFFIX,
 } from "./checkBrowser.js";
 import { CheckDeadline } from "./checkDeadline.js";
 import { closeManagedBrowser } from "../browser/launch.js";
@@ -2219,5 +2221,12 @@ describe("finding frame capture", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("the render-ready warning's advice", () => {
+  it("names a --timeout above the default, so following it never lowers the wait", () => {
+    const example = /for example (\d+)s\)/.exec(RENDER_READY_WARNING_SUFFIX)?.[1];
+    expect(Number(example) * 1000).toBeGreaterThan(DEFAULT_CONFIG.playerReadyTimeout);
   });
 });
