@@ -5,6 +5,7 @@ import {
   preloadMedia,
   prepareUpcomingMedia,
   releaseMedia,
+  warmUpVideo,
 } from "./preloadMedia";
 
 function media(tagName = "VIDEO", networkState = 2, readyState = 0, id = "", renderId = "") {
@@ -243,5 +244,49 @@ describe("preparing upcoming video playback", () => {
     element.dispatchEvent(new Event("loadedmetadata"));
     expect(element.currentTime).toBe(0);
     element.remove();
+  });
+});
+
+describe("a first video that iOS only fetches once it plays", () => {
+  function video(init: { muted?: boolean; readyState?: number } = {}) {
+    const el = document.createElement("video");
+    Object.defineProperty(el, "readyState", { value: init.readyState ?? 1, configurable: true });
+    el.muted = init.muted ?? true;
+    el.play = vi.fn(() => Promise.resolve());
+    el.pause = vi.fn();
+    document.body.appendChild(el);
+    return el;
+  }
+
+  it("plays muted once so its data is there at the tap, then stops and goes back to its start", () => {
+    const el = video();
+    el.currentTime = 0.4;
+    warmUpVideo(el);
+    warmUpVideo(el);
+    expect(el.play).toHaveBeenCalledTimes(1);
+    Object.defineProperty(el, "paused", { value: false, configurable: true });
+    el.currentTime = 1.1;
+    el.dispatchEvent(new Event("canplay"));
+    expect(el.pause).toHaveBeenCalledTimes(1);
+    expect(el.currentTime).toBe(mediaElementTime(0.4));
+    el.remove();
+  });
+
+  it("leaves a video with sound, one that already has data, and a render-frame video alone", () => {
+    const loud = video({ muted: false });
+    const ready = video({ readyState: 4 });
+    warmUpVideo(loud);
+    warmUpVideo(ready);
+    expect(loud.play).not.toHaveBeenCalled();
+    expect(ready.play).not.toHaveBeenCalled();
+    loud.remove();
+    ready.remove();
+  });
+
+  it("reports a refused play instead of throwing", () => {
+    const el = video();
+    el.play = vi.fn(() => Promise.reject(new DOMException("blocked", "NotAllowedError")));
+    expect(() => warmUpVideo(el)).not.toThrow();
+    el.remove();
   });
 });

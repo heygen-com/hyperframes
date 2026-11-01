@@ -21,6 +21,7 @@ import { RUNTIME_FILLER } from "./protocol";
 import {
   preloadMedia,
   prepareUpcomingMedia,
+  warmUpVideo,
   releaseMedia,
   lengthIsAuthored,
   stopMediaDownload,
@@ -3152,8 +3153,10 @@ export function initSandboxRuntimeModular(): void {
       }
     } else if (!visible || decided === undefined) {
       // Not a clip a jump lands on: the media sync arms that one, and load() would undo its seek.
-      if (visible) preloadMedia(el);
-      else startPrefetch(el);
+      if (visible) {
+        preloadMedia(el);
+        if (!playing) warmUpVideo(el);
+      } else startPrefetch(el);
     }
   };
   // Held past the look-ahead so a scrub across its edge does not refetch, and while playing when

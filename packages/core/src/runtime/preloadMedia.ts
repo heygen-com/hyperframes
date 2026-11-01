@@ -28,6 +28,28 @@ export function preloadMedia(media: PreloadableMedia): void {
   if (media.readyState < 3 && !videoAlreadyLoading) media.load();
 }
 
+const warmedUp = new WeakSet<HTMLMediaElement>();
+
+/** iOS Safari ignores `preload`: a video's data comes only once it plays, so the first clip is cold at the tap. */
+export function warmUpVideo(media: HTMLMediaElement): void {
+  if (media.tagName !== "VIDEO" || isRenderFrameVideo(media) || warmedUp.has(media)) return;
+  if (!media.muted || !media.paused || media.readyState >= 3) return;
+  warmedUp.add(media);
+  const start = media.currentTime;
+  const done = () => {
+    media.removeEventListener("canplay", done);
+    media.removeEventListener("pause", done);
+    if (!media.paused) media.pause();
+    if (media.currentTime !== start) media.currentTime = mediaElementTime(start);
+  };
+  media.addEventListener("canplay", done);
+  media.addEventListener("pause", done);
+  media.play().catch((error) => {
+    done();
+    swallow("runtime.preload.warmUp", error);
+  });
+}
+
 const pendingPlaybackStart = new WeakMap<HTMLMediaElement, () => void>();
 
 function cancelPlaybackStart(media: HTMLMediaElement): void {
