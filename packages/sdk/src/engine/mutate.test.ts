@@ -185,6 +185,67 @@ describe("setStyle", () => {
   });
 });
 
+// ─── setStyle — authored declarations (#6267) ────────────────────────────────
+
+describe("setStyle — authored declarations", () => {
+  // `color: red !important; color: blue` is what the browser renders from; a
+  // rebuild from the last-wins map drops the important declaration and the
+  // element turns blue during an unrelated edit.
+  const DUP_HTML = `
+<div data-hf-id="hf-stage" data-hf-root style="width: 1280px; height: 720px">
+  <h1 data-hf-id="hf-title" data-start="0" data-end="3" data-track-index="0"
+      style="color: red !important; color: blue; font-size: 48px">Release notes</h1>
+</div>
+`.trim();
+
+  function freshDup() {
+    return parseMutable(DUP_HTML);
+  }
+
+  function titleStyle(parsed: ReturnType<typeof parseMutable>): string {
+    return parsed.document.querySelector('[data-hf-id="hf-title"]')?.getAttribute("style") ?? "";
+  }
+
+  it("keeps duplicate and important declarations during an unrelated edit (#6267)", () => {
+    const parsed = freshDup();
+    applyOp(parsed, { type: "setStyle", target: "hf-title", styles: { opacity: "0.5" } });
+    expect(titleStyle(parsed)).toBe(
+      "color: red !important; color: blue; font-size: 48px; opacity: 0.5",
+    );
+  });
+
+  it("inverse of an unrelated edit restores the authored text byte for byte", () => {
+    const parsed = freshDup();
+    const before = titleStyle(parsed);
+    const { inverse } = applyOp(parsed, {
+      type: "setStyle",
+      target: "hf-title",
+      styles: { opacity: "0.5" },
+    });
+    applyPatchesToDocument(parsed, inverse);
+    expect(titleStyle(parsed)).toBe(before);
+  });
+
+  it("a set property replaces all of its authored declarations, like CSSOM setProperty", () => {
+    const parsed = freshDup();
+    applyOp(parsed, { type: "setStyle", target: "hf-title", styles: { color: "green" } });
+    expect(titleStyle(parsed)).toBe("color: green; font-size: 48px");
+  });
+
+  it("a removed property leaves none of its duplicates behind", () => {
+    const parsed = freshDup();
+    applyOp(parsed, { type: "setStyle", target: "hf-title", styles: { color: null } });
+    expect(titleStyle(parsed)).toBe("font-size: 48px");
+  });
+
+  it("setElementStyles round-trips declarations the map cannot represent", () => {
+    const parsed = freshDup();
+    const el = parsed.document.querySelector('[data-hf-id="hf-title"]')!;
+    setElementStyles(el, { "font-size": null });
+    expect(el.getAttribute("style")).toBe("color: red !important; color: blue");
+  });
+});
+
 // ─── setText ─────────────────────────────────────────────────────────────────
 
 describe("setText", () => {
