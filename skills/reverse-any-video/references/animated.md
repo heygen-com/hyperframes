@@ -8,7 +8,7 @@ Say so before starting, in the person's language. For example:
 
 ## What is code and what is generated
 
-- **Code:** text and handwriting, logos, the end card, light that sits on the picture (flashes, glows, a portal's ring), and a camera moving over a still world: measure the camera and build layers from clean plates.
+- **Code:** text and handwriting, logos, the end card, light that sits on the picture (flashes, glows, a portal's ring), and a camera moving over a still world: measure the camera and rebuild the world as separate layers from clean plates, never the whole frame.
 - **Generated:** a character acting, a picture that morphs, and fine flowing detail such as streamlines, which code draws in the wrong shape.
 - **Both:** in a mixed shot, generate the acting and lay the code over it.
 
@@ -27,6 +27,6 @@ Work as `people.md` does, one generated shot per original shot, with these chang
 
    `--first-frame` does not combine with `--motion`, so the plate goes in `--reference`. Name the style in the prompt, and blank drawn text in the guide with `--mask`.
 
-4. **Frame it** with `npx hyperframes diff <video> . --at t,t,…` on a shape in the shot. `measure face` is for real faces.
+4. **Frame it** by comparing a stable shape at the shot's start and end with `npx hyperframes diff <video> . --at t,t,…`, then set scale and position by hand. `measure face` is for real faces.
 
 `REVERSE.md` lists which shots are generated and which layers are code.
