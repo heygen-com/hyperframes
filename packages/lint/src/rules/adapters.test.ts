@@ -107,6 +107,20 @@ describe("adapter rules", () => {
     expect(finding?.message).toContain("Three.js");
   });
 
+  it.each([
+    ["missing_three_script", "const scene = new THREE.Scene();"],
+    ["missing_lottie_script", "lottie.loadAnimation({ container: document.body });"],
+  ])(
+    "does not report %s in a scene, since the parent document loads the library",
+    async (code, usage) => {
+      const html = `<template id="scene-template"><div data-composition-id="scene" data-width="1920" data-height="1080"><script>${usage}</script></div></template>`;
+      const sub = await lintHyperframeHtml(html, { isSubComposition: true });
+      const bare = await lintHyperframeHtml(html);
+      expect(sub.findings.map((f) => f.code)).not.toContain(code);
+      expect(bare.findings.map((f) => f.code)).not.toContain(code);
+    },
+  );
+
   it("does not report missing_three_script when Three.js CDN script is present", async () => {
     const html = `
 <html><body>
