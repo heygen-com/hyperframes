@@ -4,7 +4,7 @@ import { evictMediaSyncState, HOLD_CAP_MS, isActiveAtPlayhead } from "./media";
 import { findInjectedRenderFrame } from "./renderFrameSibling";
 import type { RuntimeJson } from "./types";
 import { isVideoElement } from "./domRealm";
-import { swappedElements } from "./proxySrc";
+import { heldPosters, swappedElements } from "./proxySrc";
 import { restartPlaybackHealth } from "./playbackHealth";
 import { failedCopyElements, noteCopy, setCopyReportingLevel } from "./previewCopies";
 import { waitForServedProxy } from "./proxyWait";
@@ -211,9 +211,53 @@ function restoreOriginal(el: HTMLMediaElement): void {
   lightElements.delete(el);
   evictMediaSyncState(el);
   restartPlaybackHealth();
+  holdShownFrame(el);
   if (original === null) el.removeAttribute("src");
   else el.setAttribute("src", original);
   el.load();
+}
+
+// Wide enough to stand in for the picture for the moment a swap takes; small enough to encode in a few ms.
+const HELD_STILL_WIDTH = 640;
+const HAVE_CURRENT_DATA = 2;
+// The new file can draw (and is not seeking), or it failed and holding would freeze the picture.
+const RELEASE_EVENTS = ["loadeddata", "seeked", "error"] as const;
+
+/** A swapped source empties the video until the new file decodes, which shows black. Until then it shows a still
+ * of the frame it had, as its poster. */
+function holdShownFrame(el: HTMLMediaElement): void {
+  if (!isVideoElement(el) || heldPosters.has(el)) return;
+  const still = stillOf(el);
+  if (!still) return;
+  heldPosters.set(el, el.getAttribute("poster"));
+  el.setAttribute("poster", still);
+  const release = (event: Event) => {
+    if (event.type !== "error" && (el.readyState < HAVE_CURRENT_DATA || el.seeking)) return;
+    for (const type of RELEASE_EVENTS) el.removeEventListener(type, release);
+    const authored = heldPosters.get(el) ?? null;
+    heldPosters.delete(el);
+    if (authored === null) el.removeAttribute("poster");
+    else el.setAttribute("poster", authored);
+  };
+  for (const type of RELEASE_EVENTS) el.addEventListener(type, release);
+}
+
+/** The frame the video shows, as a JPEG data URL; null with no frame yet or one the page may not read. */
+function stillOf(el: HTMLVideoElement): string | null {
+  if (el.readyState < HAVE_CURRENT_DATA || !el.videoWidth || !el.videoHeight) return null;
+  const scale = Math.min(1, HELD_STILL_WIDTH / el.videoWidth);
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(el.videoWidth * scale));
+  canvas.height = Math.max(1, Math.round(el.videoHeight * scale));
+  try {
+    const context = canvas.getContext("2d");
+    if (!context) return null;
+    context.drawImage(el, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL("image/jpeg", 0.85);
+  } catch {
+    // A cross-origin frame taints the canvas: the swap goes ahead with nothing held.
+    return null;
+  }
 }
 
 function loadProxy(
@@ -229,6 +273,7 @@ function loadProxy(
   // Sync state measured on the previous file would read the new file's buffering as drift.
   evictMediaSyncState(el);
   restartPlaybackHealth();
+  holdShownFrame(el);
   el.src = href;
   el.load();
 }
