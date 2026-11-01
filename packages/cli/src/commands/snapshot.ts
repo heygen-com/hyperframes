@@ -938,6 +938,14 @@ export async function captureSnapshots(
   // Localize fonts (embed remote @font-face as data URIs, matching the render
   // path) so snapshots render the real font instead of a fallback sans.
   const html = await bundleWithLocalizedFonts(projectDir);
+  const entry = join(projectDir, "index.html");
+  const swallowed = existsSync(entry)
+    ? await selfClosedMediaWarning(readFileSync(entry, "utf8"))
+    : null;
+  if (swallowed) {
+    warnings.push(swallowed);
+    console.warn(`   ${c.warn("⚠")} ${swallowed}`);
+  }
   const server = await serveCapturePage(projectDir, html, opts.autoProxy);
 
   const savedPaths: string[] = [];
@@ -1504,6 +1512,20 @@ function warnUnsettledImages(images: UnsettledImages, time: number, warnings: st
     warnings.push(message);
     console.warn(`   ${c.warn("⚠")} ${message}`);
   }
+}
+
+/** What the project's own lint says about self-closed clips, which hide the rest of the page and blank every still. */
+export async function selfClosedMediaWarning(source: string): Promise<string | null> {
+  const { lintHyperframeHtml } = await import("@hyperframes/lint");
+  const found = (await lintHyperframeHtml(source)).findings.filter(
+    (finding) => finding.code === "self_closing_media_tag",
+  );
+  if (found.length === 0) return null;
+  const ids = found.flatMap((finding) => (finding.elementId ? [`#${finding.elementId}`] : []));
+  return (
+    `index.html has ${found.length} self-closed <audio>/<video> tags${ids.length ? ` (${ids.slice(0, 3).join(", ")})` : ""}: ` +
+    "HTML leaves them open, so everything after the first one is hidden and stills come out blank. Write <audio ...></audio>."
+  );
 }
 
 function warnSnapshotsNotRecorded(error: unknown): undefined {
