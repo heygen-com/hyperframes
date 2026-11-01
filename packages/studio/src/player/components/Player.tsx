@@ -36,10 +36,8 @@ interface PlayerProps {
   onPainted?: (details: { iframe: HTMLIFrameElement; startedAt: number; loadId: number }) => void;
   portrait?: boolean;
   style?: React.CSSProperties;
-  /** Skips only the composition cover (a later load); the asset wait still shows. A host's own loader: loadingUi. */
   suppressLoadingOverlay?: boolean;
-  /** "none": the host draws its own loader, so Studio draws neither overlay; loading is still reported. */
-  loadingUi?: "studio" | "none";
+  loadingUi?: "studio" | "host";
   noLoadTimeout?: boolean;
 }
 

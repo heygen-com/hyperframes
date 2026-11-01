@@ -404,7 +404,7 @@ describe("ready to show", () => {
     const onCompositionLoadingChange = vi.fn();
     const host = await loadWithUnloadedMedia({
       suppressLoadingOverlay: false,
-      loadingUi: "none",
+      loadingUi: "host",
       onCompositionLoadingChange,
     });
     expect(host.textContent).not.toContain("Preparing preview assets");
