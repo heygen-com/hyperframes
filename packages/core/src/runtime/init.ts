@@ -3444,7 +3444,7 @@ export function initSandboxRuntimeModular(): void {
   // Play waits this long for a clip with no data, then runs on and lets the clip catch up; mid-film it holds.
   const START_WAIT_MS = 300;
   let startWaitUntilMs: number | null = null;
-  let catchingUp = false;
+  let catchingUpFor: HTMLMediaElement[] = [];
   let resumingFromBuffering = false;
 
   // The one definition of "media the transport drives": timed itself, or hosted
@@ -4778,7 +4778,7 @@ export function initSandboxRuntimeModular(): void {
       bufferingFor = [];
       if (!resumingFromBuffering) {
         startWaitUntilMs = performance.now() + START_WAIT_MS;
-        catchingUp = false;
+        catchingUpFor = [];
       }
       const tl = state.capturedTimeline;
       if (clock.isPlaying()) return;
@@ -4813,7 +4813,7 @@ export function initSandboxRuntimeModular(): void {
       const wasBuffering = bufferingFor.length > 0;
       bufferingFor = [];
       startWaitUntilMs = null;
-      catchingUp = false;
+      catchingUpFor = [];
       if (clock.isPlaying()) haltPlayback();
       else if (wasBuffering) postState(true);
     },
@@ -5665,7 +5665,7 @@ export function initSandboxRuntimeModular(): void {
           if (clock.hasAudioSource()) clock.detachAudioSource();
         } else if (
           source &&
-          catchingUp &&
+          catchingUpFor.includes(source.el) &&
           source.el.readyState < HTMLMediaElement.HAVE_FUTURE_DATA
         ) {
           // Past the start wait the playhead runs on its own clock while this track catches up.
@@ -5891,16 +5891,14 @@ export function initSandboxRuntimeModular(): void {
       const notReady = mediaNotReadyAt(state.currentTime);
       if (startWaitUntilMs !== null && performance.now() >= startWaitUntilMs) {
         startWaitUntilMs = null;
-        catchingUp = notReady.length > 0;
+        catchingUpFor = notReady;
       }
-      if (notReady.length === 0) catchingUp = false;
-      if (clock.isPlaying() && notReady.length > 0 && !catchingUp) {
-        bufferingFor = notReady;
+      catchingUpFor = catchingUpFor.filter((el) => notReady.includes(el));
+      const mustWaitFor = notReady.filter((el) => !catchingUpFor.includes(el));
+      if (clock.isPlaying() && mustWaitFor.length > 0) {
+        bufferingFor = mustWaitFor;
         haltPlayback();
-      } else if (
-        bufferingFor.length > 0 &&
-        (catchingUp || !notReady.some((el) => bufferingFor.includes(el)))
-      ) {
+      } else if (bufferingFor.length > 0 && !mustWaitFor.some((el) => bufferingFor.includes(el))) {
         resumingFromBuffering = true;
         try {
           transport.play();
