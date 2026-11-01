@@ -212,8 +212,8 @@ const CHECK_COMMAND_ARGS = {
   timeout: {
     type: "string",
     description:
-      "Initial render-ready timeout in ms, or with a unit (45s, 2m); also sets the navigation minimum (10s floor, default: 10000)",
-    default: "10000",
+      "Initial render-ready timeout in ms, or with a unit (45s, 2m); also sets the navigation minimum (10s floor, default: 45000, as snapshot and render)",
+    default: String(DEFAULT_CHECK_OPTIONS.timeout),
   },
   contrast: {
     type: "boolean",
