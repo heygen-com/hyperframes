@@ -2292,7 +2292,7 @@ export async function pollVideosReady(
             if (ve.readyState >= 2) return true;
             if (ve.error) return true;
             if (ve.networkState === HTMLMediaElement.NETWORK_NO_SOURCE) return true;
-            return false;
+            return !ve.getAttribute("src") && !ve.querySelector("source");
           })
         );
       }, skipIds),
@@ -2413,6 +2413,7 @@ export async function collectMediaReadinessWarnings(
     for (const media of document.querySelectorAll("video")) {
       const mediaElement = media as HTMLMediaElement;
       if (skipped.has(mediaElement.id)) continue;
+      if (!mediaElement.getAttribute("src") && !mediaElement.querySelector("source")) continue;
       const src = mediaElement.currentSrc || mediaElement.getAttribute("src") || "(no src)";
       const failed =
         Boolean(mediaElement.error) ||
