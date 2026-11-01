@@ -104,16 +104,32 @@ function useVideoThumbnailSnapshot(
   return selectThumbnailSnapshot(posterSnapshot, richSnapshot, shownSnapshot);
 }
 
+/** The decode request's inputs; the trimmed range stays at its last rest value while a trim moves. */
 function useRangeHeldDuringTrim(
-  sourceStart: number | undefined,
-  sourceRangeDuration: number | undefined,
-  duration: number,
+  props: Required<
+    Pick<VideoThumbnailProps, "videoSrc" | "duration" | "projectId" | "sessionEpoch" | "priority">
+  > &
+    Pick<VideoThumbnailProps, "sourceStart" | "sourceRangeDuration">,
 ) {
-  const range = useMemo(
-    () => ({ sourceStart, sourceRangeDuration, duration }),
-    [duration, sourceRangeDuration, sourceStart],
+  const {
+    videoSrc,
+    sourceStart,
+    sourceRangeDuration,
+    duration,
+    projectId,
+    sessionEpoch,
+    priority,
+  } = props;
+  const range = useValueAtRest(
+    useMemo(
+      () => ({ sourceStart, sourceRangeDuration, duration }),
+      [duration, sourceRangeDuration, sourceStart],
+    ),
   );
-  return useValueAtRest(range);
+  return useMemo(
+    () => ({ videoSrc, ...range, projectId, sessionEpoch, priority }),
+    [priority, projectId, range, sessionEpoch, videoSrc],
+  );
 }
 
 /** Sparse, bounded video frames supplied by the shared thumbnail scheduler. */
@@ -134,11 +150,15 @@ export const VideoThumbnail = memo(function VideoThumbnail({
       computeThumbnailStrip(container.width, 16 / 9, container.height).frameCount,
     ),
   );
-  const rangeHeldDuringTrim = useRangeHeldDuringTrim(sourceStart, sourceRangeDuration, duration);
-  const requestProps = useMemo(
-    () => ({ videoSrc, ...rangeHeldDuringTrim, projectId, sessionEpoch, priority }),
-    [priority, projectId, rangeHeldDuringTrim, sessionEpoch, videoSrc],
-  );
+  const requestProps = useRangeHeldDuringTrim({
+    videoSrc,
+    sourceStart,
+    sourceRangeDuration,
+    duration,
+    projectId,
+    sessionEpoch,
+    priority,
+  });
   const posterRequest = useMemo(
     () => createVideoThumbnailRequest(requestProps, 1, false),
     [requestProps],
