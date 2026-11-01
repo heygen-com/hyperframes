@@ -7,14 +7,18 @@ export const ClipPeakDescriptionContext = createContext<((detail: string | null)
 
 export function ClipPeakTooltip({
   children,
+  overflowLabel,
 }: {
   children: ReactElement<{ title?: string; "aria-describedby"?: string }>;
+  overflowLabel?: string;
 }) {
   const [detail, setDetail] = useState<string | null>(null);
+  const label = detail ?? overflowLabel ?? "";
+  const show = detail !== null || overflowLabel !== undefined;
   return (
     <ClipPeakDescriptionContext.Provider value={setDetail}>
-      <Tooltip label={detail ?? ""} disabled={detail === null}>
-        {cloneElement(children, { title: detail === null ? children.props.title : undefined })}
+      <Tooltip label={label} disabled={!show}>
+        {cloneElement(children, { title: show ? undefined : children.props.title })}
       </Tooltip>
     </ClipPeakDescriptionContext.Provider>
   );
