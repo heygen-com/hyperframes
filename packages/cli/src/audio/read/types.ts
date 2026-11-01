@@ -1,6 +1,6 @@
 import type { Span } from "@hyperframes/core/audio-analysis";
 
-export const READ_VERSION = 5;
+export const READ_VERSION = 6;
 
 export type Separation = "stems" | "mix";
 
@@ -108,10 +108,13 @@ export interface Ambience {
   db: number;
 }
 
+export const MELODIC_GROUP = "melodic";
+
 export interface AudibleStem {
+  /** A stem group: vocals, drums, bass, or melodic for piano, guitar and other mixed. */
   name: string;
   db: number;
-  /** Where the stem is heard. */
+  /** Where the group is heard. */
   spans: Span[];
   /** What the stem holds, in a model's words; null when it was not described. */
   description: string | null;
