@@ -25,7 +25,7 @@ function stemPrompt(name: string, duration: number): string {
     `This audio is one stem, "${name}", that an audio separator split out of a ${seconds(duration)} s soundtrack.`,
     "It holds only what the separator put in this stem.",
     "Describe what it holds: instruments or sounds, rhythm or pattern, feel, and how it changes over time, with the second of each change (enters, changes, stops, returns) where you can hear it.",
-    "If it holds sound effects (whoosh, hit, riser, click and the like), name each kind and roughly when.",
+    "If it holds sound effects, name each kind and roughly when.",
     "Do not list individual beats or notes.",
     "If it is near empty or only bleed from other stems, say so in one sentence.",
     "Plain text, at most five sentences.",
@@ -53,7 +53,7 @@ function overallPrompt({ duration, bpm, stems, breaks }: Measured): string {
     "",
     "From these, answer in two parts, plain text, each starting with its label on a new line.",
     "OVERALL: at most four sentences: what the soundtrack holds (voice, music, other sound), the music's style, instruments and feel, and how it is arranged over time, using the measured times.",
-    'BGM PROMPT: one paragraph describing only the music, as a prompt for a music generator: style, tempo, instruments, feel, and how it develops from start to end in order ("opens with…, then…, then…, ends with…"). No voice, no sound effects, no seconds or timestamps. Music means instruments or a beat carrying a tune or a groove; foley, clicks, pops, whooshes and other sound effects are not music, even when they come in a rhythm. If the soundtrack has no music, write BGM PROMPT: none.',
+    'BGM PROMPT: one paragraph describing only the music, as a prompt for a music generator: style, tempo, instruments, feel, and how it develops from start to end in order ("opens with…, then…, then…, ends with…"). No voice, no sound effects, no seconds or timestamps. Music means instruments or a beat carrying a tune or a groove; sound effects are not music, even when they come in a rhythm. If the soundtrack has no music, write BGM PROMPT: none.',
   ].join("\n");
 }
 
