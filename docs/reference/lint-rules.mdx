@@ -578,6 +578,8 @@ Source: `packages/lint/src/rules/media.ts`.
 
 **Error.** Inline base64 audio or video is present. Base64 media bloats file size and breaks rendering.
 
+The rule also catches MIME parameters such as `data:audio/webm;codecs=opus;base64,...` and base64 payloads wrapped across lines.
+
 **Fix:** Use a relative path or HTTPS URL for the `src` — never embed media as base64.
 
 ### `color_grading_invalid_json`

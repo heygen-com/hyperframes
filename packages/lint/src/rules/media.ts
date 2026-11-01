@@ -704,12 +704,14 @@ export const mediaRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = 
   ({ source }) => {
     const findings: HyperframeLintFinding[] = [];
     const base64MediaRe =
-      /src\s*=\s*["'](data:(?:audio|video)\/[^;]+;base64,([A-Za-z0-9+/=]{20,}))["']/gi;
+      /src\s*=\s*(["'])(data:(?:audio|video)\/[^"',<>\s]+;base64,([A-Za-z0-9+/=\t\n\f\r ]+))\1/gi;
     let b64Match: RegExpExecArray | null;
     while ((b64Match = base64MediaRe.exec(source)) !== null) {
-      const sample = (b64Match[2] || "").slice(0, 200);
+      const payload = (b64Match[3] || "").replace(/[\t\n\f\r ]/g, "");
+      if (payload.length < 20) continue;
+      const sample = payload.slice(0, 200);
       const uniqueChars = new Set(sample.replace(/[A-Za-z0-9+/=]/g, (c) => c)).size;
-      const dataSize = Math.round(((b64Match[2] || "").length * 3) / 4);
+      const dataSize = Math.round((payload.length * 3) / 4);
       const isSuspicious = uniqueChars < 15 || (dataSize > 1000 && dataSize < 50000);
       findings.push({
         code: "base64_media_prohibited",
@@ -717,7 +719,7 @@ export const mediaRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = 
         message: `Inline base64 audio/video detected (${(dataSize / 1024).toFixed(0)} KB)${isSuspicious ? ", likely fabricated data" : ""}. Base64 media is prohibited: it bloats file size and breaks rendering.`,
         fixHint:
           "Use a relative path (assets/music.mp3) or HTTPS URL for the audio/video src. Never embed media as base64.",
-        snippet: truncateSnippet((b64Match[1] ?? "").slice(0, 80) + "..."),
+        snippet: truncateSnippet((b64Match[2] ?? "").slice(0, 80) + "..."),
       });
     }
     return findings;
