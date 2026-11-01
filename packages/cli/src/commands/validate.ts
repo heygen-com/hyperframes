@@ -51,7 +51,9 @@ interface ContrastEntry {
 const CONTRAST_SAMPLES = 5;
 const SEEK_SETTLE_MS = 150;
 const PREFERRED_SEEK_TARGET_WAIT_MS = 500;
-const MEDIA_EXTENSIONS = /\.(aac|flac|m4a|mov|mp3|mp4|oga|ogg|wav|webm)$/i;
+// Containers a proxy swap can abandon mid-fetch; an aborted fetch of one is not a load failure.
+const MEDIA_EXTENSIONS =
+  /\.(3gp|aac|aif|aiff|avi|flac|flv|m2ts|m4a|m4v|mkv|mov|mp3|mp4|mpeg|mpg|mts|mxf|oga|ogg|ogv|opus|wav|weba|webm|wma|wmv)$/i;
 // Turn Puppeteer's opaque "Navigation timeout of Nms exceeded" into an
 // actionable message: the usual cause is a slow blocking CDN <script>. Returns a
 // replacement Error for a navigation timeout, or null for any other error.
