@@ -43,6 +43,14 @@ const TOPICS: Record<string, TopicEntry> = {
     file: "compositions.md",
     description: "Composition structure, nesting, and variables",
   },
+  audio: {
+    file: "audio.md",
+    description: "Audio clips: timing, trim, level, fades, volume lanes",
+  },
+  transcribe: {
+    file: "transcribe.md",
+    description: "Word timestamps and captions: models, engines, import and export",
+  },
   "motion-blur": {
     file: "motion-blur.md",
     description: "Shutter smear on fast movers: attributes, tiers, checks",
