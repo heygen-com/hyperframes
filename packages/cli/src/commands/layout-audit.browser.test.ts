@@ -1310,6 +1310,48 @@ describe("layout-audit.browser coordinate-frame findings", () => {
     expect(issues.find((issue) => issue.selector === "#bleed")).toMatchObject({ severity: "info" });
   });
 
+  describe("webgl_draws_while_inactive", () => {
+    function mountScenes(hidden: boolean): HTMLCanvasElement {
+      document.body.innerHTML = `
+        <div id="root" data-composition-id="main" data-width="640" data-height="360">
+          <div id="scene2" data-composition-id="scene2" data-start="4" data-duration="2" ${hidden ? "data-hf-clip-hidden" : ""}>
+            <canvas id="shader" width="640" height="360"></canvas>
+          </div>
+        </div>
+      `;
+      installGeometry({
+        root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+        scene2: rect({ left: 0, top: 0, width: 640, height: 360 }),
+        shader: rect({ left: 0, top: 0, width: 640, height: 360 }),
+      });
+      installAuditScript();
+      return document.getElementById("shader") as HTMLCanvasElement;
+    }
+
+    const drawn = () =>
+      (window as unknown as { __hyperframesWebglDraws: Set<Element> }).__hyperframesWebglDraws;
+
+    it("names the scene whose canvas draws while its clip is hidden", () => {
+      drawn().add(mountScenes(true));
+
+      const found = runAudit().filter((issue) => issue.code === "webgl_draws_while_inactive");
+
+      expect(found).toHaveLength(1);
+      expect(found[0]).toMatchObject({ severity: "warning", selector: "#shader" });
+      expect(found[0]?.message).toContain("scene2");
+    });
+
+    it("stays quiet for a canvas drawing on screen, and reports a draw once", () => {
+      drawn().add(mountScenes(false));
+      expect(runAudit().some((issue) => issue.code === "webgl_draws_while_inactive")).toBe(false);
+
+      drawn().add(document.getElementById("shader") as HTMLCanvasElement);
+      document.getElementById("scene2")?.setAttribute("data-hf-clip-hidden", "");
+      expect(runAudit().filter((i) => i.code === "webgl_draws_while_inactive")).toHaveLength(1);
+      expect(runAudit().some((issue) => issue.code === "webgl_draws_while_inactive")).toBe(false);
+    });
+  });
+
   describe("canvas_content_at_edge", () => {
     // One grey RGBA pixel per entry: a 1px-thick band, read the same along every edge.
     function edgeLine(levels: number[]): Uint8ClampedArray {

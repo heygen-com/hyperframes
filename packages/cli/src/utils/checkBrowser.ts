@@ -2189,6 +2189,7 @@ const LAYOUT_ISSUE_CODES: readonly LayoutIssueCode[] = [
   "escaped_container",
   "panel_out_of_canvas",
   "canvas_content_at_edge",
+  "webgl_draws_while_inactive",
   "connector_detached",
   "connector_orphan",
   "rotation_pivot_drift",
