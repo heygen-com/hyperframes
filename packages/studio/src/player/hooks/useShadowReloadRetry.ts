@@ -2,7 +2,6 @@ import { useCallback, useMemo, useRef, type RefObject } from "react";
 
 /** What a shadow reload gives as its cause when it ran out its wait budgets. */
 export const READY_TIMEOUT_CAUSE = "it took too long to load";
-// A reload that ran out its budgets is tried once more after this wait, once the window is visible.
 export const SHADOW_RETRY_DELAY_MS = 2_000;
 
 /** One more try for a reload that timed out, so an edit is not left unseen behind the old preview. A newer reload or
