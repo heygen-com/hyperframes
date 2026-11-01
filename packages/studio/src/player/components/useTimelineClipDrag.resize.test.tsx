@@ -8,6 +8,7 @@ import { usePreviewFrameStore } from "../store/previewFrameStore";
 import type { BlockedClipState, DraggedClipState, ResizingClipState } from "./useTimelineClipDrag";
 import { useTimelineClipDrag } from "./useTimelineClipDrag";
 import { mountReactHarness } from "../../hooks/domSelectionTestHarness";
+import { isTimelineMoving, TIMELINE_REST_MS } from "./timelineMotion";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -25,6 +26,7 @@ function el(id: string, over: Partial<TimelineElement> = {}): TimelineElement {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   document.body.innerHTML = "";
   usePlayerStore.getState().reset();
   usePreviewFrameStore.setState({ time: null });
@@ -219,6 +221,20 @@ describe("useTimelineClipDrag — single-clip resize (unchanged path)", () => {
     await expectSingleResizeToA(h, a);
     expect(h.storeById("a").duration).toBe(2.5);
     expect(h.storeById("b").duration).toBe(2); // untouched
+    h.unmount();
+  });
+
+  it("marks the timeline as moving on every trim move, so thumbnails hold their range", () => {
+    vi.useFakeTimers();
+    const a = el("a", { start: 0, duration: 2 });
+    const h = renderResizeHarness([a], []);
+    h.startResize(a, "end");
+    act(() => vi.advanceTimersByTime(TIMELINE_REST_MS));
+    expect(isTimelineMoving()).toBe(false);
+
+    h.movePointer(50);
+
+    expect(isTimelineMoving()).toBe(true);
     h.unmount();
   });
 
