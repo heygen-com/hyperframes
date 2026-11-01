@@ -9,6 +9,27 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.229"
+  description="Released - 2026-11-01"
+  tags={["Release", "CLI", "Studio", "Skills"]}
+>
+Signing in from the CLI now waits up to 60 minutes, so finishing checkout during sign-in no longer ends on a connection error. Trimming a clip keeps its thumbnail strip in place, and masks hold up better on moving footage.
+
+## Fixes
+
+- **CLI:** Keep browser sign-in open through checkout ([34ddced2d](https://github.com/heygen-com/hyperframes/commit/34ddced2d0e9350c2b6387b2365257bb7080e832), [#6879](https://github.com/heygen-com/hyperframes/pull/6879)).
+- **Studio:** A clip's thumbnail strip stays put while you trim it ([0ab493115](https://github.com/heygen-com/hyperframes/commit/0ab49311597ce1e01ae2f5e438276c5d313ba448), [#6942](https://github.com/heygen-com/hyperframes/pull/6942)).
+- **CLI:** A stale mask takes its frame's colours instead of delogo's streaks ([6b0abb4eb](https://github.com/heygen-com/hyperframes/commit/6b0abb4eb52e9576b0c72b636254c87d0f9ad2a5), [#6950](https://github.com/heygen-com/hyperframes/pull/6950)).
+- **CLI:** A masked box follows the frame while the camera moves ([7f8ae5b4b](https://github.com/heygen-com/hyperframes/commit/7f8ae5b4b650c6b103e4547ddcfab9ed66e20e37), [#6948](https://github.com/heygen-com/hyperframes/pull/6948)).
+
+## Docs & Examples
+
+- **Skills:** Animated films in reverse-any-video decide code or generation per shot ([0f76a7d01](https://github.com/heygen-com/hyperframes/commit/0f76a7d01ed260670371e6b36ce3334a43ae1c91), [#6946](https://github.com/heygen-com/hyperframes/pull/6946)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.228...v0.8.229).
+</Update>
+
+<Update
   label="HyperFrames v0.8.228"
   description="Released - 2026-11-01"
   tags={["Release", "Producer", "Core", "CLI"]}
