@@ -122,17 +122,16 @@ export const VideoThumbnail = memo(function VideoThumbnail({
       computeThumbnailStrip(container.width, 16 / 9, container.height).frameCount,
     ),
   );
+  // A trim moves the range on every pointer move; the strip keeps the range it had until the trim rests.
+  const range = useValueAtRest(
+    useMemo(
+      () => ({ sourceStart, sourceRangeDuration, duration }),
+      [duration, sourceRangeDuration, sourceStart],
+    ),
+  );
   const requestProps = useMemo(
-    () => ({
-      videoSrc,
-      sourceStart,
-      sourceRangeDuration,
-      duration,
-      projectId,
-      sessionEpoch,
-      priority,
-    }),
-    [duration, priority, projectId, sessionEpoch, sourceRangeDuration, sourceStart, videoSrc],
+    () => ({ videoSrc, ...range, projectId, sessionEpoch, priority }),
+    [priority, projectId, range, sessionEpoch, videoSrc],
   );
   const posterRequest = useMemo(
     () => createVideoThumbnailRequest(requestProps, 1, false),
