@@ -1,3 +1,4 @@
+import { DEFAULT_CONFIG } from "@hyperframes/engine";
 import type { CheckDeadline } from "./checkDeadline.js";
 import { SEEK_SETTLES_BEFORE_PROTOCOL_TIMEOUT_MS } from "../capture/captureTimeout.js";
 import { logCheckProgress } from "./checkProgress.js";
@@ -91,6 +92,10 @@ import type {
   SeekClock,
 } from "./checkTypes.js";
 import type { ProjectDir } from "./project.js";
+
+/** What a render-ready warning tells the person to do: raise --timeout, with an example above the default. */
+export const RENDER_READY_WARNING_SUFFIX = `the scene may still be building, so results can miss late content; raise --timeout (for example ${(DEFAULT_CONFIG.playerReadyTimeout * 2) / 1000}s)`;
+
 
 interface RuntimeDraft {
   code: string;
@@ -195,7 +200,7 @@ function startCopyHeartbeat(
 /**
  * Awaits the H.264 authoring proxy for every browser-hostile local video
  * asset in `html` BEFORE the timed render-ready wait starts. `check`'s
- * render-ready wait defaults to 3000ms (`DEFAULT_CHECK_OPTIONS.timeout`,
+ * render-ready wait defaults to 45 s (`DEFAULT_CHECK_OPTIONS.timeout`,
  * passed through as `renderReadyTimeoutMs`), and a cold `.transcode-cache`
  * cannot fit inside that window — without this, a project's first
  * hostile-asset check (e.g. a fresh CI checkout) would race the timeout
@@ -382,7 +387,7 @@ export async function runBrowserCheck(
       navigationTimeoutMs: options.timeout,
       renderReadyTimeoutMs: options.timeout,
       renderReadyWarningSuffix:
-        "the scene may still be building, so results can miss late content; raise --timeout (for example 20s)",
+        RENDER_READY_WARNING_SUFFIX,
       prelaunched,
       browserGpuMode: options.browserGpuMode ?? resolveCliChromeGpuMode(),
       signal: deadline?.signal,
@@ -539,7 +544,7 @@ async function openHelperSession(
     navigationTimeoutMs: options.timeout,
     renderReadyTimeoutMs: options.timeout,
     renderReadyWarningSuffix:
-      "the scene may still be building, so results can miss late content; raise --timeout (for example 20s)",
+      RENDER_READY_WARNING_SUFFIX,
     browserGpuMode: options.browserGpuMode ?? resolveCliChromeGpuMode(),
     signal: owner.signal,
     onBrowser: owner.onBrowser,
