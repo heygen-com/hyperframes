@@ -5,7 +5,15 @@ export * from "./ui";
 export { EditorShell } from "./components/EditorShell";
 export type { EditorShellProps } from "./components/EditorShell";
 export { NLEPreview } from "./components/nle/NLEPreview";
-export { DEFAULT_SHORTCUT_SECTIONS } from "./player/components/studioShortcuts";
+export {
+  DEFAULT_SHORTCUT_SECTIONS,
+  DEFAULT_STUDIO_KEYS,
+  buildShortcutSections,
+  getStudioKeys,
+  setStudioKeys,
+  useStudioKeys,
+} from "./player/components/studioShortcuts";
+export type { StudioKeyAction, StudioKeys } from "./player/components/studioShortcuts";
 export { ShortcutsButton } from "./player/components/ShortcutsPanel";
 export { dispatchLinkShortcut } from "./hooks/linkShortcuts";
 export type { LinkShortcutCallbacks } from "./hooks/linkShortcuts";

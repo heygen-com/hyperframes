@@ -4,9 +4,11 @@ import { MagnetStraight, GridFour, Path, Ruler, FrameCorners } from "@phosphor-i
 import { usePlayerStore } from "../../player/store/playerStore";
 import { usePreviewOverlayContext } from "./PreviewOverlayProvider";
 import { ownsPlainKeys } from "../../utils/typingTarget";
+import { getStudioKey, keyHint, useStudioKeys } from "../../player/components/studioShortcuts";
 
 // fallow-ignore-next-line complexity
 export const SnapToolbar = memo(function SnapToolbar() {
+  const keys = useStudioKeys();
   const [gridPopoverOpen, setGridPopoverOpen] = useState(false);
   const { state, actions } = usePreviewOverlayContext();
   const { snapPrefs: prefs, rulerVisible, safeMarginsVisible } = state;
@@ -51,12 +53,12 @@ export const SnapToolbar = memo(function SnapToolbar() {
       if (e.defaultPrevented) return;
       if (ownsPlainKeys(e.target)) return;
       if (e.target instanceof HTMLIFrameElement) return;
-      if (e.key === "s" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      if (e.key === getStudioKey("snap") && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
         updatePrefs({ snapEnabled: !prefs.snapEnabled });
         if (!e.repeat) trackPreviewFeatureUsed("snapping", "keyboard");
       }
-      if (e.key === "g" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      if (e.key === getStudioKey("grid") && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
         updatePrefs({ gridVisible: !prefs.gridVisible });
         if (!e.repeat) trackPreviewFeatureUsed("grid", "keyboard");
@@ -137,7 +139,11 @@ export const SnapToolbar = memo(function SnapToolbar() {
             : "bg-black/40 text-white/60 hover:bg-black/60 hover:text-white/80"
         }`}
         onClick={toggleSnap}
-        title={prefs.snapEnabled ? "Snap enabled (S)" : "Snap disabled (S)"}
+        title={
+          prefs.snapEnabled
+            ? `Snap enabled (${keyHint("snap", keys)})`
+            : `Snap disabled (${keyHint("snap", keys)})`
+        }
         aria-label="Toggle snap"
       >
         <MagnetStraight size={16} weight={prefs.snapEnabled ? "fill" : "regular"} />
@@ -160,8 +166,8 @@ export const SnapToolbar = memo(function SnapToolbar() {
           }}
           title={
             prefs.gridVisible
-              ? "Grid visible (G). Right-click for spacing options"
-              : "Grid hidden (G). Right-click for spacing options"
+              ? `Grid visible (${keyHint("grid", keys)}). Right-click for spacing options`
+              : `Grid hidden (${keyHint("grid", keys)}). Right-click for spacing options`
           }
           aria-label="Toggle grid"
         >

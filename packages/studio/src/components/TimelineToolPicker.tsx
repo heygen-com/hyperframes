@@ -5,6 +5,7 @@ import { Scissors } from "../icons/SystemIcons";
 import { Menu, MenuItem } from "./ui";
 import { cn } from "./ui/cn";
 import { flatIdle } from "./timelineToolbarStyles";
+import { keyHint, useStudioKeys } from "../player/components/studioShortcuts";
 
 function SelectIcon() {
   return (
@@ -25,18 +26,19 @@ interface ToolRow {
 /** One button for the active timeline tool; its menu switches tools or selects clips around the playhead. */
 export function TimelineToolPicker({ showSelectAroundPlayhead = true }) {
   const activeTool = usePlayerStore((s) => s.activeTool);
+  const keys = useStudioKeys();
   const store = () => usePlayerStore.getState();
   const rows: ToolRow[] = [
     {
       label: "Select",
-      shortcut: "V",
+      shortcut: keyHint("selectTool", keys),
       icon: <SelectIcon />,
       active: activeTool === "select",
       run: () => store().setActiveTool("select"),
     },
     {
       label: "Split",
-      shortcut: "B",
+      shortcut: keyHint("razorTool", keys),
       icon: <Scissors size={16} />,
       active: activeTool === "razor",
       run: () => store().setActiveTool("razor"),
@@ -46,14 +48,14 @@ export function TimelineToolPicker({ showSelectAroundPlayhead = true }) {
     rows.push(
       {
         label: "Select leftward",
-        shortcut: "[",
+        shortcut: keyHint("selectLeftward", keys),
         icon: <ArrowLineLeft size={16} aria-hidden="true" />,
         active: false,
         run: () => store().selectLeftward(),
       },
       {
         label: "Select rightward",
-        shortcut: "]",
+        shortcut: keyHint("selectRightward", keys),
         icon: <ArrowLineRight size={16} aria-hidden="true" />,
         active: false,
         run: () => store().selectRightward(),

@@ -7,6 +7,8 @@
  */
 
 import { ownsPlainKeys } from "../../utils/typingTarget";
+import { getStudioKey } from "../components/studioShortcuts";
+import { usePlayerStore } from "../store/playerStore";
 
 const PLAYBACK_FRAME_STEP_CODES = new Set(["ArrowLeft", "ArrowRight"]);
 
@@ -83,3 +85,13 @@ export function shouldIgnorePlaybackShortcutEvent(
 
 /** JKL shuttle speeds (×1, ×2, ×4). */
 export const SHUTTLE_SPEEDS = [1, 2, 4] as const;
+
+/** Plain exit-razor key while the razor is armed: the razor owns it, playback must leave it alone. */
+export function razorClaimsKey(e: KeyboardEvent, key: string): boolean {
+  return (
+    key === getStudioKey("exitRazor") &&
+    !e.shiftKey &&
+    !e.altKey &&
+    usePlayerStore.getState().activeTool === "razor"
+  );
+}

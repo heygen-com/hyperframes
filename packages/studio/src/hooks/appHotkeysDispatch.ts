@@ -8,7 +8,8 @@ import { isEditableTarget } from "../utils/timelineDiscovery";
 import { shouldIgnoreHistoryShortcut } from "../utils/studioHelpers";
 import { canSplitElement } from "../utils/timelineElementSplit";
 import { trackStudioEvent } from "../utils/studioTelemetry";
-import { STUDIO_PLAIN_KEYS } from "../player/components/studioShortcuts";
+import { razorClaimsKey } from "../player/lib/playbackShortcuts";
+import { getStudioKeys, keyHint } from "../player/components/studioShortcuts";
 import { zoomTimelineToSelectedClips } from "../player/components/timelineZoomInput";
 import { openAudioGainDialog } from "../player/components/audioGainDialogStore";
 import type { LinkShortcutCallbacks } from "./linkShortcuts";
@@ -157,13 +158,14 @@ export function dispatchModifierKey(
  *  be asserted without standing up the whole hook. */
 export function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCallbacks): void {
   if (ownsPlainKeys(event.target)) return;
-  if (key === STUDIO_PLAIN_KEYS.zoomSelection && !event.shiftKey && !event.altKey) {
+  const keys = getStudioKeys();
+  if (key === keys.zoomSelection && !event.shiftKey && !event.altKey) {
     if (!zoomTimelineToSelectedClips()) return;
     event.preventDefault();
     return;
   }
 
-  if (key === STUDIO_PLAIN_KEYS.fullscreen && !event.shiftKey && !event.altKey) {
+  if (key === keys.fullscreen && !event.shiftKey && !event.altKey) {
     event.preventDefault();
     if (document.fullscreenElement) void document.exitFullscreen();
     else
@@ -171,7 +173,7 @@ export function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCa
     return;
   }
 
-  if (event.key === STUDIO_PLAIN_KEYS.split && !event.altKey) {
+  if (event.key === keys.split && !event.altKey) {
     // Reserve bare `s` for Split even when the current selection cannot split,
     // so secondary listeners do not reinterpret the same key as Snap toggle.
     event.preventDefault();
@@ -192,51 +194,53 @@ export function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCa
       // that isn't in the raw `elements` list, so the s-key can't resolve them.
       // Nudge toward the razor tool instead of failing silently.
       if (!el && selectedElementId.includes("#")) {
-        cb.showToast("Use the razor tool (B) to split clips inside a sub-composition", "info");
+        cb.showToast(
+          `Use the razor tool (${keyHint("razorTool", keys)}) to split clips inside a sub-composition`,
+          "info",
+        );
         return;
       }
     }
   }
 
   // Only with a sound clip selected, so bare G still reaches the canvas grid toggle otherwise.
-  if (key === STUDIO_PLAIN_KEYS.audioGain && !event.shiftKey && !event.altKey) {
+  if (key === keys.audioGain && !event.shiftKey && !event.altKey) {
     if (!cb.readOnlyPreview && openAudioGainDialog()) {
       event.preventDefault();
       return;
     }
   }
 
-  if (key === "b" && !event.shiftKey && !event.altKey) {
+  if (key === keys.razorTool && !event.shiftKey && !event.altKey) {
     event.preventDefault();
     const { activeTool, setActiveTool } = usePlayerStore.getState();
     setActiveTool(activeTool === "razor" ? "select" : "razor");
     return;
   }
 
-  if (key === "v" && !event.shiftKey && !event.altKey) {
+  if (key === keys.selectTool && !event.shiftKey && !event.altKey) {
     event.preventDefault();
     usePlayerStore.getState().setActiveTool("select");
     return;
   }
 
-  if ((key === "[" || key === "]") && !event.shiftKey && !event.altKey) {
+  if (
+    (key === keys.selectLeftward || key === keys.selectRightward) &&
+    !event.shiftKey &&
+    !event.altKey
+  ) {
     event.preventDefault();
     const store = usePlayerStore.getState();
-    if (key === "[") store.selectLeftward();
+    if (key === keys.selectLeftward) store.selectLeftward();
     else store.selectRightward();
     return;
   }
 
-  // CapCut returns to the select tool with "A". Scoped to the razor being
-  // armed; usePlaybackKeyboard.ts's own "A" (seek to in-point) checks the
-  // same activeTool to stay out of the way.
-  if (key === "a" && !event.shiftKey && !event.altKey) {
-    const { activeTool, setActiveTool } = usePlayerStore.getState();
-    if (activeTool === "razor") {
-      event.preventDefault();
-      setActiveTool("select");
-      return;
-    }
+  // CapCut returns to the select tool with "A"; playback's seek-to-in asks the same razorClaimsKey.
+  if (razorClaimsKey(event, key)) {
+    event.preventDefault();
+    usePlayerStore.getState().setActiveTool("select");
+    return;
   }
 
   if (event.key === "Escape") {
@@ -295,12 +299,7 @@ export function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCa
     return;
   }
 
-  if (
-    event.key === STUDIO_PLAIN_KEYS.record &&
-    !event.shiftKey &&
-    !event.altKey &&
-    cb.onToggleRecording
-  ) {
+  if (event.key === keys.record && !event.shiftKey && !event.altKey && cb.onToggleRecording) {
     event.preventDefault();
     cb.onToggleRecording();
   }
