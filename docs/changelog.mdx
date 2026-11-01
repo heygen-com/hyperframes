@@ -9,6 +9,33 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.227"
+  description="Released - 2026-11-01"
+  tags={["Release", "Engine", "CLI", "Studio"]}
+>
+Apps can upload a project's heavy media themselves and keep each asset id. Check and snapshot use about half the memory on films cut from many clips. GPU renders work on older NVENC builds.
+
+## Features
+
+- **CLI:** The api exports offloadHeavyMedia and every offloaded file reports its asset_id ([ef250cc9d](https://github.com/heygen-com/hyperframes/commit/ef250cc9d0deaf601315de097b575112ba455242), [#6932](https://github.com/heygen-com/hyperframes/pull/6932)).
+
+## Fixes
+
+- **Engine:** GPU renders use the NVENC preset names the host's ffmpeg lists ([90f7fe624](https://github.com/heygen-com/hyperframes/commit/90f7fe624f7972e1dea939c269bc590a920e2f91), [#6930](https://github.com/heygen-com/hyperframes/pull/6930)).
+- **Studio:** Opening the thumbnail browser no longer stalls the server to read its version ([a23cc59ee](https://github.com/heygen-com/hyperframes/commit/a23cc59ee199d217f1a22b4d5cfb1cffa578df76), [#6931](https://github.com/heygen-com/hyperframes/pull/6931)).
+- **CLI:** The cut detector keeps real cuts in live footage ([69400df27](https://github.com/heygen-com/hyperframes/commit/69400df27686b4e69f6ad9b5fe3652809222f775), [#6923](https://github.com/heygen-com/hyperframes/pull/6923)).
+- **CLI:** Check and snapshot free video clips the playhead left, halving memory on cut films ([6b3e7a7a9](https://github.com/heygen-com/hyperframes/commit/6b3e7a7a95e11d5d290123ea821b53109d6103c9), [#6929](https://github.com/heygen-com/hyperframes/pull/6929)).
+- **CLI:** A shot from --first-frame comes back in that frame's shape ([439d01784](https://github.com/heygen-com/hyperframes/commit/439d01784c58911208a2b2d39deb23454ab64260), [#6924](https://github.com/heygen-com/hyperframes/pull/6924)).
+- **Core:** A resized preview video keeps its picture while its new copy loads ([af0d68d61](https://github.com/heygen-com/hyperframes/commit/af0d68d612ebd9c419f27d9ebc8068512667bae4), [#6922](https://github.com/heygen-com/hyperframes/pull/6922)).
+- **Engine:** A video with no source no longer holds capture for 45 seconds ([9aaa3ae67](https://github.com/heygen-com/hyperframes/commit/9aaa3ae675698fddb7459cca48cabf88a5ec08ec), [#6926](https://github.com/heygen-com/hyperframes/pull/6926)).
+- **Engine:** Passthrough keeps frame count and accepts films whose audio outlasts the picture ([58428b44b](https://github.com/heygen-com/hyperframes/commit/58428b44bcc412646086028be816d90f379f4af5), [#6920](https://github.com/heygen-com/hyperframes/pull/6920)).
+- **Studio Server:** A copy another process holds without progress ends in a named error ([e5887959b](https://github.com/heygen-com/hyperframes/commit/e5887959bb7c23c45ea56d44d9e6f0929de4eb3d), [#6918](https://github.com/heygen-com/hyperframes/pull/6918)).
+- **CLI:** Snapshot warns when self-closed audio or video clips have swallowed the page ([8c22ddba0](https://github.com/heygen-com/hyperframes/commit/8c22ddba0fda22c3ec6faa83f4686249804d299d), [#6915](https://github.com/heygen-com/hyperframes/pull/6915)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.226...v0.8.227).
+</Update>
+
+<Update
   label="HyperFrames v0.8.226"
   description="Released - 2026-11-01"
   tags={["Release", "Producer", "Studio", "Core"]}
