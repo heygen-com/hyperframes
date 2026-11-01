@@ -1352,6 +1352,45 @@ describe("layout-audit.browser coordinate-frame findings", () => {
       expect(runAudit().filter((i) => i.code === "webgl_draws_while_inactive")).toHaveLength(1);
       expect(runAudit().some((issue) => issue.code === "webgl_draws_while_inactive")).toBe(false);
     });
+
+    function installFakeWebgl(): { drawn: unknown[]; context: { canvas: unknown } } {
+      const drawn: unknown[] = [];
+      class FakeContext {
+        canvas: unknown;
+        drawArrays(...args: unknown[]) {
+          drawn.push(args);
+        }
+      }
+      (window as unknown as Record<string, unknown>).WebGLRenderingContext = FakeContext;
+      return { drawn, context: new FakeContext() };
+    }
+
+    it("lets an OffscreenCanvas context draw, and reports nothing for it", () => {
+      const { drawn, context } = installFakeWebgl();
+      mountScenes(true);
+      context.canvas = { width: 64, height: 64 };
+
+      (context as unknown as { drawArrays(mode: number): void }).drawArrays(4);
+
+      expect(drawn).toEqual([[4]]);
+      expect(runAudit().some((issue) => issue.code === "webgl_draws_while_inactive")).toBe(false);
+    });
+
+    it("checks a canvas's visibility once per sample, however many draws it makes", () => {
+      const { context } = installFakeWebgl();
+      const canvas = mountScenes(false);
+      const closest = vi.spyOn(canvas, "closest");
+      context.canvas = canvas;
+
+      for (let i = 0; i < 50; i++)
+        (context as unknown as { drawArrays(mode: number): void }).drawArrays(4);
+      expect(closest).toHaveBeenCalledTimes(1);
+
+      runAudit();
+      closest.mockClear();
+      (context as unknown as { drawArrays(mode: number): void }).drawArrays(4);
+      expect(closest).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe("canvas_content_at_edge", () => {
