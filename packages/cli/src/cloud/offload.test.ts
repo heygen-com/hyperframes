@@ -111,6 +111,7 @@ describe("offloadHeavyMedia", () => {
       ["media/clip.mp4", "upload"],
       ["media/voice.mp3", "upload"],
     ]);
+    expect(report.map((item) => item.asset_id)).toEqual(["asset_1", "asset_2", "asset_3"]);
     const index = fileMap.get("index.html")!.toString();
     expect(index).toContain(`url("${url("media/bg.png")}")`);
     expect(index).toContain(`src="${url("media/clip.mp4")}" poster="${url("media/bg.png")}"`);
@@ -153,6 +154,7 @@ describe("offloadHeavyMedia", () => {
         path: "clip.mp4",
         action: "cached",
         url: "https://assets.example/1/clip.mp4",
+        asset_id: "asset_1",
       }),
     ]);
     expect(second.get("index.html")!.toString()).toContain("https://assets.example/1/clip.mp4");
@@ -194,6 +196,7 @@ describe("offloadHeavyMedia", () => {
       });
 
       expect(report).toEqual([expect.objectContaining({ path: "clip.mp4", action: "upload" })]);
+      expect(report[0]).not.toHaveProperty("asset_id");
       expect(createReadStream).not.toHaveBeenCalled();
     });
 
@@ -233,7 +236,9 @@ describe("offloadHeavyMedia", () => {
         cachePath: cache,
       });
 
-      expect(report).toEqual([expect.objectContaining({ path: "clip.mp4", action: "cached" })]);
+      expect(report).toEqual([
+        expect.objectContaining({ path: "clip.mp4", action: "cached", asset_id: "asset_1" }),
+      ]);
       expect(createReadStream).toHaveBeenCalledOnce();
     });
   });

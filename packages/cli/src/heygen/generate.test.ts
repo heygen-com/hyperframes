@@ -559,10 +559,15 @@ describe("generate", () => {
 });
 
 describe("foldShort", () => {
-  it("folds a piece under half a second into its neighbour", () => {
-    expect(foldShort([4, 4.2, 8], 10)).toEqual([4.2, 8]);
-    expect(foldShort([0.2, 5], 10)).toEqual([5]);
-    expect(foldShort([5, 9.8], 10)).toEqual([5]);
-    expect(foldShort([2, 2.1, 2.2, 6], 10)).toEqual([2.2, 6]);
+  it("folds a piece of a few frames into its neighbour", () => {
+    expect(foldShort([4, 4.1, 8], 10)).toEqual([4.1, 8]);
+    expect(foldShort([0.1, 5], 10)).toEqual([5]);
+    expect(foldShort([5, 9.9], 10)).toEqual([5]);
+    expect(foldShort([2, 2.05, 2.1, 6], 10)).toEqual([2.1, 6]);
+  });
+
+  it("keeps a real cut near the guide's edge, which would land inside a paid shot", () => {
+    expect(foldShort([5, 9.7], 10)).toEqual([5, 9.7]);
+    expect(foldShort([0.3], 10)).toEqual([0.3]);
   });
 });
