@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Char Slam Explode</h1>
+  <p>Headline glyphs hold in a deterministic scatter, then reassemble with an overshooting slam and a three-frame landing shake.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/char-slam-explode.json"
   compositionId="char-slam-explode"
   compositionSrc="compositions/components/char-slam-explode.html"
   title="Char Slam Explode"
-  description="Headline glyphs hold in a deterministic scatter, then reassemble with an overshooting slam and a three-frame landing shake."
   variables={[{"id":"text","type":"string","role":"content","label":"Headline","description":"Text split into glyphs for the scatter and slam.","default":"Impact"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Headline and glow color.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"spread","type":"enum","role":"motion","label":"Spread","description":"Distance and rotation of the scattered glyphs.","default":"tight","options":[{"value":"tight","label":"Tight"},{"value":"wild","label":"Wild"}]}]}
   meta={{"category":"Typography & Text","badge":"Stable","codeLines":338}}
   attribution={{"path":"registry/components/char-slam-explode","tags":["motion-primitive","typography","text-treatment","scatter","slam","impact"]}}
@@ -373,7 +377,9 @@ That writes one file: `compositions/components/char-slam-explode.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -414,6 +420,4 @@ Tagged `motion-primitive` `typography` `text-treatment` `scatter` `slam` `impact
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

@@ -4,7 +4,12 @@ import { failCommand, requestCliExit, scheduleCliExit } from "../utils/commandRe
 import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
 import { mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync, rmSync } from "node:fs";
-import { createRenderPlan, resolveBrowserGpuForCli, type RenderFormat } from "./render/plan.js";
+import {
+  createRenderPlan,
+  resolveBrowserGpuForCli,
+  type RenderFormat,
+  type RenderRange,
+} from "./render/plan.js";
 import { seedProjectAuthoringSkill } from "../utils/projectConfig.js";
 import { deliveryFlagArgs } from "../utils/deliveryFlags.js";
 import type { CatalogUsage } from "../utils/catalogUsage.js";
@@ -132,6 +137,7 @@ import { macosOldChromeCrashRemediation } from "../browser/macosOldChromeCrash.j
 import { windowsChromeCrashRemediation } from "../browser/windowsCrash.js";
 import { killOrphanedProcessesForRender } from "../utils/orphanCleanup.js";
 import { createRenderCancellationScope } from "../utils/renderCancellation.js";
+import { audioLoweredWarning } from "../utils/audioLoweredWarning.js";
 import {
   markRenderSucceeded,
   runPostRenderStep,
@@ -262,6 +268,16 @@ export default defineCommand({
       type: "string",
       description:
         "Override MP4/WebM encoder CRF. Mutually exclusive with --video-bitrate; unsupported for MOV.",
+    },
+    start: {
+      type: "string",
+      description:
+        "Render from this second of the film (MP4). The clip starts at 0 and carries the audio of the span.",
+    },
+    end: {
+      type: "string",
+      description:
+        "Render up to this second of the film (default: the end). Needs MP4, a whole frame rate of 24, 25, 30 or 60, and SDR.",
     },
     "video-bitrate": {
       type: "string",
@@ -526,6 +542,7 @@ export interface RenderOptions {
   vp9CpuUsed?: number;
   videoBitrate?: string;
   keyframeIntervalSeconds?: number;
+  range?: RenderRange;
   proresProfile?: ProresProfile;
   maxBitrate?: string;
   bufferSize?: string;
@@ -861,6 +878,7 @@ async function renderDocker(
       vp9CpuUsed: options.vp9CpuUsed,
       videoBitrate: options.videoBitrate,
       keyframeIntervalSeconds: options.keyframeIntervalSeconds,
+      range: options.range,
       proresProfile: options.proresProfile,
       maxBitrate: options.maxBitrate,
       bufferSize: options.bufferSize,
@@ -1160,8 +1178,24 @@ async function executeLocalRender(
       resumeSegments: options.resumeSegments,
       keepSegments: options.keepSegments,
       strictness: options.bestEffort === false ? "strict" : "best-effort",
+      // plan() takes the film's own size; these only satisfy the request shape.
+      distributed: options.range ? { width: 1920, height: 1080 } : undefined,
     },
   });
+  if (options.range) {
+    return renderRange({
+      producer,
+      request,
+      range: options.range,
+      projectDir,
+      outputPath,
+      options,
+      logger,
+      startTime,
+      cpu,
+      signal: cancellation.signal,
+    });
+  }
   const job = producer.createRenderJob(producer.renderConfigFromRequest(request, { logger }));
 
   const onProgress = options.quiet
@@ -1221,6 +1255,8 @@ async function executeLocalRender(
       console.warn(c.warn(`  [${warning.code}] ${warning.message}`));
     }
   }
+  const audioLowered = audioLoweredWarning(job.audioLoweredDb);
+  if (audioLowered) console.warn(c.warn(`  [${audioLowered.code}] ${audioLowered.message}`));
   runPostRenderStep("trackRenderMetrics", () =>
     trackRenderMetrics(job, elapsed, options, false, cpuUsage),
   );
@@ -1257,7 +1293,58 @@ async function executeLocalRender(
     renderTimeMs: elapsed,
     durationMs,
     outcome,
-    warnings: job.warnings.map((warning) => ({ code: warning.code, message: warning.message })),
+    warnings: [
+      ...job.warnings.map((warning) => ({ code: warning.code, message: warning.message })),
+      ...(audioLowered ? [audioLowered] : []),
+    ],
+  };
+}
+
+async function renderRange(input: {
+  producer: Awaited<ReturnType<typeof loadProducer>>;
+  request: ReturnType<Awaited<ReturnType<typeof loadProducer>>["createRenderRequest"]>;
+  range: RenderRange;
+  projectDir: string;
+  outputPath: string;
+  options: RenderOptions;
+  logger: ProducerLogger;
+  startTime: number;
+  cpu: RenderCpuSampler;
+  signal: AbortSignal;
+}): Promise<SingleRenderResult> {
+  const { producer, options } = input;
+  let framesEncoded = 0;
+  try {
+    const config = producer.distributedConfigFromRequest(input.request, {
+      logger: input.logger,
+      abortSignal: input.signal,
+    });
+    ({ framesEncoded } = await producer.renderSpan(
+      input.projectDir,
+      config,
+      input.range,
+      input.outputPath,
+    ));
+  } catch (error: unknown) {
+    handleRenderError(error, options, input.startTime, input.cpu, false, "");
+  }
+  markRenderSucceeded();
+  const elapsed = Date.now() - input.startTime;
+  input.cpu.stop();
+  printRenderComplete({
+    outputPath: input.outputPath,
+    projectDir: input.projectDir,
+    desktopHint: wantsDesktopHint(options),
+    elapsedMs: elapsed,
+    quiet: options.quiet,
+    format: options.format,
+  });
+  if (options.exitAfterComplete) scheduleCliExit();
+  return {
+    renderTimeMs: elapsed,
+    durationMs: Math.round((framesEncoded / fpsToNumber(options.fps)) * 1000),
+    outcome: "completed",
+    warnings: [],
   };
 }
 
@@ -1951,6 +2038,10 @@ function trackRenderMetrics(
     speedRatio,
     captureAvgMs: perf?.captureAvgMs,
     captureP50Ms: perf?.captureP50Ms,
+    captureSeekAvgMs: perf?.captureSeekAvgMs,
+    captureBeforeCaptureAvgMs: perf?.captureBeforeCaptureAvgMs,
+    captureScreenshotAvgMs: perf?.captureScreenshotAvgMs,
+    encoderWaitAvgMs: perf?.encoderWaitAvgMs,
     subTimelineWait: perf?.subTimelineWait,
     videoCount: perf?.videoCount,
     capturePeakMs: perf?.capturePeakMs,

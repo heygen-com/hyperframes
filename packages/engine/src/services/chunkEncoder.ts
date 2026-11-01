@@ -26,6 +26,7 @@ import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import {
   type GpuEncoder,
   getCachedGpuEncoder,
+  getCachedNvencPresets,
   getGpuEncoderName,
   buildVideoToolboxRateControlArgs,
   mapPresetForGpuEncoder,
@@ -284,6 +285,7 @@ export function buildEncoderArgs(
   inputArgs: string[],
   outputPath: string,
   gpuEncoder: GpuEncoder = null,
+  nvencPresets?: ReadonlySet<string>,
 ): string[] {
   const {
     fps,
@@ -320,7 +322,7 @@ export function buildEncoderArgs(
 
       switch (gpuEncoder) {
         case "nvenc":
-          args.push("-preset", mapPresetForGpuEncoder("nvenc", preset));
+          args.push("-preset", mapPresetForGpuEncoder("nvenc", preset, nvencPresets));
           if (bitrate) args.push("-b:v", bitrate);
           else args.push("-cq", String(quality));
           break;
@@ -620,7 +622,8 @@ export async function encodeFramesFromDir(
 
   const inputPath = frameSequencePath(framesDir, framePattern);
   const inputArgs = ["-framerate", fpsToFfmpegArg(options.fps), "-i", inputPath];
-  const args = buildEncoderArgs(options, inputArgs, outputPath, gpuEncoder);
+  const nvencPresets = gpuEncoder === "nvenc" ? await getCachedNvencPresets() : undefined;
+  const args = buildEncoderArgs(options, inputArgs, outputPath, gpuEncoder, nvencPresets);
   const encodeTimeout = config?.ffmpegEncodeTimeout ?? DEFAULT_CONFIG.ffmpegEncodeTimeout;
   let framesRead = 0;
   const result = await runFfmpeg(args, {
@@ -796,7 +799,8 @@ export async function encodeFramesChunkedConcat(
     ];
     let gpuEncoder: GpuEncoder = null;
     if (options.useGpu) gpuEncoder = await getCachedGpuEncoder();
-    const args = buildEncoderArgs(options, inputArgs, chunkPath, gpuEncoder);
+    const nvencPresets = gpuEncoder === "nvenc" ? await getCachedNvencPresets() : undefined;
+    const args = buildEncoderArgs(options, inputArgs, chunkPath, gpuEncoder, nvencPresets);
     const encodeTimeout = config?.ffmpegEncodeTimeout ?? DEFAULT_CONFIG.ffmpegEncodeTimeout;
     let framesRead = 0;
     const processResult = await runFfmpeg(args, {

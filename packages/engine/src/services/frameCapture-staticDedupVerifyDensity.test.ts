@@ -135,7 +135,8 @@ describe("verifyStaticFramesSafe catches drift the old fixed-point density would
 
     expect(result.outcome).toBe("time_budget");
     expect(result.verifiedFrames.size).toBe(0);
-    expect(pageScreenshotCapture).toHaveBeenCalledTimes(2);
+    // 8 s shots: the 300 s ceiling, not the 15 s floor, ends it
+    expect(pageScreenshotCapture).toHaveBeenCalledTimes(38);
   });
 });
 
@@ -230,13 +231,66 @@ describe("composition-wide static verification planner", () => {
     const result = await verifyTwoRuns(page, {
       now: () => nowMs,
       capture: async () => {
-        nowMs += 5_000;
+        nowMs += cursor.frame <= 3 ? 1_000 : 100_000;
         return Buffer.from(`frame-${cursor.frame <= 3 ? 0 : 9}`);
       },
     });
     expect(result.outcome).toBe("time_budget");
     expect([...result.verifiedFrames]).toEqual([1, 2, 3]);
     expect(result.stats.completedRuns).toBe(1);
+  });
+
+  it("scales the wall budget with planned work instead of stopping at 15 s", async () => {
+    const runs = Array.from({ length: 40 }, (_, index): [number, number] => {
+      const start = index * 10 + 1;
+      return [start, start + 5];
+    });
+    let nowMs = 0;
+    const page = { evaluate: vi.fn(async () => undefined) };
+    const result = await verifyStaticFramesSafe(
+      { options: {} } as unknown as CaptureSession,
+      page as unknown as Parameters<typeof verifyStaticFramesSafe>[1],
+      framesForRuns(runs),
+      30,
+      1,
+      {
+        now: () => nowMs,
+        capture: async () => {
+          nowMs += 1_000;
+          return Buffer.from("same");
+        },
+      },
+    );
+    expect(result.outcome).toBe("verified");
+    expect(result.stats.completedRuns).toBe(40);
+    expect(result.stats.elapsedMs).toBeGreaterThan(15_000);
+  });
+
+  it("still fails closed when shots slow down past the estimate", async () => {
+    const runs = Array.from({ length: 40 }, (_, index): [number, number] => {
+      const start = index * 10 + 1;
+      return [start, start + 5];
+    });
+    let nowMs = 0;
+    let shotMs = 1_000;
+    const page = { evaluate: vi.fn(async () => undefined) };
+    const result = await verifyStaticFramesSafe(
+      { options: {} } as unknown as CaptureSession,
+      page as unknown as Parameters<typeof verifyStaticFramesSafe>[1],
+      framesForRuns(runs),
+      30,
+      1,
+      {
+        now: () => nowMs,
+        capture: async () => {
+          nowMs += shotMs;
+          shotMs *= 1.2;
+          return Buffer.from("same");
+        },
+      },
+    );
+    expect(result.outcome).toBe("time_budget");
+    expect(result.stats.completedRuns).toBeLessThan(40);
   });
 
   it("reports count-budget exhaustion before screenshot 401", async () => {

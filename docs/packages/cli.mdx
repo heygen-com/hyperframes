@@ -1728,6 +1728,7 @@ Quality and file size:
 | `--crf`                | from `--quality`| Override MP4/WebM encoder CRF, 0–51. Lower is better quality. Not with `--video-bitrate`; rejected for MOV. |
 | `--video-bitrate`      | from `--quality`| Target MP4/WebM bitrate, e.g. `10M` or `5000k`. Not with `--crf`; rejected for MOV.                       |
 | `--keyframe-interval`  | encoder default | MP4 only. A keyframe at least every N seconds, e.g. `2`, so a player can seek or switch rendition at that spacing. |
+| `--start`, `--end`    | whole film      | Render only the seconds between them, as an MP4 that starts at 0 with that span's audio. MP4 at 24, 25, 30 or 60 fps, SDR only. |
 | `--max-bitrate`        | uncapped        | MP4 only. Peak video bitrate cap, e.g. `8M`, held alongside the `--crf` or `--quality` target rather than replacing it. |
 | `--buffer-size`        | 2 × `--max-bitrate` | MP4 only. Buffer the cap is measured over, e.g. `16M`. Needs `--max-bitrate`. |
 | `--vp9-cpu-used`       | encoder default | libvpx-vp9 speed/quality trade-off for WebM, -8 to 8. Env: `PRODUCER_VP9_CPU_USED`.                       |
@@ -2235,8 +2236,8 @@ allowance or estimate what the next video will cost.
 
 Opens the HyperFrames plans or credits page in the browser, then waits until the
 account shows the change, so an agent's run carries on by itself. The page is on
-the web app for `HYPERFRAMES_ENV`: hyperframes.studio, or dev.hyperframes.dev
-with `HYPERFRAMES_ENV=dev`.
+the web app at hyperframes.studio. `HYPERFRAMES_PLANS_URL` and
+`HYPERFRAMES_CREDITS_URL` point it at another page.
 
 ```bash
 npx hyperframes billing subscribe
@@ -2346,7 +2347,7 @@ hyperframes auth logout --yes            # no prompt
 | `HEYGEN_ACCESS_TOKEN` | OAuth token from a host app; never refreshed.    |
 | `HEYGEN_API_URL`      | API base URL (default `https://api.heygen.com`). |
 | `HYPERFRAMES_CONFIG_DIR` | Credentials root (default `~/.hyperframes`). |
-| `HYPERFRAMES_ENV` | `prod` (default) or `dev`; selects matching OAuth/API hosts and a separate dev credential directory. |
+| `HYPERFRAMES_ENV` | `prod` (default) or `dev`; `dev` uses a separate credential directory. Hosts and the OAuth client id come from `HEYGEN_API_URL` and `HYPERFRAMES_OAUTH_*`. |
 | `HYPERFRAMES_OAUTH_CLIENT_ID` | Override the selected public OAuth client. |
 
 For the keys other capabilities use — ElevenLabs and Gemini for voice and music

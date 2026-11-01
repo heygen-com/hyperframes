@@ -31,7 +31,12 @@ import {
 } from "@hyperframes/studio-server/history";
 import { pngDimensions } from "../utils/pngDimensions.js";
 import { runWithConcurrencyLimit } from "../utils/concurrency.js";
-import { CliRuntimeError, CliUsageError, failCommand } from "../utils/commandResult.js";
+import {
+  CliRuntimeError,
+  CliUsageError,
+  failCommand,
+  scheduleCliExit,
+} from "../utils/commandResult.js";
 // fallow-ignore-file complexity
 import { defineCommand } from "../utils/defineCommand.js";
 import {
@@ -933,6 +938,14 @@ export async function captureSnapshots(
   // Localize fonts (embed remote @font-face as data URIs, matching the render
   // path) so snapshots render the real font instead of a fallback sans.
   const html = await bundleWithLocalizedFonts(projectDir);
+  const entry = join(projectDir, "index.html");
+  const swallowed = existsSync(entry)
+    ? await selfClosedMediaWarning(readFileSync(entry, "utf8"))
+    : null;
+  if (swallowed) {
+    warnings.push(swallowed);
+    console.warn(`   ${c.warn("⚠")} ${swallowed}`);
+  }
   const server = await serveCapturePage(projectDir, html, opts.autoProxy);
 
   const savedPaths: string[] = [];
@@ -1160,7 +1173,11 @@ export async function captureSnapshots(
         const time = positions[i]!;
         console.error(`[hyperframes] snapshot: frame ${i + 1}/${positions.length} at ${time}s`);
 
-        const seekOptions = { exactTime: true, waitForImagesMs: SCREENSHOT_IMAGE_WAIT_MS };
+        const seekOptions = {
+          exactTime: true,
+          waitForImagesMs: SCREENSHOT_IMAGE_WAIT_MS,
+          seekSettleTimeoutMs: opts.timeout ?? RENDER_READY_TIMEOUT_MS,
+        };
         const seekStartedAt = performance.now();
         await atStep(`seeking to ${time}s, frame ${i + 1} of ${positions.length}`, () =>
           seekCompositionTimelineOnly(page, time, seekOptions),
@@ -1497,6 +1514,20 @@ function warnUnsettledImages(images: UnsettledImages, time: number, warnings: st
   }
 }
 
+/** What the project's own lint says about self-closed clips, which hide the rest of the page and blank every still. */
+export async function selfClosedMediaWarning(source: string): Promise<string | null> {
+  const { lintHyperframeHtml } = await import("@hyperframes/lint");
+  const found = (await lintHyperframeHtml(source)).findings.filter(
+    (finding) => finding.code === "self_closing_media_tag",
+  );
+  if (found.length === 0) return null;
+  const ids = found.flatMap((finding) => (finding.elementId ? [`#${finding.elementId}`] : []));
+  return (
+    `index.html has ${found.length} self-closed <audio>/<video> tags${ids.length ? ` (${ids.slice(0, 3).join(", ")})` : ""}: ` +
+    "HTML leaves them open, so everything after the first one is hidden and stills come out blank. Write <audio ...></audio>."
+  );
+}
+
 function warnSnapshotsNotRecorded(error: unknown): undefined {
   console.warn(`   ${c.warn("⚠")} Snapshots were not recorded: ${normalizeErrorMessage(error)}`);
   return undefined;
@@ -1624,7 +1655,7 @@ export default defineCommand({
     },
     output: {
       type: "string",
-      alias: "o",
+      alias: ["o", "out", "output-dir"],
       description:
         "Directory to write snapshots into (default: unique directory under <project>/.hyperframes/artifacts/snapshots)",
     },
@@ -1650,7 +1681,7 @@ export default defineCommand({
     },
     timeout: {
       type: "string",
-      description: `Ms to wait for the composition to become render-ready (default: ${RENDER_READY_TIMEOUT_MS})`,
+      description: `Ms to wait for the composition to become render-ready, and for each still's seek to settle, up to 170 s (default: ${RENDER_READY_TIMEOUT_MS})`,
       default: String(RENDER_READY_TIMEOUT_MS),
     },
     angle: {
@@ -1793,6 +1824,7 @@ export default defineCommand({
     log(`${c.accent("◆")}  Capturing ${label} from ${c.accent(project.name)}${angleLabel}`);
 
     let managedSnapshotDir: string | undefined;
+    let exitCode = 0;
     try {
       const snapshotDir = args.output
         ? resolve(String(args.output))
@@ -1989,6 +2021,7 @@ export default defineCommand({
         }
       });
     } catch (err) {
+      exitCode = 1;
       // Already reported where it happened (fail() above).
       if (err instanceof CliRuntimeError && err.result.presented) throw err;
       const msg = failureMessage(err);
@@ -1998,6 +2031,7 @@ export default defineCommand({
     } finally {
       if (managedSnapshotDir)
         await finishSnapshotRun(project.dir, managedSnapshotDir).catch(warnSnapshotsNotRecorded);
+      scheduleCliExit(exitCode);
     }
   },
 });

@@ -223,6 +223,18 @@ export type ProjectFileRead =
   | { kind: "folder" }
   | { kind: "missing" };
 
+// A byte order mark names the encoding, as browsers read it: PowerShell 5.1 saves files as UTF-16LE with one.
+export function decodeTextHonoringBom(bytes: Buffer): string {
+  if (bytes[0] === 0xff && bytes[1] === 0xfe) return bytes.subarray(2).toString("utf16le");
+  if (bytes[0] === 0xfe && bytes[1] === 0xff)
+    return Buffer.from(bytes.subarray(2, bytes.length - (bytes.length % 2)))
+      .swap16()
+      .toString("utf16le");
+  return bytes.toString("utf-8").replace(/^\uFEFF/, "");
+}
+
+export const readTextFile = (path: string): string => decodeTextHonoringBom(readFileSync(path));
+
 /** Reads through one descriptor, so the file-type check and the read see the same file. */
 export function readProjectFile(path: string): ProjectFileRead {
   let fd: number;
@@ -237,7 +249,7 @@ export function readProjectFile(path: string): ProjectFileRead {
   }
   try {
     if (!fstatSync(fd).isFile()) return { kind: "folder" };
-    return { kind: "file", text: readFileSync(fd, "utf-8") };
+    return { kind: "file", text: decodeTextHonoringBom(readFileSync(fd)) };
   } finally {
     closeSync(fd);
   }

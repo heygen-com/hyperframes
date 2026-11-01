@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Agent Cursor</h1>
+  <p>An AI agent operating a UI: a cursor with an accent name label that types out each step, clicks each target with a small ring, and ends on a check.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/agent-cursor.json"
   compositionId="agent-cursor"
   compositionSrc="compositions/components/agent-cursor.html"
   title="Agent Cursor"
-  description="An AI agent operating a UI: a cursor with an accent name label that types out each step, clicks each target with a small ring, and ends on a check."
   variables={[{"id":"agent_name","type":"string","role":"content","label":"Agent name","default":"Agent"},{"id":"steps","type":"string","role":"content","label":"Status steps","description":"Comma-separated: a reading line, one line per target, then a done line.","default":"Reading the page,Opening Settings,Turning on backups,Done"},{"id":"targets","type":"string","role":"layout","label":"Click targets","description":"Semicolon-separated x,y points in percent of the frame.","default":"25,47;76,30"},{"id":"accent","type":"color","role":"style","label":"Accent","default":"#0a84ff"}]}
   meta={{"category":"Cursors","badge":"Stable","codeLines":398}}
   attribution={{"path":"registry/components/agent-cursor","tags":["cursor","motion-primitive","agent","ai","status","click"]}}
@@ -433,7 +437,9 @@ That writes one file: `compositions/components/agent-cursor.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -475,6 +481,4 @@ Tagged `cursor` `motion-primitive` `agent` `ai` `status` `click`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

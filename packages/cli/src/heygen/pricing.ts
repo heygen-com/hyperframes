@@ -1,6 +1,5 @@
-// Prices before a paid call, from the HyperFrames app's creation pricing (hyperframes-internal
-// packages/desktop/shared/creationPricing.mjs, 2026-10-22). HeyGen charges in units of $1/60, rounded up; the label
-// rounds up to the cent. Routes HeyGen does not price ahead say so instead of guessing.
+// Prices before a paid call, from the HyperFrames app's creation pricing. HeyGen charges in units of $1/60, rounded
+// up; the label rounds up to the cent. Routes HeyGen does not price ahead say so instead of guessing.
 import { Fix, probeSeconds, probeVideo, round } from "../measure/media.js";
 import { GUIDE_MAX_S, type GenerateRequest } from "./generate.js";
 

@@ -12,6 +12,7 @@
 import {
   analyzeCompositionHdr,
   formatHdrAutoPromotionWarning,
+  gradingKeepsSdr,
   HDR_AUTO_PROMOTION_PIPELINE,
   isHdrColorSpace,
   sanitizeHdrAutoPromotionAsset,
@@ -21,8 +22,10 @@ import type { ProducerLogger } from "../../logger.js";
 import type { RenderConfig } from "../renderOrchestrator.js";
 
 type EffectiveHdr = { transfer: HdrTransfer } | undefined;
+type RenderMedia = Parameters<typeof gradingKeepsSdr>[1];
 type HdrModeInput = {
   hdrMode: RenderConfig["hdrMode"];
+  media: RenderMedia;
   outputFormat: NonNullable<RenderConfig["format"]>;
   extractionResult: ExtractionResult | null | undefined;
   imageColorSpaces: (VideoColorSpace | null)[];
@@ -69,18 +72,41 @@ export function findRenderHdrAutoPromotionTrigger(input: {
   return input.images.find(({ id }) => input.nativeHdrImageIds.has(id))?.src;
 }
 
+/** Warns when grading decided the output or will be wrong in it; true when it kept an HDR source's render SDR. */
+function logGradingResolution(
+  input: HdrModeInput,
+  hdrMode: NonNullable<RenderConfig["hdrMode"]>,
+  effectiveHdr: EffectiveHdr,
+  hasHdrSource: boolean,
+): boolean {
+  const keptSdr = hasHdrSource && gradingKeepsSdr(hdrMode, input.media);
+  if (keptSdr) {
+    input.log.warn(
+      "[Render] HDR source detected, but color grading is SDR-only, so rendering SDR: HDR sources are tone-mapped before the grade. Use --hdr to force HDR output (grades stay SDR).",
+    );
+  } else if (effectiveHdr && [...input.media.videos, ...input.media.images].some((m) => m.graded)) {
+    input.log.warn(
+      "[Render] HDR output with graded media: color grading is SDR-only, so graded elements are graded in SDR and placed in the HDR output.",
+    );
+  }
+  return keptSdr;
+}
+
 function logHdrResolution(
   input: HdrModeInput,
   hdrMode: NonNullable<RenderConfig["hdrMode"]>,
   effectiveHdr: EffectiveHdr,
   forcedHdrWithoutSources: boolean,
+  hasHdrSource: boolean,
 ): void {
+  const keptSdrForGrading = logGradingResolution(input, hdrMode, effectiveHdr, hasHdrSource);
   if (forcedHdrWithoutSources) {
     input.log.warn(
       "[Render] HDR forced by --hdr flag, but no HDR sources were detected, defaulting to HLG. SDR-only compositions may look perceptually wrong on HDR displays.",
     );
   }
   if (!effectiveHdr) {
+    if (keptSdrForGrading) return;
     input.log.info(
       hdrMode === "force-sdr"
         ? "[Render] SDR forced by --sdr flag"
@@ -111,8 +137,15 @@ function formatCarriesHdr(format: NonNullable<RenderConfig["format"]>): boolean 
   return format === "mp4";
 }
 
-export function rendersSdrOnly(config: Pick<RenderConfig, "hdrMode" | "format">): boolean {
-  return config.hdrMode === "force-sdr" || !formatCarriesHdr(config.format ?? "mp4");
+export function rendersSdrOnly(
+  config: Pick<RenderConfig, "hdrMode" | "format">,
+  media: RenderMedia,
+): boolean {
+  return (
+    config.hdrMode === "force-sdr" ||
+    gradingKeepsSdr(config.hdrMode, media) ||
+    !formatCarriesHdr(config.format ?? "mp4")
+  );
 }
 
 export function resolveEffectiveHdrMode(input: HdrModeInput): EffectiveHdr {
@@ -126,7 +159,7 @@ export function resolveEffectiveHdrMode(input: HdrModeInput): EffectiveHdr {
   let effectiveHdr: EffectiveHdr;
   let forcedHdrWithoutSources = false;
 
-  if (hdrMode === "force-sdr") {
+  if (hdrMode === "force-sdr" || gradingKeepsSdr(hdrMode, input.media)) {
     effectiveHdr = undefined;
   } else if (hdrMode === "force-hdr") {
     if (info?.hasHdr && info.dominantTransfer) {
@@ -144,7 +177,7 @@ export function resolveEffectiveHdrMode(input: HdrModeInput): EffectiveHdr {
     effectiveHdr = undefined;
   }
 
-  logHdrResolution(input, hdrMode, effectiveHdr, forcedHdrWithoutSources);
+  logHdrResolution(input, hdrMode, effectiveHdr, forcedHdrWithoutSources, info?.hasHdr === true);
 
   return effectiveHdr;
 }

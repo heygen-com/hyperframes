@@ -1,4 +1,5 @@
 import { oneProcessOverPipe } from "@hyperframes/engine";
+import { SEEK_SETTLES_BEFORE_PROTOCOL_TIMEOUT_MS } from "./captureTimeout.js";
 import {
   rethrowAfterBrowserCleanup,
   launchManagedBrowser,
@@ -68,11 +69,12 @@ export interface SeekCompositionTimelineOptions {
   settleMs?: number;
   waitForImagesMs?: number;
   waitForVideoFrames?: boolean;
+  seekSettleTimeoutMs?: number;
   // Box-only reads: software GL spends about a second per frame on draws nothing here looks at.
   skipWebglDraws?: boolean;
 }
 
-type SeekBarrierOptions = { videoFrames: boolean };
+type SeekBarrierOptions = { videoFrames: boolean; timeoutMs: number };
 type FontWaitOptions = { ms: number; frames: number };
 
 type CompositionPageFunction =
@@ -341,6 +343,7 @@ export async function openSettledCompositionPage(
     await installMediaRenderIdBridge(page);
     await page.evaluateOnNewDocument(forcePreservedDrawingBuffer);
     await page.evaluateOnNewDocument("window.__HF_REPLAY_SKIPPED_FRAMES = true");
+    await page.evaluateOnNewDocument("window.__HF_RELEASE_PASSED_MEDIA = true");
     await page.setViewport(viewport);
     if (answer) await answerPageInProcess(page, url, answer);
     await options.beforeNavigate?.(page);
@@ -561,7 +564,13 @@ export async function settleCompositionSeek(
         await Reflect.apply(waitForCompletion, window, [barrier]);
       }
     },
-    { videoFrames: options.waitForVideoFrames !== false },
+    {
+      videoFrames: options.waitForVideoFrames !== false,
+      timeoutMs: Math.min(
+        options.seekSettleTimeoutMs ?? SEEK_SETTLES_BEFORE_PROTOCOL_TIMEOUT_MS,
+        SEEK_SETTLES_BEFORE_PROTOCOL_TIMEOUT_MS,
+      ),
+    },
   );
 
   const animationFrameSettle = options.animationFrameSettle ?? "race";

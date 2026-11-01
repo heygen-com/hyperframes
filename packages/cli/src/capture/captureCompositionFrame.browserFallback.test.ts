@@ -278,4 +278,13 @@ describe("openSettledCompositionPage when nothing may listen", () => {
       "window.__HF_REPLAY_SKIPPED_FRAMES = true",
     );
   });
+
+  it("asks the page to free clips the playhead left, so a long film does not hold every decoder", async () => {
+    const opened = fakeBrowser();
+    mocks.launch.mockResolvedValue(opened.browser);
+    await openSettledCompositionPage(HTML, "http://127.0.0.1:3000", OPTIONS);
+    expect(opened.page.evaluateOnNewDocument).toHaveBeenCalledWith(
+      "window.__HF_RELEASE_PASSED_MEDIA = true",
+    );
+  });
 });

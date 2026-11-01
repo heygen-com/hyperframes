@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Holographic</h1>
+  <p>An iridescent foil orb with a shifting rainbow sheen, centred on black. A WebGPU shader from the Shaders library (shaders.com, MIT).</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/holographic.json"
   compositionId="holographic"
   compositionSrc="compositions/holographic.html"
   title="Holographic"
-  description="An iridescent foil orb with a shifting rainbow sheen, centred on black. A WebGPU shader from the Shaders library (shaders.com, MIT)."
   variables={[]}
   meta={{"duration":2,"width":1920,"height":1080,"category":"Blocks","badge":"Stable","codeLines":31}}
   attribution={{"path":"registry/blocks/holographic","tags":["webgpu","webgpu-shader","holographic","iridescent","rainbow","orb"]}}
@@ -68,7 +72,9 @@ That writes `compositions/holographic.html`, plus 2 supporting files under `comp
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -99,6 +105,4 @@ Tagged `webgpu` `webgpu-shader` `holographic` `iridescent` `rainbow` `orb`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

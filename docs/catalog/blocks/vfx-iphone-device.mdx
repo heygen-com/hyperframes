@@ -7,11 +7,15 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>iPhone &amp; MacBook 3D Showcase</h1>
+  <p>Real GLTF iPhone 15 Pro Max and MacBook Pro models with live HTML-in-Canvas screen content, morphing glass lens, product review camera choreography, and 360° turntable.</p>
+</div>
+
 <CatalogDetail
   compositionId="vfx-iphone-device"
   compositionSrc="compositions/vfx-iphone-device.html"
   title="iPhone & MacBook 3D Showcase"
-  description="Real GLTF iPhone 15 Pro Max and MacBook Pro models with live HTML-in-Canvas screen content, morphing glass lens, product review camera choreography, and 360° turntable."
   variables={[]}
   meta={{"duration":15,"width":1920,"height":1080,"category":"HTML-in-Canvas","badge":"Experimental","codeLines":849}}
   attribution={{"path":"registry/blocks/vfx-iphone-device","tags":["html-in-canvas","3d","device","iphone","macbook","gltf"]}}
@@ -885,7 +889,9 @@ That writes `compositions/vfx-iphone-device.html`, plus 4 supporting files under
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 <Danger>
   Live preview needs the `chrome://flags/#canvas-draw-element` flag switched on.
@@ -922,6 +928,4 @@ Tagged `html-in-canvas` `3d` `device` `iphone` `macbook` `gltf`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

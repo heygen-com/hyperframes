@@ -1533,3 +1533,40 @@ async function main() {
 }
 
 main();
+
+// A variant's file must never answer a later default request for the same intent or entity.
+test("a logo variant is not reused for the default logo, in the project or the global cache", () => {
+  setup();
+  const icons = [
+    {
+      slug: "slack",
+      title: "Slack",
+      aliases: [],
+      collection: "brands",
+      license: "MIT",
+      variants: { default: "/icons/slack/default.svg", wordmark: "/icons/slack/wordmark.svg" },
+    },
+  ];
+  const stub = `const real = globalThis.fetch;
+globalThis.fetch = async (url, init) => {
+  const u = String(url);
+  if (u.endsWith("/src/data/icons.json")) return Response.json(${JSON.stringify(icons)});
+  if (u.includes("/public/icons/slack/")) return new Response("<svg xmlns='http://www.w3.org/2000/svg'/>");
+  return real(url, init);
+};`;
+  const nodeArgs = [`--import=data:text/javascript,${encodeURIComponent(stub)}`];
+  const base = ["--type", "logo", "--intent", "Slack logo", "--entity", "Slack", "--json"];
+  const variant = JSON.parse(
+    spawnResolve([...base, "--variant", "wordmark", "--project", tmp], { nodeArgs }).stdout.trim(),
+  );
+  assert.equal(variant.provenance.variant, "wordmark");
+  const otherProject = mkdtempSync(join(tmpdir(), "mu-resolve-other-"));
+  for (const project of [tmp, otherProject]) {
+    const plain = JSON.parse(
+      spawnResolve([...base, "--project", project], { nodeArgs }).stdout.trim(),
+    );
+    assert.equal(plain.provenance.variant, "default", `default logo in ${project}`);
+  }
+  rmSync(otherProject, { recursive: true, force: true });
+  cleanup();
+});

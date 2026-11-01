@@ -442,6 +442,10 @@ export function trackRenderComplete(
     captureAvgMs?: number;
     /** Warmup-robust per-frame capture median (basis for speedup estimates). */
     captureP50Ms?: number;
+    captureSeekAvgMs?: number;
+    captureBeforeCaptureAvgMs?: number;
+    captureScreenshotAvgMs?: number;
+    encoderWaitAvgMs?: number;
     /** <video> element count (speedup segmentation: injection comps read lower). */
     videoCount?: number;
     capturePeakMs?: number;
@@ -617,6 +621,10 @@ export function trackRenderComplete(
       speed_ratio: props.speedRatio,
       capture_avg_ms: props.captureAvgMs,
       capture_p50_ms: props.captureP50Ms,
+      capture_seek_avg_ms: props.captureSeekAvgMs,
+      capture_before_capture_avg_ms: props.captureBeforeCaptureAvgMs,
+      capture_screenshot_avg_ms: props.captureScreenshotAvgMs,
+      encoder_wait_avg_ms: props.encoderWaitAvgMs,
       video_count: props.videoCount,
       capture_peak_ms: props.capturePeakMs,
       peak_memory_mb: props.peakMemoryMb,

@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/engine",
-  "version": "0.8.221",
+  "version": "0.8.227",
   "description": "Seekable web page to video rendering engine (Puppeteer + FFmpeg)",
   "repository": {
     "type": "git",
@@ -50,7 +50,12 @@
       "import": "./src/utils/shaderTransitions.ts",
       "types": "./src/utils/shaderTransitions.ts"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./network-policy": {
+      "bun": "./src/utils/networkPolicy.ts",
+      "import": "./src/utils/networkPolicy.ts",
+      "types": "./src/utils/networkPolicy.ts"
+    }
   },
   "publishConfig": {
     "access": "public",
@@ -83,7 +88,11 @@
         "import": "./dist/utils/shaderTransitions.js",
         "types": "./dist/utils/shaderTransitions.d.ts"
       },
-      "./package.json": "./package.json"
+      "./package.json": "./package.json",
+      "./network-policy": {
+        "import": "./dist/utils/networkPolicy.js",
+        "types": "./dist/utils/networkPolicy.d.ts"
+      }
     },
     "main": "./dist/index.js",
     "types": "./dist/index.d.ts"

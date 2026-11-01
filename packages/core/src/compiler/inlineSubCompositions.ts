@@ -663,8 +663,8 @@ export function inlineSubCompositions(
     // Rewrite relative asset paths before inlining so ../foo.svg from
     // compositions/ resolves correctly when the content moves to root.
     const assetEls = innerRoot
-      ? innerRoot.querySelectorAll("[src], [href]")
-      : contentDoc.querySelectorAll("[src], [href]");
+      ? innerRoot.querySelectorAll("[src], [href], [srcset]")
+      : contentDoc.querySelectorAll("[src], [href], [srcset]");
     rewriteAssetPaths(
       assetEls,
       src,

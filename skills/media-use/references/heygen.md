@@ -25,7 +25,8 @@ npx hyperframes media-use generate --type image --reference assets/frame.png --p
 npx hyperframes media-use generate --type video --first-frame assets/s03-first.png --prompt "slow push in" --seconds 8 --out assets/s03.mp4
 # a person re-shot from a still over one shot of the original (never across a cut), saying that shot's voice with lips
 # in sync and moving as the guide (the original shot itself) does; --mask x,y,w,h[,a-b] (repeatable, the guide's
-# pixels and seconds) blanks text in the guide, which HeyGen would copy
+# pixels and seconds) blanks text in the guide, which HeyGen would copy. A guide with a cut inside is refused; pass
+# --allow-cuts only when you have looked at those frames and they are one shot
 npx hyperframes media-use generate --type video --reference assets/person.png --audio assets/s02-voice.m4a --motion assets/s02-original.mp4 --mask 110,615,390,165,0.4-2.0 --prompt "talks to camera, seated" --seconds 8 --aspect 9:16 --out assets/s02-person.mp4
 # a speaking shot follows its own re-paced audio, not --audio: to land it on a set voice, redo its mouth to that voice
 npx hyperframes media-use generate --type lipsync --video assets/s02-person.mp4 --audio assets/s02-voice.mp3 --out assets/s02-lips.mp4

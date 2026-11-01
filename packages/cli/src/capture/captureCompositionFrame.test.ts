@@ -1,3 +1,4 @@
+import { SEEK_SETTLES_BEFORE_PROTOCOL_TIMEOUT_MS } from "./captureTimeout.js";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -111,7 +112,10 @@ describe("seekCompositionTimeline", () => {
     expect(waitForFunction).not.toHaveBeenCalled();
     expect(evaluate).toHaveBeenCalledTimes(4);
     expect(evaluate).toHaveBeenNthCalledWith(1, expect.any(Function), 1.25, false, false, false);
-    expect(evaluate).toHaveBeenNthCalledWith(2, expect.any(Function), { videoFrames: true });
+    expect(evaluate).toHaveBeenNthCalledWith(2, expect.any(Function), {
+      videoFrames: true,
+      timeoutMs: SEEK_SETTLES_BEFORE_PROTOCOL_TIMEOUT_MS,
+    });
     expect(evaluate.mock.calls[2]?.[0]).toContain("window.setTimeout(finish, 100)");
     // Post-seek font settle: a seek can reveal glyphs whose unicode-range
     // subsets only start loading after the next layout (CJK snapshot reports).
@@ -126,8 +130,33 @@ describe("seekCompositionTimeline", () => {
     expect(evaluate).toHaveBeenNthCalledWith(1, expect.any(Function), 1.25, false, false, false);
 
     await settleCompositionSeek(page);
-    expect(evaluate).toHaveBeenNthCalledWith(2, expect.any(Function), { videoFrames: true });
+    expect(evaluate).toHaveBeenNthCalledWith(2, expect.any(Function), {
+      videoFrames: true,
+      timeoutMs: SEEK_SETTLES_BEFORE_PROTOCOL_TIMEOUT_MS,
+    });
     expect(evaluate).toHaveBeenCalledTimes(4);
+  });
+
+  it("lets a caller bound how long a seek may stay unsettled", async () => {
+    const { page, evaluate } = fakeSeekPage();
+
+    await settleCompositionSeek(page, { seekSettleTimeoutMs: 20_000 });
+
+    expect(evaluate).toHaveBeenNthCalledWith(1, expect.any(Function), {
+      videoFrames: true,
+      timeoutMs: 20_000,
+    });
+  });
+
+  it("never lets a seek stay unsettled past the protocol timeout", async () => {
+    const { page, evaluate } = fakeSeekPage();
+
+    await settleCompositionSeek(page, { seekSettleTimeoutMs: 300_000 });
+
+    expect(evaluate).toHaveBeenNthCalledWith(1, expect.any(Function), {
+      videoFrames: true,
+      timeoutMs: SEEK_SETTLES_BEFORE_PROTOCOL_TIMEOUT_MS,
+    });
   });
 
   it("waitForFontsMs: 0 disables the post-seek font wait", async () => {
@@ -245,7 +274,10 @@ describe("seekCompositionTimeline", () => {
 
     expect(evaluate).toHaveBeenCalledTimes(3);
     expect(evaluate).toHaveBeenNthCalledWith(1, expect.any(Function), 4, true, false, false);
-    expect(evaluate).toHaveBeenNthCalledWith(2, expect.any(Function), { videoFrames: true });
+    expect(evaluate).toHaveBeenNthCalledWith(2, expect.any(Function), {
+      videoFrames: true,
+      timeoutMs: SEEK_SETTLES_BEFORE_PROTOCOL_TIMEOUT_MS,
+    });
     expect(evaluate).toHaveBeenNthCalledWith(3, expect.any(Function), { ms: 500, frames: 2 });
 
     const frames: (() => void)[] = [];
@@ -543,8 +575,12 @@ describe("DENSE_GEOMETRY_SEEK_OPTIONS", () => {
       return barrier.mock.calls;
     };
 
-    expect(await barrierCalls(DENSE_GEOMETRY_SEEK_OPTIONS)).toEqual([[{ videoFrames: false }]]);
-    expect(await barrierCalls(AUDIT_SEEK_OPTIONS)).toEqual([[{ videoFrames: true }]]);
+    expect(await barrierCalls(DENSE_GEOMETRY_SEEK_OPTIONS)).toEqual([
+      [{ videoFrames: false, timeoutMs: SEEK_SETTLES_BEFORE_PROTOCOL_TIMEOUT_MS }],
+    ]);
+    expect(await barrierCalls(AUDIT_SEEK_OPTIONS)).toEqual([
+      [{ videoFrames: true, timeoutMs: SEEK_SETTLES_BEFORE_PROTOCOL_TIMEOUT_MS }],
+    ]);
   });
 
   it("is genuinely geometry-only — no post-seek settle waits at the 600-sample cap", () => {

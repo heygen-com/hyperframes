@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Type Match Cut</h1>
+  <p>A headline splits vertically around an incoming panel, which grows from the negative space and takes the frame as the words exit through opposite edges.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/type-match-cut.json"
   compositionId="type-match-cut"
   compositionSrc="compositions/components/type-match-cut.html"
   title="Type Match Cut"
-  description="A headline splits vertically around an incoming panel, which grows from the negative space and takes the frame as the words exit through opposite edges."
   variables={[{"id":"text","type":"string","role":"content","label":"Headline","description":"Text split around the incoming panel.","default":"Meet the new editor"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Accent color used by the incoming editor scene.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]}]}
   meta={{"category":"Effects","badge":"Stable","codeLines":407}}
   attribution={{"path":"registry/components/type-match-cut","tags":["motion-primitive","transition","typography","match-cut","continuity"]}}
@@ -442,7 +446,9 @@ That writes one file: `compositions/components/type-match-cut.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -482,6 +488,4 @@ Tagged `motion-primitive` `transition` `typography` `match-cut` `continuity`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

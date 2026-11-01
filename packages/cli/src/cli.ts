@@ -97,6 +97,7 @@ import {
   CliUsageError,
   USAGE_EXIT_CODE,
   consumeCommandResult,
+  endProcess,
   outputWritten,
   registerRootExitCodeSanitizer,
   registerRootExitRequester,
@@ -374,7 +375,13 @@ registerRootExitRequester((exitCode) => {
     presented: true,
   }).finally(async () => {
     await outputWritten();
-    process.exit(exitCode);
+    endProcess(exitCode, {
+      exit: (code) => process.exit(code),
+      setExitCode: (code) => {
+        process.exitCode = code;
+      },
+      later: setTimeout,
+    });
   });
 });
 

@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Logo Intro Sequence</h1>
+  <p>Logo stamp pops on a lined board, a kicker line gives way to the title with an accent arrow chip; seeded line distortion</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/yt-logo-intro.json"
   compositionId="yt-logo-intro"
   compositionSrc="compositions/yt-logo-intro.html"
   title="Logo Intro Sequence"
-  description="Logo stamp pops on a lined board, a kicker line gives way to the title with an accent arrow chip; seeded line distortion"
   variables={[]}
   meta={{"duration":6,"width":1920,"height":1080,"category":"Blocks","badge":"Stable","codeLines":251}}
   attribution={{"path":"registry/blocks/yt-logo-intro","tags":["logo","intro","creator"]}}
@@ -286,7 +290,9 @@ That writes one file: `compositions/yt-logo-intro.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -317,6 +323,4 @@ Tagged `logo` `intro` `creator`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

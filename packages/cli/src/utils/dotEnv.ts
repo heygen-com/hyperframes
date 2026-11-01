@@ -22,8 +22,10 @@ export const PROJECT_ENV_KEYS = [
   "DO_NOT_TRACK",
 ];
 
-// A quoted value ends at its closing quote; unquoted, `#` starts a comment only after whitespace, so `pass#word` stays.
-function valueOf(raw: string): string {
+// A quoted value ends at its closing quote; unquoted, `#` starts a comment only after whitespace (`KEY= # note` is empty), so `pass#word` stays.
+function valueOf(rawValue: string): string {
+  if (/^\s+#/.test(rawValue)) return "";
+  const raw = rawValue.trim();
   const quote = raw.charAt(0);
   if (quote === '"' || quote === "'") {
     const end = raw.indexOf(quote, 1);
@@ -39,7 +41,7 @@ function entryOf(rawLine: string): [string, string] | null {
   if (line.startsWith("export ")) line = line.slice(7).trim();
   const eq = line.indexOf("=");
   if (eq < 1) return null;
-  return [line.slice(0, eq).trim(), valueOf(line.slice(eq + 1).trim())];
+  return [line.slice(0, eq).trim(), valueOf(line.slice(eq + 1))];
 }
 
 function openQuoteOf(trimmedLine: string): string | null {

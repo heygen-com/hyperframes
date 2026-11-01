@@ -29,7 +29,7 @@ That is all. The same attribute drives the browser editor preview and `hyperfram
 | `data-motion-blur` | none | `on` enables blur. `off` opts out, on the root or on any subtree. |
 | `data-motion-blur-shutter` | `240` | Shutter angle in degrees, 0–720. Larger is a longer smear. |
 | `data-motion-blur-samples` | at least 32 | A fixed number of samples per frame, 2–64. Left unset, each mover gets at least 32, and about one per 2 px of smear when that is more, so a fast move never shows steps. |
-| `data-motion-blur-events` | off | `on` runs timeline callbacks (`onUpdate` and similar) while blur looks for movers and at each sample. Needed when the motion is set from a callback, such as a `render(t)` function, which blur cannot otherwise see. |
+| `data-motion-blur-events` | off | `on` runs timeline callbacks (`onUpdate` and similar) while blur looks for movers, and at each sample when a callback changes an element's inline style or its box. Needed when the motion is set from a callback, such as a `render(t)` function, which blur cannot otherwise see. |
 | `data-motion-blur-tier` | `auto` | `capture` or `filter` forces one of the two ways blur is drawn (below). |
 
 ## In the browser editor

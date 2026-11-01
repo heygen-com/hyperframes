@@ -66,6 +66,28 @@ the bundler inlines can be served with ids that a later save does not mint.
 bundle: (dir, options) => bundleToSingleHtml(dir, { runtime: "inline", ...options }),
 ```
 
+## Source-file backups
+
+File saves and deletes preserve the previous bytes in `.hyperframes/backup/`
+before changing the source. A successful response includes `backupPath`,
+relative to the project directory. If the backup fails, the operation stops.
+
+Long project-relative paths use a SHA-256 backup key so the timestamped backup
+filename fits filesystem limits. Shorter paths keep their existing names.
+The server retains ten snapshots per file by default, including snapshots
+with the older backup names. The source path must still fit your filesystem's
+own limits.
+
+## Serving finished renders
+
+Studio streams finished render files from disk, including exports larger than
+2 GiB. This applies to the project's `/renders/file/*` route and each render
+job's `/view` and `/download` routes. A host mounting the API should forward
+the response body as a stream so it can deliver large exports without
+buffering the whole file in memory.
+
+`HEAD` requests return the same file metadata without opening a file stream.
+
 ## Where Studio loads GSAP from
 
 Studio adds GSAP scripts to previews when a composition needs them: the GSAP

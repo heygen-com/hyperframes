@@ -37,6 +37,18 @@ describe("createRenderPlan", () => {
     expect(Object.isFrozen(plan.environment)).toBe(true);
   });
 
+  it("reads variables from --variables-file and from a path given to --variables", async () => {
+    const { resolveVariablesArg } = await import("../../utils/variables.js");
+    const file = join(projectDir, "vars.json");
+    writeFileSync(file, '{"title":"Hello"}');
+    for (const args of [{ "variables-file": file }, { variables: file }]) {
+      const plan = createRenderPlan({ dir: projectDir, ...args });
+      expect(resolveVariablesArg(plan.variablesArg, plan.variablesFileArg)).toEqual({
+        title: "Hello",
+      });
+    }
+  });
+
   // GIF's Netscape frame-delay field is stored in centiseconds, so fps above
   // 30 rounds to visually-indistinguishable delay values. createRenderPlan
   // clamps and flags it so both the CLI console warning (present.ts) and
@@ -251,6 +263,30 @@ describe("createRenderPlan", () => {
     expect(createRenderPlan({ dir: projectDir }).maxBitrate).toBeUndefined();
     for (const format of ["webm", "mov", "gif", "hls"]) {
       expect(() => createRenderPlan({ dir: projectDir, format, ...flags })).toThrow(CliUsageError);
+    }
+  });
+
+  it("carries --start and --end into the plan, and refuses what a range cannot render", () => {
+    expect(createRenderPlan({ dir: projectDir, start: "2.5", end: "6" }).range).toEqual({
+      startSeconds: 2.5,
+      endSeconds: 6,
+    });
+    expect(createRenderPlan({ dir: projectDir, end: "4" }).range).toEqual({
+      startSeconds: 0,
+      endSeconds: 4,
+    });
+    expect(createRenderPlan({ dir: projectDir }).range).toBeUndefined();
+    const refused: Array<Record<string, string | boolean>> = [
+      { start: "-1" },
+      { start: "abc" },
+      { start: "5", end: "5" },
+      { start: "1", format: "webm" },
+      { start: "1", fps: "29.97" },
+      { start: "1", fps: "50" },
+      { start: "1", hdr: true },
+    ];
+    for (const flags of refused) {
+      expect(() => createRenderPlan({ dir: projectDir, ...flags })).toThrow(CliUsageError);
     }
   });
 

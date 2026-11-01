@@ -10,13 +10,9 @@ import { faceBoxes } from "./face.js";
 import { pearson, probeVideo, round, runFfmpeg, type Roi, type VideoInfo } from "./media.js";
 import { avSync, type SyncResult } from "./sync.js";
 
-/**
- * A shot's framing is clearly wrong when, over the shot, the face centre sits more than FRAMING_SHIFT face heights
- * from the original's or its height is outside FRAMING_SCALE of it (medians). Calibrated on the reverse bench (10-23,
- * faces at 4 a second, shots of a second or more): goat round 3's 8.0–10.0 s shot is 0.23 off and ×0.82, dan round 2
- * at most 0.16 and ×0.93–1.10, cindy round 3 0.02; dan round 3 misses its 35 s close-up at ×0.77 (and is 0.21–0.23
- * off at 3.6 s and 30 s, which face boxes cannot tell from goat). Shorter shots have too few faces to judge.
- */
+/** A shot's framing is clearly wrong when, by the shot's medians, the face centre sits over FRAMING_SHIFT face heights
+ * from the original's or its height is outside FRAMING_SCALE of it. Faces at FACE_RATE a second; shorter shots than
+ * FRAMING_MIN_S have too few faces to judge. */
 const FRAMING_SHIFT = 0.3;
 const FRAMING_SCALE: [number, number] = [0.8, 1.25];
 const FRAMING_MIN_S = 1;
@@ -26,14 +22,9 @@ const FACE_RATE = 4;
 const SYNC_MS: [number, number] = [-125, 45];
 const SYNC_MIN_S = 2;
 const SYNC_MIN_SPEECH = 0.3;
-/**
- * A generated clip carries a drawn element's text when it shows the original's letters inside the element's box:
- * of the original's sharp ink (contrast over TEXT_CONTRAST) where it differs from the clean still the clip was made
- * from and where yours draws over the clip (each by DRAWN_DIFF: the letters, not the place), the share the clip has
- * within two pixels as sharp ink of the same colour (TEXT_COLOUR). The clip shares the person and the place with the
- * original, so only carried letters match there. Calibrated on ig03 round 2 (10-23): t12's "Transparency", "a deep
- * understanding", "of this market" 0.30, 0.45, 0.56; every clean box 0.24 or less.
- */
+/** A clip carries a drawn element's text when, of the original's sharp ink (over TEXT_CONTRAST) that differs by
+ * DRAWN_DIFF from the clean still and where yours draws over the clip, the share the clip matches within two pixels in
+ * colour (TEXT_COLOUR) reaches CARRIED_TEXT; the clip shares person and place, so only carried letters match. */
 const CARRIED_TEXT = 0.35;
 const TEXT_CONTRAST = 140;
 const DRAWN_DIFF = 60;
@@ -161,12 +152,8 @@ function bestLag(a: number[], b: number[]): { lag: number; r: number } {
   return best;
 }
 
-/**
- * Each generated clip placed on the film. Its own start (where HeyGen's shot begins) is the ledger's window when it
- * records one, else where the clip's sound (the original's voice it was made from) lines up with the original's.
- * Where the film shows it comes from the project's timeline (`uses`, by the clip's path), else its whole window.
- * Files resolve against the project.
- */
+/** Each generated clip on the film: it starts at the ledger's window, else where its sound lines up with the original,
+ * and shows where the timeline's `uses` place it (by path), else over its whole window. Paths resolve in the project */
 export function placeClips(
   clips: GeneratedClip[],
   project: string | undefined,
@@ -353,11 +340,8 @@ function stillBox(path: string, box: Roi, w: number, h: number): Uint8Array | un
   }
 }
 
-/**
- * Whether a generated clip carries the original's text inside a drawn element's box over its window: the clip
- * alone, against the original there. A clean clip shows the person and the place behind the letters; a clip made
- * from a motion guide with words on it shows those words.
- */
+/** Whether a generated clip alone carries the original's text inside a drawn element's box over its window: a clean
+ * clip shows the person and place behind the letters, one made from a motion guide with words on it shows the words. */
 function carriedText(
   ref: VideoInfo,
   yours: VideoInfo,
@@ -430,11 +414,8 @@ function shotsIn(window: [number, number], cuts: number[]): [number, number][] {
   return edges.slice(1).map((e, i) => [edges[i]!, e]);
 }
 
-/**
- * One shot's framing from both sides' faces, sampled at the same moments (boxes as shares of a frame `aspect` wide
- * per unit high): per moment, the original's subject (its largest face) against yours' face nearest it; the shot's
- * medians decide, so one stray detection (a photo, a hand) does not.
- */
+/** One shot's framing from both sides' faces at the same moments (boxes as shares of an `aspect`-wide frame): the
+ * original's largest face against yours' nearest, by the shot's medians, so one stray detection (a photo) can't. */
 export function shotFraming(
   window: [number, number],
   original: { t: number; boxes: number[][] }[],

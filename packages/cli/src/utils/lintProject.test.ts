@@ -1007,6 +1007,19 @@ describe("multiple_root_compositions", () => {
     expect(finding).toBeUndefined();
   });
 
+  it("ignores HyperFrames Desktop's root-level podcast-lanes.html camera lanes page", async () => {
+    const project = makeProject(validHtml());
+    writeFileSync(
+      join(project, "podcast-lanes.html"),
+      '<div id="root" data-composition-id="podcast-lanes" data-no-timeline data-start="0" data-duration="60" data-width="1280" data-height="720"></div>',
+    );
+    const { results } = await lintProject(project);
+    const finding = results[0]?.result.findings.find(
+      (f) => f.code === "multiple_root_compositions",
+    );
+    expect(finding).toBeUndefined();
+  });
+
   it("ignores macOS AppleDouble HTML metadata files", async () => {
     const project = makeProject(validHtml());
     writeFileSync(join(project, "._index.html"), validHtml());

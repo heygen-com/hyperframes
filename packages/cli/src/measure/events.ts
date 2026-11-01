@@ -1,8 +1,6 @@
-// When things change on screen, ported from the Studio's viral-clone events.mjs: from the frame-to-frame grey
-// difference inside an ROI or each cell of a grid, cuts (most of the frame changes at once), flashes (one or two
-// frames that return to the picture before), appears and disappears (a region steps from one steady look to
-// another), holds (still for 0.3 s or more) and other motion, each with its frame number. The map adds the sound's
-// onsets and beats and groups everything into the windows worth looking at frame by frame.
+// When things change on screen (from the Studio's viral-clone events.mjs), by frame-to-frame grey difference in an ROI
+// or grid cells: cuts, flashes (frames that return to the picture before), appears and disappears, holds (0.3 s or
+// more) and other motion, by frame. The map adds the sound's onsets and beats and groups windows worth a close look.
 import { findCuts } from "./cuts.js";
 import { grey, readClip, round, videoClip, writeImage, type Roi, type VideoInfo } from "./media.js";
 
@@ -85,7 +83,7 @@ function level(f: Uint8Array, w: number, [x0, y0, x1, y1]: number[]) {
 const changes = (g: Uint8Array[], w: number, rect: number[]) =>
   g.map((f, i) => (i ? diff(f, g[i - 1]!, w, rect) : 0));
 
-/** Runs of frames changing by over twice the series' 25th percentile and over 2 grey levels, one quiet frame bridged. */
+/** Runs of frames changing by over twice the series' 25th percentile and 2 grey levels; one quiet frame bridged. */
 function bursts(d: number[]): [number, number][] {
   const q = d.slice(1).sort((a, b) => a - b);
   const act = Math.max(2, 2 * (q[Math.floor(q.length / 4)] ?? 0));

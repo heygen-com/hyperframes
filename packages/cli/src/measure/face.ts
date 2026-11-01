@@ -45,11 +45,9 @@ export function minWindow(h: number, share: number): number {
   return Math.round(WINDOW_PX * STEP ** steps);
 }
 
-/**
- * Frames `ks` (indices from the first frame) as grey bytes at `w` x `h`, which must keep the video's aspect. Each run
- * of nearby frames is one ffmpeg pass that seeks to its first frame and decodes only to its last; a variable-rate
- * video, whose indices a seek cannot find, is read from its start.
- */
+/** Frames `ks` (indices from the first) as grey bytes at `w` x `h`, keeping the video's aspect. Each run of nearby
+ * frames is one ffmpeg pass from its first frame to its last; a variable-rate video, which a seek can't index, is read
+ * from its start. */
 export function readSamples(info: VideoInfo, ks: number[], w: number, h: number): Uint8Array[] {
   const runs: number[][] = [];
   for (const k of ks) {
@@ -192,13 +190,9 @@ export function againstStart(clipDuration: number, originalDuration: number, fro
   return Math.abs(clipDuration - originalDuration) <= 0.5 ? from : 0;
 }
 
-/**
- * The GSAP transform that puts a clip's face on the original's: `scale` about the clip element's centre, then `x`, `y`
- * in the original's (the canvas's) pixels, for a clip element that fills the canvas with object-fit: cover. Moments
- * pair by time (`t` from each side's window start, within PAIR_S); each side's subject face is taken per moment and
- * their centres and heights medianed, so one stray detection does not move the fit. `residual` is the median distance
- * left between the faces after it, in the original's face heights.
- */
+/** The GSAP transform putting a cover-fit clip's face on the original's: `scale` about the clip's centre, then `x`, `y`
+ * in canvas pixels. Moments pair by time within PAIR_S and each side's faces are medianed, so one stray detection can't
+ * move it. `residual` is the median distance left between the faces, in the original's face heights. */
 export function faceFit(
   original: { t: number; boxes: number[][] }[],
   clip: { t: number; boxes: number[][] }[],

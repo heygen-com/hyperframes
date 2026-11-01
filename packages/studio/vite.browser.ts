@@ -14,7 +14,7 @@ import { seekThumbnailPreview } from "./vite.thumbnail";
 
 let browser: import("puppeteer-core").Browser | null = null;
 let browserLaunch: Promise<import("puppeteer-core").Browser | null> | null = null;
-let browserDescription = "unknown browser";
+let describeBrowser = () => "unknown browser";
 
 function systemChromePaths(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): string[] {
   if (platform === "win32") {
@@ -135,6 +135,13 @@ export function findSystemChrome(
   );
 }
 
+/** Reading the version blocks the server (a PowerShell start on Windows), so only a failure's wording pays for it. */
+function versionWhenAsked(executable: string): () => string {
+  let description: string | undefined;
+  return () =>
+    (description ??= `${executable}, ${browserVersion(executable) ?? "unknown version"}`);
+}
+
 async function getSharedBrowser(): Promise<import("puppeteer-core").Browser | null> {
   if (browser?.connected) return browser;
   if (browserLaunch) return browserLaunch;
@@ -142,7 +149,7 @@ async function getSharedBrowser(): Promise<import("puppeteer-core").Browser | nu
     const puppeteer = await import("puppeteer-core");
     const executablePath = findSystemChrome();
     if (!executablePath) return null;
-    browserDescription = `${executablePath}, ${browserVersion(executablePath) ?? "unknown version"}`;
+    describeBrowser = versionWhenAsked(executablePath);
     try {
       browser = await puppeteer.default.launch({
         headless: true,
@@ -159,7 +166,7 @@ async function getSharedBrowser(): Promise<import("puppeteer-core").Browser | nu
       });
     } catch (error) {
       console.warn(
-        `[Studio] Thumbnail browser launch failed (${browserDescription}):`,
+        `[Studio] Thumbnail browser launch failed (${describeBrowser()}):`,
         error instanceof Error ? error.message : error,
       );
       throw error;
@@ -273,7 +280,7 @@ export async function generateThumbnail(opts: GenerateThumbnailOptions): Promise
   } catch (error) {
     if (!opts.signal.aborted) {
       console.warn(
-        `[Studio] Thumbnail generation failed (${browserDescription}):`,
+        `[Studio] Thumbnail generation failed (${describeBrowser()}):`,
         error instanceof Error ? error.message : error,
       );
     }

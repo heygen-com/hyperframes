@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Terminal Simulator</h1>
+  <p>A terminal window types commands and streams log output.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/terminal-simulator.json"
   compositionId="terminal-simulator"
   compositionSrc="compositions/components/terminal-simulator.html"
   title="Terminal Simulator"
-  description="A terminal window types commands and streams log output."
   variables={[]}
   meta={{"category":"Code Animations","badge":"Stable","codeLines":92}}
   attribution={{"path":"registry/components/terminal-simulator","tags":["code-animation"]}}
@@ -127,7 +131,9 @@ That writes one file: `compositions/components/terminal-simulator.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -147,6 +153,4 @@ Tagged `code-animation`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

@@ -225,6 +225,8 @@ export interface CraftTextPart {
   blockSelector: string;
   sourceFile: string;
   text: string;
+  /** The reading block's rendered text, which keeps the author's spacing between its parts. */
+  blockText: string;
   opacity: number;
   fontPx: number;
   rect: { left: number; top: number; width: number; height: number };

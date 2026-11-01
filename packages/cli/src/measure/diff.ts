@@ -15,7 +15,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
-import { confirmsCut, cutsIn, frameChanges, signatures } from "./cuts.js";
+import { classifiedCuts, confirmsCut, frameChanges, signatures } from "./cuts.js";
 import {
   drawnFrames,
   drawnVerdict,
@@ -67,29 +67,27 @@ const SHEET_W = 960;
 const CUT_SLACK = 1;
 // A segment's cell is left to its regenerated region when the region covers more than this share of it.
 const REGION_CELL_SHARE = 0.1;
-// Missing content: cells are read at this width, from at most this many frames. A cell whose luma spread in the
-// original reaches MISSING_DETAIL while yours is flat (under MISSING_FLAT and MISSING_KEEP of the original's) is
-// empty; over MISSING_MAX_SHARE of frames with an empty cell fails. A weaker blur or a missing small label is not
-// empty: SSIM and its cell gate grade those (provisional, calibrated on the reverse bench). An empty cell is missing
-// structure when the original's cell still spreads MISSING_DETAIL at an eighth of that width (shapes, cards, a
-// map's land), and missing texture otherwise (a credit line, sea-floor grain): texture is reported, not failed.
+// Missing content: cells read at this width, from at most this many frames.
 const MISSING_W = 192;
 const MISSING_SAMPLES = 1800;
+// A cell is empty when the original's luma spread reaches MISSING_DETAIL and yours is flat (under MISSING_FLAT and
+// MISSING_KEEP of the original's); over MISSING_MAX_SHARE of frames with one fails. Weaker blur is SSIM's to grade.
 const MISSING_DETAIL = 8;
 const MISSING_KEEP = 0.35;
 const MISSING_FLAT = 4;
 const MISSING_MAX_SHARE = 0.02;
+// Missing structure: the original's cell still spreads MISSING_DETAIL at 1/STRUCTURE_SCALE of the width (shapes,
+// cards); otherwise it is texture (a credit line, grain), reported, not failed.
 const STRUCTURE_SCALE = 8;
-// Whole-frame reuse: a cut from the original covering this share of its frame plays the whole frame, and a frame
-// whose median cell scores REUSE_SSIM shows it. Drawn things come along with it (a copy) for longer than
-// REUSE_MAX_FRAMES fails. A Regenerated box over this share of the frame judges nothing by pixels. A cut matched for
-// less than REUSE_MIN_S is not reuse: a generated shot starts from a clean still of the original's first frame. A whole-
-// frame still of the original shows where yours, read in grey at STILL_W wide, is within STILL_DIFF of it in most
-// of the 4x4 cells.
+// Whole-frame reuse: a cut covering this share of the original's frame plays the whole frame (and a Regenerated box
+// this large judges nothing by pixels); a frame whose median cell scores REUSE_SSIM shows it.
 const WHOLE_FRAME_SHARE = 0.9;
 const REUSE_SSIM = 0.9;
+// Drawn things carried along with it for longer than this fail.
 const REUSE_MAX_FRAMES = 2;
+// Shorter matches are not reuse: a generated shot starts from a clean still of the original's first frame.
 const REUSE_MIN_S = 0.5;
+// A whole-frame still shows where yours, grey at STILL_W wide, is within STILL_DIFF of it in most of the 4x4 cells.
 const STILL_W = 96;
 const STILL_DIFF = 4;
 
@@ -175,6 +173,7 @@ export interface CutReport {
   /** The original's cuts with no cut within a frame of them in yours. */
   missing: number[];
   extra: number[];
+  not_cuts: { t: number; kind: "flash" | "fast" }[];
   pass: boolean;
 }
 
@@ -340,11 +339,8 @@ function ssimSeries(ref: Clip, yours: Clip, logPath: string): Series {
   }
 }
 
-/**
- * Stretches where a cell the original fills is flat in yours. SSIM scores two near-blank patches alike, so a scene
- * left empty on a plain background passes SSIM and its cell gate; this compares each cell's luma spread instead.
- * `judged(k)` lists the cells of the original's frame k this applies to: a regenerated person's gesture is theirs.
- */
+/** Stretches where a cell the original fills is flat in yours, by each cell's luma spread (SSIM scores near-blank
+ * patches alike). `judged(k)` lists the cells of the original's frame k it applies to; a person's gesture is theirs. */
 function missingContent(
   ref: Clip,
   yours: Clip,
@@ -463,8 +459,10 @@ function outline(px: Uint8Array, w: number, [x, y, bw, bh]: number[], t = 3) {
 }
 
 function cutReport(ref: Clip, yours: Clip, k0: number, fps: number): CutReport {
-  const [da, db] = [ref, yours].map((c) => frameChanges(signatures(c.input, c.filters).frames));
-  const [a, b] = [cutsIn(da!), cutsIn(db!)];
+  const [fa, fb] = [ref, yours].map((c) => signatures(c.input, c.filters).frames);
+  const [da, db] = [frameChanges(fa!), frameChanges(fb!)];
+  const [all, b] = [classifiedCuts(fa!), classifiedCuts(fb!).filter((c) => !c.kind)];
+  const a = all.filter((c) => !c.kind);
   const used = new Set<number>();
   const missing: number[] = [];
   for (const cut of a) {
@@ -480,6 +478,7 @@ function cutReport(ref: Clip, yours: Clip, k0: number, fps: number): CutReport {
     yours: b.map((c) => t(c.frame)),
     missing: missing.map(t),
     extra: extra.map((c) => t(c.frame)),
+    not_cuts: all.flatMap((c) => (c.kind ? [{ t: t(c.frame), kind: c.kind }] : [])),
     pass: missing.length === 0 && extra.length === 0,
   };
 }
@@ -657,10 +656,8 @@ function lowestCell(
   };
 }
 
-/**
- * A segment with a regenerated person (its box, or the whole frame): the person by motion and look, the cells
- * outside the box by SSIM, and each drawn element over the person by itself.
- */
+/** A segment with a regenerated person (its box, or the whole frame): the person by motion and look, the cells
+ * outside the box by SSIM, and each drawn element over the person by itself. */
 // fallow-ignore-next-line complexity
 function mixedVerdict(
   s: Segment,
@@ -928,11 +925,8 @@ function frameSpans(on: boolean[], ks: number[], fps: number): [number, number][
   return spans;
 }
 
-/**
- * Where yours plays one of the original's whole-frame cuts (inside its window, most cells near the original's own
- * pixels, for REUSE_MIN_S or longer) or shows one of its whole-frame stills, and where that frame's segment draws
- * copy: the original's drawn things came along with the footage.
- */
+/** Where yours plays one of the original's whole-frame cuts (in its window, most cells near its pixels, for REUSE_MIN_S
+ * or longer) or shows one of its stills, and where that segment draws copy: the drawn things came with the footage. */
 function wholeFrameReuse(
   cuts: { windows: [number, number][]; stills: number[] },
   stills: boolean[][],

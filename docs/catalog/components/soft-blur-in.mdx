@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Soft Blur In</h1>
+  <p>A soft opacity, blur, and lift reveal for headlines, captions, and product UI callouts</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/soft-blur-in.json"
   compositionId="soft-blur-in"
   compositionSrc="compositions/components/soft-blur-in.html"
   title="Soft Blur In"
-  description="A soft opacity, blur, and lift reveal for headlines, captions, and product UI callouts"
   variables={[{"id":"distance","type":"enum","role":"motion","label":"Distance","description":"How far the element is offset before it slides home: 14px, 28px or 52px.","default":"standard","options":[{"value":"close","label":"Close"},{"value":"standard","label":"Standard"},{"value":"far","label":"Far"}]},{"id":"direction","type":"enum","role":"motion","label":"Direction","description":"up starts the element below its resting place so it rises in, down starts it above so it drops in.","default":"up","options":[{"value":"up","label":"Up"},{"value":"down","label":"Down"}]},{"id":"blur","type":"enum","role":"style","label":"Blur","description":"Starting blur radius, from a light haze to a full smear.","default":"standard","options":[{"value":"soft","label":"Soft"},{"value":"standard","label":"Standard"},{"value":"heavy","label":"Heavy"}]}]}
   meta={{"category":"Typography & Text","badge":"Stable","codeLines":83}}
   attribution={{"path":"registry/components/soft-blur-in","tags":["motion-primitive","text","reveal","blur"]}}
@@ -118,7 +122,9 @@ That writes one file: `compositions/components/soft-blur-in.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -160,6 +166,4 @@ Tagged `motion-primitive` `text` `reveal` `blur`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

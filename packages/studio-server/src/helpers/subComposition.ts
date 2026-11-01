@@ -30,7 +30,7 @@ import { withRootPathsRelative } from "./rootPaths.js";
 function rewriteRelativePaths(root: ParentNode, compPath: string, projectDir: string): void {
   const assetExists = (path: string) => existsSync(join(projectDir, path));
   rewriteAssetPaths(
-    root.querySelectorAll("[src], [href]"),
+    root.querySelectorAll("[src], [href], [srcset]"),
     compPath,
     (el: Element, attr: string) => el.getAttribute(attr),
     (el: Element, attr: string, value: string) => el.setAttribute(attr, value),

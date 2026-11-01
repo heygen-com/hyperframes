@@ -293,14 +293,17 @@ const TRANSPARENT_BG_STYLE_ID = "__hf_transparent_bg__";
 
 export async function initTransparentBackground(
   page: Page,
-  { clearCompositionRoot = false }: { clearCompositionRoot?: boolean } = {},
+  {
+    clearCompositionRoot = false,
+    hideElementIds = [],
+  }: { clearCompositionRoot?: boolean; hideElementIds?: readonly string[] } = {},
 ): Promise<void> {
   const client = await getCdpSession(page);
   await client.send("Emulation.setDefaultBackgroundColorOverride", {
     color: { r: 0, g: 0, b: 0, a: 0 },
   });
   await page.evaluate(
-    (styleId: string, clearCompositionRoot: boolean) => {
+    (styleId: string, clearCompositionRoot: boolean, hideIds: string[]) => {
       const selector = clearCompositionRoot ? "html,body,[data-composition-id]" : "html,body";
       let style = document.getElementById(styleId);
       if (!style) {
@@ -308,10 +311,14 @@ export async function initTransparentBackground(
         style.id = styleId;
         document.head.appendChild(style);
       }
-      style.textContent = `${selector}{background:transparent !important;background-color:transparent !important;background-image:none !important;}`;
+      const hidden = hideIds.map((id) => `#${CSS.escape(id)}`).join(",");
+      style.textContent =
+        `${selector}{background:transparent !important;background-color:transparent !important;background-image:none !important;}` +
+        (hidden ? `${hidden}{visibility:hidden !important;}` : "");
     },
     TRANSPARENT_BG_STYLE_ID,
     clearCompositionRoot,
+    [...hideElementIds],
   );
 }
 

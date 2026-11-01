@@ -139,6 +139,7 @@ export interface OffloadedMedia {
   /** What happened (or, on a dry run, would happen) to the file. */
   action: "upload" | "reencode" | "cached";
   url?: string;
+  asset_id?: string;
   /** Seconds of the source kept when only the parts the composition plays are uploaded. */
   trimmed_to_seconds?: number;
   /** Still referenced from a script or data file, so a copy also stays in the zip. */
@@ -165,6 +166,7 @@ export interface OffloadOptions {
   /** Overrides the renderer's GIF preparation for tests. */
   gifPrep?: GifPrep;
   onFile?: (item: OffloadedMedia) => void;
+  variablesText?: string;
 }
 
 type MediaKind = "video" | "audio" | "image";
@@ -601,10 +603,10 @@ async function offloadFile(
   };
   const hit = plan.key === undefined ? undefined : ctx.cache[plan.key];
   if (hit && (!ctx.opts.upload || (await stillServed(hit, ctx.fetchImpl)))) {
-    return { ...item, action: "cached", url: hit.url };
+    return { ...item, action: "cached", url: hit.url, asset_id: hit.asset_id };
   }
   if (!ctx.opts.upload) return item;
-  return { ...item, url: await uploadPlanned(ctx, ctx.opts.upload, path, file, plan) };
+  return { ...item, ...(await uploadPlanned(ctx, ctx.opts.upload, path, file, plan)) };
 }
 
 async function uploadPlanned(
@@ -613,7 +615,7 @@ async function uploadPlanned(
   path: string,
   staged: StagedFile,
   plan: FilePlan,
-): Promise<string> {
+): Promise<{ url: string; asset_id: string }> {
   const filename = basename(path);
   const file: UploadableFile = plan.preset
     ? await ctx.reencoder.run(plan.sourcePath, plan.preset, plan.segments)
@@ -629,7 +631,7 @@ async function uploadPlanned(
     ctx.cache[plan.key] = { asset_id: asset.asset_id, url: asset.url, size_bytes: size };
     writeCache(ctx.cachePath, ctx.cache);
   }
-  return asset.url;
+  return { url: asset.url, asset_id: asset.asset_id };
 }
 
 const GIF_PREFIX = "_animated_gif";
@@ -717,10 +719,11 @@ export async function offloadHeavyMedia(
   };
   const urls = new Map<string, string>();
   const report: OffloadedMedia[] = [];
+  let referenced = new Set<string>();
   try {
     await prepareEntryGifs(ctx, fileMap);
     // Only files a reference points at: one used through render-time --variables must stay in the zip.
-    const referenced = referencedFiles(ctx.absDir, fileMap);
+    referenced = referencedFiles(ctx.absDir, fileMap);
     for (const [path, file] of [...fileMap].sort(([a], [b]) => a.localeCompare(b))) {
       if (!referenced.has(path)) continue;
       const item = await offloadFile(ctx, path, file);
@@ -736,7 +739,25 @@ export async function offloadHeavyMedia(
 
   if (urls.size > 0) rewriteReferences(ctx.absDir, fileMap, (key) => urls.get(key) ?? null);
   dropReplacedFiles(fileMap, report, ctx.preparedGifSources, [...urls.values()]);
+  dropUnusedHeavyFiles(ctx, referenced, [...urls.values()]);
   return report;
+}
+
+function dropUnusedHeavyFiles(
+  ctx: OffloadContext,
+  referenced: Set<string>,
+  assetUrls: string[],
+): void {
+  const { fileMap } = ctx;
+  const withoutUrls = (text: string) =>
+    assetUrls.reduce((acc, url) => acc.replaceAll(url, ""), text);
+  const code = withoutUrls(scriptCode(fileMap));
+  const variables = ctx.opts.variablesText ?? "";
+  for (const [path, file] of [...fileMap]) {
+    if (referenced.has(path) || stagedSize(file) < OFFLOAD_MIN_BYTES) continue;
+    if (variables.includes(basename(path))) continue;
+    if (!isStillMentioned(fileMap, path, code, withoutUrls)) fileMap.delete(path);
+  }
 }
 
 function dropReplacedFiles(

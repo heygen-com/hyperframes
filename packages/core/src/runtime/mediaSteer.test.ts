@@ -1,9 +1,29 @@
-import { describe, expect, it } from "vitest";
-import { forgetSteering, isSteering, steerMedia } from "./mediaSteer";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { forgetSteering, isSteering, markMediaRestarted, steerMedia } from "./mediaSteer";
 
 const media = (tag: "audio" | "video") => document.createElement(tag);
 
 describe("steerMedia", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("treats an embedded WKWebView, whose user agent has no Safari token, as WebKit", () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
+    );
+    expect(steerMedia(media("audio"), 0.35, 1, true)).toEqual({ rate: 1, seek: false });
+  });
+
+  it("never steers WebKit audio: it is seeked only once its lag holds past 0.65 s", () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15",
+    );
+    const el = media("audio");
+    expect(steerMedia(el, 0.35, 1, true)).toEqual({ rate: 1, seek: false });
+    expect(steerMedia(el, 0.8, 1, false)).toEqual({ rate: 1, seek: false });
+    expect(steerMedia(el, 0.8, 1, true)).toEqual({ rate: 1, seek: true });
+    expect(isSteering(el)).toBe(false);
+  });
+
   it("leaves media inside the tolerance at its rate", () => {
     expect(steerMedia(media("audio"), 0.03, 1, true)).toEqual({ rate: 1, seek: false });
   });
@@ -18,6 +38,13 @@ describe("steerMedia", () => {
     expect(steerMedia(el, 0.35, 1, false).rate).toBeCloseTo(1.1, 9);
     expect(steerMedia(el, 0.35, 1, true)).toEqual({ rate: 1, seek: true });
     expect(isSteering(el)).toBe(false);
+  });
+
+  it("steers the lag a start left in audio, but still seeks one past hard sync", () => {
+    const el = media("audio");
+    markMediaRestarted(el);
+    expect(steerMedia(el, 0.3, 1, true).rate).toBeCloseTo(1.1, 9);
+    expect(steerMedia(el, 0.8, 1, true)).toEqual({ rate: 1, seek: true });
   });
 
   it("keeps steering until nearly back, and forgets on request", () => {

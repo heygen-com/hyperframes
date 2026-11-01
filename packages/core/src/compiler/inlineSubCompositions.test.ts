@@ -271,6 +271,56 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
     expect(scopedCss).toContain("display: flex");
   });
 
+  it.each([
+    [
+      "a named host",
+      '<div id="h" data-composition-id="scene" data-composition-src="scene.html" data-start="0" data-duration="3"></div>',
+    ],
+    [
+      "an anonymous host",
+      '<div id="h" data-composition-src="scene.html" data-start="0" data-duration="3"></div>',
+    ],
+  ])(
+    "styles the preserved root written as #root[data-composition-id] for %s",
+    (_name, hostHtml) => {
+      const { document } = parseHTML(
+        `<!DOCTYPE html><html><body><div data-composition-id="main">${hostHtml}</div></body></html>`,
+      );
+      const host = document.querySelector("#h")!;
+      const sceneHtml = `<template id="scene-template">
+  <div id="root" data-composition-id="scene" data-width="640" data-height="360" data-duration="3">
+    <h1 class="title">Hi</h1>
+    <style>#root[data-composition-id="scene"] { background: red; } #root[data-composition-id="scene"] .title { color: blue; } #root[data-composition-id="scene"]::before { content: "x"; }</style>
+  </div>
+</template>`;
+      const flattenInnerRoot = (innerRoot: Element): Element => {
+        const clone = innerRoot.cloneNode(true) as Element;
+        clone.removeAttribute("data-composition-id");
+        clone.removeAttribute("id");
+        clone.setAttribute("data-hf-authored-id", "root");
+        clone.setAttribute("data-hf-inner-root", "true");
+        return clone;
+      };
+
+      const result = inlineSubCompositions(document, [host], {
+        resolveHtml: () => sceneHtml,
+        parseHtml: (html) => parseHTML(html).document,
+        flattenInnerRoot,
+      });
+
+      const page = new JSDOM(document.documentElement.outerHTML).window.document;
+      const selectors = result.styles.flatMap((style) =>
+        [...style.css.matchAll(/([^{}]+)\{/g)].map((match) => match[1]!.trim()),
+      );
+      const [box, title, before] = selectors.map(
+        (selector) => page.querySelectorAll(selector.replaceAll("::before", "")).length,
+      );
+      expect(box).toBe(1);
+      expect(title).toBe(1);
+      expect(before).toBe(1);
+    },
+  );
+
   it("extracts <link> elements from sub-composition <head> with original rel and crossorigin", () => {
     const subCompWithLinks = `<!doctype html>
 <html><head>

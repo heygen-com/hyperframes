@@ -19,10 +19,7 @@ import { failCommand } from "../utils/commandResult.js";
  *   - **Revoke** — POST https://api2.heygen.com/v1/oauth/revoke
  *     Same host/prefix as token.
  *
- * The `heygen-oauth-urls.ts` default in `hyperframes-internal/demo-next`
- * lists `app.heygen.com/oauth/token` as the default — that's either
- * proxied via a Next.js rewrite or set via `HEYGEN_OAUTH_TOKEN_URL` in
- * their prod env. A direct fetch to it returns the SPA shell, so we
+ * `app.heygen.com/oauth/token` returns the SPA shell on a direct fetch, so we
  * use the api2 endpoint here.
  *
  * Overrides:

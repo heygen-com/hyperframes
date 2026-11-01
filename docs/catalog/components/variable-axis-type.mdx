@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Variable Axis Type</h1>
+  <p>A locked one-line headline whose weight or width axis morphs into a decisive emphasis beat.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/variable-axis-type.json"
   compositionId="variable-axis-type"
   compositionSrc="compositions/components/variable-axis-type.html"
   title="Variable Axis Type"
-  description="A locked one-line headline whose weight or width axis morphs into a decisive emphasis beat."
   variables={[{"id":"text","type":"string","role":"content","label":"Text","description":"Word or short headline to emphasize.","default":"IMPACT"},{"id":"axis","type":"enum","role":"motion","label":"Axis","description":"Variable-font axis used for the emphasis morph.","default":"wght","options":[{"value":"wght","label":"Weight"},{"value":"wdth","label":"Width"}]},{"id":"fromValue","type":"number","role":"motion","label":"From value","description":"Starting coordinate on the selected font axis.","default":200,"min":25,"max":1000,"step":1},{"id":"toValue","type":"number","role":"motion","label":"To value","description":"Ending coordinate on the selected font axis.","default":900,"min":25,"max":1000,"step":1}]}
   meta={{"category":"Typography & Text","badge":"Stable","codeLines":192}}
   attribution={{"path":"registry/components/variable-axis-type","tags":["typography","variable-font","kinetic-type","axis","emphasize"]}}
@@ -227,7 +231,9 @@ That writes one file: `compositions/components/variable-axis-type.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -269,6 +275,4 @@ Tagged `typography` `variable-font` `kinetic-type` `axis` `emphasize`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

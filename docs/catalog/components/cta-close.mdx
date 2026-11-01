@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>CTA Close</h1>
+  <p>A display-scale action line lands per word and fills the frame with air, one generous CTA capsule pops beneath it with a single overshoot, and the finished close holds completely still.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/cta-close.json"
   compositionId="cta-close"
   compositionSrc="compositions/components/cta-close.html"
   title="CTA Close"
-  description="A display-scale action line lands per word and fills the frame with air, one generous CTA capsule pops beneath it with a single overshoot, and the finished close holds completely still."
   variables={[{"id":"action_line","type":"string","role":"content","label":"Action line","description":"Two to four word action that closes the film.","default":"Make it happen"},{"id":"button_label","type":"string","role":"content","label":"Button label","description":"Text displayed inside the single CTA capsule.","default":"Start now"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Contract color used by the CTA capsule.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"Optional departure. Default none: the lockup holds until the frame cuts (this primitive closes films).","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
   meta={{"category":"Motion Scenes","badge":"Stable","codeLines":264}}
   attribution={{"path":"registry/components/cta-close","tags":["motion-primitive","ui-props","cta","end-card","close","ask"]}}
@@ -299,7 +303,9 @@ That writes one file: `compositions/components/cta-close.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -341,6 +347,4 @@ Tagged `motion-primitive` `ui-props` `cta` `end-card` `close` `ask`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

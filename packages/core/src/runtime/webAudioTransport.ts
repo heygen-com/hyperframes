@@ -228,6 +228,7 @@ const FOLLOWED_EVENTS = ["playing", "seeked", "ratechange"] as const;
 
 // A pause to scrub or a reschedule mid-play keeps the output awake; a real idle lets it sleep.
 const IDLE_SUSPEND_MS = 10000;
+const SHORT_DECODE_SECONDS = 0.25;
 
 export class WebAudioTransport {
   private _ctx: AudioContext | null = null;
@@ -235,6 +236,7 @@ export class WebAudioTransport {
   private _decoding = new Map<string, Promise<AudioBuffer | null>>();
   private _failedSrcs = new Set<string>();
   private _mediaElementSources = new WeakMap<HTMLMediaElement, MediaElementAudioSourceNode>();
+  private _handedOver = new WeakSet<HTMLMediaElement>();
   private _activeSources: ScheduledSource[] = [];
   private _masterGain: GainNode | null = null;
   /** Where the master bus chain lands; the program meter taps here. */
@@ -394,6 +396,14 @@ export class WebAudioTransport {
     // the same bad payload on every generation.
     try {
       const audioBuffer = await this._ctx.decodeAudioData(arrayBuffer);
+      // A file whose container timescale disagrees with its stream decodes short; its element plays it whole.
+      if (
+        Number.isFinite(el.duration) &&
+        el.duration - audioBuffer.duration > SHORT_DECODE_SECONDS
+      ) {
+        this._failedSrcs.add(src);
+        return null;
+      }
       this._bufferCache.set(src, audioBuffer);
       return audioBuffer;
     } catch (err) {
@@ -1010,6 +1020,20 @@ export class WebAudioTransport {
       swallow("webAudioTransport.schedule", err);
       return null;
     }
+  }
+
+  /** Drops the routed element's source once a decoded buffer plays in its place; the element then sounds natively. */
+  releaseRouted(el: HTMLMediaElement): void {
+    const routed = this._activeSources.find((s) => s.el === el && s.sourceKind === "media-element");
+    if (!routed) return;
+    this._activeSources.splice(this._activeSources.indexOf(routed), 1);
+    this.dispose(routed);
+    this._handedOver.add(el);
+  }
+
+  /** A decoded buffer plays what an element carried: it cannot hold pitch through a speed change. */
+  hasHandedOverSources(): boolean {
+    return this._activeSources.some((s) => isBufferSource(s) && this._handedOver.has(s.el));
   }
 
   /**

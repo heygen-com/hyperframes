@@ -35,7 +35,6 @@ import { audioFailureDiagnostics } from "@hyperframes/engine";
 import {
   existsSync,
   mkdirSync,
-  readFileSync,
   readdirSync,
   rmSync,
   statSync,
@@ -60,6 +59,7 @@ import {
 import { HF_AUDIO_GROUP_TAG } from "@hyperframes/core/audio-groups";
 import { extractStandaloneEntryFromIndex, isTemplateEntry } from "@hyperframes/core/compiler";
 import { HTML_BODY_CSS_HEIGHT_FIRST_RE, HTML_BODY_CSS_WIDTH_FIRST_RE } from "@hyperframes/parsers";
+import { readTextFile } from "@hyperframes/parsers/asset-resolution";
 import {
   type EngineConfig,
   extractMediaMetadata,
@@ -185,6 +185,7 @@ import {
   buildRenderPerfSummary,
   pushWorkerDedupPerfs,
   pushWorkerPageErrors,
+  withCapturedBeyondViewport,
   roundDb,
   worstSubTimelineWaitOutcome,
 } from "./render/perfSummary.js";
@@ -222,6 +223,11 @@ import { runCompileStage } from "./render/stages/compileStage.js";
 import { runProbeStage } from "./render/stages/probeStage.js";
 import { validateRenderDuration } from "./render/planValidation.js";
 import { runExtractVideosStage } from "./render/stages/extractVideosStage.js";
+import { rendersSdrOnly } from "./render/hdrMode.js";
+import {
+  planVideoLayerPassthrough,
+  type VideoLayerPlan,
+} from "./render/videoLayerPassthroughPlan.js";
 import { runAudioStage } from "./render/stages/audioStage.js";
 import { inspectDiskCaptureHeadroom, runCaptureStage } from "./render/stages/captureStage.js";
 import {
@@ -519,6 +525,11 @@ export interface RenderPerfSummary {
    * captured the most frames when parallel workers report separately.
    */
   captureP50Ms?: number;
+  /** Per-frame capture phases, frame-weighted across sessions; encoder wait is FFmpeg back-pressure. */
+  captureSeekAvgMs?: number;
+  captureBeforeCaptureAvgMs?: number;
+  captureScreenshotAvgMs?: number;
+  encoderWaitAvgMs?: number;
   /** Worst sub-composition timeline wait outcome across sessions. */
   subTimelineWait?: SubTimelineWaitOutcome;
   capturePeakMs?: number;
@@ -2294,6 +2305,17 @@ export function shouldPreferSingleWorkerDrawElement(args: {
   );
 }
 
+/** Why drawElement is off before capture; the compile stage's content gates are not config refusals. */
+export function initialDeClampReason(args: {
+  useDrawElement: boolean;
+  deCompileGate: string | undefined;
+  config: Parameters<typeof explainDrawElementDisabled>[0];
+}): string | undefined {
+  if (args.useDrawElement) return undefined;
+  if (args.deCompileGate) return "compile_gate";
+  return explainDrawElementDisabled(args.config);
+}
+
 /**
  * The session kept drawElement but left some frames to a screenshot session. Only the
  * single-worker streaming capture hands those over, so parallel drawElement must not be chosen.
@@ -3197,7 +3219,7 @@ async function executeRenderPipeline(input: {
     // If entryFile is a sub-composition (<template> wrapper), reuse the real
     // index.html shell and isolate the matching host instead of fabricating
     // a new standalone document.
-    const rawEntry = readFileSync(htmlPath, "utf-8");
+    const rawEntry = readTextFile(htmlPath);
     if (entryFile !== "index.html" && isTemplateEntry(rawEntry)) {
       const wrapperPath = join(workDir, "standalone-entry.html");
       const projectIndexPath = join(projectDir, "index.html");
@@ -3207,7 +3229,7 @@ async function executeRenderPipeline(input: {
         );
       }
       const standaloneHtml = extractStandaloneEntryFromIndex(
-        readFileSync(projectIndexPath, "utf-8"),
+        readTextFile(projectIndexPath),
         entryFile,
         rawEntry,
       );
@@ -3273,14 +3295,16 @@ async function executeRenderPipeline(input: {
     // "Why not drawElement", explaining nothing). Re-derived from the same
     // inputs `resolveConfig` used, so it cannot disagree with the decision.
     // Later clamps overwrite this: a more specific reason always wins.
-    let deClampReason: string | undefined = cfg.useDrawElement
-      ? undefined
-      : explainDrawElementDisabled({
-          platform: process.platform,
-          browserGpuMode: cfg.browserGpuMode,
-          workerEncode: cfg.enableDrawElementWorkerEncode,
-          chromeCeiling: chromeMajorCeiling(),
-        });
+    let deClampReason = initialDeClampReason({
+      useDrawElement: cfg.useDrawElement,
+      deCompileGate,
+      config: {
+        platform: process.platform,
+        browserGpuMode: cfg.browserGpuMode,
+        workerEncode: cfg.enableDrawElementWorkerEncode,
+        chromeCeiling: chromeMajorCeiling(),
+      },
+    });
     // "inverted" = fired and held; "reverted" = fired but the self-verify
     // retry rolled back to the parallel path; undefined = never fired.
     let deWorkerInversion: "inverted" | "reverted" | undefined;
@@ -3450,6 +3474,48 @@ async function executeRenderPipeline(input: {
       beginFrameStalled: probeResult.beginFrameStalled,
     });
 
+    // Opt-in: one full-canvas video is composited by ffmpeg instead of injected frame by frame.
+    let videoLayerPlan: VideoLayerPlan | undefined;
+    if (cfg.videoLayerPassthrough) {
+      const gates = {
+        mp4: outputFormat === "mp4",
+        software_encode: !job.config.useGpu,
+        opaque_output: !needsAlpha,
+        sdr:
+          rendersSdrOnly(job.config, composition) ||
+          ((job.config.hdrMode === undefined || job.config.hdrMode === "auto") &&
+            composition.images.length === 0),
+        streaming: shouldUseStreamingEncode(cfg, outputFormat, 1, probeResult.duration),
+        probe_page: probeSession?.isInitialized === true,
+      };
+      const failed = Object.entries(gates).find(([, ok]) => !ok)?.[0];
+      if (failed || !probeSession) {
+        log.info(`[Render] Video layer passthrough off: ${failed ?? "probe_page"}`);
+      } else {
+        videoLayerPlan = await planVideoLayerPassthrough({
+          videos: composition.videos,
+          duration: probeResult.duration,
+          fps: job.config.fps,
+          canvas: { width, height },
+          page: probeSession.page,
+          projectDir,
+          compiledDir: join(workDir, "compiled"),
+        });
+        if (videoLayerPlan.videoId === undefined) {
+          log.info(`[Render] Video layer passthrough off: ${videoLayerPlan.reason}`);
+        } else {
+          cfg.useDrawElement = false;
+          cfg.forceScreenshot = true;
+          captureForceScreenshot = true;
+          // The probe page was opened for plain JPEG capture; capture needs a transparent PNG session.
+          const opened = probeSession;
+          probeSession = null;
+          await closeCaptureSession(opened);
+        }
+      }
+    }
+    const videoLayer = videoLayerPlan?.videoId === undefined ? undefined : videoLayerPlan;
+
     // ── Stage 2: Video frame extraction ─────────────────────────────────
     updateJobStatus(job, "preprocessing", "Extracting video frames", 10, onProgress, {
       code: "extract_video",
@@ -3468,6 +3534,7 @@ async function executeRenderPipeline(input: {
           cfg,
           log,
           composition,
+          skipFrameExtractionIds: videoLayer ? [videoLayer.videoId] : [],
           abortSignal: executionSignal,
           assertNotAborted,
           // Local staging can use links; distributed plan() alone requires real copies.
@@ -3539,6 +3606,7 @@ async function executeRenderPipeline(input: {
     });
     const effectiveHdr = resolveEffectiveHdrMode({
       hdrMode: job.config.hdrMode,
+      media: composition,
       outputFormat,
       extractionResult,
       imageColorSpaces,
@@ -3654,8 +3722,9 @@ async function executeRenderPipeline(input: {
       width,
       height,
       fps: job.config.fps,
-      format: captureImageFormat,
-      transparent: needsAlpha,
+      format: videoLayer ? "png" : captureImageFormat,
+      transparent: needsAlpha || videoLayer !== undefined,
+      ...(videoLayer ? { hiddenElementIds: [videoLayer.videoId] } : {}),
       quality:
         captureImageFormat === "png" ? undefined : resolveCaptureJpegQuality(job.config.quality),
       variables: job.config.variables,
@@ -4121,6 +4190,7 @@ async function executeRenderPipeline(input: {
         }
       },
     );
+    if (videoLayer) workerCount = 1;
     // DE priority inversion — see shouldPreferSingleWorkerDrawElement for the
     // policy and benchmark rationale (eligibility resolved above, before
     // calibration; a comp the engine's init-time gates refuse is never
@@ -4722,6 +4792,7 @@ async function executeRenderPipeline(input: {
       perfStages.captureFrameMs = hdrRes.captureDurationMs;
       perfStages.captureSetupMs = Math.max(0, Date.now() - stage4Start - hdrRes.captureDurationMs);
       perfStages.encodeMs = hdrRes.encodeMs;
+      perfStages.encoderDrainWaitMs = hdrRes.encoderDrainWaitMs ?? 0;
     } else {
       // ── Standard capture paths (SDR or DOM-only HDR) ──────────────────
       // Streaming encode mode pipes frame buffers directly to FFmpeg stdin,
@@ -4923,6 +4994,7 @@ async function executeRenderPipeline(input: {
           perfStages.captureFrameMs = Date.now() - captureFrameStart;
           perfStages.captureSetupMs = Math.max(0, perfStages.captureMs - perfStages.captureFrameMs);
           perfStages.encodeMs = segmentedRes.encodeMs;
+          perfStages.encoderDrainWaitMs = segmentedRes.encoderDrainWaitMs ?? 0;
           log.info(
             `[Render] Segmented capture complete: ${segmentedRes.segments} segment(s) concatenated.`,
             {
@@ -4991,6 +5063,7 @@ async function executeRenderPipeline(input: {
                   vp9CpuUsed: cfg.vp9CpuUsed,
                   useGpu: job.config.useGpu,
                   imageFormat: captureOptions.format || "jpeg",
+                  ...(videoLayer ? { videoLayer: videoLayer.layer } : {}),
                   hdr: preset.hdr,
                   // HLS only: force an IDR every `gopSize` frames so the
                   // assemble stage's `-c copy` segmentation cuts exactly on
@@ -5179,6 +5252,7 @@ async function executeRenderPipeline(input: {
           perfStages.captureFrameMs = captureFrameMs;
           perfStages.captureSetupMs = Math.max(0, perfStages.captureMs - captureFrameMs);
           perfStages.encodeMs = streamingRes.encodeMs; // Overlapped with capture
+          perfStages.encoderDrainWaitMs = streamingRes.encoderDrainWaitMs ?? 0;
         } else {
           if (capturePlan.kind === "sdr_streaming") {
             capturePlan = replanAfterFailure(capturePlan, { kind: "streaming_unavailable" });
@@ -5462,7 +5536,7 @@ async function executeRenderPipeline(input: {
     observability.checkpoint("pipeline", "artifact validated", { totalElapsedMs: totalElapsed });
     const observabilitySummary = observability.summary({
       lastBrowserConsole,
-      capture: captureObservability,
+      capture: withCapturedBeyondViewport(captureObservability, dedupPerfs),
       initFallback: mergeWorkerInitObservability(dedupPerfs),
       extraction: extractionObservability,
       compositionHash,
@@ -5654,7 +5728,7 @@ async function executeRenderPipeline(input: {
     const failedStage = job.currentStage || "pipeline";
     const observabilitySummary = observability.summary({
       lastBrowserConsole,
-      capture: captureObservability,
+      capture: withCapturedBeyondViewport(captureObservability, dedupPerfs),
       initFallback: mergeWorkerInitObservability(dedupPerfs),
       extraction: extractionObservability,
       compositionHash,

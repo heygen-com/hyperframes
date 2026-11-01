@@ -1,5 +1,9 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { unlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { diag } from "../ui/diagnostics.js";
 import { POSTHOG_API_KEY } from "./posthogKey.js";
 import { readConfig } from "./config.js";
 import { hostAnswers } from "../utils/hostAnswers.js";
@@ -170,18 +174,28 @@ export function flushSync(): void {
   if (payload == null) return;
   eventQueue = [];
 
+  // The batch rides in a file, not the command line: Windows caps a command line at 32,767 chars
+  // and a render's batch is larger, so the spawn threw and every event was lost.
+  const file = join(tmpdir(), `hyperframes-telemetry-${randomUUID()}.json`);
   try {
+    writeFileSync(file, payload, { mode: 0o600 });
     const child = spawn(
       process.execPath,
       [
         "-e",
-        `fetch(${JSON.stringify(`${POSTHOG_HOST}/batch/`)},{method:"POST",headers:{"Content-Type":"application/json"},body:${JSON.stringify(payload)},signal:AbortSignal.timeout(${FLUSH_TIMEOUT_MS})}).catch(()=>{})`,
+        `const f=require("node:fs"),b=f.readFileSync(process.argv[1],"utf8");f.unlinkSync(process.argv[1]);fetch(${JSON.stringify(`${POSTHOG_HOST}/batch/`)},{method:"POST",headers:{"Content-Type":"application/json"},body:b,signal:AbortSignal.timeout(${FLUSH_TIMEOUT_MS})}).catch(()=>{})`,
+        file,
       ],
       { detached: true, stdio: "ignore", windowsHide: true },
     );
     // Let the parent exit without waiting for the child
     child.unref();
-  } catch {
-    // Silently ignore
+  } catch (error) {
+    try {
+      unlinkSync(file);
+    } catch {}
+    diag.warn(
+      `hyperframes: telemetry was not sent (${error instanceof Error ? error.message : error})`,
+    );
   }
 }

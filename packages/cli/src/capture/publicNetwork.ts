@@ -5,6 +5,7 @@ import { isIP, type Socket } from "node:net";
 import { request as httpRequest, type IncomingMessage, type ClientRequest } from "node:http";
 import { request as httpsRequest, type RequestOptions } from "node:https";
 import { connect as tlsConnect } from "node:tls";
+import { isBlockedNetworkHost } from "@hyperframes/engine/network-policy";
 import {
   captureUpstreamProxy,
   connectAuthority,
@@ -15,36 +16,9 @@ import {
 const DNS_TIMEOUT_MS = 10_000;
 const CARES_TIMEOUT_MS = 5_000;
 
-function ipv4Number(address: string): number {
-  return address.split(".").reduce((value, octet) => value * 256 + Number(octet), 0);
-}
-
-// Conservatively exclude special-use networks, including all of 192.0/16.
-const NON_PUBLIC_IPV4: ReadonlyArray<readonly [string, number]> = [
-  ["0.0.0.0", 8],
-  ["10.0.0.0", 8],
-  ["100.64.0.0", 10],
-  ["127.0.0.0", 8],
-  ["169.254.0.0", 16],
-  ["172.16.0.0", 12],
-  ["192.0.0.0", 16],
-  ["192.88.99.0", 24],
-  ["192.168.0.0", 16],
-  ["198.18.0.0", 15],
-  ["198.51.100.0", 24],
-  ["203.0.113.0", 24],
-  ["224.0.0.0", 3],
-];
-const NON_PUBLIC_RANGES = NON_PUBLIC_IPV4.map(([network, prefix]) => ({
-  start: ipv4Number(network),
-  end: ipv4Number(network) + 2 ** (32 - prefix),
-}));
-
-/** Conservative IPv4-only policy: special-use addresses fail closed. */
+/** IPv4-only (IPv6 fails closed), on the engine's special-use list so capture and downloads agree. */
 export function isPublicIPv4(address: string): boolean {
-  if (isIP(address) !== 4) return false;
-  const value = ipv4Number(address);
-  return !NON_PUBLIC_RANGES.some(({ start, end }) => value >= start && value < end);
+  return isIP(address) === 4 && !isBlockedNetworkHost(address);
 }
 
 export function assertPublicHostname(hostname: string): string {

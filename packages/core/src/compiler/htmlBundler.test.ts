@@ -201,6 +201,45 @@ describe("bundleToSingleHtml", () => {
     expect(reads).not.toContain(join(dir, "notes.md"));
   });
 
+  it.each([
+    [
+      "UTF-16LE",
+      (text: string) => Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(text, "utf16le")]),
+    ],
+    [
+      "UTF-16BE",
+      (text: string) =>
+        Buffer.concat([Buffer.from([0xfe, 0xff]), Buffer.from(text, "utf16le").swap16()]),
+    ],
+    [
+      "UTF-8 with a BOM",
+      (text: string) => Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(text)]),
+    ],
+  ])(
+    "reads a page saved as %s by its byte order mark, as a browser does",
+    async (_name, encode) => {
+      const dir = makeTempProject({});
+      writeFileSync(
+        join(dir, "index.html"),
+        encode(`<!doctype html><html><body>
+        <div data-composition-id="root" data-width="320" data-height="180" data-duration="2">
+          <div data-composition-id="scene" data-composition-src="scene.html" data-start="0" data-duration="2"></div>
+        </div></body></html>`),
+      );
+      writeFileSync(
+        join(dir, "scene.html"),
+        encode(`<template><div data-composition-id="scene"><h1>Café scene</h1></div></template>`),
+      );
+
+      const bundled = await bundleToSingleHtml(dir);
+
+      expect(bundled).not.toContain("\u0000");
+      expect(bundled).not.toContain("\uFEFF");
+      expect(bundled).toContain('data-composition-id="root"');
+      expect(bundled).toContain("Café scene");
+    },
+  );
+
   it("bundles a direct composition entry with paths relative to its file", async () => {
     const dir = makeTempProject({
       "index.html": "<html><body>wrong entry</body></html>",
@@ -2194,6 +2233,37 @@ describe("bundleToSingleHtml", () => {
         const bundled = await bundleToSingleHtml(dir, { inlineAssets });
         const fontUrl = inlineAssets ? inlinedAs("font/woff2", "font-bytes") : "icon.woff2?v=4.7.0";
         expect(styleText(bundled)).toContain(`url('${fontUrl}')`);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.each([true, false])(
+    "resolves mounted scene srcset candidates from their scene with inlineAssets %s",
+    async (inlineAssets) => {
+      const dataUrl = inlinedAs("image/svg+xml", '<svg xmlns="http://www.w3.org/2000/svg"/>');
+      const dir = makeTempProject({
+        "index.html": `<html><body><div data-composition-id="root" data-width="320" data-height="180" data-duration="1" data-no-timeline><div data-composition-id="scene" data-composition-src="scenes/scene.html" data-start="0" data-duration="1"></div></div></body></html>`,
+        "scenes/scene.html": `<div data-composition-id="scene" data-duration="1" data-no-timeline><picture><source id="photo" srcset="hero,red.png?v=2#sprite 1x, ${dataUrl} 2x"><img src="fallback.png"></picture><img id="srcset-only" srcset="hero,red.png 1x, assets/root.png 2x"></div>`,
+        "scenes/hero,red.png": "scene-red-image",
+        "hero,red.png": "root-blue-image",
+        "scenes/fallback.png": "fallback-image",
+        "assets/root.png": "root-image",
+      });
+      try {
+        const bundled = await bundleToSingleHtml(dir, { inlineAssets });
+        const { document } = parseHTML(bundled);
+        const sceneImage = inlineAssets
+          ? inlinedAs("image/png", "scene-red-image")
+          : "scenes/hero%2Cred.png";
+        const rootImage = inlineAssets ? inlinedAs("image/png", "root-image") : "assets/root.png";
+        expect(document.getElementById("photo")?.getAttribute("srcset")).toBe(
+          `${sceneImage}${inlineAssets ? "#sprite" : "?v=2#sprite"} 1x, ${dataUrl} 2x`,
+        );
+        expect(document.getElementById("srcset-only")?.getAttribute("srcset")).toBe(
+          `${sceneImage} 1x, ${rootImage} 2x`,
+        );
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }

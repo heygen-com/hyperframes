@@ -37,6 +37,7 @@ interface PlayerProps {
   portrait?: boolean;
   style?: React.CSSProperties;
   suppressLoadingOverlay?: boolean;
+  loadingUi?: "studio" | "host";
   noLoadTimeout?: boolean;
 }
 
@@ -87,6 +88,9 @@ function enableInteractiveIframe(player: HyperframesPlayerElement): void {
   container?.style.setProperty("pointer-events", "auto");
   iframe?.style.setProperty("pointer-events", "auto");
 }
+
+const studioDraws = (wait: boolean, loadingUi: PlayerProps["loadingUi"]) =>
+  wait && loadingUi !== "host";
 
 function isPreviewMediaElement(el: Element): el is HTMLMediaElement {
   const tagName = el.tagName.toLowerCase();
@@ -156,6 +160,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       style,
       suppressLoadingOverlay,
       noLoadTimeout,
+      ...host
     },
     ref,
   ) => {
@@ -470,16 +475,18 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       return () => clearTimeout(timer);
     }, [projectId]);
 
-    const showCompositionOverlay =
+    const compositionWaitShown =
       !suppressLoadingOverlay &&
       !compositionOverlayDeferred &&
       shouldShowCompositionLoadingOverlay(compositionLoading);
-    const showAssetOverlay =
-      assetOverlayVisible && !shaderTransitionLoading && !showCompositionOverlay && !previewError;
+    const assetWaitShown =
+      assetOverlayVisible && !shaderTransitionLoading && !compositionWaitShown && !previewError;
+    const showCompositionOverlay = studioDraws(compositionWaitShown, host.loadingUi);
+    const showAssetOverlay = studioDraws(assetWaitShown, host.loadingUi);
 
     useEffect(() => {
-      onCompositionLoadingChange?.(showCompositionOverlay || showAssetOverlay);
-    }, [onCompositionLoadingChange, showCompositionOverlay, showAssetOverlay]);
+      onCompositionLoadingChange?.(compositionWaitShown || assetWaitShown);
+    }, [onCompositionLoadingChange, compositionWaitShown, assetWaitShown]);
 
     return (
       <div

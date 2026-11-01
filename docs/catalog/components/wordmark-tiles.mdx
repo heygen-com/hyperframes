@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Wordmark Tiles</h1>
+  <p>A wordmark resolves from deterministic color noise into correctly cropped glyph tiles through a spatially modulated GSAP wave.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/wordmark-tiles.json"
   compositionId="wordmark-tiles"
   compositionSrc="compositions/components/wordmark-tiles.html"
   title="Wordmark Tiles"
-  description="A wordmark resolves from deterministic color noise into correctly cropped glyph tiles through a spatially modulated GSAP wave."
   variables={[{"id":"text","type":"string","role":"content","label":"Wordmark","description":"Text resolved by the tile wave.","default":"LAUNCH","maxLength":12},{"id":"columns","type":"number","role":"layout","label":"Columns","description":"Number of columns in the wordmark tile grid.","default":12,"min":8,"max":14,"step":1},{"id":"waveStagger","type":"number","role":"motion","label":"Wave stagger","description":"Delay between tile reveals in spatial wave order.","default":40,"min":15,"max":50,"step":1,"unit":"ms"}]}
   meta={{"category":"Typography & Text","badge":"Stable","codeLines":360}}
   attribution={{"path":"registry/components/wordmark-tiles","tags":["typography","wordmark","tiles","raster","reveal"]}}
@@ -395,7 +399,9 @@ That writes one file: `compositions/components/wordmark-tiles.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -436,6 +442,4 @@ Tagged `typography` `wordmark` `tiles` `raster` `reveal`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

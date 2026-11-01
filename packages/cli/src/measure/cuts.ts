@@ -12,6 +12,14 @@ const SOFT_ALONE = 4;
 const CONFIRM_LEVEL = 6;
 const CONFIRM_SHARE = 0.5;
 const NEIGHBOURS = 12;
+const HELD_CHANGE = 0.5;
+const MIN_MOVING_BURSTS = 4;
+const HELD_SHARE = 0.6;
+const HELD_RATIO = 3;
+const MAX_CUT_FRAMES = 3;
+const FLASH_FRAMES = 4;
+const RETURNED = 0.4;
+const SAME_TONES = 0.8;
 
 export interface Cut {
   frame: number;
@@ -20,6 +28,8 @@ export interface Cut {
   /** Its largest change, in mean grey levels. */
   change: number;
   soft?: true;
+  /** Not a new shot: a light flash (the picture comes back) or a whip, a fast move or a dissolve. Absent for a cut. */
+  kind?: "flash" | "fast";
 }
 
 /** Every frame of ffmpeg's `input` (after `filters`) as SIG_W x SIG_H grey levels. */
@@ -36,17 +46,28 @@ export function frameChanges(frames: Uint8Array[]): number[] {
   return frames.map((f, i) => (i ? meanAbsDiff(frames[i - 1]!, f) : 0));
 }
 
-const neighbours = (diffs: number[], i: number) =>
-  diffs.slice(Math.max(1, i - NEIGHBOURS), i).concat(diffs.slice(i + 1, i + NEIGHBOURS + 1));
+const neighbours = (diffs: number[], i: number, end = i + 1) =>
+  diffs.slice(Math.max(1, i - NEIGHBOURS), i).concat(diffs.slice(end, end + NEIGHBOURS));
+
+const moving = (around: number[]) => around.filter((d) => d >= HELD_CHANGE);
+
+/** Animation on twos: the picture moves and holds in turn, so the median reads as no motion at all. */
+const isHeld = (around: number[]) => {
+  const bursts = around.filter((d, i) => d >= HELD_CHANGE && (around[i - 1] ?? 0) < HELD_CHANGE);
+  return bursts.length >= MIN_MOVING_BURSTS && moving(around).length <= HELD_SHARE * around.length;
+};
+
+const typicalOf = (around: number[]) =>
+  Math.max(1, median(isHeld(around) ? moving(around) : around));
 
 export function cutsIn(diffs: number[]): Cut[] {
   const hits = diffs.flatMap((d, i): { frame: number; change: number; soft?: true }[] => {
     if (i === 0) return [];
     const around = neighbours(diffs, i);
-    const typical = Math.max(1, median(around));
-    if (d >= CUT_LEVEL && d >= CUT_RATIO * typical) return [{ frame: i, change: d }];
+    const ratio = isHeld(around) ? HELD_RATIO : CUT_RATIO;
+    if (d >= CUT_LEVEL && d >= ratio * typicalOf(around)) return [{ frame: i, change: d }];
     const alone = d >= SOFT_ALONE * Math.max(0, ...around);
-    return d >= SOFT_LEVEL && d >= SOFT_RATIO * typical && alone
+    return d >= SOFT_LEVEL && d >= SOFT_RATIO * Math.max(1, median(around)) && alone
       ? [{ frame: i, change: d, soft: true }]
       : [];
   });
@@ -62,9 +83,43 @@ export function cutsIn(diffs: number[]): Cut[] {
   return out;
 }
 
+const tones = (frame: Uint8Array) => {
+  const bins = new Array<number>(16).fill(0);
+  for (const level of frame) bins[level >> 4]!++;
+  return bins.map((n) => n / frame.length);
+};
+
+/** The share of pixels two pictures have in common by tone, wherever they sit in the frame. */
+const sharedTones = (a: Uint8Array, b: Uint8Array) => {
+  const after = tones(b);
+  return tones(a).reduce((sum, share, bin) => sum + Math.min(share, after[bin]!), 0);
+};
+
+/** Every change that reads as a cut, each marked a flash or a fast move when it is not a new shot. */
+export function classifiedCuts(frames: Uint8Array[]): Cut[] {
+  const diffs = frameChanges(frames);
+  return cutsIn(diffs).map((c) => {
+    const end = c.frame + c.frames;
+    const back = (a: number, b: number) =>
+      frames[a] && frames[b] ? meanAbsDiff(frames[a]!, frames[b]!) < RETURNED * c.change : false;
+    if (c.frames > MAX_CUT_FRAMES) {
+      const before = frames[c.frame - 1]!;
+      const whipKeepsTones = frames
+        .slice(c.frame, end + 1)
+        .every((f) => sharedTones(before, f) >= SAME_TONES);
+      const sameShot = isHeld(neighbours(diffs, c.frame, end)) || whipKeepsTones;
+      return sameShot ? { ...c, kind: "fast" as const } : c;
+    }
+    const returns = Array.from({ length: FLASH_FRAMES }, (_, k) => k + 1).some(
+      (k) => back(c.frame - 1, end - 1 + k) || back(c.frame - k, end),
+    );
+    return returns ? { ...c, kind: "flash" as const } : c;
+  });
+}
+
 /** The frame indexes where a new shot starts, each with its change and length. */
 export function findCuts(frames: Uint8Array[]): Cut[] {
-  return cutsIn(frameChanges(frames));
+  return classifiedCuts(frames).filter((c) => !c.kind);
 }
 
 /**
@@ -77,7 +132,7 @@ export function confirmsCut(diffs: number[], cut: Cut): boolean {
     if (i < 1 || d === undefined) return false;
     return (
       d >= Math.max(CONFIRM_LEVEL, CONFIRM_SHARE * cut.change) &&
-      d >= CUT_RATIO * Math.max(1, median(neighbours(diffs, i)))
+      d >= CUT_RATIO * typicalOf(neighbours(diffs, i))
     );
   });
 }

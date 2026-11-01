@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { findFFmpeg } from "../browser/ffmpeg.js";
+import { probeVideo } from "../measure/media.js";
 
 vi.mock("../cloud/auth.js", () => ({
   resolveCloudAuthHeaders: async () => ({ "x-api-key": "k" }),
@@ -20,7 +21,8 @@ vi.mock("../cloud/upload.js", () => ({
 
 vi.stubEnv("HEYGEN_API_KEY", "k");
 
-const { checkRequest, generate, parseMask, urlOf } = await import("./generate.js");
+const { checkRequest, foldShort, generate, parseMask, structureRatio, urlOf } =
+  await import("./generate.js");
 const { checkLimit, creditsOf, priceOf } = await import("./pricing.js");
 const ffmpeg = findFFmpeg();
 const project = mkdtempSync(join(tmpdir(), "hf-generate-test-"));
@@ -156,6 +158,156 @@ describe("generate", () => {
     ).rejects.toThrow(/--first-frame cannot be used/);
   });
 
+  /** A static sine texture (smooth fills cannot copy it), with a white bar sliding through x 30..150 when `bar`. */
+  function textured(name: string, size: string, bar: boolean): string {
+    const path = join(project, name);
+    const slide = bar ? ",drawbox=x='30+t*40':y=100:w=20:h=30:color=white:t=fill" : "";
+    execFileSync(ffmpeg!, [
+      ...["-v", "error", "-y", "-f", "lavfi", "-i", `color=c=gray:s=${size}:r=30:d=3`],
+      ...[
+        "-vf",
+        `geq=lum='128+100*sin(X/3)*sin(Y/3)':cb=128:cr=128${slide}`,
+        "-pix_fmt",
+        "yuv420p",
+        path,
+      ],
+    ]);
+    return path;
+  }
+
+  const answers = (file: string) => {
+    const sent: Record<string, unknown>[] = [];
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (init?.body) sent.push(JSON.parse(String(init.body)));
+      if (url === "https://files.test/r.mp4") return new Response(readFileSync(file));
+      return json({
+        data: { id: "r1", status: "completed", video_url: "https://files.test/r.mp4" },
+      });
+    });
+    return sent;
+  };
+
+  it.skipIf(!ffmpeg)(
+    "fills a masked box with the picture behind moving text, not a smear",
+    async () => {
+      const guide = textured("slide.mp4", "180x320", true);
+      const sent = answers(guide);
+      await generate({
+        type: "video",
+        out: join(project, "assets/slide-out.mp4"),
+        prompt: "p",
+        motion: guide,
+        masks: [parseMask("30,90,120,50")],
+      });
+      const [video] = sent[0]!.reference_videos as { data: string }[];
+      const sentClip = join(project, "slide-sent.mp4");
+      writeFileSync(sentClip, Buffer.from(video!.data, "base64"));
+      const box = (f: string) =>
+        execFileSync(ffmpeg!, [
+          ...["-v", "error", "-ss", "1.5", "-i", f, "-frames:v", "1"],
+          ...["-vf", "crop=120:50:30:90,format=gray", "-f", "rawvideo", "-"],
+        ]);
+      const [got, clean] = [box(sentClip), box(textured("slide-clean.mp4", "180x320", false))];
+      const diff = got.reduce((a, v, i) => a + Math.abs(v - clean[i]!), 0) / got.length;
+      expect(diff).toBeLessThan(12);
+    },
+  );
+
+  it("reads a box with more edges than its surroundings as structure", () => {
+    const flat = new Uint8Array(100 * 100).fill(100);
+    expect(structureRatio(flat, 100, [40, 40, 20, 20])).toEqual({ inside: 0, ring: 0 });
+    for (let y = 40; y < 60; y++)
+      for (let x = 40; x < 60; x++) flat[y * 100 + x] = (x + y) % 2 ? 255 : 0;
+    const { inside, ring } = structureRatio(flat, 100, [40, 40, 20, 20]);
+    expect(inside).toBeGreaterThan(100);
+    expect(inside).toBeGreaterThan(10 * ring);
+  });
+
+  it.skipIf(!ffmpeg)(
+    "says so when the result still shows structure inside a masked box",
+    async () => {
+      const guide = textured("flatguide.mp4", "180x320", false);
+      const busy = join(project, "busy.mp4");
+      execFileSync(ffmpeg!, [
+        ...["-v", "error", "-y", "-f", "lavfi", "-i", "color=c=gray:s=180x320:r=30:d=1"],
+        ...[
+          "-vf",
+          "geq=lum='if(between(X,30,150)*between(Y,90,140),128+120*sin(X*2)*sin(Y*2),128)':cb=128:cr=128",
+        ],
+        ...["-pix_fmt", "yuv420p", busy],
+      ]);
+      answers(busy);
+      const flatMask = parseMask("30,90,120,50");
+      const r = await generate({
+        type: "video",
+        out: join(project, "assets/busy-out.mp4"),
+        prompt: "p",
+        motion: guide,
+        masks: [flatMask],
+        aspect: "9:16",
+      });
+      expect(r.notes?.join(" ")).toContain("mask 30,90,120,50 still shows structure");
+    },
+  );
+
+  it.skipIf(!ffmpeg)(
+    "crops a 1344x768 answer to the requested 16:9, never stretches it",
+    async () => {
+      answers(textured("wide.mp4", "1344x768", false));
+      const r = await generate({
+        type: "video",
+        out: join(project, "assets/wide-out.mp4"),
+        prompt: "p",
+      });
+      const { width, height } = probeVideo(r.out);
+      expect([width, height]).toEqual([1344, 756]);
+      expect(r.notes?.[0]).toBe(
+        "HeyGen returned 1344x768 for 16:9; cropped to 1344x756 (centre), not stretched",
+      );
+    },
+  );
+
+  const still = (name: string, size: string) => {
+    const path = join(project, name);
+    execFileSync(ffmpeg!, [
+      ...["-v", "error", "-y", "-f", "lavfi", "-i", `color=c=red:s=${size}`],
+      ...["-frames:v", "1", path],
+    ]);
+    return path;
+  };
+
+  it.skipIf(!ffmpeg)("crops to the first frame's shape when no --aspect is passed", async () => {
+    answers(textured("first-wide.mp4", "1344x768", false));
+    const r = await generate({
+      type: "video",
+      out: join(project, "assets/first-out.mp4"),
+      prompt: "p",
+      firstFrame: still("first.png", "120x90"),
+    });
+    const { width, height } = probeVideo(r.out);
+    expect([width, height]).toEqual([1024, 768]);
+  });
+
+  it.skipIf(!ffmpeg)("keeps a portrait shot from a phone photo stored sideways", async () => {
+    const first = still("phone.jpg", "160x90");
+    const jpeg = readFileSync(first);
+    // An Exif segment with Orientation=6: the file holds landscape pixels, the picture is portrait.
+    const exif = "ffe10022457869660000" + "4d4d002a00000008000101120003000000010006000000000000";
+    writeFileSync(
+      first,
+      Buffer.concat([jpeg.subarray(0, 2), Buffer.from(exif, "hex"), jpeg.subarray(2)]),
+    );
+    answers(textured("first-tall.mp4", "90x160", false));
+    const r = await generate({
+      type: "video",
+      out: join(project, "assets/phone-out.mp4"),
+      prompt: "p",
+      firstFrame: first,
+    });
+    const { width, height } = probeVideo(r.out);
+    expect([width, height]).toEqual([90, 160]);
+  });
+
   it.skipIf(!ffmpeg)("blanks the motion clip's masked regions before sending it", async () => {
     // A guide with white letters at 40,100 over a moving picture; the mask covers them for its first 0.5 s.
     const guide = join(project, "titled.mp4");
@@ -232,7 +384,7 @@ describe("generate", () => {
     };
     await expect(generate(request)).rejects.toMatchObject({
       message: `--motion ${guide} has a cut at 1.00 s`,
-      fix: "guide has a cut at 1.00 s: generate 0–1.00 s and 1.00–2.00 s as two shots, each with its own --motion clip",
+      fix: "guide has a cut at 1.00 s: generate 0–1.00 s and 1.00–2.00 s as two shots, each with its own --motion clip, or pass --allow-cuts for a guide you have checked",
     });
     expect(fetched).not.toHaveBeenCalled();
     expect(existsSync(request.out)).toBe(false);
@@ -473,5 +625,19 @@ describe("generate", () => {
     expect(() => checkLimit(shot, 30)).toThrow("about 108 credits, over --max-credits 30");
     expect(() => checkLimit(null, 30)).toThrow("cannot be priced ahead");
     expect(() => checkLimit(null, undefined)).not.toThrow();
+  });
+});
+
+describe("foldShort", () => {
+  it("folds a piece of a few frames into its neighbour", () => {
+    expect(foldShort([4, 4.1, 8], 10)).toEqual([4.1, 8]);
+    expect(foldShort([0.1, 5], 10)).toEqual([5]);
+    expect(foldShort([5, 9.9], 10)).toEqual([5]);
+    expect(foldShort([2, 2.05, 2.1, 6], 10)).toEqual([2.1, 6]);
+  });
+
+  it("keeps a real cut near the guide's edge, which would land inside a paid shot", () => {
+    expect(foldShort([5, 9.7], 10)).toEqual([5, 9.7]);
+    expect(foldShort([0.3], 10)).toEqual([0.3]);
   });
 });

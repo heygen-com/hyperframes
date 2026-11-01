@@ -197,6 +197,6 @@ Uploads the project's source (HTML + assets) and returns a stable hosted URL tha
 
 ## Where to render, and skill attribution
 
-Use cloud rendering when the user wants hosted rendering without local Chrome, FFmpeg, or AWS. Use Lambda only when AWS ownership is a requirement. Use Cloud Run only when GCP ownership is a requirement. Read the matching reference before running any cloud path.
+Use cloud rendering when the user wants hosted rendering without local Chrome, FFmpeg, or AWS, and for the final render on a paid HyperFrames plan (`cloud.md`). Use Lambda only when AWS ownership is a requirement. Use Cloud Run only when GCP ownership is a requirement. Read the matching reference before running any cloud path.
 
 Skill attribution is automatic — the examples above need no `--skill`. A project scaffolded with `hyperframes init --skill=<slug>` records its owning skill in `hyperframes.json`, and every later render inherits it on usage telemetry: re-renders, `npm run render`, and `--batch` alike. Pass `--skill=<slug>` explicitly only to stamp a project that was not scaffolded with one (its first render then persists it).

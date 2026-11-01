@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Hand-Drawn Arrow</h1>
+  <p>Wobbled draw-on arrow with straight, gentle, and swoop curve poses, a four-way stroke texture matrix (plain/soft/sharp/spray), and a travel-aligned head-arrival stretch pulse with spring recovery; boils while on screen</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/hw-arrow.json"
   compositionId="hw-arrow"
   compositionSrc="compositions/components/hw-arrow.html"
   title="Hand-Drawn Arrow"
-  description="Wobbled draw-on arrow with straight, gentle, and swoop curve poses, a four-way stroke texture matrix (plain/soft/sharp/spray), and a travel-aligned head-arrival stretch pulse with spring recovery; boils while on screen"
   variables={[]}
   meta={{"category":"Effects","badge":"Stable","codeLines":671}}
   attribution={{"path":"registry/components/hw-arrow","tags":["handwritten","annotation","arrow","overlay"]}}
@@ -706,7 +710,9 @@ That writes `compositions/components/hw-arrow.html`, plus 1 supporting file unde
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -725,6 +731,4 @@ Tagged `handwritten` `annotation` `arrow` `overlay`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

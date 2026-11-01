@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Lower Third — Clean Bar</h1>
+  <p>Minimal white-card lower third for podcasts/interviews: accent tab, name + role, clip-wipe entrance</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/lt-clean-bar.json"
   compositionId="lt-clean-bar"
   compositionSrc="compositions/lt-clean-bar.html"
   title="Lower Third — Clean Bar"
-  description="Minimal white-card lower third for podcasts/interviews: accent tab, name + role, clip-wipe entrance"
   variables={[]}
   meta={{"duration":4.8,"width":1920,"height":1080,"category":"Lower Thirds","badge":"Stable","codeLines":111}}
   attribution={{"path":"registry/blocks/lt-clean-bar","tags":["lower-third","overlay","podcast","interview"]}}
@@ -146,7 +150,9 @@ That writes one file: `compositions/lt-clean-bar.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -177,6 +183,4 @@ Tagged `lower-third` `overlay` `podcast` `interview`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

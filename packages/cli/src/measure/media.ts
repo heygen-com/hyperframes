@@ -2,11 +2,11 @@
 // Ported from the Studio's viral-clone media.mjs and tool.mjs.
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
 
 const MAX_BUFFER = 1 << 30;
-/** ffmpeg's own flags on every run. Inline before a spread, the ffprobe `--` contract test reads them as a probe wrapper. */
+/** ffmpeg flags on every run. Inline before a spread, the ffprobe `--` contract test reads them as a probe wrapper. */
 const FFMPEG_QUIET = ["-nostdin", "-v", "error"];
 
 /** An error whose message says what to run instead; commands print `fix` as its own line. */
@@ -367,4 +367,11 @@ export function pearson(a: number[], b: number[]): number | null {
     db += (b[i]! - mb) ** 2;
   }
   return da && db ? num / Math.sqrt(da * db) : null;
+}
+
+export function projectOf(from: string): string | null {
+  for (let dir = resolve(from); ; dir = dirname(dir)) {
+    if (existsSync(join(dir, "index.html"))) return dir;
+    if (dirname(dir) === dir) return null;
+  }
 }

@@ -1,5 +1,4 @@
 // The HyperFrames plan and credits the signed-in account holds, and the web pages that change them.
-import { oauthEnvironment } from "../auth/config.js";
 import { resolveCloudAuthHeaders, resolveCloudBaseUrl } from "../cloud/auth.js";
 
 export interface Plan {
@@ -47,10 +46,9 @@ export async function readPlan(): Promise<Plan | null> {
   }
 }
 
-const webBase = () =>
-  oauthEnvironment() === "dev" ? "https://dev.hyperframes.dev" : "https://hyperframes.studio";
+const webBase = () => "https://hyperframes.studio";
 const plansUrl = () => process.env["HYPERFRAMES_PLANS_URL"] || `${webBase()}/pricing`;
-const creditsUrl = () => process.env["HYPERFRAMES_CREDITS_URL"] || `${webBase()}/account/plan`;
+const creditsUrl = () => process.env["HYPERFRAMES_CREDITS_URL"] || `${webBase()}/pricing`;
 
 /** A plans or credits page link with what the web side reads: `from=cli`, the credits needed, the waiting step. */
 export function pageUrl(

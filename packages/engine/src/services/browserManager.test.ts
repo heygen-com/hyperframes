@@ -102,10 +102,17 @@ describe("BeginFrame capability probe", () => {
       }),
     } as unknown as Browser;
 
-    const result = await _probeBeginFrameSupportForTests(browser, 120);
+    vi.useFakeTimers();
+    try {
+      const pending = _probeBeginFrameSupportForTests(browser, 120);
+      await vi.advanceTimersByTimeAsync(200);
+      const result = await pending;
 
-    expect(result.supported).toBe(false);
-    expect(result.timedOut).toBe(false);
+      expect(result.supported).toBe(false);
+      expect(result.timedOut).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("keeps trying a renderer that has not drawn its first surface yet, up to the probe deadline", async () => {

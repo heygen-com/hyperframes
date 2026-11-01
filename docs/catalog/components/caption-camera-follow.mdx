@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Camera Follow Captions</h1>
+  <p>One sentence written across a world far larger than the frame. Each word is sized against everything already written, so the block grows geometrically and the camera pulls back at a steady rate to keep landing the new word at the same size. Old words stay lit and simply become small.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/caption-camera-follow.json"
   compositionId="caption-camera-follow"
   compositionSrc="compositions/components/caption-camera-follow.html"
   title="Camera Follow Captions"
-  description="One sentence written across a world far larger than the frame. Each word is sized against everything already written, so the block grows geometrically and the camera pulls back at a steady rate to keep landing the new word at the same size. Old words stay lit and simply become small."
   variables={[{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Colour of the highlighted words. gold is the original.","default":"gold","options":[{"value":"gold","label":"Gold"},{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"framing","type":"enum","role":"style","label":"Framing","description":"Air the camera leaves around the written block, so the words land larger or smaller in frame.","default":"standard","options":[{"value":"tight","label":"Tight"},{"value":"standard","label":"Standard"},{"value":"wide","label":"Wide"}]},{"id":"smear","type":"enum","role":"style","label":"Smear","description":"Scales the radial motion blur each camera move carries, from none to a heavy streak.","default":"standard","options":[{"value":"off","label":"Off"},{"value":"subtle","label":"Subtle"},{"value":"standard","label":"Standard"},{"value":"heavy","label":"Heavy"}]}]}
   meta={{"category":"Captions","badge":"Stable","codeLines":431}}
   attribution={{"path":"registry/components/caption-camera-follow","tags":["captions","caption-style","camera","typography","motion-primitive","portrait"]}}
@@ -466,7 +470,9 @@ That writes one file: `compositions/components/caption-camera-follow.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -507,6 +513,4 @@ Tagged `captions` `caption-style` `camera` `typography` `motion-primitive` `port
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

@@ -323,23 +323,20 @@ describe("the audio the playhead follows", () => {
     expect(window.__player!.getTime()).toBeGreaterThan(1.4);
   });
 
-  it("holds the playhead for a playing clip that has no data, then lets the picture run on", async () => {
-    const stuck = await playStarved();
+  it("holds the playhead for a playing clip that has no data until it has some", async () => {
+    await playStarved();
     stepFrames(1);
     const held = window.__player!.getTime();
-    stepFrames(60);
+    stepFrames(5 * 60);
     expect(window.__player!.getTime()).toBe(held);
-    stepFrames(4 * 60); // past the 3 s hold
-    expect(window.__player!.getTime()).toBeGreaterThan(0.5);
-    expect(stuck.paused).toBe(false);
   });
 
-  it("brings a clip whose data arrives late in where the playhead is, without moving it back", async () => {
+  it("plays on from where it held once a clip's late data arrives", async () => {
     const late = await playStarved();
     stepFrames(5 * 60);
     const before = window.__player!.getTime();
-    expect(before).toBeGreaterThan(1);
-    late.readyState = 4; // its data arrives and it plays on from its start, until media sync seeks it
+    expect(before).toBeLessThan(0.1);
+    late.readyState = 4;
     for (let frame = 0; frame < 30; frame++) {
       late.currentTime += 1 / 60;
       stepFrames(1);

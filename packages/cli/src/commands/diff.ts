@@ -2,7 +2,7 @@ import { basename, extname, join, resolve } from "node:path";
 import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
-import { failCommand, setCommandExitCode } from "../utils/commandResult.js";
+import { failCommand, scheduleCliExit, setCommandExitCode } from "../utils/commandResult.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { withMeta } from "../utils/updateCheck.js";
 import {
@@ -212,6 +212,7 @@ export default defineCommand({
   // fallow-ignore-next-line complexity
   async run({ args, rawArgs }) {
     const json = args.json === true;
+    let exitCode = 0;
     try {
       if (args.at !== undefined && args.range !== undefined)
         throw new Fix("--at and --range both given", "pass one of them");
@@ -243,14 +244,20 @@ export default defineCommand({
       });
       if (json) console.log(formatJson(withMeta({ ok: true, ...result })));
       else printHuman(result);
-      if (!result.pass) setCommandExitCode(1);
+      if (!result.pass) {
+        exitCode = 1;
+        setCommandExitCode(1);
+      }
     } catch (err) {
+      exitCode = 1;
       const fix = err instanceof Fix ? err.fix : undefined;
       const message = normalizeErrorMessage(err);
       if (json)
         console.log(formatJson(withMeta({ ok: false, error: message, ...(fix ? { fix } : {}) })));
       else console.error(`${c.error("✗")} ${message}${fix ? `\n  Fix: ${fix}` : ""}`);
       failCommand();
+    } finally {
+      scheduleCliExit(exitCode);
     }
   },
 });

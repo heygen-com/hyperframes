@@ -7,11 +7,15 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>iOS 26 Liquid Glass Home Screen</h1>
+  <p>3D iPhone with a normal iOS 26 home screen, liquid glass app icons, shader wallpaper, dock, and fluid glass notifications that drop from the status area onto a GLTF device model.</p>
+</div>
+
 <CatalogDetail
   compositionId="ios26-liquid-glass"
   compositionSrc="compositions/ios26-liquid-glass.html"
   title="iOS 26 Liquid Glass Home Screen"
-  description="3D iPhone with a normal iOS 26 home screen, liquid glass app icons, shader wallpaper, dock, and fluid glass notifications that drop from the status area onto a GLTF device model."
   variables={[]}
   meta={{"duration":15,"width":1920,"height":1080,"category":"HTML-in-Canvas","badge":"Experimental","codeLines":1342}}
   attribution={{"path":"registry/blocks/ios26-liquid-glass","tags":["liquid-glass-html-in-canvas","webgpu","3d","iphone","ios26","notifications","gltf","html-in-canvas"]}}
@@ -1378,7 +1382,9 @@ That writes `compositions/ios26-liquid-glass.html`, plus 28 supporting files und
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 <Danger>
   Live preview needs the `chrome://flags/#canvas-draw-element` flag switched on.
@@ -1415,6 +1421,4 @@ Tagged `liquid-glass-html-in-canvas` `webgpu` `3d` `iphone` `ios26` `notificatio
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

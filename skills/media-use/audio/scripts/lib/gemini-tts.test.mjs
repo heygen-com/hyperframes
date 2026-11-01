@@ -123,6 +123,16 @@ test("HTTP and network failures stay actionable without leaking the key", async 
     },
   });
   assert.match(timeout.error, /timed out/);
+  const socket = await synthesizeGemini(args, {
+    fetchImpl: async () => {
+      const cause = Object.assign(new Error("other side closed test-gemini-key"), {
+        code: "UND_ERR_SOCKET",
+      });
+      throw new TypeError("fetch failed", { cause });
+    },
+  });
+  assert.match(socket.error, /fetch failed \(UND_ERR_SOCKET: other side closed/);
+  assert.ok(!socket.error.includes("test-gemini-key"));
   assert.equal(existsSync(args.wavAbs), false);
 });
 

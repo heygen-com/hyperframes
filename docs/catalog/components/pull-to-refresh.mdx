@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Pull to Refresh</h1>
+  <p>A mobile list pulls through nonlinear rubber-band resistance, arms at a threshold, commits to a bounded loading indicator, then snaps exactly back to rest.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/pull-to-refresh.json"
   compositionId="pull-to-refresh"
   compositionSrc="compositions/components/pull-to-refresh.html"
   title="Pull to Refresh"
-  description="A mobile list pulls through nonlinear rubber-band resistance, arms at a threshold, commits to a bounded loading indicator, then snaps exactly back to rest."
   variables={[{"id":"pullDistance","type":"number","role":"layout","label":"Pull distance","description":"Raw pull distance before nonlinear rubber-band resistance.","default":120,"min":60,"max":220,"step":5},{"id":"spinnerStyle","type":"enum","role":"content","label":"Spinner style","description":"Refresh indicator geometry and loading motion.","default":"ring","options":[{"value":"arrow","label":"Arrow"},{"value":"dots","label":"Dots"},{"value":"ring","label":"Ring"}]}]}
   meta={{"category":"Product Demo","badge":"Stable","codeLines":679}}
   attribution={{"path":"registry/components/pull-to-refresh","tags":["pointer","pointers","mobile","gesture","interaction","refresh","demonstrate"]}}
@@ -714,7 +718,9 @@ That writes one file: `compositions/components/pull-to-refresh.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -754,6 +760,4 @@ Tagged `pointer` `pointers` `mobile` `gesture` `interaction` `refresh` `demonstr
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

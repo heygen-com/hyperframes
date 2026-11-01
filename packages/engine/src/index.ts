@@ -221,6 +221,7 @@ export {
 // ── Media processing ───────────────────────────────────────────────────────────
 export {
   parseVideoElements,
+  hasGradedCanvas,
   parseImageElements,
   extractVideoFramesRange,
   extractAllVideoFrames,
@@ -266,7 +267,10 @@ export {
   isVideoFrameFormat,
   EXTRACT_CACHE_MIN_AGE_MS,
   sdrCanvasColourFilters,
+  buildVideoLayerInput,
+  type VideoLayerInput,
 } from "./services/videoFrameExtractor.js";
+export { qualifyVideoLayer } from "./services/videoLayerPassthrough.js";
 export { isSelfOrAncestorHidden } from "./services/mediaHidden.js";
 export { directorySizeBytes, gcExtractionCache } from "./services/extractionCache.js";
 
@@ -381,7 +385,6 @@ export {
 export {
   _setDownloadFetchForTests,
   assertPublicHttpsUrl,
-  isBlockedNetworkHost,
   downloadToTemp,
   fetchPublicHttpsText,
   isHttpUrl,
@@ -392,6 +395,7 @@ export {
   type UrlDownloadTelemetry,
   type PublicHttpsTextOptions,
 } from "./utils/urlDownloader.js";
+export { isBlockedNetworkHost } from "./utils/networkPolicy.js";
 export {
   runFfmpeg,
   formatFfmpegError,
@@ -487,6 +491,7 @@ export {
   getHdrEncoderColorParams,
   analyzeCompositionHdr,
   findHdrAutoPromotion,
+  gradingKeepsSdr,
   formatHdrAutoPromotionWarning,
   sanitizeHdrAutoPromotionAsset,
   DEFAULT_HDR10_MASTERING,

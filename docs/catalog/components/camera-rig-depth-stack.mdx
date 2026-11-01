@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Camera Rig Depth Stack</h1>
+  <p>A 3D camera-rig-style card stack with depth, parallax, and focus shift.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/camera-rig-depth-stack.json"
   compositionId="camera-rig-depth-stack"
   compositionSrc="compositions/components/camera-rig-depth-stack.html"
   title="Camera Rig Depth Stack"
-  description="A 3D camera-rig-style card stack with depth, parallax, and focus shift."
   variables={[]}
   meta={{"category":"Effects","badge":"Stable","codeLines":63}}
   attribution={{"path":"registry/components/camera-rig-depth-stack","tags":["advanced-motion","hyperframes-native"]}}
@@ -98,7 +102,9 @@ That writes one file: `compositions/components/camera-rig-depth-stack.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -118,6 +124,4 @@ Tagged `advanced-motion` `hyperframes-native`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

@@ -27,6 +27,7 @@ import { dirname } from "path";
 import {
   type GpuEncoder,
   getCachedGpuEncoder,
+  getCachedNvencPresets,
   getGpuEncoderName,
   buildVideoToolboxRateControlArgs,
   mapPresetForGpuEncoder,
@@ -45,6 +46,7 @@ import {
 } from "../utils/sdrCaptureColor.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { fpsToFfmpegArg, fpsToNumber, type Fps } from "@hyperframes/core";
+import type { VideoLayerInput } from "./videoFrameExtractor.js";
 import { appendVp9CpuUsedArg } from "./vp9Options.js";
 import { appendSoftwareEncoderThreadsArg } from "./softwareEncoderThreads.js";
 import { appendRenderProvenanceArgs } from "../utils/renderProvenance.js";
@@ -170,6 +172,8 @@ export interface StreamingEncoderOptions {
   useGpu?: boolean;
   imageFormat?: "jpeg" | "png";
   hdr?: { transfer: import("../utils/hdr.js").HdrTransfer };
+  /** A source video ffmpeg composites under the piped RGBA frames; see `buildVideoLayerInput`. */
+  videoLayer?: VideoLayerInput;
   /** When set, use rawvideo input instead of image2pipe. For HDR PQ-encoded frames. */
   rawInputFormat?: "rgb48le";
   /**
@@ -191,6 +195,8 @@ export interface StreamingEncoderResult {
   error?: string;
   /** Stable machine-readable cause for failures safe to retry on a fresh host. */
   failureReason?: "external_interruption";
+  /** Total time `writeFrame` waited for FFmpeg to drain its stdin pipe. */
+  drainWaitMs?: number;
 }
 
 export interface StreamingEncoder {
@@ -228,6 +234,7 @@ export function buildStreamingArgs(
   options: StreamingEncoderOptions,
   outputPath: string,
   gpuEncoder: GpuEncoder = null,
+  nvencPresets?: ReadonlySet<string>,
 ): string[] {
   const {
     fps,
@@ -285,9 +292,19 @@ export function buildStreamingArgs(
       "-",
     );
   }
+  if (options.videoLayer) args.push(...options.videoLayer.inputArgs);
   args.push("-r", fpsToFfmpegArg(fps));
 
   const shouldUseGpu = useGpu && gpuEncoder !== null;
+  if (
+    options.videoLayer &&
+    (imageFormat !== "png" ||
+      options.rawInputFormat ||
+      shouldUseGpu ||
+      (codec !== "h264" && codec !== "h265"))
+  ) {
+    throw new Error("videoLayer needs software h264/h265 and PNG frames");
+  }
   appendRateCapArgs(args, options);
 
   if (codec === "h264" || codec === "h265") {
@@ -297,7 +314,7 @@ export function buildStreamingArgs(
 
       switch (gpuEncoder) {
         case "nvenc":
-          args.push("-preset", mapPresetForGpuEncoder("nvenc", preset));
+          args.push("-preset", mapPresetForGpuEncoder("nvenc", preset, nvencPresets));
           if (bitrate) args.push("-b:v", bitrate);
           else args.push("-cq", String(quality));
           break;
@@ -448,6 +465,20 @@ export function buildStreamingArgs(
       if (vfIdx !== -1) {
         args[vfIdx + 1] = `${frameFilter},${args[vfIdx + 1]}`;
       }
+    } else if (options.videoLayer) {
+      const video = `[1:v]${options.videoLayer.filters.join(",")},format=gbrp[v]`;
+      const tail = withEvenDimensionPad(
+        SDR_RGB_TO_TAGGED_BT709_FILTER,
+        pixelFormat,
+        options.width,
+        options.height,
+      );
+      args.push(
+        "-filter_complex",
+        `${video};[0:v]format=rgba[o];[v][o]overlay=eof_action=endall:format=gbrp,${tail}[vout]`,
+        "-map",
+        "[vout]",
+      );
     } else {
       // Pad odd dimensions up to even so 4:2:0 encoders (software and
       // nvenc/videotoolbox/qsv/amf) don't abort with "height not divisible by 2".
@@ -492,7 +523,8 @@ export async function spawnStreamingEncoder(
     gpuEncoder = await getCachedGpuEncoder();
   }
 
-  const args = buildStreamingArgs(options, outputPath, gpuEncoder);
+  const nvencPresets = gpuEncoder === "nvenc" ? await getCachedNvencPresets() : undefined;
+  const args = buildStreamingArgs(options, outputPath, gpuEncoder, nvencPresets);
 
   const ffmpeg: ChildProcess = spawn(getFfmpegBinary(), args, {
     stdio: ["pipe", "pipe", "pipe"],
@@ -585,6 +617,7 @@ export async function spawnStreamingEncoder(
   };
 
   let inputFrameIndex = 0;
+  let drainWaitMs = 0;
   const encoder: StreamingEncoder = {
     writeFrame: async (buffer: Buffer): Promise<boolean> => {
       const stdin = ffmpeg.stdin;
@@ -626,7 +659,9 @@ export async function spawnStreamingEncoder(
         return true;
       }
 
+      const drainStart = Date.now();
       const drainResult = await waitForDrainOrExit(stdin);
+      drainWaitMs += Date.now() - drainStart;
       if (drainResult !== "drain" || exitStatus !== "running") {
         return false;
       }
@@ -692,7 +727,7 @@ export async function spawnStreamingEncoder(
 
       const fileSize = existsSync(outputPath) ? statSync(outputPath).size : 0;
 
-      return { success: true, durationMs, fileSize };
+      return { success: true, durationMs, fileSize, drainWaitMs };
     },
 
     getExitStatus: () => exitStatus,

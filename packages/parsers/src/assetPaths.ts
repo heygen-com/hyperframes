@@ -19,6 +19,8 @@ export const CSS_URL_RE = /\burl\(\s*(["']?)([^)"'\s](?:[^)"']*[^)"'\s])?)\1\s*\
 /** Attributes that may contain relative asset paths. */
 export const PATH_ATTRS = ["src", "href"] as const;
 
+const URL_SCHEME_OF_TWO_OR_MORE_CHARS_RE = /^[a-z][a-z0-9+.-]+:/i;
+
 /** Returns true for URLs/prefixes that should never be rewritten. */
 export function isNonRelativeUrl(val: string): boolean {
   return (
@@ -28,7 +30,8 @@ export function isNonRelativeUrl(val: string): boolean {
     val.startsWith("//") ||
     val.startsWith("data:") ||
     val.startsWith("#") ||
-    val.startsWith("/")
+    val.startsWith("/") ||
+    URL_SCHEME_OF_TWO_OR_MORE_CHARS_RE.test(val)
   );
 }
 

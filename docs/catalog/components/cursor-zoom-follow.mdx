@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Zoom Follow Cursor</h1>
+  <p>Screen-recording auto-zoom: the camera pushes in toward each upcoming click, trails the cursor on a smooth spring, marks every click with a press and a ring, then eases back out to the full screen as the cursor leaves.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/cursor-zoom-follow.json"
   compositionId="cursor-zoom-follow"
   compositionSrc="compositions/components/cursor-zoom-follow.html"
   title="Zoom Follow Cursor"
-  description="Screen-recording auto-zoom: the camera pushes in toward each upcoming click, trails the cursor on a smooth spring, marks every click with a press and a ring, then eases back out to the full screen as the cursor leaves."
   variables={[{"id":"image","type":"image","role":"content","label":"Screenshot","description":"Your own screen capture. Leave empty for the built-in dashboard.","default":""},{"id":"zoom","type":"number","role":"style","label":"Zoom","default":1.8,"min":1.2,"max":2.6,"step":0.1},{"id":"click1_x","type":"number","role":"layout","label":"Click 1 X","default":68.5,"min":0,"max":100,"step":0.5,"unit":"%"},{"id":"click1_y","type":"number","role":"layout","label":"Click 1 Y","default":7.5,"min":0,"max":100,"step":0.5,"unit":"%"},{"id":"click2_x","type":"number","role":"layout","label":"Click 2 X","default":50,"min":0,"max":100,"step":0.5,"unit":"%"},{"id":"click2_y","type":"number","role":"layout","label":"Click 2 Y","default":48.5,"min":0,"max":100,"step":0.5,"unit":"%"},{"id":"click3_x","type":"number","role":"layout","label":"Click 3 X","default":90.5,"min":0,"max":100,"step":0.5,"unit":"%"},{"id":"click3_y","type":"number","role":"layout","label":"Click 3 Y","default":7.5,"min":0,"max":100,"step":0.5,"unit":"%"},{"id":"accent","type":"color","role":"style","label":"Ripple","default":"#0a84ff"}]}
   meta={{"category":"Cursors","badge":"Stable","codeLines":720}}
   attribution={{"path":"registry/components/cursor-zoom-follow","tags":["cursor","camera","zoom","screen-recording","click","product-demo"]}}
@@ -755,7 +759,9 @@ That writes one file: `compositions/components/cursor-zoom-follow.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -802,6 +808,4 @@ Tagged `cursor` `camera` `zoom` `screen-recording` `click` `product-demo`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

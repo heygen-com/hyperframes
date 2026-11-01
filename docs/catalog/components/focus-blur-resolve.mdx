@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Focus Blur Resolve</h1>
+  <p>A premium focus pull from heavy blur to crisp text, then a soft blur-out exit.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/focus-blur-resolve.json"
   compositionId="focus-blur-resolve"
   compositionSrc="compositions/components/focus-blur-resolve.html"
   title="Focus Blur Resolve"
-  description="A premium focus pull from heavy blur to crisp text, then a soft blur-out exit."
   variables={[{"id":"tone","type":"enum","role":"style","label":"Tone","description":"Word colour: ink for light frames, paper for dark ones, accent rides --brand.","default":"ink","options":[{"value":"ink","label":"Ink"},{"value":"paper","label":"Paper"},{"value":"accent","label":"Accent"}]},{"id":"size","type":"enum","role":"style","label":"Size","description":"Type size of the words, from a caption-scale line to a full display card.","default":"standard","options":[{"value":"compact","label":"Compact"},{"value":"standard","label":"Standard"},{"value":"display","label":"Display"}]},{"id":"blur","type":"enum","role":"style","label":"Blur","description":"Scales the blur radius the timeline drives, so the focus pull starts as a light haze or a full smear.","default":"standard","options":[{"value":"soft","label":"Soft"},{"value":"standard","label":"Standard"},{"value":"heavy","label":"Heavy"}]}]}
   meta={{"category":"Typography & Text","badge":"Stable","codeLines":91}}
   attribution={{"path":"registry/components/focus-blur-resolve","tags":["motion-primitive","typography"]}}
@@ -126,7 +130,9 @@ That writes one file: `compositions/components/focus-blur-resolve.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -168,6 +174,4 @@ Tagged `motion-primitive` `typography`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

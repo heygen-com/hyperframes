@@ -751,9 +751,11 @@ const signedStagedS3Url =
   "https://s3.example.com/upload?X-Amz-SignedHeaders=content-length;content-type;host;x-amz-server-side-encryption";
 
 describe("publishProjectArchive", () => {
-  it("uses the development publish service with the development login", () => {
+  it("takes the publish service from the environment under HYPERFRAMES_ENV=dev", () => {
     vi.stubEnv("HYPERFRAMES_ENV", "dev");
-    expect(getPublishApiBaseUrl()).toBe("https://api2.dev.heygen.com");
+    expect(getPublishApiBaseUrl()).toBe("https://api2.heygen.com");
+    vi.stubEnv("HEYGEN_API_URL", "https://api2.example.test");
+    expect(getPublishApiBaseUrl()).toBe("https://api2.example.test");
   });
 
   it("uploads through the staged publish flow and returns the stable project URL", async () => {

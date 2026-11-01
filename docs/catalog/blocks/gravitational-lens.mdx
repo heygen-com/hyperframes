@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Gravitational Lens</h1>
+  <p>Shader transition with gravitational lensing distortion</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/gravitational-lens.json"
   compositionId="gravitational-lens"
   compositionSrc="compositions/gravitational-lens.html"
   title="Gravitational Lens"
-  description="Shader transition with gravitational lensing distortion"
   variables={[]}
   meta={{"duration":4,"width":1920,"height":1080,"category":"Shader Transitions","badge":"Stable","codeLines":365}}
   attribution={{"path":"registry/blocks/gravitational-lens","tags":["transition","shader"]}}
@@ -400,7 +404,9 @@ That writes one file: `compositions/gravitational-lens.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -431,6 +437,4 @@ Tagged `transition` `shader`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

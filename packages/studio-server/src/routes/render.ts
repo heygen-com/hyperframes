@@ -1,7 +1,16 @@
 import type { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
-import { existsSync, lstatSync, readFileSync, unlinkSync, readdirSync, statSync } from "node:fs";
+import {
+  createReadStream,
+  existsSync,
+  lstatSync,
+  readFileSync,
+  unlinkSync,
+  readdirSync,
+  statSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
+import { Readable } from "node:stream";
 import type { StudioApiAdapter, RenderJobState } from "../types.js";
 import { VALID_CANVAS_RESOLUTIONS, type CanvasResolution } from "@hyperframes/parsers";
 import { formatRenderOutputTimestamp, parseFps, fpsToNumber } from "@hyperframes/core";
@@ -255,44 +264,42 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     return (ext && RENDER_MIME[ext]) ?? "video/mp4";
   }
 
-  // Serve render inline (for in-browser playback — opens in a new tab)
-  // fallow-ignore-next-line code-duplication
+  function renderFileResponse(
+    filePath: string,
+    disposition: "inline" | "attachment",
+    filename: string,
+    method: string,
+  ): Response {
+    const headers = {
+      "Content-Type": renderContentType(filePath),
+      "Content-Disposition": contentDispositionHeader(disposition, filename),
+      ...(disposition === "inline" ? { "Accept-Ranges": "bytes" } : {}),
+      "Content-Length": String(statSync(filePath).size),
+    };
+    if (method === "HEAD") return new Response(null, { headers });
+    // Node and DOM stream declarations differ; the response receives a web byte stream.
+    const body = Readable.toWeb(createReadStream(filePath)) as unknown as ReadableStream;
+    return new Response(body, { headers });
+  }
+
   api.get("/render/:jobId/view", (c) => {
     const { jobId } = c.req.param();
     const job = renderJobs.get(jobId);
     if (!job?.outputPath || !isPlainFile(job.outputPath)) {
       return c.json({ error: "not found" }, 404);
     }
-    const contentType = renderContentType(job.outputPath);
     const filename = job.outputPath.split("/").pop() ?? `render.mp4`;
-    const content = readFileSync(job.outputPath);
-    return new Response(content, {
-      headers: {
-        "Content-Type": contentType,
-        "Content-Disposition": contentDispositionHeader("inline", filename),
-        "Accept-Ranges": "bytes",
-        "Content-Length": String(content.length),
-      },
-    });
+    return renderFileResponse(job.outputPath, "inline", filename, c.req.method);
   });
 
-  // Download render
-  // fallow-ignore-next-line code-duplication
   api.get("/render/:jobId/download", (c) => {
     const { jobId } = c.req.param();
     const job = renderJobs.get(jobId);
     if (!job?.outputPath || !isPlainFile(job.outputPath)) {
       return c.json({ error: "not found" }, 404);
     }
-    const contentType = renderContentType(job.outputPath);
     const filename = job.outputPath.split("/").pop() ?? `render.mp4`;
-    const content = readFileSync(job.outputPath);
-    return new Response(content, {
-      headers: {
-        "Content-Type": contentType,
-        "Content-Disposition": contentDispositionHeader("attachment", filename),
-      },
-    });
+    return renderFileResponse(job.outputPath, "attachment", filename, c.req.method);
   });
 
   async function renderDirectories(jobId: string): Promise<string[]> {
@@ -335,16 +342,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     const fp = resolveWithinProject(rendersDir, filename);
     if (!fp || isPrivateProjectFile(project.dir, fp)) return c.json({ error: "forbidden" }, 403);
     if (!existsSync(fp)) return c.json({ error: "not found" }, 404);
-    const contentType = renderContentType(fp);
-    const content = readFileSync(fp);
-    return new Response(content, {
-      headers: {
-        "Content-Type": contentType,
-        "Content-Disposition": contentDispositionHeader("inline", filename),
-        "Accept-Ranges": "bytes",
-        "Content-Length": String(content.length),
-      },
-    });
+    return renderFileResponse(fp, "inline", filename, c.req.method);
   });
 
   // List renders

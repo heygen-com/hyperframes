@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Matrix Decode</h1>
+  <p>Character scramble animation before text reveal</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/caption-matrix-decode.json"
   compositionId="caption-matrix-decode"
   compositionSrc="compositions/components/caption-matrix-decode.html"
   title="Matrix Decode"
-  description="Character scramble animation before text reveal"
   variables={[]}
   meta={{"category":"Captions","badge":"Stable","codeLines":254}}
   attribution={{"path":"registry/components/caption-matrix-decode","tags":["captions","caption-style","matrix","scramble","decode"]}}
@@ -289,7 +293,9 @@ That writes one file: `compositions/components/caption-matrix-decode.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -308,6 +314,4 @@ Tagged `captions` `caption-style` `matrix` `scramble` `decode`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

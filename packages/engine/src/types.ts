@@ -173,6 +173,7 @@ export interface CaptureOptions {
   fps: Fps;
   format?: "jpeg" | "png";
   transparent?: boolean;
+  hiddenElementIds?: string[];
   quality?: number;
   /**
    * Opt into sub-frame multi-sample motion blur (issue #4010). Absent means off and the
@@ -273,6 +274,7 @@ export interface CapturePerfSummary {
   avgSeekMs: number;
   avgBeforeCaptureMs: number;
   avgScreenshotMs: number;
+  captureBeyondViewport?: boolean;
   /**
    * Median per-frame capture time — warmup-robust, unlike `avgTotalMs`
    * (first frames pay font/image decode + GC that swamps short renders'

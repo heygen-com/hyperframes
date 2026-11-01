@@ -379,6 +379,39 @@ describe("ready to show", () => {
     expect(usePlayerStore.getState().previewBooted).toBe(true);
   });
 
+  /** A first load whose one audio has no data yet: Studio's asset wait. */
+  async function loadWithUnloadedMedia(props: Partial<PlayerProps>) {
+    const { host, player } = await mountPlayer(props);
+    const el = player as TestHyperframesPlayer;
+    document.body.appendChild(el.iframeElement);
+    const doc = el.iframeElement.contentDocument!;
+    const audio = doc.createElement("audio");
+    Object.defineProperty(audio, "readyState", { value: 0, configurable: true });
+    Object.defineProperty(audio, "networkState", { value: 2, configurable: true });
+    doc.body.appendChild(audio);
+    loadAndReady(el);
+    painted(el);
+    await flushEffects();
+    return host;
+  }
+
+  it("keeps its asset wait on a later load that only skips the composition cover", async () => {
+    const host = await loadWithUnloadedMedia({ suppressLoadingOverlay: true });
+    expect(host.textContent).toContain("Preparing preview assets");
+  });
+
+  it("draws no loader of its own when the host draws one, and still says the preview is loading", async () => {
+    const onCompositionLoadingChange = vi.fn();
+    const host = await loadWithUnloadedMedia({
+      suppressLoadingOverlay: false,
+      loadingUi: "host",
+      onCompositionLoadingChange,
+    });
+    expect(host.textContent).not.toContain("Preparing preview assets");
+    expect(host.textContent).not.toContain("Loading composition");
+    expect(onCompositionLoadingChange).toHaveBeenLastCalledWith(true);
+  });
+
   it("stops deferring editing work when the preview never shows", async () => {
     vi.useFakeTimers();
     try {

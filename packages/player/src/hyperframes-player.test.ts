@@ -4236,6 +4236,32 @@ describe("HyperframesPlayer asset-ready gate", () => {
     player.remove();
   });
 
+  it("shows Buffering while the runtime holds playback for a track, and hides it on resume", async () => {
+    const player = (await createConnectedPlayer()) as PlayerInternal & {
+      _onMessage: (event: MessageEvent) => void;
+      paused: boolean;
+    };
+    const showSpy = vi.spyOn(player.shaderLoader, "showAssetsLoading");
+    const post = (buffering: boolean) =>
+      player._onMessage(
+        new MessageEvent("message", {
+          source: player.iframe.contentWindow,
+          data: { source: "hf-preview", type: "state", frame: 30, isPlaying: true, buffering },
+        }),
+      );
+
+    post(true);
+    await new Promise((resolve) => setTimeout(resolve, 160));
+    expect(player.hasAttribute("buffering")).toBe(true);
+    expect(showSpy).toHaveBeenCalledWith("Buffering", "");
+    expect(player.paused).toBe(false);
+
+    post(false);
+    expect(player.hasAttribute("buffering")).toBe(false);
+
+    player.remove();
+  });
+
   it("keeps a shader load drawn over the loading card when assets-loading-ui switches to none", async () => {
     const player = await createConnectedPlayer();
     const { doc } = createStalledVideoDoc();

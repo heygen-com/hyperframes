@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Background Emphasis Type</h1>
+  <p>Oversized low-contrast background word drifting slowly behind the subject — typography as texture</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/mk-emphasis-type.json"
   compositionId="mk-emphasis-type"
   compositionSrc="compositions/components/mk-emphasis-type.html"
   title="Background Emphasis Type"
-  description="Oversized low-contrast background word drifting slowly behind the subject — typography as texture"
   variables={[]}
   meta={{"category":"Typography & Text","badge":"Stable","codeLines":97}}
   attribution={{"path":"registry/components/mk-emphasis-type","tags":["typography","text-treatment","minimal"]}}
@@ -132,7 +136,9 @@ That writes one file: `compositions/components/mk-emphasis-type.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -151,6 +157,4 @@ Tagged `typography` `text-treatment` `minimal`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

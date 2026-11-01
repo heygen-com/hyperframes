@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>SVG Mask Reveal</h1>
+  <p>A soft token-colored sweep reveals media only through an editable SVG wordmark mask.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/svg-mask-reveal.json"
   compositionId="svg-mask-reveal"
   compositionSrc="compositions/components/svg-mask-reveal.html"
   title="SVG Mask Reveal"
-  description="A soft token-colored sweep reveals media only through an editable SVG wordmark mask."
   variables={[{"id":"text","type":"string","role":"content","label":"Wordmark","description":"Text used as the SVG mask window.","default":"REVEAL","maxLength":16},{"id":"revealProgress","type":"number","role":"content","label":"Reveal progress","description":"Final revealed width of the wordmark.","default":100,"min":0,"max":100,"step":1,"unit":"%"},{"id":"featherPx","type":"number","role":"style","label":"Edge feather","description":"Softness of the traveling reveal edge.","default":24,"min":0,"max":120,"step":1,"unit":"px"}]}
   meta={{"category":"Effects","badge":"Stable","codeLines":316}}
   attribution={{"path":"registry/components/svg-mask-reveal","tags":["effect","svg","mask","wordmark","reveal","exhibit"]}}
@@ -351,7 +355,9 @@ That writes one file: `compositions/components/svg-mask-reveal.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -392,6 +398,4 @@ Tagged `effect` `svg` `mask` `wordmark` `reveal` `exhibit`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

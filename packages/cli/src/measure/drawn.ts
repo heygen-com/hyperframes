@@ -1,8 +1,6 @@
-// A drawn element (text, a badge, a card) over a regenerated person, scored by itself: what is behind it differs on
-// purpose, so SSIM over its box measures the background. Each frame finds the element's ink on both sides, aligns
-// them within a few pixels, and asks how much of either side's ink the other matches in colour. Wrong weight,
-// tracking, slant, size, fill, a doubled letter or a late onset leave ink unmatched; a different background leaves
-// none. Calibrated on the reverse bench (10-23): correct titles and captions 0.82–0.94, wrong ones 0.40–0.66.
+// A drawn element (text, a badge, a card) over a regenerated person, scored by itself, since what is behind it differs
+// on purpose: each frame aligns the element's ink on both sides within a few pixels and asks how much of either side's
+// ink the other matches in colour. Wrong weight, size, fill or a late onset leave ink unmatched; a new background none.
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -76,7 +74,7 @@ export function contrast(px: Uint8Array, w: number, h: number): Float32Array {
   return out;
 }
 
-const inkOf = (px: Uint8Array, w: number, h: number) => {
+export const inkOf = (px: Uint8Array, w: number, h: number) => {
   const c = contrast(px, w, h);
   return Uint8Array.from(c, (v) => (v > INK_CONTRAST ? 1 : 0));
 };

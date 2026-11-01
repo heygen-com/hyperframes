@@ -2779,6 +2779,7 @@
           ...craftAnchor(element),
           blockSelector: craftAnchor(block).selector,
           text: textContentFor(element, true),
+          blockText: textContentFor(block, false),
           opacity: round(opacityChain(element)),
           fontPx: round(renderedFontPx(element, getComputedStyle(element))),
           rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },

@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Halftone Field</h1>
+  <p>A full-bleed halftone light field: a grid of dots whose size and colour track a slow flowing simplex-noise field, so broad bands of light sweep across a mostly-black frame like a giant LED wall showing a plasma. Built to run under type.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/halftone-field.json"
   compositionId="halftone-field"
   compositionSrc="compositions/halftone-field.html"
   title="Halftone Field"
-  description="A full-bleed halftone light field: a grid of dots whose size and colour track a slow flowing simplex-noise field, so broad bands of light sweep across a mostly-black frame like a giant LED wall showing a plasma. Built to run under type."
   variables={[{"id":"frequency","type":"number","label":"Field frequency","default":2,"min":1,"max":10,"step":0.1},{"id":"speed","type":"number","label":"Flow speed","default":5,"min":0,"max":10,"step":0.1},{"id":"cellSize","type":"number","label":"Cell size","default":54,"min":1,"max":100,"step":1},{"id":"gamma","type":"number","label":"Gamma (midtone crush)","default":12,"min":1,"max":20,"step":0.1},{"id":"paletteBias","type":"number","label":"Palette bias","default":2,"min":0,"max":20,"step":0.5},{"id":"palette1","type":"color","label":"Palette stop 1 (lows)","default":"#00AAFF"},{"id":"palette2","type":"color","label":"Palette stop 2","default":"#C2FF67"},{"id":"palette3","type":"color","label":"Palette stop 3","default":"#6600FF"},{"id":"palette4","type":"color","label":"Palette stop 4 (crests)","default":"#000000"},{"id":"background","type":"color","label":"Background","default":"#000000"},{"id":"quantize","type":"boolean","label":"Quantise to 30fps (stepped)","default":false}]}
   meta={{"duration":10,"width":1920,"height":1080,"category":"Texture","badge":"Experimental","codeLines":378}}
   attribution={{"path":"registry/blocks/halftone-field","tags":["webgl","shader","background","texture","halftone"]}}
@@ -413,7 +417,9 @@ That writes one file: `compositions/halftone-field.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -490,6 +496,4 @@ Tagged `webgl` `shader` `background` `texture` `halftone`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

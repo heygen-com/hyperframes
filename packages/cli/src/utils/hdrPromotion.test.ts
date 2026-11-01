@@ -38,6 +38,20 @@ function bundledMedia(videos: string[], images: string[]) {
 }
 
 describe("inspectHdrAutoPromotion", () => {
+  it("reports no promotion when graded media keeps the render SDR, without probing", async () => {
+    const extractMetadata = vi.fn(async () => metadata(HDR));
+    const media = bundledMedia(["assets/source-hdr.mp4"], []);
+
+    await expect(
+      inspectHdrAutoPromotion(
+        PROJECT,
+        { ...media, images: [{ src: "assets/look.png", graded: true }] },
+        extractMetadata,
+      ),
+    ).resolves.toBeNull();
+    expect(extractMetadata).not.toHaveBeenCalled();
+  });
+
   it("reports the local HDR asset that promotes automatic output", async () => {
     const assetPath = resolveProjectRelativeSrc("assets/source-hdr.mp4", PROJECT.dir, PROJECT.dir);
     const extractMetadata = vi.fn(async () => metadata(HDR));

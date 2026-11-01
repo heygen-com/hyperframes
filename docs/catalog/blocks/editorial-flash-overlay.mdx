@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Editorial Flash Overlay</h1>
+  <p>Finite neutral-warm light layers for a seek-safe camera-flash cut or social reveal</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/editorial-flash-overlay.json"
   compositionId="editorial-flash-overlay"
   compositionSrc="compositions/editorial-flash-overlay.html"
   title="Editorial Flash Overlay"
-  description="Finite neutral-warm light layers for a seek-safe camera-flash cut or social reveal"
   variables={[]}
   meta={{"duration":4,"width":1920,"height":1080,"category":"Social Overlays","badge":"Stable","codeLines":129}}
   attribution={{"path":"registry/blocks/editorial-flash-overlay","tags":["flash","editorial","social","light","transition","overlay","media-treatment-overlay"]}}
@@ -164,7 +168,9 @@ That writes one file: `compositions/editorial-flash-overlay.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -195,6 +201,4 @@ Tagged `flash` `editorial` `social` `light` `transition` `overlay` `media-treatm
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

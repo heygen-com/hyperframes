@@ -1,13 +1,21 @@
 // Pixels from the original, as project media: a still at one moment or a clip over a window, cropped to a region,
 // frame-exact, recorded in the media ledger as cut from the original. A rebuild reuses footage, photos and people
 // this way instead of drawing or generating them.
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { defineCommand } from "../../utils/defineCommand.js";
 import type { Example } from "../_examples.js";
 import { jsonArg, num, roiArg, runMeasure, videoAndRoi, videoArg } from "../../measure/command.js";
-import { Fix, frameAt, round, runFfmpeg, type Roi, type VideoInfo } from "../../measure/media.js";
+import {
+  Fix,
+  frameAt,
+  projectOf,
+  round,
+  runFfmpeg,
+  type Roi,
+  type VideoInfo,
+} from "../../measure/media.js";
 
 export const examples: Example[] = [
   [
@@ -26,14 +34,6 @@ export const examples: Example[] = [
 
 /** H.264 needs even sizes: shrink an odd width or height by a pixel. */
 const even = ([x, y, w, h]: Roi): Roi => [x, y, w - (w % 2), h - (h % 2)];
-
-/** The nearest folder at or above `from` holding index.html: the project the file belongs to. */
-function projectOf(from: string): string | null {
-  for (let dir = resolve(from); ; dir = dirname(dir)) {
-    if (existsSync(join(dir, "index.html"))) return dir;
-    if (dirname(dir) === dir) return null;
-  }
-}
 
 async function record(
   out: string,
@@ -151,6 +151,7 @@ export default defineCommand({
     video: videoArg,
     out: {
       type: "string",
+      alias: ["output", "output-dir"],
       description: "The file to write: .png/.jpg for a still, .mp4 for a clip",
       required: true,
     },

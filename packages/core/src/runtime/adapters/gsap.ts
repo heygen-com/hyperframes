@@ -57,14 +57,20 @@ function renderOntoInAuthoredOrder(
   timeline.totalTime(below ? t - REDRAW_STEP : t + REDRAW_STEP, true);
   primeTweensStartingAt(children, t, below ? REDRAW_STEP : 0);
   timeline.totalTime(t, true);
-  if (!below && structure) reapplyStepsInAuthoredOrder(timeline, structure, t);
+  if (!below) reapplyStepsInAuthoredOrder(timeline, structure ?? ownStructureOf(children), t);
+}
+
+function ownStructureOf(children: unknown[]): GsapStructureKey | undefined {
+  const owner = (children[0] as GsapPlaced | undefined)?.parent;
+  return owner ? { owner, version: "" } : undefined;
 }
 
 function reapplyStepsInAuthoredOrder(
   timeline: { getChildren?: RuntimeTimelineLike["getChildren"] },
-  structure: GsapStructureKey,
+  structure: GsapStructureKey | undefined,
   t: number,
 ): void {
+  if (!structure) return;
   for (const step of stepsAt(timeline, structure, t)) {
     const { ratio, _zTime, _act } = step;
     step.render(0, true, true);
@@ -366,13 +372,62 @@ function stepsAt(
   structure: GsapStructureKey,
   t: number,
 ): GsapStep[] {
-  const { points } = placedLandingMarks(timeline, structure);
+  const { points } = structure.version
+    ? placedLandingMarks(timeline, structure)
+    : placeLandingMarks(timeline, structure);
   const steps: GsapStep[] = [];
   for (let i = firstPointFrom(points, t - PLAYHEAD_FLOAT_NOISE); i < points.length; i++) {
     if (points[i]!.at > t + PLAYHEAD_FLOAT_NOISE) break;
     steps.push(points[i]!.mark as GsapStep);
   }
   return steps;
+}
+
+export function holdLandingMarks(
+  timeline: { getChildren?: RuntimeTimelineLike["getChildren"] },
+  structure?: GsapStructureKey,
+): () => void {
+  const placed = structure ? placedLandingMarks(timeline, structure) : null;
+  const marks = placed
+    ? [...placed.always, ...placed.points.map((point) => point.mark)]
+    : childrenWithLandingMarksIn(timeline);
+  const held = marks.map((mark) => [mark, mark.ratio, mark._zTime, mark._act] as const);
+  return () => {
+    for (const [mark, ratio, zTime, active] of held) {
+      mark.ratio = ratio;
+      mark._zTime = zTime;
+      mark._act = active;
+    }
+  };
+}
+
+export function holdFrameMarks({
+  scenes,
+  root,
+  structureOf,
+}: {
+  scenes: RuntimeTimelineLike[];
+  root: RuntimeTimelineLike | null;
+  structureOf: (timeline: RuntimeTimelineLike) => GsapStructureKey | undefined;
+}): (landBack: () => void) => void {
+  const rootLandsLast = root ? [...scenes, root] : scenes;
+  const marks = rootLandsLast.map((timeline) => holdLandingMarks(timeline, structureOf(timeline)));
+  return (landBack) => {
+    landBack();
+    for (const timeline of rootLandsLast) {
+      if (timeline.totalTime && !structureOf(timeline)) {
+        rerenderGsapTimelineAt(
+          {
+            totalTime: timeline.totalTime.bind(timeline),
+            totalDuration: timeline.totalDuration?.bind(timeline),
+            getChildren: timeline.getChildren?.bind(timeline),
+          },
+          Number(timeline.totalTime()),
+        );
+      }
+    }
+    for (const put of marks) put();
+  };
 }
 
 function landingMarksOf(

@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Freeze-Frame Dressing</h1>
+  <p>Timeline-driven paper, tape, and flash dressing for a freeze-frame or background-removed subject</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/freeze-frame-dressing.json"
   compositionId="freeze-frame-dressing"
   compositionSrc="compositions/freeze-frame-dressing.html"
   title="Freeze-Frame Dressing"
-  description="Timeline-driven paper, tape, and flash dressing for a freeze-frame or background-removed subject"
   variables={[]}
   meta={{"duration":4,"width":1920,"height":1080,"category":"Social Overlays","badge":"Stable","codeLines":120}}
   attribution={{"path":"registry/blocks/freeze-frame-dressing","tags":["freeze-frame","cutout","scrapbook","paper","social","overlay","media-treatment-overlay"]}}
@@ -155,7 +159,9 @@ That writes one file: `compositions/freeze-frame-dressing.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -186,6 +192,4 @@ Tagged `freeze-frame` `cutout` `scrapbook` `paper` `social` `overlay` `media-tre
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

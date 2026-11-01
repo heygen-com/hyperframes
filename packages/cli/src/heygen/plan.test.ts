@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../cloud/auth.js", () => ({
   resolveCloudAuthHeaders: async () => ({ "x-api-key": "k" }),
-  resolveCloudBaseUrl: () => "https://api.dev.heygen.com",
+  resolveCloudBaseUrl: () => "https://api.example.test",
 }));
 
 const { pageUrl, readPlan } = await import("./plan.js");
@@ -26,7 +26,7 @@ describe("readPlan", () => {
       usage: { remaining_units: 25000 },
     });
     expect(await readPlan()).toEqual({ plan: "pro", credits: 25000 });
-    expect(asked.at(-1)).toBe("https://api2.dev.heygen.com/v1/payment/hyperframes/subscription");
+    expect(asked.at(-1)).toBe("https://api2.example.test/v1/payment/hyperframes/subscription");
     answer({ subscription: null, usage: { remaining_units: 0 } });
     expect(await readPlan()).toEqual({ plan: "none", credits: 0 });
     answer({
@@ -43,10 +43,13 @@ describe("pageUrl", () => {
     vi.stubEnv("HYPERFRAMES_CREDITS_URL", "");
     vi.stubEnv("HYPERFRAMES_ENV", "prod");
     expect(pageUrl("plans")).toBe("https://hyperframes.studio/pricing?from=cli");
-    vi.stubEnv("HYPERFRAMES_ENV", "dev");
-    expect(pageUrl("plans")).toBe("https://dev.hyperframes.dev/pricing?from=cli");
+    expect(pageUrl("credits")).toBe("https://hyperframes.studio/pricing?from=cli");
     expect(pageUrl("credits", { needed: 180, tool: "reverse" })).toBe(
-      "https://dev.hyperframes.dev/account/plan?from=cli&needed_credits=180&tool=reverse",
+      "https://hyperframes.studio/pricing?from=cli&needed_credits=180&tool=reverse",
     );
+    vi.stubEnv("HYPERFRAMES_ENV", "dev");
+    expect(pageUrl("plans")).toBe("https://hyperframes.studio/pricing?from=cli");
+    vi.stubEnv("HYPERFRAMES_PLANS_URL", "https://example.test/plans");
+    expect(pageUrl("plans")).toBe("https://example.test/plans?from=cli");
   });
 });

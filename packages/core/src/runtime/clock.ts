@@ -19,6 +19,7 @@ export type AudioClockSource =
     }
   | {
       currentTimeSeconds: number;
+      webAudio?: boolean;
     };
 
 /** GSAP's own `lagSmoothing` default — see the PR body for why this clock needs its own copy. */
@@ -222,6 +223,13 @@ export class TransportClock {
       if (!el.paused && Number.isFinite(el.currentTime)) return "audio";
     }
     return "monotonic";
+  }
+
+  followedClock(): "audio" | "webaudio" | "monotonic" {
+    if (this.getSource() === "monotonic") return "monotonic";
+    return this._audioSource && "webAudio" in this._audioSource && this._audioSource.webAudio
+      ? "webaudio"
+      : "audio";
   }
 
   snapshot(): TransportClockSnapshot {

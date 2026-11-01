@@ -3,11 +3,19 @@
 // Every call is priced first with --plan, keyed for idempotency, downloaded into the project and recorded in the media
 // ledger as generated.
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, join, relative, resolve } from "node:path";
 import { findCuts, signatures } from "../measure/cuts.js";
-import { Fix, probeVideo, round, runFfmpeg, videoClip } from "../measure/media.js";
+import { Fix, probeVideo, projectOf, round, runFfmpeg, videoClip } from "../measure/media.js";
 import { idempotencyKey, runJob, type Job } from "./v3.js";
 
 export type GenerateType = "image" | "video" | "lipsync" | "avatar" | "voice" | "music";
@@ -35,6 +43,8 @@ export interface GenerateRequest {
   video?: string;
   /** video: a clip whose camera and body motion the shot follows (the original's same stretch, up to 15 s). */
   motion?: string;
+  /** video: skip the one-shot check of the motion clip (a guide a person has looked at). */
+  allowCuts?: boolean;
   /** video: regions of the motion clip blanked before it is sent (its drawn text), so the shot does not copy them. */
   masks?: Mask[];
   /** video: the shot starts from this picture. */
@@ -72,17 +82,51 @@ export function parseMask(text: string): Mask {
 }
 
 /**
- * Filters that fill each mask's region from the pixels around it (ffmpeg delogo), so no letter survives and the
- * motion around it stays. delogo needs a pixel of picture on every side, so boxes are kept 1 px inside the frame.
+ * Fills a box from the pixels around it (ffmpeg delogo): no letter survives, but the box is smeared. Delogo needs a
+ * pixel of picture on every side, so boxes are kept 1 px inside the frame.
  */
-function maskFilters(masks: Mask[], width: number, height: number): string[] {
-  return masks.flatMap(({ box: [x, y, w, h], window }) => {
-    const [x0, y0] = [Math.max(1, x), Math.max(1, y)];
-    const [x1, y1] = [Math.min(width - 2, x + w), Math.min(height - 2, y + h)];
-    if (x1 - x0 < 1 || y1 - y0 < 1) return [];
+function delogoFilters(masks: Mask[], width: number, height: number): string {
+  return masks
+    .flatMap(({ box: [x, y, w, h], window }) => {
+      const [x0, y0] = [Math.max(1, x), Math.max(1, y)];
+      const [x1, y1] = [Math.min(width - 2, x + w), Math.min(height - 2, y + h)];
+      if (x1 - x0 < 1 || y1 - y0 < 1) return [];
+      const when = window ? `:enable='between(t,${window[0]},${window[1]})'` : "";
+      return [`delogo=x=${x0}:y=${y0}:w=${x1 - x0}:h=${y1 - y0}${when}`];
+    })
+    .join(",");
+}
+
+/** A box's temporal median over about a second either side: moving text becomes the picture behind it. */
+function maskFilters(masks: Mask[], fps: number): string {
+  const radius = Math.min(127, Math.max(2, Math.round(fps)));
+  const steps = masks.map(({ box: [x, y, w, h], window }, i) => {
     const when = window ? `:enable='between(t,${window[0]},${window[1]})'` : "";
-    return [`delogo=x=${x0}:y=${y0}:w=${x1 - x0}:h=${y1 - y0}${when}`];
+    const [w2, h2] = [w - (w % 2), h - (h % 2)];
+    return `[v${i}]split[a${i}][b${i}];[b${i}]crop=${w2}:${h2}:${x}:${y},tmedian=radius=${radius}[m${i}];[a${i}][m${i}]overlay=${x}:${y}${when}[v${i + 1}]`;
   });
+  return `[0:v]null[v0];${steps.join(";")}`;
+}
+
+/** Mean absolute pixel step inside a box and in a ring around it: the box holds more edges when inside > ring. */
+export function structureRatio(
+  gray: Uint8Array,
+  width: number,
+  box: [number, number, number, number],
+): { inside: number; ring: number } {
+  const height = gray.length / width;
+  const [x0, y0, x1, y1] = [box[0], box[1], box[0] + box[2], box[1] + box[3]];
+  const pad = Math.max(box[2], box[3]) >> 1;
+  const sum = [0, 0];
+  const n = [0, 0];
+  for (let y = Math.max(0, y0 - pad); y < Math.min(height - 1, y1 + pad); y++)
+    for (let x = Math.max(0, x0 - pad); x < Math.min(width - 1, x1 + pad); x++) {
+      const k = x >= x0 && x < x1 && y >= y0 && y < y1 ? 0 : 1;
+      const i = y * width + x;
+      sum[k]! += Math.abs(gray[i]! - gray[i + 1]!) + Math.abs(gray[i]! - gray[i + width]!);
+      n[k]!++;
+    }
+  return { inside: sum[0]! / (n[0] || 1), ring: sum[1]! / (n[1] || 1) };
 }
 
 interface Route {
@@ -252,9 +296,23 @@ function needFile(path: string): void {
     throw new Fix(`no file at ${path}`, "pass a picture or sound from the project");
 }
 
+const shrink = (path: string, out: string) =>
+  runFfmpeg([
+    "-y",
+    "-i",
+    path,
+    "-vf",
+    "scale='min(2048,iw)':'min(2048,ih)':force_original_aspect_ratio=decrease",
+    "-q:v",
+    "3",
+    "-frames:v",
+    "1",
+    out,
+  ]);
+
 /**
  * A picture or a sound as the routes take it inline, pictures shrunk to 2048 px so the body stays small, a motion
- * clip with its masks blanked.
+ * clip with its masks filled.
  */
 function inline(work: string, masks: Mask[] = []): Media {
   return (path, kind) => {
@@ -263,30 +321,15 @@ function inline(work: string, masks: Mask[] = []): Media {
       work,
       `in-${Math.random().toString(36).slice(2)}.${{ image: "jpg", audio: "mp3", video: "mp4" }[kind]}`,
     );
-    if (kind === "image")
-      runFfmpeg([
-        "-y",
-        "-i",
-        path,
-        "-vf",
-        "scale='min(2048,iw)':'min(2048,ih)':force_original_aspect_ratio=decrease",
-        "-q:v",
-        "3",
-        "-frames:v",
-        "1",
-        out,
-      ]);
+    if (kind === "image") shrink(path, out);
     else if (kind === "audio")
       runFfmpeg(["-y", "-i", path, "-vn", "-ac", "1", "-c:a", "libmp3lame", "-b:a", "128k", out]);
     // A guide clip only needs its motion: 720 px on the long side, no sound, at most 15 s.
     else {
-      const { width, height } = masks.length ? probeVideo(path) : { width: 0, height: 0 };
-      const filters = [
-        ...maskFilters(masks, width, height),
-        "scale='if(gt(iw,ih),min(720,iw),-2)':'if(gt(iw,ih),-2,min(720,ih))'",
-      ];
+      const guide = masks.length ? fillMasks(path, masks, work) : path;
+      const scale = "scale='if(gt(iw,ih),min(720,iw),-2)':'if(gt(iw,ih),-2,min(720,ih))'";
       runFfmpeg([
-        ...["-y", "-i", path, "-t", "15", "-an", "-vf", filters.join(",")],
+        ...["-y", "-i", guide, "-t", "15", "-an", "-vf", scale],
         ...["-c:v", "libx264", "-crf", "28", "-preset", "veryfast", "-pix_fmt", "yuv420p", out],
       ]);
     }
@@ -338,15 +381,111 @@ function cutsInside(path: string, seconds?: number): { cuts: number[]; length: n
   return { cuts, length: round(frames.length / info.fps, 3) };
 }
 
+/** The masks whose box, in `clip`'s frames, holds more edges than the picture around it at some sampled time. */
+function structured(clip: string, guide: { width: number; height: number }, masks: Mask[]) {
+  const { width: w, height: h } = probeVideo(clip);
+  const gray = runFfmpeg(["-i", clip, "-vf", "fps=2", "-pix_fmt", "gray", "-f", "rawvideo", "-"]);
+  // The box as a fraction of the guide's frame, in the clip's pixels (its size and aspect may differ).
+  const [kx, ky] = [w / guide.width, h / guide.height];
+  return masks.flatMap((mask) => {
+    const [bx, by, bw, bh] = mask.box;
+    const box = [bx * kx, by * ky, bw * kx, bh * ky].map(Math.round) as Mask["box"];
+    let worst = 0;
+    for (let i = 0; (i + 1) * w * h <= gray.length; i++) {
+      if (mask.window && (i / 2 < mask.window[0] || i / 2 > mask.window[1])) continue;
+      const { inside, ring } = structureRatio(gray.subarray(i * w * h, (i + 1) * w * h), w, box);
+      if (inside > 6 && inside > 1.5 * ring) worst = Math.max(worst, inside / (ring || 1));
+    }
+    return worst ? [{ mask, worst }] : [];
+  });
+}
+
+/** A copy of the guide with each mask's box filled: the temporal median, and delogo's smear where text stays put. */
+function fillMasks(path: string, masks: Mask[], work: string): string {
+  const info = probeVideo(path);
+  const encode = (from: string, name: string, filter: string[]) => {
+    const out = join(work, name);
+    runFfmpeg([
+      ...["-y", "-i", from, "-an"],
+      ...filter,
+      ...["-crf", "14", "-pix_fmt", "yuv420p", out],
+    ]);
+    return out;
+  };
+  const median = encode(path, "median.mp4", [
+    ...["-t", "15", "-filter_complex", maskFilters(masks, info.fps)],
+    ...["-map", `[v${masks.length}]`],
+  ]);
+  const left = structured(median, info, masks).map((s) => s.mask);
+  if (!left.length) return median;
+  return encode(median, "delogo.mp4", ["-vf", delogoFilters(left, info.width, info.height)]);
+}
+
+/**
+ * HeyGen answers a 16:9 request at 1344x768 (1.75:1). The result is cropped, centred, to the requested ratio
+ * (1344x756) rather than stretched; returns a note on what was done, or nothing when it already fits.
+ */
+export function fitAspect(out: string, aspect: string): string | undefined {
+  const [aw, ah] = aspect.split(":").map(Number);
+  if (!aw || !ah) return;
+  const { width, height } = probeVideo(out);
+  const want = aw / ah;
+  if (Math.abs(width / height - want) / want < 0.002) return;
+  const even = (n: number) => n - (n % 2);
+  const [w, h] =
+    width / height > want ? [even(height * want), height] : [width, even(width / want)];
+  const fitted = `${out}.fit${extname(out)}`;
+  runFfmpeg([
+    ...[
+      "-y",
+      "-i",
+      out,
+      "-vf",
+      `crop=${w}:${h}`,
+      "-c:v",
+      "libx264",
+      "-crf",
+      "12",
+      "-preset",
+      "slow",
+    ],
+    ...["-pix_fmt", "yuv420p", "-c:a", "copy", fitted],
+  ]);
+  renameSync(fitted, out);
+  return `HeyGen returned ${width}x${height} for ${aspect}; cropped to ${w}x${h} (centre), not stretched`;
+}
+
+function aspectOf(r: GenerateRequest, work: string): string {
+  if (r.aspect || !r.firstFrame) return r.aspect ?? "16:9";
+  const sent = join(work, "first-frame.jpg");
+  shrink(r.firstFrame, sent);
+  const { width, height } = probeVideo(sent);
+  return `${width}:${height}`;
+}
+
+const MIN_SHOT_S = 0.15;
+
+export function foldShort(cuts: number[], length: number): number[] {
+  const kept = [...cuts];
+  for (;;) {
+    const edges = [0, ...kept, length];
+    const short = edges.slice(1).findIndex((e, i) => e - edges[i]! < MIN_SHOT_S);
+    if (short < 0 || !kept.length) return kept;
+    kept.splice(short ? short - 1 : 0, 1);
+  }
+}
+
 const COUNT = ["", "one", "two", "three", "four", "five", "six"];
 
 /**
  * Refuses a --motion clip holding more than one shot before anything is sent: HeyGen follows the guide's cut into
  * a cut of its own, so each shot is its own generation.
  */
-function checkGuide(r: Pick<GenerateRequest, "motion">): void {
-  if (!r.motion) return;
-  const { cuts, length } = cutsInside(r.motion, GUIDE_MAX_S);
+function checkGuide(r: Pick<GenerateRequest, "motion" | "allowCuts">): void {
+  if (!r.motion || r.allowCuts) return;
+  const found = cutsInside(r.motion, GUIDE_MAX_S);
+  const { length } = found;
+  const cuts = foldShort(found.cuts, length);
   if (!cuts.length) return;
   const s = (t: number) => t.toFixed(2);
   const and = (items: string[]) => `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
@@ -356,7 +495,7 @@ function checkGuide(r: Pick<GenerateRequest, "motion">): void {
   const shots = edges.slice(1).map((e, i) => `${i ? s(edges[i]!) : "0"}–${s(e)} s`);
   throw new Fix(
     `--motion ${r.motion} has ${at}`,
-    `guide has ${at}: generate ${and(shots)} as ${COUNT[shots.length] ?? shots.length} shots, each with its own --motion clip`,
+    `guide has ${at}: generate ${and(shots)} as ${COUNT[shots.length] ?? shots.length} shots, each with its own --motion clip, or pass --allow-cuts for a guide you have checked`,
   );
 }
 
@@ -375,14 +514,6 @@ export function checkRequest(r: GenerateRequest): void {
   checkGuide(r);
 }
 
-/** The nearest folder at or above `from` holding index.html. */
-function projectOf(from: string): string | null {
-  for (let dir = resolve(from); ; dir = dirname(dir)) {
-    if (existsSync(join(dir, "index.html"))) return dir;
-    if (dirname(dir) === dir) return null;
-  }
-}
-
 export interface Generated {
   out: string;
   type: GenerateType;
@@ -391,6 +522,8 @@ export interface Generated {
   ledger?: string;
   /** video: seconds where HeyGen cut inside the returned shot; null when the file could not be read. */
   cuts_inside?: number[] | null;
+  /** What was changed or looks wrong in the result: a crop to the requested aspect, text that may have come back. */
+  notes?: string[];
 }
 
 // fallow-ignore-next-line complexity
@@ -445,6 +578,23 @@ export async function generate(
       } catch {
         cuts = null;
       }
+    const notes: string[] = [];
+    if (r.type === "video")
+      try {
+        const note = fitAspect(out, aspectOf(r, work));
+        if (note) notes.push(note);
+      } catch (e) {
+        notes.push(`kept HeyGen's size, could not crop: ${e instanceof Error ? e.message : e}`);
+      }
+    if (r.masks?.length && r.motion)
+      try {
+        for (const { mask, worst } of structured(out, probeVideo(r.motion), r.masks))
+          notes.push(
+            `mask ${mask.box.join(",")} still shows structure in the result (${worst.toFixed(1)}x its surroundings): the text may have come back, regenerate without the guide`,
+          );
+      } catch {
+        notes.push("could not check the masked boxes of the result");
+      }
     let ledger: string | undefined;
     if (project) {
       const { recordInPlace } = await import("../media-use/lib/manifest.mjs");
@@ -485,6 +635,7 @@ export async function generate(
       route: route.path,
       ...(ledger ? { ledger } : {}),
       ...(cuts !== undefined ? { cuts_inside: cuts } : {}),
+      ...(notes.length ? { notes } : {}),
     };
   } finally {
     rmSync(work, { recursive: true, force: true });

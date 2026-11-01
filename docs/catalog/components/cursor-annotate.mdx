@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Annotate Cursor</h1>
+  <p>A marker pen glides onto the frame and hand-draws a loose loop, an underline, or an arrow around a region, the ink laid exactly under its nib, then lifts and leaves.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/cursor-annotate.json"
   compositionId="cursor-annotate"
   compositionSrc="compositions/components/cursor-annotate.html"
   title="Annotate Cursor"
-  description="A marker pen glides onto the frame and hand-draws a loose loop, an underline, or an arrow around a region, the ink laid exactly under its nib, then lifts and leaves."
   variables={[{"id":"shape","type":"enum","role":"style","label":"Mark","default":"circle","options":[{"value":"circle","label":"Loose loop"},{"value":"underline","label":"Underline"},{"value":"arrow","label":"Arrow"}]},{"id":"color","type":"color","role":"style","label":"Ink","default":"#f43f5e"},{"id":"target_x","type":"number","role":"layout","label":"Region left","default":40,"min":0,"max":95,"step":1,"unit":"%"},{"id":"target_y","type":"number","role":"layout","label":"Region top","default":38,"min":0,"max":95,"step":1,"unit":"%"},{"id":"target_w","type":"number","role":"layout","label":"Region width","default":20,"min":2,"max":90,"step":1,"unit":"%"},{"id":"target_h","type":"number","role":"layout","label":"Region height","default":16,"min":2,"max":90,"step":1,"unit":"%"}]}
   meta={{"category":"Cursors","badge":"Stable","codeLines":494}}
   attribution={{"path":"registry/components/cursor-annotate","tags":["cursor","motion-primitive","pen","annotation","draw-on","highlight"]}}
@@ -529,7 +533,9 @@ That writes one file: `compositions/components/cursor-annotate.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -573,6 +579,4 @@ Tagged `cursor` `motion-primitive` `pen` `annotation` `draw-on` `highlight`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>
