@@ -89,6 +89,9 @@ function enableInteractiveIframe(player: HyperframesPlayerElement): void {
   iframe?.style.setProperty("pointer-events", "auto");
 }
 
+const studioDraws = (wait: boolean, loadingUi: PlayerProps["loadingUi"]) =>
+  wait && loadingUi !== "host";
+
 function isPreviewMediaElement(el: Element): el is HTMLMediaElement {
   const tagName = el.tagName.toLowerCase();
   return tagName === "video" || tagName === "audio";
@@ -156,7 +159,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       portrait,
       style,
       suppressLoadingOverlay,
-      loadingUi = "studio",
+      loadingUi,
       noLoadTimeout,
     },
     ref,
@@ -478,8 +481,8 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       shouldShowCompositionLoadingOverlay(compositionLoading);
     const assetWaitShown =
       assetOverlayVisible && !shaderTransitionLoading && !compositionWaitShown && !previewError;
-    const showCompositionOverlay = compositionWaitShown && loadingUi === "studio";
-    const showAssetOverlay = assetWaitShown && loadingUi === "studio";
+    const showCompositionOverlay = studioDraws(compositionWaitShown, loadingUi);
+    const showAssetOverlay = studioDraws(assetWaitShown, loadingUi);
 
     useEffect(() => {
       onCompositionLoadingChange?.(compositionWaitShown || assetWaitShown);

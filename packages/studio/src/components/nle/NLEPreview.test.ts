@@ -4,7 +4,8 @@ import React, { act, createRef } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useTimelinePlayer } from "../../player/hooks/useTimelinePlayer";
-import { NLEPreview, getPreviewPlayerKey, resolvePreviewStageSize } from "./NLEPreview";
+import { NLEPreview, getPreviewPlayerKey } from "./NLEPreview";
+import { resolvePreviewStageSize } from "./previewStageSize";
 import { readPreviewComplexity } from "../../player/hooks/usePreviewFirstFrameTelemetry";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
