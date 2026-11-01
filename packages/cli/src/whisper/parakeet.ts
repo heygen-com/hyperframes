@@ -254,12 +254,14 @@ function quietestBlockCenter(samples: Float32Array, lo: number, hi: number, bloc
 
 /**
  * Window boundaries (sample indices, first 0, last samples.length) about every `windowSeconds`,
- * each moved to the quietest 100 ms within ±5 s, so no cut lands inside a word.
+ * each moved to the quietest 100 ms within ±5 s, so no cut lands inside a word. 30 s, not 60:
+ * with a speaker change every few seconds Parakeet drops whole stretches of a long window (WER
+ * 33% -> 28% for the int8 model), while calls, monologues and real videos score the same or better.
  */
 export function silenceCuts(
   samples: Float32Array,
   sampleRate: number,
-  windowSeconds = 60,
+  windowSeconds = 30,
 ): number[] {
   const window = windowSeconds * sampleRate;
   const slack = 5 * sampleRate;
