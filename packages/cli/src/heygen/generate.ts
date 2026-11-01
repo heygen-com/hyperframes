@@ -393,6 +393,13 @@ export function fitAspect(out: string, aspect: string): string | undefined {
   return `HeyGen returned ${width}x${height} for ${aspect}; cropped to ${w}x${h} (centre), not stretched`;
 }
 
+/** The shape a shot should come back in: the aspect asked for, else its first frame's, else widescreen. */
+function aspectOf(r: GenerateRequest): string {
+  if (r.aspect || !r.firstFrame) return r.aspect ?? "16:9";
+  const { width, height } = probeVideo(r.firstFrame);
+  return `${width}:${height}`;
+}
+
 const MIN_SHOT_S = 0.5;
 
 export function foldShort(cuts: number[], length: number): number[] {
@@ -502,14 +509,12 @@ export async function generate(
         cuts = null;
       }
     const notes: string[] = [];
-    if (r.type === "video" && (r.aspect || !r.firstFrame))
+    if (r.type === "video")
       try {
-        const note = fitAspect(out, r.aspect ?? "16:9");
+        const note = fitAspect(out, aspectOf(r));
         if (note) notes.push(note);
       } catch (e) {
-        notes.push(
-          `kept HeyGen's size, could not crop to ${r.aspect ?? "16:9"}: ${e instanceof Error ? e.message : e}`,
-        );
+        notes.push(`kept HeyGen's size, could not crop: ${e instanceof Error ? e.message : e}`);
       }
     if (r.masks?.length && r.motion)
       try {

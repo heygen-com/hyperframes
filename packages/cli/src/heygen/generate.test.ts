@@ -260,6 +260,23 @@ describe("generate", () => {
     },
   );
 
+  it.skipIf(!ffmpeg)("crops to the first frame's shape when no --aspect is passed", async () => {
+    const first = join(project, "assets/first.png");
+    execFileSync(ffmpeg!, [
+      ...["-v", "error", "-y", "-f", "lavfi", "-i", "color=c=red:s=160x90"],
+      ...["-frames:v", "1", first],
+    ]);
+    answers(textured("first-wide.mp4", "1344x768", false));
+    const r = await generate({
+      type: "video",
+      out: join(project, "assets/first-out.mp4"),
+      prompt: "p",
+      firstFrame: first,
+    });
+    const { width, height } = probeVideo(r.out);
+    expect([width, height]).toEqual([1344, 756]);
+  });
+
   it.skipIf(!ffmpeg)("blanks the motion clip's masked regions before sending it", async () => {
     // A guide with white letters at 40,100 over a moving picture; the mask covers them for its first 0.5 s.
     const guide = join(project, "titled.mp4");
