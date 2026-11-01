@@ -417,6 +417,64 @@ describe("CapturePlan", () => {
       "Cannot apply streaming_unavailable to sdr_disk",
     );
   });
+
+  describe("disk_headroom degrade", () => {
+    const diskPlan = (workerCount = 4) =>
+      createCapturePlan({
+        workerCount,
+        forceScreenshot: false,
+        useStreamingEncode: false,
+        useLayeredComposite: false,
+        usePageSideCompositing: false,
+        hasHdrContent: false,
+        needsAlpha: false,
+      });
+
+    it("degrades a multi-worker disk plan to the hardened single-worker streaming path", () => {
+      const plan = diskPlan();
+      const next = replanAfterFailure(plan, { kind: "disk_headroom" });
+
+      expect(next).toMatchObject({
+        kind: "sdr_streaming",
+        workerCount: 1,
+        forceScreenshot: false,
+        forceParallelStream: false,
+        routing: { kind: "default" },
+      });
+      // The rejected plan is never mutated.
+      expect(plan).toMatchObject({ kind: "sdr_disk", workerCount: 4 });
+    });
+
+    it("reverts an active routing so telemetry records the lost bet", () => {
+      const routed = createCapturePlan({
+        ...diskPlan(),
+        routing: {
+          kind: "parallel_router",
+          state: "active",
+          fallback: { kind: "sdr_disk", workerCount: 2, forceParallelStream: false },
+          memoryExhaustionFallback: {
+            kind: "sdr_streaming",
+            workerCount: 1,
+            forceParallelStream: false,
+          },
+        },
+      });
+
+      const next = replanAfterFailure(routed, { kind: "disk_headroom" });
+      expect(next).toMatchObject({
+        kind: "sdr_streaming",
+        workerCount: 1,
+        routing: { kind: "parallel_router", state: "reverted" },
+      });
+      expect(Object.isFrozen(next.routing)).toBe(true);
+    });
+
+    it("is a caller bug on any plan kind the disk gate never runs for", () => {
+      expect(() => replanAfterFailure(streaming(), { kind: "disk_headroom" })).toThrow(
+        "Cannot apply disk_headroom to sdr_streaming",
+      );
+    });
+  });
 });
 
 describe("sdr_segmented capture plan", () => {
