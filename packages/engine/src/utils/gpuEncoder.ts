@@ -61,9 +61,14 @@ export async function selectUsableGpuEncoder(
   return null;
 }
 
-export async function detectGpuEncoder(): Promise<GpuEncoder> {
-  const ffmpeg = spawn(getFfmpegBinary(), ["-encoders"], {
-    stdio: ["pipe", "pipe", "pipe"],
+/** ffmpeg's stdout, or null when it did not exit cleanly within the deadline. */
+async function ffmpegStdout(
+  args: string[],
+  deadlineMs: number,
+  terminationGraceMs?: number,
+): Promise<string | null> {
+  const ffmpeg = spawn(getFfmpegBinary(), args, {
+    stdio: ["ignore", "pipe", "pipe"],
     // See runFfmpeg.ts: keeps a console window off the user's desktop on Windows.
     windowsHide: true,
   });
@@ -73,9 +78,15 @@ export async function detectGpuEncoder(): Promise<GpuEncoder> {
     stdout += data.toString();
   });
   const outcome = await new ManagedChildProcess(ffmpeg, {
-    deadlineAtMs: Date.now() + 30_000,
+    deadlineAtMs: Date.now() + deadlineMs,
+    terminationGraceMs,
   }).wait();
-  if (outcome.reason !== "exit" || outcome.exitCode !== 0) return null;
+  return outcome.reason === "exit" && outcome.exitCode === 0 ? stdout : null;
+}
+
+export async function detectGpuEncoder(): Promise<GpuEncoder> {
+  const stdout = await ffmpegStdout(["-encoders"], 30_000);
+  if (stdout === null) return null;
   const candidates = getCompiledGpuEncoders(stdout);
   return selectUsableGpuEncoder(candidates, canUseGpuEncoder).catch(() => null);
 }
@@ -327,26 +338,10 @@ export function getCachedNvencPresets(): Promise<ReadonlySet<string>> {
 }
 
 async function readNvencPresets(): Promise<ReadonlySet<string>> {
-  try {
-    const ffmpeg = spawn(getFfmpegBinary(), ["-hide_banner", "-h", "encoder=h264_nvenc"], {
-      stdio: ["ignore", "pipe", "pipe"],
-      windowsHide: true,
-    });
-    trackChildProcess(ffmpeg);
-    let stdout = "";
-    ffmpeg.stdout.on("data", (data) => {
-      stdout += data.toString();
-    });
-    const outcome = await new ManagedChildProcess(ffmpeg, {
-      deadlineAtMs: Date.now() + GPU_PROBE_TIMEOUT_MS,
-      terminationGraceMs: GPU_PROBE_KILL_GRACE_MS,
-    }).wait();
-    return outcome.reason === "exit" ? parseEncoderPresetNames(stdout) : new Set();
-  } catch {
-    return new Set();
-  }
-}
-
-export function resetCachedNvencPresets() {
-  cachedNvencPresets = undefined;
+  const help = await ffmpegStdout(
+    ["-hide_banner", "-h", "encoder=h264_nvenc"],
+    GPU_PROBE_TIMEOUT_MS,
+    GPU_PROBE_KILL_GRACE_MS,
+  ).catch(() => null);
+  return help === null ? new Set() : parseEncoderPresetNames(help);
 }
