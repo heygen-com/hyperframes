@@ -286,9 +286,9 @@ export function loadBesideCli(name: PinnedPackage, cliUrl = import.meta.url): un
   return copy?.resolution === "entry" ? createRequire(cliUrl)(copy.path) : null;
 }
 
-export function runNpm(args: string[], signal?: AbortSignal): Promise<void> {
+export function runNpm(args: string[], signal?: AbortSignal, cwd?: string): Promise<void> {
   const npm = buildNpmCommand(args);
-  const child = spawn(npm.command, npm.args, { stdio: ["ignore", "pipe", "pipe"], signal });
+  const child = spawn(npm.command, npm.args, { stdio: ["ignore", "pipe", "pipe"], signal, cwd });
   return new Promise((resolve, reject) => {
     let output = "";
     child.stdout.on("data", (chunk) => (output += chunk));
@@ -340,26 +340,27 @@ export async function install(
   dir: string,
   name: string,
   version: string,
-  run: (args: string[]) => Promise<void> = runNpm,
+  run: (args: string[], cwd: string) => Promise<void> = (args, cwd) => runNpm(args, undefined, cwd),
 ): Promise<void> {
   sweepStaleStaging(dir);
   const staging = `${dir}.tmp-${process.pid}-${randomUUID().slice(0, 8)}`;
   mkdirSync(staging, { recursive: true });
   writeFileSync(join(staging, "package.json"), "{}");
   try {
-    await run([
-      "install",
-      `${name}@${version}`,
-      "--prefix",
+    await run(
+      [
+        "install",
+        `${name}@${version}`,
+        "--no-audit",
+        "--no-fund",
+        "--loglevel=error",
+        // A first-use install is interactive, not a CI resolve: fail fast and name the
+        // manual command instead of sitting through npm's default multi-minute backoff.
+        "--fetch-retries=0",
+        "--fetch-timeout=20000",
+      ],
       staging,
-      "--no-audit",
-      "--no-fund",
-      "--loglevel=error",
-      // A first-use install is interactive, not a CI resolve: fail fast and name the
-      // manual command instead of sitting through npm's default multi-minute backoff.
-      "--fetch-retries=0",
-      "--fetch-timeout=20000",
-    ]);
+    );
     if (isInstalled(dir, name)) return;
     rmSync(dir, { recursive: true, force: true });
     renameSync(staging, dir);

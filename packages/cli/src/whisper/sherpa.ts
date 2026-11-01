@@ -246,7 +246,7 @@ export async function installSherpaRuntime({
   // install() keeps any dir holding the runtime manifest, so a broken one goes first.
   rmSync(dir, { recursive: true, force: true });
   const native = sherpaPlatformPackage();
-  await install(dir, RUNTIME, RUNTIME_VERSION, (args) => run([...args, native], signal));
+  await install(dir, RUNTIME, RUNTIME_VERSION, (args, cwd) => run([...args, native], signal, cwd));
   const selected = await cachedRuntime(dir, 60_000, signal);
   if (selected.status === "unavailable") {
     throw new Error(
