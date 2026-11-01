@@ -1505,6 +1505,23 @@ function disabledCraft(): CraftResult {
   return { enabled: false, step: 0, samples: 0, findings: [] };
 }
 
+/** The analysis re-seeks and re-captures frames on its own; each call it makes restarts the idle window. */
+export function reportingProgress<T extends object>(
+  driver: T,
+  enter: (phase: CheckPhase, detail?: string) => void,
+): T {
+  return new Proxy(driver, {
+    get(target, name) {
+      const member = Reflect.get(target, name);
+      if (typeof member !== "function") return member;
+      return (...args: unknown[]) => {
+        enter("analysis", String(name));
+        return member.apply(target, args);
+      };
+    },
+  });
+}
+
 export async function runAuditGrid(
   driver: CheckAuditDriver,
   options: CheckOptions,
@@ -1536,19 +1553,21 @@ export async function runAuditGrid(
   const seekLoopMs = Date.now() - seekLoopStart;
 
   report("analyze", 0, 3);
+  enter("analysis");
+  const analysing = reportingProgress(driver, enter);
   let motionIssues = plan.preflightIssues;
   if (motion.kind === "valid" && plan.assertions.length > 0 && collected.motionFrames.length > 0) {
-    const canvas = await driver.getCanvas();
+    const canvas = await analysing.getCanvas();
     let evaluated = evaluateMotion(collected.motionFrames, plan.assertions, canvas, grid.duration);
     if (evaluated.some((issue) => issue.code === "motion_frozen")) {
-      const frames = await withFrameMotion(driver, collected.motionFrames, plan.assertions);
+      const frames = await withFrameMotion(analysing, collected.motionFrames, plan.assertions);
       evaluated = evaluateMotion(frames, plan.assertions, canvas, grid.duration);
     }
-    motionIssues = [...motionIssues, ...(await driver.anchorMotionIssues(evaluated))];
+    motionIssues = [...motionIssues, ...(await analysing.anchorMotionIssues(evaluated))];
   }
   report("analyze", 1, 3);
   const userPicked = new Set(grid.userPickedSamples);
-  const noTimeline = await driver.hasNoTimelineDeclaration();
+  const noTimeline = await analysing.hasNoTimelineDeclaration();
   const sweepSamples = collected.layoutStateSignatures.filter(
     (sample) => !userPicked.has(sample.time),
   );
@@ -1558,34 +1577,34 @@ export async function runAuditGrid(
   const sweepFindings =
     sweepVerdict.length > 0 &&
     (await framesMoved(
-      driver,
+      analysing,
       sweepSamples.map((sample) => sample.time),
     ))
       ? []
       : sweepVerdict;
   const rotationFindings = detectRotationPivotDrift(
     collected.rotationSamples,
-    await driver.getCanvas(),
+    await analysing.getCanvas(),
   );
   const offPivotFindings = detectOffPivotRotation(collected.indicatorFrames);
   const contrast = buildContrastResults(collected.contrastEntries);
   report("analyze", 2, 3);
-  const craft = craftEnabled(driver, options)
+  const craft = craftEnabled(analysing, options)
     ? await auditCraft(
         {
           frames: collected.craftFrames,
           duration: grid.duration,
-          canvas: await driver.getCanvas(),
-          soundSources: driver.collectCraftFilm
-            ? (await driver.collectCraftFilm()).soundSources
+          canvas: await analysing.getCanvas(),
+          soundSources: analysing.collectCraftFilm
+            ? (await analysing.collectCraftFilm()).soundSources
             : null,
           stillnessJudgedElsewhere:
             noTimeline || sweepFindings.length > 0 || wholeCompositionKeepsMoving(plan.assertions),
         },
         async (time) => {
-          await driver.seekGeometry(time, { draws: true });
-          if (!driver.collectCraftFrame) throw new Error("craft sampling unavailable");
-          return driver.collectCraftFrame(time);
+          await analysing.seekGeometry(time, { draws: true });
+          if (!analysing.collectCraftFrame) throw new Error("craft sampling unavailable");
+          return analysing.collectCraftFrame(time);
         },
       )
     : disabledCraft();
