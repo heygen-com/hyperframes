@@ -499,13 +499,14 @@ interface ImageValue {
 
 ## JsonPatchOp
 
-An emit-only subset of [RFC 6902](https://datatracker.ietf.org/doc/html/rfc6902) JSON Patch. The SDK never emits `move`, `copy`, or `test` ops, and `applyPatches()` ignores operations outside this subset.
+Version `1` uses the add/remove/replace subset of [RFC 6902](https://datatracker.ietf.org/doc/html/rfc6902) JSON Patch. Version `2` adds SDK-specific selective style inverses. The SDK never emits `move`, `copy`, or `test` ops, and `applyPatches()` ignores operations outside that operation subset.
 
 ```typescript
 interface JsonPatchOp {
   op: "add" | "remove" | "replace";
   path: string;
   value?: unknown;
+  restoreStyleProperties?: readonly string[];
 }
 ```
 
@@ -521,6 +522,13 @@ interface JsonPatchOp {
   New value for `"add"` and `"replace"` ops. Omitted for `"remove"`.
 </ResponseField>
 
+<ResponseField name="restoreStyleProperties" type="readonly string[]">
+  Present on SDK-generated style-attribute inverses when a property has repeated declarations.
+  Lists the camelCase properties to restore from `value`, preserving current declarations of
+  unrelated properties. Preserve this field when storing inverse patches and replay them through
+  `applyPatches()`.
+</ResponseField>
+
 <Warning>
   Hosts feeding patches back into `applyPatches()` must restrict themselves to `add`, `remove`, and `replace`. Other RFC 6902 op types are silently ignored.
 </Warning>
@@ -533,7 +541,7 @@ Emitted by `comp.on('patch', handler)` after every committed change (single `dis
 
 ```typescript
 interface PatchEvent {
-  readonly formatVersion: 1;
+  readonly formatVersion: 1 | 2;
   readonly patches: readonly JsonPatchOp[];
   readonly inversePatches: readonly JsonPatchOp[];
   readonly origin: unknown;
@@ -541,8 +549,11 @@ interface PatchEvent {
 }
 ```
 
-<ResponseField name="formatVersion" type="1">
-  Always `1`. A bump in `formatVersion` is a breaking change. Hosts should check this value once on startup and reject unknown versions.
+<ResponseField name="formatVersion" type="1 | 2">
+  Version `1` contains ordinary add/remove/replace patches. Version `2` contains an SDK-specific
+  selective style inverse with `restoreStyleProperties`. Store those operations intact and replay
+  them through `applyPatches()`. Hosts that only support version `1` must reject version `2`
+  before processing its patches.
 </ResponseField>
 
 <ResponseField name="patches" type="readonly JsonPatchOp[]">

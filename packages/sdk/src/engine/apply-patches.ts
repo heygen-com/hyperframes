@@ -15,6 +15,7 @@ import {
   findRoot,
   declarationElement,
   setElementStyles,
+  restoreElementStyleProperties,
   setOwnText,
   setGsapScript,
   setStyleSheet,
@@ -219,15 +220,15 @@ export function applyPatchesToDocument(
   parsed: ParsedDocument,
   patches: readonly JsonPatchOp[],
   options: ApplyOptions = {},
-): void {
-  for (const patch of patches) {
+): readonly JsonPatchOp[] {
+  return patches.map((patch) => {
     const p = parsePath(patch.path);
-    if (!p) continue;
+    if (!p) return patch;
     if (p.id && patch.path.startsWith("/elements/")) {
       p.id = p.id.replace(/~1/g, "/").replace(/~0/g, "~");
     }
-    applyOne(parsed, patch, p, options);
-  }
+    return applyOne(parsed, patch, p, options) ?? patch;
+  });
 }
 
 // fallow-ignore-next-line complexity
@@ -236,7 +237,7 @@ function applyOne(
   patch: JsonPatchOp,
   p: ParsedPath,
   options: ApplyOptions,
-): void {
+): JsonPatchOp | undefined {
   switch (p.type) {
     case "style": {
       const el = p.id ? findById(parsed.document, p.id) : null;
@@ -265,6 +266,13 @@ function applyOne(
       if (!el || !p.prop) return;
       if (patch.op === "remove") {
         el.removeAttribute(p.prop);
+      } else if (p.prop === "style" && patch.restoreStyleProperties) {
+        const value = restoreElementStyleProperties(
+          el,
+          String(patch.value ?? ""),
+          patch.restoreStyleProperties,
+        );
+        return { op: patch.op, path: patch.path, value };
       } else {
         el.setAttribute(p.prop, String(patch.value ?? ""));
       }

@@ -8,6 +8,7 @@
 
 import { describe, it, expect } from "vitest";
 import { openComposition } from "./session.js";
+import { ORIGIN_APPLY_PATCHES } from "./types.js";
 import type { Composition, PatchEvent } from "./types.js";
 
 const BASE_HTML = `
@@ -49,6 +50,7 @@ describe("dispatch emits patch event", () => {
     comp.setStyle("hf-title", { color: "#e63946" });
 
     expect(events).toHaveLength(1);
+    expect(events[0]?.formatVersion).toBe(1);
     expect(events[0]!.patches[0]).toMatchObject({
       op: "replace",
       path: "/elements/hf-title/inlineStyles/color",
@@ -59,6 +61,111 @@ describe("dispatch emits patch event", () => {
       path: "/elements/hf-title/inlineStyles/color",
       value: "#fff",
     });
+  });
+
+  it("versions selective fallback inverses so legacy hosts can reject them", async () => {
+    const { comp, events } = await withPatch(
+      '<span data-hf-id="hf-title" style="display:-moz-box !important;display:block">hello</span>',
+    );
+    comp.setStyle("hf-title", { display: "flex" });
+    expect(events[0]?.formatVersion).toBe(2);
+    expect(events[0]?.inversePatches).toContainEqual({
+      op: "replace",
+      path: "/elements/hf-title/attributes/style",
+      value: "display:-moz-box !important;display:block",
+      restoreStyleProperties: ["display"],
+    });
+    comp.dispose();
+  });
+
+  it("retains whole-style replacement semantics for persisted version-1 events", async () => {
+    const saved: Pick<PatchEvent, "patches" | "inversePatches"> = JSON.parse(`{
+      "patches": [{ "op": "replace", "path": "/elements/hf-title/attributes/style", "value": "color:blue" }],
+      "inversePatches": [{ "op": "replace", "path": "/elements/hf-title/attributes/style", "value": "color:red" }]
+    }`);
+    const html = '<span data-hf-id="hf-title" style="color:red">hello</span>';
+    const comp = await openComposition(html, { history: false, overrides: {} });
+    const events: PatchEvent[] = [];
+    comp.on("patch", (event) => events.push(event));
+
+    comp.applyPatches(saved.patches);
+    expect(comp.getElement("hf-title")?.inlineStyles.color).toBe("blue");
+    comp.applyPatches([
+      { op: "replace", path: "/elements/hf-title/inlineStyles/opacity", value: "0.5" },
+    ]);
+    comp.applyPatches(saved.inversePatches);
+    expect(comp.getElement("hf-title")?.inlineStyles).toEqual({ color: "red" });
+    expect(events.map((event) => event.formatVersion)).toEqual([1, 1, 1]);
+
+    const reopened = await openComposition(html, {
+      overrides: JSON.parse(JSON.stringify(comp.getOverrides())),
+    });
+    expect(reopened.serialize()).toBe(comp.serialize());
+    comp.dispose();
+    reopened.dispose();
+  });
+
+  it("replays mixed persisted versions through host-owned undo and redo", async () => {
+    const html =
+      '<span data-hf-id="hf-title" style="display:-moz-box !important;display:block;color:red">hello</span>';
+    const comp = await openComposition(html, { history: false, overrides: {} });
+    const stored: string[] = [];
+    comp.on("patch", (event) => {
+      if (event.origin === ORIGIN_APPLY_PATCHES) return;
+      if (event.formatVersion !== 1 && event.formatVersion !== 2) {
+        throw new Error("Unsupported patch format version");
+      }
+      stored.push(JSON.stringify(event));
+    });
+    comp.setStyle("hf-title", { color: "blue" });
+    comp.setStyle("hf-title", { display: "flex" });
+    comp.setText("hf-title", "updated");
+    comp.applyPatches([
+      { op: "replace", path: "/elements/hf-title/inlineStyles/opacity", value: "0.5" },
+    ]);
+    const entries: PatchEvent[] = stored.map((record) => JSON.parse(record));
+    expect(entries.map((entry) => entry.formatVersion)).toEqual([1, 2, 1]);
+    expect(entries[1]?.inversePatches).toContainEqual(
+      expect.objectContaining({ restoreStyleProperties: ["display"] }),
+    );
+    const overrides = JSON.stringify(comp.getOverrides());
+    comp.dispose();
+
+    const restored = await openComposition(html, {
+      history: false,
+      overrides: JSON.parse(overrides),
+    });
+    const replayed: PatchEvent[] = [];
+    restored.on("patch", (event) => replayed.push(event));
+    for (const entry of [...entries].reverse()) restored.applyPatches(entry.inversePatches);
+    expect(restored.getElement("hf-title")?.inlineStyles).toEqual({
+      display: "-moz-box !important",
+      color: "red",
+      opacity: "0.5",
+    });
+    expect(restored.getElement("hf-title")?.text).toBe("hello");
+    expect(restored.serialize()).toContain("display: -moz-box !important; display: block");
+    expect(replayed.map((event) => event.formatVersion)).toEqual([1, 1, 1]);
+    expect(replayed.every((event) => event.origin === ORIGIN_APPLY_PATCHES)).toBe(true);
+    const undone = await openComposition(html, {
+      overrides: JSON.parse(JSON.stringify(restored.getOverrides())),
+    });
+    expect(undone.serialize()).toBe(restored.serialize());
+    undone.dispose();
+
+    for (const entry of entries) restored.applyPatches(entry.patches);
+    expect(restored.getElement("hf-title")?.inlineStyles).toEqual({
+      display: "flex",
+      color: "blue",
+      opacity: "0.5",
+    });
+    expect(restored.getElement("hf-title")?.text).toBe("updated");
+    const reopened = await openComposition(html, {
+      overrides: JSON.parse(JSON.stringify(restored.getOverrides())),
+    });
+    expect(reopened.serialize()).toBe(restored.serialize());
+    restored.dispose();
+    reopened.dispose();
   });
 
   it("no-op dispatch (same value) fires change; patch may be empty", async () => {
