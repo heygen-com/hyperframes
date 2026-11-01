@@ -21,6 +21,7 @@ const SAMPLES = 9;
 type FitOrReason = { fit: "fill" | "cover" } | { reason: string };
 
 /** Runs in the page; must stay self-contained. */
+// fallow-ignore-next-line complexity
 export function inspectVideoLayout(
   id: string,
   w: number,
