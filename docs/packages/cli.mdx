@@ -1211,6 +1211,9 @@ cover every finding from the full check.
 | `--timeout`                                  | Render-ready budget in ms; also raises page navigation above its 10s floor (default 3000)                                   |
 | `--no-contrast`                              | Skip the WCAG pass while iterating                                                                                         |
 | `--strict`                                   | Exit non-zero on warnings too (default: errors only)                                                                        |
+| `--golden`                                   | Also gate against committed golden baselines; a regressed frame fails the check. See [Golden baselines](/reference/cli-golden) |
+| `--update-golden`                            | Refresh the golden baselines from the current render instead of gating                                                      |
+| `--golden-threshold <0-1>`                   | Per-channel pixel tolerance for the golden gate (default: `golden.json` threshold, else 0.1)                                |
 | `--caption-zone "<x0=..;y0=..;x1=..;y1=..>"` | Opt-in band gate. Flags a text element's DOM box that overlaps the fractional band. Optional `severity` and `seek`.         |
 | `--frame-check`                              | Opt-in out-of-frame detection for `img`, `svg`, `video`, and `canvas`                                                       |
 | `--layout`                                   | Layout knobs, currently `proseCoverageFloor=0.05` (0–1, default 0.15)                                                       |
