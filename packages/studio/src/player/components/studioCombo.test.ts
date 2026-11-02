@@ -114,5 +114,6 @@ describe("studioKeyClash", () => {
     expect(studioKeyClash("pause", "k")).toBeNull();
     expect(studioKeyClash("mute", "b")).toBe("razorTool");
     expect(studioKeyClash("mute", "mod+z", { ...getAll(), undo: "q" })).toBeNull();
+    expect(studioKeyClash("mute", "q", { ...getAll(), undo: "" })).toBeNull();
   });
 });

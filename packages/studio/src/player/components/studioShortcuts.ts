@@ -121,6 +121,7 @@ export function studioKeyClash(
     (other) =>
       other !== action &&
       !sharedByDesign(action, other) &&
+      parseCombo(keys[other]) !== null &&
       comboClashKey(parseCombo(keys[other])!) === comboClashKey(combo),
   );
   return taken ?? null;
