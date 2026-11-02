@@ -16,7 +16,7 @@ npx skills add heygen-com/hyperframes --skill <name>  # a named match installs r
 
 > **Warning:** Never run `npx skills add ... --all` from inside a HyperFrames checkout: it selects the OpenClaw target, whose `skills/` directory is the repo's own `skills/`, and removes each existing `skills/<name>` destination before linking. A fresh clone restores tracked source, but uncommitted work under `skills/` does not recover. Run it from an empty directory or from your own project root. This happens regardless of `metadata.internal`.
 
-`skills add` resolves the skills.sh registry blob, which can lag `main` by hours, so a freshly added skill may be a little behind. `npx hyperframes skills update` installs from the current `main`; prefer it when freshness matters.
+`skills add` resolves the skills.sh registry blob, which can lag `main` by hours, so a freshly added skill may be a little behind. `npx hyperframes skills update` installs the skills from the release tag that matches the CLI version, so they match the CLI that runs them.
 
 Make any video by asking for it; the `/hyperframes` skill carries the render contract and the references (format, runtimes, motion, look, captions, film, overlays, storyboards). The skills carry knowledge, not process. The README skills section mirrors this list; keep them in sync (see "Skill catalog maintenance" below).
 

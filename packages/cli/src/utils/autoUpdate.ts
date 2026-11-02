@@ -12,8 +12,8 @@
  *               marker. The user is now on the new version.
  *
  * Guardrails:
- *   - Never auto-update across major versions. The user opts in explicitly
- *     via `hyperframes upgrade`.
+ *   - Never auto-update across major versions (or minor versions while in
+ *     0.x). The user opts in explicitly via `hyperframes upgrade`.
  *   - Skip on CI, unattended runs (agents, no TTY), dev mode, unknown installer, ephemeral exec (npx),
  *     or when `HYPERFRAMES_NO_AUTO_INSTALL` / `HYPERFRAMES_NO_UPDATE_CHECK`
  *     is set.
@@ -53,10 +53,15 @@ function isAutoInstallDisabled(): boolean {
   );
 }
 
-/** Parse a semver-ish string's major number; returns NaN for pre-releases etc. */
-function majorOf(version: string): number {
-  const match = /^(\d+)\./.exec(version);
-  return match?.[1] ? Number.parseInt(match[1], 10) : Number.NaN;
+/**
+ * The breaking-change line a version belongs to: `0.<minor>` before 1.0, where
+ * semver lets a minor bump break, and `<major>` from 1.0 on. Null when unparsable.
+ * Comparing majors alone read 0.8.x -> 0.9.x as the same line and auto-installed it.
+ */
+function breakingLine(version: string): string | null {
+  const match = /^(\d+)\.(\d+)\./.exec(version);
+  if (!match) return null;
+  return match[1] === "0" ? `0.${match[2]}` : String(match[1]);
 }
 
 /**
@@ -242,12 +247,12 @@ function isSilentUpgrade(latestVersion: string, currentVersion: string): boolean
   }
   if (cmp <= 0) return false;
 
-  // Major-version jumps carry breaking-change risk. Don't silent-install;
-  // the existing `printUpdateNotice` banner nudges the user to run
-  // `hyperframes upgrade` explicitly.
-  const latestMajor = majorOf(latestVersion);
-  const currentMajor = majorOf(currentVersion);
-  if (Number.isFinite(latestMajor) && Number.isFinite(currentMajor) && latestMajor > currentMajor) {
+  // Major-version jumps (minor jumps while in 0.x) carry breaking-change risk.
+  // Don't silent-install; the existing `printUpdateNotice` banner nudges the
+  // user to run `hyperframes upgrade` explicitly.
+  const latestLine = breakingLine(latestVersion);
+  const currentLine = breakingLine(currentVersion);
+  if (latestLine !== null && currentLine !== null && latestLine !== currentLine) {
     log(`[skip] major-bump ${currentVersion} -> ${latestVersion}`);
     return false;
   }

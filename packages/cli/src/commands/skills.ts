@@ -14,6 +14,7 @@ import {
   presentSkills,
   RETIRED_SKILLS,
   retiredSkillNotice,
+  skillsSourceRef,
   type SkillDiff,
   type SkillsCheckResult,
 } from "../utils/skillsManifest.js";
@@ -105,7 +106,7 @@ function spawnNpx(args: string[], opts: { cwd?: string } = {}): Promise<void> {
 // Why --copy: real files (not the upstream symlink default, which re-serialises
 // each SKILL.md's frontmatter) so an installed bundle byte-matches the published
 // manifest and `skills check` reads it as current. Why --full-depth: it forces a
-// full `git clone` of HEAD; without it even a full-URL `skills add` fetches the
+// full `git clone` of the requested ref; without it even a full-URL `skills add` fetches the
 // skills.sh registry blob, which lags GitHub main by hours, so a fresh install
 // would read as several skills "outdated" (verified: blob → ~9 outdated;
 // --full-depth → all current).
@@ -129,13 +130,19 @@ function skillSelectionArgs(selection: SkillSelection): string[] {
   return names.flatMap((name) => ["--skill", name]);
 }
 
+// The upstream `skills` CLI, pinned: a bare `npx skills` runs whatever was
+// published last, so an upstream release could change how every install behaves
+// with no HyperFrames release. Bump deliberately, re-checking the lock paths in
+// skillsManifest.ts and the `#<ref>` source syntax used below.
+const SKILLS_CLI = "skills@1.7.4";
+
 function runSkillsAdd(
   source: string,
   selection: SkillSelection,
   opts: { cwd?: string } = {},
 ): Promise<void> {
   return spawnNpx(
-    ["skills", "add", source, ...skillSelectionArgs(selection), ...GLOBAL_INSTALL_ARGS_TAIL],
+    [SKILLS_CLI, "add", source, ...skillSelectionArgs(selection), ...GLOBAL_INSTALL_ARGS_TAIL],
     opts,
   );
 }
@@ -147,10 +154,11 @@ function runSkillsAdd(
 // on the Windows `cmd.exe` spawn path, where arg escaping is fragile.
 const PLAIN_SKILL_NAME = /^[a-z0-9][a-z0-9._-]*$/i;
 
-// Use the full GitHub URL (not the `owner/repo` slug) as the clone source. The
-// freshness comes from --full-depth (see GLOBAL_INSTALL_ARGS_TAIL), which clones the
-// repo at latest `main`; the URL just names what to clone. Our freshness check
-// resolves "latest" straight from GitHub too, so install and check agree.
+// Use the full GitHub URL (not the `owner/repo` slug) as the clone source.
+// --full-depth (see GLOBAL_INSTALL_ARGS_TAIL) clones it at the `#<ref>` the
+// URL names: this CLI's release tag (skillsSourceRef), so the skills match the
+// CLI that runs them. The freshness check reads the manifest at the same ref,
+// so install and check agree.
 const SOURCES = [{ name: "HyperFrames", url: "https://github.com/heygen-com/hyperframes" }];
 
 // Fan HyperFrames' own skills out to every other installed agent. Scope by the
@@ -249,6 +257,7 @@ async function installSkills(
 
   if (!skillsToolingReady(opts.strict ?? false)) return;
 
+  const ref = await skillsSourceRef();
   // stderr (via diag): installSkills runs on the `skills update --json` path before
   // its JSON envelope is written to stdout — progress here must not corrupt it.
   for (const source of SOURCES) {
@@ -256,7 +265,7 @@ async function installSkills(
     diag.notice(c.bold(`Installing ${source.name} skills...`));
     diag.notice();
     try {
-      await runSkillsAdd(source.url, safeSelection, opts);
+      await runSkillsAdd(ref === "main" ? source.url : `${source.url}#${ref}`, safeSelection, opts);
     } catch (err) {
       if (opts.strict) throw err instanceof Error ? err : new Error(String(err));
       // warn, not notice: this is a non-fatal skip after a caught install error.

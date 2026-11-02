@@ -21,6 +21,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
+import { VERSION } from "../version.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -589,27 +590,22 @@ async function fetchManifest(url: string): Promise<SkillsManifest> {
 }
 
 /**
- * Resolve main's live HEAD sha via `git ls-remote`: the branch-raw CDN can serve
+ * Resolve a ref's live commit sha via `git ls-remote`: the branch-raw CDN can serve
  * stale content for minutes after a push, a SHA-pinned raw URL cannot. Returns
- * null for a slug that is not `owner/repo`, or when git/network is unavailable.
+ * null for a slug that is not `owner/repo`, a ref the repo does not have, or when
+ * git/network is unavailable.
  *
  * GIT_TERMINAL_PROMPT=0 does not stop credential helpers or askpass, and Git
  * Credential Manager (the Git for Windows default) answers a private or missing
  * repo's auth challenge with a blocking sign-in window. An empty credential.helper
  * clears every helper; an empty GIT_ASKPASS also skips core.askPass and SSH_ASKPASS.
  */
-async function remoteHeadSha(repoSlug: string): Promise<string | null> {
+async function remoteRefSha(repoSlug: string, ref: string): Promise<string | null> {
   if (!REPO_SLUG_PATTERN.test(repoSlug)) return null;
   try {
     const { stdout } = await execFileAsync(
       "git",
-      [
-        "-c",
-        "credential.helper=",
-        "ls-remote",
-        `https://github.com/${repoSlug}.git`,
-        "refs/heads/main",
-      ],
+      ["-c", "credential.helper=", "ls-remote", `https://github.com/${repoSlug}.git`, ref],
       {
         timeout: FETCH_TIMEOUT_MS,
         env: {
@@ -628,6 +624,26 @@ async function remoteHeadSha(repoSlug: string): Promise<string | null> {
   }
 }
 
+/** The release tag (`v<version>`) of a published CLI build; null for a dev or pre-release build. */
+export function cliReleaseTag(version: string = VERSION): string | null {
+  return /^\d+\.\d+\.\d+$/.test(version) ? `v${version}` : null;
+}
+
+/**
+ * The repo ref skills install from and are checked against: the running CLI's
+ * release tag, so an agent reads the skills written for the CLI it drives, not
+ * whatever `main` holds today. A build the repo has no tag for (a dev build)
+ * falls back to `main`. Install and check both resolve through here, so they agree.
+ */
+export async function skillsSourceRef(
+  repoSlug: string = DEFAULT_REPO_SLUG,
+  version: string = VERSION,
+): Promise<string> {
+  const tag = cliReleaseTag(version);
+  if (!tag) return "main";
+  return (await remoteRefSha(repoSlug, `refs/tags/${tag}`)) ? tag : "main";
+}
+
 /** Read a manifest from a local path — a manifest file or a repo root. */
 function resolveLocalManifest(source: string): SkillsManifest {
   const direct = source.endsWith(".json") ? source : join(source, MANIFEST_FILE);
@@ -640,14 +656,20 @@ function resolveLocalManifest(source: string): SkillsManifest {
 
 /**
  * Fetch the manifest from GitHub. A full URL is fetched directly; an
- * `owner/repo` slug (or the default repo) is SHA-pinned via `git ls-remote` to
- * dodge raw-CDN lag, falling back to the branch URL when git is unavailable.
+ * `owner/repo` slug (or the default repo) is read at the ref skills install
+ * from (see skillsSourceRef). A release tag never moves, so its raw URL is
+ * read as is; `main` is SHA-pinned via `git ls-remote` to dodge raw-CDN lag,
+ * falling back to the branch URL when git is unavailable.
  */
 async function fetchRemoteManifest(source?: string): Promise<SkillsManifest> {
   if (source?.startsWith("http")) return fetchManifest(source);
 
   const repoSlug = source ?? DEFAULT_REPO_SLUG;
-  const sha = await remoteHeadSha(repoSlug);
+  const ref = await skillsSourceRef(repoSlug);
+  if (ref !== "main") {
+    return fetchManifest(`https://raw.githubusercontent.com/${repoSlug}/${ref}/${MANIFEST_FILE}`);
+  }
+  const sha = await remoteRefSha(repoSlug, "refs/heads/main");
   if (sha) {
     try {
       return await fetchManifest(

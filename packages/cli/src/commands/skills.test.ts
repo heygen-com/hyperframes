@@ -106,6 +106,7 @@ vi.mock("../utils/skillsManifest.js", async (importOriginal) => {
     ...actual,
     checkSkills: vi.fn(async () => DEFAULT_CHECK),
     hyperframesSkillNames: vi.fn(() => ["hyperframes"]),
+    skillsSourceRef: vi.fn(async () => "main"),
     presentSkills: vi.fn((names: readonly string[]) => [...names]),
   };
 });
@@ -187,7 +188,10 @@ describe("hyperframes skills", () => {
     vi.resetModules();
     // vi.resetModules re-imports skills.js but the manifest mock's vi.fn
     // instances persist — restore their default behavior for each test.
-    const { checkSkills, presentSkills } = await import("../utils/skillsManifest.js");
+    const { checkSkills, presentSkills, skillsSourceRef } =
+      await import("../utils/skillsManifest.js");
+    vi.mocked(skillsSourceRef).mockReset();
+    vi.mocked(skillsSourceRef).mockImplementation(async () => "main");
     vi.mocked(checkSkills).mockReset();
     vi.mocked(checkSkills).mockImplementation(async () => DEFAULT_CHECK as never);
     vi.mocked(presentSkills).mockReset();
@@ -210,7 +214,7 @@ describe("hyperframes skills", () => {
     const first = state.spawnCalls[0];
     expect(first).toBeDefined();
     expect(first!.command).toBe("npx");
-    expect(first!.args).toContain("skills");
+    expect(first!.args).toContain("skills@1.7.4");
     expect(first!.args).toContain("add");
     expect(first!.env?.GIT_CLONE_PROTECTION_ACTIVE).toBe("0");
     // --full-depth clones the repo; skip LFS so we don't drag in unrelated blobs.
@@ -223,7 +227,7 @@ describe("hyperframes skills", () => {
       "npx",
       ["--version"],
       [
-        "skills",
+        "skills@1.7.4",
         "add",
         "https://github.com/heygen-com/hyperframes",
         "--skill",
@@ -240,7 +244,7 @@ describe("hyperframes skills", () => {
       "npx",
       ["--version"],
       [
-        "skills",
+        "skills@1.7.4",
         "add",
         "https://github.com/heygen-com/hyperframes",
         "--skill",
@@ -261,7 +265,7 @@ describe("hyperframes skills", () => {
         "/s",
         "/c",
         "npx.cmd",
-        "skills",
+        "skills@1.7.4",
         "add",
         "https://github.com/heygen-com/hyperframes",
         "--skill",
@@ -320,6 +324,25 @@ describe("hyperframes skills", () => {
     // `--agent` must be followed by a concrete key, never the `'*'` wildcard
     const agentValue = args[args.indexOf("--agent") + 1];
     expect(agentValue).not.toBe("*");
+  });
+
+  // A release build installs the skills at its own tag, not at whatever main
+  // holds today, through the pinned skills CLI rather than the latest publish.
+  it("skills update installs at the CLI's release tag through the pinned skills CLI", async () => {
+    setPlatform("linux");
+    const { skillsSourceRef } = await import("../utils/skillsManifest.js");
+    vi.mocked(skillsSourceRef).mockResolvedValue("v0.9.3");
+
+    await runSkillsUpdate();
+
+    expect(await commandExitCode()).toBe(0);
+    const args = state.spawnCalls[0]?.args ?? [];
+    expect(args.slice(0, 3)).toEqual([
+      "skills@1.7.4",
+      "add",
+      "https://github.com/heygen-com/hyperframes#v0.9.3",
+    ]);
+    expect(args).toContain("--full-depth");
   });
 
   it("skills update refreshes an outdated installed workflow (but never expands)", async () => {
@@ -603,7 +626,10 @@ describe("hyperframes skills update <names>", () => {
     state.spawnExitCode = 0;
     state.gitMissing = false;
     vi.resetModules();
-    const { checkSkills, presentSkills } = await import("../utils/skillsManifest.js");
+    const { checkSkills, presentSkills, skillsSourceRef } =
+      await import("../utils/skillsManifest.js");
+    vi.mocked(skillsSourceRef).mockReset();
+    vi.mocked(skillsSourceRef).mockImplementation(async () => "main");
     vi.mocked(checkSkills).mockReset();
     vi.mocked(checkSkills).mockImplementation(async () => DEFAULT_CHECK as never);
     vi.mocked(presentSkills).mockReset();
