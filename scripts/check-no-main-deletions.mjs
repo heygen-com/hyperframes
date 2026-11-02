@@ -756,6 +756,8 @@ const PLAN_PARITY_HARNESS_REASON =
   "the completed Plan v1-to-v2 rollout harness has no supported v1 cloud path left to exercise";
 
 const PLAN_PARITY_HARNESS_FILES = [
+  "examples/aws-lambda/scripts/_semantic-compare.sh",
+  "examples/aws-lambda/scripts/semantic-compare.test.sh",
   "packages/producer/fixtures/plan-parity-size-pressure/.plan-parity-fixture.json",
   "packages/producer/fixtures/plan-parity-size-pressure/index.html",
   "packages/producer/fixtures/plan-parity-visual-audio/.plan-parity-fixture.json",

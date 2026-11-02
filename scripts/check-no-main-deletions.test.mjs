@@ -80,5 +80,9 @@ test("the Plan v1 cleanup allowlist is limited to samples and the rollout harnes
     ALLOWED_DELETIONS.get("packages/producer/src/plan-parity-harness.ts") ?? "",
     /completed Plan v1-to-v2 rollout harness/,
   );
+  assert.match(
+    ALLOWED_DELETIONS.get("examples/aws-lambda/scripts/_semantic-compare.sh") ?? "",
+    /completed Plan v1-to-v2 rollout harness/,
+  );
   assert.equal(ALLOWED_DELETIONS.has("packages/producer/src/services/distributed/plan.ts"), false);
 });
