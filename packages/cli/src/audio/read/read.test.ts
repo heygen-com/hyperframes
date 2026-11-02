@@ -118,7 +118,13 @@ beforeAll(async () => {
 afterAll(() => new Promise<void>((done) => server.close(() => done())));
 
 beforeEach(() => {
-  for (const name of ["HEYGEN_API_KEY", "HYPERFRAMES_API_KEY", "HEYGEN_ACCESS_TOKEN"])
+  for (const name of [
+    "HEYGEN_API_KEY",
+    "HYPERFRAMES_API_KEY",
+    "HEYGEN_ACCESS_TOKEN",
+    "GEMINI_API_KEY",
+    "GOOGLE_API_KEY",
+  ])
     vi.stubEnv(name, "");
   vi.stubEnv("HEYGEN_API_URL", origin());
 });
@@ -188,19 +194,29 @@ describe.skipIf(!ffmpeg)("readAudio", () => {
     expect(stemKeys[1]).toBe(stemKeys[0]);
     expect(analysis).toMatchObject({
       separation: "stems",
-      stems: ["vocals", "drums", "piano"].map((name) => ({ name, db: expect.any(Number) })),
-      warnings: [expect.stringContaining("no transcript")],
+      stems: ["vocals", "piano"].map((name) => ({
+        name,
+        db: expect.any(Number),
+        spans: expect.any(Array),
+        description: null,
+      })),
+      stemsDir: expect.stringMatching(/stems[\\/]\w{12}[\\/]$/),
+      voiceFreeMix: expect.stringMatching(/no-vocals\.wav$/),
+      warnings: [
+        expect.stringContaining("no transcript"),
+        "stems not described: the description service answered 404",
+      ],
     });
     expect(analysis.voice!.source).toBe("activity");
     expect(analysis.effects!.events.map((e) => [Math.round(e.t * 10) / 10, e.kind])).toEqual([
-      [2.4, "boom"],
+      [2.4, "effect"],
     ]);
     expect(analysis.effects!.events[0]!.overMusicDb).toBeGreaterThan(5);
     expect(analysis.music!.breaks.map((b) => Math.round(b.start))).toEqual([5]);
     expect(analysis.music!.segments.map((s) => s.entry)).toEqual(["start", "resumes"]);
     const text = readFileSync(textPath, "utf8");
-    expect(text).toMatch(/stems: vocals -\d+ dB, drums -\d+ dB, piano -\d+ dB\n/);
-    expect(text).toContain("effect   boom (S1): low");
+    expect(text).toMatch(/\nvocals +-\d+ dB · [\d.–, ]+\npiano +-\d+ dB · [\d.–, ]+\n/);
+    expect(text).toContain("effect   (drums, S1): low");
     expect(analysis.ambience).toEqual([]);
     expect(existsSync(join(cacheDir, "stems"))).toBe(true);
     await readAudio(path, "episode.wav", { cacheDir, quality: "best" });
@@ -230,14 +246,14 @@ describe.skipIf(!ffmpeg)("readAudio", () => {
       cacheDir,
       quality: "best",
     });
-    expect(analysis.stems).toEqual([{ name: "other", db: expect.any(Number) }]);
+    expect(analysis.stems).toEqual([]);
     expect(analysis.music!.segments).toEqual([]);
     expect(analysis.ambience).toEqual([
       { start: 0, end: expect.closeTo(6, 0), db: expect.any(Number) },
     ]);
     expect(analysis.ambience![0]!.db).toBeLessThan(-45);
     const text = readFileSync(textPath, "utf8");
-    expect(text).toMatch(/stems: other -\d+ dB\n/);
+    expect(text).not.toMatch(/\nother +-\d+ dB/);
     expect(text).toMatch(/ambience quiet, -\d+ dBFS/);
     expect(text).not.toContain("piece");
     expect(formatRead(analysis, [2, 3])).toContain("ambience quiet");
@@ -457,7 +473,7 @@ describe.skipIf(!ffmpeg)("readAudio", () => {
     const { analysis, textPath } = reads[0]!;
     expect(analysis.music!.segments.map((m) => Math.round(m.start * 10) / 10)).toEqual([6]);
     const text = readFileSync(textPath, "utf8");
-    expect(text).toMatch(/pause    7\.1 s; during it: 5 effects \(.+\), music 6\.0–9\.0/);
+    expect(text).toMatch(/pause    7\.1 s; during it: 5 effects, music 6\.0–9\.0/);
     expect(text).toMatch(/peak -\d+ dBFS, out of silence/);
     const [, under] = analysis.voice!.sentences;
     expect(under!.againstMusic).toEqual({
