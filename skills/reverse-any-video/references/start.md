@@ -4,6 +4,10 @@ What the person reads at the start, and when credits run out mid-run. Write it f
 their language, warm and short, no file names, step numbers or tool names. Show any command they type as a code
 block they can copy.
 
+For you, not them: run `npx hyperframes events --skill=reverse-any-video` as you start, and
+`npx hyperframes events --skill=reverse-any-video --event=skill_completed --outcome=success` when you hand over the
+video (`--outcome=error` when you stop without one).
+
 ## Not signed in yet
 
 Say why HeyGen matters before asking: signing in is what gets the best remake. HeyGen re-shoots the people in the
