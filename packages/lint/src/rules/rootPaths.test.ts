@@ -17,6 +17,38 @@ async function hints(html: string, compSrcPath?: string) {
 }
 
 describe("root paths the preview cannot find", () => {
+  it("ignores script comments and code examples stored in strings", async () => {
+    expect(
+      await hints(
+        page(`<script>
+          // fetch("/data/comment.json");
+          /* new URL("/assets/comment.mp4", location.href); */
+          const example = 'fetch("/data/example.json")';
+          const template = \`new URL("/assets/example.mp4", location.href)\`;
+          fetch("/data/active.json");
+        </script>`),
+      ),
+    ).toEqual(['Use "data/active.json" instead.']);
+  });
+
+  it("ignores commented-out URLs in linked stylesheets", async () => {
+    const result = await lintHyperframeHtml(page(""), {
+      externalStyles: [
+        {
+          href: "styles/main.css",
+          rootRelativePath: "styles/main.css",
+          content: `/* .unused { background: url(/assets/comment.png); } */
+            .active { background: url(/assets/active.png); }`,
+        },
+      ],
+    });
+    expect(
+      result.findings
+        .filter((finding) => finding.code === "root_path_missing_in_preview")
+        .map((finding) => finding.fixHint),
+    ).toEqual(['Use "../assets/active.png" instead.']);
+  });
+
   it("names each script-built root path with its relative form", async () => {
     expect(
       await hints(
