@@ -145,7 +145,7 @@ export type RangeRequest =
  *
  * Supports the three forms of `bytes=...`:
  *   - `bytes=START-END`: closed range, both bounds inclusive.
- *   - `bytes=START-`: open-ended, from START to EOF (audio/video: see `openRangeEnd`).
+ *   - `bytes=start-`: open-ended, from start to EOF (audio/video: see `openRangeEnd`).
  *   - `bytes=-SUFFIX`: last SUFFIX bytes.
  *
  * Multi-range requests (`bytes=0-99,200-299`) are treated as `absent`. The
@@ -188,7 +188,7 @@ export function parseRangeHeader(
   const start = Number(rawStart);
   if (!Number.isFinite(start)) return { kind: "absent" };
 
-  // Open-ended form: `bytes=START-` returns from START to EOF, or one bounded piece of audio/video.
+  // Open-ended form: `bytes=start-` returns from start to EOF, or one bounded piece of audio/video.
   if (rawEnd === "") {
     if (start >= size) return { kind: "unsatisfiable" };
     return { kind: "satisfiable", start, end: openRangeEnd(start, size - 1, contentType) };
