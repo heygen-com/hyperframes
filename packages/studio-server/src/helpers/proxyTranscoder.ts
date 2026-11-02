@@ -220,7 +220,6 @@ export function getProxyCachePath(
 interface ProxyJob {
   cachePath: string;
   priority: boolean;
-  /** Made for later, not for a viewer: its encodes run at the lowest OS priority until one asks. */
   background: boolean;
   /** Callers still waiting; one without a signal never leaves, so its copy is always made. */
   callers: number;
@@ -788,11 +787,11 @@ const OUT_TIME = /^out_time_(?:us|ms)=(\d+)$/;
 
 /** Runs ffmpeg and ends it when it makes no progress for `stallMs`; a slow encode that moves on is left to finish.
  * `onProgress` hears the seconds of output made so far (from `-progress pipe:1`). */
-function lowerPriority(pid: number): void {
+function lowerPriorityUnlessExited(pid: number): void {
   try {
     os.setPriority(pid, BACKGROUND_NICENESS);
   } catch {
-    // The process already exited, which its own close handler reports.
+    return;
   }
 }
 
@@ -812,7 +811,7 @@ function spawnFfmpeg(
       signal,
       windowsHide: true,
     });
-    if (background && proc.pid !== undefined) lowerPriority(proc.pid);
+    if (background && proc.pid !== undefined) lowerPriorityUnlessExited(proc.pid);
     let stalled = false;
     let timer: NodeJS.Timeout | undefined;
     const armStall = (): void => {
