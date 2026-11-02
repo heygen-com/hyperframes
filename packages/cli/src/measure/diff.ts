@@ -15,6 +15,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
+import { fpsToNumber, parseFps } from "@hyperframes/core";
+import { readCompositionFps } from "../utils/compositionFps.js";
 import { classifiedCuts, confirmsCut, frameChanges, signatures } from "./cuts.js";
 import {
   drawnFrames,
@@ -1124,6 +1126,19 @@ function choosePick(opts: DiffOptions, ref: VideoInfo): Pick {
   return { kind: "all" };
 }
 
+/** Tells when a render, or a project's root, runs at another rate than the original. */
+export function rateWarning(ref: VideoInfo, rate: number): string | undefined {
+  if (Math.abs(rate - ref.fps) <= 0.01) return undefined;
+  return `yours runs at ${round(rate, 3)} fps and the original at ${ref.fpsText}: set data-fps="${ref.fpsText}" on the root and render again`;
+}
+
+export function projectRate(dir: string): number {
+  const parsed = parseFps(
+    readCompositionFps(readFileSync(join(dir, "index.html"), "utf8")) ?? "30",
+  );
+  return parsed.ok ? fpsToNumber(parsed.value) : 30;
+}
+
 // fallow-ignore-next-line complexity
 export async function diffVideos(options: DiffOptions): Promise<DiffResult> {
   // ffmpeg runs in a scratch folder (see ssimSeries), so every path it reads is absolute.
@@ -1175,6 +1190,9 @@ export async function diffVideos(options: DiffOptions): Promise<DiffResult> {
       filters: [`fps=${ref.fpsText}`, ...select],
     };
   }
+
+  const offRate = rateWarning(ref, yoursInfo?.fps ?? projectRate(opts.yours));
+  if (offRate) warnings.push(offRate);
 
   try {
     mkdirSync(opts.outDir, { recursive: true });
