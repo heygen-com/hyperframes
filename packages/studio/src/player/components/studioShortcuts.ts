@@ -162,7 +162,6 @@ export interface ShortcutSection {
 export const keyHint = (action: StudioKeyAction, keys: StudioKeys = current) =>
   formatCombo(parseCombo(keys[action])!);
 
-/** True when the event is the combo the host (or the default) set for this action. */
 export const matchesKey = (e: ComboEvent, action: StudioKeyAction) =>
   matchCombo(e, parseCombo(current[action])!);
 
