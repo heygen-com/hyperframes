@@ -31,9 +31,7 @@ export function registryPathUrl(base: string, ...parts: string[]): string {
 
 export const DEFAULT_REGISTRY_URL =
   "https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry";
-/** The same folder published to HeyGen's CDN, which networks that block raw GitHub still reach. */
 export const REGISTRY_MIRROR_URL = "https://static.heygen.ai/hyperframes-oss/desktop/registry/main";
-// The mirror's own cap, so a mirror that hangs still leaves the caller's time for raw GitHub.
 const MIRROR_WAIT_MS = 4_000;
 
 const why = (error: unknown) => {
@@ -41,20 +39,23 @@ const why = (error: unknown) => {
   return String(cause?.code ?? cause?.message ?? (error as Error)?.message ?? error);
 };
 
-/** A default-registry file is read from the mirror first, then from raw GitHub; any other registry as given. */
 export async function fetchRegistryHttps(value: string, signal: AbortSignal): Promise<Response> {
   if (!value.startsWith(`${DEFAULT_REGISTRY_URL}/`)) return fetchFollowing(value, signal);
   const mirrored = REGISTRY_MIRROR_URL + value.slice(DEFAULT_REGISTRY_URL.length);
   let mirrorFailure: string;
+  const mirrorWait = new AbortController();
+  const answerDue = setTimeout(
+    () => mirrorWait.abort(new DOMException("no answer in time", "TimeoutError")),
+    MIRROR_WAIT_MS,
+  );
   try {
-    const response = await fetchFollowing(
-      mirrored,
-      AbortSignal.any([signal, AbortSignal.timeout(MIRROR_WAIT_MS)]),
-    );
+    const response = await fetchFollowing(mirrored, AbortSignal.any([signal, mirrorWait.signal]));
+    clearTimeout(answerDue);
     if (response.ok) return response;
     await response.body?.cancel();
     mirrorFailure = `HTTP ${response.status}`;
   } catch (error) {
+    clearTimeout(answerDue);
     if (signal.aborted) throw error;
     mirrorFailure = why(error);
   }

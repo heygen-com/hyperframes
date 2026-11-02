@@ -7,7 +7,10 @@ import {
   fetchRegistryHttps,
 } from "./transport.js";
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
 it("preserves private registries and signed CDN URLs while encoding path segments", () => {
   expect(
     registryPathUrl("https://registry.internal/base/", "blocks", "demo", "my file#.html"),
@@ -67,6 +70,10 @@ it("reads a default-registry file from the mirror first", async () => {
 it.each([
   ["refuses", async () => Promise.reject(refused())],
   ["answers 404", async () => new Response("missing", { status: 404 })],
+  [
+    "answers 403, S3's answer for a key it does not hold",
+    async () => new Response("", { status: 403 }),
+  ],
 ])("falls back to raw GitHub when the mirror %s", async (_, mirror) => {
   const fetchMock = vi
     .fn()
@@ -100,4 +107,36 @@ it("reads any other registry only where it was given", async () => {
   expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
     "https://registry.internal/registry.json",
   ]);
+});
+
+it("leaves a mirror answer that came in time readable past the mirror's cap", async () => {
+  vi.useFakeTimers();
+  let seen: AbortSignal | undefined;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (_url: string, init?: RequestInit) => {
+      seen = init?.signal ?? undefined;
+      return new Response("from mirror");
+    }),
+  );
+  await fetchRegistryHttps(`${DEFAULT_REGISTRY_URL}/registry.json`, new AbortController().signal);
+  await vi.advanceTimersByTimeAsync(60_000);
+  expect(seen?.aborted).toBe(false);
+});
+it("falls back to raw GitHub when the mirror gives no answer within its cap", async () => {
+  vi.useFakeTimers();
+  const fetchMock = vi.fn((url: string, init?: RequestInit) =>
+    url.startsWith(REGISTRY_MIRROR_URL)
+      ? new Promise<Response>((_, reject) =>
+          init?.signal?.addEventListener("abort", () => reject(init.signal?.reason)),
+        )
+      : Promise.resolve(new Response("raw")),
+  );
+  vi.stubGlobal("fetch", fetchMock);
+  const reading = fetchRegistryHttps(
+    `${DEFAULT_REGISTRY_URL}/registry.json`,
+    new AbortController().signal,
+  );
+  await vi.advanceTimersByTimeAsync(4_000);
+  expect(await (await reading).text()).toBe("raw");
 });
