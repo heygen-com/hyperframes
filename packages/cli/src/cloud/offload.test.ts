@@ -799,6 +799,106 @@ describe("offloadHeavyMedia", () => {
     expect(fileMap.has("media/clip.mp4")).toBe(true);
   });
 
+  it("offloads a heavy file only a composition's <template> plays", async () => {
+    const dir = project({
+      "index.html": html(`<div data-composition-src="compositions/a.html"></div>`),
+      "compositions/a.html":
+        `<template id="a"><div data-composition-id="a">` +
+        `<video class="clip" src="media/clip.mp4" data-start="0" data-duration="2"></video>` +
+        `</div></template>`,
+      "media/clip.mp4": HEAVY,
+    });
+    const fileMap = buildPublishFileMap(dir);
+
+    const [item] = await offloadHeavyMedia(dir, fileMap, {
+      apiBaseUrl: "https://api.example",
+      upload: fakeUpload(),
+      cachePath: cachePath(),
+    });
+
+    const composition = String(fileMap.get("compositions/a.html"));
+    expect(composition.startsWith(`<template id="a">`)).toBe(true);
+    expect(composition).toContain(`src="${item?.url}"`);
+    expect(fileMap.has("media/clip.mp4")).toBe(false);
+  });
+
+  it("keeps a heavy file a script inside a <template> builds from split strings", async () => {
+    const dir = project({
+      "index.html": html(
+        `<video id="v" src="media/clip.mp4"></video>` +
+          `<template><script>v.src = "media/" + "clip" + ".mp4";</script></template>`,
+      ),
+      "media/clip.mp4": HEAVY,
+    });
+    const fileMap = buildPublishFileMap(dir);
+
+    await offloadHeavyMedia(dir, fileMap, {
+      apiBaseUrl: "https://api.example",
+      upload: fakeUpload(),
+      cachePath: cachePath(),
+    });
+
+    expect(fileMap.has("media/clip.mp4")).toBe(true);
+  });
+
+  it("drops an offloaded file whose stem is only a word in script code", async () => {
+    const dir = project({
+      "index.html": html(
+        `<video id="v" src="media/host.mp4"></video>` +
+          `<script>const host = "video/mp4"; const hosted = host.wave;</script>`,
+      ),
+      "media/host.mp4": HEAVY,
+    });
+    const fileMap = buildPublishFileMap(dir);
+
+    const [item] = await offloadHeavyMedia(dir, fileMap, {
+      apiBaseUrl: "https://api.example",
+      upload: fakeUpload(),
+      cachePath: cachePath(),
+    });
+
+    expect(item?.kept_in_archive).toBeUndefined();
+    expect(fileMap.has("media/host.mp4")).toBe(false);
+  });
+
+  it("drops an offloaded file when only another folder's file shares its name", async () => {
+    const dir = project({
+      "index.html": html(
+        `<video id="v" src="media/host.mp4"></video>` +
+          `<video id="w" src="media/outro/host.mp4"></video>`,
+      ),
+      "media/host.mp4": HEAVY,
+      "media/outro/host.mp4": Buffer.alloc(16, 2),
+    });
+    const fileMap = buildPublishFileMap(dir);
+
+    await offloadHeavyMedia(dir, fileMap, {
+      apiBaseUrl: "https://api.example",
+      upload: fakeUpload(),
+      cachePath: cachePath(),
+    });
+
+    expect(fileMap.has("media/host.mp4")).toBe(false);
+    expect(fileMap.has("media/outro/host.mp4")).toBe(true);
+  });
+
+  it("keeps a zip copy of an offloaded file another file names by a relative path", async () => {
+    const dir = project({
+      "index.html": html(`<video id="v" src="media/clip.mp4"></video>`),
+      "notes.txt": "see ../media/clip.mp4",
+      "media/clip.mp4": HEAVY,
+    });
+    const fileMap = buildPublishFileMap(dir);
+
+    await offloadHeavyMedia(dir, fileMap, {
+      apiBaseUrl: "https://api.example",
+      upload: fakeUpload(),
+      cachePath: cachePath(),
+    });
+
+    expect(fileMap.has("media/clip.mp4")).toBe(true);
+  });
+
   it("prepares an entry GIF staged on disk from a checked private copy", async () => {
     const files = {
       "index.html": html(`<img src="media/loop.gif" />`),

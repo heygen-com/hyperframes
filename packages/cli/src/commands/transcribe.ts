@@ -56,7 +56,7 @@ export default defineCommand({
     engine: {
       type: "string",
       description:
-        "ASR engine: auto (Parakeet if installed and it covers --language, else whisper), parakeet, whisper, or heygen (HeyGen's speech model; needs an API key, charged to API credits). Default: auto. Parakeet is more accurate and faster than whisper; install it with `hyperframes models install parakeet`.",
+        "ASR engine: auto (Parakeet if installed and it covers --language, else whisper), parakeet, whisper, or heygen (HeyGen's speech model; bills the HyperFrames plan when signed in, or API credits with a key). Default: auto. Parakeet is more accurate and faster than whisper; install it with `hyperframes models install parakeet`.",
       alias: "e",
     },
     speakers: {

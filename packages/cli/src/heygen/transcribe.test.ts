@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
@@ -15,6 +15,7 @@ vi.stubEnv("HEYGEN_API_KEY", "k");
 const { transcribeWithHeygen, wordsOf } = await import("./transcribe.js");
 const ffmpeg = findFFmpeg();
 const dir = mkdtempSync(join(tmpdir(), "hf-heygen-asr-test-"));
+writeFileSync(join(dir, "index.html"), "");
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 afterEach(() => vi.unstubAllGlobals());
 
@@ -68,5 +69,15 @@ describe("HeyGen transcription", () => {
       speechOnsetSeconds: 0.1,
     });
     expect(JSON.parse(readFileSync(out, "utf8"))).toHaveLength(2);
+  });
+
+  it.skipIf(!ffmpeg)("logs the job in the project, wherever the transcript goes", async () => {
+    const audio = join(dir, "a.wav");
+    execFileSync(ffmpeg!, ["-v", "error", "-y", "-f", "lavfi", "-i", "sine=f=300:d=1.5", audio]);
+    vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ data: job })));
+    mkdirSync(join(dir, "work"));
+    await transcribeWithHeygen(audio, join(dir, "work", "transcript.json"));
+    const rows = readFileSync(join(dir, ".hyperframes/heygen-jobs.jsonl"), "utf8");
+    expect(JSON.parse(rows.trim().split("\n")[0]!).what).toBe(`transcribe ${audio}`);
   });
 });

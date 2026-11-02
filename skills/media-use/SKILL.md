@@ -20,7 +20,7 @@ It prints one line, `resolved <id> → <path> (<type>, <metadata>)`. List reusab
 | Need | Free | HyperFrames credits | Local or the person's own key (only when they ask) |
 | --- | --- | --- | --- |
 | Music (`bgm`) | HeyGen catalog of 10k+ tracks (signed in) | Generated track | Local MusicGen |
-| Sound effects (`sfx`) | Openverse (credit CC BY sounds); 21 bundled offline | | |
+| Sound effects (`sfx`) | HeyGen (signed in); Openverse (credit CC BY); bundled | | |
 | Images, icons | HeyGen asset search, 75k+ (signed in) | Generated images | Local FLUX (mflux), if installed |
 | Logos (`logo`) | theSVG, GitHub avatar, favicon; never redrawn | | |
 | Voiceover (`voice`) | HeyGen Voice Turbo (signed in) | Other HeyGen voices, voice cloning | `npx hyperframes tts` (Kokoro on device) |

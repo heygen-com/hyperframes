@@ -6,11 +6,11 @@
 
 `npx hyperframes auth status` says what is signed in. The credential is read in this order: `HEYGEN_API_KEY`, `HYPERFRAMES_API_KEY`, a host app's `HEYGEN_ACCESS_TOKEN`, then `~/.hyperframes/credentials`, which `npx hyperframes auth login` writes. `heygen auth login` is a separate sign-in that only the `heygen` CLI reads.
 
-| Credential                 | Pays with                                    | Covers                                                                                 |
-| -------------------------- | -------------------------------------------- | -------------------------------------------------------------------------------------- |
-| API key                    | API credits                                  | everything below                                                                       |
-| Sign-in (OAuth)            | the plan's allowance on subscription credits | avatar videos, video shots, images and voices; music and transcription take an API key |
-| Inside the HyperFrames app | the app                                      | whatever the app allows; nothing to set up                                             |
+| Credential                 | Pays with                                    | Covers                                                                       |
+| -------------------------- | -------------------------------------------- | ---------------------------------------------------------------------------- |
+| API key                    | API credits                                  | everything below                                                             |
+| Sign-in (OAuth)            | the plan's allowance on subscription credits | avatar videos, video shots, lipsync, images, voices, music and transcription |
+| Inside the HyperFrames app | the app                                      | whatever the app allows; nothing to set up                                   |
 
 A refusal names its fix: `api_key_required` needs an API key, `402` or `insufficient_credit` needs a top-up, `hf_usage_exhausted` means the plan's allowance is used up.
 
@@ -28,10 +28,14 @@ npx hyperframes media-use generate --type video --first-frame assets/s03-first.p
 # pixels and seconds) blanks text in the guide, which HeyGen would copy. A guide with a cut inside is refused; pass
 # --allow-cuts only when you have looked at those frames and they are one shot
 npx hyperframes media-use generate --type video --reference assets/person.png --audio assets/s02-voice.m4a --motion assets/s02-original.mp4 --mask 110,615,390,165,0.4-2.0 --prompt "talks to camera, seated" --seconds 8 --aspect 9:16 --out assets/s02-person.mp4
+# a speaking shot follows its own re-paced audio, not --audio: to land it on a set voice, redo its mouth to that voice
+npx hyperframes media-use generate --type lipsync --video assets/s02-person.mp4 --audio assets/s02-voice.mp3 --out assets/s02-lips.mp4
 # the same for a person who does not speak: no --audio, the guide clip carries the motion
 npx hyperframes media-use generate --type video --reference assets/person.png --motion assets/s05-original.mp4 --prompt "holds up a jar, smiles" --seconds 6 --aspect 9:16 --out assets/s05-person.mp4
 # a person in a photo speaking a script in a HeyGen voice
 npx hyperframes media-use generate --type avatar --photo assets/person.png --script "…" --voice <voice-id> --out assets/person.mp4
+# a finished voice stays exactly as it is: --audio replaces --script, --avatar <look id> replaces --photo, --prompt moves a photo
+npx hyperframes media-use generate --type avatar --photo assets/person.png --audio assets/vo.mp3 --prompt "seated, talks with both hands" --aspect 16:9 --out assets/host.mp4
 # a voice reading text
 npx hyperframes media-use generate --type voice --script "…" --voice <voice-id> --out assets/vo.mp3
 # music, 30, 60, 120 or 180 s (instrumental unless --vocals), trimmed to length in the composition
@@ -40,13 +44,14 @@ npx hyperframes media-use generate --type music --prompt "warm lo-fi, soft keys"
 
 The file lands at `--out` and the media ledger records it as generated, with the route, model, job, prompt and the files it was made from. Pictures and shots carry no text or logos: ask for clean plates and draw words in HyperFrames.
 
-| Type   | Model                                                    | Price                                                                                                                                                                  |
-| ------ | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| image  | nano-banana-2 (default), or gpt-image-2.5 with `--model` | $0.067 an image; gpt-image-2.5 $0.036–0.053 by aspect, plus $0.0082 a reference after the first                                                                        |
-| video  | heygen-video-1, 768p                                     | $0.02 a second from a prompt or first frame; $0.05 a second with a reference picture, voice or guide clip, and the guide's seconds count too (1080p costs about twice) |
-| avatar | talking photo                                            | $4.83 a minute of speech                                                                                                                                               |
-| music  | lyria-3-pro                                              | $0.08 a track                                                                                                                                                          |
-| voice  | the voice's engine                                       | charged per character, not priced ahead                                                                                                                                |
+| Type    | Model                                                    | Price                                                                                                                                                                  |
+| ------- | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| image   | nano-banana-2 (default), or gpt-image-2.5 with `--model` | $0.067 an image; gpt-image-2.5 $0.036–0.053 by aspect, plus $0.0082 a reference after the first                                                                        |
+| video   | heygen-video-1, 768p                                     | $0.02 a second from a prompt or first frame; $0.05 a second with a reference picture, voice or guide clip, and the guide's seconds count too (1080p costs about twice) |
+| lipsync | HeyGen lipsync, speed                                    | 7 credits a second of the video on a plan                                                                                                                              |
+| avatar  | talking photo                                            | $4.83 a minute of speech                                                                                                                                               |
+| music   | lyria-3-pro                                              | $0.08 a track                                                                                                                                                          |
+| voice   | the voice's engine                                       | charged per character, not priced ahead                                                                                                                                |
 
 `--plan`'s `usd` is what an API key is charged (HeyGen rounds up to units of $1/60); its `credits` is what a HyperFrames plan charges, on the plan's own rates: a video shot's seconds and guide seconds, plus each picture past the first two. Voice ids come from `heygen voice list` or `npx hyperframes media-use resolve --type voice`; a cloned voice from `heygen voice clone create` (`operations.md`).
 
@@ -56,4 +61,4 @@ The file lands at `--out` and the media ledger records it as generated, with the
 npx hyperframes transcribe interview.mp4 --engine heygen --speakers
 ```
 
-Word times from HeyGen's speech model, each word with its speaker under `--speakers`, in the same `transcript.json` local engines write. It takes an API key. The local engines (`--engine auto`) are free and good for one clear voice; HeyGen is the better choice for several speakers, noise or music under the voice.
+Word times from HeyGen's speech model, each word with its speaker under `--speakers`, in the same `transcript.json` local engines write. The local engines (`--engine auto`) are free and good for one clear voice; HeyGen is the better choice for several speakers, noise or music under the voice.

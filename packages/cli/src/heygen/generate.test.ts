@@ -12,6 +12,13 @@ vi.mock("../cloud/auth.js", () => ({
   resolveCloudBaseUrl: () => "https://api.test",
 }));
 
+vi.mock("../cloud/index.js", () => ({ createCloudClient: async () => ({}) }));
+vi.mock("../cloud/upload.js", () => ({
+  uploadAssetViaDirectUpload: async ({ filename }: { filename: string }) => ({
+    asset_id: `asset-${filename}`,
+  }),
+}));
+
 vi.stubEnv("HEYGEN_API_KEY", "k");
 
 const { checkRequest, foldShort, generate, parseMask, ringChange, structureRatio, urlOf } =
@@ -617,6 +624,7 @@ describe("generate", () => {
       }).usd,
     ).toBe(0.07);
     expect(priceOf({ type: "voice", out: "a.mp3" }).usd).toBeNull();
+    expect(creditsOf(priceOf({ type: "voice", out: "a.mp3", script: "今天聊黄金" }))).toBe(1);
   });
 
   it("prices only a request the real call would accept", () => {
@@ -641,12 +649,74 @@ describe("generate", () => {
     );
   });
 
+  it.skipIf(!ffmpeg)("redoes a shot's mouth to the exact voice", async () => {
+    const video = shots("lips-shot.mp4", ["color=c=red:d=2"]);
+    const audio = join(project, "lips-voice.mp3");
+    writeFileSync(audio, "voice");
+    const sent: { url: string; body?: Record<string, unknown> }[] = [];
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      sent.push({ url, ...(init?.body ? { body: JSON.parse(String(init.body)) } : {}) });
+      if (url === "https://files.test/lips.mp4") return new Response(new Uint8Array([1, 2, 3]));
+      if (init?.method === "POST") return json({ data: { lipsync_id: "lip1" } });
+      return json({
+        data: { id: "lip1", status: "completed", video_url: "https://files.test/lips.mp4" },
+      });
+    });
+    const out = join(project, "lips-out.mp4");
+    const request = { type: "lipsync" as const, video, audio, out };
+    const made = await generate(request);
+    expect(made.job).toBe("lip1");
+    expect(sent[0]!.url).toBe("https://api.test/v3/lipsyncs");
+    expect(sent[0]!.body).toMatchObject({
+      video: { type: "asset_id", asset_id: "asset-lips-shot.mp4" },
+      audio: { type: "asset_id", asset_id: "asset-lips-voice.mp3" },
+      mode: "speed",
+      enable_dynamic_duration: false,
+    });
+    expect(sent[1]!.url).toBe("https://api.test/v3/lipsyncs/lip1");
+    expect(existsSync(out)).toBe(true);
+    expect(creditsOf(priceOf(request))).toBe(14);
+    expect(() => checkRequest({ type: "lipsync", audio, out })).toThrow("--video");
+  });
+
+  it.skipIf(!ffmpeg)("speaks a finished voice as it is, from a photo or a look", async () => {
+    const photo = join(project, "avatar-photo.png");
+    execFileSync(ffmpeg!, [
+      ...["-v", "error", "-y", "-f", "lavfi", "-i", "color=c=red:s=64x36"],
+      ...["-frames:v", "1", photo],
+    ]);
+    const audio = join(project, "avatar-voice.wav");
+    execFileSync(ffmpeg!, [
+      ...["-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=6", audio],
+    ]);
+    const sent: Record<string, unknown>[] = [];
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (url === "https://files.test/a.mp4") return new Response(new Uint8Array([1]));
+      if (init?.body) sent.push(JSON.parse(String(init.body)));
+      return json({
+        data: { id: "v1", status: "completed", video_url: "https://files.test/a.mp4" },
+      });
+    });
+    const out = join(project, "avatar-out.mp4");
+    await generate({ type: "avatar", photo, audio, prompt: "talks with both hands", out });
+    await generate({ type: "avatar", avatar: "look1", audio, out });
+    expect(sent[0]).toMatchObject({
+      type: "image",
+      audio_asset_id: "asset-avatar-voice.wav",
+      motion_prompt: "talks with both hands",
+    });
+    expect(sent[0]).not.toHaveProperty("script");
+    expect(sent[1]).toMatchObject({ type: "avatar", avatar_id: "look1" });
+    expect(creditsOf(priceOf({ type: "avatar", photo, audio, out }))).toBe(116);
+    expect(() => checkRequest({ type: "avatar", photo, out })).toThrow("--script");
+  });
+
   it("prices an avatar on the plan's avatar rows, not its API price", () => {
     const script = Array.from({ length: 30 }, () => "word").join(" ");
     const avatar = priceOf({ type: "avatar", out: "a.mp4", script });
-    expect(creditsOf(avatar)).toBe(200);
+    expect(creditsOf(avatar)).toBe(289);
     expect(avatar.list).toBeCloseTo(1.2167);
-    expect(() => checkLimit(creditsOf(avatar), 220)).not.toThrow();
+    expect(() => checkLimit(creditsOf(avatar), 300)).not.toThrow();
   });
 
   it("charges a reference shot's pictures after the first two", () => {
@@ -657,18 +727,18 @@ describe("generate", () => {
       references: Array.from({ length: pictures }, (_, i) => `${i}.png`),
     });
     const credits = [1, 2, 3, 9].map((n) => creditsOf(priceOf(shot(n))));
-    expect(credits).toEqual([167, 167, 180, 260]);
+    expect(credits).toEqual([250, 250, 270, 390]);
     expect(priceOf(shot(9)).list).toBeCloseTo(0.39);
-    expect(() => checkLimit(credits[3]!, 250)).toThrow("about 260 credits, over --max-credits 250");
-    expect(() => checkLimit(credits[3]!, 260)).not.toThrow();
+    expect(() => checkLimit(credits[3]!, 380)).toThrow("about 390 credits, over --max-credits 380");
+    expect(() => checkLimit(credits[3]!, 390)).not.toThrow();
   });
 
   it("keeps a call under the person's credit limit, or refuses it before sending", () => {
     const shot = creditsOf(priceOf({ type: "video", out: "a.mp4", seconds: 6 }));
-    expect(shot).toBe(72);
+    expect(shot).toBe(108);
     expect(creditsOf(priceOf({ type: "image", out: "a.png" }))).toBe(67);
-    expect(() => checkLimit(shot, 72)).not.toThrow();
-    expect(() => checkLimit(shot, 30)).toThrow("about 72 credits, over --max-credits 30");
+    expect(() => checkLimit(shot, 108)).not.toThrow();
+    expect(() => checkLimit(shot, 30)).toThrow("about 108 credits, over --max-credits 30");
     expect(() => checkLimit(null, 30)).toThrow("cannot be priced ahead");
     expect(() => checkLimit(null, undefined)).not.toThrow();
   });

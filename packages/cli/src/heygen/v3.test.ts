@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -43,6 +43,25 @@ describe("runJob", () => {
       "https://api.test/v3/x/j1",
     ]);
     expect(new Headers(calls[0]!.init.headers).get("Idempotency-Key")).toBe("hf-key");
+  });
+
+  it("logs a job that is done at once one time, and a waited-for job at each end", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-v3-log-"));
+    const rows = () =>
+      readFileSync(join(projectDir, ".hyperframes/heygen-jobs.jsonl"), "utf8")
+        .trim()
+        .split("\n")
+        .map((row) => JSON.parse(row).status);
+    const log = { projectDir, what: "a line" };
+    vi.stubGlobal("fetch", async () => reply(200, { data: { id: "j1", status: "completed" } }));
+    await runJob("/v3/x", {}, "k1", (id) => id, { log });
+    expect(rows()).toEqual(["completed"]);
+    const answers = ["pending", "completed"].map((status) =>
+      reply(200, { data: { id: "j2", status } }),
+    );
+    vi.stubGlobal("fetch", async () => answers.shift()!);
+    await runJob("/v3/x", {}, "k2", (id) => id, { log, intervalMs: 1 });
+    expect(rows()).toEqual(["completed", "pending", "completed"]);
   });
 
   it("turns refusals into what to do next", async () => {
