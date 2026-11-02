@@ -2,8 +2,7 @@
 /**
  * probeStage — browser probe + recompile + media reconciliation.
  *
- * Runs when media discovery needs a browser or the planner requires a canonical
- * reference background. Owns the `FileServerHandle` and the
+ * Runs when media discovery needs a browser. Owns the `FileServerHandle` and the
  * `CaptureSession` it creates and returns them so the sequencer can both
  * reuse them downstream (the capture stage reuses the probe session) and
  * clean them up in its `finally` block.
@@ -89,7 +88,6 @@ import { resolveCaptureImageFormat, resolveCaptureJpegQuality } from "../capture
 export interface ProbeStageInput {
   projectDir: string;
   workDir: string;
-  requireBrowser?: boolean;
   recordReferenceBackground?: CaptureOptions["recordReferenceBackground"];
   job: RenderJob;
   cfg: EngineConfig;
@@ -394,7 +392,6 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
   const hasVariableMedia = hasVariableBoundMedia(compiled.html, job.config.variables);
   const hasInsertedMedia = hasRuntimeMediaChanges(compiled.html);
   const needsBrowser =
-    input.requireBrowser ||
     cfg.videoLayerPassthrough ||
     probeRequiresBrowser({
       durationSeconds: composition.duration,
@@ -408,7 +405,6 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
   try {
     if (needsBrowser) {
       const reasons = [];
-      if (input.requireBrowser) reasons.push("canonical reference background");
       if (composition.duration <= 0) reasons.push("root duration unknown");
       if (compiled.unresolvedCompositions.length > 0)
         reasons.push(`${compiled.unresolvedCompositions.length} unresolved composition(s)`);

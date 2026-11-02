@@ -82,6 +82,7 @@ import {
   assertVideoExtractionSucceeded,
   runExtractVideosStage,
 } from "../render/stages/extractVideosStage.js";
+import { readPlanReferenceBackground } from "../render/planReferenceBackground.js";
 import { runProbeStage } from "../render/stages/probeStage.js";
 import {
   type ChunkSliceJson,
@@ -1346,10 +1347,8 @@ async function compilePlanComposition(
   }
 
   // ── Probe ──
-  // Static plans also need one canonical page; chunk pages cannot establish the film reference.
   stageStarted = Date.now();
   const probeResult = await runProbeStage({
-    requireBrowser: true,
     recordReferenceBackground: createReferenceBackgroundRecorder((result) =>
       Object.assign(job, result),
     ),
@@ -1370,6 +1369,21 @@ async function compilePlanComposition(
     subTimelineWaitMemo: {},
   });
   logPlanStage(log, "probe", stageStarted);
+  if (!probeResult.probeSession) {
+    stageStarted = Date.now();
+    Object.assign(
+      job,
+      await readPlanReferenceBackground({
+        projectDir,
+        workDir,
+        cfg,
+        log,
+        options: { width, height, fps: job.config.fps, variables: job.config.variables },
+      }),
+    );
+    assertNotAborted();
+    logPlanStage(log, "reference_background", stageStarted);
+  }
   compiled = probeResult.compiled;
   job.duration = probeResult.duration;
   job.totalFrames = probeResult.totalFrames;

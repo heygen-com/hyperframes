@@ -49,7 +49,57 @@ describe("frozen reference background assembly", () => {
   });
 });
 
+describe("optional static plan inspection", () => {
+  it("still plans without a usable browser and freezes unknown", async () => {
+    const project = join(root, "no-browser-project");
+    mkdirSync(project);
+    writeFileSync(
+      join(project, "index.html"),
+      '<html><head><style>body{background:rgb(10 46 138)}</style></head><body><div data-composition-id="film" data-width="320" data-height="240" data-duration="0.1"></div></body></html>',
+    );
+    const planned = await plan(
+      project,
+      {
+        fps: 30,
+        width: 320,
+        height: 240,
+        format: "mp4",
+        producerConfig: { ...config, chromePath: join(root, "absent-chrome") },
+        rejectOnSystemFonts: false,
+        failClosedFontFetch: false,
+      },
+      join(root, "no-browser-plan"),
+    );
+    expect(planned.totalFrames).toBe(3);
+    expect(planned.reference_background).toEqual({ kind: "unknown" });
+  });
+});
+
 describe.skipIf(!hasBrowser)("film-wide reference background integration", () => {
+  it("does not require a WebGPU device to plan a static WebGPU composition", async () => {
+    const project = join(root, "gpu-project");
+    mkdirSync(project);
+    writeFileSync(
+      join(project, "index.html"),
+      '<html><head><style>body{background:rgb(10 46 138)}</style></head><body><div data-composition-id="film" data-requires-webgpu data-width="320" data-height="240" data-duration="0.1"></div></body></html>',
+    );
+    const planned = await plan(
+      project,
+      {
+        fps: 30,
+        width: 320,
+        height: 240,
+        format: "mp4",
+        producerConfig: config,
+        rejectOnSystemFonts: false,
+        failClosedFontFetch: false,
+      },
+      join(root, "gpu-plan"),
+    );
+    expect(planned.totalFrames).toBe(3);
+    expect(planned.reference_background).toEqual({ kind: "solid", rgb: [10, 46, 138] });
+  });
+
   it("gives a static composition the same local, plan, metadata and v2 receipt", async () => {
     const projectDir = join(root, "project");
     mkdirSync(projectDir);
@@ -82,7 +132,7 @@ describe.skipIf(!hasBrowser)("film-wide reference background integration", () =>
     expect(composition.reference_background).toEqual(expected);
     const v2 = createPlanV2FromV1(join(root, "plan"), join(root, "v2"));
     expect(v2.reference_background).toEqual(expected);
-    expect(readPlanV2Manifest(join(root, "v2")).reference_background).toEqual(expected);
+    expect(Object.hasOwn(readPlanV2Manifest(join(root, "v2")), "reference_background")).toBe(false);
     const job = createRenderJob({
       fps: 30,
       quality: "standard",

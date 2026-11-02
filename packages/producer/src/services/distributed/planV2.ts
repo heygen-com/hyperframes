@@ -93,7 +93,7 @@ export interface PlanV2Artifact {
   readonly assembler: boolean;
 }
 
-export interface PlanV2Manifest extends Partial<ReferenceBackgroundResult> {
+export interface PlanV2Manifest {
   readonly protocol: Readonly<PlanProtocolV2Descriptor>;
   /** V2 manifest digest; intentionally distinct from the local execution-plan hash. */
   readonly planHash: string;
@@ -635,7 +635,6 @@ function buildPlanV2Publication(
   }
 
   const base: Omit<PlanV2Manifest, "planHash"> = {
-    ...referenceBackgroundResult(executionPlan[REFERENCE_BACKGROUND_FIELD]),
     protocol: PLAN_PROTOCOL_V2,
     // Retain the established manifest key byte-for-byte. It now acts as the
     // wire alias for the neutral local execution-plan hash.
@@ -819,8 +818,14 @@ export async function planV2(
 }
 
 function resultFromManifest(planV2Dir: string, manifest: PlanV2Manifest): PlanV2Result {
+  const artifact = manifest.artifacts.find((entry) => entry.path === "plan.json");
+  const executionPlan = artifact
+    ? readJsonFile(verifyBlob(planV2Dir, artifact), "execution plan.json")
+    : null;
   return {
-    ...referenceBackgroundResult(manifest[REFERENCE_BACKGROUND_FIELD]),
+    ...referenceBackgroundResult(
+      isRecord(executionPlan) ? executionPlan[REFERENCE_BACKGROUND_FIELD] : undefined,
+    ),
     planDir: planV2Dir,
     manifestPath: join(planV2Dir, "plan.json"),
     planProtocol: PLAN_PROTOCOL_V2,
@@ -959,9 +964,6 @@ function parsePlanV2Manifest(value: unknown): Readonly<PlanV2Manifest> {
     throw new PlanV2IntegrityError("unsupported video dependency mode");
   }
   const parsed: PlanV2Manifest = {
-    ...(REFERENCE_BACKGROUND_FIELD in value
-      ? referenceBackgroundResult(value[REFERENCE_BACKGROUND_FIELD])
-      : {}),
     protocol: PLAN_PROTOCOL_V2,
     planHash: value.planHash,
     sourcePlanV1Hash: value.sourcePlanV1Hash,
