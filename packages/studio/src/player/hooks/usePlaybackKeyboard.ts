@@ -59,6 +59,14 @@ type PlaybackAction = (typeof PLAYBACK_ACTIONS)[number];
 const playbackActionOf = (e: KeyboardEvent): PlaybackAction | undefined =>
   PLAYBACK_ACTIONS.find((action) => matchesKey(e, action));
 
+function ignoresPlaybackKey(e: KeyboardEvent): boolean {
+  const captionState = useCaptionStore.getState();
+  return shouldIgnorePlaybackShortcutEvent(e, {
+    isCaptionEditMode: captionState.isEditMode,
+    selectedCaptionSegmentCount: captionState.selectedSegmentIds.size,
+  });
+}
+
 function handleWorkAreaKey(
   e: KeyboardEvent,
   action: PlaybackAction,
@@ -139,59 +147,41 @@ export function usePlaybackKeyboard({
     }
   }, [play, pause]);
 
-  // Pre-existing dispatcher, already over the complexity gate before this
-  // branch's one-line "a" fix touched it. A real fix is a dispatch-table
-  // rewrite, out of scope here; the branch this PR changed is its own function.
-  // fallow-ignore-next-line complexity
   const handlePlaybackKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      if (e.defaultPrevented) return;
-      const captionState = useCaptionStore.getState();
-      if (
-        shouldIgnorePlaybackShortcutEvent(e, {
-          isCaptionEditMode: captionState.isEditMode,
-          selectedCaptionSegmentCount: captionState.selectedSegmentIds.size,
-        })
-      ) {
-        return;
-      }
+      if (e.defaultPrevented || ignoresPlaybackKey(e)) return;
       pressedKeysRef.current.add(e.key.toLowerCase());
       const action = playbackActionOf(e);
       if (!action) return;
-      if (action === "playPause") {
-        e.preventDefault();
-        togglePlay();
+      const isFrameStep = action in FRAME_STEPS;
+      // A nudgeable canvas selection owns the arrow keys (DomEditOverlay moves
+      // the element); frame-stepping would double-handle the same keystroke.
+      if (isFrameStep && canvasNudgeKeysClaimed() && resolveCanvasNudgeDelta(e)) return;
+      if (e.repeat && action !== "playPause" && !isFrameStep) return;
+      const shuttleOrStep = (direction: -1 | 1) =>
+        pressedKeysRef.current.has(keyOf("pause"))
+          ? stepFrames(direction)
+          : shuttle(direction < 0 ? "backward" : "forward");
+      const player = usePlayerStore.getState();
+      const run: Partial<Record<PlaybackAction, () => void>> = {
+        playPause: togglePlay,
+        frameBack: () => stepFrames(FRAME_STEPS.frameBack),
+        frameForward: () => stepFrames(FRAME_STEPS.frameForward),
+        frameBackTen: () => stepFrames(FRAME_STEPS.frameBackTen),
+        frameForwardTen: () => stepFrames(FRAME_STEPS.frameForwardTen),
+        mute: () => player.setAudioMuted(!player.audioMuted),
+        loop: () => player.setLoopEnabled(!player.loopEnabled),
+        pause,
+        shuttleBack: () => shuttleOrStep(-1),
+        shuttleForward: () => shuttleOrStep(1),
+      };
+      const act = run[action];
+      if (!act) {
+        handleWorkAreaKey(e, action, getAdapter, seek);
         return;
       }
-      if (action in FRAME_STEPS) {
-        // A nudgeable canvas selection owns the arrow keys (DomEditOverlay moves
-        // the element); frame-stepping would double-handle the same keystroke.
-        if (canvasNudgeKeysClaimed() && resolveCanvasNudgeDelta(e)) return;
-        e.preventDefault();
-        stepFrames(FRAME_STEPS[action as keyof typeof FRAME_STEPS]);
-        return;
-      }
-      if (e.repeat) return;
-      if (action === "mute" || action === "loop") {
-        e.preventDefault();
-        const state = usePlayerStore.getState();
-        if (action === "mute") state.setAudioMuted(!state.audioMuted);
-        else state.setLoopEnabled(!state.loopEnabled);
-        return;
-      }
-      if (action === "pause") {
-        e.preventDefault();
-        pause();
-        return;
-      }
-      if (action === "shuttleBack" || action === "shuttleForward") {
-        e.preventDefault();
-        const direction = action === "shuttleBack" ? -1 : 1;
-        if (pressedKeysRef.current.has(keyOf("pause"))) stepFrames(direction);
-        else shuttle(direction < 0 ? "backward" : "forward");
-        return;
-      }
-      handleWorkAreaKey(e, action, getAdapter, seek);
+      e.preventDefault();
+      act();
     },
     [pause, shuttle, stepFrames, togglePlay, getAdapter, seek],
   );
