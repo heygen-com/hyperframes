@@ -866,6 +866,22 @@ export function applyRenderWarningPolicy(
   }
 }
 
+export const stopPrepSessionOnScriptFailure = (options: CaptureOptions): CaptureOptions => ({
+  ...options,
+  onSubTimelineScriptFailure: () => {
+    throw new Error("a composition script failed, so this preparation session stops");
+  },
+});
+
+export const withScriptFailureStop = (
+  options: CaptureOptions,
+  job: RenderJob,
+  log: ProducerLogger,
+): CaptureOptions => ({
+  ...options,
+  onSubTimelineScriptFailure: (warnings) => applyRenderWarningPolicy(job, warnings, log),
+});
+
 export class RenderCancelledError extends Error {
   reason: "user_cancelled" | "timeout" | "aborted";
   constructor(
@@ -3761,8 +3777,6 @@ async function executeRenderPipeline(input: {
       // sample frame indices from this so they land inside the drained range.
       compositionDurationSeconds: job.duration,
       deFrameFallback: true,
-      // A failed composition script ends the render when a session first sees it, not after the last frame.
-      onSubTimelineScriptFailure: (warnings) => applyRenderWarningPolicy(job, warnings, log),
       // A line per scanned chunk, so a long effect scan reads as preparing, not as a stall.
       onEffectScanProgress: (scanned, total) =>
         updateJobStatus(
@@ -3788,6 +3802,8 @@ async function executeRenderPipeline(input: {
         });
       },
     });
+    const buildPrepCaptureOptions = () => stopPrepSessionOnScriptFailure(buildCaptureOptions());
+    const buildWorkerCaptureOptions = () => withScriptFailureStop(buildCaptureOptions(), job, log);
     // The engine delivers cached frame bytes as no-store CDP responses.
     // Frame requests bypass the file server's source-video downloads, which
     // can occupy all HTTP connections during native-video drift recovery.
@@ -4016,7 +4032,7 @@ async function executeRenderPipeline(input: {
         probeSession = await createCaptureSession(
           activeFileServer.url,
           framesDir,
-          buildCaptureOptions(),
+          buildPrepCaptureOptions(),
           null,
           { ...cfg, forceScreenshot: captureForceScreenshot },
         );
@@ -4125,7 +4141,7 @@ async function executeRenderPipeline(input: {
             totalFrames,
             forceScreenshot: captureForceScreenshot,
             probeSession,
-            buildCaptureOptions,
+            buildCaptureOptions: buildPrepCaptureOptions,
             createRenderVideoFrameInjector,
             assertNotAborted,
           }),
@@ -4774,7 +4790,7 @@ async function executeRenderPipeline(input: {
             effectiveBitrate,
             deliveryEncoder,
             fileServer: activeFileServer,
-            buildCaptureOptions,
+            buildCaptureOptions: buildWorkerCaptureOptions,
             createRenderVideoFrameInjector,
             hdrDiagnostics,
             abortSignal: attempt,
@@ -4899,7 +4915,7 @@ async function executeRenderPipeline(input: {
                   // Each segment sets its own GOP (at most the interval); hls never reaches this route.
                   ...deliveryEncoder,
                 },
-                buildCaptureOptions,
+                buildCaptureOptions: buildWorkerCaptureOptions,
                 createRenderVideoFrameInjector,
                 abortSignal: executionSignal,
                 assertNotAborted,
@@ -5073,7 +5089,7 @@ async function executeRenderPipeline(input: {
                   // encoder's open-GOP output untouched.
                   ...deliveryEncoder,
                 },
-                buildCaptureOptions,
+                buildCaptureOptions: buildWorkerCaptureOptions,
                 createRenderVideoFrameInjector,
                 abortSignal: executionSignal,
                 assertNotAborted,
@@ -5347,7 +5363,7 @@ async function executeRenderPipeline(input: {
                 probeSession,
                 captureAttempts,
                 dedupPerfs,
-                buildCaptureOptions,
+                buildCaptureOptions: buildWorkerCaptureOptions,
                 createRenderVideoFrameInjector,
                 abortSignal: executionSignal,
                 assertNotAborted,

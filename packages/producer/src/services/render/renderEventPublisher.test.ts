@@ -4,6 +4,8 @@ import {
   RenderQualityError,
   applyRenderWarningPolicy,
   createRenderJob,
+  stopPrepSessionOnScriptFailure,
+  withScriptFailureStop,
 } from "../renderOrchestrator.js";
 import { updateJobStatus } from "./shared.js";
 import { OrderedRenderEventPublisher, publishRenderFailure } from "./renderEventPublisher.js";
@@ -188,6 +190,19 @@ describe("updateJobStatus", () => {
     updateJobStatus(job, "complete", "done", 100);
     expect(job.outcome).toBe("completed_with_warnings");
     expect(job.warnings).toHaveLength(1);
+  });
+
+  it("lets a prep session stop on a script failure without telling the job, and a worker decide", () => {
+    const job = createRenderJob({ fps: 30, quality: "high" });
+    const log = { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() };
+    const base = { width: 16, height: 16, fps: { num: 30, den: 1 } };
+    const failed = { code: "sub_timeline_script_failure" as const, message: "a script threw" };
+    const prep = stopPrepSessionOnScriptFailure(base);
+    expect(() => prep.onSubTimelineScriptFailure?.([failed])).toThrow("preparation session");
+    expect(job.warnings ?? []).toEqual([]);
+    const worker = withScriptFailureStop(base, job, log);
+    expect(() => worker.onSubTimelineScriptFailure?.([failed])).toThrow(RenderQualityError);
+    expect(job.warnings?.map((warning) => warning.code)).toEqual(["sub_timeline_script_failure"]);
   });
 
   it("blocks audio processing failures when strictness is omitted", () => {
