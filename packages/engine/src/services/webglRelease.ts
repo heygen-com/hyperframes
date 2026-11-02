@@ -26,11 +26,7 @@ export function recordWebglContexts(): void {
   };
 }
 
-/**
- * Releases the WebGL context of every canvas inside a clip the runtime has hidden (data-hf-clip-hidden) whose
- * end (data-start summed down the clips, plus its duration) is at or before `time`. A finished scene's live
- * context keeps slowing the next scene's frames.
- */
+/** Releases the WebGL context of every canvas in a hidden clip (data-hf-clip-hidden) that has ended by `time`. */
 export async function releaseEndedWebglContexts(page: Page, time: number): Promise<number> {
   return page.evaluate((t: number) => {
     const clipsAround = (el: Element): Element[] => {
