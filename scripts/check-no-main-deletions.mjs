@@ -740,6 +740,37 @@ const RETIRED_ROUTING_FILES = [
 const FALLOW_PRUNE_REASON =
   "fallow 3 reuses one audit snapshot per checkout and the hook prunes with `fallow audit-cache prune`, replacing this script";
 
+const PLAN_V1_SAMPLE_REASON =
+  "Plan v1 is no longer a supported cloud transport; the adapters, workflows and smoke tests now accept Plan v2 only";
+
+const PLAN_V1_SAMPLE_FILES = [
+  "examples/aws-lambda/sample-events/assemble-v1.json",
+  "examples/aws-lambda/sample-events/plan-v1.json",
+  "examples/aws-lambda/sample-events/render-chunk-v1.json",
+  "examples/gcp-cloud-run/sample-events/assemble-v1.json",
+  "examples/gcp-cloud-run/sample-events/plan-v1.json",
+  "examples/gcp-cloud-run/sample-events/render-chunk-v1.json",
+];
+
+const PLAN_PARITY_HARNESS_REASON =
+  "the completed Plan v1-to-v2 rollout harness has no supported v1 cloud path left to exercise";
+
+const PLAN_PARITY_HARNESS_FILES = [
+  "packages/producer/fixtures/plan-parity-size-pressure/.plan-parity-fixture.json",
+  "packages/producer/fixtures/plan-parity-size-pressure/index.html",
+  "packages/producer/fixtures/plan-parity-visual-audio/.plan-parity-fixture.json",
+  "packages/producer/fixtures/plan-parity-visual-audio/index.html",
+  "packages/producer/src/plan-parity-analysis.test.ts",
+  "packages/producer/src/plan-parity-analysis.ts",
+  "packages/producer/src/plan-parity-contract.test.ts",
+  "packages/producer/src/plan-parity-contract.ts",
+  "packages/producer/src/plan-parity-fixture.test.ts",
+  "packages/producer/src/plan-parity-fixture.ts",
+  "packages/producer/src/plan-parity-harness.test.ts",
+  "packages/producer/src/plan-parity-harness.ts",
+  "packages/producer/src/plan-parity-lambda-local-driver.ts",
+];
+
 export const ALLOWED_DELETIONS = new Map([
   // Prompt Guide as six topic pages
   [
@@ -2072,6 +2103,8 @@ export const ALLOWED_DELETIONS = new Map([
   ],
   ["scripts/prune-fallow-audit-caches.mjs", FALLOW_PRUNE_REASON],
   ["scripts/prune-fallow-audit-caches.test.mjs", FALLOW_PRUNE_REASON],
+  ...PLAN_V1_SAMPLE_FILES.map((path) => [path, PLAN_V1_SAMPLE_REASON]),
+  ...PLAN_PARITY_HARNESS_FILES.map((path) => [path, PLAN_PARITY_HARNESS_REASON]),
   [
     "packages/engine/src/services/frameCapture-releaseInjectedVideoMedia.browser.test.ts",
     "the revert of #5795 removes releaseInjectedVideoMedia, the only code this file tested",
