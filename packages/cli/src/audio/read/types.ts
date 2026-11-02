@@ -32,14 +32,12 @@ export interface Voice {
   medianPitchHz: number | null;
 }
 
-export type EffectKind = "riser" | "boom" | "thump" | "whoosh" | "click" | "tick" | "ding" | "hit";
-
 export type Band = "low" | "mid" | "high";
 
 export interface Effect {
   t: number;
   end: number;
-  kind: EffectKind;
+  kind: "effect";
   group: string;
   band: Band;
   attackMs: number;
@@ -57,7 +55,6 @@ export interface Effect {
 
 export interface EffectGroup {
   id: string;
-  kind: EffectKind;
   count: number;
 }
 

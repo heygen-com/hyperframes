@@ -56,6 +56,32 @@ npx hyperframes transcribe interview.mp4 --language es
 Pass `--language` when the speech isn't English. It also imports an existing `.srt` or `.vtt`. For a talking-head clip that needs
 captions or a tighter cut, see [Captions and recuts](/guides/captions-and-recuts).
 
+## Read a reference soundtrack
+
+To understand an existing recording before making a new soundtrack, run:
+
+```bash
+npx hyperframes audio reference.mp4 --read --quality best
+```
+
+With a HeyGen credential, the recording is separated into six stems: vocals,
+drums, bass, guitar, piano and other. The reading describes each audible stem,
+then gives an overall description. `voice-free mix:` points to a mix without the
+vocal stem. `bgm prompt:` describes the music for a music generator, or says
+there is no music. These descriptions use HeyGen; a separate Google or Gemini
+API key is not used. Without a HeyGen credential, or if the description service
+fails, a warning explains why descriptions are unavailable instead of guessing.
+
+Timed effects are named `effect` and grouped as `S1`, `S2` and so on, without
+assigning sound kinds. Each keeps its source stem, time, frequency band, attack,
+tail, peak level and level above the surrounding music. Model descriptions can
+explain what a sound resembles; their timing is approximate. The timed lines
+carry the measurements.
+
+Sign in with `npx hyperframes auth login`, or set `HEYGEN_API_KEY`, before using
+the HeyGen services. See [audio analysis](/packages/cli#audio) for transcript,
+range and local-analysis options.
+
 ## Get captions right
 
 Read the transcript before it goes on screen: names, product terms and numbers are where recognition slips. Keep

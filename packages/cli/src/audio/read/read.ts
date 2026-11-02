@@ -12,7 +12,7 @@ import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { loudness, type AnalysisQuality, type Span } from "@hyperframes/core/audio-analysis";
 import { loadTranscript } from "../../whisper/normalize.js";
 import { runFile } from "../analysis/providers/shared.js";
-import { describeStems, geminiKey } from "./describe.js";
+import { describeAccess, describeStems } from "./describe.js";
 import { findEffects, type EffectSource } from "./effects.js";
 import { formatRead } from "./format.js";
 import { activeSpans, readMusic } from "./music.js";
@@ -72,7 +72,10 @@ function writeAtomic(path: string, content: string) {
   renameSync(temporary, path);
 }
 
+const CACHE_REVISION = 1;
+
 interface CacheEntry {
+  revision: number;
   analysis: ReadAudio;
   transcriptKey: string;
 }
@@ -316,10 +319,6 @@ async function described(
     warnings,
   };
   if (quality === "fast") return located;
-  if (!geminiKey()) {
-    warnings.push("stems not described: set GEMINI_API_KEY or GOOGLE_API_KEY");
-    return located;
-  }
   const { stems, description } = await describeStems(
     stemPaths,
     {
@@ -426,19 +425,23 @@ export async function readAudio(
     if (
       (entry.analysis.separation !== "stems" || cachedStems(stemDir) !== null) &&
       entry.analysis.version === READ_VERSION &&
+      entry.revision === CACHE_REVISION &&
       entry.transcriptKey === transcriptKey &&
       !stemsNowPossible &&
       !(
         entry.analysis.separation === "stems" &&
         !entry.analysis.description &&
         quality !== "fast" &&
-        geminiKey()
+        typeof (await describeAccess()) !== "string"
       )
     )
       return { analysis: entry.analysis, textPath, jsonPath, cached: true };
   }
   const analysis = await analyze(path, file, sha, transcript, stemDir, quality, options.cacheDir);
-  writeAtomic(jsonPath, JSON.stringify({ analysis, transcriptKey } satisfies CacheEntry));
+  writeAtomic(
+    jsonPath,
+    JSON.stringify({ revision: CACHE_REVISION, analysis, transcriptKey } satisfies CacheEntry),
+  );
   writeAtomic(textPath, formatRead(analysis));
   return { analysis, textPath, jsonPath, cached: false };
 }

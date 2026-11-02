@@ -1,6 +1,6 @@
 import { bandFramesOf, type Span } from "@hyperframes/core/audio-analysis";
 import { ABSENT_DB, asSignal, levels, quantile, round, spanDb } from "./signal.js";
-import type { Band, Effect, EffectGroup, EffectKind, Effects } from "./types.js";
+import type { Band, Effect, EffectGroup, Effects } from "./types.js";
 
 const HOP = 0.01;
 const FLOOR_FRAMES = 150;
@@ -165,46 +165,9 @@ function centroidHz(power: Float64Array): number {
   return weight > 0 ? 2 ** (sum / weight) : 0;
 }
 
-const tonal = (power: Float64Array) => {
-  const sorted = Float64Array.from(power).sort();
-  return sorted[sorted.length - 1]! - sorted[Math.floor(sorted.length * 0.75)]! >= 2.5;
-};
-
-interface Shape {
-  length: number;
-  attack: number;
-  tail: number;
-  band: Band;
-  centroid: number;
-  tonal: boolean;
-}
-
-/** Tried in order; a sound none of them fits is a hit. */
-const KINDS: [(s: Shape) => boolean, (s: Shape) => EffectKind][] = [
-  [(s) => s.length >= 0.8 && s.attack >= 0.45 * s.length, () => "riser"],
-  [(s) => s.band === "low", (s) => (s.tail >= 0.6 ? "boom" : "thump")],
-  [(s) => s.length <= 0.15, (s) => (s.centroid >= 3000 ? "tick" : "click")],
-  [(s) => s.tonal && s.tail >= 0.4, () => "ding"],
-  [(s) => s.attack >= 0.06 && s.length <= 1.5, () => "whoosh"],
-];
-
 function bandOf(low: number, centroid: number): Band {
   if (low >= 0.5) return "low";
   return centroid >= 2500 ? "high" : "mid";
-}
-
-function kindOf(found: Found, power: Float64Array): { kind: EffectKind; band: Band } {
-  const centroid = centroidHz(power);
-  const shape: Shape = {
-    length: found.end - found.t,
-    attack: found.peak - found.t,
-    tail: found.end - found.peak,
-    band: bandOf(lowShare(power), centroid),
-    centroid,
-    tonal: tonal(power),
-  };
-  const kind = KINDS.find(([fits]) => fits(shape))?.[1](shape) ?? "hit";
-  return { kind, band: shape.band };
 }
 
 /** The sound's spectral shape: the square root of each octave's share of its energy, so loudness does not count. */
@@ -276,12 +239,6 @@ function onBeat(t: number, beats: readonly number[]): boolean {
   return near.some((b) => Math.abs(b - t) <= BEAT_SLACK);
 }
 
-function majority(kinds: EffectKind[]): EffectKind {
-  const counts = new Map<EffectKind, number>();
-  for (const k of kinds) counts.set(k, (counts.get(k) ?? 0) + 1);
-  return [...counts].sort((a, b) => b[1] - a[1])[0]![0];
-}
-
 export interface EffectSource {
   samples: Float32Array;
   /** Where this track plays music or ambience: a sound that starts or peaks inside one belongs to it, not an effect. */
@@ -314,7 +271,6 @@ interface Levels {
 }
 
 interface Shaped extends Found {
-  kind: EffectKind;
   band: Band;
   print: Float64Array;
   stem: string | null;
@@ -346,7 +302,7 @@ function foundIn(
     const power = shape(bands, f.t, Math.min(f.end, f.t + 0.4));
     return {
       ...f,
-      ...kindOf(f, power),
+      band: bandOf(lowShare(power), centroidHz(power)),
       print: printOf(power),
       stem: parts ? loudestPart(parts, input.sampleRate, f) : (stem ?? null),
       inMusic: playsIn.some((span) => f.t >= span.start - ENTRANCE_SLACK && f.t < span.end),
@@ -433,11 +389,11 @@ function musicHits(sounds: readonly Measured[]): Set<Measured> {
   return own;
 }
 
-function effectOf(m: Measured, group: string, kind: EffectKind, levels: Levels): Effect {
+function effectOf(m: Measured, group: string, levels: Levels): Effect {
   return {
     t: round(m.t),
     end: round(m.end),
-    kind,
+    kind: "effect",
     group,
     band: m.band,
     attackMs: Math.round((m.peak - m.t) * 1000),
@@ -462,10 +418,8 @@ export function findEffects(input: EffectInput): Effects {
   const names = new Map(kept.map(([id], i) => [id, `S${i + 1}`]));
   const groups: EffectGroup[] = kept.map(([id, list]) => ({
     id: names.get(id)!,
-    kind: majority(list.map((m) => m.kind)),
     count: list.length,
   }));
-  const kindOfGroup = new Map(groups.map((g) => [g.id, g.kind]));
   const events: Effect[] = [];
   for (const m of sounds) {
     if (drums.has(m.group)) continue;
@@ -474,8 +428,7 @@ export function findEffects(input: EffectInput): Effects {
     if (previous?.group === group && m.t - previous.end <= TRAIN_GAP) {
       previous.end = round(m.end);
       previous.count++;
-    } else
-      events.push(effectOf(m, group, kindOfGroup.get(group) ?? m.kind, levelsOf(input, mixDb, m)));
+    } else events.push(effectOf(m, group, levelsOf(input, mixDb, m)));
   }
   const drumHits = [...drums].reduce((n, id) => n + members.get(id)!.length, own.size);
   return { events, groups, drumHits };

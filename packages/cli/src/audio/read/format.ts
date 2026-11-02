@@ -86,7 +86,7 @@ function standing(effect: Effect): string {
 function effectLine(effect: Effect, pauses: readonly Span[]): Line {
   const from = effect.stem ? `${effect.stem}, ` : "";
   const parts = [
-    `${effect.kind}${effect.count > 1 ? ` ×${effect.count}` : ""} (${from}${effect.group}): ${effect.band}`,
+    `(${from}${effect.group})${effect.count > 1 ? ` ×${effect.count}` : ""}: ${effect.band}`,
     `attack ${effect.attackMs} ms`,
     `tail ${effect.tail.toFixed(1)} s`,
     standing(effect),
@@ -143,11 +143,8 @@ function musicLine(segment: MusicSegment, analysis: ReadAudio): Line {
 
 function effectsIn(events: readonly Effect[]): string | null {
   if (!events.length) return null;
-  const counts = new Map<string, number>();
-  for (const e of events) counts.set(e.kind, (counts.get(e.kind) ?? 0) + e.count);
-  const kinds = [...counts].map(([kind, n]) => (n > 1 ? `${kind} ×${n}` : kind)).join(", ");
   const total = events.reduce((n, e) => n + e.count, 0);
-  return `${total} ${total === 1 ? "effect" : "effects"} (${kinds})`;
+  return `${total} ${total === 1 ? "effect" : "effects"}`;
 }
 
 function pauseLine(pause: Pause, analysis: ReadAudio): Line {
@@ -200,7 +197,7 @@ function voiceSummary(voice: Voice): string {
 function effectsSummary(effects: Effects): string {
   const top = effects.groups
     .slice(0, 6)
-    .map((g) => `${g.id} ${g.kind} ×${g.count}`)
+    .map((g) => `${g.id} ×${g.count}`)
     .join(", ");
   return `effects: ${effects.events.length} in ${effects.groups.length} sounds${top ? ` (${top})` : ""}${
     effects.drumHits ? `; ${effects.drumHits} hits of the music's own drums left out` : ""

@@ -74,7 +74,7 @@ describe("formatRead", () => {
           {
             t: 1.2,
             end: 1.5,
-            kind: "whoosh",
+            kind: "effect",
             group: "S1",
             band: "mid",
             attackMs: 80,
@@ -86,7 +86,7 @@ describe("formatRead", () => {
             stem: "other",
           },
         ],
-        groups: [{ id: "S1", kind: "whoosh", count: 1 }],
+        groups: [{ id: "S1", count: 1 }],
         drumHits: 40,
       },
     };
@@ -106,6 +106,10 @@ describe("formatRead", () => {
       "",
     ]);
     expect(text).toContain("40 hits of the music's own drums left out");
-    expect(text).toContain("effect   whoosh (other, S1): mid");
+    expect(text).toContain(
+      "effect   (other, S1): mid, attack 80 ms, tail 0.2 s, peak -12 dBFS, +8 dB over what played before",
+    );
+    expect(text).toContain("effects: 1 in 1 sounds (S1 ×1)");
+    expect(text).not.toMatch(/\b(?:click|hit|whoosh|tick|thump|riser|boom|ding)\b/);
   });
 });
