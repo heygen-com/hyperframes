@@ -22,7 +22,7 @@ import {
   MEDIA_SYNC_TOLERANCE_SECONDS,
   steerMedia,
 } from "./mediaSteer.js";
-export { MEDIA_SYNC_TOLERANCE_SECONDS } from "./mediaSteer.js";
+export { MEDIA_HARD_SYNC_SECONDS, MEDIA_SYNC_TOLERANCE_SECONDS } from "./mediaSteer.js";
 export type { RuntimeMediaClip } from "./types.js";
 export {
   readElementPlaybackRate,
@@ -444,6 +444,8 @@ export function syncRuntimeMedia(params: {
    * unity; do not mistake that transport write for an authored volume edit. */
   isWebAudioRouted?: (el: HTMLMediaElement) => boolean;
   forceSync?: boolean;
+  /** A video held or resumed for data keeps its small lag, which steering closes; hard sync still lands a big one. */
+  keepLateMedia?: boolean;
   /** False while the playhead is not moving (audio output has not started): a paused video waits for it. */
   clockAdvancing?: boolean;
   /** How far the next tick will move the playhead: an audio clip due within it starts now. */
@@ -697,6 +699,7 @@ export function syncRuntimeMedia(params: {
       let strictSync = false;
       if (
         !isPlayingMedia &&
+        !params.keepLateMedia &&
         !holdingAhead &&
         !hardSync &&
         !firstTickOfClip &&
