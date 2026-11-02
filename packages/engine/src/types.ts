@@ -139,6 +139,7 @@ export interface HfProtocol {
   media?: HfMediaElement[];
   /** Optional: shader transition metadata, populated by @hyperframes/shader-transitions */
   transitions?: HfTransitionMeta[];
+  clipWindow?(el: Element): { start: number; end: number } | null;
 }
 
 // ── Capture Types ──────────────────────────────────────────────────────────────

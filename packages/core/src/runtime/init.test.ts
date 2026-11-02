@@ -1982,6 +1982,22 @@ describe("initSandboxRuntimeModular", () => {
       expect(window.__hf?.animationEnd?.()).toBe(4);
     });
 
+    it("reports a clip's window with its start reference resolved", () => {
+      mountRoot("20");
+      const intro = document.createElement("div");
+      intro.id = "intro";
+      intro.setAttribute("data-start", "0");
+      intro.setAttribute("data-duration", "3");
+      const next = document.createElement("div");
+      next.setAttribute("data-start", "intro + 1");
+      next.setAttribute("data-duration", "4");
+      document.querySelector("[data-root]")!.append(intro, next);
+      window.__timelines = { main: createPaddableMockTimeline(4) };
+      initSandboxRuntimeModular();
+
+      expect(window.__hf?.clipWindow?.(next)).toEqual({ start: 4, end: 8 });
+    });
+
     it("keeps the animation end when a longer declared length pads the timeline again", () => {
       mountRoot("10");
       const timeline = createPaddableMockTimeline(4);

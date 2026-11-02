@@ -3644,6 +3644,11 @@ export function initSandboxRuntimeModular(): void {
     const end = Math.max(timelineEnd, resolveAdapterDurationFloorSeconds(true) ?? 0);
     return end > 0 && end < LOOP_INFLATED_TIMELINE_SECONDS ? end : null;
   };
+  window.__hf.clipWindow = (element) =>
+    runtimeElementWindow(element, {
+      timelineRegistry: window.__timelines ?? {},
+      resolver: timingResolverFor(true),
+    });
   window.__hf.audioMeter = {
     start: () => webAudio.startMetering(),
     stop: () => webAudio.stopMetering(),
