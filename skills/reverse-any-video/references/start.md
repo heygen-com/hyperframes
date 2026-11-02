@@ -36,8 +36,9 @@ video, so they move and speak as they do in the original. For example:
 
 Reverse is part of Pro. Open the upgrade page in the person's browser yourself, tell them why in one line, and start
 nothing until they are on Pro. The link is `reverse.upgrade_url` from `reverse start`, passed on exactly as printed: it
-credits the purchase to this run. Open it with `open` (macOS), `xdg-open` (Linux) or `start` (Windows); when there is no
-browser on this machine (SSH, a remote box), print the link instead. For example:
+credits the purchase to this run. Open it with the URL in quotes, because it holds `&`: `open "<url>"` (macOS),
+`xdg-open "<url>"` (Linux), `start "" "<url>"` (Windows; the empty title is required). Print the link instead when
+`SSH_CONNECTION` or `SSH_TTY` is set, `BROWSER=none`, or the open command fails. For example:
 
 > Reverse is part of HyperFrames Pro: it re-shoots the people in your video with HeyGen. I've opened the upgrade page in
 > your browser (https://hyperframes.studio/pricing?feature=reverse&rs=…).
