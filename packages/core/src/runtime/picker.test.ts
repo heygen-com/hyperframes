@@ -155,6 +155,16 @@ describe("createPickerModule", () => {
       expect(candidatesUnder(() => [long], "label")).toEqual([`${"x".repeat(54)}😀…`]);
     });
 
+    it("includes the element classes needed by host hover identifiers", () => {
+      const picker = createPickerModule({ postMessage: createMockPostMessage() });
+      picker.installPickerApi();
+      const card = document.createElement("div");
+      card.className = "title featured";
+      document.body.appendChild(card);
+
+      expect(candidatesUnder(() => [card], "className")).toEqual(["title featured"]);
+    });
+
     it("getCandidatesAtPoint returns empty for invalid coords", () => {
       const picker = createPickerModule({ postMessage: createMockPostMessage() });
       picker.installPickerApi();
@@ -461,6 +471,34 @@ describe("createPickerModule", () => {
           .map(([message]) => message)
           .find((message) => message.type === "element-pick-candidates");
         expect(picked.candidates.map((c: any) => c.selector)).toEqual(["#title", "#bg"]);
+      } finally {
+        picker.disablePickMode();
+        restore();
+      }
+    });
+
+    it("refreshes hovered geometry while the preview scrolls and stops after disable", () => {
+      const postMessage = createMockPostMessage();
+      const picker = createPickerModule({ postMessage });
+      document.body.innerHTML = `<h1 id="title">Hi</h1>`;
+      let top = 10;
+      at("title").getBoundingClientRect = () => new DOMRect(20, top, 100, 40);
+      const restore = emulateHitTest(() => [at("title")]);
+      try {
+        picker.enablePickMode();
+        move();
+        top = 30;
+        document.dispatchEvent(new Event("scroll"));
+        const hovered = () =>
+          postMessage.mock.calls
+            .map(([message]) => message)
+            .filter((message) => message.type === "element-hovered");
+        expect(hovered().at(-1)?.elementInfo.boundingBox.y).toBe(30);
+
+        picker.disablePickMode();
+        const countAfterDisable = hovered().length;
+        document.dispatchEvent(new Event("scroll"));
+        expect(hovered()).toHaveLength(countAfterDisable);
       } finally {
         picker.disablePickMode();
         restore();

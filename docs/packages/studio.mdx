@@ -87,6 +87,11 @@ Peer dependencies are React 19, React DOM 19, and Zustand 4 or 5.
 The package also exports `CompositionLevel`, `TimelineElement`, `PickedElement`,
 and `PatchOperation`.
 
+`useElementPicker` remembers the current selection while inspection is active.
+Press Escape in either Studio or the preview to cancel and restore that selection. The
+hovered target is identified beside the preview as `tag#id`, `tag.class`, or the
+tag name alone.
+
 ## How Studio stays connected to a project
 
 1. Studio loads the composition in an iframe with the HyperFrames runtime.
