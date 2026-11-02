@@ -184,9 +184,9 @@ it("resumes for a held clip with data buffered ahead that reports only its curre
 });
 
 it("waits for real data ahead: a starved clip reporting a little future data does not resume", () => {
-  const { voiceReady, states, playFor } = playPodcast();
+  const { voiceReady, states, playFor } = playPodcast(0.5);
 
-  playFor(0.5);
+  playFor(0.6);
   voiceReady.value = 3;
   voiceReady.bufferedTo = 0.2;
   playFor(0.5);
