@@ -32,6 +32,17 @@ function chunkRequestBody(): Record<string, unknown> {
 }
 
 describe("Cloud Workflows Plan v2 orchestration", () => {
+  it("defaults an omitted protocol to v2 and rejects every explicit non-v2 value", () => {
+    expect(source).toContain('default(map.get(args, "PlanProtocol"), "v2")');
+    expect(namedStep("checkPlanProtocol")).toMatchObject({
+      switch: [{ condition: '${planProtocol == "v2"}', next: "plan" }],
+      next: "unsupportedPlanProtocol",
+    });
+    expect(namedStep("unsupportedPlanProtocol")).toMatchObject({
+      raise: { code: "PLAN_PROTOCOL_UNSUPPORTED" },
+    });
+  });
+
   it("uses Plan v2 for every distributed action", () => {
     for (const body of [requestBody("plan"), chunkRequestBody(), requestBody("assemble")]) {
       expect(body.PlanProtocol).toBe("v2");

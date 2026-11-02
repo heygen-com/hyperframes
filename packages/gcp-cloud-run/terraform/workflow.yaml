@@ -15,6 +15,18 @@ main:
           - planOutputGcsPrefix: ${args.PlanOutputGcsPrefix}
           - outputGcsUri: ${args.OutputGcsUri}
           - config: ${args.Config}
+          - planProtocol: ${default(map.get(args, "PlanProtocol"), "v2")}
+
+    - checkPlanProtocol:
+        switch:
+          - condition: ${planProtocol == "v2"}
+            next: plan
+        next: unsupportedPlanProtocol
+
+    - unsupportedPlanProtocol:
+        raise:
+          code: PLAN_PROTOCOL_UNSUPPORTED
+          message: ${"PlanProtocol must be v2 or absent; got " + string(planProtocol)}
 
     - plan:
         try:
