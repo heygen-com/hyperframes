@@ -14,6 +14,7 @@ const FIXTURE = "heavy-16x1080";
 const RUNS = 3;
 const SAMPLE_MS = 6_000;
 const FRAME_LOOKUP_TIMEOUT_MS = 10_000;
+const PLAY_CONFIRM_TIMEOUT_MS = 60_000;
 
 type FrameSample = {
   mediaTime: number;
@@ -247,9 +248,28 @@ async function run(): Promise<void> {
           if (!player) throw new Error("player host element is missing");
           player.play();
         });
-        await frame.waitForFunction(() => window.__player?.isPlaying?.() === true, {
-          timeout: 10_000,
-        });
+        try {
+          await frame.waitForFunction(() => window.__player?.isPlaying?.() === true, {
+            timeout: PLAY_CONFIRM_TIMEOUT_MS,
+          });
+        } catch (error) {
+          const state = await frame.evaluate(() => ({
+            playerPresent: window.__player !== undefined,
+            isPlaying: window.__player?.isPlaying?.() ?? null,
+            time: window.__player?.getTime?.() ?? null,
+            videos: Array.from(
+              document.querySelectorAll<HTMLVideoElement>("video[data-track-index]"),
+            ).map((video) => ({
+              scene: `tile-${video.dataset.trackIndex ?? "unknown"}`,
+              paused: video.paused,
+              readyState: video.readyState,
+              currentTime: video.currentTime,
+            })),
+          }));
+          throw new Error(
+            `[windows-dropped-frames] playback did not start: ${JSON.stringify(state)} (${error instanceof Error ? error.message : String(error)})`,
+          );
+        }
         await frame.evaluate(() => {
           for (const samples of Object.values(window.__droppedFrameSamples ?? {}))
             samples.length = 0;
