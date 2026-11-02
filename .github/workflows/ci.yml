@@ -866,6 +866,8 @@ jobs:
       - run: bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
       - run: bun run --cwd packages/core build
       - run: bun run --cwd packages/cli test src/utils/npxCommand.test.ts src/commands/skills.test.ts
+        env:
+          HF_NPX_SHIM_E2E: "1"
 
   sdk-tests:
     name: "SDK: unit + contract + smoke"
