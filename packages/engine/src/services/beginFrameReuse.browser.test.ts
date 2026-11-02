@@ -1,11 +1,15 @@
 import { spawnSync } from "node:child_process";
+import { basename } from "node:path";
 import puppeteer, { type Browser } from "puppeteer-core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { resolveHeadlessShellPath } from "./browserManager.js";
 import { beginFrameCapture, forgetBeginFrameCapture } from "./screenshotService.js";
 import { closeTestChrome } from "./__fixtures__/loopback.js";
 
-const chromePath = resolveHeadlessShellPath();
+const resolved = resolveHeadlessShellPath();
+const chromePath =
+  process.env.HF_BEGINFRAME_SHELL ??
+  (resolved && basename(resolved).startsWith("chrome-headless-shell") ? resolved : undefined);
 const hasBrowser = chromePath !== undefined && spawnSync(chromePath, ["--version"]).status === 0;
 const INTERVAL = 1000 / 30;
 const options = { width: 160, height: 90, fps: { num: 30, den: 1 }, format: "jpeg" as const };
