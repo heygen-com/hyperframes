@@ -183,7 +183,7 @@ spend is roughly $0.10-$0.20 per pass before S3 transfer. Lower
 
 Outputs land under `<repo-root>/lambda-smoke-artifacts/`:
 
-- `results.json` — `chunkCount × wallClockMs × psnrAvgDb`
+- generated results summary — `chunkCount × wallClockMs × psnrAvgDb`
 - `renders/v2-N<N>-output.mp4` — each rendered variant
 - `renders/v2-N<N>-history.json` — full Step Functions execution history
 
