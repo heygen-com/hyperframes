@@ -939,6 +939,42 @@ describe("painting", () => {
     expect(reads.every(([, suppress]) => suppress === true)).toBe(true);
   });
 
+  it.each(["capture", "filter"] as const)(
+    "does not replay a style-only callback during %s pose reads",
+    (tier) => {
+      installHtmlInCanvas();
+      if (tier === "filter") setFilterFallbackForTests(true);
+      const { root, el, h } = movingHost({
+        "data-motion-blur": "on",
+        "data-motion-blur-events": "on",
+        "data-motion-blur-tier": tier,
+      });
+      const label = document.createElement("span");
+      root.append(label);
+      const slide = h.seek;
+      let callbacks = 0;
+      const seek = vi.fn((t: number, suppressEvents: boolean) => {
+        slide(t, suppressEvents);
+        if (!suppressEvents) {
+          callbacks++;
+          label.style.opacity = String(t);
+        }
+      });
+      initCaptureMotionBlur({ ...h, seek });
+
+      win.__hfMotionBlur?.probe();
+      expect(win.__hfMotionBlur?.report()).toMatchObject({ tier, movers: 1 });
+      expect({ callbacks, seeks: seek.mock.calls.length }).toEqual({ callbacks: 32, seeks: 63 });
+
+      callbacks = 0;
+      seek.mockClear();
+      void paintCaptureMotionBlur(0.5, PLAY);
+      expect(callbacks).toBe(0);
+      expect(seek).toHaveBeenCalledTimes(tier === "capture" ? 6 : 5);
+      expect(el.getBoundingClientRect().left).toBe(150);
+    },
+  );
+
   it("lands silent reads back on the frame through the host's holdFrame, taken before the first read", () => {
     installHtmlInCanvas();
     const { h } = movingHost({ "data-motion-blur": "on", "data-motion-blur-events": "on" });

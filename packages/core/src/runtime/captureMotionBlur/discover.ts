@@ -38,7 +38,8 @@ export interface DiscoverOptions {
   /** Seek the composition (timeline + adapters) to a time. */
   seek: (t: number) => void;
   onStep?: (i: number, steps: number) => void;
-  onStepBoxes?: (i: number, boxes: ReadonlyArray<DOMRect | undefined>) => void;
+  onStepBoxes?: (i: number, boxes: ReadonlyMap<HTMLElement, DOMRect>) => void;
+  trackBoxes?: ReadonlySet<Element>;
 }
 
 export interface Discovery {
@@ -48,6 +49,33 @@ export interface Discovery {
   /** Px each mover's ink reaches past its box (shadows, glows), the largest seen. */
   pads: Map<HTMLElement, number>;
   translationOnly: boolean;
+}
+
+function readStepGeometry(
+  all: ReadonlyArray<HTMLElement>,
+  first: ReadonlyArray<string>,
+  dynamic: Set<Element>,
+  trackBoxes: ReadonlySet<Element> | undefined,
+): {
+  rects: Array<DOMRect | undefined>;
+  fresh: number[];
+  boxes: ReadonlyMap<HTMLElement, DOMRect>;
+} {
+  const rects: Array<DOMRect | undefined> = [];
+  const fresh: number[] = [];
+  const boxes = new Map<HTMLElement, DOMRect>();
+  all.forEach((el, j) => {
+    const changed = styleKey(el) !== first[j];
+    if (!trackBoxes?.has(el) && !dynamic.has(el) && !changed) return;
+    if (!dynamic.has(el) && changed) {
+      fresh.push(j);
+      dynamic.add(el);
+    }
+    const box = el.getBoundingClientRect();
+    rects[j] = box;
+    boxes.set(el, box);
+  });
+  return { rects, fresh, boxes };
 }
 
 // The whole inline style in one read; opacity or colour tweens only cost a rect check.
@@ -189,6 +217,7 @@ export function discoverMovers({
   seek,
   onStep,
   onStepBoxes,
+  trackBoxes,
 }: DiscoverOptions): Discovery {
   seek(0);
   const all = [...scene.querySelectorAll("*")].filter(isHtmlElement);
@@ -224,15 +253,8 @@ export function discoverMovers({
     onStep?.(i, steps);
     // Rects only for elements whose style has changed; a first change is judged against its
     // own baseline style at this time, so an ancestor's pan is not its move.
-    const rects: Array<DOMRect | undefined> = [];
-    const fresh: number[] = [];
-    all.forEach((el, j) => {
-      if (!dynamic.has(el) && styleKey(el) === first[j]) return;
-      if (!dynamic.has(el)) fresh.push(j);
-      dynamic.add(el);
-      rects[j] = el.getBoundingClientRect();
-    });
-    onStepBoxes?.(i, rects);
+    const { rects, fresh, boxes } = readStepGeometry(all, first, dynamic, trackBoxes);
+    onStepBoxes?.(i, boxes);
     const away = fresh.filter(
       (j) => edgeShift(baseRects[j], rects[j]) / framesPerStep >= MIN_SPEED,
     );
@@ -279,20 +301,23 @@ export interface ScanOptions extends Omit<DiscoverOptions, "seek"> {
   events: boolean;
 }
 
-/** Every changing element's box, at 1/64 px, as one number per step. */
-function boxesKey(boxes: ReadonlyArray<DOMRect | undefined>): number {
-  let h = 0x811c9dc5;
-  const mix = (v: number): void => {
-    h = Math.imul(h ^ v, 0x01000193);
-  };
-  boxes.forEach((b, j) => {
-    if (!b) return;
-    for (const v of [j, b.left, b.top, b.width, b.height]) mix(Math.round(v * 64));
-  });
-  return h;
+/** Whether the same elements occupy different boxes, at 1/64 px. */
+function boxesDiffer(
+  loud: ReadonlyMap<HTMLElement, DOMRect> | undefined,
+  quiet: ReadonlyMap<HTMLElement, DOMRect>,
+): boolean {
+  if (!loud) return true;
+  for (const [el, a] of loud) {
+    const b = quiet.get(el);
+    if (!b) return true;
+    for (const key of ["left", "top", "width", "height"] as const) {
+      if (Math.round(a[key] * 64) !== Math.round(b[key] * 64)) return true;
+    }
+  }
+  return false;
 }
 
-/** Discovery, and whether pose reads need callbacks: when they change an element's style or box. */
+/** Discovery, and whether pose reads need callbacks to reproduce its geometry. */
 export function scanMovers({
   seek,
   events,
@@ -302,21 +327,22 @@ export function scanMovers({
   const quiet = (t: number): void => seek(t, true);
   if (!events) return { ...discoverMovers({ ...scan, seek: quiet, onStep }), readEvents: false };
   // Loud first: run after the silent scan, it starts at the end and fires a one-off call once more.
-  const loud: number[] = [];
+  const loud: Array<ReadonlyMap<HTMLElement, DOMRect>> = [];
   const found = discoverMovers({
     ...scan,
     seek: (t) => seek(t, false),
     onStep,
     onStepBoxes: (i, boxes) => {
-      loud[i] = boxesKey(boxes);
+      loud[i] = boxes;
     },
   });
   let differs = false;
   discoverMovers({
     ...scan,
     seek: quiet,
+    trackBoxes: found.dynamic,
     onStepBoxes: (i, boxes) => {
-      differs ||= boxesKey(boxes) !== loud[i];
+      differs ||= boxesDiffer(loud[i], boxes);
     },
   });
   return { ...found, readEvents: differs };
