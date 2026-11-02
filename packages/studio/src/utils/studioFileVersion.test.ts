@@ -6,6 +6,7 @@ import {
   resetStudioWriteTokens,
   studioExpectedFileVersion,
   studioFileContentVersion,
+  studioFileRevision,
   studioWriteHeaders,
 } from "./studioFileVersion";
 
@@ -95,5 +96,18 @@ describe("studio write-token echo identity", () => {
 
     markStudioWriteToken("abandoned-studio-write", 1_000);
     expect(consumeStudioWriteToken("abandoned-studio-write", 301_000)).toBe(false);
+  });
+
+  it("moves the file revision when a write is claimed and again when its echo lands", () => {
+    resetStudioWriteTokens();
+    const start = studioFileRevision();
+    markStudioWriteToken("revision-write");
+
+    expect(studioFileRevision()).toBe(start + 1);
+    expect(consumeStudioWriteToken("revision-write")).toBe(true);
+    expect(studioFileRevision()).toBe(start + 2);
+    // An echo that is not ours leaves the project where it was.
+    expect(consumeStudioWriteToken("someone-else")).toBe(false);
+    expect(studioFileRevision()).toBe(start + 2);
   });
 });

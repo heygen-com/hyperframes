@@ -2,6 +2,16 @@
 // retries, and the subsequent file-change echo without retaining abandoned tokens forever.
 const WRITE_TOKEN_TTL_MS = 5 * 60_000;
 const studioWriteTokens = new Map<string, number>();
+let fileRevision = 0;
+
+/**
+ * The project's revision as Studio knows it: it moves when a write is claimed and again when the
+ * server's echo says that write landed. HTML fetched at one revision is the project at that
+ * revision, so a reader that finds a higher one is holding a copy the project has moved past.
+ */
+export function studioFileRevision(): number {
+  return fileRevision;
+}
 
 function pruneStudioWriteTokens(now: number): void {
   for (const [token, createdAt] of studioWriteTokens) {
@@ -13,6 +23,7 @@ function pruneStudioWriteTokens(now: number): void {
 export function markStudioWriteToken(token: string, now: number = Date.now()): void {
   pruneStudioWriteTokens(now);
   studioWriteTokens.set(token, now);
+  fileRevision += 1;
 }
 
 /** Consumed by the external-change coordinator introduced in stack PR #2991. */
@@ -20,6 +31,7 @@ export function consumeStudioWriteToken(token: string | null, now: number = Date
   pruneStudioWriteTokens(now);
   if (!token || !studioWriteTokens.has(token)) return false;
   studioWriteTokens.delete(token);
+  fileRevision += 1;
   return true;
 }
 

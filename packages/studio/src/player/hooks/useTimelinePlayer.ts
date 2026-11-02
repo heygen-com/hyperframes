@@ -45,6 +45,7 @@ import { timelineElementsChanged } from "./timelinePlayerSync";
 import { safeContentDocument } from "./timelineSyncHydration";
 import { sceneSwapFor, supersededByNewerEdit } from "../sceneSwap";
 import { whileScriptWrites } from "../previewReloading";
+import { studioFileRevision } from "../../utils/studioFileVersion";
 
 export interface UseTimelinePlayerOptions {
   /** Runs right after a reloaded preview becomes the live iframe. */
@@ -55,6 +56,42 @@ export interface UseTimelinePlayerOptions {
 
 const publishSeek = (time: number, options?: { follow?: boolean }) =>
   options?.follow === false ? liveTime.notify(time) : liveTime.notifySeek(time);
+
+// Each swap writes the HTML it fetched over the live document, so a write that lands while it is
+// loading would be overwritten by the older copy. Fetch again while the project moves under it;
+// after this many tries the newest copy in hand wins over waiting any longer.
+const SWAP_REFETCHES = 5;
+
+type SceneSwap = (url: string, isCurrent: () => boolean, cancel?: AbortSignal) => Promise<void>;
+
+/** Swaps in the composition as it is now, refetching while a write lands under the one in flight. */
+function swapFreshly(
+  swap: SceneSwap,
+  url: URL,
+  isCurrent: () => boolean,
+  cancel: AbortSignal,
+  reloadWholeFilm: (url: string) => void,
+  attempt = 0,
+): void {
+  const at = studioFileRevision();
+  const fresh = () => studioFileRevision() === at;
+  const again = () => {
+    url.searchParams.set("_t", String(Date.now()));
+    swapFreshly(swap, url, isCurrent, cancel, reloadWholeFilm, attempt + 1);
+  };
+  const retries = attempt < SWAP_REFETCHES;
+  const gate = retries ? () => isCurrent() && fresh() : isCurrent;
+  whileScriptWrites(() => swap(url.toString(), gate, cancel))
+    .then(() => {
+      if (isCurrent() && !fresh() && retries) again();
+    })
+    .catch((error: unknown) => {
+      if (!isCurrent()) return;
+      if (!fresh() && retries) return again();
+      logReload("scene-swap-refused", { reason: String(error) });
+      reloadWholeFilm(url.toString());
+    });
+}
 
 // fallow-ignore-next-line complexity
 export function useTimelinePlayer({
@@ -506,13 +543,7 @@ export function useTimelinePlayer({
       !!iframe.contentDocument && isStudioManualEditGestureLiveIn(iframe.contentDocument);
     if (!swap || isRefreshingRef.current || swapWouldReplaceGestureNode)
       return reloadWholeFilm(url.toString());
-    whileScriptWrites(() => swap(url.toString(), isCurrent, cancel.signal)).catch(
-      (error: unknown) => {
-        if (!isCurrent()) return;
-        logReload("scene-swap-refused", { reason: String(error) });
-        reloadWholeFilm(url.toString());
-      },
-    );
+    swapFreshly(swap, url, isCurrent, cancel.signal, reloadWholeFilm);
   }, [reloadWholeFilm, previewGeneration]);
   const pauseRef = useRef(pause);
   pauseRef.current = pause;
