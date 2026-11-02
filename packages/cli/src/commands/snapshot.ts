@@ -5,6 +5,7 @@ import {
   downloadToTemp,
   evaluateHfDiagnostic,
   extractMediaMetadata,
+  inputPathArg,
   isHdrColorSpace,
   sdrCanvasColourFilters,
 } from "@hyperframes/engine";
@@ -89,7 +90,7 @@ import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
 import { c } from "../ui/colors.js";
 import { writeCaptureFileSync } from "../capture/captureFile.js";
 import { runCancellableProcess } from "../utils/cancellableProcess.js";
-import { findFFmpeg, findFFprobe, getFFmpegInstallHint, inputPathArg } from "../browser/ffmpeg.js";
+import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
 import { parseAngle, type Camera } from "./motionShotLayout.js";
 import { createFrameBank, type FrameWant, type PlannedFrame } from "./snapshotFrameBank.js";
 import type { Example } from "./_examples.js";

@@ -1,7 +1,7 @@
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { findFFmpeg, findFFprobe, H264EncoderUnavailableError, inputPathArg } from "./ffmpeg.js";
+import { findFFmpeg, findFFprobe, H264EncoderUnavailableError } from "./ffmpeg.js";
 import { runCancellableProcess } from "../utils/cancellableProcess.js";
 
 // Only child_process is mocked, so no lookup shells out, while the wrapper
@@ -199,13 +199,5 @@ describe("getFFmpegInstallCommand / getFFmpegInstallHint", () => {
 
     expect(getFFmpegInstallCommand()).toBeUndefined();
     expect(getFFmpegInstallHint()).toContain("distro package manager");
-  });
-});
-
-describe("inputPathArg", () => {
-  it("keeps a leading dash from reading as an option without using --", () => {
-    expect(inputPathArg("-clip.mp4")).toBe("./-clip.mp4");
-    expect(inputPathArg("/tmp/-clip.mp4")).toBe("/tmp/-clip.mp4");
-    expect(inputPathArg("clip.mp4")).toBe("clip.mp4");
   });
 });

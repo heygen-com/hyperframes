@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, expect, it, vi } from "vitest";
@@ -26,22 +26,27 @@ function writeProject(name: string, clipStart: number): string {
   return dir;
 }
 
-async function resultAt(dir: string, time: string): Promise<{ ok: boolean; error?: string }> {
+async function resultAt(
+  dir: string,
+  time: string,
+): Promise<{ ok: boolean; error?: { message: string } }> {
   const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
   vi.spyOn(console, "error").mockImplementation(() => undefined);
   vi.spyOn(console, "warn").mockImplementation(() => undefined);
   try {
-    await snapshotCommand.run?.({
-      args: {
-        dir,
-        at: time,
-        end: false,
-        json: true,
-        output: join(dir, "out"),
-        describe: "false",
-        "browser-gpu": false,
-      },
-    } as never).catch(() => undefined);
+    await snapshotCommand
+      .run?.({
+        args: {
+          dir,
+          at: time,
+          end: false,
+          json: true,
+          output: join(dir, "out"),
+          describe: "false",
+          "browser-gpu": false,
+        },
+      } as never)
+      .catch(() => undefined);
     return JSON.parse(String(log.mock.calls.at(-1)?.[0]));
   } finally {
     vi.restoreAllMocks();
@@ -53,6 +58,6 @@ it("fails, naming the folder, when a video on screen cannot be read", async () =
   const result = await resultAt(dir, "1.5");
 
   expect(result.ok).toBe(false);
-  expect(result.error).toMatch(/video frame\(s\) could not be read.*black or stale/);
-  expect(existsSync(join(dir, "out", "frame-0-at-1.5s.png"))).toBe(true);
+  expect(result.error?.message).toMatch(/video frame\(s\) could not be read.*black or stale/);
+  expect(readdirSync(join(dir, "out")).some((name) => /at-1\.5s\.png$/.test(name))).toBe(true);
 }, 120_000);

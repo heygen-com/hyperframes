@@ -1135,7 +1135,15 @@ describe("extractVideoFrameToBuffer", () => {
       try {
         const clip = join(dir, "clip.mp4");
         execFileSync(ffmpeg!, [
-          ...["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=d=2:r=24:s=160x90"],
+          ...[
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc=d=2:r=24:s=160x90",
+          ],
           ...["-pix_fmt", "yuv420p", clip],
         ]);
         const strict = join(dir, "ffprobe-strict");

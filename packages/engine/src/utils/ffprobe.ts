@@ -57,13 +57,18 @@ function sanitizeFfprobeDiagnostic(stderr: string, filePath: string): string {
 }
 
 /** Spawn ffprobe with given args, return stdout. Throws on non-zero exit or missing binary. */
+/** An input path ffmpeg or ffprobe cannot mistake for an option, without `--`, which some builds reject. */
+export function inputPathArg(path: string): string {
+  return path.startsWith("-") ? `./${path}` : path;
+}
+
 export async function runFfprobe(
   filePath: string,
   argsWithoutInput: string[],
   signal?: AbortSignal,
   stdoutOptions?: { retainTail?: boolean; maxChars?: number },
 ): Promise<string> {
-  // `--` stops option parsing so a path like "-intro.mp4" is a filename, but
+  // inputPathArg keeps a path like "-intro.mp4" a filename, but
   // it does NOT cover a path of exactly "-": ffprobe rewrites that to `fd:`
   // AFTER option parsing and then reads stdin. Since stdin here is a pipe the
   // parent never writes to and never ends, the probe hangs for the full 30s
@@ -79,8 +84,7 @@ export async function runFfprobe(
     "error",
     ...urlInputArgs(filePath, { tool: "ffprobe" }),
     ...argsWithoutInput,
-    "--",
-    filePath,
+    inputPathArg(filePath),
   ];
   const proc = spawn(command, args, {
     // Nothing is ever written to the child's stdin; leaving it as a pipe is
