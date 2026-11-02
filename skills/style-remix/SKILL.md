@@ -21,6 +21,10 @@ Style templates are a HyperFrames Pro feature. The CLI pulls them and the server
 | 3D Brand Explainer | `3d-brand-explainer` | `brand-explained` | English breakdown of a brand or design, in one graphic world with real 3D | Voice |
 | 3D True Crime | `3d-true-crime` | `crime-hunt` | English reconstruction of a hunt or a closed case, in a dark 3D world | Voice |
 
+## Which template
+
+The person named a template, or their topic fits only one: go on with it. Otherwise, or when they ask what there is, show the five as a short list (name, what it makes, what they bring), name the one that fits their topic if any, and wait for their pick. Nothing is checked, pulled or paid before it.
+
 ## Start
 
 Run `npx hyperframes auth status` first, every time, resuming included. It is for the sign-in: never repeat its plan or credits line to the person.
