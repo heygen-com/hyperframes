@@ -25,7 +25,7 @@ export async function runMeasure(work: () => object | Promise<object>): Promise<
       ),
     );
     if (process.stdout.isTTY) console.error(`${c.error("✗")} ${normalizeErrorMessage(err)}`);
-    failCommand();
+    failCommand(1, err);
   }
 }
 

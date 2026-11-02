@@ -31,9 +31,9 @@ npx hyperframes media-use generate --type video --reference assets/person.png --
 # the same for a person who does not speak: no --audio, the guide clip carries the motion
 npx hyperframes media-use generate --type video --reference assets/person.png --motion assets/s05-original.mp4 --prompt "holds up a jar, smiles" --seconds 6 --aspect 9:16 --out assets/s05-person.mp4
 # a person in a photo speaking a script in a HeyGen voice
-npx hyperframes media-use generate --type avatar --photo assets/person.png --script "…" --voice <voice-id> --out assets/person.mp4
-# a voice reading text
-npx hyperframes media-use generate --type voice --script "…" --voice <voice-id> --out assets/vo.mp3
+npx hyperframes media-use generate --type avatar --photo assets/person.png --script "…" --voice English --out assets/person.mp4
+# a voice reading text; --voice takes a language (HeyGen's first voice in it, named in the output) or a voice id
+npx hyperframes media-use generate --type voice --script "…" --voice Chinese --out assets/vo.mp3
 # music, 30, 60, 120 or 180 s (instrumental unless --vocals), trimmed to length in the composition
 npx hyperframes media-use generate --type music --prompt "warm lo-fi, soft keys" --seconds 30 --bpm 90 --out assets/music.mp3
 ```
@@ -48,7 +48,7 @@ The file lands at `--out` and the media ledger records it as generated, with the
 | music  | lyria-3-pro                                              | $0.08 a track                                                                                                                                                          |
 | voice  | the voice's engine                                       | charged per character, not priced ahead                                                                                                                                |
 
-`--plan`'s `usd` is what an API key is charged (HeyGen rounds up to units of $1/60); its `credits` is what a HyperFrames plan charges, on the plan's own rates: a video shot's seconds and guide seconds, plus each picture past the first two. Voice ids come from `heygen voice list` or `npx hyperframes media-use resolve --type voice`; a cloned voice from `heygen voice clone create` (`operations.md`).
+`--plan`'s `usd` is what an API key is charged (HeyGen rounds up to units of $1/60); its `credits` is what a HyperFrames plan charges, on the plan's own rates: a video shot's seconds and guide seconds, plus each picture past the first two. Without `--voice`, generate lists voice ids to pick from on the sign-in alone; a cloned voice from `heygen voice clone create` (`operations.md`).
 
 ## Transcription: `transcribe --engine heygen`
 

@@ -8,6 +8,7 @@ import { SHADOW_READY_BUDGETS, SHADOW_READY_TIMEOUT_MS } from "./useShadowPrevie
 import { refusedPreviewMessage } from "@hyperframes/core/studio-preview-mark";
 import { usePlayerStore } from "../store/playerStore";
 import { isPreviewChanging } from "../previewReloading";
+import { studioWriteHeaders } from "../../utils/studioFileVersion";
 import { NLEProvider, useNLEContext, type NLEContextValue } from "../../components/nle/NLEContext";
 import {
   makeAdapterWindow,
@@ -939,6 +940,32 @@ function stubVisibility(initial: DocumentVisibilityState) {
   };
 }
 
+describe("a shadow reload loading while a write lands", () => {
+  it("loads the file again instead of promoting the one it asked for", () => {
+    const { getApi, root } = renderTimelinePlayerHarness();
+    const liveIframe = makeLiveIframe();
+    act(() => {
+      getApi().iframeRef.current = liveIframe;
+      getApi().onIframeLoad();
+    });
+    act(() => getApi().refreshPlayer());
+    const asked = getApi().previewSlots.find((slot) => slot.role === "shadow")!;
+    act(() => getApi().setShadowIframeNode(makeLiveIframe()));
+
+    // An undo writes while that shadow is still loading.
+    studioWriteHeaders();
+    act(() => {
+      getApi().onShadowIframeLoad(asked.gen);
+      getApi().onShadowReadyChange(asked.gen, true);
+    });
+
+    expect(getApi().iframeRef.current).toBe(liveIframe);
+    const loading = getApi().previewSlots.find((slot) => slot.role === "shadow")!;
+    expect(loading.gen).not.toBe(asked.gen);
+    unmount(root);
+  });
+});
+
 describe("useTimelinePlayer scene swap", () => {
   function liveFilm(swap?: (html: string) => Promise<void>) {
     const { adapter, win } = makeAdapterWindow();
@@ -983,6 +1010,46 @@ describe("useTimelinePlayer scene swap", () => {
     reply(new Response("<html>v2</html>"));
     await settle();
     expect(isPreviewChanging()).toBe(false);
+  });
+
+  it("swaps the composition as it is now when a write lands while the HTML is loading", async () => {
+    const swap = vi.fn(async () => {});
+    const replies: Array<(r: Response) => void> = [];
+    const bodies = ["<html>undone-once</html>", "<html>undone-twice</html>"];
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      () => new Promise<Response>((resolve) => replies.push(resolve)),
+    );
+    const { getApi } = liveFilm(swap);
+
+    act(() => getApi().refreshPlayer());
+    // A second undo writes while the first one's preview HTML is still loading.
+    studioWriteHeaders();
+    replies[0]!(new Response(bodies[0]));
+    await settle();
+
+    expect(swap).not.toHaveBeenCalledWith(bodies[0], expect.anything());
+    expect(replies).toHaveLength(2);
+    replies[1]!(new Response(bodies[1]));
+    await settle();
+    expect(swap).toHaveBeenCalledWith(bodies[1], expect.anything());
+  });
+
+  it("gives up refetching and swaps what it has when writes never stop", async () => {
+    const swap = vi.fn(async () => {});
+    let fetches = 0;
+    // The project stops moving well past the bound, so a swap that never gave up still ends.
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      fetches += 1;
+      if (fetches < 20) studioWriteHeaders();
+      return new Response("<html>vN</html>");
+    });
+    const { getApi } = liveFilm(swap);
+
+    act(() => getApi().refreshPlayer());
+    await settle();
+
+    expect(fetches).toBe(6);
+    expect(swap).toHaveBeenCalledWith("<html>vN</html>", expect.anything());
   });
 
   it("falls back to the full reload when the preview refuses the swap", async () => {

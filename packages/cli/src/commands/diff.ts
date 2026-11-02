@@ -255,7 +255,7 @@ export default defineCommand({
       if (json)
         console.log(formatJson(withMeta({ ok: false, error: message, ...(fix ? { fix } : {}) })));
       else console.error(`${c.error("✗")} ${message}${fix ? `\n  Fix: ${fix}` : ""}`);
-      failCommand();
+      failCommand(1, err);
     } finally {
       scheduleCliExit(exitCode);
     }

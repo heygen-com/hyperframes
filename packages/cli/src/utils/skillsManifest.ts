@@ -109,8 +109,8 @@ const FETCH_TIMEOUT_MS = 4000;
 //              structurally (sibling `../hyperframes/references/…` paths,
 //              "call /media-use" preambles). These must be present and current
 //              for any video work, so `init` / `skills update` keep them fresh.
-//   on-demand — everything else: decks (slideshow), Remotion ports
-//              (remotion-to-hyperframes) and optional integrations (figma).
+//   on-demand — everything else: decks, Remotion ports, video rebuilds
+//              (reverse-any-video) and optional integrations (figma).
 //              They install when named (`hyperframes skills update <name>`),
 //              instead of being sprayed onto every machine that runs `init`.
 
