@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { usePlayerStore, type TimelineElement } from "../player";
 import { dispatchLinkShortcut } from "./linkShortcuts";
+import { setStudioKeys } from "../player/components/studioShortcuts";
 
 const clip = (id: string, tag: string, extra: Partial<TimelineElement> = {}): TimelineElement => ({
   id,
@@ -82,5 +83,24 @@ describe("dispatchLinkShortcut", () => {
     const event = key({ metaKey: true, key: "l" });
     expect(dispatchLinkShortcut(event, { handleLinkEdit: vi.fn() })).toBe(false);
     expect(event.preventDefault).not.toHaveBeenCalled();
+  });
+});
+
+describe("dispatchLinkShortcut: remapped combos", () => {
+  afterEach(() => setStudioKeys(null));
+
+  it("link, detach and delete-one follow the map and the old combos go dead", () => {
+    setStudioKeys({ linkToggle: "mod+u", detachAudio: "alt+shift+u", deleteLinked: "alt+x" });
+    const video = clip("talk", "video", { muted: true, link: "lk-1", hasAudio: true });
+    select([video, clip("talk-audio", "audio", { link: "lk-1" })], "talk");
+    const handleLinkEdit = vi.fn();
+    const handleTimelineElementDeleteOnly = vi.fn();
+    const cb = { handleLinkEdit, handleTimelineElementDeleteOnly };
+    expect(dispatchLinkShortcut(key({ metaKey: true, key: "l" }), cb)).toBe(false);
+    expect(dispatchLinkShortcut(key({ metaKey: true, key: "u" }), cb)).toBe(true);
+    expect(handleLinkEdit).toHaveBeenCalledTimes(1);
+    expect(dispatchLinkShortcut(key({ altKey: true, key: "Backspace" }), cb)).toBe(false);
+    expect(dispatchLinkShortcut(key({ altKey: true, key: "≈", code: "KeyX" }), cb)).toBe(true);
+    expect(handleTimelineElementDeleteOnly).toHaveBeenCalledWith(video);
   });
 });

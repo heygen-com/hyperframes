@@ -40,7 +40,7 @@ import { LinkedSelectionToggle } from "./LinkedSelectionToggle";
 import { useProjectHasAudio } from "../utils/audioMeterMath";
 import { canAddBeatAt, addBeatAtCompositionTime } from "../utils/beatEditActions";
 import { isTypingTarget } from "../utils/typingTarget";
-import { getStudioKey, keyHint, useStudioKeys } from "../player/components/studioShortcuts";
+import { keyHint, matchesKey, useStudioKeys } from "../player/components/studioShortcuts";
 import type { TimelineProps } from "../player/components/TimelineTypes";
 
 interface DomEditSessionSlice extends EnableKeyframesSession {
@@ -213,8 +213,7 @@ export const TimelineToolbar = memo(function TimelineToolbar({
   // Skip when typing in an input/contenteditable.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key.toLowerCase() !== getStudioKey("timelineSnap")) return;
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (!matchesKey(e, "timelineSnap")) return;
       if (isTypingTarget(e.target)) return;
       const store = usePlayerStore.getState();
       store.setTimelineSnapEnabled(!store.timelineSnapEnabled);

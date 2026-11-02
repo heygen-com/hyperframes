@@ -1,3 +1,4 @@
+import { setStudioKeys } from "../components/studioShortcuts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Window } from "happy-dom";
 import {
@@ -48,8 +49,10 @@ function mockTargetMatching(selectorNeedle: string): EventTarget {
 function mockKeyboardEvent(
   code: string,
   overrides: Partial<Pick<KeyboardEvent, "altKey" | "ctrlKey" | "metaKey" | "target">> = {},
-): Pick<KeyboardEvent, "altKey" | "ctrlKey" | "metaKey" | "code" | "target"> {
+): Pick<KeyboardEvent, "key" | "altKey" | "ctrlKey" | "metaKey" | "shiftKey" | "code" | "target"> {
   return {
+    key: code,
+    shiftKey: false,
     altKey: false,
     ctrlKey: false,
     metaKey: false,
@@ -556,18 +559,6 @@ describe("shouldIgnorePlaybackShortcutTarget", () => {
 });
 
 describe("shouldIgnorePlaybackShortcutEvent", () => {
-  it("ignores modified playback shortcuts so browser and app chords can handle them", () => {
-    expect(
-      shouldIgnorePlaybackShortcutEvent(mockKeyboardEvent("ArrowLeft", { altKey: true })),
-    ).toBe(true);
-    expect(shouldIgnorePlaybackShortcutEvent(mockKeyboardEvent("KeyK", { ctrlKey: true }))).toBe(
-      true,
-    );
-    expect(shouldIgnorePlaybackShortcutEvent(mockKeyboardEvent("KeyL", { metaKey: true }))).toBe(
-      true,
-    );
-  });
-
   it("defers Arrow frame shortcuts while caption edit mode has selected words", () => {
     const captionSelection = { isCaptionEditMode: true, selectedCaptionSegmentCount: 1 };
 
@@ -580,6 +571,21 @@ describe("shouldIgnorePlaybackShortcutEvent", () => {
     expect(shouldIgnorePlaybackShortcutEvent(mockKeyboardEvent("KeyJ"), captionSelection)).toBe(
       false,
     );
+  });
+
+  it("defers a remapped frame key, not the arrows, while caption words are selected", () => {
+    setStudioKeys({ frameBack: "," });
+    const captionSelection = { isCaptionEditMode: true, selectedCaptionSegmentCount: 1 };
+    expect(
+      shouldIgnorePlaybackShortcutEvent(
+        { ...mockKeyboardEvent("Comma"), key: "," },
+        captionSelection,
+      ),
+    ).toBe(true);
+    expect(
+      shouldIgnorePlaybackShortcutEvent(mockKeyboardEvent("ArrowLeft"), captionSelection),
+    ).toBe(false);
+    setStudioKeys(null);
   });
 
   it("allows Arrow frame shortcuts when captions are not selected", () => {

@@ -1,4 +1,5 @@
 import type { TimelineTrackInsertLayout } from "./timelineTrackInsertLayout";
+import { matchesKey } from "./studioShortcuts";
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import { resolveTimelineDragEscape } from "./timelineEditing";
 import { commitDraggedClipMove } from "./timelineClipDragCommit";
@@ -407,7 +408,7 @@ export function mountTimelineClipDragGestureLifecycle({
 
   const handleWindowKeyDown = (event: KeyboardEvent) => {
     const decision = resolveTimelineDragEscape({
-      key: event.key,
+      cancelPressed: matchesKey(event, "cancel"),
       drag: draggedClipRef.current,
       resize: resizingClipRef.current,
       blocked: blockedClipRef.current,

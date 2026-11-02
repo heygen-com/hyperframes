@@ -1,4 +1,5 @@
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
+import { keyHint } from "./studioShortcuts";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
 import type { TimelineLinkEdit } from "./timelineCallbacks";
 import { linkedMembersOf } from "./audioClipLink";
@@ -61,7 +62,7 @@ function linkItem(
   const suffix = partnerSuffix(element, linkPair);
   return {
     label: `Link${suffix && ` to${suffix}`}`,
-    ...(selectedPair ? { shortcut: "⌘L" } : {}),
+    ...(selectedPair ? { shortcut: keyHint("linkToggle") } : {}),
     run: () => onLinkEdit({ kind: "link", elements: linkPair }),
   };
 }
@@ -82,7 +83,7 @@ export function resolveLinkMenuItems(input: {
   if (canDetachAudio(element)) {
     items.push({
       label: "Detach audio",
-      shortcut: "⌥⇧D",
+      shortcut: keyHint("detachAudio"),
       run: () => onLinkEdit({ kind: "detach", element }),
     });
   }
@@ -90,7 +91,7 @@ export function resolveLinkMenuItems(input: {
   if (linked) {
     items.push({
       label: `Unlink${partnerSuffix(element, members) && ` from${partnerSuffix(element, members)}`}`,
-      shortcut: "⌘L",
+      shortcut: keyHint("linkToggle"),
       run: () => onLinkEdit({ kind: "unlink", elements: members }),
     });
   } else {
@@ -108,7 +109,7 @@ export function resolveLinkMenuItems(input: {
   if (linked && onDeleteElementOnly) {
     items.push({
       label: "Delete this clip only",
-      shortcut: "⌥⌫",
+      shortcut: keyHint("deleteLinked"),
       destructive: true,
       run: () => onDeleteElementOnly(element),
     });

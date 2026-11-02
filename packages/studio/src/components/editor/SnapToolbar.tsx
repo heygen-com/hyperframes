@@ -4,7 +4,7 @@ import { MagnetStraight, GridFour, Path, Ruler, FrameCorners } from "@phosphor-i
 import { usePlayerStore } from "../../player/store/playerStore";
 import { usePreviewOverlayContext } from "./PreviewOverlayProvider";
 import { ownsPlainKeys } from "../../utils/typingTarget";
-import { getStudioKey, keyHint, useStudioKeys } from "../../player/components/studioShortcuts";
+import { keyHint, matchesKey, useStudioKeys } from "../../player/components/studioShortcuts";
 
 // fallow-ignore-next-line complexity
 export const SnapToolbar = memo(function SnapToolbar() {
@@ -53,12 +53,12 @@ export const SnapToolbar = memo(function SnapToolbar() {
       if (e.defaultPrevented) return;
       if (ownsPlainKeys(e.target)) return;
       if (e.target instanceof HTMLIFrameElement) return;
-      if (e.key === getStudioKey("snap") && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      if (matchesKey(e, "snap")) {
         e.preventDefault();
         updatePrefs({ snapEnabled: !prefs.snapEnabled });
         if (!e.repeat) trackPreviewFeatureUsed("snapping", "keyboard");
       }
-      if (e.key === getStudioKey("grid") && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      if (matchesKey(e, "grid")) {
         e.preventDefault();
         updatePrefs({ gridVisible: !prefs.gridVisible });
         if (!e.repeat) trackPreviewFeatureUsed("grid", "keyboard");

@@ -66,7 +66,7 @@ describe("studio key resolver", () => {
     expect(hintFor("Toggle loop")).toBe("⇧L");
     setStudioKeys({ shuttleForward: "y" });
     expect(hintFor("Play forward")).toBe("Y");
-    expect(hintFor("Toggle loop")).toBe("⇧Y");
+    expect(hintFor("Toggle loop")).toBe("⇧L");
   });
 
   it("refuses a map that binds two actions to one key and keeps every default", () => {
@@ -105,5 +105,20 @@ describe("studio key resolver", () => {
     act(() => setStudioKeys({ razorTool: "y" }));
     expect(host.textContent).toBe("y");
     act(() => root.unmount());
+  });
+});
+
+describe("lists follow combos", () => {
+  it("shows the remapped combos and keeps today's default text", () => {
+    expect(hintFor("Undo")).toBe("⌘Z");
+    expect(hintFor("Redo")).toBe("⌘⇧Z");
+    expect(hintFor("Play / Pause")).toBe("Space");
+    expect(hintFor("Step 1 frame")).toBe("←/→");
+    expect(hintFor("Step 10 frames")).toBe("⇧←/⇧→");
+    expect(hintFor("Toggle loop")).toBe("⇧L");
+    setStudioKeys({ undo: "mod+u", playPause: "p", frameBack: "y", frameForward: "u" });
+    expect(hintFor("Undo")).toBe("⌘U");
+    expect(hintFor("Play / Pause")).toBe("P");
+    expect(hintFor("Step 1 frame")).toBe("Y/U");
   });
 });

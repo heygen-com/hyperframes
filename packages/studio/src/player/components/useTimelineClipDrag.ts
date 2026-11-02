@@ -1,4 +1,5 @@
 import { useRef, useState, useCallback, useMemo, useEffect } from "react";
+import { matchesKey } from "./studioShortcuts";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { markTimelineMotion } from "./timelineMotion";
 import {
@@ -546,7 +547,7 @@ export function useTimelineClipDrag({
         return;
       }
       if (resizingClipRef.current) return;
-      if (event.key !== " " || event.repeat) return;
+      if (!matchesKey(event, "pickupClip") || event.repeat) return;
       if (viewport) pickup(event, viewport);
     };
     window.addEventListener("keydown", handleKeyDown, true);

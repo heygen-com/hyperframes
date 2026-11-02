@@ -1,18 +1,18 @@
 import { isEditableTarget } from "../utils/timelineDiscovery";
 import { ownsPlainKeys } from "../utils/typingTarget";
+import { resolveCanvasNudgeDelta } from "../components/editor/domEditNudge";
 
-const CAPTION_NUDGE_KEYS = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]);
+type CaptionNudgeKeyEvent = Parameters<typeof resolveCanvasNudgeDelta>[0];
 
-type CaptionNudgeKeyEvent = Pick<KeyboardEvent, "altKey" | "ctrlKey" | "metaKey" | "key">;
+export function resolveCaptionNudge(event: CaptionNudgeKeyEvent, target?: EventTarget | null) {
+  if (target != null && ownsPlainKeys(target)) return null;
+  return resolveCanvasNudgeDelta(event);
+}
 
-export function shouldHandleCaptionNudgeKey(
+export const shouldHandleCaptionNudgeKey = (
   event: CaptionNudgeKeyEvent,
   target?: EventTarget | null,
-): boolean {
-  if (event.metaKey || event.ctrlKey || event.altKey) return false;
-  if (target != null && ownsPlainKeys(target)) return false;
-  return CAPTION_NUDGE_KEYS.has(event.key);
-}
+): boolean => resolveCaptionNudge(event, target) !== null;
 
 // Single editable-target check for the caption surface — re-exported from the
 // shared timeline helper so the two never diverge (it also covers ARIA
