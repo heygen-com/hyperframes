@@ -423,7 +423,12 @@ describe("usePlaybackKeyboard: space, arrows, loop and clear keys are combos", (
   });
 
   it("a remapped key answers and the old one does not", () => {
-    setStudioKeys({ playPause: "p", frameForward: "x", loop: "mod+shift+u", clearInPoint: "shift+y" });
+    setStudioKeys({
+      playPause: "p",
+      frameForward: "x",
+      loop: "mod+shift+u",
+      clearInPoint: "shift+y",
+    });
     const { dispatch, spies } = setupHook();
     usePlayerStore.setState({ isPlaying: false, inPoint: 1, loopEnabled: false });
     send(dispatch, { code: "Space", key: " " });

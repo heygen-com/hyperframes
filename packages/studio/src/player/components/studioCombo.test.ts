@@ -9,7 +9,8 @@ afterEach(() => {
 });
 
 const press = (init: KeyboardEventInit) => new KeyboardEvent("keydown", init);
-const matches = (text: string, init: KeyboardEventInit) => matchCombo(press(init), parseCombo(text)!);
+const matches = (text: string, init: KeyboardEventInit) =>
+  matchCombo(press(init), parseCombo(text)!);
 
 describe("combo model", () => {
   it("parses characters, named keys and modifiers", () => {
@@ -20,7 +21,16 @@ describe("combo model", () => {
   });
 
   it("refuses what cannot be matched: modifier-only, unknown, empty, and Ctrl+Alt (AltGr on Windows)", () => {
-    for (const bad of ["ctrl", "shift+", "", "mod+ab", "hyper+x", "ctrl+alt+x", "mod+alt+x", "Spacebar"]) {
+    for (const bad of [
+      "ctrl",
+      "shift+",
+      "",
+      "mod+ab",
+      "hyper+x",
+      "ctrl+alt+x",
+      "mod+alt+x",
+      "Spacebar",
+    ]) {
       expect(parseCombo(bad), bad).toBeNull();
     }
     expect(parseCombo("cmd+alt+x")).not.toBeNull();
@@ -39,8 +49,12 @@ describe("combo model", () => {
     expect(matches("a", { key: "a", code: "KeyQ" })).toBe(true);
     expect(matches("a", { key: "q", code: "KeyA" })).toBe(false);
     expect(matches("Space", { key: " ", code: "Space" })).toBe(true);
-    expect(matches("shift+ArrowLeft", { key: "ArrowLeft", code: "ArrowLeft", shiftKey: true })).toBe(true);
-    expect(matches("alt+shift+d", { key: "∂", code: "KeyD", altKey: true, shiftKey: true })).toBe(true);
+    expect(
+      matches("shift+ArrowLeft", { key: "ArrowLeft", code: "ArrowLeft", shiftKey: true }),
+    ).toBe(true);
+    expect(matches("alt+shift+d", { key: "∂", code: "KeyD", altKey: true, shiftKey: true })).toBe(
+      true,
+    );
   });
 
   it("formats like the shortcut lists do", () => {

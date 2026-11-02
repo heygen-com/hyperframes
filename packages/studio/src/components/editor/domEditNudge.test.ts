@@ -87,7 +87,10 @@ describe("resolveCanvasNudgeDelta: remapped keys", () => {
     setStudioKeys({ nudgeLeft: "h", nudgeRightTen: "alt+l" });
     expect(resolveCanvasNudgeDelta(mockKeyboardEvent("ArrowLeft"))).toBeNull();
     expect(resolveCanvasNudgeDelta(mockKeyboardEvent("h"))).toEqual({ dx: -1, dy: 0 });
-    expect(resolveCanvasNudgeDelta(mockKeyboardEvent("l", { altKey: true }))).toEqual({ dx: 10, dy: 0 });
+    expect(resolveCanvasNudgeDelta(mockKeyboardEvent("l", { altKey: true }))).toEqual({
+      dx: 10,
+      dy: 0,
+    });
     expect(resolveCanvasNudgeDelta(mockKeyboardEvent("ArrowRight", { shiftKey: true }))).toBeNull();
   });
 });

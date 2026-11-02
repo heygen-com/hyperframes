@@ -103,7 +103,8 @@ function findClash(keys: StudioKeys): string | null {
   const clashKey = (action: StudioKeyAction) => comboClashKey(parseCombo(keys[action])!);
   for (const [i, a] of actions.entries()) {
     for (const b of actions.slice(i + 1)) {
-      if (clashKey(a) === clashKey(b) && !sharedByDesign(a, b)) return `${a} and ${b} both on "${keys[a]}"`;
+      if (clashKey(a) === clashKey(b) && !sharedByDesign(a, b))
+        return `${a} and ${b} both on "${keys[a]}"`;
     }
   }
   return null;
@@ -114,7 +115,9 @@ function resolve(overrides: Partial<Record<StudioKeyAction, string>>): StudioKey
   for (const [action, text] of Object.entries(overrides)) {
     const combo = typeof text === "string" ? parseCombo(text) : null;
     if (!Object.hasOwn(DEFAULT_STUDIO_KEYS, action) || !combo) {
-      console.warn(`Studio keys: using defaults, "${action}" is not a known action with a valid combo`);
+      console.warn(
+        `Studio keys: using defaults, "${action}" is not a known action with a valid combo`,
+      );
       return DEFAULT_STUDIO_KEYS;
     }
     next[action] = comboText(combo);

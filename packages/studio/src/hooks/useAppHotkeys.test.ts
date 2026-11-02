@@ -657,16 +657,76 @@ describe("every app shortcut is a remappable combo", () => {
     moved: KeyboardEventInit;
     hit: (cb: ReturnType<typeof callbacks>) => unknown;
   }> = [
-    { action: "undo", combo: "mod+u", press: { key: "z", metaKey: true }, moved: { key: "u", metaKey: true }, hit: (c) => c.handleUndo },
-    { action: "redo", combo: "mod+shift+u", press: { key: "z", metaKey: true, shiftKey: true }, moved: { key: "u", metaKey: true, shiftKey: true }, hit: (c) => c.handleRedo },
-    { action: "redoAlt", combo: "ctrl+shift+y", press: { key: "y", ctrlKey: true }, moved: { key: "y", ctrlKey: true, shiftKey: true }, hit: (c) => c.handleRedo },
-    { action: "copy", combo: "mod+shift+c", press: { key: "c", metaKey: true }, moved: { key: "c", metaKey: true, shiftKey: true }, hit: (c) => c.handleCopy },
-    { action: "paste", combo: "mod+shift+v", press: { key: "v", metaKey: true }, moved: { key: "v", metaKey: true, shiftKey: true }, hit: (c) => c.handlePaste },
-    { action: "cut", combo: "mod+shift+x", press: { key: "x", metaKey: true }, moved: { key: "x", metaKey: true, shiftKey: true }, hit: (c) => c.handleCut },
-    { action: "duplicate", combo: "mod+shift+d", press: { key: "d", metaKey: true }, moved: { key: "d", metaKey: true, shiftKey: true }, hit: (c) => c.handleDuplicate },
-    { action: "group", combo: "mod+shift+k", press: { key: "g", metaKey: true }, moved: { key: "k", metaKey: true, shiftKey: true }, hit: (c) => c.onGroupSelection },
-    { action: "ungroup", combo: "mod+shift+j", press: { key: "g", metaKey: true, shiftKey: true }, moved: { key: "j", metaKey: true, shiftKey: true }, hit: (c) => c.onUngroupSelection },
-    { action: "tabCompositions", combo: "mod+3", press: { key: "1", metaKey: true }, moved: { key: "3", metaKey: true }, hit: () => dock },
+    {
+      action: "undo",
+      combo: "mod+u",
+      press: { key: "z", metaKey: true },
+      moved: { key: "u", metaKey: true },
+      hit: (c) => c.handleUndo,
+    },
+    {
+      action: "redo",
+      combo: "mod+shift+u",
+      press: { key: "z", metaKey: true, shiftKey: true },
+      moved: { key: "u", metaKey: true, shiftKey: true },
+      hit: (c) => c.handleRedo,
+    },
+    {
+      action: "redoAlt",
+      combo: "ctrl+shift+y",
+      press: { key: "y", ctrlKey: true },
+      moved: { key: "y", ctrlKey: true, shiftKey: true },
+      hit: (c) => c.handleRedo,
+    },
+    {
+      action: "copy",
+      combo: "mod+shift+c",
+      press: { key: "c", metaKey: true },
+      moved: { key: "c", metaKey: true, shiftKey: true },
+      hit: (c) => c.handleCopy,
+    },
+    {
+      action: "paste",
+      combo: "mod+shift+v",
+      press: { key: "v", metaKey: true },
+      moved: { key: "v", metaKey: true, shiftKey: true },
+      hit: (c) => c.handlePaste,
+    },
+    {
+      action: "cut",
+      combo: "mod+shift+x",
+      press: { key: "x", metaKey: true },
+      moved: { key: "x", metaKey: true, shiftKey: true },
+      hit: (c) => c.handleCut,
+    },
+    {
+      action: "duplicate",
+      combo: "mod+shift+d",
+      press: { key: "d", metaKey: true },
+      moved: { key: "d", metaKey: true, shiftKey: true },
+      hit: (c) => c.handleDuplicate,
+    },
+    {
+      action: "group",
+      combo: "mod+shift+k",
+      press: { key: "g", metaKey: true },
+      moved: { key: "k", metaKey: true, shiftKey: true },
+      hit: (c) => c.onGroupSelection,
+    },
+    {
+      action: "ungroup",
+      combo: "mod+shift+j",
+      press: { key: "g", metaKey: true, shiftKey: true },
+      moved: { key: "j", metaKey: true, shiftKey: true },
+      hit: (c) => c.onUngroupSelection,
+    },
+    {
+      action: "tabCompositions",
+      combo: "mod+3",
+      press: { key: "1", metaKey: true },
+      moved: { key: "3", metaKey: true },
+      hit: () => dock,
+    },
   ];
 
   beforeEach(() => {
@@ -675,7 +735,10 @@ describe("every app shortcut is a remappable combo", () => {
   });
 
   it.each(rows)("$action answers its default and only its new combo once moved", (row) => {
-    for (const [init, expected] of [[row.press, true], [row.moved, false]] as const) {
+    for (const [init, expected] of [
+      [row.press, true],
+      [row.moved, false],
+    ] as const) {
       select();
       const cb = callbacks({ handleCopy: vi.fn(() => true) });
       dispatchModifierKey(ev(init), (init.key ?? "").toLowerCase(), cb);
@@ -683,7 +746,10 @@ describe("every app shortcut is a remappable combo", () => {
       dock.mockClear();
     }
     setStudioKeys({ [row.action]: row.combo } as never);
-    for (const [init, expected] of [[row.press, false], [row.moved, true]] as const) {
+    for (const [init, expected] of [
+      [row.press, false],
+      [row.moved, true],
+    ] as const) {
       select();
       const cb = callbacks({ handleCopy: vi.fn(() => true) });
       dispatchModifierKey(ev(init), (init.key ?? "").toLowerCase(), cb);

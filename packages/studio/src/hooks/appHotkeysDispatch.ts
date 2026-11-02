@@ -98,7 +98,8 @@ function dispatchClipboardKey(event: KeyboardEvent, cb: HotkeyCallbacks): boolea
     event.preventDefault();
     return true;
   }
-  const hasSelection = usePlayerStore.getState().selectedElementId || cb.domEditSelectionRef.current;
+  const hasSelection =
+    usePlayerStore.getState().selectedElementId || cb.domEditSelectionRef.current;
   if (paste) {
     event.preventDefault();
     trackStudioEvent("keyboard_shortcut", { action: "paste" });

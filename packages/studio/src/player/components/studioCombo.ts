@@ -38,7 +38,13 @@ const MODIFIERS = new Set(["mod", "cmd", "ctrl", "shift", "alt"]);
 /** "mod+shift+z", "Space", "b": mod is Cmd or Ctrl; Ctrl+Alt is refused because Windows sends AltGr as Ctrl+Alt. */
 export function parseCombo(text: string): Combo | null {
   const split = text.length > 1 ? text.slice(0, -1).lastIndexOf("+") : -1;
-  const tokens = split < 0 ? [] : text.slice(0, split).split("+").map((t) => t.toLowerCase());
+  const tokens =
+    split < 0
+      ? []
+      : text
+          .slice(0, split)
+          .split("+")
+          .map((t) => t.toLowerCase());
   const key = text.slice(split + 1);
   const named = NAMED.has(key);
   const symbol = !named && !/^[A-Za-z]$/.test(key);
@@ -58,7 +64,13 @@ export function parseCombo(text: string): Combo | null {
 
 /** The one string a combo is stored and compared as. */
 export function comboText(c: Combo): string {
-  const mods = [c.mod && "mod", c.meta && "cmd", c.ctrl && "ctrl", c.alt && "alt", c.shift && "shift"];
+  const mods = [
+    c.mod && "mod",
+    c.meta && "cmd",
+    c.ctrl && "ctrl",
+    c.alt && "alt",
+    c.shift && "shift",
+  ];
   return [...mods.filter(Boolean), c.key].join("+");
 }
 
@@ -72,7 +84,10 @@ function charMatches(e: ComboEvent, c: Combo): boolean {
   return e.altKey && /^[a-z0-9]$/.test(c.key) && e.code === code;
 }
 
-export type ComboEvent = Pick<KeyboardEvent, "key" | "altKey" | "ctrlKey" | "metaKey" | "shiftKey"> & {
+export type ComboEvent = Pick<
+  KeyboardEvent,
+  "key" | "altKey" | "ctrlKey" | "metaKey" | "shiftKey"
+> & {
   code?: string;
 };
 
