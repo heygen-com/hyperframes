@@ -1518,9 +1518,9 @@ run started and saves the session HeyGen returns in the project's
 with the render. It then prints the video's [`measure probe`](#measure) JSON,
 with a `reverse` field: whether you are signed in, the plan (`free`, `pro`, or
 `null` when unknown), the session, and on Free the `upgrade_url` that credits a
-purchase to this run. It never stops the run: signed out,
-offline, or on a server without the route, it skips the session and still
-probes.
+purchase to this run. It stops the run only when HeyGen blocks it for a Free
+account: it then exits non-zero with that upgrade link. Signed out, offline, or
+on a server without the route, it skips the session and still probes.
 
 ```bash
 npx hyperframes reverse start ref.mp4 --dir my-rebuild

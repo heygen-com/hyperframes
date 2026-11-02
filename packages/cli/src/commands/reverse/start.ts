@@ -2,7 +2,13 @@ import { existsSync } from "node:fs";
 import { defineCommand } from "../../utils/defineCommand.js";
 import type { Example } from "../_examples.js";
 import { jsonArg, runMeasure, videoArg } from "../../measure/command.js";
-import { reverseUpgradeUrl, startReverseSession, type ReverseStart } from "../../heygen/reverse.js";
+import { Fix } from "../../measure/media.js";
+import {
+  reverseUpgradeUrl,
+  startReverseSession,
+  type ReverseSession,
+  type ReverseStart,
+} from "../../heygen/reverse.js";
 import {
   projectConfigPath,
   readProjectConfig,
@@ -41,11 +47,20 @@ function summary(started: ReverseStart, savedTo: string | undefined) {
   };
 }
 
+function refusalWhenServerBlocksFree(session: ReverseSession): Fix | undefined {
+  if (session.gate !== "block" || session.plan !== "free") return undefined;
+  const link = reverseUpgradeUrl(session);
+  return new Fix(
+    `Reverse is part of HyperFrames Pro. Upgrade here, then run reverse start again: ${link}`,
+    link,
+  );
+}
+
 export default defineCommand({
   meta: {
     name: "start",
     description:
-      "Note a reverse run with HeyGen (signed in: saves its session in the project), then print the video's probe; never stops the run",
+      "Note a reverse run with HeyGen (signed in: saves its session in the project), then print the video's probe; stops only when HeyGen blocks a Free account",
   },
   args: {
     video: videoArg,
@@ -68,6 +83,8 @@ export default defineCommand({
       const savedTo = save
         ? recordProjectReverseSession(projectDir, started.session.sessionId, SKILL)
         : undefined;
+      const refused = started.recorded ? refusalWhenServerBlocksFree(started.session) : undefined;
+      if (refused) throw refused;
       return { reverse: summary(started, savedTo), ...probe };
     });
   },
