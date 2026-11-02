@@ -92,6 +92,8 @@ export interface SkillsCheckResult {
   skills: SkillDiff[];
   /** Manifest-named skills the lock attributes to another publisher; left untouched. */
   foreign: string[];
+  /** Repo ref the manifest was read at; an install for this result must use the same one. */
+  ref: string | null;
 }
 
 const DEFAULT_REPO_SLUG = "heygen-com/hyperframes";
@@ -576,12 +578,21 @@ function asSkillsManifest(data: unknown, sourceLabel: string): SkillsManifest {
   return m as SkillsManifest;
 }
 
+/** A manifest fetch the server answered with an error status (404: no such ref). */
+class ManifestHttpError extends Error {
+  readonly status: number;
+  constructor(status: number, url: string) {
+    super(`HTTP ${status} fetching ${url}`);
+    this.status = status;
+  }
+}
+
 async function fetchManifest(url: string): Promise<SkillsManifest> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
     const res = await fetch(url, { signal: controller.signal, headers: { Connection: "close" } });
-    if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${url}`);
+    if (!res.ok) throw new ManifestHttpError(res.status, url);
     return asSkillsManifest(await res.json(), url);
   } finally {
     clearTimeout(timeout);
@@ -589,21 +600,27 @@ async function fetchManifest(url: string): Promise<SkillsManifest> {
 }
 
 /**
- * Resolve a ref's live sha via `git ls-remote`: the branch-raw CDN can serve
+ * Resolve main's live HEAD sha via `git ls-remote`: the branch-raw CDN can serve
  * stale content for minutes after a push, a SHA-pinned raw URL cannot. Returns
- * null for a slug that is not `owner/repo`, a missing ref, or no git/network.
+ * null for a slug that is not `owner/repo`, or when git/network is unavailable.
  *
  * GIT_TERMINAL_PROMPT=0 does not stop credential helpers or askpass, and Git
  * Credential Manager (the Git for Windows default) answers a private or missing
  * repo's auth challenge with a blocking sign-in window. An empty credential.helper
  * clears every helper; an empty GIT_ASKPASS also skips core.askPass and SSH_ASKPASS.
  */
-async function remoteRefSha(repoSlug: string, ref: string): Promise<string | null> {
+async function remoteHeadSha(repoSlug: string): Promise<string | null> {
   if (!REPO_SLUG_PATTERN.test(repoSlug)) return null;
   try {
     const { stdout } = await execFileAsync(
       "git",
-      ["-c", "credential.helper=", "ls-remote", `https://github.com/${repoSlug}.git`, ref],
+      [
+        "-c",
+        "credential.helper=",
+        "ls-remote",
+        `https://github.com/${repoSlug}.git`,
+        "refs/heads/main",
+      ],
       {
         timeout: FETCH_TIMEOUT_MS,
         env: {
@@ -627,16 +644,6 @@ export function cliReleaseTag(version: string): string | null {
   return /^\d+\.\d+\.\d+$/.test(version) ? `v${version}` : null;
 }
 
-/** Where skills install from and are checked against: this CLI's release tag, else `main`. */
-export async function skillsSourceRef(
-  cliVersion: string,
-  repoSlug: string = DEFAULT_REPO_SLUG,
-): Promise<string> {
-  const tag = cliReleaseTag(cliVersion);
-  if (!tag) return "main";
-  return (await remoteRefSha(repoSlug, `refs/tags/${tag}`)) ? tag : "main";
-}
-
 /** Read a manifest from a local path — a manifest file or a repo root. */
 function resolveLocalManifest(source: string): SkillsManifest {
   const direct = source.endsWith(".json") ? source : join(source, MANIFEST_FILE);
@@ -647,31 +654,50 @@ function resolveLocalManifest(source: string): SkillsManifest {
   throw new Error(`No skills manifest found at: ${source}`);
 }
 
+/** A manifest and the repo ref it was read at (null for a local file or a URL). */
+interface ResolvedManifest {
+  manifest: SkillsManifest;
+  ref: string | null;
+}
+
 /**
  * Fetch the manifest from GitHub. A full URL is fetched directly; an
- * `owner/repo` slug is read at skillsSourceRef: a release tag as is (it never
- * moves), `main` SHA-pinned via `git ls-remote` to dodge raw-CDN lag, falling
- * back to the branch URL when git is unavailable.
+ * `owner/repo` slug is read at the CLI's release tag (publish pushes it before
+ * npm), else `main`, SHA-pinned via `git ls-remote` to dodge raw-CDN lag,
+ * falling back to the branch URL when git is unavailable.
  */
-async function fetchRemoteManifest(source?: string, cliVersion?: string): Promise<SkillsManifest> {
-  if (source?.startsWith("http")) return fetchManifest(source);
+async function fetchRemoteManifest(
+  source?: string,
+  cliVersion?: string,
+): Promise<ResolvedManifest> {
+  if (source?.startsWith("http")) return { manifest: await fetchManifest(source), ref: null };
 
   const repoSlug = source ?? DEFAULT_REPO_SLUG;
-  const ref = cliVersion ? await skillsSourceRef(cliVersion, repoSlug) : "main";
-  if (ref !== "main") {
-    return fetchManifest(`https://raw.githubusercontent.com/${repoSlug}/${ref}/${MANIFEST_FILE}`);
+  const tag = cliVersion ? cliReleaseTag(cliVersion) : null;
+  if (tag) {
+    const url = `https://raw.githubusercontent.com/${repoSlug}/${tag}/${MANIFEST_FILE}`;
+    try {
+      return { manifest: await fetchManifest(url), ref: tag };
+    } catch (err) {
+      // Only a tag the repo lacks means main; a timeout must not compare against main.
+      if (!(err instanceof ManifestHttpError && err.status === 404)) throw err;
+    }
   }
-  const sha = await remoteRefSha(repoSlug, "refs/heads/main");
+  const sha = await remoteHeadSha(repoSlug);
   if (sha) {
     try {
-      return await fetchManifest(
-        `https://raw.githubusercontent.com/${repoSlug}/${sha}/${MANIFEST_FILE}`,
-      );
+      return {
+        manifest: await fetchManifest(
+          `https://raw.githubusercontent.com/${repoSlug}/${sha}/${MANIFEST_FILE}`,
+        ),
+        ref: "main",
+      };
     } catch {
       /* fall through to the branch URL */
     }
   }
-  return fetchManifest(`https://raw.githubusercontent.com/${repoSlug}/main/${MANIFEST_FILE}`);
+  const url = `https://raw.githubusercontent.com/${repoSlug}/main/${MANIFEST_FILE}`;
+  return { manifest: await fetchManifest(url), ref: "main" };
 }
 
 /**
@@ -693,15 +719,20 @@ async function resolveLatestManifest(
   source?: string,
   cwd = process.cwd(),
   opts: { canonical?: boolean; cliVersion?: string } = {},
-): Promise<SkillsManifest> {
+): Promise<ResolvedManifest> {
   // A local path is a relative one (./ ../) or an absolute one — isAbsolute
   // covers POSIX `/…` and Windows `C:\…` / `\…` on their respective platforms.
   if (source && (source.startsWith(".") || isAbsolute(source))) {
-    return resolveLocalManifest(source);
+    return { manifest: resolveLocalManifest(source), ref: null };
   }
   if (!source && !opts.canonical) {
     const repoManifest = findRepoManifest(cwd);
-    if (repoManifest) return JSON.parse(readFileSync(repoManifest, "utf8")) as SkillsManifest;
+    if (repoManifest) {
+      return {
+        manifest: JSON.parse(readFileSync(repoManifest, "utf8")) as SkillsManifest,
+        ref: null,
+      };
+    }
   }
   return fetchRemoteManifest(source, opts.cliVersion);
 }
@@ -718,11 +749,11 @@ export async function checkSkills(
     home?: string;
     /** See resolveLatestManifest — bypass the in-repo manifest shortcut. */
     canonical?: boolean;
-    /** Read the remote manifest at this CLI version's release tag (see skillsSourceRef). */
+    /** Read the remote manifest at this CLI version's release tag (see fetchRemoteManifest). */
     cliVersion?: string;
   } = {},
 ): Promise<SkillsCheckResult> {
-  const latest = await resolveLatestManifest(opts.source, opts.cwd, {
+  const { manifest: latest, ref } = await resolveLatestManifest(opts.source, opts.cwd, {
     canonical: opts.canonical,
     cliVersion: opts.cliVersion,
   });
@@ -752,5 +783,6 @@ export async function checkSkills(
     summary: diff.summary,
     skills: diff.skills,
     foreign,
+    ref,
   };
 }

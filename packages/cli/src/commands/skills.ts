@@ -15,7 +15,7 @@ import {
   presentSkills,
   RETIRED_SKILLS,
   retiredSkillNotice,
-  skillsSourceRef,
+  cliReleaseTag,
   type SkillDiff,
   type SkillsCheckResult,
 } from "../utils/skillsManifest.js";
@@ -132,7 +132,7 @@ function skillSelectionArgs(selection: SkillSelection): string[] {
 }
 
 // Pinned: a bare `npx skills` runs whatever upstream published last.
-const SKILLS_CLI = "skills@1.7.4";
+const SKILLS_CLI = "skills@1.5.13";
 
 function runSkillsAdd(
   source: string,
@@ -153,9 +153,8 @@ function runSkillsAdd(
 const PLAIN_SKILL_NAME = /^[a-z0-9][a-z0-9._-]*$/i;
 
 // Use the full GitHub URL (not the `owner/repo` slug) as the clone source.
-// --full-depth (see GLOBAL_INSTALL_ARGS_TAIL) clones it at the `#<ref>` from
-// skillsSourceRef: this CLI's release tag, so the skills match the CLI that
-// runs them. `skills check` reads the manifest at the same ref.
+// --full-depth (see GLOBAL_INSTALL_ARGS_TAIL) clones it at `#<ref>`: the ref the
+// check read its manifest at (this CLI's release tag), so check and install agree.
 const SOURCES = [{ name: "HyperFrames", url: "https://github.com/heygen-com/hyperframes" }];
 
 // Fan HyperFrames' own skills out to every other installed agent. Scope by the
@@ -247,14 +246,14 @@ function sanitizeSelection(selection: SkillSelection): SkillSelection | null {
 
 async function installSkills(
   selection: SkillSelection,
-  opts: { cwd?: string; strict?: boolean } = {},
+  opts: { cwd?: string; strict?: boolean; ref: string },
 ): Promise<void> {
   const safeSelection = sanitizeSelection(selection);
   if (safeSelection === null) return;
 
   if (!skillsToolingReady(opts.strict ?? false)) return;
 
-  const ref = await skillsSourceRef(VERSION);
+  const { ref } = opts;
   // stderr (via diag): installSkills runs on the `skills update --json` path before
   // its JSON envelope is written to stdout — progress here must not corrupt it.
   for (const source of SOURCES) {
@@ -408,7 +407,7 @@ export async function updateSkills(
   };
 
   if (toInstall.length > 0) {
-    await installSkills(result.installed, { cwd: opts.cwd, strict });
+    await installSkills(result.installed, { cwd: opts.cwd, strict, ref: check.ref ?? "main" });
     verifyInstalled(result.installed, { strict, cwd: opts.cwd });
   }
   // The install (or the fresh canonical check confirming everything current)
@@ -485,7 +484,11 @@ async function updateSkillsOffline(
   );
 
   if (absent.length > 0) {
-    await installSkills(absent, { cwd: opts.cwd, strict: opts.strict });
+    await installSkills(absent, {
+      cwd: opts.cwd,
+      strict: opts.strict,
+      ref: cliReleaseTag(VERSION) ?? "main",
+    });
     verifyInstalled(absent, opts);
   }
   return {

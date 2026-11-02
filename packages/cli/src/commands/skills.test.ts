@@ -106,7 +106,6 @@ vi.mock("../utils/skillsManifest.js", async (importOriginal) => {
     ...actual,
     checkSkills: vi.fn(async () => DEFAULT_CHECK),
     hyperframesSkillNames: vi.fn(() => ["hyperframes"]),
-    skillsSourceRef: vi.fn(async () => "main"),
     presentSkills: vi.fn((names: readonly string[]) => [...names]),
   };
 });
@@ -188,10 +187,7 @@ describe("hyperframes skills", () => {
     vi.resetModules();
     // vi.resetModules re-imports skills.js but the manifest mock's vi.fn
     // instances persist — restore their default behavior for each test.
-    const { checkSkills, presentSkills, skillsSourceRef } =
-      await import("../utils/skillsManifest.js");
-    vi.mocked(skillsSourceRef).mockReset();
-    vi.mocked(skillsSourceRef).mockImplementation(async () => "main");
+    const { checkSkills, presentSkills } = await import("../utils/skillsManifest.js");
     vi.mocked(checkSkills).mockReset();
     vi.mocked(checkSkills).mockImplementation(async () => DEFAULT_CHECK as never);
     vi.mocked(presentSkills).mockReset();
@@ -214,7 +210,7 @@ describe("hyperframes skills", () => {
     const first = state.spawnCalls[0];
     expect(first).toBeDefined();
     expect(first!.command).toBe("npx");
-    expect(first!.args).toContain("skills@1.7.4");
+    expect(first!.args).toContain("skills@1.5.13");
     expect(first!.args).toContain("add");
     expect(first!.env?.GIT_CLONE_PROTECTION_ACTIVE).toBe("0");
     // --full-depth clones the repo; skip LFS so we don't drag in unrelated blobs.
@@ -227,7 +223,7 @@ describe("hyperframes skills", () => {
       "npx",
       ["--version"],
       [
-        "skills@1.7.4",
+        "skills@1.5.13",
         "add",
         "https://github.com/heygen-com/hyperframes",
         "--skill",
@@ -244,7 +240,7 @@ describe("hyperframes skills", () => {
       "npx",
       ["--version"],
       [
-        "skills@1.7.4",
+        "skills@1.5.13",
         "add",
         "https://github.com/heygen-com/hyperframes",
         "--skill",
@@ -265,7 +261,7 @@ describe("hyperframes skills", () => {
         "/s",
         "/c",
         "npx.cmd",
-        "skills@1.7.4",
+        "skills@1.5.13",
         "add",
         "https://github.com/heygen-com/hyperframes",
         "--skill",
@@ -326,19 +322,19 @@ describe("hyperframes skills", () => {
     expect(agentValue).not.toBe("*");
   });
 
-  // A release build installs the skills at its own tag, not at whatever main
-  // holds today, through the pinned skills CLI rather than the latest publish.
-  it("skills update installs at the CLI's release tag through the pinned skills CLI", async () => {
+  // The install uses the ref the check compared against (the CLI's release
+  // tag), resolved once, through the pinned skills CLI.
+  it("skills update installs at the ref its check read, through the pinned skills CLI", async () => {
     setPlatform("linux");
-    const { skillsSourceRef } = await import("../utils/skillsManifest.js");
-    vi.mocked(skillsSourceRef).mockResolvedValue("v0.9.3");
+    const { checkSkills } = await import("../utils/skillsManifest.js");
+    vi.mocked(checkSkills).mockResolvedValueOnce({ ...DEFAULT_CHECK, ref: "v0.9.3" } as never);
 
     await runSkillsUpdate();
 
     expect(await commandExitCode()).toBe(0);
     const args = state.spawnCalls[0]?.args ?? [];
     expect(args.slice(0, 3)).toEqual([
-      "skills@1.7.4",
+      "skills@1.5.13",
       "add",
       "https://github.com/heygen-com/hyperframes#v0.9.3",
     ]);
@@ -626,10 +622,7 @@ describe("hyperframes skills update <names>", () => {
     state.spawnExitCode = 0;
     state.gitMissing = false;
     vi.resetModules();
-    const { checkSkills, presentSkills, skillsSourceRef } =
-      await import("../utils/skillsManifest.js");
-    vi.mocked(skillsSourceRef).mockReset();
-    vi.mocked(skillsSourceRef).mockImplementation(async () => "main");
+    const { checkSkills, presentSkills } = await import("../utils/skillsManifest.js");
     vi.mocked(checkSkills).mockReset();
     vi.mocked(checkSkills).mockImplementation(async () => DEFAULT_CHECK as never);
     vi.mocked(presentSkills).mockReset();
