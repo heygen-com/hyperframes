@@ -106,6 +106,7 @@ export interface FrameRequest {
   /** Pose reads across the shutter; the taps between them are interpolated. */
   reads: number;
   shutterSeconds: number;
+  phaseSeconds: number;
   /** A fixed tap count, or null to size the taps to each smear. */
   taps: number | null;
   /** Px each mover's box grows by on every side (its glow); none for a mover not listed. */
@@ -115,6 +116,18 @@ export interface FrameRequest {
   frameH: number;
 }
 
+export function shutterTimes(
+  shutterDeg: number,
+  phaseDeg: number | null,
+  fps: number,
+): { shutterSeconds: number; phaseSeconds: number } {
+  const shutterSeconds = shutterDeg / 360 / fps;
+  return {
+    shutterSeconds,
+    phaseSeconds: phaseDeg === null ? -shutterSeconds / 2 : phaseDeg / 360 / fps,
+  };
+}
+
 export function readMoverFrames(req: FrameRequest): { els: HTMLElement[]; frames: MoverFrame[] } {
   const { reader: r, shutterSeconds: shutter, t, reads, seek } = req;
   const visible = req.movers.filter(
@@ -122,7 +135,7 @@ export function readMoverFrames(req: FrameRequest): { els: HTMLElement[]; frames
       typeof el.checkVisibility !== "function" || el.checkVisibility({ visibilityProperty: true }),
   );
   if (visible.length === 0 || shutter <= 0) return { els: [], frames: [] };
-  const start = t - shutter / 2;
+  const start = t + req.phaseSeconds;
   const poses = visible.map((): Affine[] => []);
   for (let j = 0; j < reads; j++) {
     seek(Math.max(0, start + (j / (reads - 1)) * shutter));

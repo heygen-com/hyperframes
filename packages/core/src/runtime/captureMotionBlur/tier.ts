@@ -17,6 +17,7 @@ export interface CaptureMotionBlurHost {
 
 export interface Config {
   shutterDeg: number;
+  phaseDeg: number | null;
   samples: number | null;
   events: boolean;
   tier: "auto" | "capture" | "filter";
