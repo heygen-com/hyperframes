@@ -2564,6 +2564,13 @@ And these drive `render` and `render-batch`:
 | `--wait-interval-ms`    | `5000`                              | Poll cadence while `--wait` is set                                                                                |
 | `--json`                | off                                 | Machine-readable output                                                                                            |
 
+For `lambda` and `cloudrun`, non-empty integer values must be complete base-10
+tokens, such as `1920`; decimal and partial values fail with a usage error.
+Empty optional values are treated as omitted, while an empty required dimension
+still fails its required-value check. Omit an optional flag entirely to use its
+default. Omit `--fps` to use the composition's supported frame rate, or the
+`30` fps fallback; a supplied FPS must still be `24`, `25`, `30`, or `60`.
+
 ### `lambda deploy`
 
 Builds `packages/aws-lambda/dist/handler.zip` and SAM-deploys the stack at

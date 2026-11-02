@@ -329,6 +329,8 @@ async function runDeploy(args: Record<string, unknown>): Promise<void> {
     console.error("[cloudrun deploy] --project <gcp-project-id> is required.");
     failUsage();
   }
+  const maxInstances = parsePositiveInt(args["max-instances"], "--max-instances");
+  const timeout = parsePositiveInt(args.timeout, "--timeout");
   const region = (args.region as string | undefined) ?? "us-central1";
   const repo = (args.repo as string | undefined) ?? "hyperframes";
   const { getTerraformModuleDir } = await loadCloudRunAdapter();
@@ -406,7 +408,12 @@ async function runDeploy(args: Record<string, unknown>): Promise<void> {
   run("terraform", ["init", "-input=false"], { cwd: tfDir });
   run(
     "terraform",
-    ["apply", "-input=false", "-auto-approve", ...machineVars(args, project, region, image)],
+    [
+      "apply",
+      "-input=false",
+      "-auto-approve",
+      ...machineVars(args, project, region, image, maxInstances, timeout),
+    ],
     { cwd: tfDir },
   );
 
@@ -436,6 +443,8 @@ function machineVars(
   project: string,
   region: string,
   image: string,
+  maxInstances: number | undefined,
+  timeout: number | undefined,
 ): string[] {
   const vars = [
     "-var",
@@ -447,8 +456,6 @@ function machineVars(
   ];
   const cpu = args.cpu as string | undefined;
   const memory = args.memory as string | undefined;
-  const maxInstances = parsePositiveInt(args["max-instances"], "--max-instances");
-  const timeout = parsePositiveInt(args.timeout, "--timeout");
   if (cpu) vars.push("-var", `cpu=${cpu}`);
   if (memory) vars.push("-var", `memory=${memory}`);
   if (maxInstances !== undefined) vars.push("-var", `max_instances=${maxInstances}`);
@@ -523,7 +530,7 @@ function resolveCloudRunFps(
   projectDir: string,
   command: "render" | "render-batch",
 ): DistributedFps {
-  const fps = parseIntFlag(args.fps) ?? defaultCloudFps(projectDir);
+  const fps = parseIntFlag(args.fps, "--fps") ?? defaultCloudFps(projectDir);
   if (isDistributedFps(fps)) return fps;
   console.error(
     `[cloudrun ${command}] --fps must be one of ${DISTRIBUTED_FPS.join(", ")}; got ${fps}.`,
@@ -653,6 +660,8 @@ async function runRenderBatch(args: Record<string, unknown>): Promise<void> {
     failUsage();
   }
   const fps = resolveCloudRunFps(args, projectDir, "render-batch");
+  const maxConcurrent =
+    parsePositiveInt(args["max-concurrent"], "--max-concurrent") ?? DEFAULT_BATCH_MAX_CONCURRENT;
   buildRenderConfig(args, fps, width, height, undefined);
   if (!existsSync(resolve(batchPath))) {
     console.error(`[cloudrun render-batch] batch file not found: ${batchPath}`);
@@ -675,8 +684,6 @@ async function runRenderBatch(args: Record<string, unknown>): Promise<void> {
     return;
   }
 
-  const maxConcurrent =
-    parsePositiveInt(args["max-concurrent"], "--max-concurrent") ?? DEFAULT_BATCH_MAX_CONCURRENT;
   const state = readState(args);
   const { deploySite, renderToCloudRun } = await loadCloudRunAdapter();
 
@@ -890,13 +897,24 @@ function parseOutputResolution(raw: unknown): {
 // ── parse helpers ─────────────────────────────────────────────────────────
 
 // fallow-ignore-next-line complexity
-function parseIntFlag(raw: unknown): number | undefined {
+function parseIntFlag(raw: unknown, flagName: string): number | undefined {
   if (raw === undefined || raw === null || raw === "") return undefined;
-  const n = Number.parseInt(String(raw), 10);
-  return Number.isFinite(n) ? n : undefined;
+  const token = String(raw);
+  if (!/^-?\d+$/.test(token)) {
+    throw new CliUsageError(
+      `[cloudrun] ${flagName} must be a whole integer token; got ${JSON.stringify(token)}`,
+    );
+  }
+  const n = Number.parseInt(token, 10);
+  if (!Number.isFinite(n) || !Number.isInteger(n)) {
+    throw new CliUsageError(
+      `[cloudrun] ${flagName} must be a finite integer; got ${JSON.stringify(token)}`,
+    );
+  }
+  return n;
 }
 function parsePositiveInt(raw: unknown, flagName: string): number | undefined {
-  const n = parseIntFlag(raw);
+  const n = parseIntFlag(raw, flagName);
   if (n === undefined) return undefined;
   if (!Number.isInteger(n) || n < 1) {
     throw new CliUsageError(`[cloudrun] ${flagName} must be a positive integer; got ${n}`);

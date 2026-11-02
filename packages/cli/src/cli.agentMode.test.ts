@@ -264,6 +264,132 @@ describe("agent-mode contract", () => {
   });
 
   it.each([
+    [
+      "lambda render width",
+      ["lambda", "render", "proj", "--width", "1920.5", "--height", "1080"],
+      "--width",
+      "1920.5",
+    ],
+    [
+      "lambda render fps",
+      ["lambda", "render", "proj", "--width", "1920", "--height", "1080", "--fps", "30.5"],
+      "--fps",
+      "30.5",
+    ],
+    [
+      "lambda render-batch width",
+      [
+        "lambda",
+        "render-batch",
+        "proj",
+        "--batch",
+        join(home, "batch.jsonl"),
+        "--width",
+        "1920.5",
+        "--height",
+        "1080",
+      ],
+      "--width",
+      "1920.5",
+    ],
+    [
+      "lambda render-batch fps",
+      [
+        "lambda",
+        "render-batch",
+        "proj",
+        "--batch",
+        join(home, "batch.jsonl"),
+        "--width",
+        "1920",
+        "--height",
+        "1080",
+        "--fps",
+        "30.5",
+      ],
+      "--fps",
+      "30.5",
+    ],
+    [
+      "cloudrun render width",
+      ["cloudrun", "render", "proj", "--width", "1920.5", "--height", "1080"],
+      "--width",
+      "1920.5",
+    ],
+    [
+      "cloudrun render fps",
+      ["cloudrun", "render", "proj", "--width", "1920", "--height", "1080", "--fps", "30.5"],
+      "--fps",
+      "30.5",
+    ],
+    [
+      "cloudrun render-batch width",
+      [
+        "cloudrun",
+        "render-batch",
+        "proj",
+        "--batch",
+        join(home, "batch.jsonl"),
+        "--width",
+        "1920.5",
+        "--height",
+        "1080",
+        "--dry-run",
+      ],
+      "--width",
+      "1920.5",
+    ],
+    [
+      "cloudrun render-batch fps",
+      [
+        "cloudrun",
+        "render-batch",
+        "proj",
+        "--batch",
+        join(home, "batch.jsonl"),
+        "--width",
+        "1920",
+        "--height",
+        "1080",
+        "--fps",
+        "30.5",
+        "--dry-run",
+      ],
+      "--fps",
+      "30.5",
+    ],
+  ] as const)(
+    "`%s` returns an agent-mode usage_error for malformed integer input",
+    async (_label, args, flag, raw) => {
+      writeFileSync(join(home, "batch.jsonl"), '{"outputKey":"output.mp4"}\n');
+      const run = await runAsAgent([...args, "--json"]);
+      expectQuiet(run);
+      expect(run.code, run.stderr).toBe(2);
+      expectJsonFailure(run, "usage_error");
+      const { message } = JSON.parse(run.stdout).error as { message: string };
+      expect(message).toContain(flag);
+      expect(message).toContain(JSON.stringify(raw));
+    },
+  );
+
+  it("prints a plain usage diagnostic for malformed distributed integers", async () => {
+    const run = await runAsAgent([
+      "cloudrun",
+      "render",
+      "proj",
+      "--width",
+      "1920.5",
+      "--height",
+      "1080",
+    ]);
+    expectQuiet(run);
+    expect(run.code, run.stderr).toBe(2);
+    expect(run.stdout).toBe("");
+    expect(run.stderr).toContain("--width");
+    expect(run.stderr).toContain("1920.5");
+  });
+
+  it.each([
     ["help", "Usage:"],
     ["help render", "USAGE hyperframes render"],
     ["help cloud render", "USAGE cloud render"],
