@@ -70,14 +70,23 @@ describe("spawnChunkStreamingEncoder", () => {
     const result = await encoder.close();
 
     expect(result.success).toBe(true);
+    const entries =
+      "stream=nb_read_frames,r_frame_rate,color_space,color_primaries,color_transfer,color_range";
     const probe = spawnSync(
       getFfprobeBinary(),
-      ["-v", "error", "-count_frames", "-select_streams", "v:0"]
-        .concat([
-          "-show_entries",
-          "stream=nb_read_frames,r_frame_rate,color_space,color_primaries,color_transfer,color_range",
-        ])
-        .concat(["-of", "json", out]),
+      [
+        "-v",
+        "error",
+        "-count_frames",
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        entries,
+        "-of",
+        "json",
+        "--",
+        out,
+      ],
       { encoding: "utf-8" },
     );
     const stream0 = JSON.parse(probe.stdout).streams[0];
