@@ -25,8 +25,7 @@ const MARK_LEFT =
   "M10.1851 57.8021L33.1145 73.8313C36.2202 75.9978 41.5173 73.5433 42.4816 69.4984L51.7611 30.4271C52.7253 26.3822 48.5802 23.9277 44.4602 26.0942L13.917 42.1235C6.96677 45.7676 4.97564 54.1579 10.1851 57.8021Z";
 const MARK_RIGHT =
   "M87.5129 57.5141L56.9696 73.5433C52.8371 75.7098 48.7046 73.2553 49.6688 69.2104L58.9483 30.1391C59.9125 26.0942 65.2097 23.6397 68.3154 25.8062L91.2447 41.8354C96.4668 45.4796 94.4631 53.8699 87.5129 57.5141Z";
-// The mark's own shape, so the sheen passes over the mark and nothing else.
-const MARK_MASK = `url("data:image/svg+xml,${encodeURIComponent(
+const MARK_SHAPE_MASK = `url("data:image/svg+xml,${encodeURIComponent(
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="${MARK_LEFT}"/><path d="${MARK_RIGHT}"/></svg>`,
 )}")`;
 
@@ -82,8 +81,8 @@ export function createShaderLoader(): ShaderLoaderElements {
 
   const sheen = document.createElement("div");
   sheen.className = "hfp-shader-loader-sheen";
-  sheen.style.setProperty("mask-image", MARK_MASK);
-  sheen.style.setProperty("-webkit-mask-image", MARK_MASK);
+  sheen.style.setProperty("mask-image", MARK_SHAPE_MASK);
+  sheen.style.setProperty("-webkit-mask-image", MARK_SHAPE_MASK);
   markFrame.appendChild(sheen);
 
   const titleContainer = document.createElement("div");
