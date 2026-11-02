@@ -65,6 +65,7 @@ const HIDE_ATTR = "data-hf-motion-blur-hide";
 /** On the root while the movers alone are captured; the movers carry MOVER_ATTR. */
 const ONLY_ATTR = "data-hf-motion-blur-only";
 const MOVER_ATTR = "data-hf-motion-blur-mover";
+const NESTED_CANVAS_KEEPS_ITS_PLACE = `[data-hf-motion-blur="capture"] canvas { translate: 0 0 0; }`;
 
 interface Job {
   seq: number;
@@ -170,6 +171,7 @@ function createInstance(host: CaptureMotionBlurHost, config: Config, form: HtmlI
     `[${ONLY_ATTR}] { background: none !important; border-color: transparent !important; box-shadow: none !important; outline-color: transparent !important; }`,
     `[${ONLY_ATTR}]::before, [${ONLY_ATTR}]::after, [${ONLY_ATTR}] *:not([${MOVER_ATTR}], [${MOVER_ATTR}] *) { visibility: hidden !important; }`,
     `[${ONLY_ATTR}] [${MOVER_ATTR}] { visibility: visible !important; }`,
+    NESTED_CANVAS_KEEPS_ITS_PLACE,
   ].join("\n");
 
   let movers: HTMLElement[] = [];
