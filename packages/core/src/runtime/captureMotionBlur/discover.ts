@@ -300,6 +300,7 @@ export function scanMovers({
   ...scan
 }: ScanOptions): Discovery & { readEvents: boolean } {
   const quiet = (t: number): void => seek(t, true);
+  const rewindThroughEveryCall = (): void => seek(0, false);
   if (!events) return { ...discoverMovers({ ...scan, seek: quiet, onStep }), readEvents: false };
   // Loud first: run after the silent scan, it starts at the end and fires a one-off call once more.
   const loud: number[] = [];
@@ -319,5 +320,6 @@ export function scanMovers({
       differs ||= boxesKey(boxes) !== loud[i];
     },
   });
+  rewindThroughEveryCall();
   return { ...found, readEvents: differs };
 }

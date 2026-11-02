@@ -143,6 +143,28 @@ function movingHost(attrs?: Record<string, string>) {
 
 const PLAY = { playing: true };
 
+/** Paints 0.5 s first, as a mid-film worker does, over one-off calls at 0.3 s and 0.7 s. */
+function textAfterStartingAtHalf(): string {
+  const { h } = movingHost({ "data-motion-blur": "on", "data-motion-blur-events": "on" });
+  const calls = [
+    { at: 0.3, text: "first" },
+    { at: 0.7, text: "second" },
+  ];
+  let head = 0;
+  let text = "";
+  // GSAP fires a one-off call on a loud crossing in either direction.
+  const seek = (t: number, suppress: boolean) => {
+    h.seek(t, suppress);
+    const crossed = calls.filter(({ at }) => Math.min(head, t) < at && at <= Math.max(head, t));
+    if (t < head) crossed.reverse();
+    if (!suppress) for (const call of crossed) text = call.text;
+    head = t;
+  };
+  initCaptureMotionBlur({ ...h, seek });
+  void paintCaptureMotionBlur(0.5, PLAY);
+  return text;
+}
+
 describe("opt-in and off switches", () => {
   it("does nothing for a root that has not opted in", () => {
     installHtmlInCanvas();
@@ -1040,24 +1062,7 @@ describe("painting", () => {
 
   it("leaves a worker starting mid-film the state of the calls behind it, not ahead of it", () => {
     installHtmlInCanvas();
-    const { h } = movingHost({ "data-motion-blur": "on", "data-motion-blur-events": "on" });
-    const calls = [
-      { at: 0.3, text: "first" },
-      { at: 0.7, text: "second" },
-    ];
-    let head = 0;
-    let text = "";
-    // GSAP fires a one-off call on a loud crossing in either direction.
-    const seek = (t: number, suppress: boolean) => {
-      h.seek(t, suppress);
-      const crossed = calls.filter(({ at }) => Math.min(head, t) < at && at <= Math.max(head, t));
-      if (t < head) crossed.reverse();
-      if (!suppress) for (const call of crossed) text = call.text;
-      head = t;
-    };
-    initCaptureMotionBlur({ ...h, seek });
-    void paintCaptureMotionBlur(0.5, PLAY);
-    expect(text).toBe("first");
+    expect(textAfterStartingAtHalf()).toBe("first");
   });
 
   it("fires timeline callbacks during discovery only when the root allows events", () => {
@@ -1761,6 +1766,10 @@ describe("paint timeouts", () => {
 
 describe("filter fallback", () => {
   beforeEach(() => setFilterFallbackForTests(true));
+
+  it("leaves a worker starting mid-film the state of the calls behind it, not ahead of it", () => {
+    expect(textAfterStartingAtHalf()).toBe("first");
+  });
 
   /** A root whose opacity tweens late, which a scan sees and capture cannot draw. */
   const CAPTURE = { "data-motion-blur": "on", "data-motion-blur-tier": "capture" };

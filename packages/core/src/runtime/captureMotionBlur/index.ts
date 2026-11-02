@@ -254,8 +254,6 @@ function createInstance(host: CaptureMotionBlurHost, config: Config, form: HtmlI
       events: config.events,
       onStep: (i, steps) => defects.sample(i, steps, (i / steps) * duration),
     });
-    // Through 0, or a call behind restoreTo keeps the state the scan left. Workers start anywhere.
-    seek(0);
     seek(restoreTo);
     readEvents = found.readEvents;
     scanDefect = defects.result();
