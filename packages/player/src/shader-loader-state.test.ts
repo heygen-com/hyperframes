@@ -69,3 +69,24 @@ describe("shader loader progress rows", () => {
     expect(root.getAttribute("aria-label")).toBe("Loading assets");
   });
 });
+
+describe("Loading assets look", () => {
+  it("marks the card as the quiet look: mark only, kept for screen readers", () => {
+    const { state, root } = loader();
+    state.showAssetsLoading();
+    expect(root.classList.contains("hfp-assets")).toBe(true);
+    expect(root.getAttribute("aria-label")).toBe("Loading assets");
+    expect(root.querySelector(".hfp-shader-loader-sheen")).not.toBeNull();
+  });
+
+  it("gives the panel back to the shader load's text card", () => {
+    const { state, root } = loader();
+    state.showAssetsLoading();
+    state.reset();
+    expect(root.classList.contains("hfp-assets")).toBe(false);
+    state.showAssetsLoading();
+    state.update({ loading: true, ready: false }, "player");
+    state.hideAssetsLoading();
+    expect(root.classList.contains("hfp-assets")).toBe(false);
+  });
+});
