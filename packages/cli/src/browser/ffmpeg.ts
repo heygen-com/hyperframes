@@ -68,6 +68,11 @@ export function findFFprobe(): string | undefined {
   return findFfBinary("ffprobe", { configuredMustExist: true });
 }
 
+/** An input path ffmpeg or ffprobe cannot mistake for an option, without `--`, which some builds reject. */
+export function inputPathArg(path: string): string {
+  return path.startsWith("-") ? `./${path}` : path;
+}
+
 export const FIRST_LAUNCH_TIMEOUT_MS = 60_000;
 const FFMPEG_DOWNLOAD_URL = "https://ffmpeg.org/download.html";
 

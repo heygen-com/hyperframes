@@ -89,7 +89,7 @@ import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
 import { c } from "../ui/colors.js";
 import { writeCaptureFileSync } from "../capture/captureFile.js";
 import { runCancellableProcess } from "../utils/cancellableProcess.js";
-import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
+import { findFFmpeg, findFFprobe, getFFmpegInstallHint, inputPathArg } from "../browser/ffmpeg.js";
 import { parseAngle, type Camera } from "./motionShotLayout.js";
 import { createFrameBank, type FrameWant, type PlannedFrame } from "./snapshotFrameBank.js";
 import type { Example } from "./_examples.js";
@@ -450,7 +450,7 @@ export async function probeContainingSourceFrameSeek(
         ffprobe,
         [
           ...["-v", "error", "-select_streams", "v:0", "-read_intervals", readIntervals],
-          ...["-show_entries", entries, "-of", "json", "--", videoPath],
+          ...["-show_entries", entries, "-of", "json", inputPathArg(videoPath)],
         ],
         { timeoutMs: FFMPEG_EXTRACT_TIMEOUT_MS, maxBufferBytes: 32 * 1024 * 1024 },
       );
@@ -941,6 +941,7 @@ export async function captureSnapshots(
   }> = [];
   const replaced: string[] = [];
   const warnings: string[] = [];
+  let unreadVideoFrames = 0;
   let completed = false;
   const numFrames = opts.frames ?? 5;
   let review: ReviewPlan | undefined;
@@ -1026,7 +1027,7 @@ export async function captureSnapshots(
       });
 
       if (duration <= 0 && !opts.at?.length) {
-        return { paths: [], cleared: [], warnings, pairSheetsSkipped: false };
+        return { paths: [], cleared: [], warnings, unreadVideoFrames, pairSheetsSkipped: false };
       }
 
       const readTiming = () =>
@@ -1308,7 +1309,10 @@ export async function captureSnapshots(
                     want.displayedPixels,
                   ),
               );
-              if (!png) return null;
+              if (!png) {
+                unreadVideoFrames += 1;
+                return null;
+              }
               return { videoId: v.id, dataUri: `data:image/png;base64,${png.toString("base64")}` };
             },
           );
@@ -1486,6 +1490,7 @@ export async function captureSnapshots(
     paths: savedPaths,
     cleared: replaced,
     warnings,
+    unreadVideoFrames,
     pairSheetsSkipped: pairSheetFailure !== null,
     ...(review && reviewList
       ? {
@@ -1508,6 +1513,8 @@ interface CapturedSnapshots {
   cleared: string[];
   /** Why a frame may differ from the composition: shown on the console and in `--json`. */
   warnings: string[];
+  /** On-screen video frames that could not be read, so those videos are black or stale in the stills. */
+  unreadVideoFrames: number;
   /** --against wrote no pair sheets because sharp could not load. */
   pairSheetsSkipped: boolean;
   review?: { plan: ReviewPlan; frames: Array<ReviewFrame & { path: string }> };
@@ -1882,6 +1889,11 @@ export default defineCommand({
           const gone = onDisk.missing.map((path) => `\n   missing: ${path}`).join("");
           fail(
             `${c.error("✗")} Only ${paths.length} of ${captured.paths.length} snapshots are on disk in ${snapshotDir}.${gone}`,
+          );
+        }
+        if (captured.unreadVideoFrames > 0) {
+          fail(
+            `${c.error("✗")} ${captured.unreadVideoFrames} video frame(s) could not be read, so those videos are black or stale in the snapshots saved to ${snapshotDir}.`,
           );
         }
         if (against) {
