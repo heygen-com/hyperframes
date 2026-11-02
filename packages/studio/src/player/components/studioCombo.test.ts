@@ -1,13 +1,21 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { formatCombo, matchCombo, parseCombo } from "./studioCombo";
-import { getStudioKey, keyHint, matchesKey, setStudioKeys } from "./studioShortcuts";
+import {
+  getStudioKey,
+  getStudioKeys,
+  keyHint,
+  matchesKey,
+  setStudioKeys,
+  studioKeyClash,
+} from "./studioShortcuts";
 
 afterEach(() => {
   setStudioKeys(null);
   vi.restoreAllMocks();
 });
 
+const getAll = () => ({ ...getStudioKeys() });
 const press = (init: KeyboardEventInit) => new KeyboardEvent("keydown", init);
 const matches = (text: string, init: KeyboardEventInit) =>
   matchCombo(press(init), parseCombo(text)!);
@@ -95,5 +103,16 @@ describe("combos with symbol keys", () => {
     expect(matches("?", { key: "?", shiftKey: true })).toBe(true);
     expect(matches("mod++", { key: "+", metaKey: true, shiftKey: true })).toBe(true);
     expect(parseCombo("shift+1")).toBeNull();
+  });
+});
+
+describe("studioKeyClash", () => {
+  it("names the action that holds a combo, by modifiers and key, and lets a design-shared pair through", () => {
+    expect(studioKeyClash("mute", "mod+z")).toBe("undo");
+    expect(studioKeyClash("mute", "mod+shift+z")).toBe("redo");
+    expect(studioKeyClash("mute", "q")).toBeNull();
+    expect(studioKeyClash("pause", "k")).toBeNull();
+    expect(studioKeyClash("mute", "b")).toBe("razorTool");
+    expect(studioKeyClash("mute", "mod+z", { ...getAll(), undo: "q" })).toBeNull();
   });
 });
