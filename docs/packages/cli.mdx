@@ -28,7 +28,7 @@ npm install -g hyperframes
 | Bring in source material | [`capture`](#capture), [`media-use`](#media-use), [`transcribe`](#transcribe), [`tts`](#tts), [`remove-background`](#remove-background), [`media-treatment`](#media-treatment), [`beats`](#beats), [`audio`](#audio), [`normalize-audio`](#normalize-audio), [`models`](#models) |
 | Look at it, or share it  | [`preview`](#preview), [`present`](#present-and-play), [`play`](#present-and-play), [`publish`](#publish), [`open`](#open-and-catch-up), [`catch-up`](#open-and-catch-up)                                                        |
 | Find problems            | [`lint`](#lint), [`check`](#check), [`snapshot`](#snapshot), [`keyframes`](#keyframes), [`compare`](#compare-and-grade-compare), [`grade-compare`](#compare-and-grade-compare)                                                   |
-| Rebuild a video          | [`measure`](#measure), [`diff`](#diff)                                                                                                                                                                                            |
+| Rebuild a video          | [`reverse`](#reverse), [`measure`](#measure), [`diff`](#diff)                                                                                                                                                                     |
 | Edit from the terminal   | [`timeline`](#timeline), [`history`](#history)                                                                                                                                                                                   |
 | Make a file              | [`render`](#render), [`benchmark`](#benchmark)                                                                                                                                                                                   |
 | Render somewhere else    | [`cloud`](#hyperframes-cloud), [`lambda`](#hyperframes-lambda), [`cloudrun`](#hyperframes-cloudrun)                                                                                                                              |
@@ -1509,6 +1509,27 @@ calls them.
 
 These commands serve the `reverse-any-video` skill: measure a video, have HeyGen
 draft its timeline, then score your rebuild against it.
+
+### `reverse`
+
+`reverse start` opens a `reverse-any-video` run. Signed in, it tells HeyGen the
+run started and saves the session HeyGen returns in the project's
+`hyperframes.json`; [`cloud render`](#hyperframes-cloud) then sends that session
+with the render. It then prints the video's [`measure probe`](#measure) JSON,
+with a `reverse` field: whether you are signed in, the plan (`free`, `pro`, or
+`null` when unknown), the session, and on Free the `upgrade_url` that credits a
+purchase to this run. It never stops the run: signed out,
+offline, or on a server without the route, it skips the session and still
+probes.
+
+```bash
+npx hyperframes reverse start ref.mp4 --dir my-rebuild
+npx hyperframes reverse start original.mp4   # resume inside the project
+```
+
+| Flag    | Description                                                                                                                     |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `--dir` | Project folder that keeps the session (created when absent; `init` keeps it). Default: the current folder, when it is a project |
 
 ### `measure`
 

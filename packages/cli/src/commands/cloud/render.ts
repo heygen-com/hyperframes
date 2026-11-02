@@ -38,6 +38,7 @@ import { c } from "../../ui/colors.js";
 import { errorBox, formatBytes, formatDuration } from "../../ui/format.js";
 import { resolveDefaultFpsArg } from "../../utils/renderArgs.js";
 import { resolveProject, type ProjectDir } from "../../utils/project.js";
+import { readProjectConfig } from "../../utils/projectConfig.js";
 import { normalizeErrorMessage } from "../../utils/errorMessage.js";
 import {
   readStaged,
@@ -316,6 +317,7 @@ export default defineCommand({
       callbackUrl: args["callback-url"],
       callbackId: args["callback-id"],
       idempotencyKey: args["idempotency-key"],
+      reverseSessionId: reverseSessionIdOf(project),
     });
 
     const renderId = submitted.render_id;
@@ -849,6 +851,15 @@ interface SubmitOptions {
   callbackUrl: string | undefined;
   callbackId: string | undefined;
   idempotencyKey: string | undefined;
+  reverseSessionId: string | undefined;
+}
+
+type RenderRequestBody = CreateHyperframesRenderRequest & { reverse_session_id?: string };
+
+function reverseSessionIdOf(project: ProjectInputSource): string | undefined {
+  return project.kind === "dir"
+    ? readProjectConfig(project.dir ?? ".")?.reverseSessionId
+    : undefined;
 }
 
 async function submitRender(
@@ -864,8 +875,8 @@ async function submitRender(
 }
 
 // fallow-ignore-next-line complexity
-function buildRenderBody(opts: SubmitOptions): CreateHyperframesRenderRequest {
-  const body: CreateHyperframesRenderRequest = { project: opts.projectInput };
+function buildRenderBody(opts: SubmitOptions): RenderRequestBody {
+  const body: RenderRequestBody = { project: opts.projectInput };
   if (opts.fps !== undefined) body.fps = opts.fps;
   if (opts.quality !== undefined) body.quality = opts.quality;
   if (opts.format !== undefined) body.format = opts.format;
@@ -877,6 +888,7 @@ function buildRenderBody(opts: SubmitOptions): CreateHyperframesRenderRequest {
   if (opts.title !== undefined) body.title = opts.title;
   if (opts.callbackUrl !== undefined) body.callback_url = opts.callbackUrl;
   if (opts.callbackId !== undefined) body.callback_id = opts.callbackId;
+  if (opts.reverseSessionId !== undefined) body.reverse_session_id = opts.reverseSessionId;
   return body;
 }
 

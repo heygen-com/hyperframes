@@ -277,6 +277,10 @@ function getSharedTemplateDir(): string {
   return resolveAssetDir(["..", "templates", "_shared"], ["templates", "_shared"]);
 }
 
+function holdsFilesBesideProjectConfig(dir: string): boolean {
+  return existsSync(dir) && readdirSync(dir).some((name) => name !== "hyperframes.json");
+}
+
 /** The longest folder name the common disks hold: 255 UTF-8 bytes on Linux, 255 UTF-16 units on macOS and Windows. */
 const MAX_FOLDER_NAME = 255;
 
@@ -857,7 +861,7 @@ export default defineCommand({
         failCommand();
       }
 
-      if (existsSync(destDir) && readdirSync(destDir).length > 0) {
+      if (holdsFilesBesideProjectConfig(destDir)) {
         console.error(c.error(`Directory already exists and is not empty: ${name}`));
         failCommand();
       }
@@ -1039,7 +1043,7 @@ export default defineCommand({
       failCommand();
     }
 
-    if (existsSync(destDir) && readdirSync(destDir).length > 0) {
+    if (holdsFilesBesideProjectConfig(destDir)) {
       const overwrite = await clack.confirm({
         message: `Directory ${c.accent(name)} already exists and is not empty. Overwrite?`,
         initialValue: false,
