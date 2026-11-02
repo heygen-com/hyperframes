@@ -420,14 +420,15 @@ describe("vfx runtime", () => {
     expect(gl!.calls).toEqual([]);
 
     // Another context has not come back yet: rebuilding now would drop its host.
-    const built = gl!.programCount;
+    const contexts = vi.mocked(HTMLCanvasElement.prototype.getContext);
+    const asked = contexts.mock.calls.length;
     gl!.lost = true;
     rebuildLostVfx(document.body);
-    expect(gl!.programCount).toBe(built);
+    expect(contexts.mock.calls.length).toBe(asked);
 
     gl!.lost = false;
     rebuildLostVfx(document.body);
-    expect(gl!.programCount).toBeGreaterThan(built);
+    expect(contexts.mock.calls.length).toBeGreaterThan(asked);
     gl!.calls.length = 0;
     paintVfx(0);
     expect(gl!.calls.length).toBeGreaterThan(0);
