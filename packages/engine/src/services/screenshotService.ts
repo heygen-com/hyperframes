@@ -160,6 +160,10 @@ export async function beginFrameCapture(
     optimizeForSpeed: true,
   } as const;
 
+  // With a cached buffer, a screenshot-less BeginFrame first draws the seek and reports
+  // whether it changed anything. The screenshot after it is not displayed: a displayed
+  // screenshot frame leaves damage the next probe would report, and a settle frame to
+  // absorb it would draw page changes that nothing captures.
   const cached = lastFrameCache.get(page);
   let screenshotTicks = frameTimeTicks;
   if (cached) {
@@ -171,13 +175,12 @@ export async function beginFrameCapture(
     frameTimeTicks: screenshotTicks,
     interval,
     screenshot,
+    noDisplayUpdates: cached !== undefined,
   });
 
   let buffer: Buffer;
   if (result.screenshotData) {
     buffer = Buffer.from(result.screenshotData, "base64");
-    // The screenshot leaves damage that the next BeginFrame would report; settle it now.
-    await sendBeginFrame(client, { frameTimeTicks: screenshotTicks + interval / 4, interval });
     lastFrameCache.set(page, buffer);
   } else {
     if (cached) {
