@@ -64,7 +64,6 @@ const MANIFEST = [
   "packages/core/src/mediaGradeAnalyzer.ts",
   "packages/engine/src/utils/ffprobe.ts",
   "packages/lint/src/hevcPreviewLint.ts",
-  "packages/producer/src/plan-parity-analysis.ts",
   "packages/producer/src/services/render/audioPadTrim.ts",
   "packages/producer/src/utils/audioRegression.ts",
   "packages/studio-server/src/helpers/mediaMetadata.ts",

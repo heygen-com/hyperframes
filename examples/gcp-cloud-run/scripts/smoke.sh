@@ -1,16 +1,15 @@
 #!/usr/bin/env bash
-# Owner-isolated real-GCP smoke + v1/v2 parity test for the HyperFrames
+# Owner-isolated real-GCP smoke test for the HyperFrames
 # Cloud Run adapter.
 #
-# The default exercises Plan v2. Deprecated v1 compatibility can be selected
-# explicitly with --protocols v1 or compared with --protocols v1,v2. Every
-# invocation derives a unique, length-safe resource prefix and uses an isolated
+# The smoke exercises Plan v2. Every invocation derives a unique, length-safe
+# resource prefix and uses an isolated
 # Terraform working directory and state file. Cleanup verifies every owned
 # resource is absent and fails closed on API/authentication errors.
 #
 # Usage:
 #   ./smoke.sh --project <gcp-project>
-#   ./smoke.sh --project p --protocols v1,v2 --chunk-sizes 15,30
+#   ./smoke.sh --project p --chunk-sizes 15,30
 #   ./smoke.sh --project p --owner james-plan-v2 --keep-stack
 #
 # Required tools:
@@ -20,7 +19,7 @@
 #   0 success                     1 arguments/pre-flight
 #   2 image build/push failed     3 terraform apply failed
 #   4 render failed               5 baseline PSNR failed
-#   6 v1/v2 parity failed         7 cleanup or cleanup verification failed
+#   6 semantic validation failed  7 cleanup or cleanup verification failed
 
 set -euo pipefail
 
@@ -33,7 +32,6 @@ REGION="${GCP_REGION:-us-central1}"
 FIXTURE="${FIXTURE:-mp4-h264-sdr}"
 CHUNK_SIZES="${CHUNK_SIZES:-}"
 PSNR_THRESHOLD="${PSNR_THRESHOLD:-35}"
-PROTOCOLS="${PROTOCOLS:-v2}"
 OWNER="${HYPERFRAMES_SMOKE_OWNER:-}"
 AR_REPO="${AR_REPO:-}"
 AR_REPO_WAS_EXPLICIT=0
@@ -49,7 +47,6 @@ while [ $# -gt 0 ]; do
     --fixture) FIXTURE="$2"; shift 2 ;;
     --chunk-sizes) CHUNK_SIZES="$2"; shift 2 ;;
     --psnr-threshold) PSNR_THRESHOLD="$2"; shift 2 ;;
-    --protocols) PROTOCOLS="$2"; shift 2 ;;
     --owner) OWNER="$2"; shift 2 ;;
     --repo) AR_REPO="$2"; AR_REPO_WAS_EXPLICIT=1; shift 2 ;;
     --image) EXPLICIT_IMAGE="$2"; shift 2 ;;
@@ -72,24 +69,7 @@ for tool in gcloud terraform ffmpeg ffprobe jq tar sha256sum; do
   }
 done
 
-PROTOCOLS="${PROTOCOLS//[[:space:]]/}"
-case ",$PROTOCOLS," in
-  *,v1,*|*,v2,*) ;;
-  *) echo "ERROR: --protocols must contain v1 and/or v2" >&2; exit 1 ;;
-esac
-IFS=',' read -ra PROTOCOL_LIST <<< "$PROTOCOLS"
-declare -A SEEN_PROTOCOLS=()
-for protocol in "${PROTOCOL_LIST[@]}"; do
-  case "$protocol" in
-    v1|v2) ;;
-    *) echo "ERROR: unsupported protocol '$protocol'; expected v1 or v2" >&2; exit 1 ;;
-  esac
-  [ -z "${SEEN_PROTOCOLS[$protocol]:-}" ] || {
-    echo "ERROR: duplicate protocol '$protocol'" >&2
-    exit 1
-  }
-  SEEN_PROTOCOLS[$protocol]=1
-done
+PROTOCOL="v2"
 
 if [ -z "$OWNER" ]; then
   OWNER="$(id -un)-$(date -u +%Y%m%dT%H%M%SZ)-$$"
@@ -298,7 +278,7 @@ echo "→ Project: $PROJECT"
 echo "  Region: $REGION"
 echo "  Owner: $OWNER ($OWNER_HASH)"
 echo "  Resource prefix: $STACK_NAME"
-echo "  Protocols: $PROTOCOLS"
+echo "  Protocol: $PROTOCOL"
 echo "  Isolated Terraform directory: $TF_WORK_DIR"
 
 echo "→ Verifying required project APIs are already enabled"
@@ -494,11 +474,10 @@ for chunk_size in "${SIZES[@]}"; do
 done
 
 jq -n '[]' > "$ARTIFACT_DIR/results.json"
-jq -n '[]' > "$ARTIFACT_DIR/parity.json"
 OVERALL_RC=0
 
-for protocol in "${PROTOCOL_LIST[@]}"; do
-  for chunk_size in "${SIZES[@]}"; do
+protocol="$PROTOCOL"
+for chunk_size in "${SIZES[@]}"; do
     RENDER_ID="$STACK_NAME-$protocol-c$chunk_size"
     OUTPUT_GCS="gs://$BUCKET/renders/smoke/$STACK_NAME/$protocol/c$chunk_size/output.mp4"
     PLAN_PREFIX="gs://$BUCKET/renders/smoke/$STACK_NAME/$protocol/c$chunk_size/plan/"
@@ -598,89 +577,9 @@ for protocol in "${PROTOCOL_LIST[@]}"; do
       echo "  ✗ PSNR ${PSNR_AVG}dB below threshold ${PSNR_THRESHOLD}dB"
       [ "$OVERALL_RC" -ne 0 ] || OVERALL_RC=5
     fi
-  done
 done
-
-canonicalize_output() {
-  local media_file="$1"
-  local output_prefix="$2"
-  ffmpeg -v error -i "$media_file" -map 0:v:0 -pix_fmt rgba \
-    -f framemd5 "$output_prefix.frames.md5"
-  grep -v '^#' "$output_prefix.frames.md5" > "$output_prefix.frames.data"
-
-  if ffprobe -v error -select_streams a:0 -show_entries stream=index \
-      -of csv=p=0 "$media_file" | grep -q .; then
-    ffmpeg -v error -i "$media_file" -map 0:a:0 -vn -ac 2 -ar 48000 \
-      -f hash -hash sha256 - > "$output_prefix.audio.sha256"
-  else
-    printf '%s\n' "NO_AUDIO" > "$output_prefix.audio.sha256"
-  fi
-
-  ffprobe -v error \
-    -show_entries \
-      format=duration:stream=codec_type,codec_name,width,height,pix_fmt,avg_frame_rate,r_frame_rate,nb_frames,sample_rate,channels,channel_layout \
-    -of json "$media_file" | jq -S . > "$output_prefix.probe.json"
-}
-
-if [ -n "${SEEN_PROTOCOLS[v1]:-}" ] && [ -n "${SEEN_PROTOCOLS[v2]:-}" ]; then
-  echo "→ Comparing v1 and v2 decoded outputs"
-  for chunk_size in "${SIZES[@]}"; do
-    V1_OUTPUT="$RENDER_DIR/v1-c$chunk_size-output.mp4"
-    V2_OUTPUT="$RENDER_DIR/v2-c$chunk_size-output.mp4"
-    if [ ! -f "$V1_OUTPUT" ] || [ ! -f "$V2_OUTPUT" ]; then
-      echo "  ✗ c$chunk_size parity unavailable because one protocol did not render"
-      [ "$OVERALL_RC" -ne 0 ] || OVERALL_RC=6
-      continue
-    fi
-
-    V1_PREFIX="$RENDER_DIR/v1-c$chunk_size-canonical"
-    V2_PREFIX="$RENDER_DIR/v2-c$chunk_size-canonical"
-    canonicalize_output "$V1_OUTPUT" "$V1_PREFIX"
-    canonicalize_output "$V2_OUTPUT" "$V2_PREFIX"
-
-    FRAMES_EQUAL=false
-    AUDIO_EQUAL=false
-    METADATA_EQUAL=false
-    cmp -s "$V1_PREFIX.frames.data" "$V2_PREFIX.frames.data" && FRAMES_EQUAL=true
-    cmp -s "$V1_PREFIX.audio.sha256" "$V2_PREFIX.audio.sha256" && AUDIO_EQUAL=true
-    cmp -s "$V1_PREFIX.probe.json" "$V2_PREFIX.probe.json" && METADATA_EQUAL=true
-
-    jq \
-      --argjson chunk_size "$chunk_size" \
-      --argjson frames_equal "$FRAMES_EQUAL" \
-      --argjson audio_equal "$AUDIO_EQUAL" \
-      --argjson metadata_equal "$METADATA_EQUAL" \
-      --arg v1_frame_sha "$(sha256sum "$V1_PREFIX.frames.data" | cut -d' ' -f1)" \
-      --arg v2_frame_sha "$(sha256sum "$V2_PREFIX.frames.data" | cut -d' ' -f1)" \
-      --arg v1_audio_sha "$(sed -n '1p' "$V1_PREFIX.audio.sha256")" \
-      --arg v2_audio_sha "$(sed -n '1p' "$V2_PREFIX.audio.sha256")" \
-      '. += [{
-        chunkSize: $chunk_size,
-        decodedFramesEqual: $frames_equal,
-        decodedAudioEqual: $audio_equal,
-        normalizedMetadataEqual: $metadata_equal,
-        v1FrameManifestSha256: $v1_frame_sha,
-        v2FrameManifestSha256: $v2_frame_sha,
-        v1AudioSha256: $v1_audio_sha,
-        v2AudioSha256: $v2_audio_sha
-      }]' \
-      "$ARTIFACT_DIR/parity.json" > "$ARTIFACT_DIR/parity.json.tmp"
-    mv "$ARTIFACT_DIR/parity.json.tmp" "$ARTIFACT_DIR/parity.json"
-
-    if [ "$FRAMES_EQUAL" = true ] && [ "$AUDIO_EQUAL" = true ] && [ "$METADATA_EQUAL" = true ]; then
-      echo "  ✓ c$chunk_size decoded video, audio, and metadata match"
-    else
-      echo "  ✗ c$chunk_size parity mismatch: frames=$FRAMES_EQUAL audio=$AUDIO_EQUAL metadata=$METADATA_EQUAL"
-      [ "$OVERALL_RC" -ne 0 ] || OVERALL_RC=6
-    fi
-  done
-fi
 
 echo "→ Results"
 jq . "$ARTIFACT_DIR/results.json"
-if [ -n "${SEEN_PROTOCOLS[v1]:-}" ] && [ -n "${SEEN_PROTOCOLS[v2]:-}" ]; then
-  echo "→ Parity"
-  jq . "$ARTIFACT_DIR/parity.json"
-fi
 echo "→ Evidence: $ARTIFACT_DIR"
 exit "$OVERALL_RC"

@@ -275,9 +275,6 @@ Resources:
                 StringEquals: v2
                 Next: PlanV2
               - Variable: $.PlanProtocol
-                StringEquals: v1
-                Next: Plan
-              - Variable: $.PlanProtocol
                 IsPresent: true
                 Next: UnsupportedPlanProtocol
             Default: PlanV2
@@ -302,72 +299,7 @@ Resources:
           UnsupportedPlanProtocol:
             Type: Fail
             Error: PLAN_PROTOCOL_UNSUPPORTED
-            Cause: PlanProtocol must be "v1", "v2", or absent (defaults to v2).
-
-          Plan:
-            Type: Task
-            Resource: arn:aws:states:::lambda:invoke
-            Parameters:
-              # Chunks must run the ffmpeg build the plan records, so the plan runs where they do.
-              FunctionName:
-                !If [
-                  HasVideoFunction,
-                  !GetAtt VideoFunctionStack.Outputs.FunctionArn,
-                  !GetAtt RenderFunction.Arn,
-                ]
-              Payload:
-                Action: plan
-                PlanProtocol: v1
-                ProjectS3Uri.$: "$.ProjectS3Uri"
-                PlanOutputS3Prefix.$: "$.PlanOutputS3Prefix"
-                Config.$: "$.Config"
-            ResultSelector:
-              PlanProtocol: v1
-              PlanS3Uri.$: "$.Payload.PlanS3Uri"
-              PlanHash.$: "$.Payload.PlanHash"
-              ChunkCount.$: "$.Payload.ChunkCount"
-              MaxChunkConcurrency.$: "$.Payload.MaxChunkConcurrency"
-              Format.$: "$.Payload.Format"
-              HasAudio.$: "$.Payload.HasAudio"
-              AudioS3Uri.$: "$.Payload.AudioS3Uri"
-            ResultPath: $.Plan
-            Retry:
-              - ErrorEquals:
-                  # These error names are thrown by the producer's plan
-                  # stage when retrying can never help — version skew,
-                  # determinism violations, GPU misconfiguration, font
-                  # fetch failures, plan-size cap, unsupported format.
-                  # Fail fast rather than burning ~120s of retry budget.
-                  - FFMPEG_VERSION_MISMATCH
-                  - PLAN_HASH_MISMATCH
-                  - BROWSER_GPU_NOT_SOFTWARE
-                  - FONT_FETCH_FAILED
-                  - PLAN_TOO_LARGE
-                  - PlanTooLargeError
-                  - PLAN_PROTOCOL_UNSUPPORTED
-                  - PlanProtocolUnsupportedError
-                  - VIDEO_SOURCE_UNRENDERABLE
-                  - INVALID_VIDEO_METADATA
-                  - NOT_MEDIA_PAYLOAD
-                  - NotMediaPayloadError
-                  - PLAN_ARTIFACT_DIGEST_MISMATCH
-                  - FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED
-                  - CHUNK_EXCEEDS_WORKER_TIMEOUT
-                  - SITE_MANIFEST_INVALID
-                MaxAttempts: 0
-              # Another render on the same function can still take the reserved slots; wait minutes.
-              - ErrorEquals: [Lambda.TooManyRequestsException]
-                IntervalSeconds: 5
-                MaxAttempts: 10
-                BackoffRate: 2
-                MaxDelaySeconds: 60
-                JitterStrategy: FULL
-              - ErrorEquals: [States.ALL]
-                IntervalSeconds: 2
-                MaxAttempts: 4
-                BackoffRate: 2
-                MaxDelaySeconds: 60
-            Next: BuildChunkList
+            Cause: PlanProtocol must be "v2" or absent (defaults to v2).
 
           PlanV2:
             Type: Task
@@ -403,8 +335,6 @@ Resources:
                   - S3_URI_NOT_ALLOWED
                   - BROWSER_GPU_NOT_SOFTWARE
                   - FONT_FETCH_FAILED
-                  - PLAN_TOO_LARGE
-                  - PlanTooLargeError
                   - PLAN_PROTOCOL_UNSUPPORTED
                   - PlanProtocolUnsupportedError
                   - PLAN_V2_INTEGRITY_UNRECOVERABLE
@@ -453,139 +383,13 @@ Resources:
             Choices:
               - Variable: $.Plan.ChunkCount
                 NumericGreaterThan: 0
-                Next: SelectWorkerProtocol
+                Next: RenderV2
             Default: PlanProducedZeroChunks
 
           PlanProducedZeroChunks:
             Type: Fail
-            Error: PLAN_TOO_LARGE
+            Error: PLAN_EMPTY
             Cause: Plan returned ChunkCount=0 — non-retryable producer-side invariant violation.
-
-          SelectWorkerProtocol:
-            Type: Choice
-            Choices:
-              - Variable: $.Plan.PlanProtocol
-                StringEquals: v2
-                Next: RenderV2
-            Default: RenderChunks
-
-          RenderChunks:
-            Type: Map
-            Label: RenderChunks
-            ItemsPath: $.Iterator.ChunkIndexes
-            ItemSelector:
-              ChunkIndex.$: "$$.Map.Item.Value"
-              PlanS3Uri.$: "$.Plan.PlanS3Uri"
-              PlanHash.$: "$.Plan.PlanHash"
-              ChunkOutputS3Prefix.$: "$.PlanOutputS3Prefix"
-              Format.$: "$.Plan.Format"
-            # Chunks past the plan's concurrency queue here instead of being throttled by Lambda.
-            MaxConcurrencyPath: $.Plan.MaxChunkConcurrency
-            ResultPath: $.Chunks
-            ItemProcessor:
-              ProcessorConfig:
-                # Inline Map runs at most 40 iterations at once. STANDARD children
-                # because EXPRESS ones stop at 5 minutes and a chunk may run 15.
-                Mode: DISTRIBUTED
-                ExecutionType: STANDARD
-              StartAt: RenderChunk
-              States:
-                RenderChunk:
-                  Type: Task
-                  Resource: arn:aws:states:::lambda:invoke
-                  Parameters:
-                    FunctionName:
-                      !If [
-                        HasVideoFunction,
-                        !GetAtt VideoFunctionStack.Outputs.FunctionArn,
-                        !GetAtt RenderFunction.Arn,
-                      ]
-                    Payload:
-                      Action: renderChunk
-                      PlanProtocol: v1
-                      ChunkIndex.$: "$.ChunkIndex"
-                      PlanS3Uri.$: "$.PlanS3Uri"
-                      PlanHash.$: "$.PlanHash"
-                      ChunkOutputS3Prefix.$: "$.ChunkOutputS3Prefix"
-                      Format.$: "$.Format"
-                  ResultSelector:
-                    ChunkS3Uri.$: "$.Payload.ChunkS3Uri"
-                    ChunkIndex.$: "$.Payload.ChunkIndex"
-                    Sha256.$: "$.Payload.Sha256"
-                    FramesEncoded.$: "$.Payload.FramesEncoded"
-                    DurationMs.$: "$.Payload.DurationMs"
-                  Retry:
-                    - ErrorEquals:
-                        - FFMPEG_VERSION_MISMATCH
-                        - PLAN_HASH_MISMATCH
-                        - BROWSER_GPU_NOT_SOFTWARE
-                        - PLAN_TOO_LARGE
-                        - PlanTooLargeError
-                        - PLAN_PROTOCOL_UNSUPPORTED
-                        - PlanProtocolUnsupportedError
-                        - INVALID_VIDEO_METADATA
-                        - PLAN_ARTIFACT_DIGEST_MISMATCH
-                      MaxAttempts: 0
-                    - ErrorEquals: [Lambda.TooManyRequestsException]
-                      IntervalSeconds: 5
-                      MaxAttempts: 10
-                      BackoffRate: 2
-                      MaxDelaySeconds: 60
-                      JitterStrategy: FULL
-                    - ErrorEquals: [States.ALL]
-                      IntervalSeconds: 2
-                      MaxAttempts: 4
-                      BackoffRate: 2
-                      MaxDelaySeconds: 60
-                  End: true
-            Next: Assemble
-
-          Assemble:
-            Type: Task
-            Resource: arn:aws:states:::lambda:invoke
-            Parameters:
-              FunctionName: !GetAtt RenderFunction.Arn
-              Payload:
-                Action: assemble
-                PlanProtocol: v1
-                PlanS3Uri.$: "$.Plan.PlanS3Uri"
-                ChunkS3Uris.$: "$.Chunks[*].ChunkS3Uri"
-                AudioS3Uri.$: "$.Plan.AudioS3Uri"
-                OutputS3Uri.$: "$.OutputS3Uri"
-                Format.$: "$.Plan.Format"
-            ResultSelector:
-              OutputS3Uri.$: "$.Payload.OutputS3Uri"
-              FramesEncoded.$: "$.Payload.FramesEncoded"
-              FileSize.$: "$.Payload.FileSize"
-            ResultPath: $.Output
-            Retry:
-              - ErrorEquals:
-                  # Same non-retryable error names as the Plan state's
-                  # gate — these surface at assemble time too because
-                  # ffmpeg-driven concat picks up version drift and we
-                  # re-verify plan hash + format at assemble. Skip the
-                  # retry storm; fail fast.
-                  - FFMPEG_VERSION_MISMATCH
-                  - PLAN_HASH_MISMATCH
-                  - FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED
-                  - PLAN_TOO_LARGE
-                  - PlanTooLargeError
-                  - PLAN_PROTOCOL_UNSUPPORTED
-                  - PlanProtocolUnsupportedError
-                  - PLAN_ARTIFACT_DIGEST_MISMATCH
-                MaxAttempts: 0
-              - ErrorEquals: [Lambda.TooManyRequestsException]
-                IntervalSeconds: 5
-                MaxAttempts: 10
-                BackoffRate: 2
-                MaxDelaySeconds: 60
-                JitterStrategy: FULL
-              - ErrorEquals: [States.ALL]
-                IntervalSeconds: 2
-                MaxAttempts: 4
-                BackoffRate: 2
-                MaxDelaySeconds: 60
-            End: true
 
           RenderV2:
             # Chunks render video only while the audio task mixes the track AssembleV2 stitches in.
@@ -644,8 +448,6 @@ Resources:
                                 - PLAN_HASH_MISMATCH
                                 - S3_URI_NOT_ALLOWED
                                 - BROWSER_GPU_NOT_SOFTWARE
-                                - PLAN_TOO_LARGE
-                                - PlanTooLargeError
                                 - PLAN_PROTOCOL_UNSUPPORTED
                                 - PlanProtocolUnsupportedError
                                 - PLAN_V2_INTEGRITY_UNRECOVERABLE
@@ -705,8 +507,6 @@ Resources:
                           - S3_URI_NOT_ALLOWED
                           - BROWSER_GPU_NOT_SOFTWARE
                           - FONT_FETCH_FAILED
-                          - PLAN_TOO_LARGE
-                          - PlanTooLargeError
                           - PLAN_PROTOCOL_UNSUPPORTED
                           - PlanProtocolUnsupportedError
                           - PLAN_V2_INTEGRITY_UNRECOVERABLE
@@ -765,8 +565,6 @@ Resources:
                   - PLAN_HASH_MISMATCH
                   - S3_URI_NOT_ALLOWED
                   - FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED
-                  - PLAN_TOO_LARGE
-                  - PlanTooLargeError
                   - PLAN_PROTOCOL_UNSUPPORTED
                   - PlanProtocolUnsupportedError
                   - PLAN_V2_INTEGRITY_UNRECOVERABLE

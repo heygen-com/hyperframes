@@ -39,7 +39,8 @@ import {
   type Fps,
   isDistributedFps,
 } from "@hyperframes/core";
-import { assemble, plan, renderChunk } from "./distributed.js";
+import { assemble, renderChunk } from "./distributed.js";
+import { plan } from "./services/distributed/plan.js";
 import { PLAN_AUDIO_RELATIVE_PATH, type DistributedFormat } from "./services/distributed/shared.js";
 
 /**
@@ -80,7 +81,7 @@ export type DistributedSupportResult = { supported: true } | { supported: false;
  *     `{ num: 30000, den: 1001 }` (NTSC) trip the type system at the call
  *     site. We surface this gate in code rather than only in TS so the
  *     harness can skip the fixture cleanly instead of throwing.
- *   - hdr must not be `true`. Distributed mode is SDR-only at v1.
+ *   - hdr must not be `true`. Distributed mode is SDR-only.
  *
  * Callers that want the structured reason can read it off the returned
  * `reason` field; the message is intended to be log-friendly.
