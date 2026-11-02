@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { dirname, extname, join, relative, resolve } from "node:path";
 import { findCuts, signatures } from "../measure/cuts.js";
 import { Fix, probeVideo, projectOf, round, runFfmpeg, videoClip } from "../measure/media.js";
-import { idempotencyKey, runJob, type Job } from "./v3.js";
+import { idempotencyKey, publicVoices, runJob, type Job, type Voice } from "./v3.js";
 
 export type GenerateType = "image" | "video" | "avatar" | "voice" | "music";
 export const GENERATE_TYPES: readonly GenerateType[] = [
@@ -217,11 +217,7 @@ const ROUTES: Record<GenerateType, Route> = {
       type: "image",
       image: media(need(r.photo, "--photo", "--photo assets/presenter.png"), "image"),
       script: need(r.script, "--script", '--script "What they say"'),
-      voice_id: need(
-        r.voice,
-        "--voice",
-        "--voice <voice id> (npx hyperframes media-use resolve --type voice lists voices)",
-      ),
+      voice_id: need(r.voice, "--voice", "--voice <voice id or language>"),
       ...(r.aspect ? { aspect_ratio: r.aspect } : {}),
       output_format: "mp4",
     }),
@@ -234,7 +230,7 @@ const ROUTES: Record<GenerateType, Route> = {
     poll: (id) => `/v3/voices/speech/${id}`,
     body: (r) => ({
       text: need(r.script, "--script", '--script "What the voice says"'),
-      voice_id: need(r.voice, "--voice", "--voice <voice id>"),
+      voice_id: need(r.voice, "--voice", "--voice <voice id or language>"),
     }),
     urls: ["audio_url"],
     ledger: "voice",
@@ -474,6 +470,19 @@ function checkGuide(r: Pick<GenerateRequest, "motion" | "allowCuts">): void {
 
 /** What the real call would refuse, checked without sending anything: `--plan` prices only a request that would run.
  *  The route's body runs with a stand-in for the media, so its required flags and conflicts are checked as sent. */
+const VOICE_ID = /^[0-9a-f]{32}$/i;
+
+export async function pickVoice(voice: string | undefined): Promise<Voice> {
+  if (voice && VOICE_ID.test(voice)) return { voice_id: voice, name: voice };
+  const voices = await publicVoices(voice ?? "English", voice ? 1 : 6);
+  if (voice && voices[0]) return voices[0];
+  const listed = voices.map((v) => `${v.voice_id} (${v.name}, ${v.gender ?? "?"})`).join("; ");
+  throw new Fix(
+    voice ? `HeyGen has no public voice for ${voice}` : "--voice is missing",
+    `--voice <language>, e.g. --voice English, for HeyGen's first voice in it, or a voice id: ${listed}`,
+  );
+}
+
 export function checkRequest(r: GenerateRequest): void {
   const route = ROUTES[r.type];
   if (!route.ext.includes(extname(r.out).toLowerCase()))

@@ -14,8 +14,16 @@ vi.mock("../cloud/auth.js", () => ({
 
 vi.stubEnv("HEYGEN_API_KEY", "k");
 
-const { checkRequest, foldShort, generate, parseMask, ringChange, structureRatio, urlOf } =
-  await import("./generate.js");
+const {
+  checkRequest,
+  foldShort,
+  generate,
+  parseMask,
+  pickVoice,
+  ringChange,
+  structureRatio,
+  urlOf,
+} = await import("./generate.js");
 const { checkLimit, creditsOf, priceOf } = await import("./pricing.js");
 const ffmpeg = findFFmpeg();
 const project = mkdtempSync(join(tmpdir(), "hf-generate-test-"));
@@ -685,5 +693,43 @@ describe("foldShort", () => {
   it("keeps a real cut near the guide's edge, which would land inside a paid shot", () => {
     expect(foldShort([5, 9.7], 10)).toEqual([5, 9.7]);
     expect(foldShort([0.3], 10)).toEqual([0.3]);
+  });
+});
+
+describe("pickVoice", () => {
+  const voices = (asked: string[]) =>
+    vi.stubGlobal("fetch", async (url: string) => {
+      asked.push(url);
+      return json({
+        data: [
+          { voice_id: "a".repeat(32), name: "Lin", language: "Chinese", gender: "female" },
+          { voice_id: "b".repeat(32), name: "Wei", language: "Chinese", gender: "male" },
+        ],
+      });
+    });
+
+  it("takes a voice id as given, without asking HeyGen", async () => {
+    const asked: string[] = [];
+    voices(asked);
+    expect(await pickVoice("c".repeat(32))).toEqual({
+      voice_id: "c".repeat(32),
+      name: "c".repeat(32),
+    });
+    expect(asked).toEqual([]);
+  });
+
+  it("picks HeyGen's first public voice for a language", async () => {
+    const asked: string[] = [];
+    voices(asked);
+    expect((await pickVoice("Chinese")).name).toBe("Lin");
+    expect(asked[0]).toBe("https://api.test/v3/voices?type=public&language=Chinese&limit=1");
+  });
+
+  it("lists voices to pick from when none is named", async () => {
+    voices([]);
+    await expect(pickVoice(undefined)).rejects.toMatchObject({
+      message: "--voice is missing",
+      fix: expect.stringContaining(`${"a".repeat(32)} (Lin, female)`),
+    });
   });
 });

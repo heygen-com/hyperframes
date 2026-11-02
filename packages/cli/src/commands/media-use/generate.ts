@@ -7,6 +7,7 @@ import {
   checkRequest,
   generate,
   parseMask,
+  pickVoice,
   type GenerateRequest,
   type GenerateType,
 } from "../../heygen/generate.js";
@@ -88,7 +89,10 @@ export default defineCommand({
     "first-frame": { type: "string", description: "video: the picture the shot starts from" },
     photo: { type: "string", description: "avatar: the person's photo" },
     script: { type: "string", description: "avatar, voice: the words spoken" },
-    voice: { type: "string", description: "avatar, voice: a HeyGen voice id" },
+    voice: {
+      type: "string",
+      description: "avatar, voice: a HeyGen voice id, or a language for its first voice in it",
+    },
     seconds: {
       type: "string",
       description: "video 5–15 (default 5); music: 30, 60, 120 or 180 (default 30)",
@@ -121,6 +125,7 @@ export default defineCommand({
       const type = String(args.type);
       if (!isType(type))
         throw new Fix(`unknown --type ${type}`, `--type ${GENERATE_TYPES.join("|")}`);
+      const voice = type === "voice" || type === "avatar" ? await pickVoice(args.voice) : undefined;
       const request: GenerateRequest = {
         type,
         out: String(args.out),
@@ -136,7 +141,7 @@ export default defineCommand({
         masks: repeated(rawArgs, "--mask").map(parseMask),
         photo: args.photo,
         script: args.script,
-        voice: args.voice,
+        voice: voice?.voice_id,
         seconds: num(args.seconds, "--seconds"),
         aspect: args.aspect,
         model: args.model,
@@ -153,6 +158,7 @@ export default defineCommand({
           out: request.out,
           price,
           credits,
+          ...(voice ? { voice } : {}),
           next: "run the same command without --plan to make it",
         };
       }
@@ -162,7 +168,7 @@ export default defineCommand({
         (status) => console.error(`generate: ${status}…`),
         credits ?? undefined,
       );
-      return { ...made, price, credits };
+      return { ...made, price, credits, ...(voice ? { voice } : {}) };
     });
   },
 });

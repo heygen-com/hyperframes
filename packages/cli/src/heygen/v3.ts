@@ -252,3 +252,37 @@ export async function runJob(
   }
   return job;
 }
+
+export interface Voice {
+  voice_id: string;
+  name: string;
+  language?: string;
+  gender?: string;
+}
+
+const isVoice = (v: unknown): v is Voice =>
+  isRecord(v) && typeof v.voice_id === "string" && typeof v.name === "string";
+
+/** HeyGen's public voices for a language, best first; a language it does not know gets multilingual ones. */
+export async function publicVoices(language: string, limit: number): Promise<Voice[]> {
+  const headers = {
+    ...(await resolveCloudAuthHeaders().catch(noSignIn)),
+    accept: "application/json",
+  };
+  const query = new URLSearchParams({ type: "public", language, limit: String(limit) });
+  const res = await fetch(`${resolveCloudBaseUrl()}/v3/voices?${query}`, {
+    headers,
+    signal: AbortSignal.timeout(30_000),
+  }).catch((err: unknown) => {
+    throw new Fix(
+      `no answer from HeyGen for its voices (${err instanceof Error ? err.message : String(err)})`,
+      "run the same command again",
+    );
+  });
+  const value: unknown = await res.json().catch(() => null);
+  if (!res.ok || !isRecord(value) || !Array.isArray(value.data))
+    throw new Fix(`HeyGen ${res.status} listing its voices`, "run the same command again");
+  return value.data
+    .filter(isVoice)
+    .map(({ voice_id, name, language, gender }) => ({ voice_id, name, language, gender }));
+}
