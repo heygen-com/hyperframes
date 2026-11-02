@@ -19,8 +19,8 @@ export interface TemplatePack {
 export const TEMPLATES: Record<string, TemplatePack> = {
   "big-questions": {
     id: "M9003",
-    sha256: "534504dc9d9ee71882287ca9ac9f1485b540a0f550826b3869f2c244c1eb5a55",
-    bytes: 25562821,
+    sha256: "df19f953df10b9cbb0779d20a2f5b0b964ce752d8b7d3927ef9ecc63497b7a45",
+    bytes: 25562753,
   },
   "long-story-short": {
     id: "M9002",
