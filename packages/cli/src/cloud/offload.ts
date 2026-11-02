@@ -6,11 +6,14 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  closeSync,
   copyFileSync,
   createReadStream,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readFileSync,
+  readSync,
   renameSync,
   rmSync,
   writeFileSync,
@@ -29,6 +32,7 @@ import {
 import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
 import { probeAudio } from "../audio/analysis/decode.js";
 import { formatBytes } from "../ui/format.js";
+import { bytesMatchExtension } from "./offloadSniff.js";
 import { type PlayedSegment, planTrim } from "./offloadTrim.js";
 import {
   assertUnchanged,
@@ -529,6 +533,18 @@ interface FilePlan {
   segments?: PlayedSegment[];
 }
 
+function readHead(file: StagedFile): Buffer {
+  if (Buffer.isBuffer(file)) return file.subarray(0, 16);
+  const fd = openSync(file.absPath, "r");
+  try {
+    const head = Buffer.alloc(16);
+    readSync(fd, head, 0, 16, 0);
+    return head;
+  } finally {
+    closeSync(fd);
+  }
+}
+
 async function planFile(
   ctx: OffloadContext,
   path: string,
@@ -538,7 +554,11 @@ async function planFile(
   const size = stagedSize(file);
   if (!kind || size < OFFLOAD_MIN_BYTES) return null;
   const accepted = ACCEPTED[extname(path).toLowerCase()];
-  const asIs = accepted !== undefined && size <= accepted.maxBytes;
+  // The API reads the stored bytes, not the name: a file whose bytes differ from its extension is re-encoded.
+  const asIs =
+    accepted !== undefined &&
+    size <= accepted.maxBytes &&
+    bytesMatchExtension(extname(path).toLowerCase(), readHead(file));
   const mayBeCached =
     ctx.opts.upload !== undefined || (asIs ? ctx.cachedSizes.has(size) : ctx.cachedSizes.size > 0);
   const sha256 = mayBeCached ? await stagedSha256(file) : undefined;
