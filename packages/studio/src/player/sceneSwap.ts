@@ -78,13 +78,10 @@ export function markScenesStale(iframe: HTMLIFrameElement | null, files: readonl
 export const supersededByNewerEdit = () =>
   new DOMException("superseded by a newer edit", "AbortError");
 
-// A swap writes the HTML it fetched over the live document, so one the project has moved past
-// must not land; past this many refetches the newest copy in hand wins over waiting longer.
-const SWAP_REFETCHES = 5;
+const SWAP_REFETCHES_BEFORE_THE_COPY_IN_HAND_WINS = 5;
 
 type SceneSwap = (url: string, isCurrent: () => boolean, cancel?: AbortSignal) => Promise<void>;
 
-/** Swaps the composition as the project has it now, refetching when a write lands mid-flight. */
 export function swapFreshly(
   swap: SceneSwap,
   url: URL,
@@ -99,7 +96,7 @@ export function swapFreshly(
     url.searchParams.set("_t", String(Date.now()));
     swapFreshly(swap, url, isCurrent, cancel, reloadWholeFilm, attempt + 1);
   };
-  const retries = attempt < SWAP_REFETCHES;
+  const retries = attempt < SWAP_REFETCHES_BEFORE_THE_COPY_IN_HAND_WINS;
   const gate = retries ? () => isCurrent() && fresh() : isCurrent;
   whileScriptWrites(() => swap(url.toString(), gate, cancel))
     .then(() => {
