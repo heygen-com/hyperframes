@@ -14,7 +14,7 @@
  * Guardrails:
  *   - Never auto-update across major versions (or minor versions while in
  *     0.x). The user opts in explicitly via `hyperframes upgrade`.
- *   - Skip on CI, unattended runs (agents, no TTY), dev mode, unknown installer, ephemeral exec (npx),
+ *   - Skip on CI, unattended runs (agents, no TTY), dev mode, Homebrew, unknown installer, ephemeral exec (npx),
  *     or when `HYPERFRAMES_NO_AUTO_INSTALL` / `HYPERFRAMES_NO_UPDATE_CHECK`
  *     is set.
  *   - If a previous install is still in flight (less than 10 min old), don't
@@ -255,6 +255,21 @@ function isSilentUpgrade(latestVersion: string, currentVersion: string): boolean
   return true;
 }
 
+/** The install to run unattended, or null when this installer cannot be held to `version`. */
+function backgroundInstaller(
+  version: string,
+): { installCommand: string; invocation: InstallInvocation } | null {
+  const installer = detectInstaller();
+  if (installer.kind === "skip" || installer.kind === "brew") {
+    const brew = `brew upgrade installs the tap's formula, not ${version}; notice only`;
+    log(`[skip] ${installer.kind === "brew" ? brew : installer.reason}`);
+    return null;
+  }
+  const installCommand = installer.installCommand(version);
+  const invocation = installInvocation(installer.kind, version);
+  return installCommand && invocation ? { installCommand, invocation } : null;
+}
+
 /**
  * If a new version is available and policy allows, kick off a detached
  * installer. Returns whether an install was spawned (for tests).
@@ -263,14 +278,9 @@ export function scheduleBackgroundInstall(latestVersion: string, currentVersion:
   if (isAutoInstallDisabled()) return false;
   if (!isSilentUpgrade(latestVersion, currentVersion)) return false;
 
-  const installer = detectInstaller();
-  if (installer.kind === "skip") {
-    log(`[skip] ${installer.reason}`);
-    return false;
-  }
-  const installCommand = installer.installCommand(latestVersion);
-  const invocation = installInvocation(installer.kind, latestVersion);
-  if (!installCommand || !invocation) return false;
+  const installer = backgroundInstaller(latestVersion);
+  if (!installer) return false;
+  const { installCommand, invocation } = installer;
 
   const config = readConfig();
 

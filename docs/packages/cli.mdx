@@ -107,11 +107,12 @@ their final line, on stderr.
 `2` means the command line itself is wrong: an unknown command or flag, or a
 missing or invalid value.
 
-**Version notices.** An owned install (npm, bun, pnpm, brew) updates itself
+**Version notices.** An owned install (npm, bun, pnpm) updates itself
 quietly in the background and prints one line on the next run:
 `hyperframes auto-updated to v0.1.5`. It never crosses a major version (before
 1.0, a minor version: 0.8 to 0.9 is a notice, not an install). Anywhere
-it cannot install — `npx`, an unknown installer — you get a notice instead:
+it cannot install — Homebrew (run `brew upgrade hyperframes` yourself), `npx`, an
+unknown installer — you get a notice instead:
 
 ```
   Update available: 0.1.4 → 0.1.5
