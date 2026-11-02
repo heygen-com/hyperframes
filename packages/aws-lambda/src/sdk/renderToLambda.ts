@@ -75,8 +75,20 @@ export interface RenderHandle {
   startedAt: string;
 }
 
+function rejectUnsupportedLegacyPlanProtocol(opts: object): void {
+  const planProtocol = Reflect.get(opts, "planProtocol");
+  if (planProtocol === undefined || planProtocol === "v2") return;
+
+  const error = new Error(
+    `[renderToLambda] planProtocol is no longer configurable; expected "v2" or absent, got ${JSON.stringify(planProtocol)}`,
+  );
+  error.name = "PLAN_PROTOCOL_UNSUPPORTED";
+  throw error;
+}
+
 // fallow-ignore-next-line complexity
 export async function renderToLambda(opts: RenderToLambdaOptions): Promise<RenderHandle> {
+  rejectUnsupportedLegacyPlanProtocol(opts);
   validateDistributedRenderConfig(opts.config);
 
   if (!opts.bucketName) {

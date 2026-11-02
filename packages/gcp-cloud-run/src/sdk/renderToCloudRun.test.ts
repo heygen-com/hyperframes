@@ -57,6 +57,17 @@ function opts(executions: ExecutionsClientLike) {
 }
 
 describe("renderToCloudRun", () => {
+  it("rejects a stale v1 SDK option before any GCP work", async () => {
+    const fake = new FakeExecutions();
+    const staleOptions = { ...opts(fake), planProtocol: "v1" };
+
+    await expect(renderToCloudRun(staleOptions)).rejects.toMatchObject({
+      name: "PLAN_PROTOCOL_UNSUPPORTED",
+    });
+    expect(fake.lastArgument).toBeNull();
+    expect(fake.lastParent).toBeNull();
+  });
+
   it("starts an execution and returns a handle", async () => {
     const fake = new FakeExecutions();
     const handle = await renderToCloudRun(opts(fake));

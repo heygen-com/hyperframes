@@ -97,8 +97,20 @@ export interface RenderHandle {
   startedAt: string;
 }
 
+function rejectUnsupportedLegacyPlanProtocol(opts: object): void {
+  const planProtocol = Reflect.get(opts, "planProtocol");
+  if (planProtocol === undefined || planProtocol === "v2") return;
+
+  const error = new Error(
+    `[renderToCloudRun] planProtocol is no longer configurable; expected "v2" or absent, got ${JSON.stringify(planProtocol)}`,
+  );
+  error.name = "PLAN_PROTOCOL_UNSUPPORTED";
+  throw error;
+}
+
 // fallow-ignore-next-line complexity
 export async function renderToCloudRun(opts: RenderToCloudRunOptions): Promise<RenderHandle> {
+  rejectUnsupportedLegacyPlanProtocol(opts);
   validateDistributedRenderConfig(opts.config);
 
   if (!opts.bucketName) throw new Error("[renderToCloudRun] bucketName is required");
