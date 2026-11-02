@@ -232,7 +232,8 @@ export async function runJob(
     if (err instanceof Refused && !KEEPS_KEY.has(err.status)) markFailed(sent, scope);
     throw err;
   }
-  if (opts.log) log(opts.log, { route, id: job.id, key: sent, status: job.status });
+  const waits = RUNNING.has(job.status.toLowerCase());
+  if (opts.log && waits) log(opts.log, { route, id: job.id, key: sent, status: job.status });
   while (RUNNING.has(job.status.toLowerCase())) {
     if (Date.now() - started > (opts.timeoutMs ?? 15 * 60_000))
       throw new Fix(
