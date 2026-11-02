@@ -185,6 +185,26 @@ describe("HyperframesRenderStack — snapshot", () => {
     }
   });
 
+  // Step Functions raises States.Runtime for a comparison on a missing path instead of moving on,
+  // so the Default branch is unreachable unless presence is checked before any comparison.
+  it("routes an omitted plan protocol before any rule compares it", () => {
+    for (const [name, definition] of [
+      ["CDK", SYNTHED.definition],
+      ["SAM", readSamDefinition()],
+    ] as const) {
+      const choices = requireRecord(definition.States.SelectPlanProtocol, "SelectPlanProtocol")
+        .Choices as Record<string, unknown>[];
+      expect({ name, first: { ...choices[0], Next: undefined } }).toEqual({
+        name,
+        first: { Variable: "$.PlanProtocol", IsPresent: false, Next: undefined },
+      });
+    }
+    expect(SYNTHED.definition.States.SelectPlanProtocol.Choices[0].Next).toBe("PlanV2");
+    const samFirst = (readSamDefinition().States.SelectPlanProtocol as Record<string, unknown>)
+      .Choices as Record<string, unknown>[];
+    expect(samFirst[0].Next).toEqual(["HasVideoFunction", "WarmRender", "PlanV2"]);
+  });
+
   it("preserves every typed non-retryable error name across the three Lambda tasks", () => {
     const { definition } = SYNTHED;
     const collected = new Set<string>();

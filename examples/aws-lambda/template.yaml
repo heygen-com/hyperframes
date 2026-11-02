@@ -266,6 +266,11 @@ Resources:
           SelectPlanProtocol:
             Type: Choice
             Choices:
+              # A comparison on a missing path is a States.Runtime error, not a non-match, so an
+              # omitted PlanProtocol has to be caught before any StringEquals rule.
+              - Variable: $.PlanProtocol
+                IsPresent: false
+                Next: !If [HasVideoFunction, WarmRender, PlanV2]
               # Only a stack with the arm64 video function has a cold x86 function to warm.
               # Without one the compared value can never match.
               - Variable: $.PlanProtocol
