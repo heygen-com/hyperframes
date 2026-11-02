@@ -3317,7 +3317,8 @@ async function prepareFrameForCapture(
   const hasPendingComposite = await seekPageTimeline(page, quantizedTime, seekOptions);
 
   session.captureStep = "decoding CSS background images";
-  for (const url of await decodeDynamicCssBackgroundImages(page)) {
+  // Mocked pages answer evaluate() with undefined, so tolerate a missing list.
+  for (const url of (await decodeDynamicCssBackgroundImages(page)) ?? []) {
     appendBrowserDiagnostic(
       session,
       `[FrameCapture] background image still decoding after ${BACKGROUND_DECODE_TIMEOUT_MS}ms, captured without it: ${url}`,
