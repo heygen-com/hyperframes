@@ -22,7 +22,7 @@ export type {
   StudioSelectionTextField,
 } from "./types.js";
 export { isSafePath, walkDir } from "./helpers/safePath.js";
-export { stampProjectHfIds } from "./helpers/hfIdPersist.js";
+export { stampProjectHfIds, stampProjectHfIdsAsync } from "./helpers/hfIdPersist.js";
 export {
   patchElementInHtml,
   splitElementInHtml,
