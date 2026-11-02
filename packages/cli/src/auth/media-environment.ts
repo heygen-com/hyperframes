@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { apiBaseUrl } from "./client.js";
 import { refreshTokens } from "./oauth.js";
 import { AuthError, isAuthError } from "./errors.js";
-import { resolveCredential, tryResolveCredential } from "./resolver.js";
+import { envKeyAfterRefreshFailure, resolveCredential, tryResolveCredential } from "./resolver.js";
 import { writeStore } from "./store.js";
 
 // Avatar helpers can poll for five minutes after submitting paid work.
@@ -28,8 +28,14 @@ export async function withMediaAuthEnvironment<T>(run: (env: NodeJS.ProcessEnv) 
     credential.refresh_token &&
     (credential.refreshable || expiresDuringHelper)
   ) {
-    await refreshTokens(credential.refresh_token);
-    credential = await resolveCredential();
+    credential = await refreshTokens(credential.refresh_token).then(
+      () => resolveCredential(),
+      (error: unknown) => {
+        const fallback = envKeyAfterRefreshFailure();
+        if (!fallback) throw error;
+        return fallback;
+      },
+    );
   }
 
   const dir = await fs.mkdtemp(join(tmpdir(), "hyperframes-media-auth-"));

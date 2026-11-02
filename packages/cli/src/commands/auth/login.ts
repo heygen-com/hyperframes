@@ -191,7 +191,7 @@ async function runDeviceLogin(): Promise<void> {
   console.log(c.success(`✓ Signed in as ${identity}.`));
 }
 
-// The tokens this login just issued, never a resolved credential: an env credential would outrank them.
+// The tokens this login just issued, never a resolved credential: an env credential can outrank them.
 function issuedCredential(tokens: { access_token: string; refresh_token?: string }) {
   return {
     type: "oauth" as const,

@@ -3,10 +3,12 @@ import { fetchMedia } from "../../../scripts/lib/media-fetch.mjs";
 // pipeline. The credential resolver matches the hyperframes CLI auth: first
 // usable source wins — a host gateway ($HEYGEN_API_BASE with its own
 // $HEYGEN_API_KEY) → a host-injected OAuth $HEYGEN_ACCESS_TOKEN (Bearer) →
-// $HEYGEN_API_KEY / $HYPERFRAMES_API_KEY → a nearby .env → ~/.hyperframes/
-// credentials (OAuth never falls back to an API key; $HYPERFRAMES_CONFIG_DIR
-// overrides the dir). $HEYGEN_API_BASE moves every request to that host, as it
-// does for the heygen CLI; plain HTTP needs $HEYGEN_ALLOW_HTTP=1, as there.
+// the live login in ~/.hyperframes/credentials → $HEYGEN_API_KEY /
+// $HYPERFRAMES_API_KEY (or a nearby .env) → the API key saved in
+// ~/.hyperframes/credentials. An expired login gives way to an env key but
+// never to the saved API key ($HYPERFRAMES_CONFIG_DIR overrides the dir).
+// $HEYGEN_API_BASE moves every request to that host, as it does for the
+// heygen CLI; plain HTTP needs $HEYGEN_ALLOW_HTTP=1, as there.
 // Vendored so the skill ships standalone. Pure node.
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -114,8 +116,14 @@ function resolveCredential() {
   const accessToken = process.env.HEYGEN_ACCESS_TOKEN;
   if (accessToken) return { headers: { Authorization: `Bearer ${accessToken}` } };
   const envKey = process.env.HEYGEN_API_KEY || process.env.HYPERFRAMES_API_KEY;
-  if (envKey) return { headers: { "X-Api-Key": envKey } };
+  const stored = storedCredential();
+  // A live login wins over an env key; an expired, foreign or unreadable store gives way to one.
+  if (stored?.headers && "Authorization" in stored.headers) return stored;
+  return envKey ? { headers: { "X-Api-Key": envKey } } : stored;
+}
 
+// The credential saved in ~/.hyperframes/credentials: { headers } | { expired: true } | { unreadable } | null.
+function storedCredential() {
   const root = process.env.HYPERFRAMES_CONFIG_DIR || join(homedir(), ".hyperframes");
   const file = join(root, ...(process.env.HYPERFRAMES_ENV === "dev" ? ["dev"] : []), "credentials");
   let raw;

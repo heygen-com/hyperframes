@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setupTempAuthEnv } from "./_test-utils.js";
 import { isAuthError } from "./errors.js";
-import { resolveCredential, tryResolveCredential } from "./resolver.js";
+import { envKeyAfterRefreshFailure, resolveCredential, tryResolveCredential } from "./resolver.js";
 import { writeStore as writeUnboundStore, type Credentials } from "./store.js";
 
 async function writeStore(credentials: Credentials): Promise<void> {
@@ -27,8 +27,87 @@ describe("auth/resolver", () => {
     await fixture.restore();
   });
 
-  it("prefers HEYGEN_API_KEY over everything else", async () => {
+  const inOneHour = () => new Date(Date.now() + 60 * 60 * 1000).toISOString();
+  const anHourAgo = () => new Date(Date.now() - 60 * 60 * 1000).toISOString();
+
+  it("prefers a signed-in login over HEYGEN_API_KEY", async () => {
+    process.env["HEYGEN_API_KEY"] = "env-key";
+    process.env["HYPERFRAMES_API_KEY"] = "alias-key";
+    await writeStore({
+      api_key: "file-key",
+      oauth: { access_token: "fresh-at", refresh_token: "rt", expires_at: inOneHour() },
+    });
+    const r = await resolveCredential();
+    expect(r).toMatchObject({ type: "oauth", access_token: "fresh-at", source: "file_json" });
+  });
+
+  it("prefers an expired login that can refresh over HEYGEN_API_KEY", async () => {
+    process.env["HEYGEN_API_KEY"] = "env-key";
+    await writeStore({
+      oauth: { access_token: "stale-at", refresh_token: "rt", expires_at: anHourAgo() },
+    });
+    const r = await resolveCredential();
+    expect(r).toMatchObject({ type: "oauth", access_token: "stale-at", refreshable: true });
+  });
+
+  it("uses HEYGEN_API_KEY when the login expired and cannot refresh", async () => {
+    process.env["HEYGEN_API_KEY"] = "env-key";
+    await writeStore({ oauth: { access_token: "stale-at", expires_at: anHourAgo() } });
+    expect(await resolveCredential()).toEqual({ type: "api_key", key: "env-key", source: "env" });
+  });
+
+  it("uses HEYGEN_API_KEY over a login from another OAuth client", async () => {
+    process.env["HEYGEN_API_KEY"] = "env-key";
+    await writeStore({ oauth: { access_token: "foreign", client_id: "shared-heygen-cli" } });
+    expect(await resolveCredential()).toEqual({ type: "api_key", key: "env-key", source: "env" });
+  });
+
+  it("uses HEYGEN_API_KEY when the credentials file is broken", async () => {
+    process.env["HEYGEN_API_KEY"] = "env-key";
+    await fs.writeFile(join(dir, "credentials"), "{not valid", { mode: 0o600 });
+    expect(await resolveCredential()).toEqual({ type: "api_key", key: "env-key", source: "env" });
+  });
+
+  it("keeps the env key first when HEYGEN_API_URL names a host app's gateway", async () => {
+    process.env["HEYGEN_API_KEY"] = "gateway-token";
+    process.env["HEYGEN_API_URL"] = "http://127.0.0.1:4100";
+    await writeStore({ oauth: { access_token: "fresh-at", expires_at: inOneHour() } });
+    expect(await resolveCredential()).toEqual({
+      type: "api_key",
+      key: "gateway-token",
+      source: "env",
+    });
+    process.env["HEYGEN_API_URL"] = "https://api.dev.heygen.com";
+    expect(await resolveCredential()).toMatchObject({ type: "oauth", access_token: "fresh-at" });
+    process.env["HEYGEN_API_BASE"] = "https://gateway.example";
+    expect(await resolveCredential()).toMatchObject({ type: "api_key", key: "gateway-token" });
+  });
+
+  it("uses the env key for the rest of the process once the login fails to refresh", async () => {
+    await writeStore({
+      oauth: { access_token: "at", refresh_token: "rt", expires_at: anHourAgo() },
+    });
+    expect(envKeyAfterRefreshFailure()).toBeUndefined();
+    expect(await resolveCredential()).toMatchObject({ type: "oauth", refreshable: true });
+
+    process.env["HEYGEN_API_KEY"] = "env-key";
+    const fallback = { type: "api_key", key: "env-key", source: "env" };
+    expect(envKeyAfterRefreshFailure()).toEqual(fallback);
+    expect(await resolveCredential()).toEqual(fallback);
+  });
+
+  it("prefers a host app's HEYGEN_ACCESS_TOKEN over the login and env keys", async () => {
     process.env["HEYGEN_ACCESS_TOKEN"] = "host-token";
+    process.env["HEYGEN_API_KEY"] = "env-key";
+    await writeStore({ oauth: { access_token: "fresh-at", expires_at: inOneHour() } });
+    expect(await resolveCredential()).toMatchObject({
+      type: "oauth",
+      access_token: "host-token",
+      source: "env_oauth",
+    });
+  });
+
+  it("prefers HEYGEN_API_KEY over HYPERFRAMES_API_KEY and a saved API key", async () => {
     process.env["HEYGEN_API_KEY"] = "env-key";
     process.env["HYPERFRAMES_API_KEY"] = "alias-key";
     await writeStore({ api_key: "file-key" });
@@ -37,7 +116,6 @@ describe("auth/resolver", () => {
   });
 
   it("falls through to HYPERFRAMES_API_KEY", async () => {
-    process.env["HEYGEN_ACCESS_TOKEN"] = "host-token";
     process.env["HYPERFRAMES_API_KEY"] = "alias-key";
     await writeStore({ api_key: "file-key" });
     const r = await resolveCredential();
