@@ -98,16 +98,17 @@ describe("studio write-token echo identity", () => {
     expect(consumeStudioWriteToken("abandoned-studio-write", 301_000)).toBe(false);
   });
 
-  it("moves the file revision when a write is claimed and again when its echo lands", () => {
+  it("moves the file revision once per write claimed, and not for its echo", () => {
     resetStudioWriteTokens();
     const start = studioFileRevision();
     markStudioWriteToken("revision-write");
 
     expect(studioFileRevision()).toBe(start + 1);
+    // The echo of a write already counted must not move it again: a reader asked for after the
+    // write was claimed would read as stale on its own echo and fetch a second time for nothing.
     expect(consumeStudioWriteToken("revision-write")).toBe(true);
-    expect(studioFileRevision()).toBe(start + 2);
-    // An echo that is not ours leaves the project where it was.
-    expect(consumeStudioWriteToken("someone-else")).toBe(false);
+    expect(studioFileRevision()).toBe(start + 1);
+    markStudioWriteToken("second-write");
     expect(studioFileRevision()).toBe(start + 2);
   });
 });

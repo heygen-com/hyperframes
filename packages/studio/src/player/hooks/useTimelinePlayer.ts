@@ -57,14 +57,12 @@ export interface UseTimelinePlayerOptions {
 const publishSeek = (time: number, options?: { follow?: boolean }) =>
   options?.follow === false ? liveTime.notify(time) : liveTime.notifySeek(time);
 
-// Each swap writes the HTML it fetched over the live document, so a write that lands while it is
-// loading would be overwritten by the older copy. Fetch again while the project moves under it;
-// after this many tries the newest copy in hand wins over waiting any longer.
+// A swap writes the HTML it fetched over the live document, so one the project has moved past
+// must not land; past this many refetches the newest copy in hand wins over waiting longer.
 const SWAP_REFETCHES = 5;
 
 type SceneSwap = (url: string, isCurrent: () => boolean, cancel?: AbortSignal) => Promise<void>;
 
-/** Swaps in the composition as it is now, refetching while a write lands under the one in flight. */
 function swapFreshly(
   swap: SceneSwap,
   url: URL,

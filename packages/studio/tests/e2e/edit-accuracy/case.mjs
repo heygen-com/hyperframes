@@ -620,8 +620,7 @@ async function cropOutline(ctx, map) {
   return (await contentQuad(h)).map(map.toComp);
 }
 
-/** Holds every save request `ms` before it is sent, so a later press lands while it is still in flight. */
-// Holds each history reply back: the next undo is pressed while this one's preview update is still running.
+/** Holds each history reply back, so the next undo is pressed while this one's preview update runs. */
 function slowHistory(ms) {
   const send = window.fetch;
   window.fetch = (url, init) =>
@@ -630,6 +629,7 @@ function slowHistory(ms) {
       : send(url, init);
 }
 
+/** Holds every save request `ms` before it is sent, so a later press lands while it is still in flight. */
 function slowSaves(ms) {
   const send = window.fetch;
   window.fetch = (url, init) =>
