@@ -5,6 +5,7 @@ import * as clack from "../ui/prompts.js";
 import { c } from "../ui/colors.js";
 import { diag } from "../ui/diagnostics.js";
 import { buildNpxCommand } from "../utils/npxCommand.js";
+import { VERSION } from "../version.js";
 import { withMeta } from "../utils/updateCheck.js";
 import {
   checkSkills,
@@ -253,7 +254,7 @@ async function installSkills(
 
   if (!skillsToolingReady(opts.strict ?? false)) return;
 
-  const ref = await skillsSourceRef();
+  const ref = await skillsSourceRef(VERSION);
   // stderr (via diag): installSkills runs on the `skills update --json` path before
   // its JSON envelope is written to stdout — progress here must not corrupt it.
   for (const source of SOURCES) {
@@ -346,7 +347,7 @@ export async function updateSkills(
     // that no longer exists, and verifyInstalled would strict-throw on a
     // "failure" that was never real. Resolving canonically means a retired
     // skill simply never appears as a target in the first place.
-    check = await checkSkills({ cwd: opts.cwd, canonical: true });
+    check = await checkSkills({ cwd: opts.cwd, canonical: true, cliVersion: VERSION });
   } catch (err) {
     // A *malformed* canonical manifest (the server was reached, but served a
     // bad shape) is otherwise indistinguishable from being offline — both fall
@@ -577,6 +578,7 @@ const checkCommand = defineCommand({
     const result = await checkSkills({
       dir: args.dir,
       source: args.source,
+      cliVersion: VERSION,
     });
 
     if (args.json) console.log(JSON.stringify(withMeta(result), null, 2));

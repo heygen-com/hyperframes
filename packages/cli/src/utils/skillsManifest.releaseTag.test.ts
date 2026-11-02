@@ -1,6 +1,4 @@
-// A release build of the CLI reads its skills at its own release tag. The
-// version is a build-time constant, so this file mocks it to a released one
-// (the sibling skillsManifest.test.ts runs as the dev build, "0.0.0-dev").
+// A release build of the CLI reads its skills at its own release tag.
 
 import { execFile } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -8,8 +6,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { checkSkills, cliReleaseTag, MANIFEST_FILE, skillsSourceRef } from "./skillsManifest.js";
-
-vi.mock("../version.js", () => ({ VERSION: "0.9.3" }));
 
 const lsRemote = vi.hoisted(() => ({
   tags: new Set<string>(),
@@ -73,15 +69,15 @@ describe("cliReleaseTag", () => {
 describe("skillsSourceRef", () => {
   it("is the CLI's release tag when the repo has it", async () => {
     lsRemote.tags.add("refs/tags/v0.9.3");
-    expect(await skillsSourceRef()).toBe("v0.9.3");
+    expect(await skillsSourceRef("0.9.3")).toBe("v0.9.3");
   });
 
   it("falls back to main for a version the repo has no tag for", async () => {
-    expect(await skillsSourceRef()).toBe("main");
+    expect(await skillsSourceRef("0.9.3")).toBe("main");
   });
 
   it("is main for a dev build without asking git", async () => {
-    expect(await skillsSourceRef("heygen-com/hyperframes", "0.0.0-dev")).toBe("main");
+    expect(await skillsSourceRef("0.0.0-dev")).toBe("main");
     expect(vi.mocked(execFile)).not.toHaveBeenCalled();
   });
 });
@@ -89,7 +85,7 @@ describe("skillsSourceRef", () => {
 describe("checkSkills on a release build", () => {
   it("compares against the manifest at the CLI's release tag, not main", async () => {
     lsRemote.tags.add("refs/tags/v0.9.3");
-    await checkSkills({ cwd: root, home: root, canonical: true });
+    await checkSkills({ cwd: root, home: root, canonical: true, cliVersion: "0.9.3" });
     expect(vi.mocked(fetch)).toHaveBeenCalledWith(
       `https://raw.githubusercontent.com/heygen-com/hyperframes/v0.9.3/${MANIFEST_FILE}`,
       expect.anything(),
@@ -97,7 +93,7 @@ describe("checkSkills on a release build", () => {
   });
 
   it("compares against main when the tag does not exist", async () => {
-    await checkSkills({ cwd: root, home: root, canonical: true });
+    await checkSkills({ cwd: root, home: root, canonical: true, cliVersion: "0.9.3" });
     expect(vi.mocked(fetch)).toHaveBeenCalledWith(
       `https://raw.githubusercontent.com/heygen-com/hyperframes/${lsRemote.mainSha}/${MANIFEST_FILE}`,
       expect.anything(),

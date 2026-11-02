@@ -21,7 +21,6 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
-import { VERSION } from "../version.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -624,16 +623,16 @@ async function remoteRefSha(repoSlug: string, ref: string): Promise<string | nul
 }
 
 /** The release tag (`v<version>`) of a published CLI build; null for a dev or pre-release build. */
-export function cliReleaseTag(version: string = VERSION): string | null {
+export function cliReleaseTag(version: string): string | null {
   return /^\d+\.\d+\.\d+$/.test(version) ? `v${version}` : null;
 }
 
 /** Where skills install from and are checked against: this CLI's release tag, else `main`. */
 export async function skillsSourceRef(
+  cliVersion: string,
   repoSlug: string = DEFAULT_REPO_SLUG,
-  version: string = VERSION,
 ): Promise<string> {
-  const tag = cliReleaseTag(version);
+  const tag = cliReleaseTag(cliVersion);
   if (!tag) return "main";
   return (await remoteRefSha(repoSlug, `refs/tags/${tag}`)) ? tag : "main";
 }
@@ -654,11 +653,11 @@ function resolveLocalManifest(source: string): SkillsManifest {
  * moves), `main` SHA-pinned via `git ls-remote` to dodge raw-CDN lag, falling
  * back to the branch URL when git is unavailable.
  */
-async function fetchRemoteManifest(source?: string): Promise<SkillsManifest> {
+async function fetchRemoteManifest(source?: string, cliVersion?: string): Promise<SkillsManifest> {
   if (source?.startsWith("http")) return fetchManifest(source);
 
   const repoSlug = source ?? DEFAULT_REPO_SLUG;
-  const ref = await skillsSourceRef(repoSlug);
+  const ref = cliVersion ? await skillsSourceRef(cliVersion, repoSlug) : "main";
   if (ref !== "main") {
     return fetchManifest(`https://raw.githubusercontent.com/${repoSlug}/${ref}/${MANIFEST_FILE}`);
   }
@@ -693,7 +692,7 @@ async function fetchRemoteManifest(source?: string): Promise<SkillsManifest> {
 async function resolveLatestManifest(
   source?: string,
   cwd = process.cwd(),
-  opts: { canonical?: boolean } = {},
+  opts: { canonical?: boolean; cliVersion?: string } = {},
 ): Promise<SkillsManifest> {
   // A local path is a relative one (./ ../) or an absolute one — isAbsolute
   // covers POSIX `/…` and Windows `C:\…` / `\…` on their respective platforms.
@@ -704,7 +703,7 @@ async function resolveLatestManifest(
     const repoManifest = findRepoManifest(cwd);
     if (repoManifest) return JSON.parse(readFileSync(repoManifest, "utf8")) as SkillsManifest;
   }
-  return fetchRemoteManifest(source);
+  return fetchRemoteManifest(source, opts.cliVersion);
 }
 
 /**
@@ -719,9 +718,14 @@ export async function checkSkills(
     home?: string;
     /** See resolveLatestManifest — bypass the in-repo manifest shortcut. */
     canonical?: boolean;
+    /** Read the remote manifest at this CLI version's release tag (see skillsSourceRef). */
+    cliVersion?: string;
   } = {},
 ): Promise<SkillsCheckResult> {
-  const latest = await resolveLatestManifest(opts.source, opts.cwd, { canonical: opts.canonical });
+  const latest = await resolveLatestManifest(opts.source, opts.cwd, {
+    canonical: opts.canonical,
+    cliVersion: opts.cliVersion,
+  });
   const skillNames = Object.keys(latest.skills);
   const root = locateInstall(skillNames, { dir: opts.dir, cwd: opts.cwd, home: opts.home });
   // A directory sharing a name with one of ours can belong to another publisher.
