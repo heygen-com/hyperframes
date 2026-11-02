@@ -1981,3 +1981,141 @@ describe("filter fallback", () => {
     expect(document.querySelectorAll("filter")).toHaveLength(0);
   });
 });
+
+describe.each([
+  { name: "events off", attrs: { "data-motion-blur": "on" } },
+  { name: "events on", attrs: { "data-motion-blur": "on", "data-motion-blur-events": "on" } },
+])("still engine frames ($name)", ({ attrs }) => {
+  function stillFilm(extra: Partial<CaptureMotionBlurHost> = {}) {
+    installHtmlInCanvas();
+    const { root, h } = movingHost(attrs);
+    const seek = vi.fn((t: number, s: boolean) => h.seek(Math.min(t, 0.5), s));
+    initCaptureMotionBlur({ ...h, ...extra, seek });
+    const engineFrame = (t: number) => {
+      seek(t, true);
+      void paintCaptureMotionBlur(t, { engineMode: true });
+    };
+    return { root, seek, engineFrame };
+  }
+
+  it("draws a frame with nothing moving as the plain page, and wraps again when motion returns", () => {
+    const { root, engineFrame } = stillFilm();
+    engineFrame(0.2);
+    expect(root.parentElement?.tagName).toBe("CANVAS");
+    win.__hf_page_composite_pending = false;
+    engineFrame(0.8);
+    expect(root.parentElement).toBe(document.body);
+    expect(win.__hf_page_composite_pending).toBe(false);
+    expect(win.__hfMotionBlur?.report().failedFrames).toBe(0);
+    expect(
+      vi.mocked(console.info).mock.calls.some(([m]) => String(m).includes("sharp frame")),
+    ).toBe(false);
+    engineFrame(0.3);
+    expect(root.parentElement?.tagName).toBe("CANVAS");
+  });
+
+  it("skips the capture on a frame with no mover to blur", () => {
+    const { root, engineFrame } = stillFilm();
+    engineFrame(0.3);
+    const canvas = captureCanvas(root);
+    releaseCaptureMotionBlurFrame();
+    canvas.dispatchEvent(new Event("paint"));
+    expect(captureContext()?.drawElementImage).toHaveBeenCalledTimes(1);
+    captureContext()?.drawElementImage.mockClear();
+    engineFrame(0.8);
+    expect(root.parentElement).toBe(document.body);
+    releaseCaptureMotionBlurFrame();
+    canvas.dispatchEvent(new Event("paint"));
+    expect(captureContext()?.drawElementImage).not.toHaveBeenCalled();
+  });
+
+  it("keeps a scrolled container's offset across wrapping and unwrapping the root", () => {
+    let offset = 0;
+    const { root, engineFrame } = stillFilm({
+      // Chrome drops the offsets of scrolled containers when the root moves in or out of the canvas.
+      ignoreMutations: (write) => {
+        write();
+        offset = 0;
+      },
+    });
+    const list = document.createElement("div");
+    list.style.overflowY = "auto";
+    Object.defineProperty(list, "scrollTop", {
+      get: () => offset,
+      set: (v: number) => {
+        offset = v;
+      },
+      configurable: true,
+    });
+    root.append(list);
+    offset = 300;
+    engineFrame(0.3);
+    expect(root.parentElement?.tagName).toBe("CANVAS");
+    expect(offset).toBe(300);
+    engineFrame(0.8);
+    expect(root.parentElement).toBe(document.body);
+    expect(offset).toBe(300);
+    engineFrame(0.3);
+    expect(root.parentElement?.tagName).toBe("CANVAS");
+    expect(offset).toBe(300);
+  });
+
+  /** A 20 s film whose slider is at `x(t)`: the scan's steps are 20/240 s apart. */
+  function longFilm(x: (t: number) => number) {
+    installHtmlInCanvas();
+    const { root, el, h } = movingHost(attrs);
+    const seek = vi.fn((t: number) => {
+      el.style.transform = `matrix(1, 0, 0, 1, ${x(t)}, 0)`;
+    });
+    initCaptureMotionBlur({ ...host(root, seek), durationSeconds: () => 20 });
+    const engineFrame = (t: number) => {
+      seek(t);
+      void paintCaptureMotionBlur(t, { engineMode: true });
+    };
+    return { root, h, engineFrame };
+  }
+
+  it("blurs a shake that falls between two scan steps", () => {
+    const shake = (t: number) => 40 * (1 - Math.abs((t - 12.04) / 0.03));
+    const { root, engineFrame } = longFilm((t) =>
+      t < 1 ? 300 * t : 300 + (t > 12.01 && t < 12.07 ? shake(t) : 0),
+    );
+    engineFrame(0.5);
+    releaseCaptureMotionBlurFrame();
+    captureCanvas(root).dispatchEvent(new Event("paint"));
+    captureContext()?.drawElementImage.mockClear();
+    engineFrame(12.0333);
+    expect(root.parentElement?.tagName).toBe("CANVAS");
+    releaseCaptureMotionBlurFrame();
+    captureCanvas(root).dispatchEvent(new Event("paint"));
+    expect(captureContext()?.drawElementImage).toHaveBeenCalled();
+  });
+
+  it("draws a frame plain when its mover moves less than a pixel across the shutter", () => {
+    const { root, engineFrame } = longFilm((t) => (t < 1 ? 300 * t : 300 + 6 * (t - 1)));
+    engineFrame(0.5);
+    expect(root.parentElement?.tagName).toBe("CANVAS");
+    win.__hf_page_composite_pending = false;
+    engineFrame(10.0);
+    expect(root.parentElement).toBe(document.body);
+    expect(win.__hf_page_composite_pending).toBe(false);
+  });
+
+  it("settles a moving frame left in flight and shows its movers", async () => {
+    const { root, engineFrame } = stillFilm();
+    const done = paintCaptureMotionBlur(0.2, { engineMode: true });
+    releaseCaptureMotionBlurFrame();
+    captureCanvas(root).dispatchEvent(new Event("paint"));
+    engineFrame(0.8);
+    expect(document.querySelector(`[${HIDE}]`)).toBeNull();
+    expect(root.parentElement).toBe(document.body);
+    await done;
+  });
+
+  it("leaves preview unchanged on a still stretch", () => {
+    const { root, seek } = stillFilm();
+    seek(0.8, true);
+    void paintCaptureMotionBlur(0.8, PLAY);
+    expect(root.parentElement?.tagName).toBe("CANVAS");
+  });
+});

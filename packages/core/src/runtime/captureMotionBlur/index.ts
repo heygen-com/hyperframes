@@ -147,6 +147,14 @@ function makeCanvas(width: number, height: number, role: string): HTMLCanvasElem
   return canvas;
 }
 
+function findScrollContainers(root: HTMLElement): HTMLElement[] {
+  const scrolls = (el: HTMLElement): boolean => {
+    const style = getComputedStyle(el);
+    return style.overflowX !== "visible" || style.overflowY !== "visible";
+  };
+  return [root, ...root.querySelectorAll<HTMLElement>("*")].filter(scrolls);
+}
+
 function createInstance(host: CaptureMotionBlurHost, config: Config, form: HtmlInCanvasForm) {
   const { root } = host;
   const { width, height } = rootSize(root);
@@ -176,6 +184,8 @@ function createInstance(host: CaptureMotionBlurHost, config: Config, form: HtmlI
 
   let movers: HTMLElement[] = [];
   let pads = new Map<HTMLElement, number>();
+  // Containers that become scrollable after the scan are not preserved.
+  let scrollContainers: HTMLElement[] = [];
   let reader: ReturnType<typeof createPoseReader> | null = null;
   let pending: Job | null = null;
   // While a frame is in flight (two paints), newer requests collapse into the latest one.
@@ -199,8 +209,23 @@ function createInstance(host: CaptureMotionBlurHost, config: Config, form: HtmlI
   // Once the engine drives frames, paused-style requests come from the transport, not a user.
   let rendering = false;
 
+  function scrollOffsets(): Array<[HTMLElement, number, number]> {
+    return scrollContainers
+      .filter((el) => el.scrollLeft !== 0 || el.scrollTop !== 0)
+      .map((el) => [el, el.scrollLeft, el.scrollTop]);
+  }
+
+  function restoreOffsets(offsets: Array<[HTMLElement, number, number]>): void {
+    for (const [el, left, top] of offsets) {
+      el.scrollLeft = left;
+      el.scrollTop = top;
+    }
+  }
+
   function moveRootThenResync(move: () => void): void {
+    const offsets = scrollOffsets();
     (host.ignoreMutations ?? ((write: () => void) => write()))(move);
+    restoreOffsets(offsets);
     host.seek(host.now(), true);
   }
 
@@ -262,6 +287,7 @@ function createInstance(host: CaptureMotionBlurHost, config: Config, form: HtmlI
     faceNow = defects.facesNow;
     movers = found.movers;
     pads = found.pads;
+    scrollContainers = findScrollContainers(root);
     translationOnly = found.translationOnly;
     reader = createPoseReader(root, found.dynamic);
     scanMs = Math.round(performance.now() - s0);
@@ -495,6 +521,15 @@ function createInstance(host: CaptureMotionBlurHost, config: Config, form: HtmlI
     return Promise.resolve();
   }
 
+  function readFrame(t: number, engineMode: boolean) {
+    const next = frames(t, engineMode ? RENDER_READS : PREVIEW_READS);
+    return { next, kept: compositor.plan(next.frames) };
+  }
+
+  function noMoverToBlur(kept: readonly boolean[], engineMode: boolean): boolean {
+    return engineMode && !kept.some(Boolean);
+  }
+
   function start(t: number, engineMode: boolean): Promise<void> {
     try {
       syncDensity();
@@ -507,9 +542,12 @@ function createInstance(host: CaptureMotionBlurHost, config: Config, form: HtmlI
       if (late) return plainFrame(late);
       wrap();
       const s0 = performance.now();
-      const next = frames(t, engineMode ? RENDER_READS : PREVIEW_READS);
-      const kept = compositor.plan(next.frames);
+      const { next, kept } = readFrame(t, engineMode);
       sampleMs = performance.now() - s0;
+      if (noMoverToBlur(kept, engineMode)) {
+        unwrap();
+        return Promise.resolve();
+      }
       if (pending) finishJob(pending);
       return new Promise<void>((resolve) => {
         const mine = ++seq;
