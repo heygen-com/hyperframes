@@ -9,7 +9,7 @@ import {
   type PreviewProxyBox,
 } from "@hyperframes/core";
 import { getMimeType } from "@hyperframes/core/studio-api";
-import { decodeWellFormedEscapes } from "@hyperframes/studio-server";
+import { decodeWellFormedEscapes, openRangeEnd } from "@hyperframes/studio-server";
 import { findStageProxyBox } from "./compositionViewport.js";
 import { resolveAutoProxy } from "./projectConfig.js";
 import { injectMediaCodecMap } from "./compositionServer.js";
@@ -159,7 +159,11 @@ function serveFileWithRange(
   if (match) {
     const hasStart = match[1] !== "";
     start = hasStart ? Number(match[1]) : Math.max(0, size - Number(match[2]));
-    end = !hasStart ? last : match[2] !== "" ? Math.min(Number(match[2]), last) : last;
+    end = !hasStart
+      ? last
+      : match[2] !== ""
+        ? Math.min(Number(match[2]), last)
+        : openRangeEnd(start, last, contentType);
 
     if (start > end || start > last) {
       res.writeHead(416, { ...headers, "Content-Range": `bytes */${size}` });
