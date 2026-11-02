@@ -125,7 +125,6 @@ export default defineCommand({
       const type = String(args.type);
       if (!isType(type))
         throw new Fix(`unknown --type ${type}`, `--type ${GENERATE_TYPES.join("|")}`);
-      const voice = type === "voice" || type === "avatar" ? await pickVoice(args.voice) : undefined;
       const request: GenerateRequest = {
         type,
         out: String(args.out),
@@ -141,13 +140,15 @@ export default defineCommand({
         masks: repeated(rawArgs, "--mask").map(parseMask),
         photo: args.photo,
         script: args.script,
-        voice: voice?.voice_id,
+        voice: args.voice,
         seconds: num(args.seconds, "--seconds"),
         aspect: args.aspect,
         model: args.model,
         bpm: num(args.bpm, "--bpm"),
         instrumental: !args.vocals,
       };
+      const voice = type === "voice" || type === "avatar" ? await pickVoice(request) : undefined;
+      if (voice) request.voice = voice.voice_id;
       const price = priceOf(request);
       const credits = creditsOf(price);
       if (args.plan) {

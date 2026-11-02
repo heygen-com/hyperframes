@@ -3,7 +3,7 @@
 // rather than paying twice; a failed job is asked again. Every job is logged to .hyperframes/heygen-jobs.jsonl.
 import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { configDir } from "../auth/paths.js";
 import { AuthClient, buildAuthHeaders } from "../auth/client.js";
 import { resolveCredential } from "../auth/resolver.js";
@@ -285,4 +285,34 @@ export async function publicVoices(language: string, limit: number): Promise<Voi
   return value.data
     .filter(isVoice)
     .map(({ voice_id, name, language, gender }) => ({ voice_id, name, language, gender }));
+}
+
+/** Who a paid job bills: the same scope a job's failures and keys belong to. */
+export async function senderScope(): Promise<string | null> {
+  return (await jobSender()).scope;
+}
+
+const picksFile = (projectDir: string | null) =>
+  projectDir
+    ? join(projectDir, ".hyperframes", "heygen-jobs.jsonl")
+    : join(configDir(), "heygen-voice-picks.jsonl");
+
+/** The voice a request named by language was first given, so a re-run sends the same body and key. */
+export function keptVoice(projectDir: string | null, request: string): Voice | undefined {
+  const file = picksFile(projectDir);
+  if (!existsSync(file)) return undefined;
+  for (const line of readFileSync(file, "utf8").split("\n")) {
+    const entry: unknown = line ? JSON.parse(line) : null;
+    if (isRecord(entry) && entry.voice_pick === request && isVoice(entry.voice)) return entry.voice;
+  }
+  return undefined;
+}
+
+export function keepVoice(projectDir: string | null, request: string, voice: Voice): void {
+  const file = picksFile(projectDir);
+  mkdirSync(dirname(file), { recursive: true });
+  appendFileSync(
+    file,
+    `${JSON.stringify({ at: new Date().toISOString(), voice_pick: request, voice })}\n`,
+  );
 }

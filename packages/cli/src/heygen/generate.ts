@@ -14,7 +14,16 @@ import { tmpdir } from "node:os";
 import { dirname, extname, join, relative, resolve } from "node:path";
 import { findCuts, signatures } from "../measure/cuts.js";
 import { Fix, probeVideo, projectOf, round, runFfmpeg, videoClip } from "../measure/media.js";
-import { idempotencyKey, publicVoices, runJob, type Job, type Voice } from "./v3.js";
+import {
+  idempotencyKey,
+  keepVoice,
+  keptVoice,
+  publicVoices,
+  runJob,
+  senderScope,
+  type Job,
+  type Voice,
+} from "./v3.js";
 
 export type GenerateType = "image" | "video" | "avatar" | "voice" | "music";
 export const GENERATE_TYPES: readonly GenerateType[] = [
@@ -472,15 +481,28 @@ function checkGuide(r: Pick<GenerateRequest, "motion" | "allowCuts">): void {
  *  The route's body runs with a stand-in for the media, so its required flags and conflicts are checked as sent. */
 const VOICE_ID = /^[0-9a-f]{32}$/i;
 
-export async function pickVoice(voice: string | undefined): Promise<Voice> {
-  if (voice && VOICE_ID.test(voice)) return { voice_id: voice, name: voice };
-  const voices = await publicVoices(voice ?? "English", voice ? 1 : 6);
-  if (voice && voices[0]) return voices[0];
-  const listed = voices.map((v) => `${v.voice_id} (${v.name}, ${v.gender ?? "?"})`).join("; ");
-  throw new Fix(
-    voice ? `HeyGen has no public voice for ${voice}` : "--voice is missing",
-    `--voice <language>, e.g. --voice English, for HeyGen's first voice in it, or a voice id: ${listed}`,
-  );
+export async function pickVoice(r: GenerateRequest): Promise<Voice> {
+  if (r.voice && VOICE_ID.test(r.voice)) return { voice_id: r.voice, name: r.voice };
+  if (!r.voice) {
+    const listed = (await publicVoices("English", 6))
+      .map((v) => `${v.voice_id} (${v.name}, ${v.gender ?? "?"})`)
+      .join("; ");
+    throw new Fix(
+      "--voice is missing",
+      `--voice <language>, e.g. --voice English, for HeyGen's first voice in it, or a voice id: ${listed}`,
+    );
+  }
+  const project = projectOf(dirname(resolve(r.out)));
+  const request = idempotencyKey("voice-pick", [
+    JSON.stringify({ ...r, out: resolve(r.out) }),
+    (await senderScope()) ?? "",
+  ]);
+  const kept = keptVoice(project, request);
+  if (kept) return kept;
+  const [voice] = await publicVoices(r.voice, 1);
+  if (!voice) throw new Fix(`HeyGen has no public voice for ${r.voice}`, "--voice <voice id>");
+  keepVoice(project, request, voice);
+  return voice;
 }
 
 export function checkRequest(r: GenerateRequest): void {
