@@ -443,7 +443,10 @@ export class HyperframesRenderStack extends Construct {
       error: "PLAN_PROTOCOL_UNSUPPORTED",
       cause: 'PlanProtocol must be "v2" or absent (defaults to v2).',
     });
+    // A comparison on a missing path is a States.Runtime error, not a non-match, so an omitted
+    // PlanProtocol has to be caught before the stringEquals rule.
     return new sfn.Choice(this, "SelectPlanProtocol")
+      .when(sfn.Condition.isNotPresent("$.PlanProtocol"), planV2)
       .when(sfn.Condition.stringEquals("$.PlanProtocol", "v2"), planV2)
       .when(sfn.Condition.isPresent("$.PlanProtocol"), unsupportedPlanProtocol)
       .otherwise(planV2);
