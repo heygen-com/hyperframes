@@ -452,15 +452,25 @@ export function getDrawElementVerificationDetails(
   return undefined;
 }
 
-/** Wait for inline CSS background images introduced by the latest seek. */
-export async function decodeDynamicCssBackgroundImages(page: Page): Promise<void> {
-  await page.evaluate(async () => {
+/** Longest the capture waits for one inline background image to decode; it is then left out. */
+export const BACKGROUND_DECODE_TIMEOUT_MS = 15_000;
+
+/**
+ * Wait for inline CSS background images introduced by the latest seek.
+ * Resolves with the urls that did not settle in time: they are captured as they stand and not waited on again.
+ */
+export async function decodeDynamicCssBackgroundImages(page: Page): Promise<string[]> {
+  return page.evaluate(async (timeoutMs: number) => {
     const root = globalThis as typeof globalThis & {
       __hf_css_background_decoded?: Set<string>;
-      __hfDecodeDynamicCssBackgroundImages?: () => Promise<void>;
+      __hf_css_background_timed_out?: Set<string>;
+      __hf_css_background_timeout_ms?: number;
+      __hfDecodeDynamicCssBackgroundImages?: () => Promise<string[]>;
     };
     const decode = (root.__hfDecodeDynamicCssBackgroundImages ??= async () => {
+      const limitMs = root.__hf_css_background_timeout_ms ?? 0;
       const decoded = (root.__hf_css_background_decoded ??= new Set<string>());
+      const timedOut = (root.__hf_css_background_timed_out ??= new Set<string>());
       const urls: string[] = [];
       const parseBackgroundUrls = (value: string): string[] => {
         const found: string[] = [];
@@ -514,26 +524,42 @@ export async function decodeDynamicCssBackgroundImages(page: Page): Promise<void
         if (!backgroundImage || backgroundImage === "none") continue;
 
         for (const url of parseBackgroundUrls(backgroundImage)) {
-          if (!decoded.has(url)) urls.push(url);
+          if (!decoded.has(url) && !timedOut.has(url)) urls.push(url);
         }
       }
 
+      const late: string[] = [];
       await Promise.all(
         [...new Set(urls)].map(async (url) => {
           const image = new Image();
           image.src = url;
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          const expired = new Promise<"late">((resolve) => {
+            timer = setTimeout(() => resolve("late"), limitMs);
+          });
           try {
-            await image.decode();
-            decoded.add(url);
+            const outcome = await Promise.race([
+              image.decode().then(() => "ready" as const),
+              expired,
+            ]);
+            if (outcome === "ready") decoded.add(url);
+            else {
+              timedOut.add(url);
+              late.push(url);
+            }
           } catch {
             // Keep existing capture behavior for missing assets; request diagnostics report them.
+          } finally {
+            clearTimeout(timer);
           }
         }),
       );
+      return late;
     });
 
-    await decode();
-  });
+    root.__hf_css_background_timeout_ms = timeoutMs;
+    return decode();
+  }, BACKGROUND_DECODE_TIMEOUT_MS);
 }
 
 // Circular buffer for browser console messages dumped on render failure diagnostics.
@@ -3291,7 +3317,12 @@ async function prepareFrameForCapture(
   const hasPendingComposite = await seekPageTimeline(page, quantizedTime, seekOptions);
 
   session.captureStep = "decoding CSS background images";
-  await decodeDynamicCssBackgroundImages(page);
+  for (const url of await decodeDynamicCssBackgroundImages(page)) {
+    appendBrowserDiagnostic(
+      session,
+      `[FrameCapture] background image still decoding after ${BACKGROUND_DECODE_TIMEOUT_MS}ms, captured without it: ${url}`,
+    );
+  }
 
   const seekMs = Date.now() - seekStart;
 
