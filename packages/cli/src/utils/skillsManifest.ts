@@ -660,11 +660,38 @@ interface ResolvedManifest {
   ref: string | null;
 }
 
+/** The manifest at a release tag; null only when the repo has no such tag (404). */
+async function fetchTagManifest(repoSlug: string, tag: string): Promise<SkillsManifest | null> {
+  try {
+    return await fetchManifest(
+      `https://raw.githubusercontent.com/${repoSlug}/${tag}/${MANIFEST_FILE}`,
+    );
+  } catch (err) {
+    // A timeout or proxy error must not quietly compare against main.
+    if (err instanceof ManifestHttpError && err.status === 404) return null;
+    throw err;
+  }
+}
+
+/** main's manifest, SHA-pinned via `git ls-remote` to dodge raw-CDN lag, else the branch URL. */
+async function fetchMainManifest(repoSlug: string): Promise<SkillsManifest> {
+  const sha = await remoteHeadSha(repoSlug);
+  if (sha) {
+    try {
+      return await fetchManifest(
+        `https://raw.githubusercontent.com/${repoSlug}/${sha}/${MANIFEST_FILE}`,
+      );
+    } catch {
+      /* fall through to the branch URL */
+    }
+  }
+  return fetchManifest(`https://raw.githubusercontent.com/${repoSlug}/main/${MANIFEST_FILE}`);
+}
+
 /**
  * Fetch the manifest from GitHub. A full URL is fetched directly; an
  * `owner/repo` slug is read at the CLI's release tag (publish pushes it before
- * npm), else `main`, SHA-pinned via `git ls-remote` to dodge raw-CDN lag,
- * falling back to the branch URL when git is unavailable.
+ * npm), and at `main` only for a dev build or a tag the repo does not have.
  */
 async function fetchRemoteManifest(
   source?: string,
@@ -673,31 +700,10 @@ async function fetchRemoteManifest(
   if (source?.startsWith("http")) return { manifest: await fetchManifest(source), ref: null };
 
   const repoSlug = source ?? DEFAULT_REPO_SLUG;
-  const tag = cliVersion ? cliReleaseTag(cliVersion) : null;
-  if (tag) {
-    const url = `https://raw.githubusercontent.com/${repoSlug}/${tag}/${MANIFEST_FILE}`;
-    try {
-      return { manifest: await fetchManifest(url), ref: tag };
-    } catch (err) {
-      // Only a tag the repo lacks means main; a timeout must not compare against main.
-      if (!(err instanceof ManifestHttpError && err.status === 404)) throw err;
-    }
-  }
-  const sha = await remoteHeadSha(repoSlug);
-  if (sha) {
-    try {
-      return {
-        manifest: await fetchManifest(
-          `https://raw.githubusercontent.com/${repoSlug}/${sha}/${MANIFEST_FILE}`,
-        ),
-        ref: "main",
-      };
-    } catch {
-      /* fall through to the branch URL */
-    }
-  }
-  const url = `https://raw.githubusercontent.com/${repoSlug}/main/${MANIFEST_FILE}`;
-  return { manifest: await fetchManifest(url), ref: "main" };
+  const tag = cliReleaseTag(cliVersion ?? "");
+  const atTag = tag ? await fetchTagManifest(repoSlug, tag) : null;
+  if (tag && atTag) return { manifest: atTag, ref: tag };
+  return { manifest: await fetchMainManifest(repoSlug), ref: "main" };
 }
 
 /**
