@@ -75,3 +75,11 @@ describe("resolver with combos", () => {
     expect(getStudioKey("record")).toBe("r");
   });
 });
+
+describe("combos with symbol keys", () => {
+  it("matches a symbol whatever Shift it needs, and refuses shift+symbol", () => {
+    expect(matches("?", { key: "?", shiftKey: true })).toBe(true);
+    expect(matches("mod++", { key: "+", metaKey: true, shiftKey: true })).toBe(true);
+    expect(parseCombo("shift+1")).toBeNull();
+  });
+});

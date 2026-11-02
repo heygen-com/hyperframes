@@ -9,7 +9,6 @@ export interface LinkShortcutCallbacks {
   handleTimelineElementDeleteOnly?: TimelineEditCallbacks["onDeleteElementOnly"];
 }
 
-// The clip menu names one combo per item, so both delete combos resolve to deleteLinked.
 const ACTIONS = [
   ["linkToggle", "linkToggle"],
   ["detachAudio", "detachAudio"],

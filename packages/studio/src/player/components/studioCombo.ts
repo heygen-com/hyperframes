@@ -37,12 +37,13 @@ const MODIFIERS = new Set(["mod", "cmd", "ctrl", "shift", "alt"]);
 
 /** "mod+shift+z", "Space", "b": mod is Cmd or Ctrl; Ctrl+Alt is refused because Windows sends AltGr as Ctrl+Alt. */
 export function parseCombo(text: string): Combo | null {
-  const match = /^((?:[A-Za-z]+\+)*)(.+)$/.exec(text);
-  if (!match) return null;
-  const tokens = match[1].split("+").filter(Boolean).map((t) => t.toLowerCase());
-  const key = match[2];
+  const split = text.length > 1 ? text.slice(0, -1).lastIndexOf("+") : -1;
+  const tokens = split < 0 ? [] : text.slice(0, split).split("+").map((t) => t.toLowerCase());
+  const key = text.slice(split + 1);
   const named = NAMED.has(key);
+  const symbol = !named && !/^[A-Za-z]$/.test(key);
   if (tokens.some((t) => !MODIFIERS.has(t)) || (!named && [...key].length !== 1)) return null;
+  if (symbol && tokens.includes("shift")) return null;
   const combo = {
     mod: tokens.includes("mod"),
     meta: tokens.includes("cmd"),
@@ -61,7 +62,6 @@ export function comboText(c: Combo): string {
   return [...mods.filter(Boolean), c.key].join("+");
 }
 
-// Space is the only named key whose e.key differs from its name.
 const namedMatches = (e: ComboEvent, name: string) =>
   e.code === name || e.key === (name === "Space" ? " " : name);
 
@@ -77,7 +77,8 @@ export type ComboEvent = Pick<KeyboardEvent, "key" | "altKey" | "ctrlKey" | "met
 };
 
 export function matchCombo(e: ComboEvent, c: Combo): boolean {
-  if (!!e.shiftKey !== c.shift || !!e.altKey !== c.alt) return false;
+  const symbol = !c.named && !/^[a-z]$/.test(c.key);
+  if ((!symbol && !!e.shiftKey !== c.shift) || !!e.altKey !== c.alt) return false;
   const modsOk = c.mod ? e.metaKey || e.ctrlKey : !!e.metaKey === c.meta && !!e.ctrlKey === c.ctrl;
   return modsOk && (c.named ? namedMatches(e, c.key) : charMatches(e, c));
 }

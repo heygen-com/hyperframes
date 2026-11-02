@@ -163,7 +163,6 @@ export const keyHint = (action: StudioKeyAction, keys: StudioKeys = current) =>
 export const matchesKey = (e: ComboEvent, action: StudioKeyAction) =>
   matchCombo(e, parseCombo(current[action])!);
 
-/** The key a combo ends in, for holds that track a key rather than an event. */
 export const keyOf = (action: StudioKeyAction) => parseCombo(current[action])!.key;
 
 export function buildShortcutSections(keys: StudioKeys): readonly ShortcutSection[] {
