@@ -37,6 +37,7 @@ describe("a bundled family named only in the font shorthand loads", () => {
     ["style, variant, weight, size", 'p { font: italic small-caps bold 1.5rem "Inter", serif; }'],
     ["a keyword size", "p { font: bold large Inter; }"],
     ["a calc() size", "p { font: calc(10px + 2vw) Inter; }"],
+    ["a nested calc() size", 'p { font: calc(var(--size) * 1px)/1 "Inter"; }'],
   ])("%s", async (_case, css) => {
     expect(await inject(css)).toMatch(/@font-face\s*\{[^}]*font-family:\s*"Inter"/i);
   });
