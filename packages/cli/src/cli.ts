@@ -88,7 +88,7 @@ import {
   markCommandDelivered,
 } from "./utils/render-success-state.js";
 import { resolveCommandUsage, type ResolvedCommandUsage } from "./utils/commandUsageResolution.js";
-import { closestMatch, synonymMatch } from "./utils/didYouMean.js";
+import { closestMatch, fileHint, synonymMatch } from "./utils/didYouMean.js";
 import { jsonErrorBody, watchOutput, writeJsonFailure } from "./utils/jsonError.js";
 import { isDevMode } from "./utils/env.js";
 import {
@@ -546,7 +546,7 @@ async function unknownCommandError(requested: ResolvedCommandUsage): Promise<Cli
   const match =
     (requested.path.length === 0 ? synonymMatch(word, names) : undefined) ??
     closestMatch(word, names);
-  const hint = match ? `Did you mean '${group} ${match}'?` : fileHint(word, group, names);
+  const hint = match ? `Did you mean '${group} ${match}'?` : fileHint(word, requested.path, names);
   console.error(`Unknown command: ${word}`);
   if (hint) console.error(hint);
   console.error("");
@@ -556,12 +556,6 @@ async function unknownCommandError(requested: ResolvedCommandUsage): Promise<Cli
     code: "unknown_command",
     hint,
   });
-}
-
-// Agents write `measure clip.mp4`: a file where the group wants a command first.
-function fileHint(word: string, group: string, names: string[]): string | undefined {
-  if (names.length === 0 || !existsSync(word)) return undefined;
-  return `'${word}' is a file; name a command first: '${group} <${names.join("|")}> ${word}'.`;
 }
 
 // A group like `timeline` also takes a project directory, so a word it does not know may be one.
