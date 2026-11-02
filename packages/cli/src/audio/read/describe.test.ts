@@ -73,10 +73,16 @@ describe("describeStems", () => {
     expect(result).toEqual({ stems: measured.stems, description: null });
   });
 
-  it.each(["api key", "access token"])(
-    "uses the HeyGen %s for base64 audio and schema-enforced summary requests",
-    async (credential) => {
-      vi.stubEnv(credential === "api key" ? "HEYGEN_API_KEY" : "HEYGEN_ACCESS_TOKEN", "signed-in");
+  it.each([
+    { credential: "HEYGEN_API_KEY", headers: { "x-api-key": "signed-in" } },
+    {
+      credential: "HEYGEN_ACCESS_TOKEN",
+      headers: { authorization: "Bearer signed-in", "X-HeyGen-Source": "cli" },
+    },
+  ])(
+    "uses $credential for base64 audio and schema-enforced summary requests",
+    async ({ credential, headers }) => {
+      vi.stubEnv(credential, "signed-in");
       vi.stubEnv("HYPERFRAMES_AUDIO_API_KEY", "not-the-description-key");
       vi.stubEnv("HYPERFRAMES_AUDIO_STEMS_URL", "https://other.test/stems");
       vi.stubEnv("HYPERFRAMES_READ_AUDIO_MODEL", "not-the-model");
@@ -91,9 +97,7 @@ describe("describeStems", () => {
         expect(init?.headers).toEqual({
           "content-type": "application/json",
           "X-HeyGen-Client-Source": "hyperframes",
-          ...(credential === "api key"
-            ? { "x-api-key": "signed-in" }
-            : { authorization: "Bearer signed-in", "X-HeyGen-Source": "cli" }),
+          ...headers,
         });
         const request = JSON.parse(String(init?.body));
         expect(request.model).toBe("gemini-4-argon");
@@ -148,7 +152,7 @@ describe("describeStems", () => {
       ]);
       await describeAudio(warnings);
       expect(fetch).toHaveBeenCalledTimes(3);
-      vi.stubEnv(credential === "api key" ? "HEYGEN_API_KEY" : "HEYGEN_ACCESS_TOKEN", "");
+      vi.stubEnv(credential, "");
       expect((await describeAudio(warnings)).description).toBeNull();
       expect(fetch).toHaveBeenCalledTimes(3);
       expect(warnings).toHaveLength(1);
@@ -229,6 +233,12 @@ describe("describeStems", () => {
     JSON.stringify({ overall: "Words" }),
     JSON.stringify({ overall: "Words", bgm_prompt: 7 }),
     JSON.stringify({ overall: "", bgm_prompt: null }),
+    JSON.stringify({ overall: "   ", bgm_prompt: null }),
+    JSON.stringify({ overall: "Words", bgm_prompt: "   " }),
+    JSON.stringify({ overall: 7, bgm_prompt: null }),
+    JSON.stringify({ bgm_prompt: null }),
+    "null",
+    "[]",
   ])("rejects a summary outside the schema instead of guessing (%s)", async (answer) => {
     vi.stubEnv("HEYGEN_API_KEY", "test-key");
     const fetch = vi
@@ -242,6 +252,54 @@ describe("describeStems", () => {
     expect(warnings[0]).toMatch(/^stems not described:/);
     expect(warnings[0]).not.toContain("\n");
     expect(fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it.each([null, [], {}, { content: null }, { content: [null, {}, { type: "text", text: 7 }] }])(
+    "rejects a response without text (%j)",
+    async (answer) => {
+      vi.stubEnv("HEYGEN_API_KEY", "test-key");
+      vi.spyOn(globalThis, "fetch").mockImplementation(async () => Response.json(answer));
+      const warnings: string[] = [];
+      expect(await describeAudio(warnings)).toEqual({ stems: measured.stems, description: null });
+      expect(warnings).toEqual(["stems not described: the description service returned no text"]);
+    },
+  );
+
+  it("joins only text blocks in a mixed response", async () => {
+    vi.stubEnv("HEYGEN_API_KEY", "test-key");
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+      if (JSON.parse(String(init?.body)).output_config)
+        return response(JSON.stringify({ overall: "Speech.", bgm_prompt: null }));
+      return Response.json({
+        content: [
+          null,
+          {},
+          { type: "audio", text: "ignored" },
+          { type: "text", text: 7 },
+          { type: "text", text: "Spoken " },
+          { type: "text", text: "words." },
+        ],
+      });
+    });
+    const warnings: string[] = [];
+    const result = await describeAudio(warnings);
+    expect(result.stems.map((stem) => stem.description)).toEqual([
+      "Spoken words.",
+      "Spoken words.",
+    ]);
+    expect(warnings).toEqual([]);
+  });
+
+  it("keys cached descriptions on content rather than the credential or endpoint", async () => {
+    vi.stubEnv("HEYGEN_API_KEY", "first-key");
+    const fetch = mockMessages();
+    const warnings: string[] = [];
+    const first = await describeAudio(warnings);
+    vi.stubEnv("HEYGEN_API_KEY", "second-key");
+    vi.stubEnv("HEYGEN_API_URL", "https://another.heygen.test");
+    expect(await describeAudio(warnings)).toEqual(first);
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(warnings).toEqual([]);
   });
 
   it("does not describe silent stems", async () => {

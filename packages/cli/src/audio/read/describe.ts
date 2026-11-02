@@ -65,22 +65,22 @@ function overallPrompt({ duration, bpm, stems, breaks }: Measured): string {
   ].join("\n");
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function requiredText(value: unknown): string {
+  if (typeof value !== "string" || !value.trim())
+    throw new Error("the soundtrack answer did not match the required fields");
+  return value.trim();
+}
+
 function descriptionOf(text: string): Description {
   const value: unknown = JSON.parse(text);
-  if (
-    !value ||
-    typeof value !== "object" ||
-    !("overall" in value) ||
-    typeof value.overall !== "string" ||
-    !value.overall.trim() ||
-    !("bgm_prompt" in value) ||
-    !(value.bgm_prompt === null || typeof value.bgm_prompt === "string") ||
-    (typeof value.bgm_prompt === "string" && !value.bgm_prompt.trim())
-  )
-    throw new Error("the soundtrack answer did not match the required fields");
+  if (!isRecord(value)) throw new Error("the soundtrack answer did not match the required fields");
   return {
-    overall: value.overall.trim(),
-    bgmPrompt: value.bgm_prompt === null ? null : value.bgm_prompt.trim(),
+    overall: requiredText(value.overall),
+    bgmPrompt: value.bgm_prompt === null ? null : requiredText(value.bgm_prompt),
   };
 }
 
@@ -104,27 +104,16 @@ async function mp3Of(path: string, scratch: string): Promise<Buffer> {
 
 const retryable = (status: number) => status === 429 || status >= 500;
 
+function textPart(part: unknown): string {
+  if (!isRecord(part) || part.type !== "text") return "";
+  return typeof part.text === "string" ? part.text : "";
+}
+
 function textOf(answer: unknown): string {
-  if (
-    !answer ||
-    typeof answer !== "object" ||
-    !("content" in answer) ||
-    !Array.isArray(answer.content)
-  )
+  if (!isRecord(answer) || !Array.isArray(answer.content))
     throw new Error("the description service returned no text");
   const content: unknown[] = answer.content;
-  const texts: string[] = [];
-  for (const part of content)
-    if (
-      part &&
-      typeof part === "object" &&
-      "type" in part &&
-      part.type === "text" &&
-      "text" in part &&
-      typeof part.text === "string"
-    )
-      texts.push(part.text);
-  const text = texts.join("").trim();
+  const text = content.map(textPart).join("").trim();
   if (!text) throw new Error("the description service returned no text");
   return text;
 }
@@ -182,7 +171,6 @@ async function answers(asks: Ask[], cacheDir: string, access: ServiceAccess) {
       asks.map(async ({ path, prompt, structured = false }) => {
         const audio = path ? await mp3Of(path, scratch) : null;
         const hash = createHash("sha256")
-          .update(access.url)
           .update(MODEL)
           .update(prompt)
           .update(structured ? JSON.stringify(OVERALL_SCHEMA) : "plain");

@@ -47,7 +47,6 @@ interface Run {
   end: number;
 }
 
-/** Where a stem is heard: quarter-second windows over -45 dBFS, gaps under a second closed, blips under half a second dropped. */
 export function activeSpans(samples: Float32Array, sampleRate: number): Run[] {
   const hop = Math.round(ACTIVE_HOP * sampleRate);
   const spans: Run[] = [];

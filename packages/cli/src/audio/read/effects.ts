@@ -243,10 +243,8 @@ export interface EffectSource {
   samples: Float32Array;
   /** Where this track plays music or ambience: a sound that starts or peaks inside one belongs to it, not an effect. */
   heldBy?: readonly Span[];
-  /** While music plays here, a sound that keeps recurring in this track is the music's own, unless it stands out. */
   playsIn?: readonly Span[];
   stem?: string;
-  /** The stems mixed into this track, to name the one a sound came from. */
   parts?: Record<string, Float32Array>;
 }
 
@@ -373,7 +371,6 @@ function alikeSounds(a: Measured, b: Measured): boolean {
   return ratio >= 0.5 && ratio <= 2 && cosine(a.print, b.print) >= LIKE_SOUND;
 }
 
-/** Sounds in a track while its music plays that recur there, and do not stand out over the hits around them: the music's own. */
 function musicHits(sounds: readonly Measured[]): Set<Measured> {
   const playing = sounds.filter((m) => m.inMusic);
   const own = new Set<Measured>();

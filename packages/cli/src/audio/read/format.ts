@@ -105,7 +105,6 @@ const ENTRY: Record<Entry, string> = {
 
 const EDGE = 0.5;
 
-/** Each stem in the segment: its name alone when it plays throughout, else where it plays. */
 function stemsPlaying(segment: MusicSegment): string {
   const byStem = new Map<string, StemSpan[]>();
   for (const span of segment.stems) byStem.set(span.name, [...(byStem.get(span.name) ?? []), span]);
@@ -217,7 +216,6 @@ function stemBlock(stem: AudibleStem, width: number): string[] {
 const DESCRIPTIONS_NOTE =
   "(descriptions are a model listening to each stem: what the sound is and what its effects sound like. Their times are approximate; the measured spans above and the timed lines below are exact.)";
 
-/** With stems: the whole first, then each stem with where it plays and what it holds. */
 function byStem(analysis: ReadAudio): string[] {
   const { description } = analysis;
   const width = Math.max(0, ...analysis.stems.map((stem) => stem.name.length));

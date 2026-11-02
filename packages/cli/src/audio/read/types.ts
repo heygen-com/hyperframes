@@ -49,7 +49,6 @@ export interface Effect {
   overMusicDb: number | null;
   /** More than one when a quick run of the same sound is reported as one train. */
   count: number;
-  /** The stem the sound was heard in; null without stems. */
   stem: string | null;
 }
 
@@ -75,7 +74,6 @@ export interface MusicSegment {
   bpm: number | null;
   /** Where a fade out begins, when the segment ends on one. */
   fadeFrom: number | null;
-  /** Where each stem plays inside the segment, loudest stem first. */
   stems: StemSpan[];
 }
 
@@ -108,15 +106,12 @@ export interface Ambience {
 export interface AudibleStem {
   name: string;
   db: number;
-  /** Where the stem is heard. */
   spans: Span[];
-  /** What the stem holds, in a model's words; null when it was not described. */
   description: string | null;
 }
 
 export interface Description {
   overall: string;
-  /** The music alone as a prompt for a music generator or a library search: no voice, no seconds; null without music. */
   bgmPrompt: string | null;
 }
 
@@ -127,7 +122,6 @@ export interface ReadAudio {
   duration: number;
   separation: Separation;
   stems: AudibleStem[];
-  /** The stems' folder and every stem but the voice mixed into one file, relative to the project. */
   stemsDir: string | null;
   voiceFreeMix: string | null;
   bpm: number | null;

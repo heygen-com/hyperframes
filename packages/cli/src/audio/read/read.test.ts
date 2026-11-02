@@ -200,7 +200,7 @@ describe.skipIf(!ffmpeg)("readAudio", () => {
         spans: expect.any(Array),
         description: null,
       })),
-      stemsDir: expect.stringMatching(/stems\/\w{12}\/$/),
+      stemsDir: expect.stringMatching(/stems[\\/]\w{12}[\\/]$/),
       voiceFreeMix: expect.stringMatching(/no-vocals\.wav$/),
       warnings: [
         expect.stringContaining("no transcript"),
