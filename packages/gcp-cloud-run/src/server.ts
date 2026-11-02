@@ -16,7 +16,7 @@
  * adapters stay easy to diff.
  */
 
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -25,18 +25,13 @@ import { Storage } from "@google-cloud/storage";
 import { Hono } from "hono";
 import {
   assemble,
-  type AssembleResult,
   type ChunkRenderer,
   type ChunkResult,
-  type DistributedRenderConfig,
   listPlanV2ArtifactsForTarget,
   materializePlanV2Target,
-  plan,
   isPlanAudioArtifactPath,
-  PLAN_AUDIO_RELATIVE_PATH,
   resolvePlanAudioPath,
   planV2WithPublisher,
-  type PlanResult,
   type PlanV2Artifact,
   type PlanV2Manifest,
   type PlanV2MaterializationTarget,
@@ -46,16 +41,13 @@ import {
 import { resolveChromeExecutablePath } from "./chromium.js";
 import type {
   AssembleEvent,
-  AssembleV2Event,
   AssembleResultBody,
   CloudRunAction,
   CloudRunEvent,
   CloudRunResult,
   PlanEvent,
-  PlanV2Event,
   PlanResultBody,
   RenderChunkEvent,
-  RenderChunkV2Event,
   RenderChunkResultBody,
 } from "./events.js";
 import { type DistributedFormat, formatExtension } from "./formatExtension.js";
@@ -89,7 +81,6 @@ function getStorage(): Storage {
 export interface HandlerDeps {
   storage?: Storage;
   primitives?: {
-    plan: typeof plan;
     planV2WithPublisher?: typeof planV2WithPublisher;
     renderChunk: ChunkRenderer;
     assemble: typeof assemble;
@@ -149,31 +140,27 @@ export async function dispatch(event: CloudRunEvent, deps?: HandlerDeps): Promis
 function validatePlanProtocolShape(event: PlanEvent | RenderChunkEvent | AssembleEvent): void {
   const raw = event as unknown as Record<string, unknown>;
   const protocol = raw.PlanProtocol;
-  if (protocol !== undefined && protocol !== "v1" && protocol !== "v2") {
+  if (protocol !== undefined && protocol !== "v2") {
     const error = new Error(
-      `[handler] unsupported PlanProtocol ${JSON.stringify(protocol)}; expected "v1", "v2", or absent`,
+      `[handler] unsupported PlanProtocol ${JSON.stringify(protocol)}; expected "v2" or absent`,
     );
     error.name = "PLAN_PROTOCOL_UNSUPPORTED";
     throw error;
   }
   if (event.Action === "plan") return;
 
-  const effectiveProtocol = protocol ?? "v2";
   const hasV1Locator = typeof raw.PlanGcsUri === "string";
   const hasV2Manifest = typeof raw.PlanV2ManifestGcsUri === "string";
   const hasV2Prefix = typeof raw.PlanV2ArtifactGcsPrefix === "string";
-  const valid =
-    effectiveProtocol === "v2"
-      ? !hasV1Locator && hasV2Manifest && hasV2Prefix
-      : hasV1Locator && !hasV2Manifest && !hasV2Prefix;
+  const valid = !hasV1Locator && hasV2Manifest && hasV2Prefix;
   if (!valid) {
     const error = new Error(
-      `[handler] ${effectiveProtocol} ${event.Action} event has mixed or missing plan locators`,
+      `[handler] v2 ${event.Action} event has mixed or missing plan locators`,
     );
     error.name = "PLAN_PROTOCOL_UNSUPPORTED";
     throw error;
   }
-  if (effectiveProtocol === "v2" && event.Action === "assemble" && event.AudioGcsUri !== null) {
+  if (event.Action === "assemble" && event.AudioGcsUri !== null) {
     const error = new Error("[handler] v2 assemble audio must be materialized from the manifest");
     error.name = "PLAN_PROTOCOL_UNSUPPORTED";
     throw error;
@@ -188,7 +175,6 @@ function normalizeTerminalErrorName(error: unknown): void {
   const candidate = error as { code?: unknown; name?: string };
   if (
     candidate.code === "PLAN_PROTOCOL_UNSUPPORTED" ||
-    candidate.code === "PLAN_TOO_LARGE" ||
     candidate.code === "PLAN_V2_INTEGRITY_UNRECOVERABLE" ||
     candidate.code === "FONT_FETCH_FAILED" ||
     candidate.code === "FONT_FETCH_UNAVAILABLE" ||
@@ -266,18 +252,14 @@ function summarizeEvent(
     case "renderChunk":
       return {
         planProtocol: event.PlanProtocol ?? "v2",
-        ...(event.PlanProtocol !== "v1"
-          ? { planV2ManifestGcsUri: event.PlanV2ManifestGcsUri }
-          : { planGcsUri: event.PlanGcsUri }),
+        planV2ManifestGcsUri: event.PlanV2ManifestGcsUri,
         chunkIndex: event.ChunkIndex,
         format: event.Format,
       };
     case "assemble":
       return {
         planProtocol: event.PlanProtocol ?? "v2",
-        ...(event.PlanProtocol !== "v1"
-          ? { planV2ManifestGcsUri: event.PlanV2ManifestGcsUri }
-          : { planGcsUri: event.PlanGcsUri }),
+        planV2ManifestGcsUri: event.PlanV2ManifestGcsUri,
         chunkCount: event.ChunkGcsUris.length,
         hasAudio: event.AudioGcsUri !== null,
         outputGcsUri: event.OutputGcsUri,
@@ -300,79 +282,7 @@ function primeChrome(deps?: HandlerDeps): void {
 
 // ── Plan ────────────────────────────────────────────────────────────────────
 
-// fallow-ignore-next-line complexity
 async function handlePlan(event: PlanEvent, deps?: HandlerDeps): Promise<PlanResultBody> {
-  if (event.PlanProtocol !== "v1") {
-    return handlePlanV2(event, deps);
-  }
-  const started = Date.now();
-  const storage = deps?.storage ?? getStorage();
-  const primitive = deps?.primitives?.plan ?? plan;
-
-  // The producer's probe stage launches Chromium whenever the composition
-  // needs a runtime duration probe or has unresolved sub-compositions, so
-  // plan has to resolve Chrome the same way renderChunk does.
-  primeChrome(deps);
-
-  const work = mkdtempSync(join(deps?.tmpRoot ?? tmpdir(), "hf-cr-plan-"));
-  const projectArchive = join(work, "project.tar.gz");
-  const projectDir = join(work, "project");
-  const planDir = join(work, "plan");
-
-  try {
-    await downloadGcsObjectToFile(storage, event.ProjectGcsUri, projectArchive);
-    await untarDirectory(projectArchive, projectDir);
-
-    const config: DistributedRenderConfig = {
-      ...event.Config,
-    };
-    const result: PlanResult = await primitive(projectDir, config, planDir);
-
-    // Upload the planDir as a single tarball. The workflow cannot pass a
-    // directory-shaped artifact between steps; we serialize and rely on the
-    // consumer (renderChunk / assemble) to untar. The audio artifact lives inside
-    // planDir, so it already rides along in this tarball — every consumer
-    // (including assemble) gets it from the untar. We deliberately do NOT
-    // upload a separate audio object: it would duplicate the bytes on every
-    // plan upload and be re-downloaded + overwritten by assemble. `AudioGcsUri`
-    // stays in the result shape for wire compatibility but is null.
-    const planTar = join(work, "plan.tar.gz");
-    await tarDirectory(planDir, planTar);
-    const planTarUri = `${trimTrailingSlash(event.PlanOutputGcsPrefix)}/plan.tar.gz`;
-    const audioPath = join(planDir, PLAN_AUDIO_RELATIVE_PATH);
-    const hasAudio = existsSync(audioPath) && statSync(audioPath).size > 0;
-    await uploadFileToGcs(storage, planTar, planTarUri, "application/gzip");
-
-    return {
-      Action: "plan",
-      PlanGcsUri: planTarUri,
-      PlanHash: result.planHash,
-      ChunkCount: result.chunkCount,
-      TotalFrames: result.totalFrames,
-      Fps: result.fps,
-      Width: result.width,
-      Height: result.height,
-      Format: result.format,
-      HasAudio: hasAudio,
-      AudioGcsUri: null,
-      FfmpegVersion: result.ffmpegVersion,
-      ProducerVersion: result.producerVersion,
-      DurationMs: Date.now() - started,
-    };
-  } finally {
-    cleanupDir(work);
-  }
-}
-
-/**
- * Publish immutable v2 artifacts directly to GCS, with the manifest as the
- * final commit point. Planner-local paths never cross a worker boundary.
- */
-// fallow-ignore-next-line complexity
-async function handlePlanV2(
-  event: PlanV2Event,
-  deps?: HandlerDeps,
-): Promise<Extract<PlanResultBody, { PlanProtocol: "v2" }>> {
   const started = Date.now();
   const storage = deps?.storage ?? getStorage();
   const primitive = deps?.primitives?.planV2WithPublisher ?? planV2WithPublisher;
@@ -421,66 +331,6 @@ async function handlePlanV2(
 // fallow-ignore-next-line complexity
 async function handleRenderChunk(
   event: RenderChunkEvent,
-  deps?: HandlerDeps,
-): Promise<RenderChunkResultBody> {
-  if (event.PlanProtocol !== "v1") {
-    return handleRenderChunkV2(event, deps);
-  }
-  const started = Date.now();
-  const storage = deps?.storage ?? getStorage();
-  const primitive = deps?.primitives?.renderChunk ?? renderChunk;
-
-  primeChrome(deps);
-
-  const work = mkdtempSync(join(deps?.tmpRoot ?? tmpdir(), "hf-cr-chunk-"));
-  const planTar = join(work, "plan.tar.gz");
-  const planDir = join(work, "plan");
-
-  try {
-    await downloadGcsObjectToFile(storage, event.PlanGcsUri, planTar);
-    await untarDirectory(planTar, planDir);
-
-    // Verify the plan's hash matches what the workflow told us to render.
-    // The producer's renderChunk re-checks internally (defense-in-depth),
-    // but doing it here at the handler boundary lets us fail before paying
-    // the Chrome-launch + render cost on a misrouted chunk. Throws a typed
-    // PLAN_HASH_MISMATCH the workflow can route as non-retryable.
-    verifyPlanHash(planDir, event.PlanHash);
-
-    const chunkOutputBase = join(
-      work,
-      event.Format === "png-sequence"
-        ? `chunk-${pad(event.ChunkIndex)}`
-        : `chunk-${pad(event.ChunkIndex)}${formatExtension(event.Format)}`,
-    );
-
-    const result: ChunkResult = await primitive(planDir, event.ChunkIndex, chunkOutputBase);
-
-    const chunkUri = await uploadChunkOutput(
-      storage,
-      result,
-      event.ChunkOutputGcsPrefix,
-      event.ChunkIndex,
-    );
-
-    return {
-      Action: "renderChunk",
-      ChunkGcsUri: chunkUri,
-      ChunkIndex: event.ChunkIndex,
-      Sha256: result.sha256,
-      FramesEncoded: result.framesEncoded,
-      CaptureMode: result.captureMode,
-      DurationMs: Date.now() - started,
-    };
-  } finally {
-    cleanupDir(work);
-  }
-}
-
-/** Materialize only this chunk's verified v2 dependencies before rendering. */
-// fallow-ignore-next-line complexity
-async function handleRenderChunkV2(
-  event: RenderChunkV2Event,
   deps?: HandlerDeps,
 ): Promise<RenderChunkResultBody> {
   const started = Date.now();
@@ -551,74 +401,6 @@ async function uploadChunkOutput(
 // fallow-ignore-next-line complexity
 async function handleAssemble(
   event: AssembleEvent,
-  deps?: HandlerDeps,
-): Promise<AssembleResultBody> {
-  if (event.PlanProtocol !== "v1") {
-    return handleAssembleV2(event, deps);
-  }
-  const started = Date.now();
-  const storage = deps?.storage ?? getStorage();
-  const primitive = deps?.primitives?.assemble ?? assemble;
-
-  const work = mkdtempSync(join(deps?.tmpRoot ?? tmpdir(), "hf-cr-assemble-"));
-  const planTar = join(work, "plan.tar.gz");
-  const planDir = join(work, "plan");
-
-  try {
-    await downloadGcsObjectToFile(storage, event.PlanGcsUri, planTar);
-    await untarDirectory(planTar, planDir);
-
-    const chunkPaths = await downloadChunkObjects(storage, event.ChunkGcsUris, work, event.Format);
-
-    // Audio rides inside the plan tarball, so it's already on disk after the
-    // untar above — no separate download. Fall back to a supplied AudioGcsUri
-    // only for backward compatibility with an older Plan that uploaded it
-    // standalone.
-    let audioPath: string | null = null;
-    const planAudio = resolvePlanAudioPath(planDir) ?? join(planDir, PLAN_AUDIO_RELATIVE_PATH);
-    if (existsSync(planAudio) && statSync(planAudio).size > 0) {
-      audioPath = planAudio;
-    } else if (event.AudioGcsUri) {
-      audioPath = planAudio;
-      await downloadGcsObjectToFile(storage, event.AudioGcsUri, audioPath);
-    }
-
-    const finalOutput =
-      event.Format === "png-sequence"
-        ? join(work, "output-frames")
-        : join(work, `output${formatExtension(event.Format)}`);
-
-    const result: AssembleResult = await primitive(planDir, chunkPaths, audioPath, finalOutput, {
-      cfr: event.Cfr === true,
-    });
-
-    if (event.Format === "png-sequence") {
-      const tarball = `${finalOutput}.tar.gz`;
-      await tarDirectory(finalOutput, tarball);
-      await uploadFileToGcs(storage, tarball, event.OutputGcsUri, "application/gzip");
-    } else {
-      await uploadFileToGcs(storage, finalOutput, event.OutputGcsUri);
-    }
-
-    return {
-      Action: "assemble",
-      OutputGcsUri: event.OutputGcsUri,
-      FramesEncoded: result.framesEncoded,
-      FileSize: result.fileSize,
-      DurationMs: Date.now() - started,
-    };
-  } finally {
-    cleanupDir(work);
-  }
-}
-
-/**
- * Materialize the assembler target. Audio is declared assembler-only by the
- * v2 manifest and therefore is never downloaded by chunk workers.
- */
-// fallow-ignore-next-line complexity
-async function handleAssembleV2(
-  event: AssembleV2Event,
   deps?: HandlerDeps,
 ): Promise<AssembleResultBody> {
   const started = Date.now();
@@ -786,14 +568,15 @@ function getEventGcsUris(event: PlanEvent | RenderChunkEvent | AssembleEvent): s
     case "plan":
       return [event.ProjectGcsUri, event.PlanOutputGcsPrefix];
     case "renderChunk":
-      return event.PlanProtocol !== "v1"
-        ? [event.PlanV2ManifestGcsUri, event.PlanV2ArtifactGcsPrefix, event.ChunkOutputGcsPrefix]
-        : [event.PlanGcsUri, event.ChunkOutputGcsPrefix];
+      return [
+        event.PlanV2ManifestGcsUri,
+        event.PlanV2ArtifactGcsPrefix,
+        event.ChunkOutputGcsPrefix,
+      ];
     case "assemble":
       return [
-        ...(event.PlanProtocol !== "v1"
-          ? [event.PlanV2ManifestGcsUri, event.PlanV2ArtifactGcsPrefix]
-          : [event.PlanGcsUri]),
+        event.PlanV2ManifestGcsUri,
+        event.PlanV2ArtifactGcsPrefix,
         ...event.ChunkGcsUris,
         event.OutputGcsUri,
         event.AudioGcsUri,
@@ -865,36 +648,6 @@ function cleanupDir(dir: string): void {
   }
 }
 
-/**
- * Read the untarred planDir's `plan.json` and assert its `planHash` matches
- * what the workflow event claims. Throws on mismatch with a typed
- * `PLAN_HASH_MISMATCH` error name so the workflow's non-retryable list
- * routes it correctly. Defense-in-depth — the producer's `renderChunk` does
- * the same check internally — but performing it here lets us fail before
- * paying the Chrome-launch + per-frame capture cost on a misrouted chunk.
- */
-// fallow-ignore-next-line complexity
-function verifyPlanHash(planDir: string, expected: string): void {
-  const planJsonPath = join(planDir, "plan.json");
-  let parsed: { planHash?: unknown };
-  try {
-    parsed = JSON.parse(readFileSync(planJsonPath, "utf-8")) as { planHash?: unknown };
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    const error = new Error(`PLAN_HASH_MISMATCH: failed to read ${planJsonPath}: ${msg}`);
-    error.name = "PLAN_HASH_MISMATCH";
-    throw error;
-  }
-  const actual = parsed.planHash;
-  if (typeof actual !== "string" || actual !== expected) {
-    const error = new Error(
-      `PLAN_HASH_MISMATCH: event PlanHash=${expected} did not match plan.json planHash=${String(actual)}`,
-    );
-    error.name = "PLAN_HASH_MISMATCH";
-    throw error;
-  }
-}
-
 // ── HTTP shell ───────────────────────────────────────────────────────────────
 
 /**
@@ -922,13 +675,11 @@ const NON_RETRYABLE_ERROR_NAMES = new Set([
   // non-retryable list.
   "FormatNotSupportedInDistributedError",
   "NotMediaPayloadError",
-  "PlanTooLargeError",
   "PlanProtocolUnsupportedError",
   "PlanV2IntegrityError",
   "RenderChunkValidationError",
   "FFMPEG_VERSION_MISMATCH",
   "FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED",
-  "PLAN_TOO_LARGE",
   "BROWSER_GPU_NOT_SOFTWARE",
   "FONT_FETCH_FAILED",
   "ChromeBinaryUnavailableError",

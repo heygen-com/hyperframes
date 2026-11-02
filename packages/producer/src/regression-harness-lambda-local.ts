@@ -4,7 +4,7 @@
  * Drives the OSS `@hyperframes/aws-lambda` handler through the exact
  * sequence Step Functions invokes in production:
  *
- *     handler({ Action: "plan" })              → planDir tarball on S3
+ *     handler({ Action: "plan" })              → Plan v2 manifest + CAS artifacts on S3
  *     handler({ Action: "renderChunk" }) × N   → chunk artifacts on S3
  *     handler({ Action: "assemble" })          → final mp4 / mov / png-seq
  *
@@ -71,7 +71,6 @@ function uri(key: string): string {
 export async function runLambdaLocalRender(
   input: RunLambdaLocalInput,
 ): Promise<LambdaLocalRenderResult> {
-  const protocol = input.protocol ?? "v1";
   const s3Root = join(input.tempRoot, "s3");
   mkdirSync(s3Root, { recursive: true });
 
@@ -121,7 +120,6 @@ export async function runLambdaLocalRender(
     ...(input.format === "mp4" && input.codec !== undefined ? { codec: input.codec } : {}),
     chunkSize: input.chunkSize,
     maxParallelChunks: input.maxParallelChunks,
-    planDirSizeLimitBytes: input.planDirSizeLimitBytes,
     hdrMode: "force-sdr",
     // Forward `variables` through the event boundary so lambda-local mode
     // exercises the same variables-in-encoder.json path that real Lambda
@@ -132,22 +130,13 @@ export async function runLambdaLocalRender(
 
   // STEP A: plan
   const planPrefix = `renders/harness/${Date.now()}/`;
-  const planEvent: PlanEvent =
-    protocol === "v2"
-      ? {
-          Action: "plan",
-          PlanProtocol: "v2",
-          ProjectS3Uri: uri(projectKey),
-          PlanOutputS3Prefix: uri(planPrefix),
-          Config: config,
-        }
-      : {
-          Action: "plan",
-          PlanProtocol: "v1",
-          ProjectS3Uri: uri(projectKey),
-          PlanOutputS3Prefix: uri(planPrefix),
-          Config: config,
-        };
+  const planEvent: PlanEvent = {
+    Action: "plan",
+    PlanProtocol: "v2",
+    ProjectS3Uri: uri(projectKey),
+    PlanOutputS3Prefix: uri(planPrefix),
+    Config: config,
+  };
   const planResponse = await observe(() => handler(planEvent, deps));
   if (planResponse.Action !== "plan") {
     throw new Error(`lambda-local: plan action returned ${planResponse.Action}`);
@@ -165,19 +154,12 @@ export async function runLambdaLocalRender(
       ChunkOutputS3Prefix: uri(planPrefix),
       Format: input.format,
     };
-    const chunkEvent: RenderChunkEvent =
-      protocol === "v2"
-        ? {
-            ...shared,
-            PlanProtocol: "v2",
-            PlanV2ManifestS3Uri: requireV2PlanResult(planResult).PlanV2ManifestS3Uri,
-            PlanV2ArtifactS3Prefix: requireV2PlanResult(planResult).PlanV2ArtifactS3Prefix,
-          }
-        : {
-            ...shared,
-            PlanProtocol: "v1",
-            PlanS3Uri: requireV1PlanResult(planResult).PlanS3Uri,
-          };
+    const chunkEvent: RenderChunkEvent = {
+      ...shared,
+      PlanProtocol: "v2",
+      PlanV2ManifestS3Uri: planResult.PlanV2ManifestS3Uri,
+      PlanV2ArtifactS3Prefix: planResult.PlanV2ArtifactS3Prefix,
+    };
     const chunkResponse = await observe(() => handler(chunkEvent, deps));
     if (chunkResponse.Action !== "renderChunk") {
       throw new Error(`lambda-local: renderChunk action returned ${chunkResponse.Action}`);
@@ -202,20 +184,13 @@ export async function runLambdaLocalRender(
     OutputS3Uri: finalUri,
     Format: input.format,
   };
-  const assembleEvent: AssembleEvent =
-    protocol === "v2"
-      ? {
-          ...assembleShared,
-          PlanProtocol: "v2",
-          PlanV2ManifestS3Uri: requireV2PlanResult(planResult).PlanV2ManifestS3Uri,
-          PlanV2ArtifactS3Prefix: requireV2PlanResult(planResult).PlanV2ArtifactS3Prefix,
-          PlanHash: planResult.PlanHash,
-        }
-      : {
-          ...assembleShared,
-          PlanProtocol: "v1",
-          PlanS3Uri: requireV1PlanResult(planResult).PlanS3Uri,
-        };
+  const assembleEvent: AssembleEvent = {
+    ...assembleShared,
+    PlanProtocol: "v2",
+    PlanV2ManifestS3Uri: planResult.PlanV2ManifestS3Uri,
+    PlanV2ArtifactS3Prefix: planResult.PlanV2ArtifactS3Prefix,
+    PlanHash: planResult.PlanHash,
+  };
   const assembleResponse = await observe(() => handler(assembleEvent, deps));
   if (assembleResponse.Action !== "assemble") {
     throw new Error(`lambda-local: assemble action returned ${assembleResponse.Action}`);
@@ -238,7 +213,7 @@ export async function runLambdaLocalRender(
   }
 
   return {
-    protocol,
+    protocol: "v2",
     outputPath: input.renderedOutputPath,
     chunks,
     transferBytes,
@@ -252,24 +227,6 @@ function fakeS3Path(s3Root: string, s3Uri: string): string {
     throw new Error(`lambda-local: unexpected fake S3 URI ${s3Uri}`);
   }
   return join(s3Root, s3Uri.slice(prefix.length));
-}
-
-function requireV1PlanResult(
-  result: PlanLambdaResult,
-): Extract<PlanLambdaResult, { PlanS3Uri: string }> {
-  if (!("PlanS3Uri" in result)) {
-    throw new Error("lambda-local: v1 plan returned v2 locators");
-  }
-  return result;
-}
-
-function requireV2PlanResult(
-  result: PlanLambdaResult,
-): Extract<PlanLambdaResult, { PlanProtocol: "v2" }> {
-  if (!("PlanProtocol" in result) || result.PlanProtocol !== "v2") {
-    throw new Error("lambda-local: v2 plan did not return explicit v2 locators");
-  }
-  return result;
 }
 
 // The recursive walk is the measurement itself; extracting its two filesystem

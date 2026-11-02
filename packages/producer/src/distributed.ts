@@ -2,8 +2,9 @@
  * `@hyperframes/producer/distributed` — the distributed render primitives.
  *
  * The distributed activities are pure functions over local file paths;
- * networking + orchestration live in adapters. New integrations should use
- * Plan v2; the v1 functions remain available for compatibility.
+ * networking + orchestration live in adapters. Plan v2 is the only public
+ * transport; chunk and assemble primitives consume its materialized execution
+ * directory.
  *
  * Adopters (AWS Lambda, Cloud Run Jobs, Temporal, K8s Jobs, plain SSH):
  *
@@ -35,14 +36,12 @@ export {
   // Functions
   buildChunkSlices,
   measurePlanDirBytes,
-  plan,
   rejectUnsupportedDistributedFormat,
   resolveChunkPlan,
   buildPlanAudio,
   plansSeparateAudio,
   // Types
   type DistributedRenderConfig,
-  type PlanResult,
   type RemoteProjectFile,
   // Constants
   DEFAULT_CHUNK_SIZE,
@@ -55,14 +54,11 @@ export {
   ChunkExceedsWorkerTimeoutError,
   FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED,
   FormatNotSupportedInDistributedError,
-  PLAN_TOO_LARGE,
-  PlanTooLargeError,
 } from "./services/distributed/plan.js";
 
 // ── Plan v2 content-addressed transport ────────────────────────────────────
 export {
   createPlanV2FromExecutionPlan,
-  createPlanV2FromV1,
   getPlanV2ExecutionPlanHash,
   isPlanV2DeferredSourceArtifact,
   listPlanV2ArtifactsForTarget,
@@ -70,7 +66,6 @@ export {
   planV2,
   planV2WithPublisher,
   publishPlanV2FromExecutionPlan,
-  publishPlanV2FromV1,
   readPlanV2Manifest,
   validatePlanV2MaterializedTarget,
   PLAN_V2_INTEGRITY_UNRECOVERABLE,
@@ -152,31 +147,16 @@ export {
   type ProbeFactsOutcome,
 } from "./services/distributed/probeFacts.js";
 
-// ── Plan protocol compatibility ────────────────────────────────────────────
-// Workers validate this descriptor before consuming layout-specific
-// artifacts. Missing descriptors remain compatible with legacy v1 plans.
+// ── Plan protocol ──────────────────────────────────────────────────────────
 export {
-  CURRENT_PLAN_PROTOCOL,
-  DISTRIBUTED_RENDER_CAPABILITIES,
-  getDistributedRenderCapabilities,
-  PLAN_ARTIFACT_LAYOUT,
-  PLAN_HASH_SCHEMA,
-  PLAN_PROTOCOL_V1,
   PLAN_PROTOCOL_V2,
   PLAN_PROTOCOL_UNSUPPORTED,
-  PLAN_SCHEMA_VERSION,
   PLAN_V2_ARTIFACT_LAYOUT,
   PLAN_V2_HASH_SCHEMA,
   PLAN_V2_SCHEMA_VERSION,
   PlanProtocolUnsupportedError,
-  readPlanProtocol,
-  readPlanProtocolV1,
-  type DistributedRenderCapabilities,
-  type PlanProtocolConsumerCapabilities,
   type PlanProtocolDescriptor,
-  type PlanProtocolV1Descriptor,
   type PlanProtocolV2Descriptor,
-  type SupportedPlanProtocolDescriptor,
 } from "./services/distributed/planProtocol.js";
 
 // ── Format union ────────────────────────────────────────────────────────────

@@ -39,7 +39,8 @@ import {
   type Fps,
   isDistributedFps,
 } from "@hyperframes/core";
-import { assemble, plan, renderChunk } from "./distributed.js";
+import { assemble, renderChunk } from "./distributed.js";
+import { plan } from "./services/distributed/plan.js";
 import { PLAN_AUDIO_RELATIVE_PATH, type DistributedFormat } from "./services/distributed/shared.js";
 
 /**

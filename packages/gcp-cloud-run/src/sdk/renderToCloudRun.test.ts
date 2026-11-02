@@ -95,21 +95,6 @@ describe("renderToCloudRun", () => {
     );
   });
 
-  it("preserves explicit plan protocol v1 compatibility", async () => {
-    const fake = new FakeExecutions();
-    await renderToCloudRun({ ...opts(fake), planProtocol: "v1" });
-    const arg = JSON.parse(fake.lastArgument ?? "{}");
-    expect(arg).toEqual({
-      RenderId: "hf-render-fixed",
-      ProjectGcsUri: "gs://b/sites/abc/project.tar.gz",
-      PlanOutputGcsPrefix: "gs://b/renders/hf-render-fixed/",
-      OutputGcsUri: "gs://b/renders/hf-render-fixed/output.mp4",
-      ServiceUrl: "https://render-abc.run.app",
-      Config: config,
-      PlanProtocol: "v1",
-    });
-  });
-
   it("derives the output extension from the format", async () => {
     const fake = new FakeExecutions();
     const handle = await renderToCloudRun({

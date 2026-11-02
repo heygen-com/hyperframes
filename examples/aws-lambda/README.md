@@ -91,20 +91,17 @@ EOF
 
 The Step Functions execution kicks off Plan, fans out RenderChunk via
 the Map state, and finally Assemble. Final mp4 lands at `OutputS3Uri`.
-Plan v2 is the default when `PlanProtocol` is absent. V2 uses separate
-manifest and content-addressed artifact locators throughout the workflow and
-never places a v2 object in `PlanS3Uri`. The deprecated v1 transport remains
-available by sending `"PlanProtocol": "v1"` explicitly.
+Plan v2 is the only supported plan transport. It uses separate manifest and
+content-addressed artifact locators throughout the workflow.
 
 ### Upgrading an existing stack
 
 Pause new renders and let active Step Functions executions drain before the
 upgrade. Redeploy the Lambda handler and this state machine (or the matching
 CDK construct) from the same package version before upgrading the application
-that calls `renderToLambda`. The new SDK sends explicit v2 by default, while
-older infrastructure may default omission to v1 or lack v2 support. Keep
-passing `planProtocol: "v1"` until the infrastructure redeploy completes if
-you need a staged migration.
+that calls `renderToLambda`. The new SDK sends explicit v2, while older
+infrastructure may lack the Plan v2-only contract. Keep the application on its
+previous package version until the infrastructure redeploy completes.
 
 ## Local invocation
 
@@ -121,10 +118,8 @@ sam validate
 sam local invoke RenderFunction --event sample-events/plan.json
 ```
 
-The `sample-events/` directory ships three tiers for each action:
-`*.json` demonstrates default v2 with `PlanProtocol` omitted, `*-v1.json`
-demonstrates deprecated explicit-v1 compatibility, and `*-v2.json`
-demonstrates callers that stamp v2 explicitly. They reference fake S3 URIs —
+The `sample-events/` directory ships default-v2 events with `PlanProtocol`
+omitted and `*-v2.json` events that stamp v2 explicitly. They reference fake S3 URIs —
 useful for sanity-checking the handler's dispatch logic; not for full
 end-to-end testing (real S3 calls require credentials and a project zip to
 actually exist).
@@ -143,7 +138,6 @@ script:
 ./scripts/smoke.sh \
   --fixture mp4-h264-sdr \
   --chunk-counts 2,4,8,16 \
-  --plan-protocol both \
   --psnr-threshold 40 \
   --reserved-concurrency 8
 
@@ -159,13 +153,8 @@ per-run stack name, renders the fixture at each chunk count via the
 Step Functions state machine, PSNR-compares against the in-process
 baseline (which is git-LFS tracked under
 `packages/producer/tests/distributed/<fixture>/output/`), captures
-per-execution Step Functions history, and tears the stack down. Use
-`--plan-protocol both` to run v1 and v2 through the same deployed Lambda
-package and baseline. Each v1/v2 pair is also gated directly on per-chunk
-hashes from Step Functions history, normalized decoded RGBA frame hashes,
-decoded 48 kHz stereo s16le PCM hashes and byte counts, normalized stream
-metadata, and duration. Encoded MP4 SHA equality is reported but is
-informational unless `--require-encoded-sha-equal` is set. The script
+per-execution Step Functions history, and tears the stack down. Encoded MP4
+SHA equality can be required with `--require-encoded-sha-equal`. The script
 assigns unique function/state-machine names, uses a
 dedicated temporary SAM artifact bucket, and removes render objects,
 retained buckets, the implicit Lambda log group, and deployment artifacts
@@ -194,11 +183,9 @@ spend is roughly $0.10-$0.20 per pass before S3 transfer. Lower
 
 Outputs land under `<repo-root>/lambda-smoke-artifacts/`:
 
-- `results.json` — `planProtocol × chunkCount × wallClockMs × psnrAvgDb`
-- `semantic-comparisons.json` — direct v1/v2 semantic gate results
-- `renders/<protocol>-N<N>-output.mp4` — each rendered variant
-- `renders/<protocol>-N<N>-history.json` — full Step Functions execution history
-- `renders/v1-v2-N<N>.*` — normalized frame hashes, ffprobe metadata, and comparison JSON
+- `results.json` — `chunkCount × wallClockMs × psnrAvgDb`
+- `renders/v2-N<N>-output.mp4` — each rendered variant
+- `renders/v2-N<N>-history.json` — full Step Functions execution history
 
 Prerequisites: `aws` (v2), `sam` (≥ 1.100), `bun` (≥ 1.3), `ffmpeg`,
 `jq`, `zip`. AWS credentials come from the standard resolution chain

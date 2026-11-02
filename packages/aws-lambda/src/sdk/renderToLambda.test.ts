@@ -107,29 +107,6 @@ describe("renderToLambda", () => {
     });
   });
 
-  it("preserves explicit plan protocol v1 compatibility", async () => {
-    const sfn = new FakeSFN();
-    const s3 = new FakeS3();
-    const handle = await renderToLambda({
-      projectDir,
-      bucketName: "test-bucket",
-      stateMachineArn: "arn:aws:states:us-east-1:1234:stateMachine:hf",
-      config: baseConfig,
-      executionName: "smoke-v1",
-      planProtocol: "v1",
-      sfn: asSFNClient(sfn),
-      s3: asS3Client(s3),
-    });
-
-    expect(sfn.starts[0]?.input).toEqual({
-      ProjectS3Uri: handle.projectS3Uri,
-      PlanOutputS3Prefix: "s3://test-bucket/renders/smoke-v1/",
-      OutputS3Uri: "s3://test-bucket/renders/smoke-v1/output.mp4",
-      Config: baseConfig,
-      PlanProtocol: "v1",
-    });
-  });
-
   it("derives the file extension from config.format", async () => {
     const sfn = new FakeSFN();
     const s3 = new FakeS3();
