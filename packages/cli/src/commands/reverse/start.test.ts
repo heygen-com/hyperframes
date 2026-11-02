@@ -31,9 +31,13 @@ vi.mock("../measure/probe.js", () => ({
 const { default: start } = await import("./start.js");
 
 const SESSION = "rvs_0f8fad5b-d9cb-469f-a165-70867728950e";
-const recorded = (plan: "free" | "pro" | "unknown" = "pro", upgradeUrl?: string): ReverseStart => ({
+const recorded = (
+  plan: "free" | "pro" | "unknown" = "pro",
+  upgradeUrl?: string,
+  gate: "record" | "block" = "record",
+): ReverseStart => ({
   recorded: true,
-  session: { sessionId: SESSION, plan, gate: "record", ...(upgradeUrl ? { upgradeUrl } : {}) },
+  session: { sessionId: SESSION, plan, gate, ...(upgradeUrl ? { upgradeUrl } : {}) },
 });
 
 let root: string;
@@ -167,6 +171,32 @@ describe("reverse start", () => {
     await run("--dir", dir);
     expect(output()).toMatchObject({ ok: true, width: 1080, reverse });
     expect(() => readFileSync(join(dir, "hyperframes.json"))).toThrow();
+  });
+
+  it("stops a Free account the server blocks, with its upgrade link as the fix, after saving the session", async () => {
+    const link = "https://hyperframes.studio/pricing?feature=reverse&rs=1";
+    server.answer = recorded("free", link, "block");
+    const dir = join(root, "rebuild");
+    await expect(run("--dir", dir)).rejects.toThrow(CliRuntimeError);
+    expect(output()).toMatchObject({ ok: false, error: expect.stringContaining(link), fix: link });
+    expect(config(dir)).toMatchObject({ reverseSessionId: SESSION });
+  });
+
+  it("builds the attributed plans link when a block names none", async () => {
+    server.answer = recorded("free", undefined, "block");
+    await expect(run()).rejects.toThrow(CliRuntimeError);
+    const link = `https://plans.test/?feature=reverse&rs=${SESSION}`;
+    expect(output()).toMatchObject({ ok: false, error: expect.stringContaining(link), fix: link });
+  });
+
+  it.each<[string, ReverseStart]>([
+    ["a Pro account under block", recorded("pro", undefined, "block")],
+    ["an unknown plan under block", recorded("unknown", undefined, "block")],
+    ["a Free account under record", recorded("free")],
+  ])("goes on for %s", async (_label, answer) => {
+    server.answer = answer;
+    await run();
+    expect(output()).toMatchObject({ ok: true, width: 1080, reverse: { recorded: true } });
   });
 
   it("fails like measure probe when the video cannot be probed, before asking the server", async () => {

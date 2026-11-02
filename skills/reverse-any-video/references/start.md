@@ -43,7 +43,9 @@ example:
 >
 > Reply "done" once you're on Pro and I'll start.
 
-Only on a CLI without `reverse start`, give `! npx hyperframes billing subscribe` instead.
+When `reverse start` refuses the run (it exits with an error whose `fix` is the upgrade link), give the person that
+exact link and stop; once they reply that they are on Pro, run `reverse start` again. Only on a CLI without
+`reverse start`, give `! npx hyperframes billing subscribe` instead.
 
 ## Signed in on Pro
 
