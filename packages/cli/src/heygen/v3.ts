@@ -212,6 +212,8 @@ export interface RunOptions {
   log?: JobLog;
   /** What the call is priced at in credits, named in an out-of-credits refusal that does not say. */
   credits?: number;
+  /** A body field that also carries the sent key, for a route that dedupes on the body and ignores the header. */
+  bodyKey?: string;
 }
 
 /** Starts a job (or picks up the one this key already started) and polls `pollRoute(id)` until it ends. */
@@ -227,7 +229,10 @@ export async function runJob(
   const sent = liveKey(key, scope);
   let job: Job;
   try {
-    job = await call("POST", route, body, sent, opts.credits, auth);
+    const payload = opts.bodyKey
+      ? { ...(body as Record<string, unknown>), [opts.bodyKey]: sent }
+      : body;
+    job = await call("POST", route, payload, sent, opts.credits, auth);
   } catch (err) {
     if (err instanceof Refused && !KEEPS_KEY.has(err.status)) markFailed(sent, scope);
     throw err;

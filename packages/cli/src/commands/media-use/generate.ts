@@ -7,7 +7,7 @@ import {
   checkRequest,
   generate,
   parseMask,
-  pickVoice,
+  voiceFor,
   type GenerateRequest,
   type GenerateType,
 } from "../../heygen/generate.js";
@@ -174,8 +174,7 @@ export default defineCommand({
         bpm: num(args.bpm, "--bpm"),
         instrumental: !args.vocals,
       };
-      const speaks = type === "voice" || (type === "avatar" && !request.audio);
-      const voice = speaks ? await pickVoice(request) : undefined;
+      const voice = await voiceFor(request);
       if (voice) request.voice = voice.voice_id;
       const price = priceOf(request);
       const credits = creditsOf(price);

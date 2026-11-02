@@ -110,7 +110,8 @@ const FETCH_TIMEOUT_MS = 4000;
 //              "call /media-use" preambles). These must be present and current
 //              for any video work, so `init` / `skills update` keep them fresh.
 //   on-demand — everything else: decks, Remotion ports, video rebuilds
-//              (reverse-any-video) and optional integrations (figma).
+//              (reverse-any-video), style episodes (style-remix) and optional
+//              integrations (figma).
 //              They install when named (`hyperframes skills update <name>`),
 //              instead of being sprayed onto every machine that runs `init`.
 

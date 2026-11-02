@@ -13,10 +13,12 @@ vi.mock("../cloud/auth.js", () => ({
 }));
 
 vi.mock("../cloud/index.js", () => ({ createCloudClient: async () => ({}) }));
+const uploads = vi.hoisted(() => [] as { filename: string; contentType: string }[]);
 vi.mock("../cloud/upload.js", () => ({
-  uploadAssetViaDirectUpload: async ({ filename }: { filename: string }) => ({
-    asset_id: `asset-${filename}`,
-  }),
+  uploadAssetViaDirectUpload: async (u: { filename: string; contentType: string }) => {
+    uploads.push({ filename: u.filename, contentType: u.contentType });
+    return { asset_id: `asset-${u.filename}` };
+  },
 }));
 
 vi.stubEnv("HEYGEN_API_KEY", "k");
@@ -692,6 +694,50 @@ describe("generate", () => {
     expect(existsSync(out)).toBe(true);
     expect(creditsOf(priceOf(request))).toBe(14);
     expect(() => checkRequest({ type: "lipsync", audio, out })).toThrow("--video");
+  });
+
+  it.skipIf(!ffmpeg)("cuts out a WebM or MOV shot as video, with its key in the body", async () => {
+    const posts: Record<string, unknown>[] = [];
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (url === "https://files.test/fg.webm") return new Response(new Uint8Array([1, 2, 3]));
+      if (init?.method === "POST") posts.push(JSON.parse(String(init.body)));
+      return json({
+        data: {
+          id: "bg1",
+          status: "completed",
+          layers: { foreground: "https://files.test/fg.webm" },
+        },
+      });
+    });
+    uploads.length = 0;
+    for (const ext of ["webm", "mov"]) {
+      const video = join(project, `cut-shot.${ext}`);
+      execFileSync(ffmpeg!, [
+        "-v",
+        "error",
+        "-y",
+        "-f",
+        "lavfi",
+        "-i",
+        "color=c=red:s=64x36:d=1",
+        video,
+      ]);
+      const out = join(project, `cut-${ext}.webm`);
+      await generate({ type: "cutout", video, out });
+      await generate({ type: "cutout", video, out });
+    }
+    expect(uploads.map((u) => u.contentType)).toEqual([
+      "video/webm",
+      "video/webm",
+      "video/quicktime",
+      "video/quicktime",
+    ]);
+    // the route dedupes on the body's request_id alone, so a re-run must send the same one
+    const ids = posts.map((p) => p.request_id);
+    expect(ids[0]).toMatch(/\S/);
+    expect(ids[1]).toBe(ids[0]);
+    expect(ids[2]).toBe(ids[3]);
+    expect(ids[2]).not.toBe(ids[0]);
   });
 
   it.skipIf(!ffmpeg)("speaks a finished voice as it is, from a photo or a look", async () => {

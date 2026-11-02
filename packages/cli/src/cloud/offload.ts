@@ -531,7 +531,6 @@ interface FilePlan {
   segments?: PlayedSegment[];
 }
 
-// fallow-ignore-next-line complexity
 async function planFile(
   ctx: OffloadContext,
   path: string,
@@ -893,7 +892,7 @@ function rewriteCssEntry(absDir: string, entryPath: string, css: string, urlFor:
 
 const TEMPLATE_SCENE_RE = /(<template\b[^>]*>)([\s\S]*?)(<\/template>)/gi;
 
-// fallow-ignore-next-line complexity
+/** An entry's HTML with each <template> scene rewritten too: the runtime stamps those scenes into the page. */
 function rewriteHtmlEntry(
   absDir: string,
   entryPath: string,
@@ -908,7 +907,20 @@ function rewriteHtmlEntry(
       return next === null ? full : open + next + close;
     },
   );
+  return (
+    rewriteHtmlDocument(absDir, entryPath, html, urlFor, fileMap) ?? (html === source ? null : html)
+  );
+}
+
+function rewriteHtmlDocument(
+  absDir: string,
+  entryPath: string,
+  html: string,
+  urlFor: UrlFor,
+  fileMap: Map<string, StagedFile>,
+): string | null {
   const referrerAbsDir = resolve(absDir, dirname(entryPath));
+  // Sub-composition srcs resolve the way the renderer inlines them.
   const resolveTarget: HtmlAttributeResolver = (raw) =>
     localTarget(raw, (clean) => rewriteAssetPath(entryPath, clean, (p) => fileMap.has(p)), urlFor);
   const { document } = parseHTML(html);
@@ -925,8 +937,7 @@ function rewriteHtmlEntry(
     script.textContent = next;
     scripts = true;
   }
-  if (attrs || srcsets || styles || scripts) return document.toString();
-  return html === source ? null : html;
+  return attrs || srcsets || styles || scripts ? document.toString() : null;
 }
 
 // A plain string literal: no escapes, interpolation or line breaks.

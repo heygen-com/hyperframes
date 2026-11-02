@@ -156,6 +156,8 @@ interface Route {
   urls: string[];
   ledger: "image" | "video" | "voice" | "bgm";
   ext: string[];
+  /** The body field the route dedupes on, when it ignores the Idempotency-Key header. */
+  bodyKey?: string;
 }
 
 type Media = (path: string, kind: "image" | "audio" | "video") => Record<string, unknown>;
@@ -247,6 +249,7 @@ const ROUTES: Record<GenerateType, Route> = {
     urls: ["layers.foreground"],
     ledger: "video",
     ext: [".webm", ".mov"],
+    bodyKey: "request_id",
   },
   avatar: {
     path: "/v3/videos",
@@ -377,13 +380,14 @@ async function uploaded(paths: string[]): Promise<Map<string, string>> {
   if (!paths.length) return ids;
   const { createCloudClient } = await import("../cloud/index.js");
   const { uploadAssetViaDirectUpload } = await import("../cloud/upload.js");
+  const { getMimeType } = await import("@hyperframes/studio-server");
   const client = await createCloudClient();
   for (const path of paths) {
     const asset = await uploadAssetViaDirectUpload({
       client,
       bytes: new Uint8Array(readFileSync(path)),
       filename: basename(path),
-      contentType: extname(path).toLowerCase() === ".mp4" ? "video/mp4" : "audio/mpeg",
+      contentType: getMimeType(path),
       idempotencyKey: randomUUID(),
     });
     ids.set(path, asset.asset_id);
@@ -469,7 +473,7 @@ function fillMasks(path: string, masks: Mask[], work: string): string {
  * HeyGen answers a 16:9 request at 1344x768 (1.75:1). The result is cropped, centred, to the requested ratio
  * (1344x756) rather than stretched; returns a note on what was done, or nothing when it already fits.
  */
-export function fitAspect(out: string, aspect: string): string | undefined {
+function fitAspect(out: string, aspect: string): string | undefined {
   const [aw, ah] = aspect.split(":").map(Number);
   if (!aw || !ah) return;
   const { width, height } = probeVideo(out);
@@ -546,6 +550,11 @@ function checkGuide(r: Pick<GenerateRequest, "motion" | "allowCuts">): void {
 /** What the real call would refuse, checked without sending anything: `--plan` prices only a request that would run.
  *  The route's body runs with a stand-in for the media, so its required flags and conflicts are checked as sent. */
 const VOICE_ID = /^[0-9a-f]{32}$/i;
+
+/** The voice a request speaks in, picked only when it reads a script: an avatar given --audio keeps that voice. */
+export async function voiceFor(r: GenerateRequest): Promise<Voice | undefined> {
+  return r.type === "voice" || (r.type === "avatar" && !r.audio) ? pickVoice(r) : undefined;
+}
 
 export async function pickVoice(r: GenerateRequest): Promise<Voice> {
   if (r.voice && VOICE_ID.test(r.voice)) return { voice_id: r.voice, name: r.voice };
@@ -632,6 +641,7 @@ export async function generate(
       onWait: (j) => onWait?.(j.status),
       timeoutMs: 30 * 60_000,
       credits,
+      bodyKey: route.bodyKey,
     });
     const url = urlOf(job, route.urls);
     if (!url)

@@ -152,6 +152,38 @@ describe("runJob", () => {
     expect(keys).toEqual(["hf-broke", "hf-broke-1"]);
   });
 
+  it("puts the key in the body for a route that dedupes there, and moves it only past a failed job", async () => {
+    const jobs = new Map<string, string>();
+    const sent: string[] = [];
+    let status = "completed";
+    let lose = false;
+    vi.stubGlobal("fetch", async (_url: string, init: RequestInit) => {
+      if (init.method !== "POST") return reply(200, { data: { id: "j", status } });
+      // like /v3/background-removals: the header is ignored, the body's request_id picks the job
+      const id = String(JSON.parse(String(init.body)).request_id);
+      sent.push(id);
+      if (!jobs.has(id)) jobs.set(id, `job-${jobs.size}`);
+      if (lose) return reply(408, { message: "timeout" });
+      return reply(200, { data: { id: jobs.get(id), status } });
+    });
+    const go = () =>
+      runJob("/v3/background-removals", { layers: ["foreground"] }, "hf-cut", (id) => id, {
+        bodyKey: "request_id",
+        intervalMs: 1,
+      });
+    lose = true;
+    await expect(go()).rejects.toThrow();
+    lose = false;
+    await go();
+    expect(jobs.size).toBe(1);
+    status = "failed";
+    await expect(go()).rejects.toThrow();
+    status = "completed";
+    await go();
+    expect(sent).toEqual(["hf-cut", "hf-cut", "hf-cut", "hf-cut-1"]);
+    expect(jobs.size).toBe(2);
+  });
+
   it.each([401, 403, 408, 409, 425, 429])(
     "keeps the key after a %i, which says nothing about the job",
     async (status) => {
