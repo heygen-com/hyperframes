@@ -96,9 +96,7 @@ export async function checkForUpdate(force?: boolean): Promise<UpdateCheckResult
 /** Whether the background check should ask the registry: not opted out, and no fresh safe cache. */
 export function updateCheckDue(config = readConfig()): boolean {
   if (updateCheckDisabled()) return false;
-  if (!config.lastUpdateCheck || !config.latestVersion || !isSafeVersion(config.latestVersion)) {
-    return true;
-  }
+  if (!config.lastUpdateCheck || !safeCachedVersion(config.latestVersion)) return true;
   const fresh = Date.now() - new Date(config.lastUpdateCheck).getTime() < CHECK_INTERVAL_MS;
   return !fresh;
 }
@@ -118,8 +116,10 @@ function fallbackResult(cachedLatest?: string): UpdateCheckResult {
   };
 }
 
+/** A cached latest that is safe and not older than the running CLI: an older one predates this install. */
 function safeCachedVersion(value: unknown): string | undefined {
-  return typeof value === "string" && isSafeVersion(value) ? value : undefined;
+  if (typeof value !== "string" || !isSafeVersion(value)) return undefined;
+  return isNewerSemver(VERSION, value) ? undefined : value;
 }
 
 /**
