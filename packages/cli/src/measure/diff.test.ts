@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   cellsOutside,
+  cutsBeyondMotion,
   diffVideos,
   longRuns,
   pickedFrames,
@@ -180,6 +181,28 @@ describe("person gates", () => {
     const original = lettered(place);
     expect(carriedFrame(original, lettered(place), place, w, h, undefined)).toBeGreaterThan(0.9);
     expect(carriedFrame(original, place, place, w, h, undefined)).toBeLessThan(0.1);
+  });
+});
+
+describe("extra cuts", () => {
+  const cut = (frame: number, change: number) => ({ frame, change, frames: 1 });
+  const diffs = Array.from({ length: 100 }, (_, i) => (i >= 40 && i <= 50 ? 20 : 2));
+
+  it("reads a change no stronger than the original's motion as the same fast move", () => {
+    const { extra, fast } = cutsBeyondMotion([cut(45, 25)], diffs, [], 24);
+    expect(extra).toEqual([]);
+    expect(fast.map((c) => c.frame)).toEqual([45]);
+  });
+
+  it("keeps a real cut inside a fast move, and one where the original is still", () => {
+    const { extra } = cutsBeyondMotion([cut(45, 60), cut(80, 14)], diffs, [], 24);
+    expect(extra.map((c) => c.frame)).toEqual([45, 80]);
+  });
+
+  it("keeps a cut a few frames off the original's, whose own change is not motion", () => {
+    const atCut = diffs.map((d, i) => (i === 70 ? 90 : d));
+    const { extra } = cutsBeyondMotion([cut(74, 80)], atCut, [cut(70, 90)], 24);
+    expect(extra.map((c) => c.frame)).toEqual([74]);
   });
 });
 

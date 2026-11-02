@@ -15,7 +15,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
-import { classifiedCuts, confirmsCut, frameChanges, signatures } from "./cuts.js";
+import { type Cut, classifiedCuts, confirmsCut, frameChanges, signatures } from "./cuts.js";
 import {
   drawnFrames,
   drawnVerdict,
@@ -65,6 +65,7 @@ const ALL_CELLS = Array.from({ length: GRID * GRID }, (_, c) => c);
 const WORST_GAP_S = 0.5;
 const SHEET_W = 960;
 const CUT_SLACK = 1;
+const OVER_MOTION = 1.5;
 // A segment's cell is left to its regenerated region when the region covers more than this share of it.
 const REGION_CELL_SHARE = 0.1;
 // Missing content: cells read at this width, from at most this many frames.
@@ -458,6 +459,24 @@ function outline(px: Uint8Array, w: number, [x, y, bw, bh]: number[], t = 3) {
     }
 }
 
+/** Yours' unmatched cuts that stand out from the original's own motion around them, its cuts left out of that motion. */
+export function cutsBeyondMotion(
+  unmatched: Cut[],
+  diffs: number[],
+  original: Cut[],
+  fps: number,
+): { extra: Cut[]; fast: Cut[] } {
+  const radius = Math.round(fps / 4);
+  const atCut = (i: number) => original.some((c) => i >= c.frame - 1 && i <= c.frame + c.frames);
+  const motion = (frame: number) => {
+    const from = Math.max(1, frame - radius);
+    const around = diffs.slice(from, frame + radius + 1);
+    return Math.max(0, ...around.filter((_, i) => !atCut(from + i)));
+  };
+  const beyond = (c: Cut) => c.change > OVER_MOTION * motion(c.frame);
+  return { extra: unmatched.filter(beyond), fast: unmatched.filter((c) => !beyond(c)) };
+}
+
 function cutReport(ref: Clip, yours: Clip, k0: number, fps: number): CutReport {
   const [fa, fb] = [ref, yours].map((c) => signatures(c.input, c.filters).frames);
   const [da, db] = [frameChanges(fa!), frameChanges(fb!)];
@@ -471,14 +490,18 @@ function cutReport(ref: Clip, yours: Clip, k0: number, fps: number): CutReport {
     if (hit) used.add(hit.frame);
     else if (!(cut.soft && confirmsCut(db!, cut))) missing.push(cut.frame);
   }
-  const extra = b.filter((g) => !used.has(g.frame) && !(g.soft && confirmsCut(da!, g)));
+  const unmatched = b.filter((g) => !used.has(g.frame) && !(g.soft && confirmsCut(da!, g)));
+  const { extra, fast } = cutsBeyondMotion(unmatched, da!, a, fps);
   const t = (f: number) => round((k0 + f) / fps, 3);
   return {
     reference: a.map((c) => t(c.frame)),
     yours: b.map((c) => t(c.frame)),
     missing: missing.map(t),
     extra: extra.map((c) => t(c.frame)),
-    not_cuts: all.flatMap((c) => (c.kind ? [{ t: t(c.frame), kind: c.kind }] : [])),
+    not_cuts: [
+      ...all.flatMap((c) => (c.kind ? [{ t: t(c.frame), kind: c.kind }] : [])),
+      ...fast.map((c) => ({ t: t(c.frame), kind: "fast" as const })),
+    ],
     pass: missing.length === 0 && extra.length === 0,
   };
 }
