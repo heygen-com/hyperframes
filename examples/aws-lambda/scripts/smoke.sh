@@ -31,7 +31,6 @@
 #   --region <region>          (default: $AWS_REGION or us-east-1)
 #   --profile <name>           (default: $AWS_PROFILE, otherwise the AWS
 #                               default profile resolution chain)
-#   --plan-protocol <v1|v2|both> (default: v2)
 #   --keep-stack               (skip `sam delete` at the end)
 #   --skip-build               (skip the ZIP rebuild; use the existing one)
 #
@@ -54,8 +53,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 SAM_DIR="$SCRIPT_DIR/.."
-# shellcheck source=./_semantic-compare.sh
-source "$SCRIPT_DIR/_semantic-compare.sh"
 # shellcheck source=./_s3-purge.sh
 source "$SCRIPT_DIR/_s3-purge.sh"
 # shellcheck source=./_smoke-config.sh
@@ -82,7 +79,6 @@ SMOKE_RUN_ID="${HYPERFRAMES_SMOKE_RUN_ID:-$(hf_new_smoke_run_id)}"
 STACK_NAME="${STACK_NAME:-hyperframes-lambda-smoke-${SMOKE_RUN_ID}}"
 AWS_REGION="${AWS_REGION:-us-east-1}"
 AWS_PROFILE="${AWS_PROFILE:-}"
-PLAN_PROTOCOL="${PLAN_PROTOCOL:-v2}"
 KEEP_STACK="false"
 SKIP_BUILD="false"
 REQUIRE_ENCODED_SHA_EQUAL="${REQUIRE_ENCODED_SHA_EQUAL:-false}"
@@ -110,7 +106,6 @@ Flags:
   --stack-name <name>           SAM stack name (default: hyperframes-lambda-smoke-<unique-run-id>)
   --region <region>             AWS region (default: $AWS_REGION or us-east-1)
   --profile <name>              AWS profile (default: $AWS_PROFILE)
-  --plan-protocol <v1|v2|both>  plan transport(s) to compare (default: v2)
   --reserved-concurrency <N>    Lambda Map MaxConcurrency cap (default: 16)
   --keep-stack                  skip `sam delete` at the end (manual teardown later)
   --require-encoded-sha-equal   also gate byte-identical encoded MP4 output
@@ -138,7 +133,6 @@ while [ $# -gt 0 ]; do
     --stack-name)     STACK_NAME="$2"; shift 2 ;;
     --region)         AWS_REGION="$2"; shift 2 ;;
     --profile)        AWS_PROFILE="$2"; shift 2 ;;
-    --plan-protocol)  PLAN_PROTOCOL="$2"; shift 2 ;;
     --keep-stack)     KEEP_STACK="true"; shift ;;
     --require-encoded-sha-equal) REQUIRE_ENCODED_SHA_EQUAL="true"; shift ;;
     --skip-build)     SKIP_BUILD="true"; shift ;;
@@ -148,10 +142,6 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-if [ "$PLAN_PROTOCOL" != "v1" ] && [ "$PLAN_PROTOCOL" != "v2" ] && [ "$PLAN_PROTOCOL" != "both" ]; then
-  echo "ERROR: --plan-protocol must be v1, v2, or both." >&2
-  exit 1
-fi
 PROJECT_NAME=$(hf_derive_project_name "$STACK_NAME")
 
 # Export AWS_REGION + AWS_PROFILE so `aws` and `sam` inherit them via the
@@ -519,12 +509,7 @@ RESULTS_JSON="$ARTIFACT_DIR/results.json"
 echo "[]" > "$RESULTS_JSON"
 
 IFS=',' read -ra COUNTS <<< "$CHUNK_COUNTS"
-if [ "$PLAN_PROTOCOL" = "both" ]; then
-  PROTOCOLS=(v1 v2)
-else
-  PROTOCOLS=("$PLAN_PROTOCOL")
-fi
-for PROTOCOL in "${PROTOCOLS[@]}"; do
+PROTOCOL="v2"
 for N in "${COUNTS[@]}"; do
   EXEC_NAME="smoke-$PROTOCOL-N$N-$(date +%s)"
   OUTPUT_KEY="renders/$EXEC_NAME/output.mp4"
@@ -623,41 +608,6 @@ for N in "${COUNTS[@]}"; do
      '. += [{planProtocol: $protocol, chunkCount: $n, wallClockMs: $wall, psnrAvgDb: ($psnr|tonumber), output: "renders/\($protocol)-N\($n)-output.mp4", history: "renders/\($protocol)-N\($n)-history.json"}]' \
      "$RESULTS_JSON" > "$RESULTS_JSON.tmp" && mv "$RESULTS_JSON.tmp" "$RESULTS_JSON"
 done
-done
-
-# ── 6. Direct v1 ↔ v2 semantic equivalence ────────────────────────────────
-SEMANTIC_FAILED=0
-SEMANTIC_RESULTS_JSON="$ARTIFACT_DIR/semantic-comparisons.json"
-echo "[]" > "$SEMANTIC_RESULTS_JSON"
-if [ "$PLAN_PROTOCOL" = "both" ]; then
-  for N in "${COUNTS[@]}"; do
-    V1_OUTPUT="$ARTIFACT_DIR/renders/v1-N$N-output.mp4"
-    V2_OUTPUT="$ARTIFACT_DIR/renders/v2-N$N-output.mp4"
-    V1_HISTORY="$ARTIFACT_DIR/renders/v1-N$N-history.json"
-    V2_HISTORY="$ARTIFACT_DIR/renders/v2-N$N-history.json"
-    SEMANTIC_PREFIX="$ARTIFACT_DIR/renders/v1-v2-N$N"
-    COMPARE_STATUS=0
-    if hf_compare_render_semantics \
-      "$V1_OUTPUT" "$V2_OUTPUT" "$SEMANTIC_PREFIX" "$V1_HISTORY" "$V2_HISTORY"; then
-      echo "PASS: v1/v2 semantic equivalence at N=$N"
-    else
-      COMPARE_STATUS=$?
-      if [ ! -f "${SEMANTIC_PREFIX}.json" ]; then
-        jq -n --argjson status "$COMPARE_STATUS" \
-          '{semanticEqual: false, comparisonError: true, comparisonExitCode: $status}' \
-          > "${SEMANTIC_PREFIX}.json"
-      fi
-      echo "FAIL: v1/v2 semantic comparison at N=$N exited $COMPARE_STATUS (see ${SEMANTIC_PREFIX}.json)" >&2
-      SEMANTIC_FAILED=$((SEMANTIC_FAILED + 1))
-    fi
-    jq --argjson n "$N" --slurpfile comparison "${SEMANTIC_PREFIX}.json" \
-      '. += [($comparison[0] + {chunkCount: $n})]' \
-      "$SEMANTIC_RESULTS_JSON" > "$SEMANTIC_RESULTS_JSON.tmp" &&
-      mv "$SEMANTIC_RESULTS_JSON.tmp" "$SEMANTIC_RESULTS_JSON"
-    jq -r '"  chunks=\(.chunks.equal // "error") decoded-video=\(.video.equal // "error") audio=\(.audio.equal // "error") metadata=\(.metadata.equal // "error") duration=\(.duration.equal // "error") encoded-sha=\(.encoded.equal // "error") (informational unless gated)"' \
-      "${SEMANTIC_PREFIX}.json"
-  done
-fi
 
 # ── 7. Gate on baseline PSNR threshold ────────────────────────────────────
 FAILED=0
@@ -680,10 +630,6 @@ jq -r '.[] | [.planProtocol, .chunkCount, .wallClockMs, .psnrAvgDb] | @tsv' "$RE
 echo
 echo "Artifacts: $ARTIFACT_DIR"
 
-if [ "$SEMANTIC_FAILED" -gt 0 ]; then
-  echo "FAILED ($SEMANTIC_FAILED v1/v2 semantic mismatches)" >&2
-  cleanup_and_exit 6
-fi
 if [ "$FAILED" -gt 0 ]; then
   echo "FAILED ($FAILED renders below PSNR threshold)" >&2
   cleanup_and_exit 5

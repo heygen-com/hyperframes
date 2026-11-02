@@ -89,16 +89,15 @@ const progress = await getRenderProgress({ executionArn: handle.executionArn });
 console.log(progress.status, progress.overallProgress, progress.costs.displayCost);
 ```
 
-Plan v2 is the default because workers fetch manifest-selected
-content-addressed artifacts. The SDK sends explicit v2 when `planProtocol` is
-omitted. Deprecated v1 compatibility remains available by passing
-`planProtocol: "v1"`.
+Plan v2 is the only supported distributed plan transport. Workers fetch
+manifest-selected content-addressed artifacts, and the SDK sends explicit v2
+without requiring a protocol option.
 
 <Warning>
   For an existing installation, pause new renders and drain active Step
   Functions executions. Redeploy the Lambda handler and SAM/CDK state machine
   from the same package version before upgrading the application SDK. Older
-  infrastructure may default omission to v1 or lack v2 support.
+  infrastructure may lack the Plan v2-only request and locator contract.
 </Warning>
 
 `renderToLambda()` validates the distributed render config before starting the Step Functions execution, so invalid dimensions, formats, chunk sizes, or payload sizes fail synchronously.

@@ -20,7 +20,7 @@
 import { randomUUID } from "node:crypto";
 import { DescribeStateMachineCommand, SFNClient, StartExecutionCommand } from "@aws-sdk/client-sfn";
 import { S3Client } from "@aws-sdk/client-s3";
-import type { LambdaPlanProtocol, SerializableDistributedRenderConfig } from "../events.js";
+import type { SerializableDistributedRenderConfig } from "../events.js";
 import { formatExtension } from "../formatExtension.js";
 import { formatS3Uri } from "../s3Transport.js";
 import { SITE_MANIFEST_INVALID } from "../siteManifest.js";
@@ -39,11 +39,6 @@ export interface RenderToLambdaOptions {
   onNotice?: (message: string) => void;
   /** Validated `SerializableDistributedRenderConfig` (no logger / abortSignal). */
   config: SerializableDistributedRenderConfig;
-  /**
-   * Distributed plan transport. Defaults to `"v2"`. Select `"v1"`
-   * explicitly only for deprecated compatibility with the monolithic plan.
-   */
-  planProtocol?: LambdaPlanProtocol;
   /** S3 bucket from the SAM stack output (`RenderBucketName`). */
   bucketName: string;
   /** State machine ARN from the SAM stack output (`RenderStateMachineArn`). */
@@ -80,8 +75,20 @@ export interface RenderHandle {
   startedAt: string;
 }
 
+function rejectUnsupportedLegacyPlanProtocol(opts: object): void {
+  const planProtocol = Reflect.get(opts, "planProtocol");
+  if (planProtocol === undefined || planProtocol === "v2") return;
+
+  const error = new Error(
+    `[renderToLambda] planProtocol is no longer configurable; expected "v2" or absent, got ${JSON.stringify(planProtocol)}`,
+  );
+  error.name = "PLAN_PROTOCOL_UNSUPPORTED";
+  throw error;
+}
+
 // fallow-ignore-next-line complexity
 export async function renderToLambda(opts: RenderToLambdaOptions): Promise<RenderHandle> {
+  rejectUnsupportedLegacyPlanProtocol(opts);
   validateDistributedRenderConfig(opts.config);
 
   if (!opts.bucketName) {
@@ -125,7 +132,7 @@ export async function renderToLambda(opts: RenderToLambdaOptions): Promise<Rende
     PlanOutputS3Prefix: planOutputS3Prefix,
     OutputS3Uri: outputS3Uri,
     Config: opts.config,
-    PlanProtocol: opts.planProtocol ?? "v2",
+    PlanProtocol: "v2",
   };
 
   // Reject oversize input client-side. Step Functions Standard caps the

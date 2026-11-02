@@ -7,35 +7,26 @@ Cloud Workflows adapter for HyperFrames distributed rendering.
 ## Layout
 
 ```text
-scripts/smoke.sh        Owner-isolated real-GCP deploy, render, parity, cleanup
-sample-events/          Default-v2, explicit-v1, and explicit-v2 request examples
+scripts/smoke.sh        Owner-isolated real-GCP deploy, render, validation, cleanup
+sample-events/          Default-v2 and explicit-v2 request examples
 ```
 
 The Terraform module and Cloud Workflows definition live in
 `packages/gcp-cloud-run/terraform/`.
 
-## Protocol rollout
+## Plan transport
 
-The workflow defaults to Plan v2 when `PlanProtocol` is absent. Deprecated v1
-compatibility remains available only when the caller explicitly sends
-`PlanProtocol: "v1"`.
-
-V1 and v2 use disjoint plan locators:
-
-- v1: `PlanGcsUri`
-- v2: `PlanV2ManifestGcsUri` and `PlanV2ArtifactGcsPrefix`
-
-The workflow validates that the plan response matches the selected protocol
-before starting chunk fan-out. It never silently falls back from v2 to v1.
+Plan v2 is the only supported plan transport. The workflow uses
+`PlanV2ManifestGcsUri` and `PlanV2ArtifactGcsPrefix` and validates the plan
+response before starting chunk fan-out.
 Deploy the workflow only with a Cloud Run image whose handler implements the
 matching v2 request/response contract.
 
 For an existing installation, pause new renders and drain active workflow
 executions. Redeploy the Cloud Run image and workflow from the same package
 version before upgrading the application SDK. The new SDK sends explicit v2;
-older workflows may still default omission to v1 or lack v2 support. Keep
-passing `planProtocol: "v1"` until the infrastructure redeploy completes if
-you need a staged migration.
+older workflows may lack the Plan v2-only contract. Keep the application on
+its previous package version until the infrastructure redeploy completes.
 
 ## Prerequisites
 
@@ -55,27 +46,18 @@ Plan v2 is the normal smoke path:
   --region us-central1
 ```
 
-Explicitly run v1/v2 end-to-end parity at one or more chunk sizes:
+Run one or more chunk sizes:
 
 ```bash
 ./scripts/smoke.sh \
   --project YOUR_GCP_PROJECT \
   --region us-central1 \
-  --protocols v1,v2 \
   --chunk-sizes 30,15,10 \
-  --owner plan-v2-parity
+  --owner plan-v2-smoke
 ```
 
-For each chunk size, parity requires exact equality of:
-
-- decoded RGBA video frames
-- decoded 48 kHz stereo PCM audio
-- normalized `ffprobe` stream and duration metadata
-
-The encoded MP4 hash and byte count are recorded but are not the equality
-oracle because mux metadata can differ without changing decoded output.
-Each render is also PSNR-compared with the checked-in in-process fixture
-baseline.
+Each render is PSNR-compared with the checked-in in-process fixture baseline.
+The encoded MP4 hash and byte count are recorded as additional evidence.
 
 ## Isolation and cleanup
 
@@ -112,7 +94,6 @@ Evidence lands under:
 ```text
 scripts/gcp-smoke-artifacts/<owner-hash>/
   results.json
-  parity.json
   renders/
   terraform/
   terraform-data/
@@ -131,11 +112,6 @@ The sample events mirror the request bodies sent by Cloud Workflows:
 curl -sX POST localhost:8080/ \
   -H 'content-type: application/json' \
   --data @sample-events/plan.json | jq .
-
-# Deprecated explicit v1 compatibility
-curl -sX POST localhost:8080/ \
-  -H 'content-type: application/json' \
-  --data @sample-events/plan-v1.json | jq .
 
 # Explicit v2 for callers that always stamp the protocol
 curl -sX POST localhost:8080/ \

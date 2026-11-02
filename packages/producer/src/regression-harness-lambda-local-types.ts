@@ -14,8 +14,6 @@ import type { DistributedFormat } from "./services/distributed/shared.js";
 
 /** Inputs for {@link runLambdaLocalRender}. Same contract as `runDistributedSimulatedRender`. */
 export interface RunLambdaLocalInput {
-  /** Explicit plan transport. Omitted only for legacy regression callers, where it defaults to v1. */
-  protocol?: "v1" | "v2";
   projectDir: string;
   tempRoot: string;
   renderedOutputPath: string;
@@ -35,13 +33,11 @@ export interface RunLambdaLocalInput {
   codec?: "h264" | "h265";
   chunkSize?: number;
   maxParallelChunks?: number;
-  /** Test-only low cap for exercising typed v1 PLAN_TOO_LARGE behavior. */
-  planDirSizeLimitBytes?: number;
   variables?: Record<string, unknown>;
 }
 
 export interface LambdaLocalRenderResult {
-  protocol: "v1" | "v2";
+  protocol: "v2";
   outputPath: string;
   chunks: Array<{
     index: number;

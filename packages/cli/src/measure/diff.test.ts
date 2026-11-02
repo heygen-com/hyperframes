@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -7,6 +7,8 @@ import {
   diffVideos,
   longRuns,
   pickedFrames,
+  projectRate,
+  rateWarning,
   regionRoi,
   selectFilter,
   wholeFrameCuts,
@@ -206,6 +208,33 @@ describe("extra cuts", () => {
   });
 });
 
+describe("frame rate", () => {
+  const original = { fps: 24, fpsText: "24" } as Parameters<typeof rateWarning>[0];
+
+  it("warns when yours runs at another rate than the original", () => {
+    expect(rateWarning(original, 30)).toContain("yours runs at 30 fps and the original at 24");
+    expect(rateWarning(original, 30)).toContain('data-fps="24"');
+    expect(rateWarning(original, 24)).toBeUndefined();
+    expect(
+      rateWarning({ fps: 29.97, fpsText: "30000/1001" } as typeof original, 30000 / 1001),
+    ).toBe(undefined);
+  });
+
+  it("reads a project's rate from its root, and 30 when the root has none", () => {
+    const project = (name: string, attrs: string) => {
+      const path = join(dir, name);
+      mkdirSync(path, { recursive: true });
+      writeFileSync(
+        join(path, "index.html"),
+        `<!doctype html><div data-composition-id="main" ${attrs}></div>`,
+      );
+      return path;
+    };
+    expect(projectRate(project("rate-24", 'data-fps="24"'))).toBe(24);
+    expect(projectRate(project("rate-none", ""))).toBe(30);
+  });
+});
+
 describe("frame picks", () => {
   it("keeps a range's frames end-exclusive and renumbers them on the original's clock", () => {
     expect(pickedFrames({ kind: "range", k0: 3, k1: 6 }, 90)).toEqual([3, 4, 5]);
@@ -221,6 +250,12 @@ describe("frame picks", () => {
 describe.skipIf(noTools)("diffVideos", () => {
   loadOpenCvFirst();
   const ref = noTools ? "" : clip("ref.mp4", REF_ARGS);
+
+  it("warns about a render at another frame rate", async () => {
+    const yours = clip("rate-24.mp4", ["-i", ref, "-r", "24"]);
+    const r = await diffVideos({ reference: ref, yours, outDir: join(dir, "rate") });
+    expect(r.warnings.join(" ")).toContain("yours runs at 24 fps");
+  });
 
   it("passes a video against itself", async () => {
     const r = await diffVideos({ reference: ref, yours: ref, outDir: join(dir, "same") });
