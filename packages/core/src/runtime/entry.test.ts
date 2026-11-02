@@ -475,6 +475,34 @@ describe("runtime entry", () => {
       expect(armed(...due)).toEqual([true, true, true, true, true]);
     });
 
+    it("refreshes queued prefetch priorities after a composition timing edit", async () => {
+      spyLoad();
+      servePreview();
+      const root = mountRoot();
+      const music = timed(root, "audio", "0.5");
+      music.setAttribute("data-duration", "3600");
+      Object.defineProperty(music, "duration", { configurable: true, value: 3600 });
+      const [first, second, third, movedEarlier] = videos(root, "0.8", "1", "1.2", "1.3");
+
+      await evaluateRuntime();
+      expect(armed(music, first, second, third, movedEarlier)).toEqual([
+        true,
+        true,
+        true,
+        false,
+        false,
+      ]);
+
+      movedEarlier.setAttribute("data-start", "0.6");
+      window.__player?.seek(0.01);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      Object.defineProperty(first, "readyState", { configurable: true, value: 3 });
+      first.dispatchEvent(new Event("canplay"));
+
+      expect(armed(movedEarlier)).toEqual([true]);
+      expect(armed(third)).toEqual([false]);
+    });
+
     it("keeps the long-track prefetch wave ordered across canplay settlements", async () => {
       spyLoad();
       servePreview();

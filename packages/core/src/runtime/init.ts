@@ -3047,9 +3047,20 @@ export function initSandboxRuntimeModular(): void {
   const waitingForSlot = new Map<HTMLMediaElement, WaitingPrefetch>();
   let waitingForSlotOrder: WaitingPrefetch[] = [];
   let waitingForSlotHead = 0;
+  let waitingForSlotRevision = -1;
   const comparePrefetchStart = (left: WaitingPrefetch, right: WaitingPrefetch) => {
     const difference = left.start - right.start;
     return Number.isNaN(difference) ? 0 : difference;
+  };
+  const refreshWaitingForSlotOrder = (revision: number) => {
+    if (waitingForSlotRevision === revision) return;
+    waitingForSlotOrder = Array.from(waitingForSlot.values(), ({ element }) => ({
+      element,
+      start: resolveAbsoluteMediaStartSeconds(element),
+    })).sort(comparePrefetchStart);
+    waitingForSlotHead = 0;
+    for (const entry of waitingForSlotOrder) waitingForSlot.set(entry.element, entry);
+    waitingForSlotRevision = revision;
   };
   const compactWaitingForSlot = () => {
     const remaining = waitingForSlotOrder.length - waitingForSlotHead;
@@ -3094,6 +3105,7 @@ export function initSandboxRuntimeModular(): void {
     fillPrefetchSlots();
   };
   const fillPrefetchSlots = () => {
+    withTimingResolver(() => refreshWaitingForSlotOrder(readCompositionTimingRevision()));
     while (prefetching.size < PREFETCH_SLOTS && waitingForSlotHead < waitingForSlotOrder.length) {
       const entry = waitingForSlotOrder[waitingForSlotHead++]!;
       if (waitingForSlot.get(entry.element) !== entry) continue;
@@ -3305,6 +3317,7 @@ export function initSandboxRuntimeModular(): void {
     timingRevision?: number,
     playedFromSeconds?: number,
   ) => {
+    if (timingRevision !== undefined) refreshWaitingForSlotOrder(timingRevision);
     // While the scene the playhead landed in mounts, the page keeps what it last drew.
     if (moveSceneWindow(currentTime)) return;
     const rootComp = resolveRootCompositionElement();
