@@ -36,8 +36,6 @@ export function readElementPlaybackStart(el: Element): number {
 
 const HOLD_END_EVENTS = ["seeked", "loadeddata", "error", "emptied", "abort"] as const;
 export const HOLD_CAP_MS = 5000;
-// Past this a WebKit audio element that has not moved is stuck on a seek;
-// a slow start only lags 0.15 to 0.4 s.
 const WEBKIT_STUCK_AUDIO_SECONDS = 1;
 const releaseHeldVideo = new WeakMap<HTMLMediaElement, () => void>();
 
