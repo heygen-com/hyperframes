@@ -17,9 +17,9 @@ const ffmpegPresent = (() => {
   }
 })();
 
-// Chromium opens six HTTP/1.1 connections to a host at most. A <video> reads an open-ended range until its buffer
-// is full and then keeps the response open, so eight of them on one file used to pin every connection and leave
-// the next request to the host unanswered.
+// Chromium opens at most six HTTP/1.1 connections to a host, and a <video> keeps its response open once its buffer
+// is full, so eight of them on one file, each served to EOF, would pin every connection and leave the next request
+// to the host unanswered.
 const CLIPS = 8;
 const PINNED = 6;
 const ANSWER_WITHIN_MS = 10_000;
