@@ -391,6 +391,7 @@ describe("runtime entry", () => {
 
   it("redraws a paused scene by stepping its timeline off the current time and back after a WebGL restore", async () => {
     const root = mountRoot();
+    timed(root, "div", "0");
     const timeline = window.__timelines.main!;
     await evaluateRuntime();
     window.__player!.seek(2);
