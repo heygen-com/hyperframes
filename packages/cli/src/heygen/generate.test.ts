@@ -14,6 +14,12 @@ vi.mock("../cloud/auth.js", () => ({
 
 vi.stubEnv("HEYGEN_API_KEY", "k");
 
+const account = vi.hoisted(() => ({ scope: "acct" as string | null }));
+vi.mock("./v3.js", async (load) => ({
+  ...(await load<typeof import("./v3.js")>()),
+  senderScope: async () => account.scope,
+}));
+
 const {
   checkRequest,
   foldShort,
@@ -714,6 +720,7 @@ describe("pickVoice", () => {
     });
   afterEach(() => {
     vi.useRealTimers();
+    account.scope = "acct";
     catalog = [voice("a", "Lin"), voice("b", "Wei")];
     asked.length = 0;
     posts.length = 0;
@@ -744,7 +751,9 @@ describe("pickVoice", () => {
   // The command's own path: pick, then generate; a timeout, a reordered catalog, the same command.
   const runOnce = async (r: GenerateRequest) => {
     const request = { ...r };
-    request.voice = (await pickVoice(request)).voice_id;
+    const picked = await pickVoice(request).catch((err: unknown) => err);
+    if (picked instanceof Error) return picked;
+    request.voice = (picked as { voice_id: string }).voice_id;
     vi.useFakeTimers({ toFake: ["Date", "setTimeout"] });
     const run = generate(request).catch((err: unknown) => err);
     await vi.advanceTimersByTimeAsync(31 * 60_000);
@@ -790,4 +799,38 @@ describe("pickVoice", () => {
       },
     );
   }
+  const shot = (name: string): GenerateRequest => ({
+    type: "voice",
+    out: join(project, `assets/${name}.mp3`),
+    voice: "Chinese",
+    script: "你好",
+  });
+
+  it("refuses before any pick or POST while the account is unknown, then picks once it is", async () => {
+    heygen();
+    account.scope = null;
+    expect(await runOnce(shot("who-later"))).toMatchObject({
+      message: expect.stringContaining("did not say which account"),
+    });
+    expect(posts).toHaveLength(0);
+    expect(asked).toEqual([]);
+    account.scope = "acct";
+    await runOnce(shot("who-later"));
+    expect(posts.map((p) => p.body.voice_id)).toEqual(["a".repeat(32)]);
+  });
+
+  it("refuses a re-run while the account is unknown instead of starting another job", async () => {
+    heygen();
+    await runOnce(shot("who-lost"));
+    account.scope = null;
+    catalog = [voice("b", "Wei"), voice("a", "Lin")];
+    expect(await runOnce(shot("who-lost"))).toMatchObject({
+      message: expect.stringContaining("did not say which account"),
+    });
+    expect(posts).toHaveLength(1);
+    account.scope = "acct";
+    await runOnce(shot("who-lost"));
+    expect(posts[1]!.key).toBe(posts[0]!.key);
+    expect(posts[1]!.body).toEqual(posts[0]!.body);
+  });
 });

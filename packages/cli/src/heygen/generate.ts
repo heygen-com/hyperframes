@@ -492,10 +492,16 @@ export async function pickVoice(r: GenerateRequest): Promise<Voice> {
       `--voice <language>, e.g. --voice English, for HeyGen's first voice in it, or a voice id: ${listed}`,
     );
   }
+  const scope = await senderScope();
+  if (!scope)
+    throw new Fix(
+      "HeyGen did not say which account this sign-in is, so a voice picked now could differ on a re-run",
+      "run the same command again in a minute; pass --voice <voice id> to skip the pick",
+    );
   const project = projectOf(dirname(resolve(r.out)));
   const request = idempotencyKey("voice-pick", [
     JSON.stringify({ ...r, out: resolve(r.out) }),
-    (await senderScope()) ?? "",
+    scope,
   ]);
   const kept = keptVoice(project, request);
   if (kept) return kept;
