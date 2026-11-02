@@ -641,9 +641,11 @@ jobs:
         with:
           chrome: "true"
           engine: "true"
+          headless-shell: "true"
       - if: steps.plan.outputs.any == 'true'
         env:
           HYPERFRAMES_BROWSER_PATH: ${{ steps.workspace.outputs.chrome-path }}
+          HF_BEGINFRAME_SHELL: ${{ steps.workspace.outputs.headless-shell-path }}
         run: node scripts/ci/flake-gate.mjs --base "${{ steps.plan.outputs.base }}"
 
   test:

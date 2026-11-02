@@ -71,6 +71,7 @@ import {
 } from "./browserManager.js";
 import {
   beginFrameCapture,
+  forgetBeginFrameCapture,
   ensureRenderFrameSiblings,
   getCdpSession,
   pageContentExceedsCaptureHeight,
@@ -4504,6 +4505,7 @@ async function captureFrameSurface(
         interval: session.beginFrameIntervalMs,
         noDisplayUpdates: false,
       });
+      forgetBeginFrameCapture(page);
       session.beginFrameSeekPresented = true;
     }
     const result = await beginFrameCapture(
