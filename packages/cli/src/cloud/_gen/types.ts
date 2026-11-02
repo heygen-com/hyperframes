@@ -36,7 +36,7 @@ export interface AssetId {
    */
   type: "asset_id";
   /**
-   * HeyGen asset ID from the asset upload endpoint
+   * HeyGen asset ID from an asset upload or import; not a third-party file ID.
    */
   asset_id: string;
 }
@@ -50,7 +50,9 @@ export interface AssetUrl {
    */
   type: "url";
   /**
-   * Publicly accessible HTTPS URL for the asset
+   * Public http(s) URL HeyGen can download without auth or redirects. Not a
+   * local or sandbox path (/mnt/data/..., file://, sandbox:); upload such files
+   * and pass asset_id.
    */
   url: string;
 }
@@ -180,10 +182,6 @@ export interface CreateHyperframesRenderRequest {
    * Omit to use the preset's CRF.
    */
   crf?: number | null;
-  /**
-   * Set 'off' to disable page motion blur. Omit or null to keep behavior.
-   */
-  page_motion_blur?: "off" | null;
   /**
    * Output resolution tier. Defaults to '1080p'. Pass '4k' for 4K renders
    * (billed at 1.5x).
