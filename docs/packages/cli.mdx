@@ -1518,9 +1518,10 @@ run started and saves the session HeyGen returns in the project's
 `hyperframes.json`; [`cloud render`](#hyperframes-cloud) then sends that session
 with the render. It then prints the video's [`measure probe`](#measure) JSON,
 with a `reverse` field: whether you are signed in, the plan (`free`, `pro`, or
-`null` when unknown), the session, and on Free the `upgrade_url` that credits a
+`null` when unknown), the session, and on Free the `upgrade_url` and the
+`subscribe_command` ([`billing subscribe`](#billing) with the feature and session) that credit a
 purchase to this run. It stops the run only when HeyGen blocks it for a Free
-account: it then exits non-zero with that upgrade link. Signed out, offline, or
+account: it then exits non-zero with that command. Signed out, offline, or
 on a server without the route, it skips the session and still probes.
 
 ```bash
@@ -2272,6 +2273,8 @@ npx hyperframes billing top-up --needed 180
 | Flag        | Description                                                                |
 | ----------- | -------------------------------------------------------------------------- |
 | `--needed`  | Credits the waiting step needs; `top-up` waits until the balance covers it |
+| `--feature` | The feature that sent the person here, so a purchase is credited to it |
+| `--session` | The run to credit the purchase to, with `--feature` |
 | `--tool`    | The step that is waiting, shown on the page                                |
 | `--timeout` | Seconds to wait (default 600)                                              |
 

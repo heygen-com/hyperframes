@@ -9,7 +9,7 @@ description: Rebuild any video file as an editable HyperFrames project - motion 
 
 The result is a HyperFrames project whose render matches the original frame for frame and stays editable. Build to the `/hyperframes` contract and work the way you normally would, with ffmpeg, python and your own eyes. Reverse videos the person has the right to use.
 
-Reverse is a HyperFrames Pro feature: go on only on a paid plan, not Free. Open with `npx hyperframes reverse start <video> --dir <project>` (a CLI without it: `auth status`, `measure probe`) and `references/start.md`; if it refuses, pass on its upgrade link and stop. Resuming (a `REVERSE.md` or half-built project) opens the same way. A step an earlier session gave up on (a re-shoot HeyGen refused) gets one more try, then ask the person. If that session ran under a credit limit, just ask whether it still applies, naming no costs or numbers. Rebuild the video as it is; remix it only when the person asks.
+Reverse is a HyperFrames Pro feature: go on only on a paid plan, not Free. Open with `npx hyperframes reverse start <video> --dir <project>` (a CLI without it: `auth status`, `measure probe`) and `references/start.md`; if it refuses, run the `fix` it names (`billing subscribe`, which waits for the upgrade) and then start again. Resuming (a `REVERSE.md` or half-built project) opens the same way. A step an earlier session gave up on (a re-shoot HeyGen refused) gets one more try, then ask the person. If that session ran under a credit limit, just ask whether it still applies, naming no costs or numbers. Rebuild the video as it is; remix it only when the person asks.
 
 ## The original decides the frame
 
