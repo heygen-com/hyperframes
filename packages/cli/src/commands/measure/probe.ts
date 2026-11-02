@@ -65,7 +65,6 @@ function normalize(info: VideoInfo, out: string): { path: string; fps: string } 
   return { path: out, fps };
 }
 
-/** What `measure probe` prints; `reverse start` prints the same for the video it opens. */
 // fallow-ignore-next-line complexity
 export function probeReport(video: string, normalizeTo?: string): object {
   const info = probeVideo(video);

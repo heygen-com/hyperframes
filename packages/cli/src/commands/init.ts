@@ -277,8 +277,7 @@ function getSharedTemplateDir(): string {
   return resolveAssetDir(["..", "templates", "_shared"], ["templates", "_shared"]);
 }
 
-// `reverse start --dir` may create the folder holding only its hyperframes.json; init keeps that file.
-function holdsOtherFiles(dir: string): boolean {
+function holdsFilesBesideProjectConfig(dir: string): boolean {
   return existsSync(dir) && readdirSync(dir).some((name) => name !== "hyperframes.json");
 }
 
@@ -862,7 +861,7 @@ export default defineCommand({
         failCommand();
       }
 
-      if (holdsOtherFiles(destDir)) {
+      if (holdsFilesBesideProjectConfig(destDir)) {
         console.error(c.error(`Directory already exists and is not empty: ${name}`));
         failCommand();
       }
@@ -1044,7 +1043,7 @@ export default defineCommand({
       failCommand();
     }
 
-    if (holdsOtherFiles(destDir)) {
+    if (holdsFilesBesideProjectConfig(destDir)) {
       const overwrite = await clack.confirm({
         message: `Directory ${c.accent(name)} already exists and is not empty. Overwrite?`,
         initialValue: false,

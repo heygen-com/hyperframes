@@ -854,8 +854,6 @@ interface SubmitOptions {
   reverseSessionId: string | undefined;
 }
 
-// Only `reverse start` writes the id, after the server answered it, so a server without the
-// field (it rejects unknown ones) never receives it.
 type RenderRequestBody = CreateHyperframesRenderRequest & { reverse_session_id?: string };
 
 function reverseSessionIdOf(project: ProjectInputSource): string | undefined {
