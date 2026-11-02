@@ -110,6 +110,22 @@ async function waitForVideoReadiness(frame: Frame): Promise<void> {
   }
 }
 
+async function readPlaybackState(frame: Frame) {
+  return frame.evaluate(() => ({
+    playerPresent: window.__player !== undefined,
+    isPlaying: window.__player?.isPlaying?.() ?? null,
+    time: window.__player?.getTime?.() ?? null,
+    videos: Array.from(document.querySelectorAll<HTMLVideoElement>("video[data-track-index]")).map(
+      (video) => ({
+        scene: `tile-${video.dataset.trackIndex ?? "unknown"}`,
+        paused: video.paused,
+        readyState: video.readyState,
+        currentTime: video.currentTime,
+      }),
+    ),
+  }));
+}
+
 async function installFrameSamplers(
   frame: Frame,
 ): Promise<{ videoCount: number; targetFps: number }> {
@@ -229,17 +245,6 @@ async function run(): Promise<void> {
         await waitForPlayerAssetsReady(page, 60_000);
         const frame = await getFixtureFrame(page);
         await waitForVideoReadiness(frame);
-        const { videoCount, targetFps } = await installFrameSamplers(frame);
-        if (videoCount !== 16) {
-          throw new Error(
-            `[windows-dropped-frames] expected 16 sampled videos, installed ${videoCount}`,
-          );
-        }
-        if (!Number.isFinite(targetFps) || targetFps <= 0) {
-          throw new Error(
-            `[windows-dropped-frames] fixture has invalid target frame rate: ${targetFps}`,
-          );
-        }
 
         await page.evaluate(() => {
           const player = document.getElementById("player") as
@@ -253,28 +258,22 @@ async function run(): Promise<void> {
             timeout: PLAY_CONFIRM_TIMEOUT_MS,
           });
         } catch (error) {
-          const state = await frame.evaluate(() => ({
-            playerPresent: window.__player !== undefined,
-            isPlaying: window.__player?.isPlaying?.() ?? null,
-            time: window.__player?.getTime?.() ?? null,
-            videos: Array.from(
-              document.querySelectorAll<HTMLVideoElement>("video[data-track-index]"),
-            ).map((video) => ({
-              scene: `tile-${video.dataset.trackIndex ?? "unknown"}`,
-              paused: video.paused,
-              readyState: video.readyState,
-              currentTime: video.currentTime,
-            })),
-          }));
+          const state = await readPlaybackState(frame);
           throw new Error(
             `[windows-dropped-frames] playback did not start: ${JSON.stringify(state)} (${error instanceof Error ? error.message : String(error)})`,
           );
         }
-        await frame.evaluate(() => {
-          for (const samples of Object.values(window.__droppedFrameSamples ?? {}))
-            samples.length = 0;
-          if (window.__longAnimationFrames !== null) window.__longAnimationFrames = [];
-        });
+        const { videoCount, targetFps } = await installFrameSamplers(frame);
+        if (videoCount !== 16) {
+          throw new Error(
+            `[windows-dropped-frames] expected 16 sampled videos, installed ${videoCount}`,
+          );
+        }
+        if (!Number.isFinite(targetFps) || targetFps <= 0) {
+          throw new Error(
+            `[windows-dropped-frames] fixture has invalid target frame rate: ${targetFps}`,
+          );
+        }
 
         const startedAt = performance.now();
         await new Promise((resolvePromise) => setTimeout(resolvePromise, SAMPLE_MS));
@@ -286,7 +285,15 @@ async function run(): Promise<void> {
             longAnimationFrames: window.__longAnimationFrames,
           };
         });
-        const scenes = summarizeFrames(result.samples, sampleDurationMs, targetFps);
+        let scenes: ReturnType<typeof summarizeSceneFrames>;
+        try {
+          scenes = summarizeFrames(result.samples, sampleDurationMs, targetFps);
+        } catch (error) {
+          const state = await readPlaybackState(frame);
+          throw new Error(
+            `[windows-dropped-frames] frame sampling failed: ${JSON.stringify(state)}; sampleCounts=${JSON.stringify(Object.fromEntries(Object.entries(result.samples).map(([scene, samples]) => [scene, samples.length])))} (${error instanceof Error ? error.message : String(error)})`,
+          );
+        }
         const longFrames = result.longAnimationFrames ?? null;
         const mainThread =
           longFrames === null
