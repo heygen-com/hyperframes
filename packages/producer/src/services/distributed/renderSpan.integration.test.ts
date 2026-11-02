@@ -90,6 +90,26 @@ describe("renderSpan", () => {
     expect(Math.min(...oneFrameLate)).toBeGreaterThan(worstMatch);
   }, 240_000);
 
+  it("renders a span whose plan is larger than the Lambda plan cap", async () => {
+    const spanPath = join(root, "over-cap.mp4");
+    const { framesEncoded } = await renderSpan(
+      projectDir,
+      {
+        fps: 30,
+        width: 160,
+        height: 90,
+        format: "mp4",
+        quality: "draft",
+        hdrMode: "force-sdr",
+        planDirSizeLimitBytes: 1024,
+      },
+      { startSeconds: 0, endSeconds: 0.5 },
+      spanPath,
+    );
+    expect(framesEncoded).toBe(15);
+    expect(existsSync(spanPath)).toBe(true);
+  }, 240_000);
+
   it("stops when it is cancelled after planning, with no output written", async () => {
     const scratch = join(root, "scratch");
     mkdirSync(scratch, { recursive: true });

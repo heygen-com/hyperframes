@@ -69,10 +69,15 @@ export async function renderSpan(
     const planDir = join(workDir, "plan");
     const partsDir = join(workDir, "parts");
     mkdirSync(partsDir, { recursive: true });
-    // The span captures here in the browser a full render uses, so the container-only font guards do not apply.
+    // The span captures here in the browser a full render uses, so the container-only font guards and the Lambda-sized plan cap do not apply.
     const planned = await plan(
       projectDir,
-      { ...config, rejectOnSystemFonts: false, failClosedFontFetch: false },
+      {
+        ...config,
+        rejectOnSystemFonts: false,
+        failClosedFontFetch: false,
+        planDirSizeLimitBytes: Number.MAX_SAFE_INTEGER,
+      },
       planDir,
       { chunksCarryAudio: true },
     );
