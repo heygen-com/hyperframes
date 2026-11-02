@@ -1057,12 +1057,21 @@
             "href": "/product-updates"
           },
           {
-            "label": "Download the Studio app",
+            "label": "Download the app",
             "href": "https://hyperframes.studio/studio/download?src=docs-footer"
           },
           {
             "label": "GitHub",
             "href": "https://github.com/heygen-com/hyperframes"
+          }
+        ]
+      },
+      {
+        "header": "Made by HeyGen",
+        "items": [
+          {
+            "label": "heygen.com",
+            "href": "https://www.heygen.com"
           }
         ]
       }
