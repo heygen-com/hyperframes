@@ -26,7 +26,7 @@ It prints one line, `resolved <id> → <path> (<type>, <metadata>)`. List reusab
 | Voiceover (`voice`) | HeyGen Voice Turbo (signed in) | Other HeyGen voices, voice cloning | `npx hyperframes tts` (Kokoro on device) |
 | A presenter speaking | | Avatar video (`--type video`) | Local LTX for generic clips, if installed |
 | Transcripts | `npx hyperframes transcribe` (Parakeet or whisper) | | |
-| Cutouts | | `heygen background-removal` | `npx hyperframes remove-background` |
+| Cutouts | | Video: `--type cutout` | `npx hyperframes remove-background` |
 | Grades, LUTs, looks | `npx hyperframes media-treatment` | | |
 
 **Sign in.** Every time a request needs a HeyGen model or the catalog, run `npx hyperframes auth status` first. Not signed in: tell the person in one line that sign-in is free and gives Voice Turbo, the music catalog and asset search, ask them to type an exclamation mark and `npx hyperframes auth login` in the prompt, and wait until they say it is done. Use local tools only when the person asks, not as a fallback.
