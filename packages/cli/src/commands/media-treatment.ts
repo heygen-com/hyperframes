@@ -32,7 +32,7 @@ import { c } from "../ui/colors.js";
 import { CliUsageError, failCommand, failUsage } from "../utils/commandResult.js";
 import { readOptionalString } from "../utils/pathArgs.js";
 import { projectCompositionFiles } from "../utils/mountedCompositions.js";
-import { readJsonFlag } from "../utils/jsonFlag.js";
+import { readJsonFileText, readJsonFlag } from "../utils/jsonFlag.js";
 import { resolveProject } from "../utils/project.js";
 import { withMeta } from "../utils/updateCheck.js";
 import { analyzeMediaTreatment } from "./media-treatment-analysis.js";
@@ -588,6 +588,7 @@ export function resolveMediaTreatmentSource(
 }
 
 function parseGrading(
+  projectDir: string,
   raw: string | undefined,
   apply: boolean,
   clear: boolean,
@@ -604,7 +605,9 @@ function parseGrading(
     throw new CliUsageError("Use --apply with --grading <json> or --clear");
   }
   if (raw === undefined) throw new CliUsageError("--apply requires --grading <json>");
-  return readJsonFlag("--grading", raw);
+  return readJsonFlag("--grading", raw, {
+    readFile: (path) => readJsonFileText(resolve(projectDir, path)),
+  });
 }
 
 function mutationVerb(action: "apply" | "clear", changed: boolean, dryRun: boolean): string {
@@ -724,7 +727,7 @@ async function prepareMutation(args: MediaTreatmentCommandArgs) {
   const result = applyMediaTreatmentToHtml(readFileSync(filePath, "utf8"), {
     selector,
     selectorIndex,
-    grading: parseGrading(readOptionalString(args.grading), apply, clear, dryRun),
+    grading: parseGrading(project.dir, readOptionalString(args.grading), apply, clear, dryRun),
     clear,
   });
   const lintResult = await lintHyperframeHtml(result.html);
