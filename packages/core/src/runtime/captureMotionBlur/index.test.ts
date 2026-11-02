@@ -659,6 +659,18 @@ const HIDE = "data-hf-motion-blur-hide";
 const ONLY = "data-hf-motion-blur-only";
 const MOVER = "data-hf-motion-blur-mover";
 
+describe("a canvas inside the composition", () => {
+  // Chrome drops a nested canvas's layout offset from drawElementImage unless it has a transform.
+  it("gets a transform while captured, one the composition's own translate overrides", () => {
+    installHtmlInCanvas();
+    const { h } = movingHost({ "data-motion-blur": "on" });
+    initCaptureMotionBlur(h);
+    void paintCaptureMotionBlur(0.1, PLAY);
+    const rules = [...document.head.querySelectorAll("style")].map((s) => s.textContent).join("\n");
+    expect(rules).toContain(`:where([data-hf-motion-blur="capture"] canvas) { translate: 0 0 0; }`);
+  });
+});
+
 describe("two-phase frames", () => {
   it("hides the movers for a background capture, then reveals them and settles", async () => {
     installHtmlInCanvas();
