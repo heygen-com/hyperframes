@@ -1,6 +1,57 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { Page } from "puppeteer-core";
+import { captureFrameToBuffer, createCaptureSession } from "./frameCapture.js";
+import { pageScreenshotCapture } from "./screenshotService.js";
 import { releaseEndedWebglContexts } from "./webglRelease.js";
+
+const ended = { start: 0, end: 3 };
+const lostByCapture: string[] = [];
+const hiddenEndedClip = {
+  hasAttribute: (n: string) => n === "data-hf-clip-hidden",
+  parentElement: null,
+};
+
+vi.mock("./browserManager.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./browserManager.js")>()),
+  resolveBrowserGpuMode: async () => "hardware",
+  acquireBrowser: async () => ({
+    captureMode: "screenshot",
+    browser: {
+      version: async () => "Chrome/150.0.0.0",
+      newPage: async () => ({
+        mainFrame: () => ({}),
+        evaluateOnNewDocument: async () => {},
+        setViewport: async () => {},
+        evaluate: async (fn: unknown, ...args: unknown[]) => {
+          if (typeof fn !== "function" || !String(fn).includes("__hf_gl_contexts"))
+            return undefined;
+          const ctx = {
+            getExtension: () => ({ loseContext: () => lostByCapture.push("3d") }),
+          };
+          const previous = globalThis.window;
+          Object.assign(globalThis, {
+            window: {
+              __hf_gl_contexts: [{ canvas: { ...hiddenEndedClip }, ctx }],
+              __hf: { clipWindow: () => ended },
+            },
+          });
+          try {
+            return await (fn as (...a: unknown[]) => unknown)(...args);
+          } finally {
+            Object.assign(globalThis, { window: previous });
+          }
+        },
+      }),
+    },
+  }),
+}));
+vi.mock("./screenshotService.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./screenshotService.js")>()),
+  pageScreenshotCapture: vi.fn(),
+}));
 
 type Node = {
   hasAttribute: (n: string) => boolean;
@@ -91,5 +142,29 @@ describe("releaseEndedWebglContexts", () => {
       ),
     ).toBe(0);
     expect(lost).toEqual([]);
+  });
+});
+
+describe("capturing a frame", () => {
+  it("a WebGL canvas in a hidden clip whose window has ended keeps its context (never loseContext)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-webgl-keep-"));
+    try {
+      vi.mocked(pageScreenshotCapture).mockResolvedValue(Buffer.from("frame"));
+      const capture = await createCaptureSession(
+        "http://localhost:0",
+        dir,
+        { width: 320, height: 180, fps: { num: 30, den: 1 }, format: "jpeg" },
+        null,
+        { forceScreenshot: true },
+      );
+      capture.isInitialized = true;
+      lostByCapture.length = 0;
+
+      await captureFrameToBuffer(capture, 0, 5);
+
+      expect(lostByCapture).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

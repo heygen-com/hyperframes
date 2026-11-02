@@ -150,6 +150,7 @@ export interface CaptureOptions {
   recordReferenceBackground?: (read: () => Promise<ReferenceBackground>) => Promise<void>;
   width: number;
   height: number;
+  onSubTimelineScriptFailure?: (warnings: readonly CaptureWarning[]) => void;
   /**
    * Producer-resolved composition duration (seconds) — the data-duration
    * clamp actually rendered, which can differ from the page's raw
