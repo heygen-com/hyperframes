@@ -49,6 +49,7 @@ jobs:
       contents: read
     outputs:
       code: ${{ steps.release.outputs.release_only == 'true' && 'false' || steps.filter.outputs.code }}
+      dropped_frame_diagnostic: ${{ steps.filter.outputs.dropped_frame_diagnostic }}
     steps:
       # Force git-based change detection instead of the pull_request REST API.
       # The API path can fail the workflow on transient listFiles timeouts
@@ -88,6 +89,8 @@ jobs:
               - "!packages/player/src/**"
               - "!packages/studio/src/**"
               - "!packages/*/README.md"
+            dropped_frame_diagnostic:
+              - "packages/player/tests/perf/**"
 
   preflight:
     name: Preflight (lint + format)
@@ -233,6 +236,41 @@ jobs:
           bun run --filter @hyperframes/studio build
           bun run --filter @hyperframes/inspector build
           bun run --filter @hyperframes/cli build
+
+      - name: Set up Chrome for the Windows dropped-frame diagnostic
+        if: needs.changes.outputs.dropped_frame_diagnostic == 'true'
+        id: setup-perf-chrome
+        uses: browser-actions/setup-chrome@c785b87e244131f27c9f19c1a33e2ead956ab7ce # v1
+        with:
+          chrome-version: stable
+
+      - name: Generate the heavy H.264 fixture
+        if: needs.changes.outputs.dropped_frame_diagnostic == 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $mediaDir = "packages/player/tests/perf/fixtures/_media"
+          New-Item -ItemType Directory -Force -Path $mediaDir | Out-Null
+          ffmpeg -hide_banner -loglevel error -y `
+            -f lavfi -i "testsrc2=size=1920x1080:rate=30:duration=12" `
+            -c:v libx264 -preset veryfast -pix_fmt yuv420p -b:v 8M -g 60 -movflags +faststart `
+            "$mediaDir/h264-1080.mp4"
+
+      - name: Measure dropped frames per video scene on SwiftShader
+        if: needs.changes.outputs.dropped_frame_diagnostic == 'true'
+        working-directory: packages/player
+        env:
+          PUPPETEER_EXECUTABLE_PATH: ${{ steps.setup-perf-chrome.outputs.chrome-path }}
+        run: bun run tests/perf/windows-dropped-frames.ts
+
+      - name: Upload Windows dropped-frame measurements
+        if: always() && needs.changes.outputs.dropped_frame_diagnostic == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-dropped-frames-${{ github.run_id }}
+          path: packages/player/tests/perf/results/windows-dropped-frames.json
+          if-no-files-found: warn
+          retention-days: 7
 
       # -----------------------------------------------------------------
       # Prove the PR #336 fix: hyperframes doctor exercises findFFmpeg()
