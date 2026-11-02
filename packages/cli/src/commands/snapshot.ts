@@ -5,7 +5,6 @@ import {
   downloadToTemp,
   evaluateHfDiagnostic,
   extractMediaMetadata,
-  inputPathArg,
   isHdrColorSpace,
   sdrCanvasColourFilters,
 } from "@hyperframes/engine";
@@ -451,7 +450,7 @@ export async function probeContainingSourceFrameSeek(
         ffprobe,
         [
           ...["-v", "error", "-select_streams", "v:0", "-read_intervals", readIntervals],
-          ...["-show_entries", entries, "-of", "json", inputPathArg(videoPath)],
+          ...["-show_entries", entries, "-of", "json", "--", videoPath],
         ],
         { timeoutMs: FFMPEG_EXTRACT_TIMEOUT_MS, maxBufferBytes: 32 * 1024 * 1024 },
       );

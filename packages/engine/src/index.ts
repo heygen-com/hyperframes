@@ -367,7 +367,6 @@ export {
   buildProbeFactsText,
   probeMediaProfile,
   runFfprobe,
-  inputPathArg,
   analyzeKeyframeIntervals,
   type VideoMetadata,
   type AudioMetadata,

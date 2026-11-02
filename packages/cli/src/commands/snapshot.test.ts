@@ -1128,40 +1128,6 @@ describe("extractVideoFrameToBuffer", () => {
     }
   });
 
-  it.skipIf(noProbe || process.platform === "win32")(
-    "reads a frame through an ffprobe that rejects the -- argument",
-    async () => {
-      const dir = mkdtempSync(join(tmpdir(), "hf-snapshot-old-ffprobe-"));
-      try {
-        const clip = join(dir, "clip.mp4");
-        execFileSync(ffmpeg!, [
-          ...[
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-f",
-            "lavfi",
-            "-i",
-            "testsrc=d=2:r=24:s=160x90",
-          ],
-          ...["-pix_fmt", "yuv420p", clip],
-        ]);
-        const strict = join(dir, "ffprobe-strict");
-        writeFileSync(
-          strict,
-          `#!/bin/sh\nfor a in "$@"; do [ "$a" = "--" ] && { echo "Unable to find a suitable output format for '--'" >&2; exit 1; }; done\nexec "${ffprobe}" "$@"\n`,
-          { mode: 0o755 },
-        );
-        vi.stubEnv("HYPERFRAMES_FFPROBE_PATH", strict);
-        const frame = await extractVideoFrameToBuffer(clip, 1);
-        expect(frame?.subarray(1, 4).toString()).toBe("PNG");
-      } finally {
-        vi.unstubAllEnvs();
-        rmSync(dir, { recursive: true, force: true });
-      }
-    },
-  );
-
   it.skipIf(noProbe)("selects frames in a TS with frequent open-GOP keyframes", async () => {
     const dir = mkdtempSync(join(tmpdir(), "hf-snapshot-open-gop-"));
     try {

@@ -1524,11 +1524,11 @@ describe("ffprobe option separator", () => {
 
     const args = calls[0]?.args ?? [];
     const filePathIndex = args.indexOf(filePath);
-    expect(filePathIndex).toBe(args.length - 1);
-    expect(args).not.toContain("--");
+    expect(filePathIndex).toBeGreaterThan(0);
+    expect(args[filePathIndex - 1]).toBe("--");
   });
 
-  it("names the input without -- for audio and keyframe probes too", async () => {
+  it("uses -- for audio and keyframe probes too", async () => {
     const { spawn, calls } = createSpawnSpy([
       {
         kind: "exit",
@@ -1560,24 +1560,14 @@ describe("ffprobe option separator", () => {
       videoStreamStartSeconds: 0,
     });
 
-    expect(calls.map((call) => (call.args ?? []).at(-1))).toEqual([
-      "/tmp/-audio.wav",
-      "/tmp/-audio.wav",
-      "/tmp/-video.mp4",
+    // Per call, not a flattened count. A total of 3 is satisfied by one call
+    // emitting three `--` and two emitting none — i.e. it cannot fail for
+    // misplacement, which is the shape of bug this exists to catch.
+    expect(calls.map((call) => (call.args ?? []).slice(-2))).toEqual([
+      ["--", "/tmp/-audio.wav"],
+      ["--", "/tmp/-audio.wav"],
+      ["--", "/tmp/-video.mp4"],
     ]);
-    expect(calls.every((call) => !(call.args ?? []).includes("--"))).toBe(true);
-  });
-
-  it("keeps a relative path with a leading dash from reading as an option", async () => {
-    const { spawn, calls } = createSpawnSpy([{ kind: "exit", code: 0, stdout: "{}" }]);
-    vi.resetModules();
-    vi.doMock("child_process", () => ({ spawn }));
-    const { runFfprobe } = await import("./ffprobe.js");
-
-    await runFfprobe("-intro.mp4", ["-of", "json"]);
-
-    expect(calls[0]?.args?.at(-1)).toBe("./-intro.mp4");
-    expect(calls[0]?.args).not.toContain("--");
   });
 });
 
