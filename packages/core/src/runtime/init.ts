@@ -165,7 +165,8 @@ import { stillStandsIn, unheldPoster, unproxiedSrc } from "./proxySrc";
 import { applyVariableBindings, unproxiedMediaSrc } from "./applyVariableBindings";
 import { createColorGradingRuntime, type RuntimeColorGradingApi } from "./colorGrading";
 import { COLOR_GRADING_AUTHORED_OPACITY_ATTR } from "../colorGrading";
-import { initVfx, paintVfx } from "./vfx";
+import { initVfx, paintVfx, rebuildLostVfx } from "./vfx";
+import { watchSceneWebglContexts } from "./webglContextRecovery";
 import {
   captureMotionBlurBusy,
   initCaptureMotionBlur,
@@ -4778,6 +4779,13 @@ export function initSandboxRuntimeModular(): void {
   // Per-pixel effect chains: compile once here, repaint on every seek below.
   initVfx(document.body, state.canonicalFps);
   initMotionBlur();
+  registerRuntimeCleanup(
+    watchSceneWebglContexts(() => {
+      rebuildLostVfx(document.body);
+      // A playing transport repaints on its next tick; a paused one needs this seek in place.
+      if (!clock.isPlaying()) applySeek(state.currentTime);
+    }),
+  );
 
   const applyPlaybackRate = (nextRate: number) => {
     const parsed = Number(nextRate);

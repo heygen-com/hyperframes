@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { HfVfxCapture } from "../vfx";
 import { resetSeekDispatchState, waitForSeekCompletion } from "./adapters/seek-dispatch";
-import { initVfx, paintVfx } from "./vfx";
+import { initVfx, paintVfx, rebuildLostVfx } from "./vfx";
 
 /**
  * No def has `capture !== "none"` until Task 2.2 registers `wave-warp`, so the
@@ -405,6 +405,21 @@ describe("vfx runtime", () => {
       message: expect.stringMatching(/context lost/i) as unknown as string,
       calls: [],
     });
+  });
+
+  it("paints a host again after its lost context is restored and the chains are rebuilt", () => {
+    const host = makeHost(ONE_NODE);
+    initVfx(document.body, 30);
+    const out = host.querySelector("canvas.hf-vfx-out") as HTMLCanvasElement;
+    out.dispatchEvent(new Event("webglcontextlost", { cancelable: true }));
+    out.dispatchEvent(new Event("webglcontextrestored"));
+    paintVfx(0);
+    expect(gl!.calls).toEqual([]);
+
+    rebuildLostVfx(document.body);
+    gl!.calls.length = 0;
+    paintVfx(0);
+    expect(gl!.calls.length).toBeGreaterThan(0);
   });
 
   it("forgets the previous composition's hosts when re-initialised", () => {
