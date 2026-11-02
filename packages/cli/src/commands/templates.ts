@@ -24,8 +24,8 @@ export const TEMPLATES: Record<string, TemplatePack> = {
   },
   "finance-explainer": {
     id: "M9002",
-    sha256: "c9359f8e3c44251ccb7c3624a66b0a577c8100e22d563d1c0b2f53682ad91a54",
-    bytes: 140687104,
+    sha256: "0759468d12f3ee42586a175ace5abfc09dac9c88522d0c29a7713fa9acf29a14",
+    bytes: 140687605,
   },
   "3d-true-crime": {
     id: "M9005",
