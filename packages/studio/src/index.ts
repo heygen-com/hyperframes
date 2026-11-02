@@ -11,8 +11,11 @@ export {
   buildShortcutSections,
   getStudioKeys,
   setStudioKeys,
+  studioKeyClash,
   useStudioKeys,
 } from "./player/components/studioShortcuts";
+export { formatCombo, matchCombo, parseCombo } from "./player/components/studioCombo";
+export type { Combo } from "./player/components/studioCombo";
 export type { StudioKeyAction, StudioKeys } from "./player/components/studioShortcuts";
 export { ShortcutsButton } from "./player/components/ShortcutsPanel";
 export { dispatchLinkShortcut } from "./hooks/linkShortcuts";
