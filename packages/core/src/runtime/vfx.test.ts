@@ -420,12 +420,14 @@ describe("vfx runtime", () => {
     expect(gl!.calls).toEqual([]);
 
     // Another context has not come back yet: rebuilding now would drop its host.
+    const built = gl!.programCount;
     gl!.lost = true;
     rebuildLostVfx(document.body);
-    expect(gl!.programCount).toBe(1);
+    expect(gl!.programCount).toBe(built);
 
     gl!.lost = false;
     rebuildLostVfx(document.body);
+    expect(gl!.programCount).toBeGreaterThan(built);
     gl!.calls.length = 0;
     paintVfx(0);
     expect(gl!.calls.length).toBeGreaterThan(0);
