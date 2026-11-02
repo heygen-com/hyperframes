@@ -1,6 +1,6 @@
 ---
-name: creator-remix
-description: Make a new episode in a proven video style - Paper Trail, Long Story Short, Big Questions, Under the Hood, Manhunt - on the person's topic. Use for "an episode of", "in the style of", 「用这个风格做一集」. One video to copy is reverse-any-video.
+name: style-remix
+description: Make a new episode in a proven video style - Collage Explainer, Finance Explainer, Animated Science Explainer, 3D Brand Explainer, 3D True Crime - on the person's topic. Use for "an episode of", "in the style of", 「用这个风格做一集」. One video to copy is reverse-any-video.
 metadata:
   internal: true
 ---
@@ -15,11 +15,11 @@ Style templates are a HyperFrames Pro feature. The CLI pulls them and the server
 
 | Template | Slug | Series | Makes | The person brings |
 | --- | --- | --- | --- | --- |
-| Paper Trail | `paper-trail` | `american-policy` | English explainer on one American policy or history question | Voice |
-| Long Story Short (长话短说) | `long-story-short` | `deep-dive` | 中文主持人讲透一个国家、商品或机构 | Voice and face |
-| Big Questions | `big-questions` | `science-explainer` | English fully drawn science explainer | Voice |
-| Under the Hood | `under-the-hood` | `brand-explained` | English breakdown of a brand or design, in one graphic world with real 3D | Voice |
-| Manhunt | `manhunt` | `crime-hunt` | English reconstruction of a hunt or a closed case, in a dark 3D world | Voice |
+| Collage Explainer | `collage-explainer` | `american-policy` | English explainer on one American policy or history question | Voice |
+| Finance Explainer (财经讲解) | `finance-explainer` | `deep-dive` | 中文主持人讲透一个国家、商品或机构 | Voice and face |
+| Animated Science Explainer | `animated-science-explainer` | `science-explainer` | English fully drawn science explainer | Voice |
+| 3D Brand Explainer | `3d-brand-explainer` | `brand-explained` | English breakdown of a brand or design, in one graphic world with real 3D | Voice |
+| 3D True Crime | `3d-true-crime` | `crime-hunt` | English reconstruction of a hunt or a closed case, in a dark 3D world | Voice |
 
 ## Start
 

@@ -1,10 +1,6 @@
 {
   "source": "heygen-com/hyperframes",
   "skills": {
-    "creator-remix": {
-      "hash": "b63185b402e90ec6",
-      "files": 2
-    },
     "figma": {
       "hash": "af57c9b6411c81f5",
       "files": 2
@@ -35,6 +31,10 @@
     },
     "slideshow": {
       "hash": "c8a591e2aa7a6d86",
+      "files": 2
+    },
+    "style-remix": {
+      "hash": "b2bf8fe524f81116",
       "files": 2
     }
   }

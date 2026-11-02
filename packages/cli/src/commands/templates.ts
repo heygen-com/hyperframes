@@ -17,30 +17,30 @@ export interface TemplatePack {
 
 // ponytail: packs are pinned here, so a new pack ships with a CLI release; move to a public index if templates change faster.
 export const TEMPLATES: Record<string, TemplatePack> = {
-  "big-questions": {
+  "animated-science-explainer": {
     id: "M9003",
-    sha256: "6e5491eff06c90037a4b35054682be75a48b207171645a848f35fd207f5b3af8",
-    bytes: 25559276,
+    sha256: "e41ee7746be21561100d03e3897701fbd9c80ff945b03550b7eaeb715af81171",
+    bytes: 25559315,
   },
-  "long-story-short": {
+  "finance-explainer": {
     id: "M9002",
-    sha256: "79c453b6f38fc3a2f3b5a2647807d5772a0d10f7d49955d87bee183ac147c0ab",
-    bytes: 140687142,
+    sha256: "c9359f8e3c44251ccb7c3624a66b0a577c8100e22d563d1c0b2f53682ad91a54",
+    bytes: 140687104,
   },
-  manhunt: {
+  "3d-true-crime": {
     id: "M9005",
-    sha256: "7a7efc4128fce015b821ea486088c55b14988e8ac72b57b0bae5f77dd0a0d9a6",
-    bytes: 5976008,
+    sha256: "db66d6ed5ed17820d59ab797943f386d6f905a7ecd65fb3628b398c2e55833f4",
+    bytes: 5976055,
   },
-  "paper-trail": {
+  "collage-explainer": {
     id: "M9001",
-    sha256: "b51e85f0a9864fe5f10221dbf441dfa660ce396cd67d3f448ac3b296a967cc4e",
-    bytes: 36710654,
+    sha256: "e19e78c6f2ad360cf1e1601fe807a7b9d8e6e3539b2d35338d10ee22f03c7659",
+    bytes: 36710664,
   },
-  "under-the-hood": {
+  "3d-brand-explainer": {
     id: "M9004",
-    sha256: "4d8715471d893369b140da4a4abe3a8a7dcadbcd4c04037afd72a2fbb7cd792c",
-    bytes: 20180107,
+    sha256: "e05b07ed2f9528ab7165685e794b066a468ac26c1513a15239dae7884c99c904",
+    bytes: 20180129,
   },
 };
 
@@ -134,7 +134,7 @@ export default defineCommand({
     action: { type: "positional", description: "pull", required: true },
     slug: {
       type: "positional",
-      description: "The template's slug, from the creator-remix skill",
+      description: "The template's slug, from the style-remix skill",
       required: true,
     },
     dir: {
