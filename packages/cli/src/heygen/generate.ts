@@ -17,12 +17,13 @@ import { findCuts, signatures } from "../measure/cuts.js";
 import { Fix, probeVideo, projectOf, round, runFfmpeg, videoClip } from "../measure/media.js";
 import { idempotencyKey, runJob, type Job } from "./v3.js";
 
-export type GenerateType = "image" | "video" | "lipsync" | "avatar" | "voice" | "music";
+export type GenerateType = "image" | "video" | "lipsync" | "avatar" | "cutout" | "voice" | "music";
 export const GENERATE_TYPES: readonly GenerateType[] = [
   "image",
   "video",
   "lipsync",
   "avatar",
+  "cutout",
   "voice",
   "music",
 ];
@@ -35,7 +36,7 @@ export interface GenerateRequest {
   references?: string[];
   /** video: speech as a reference, which the model re-paces. lipsync and avatar: the exact voice, kept as it is. */
   audio?: string;
-  /** lipsync: the shot whose mouth is redone. */
+  /** lipsync: the shot whose mouth is redone. cutout: the shot whose background is removed. */
   video?: string;
   /** video: a clip whose camera and body motion the shot follows (the original's same stretch, up to 15 s). */
   motion?: string;
@@ -214,6 +215,17 @@ const ROUTES: Record<GenerateType, Route> = {
     ledger: "video",
     ext: [".mp4"],
   },
+  cutout: {
+    path: "/v3/background-removals",
+    poll: (id) => `/v3/background-removals/${id}`,
+    body: (r, media) => ({
+      video: media(need(r.video, "--video", "--video assets/presenter.mp4"), "video"),
+      layers: ["foreground"],
+    }),
+    urls: ["layers.foreground"],
+    ledger: "video",
+    ext: [".webm", ".mov"],
+  },
   avatar: {
     path: "/v3/videos",
     poll: (id) => `/v3/videos/${id}`,
@@ -337,6 +349,7 @@ function inline(work: string, masks: Mask[] = []): Media {
 /** Files a route takes as asset ids, not inline. */
 function assetsOf(r: GenerateRequest): string[] {
   if (r.type === "lipsync") return [r.video!, r.audio!];
+  if (r.type === "cutout") return [r.video!];
   return r.type === "avatar" && r.audio ? [r.audio] : [];
 }
 

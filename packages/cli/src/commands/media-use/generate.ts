@@ -30,6 +30,10 @@ export const examples: Example[] = [
     "hyperframes media-use generate --type lipsync --video assets/s02-presenter.mp4 --audio assets/s02-voice.mp3 --out assets/s02-lips.mp4",
   ],
   [
+    "The presenter cut out of their room, on a transparent background",
+    "hyperframes media-use generate --type cutout --video assets/presenter.mp4 --out assets/presenter-cutout.webm",
+  ],
+  [
     "The person in a photo saying a finished voice, which stays as it is",
     'hyperframes media-use generate --type avatar --photo assets/presenter.png --audio assets/vo.mp3 --prompt "seated, talks with both hands" --aspect 16:9 --out assets/host.mp4',
   ],
@@ -83,7 +87,11 @@ export default defineCommand({
       description:
         "video: speech the referenced person says (5–15 s), a reference the model re-paces; lipsync, avatar: the exact voice",
     },
-    video: { type: "string", description: "lipsync: the shot whose mouth is redone" },
+    video: {
+      type: "string",
+      description:
+        "lipsync: the shot whose mouth is redone; cutout: the shot cut out of its background",
+    },
     motion: {
       type: "string",
       description: "video: a clip whose camera and body motion the shot follows (up to 15 s)",

@@ -103,6 +103,13 @@ export function priceOf(r: GenerateRequest): Price {
         seconds * (r.avatar ? HF_AVATAR_IV_TWIN_PER_S : HF_AVATAR_IV_PHOTO_PER_S),
       );
     }
+    case "cutout":
+      return {
+        usd: null,
+        list: null,
+        credits: null,
+        basis: "background removal, not priced ahead",
+      };
     case "music":
       return at(MUSIC_PER_TRACK, "lyria-3-pro, $0.08 a track");
     case "voice": {
