@@ -1025,6 +1025,40 @@ describe("preview quality: lighter copies of heavy files", () => {
     delete (window as { __HF_MEDIA_SOURCE_FACTS__?: unknown }).__HF_MEDIA_SOURCE_FACTS__;
   });
 
+  it("drops a smaller copy still being made when the level goes back up, so it never swaps in", async () => {
+    vi.useFakeTimers();
+    let lowerMade = false;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        lowerMade || !String(url).includes("hf-proxy-box=1024")
+          ? new Response("x", { status: 206 })
+          : new Response(null, { status: 202, headers: { "Retry-After": "2" } }),
+      ),
+    );
+    const { video, setPreviewQuality, maybeProxyProactively } = await stage(
+      { "/video.mp4": HEAVY },
+      { "/video.mp4": HEVC_ENTRY },
+    );
+    const { copiesReady } = await import("./previewCopies");
+    const el = video();
+    stubCanPlayType(el, "");
+    maybeProxyProactively(el);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(params(el).get("hf-proxy-box")).toBe("2048x1218");
+    expect(el.load).toHaveBeenCalledTimes(1);
+
+    setPreviewQuality(0.5);
+    await vi.advanceTimersByTimeAsync(0);
+    setPreviewQuality(1);
+    lowerMade = true;
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(params(el).get("hf-proxy-box")).toBe("2048x1218");
+    expect(el.load).toHaveBeenCalledTimes(1);
+    expect(copiesReady()).toBe(true);
+  });
+
   it("changes nothing at full quality", async () => {
     const { video, setPreviewQuality, maybeProxyProactively } = await stage({
       "/video.mp4": HEAVY,
