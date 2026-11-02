@@ -818,6 +818,41 @@ describe("holdLandingMarks", () => {
     },
   );
 
+  // A frame with no mover reads the poses, then unwrap() resyncs with one more silent seek to the frame.
+  function playResyncing(timeline: gsap.core.Timeline, render: boolean, frames: number) {
+    const tl = timeline as unknown as RuntimeTimelineLike;
+    const key: GsapStructureKey | undefined = render
+      ? undefined
+      : { owner: timeline, version: "1" };
+    for (let frame = 0; frame <= frames; frame++) {
+      const t = frame / FPS;
+      seekGsapTimeline(tl, t, false);
+      readsAround(timeline, t, render, true);
+      seekGsapTimeline(tl, t, true, key);
+    }
+  }
+
+  it.each([false, true])(
+    "fires a call on a frame once when the frame is re-seeked silently after the reads (render %s)",
+    (render) => {
+      let fires = 0;
+      let on = false;
+      const timeline = gsap.timeline({ paused: true });
+      timeline.to({}, { duration: 2 }, 0);
+      timeline.call(() => ((on = !on), fires++), [], 1);
+      playResyncing(timeline, render, 45);
+      expect({ fires, on }).toEqual({ fires: 1, on: true });
+    },
+  );
+
+  it("keeps two same-time sets in authored order when the frame is re-seeked silently after the reads", () => {
+    const value = { v: 0 };
+    const timeline = gsap.timeline({ paused: true });
+    timeline.to({}, { duration: 2 }, 0).set(value, { v: 1 }, 1).set(value, { v: 2 }, 1);
+    playResyncing(timeline, true, FPS);
+    expect(value.v).toBe(2);
+  });
+
   it("lands a render frame with the root drawn after its scenes, as the frame's own seek does", () => {
     const shared = { x: 0 };
     const scene = gsap.timeline({ paused: true });
