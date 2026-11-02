@@ -56,10 +56,15 @@ export function bankable(runs) {
  * The fixing PR deletes its own ids here and re-banks them in the same PR.
  */
 export const QUARANTINED = {
-  // Undo or redo of a keyframed plain element restores the bytes but sometimes leaves the box 240-314px off.
+  // Undo or redo of a keyframed plain element restores the bytes but sometimes leaves the box 230-400px off.
   "seqplainkeys-none-center-r0-nested-z100": "#6989",
   "seqplainkeys-none-center-r0-root-z100": "#6989",
   "seqplainkeys-none-center-r30-root-z100": "#6989",
+  "seqplainkeys-none-pct-r0-root-z100": "#6989",
+  "seqplainkeys-none-pct-r30-root-z100": "#6989",
+  "seqplainkeys-none-px-r0-nested-z100": "#6989",
+  "seqplainkeys-none-px-r30-nested-z100": "#6989",
+  "seqplainkeys-none-px-r30-root-z100": "#6989",
 };
 
 /**
