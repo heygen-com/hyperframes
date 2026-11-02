@@ -4,7 +4,6 @@ import { resolveCanvasNudgeDelta } from "../components/editor/domEditNudge";
 
 type CaptionNudgeKeyEvent = Parameters<typeof resolveCanvasNudgeDelta>[0];
 
-/** The nudge delta for this key, or null when it is not a nudge or the target owns its keys. */
 export function resolveCaptionNudge(event: CaptionNudgeKeyEvent, target?: EventTarget | null) {
   if (target != null && ownsPlainKeys(target)) return null;
   return resolveCanvasNudgeDelta(event);
