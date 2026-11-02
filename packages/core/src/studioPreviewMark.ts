@@ -1,5 +1,21 @@
+import { isWebKit } from "./runtime/mediaClock.js";
+
 export const STUDIO_PREVIEW_MARK_META = "hyperframes-studio-preview";
 export const STUDIO_PREVIEW_CAPTURE_MODE = "capture";
+/** Set by the player on its frame: a clip off the first take loads once it comes due, as in Studio's preview. */
+export const PLAYER_FRAME_ATTR = "data-hf-player-frame";
+
+/** WebKit only: iOS serves one file's requests in turn, so clips loading at parse starve the first take. */
+export function inPlayerFrame(doc: Document): boolean {
+  return isWebKit() && doc.defaultView?.frameElement?.hasAttribute(PLAYER_FRAME_ATTR) === true;
+}
+
+/** The one answer to "does this document hold back media that is not due yet". */
+export function defersMediaIn(doc: Document): boolean {
+  return (
+    doc.querySelector(`meta[name="${STUDIO_PREVIEW_MARK_META}"]`) !== null || inPlayerFrame(doc)
+  );
+}
 export const STUDIO_PREVIEW_UPCOMING_ATTR = "data-hf-upcoming";
 export const STUDIO_PREVIEW_LAZY_ATTR = "data-hf-preview-lazy";
 export const STUDIO_PREVIEW_ERRORS = "__hfPreviewErrors";
