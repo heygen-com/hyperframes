@@ -2869,14 +2869,8 @@ export function initSandboxRuntimeModular(): void {
   // playback. Batched to one call per syncTimedElementVisibility pass, not
   // one per toggled node.
   //
-  // The reschedule is paired with `stopAll()` below, for the reason
-  // `applyWebAudioRate` already spells out: scheduling does
-  // NOT replace the active set. It bumps a generation, which only rejects
-  // stale schedules still in flight — every source already started keeps
-  // playing, and there is no per-element dedup. This comment used to claim the
-  // opposite and the call site trusted it, so muting a track mid-playback
-  // started a second buffer source for every in-window clip on top of the ones
-  // still sounding: the whole mix audibly doubled, slightly out of phase.
+  // Pair the reschedule with `stopAll()` because scheduling only invalidates
+  // stale work still in flight; already-started sources keep playing.
   let hiddenAudioDirty = false;
   const affectsAudio = (el: Element): boolean =>
     isMediaElement(el) &&
@@ -3049,7 +3043,44 @@ export function initSandboxRuntimeModular(): void {
   // look-ahead, and fetching them all queues the clip that is due behind clips that are not.
   const PREFETCH_SLOTS = 3;
   const prefetching = new Set<HTMLMediaElement>();
-  const waitingForSlot = new Set<HTMLMediaElement>();
+  type WaitingPrefetch = { element: HTMLMediaElement; start: number };
+  const waitingForSlot = new Map<HTMLMediaElement, WaitingPrefetch>();
+  let waitingForSlotOrder: WaitingPrefetch[] = [];
+  let waitingForSlotHead = 0;
+  const comparePrefetchStart = (left: WaitingPrefetch, right: WaitingPrefetch) => {
+    const difference = left.start - right.start;
+    return Number.isNaN(difference) ? 0 : difference;
+  };
+  const compactWaitingForSlot = () => {
+    const remaining = waitingForSlotOrder.length - waitingForSlotHead;
+    if (waitingForSlotHead > 64 && waitingForSlotHead >= remaining) {
+      waitingForSlotOrder = waitingForSlotOrder.slice(waitingForSlotHead);
+      waitingForSlotHead = 0;
+    }
+    if (waitingForSlotOrder.length - waitingForSlotHead > waitingForSlot.size * 2 + 64) {
+      waitingForSlotOrder = waitingForSlotOrder
+        .slice(waitingForSlotHead)
+        .filter((entry) => waitingForSlot.get(entry.element) === entry);
+      waitingForSlotHead = 0;
+    }
+  };
+  const addWaitingForSlot = (element: HTMLMediaElement) => {
+    if (waitingForSlot.has(element)) return;
+    compactWaitingForSlot();
+    const entry = { element, start: resolveAbsoluteMediaStartSeconds(element) };
+    let low = waitingForSlotHead;
+    let high = waitingForSlotOrder.length;
+    while (low < high) {
+      const middle = low + Math.floor((high - low) / 2);
+      if (comparePrefetchStart(waitingForSlotOrder[middle]!, entry) <= 0) low = middle + 1;
+      else high = middle;
+    }
+    waitingForSlotOrder.splice(low, 0, entry);
+    waitingForSlot.set(element, entry);
+  };
+  const removeWaitingForSlot = (element: HTMLMediaElement) => {
+    if (waitingForSlot.delete(element)) compactWaitingForSlot();
+  };
   const PREFETCH_SETTLED_EVENTS = ["canplay", "suspend", "error"];
   const endPrefetch = (el: HTMLMediaElement) => {
     for (const type of PREFETCH_SETTLED_EVENTS) el.removeEventListener(type, onPrefetchSettled);
@@ -3063,14 +3094,13 @@ export function initSandboxRuntimeModular(): void {
     fillPrefetchSlots();
   };
   const fillPrefetchSlots = () => {
-    const earliestFirst = Array.from(waitingForSlot)
-      .filter((el) => el.isConnected)
-      .sort((a, b) => resolveAbsoluteMediaStartSeconds(a) - resolveAbsoluteMediaStartSeconds(b));
-    for (const el of earliestFirst) {
-      if (prefetching.size >= PREFETCH_SLOTS) break;
-      waitingForSlot.delete(el);
-      syncTimedElementVisibility(state.currentTime, [el]);
+    while (prefetching.size < PREFETCH_SLOTS && waitingForSlotHead < waitingForSlotOrder.length) {
+      const entry = waitingForSlotOrder[waitingForSlotHead++]!;
+      if (waitingForSlot.get(entry.element) !== entry) continue;
+      waitingForSlot.delete(entry.element);
+      if (entry.element.isConnected) syncTimedElementVisibility(state.currentTime, [entry.element]);
     }
+    compactWaitingForSlot();
   };
   const startPrefetch = (el: HTMLMediaElement) => {
     preloadMedia(el);
@@ -3100,7 +3130,7 @@ export function initSandboxRuntimeModular(): void {
     armedBy.set(next.el, el);
     if (mediaNearPlayhead.get(next.el) !== true) {
       mediaNearPlayhead.set(next.el, true);
-      waitingForSlot.delete(next.el);
+      removeWaitingForSlot(next.el);
       startPrefetch(next.el);
     }
   };
@@ -3125,8 +3155,8 @@ export function initSandboxRuntimeModular(): void {
     const armed = armer !== undefined && armedFrom.has(armer);
     const decided = mediaNearPlayhead.get(el);
     const unslotted = !visible && !armed && decided !== true && prefetching.size >= PREFETCH_SLOTS;
-    if (unslotted && upcoming) waitingForSlot.add(el);
-    else waitingForSlot.delete(el);
+    if (unslotted && upcoming) addWaitingForSlot(el);
+    else removeWaitingForSlot(el);
     // While playing, a clip that has passed is not fetched again, and one still downloading is released:
     // either only takes bandwidth from the next ones. A loaded clip stays for a scrub back.
     const passed =
@@ -5438,14 +5468,8 @@ export function initSandboxRuntimeModular(): void {
   // paused gesture the draft writer owns the element's transform, so the
   // per-frame transport re-seek must yield to it (see transportTick).
   //
-  // The watch is document-global (fine for today's single-composition Studio;
-  // revisit if a multi-composition editor needs to scope this to one root).
-  // It used to be a `document.querySelector` on every paused frame, described
-  // here as negligible; measured, it was 1.8 ms/s on a 1689-element project and
-  // 3.0 ms/s — 6.4% of the whole paused main-thread budget — on a media-heavy
-  // one. An attribute-filtered observer answers the same question in O(edits),
-  // and its change callback is also what un-parks the transport when a drag
-  // starts or ends.
+  // The watch is document-global for the single-composition Studio. Scope it
+  // to one root if a multi-composition editor needs independent gestures.
   const manualEditGestureWatch = createManualEditGestureWatch(document, () => {
     wakeTransport();
   });
@@ -5885,10 +5909,8 @@ export function initSandboxRuntimeModular(): void {
         scheduleDueWebAudio();
         syncMediaForCurrentState(timingRevision);
       } else if (hasRunningTimedMedia()) {
-        // Nothing may run while the clock is paused, and the paused side used to
-        // police nothing. Dropping the cursor forces a full visit: the seek-window
-        // index skips an element that started outside the current window, which is
-        // exactly the one to stop.
+        // The seek-window index can skip media that started outside the current
+        // window, so clear the cursor to stop anything that left it.
         lastSyncedMediaTimeSeconds = null;
         syncMediaForCurrentState(timingRevision);
       }

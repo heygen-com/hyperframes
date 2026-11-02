@@ -475,6 +475,46 @@ describe("runtime entry", () => {
       expect(armed(...due)).toEqual([true, true, true, true, true]);
     });
 
+    it("keeps the long-track prefetch wave ordered across canplay settlements", async () => {
+      spyLoad();
+      servePreview();
+      const root = mountRoot();
+      const music = timed(root, "audio", "0.5");
+      music.setAttribute("data-duration", "3600");
+      Object.defineProperty(music, "duration", { configurable: true, value: 3600 });
+      const waiting = Array.from({ length: 128 }, (_, index) => {
+        // A deterministic shuffled window makes the priority sort exercise its comparator.
+        const start = 0.1 + (((index * 197) % 509) / 509) * 1.8;
+        return timed(root, "video", String(start));
+      });
+
+      const getAttribute = vi.spyOn(Element.prototype, "getAttribute");
+      await evaluateRuntime();
+      expect(loadsOf(music)).toEqual([1]);
+      const settled = new Set<HTMLMediaElement>();
+      const candidates = [music, ...waiting];
+      let fillCalls = 0;
+      while (settled.size < candidates.length) {
+        const active = candidates.filter(
+          (element) => !settled.has(element) && element.preload === "auto",
+        );
+        if (active.length === 0) break;
+        for (const element of active) {
+          settled.add(element);
+          Object.defineProperty(element, "readyState", { configurable: true, value: 3 });
+          element.dispatchEvent(new Event("canplay"));
+          fillCalls++;
+        }
+      }
+
+      // Every settled media opens one slot; priorities must not be re-read for each refill.
+      const startReads = getAttribute.mock.calls.filter(([name]) => name === "data-start").length;
+      expect(fillCalls).toBe(candidates.length);
+      expect(startReads).toBeLessThan(waiting.length * 60);
+      expect(armed(...waiting).filter(Boolean)).toHaveLength(waiting.length);
+      getAttribute.mockRestore();
+    }, 20_000);
+
     it("prepares a queued split only after a prefetch slot opens", async () => {
       spyLoad();
       servePreview();
