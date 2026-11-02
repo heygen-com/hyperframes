@@ -765,10 +765,9 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
           retryProxyCopy(project.dir, file, proxyVariant, proxyBox);
         }
         const asked = c.req.header(PREVIEW_PROXY_PRIORITY_HEADER);
-        const priority = asked === "1";
-        const background = asked === "0";
+        const urgency = asked === "0" ? { background: true } : { priority: asked === "1" };
         servedPath = await waitForProxy(
-          resolveProxy(project.dir, file, proxyVariant, proxyBox, { priority, background }),
+          resolveProxy(project.dir, file, proxyVariant, proxyBox, urgency),
           0,
         );
       } catch (err) {

@@ -1594,6 +1594,32 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       expect(ranged.headers.get("Content-Range")).toBe("bytes 0-9/20");
     });
 
+    it("makes the copy at background priority when the request says it is for later", async () => {
+      const projectDir = createProjectDir();
+      writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
+      const resolveProxyMock = vi.fn(async () => {
+        const proxyPath = join(projectDir, "proxy.mp4");
+        writeFileSync(proxyPath, "proxybytes");
+        return proxyPath;
+      });
+      const { registerPreviewRoutes: register } = await loadPreviewModule({
+        resolveProxyImpl: resolveProxyMock,
+      });
+      const app = new Hono();
+      register(app, createAdapter(projectDir));
+
+      await app.request("http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264", {
+        headers: { "X-HF-Proxy-Priority": "0" },
+      });
+      expect(resolveProxyMock).toHaveBeenCalledWith(
+        projectDir,
+        join(projectDir, "clip.mp4"),
+        "h264",
+        undefined,
+        { background: true },
+      );
+    });
+
     it("puts the copy ahead of the queue when the request says the video is at the playhead", async () => {
       const projectDir = createProjectDir();
       writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
