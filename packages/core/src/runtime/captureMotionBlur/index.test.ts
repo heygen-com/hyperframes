@@ -1038,6 +1038,28 @@ describe("painting", () => {
     expect(reads.every(([, suppress]) => suppress === false)).toBe(true);
   });
 
+  it("leaves a worker starting mid-film the state of the calls behind it, not ahead of it", () => {
+    installHtmlInCanvas();
+    const { h } = movingHost({ "data-motion-blur": "on", "data-motion-blur-events": "on" });
+    const calls = [
+      { at: 0.3, text: "first" },
+      { at: 0.7, text: "second" },
+    ];
+    let head = 0;
+    let text = "";
+    // GSAP fires a one-off call on a loud crossing in either direction.
+    const seek = (t: number, suppress: boolean) => {
+      h.seek(t, suppress);
+      const crossed = calls.filter(({ at }) => Math.min(head, t) < at && at <= Math.max(head, t));
+      if (t < head) crossed.reverse();
+      if (!suppress) for (const call of crossed) text = call.text;
+      head = t;
+    };
+    initCaptureMotionBlur({ ...h, seek });
+    void paintCaptureMotionBlur(0.5, PLAY);
+    expect(text).toBe("first");
+  });
+
   it("fires timeline callbacks during discovery only when the root allows events", () => {
     for (const events of [true, false]) {
       installHtmlInCanvas();
