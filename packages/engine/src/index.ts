@@ -30,6 +30,15 @@
  *
  */
 
+export {
+  REFERENCE_BACKGROUND_FIELD,
+  referenceBackgroundResult,
+  createReferenceBackgroundRecorder,
+  readReferenceBackground,
+  type ReferenceBackground,
+  type ReferenceBackgroundResult,
+} from "./services/referenceBackground.js";
+
 // ── Protocol types ─────────────────────────────────────────────────────────────
 export type {
   HfProtocol,

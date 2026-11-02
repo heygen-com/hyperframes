@@ -1,3 +1,8 @@
+import {
+  REFERENCE_BACKGROUND_FIELD,
+  referenceBackgroundResult,
+  type ReferenceBackgroundResult,
+} from "@hyperframes/engine";
 /**
  * Content-addressed distributed plan transport.
  *
@@ -115,7 +120,7 @@ export interface PlanV2Limitations {
   readonly videoDependencyMode: "exact-rendered-frames" | "full-source-pack" | "source-extract";
 }
 
-export interface PlanV2Result {
+export interface PlanV2Result extends ReferenceBackgroundResult {
   readonly planDir: string;
   readonly manifestPath: string;
   readonly planProtocol: Readonly<PlanProtocolV2Descriptor>;
@@ -813,7 +818,14 @@ export async function planV2(
 }
 
 function resultFromManifest(planV2Dir: string, manifest: PlanV2Manifest): PlanV2Result {
+  const artifact = manifest.artifacts.find((entry) => entry.path === "plan.json");
+  const executionPlan = artifact
+    ? readJsonFile(verifyBlob(planV2Dir, artifact), "execution plan.json")
+    : null;
   return {
+    ...referenceBackgroundResult(
+      isRecord(executionPlan) ? executionPlan[REFERENCE_BACKGROUND_FIELD] : undefined,
+    ),
     planDir: planV2Dir,
     manifestPath: join(planV2Dir, "plan.json"),
     planProtocol: PLAN_PROTOCOL_V2,

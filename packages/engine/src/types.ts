@@ -4,6 +4,7 @@
  * The engine's page contract. Any web page that wants to be rendered
  * as video must expose `window.__hf` implementing the HfProtocol interface.
  */
+import type { ReferenceBackground } from "./services/referenceBackground.js";
 import type { AudioFailureDiagnostic } from "./services/audioMixer.types.js";
 import type { Fps } from "@hyperframes/core";
 import type { CompositionLengthSource } from "@hyperframes/core/runtime/composition-length";
@@ -145,6 +146,8 @@ export interface HfProtocol {
 // ── Capture Types ──────────────────────────────────────────────────────────────
 
 export interface CaptureOptions {
+  /** Shared once-only reader, invoked before capture changes root/body paint. */
+  recordReferenceBackground?: (read: () => Promise<ReferenceBackground>) => Promise<void>;
   width: number;
   height: number;
   /**

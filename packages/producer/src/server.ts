@@ -29,7 +29,11 @@ import crypto from "node:crypto";
 import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import { serve } from "@hono/node-server";
-import { fetchPublicHttpsText } from "@hyperframes/engine";
+import {
+  fetchPublicHttpsText,
+  REFERENCE_BACKGROUND_FIELD,
+  referenceBackgroundResult,
+} from "@hyperframes/engine";
 import {
   RenderCancelledError,
   createRenderJob,
@@ -786,6 +790,7 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
         outputUrl,
         fileSize,
         durationMs,
+        ...referenceBackgroundResult(job[REFERENCE_BACKGROUND_FIELD]),
         videoDurationSeconds: job.duration ?? null,
         outcome: job.outcome ?? "completed",
         warnings: job.warnings,
@@ -881,6 +886,7 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
             outputToken,
             outputUrl,
             fileSize,
+            ...referenceBackgroundResult(job[REFERENCE_BACKGROUND_FIELD]),
             videoDurationSeconds: job.duration ?? null,
             outcome: job.outcome ?? "completed",
             warnings: job.warnings,

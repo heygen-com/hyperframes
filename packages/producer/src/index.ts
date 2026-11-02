@@ -6,6 +6,15 @@
  * or any web content via configurable page contracts and hooks.
  */
 
+export {
+  REFERENCE_BACKGROUND_FIELD,
+  referenceBackgroundResult,
+  createReferenceBackgroundRecorder,
+  readReferenceBackground,
+  type ReferenceBackground,
+  type ReferenceBackgroundResult,
+} from "@hyperframes/engine";
+
 // ── Main rendering pipeline ─────────────────────────────────────────────────
 export {
   createRenderJob,
