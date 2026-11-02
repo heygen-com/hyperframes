@@ -403,6 +403,19 @@ describe("hasVariableBoundMedia", () => {
 });
 
 describe("runProbeStage — forceScreenshot threading", () => {
+  it("opens one canonical page for static plans and threads the shared recorder", async () => {
+    resetRetryMocks();
+    capturedOptions.length = 0;
+    const { runProbeStage } = await import("./probeStage.js");
+    const input = makeProbeInput({});
+    input.composition.duration = 5;
+    const recordReferenceBackground = async () => {};
+    await runProbeStage({ ...input, requireBrowser: true, recordReferenceBackground });
+    expect(createSessionCallCount).toBe(1);
+    expect(initializeSessionCallCount).toBe(1);
+    expect(capturedOptions[0]).toMatchObject({ recordReferenceBackground });
+  });
+
   it("runs media-type preflight after the browser-reconciliation phase", async () => {
     mediaPreflightCallCount = 0;
     const { runProbeStage } = await import("./probeStage.js");

@@ -101,6 +101,7 @@ const browserManagerState = vi.hoisted(() => ({
 
 vi.mock("../utils/producer.js", () => ({
   loadProducer: vi.fn(async () => ({
+    ...(await import("../../../engine/src/services/referenceBackground.js")),
     createConsoleLogger: vi.fn((level: string) => {
       producerState.loggerLevels.push(level);
       return { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() };
@@ -532,6 +533,28 @@ describe("renderLocal browser GPU config", () => {
     expect(vi.mocked(trackRenderComplete).mock.calls[0]?.[0]).toMatchObject(cpu);
     expect(vi.mocked(trackRenderError).mock.calls[0]?.[0]).toMatchObject(cpu);
     expect(cpuSamplerState.samplers.map((s) => s.stopped)).toEqual([true, true]);
+  });
+
+  it.each([
+    { kind: "solid", rgb: [10, 46, 138] },
+    { kind: "none" },
+    { kind: "unsupported_non_solid" },
+    { kind: "unknown" },
+  ])("returns the same $kind background object as the remote receipt", async (background) => {
+    producerState.executeImpl = async (job) => {
+      job.reference_background = background;
+    };
+    const result = await renderLocal(PROJECT_DIR, "/tmp/out.mp4", {
+      fps: { num: 30, den: 1 },
+      quality: "standard",
+      format: "mp4",
+      gpu: false,
+      browserGpuMode: "software",
+      hdrMode: "auto",
+      quiet: true,
+      throwOnError: true,
+    });
+    expect(result?.reference_background).toEqual(background);
   });
 
   it("warns that the whole mix was lowered, and the render still completes", async () => {

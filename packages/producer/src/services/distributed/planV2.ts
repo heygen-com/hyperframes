@@ -1,3 +1,8 @@
+import {
+  REFERENCE_BACKGROUND_FIELD,
+  referenceBackgroundResult,
+  type ReferenceBackgroundResult,
+} from "@hyperframes/engine";
 /**
  * Content-addressed distributed plan transport.
  *
@@ -88,7 +93,7 @@ export interface PlanV2Artifact {
   readonly assembler: boolean;
 }
 
-export interface PlanV2Manifest {
+export interface PlanV2Manifest extends Partial<ReferenceBackgroundResult> {
   readonly protocol: Readonly<PlanProtocolV2Descriptor>;
   /** V2 manifest digest; intentionally distinct from the local execution-plan hash. */
   readonly planHash: string;
@@ -115,7 +120,7 @@ export interface PlanV2Limitations {
   readonly videoDependencyMode: "exact-rendered-frames" | "full-source-pack" | "source-extract";
 }
 
-export interface PlanV2Result {
+export interface PlanV2Result extends ReferenceBackgroundResult {
   readonly planDir: string;
   readonly manifestPath: string;
   readonly planProtocol: Readonly<PlanProtocolV2Descriptor>;
@@ -630,6 +635,7 @@ function buildPlanV2Publication(
   }
 
   const base: Omit<PlanV2Manifest, "planHash"> = {
+    ...referenceBackgroundResult(executionPlan[REFERENCE_BACKGROUND_FIELD]),
     protocol: PLAN_PROTOCOL_V2,
     // Retain the established manifest key byte-for-byte. It now acts as the
     // wire alias for the neutral local execution-plan hash.
@@ -814,6 +820,7 @@ export async function planV2(
 
 function resultFromManifest(planV2Dir: string, manifest: PlanV2Manifest): PlanV2Result {
   return {
+    ...referenceBackgroundResult(manifest[REFERENCE_BACKGROUND_FIELD]),
     planDir: planV2Dir,
     manifestPath: join(planV2Dir, "plan.json"),
     planProtocol: PLAN_PROTOCOL_V2,
@@ -952,6 +959,9 @@ function parsePlanV2Manifest(value: unknown): Readonly<PlanV2Manifest> {
     throw new PlanV2IntegrityError("unsupported video dependency mode");
   }
   const parsed: PlanV2Manifest = {
+    ...(REFERENCE_BACKGROUND_FIELD in value
+      ? referenceBackgroundResult(value[REFERENCE_BACKGROUND_FIELD])
+      : {}),
     protocol: PLAN_PROTOCOL_V2,
     planHash: value.planHash,
     sourcePlanV1Hash: value.sourcePlanV1Hash,

@@ -1,3 +1,4 @@
+import type { ReferenceBackgroundResult } from "@hyperframes/producer";
 import { captureArtifactRevision } from "../utils/artifactCapture.js";
 import { recordRenderSuccess, registerRenderOutput } from "@hyperframes/studio-server/history";
 import { failCommand, requestCliExit, scheduleCliExit } from "../utils/commandResult.js";
@@ -495,7 +496,7 @@ export default defineCommand({
   },
 });
 
-export interface SingleRenderResult {
+export interface SingleRenderResult extends Partial<ReferenceBackgroundResult> {
   durationMs?: number;
   renderTimeMs: number;
   outcome?: "completed" | "completed_with_warnings";
@@ -1290,6 +1291,7 @@ async function executeLocalRender(
   const outcome =
     job.outcome === "completed_with_warnings" ? "completed_with_warnings" : "completed";
   return {
+    ...producer.referenceBackgroundResult(job[producer.REFERENCE_BACKGROUND_FIELD]),
     renderTimeMs: elapsed,
     durationMs,
     outcome,
@@ -1314,17 +1316,20 @@ async function renderRange(input: {
 }): Promise<SingleRenderResult> {
   const { producer, options } = input;
   let framesEncoded = 0;
+  let reference = producer.referenceBackgroundResult(undefined);
   try {
     const config = producer.distributedConfigFromRequest(input.request, {
       logger: input.logger,
       abortSignal: input.signal,
     });
-    ({ framesEncoded } = await producer.renderSpan(
+    const spanResult = await producer.renderSpan(
       input.projectDir,
       config,
       input.range,
       input.outputPath,
-    ));
+    );
+    framesEncoded = spanResult.framesEncoded;
+    reference = producer.referenceBackgroundResult(spanResult[producer.REFERENCE_BACKGROUND_FIELD]);
   } catch (error: unknown) {
     handleRenderError(error, options, input.startTime, input.cpu, false, "");
   }
@@ -1342,6 +1347,7 @@ async function renderRange(input: {
   if (options.exitAfterComplete) scheduleCliExit();
   return {
     renderTimeMs: elapsed,
+    ...reference,
     durationMs: Math.round((framesEncoded / fpsToNumber(options.fps)) * 1000),
     outcome: "completed",
     warnings: [],

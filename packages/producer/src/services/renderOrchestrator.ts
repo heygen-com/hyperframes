@@ -111,6 +111,11 @@ import {
   augmentPageNavigationTimeoutError,
   type MotionBlurOptions,
 } from "@hyperframes/engine";
+import {
+  referenceBackgroundResult,
+  createReferenceBackgroundRecorder,
+  type ReferenceBackgroundResult,
+} from "@hyperframes/engine";
 import { join, dirname, resolve } from "path";
 import { totalmem } from "node:os";
 import { randomUUID } from "crypto";
@@ -767,7 +772,7 @@ export interface RenderStageProgress {
   total?: number;
 }
 
-export interface RenderJob {
+export interface RenderJob extends Partial<ReferenceBackgroundResult> {
   id: string;
   config: RenderConfig;
   status: RenderStatus;
@@ -1530,6 +1535,7 @@ export type RenderConfigInput = Omit<RenderConfig, "fps"> & { fps: FpsInput };
 
 export function createRenderJob(config: RenderConfigInput): RenderJob {
   return {
+    ...referenceBackgroundResult(undefined),
     id: randomUUID(),
     config: {
       ...config,
@@ -3400,6 +3406,9 @@ async function executeRenderPipeline(input: {
       updateCaptureObservability({ protocolTimeoutMs: scaledProtocolTimeout });
     }
 
+    const recordReferenceBackground = createReferenceBackgroundRecorder((result) =>
+      Object.assign(job, result),
+    );
     const subTimelineWaitMemo: SubTimelineWaitMemo = {};
     const probeResult = await observeRenderStage(
       observability,
@@ -3422,6 +3431,7 @@ async function executeRenderPipeline(input: {
           needsAlpha,
           deviceScaleFactor,
           subTimelineWaitMemo,
+          recordReferenceBackground,
         }),
       // Browser probe is pre-capture; report `browser calibrating` so a
       // slow probe (~64s SwiftShader warm-up on Windows was the reported
@@ -3753,6 +3763,7 @@ async function executeRenderPipeline(input: {
     let routePageMotionBlur: CaptureOptions["pageMotionBlur"];
     const buildCaptureOptions = (): CaptureOptions => ({
       ...captureOptions,
+      recordReferenceBackground,
       ...(routePageMotionBlur ? { pageMotionBlur: routePageMotionBlur } : {}),
       videoMetadataHints,
       skipReadinessVideoIds: videoReadinessSkipIds,
