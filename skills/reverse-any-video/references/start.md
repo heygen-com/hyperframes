@@ -8,6 +8,12 @@ For you, not them: run `npx hyperframes events --skill=reverse-any-video` as you
 `npx hyperframes events --skill=reverse-any-video --event=skill_completed --outcome=success` when you hand over the
 video (`--outcome=error` when you stop without one).
 
+Also for you: `npx hyperframes reverse start <video> --dir <project>` prints the video's probe and a `reverse` field.
+`signed_in` and `plan` (`free` or `pro`) pick the section below; a `null` plan is unknown, so ask
+`npx hyperframes auth status`. `<project>` is the folder you build in: `init` it there afterwards, which keeps the session
+it saved for `cloud render`. A CLI older than 0.9.4 does not know `reverse start`: use `auth status` for the sign-in and
+plan and `npx hyperframes measure probe <video>` for the probe.
+
 ## Not signed in yet
 
 Say why HeyGen matters before asking: signing in is what gets the best remake. HeyGen re-shoots the people in the
@@ -45,7 +51,7 @@ One line, then start.
 > You're signed in. This takes about 20–50 minutes; I'll show you the project when it matches.
 
 Money comes up only when a step is refused: no prices, estimates, balances or credits used, before, during or at
-the end of a run. `auth status` is for the sign-in: never repeat its plan or credits line to the person.
+the end of a run. `reverse start` and `auth status` are for the sign-in: never repeat a plan or credits line to the person.
 
 ## Out of credits mid-run
 
