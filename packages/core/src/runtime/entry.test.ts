@@ -2,7 +2,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mediaElementTime } from "./mediaClock";
 import { HF_COLOR_GRADING_ATTR, serializeHfColorGrading } from "../colorGrading";
-import { STUDIO_PREVIEW_LAZY_ATTR, STUDIO_PREVIEW_MARK_META } from "../studioPreviewMark";
+import {
+  PLAYER_FRAME_ATTR,
+  STUDIO_PREVIEW_LAZY_ATTR,
+  STUDIO_PREVIEW_MARK_META,
+} from "../studioPreviewMark";
 import { revealClip } from "./clipReveal";
 import type { RuntimeTimelineLike } from "./types";
 
@@ -91,6 +95,12 @@ const servePreview = () =>
   document.head.appendChild(
     Object.assign(document.createElement("meta"), { name: STUDIO_PREVIEW_MARK_META }),
   );
+const asSafari = () =>
+  vi
+    .spyOn(navigator, "userAgent", "get")
+    .mockReturnValue(
+      "Mozilla/5.0 AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
+    );
 const neverDecodes = (clip: HTMLElement) => {
   withImage(clip).querySelector("img")!.decode = () => new Promise<void>(() => {});
   return clip;
@@ -427,6 +437,31 @@ describe("runtime entry", () => {
       expect(loadsOf(now, soon, later)).toEqual([2, 2, 1]);
       expect(srcWrites.takeRecords()).toHaveLength(2);
       expect(now.getAttribute("src")).toBe("now.mp4");
+    });
+
+    it("in the player a clip 5 s ahead waits for the first take to have data, then loads", async () => {
+      spyLoad();
+      const frame = document.createElement("iframe");
+      frame.setAttribute(PLAYER_FRAME_ATTR, "");
+      vi.spyOn(window, "frameElement", "get").mockReturnValue(frame);
+      asSafari();
+      const [now, soon] = videos(mountRoot(), "0", "5");
+      const readyState = vi.spyOn(now, "readyState", "get").mockReturnValue(0);
+
+      await evaluateRuntime();
+      expect(armed(now, soon)).toEqual([true, false]);
+
+      readyState.mockReturnValue(4);
+      now.dispatchEvent(new Event("canplay"));
+      expect(armed(now, soon)).toEqual([true, true]);
+    });
+
+    it("in Studio's preview a clip 5 s ahead stays unloaded, as the look-ahead is 2 s", async () => {
+      servePreview();
+      const [now, soon] = videos(mountRoot(), "0", "5");
+
+      await evaluateRuntime();
+      expect(armed(now, soon)).toEqual([true, false]);
     });
 
     it("loads a clip with no authored length as a render does, so no reload drops its duration", async () => {
@@ -870,6 +905,42 @@ describe("runtime entry", () => {
       untrimmed.removeAttribute("data-duration");
       await Promise.resolve();
       expect([first.preload, later.preload, untrimmed.preload]).toEqual(["", "none", ""]);
+    });
+
+    it("gives each parsed clip preload none in the player's frame, where no clip fetches ahead of the first take", async () => {
+      const frame = document.createElement("iframe");
+      frame.setAttribute(PLAYER_FRAME_ATTR, "");
+      vi.spyOn(window, "frameElement", "get").mockReturnValue(frame);
+      asSafari();
+      const root = mountRoot();
+      timed(root, "div", "0");
+      await evaluateRuntime();
+      const [first, later] = videos(root, "0", "5");
+      await Promise.resolve();
+      expect([first.preload, later.preload]).toEqual(["", "none"]);
+    });
+
+    it("leaves Chromium loading every clip at parse in the player's frame", async () => {
+      const frame = document.createElement("iframe");
+      frame.setAttribute(PLAYER_FRAME_ATTR, "");
+      vi.spyOn(window, "frameElement", "get").mockReturnValue(frame);
+      const root = mountRoot();
+      timed(root, "div", "0");
+      await evaluateRuntime();
+      const [first, later] = videos(root, "0", "5");
+      await Promise.resolve();
+      expect([first.preload, later.preload]).toEqual(["", ""]);
+    });
+
+    it("leaves a frame the player did not mark loading every clip at parse", async () => {
+      vi.spyOn(window, "frameElement", "get").mockReturnValue(document.createElement("iframe"));
+      asSafari();
+      const root = mountRoot();
+      timed(root, "div", "0");
+      await evaluateRuntime();
+      const [first, later] = videos(root, "0", "5");
+      await Promise.resolve();
+      expect([first.preload, later.preload]).toEqual(["", ""]);
     });
 
     it("defers a clip at 0 inside a later scene, by its start in the film", async () => {

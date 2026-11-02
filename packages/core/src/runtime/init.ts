@@ -42,6 +42,7 @@ import {
   skipsHiddenImages,
 } from "./timedClipHide";
 import {
+  inPlayerFrame,
   PREVIEW_ONLY_ATTRS,
   RUNTIME_STAMPED_ATTR,
   STUDIO_PREVIEW_FAR_SCENE_ATTR as FAR_SCENE_ATTR,
@@ -3000,8 +3001,11 @@ export function initSandboxRuntimeModular(): void {
   };
   // Set once the scene swap is in place; true while a scene playing at the time is still parked.
   let moveSceneWindow = (_time: number): boolean => false;
-  const LOOKAHEAD_SECONDS = 2;
-  const RELEASE_LOOKAHEAD_SECONDS = 4;
+  // The player has no thumbnail traffic to spare bandwidth for, so it reaches further ahead: a cold clip on a phone link
+  // needs seconds, and the clips fetch one at a time behind the first take.
+  const playerFrame = inPlayerFrame(document);
+  const LOOKAHEAD_SECONDS = playerFrame ? 8 : 2;
+  const RELEASE_LOOKAHEAD_SECONDS = playerFrame ? 10 : 4;
   // Unskipped while within the window on either side of the playhead, so a step or shuttle back
   // across a cut finds the clip it left still loaded; the edge checks catch a clip shorter than it.
   const dueSoon = (
@@ -3049,6 +3053,13 @@ export function initSandboxRuntimeModular(): void {
   // look-ahead, and fetching them all queues the clip that is due behind clips that are not.
   const PREFETCH_SLOTS = 3;
   const prefetching = new Set<HTMLMediaElement>();
+  // On screen and without data: in the player a later clip waits for these, so the first take gets the connection.
+  const visibleLoading = new Set<HTMLMediaElement>();
+  const firstTakeLoading = () => {
+    for (const el of visibleLoading)
+      if (!el.isConnected || el.readyState >= 3) visibleLoading.delete(el);
+    return visibleLoading.size > 0;
+  };
   const waitingForSlot = new Set<HTMLMediaElement>();
   const PREFETCH_SETTLED_EVENTS = ["canplay", "suspend", "error"];
   const endPrefetch = (el: HTMLMediaElement) => {
@@ -3071,6 +3082,9 @@ export function initSandboxRuntimeModular(): void {
       waitingForSlot.delete(el);
       syncTimedElementVisibility(state.currentTime, [el]);
     }
+  };
+  const fillPrefetchSlotsWhenFirstTakeReady = () => {
+    if (!firstTakeLoading()) fillPrefetchSlots();
   };
   const startPrefetch = (el: HTMLMediaElement) => {
     preloadMedia(el);
@@ -3124,7 +3138,15 @@ export function initSandboxRuntimeModular(): void {
     const armer = armedBy.get(el);
     const armed = armer !== undefined && armedFrom.has(armer);
     const decided = mediaNearPlayhead.get(el);
-    const unslotted = !visible && !armed && decided !== true && prefetching.size >= PREFETCH_SLOTS;
+    if (playerFrame && visible && el.readyState < 3 && !visibleLoading.has(el)) {
+      visibleLoading.add(el);
+      el.addEventListener("canplay", fillPrefetchSlotsWhenFirstTakeReady, { once: true });
+    }
+    const unslotted =
+      !visible &&
+      !armed &&
+      decided !== true &&
+      (prefetching.size >= PREFETCH_SLOTS || (playerFrame && firstTakeLoading()));
     if (unslotted && upcoming) waitingForSlot.add(el);
     else waitingForSlot.delete(el);
     // While playing, a clip that has passed is not fetched again, and one still downloading is released:
