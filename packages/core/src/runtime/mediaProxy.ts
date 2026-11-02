@@ -156,8 +156,12 @@ function keepSized(el: HTMLMediaElement, scale: number): void {
   if (needed && lowered && copy.light && lightCopyNoLongerNeeded(el, needed)) {
     return restoreOriginal(el);
   }
-  if (boxCovers(copy.box, needed, lowered)) return;
+  if (boxCovers(copy.box, needed, lowered)) return dropUnneededCopy(el);
   requestBox(el, copy, lowered || !needed ? needed : growOnly(needed, copy.box));
+}
+
+function dropUnneededCopy(el: HTMLMediaElement): void {
+  if (pendingUpgrades.delete(el)) noteCopy(el, "ready");
 }
 
 function lightCopyNoLongerNeeded(el: HTMLMediaElement, needed: PreviewProxyBox): boolean {
@@ -193,7 +197,7 @@ function requestBox(el: HTMLMediaElement, copy: BoxedCopy, box: PreviewProxyBox 
   void waitForServedProxy(
     href,
     wanted,
-    (fraction) => noteCopy(el, "making", fraction),
+    (fraction) => wanted() && noteCopy(el, "making", fraction),
     () => isActiveAtPlayhead(el),
   ).then((served) => {
     if (wanted()) noteCopy(el, served ? "ready" : "failed");
