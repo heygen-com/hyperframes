@@ -50,9 +50,11 @@
       }
       window.__feedPlaybackErrors = [];
       Promise.all(
-        videos.map((video) => video.play().catch((error) => {
-          window.__feedPlaybackErrors.push(String(error));
-        })),
+        videos.map((video) =>
+          video.play().catch((error) => {
+            window.__feedPlaybackErrors.push(String(error));
+          }),
+        ),
       );
     </script>
   </body>
