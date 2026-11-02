@@ -27,7 +27,7 @@ import {
   writeCopyIndex,
 } from "./proxyCacheKey.js";
 import { acquireCopyLock, CopyLockStalledError } from "./proxyLock.js";
-import { PROXY_VARIANT_CONFIG, type ProxyVariant } from "./mediaCodecMap.js";
+import { PROXY_STILL_EXTENSION, PROXY_VARIANT_CONFIG, type ProxyVariant } from "./mediaCodecMap.js";
 import { mkdirWithinProject, realpath, realProjectRoot } from "./safePath.js";
 
 /**
@@ -1113,7 +1113,7 @@ export function resolveStill(
   const source = canonicalizeProxySource(projectDir, absoluteSourcePath);
   const at = Math.max(0, Math.round(atSeconds * 10) / 10);
   const key = fastCopyKey(source.sourcePath, PROXY_PARAMS_VERSION, `still@${at}`, box);
-  const cachePath = join(source.projectDir, CACHE_DIR_NAME, `${key}.jpg`);
+  const cachePath = join(source.projectDir, CACHE_DIR_NAME, `${key}${PROXY_STILL_EXTENSION}`);
   if (existsSync(cachePath)) return Promise.resolve(cachePath);
   const shared = stillsInFlight.get(cachePath);
   if (shared) return shared;
