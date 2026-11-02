@@ -146,7 +146,7 @@ Studio's Detach audio writes a muted `<video>` and an `<audio>` of the same file
 | `video_missing_muted`                                  | A timed `<video>` gets `data-has-audio="true"` or `muted`                                              |
 | `gsap_css_transform_conflict`                          | Set the start inside the tween (`gsap.fromTo`) instead of a CSS `transform`                            |
 | `gsap_animates_clip_element`                           | Animate a child of the `.clip`, or its `opacity`                                                       |
-| `video_nested_in_timed_element`                        | Time the `<video>` or its wrapper, not both                                                            |
+| `video_nested_in_timed_element`                        | Keep `data-start` on the `<video>`; leave its wrapper untimed                                          |
 | `media_missing_id`, `media_crossorigin_breaks_preview` | Give every `<audio>` an `id`; drop `crossorigin`                                                       |
 | `gsap_timeline_registered_before_async_build`          | Register the timeline at the end of the async callback                                                 |
 | `standalone_composition_wrapped_in_template`           | Only scene files use `<template>`                                                                      |
