@@ -26,28 +26,17 @@ export function recordWebglContexts(): void {
   };
 }
 
-/** Releases the WebGL context of every canvas in a hidden clip (data-hf-clip-hidden) that has ended by `time`. */
+/** Releases the WebGL context of every canvas in a hidden clip whose window, as the runtime resolves it, ended by `time`. */
 export async function releaseEndedWebglContexts(page: Page, time: number): Promise<number> {
   return page.evaluate((t: number) => {
-    const clipsAround = (el: Element): Element[] => {
-      const clips: Element[] = [];
-      for (let up: Element | null = el; up; up = up.parentElement) {
-        if (up.getAttribute("data-start") !== null) clips.unshift(up);
-      }
-      return clips;
-    };
+    const clipWindow = window.__hf?.clipWindow;
+    if (!clipWindow) return 0;
     const hasEnded = (el: Element): boolean => {
-      let offset = 0;
-      return clipsAround(el).some((clip) => {
-        offset += Number(clip.getAttribute("data-start")) || 0;
-        const length =
-          clip.getAttribute("data-duration") ?? clip.getAttribute("data-hf-authored-duration");
-        return (
-          length !== null &&
-          clip.hasAttribute("data-hf-clip-hidden") &&
-          offset + Number(length) <= t
-        );
-      });
+      for (let up: Element | null = el; up; up = up.parentElement) {
+        const span = up.hasAttribute("data-hf-clip-hidden") ? clipWindow(up) : null;
+        if (span && Number.isFinite(span.end) && span.end <= t) return true;
+      }
+      return false;
     };
     const live = ((window as GlWindow).__hf_gl_contexts ?? []).filter(
       (r) => !r.lost && hasEnded(r.canvas),

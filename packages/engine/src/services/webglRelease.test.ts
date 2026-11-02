@@ -3,29 +3,37 @@ import type { Page } from "puppeteer-core";
 import { releaseEndedWebglContexts } from "./webglRelease.js";
 
 type Node = {
-  getAttribute: (n: string) => string | null;
   hasAttribute: (n: string) => boolean;
   parentElement: Node | null;
+  span?: { start: number; end: number };
 };
 
-function clip(attrs: Record<string, string>, parent: Node | null = null): Node {
+function clip(
+  span: { start: number; end: number } | undefined,
+  hidden: boolean,
+  parent: Node | null = null,
+): Node {
   return {
-    getAttribute: (n) => attrs[n] ?? null,
-    hasAttribute: (n) => n in attrs,
+    hasAttribute: (n) => hidden && n === "data-hf-clip-hidden",
     parentElement: parent,
+    span,
   };
 }
 
 function canvasIn(host: Node | null, lost: string[], name: string) {
   const ctx = { getExtension: () => ({ loseContext: () => lost.push(name) }) };
-  return { canvas: clip({}, host), ctx };
+  return { canvas: clip(undefined, false, host), ctx };
 }
 
-function pageWith(records: unknown[]): Page {
+// The page runtime answers with the window it resolved, however the clip's data-start was written.
+function pageWith(records: unknown[], answers = true): Page {
   return {
     evaluate: async (fn: (t: number) => unknown, t: number) => {
       const previous = globalThis.window;
-      Object.assign(globalThis, { window: { __hf_gl_contexts: records } });
+      const clipWindow = (el: Node) => el.span ?? null;
+      Object.assign(globalThis, {
+        window: { __hf_gl_contexts: records, __hf: answers ? { clipWindow } : {} },
+      });
       try {
         return await fn(t);
       } finally {
@@ -39,23 +47,12 @@ afterEach(() => {
   Object.assign(globalThis, { window: undefined });
 });
 
-const root = clip({ "data-start": "0", "data-duration": "30" });
-
 describe("releaseEndedWebglContexts", () => {
-  it("releases a scene's context when the runtime has hidden its slot after the slot's end", async () => {
+  it("releases a scene's context once the runtime's window for its hidden slot has ended", async () => {
     const lost: string[] = [];
-    const glassSlot = clip(
-      { "data-start": "0", "data-hf-authored-duration": "3", "data-hf-clip-hidden": "" },
-      root,
-    );
-    const glassScene = clip(
-      { "data-start": "0", "data-hf-authored-duration": "12.16", "data-hf-clip-hidden": "" },
-      glassSlot,
-    );
-    const turnSlot = clip(
-      { "data-start": "15", "data-hf-authored-duration": "3", "data-hf-clip-hidden": "" },
-      root,
-    );
+    const glassSlot = clip({ start: 0, end: 3 }, true);
+    const glassScene = clip({ start: 0, end: 12.16 }, true, glassSlot);
+    const turnSlot = clip({ start: 15, end: 18 }, true);
     const page = pageWith([
       canvasIn(glassScene, lost, "glass"),
       canvasIn(turnSlot, lost, "turntable"),
@@ -67,23 +64,32 @@ describe("releaseEndedWebglContexts", () => {
     expect(await releaseEndedWebglContexts(page, 15)).toBe(0);
   });
 
-  it("keeps the context of a slot that is hidden before it starts or visible while it runs", async () => {
+  it("keeps the context of a scene whose start is a reference, until its resolved end has passed", async () => {
     const lost: string[] = [];
-    const notYet = clip(
-      { "data-start": "15", "data-duration": "3", "data-hf-clip-hidden": "" },
-      root,
-    );
-    const running = clip({ "data-start": "0", "data-duration": "3" }, root);
-    const page = pageWith([canvasIn(notYet, lost, "later"), canvasIn(running, lost, "now")]);
+    // data-start="intro": the attribute reads as no number, the runtime resolves it to the end of the intro.
+    const afterIntro = clip({ start: 15, end: 18 }, true);
+    const page = pageWith([canvasIn(afterIntro, lost, "3d")]);
 
     expect(await releaseEndedWebglContexts(page, 5)).toBe(0);
-    expect(lost).toEqual([]);
+    expect(await releaseEndedWebglContexts(page, 16)).toBe(0);
+    expect(await releaseEndedWebglContexts(page, 18)).toBe(1);
+    expect(lost).toEqual(["3d"]);
   });
 
-  it("leaves a canvas outside any clip alone", async () => {
+  it("releases nothing when the runtime does not report windows, or the canvas is in no hidden clip", async () => {
     const lost: string[] = [];
+    const ended = clip({ start: 0, end: 3 }, true);
+    const visible = clip({ start: 0, end: 3 }, false);
 
-    expect(await releaseEndedWebglContexts(pageWith([canvasIn(null, lost, "x")]), 99)).toBe(0);
+    expect(await releaseEndedWebglContexts(pageWith([canvasIn(ended, lost, "a")], false), 99)).toBe(
+      0,
+    );
+    expect(
+      await releaseEndedWebglContexts(
+        pageWith([canvasIn(visible, lost, "b"), canvasIn(null, lost, "c")]),
+        99,
+      ),
+    ).toBe(0);
     expect(lost).toEqual([]);
   });
 });
