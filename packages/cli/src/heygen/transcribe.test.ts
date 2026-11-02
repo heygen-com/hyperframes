@@ -78,6 +78,6 @@ describe("HeyGen transcription", () => {
     mkdirSync(join(dir, "work"));
     await transcribeWithHeygen(audio, join(dir, "work", "transcript.json"));
     const rows = readFileSync(join(dir, ".hyperframes/heygen-jobs.jsonl"), "utf8");
-    expect(rows).toContain(`transcribe ${audio}`);
+    expect(JSON.parse(rows.trim().split("\n")[0]!).what).toBe(`transcribe ${audio}`);
   });
 });
