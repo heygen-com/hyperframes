@@ -667,7 +667,7 @@ describe("a canvas inside the composition", () => {
     initCaptureMotionBlur(h);
     void paintCaptureMotionBlur(0.1, PLAY);
     const rules = [...document.head.querySelectorAll("style")].map((s) => s.textContent).join("\n");
-    expect(rules).toContain(`[data-hf-motion-blur="capture"] canvas { translate: 0 0 0; }`);
+    expect(rules).toContain(`:where([data-hf-motion-blur="capture"] canvas) { translate: 0 0 0; }`);
   });
 });
 

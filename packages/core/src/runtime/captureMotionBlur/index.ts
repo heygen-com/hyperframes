@@ -65,7 +65,7 @@ const HIDE_ATTR = "data-hf-motion-blur-hide";
 /** On the root while the movers alone are captured; the movers carry MOVER_ATTR. */
 const ONLY_ATTR = "data-hf-motion-blur-only";
 const MOVER_ATTR = "data-hf-motion-blur-mover";
-const NESTED_CANVAS_KEEPS_ITS_PLACE = `[data-hf-motion-blur="capture"] canvas { translate: 0 0 0; }`;
+const NESTED_CANVAS_KEEPS_ITS_PLACE = `:where([data-hf-motion-blur="capture"] canvas) { translate: 0 0 0; }`;
 
 interface Job {
   seq: number;
