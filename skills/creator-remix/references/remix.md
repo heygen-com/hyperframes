@@ -32,7 +32,7 @@ The person's message carries what it carries. Ask once, together, only what is s
 
 - Facts first, per REMIX.md: every number, date and quote with its source. A research sub-agent is fine.
 - Write the script to voice.md and the series' script anatomy; run the script checks REMIX.md names.
-- **Stop 1:** pose the script and the shot plan as stills on the board, written as the hyperframes skill's `references/storyboard.md` says: one still per beat, its line under it, what each shot shows and which component makes it. Point the person to `boards/storyboard.html` and wait for their go. Nothing paid before it.
+- **Stop 1:** pose the script and the shot plan as stills on the board, written as the hyperframes skill's `references/storyboard.md` says: one still per beat, its line under it, what each shot shows and which component makes it. A series kit builds its film from the voice's timing, so never voice to get a board: pose the beats on a plain page with the real components, words and fonts, and give each its estimated seconds. Point the person to `boards/storyboard.html` and wait for their go. Nothing paid before it.
 
 ## 5. Voice and face
 
