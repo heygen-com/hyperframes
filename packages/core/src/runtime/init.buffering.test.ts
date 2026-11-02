@@ -28,12 +28,7 @@ function audio(id: string, duration: number, readyState: { value: number; buffer
   return el;
 }
 
-function playPodcast(
-  voiceStart = 0,
-  voiceTag = "audio",
-  musicReadyState = 4,
-  extraHtml = "",
-) {
+function playPodcast(voiceStart = 0, voiceTag = "audio", musicReadyState = 4, extraHtml = "") {
   resetRuntimeFixtureDom();
   document.body.innerHTML =
     '<div data-composition-id="main" data-root="true" data-duration="10">' +
@@ -154,6 +149,23 @@ it("a clip catching up stays that way until it has data at the playhead, so its 
   voiceReady.value = 1;
   playFor(0.1);
   expect(states.at(-1)).toEqual({ isPlaying: true, buffering: true });
+});
+
+it("a clip due while another catches up from the start still holds, then plays with the first one still cold", () => {
+  const { voiceReady, states, playFor } = playPodcast(0.5, "audio", 1);
+
+  playFor(0.45);
+  expect(states.at(-1)).toEqual({ isPlaying: true, buffering: false });
+  playFor(0.45);
+  expect(states.at(-1)).toEqual({ isPlaying: true, buffering: true });
+  const heldAt = window.__player!.getTime();
+  playFor(0.3);
+  expect(window.__player!.getTime()).toBe(heldAt);
+
+  voiceReady.value = 4;
+  playFor(0.3);
+  expect(states.at(-1)).toEqual({ isPlaying: true, buffering: false });
+  expect(window.__player!.getTime()).toBeGreaterThan(heldAt);
 });
 
 it("holds on the frame a slow tick skips into a clip with no data, after asking it to play", () => {
