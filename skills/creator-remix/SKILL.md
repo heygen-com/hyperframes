@@ -39,7 +39,7 @@ The template lands in `templates/<slug>/`. A pull costs no credits, and one alre
 
 ## Make the episode
 
-Read `references/remix.md` and follow it, resuming included. It sets the order; the template's `series/<series>/REMIX.md` is the process. Two stops belong to the person, the storyboard and the draft, and nothing paid starts before the storyboard's go.
+Read `references/remix.md` and follow it, resuming included. It sets the order; the template's `series/<series>/REMIX.md` is the process. Two stops belong to the person: the storyboard and the draft.
 
 ## Credits
 

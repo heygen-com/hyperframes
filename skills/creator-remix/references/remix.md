@@ -21,7 +21,7 @@ Order: `read → settle the voice → say what's coming → ask (only what is op
 
 The person's message carries what it carries. Ask once, together, only what is still open: the topic, the length, the voice and, for a presented series, the face.
 
-- **Only the person's own face, and their own voice first.** Never a HeyGen stock presenter, never the creator's face, voice, footage, wordmark or show name. A presented series with no face answered: ask for it once, and make nothing paid until it is answered.
+- **Never the creator's face, voice, footage, wordmark or show name.**
 - **A presenter runs on the plan.** Their own HeyGen avatar if they have one, otherwise Avatar IV from their photo, both through `npx hyperframes media-use generate --type avatar` with the finished voice, so the lips land on it. HeyGen Video 1 is the fallback when neither works.
 - **Settle the voice before any research.** A HeyGen voice id the person gave is the voice: use it and ask nothing. Anything else: with `heygen` signed in, look in `heygen voice list`. One clone: use it. Several: ask which. None, or no `heygen`: ask once for their voice id, a clone they make in HeyGen from 30 s to 3 min of their own reading, or their own recorded narration; with none of these, say in one line that you'll use a HeyGen stock voice (`npx hyperframes media-use resolve --type voice`), name it in the credits as AI-generated, and go on. Nothing else starts until this is settled.
 - **Then say what's coming** in one short message that is not a question, and go on without waiting: the working title and hook, the length, and roughly how long it takes. No prices.
@@ -32,7 +32,7 @@ The person's message carries what it carries. Ask once, together, only what is s
 
 - Facts first, per REMIX.md: every number, date and quote with its source. A research sub-agent is fine.
 - Write the script to voice.md and the series' script anatomy; run the script checks REMIX.md names.
-- **Stop 1:** pose the script and the shot plan as stills on the board, written as the hyperframes skill's `references/storyboard.md` says: one still per beat, its line under it, what each shot shows and which component makes it. A series kit builds its film from the voice's timing, so never voice to get a board: pose the beats on a plain page with the real components, words and fonts, and give each its estimated seconds. Point the person to `boards/storyboard.html` and wait for their go. Nothing paid before it.
+- **Stop 1:** pose the script and the shot plan as stills on the board, written as the hyperframes skill's `references/storyboard.md` says: one still per beat, its line under it, what each shot shows and which component makes it. A series kit builds its film from the voice's timing, so never voice to get a board: pose the beats on a plain page with the real components, words and fonts, and give each its estimated seconds. Point the person to `boards/storyboard.html` and wait for their go.
 
 ## 5. Voice and face
 
