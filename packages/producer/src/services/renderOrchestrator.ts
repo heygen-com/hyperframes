@@ -3761,6 +3761,8 @@ async function executeRenderPipeline(input: {
       // sample frame indices from this so they land inside the drained range.
       compositionDurationSeconds: job.duration,
       deFrameFallback: true,
+      // A failed composition script ends the render when a session first sees it, not after the last frame.
+      onSubTimelineScriptFailure: (warnings) => applyRenderWarningPolicy(job, warnings, log),
       // A line per scanned chunk, so a long effect scan reads as preparing, not as a stall.
       onEffectScanProgress: (scanned, total) =>
         updateJobStatus(

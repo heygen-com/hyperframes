@@ -28,7 +28,7 @@ import {
 import type { CompiledComposition } from "../htmlCompiler.js";
 import type { FileServerHandle } from "../fileServer.js";
 import { defaultLogger, type ProducerLogger } from "../../logger.js";
-import type { RenderJob } from "../renderOrchestrator.js";
+import { RenderQualityError, type RenderJob } from "../renderOrchestrator.js";
 import { normalizeErrorMessage } from "../../utils/errorMessage.js";
 
 export interface CaptureCostEstimate {
@@ -436,6 +436,7 @@ export async function runCaptureCalibration(input: {
   try {
     calibration = await runOneCalibration(join(workDir, "capture-calibration"), calibrationCfg);
   } catch (error) {
+    if (error instanceof RenderQualityError) throw error;
     const shouldFallback =
       !forceScreenshot && shouldFallbackToScreenshotAfterCalibrationError(error);
     if (!shouldFallback) {

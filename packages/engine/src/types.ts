@@ -147,6 +147,9 @@ export interface HfProtocol {
 export interface CaptureOptions {
   width: number;
   height: number;
+  /** Called when a session records `sub_timeline_script_failure`; a caller that cannot use such a render throws here
+   * to end the init at once. */
+  onSubTimelineScriptFailure?: (warnings: readonly CaptureWarning[]) => void;
   /**
    * Producer-resolved composition duration (seconds) — the data-duration
    * clamp actually rendered, which can differ from the page's raw
