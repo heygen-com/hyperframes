@@ -19,28 +19,28 @@ export interface TemplatePack {
 export const TEMPLATES: Record<string, TemplatePack> = {
   "big-questions": {
     id: "M9003",
-    sha256: "df19f953df10b9cbb0779d20a2f5b0b964ce752d8b7d3927ef9ecc63497b7a45",
-    bytes: 25562753,
+    sha256: "6e5491eff06c90037a4b35054682be75a48b207171645a848f35fd207f5b3af8",
+    bytes: 25559276,
   },
   "long-story-short": {
     id: "M9002",
-    sha256: "79412b1a6fb1862473a9769a6893bf01d559906b450d4d8a94d4ed7a90606b8d",
-    bytes: 140688238,
+    sha256: "27cbe99eeb9140fbe2184035fefe1aa361988cdab57f5f56055e3c26babfcee7",
+    bytes: 140687062,
   },
   manhunt: {
     id: "M9005",
-    sha256: "12cc86265020ed9f34e5b1b55fb4746483d968d31eb56888b0dbae54c09fe155",
-    bytes: 5976359,
+    sha256: "7a7efc4128fce015b821ea486088c55b14988e8ac72b57b0bae5f77dd0a0d9a6",
+    bytes: 5976008,
   },
   "paper-trail": {
     id: "M9001",
-    sha256: "d228cfb01903fe2ab19f794664a45001f0e60e55afa33cb527a5aebc8730c162",
-    bytes: 36711645,
+    sha256: "aeb5d62b4ff4b467060c5aee13c8a25e7392b2e7ed47ea86f43525d544d0760d",
+    bytes: 36710658,
   },
   "under-the-hood": {
     id: "M9004",
-    sha256: "d9beaf3fef25066eecf74909bdcc015082a677f79aea07a74096628197dbcff7",
-    bytes: 20180434,
+    sha256: "4d8715471d893369b140da4a4abe3a8a7dcadbcd4c04037afd72a2fbb7cd792c",
+    bytes: 20180107,
   },
 };
 
