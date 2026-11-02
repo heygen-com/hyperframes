@@ -2515,6 +2515,10 @@ export function recordSubTimelineWarning(session: CaptureSession, timeoutMs: num
       },
     },
   ]);
+  if (scriptFailure) {
+    const failed = session.warnings.filter((w) => w.code === "sub_timeline_script_failure");
+    session.options?.onSubTimelineScriptFailure?.(failed);
+  }
 }
 
 /**
