@@ -67,7 +67,7 @@
     "lint:registry-items": "node scripts/lint-registry-items.mjs"
   },
   "dependencies": {
-    "yaml": "^2.9.0"
+    "yaml": "^2.9.1"
   },
   "devDependencies": {
     "@commitlint/cli": "^20.5.0",

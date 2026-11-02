@@ -74,7 +74,7 @@
     "@hyperframes/producer": "workspace:^",
     "hono": "^4.6.0",
     "puppeteer-core": "^25.8.0",
-    "tar": "^7.4.3"
+    "tar": "^7.5.22"
   },
   "devDependencies": {
     "@types/node": "^25.0.10",

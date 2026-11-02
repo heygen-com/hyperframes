@@ -57,9 +57,9 @@
     "acorn": "^8.17.0",
     "acorn-walk": "^8.3.5",
     "htmlparser2": "^10.1.0",
-    "linkedom": "^0.18.12",
-    "postcss": "^8.5.8",
-    "postcss-selector-parser": "^7.1.4"
+    "linkedom": "^0.18.15",
+    "postcss": "^8.5.32",
+    "postcss-selector-parser": "^7.1.7"
   },
   "devDependencies": {
     "@types/node": "^25.0.10",

@@ -81,7 +81,7 @@
     "@hyperframes/parsers": "workspace:*",
     "@hyperframes/studio-server": "workspace:*",
     "hono": "^4.6.0",
-    "linkedom": "^0.18.12",
+    "linkedom": "^0.18.15",
     "postcss": "^8.4.0",
     "puppeteer": "~25.11.0",
     "puppeteer-core": "^25.11.0"
