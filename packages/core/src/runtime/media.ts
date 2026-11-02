@@ -1,6 +1,6 @@
 import { swallow } from "./diagnostics";
 import { isClipVisibleAt, isInClipWindow } from "./clipWindow";
-import { mediaElementTime, startsSoundOnlyInsideATap } from "./mediaClock";
+import { isWebKit, mediaElementTime, startsSoundOnlyInsideATap } from "./mediaClock";
 import { sameInstant } from "../clipFacts";
 import { interpolateVolumeGain } from "./mediaVolumeEnvelope.js";
 import { elementVolumeLaneGain } from "./audioAutomationVolume.js";
@@ -36,6 +36,8 @@ export function readElementPlaybackStart(el: Element): number {
 
 const HOLD_END_EVENTS = ["seeked", "loadeddata", "error", "emptied", "abort"] as const;
 export const HOLD_CAP_MS = 5000;
+// Past this a WebKit audio element that has not moved is stuck on a seek, not slow to start (output lags 0.15 to 0.4 s).
+const WEBKIT_STUCK_AUDIO_SECONDS = 1;
 const releaseHeldVideo = new WeakMap<HTMLMediaElement, () => void>();
 
 // A seeking video still paints its previous frame, and one still fetching its first data paints none (its seek
@@ -644,7 +646,8 @@ export function syncRuntimeMedia(params: {
       lastOffset.set(el, offset);
       const firstTickOfClip = prevOffset === undefined;
       const offsetJumped = !firstTickOfClip && Math.abs(offset - prevOffset!) > 0.5;
-      const catastrophicDrift = drift > 3;
+      const catastrophicDrift =
+        drift > (el.tagName === "AUDIO" && isWebKit() ? WEBKIT_STUCK_AUDIO_SECONDS : 3);
       // A short audio clip can leave its native element paused just before EOF.
       // When the timeline re-enters the clip, rewind stale forward state at the
       // strict threshold; do not force cold audio forward while it buffers.

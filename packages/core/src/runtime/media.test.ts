@@ -1687,6 +1687,23 @@ describe("syncRuntimeMedia", () => {
     expect(clip.el.currentTime).toBeGreaterThan(3);
   });
 
+  it("pulls a WebKit audio element frozen on its in-point onto the playhead after 1 s, not 3", () => {
+    const userAgent = vi
+      .spyOn(navigator, "userAgent", "get")
+      .mockReturnValue(
+        "Mozilla/5.0 AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
+      );
+    const clip = createMockClip({ start: 0, end: 100, mediaStart: 0 }, "audio");
+    Object.defineProperty(clip.el, "paused", { value: false, writable: true, configurable: true });
+    Object.defineProperty(clip.el, "currentTime", { value: 0, writable: true });
+    syncRuntimeMedia({ clips: [clip], timeSeconds: 0, playing: true, playbackRate: 1 });
+    for (let t = 0.3; t <= 1.5; t += 0.3) {
+      syncRuntimeMedia({ clips: [clip], timeSeconds: t, playing: true, playbackRate: 1 });
+    }
+    userAgent.mockRestore();
+    expect(clip.el.currentTime).toBeGreaterThan(1);
+  });
+
   it("clears offset baseline when clip deactivates — re-entry hard-syncs", () => {
     const clip = createMockClip({ start: 0, end: 5, mediaStart: 0 });
     Object.defineProperty(clip.el, "currentTime", { value: 0, writable: true });
