@@ -26,6 +26,7 @@ type RuntimeBridgeControlActionBase =
   | "set-idle-heartbeat"
   | "set-display-scale"
   | "set-preview-quality"
+  | "set-copies-ahead"
   | "retry-preview-copies"
   | "request-preview-facts"
   | "set-root-duration"
@@ -48,6 +49,7 @@ type RuntimeBridgeControlMessageBase = {
   slow?: boolean;
   scale?: number;
   level?: number;
+  on?: boolean;
   playbackRate?: number;
   target?: HfColorGradingTarget | string | null;
   grading?: RuntimeJson;

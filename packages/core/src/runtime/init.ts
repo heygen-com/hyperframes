@@ -107,6 +107,7 @@ import {
   levelsWithLighterCopies,
   retryPreviewCopies,
   setPreviewQuality,
+  setCopiesAhead,
   setProxyDisplayScale,
 } from "./mediaProxy";
 import {
@@ -6224,6 +6225,7 @@ export function initSandboxRuntimeModular(): void {
         },
       }),
     onSetPreviewQuality: setPreviewQuality,
+    onSetCopiesAhead: (on) => setCopiesAhead(on, () => clock.isPlaying()),
     onRetryPreviewCopies: retryPreviewCopies,
     onSetIdleHeartbeat: (slow) => {
       slowIdleHeartbeat = slow;

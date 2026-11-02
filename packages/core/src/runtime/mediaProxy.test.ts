@@ -1059,6 +1059,87 @@ describe("preview quality: lighter copies of heavy files", () => {
     expect(copiesReady()).toBe(true);
   });
 
+  describe("a lighter copy made ahead of time", () => {
+    const asked = () =>
+      vi.mocked(fetch).mock.calls.map(([href]) => new URL(String(href), document.baseURI));
+
+    it("is off until the host turns it on", async () => {
+      const { video } = await stage({ "/video.mp4": HEAVY });
+      video();
+      await settle();
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it("asks for the copy the first step down would use, and leaves the video on its source", async () => {
+      const { video, setCopiesAhead } = await stage({ "/video.mp4": HEAVY });
+      const el = video();
+      setCopiesAhead(
+        true,
+        () => false,
+        () => true,
+      );
+      await settle();
+      setCopiesAhead(false, () => false);
+
+      expect(asked()[0]?.searchParams.get("hf-proxy-box")).toBe("1024x724");
+      expect(asked()[0]?.searchParams.get("hf-proxy-light")).toBe("1");
+      expect(vi.mocked(fetch).mock.calls[0]?.[1]?.headers).toMatchObject({
+        "X-HF-Proxy-Priority": "0",
+      });
+      expect(isProxied(el)).toBe(false);
+    });
+
+    it("starts nothing while the film plays", async () => {
+      const { video, setCopiesAhead } = await stage({ "/video.mp4": HEAVY });
+      video();
+      setCopiesAhead(
+        true,
+        () => true,
+        () => true,
+      );
+      await settle();
+      setCopiesAhead(false, () => false);
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it("waits for the clip to be on screen", async () => {
+      const { video, setCopiesAhead } = await stage({ "/video.mp4": HEAVY });
+      video();
+      setCopiesAhead(true, () => false);
+      await settle();
+      setCopiesAhead(false, () => false);
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it("makes one at a time", async () => {
+      vi.mocked(fetch).mockImplementation(() => new Promise(() => {}));
+      const { video, setCopiesAhead } = await stage({ "/video.mp4": HEAVY, "/other.mp4": HEAVY });
+      video();
+      video("/other.mp4");
+      setCopiesAhead(
+        true,
+        () => false,
+        () => true,
+      );
+      await settle();
+      setCopiesAhead(false, () => false);
+      expect(fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("leaves a file alone that no lower level would lighten", async () => {
+      const { video, setCopiesAhead } = await stage({ "/video.mp4": LIGHT });
+      video();
+      setCopiesAhead(
+        true,
+        () => false,
+        () => true,
+      );
+      await settle();
+      setCopiesAhead(false, () => false);
+      expect(fetch).not.toHaveBeenCalled();
+    });
+  });
+
   it("changes nothing at full quality", async () => {
     const { video, setPreviewQuality, maybeProxyProactively } = await stage({
       "/video.mp4": HEAVY,
