@@ -1,10 +1,12 @@
 // fallow-ignore-file code-duplication
 import { describe, expect, it, vi } from "vitest";
 import {
+  RenderCancelledError,
   RenderQualityError,
   applyRenderWarningPolicy,
   createRenderJob,
   stopPrepSessionOnScriptFailure,
+  surfaceScriptFailure,
   withScriptFailureStop,
 } from "../renderOrchestrator.js";
 import { updateJobStatus } from "./shared.js";
@@ -203,6 +205,25 @@ describe("updateJobStatus", () => {
     const worker = withScriptFailureStop(base, job, log);
     expect(() => worker.onSubTimelineScriptFailure?.([failed])).toThrow(RenderQualityError);
     expect(job.warnings?.map((warning) => warning.code)).toEqual(["sub_timeline_script_failure"]);
+  });
+
+  it("hands a script failure back as the top-level RenderQualityError, whatever wrapped it on the way up", () => {
+    const job = createRenderJob({ fps: 30, quality: "high" });
+    const log = { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() };
+    const wrapped = new Error("[Parallel] Capture failed: Worker 1: Render blocked", {
+      cause: new Error("worker"),
+    });
+    expect(surfaceScriptFailure(wrapped, job)).toBe(wrapped);
+    const base = { width: 16, height: 16, fps: { num: 30, den: 1 } };
+    const failed = { code: "sub_timeline_script_failure" as const, message: "a script threw" };
+    expect(() => withScriptFailureStop(base, job, log).onSubTimelineScriptFailure?.([failed])).toThrow(
+      RenderQualityError,
+    );
+    const surfaced = surfaceScriptFailure(wrapped, job);
+    expect(surfaced).toBeInstanceOf(RenderQualityError);
+    expect(surfaceScriptFailure(surfaced, job)).toBe(surfaced);
+    const cancelled = new RenderCancelledError("user_cancelled");
+    expect(surfaceScriptFailure(cancelled, job)).toBe(cancelled);
   });
 
   it("blocks audio processing failures when strictness is omitted", () => {
