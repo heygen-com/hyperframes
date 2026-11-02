@@ -60,7 +60,7 @@ function project(files: Record<string, string | Buffer>): string {
     const header = content === HEAVY ? HEADERS[extname(path).toLowerCase()] : undefined;
     writeFileSync(
       join(dir, path),
-      header ? Buffer.concat([header, content.subarray(header.length)]) : content,
+      header ? Buffer.concat([header, HEAVY.subarray(header.length)]) : content,
     );
   }
   return dir;
