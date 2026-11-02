@@ -25,6 +25,7 @@ vi.mock("./bridge", () => ({
 
 import { postRuntimeMessage } from "./bridge";
 import { resetSeekDispatchState, waitForSeekCompletion } from "./adapters/seek-dispatch";
+import { resetCopyReporting } from "./previewCopies";
 
 const postRuntimeMessageMock = vi.mocked(postRuntimeMessage);
 
@@ -100,6 +101,7 @@ beforeEach(() => {
 
 afterEach(() => {
   resetSeekDispatchState();
+  resetCopyReporting();
   vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.clearAllMocks();
@@ -696,7 +698,9 @@ describe("waiting for the proxy copy", () => {
     handleMetadataForProxy(el);
     handleErrorForProxy(el);
     await vi.advanceTimersByTimeAsync(0);
-    expect(postRuntimeMessageMock).not.toHaveBeenCalled();
+    expect(postRuntimeMessageMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "diagnostic" }),
+    );
     expect(route).toHaveBeenCalledTimes(1);
 
     await vi.advanceTimersByTimeAsync(3_000);
@@ -716,7 +720,9 @@ describe("waiting for the proxy copy", () => {
 
     expect(isProxied(el)).toBe(false);
     expect(route).toHaveBeenCalledTimes(4);
-    expect(postRuntimeMessageMock).toHaveBeenCalledTimes(1);
+    expect(
+      postRuntimeMessageMock.mock.calls.filter(([message]) => message.type === "diagnostic"),
+    ).toHaveLength(1);
     expect(postRuntimeMessageMock).toHaveBeenCalledWith(
       expect.objectContaining({
         code: "runtime_media_proxy_unavailable",
@@ -794,7 +800,9 @@ describe("waiting for the proxy copy", () => {
 
     expect(route).toHaveBeenCalledTimes(1);
     expect(el.load).not.toHaveBeenCalled();
-    expect(postRuntimeMessageMock).not.toHaveBeenCalled();
+    expect(postRuntimeMessageMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "diagnostic" }),
+    );
   });
 
   it("keeps one wait for a new file even after the dropped wait for the old one wakes", async () => {

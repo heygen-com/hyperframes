@@ -64,6 +64,15 @@ export function setCopyReportingLevel(level: number): void {
   scheduleReport();
 }
 
+export function resetCopyReporting(): void {
+  copies.clear();
+  clearTimeout(timer);
+  timer = undefined;
+  reporting = false;
+  reportedAny = false;
+  dirtyWhileWaiting = false;
+}
+
 export function noteCopy(
   el: HTMLMediaElement,
   state: CopyState["state"],

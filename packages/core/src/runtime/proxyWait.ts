@@ -12,7 +12,11 @@ function withoutRetryFlag(href: string): string {
   return url.href;
 }
 
-function askHeaders(atPlayhead: boolean, background: boolean, onAsk?: () => void): Record<string, string> {
+function askHeaders(
+  atPlayhead: boolean,
+  background: boolean,
+  onAsk?: () => void,
+): Record<string, string> {
   onAsk?.();
   const headers: Record<string, string> = { Range: "bytes=0-0" };
   if (atPlayhead) headers[PREVIEW_PROXY_PRIORITY_HEADER] = "1";
