@@ -629,15 +629,19 @@ let copiesAheadTimer: ReturnType<typeof setInterval> | null = null;
 let makingCopyAhead = false;
 const copiesAheadDone = new Set<string>();
 
+function copyAheadBox(el: HTMLMediaElement, isShown: (el: HTMLMediaElement) => boolean) {
+  if (displayScale === null || !isShown(el) || swappedElements.has(el)) return null;
+  const shown = shownBox(el, displayScale);
+  return shown && scalePreviewProxyBox(shown, COPY_AHEAD_LEVEL);
+}
+
 /** The 1/2 copy of a clip on screen that is heavy at that size, not yet made. */
 function nextCopyAhead(isShown: (el: HTMLMediaElement) => boolean): string | null {
-  if (previewQuality < 1 || displayScale === null) return null;
+  if (previewQuality < 1) return null;
   for (const el of document.querySelectorAll("video")) {
     const facts = sourceFactsOf(el);
-    const shown = facts && isShown(el) && !swappedElements.has(el) && shownBox(el, displayScale);
-    if (!facts || !shown) continue;
-    const box = scalePreviewProxyBox(shown, COPY_AHEAD_LEVEL);
-    if (!isHeavyForPreview(facts, box)) continue;
+    const box = facts && copyAheadBox(el, isShown);
+    if (!facts || !box || !isHeavyForPreview(facts, box)) continue;
     const variant = copyVariant(codecEntryOf(el));
     const href = appendProxyParam(currentSrcValue(el), variant, box, true, false);
     if (!copiesAheadDone.has(href)) return href;
