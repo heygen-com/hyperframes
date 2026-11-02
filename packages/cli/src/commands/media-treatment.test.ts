@@ -733,6 +733,35 @@ describe("applyMediaTreatmentToHtml", () => {
     }
   });
 
+  it("reads a relative --grading file from the project, not from where the command runs", async () => {
+    const project = mkdtempSync(join(tmpdir(), "hf-media-grading-rel-"));
+    mkdirSync(join(project, "assets"));
+    writeFileSync(join(project, "index.html"), VIDEO);
+    writeFileSync(join(project, "assets", "g.json"), '{"preset":"warm-daylight"}');
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+      await runCommand(mediaTreatmentCommand, {
+        rawArgs: [
+          "--project",
+          project,
+          "--selector",
+          "#hero",
+          "--grading",
+          "assets/g.json",
+          "--dry-run",
+          "--json",
+        ],
+      });
+      expect(JSON.parse(String(log.mock.calls.at(-1)?.[0]))).toMatchObject({
+        ok: true,
+        changed: true,
+      });
+    } finally {
+      log.mockRestore();
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
   it("finds a clip inside a mounted scene and edits it in its own file", async () => {
     const project = mkdtempSync(join(tmpdir(), "hf-media-scene-"));
     const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
