@@ -1,8 +1,4 @@
-/**
- * A GPU process crash drops every WebGL context in the page. Scene canvases belong to the
- * composition, so the runtime cannot rebuild them; it lets them restore and then asks for
- * one repaint after the scene's own restore handlers have run.
- */
+/** A lost context is allowed to restore; one repaint follows after the scene's own restore handlers ran. */
 export function watchSceneWebglContexts(onRestored: () => void): () => void {
   let frame: number | null = null;
   // Without preventDefault the browser never restores the context.
