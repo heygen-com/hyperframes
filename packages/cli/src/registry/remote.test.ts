@@ -78,16 +78,14 @@ afterAll(() => {
 });
 
 describe("readRegistryManifest", () => {
-  it("throws why when the registry host cannot be reached and nothing is cached", async () => {
-    vi.spyOn(globalThis, "fetch").mockRejectedValue(
+  it("throws why when neither registry host answers and nothing is cached", async () => {
+    const refused = () =>
       Object.assign(new TypeError("fetch failed"), {
-        cause: Object.assign(new Error("getaddrinfo ENOTFOUND raw.githubusercontent.com"), {
-          code: "ENOTFOUND",
-        }),
-      }),
-    );
+        cause: Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED" }),
+      });
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => Promise.reject(refused()));
     await expect(readRegistryManifest(DEFAULT_REGISTRY_URL)).rejects.toThrow(
-      "The registry could not be read: fetch failed (getaddrinfo ENOTFOUND raw.githubusercontent.com)",
+      "The registry could not be read: Neither registry host answered: static.heygen.ai (ECONNREFUSED), raw.githubusercontent.com (ECONNREFUSED)",
     );
   });
 });
@@ -128,7 +126,7 @@ describe("fetchRegistryManifest", () => {
     );
 
     await expect(fetchRegistryManifest(DEFAULT_REGISTRY_URL)).resolves.toEqual(MANIFEST);
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(fetchSpy).toHaveBeenCalledTimes(2); // the mirror, then raw GitHub
   });
 
   it("treats an empty cached payload as a miss rather than an answer", async () => {
@@ -253,7 +251,7 @@ describe("fetchItemManifest", () => {
         skipCache: true,
       }),
     ).resolves.toEqual(ITEM);
-    expect(fetchSpy).toHaveBeenCalledOnce();
+    expect(fetchSpy).toHaveBeenCalledTimes(2); // the mirror, then raw GitHub
   });
 
   it("keeps a valid cached item when a forced refresh returns invalid data", async () => {
@@ -303,7 +301,7 @@ describe("fetchItemManifest", () => {
     await expect(
       fetchItemManifest("count-up", "hyperframes:component", DEFAULT_REGISTRY_URL),
     ).resolves.toEqual(ITEM);
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(fetchSpy).toHaveBeenCalledTimes(2); // the mirror, then raw GitHub
   });
 
   it("still throws when the item fetch fails and nothing was cached", async () => {
@@ -474,7 +472,7 @@ describe("fetchItemFile retries", () => {
     await expect(fetchItemFile(item, file, DEFAULT_REGISTRY_URL)).rejects.toThrow(
       /self-signed certificate/,
     );
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(fetchSpy).toHaveBeenCalledTimes(2); // one attempt: the mirror, then raw GitHub
   });
 
   it("names the URL it could not reach", async () => {
@@ -493,6 +491,6 @@ describe("fetchItemFile retries", () => {
       .mockRejectedValue(new Error("fetch failed", { cause: new Error("ECONNRESET") }));
 
     await expect(fetchItemFile(item, file, DEFAULT_REGISTRY_URL)).rejects.toThrow();
-    expect(fetchSpy).toHaveBeenCalledTimes(3);
+    expect(fetchSpy).toHaveBeenCalledTimes(6); // three attempts, each the mirror then raw GitHub
   });
 });

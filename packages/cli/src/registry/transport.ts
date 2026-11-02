@@ -29,7 +29,46 @@ export function registryPathUrl(base: string, ...parts: string[]): string {
   return url.href;
 }
 
+export const DEFAULT_REGISTRY_URL =
+  "https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry";
+/** The same folder published to HeyGen's CDN, which networks that block raw GitHub still reach. */
+export const REGISTRY_MIRROR_URL = "https://static.heygen.ai/hyperframes-oss/desktop/registry/main";
+// The mirror's own cap, so a mirror that hangs still leaves the caller's time for raw GitHub.
+const MIRROR_WAIT_MS = 4_000;
+
+const why = (error: unknown) => {
+  const cause = (error as { cause?: { code?: unknown; message?: unknown } })?.cause;
+  return String(cause?.code ?? cause?.message ?? (error as Error)?.message ?? error);
+};
+
+/** A default-registry file is read from the mirror first, then from raw GitHub; any other registry as given. */
 export async function fetchRegistryHttps(value: string, signal: AbortSignal): Promise<Response> {
+  if (!value.startsWith(`${DEFAULT_REGISTRY_URL}/`)) return fetchFollowing(value, signal);
+  const mirrored = REGISTRY_MIRROR_URL + value.slice(DEFAULT_REGISTRY_URL.length);
+  let mirrorFailure: string;
+  try {
+    const response = await fetchFollowing(
+      mirrored,
+      AbortSignal.any([signal, AbortSignal.timeout(MIRROR_WAIT_MS)]),
+    );
+    if (response.ok) return response;
+    await response.body?.cancel();
+    mirrorFailure = `HTTP ${response.status}`;
+  } catch (error) {
+    if (signal.aborted) throw error;
+    mirrorFailure = why(error);
+  }
+  try {
+    return await fetchFollowing(value, signal);
+  } catch (error) {
+    throw new Error(
+      `Neither registry host answered: ${new URL(REGISTRY_MIRROR_URL).host} (${mirrorFailure}), ${new URL(DEFAULT_REGISTRY_URL).host} (${why(error)})`,
+      { cause: error },
+    );
+  }
+}
+
+async function fetchFollowing(value: string, signal: AbortSignal): Promise<Response> {
   let url = registryHttpsUrl(value);
   for (let redirects = 0; redirects <= 5; redirects++) {
     const response = await fetch(url.href, { signal, redirect: "manual" });

@@ -306,13 +306,12 @@ beforeEach(() => {
 describe("catalog when the registry cannot be read", () => {
   it("exits non-zero with the reason instead of printing an empty list", async () => {
     state.registryUnreadable =
-      "The registry could not be read: fetch failed (getaddrinfo ENOTFOUND raw.githubusercontent.com)";
+      "The registry could not be read: Neither registry host answered: static.heygen.ai (ECONNREFUSED), raw.githubusercontent.com (ECONNREFUSED)";
 
     const { exitCode, err } = await runForExit({ json: true });
 
     expect(exitCode).toBe(1);
-    expect(err).toContain("The registry could not be read: fetch failed");
-    expect(err).toContain("raw.githubusercontent.com");
+    expect(err).toContain("Neither registry host answered");
     expect(err).not.toContain("[]");
   });
 });

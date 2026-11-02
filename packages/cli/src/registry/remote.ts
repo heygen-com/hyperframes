@@ -1,6 +1,11 @@
 import { readBoundedRegistryFile } from "./boundedFile.js";
 import { publishRegistryFile, registryRoot } from "./publication.js";
-import { fetchRegistryHttps, registryHttpsUrl, registryPathUrl } from "./transport.js";
+import {
+  DEFAULT_REGISTRY_URL,
+  fetchRegistryHttps,
+  registryHttpsUrl,
+  registryPathUrl,
+} from "./transport.js";
 import { readBoundedResponse, type DownloadByteBudget } from "../capture/readBoundedResponse.js";
 import { validRegistryName, validRegistryManifest, validRegistryItem } from "./validation.js";
 /**
@@ -28,8 +33,7 @@ import {
   type RegistryManifest,
 } from "@hyperframes/core";
 
-export const DEFAULT_REGISTRY_URL =
-  "https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry";
+export { DEFAULT_REGISTRY_URL } from "./transport.js";
 
 const FETCH_TIMEOUT_MS = 10_000;
 const MAX_MANIFEST_BYTES = 10 * 1024 * 1024;
