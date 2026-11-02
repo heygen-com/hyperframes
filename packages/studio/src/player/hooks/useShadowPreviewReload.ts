@@ -20,6 +20,7 @@ import {
 } from "./useTimelineSyncCallbacks";
 import type { IframeWindow, PlaybackAdapter } from "../lib/playbackTypes";
 import { setPreviewReloading } from "../previewReloading";
+import { studioFileRevision } from "../../utils/studioFileVersion";
 import { announcePreviewPromoted } from "../sceneSwap";
 import { afterStudioPendingEdits, isStudioEditSaving } from "../../utils/studioPendingEdits";
 import { usePlayerStore } from "../store/playerStore";
@@ -117,6 +118,7 @@ export function useShadowPreviewReload({
   const stopHoldRef = useRef<() => void>(() => {});
   const shadowUrlRef = useRef("");
   const savesAtRequestRef = useRef(0);
+  const revisionAtRequestRef = useRef(0);
   const beginShadowReloadRef = useRef<(url: string) => void>(() => {});
   const retry = useShadowReloadRetry(shadowGenRef, shadowUrlRef, beginShadowReloadRef);
   const promoteWhenReadyRef = useRef<(gen: number) => void>(() => {});
@@ -179,8 +181,8 @@ export function useShadowPreviewReload({
     [],
   );
 
-  // Nothing replaces the preview under a gesture, and a shadow requested before a gesture's save
-  // shows the file before it: once that save has landed, a fresh one loads instead.
+  // Nothing replaces the preview under a gesture, and a shadow requested before a write
+  // shows the file before it: once that write has landed, a fresh one loads instead.
   const heldOrStale = useCallback(
     (gen: number) => {
       const liveDoc = iframeRef.current?.contentDocument;
@@ -188,7 +190,11 @@ export function useShadowPreviewReload({
         return waitThenRetry(gen, "gesture", (retry) =>
           afterStudioManualEditGestures(liveDoc, retry),
         );
-      if (gestureSavesOnScreen() === savesAtRequestRef.current) return false;
+      if (
+        gestureSavesOnScreen() === savesAtRequestRef.current &&
+        studioFileRevision() === revisionAtRequestRef.current
+      )
+        return false;
       if (isStudioEditSaving()) return waitThenRetry(gen, "save", afterStudioPendingEdits);
       logReload("shadow-reloaded-after-gesture-save", { gen });
       const url = new URL(shadowUrlRef.current, window.location.origin);
@@ -335,6 +341,7 @@ export function useShadowPreviewReload({
       budgetsSpentRef.current = 0;
       shadowUrlRef.current = url;
       savesAtRequestRef.current = gestureSavesOnScreen();
+      revisionAtRequestRef.current = studioFileRevision();
       armReadyTimer(gen);
       setPreviewSlots((prev) => planShadowReload(prev, gen, url));
       // Thumbnails of the edit wait for the new preview instead of competing with it.

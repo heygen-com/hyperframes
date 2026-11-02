@@ -110,6 +110,20 @@ function findClash(keys: StudioKeys): string | null {
   return null;
 }
 
+export function studioKeyClash(
+  action: StudioKeyAction,
+  text: string,
+  keys: StudioKeys = current,
+): StudioKeyAction | null {
+  const wanted = parseCombo(text);
+  const holds = (other: StudioKeyAction) => {
+    const held = parseCombo(keys[other]);
+    return !!held && !!wanted && comboClashKey(held) === comboClashKey(wanted);
+  };
+  const keyed = Object.keys(keys) as StudioKeyAction[];
+  return keyed.find((o) => o !== action && !sharedByDesign(action, o) && holds(o)) ?? null;
+}
+
 function resolve(overrides: Partial<Record<StudioKeyAction, string>>): StudioKeys {
   const next: Record<string, string> = { ...DEFAULT_STUDIO_KEYS };
   for (const [action, text] of Object.entries(overrides)) {

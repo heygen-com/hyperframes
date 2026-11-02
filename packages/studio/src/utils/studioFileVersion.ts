@@ -2,6 +2,12 @@
 // retries, and the subsequent file-change echo without retaining abandoned tokens forever.
 const WRITE_TOKEN_TTL_MS = 5 * 60_000;
 const studioWriteTokens = new Map<string, number>();
+let fileRevision = 0;
+
+/** One step per write Studio claims: a copy of the project read at a lower revision is stale. */
+export function studioFileRevision(): number {
+  return fileRevision;
+}
 
 function pruneStudioWriteTokens(now: number): void {
   for (const [token, createdAt] of studioWriteTokens) {
@@ -13,6 +19,7 @@ function pruneStudioWriteTokens(now: number): void {
 export function markStudioWriteToken(token: string, now: number = Date.now()): void {
   pruneStudioWriteTokens(now);
   studioWriteTokens.set(token, now);
+  fileRevision += 1;
 }
 
 /** Consumed by the external-change coordinator introduced in stack PR #2991. */

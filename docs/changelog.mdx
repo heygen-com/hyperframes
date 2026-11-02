@@ -9,6 +9,65 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.9.3"
+  description="Released - 2026-11-02"
+  tags={["Release", "Studio Server", "CLI", "Studio"]}
+>
+Stamping a project's ids no longer holds up the Studio host, and long media clips no longer leave it unanswered. A preview reload writes the composition as it is now. Measure and diff say why they failed.
+
+## Features
+
+- **Studio Server:** Stamp a project hf-ids without holding the event loop ([d17b958318](https://github.com/heygen-com/hyperframes/commit/d17b958318b3616ede33dec84d7a1c3eb8bc4b5a), [#7004](https://github.com/heygen-com/hyperframes/pull/7004)).
+
+## Fixes
+
+- **Studio Server:** Long media clips no longer leave the host unanswered ([c54f84859d](https://github.com/heygen-com/hyperframes/commit/c54f84859d8ce2b1d13e351e4c9f8b1cdfcb06cc), [#7002](https://github.com/heygen-com/hyperframes/pull/7002)).
+- **CLI:** Measure and diff report why they failed, and reverse reports its runs ([618c486734](https://github.com/heygen-com/hyperframes/commit/618c486734b3cbb697bd432bace7e9642e48b6be), [#6997](https://github.com/heygen-com/hyperframes/pull/6997)).
+- **Studio:** A preview reload writes the composition as it is now, not as it was when it asked ([a46412ee07](https://github.com/heygen-com/hyperframes/commit/a46412ee07fee0d91b29d62d92363dcad8cbbcd9), [#6998](https://github.com/heygen-com/hyperframes/pull/6998)).
+- **Core:** Keep media prefetch queue ordered ([aaa5b63f55](https://github.com/heygen-com/hyperframes/commit/aaa5b63f558adc8069ac56244c2d6da377923c89), [#6996](https://github.com/heygen-com/hyperframes/pull/6996)).
+- **Lint:** A helper script's timeline nested by the page is not reported as unregistered ([43f8b1a3fc](https://github.com/heygen-com/hyperframes/commit/43f8b1a3fcfe14e7e128c31a3f91d275fe123105), [#6999](https://github.com/heygen-com/hyperframes/pull/6999)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.9.2...v0.9.3).
+</Update>
+
+<Update
+  label="HyperFrames v0.9.2"
+  description="Released - 2026-11-02"
+  tags={["Release", "Engine", "Studio", "Core"]}
+>
+A scene that has ended now gives up its WebGL context, so the next scene is not slowed. A heavy clip's lighter copy can be made ahead of time. Apps that host Studio can ask which action holds a key combination.
+
+## Features
+
+- **Studio:** Hosts can ask which action holds a key combination ([5fca435623](https://github.com/heygen-com/hyperframes/commit/5fca435623a5005def2c3d0e5a1c4195e8084a4c), [#6979](https://github.com/heygen-com/hyperframes/pull/6979)).
+- **Core:** A heavy clip's lighter copy can be made ahead of time ([e5b10f8bc2](https://github.com/heygen-com/hyperframes/commit/e5b10f8bc2316aa2b9bf27b67f27658fb0b1dc94), [#6982](https://github.com/heygen-com/hyperframes/pull/6982)).
+
+## Fixes
+
+- **Engine:** A scene that has ended gives up its WebGL context so the next scene is not slowed ([26d6e3eef1](https://github.com/heygen-com/hyperframes/commit/26d6e3eef17d3f9b3d2764c7504a38e1bec0af97), [#6984](https://github.com/heygen-com/hyperframes/pull/6984)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.9.1...v0.9.2).
+</Update>
+
+<Update
+  label="HyperFrames v0.9.1"
+  description="Released - 2026-11-02"
+  tags={["Release", "Changelog", "AWS Lambda"]}
+>
+A Lambda render started straight on the state machine without a `PlanProtocol` now runs as Plan v2 instead of failing at its first step. The SDK and CLI always send `"v2"`, so they were not affected.
+
+## Fixes
+
+- **AWS Lambda:** A state machine input with no `PlanProtocol` defaults to Plan v2 instead of failing with `States.Runtime` ([758759673](https://github.com/heygen-com/hyperframes/commit/758759673bdd12ef007fc7315ecca1c721875f5a), [#6985](https://github.com/heygen-com/hyperframes/pull/6985)).
+
+## Docs & Examples
+
+- **Changelog:** Complete the v0.9.0 notes ([a17af79ab](https://github.com/heygen-com/hyperframes/commit/a17af79ab0cec11b97c1a682b2a7aa0ff35093c9), [#6986](https://github.com/heygen-com/hyperframes/pull/6986)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.9.0...v0.9.1).
+</Update>
+
+<Update
   label="HyperFrames v0.9.0"
   description="Released - 2026-11-02"
   tags={["Release", "Producer", "AWS Lambda", "Gcp Cloud Run", "Core", "CLI"]}

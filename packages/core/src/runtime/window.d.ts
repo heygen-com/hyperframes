@@ -72,6 +72,9 @@ declare global {
        *  Lottie; never script-created WAAPI, media or the declared length); repeats may run past it.
        *  Null when unknown. Studio reads it. */
       animationEnd?: () => number | null;
+      /** The window a clip occupies on the composition clock, its start references resolved as the renderer does;
+       *  end is Infinity for the root. Null for an element with no timing. */
+      clipWindow?: (el: Element) => { start: number; end: number } | null;
       /** Borrow an element's playback while the transport clock is paused, so the
        *  runtime's paused-side enforcement leaves it alone. Always release. */
       leasePausedMedia?: (el: HTMLMediaElement) => void;

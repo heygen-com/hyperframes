@@ -33,6 +33,7 @@ import {
 } from "@hyperframes/core";
 
 import { holdRenderFrameVideos } from "./renderFrameVideoHold.js";
+import { recordWebglContexts, releaseEndedWebglContexts } from "./webglRelease.js";
 import { asDrawElementCaptureFailure, DrawElementCaptureError } from "./drawElementCaptureError.js";
 import { encodePng } from "../utils/alphaBlit.js";
 import {
@@ -1640,6 +1641,7 @@ async function constructCaptureSession(
     }
   });
   await installMediaPageHooks(page, options);
+  await page.evaluateOnNewDocument(recordWebglContexts);
   // Fast capture: record accelerated canvases (webgl/webgl2/webgpu) and force
   // preserveDrawingBuffer before any page script can create a context — their
   // paint records freeze at the first frame, so captureDrawElementFrame
@@ -3289,6 +3291,8 @@ async function prepareFrameForCapture(
   const seekStart = Date.now();
   session.captureStep = "seeking the timeline";
   const hasPendingComposite = await seekPageTimeline(page, quantizedTime, seekOptions);
+
+  await releaseEndedWebglContexts(page, quantizedTime);
 
   session.captureStep = "decoding CSS background images";
   await decodeDynamicCssBackgroundImages(page);

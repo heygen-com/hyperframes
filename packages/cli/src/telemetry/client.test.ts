@@ -1,5 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { readFileSync, unlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 // CI exports HYPERFRAMES_NO_TELEMETRY=1 (and users may set DO_NOT_TRACK), which
 // makes shouldTrack() short-circuit — and it caches that decision for the module's
@@ -319,15 +321,36 @@ describe("telemetry queue delivery", () => {
     expect(args.join(" ").length).toBeLessThan(32_767);
   });
 
-  it("flushSync warns when the child cannot be started", () => {
+  it("flushSync stays silent when the child cannot be started", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     spawnMock.mockImplementationOnce(() => {
       throw new Error("spawn failed");
     });
     trackEvent("render_complete", { quality: "draft" });
-    flushSync();
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining("spawn failed"));
+    expect(() => flushSync()).not.toThrow();
+    expect(warn).not.toHaveBeenCalled();
     warn.mockRestore();
+  });
+
+  it("flushSync stays silent when the scratch folder cannot be written", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const missing = join(tmpdir(), `hf-no-such-scratch-${process.pid}`);
+    const names = ["TMPDIR", "TEMP", "TMP"];
+    const before = names.map((name) => process.env[name]);
+    for (const name of names) vi.stubEnv(name, missing);
+    spawnMock.mockClear();
+    trackEvent("render_complete", { quality: "draft" });
+    try {
+      expect(() => flushSync()).not.toThrow();
+    } finally {
+      names.forEach((name, i) => vi.stubEnv(name, before[i]));
+    }
+    expect(spawnMock).not.toHaveBeenCalled();
+    expect(warn).not.toHaveBeenCalled();
+    expect(error).not.toHaveBeenCalled();
+    warn.mockRestore();
+    error.mockRestore();
   });
 });
 

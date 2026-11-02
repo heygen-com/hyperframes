@@ -1,5 +1,6 @@
 import { CLIP_HIDDEN_ATTR, olderShaderBuildOnPage, revealClip } from "./clipReveal";
 import {
+  defersMediaIn,
   RUNTIME_STAMPED_ATTR,
   STUDIO_PREVIEW_CAPTURE_MODE,
   STUDIO_PREVIEW_MARK_META,
@@ -60,7 +61,7 @@ function appendStyle(parent: Element, attr: string, css: string): void {
 }
 
 export function defersMedia(): boolean {
-  return document.querySelector(STUDIO_PREVIEW_MARK) !== null;
+  return defersMediaIn(document);
 }
 
 /** True in Studio's preview, where hidden clips' images are neither fetched nor decoded until due. */

@@ -88,7 +88,7 @@ import {
   markCommandDelivered,
 } from "./utils/render-success-state.js";
 import { resolveCommandUsage, type ResolvedCommandUsage } from "./utils/commandUsageResolution.js";
-import { closestMatch, synonymMatch } from "./utils/didYouMean.js";
+import { closestMatch, fileHint, synonymMatch } from "./utils/didYouMean.js";
 import { jsonErrorBody, watchOutput, writeJsonFailure } from "./utils/jsonError.js";
 import { isDevMode } from "./utils/env.js";
 import {
@@ -546,14 +546,15 @@ async function unknownCommandError(requested: ResolvedCommandUsage): Promise<Cli
   const match =
     (requested.path.length === 0 ? synonymMatch(word, names) : undefined) ??
     closestMatch(word, names);
+  const hint = match ? `Did you mean '${group} ${match}'?` : fileHint(word, requested.path, names);
   console.error(`Unknown command: ${word}`);
-  if (match) console.error(`Did you mean '${group} ${match}'?`);
+  if (hint) console.error(hint);
   console.error("");
   await showUsage(requested.command, requested.parent, console.error);
   return new CliUsageError(`Unknown command: ${word}`, {
     presented: true,
     code: "unknown_command",
-    hint: match ? `Did you mean '${group} ${match}'?` : undefined,
+    hint,
   });
 }
 
