@@ -546,15 +546,22 @@ async function unknownCommandError(requested: ResolvedCommandUsage): Promise<Cli
   const match =
     (requested.path.length === 0 ? synonymMatch(word, names) : undefined) ??
     closestMatch(word, names);
+  const hint = match ? `Did you mean '${group} ${match}'?` : fileHint(word, group, names);
   console.error(`Unknown command: ${word}`);
-  if (match) console.error(`Did you mean '${group} ${match}'?`);
+  if (hint) console.error(hint);
   console.error("");
   await showUsage(requested.command, requested.parent, console.error);
   return new CliUsageError(`Unknown command: ${word}`, {
     presented: true,
     code: "unknown_command",
-    hint: match ? `Did you mean '${group} ${match}'?` : undefined,
+    hint,
   });
+}
+
+// Agents write `measure clip.mp4`: a file where the group wants a command first.
+function fileHint(word: string, group: string, names: string[]): string | undefined {
+  if (names.length === 0 || !existsSync(word)) return undefined;
+  return `'${word}' is a file; name a command first: '${group} <${names.join("|")}> ${word}'.`;
 }
 
 // A group like `timeline` also takes a project directory, so a word it does not know may be one.
