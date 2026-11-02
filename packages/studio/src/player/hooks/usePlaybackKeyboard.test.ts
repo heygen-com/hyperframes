@@ -76,11 +76,19 @@ function setupHook(): HookHandle {
   };
 }
 
-function keydown(init: { code: string; key: string; shiftKey?: boolean }): KeyboardEvent {
+function keydown(init: {
+  code: string;
+  key: string;
+  shiftKey?: boolean;
+  metaKey?: boolean;
+  altKey?: boolean;
+}): KeyboardEvent {
   return new KeyboardEvent("keydown", {
     code: init.code,
     key: init.key,
     shiftKey: init.shiftKey ?? false,
+    metaKey: init.metaKey ?? false,
+    altKey: init.altKey ?? false,
     cancelable: true,
   });
 }
@@ -445,5 +453,33 @@ describe("usePlaybackKeyboard: space, arrows, loop and clear keys are combos", (
     expect(spies.seek).toHaveBeenCalledTimes(1);
     send(dispatch, { code: "KeyY", key: "Y", shiftKey: true });
     expect(usePlayerStore.getState().inPoint).toBeNull();
+  });
+});
+
+describe("usePlaybackKeyboard: modifier combos and named keys", () => {
+  const send = (dispatch: HookHandle["dispatch"], init: Parameters<typeof keydown>[0]) =>
+    act(() => {
+      dispatch(keydown(init));
+    });
+
+  it("a playback action remapped to a Cmd or Alt combo answers, and the plain key does not", () => {
+    setStudioKeys({ playPause: "mod+p", mute: "alt+m" });
+    const { dispatch, spies } = setupHook();
+    usePlayerStore.setState({ isPlaying: false, audioMuted: false });
+    send(dispatch, { code: "KeyP", key: "p", metaKey: true });
+    expect(spies.play).toHaveBeenCalledTimes(1);
+    send(dispatch, { code: "KeyM", key: "µ", altKey: true });
+    expect(usePlayerStore.getState().audioMuted).toBe(true);
+    send(dispatch, { code: "KeyP", key: "p" });
+    expect(spies.play).toHaveBeenCalledTimes(1);
+  });
+
+  it("holding a stop key that is a named key still frame-steps instead of shuttling", () => {
+    setStudioKeys({ pause: "Home" });
+    const { dispatch, spies } = setupHook();
+    send(dispatch, { code: "Home", key: "Home" });
+    send(dispatch, { code: "KeyJ", key: "j" });
+    expect(spies.seek).toHaveBeenCalledTimes(1);
+    expect(spies.playBackward).not.toHaveBeenCalled();
   });
 });

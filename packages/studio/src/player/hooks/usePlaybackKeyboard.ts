@@ -15,7 +15,7 @@ import {
 } from "../lib/playbackShortcuts";
 import { canvasNudgeKeysClaimed } from "../../utils/canvasNudgeGate";
 import { usePlayerStore } from "../store/playerStore";
-import { keyOf, matchesKey, type StudioKeyAction } from "../components/studioShortcuts";
+import { matchesKey, type StudioKeyAction } from "../components/studioShortcuts";
 import { resolveCanvasNudgeDelta } from "../../components/editor/domEditNudge";
 import { stepFrameTime } from "../lib/time";
 import { useLinkedClipPreferences } from "../../utils/linkedClipPreferences";
@@ -102,7 +102,7 @@ export function usePlaybackKeyboard({
   pause,
   seek,
 }: UsePlaybackKeyboardParams) {
-  const pressedKeysRef = useRef(new Set<string>());
+  const heldPauseRef = useRef(new Set<string>());
   const playbackKeyDownRef = useRef<(e: KeyboardEvent) => void>(() => {});
   const playbackKeyUpRef = useRef<(e: KeyboardEvent) => void>(() => {});
 
@@ -150,8 +150,8 @@ export function usePlaybackKeyboard({
   const handlePlaybackKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (e.defaultPrevented || ignoresPlaybackKey(e)) return;
-      pressedKeysRef.current.add(e.key.toLowerCase());
       const action = playbackActionOf(e);
+      if (action === "pause") heldPauseRef.current.add(e.code || e.key);
       if (!action) return;
       const isFrameStep = action in FRAME_STEPS;
       // A nudgeable canvas selection owns the arrow keys (DomEditOverlay moves
@@ -159,7 +159,7 @@ export function usePlaybackKeyboard({
       if (isFrameStep && canvasNudgeKeysClaimed() && resolveCanvasNudgeDelta(e)) return;
       if (e.repeat && action !== "playPause" && !isFrameStep) return;
       const shuttleOrStep = (direction: -1 | 1) =>
-        pressedKeysRef.current.has(keyOf("pause"))
+        heldPauseRef.current.size > 0
           ? stepFrames(direction)
           : shuttle(direction < 0 ? "backward" : "forward");
       const player = usePlayerStore.getState();
@@ -187,7 +187,7 @@ export function usePlaybackKeyboard({
   );
 
   const handlePlaybackKeyUp = useCallback((e: KeyboardEvent) => {
-    pressedKeysRef.current.delete(e.key.toLowerCase());
+    heldPauseRef.current.delete(e.code || e.key);
   }, []);
 
   playbackKeyDownRef.current = handlePlaybackKeyDown;
