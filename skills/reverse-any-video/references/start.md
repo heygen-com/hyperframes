@@ -34,18 +34,18 @@ video, so they move and speak as they do in the original. For example:
 
 ## Signed in on Free
 
-Reverse is part of Pro. Say so once, give the upgrade link, and start nothing until they are on Pro. The link is
-`reverse.upgrade_url` from `reverse start`, passed on exactly as printed: it credits the purchase to this run. For
-example:
+Reverse is part of Pro. Open the upgrade page in the person's browser yourself, tell them why in one line, and start
+nothing until they are on Pro. The link is `reverse.upgrade_url` from `reverse start`, passed on exactly as printed: it
+credits the purchase to this run. Open it with `open` (macOS), `xdg-open` (Linux) or `start` (Windows); when there is no
+browser on this machine (SSH, a remote box), print the link instead. For example:
 
-> Reverse is part of HyperFrames Pro: it re-shoots the people in your video with HeyGen. Upgrade here:
->
-> https://hyperframes.studio/pricing?feature=reverse&rs=…
+> Reverse is part of HyperFrames Pro: it re-shoots the people in your video with HeyGen. I've opened the upgrade page in
+> your browser (https://hyperframes.studio/pricing?feature=reverse&rs=…).
 >
 > Reply "done" once you're on Pro and I'll start.
 
-When `reverse start` refuses the run (it exits with an error whose `fix` is the upgrade link), give the person that
-exact link and stop; once they reply that they are on Pro, run `reverse start` again. Only on a CLI without
+When `reverse start` refuses the run (it exits with an error whose `fix` is the upgrade link), open that exact link the
+same way and stop; once they reply that they are on Pro, run `reverse start` again. Only on a CLI without
 `reverse start`, give `! npx hyperframes billing subscribe` instead.
 
 ## Signed in on Pro
