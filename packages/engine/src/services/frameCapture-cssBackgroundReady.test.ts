@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Page } from "puppeteer-core";
-import { decodeDynamicCssBackgroundImages } from "./frameCapture.js";
+import { BACKGROUND_DECODE_TIMEOUT_MS, decodeDynamicCssBackgroundImages } from "./frameCapture.js";
 
 function makeMockPage(
   getBackgroundImage: () => string,
@@ -10,7 +10,7 @@ function makeMockPage(
   decodeImage?: (src: string) => Promise<void>,
 ): Page {
   return {
-    evaluate: async (fn: () => unknown) => {
+    evaluate: async (fn: (arg?: unknown) => unknown, arg?: unknown) => {
       const previousDocument = globalThis.document;
       const previousImage = globalThis.Image;
       const previousWindow = globalThis.window;
@@ -41,7 +41,7 @@ function makeMockPage(
       });
 
       try {
-        return await fn();
+        return await fn(arg);
       } finally {
         Object.assign(globalThis, {
           document: previousDocument,
@@ -56,9 +56,12 @@ function makeMockPage(
 afterEach(() => {
   const root = globalThis as {
     __hf_css_background_decoded?: Set<string>;
+    __hf_css_background_timed_out?: Set<string>;
     __hfDecodeDynamicCssBackgroundImages?: () => Promise<void>;
   };
   delete root.__hf_css_background_decoded;
+  delete root.__hf_css_background_timed_out;
+  vi.useRealTimers();
   delete root.__hfDecodeDynamicCssBackgroundImages;
 });
 
@@ -117,6 +120,23 @@ describe("decodeDynamicCssBackgroundImages", () => {
     await decodeDynamicCssBackgroundImages(page);
 
     expect(decoded).toEqual(["/assets/late.jpg", "/assets/late.jpg"]);
+  });
+
+  it("stops waiting for a url whose decode never settles and names it", async () => {
+    vi.useFakeTimers();
+    const decoded: string[] = [];
+    const page = makeMockPage(
+      () => 'url("/assets/stuck.jpg")',
+      decoded,
+      () => new Promise<void>(() => {}),
+    );
+
+    const first = decodeDynamicCssBackgroundImages(page);
+    await vi.advanceTimersByTimeAsync(BACKGROUND_DECODE_TIMEOUT_MS);
+    expect(await first).toEqual(["/assets/stuck.jpg"]);
+
+    expect(await decodeDynamicCssBackgroundImages(page)).toEqual([]);
+    expect(decoded).toEqual(["/assets/stuck.jpg"]);
   });
 
   it("installs a page-local decoder that can run after an in-page seek", async () => {
