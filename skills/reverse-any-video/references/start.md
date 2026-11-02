@@ -58,16 +58,18 @@ the end of a run. `reverse start` and `auth status` are for the sign-in: never r
 
 ## Out of credits mid-run
 
-A refused step prints what it needs and the command that fixes it (top up, or pick a plan). Ask the person to run that
-command, then run the same step again once they reply. Never trim the plan to fit.
+A refused step prints what it needs and the command that fixes it (top up, or pick a plan). Shots are launched all
+at once, so several refuse together: wait until every launched step has answered, add up what each refused step
+needs, and ask once for that total (`--needed <total>`), never for one step at a time. Then relaunch every refused
+step after they reply. Never trim the plan to fit.
 
-> This step needs 180 credits and you have 30. Add credits by typing this in the prompt:
+> Three steps need 180, 180 and 273 credits and you have 30. Add credits by typing this in the prompt:
 >
 > ```
-> ! npx hyperframes billing top-up --needed 180
+> ! npx hyperframes billing top-up --needed 633
 > ```
 >
-> It opens the top-up page and finishes once your balance covers the step. Reply "done" and I'll pick up right
+> It opens the top-up page and finishes once your balance covers all of them. Reply "done" and I'll pick up right
 > where I stopped.
 
 ## Time
