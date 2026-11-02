@@ -95,7 +95,6 @@ import type { ProjectDir } from "./project.js";
 
 export const RENDER_READY_WARNING_SUFFIX = `the scene may still be building, so results can miss late content; raise --timeout (for example ${(DEFAULT_CONFIG.playerReadyTimeout * 2) / 1000}s)`;
 
-
 interface RuntimeDraft {
   code: string;
   severity: CheckSeverity;
@@ -385,8 +384,7 @@ export async function runBrowserCheck(
     const session = await openSettledCompositionPage(html, server.url, {
       navigationTimeoutMs: options.timeout,
       renderReadyTimeoutMs: options.timeout,
-      renderReadyWarningSuffix:
-        RENDER_READY_WARNING_SUFFIX,
+      renderReadyWarningSuffix: RENDER_READY_WARNING_SUFFIX,
       prelaunched,
       browserGpuMode: options.browserGpuMode ?? resolveCliChromeGpuMode(),
       signal: deadline?.signal,
@@ -542,8 +540,7 @@ async function openHelperSession(
   const session = await openSettledCompositionPage(html, url, {
     navigationTimeoutMs: options.timeout,
     renderReadyTimeoutMs: options.timeout,
-    renderReadyWarningSuffix:
-      RENDER_READY_WARNING_SUFFIX,
+    renderReadyWarningSuffix: RENDER_READY_WARNING_SUFFIX,
     browserGpuMode: options.browserGpuMode ?? resolveCliChromeGpuMode(),
     signal: owner.signal,
     onBrowser: owner.onBrowser,
