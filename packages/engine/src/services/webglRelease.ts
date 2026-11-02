@@ -26,7 +26,7 @@ export function recordWebglContexts(): void {
   };
 }
 
-/** Releases the WebGL context of every canvas in a hidden clip whose window, as the runtime resolves it, ended by `time`. */
+/** Releases the WebGL context of each canvas in a hidden clip whose runtime-resolved window ended by `time`. */
 export async function releaseEndedWebglContexts(page: Page, time: number): Promise<number> {
   return page.evaluate((t: number) => {
     const clipWindow = window.__hf?.clipWindow;
