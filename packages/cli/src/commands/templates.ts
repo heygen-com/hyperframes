@@ -24,8 +24,8 @@ export const TEMPLATES: Record<string, TemplatePack> = {
   },
   "long-story-short": {
     id: "M9002",
-    sha256: "27cbe99eeb9140fbe2184035fefe1aa361988cdab57f5f56055e3c26babfcee7",
-    bytes: 140687062,
+    sha256: "79c453b6f38fc3a2f3b5a2647807d5772a0d10f7d49955d87bee183ac147c0ab",
+    bytes: 140687142,
   },
   manhunt: {
     id: "M9005",
@@ -34,8 +34,8 @@ export const TEMPLATES: Record<string, TemplatePack> = {
   },
   "paper-trail": {
     id: "M9001",
-    sha256: "aeb5d62b4ff4b467060c5aee13c8a25e7392b2e7ed47ea86f43525d544d0760d",
-    bytes: 36710658,
+    sha256: "b51e85f0a9864fe5f10221dbf441dfa660ce396cd67d3f448ac3b296a967cc4e",
+    bytes: 36710654,
   },
   "under-the-hood": {
     id: "M9004",
