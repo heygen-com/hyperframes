@@ -93,7 +93,6 @@ import type {
 } from "./checkTypes.js";
 import type { ProjectDir } from "./project.js";
 
-/** What a render-ready warning tells the person to do: raise --timeout, with an example above the default. */
 export const RENDER_READY_WARNING_SUFFIX = `the scene may still be building, so results can miss late content; raise --timeout (for example ${(DEFAULT_CONFIG.playerReadyTimeout * 2) / 1000}s)`;
 
 
