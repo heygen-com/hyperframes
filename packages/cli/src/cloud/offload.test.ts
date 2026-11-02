@@ -44,7 +44,13 @@ const HEADERS: Record<string, Buffer> = {
   ".mov": Buffer.concat([Buffer.from([0, 0, 0, 20]), Buffer.from("ftypqt  ")]),
   ".png": Buffer.from([0x89, 0x50, 0x4e, 0x47, 13, 10, 26, 10]),
   ".mp3": Buffer.from("ID3\u0004\u0000"),
+  ".webm": Buffer.from([0x1a, 0x45, 0xdf, 0xa3]),
 };
+
+function honest(path: string): Buffer {
+  const header = HEADERS[extname(path).toLowerCase()] ?? Buffer.alloc(0);
+  return Buffer.concat([header, HEAVY.subarray(header.length)]);
+}
 
 function project(files: Record<string, string | Buffer>): string {
   const dir = mkdtempSync(join(tmpdir(), "hf-offload-test-"));
@@ -52,7 +58,10 @@ function project(files: Record<string, string | Buffer>): string {
   for (const [path, content] of Object.entries(files)) {
     mkdirSync(dirname(join(dir, path)), { recursive: true });
     const header = content === HEAVY ? HEADERS[extname(path).toLowerCase()] : undefined;
-    writeFileSync(join(dir, path), header ? Buffer.concat([header, content.subarray(header.length)]) : content);
+    writeFileSync(
+      join(dir, path),
+      header ? Buffer.concat([header, content.subarray(header.length)]) : content,
+    );
   }
   return dir;
 }
@@ -357,7 +366,10 @@ describe("offloadHeavyMedia", () => {
     });
 
     expect(report[0]).toMatchObject({ path: "song.mp3", action: "reencode" });
-    expect(upload.mock.calls[0]![0]).toMatchObject({ filename: "song.wav", contentType: "audio/wav" });
+    expect(upload.mock.calls[0]![0]).toMatchObject({
+      filename: "song.wav",
+      contentType: "audio/wav",
+    });
   });
 
   it("only takes bytes as-is when they are the container the extension names", () => {
@@ -468,7 +480,7 @@ describe("offloadHeavyMedia", () => {
     });
     const gifPrep = vi.fn<GifPrep>(async (input, options) => {
       const outputPath = join(options.outputDir, "hfgif-v1-abc.webm");
-      writeFileSync(outputPath, HEAVY);
+      writeFileSync(outputPath, honest(outputPath));
       return {
         html: input.replace(
           `<img src="media/loop.gif" data-loop="true" data-duration="4" />`,
@@ -515,7 +527,7 @@ describe("offloadHeavyMedia", () => {
     const gifPrep = vi.fn<GifPrep>(async (input, options) => {
       prepared = readFileSync(options.sourceAssets!.get("logo.gif")!);
       const outputPath = join(options.outputDir, "hfgif-v1-abc.webm");
-      writeFileSync(outputPath, HEAVY);
+      writeFileSync(outputPath, honest(outputPath));
       return {
         html: input.replace(
           `<img src="logo.gif" />`,

@@ -1,6 +1,7 @@
 /** Whether a file's first bytes are the container its extension claims, for the types the asset API takes as-is. */
 export function bytesMatchExtension(ext: string, head: Buffer): boolean {
-  const at = (offset: number, text: string) => head.toString("latin1", offset, offset + text.length) === text;
+  const at = (offset: number, text: string) =>
+    head.toString("latin1", offset, offset + text.length) === text;
   switch (ext) {
     case ".mp3":
       return at(0, "ID3") || (head[0] === 0xff && ((head[1] ?? 0) & 0xe6) === 0xe2);
