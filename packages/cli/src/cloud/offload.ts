@@ -181,6 +181,8 @@ export interface Reencoder {
   choose: (sourcePath: string, kind: MediaKind) => Promise<PresetName | null>;
   /** Positions per second a cut may land on (the frame rate), or null when the file cannot be cut. */
   trimGrid?: (sourcePath: string, kind: MediaKind) => Promise<number | null>;
+  /** Whether a container named as video holds a video stream; `true` when that cannot be told. */
+  hasVideo?: (sourcePath: string) => Promise<boolean>;
   run: (
     sourcePath: string,
     preset: PresetName,
@@ -451,7 +453,34 @@ async function trimGrid(sourcePath: string, kind: MediaKind): Promise<number | n
   return Number.isFinite(fps) && Math.abs(fps - rate(average)) < 0.01 ? fps : null;
 }
 
-const ffmpegReencoder: Reencoder = { choose: choosePreset, trimGrid, run: ffmpegReencode };
+async function hasVideoStream(sourcePath: string): Promise<boolean> {
+  const ffprobe = findFFprobe();
+  if (!ffprobe) return true;
+  try {
+    const { stdout } = await execFileAsync(ffprobe, [
+      "-v",
+      "error",
+      "-select_streams",
+      "v:0",
+      "-show_entries",
+      "stream=codec_type",
+      "-of",
+      "csv=p=0",
+      "--",
+      sourcePath,
+    ]);
+    return stdout.trim() !== "";
+  } catch {
+    return true;
+  }
+}
+
+const ffmpegReencoder: Reencoder = {
+  choose: choosePreset,
+  trimGrid,
+  hasVideo: hasVideoStream,
+  run: ffmpegReencode,
+};
 
 async function stagedSha256(file: StagedFile): Promise<string> {
   if (Buffer.isBuffer(file)) return createHash("sha256").update(file).digest("hex");
@@ -550,15 +579,23 @@ async function planFile(
   path: string,
   file: StagedFile,
 ): Promise<FilePlan | null> {
-  const kind = mediaKind(path);
+  let kind = mediaKind(path);
   const size = stagedSize(file);
   if (!kind || size < OFFLOAD_MIN_BYTES) return null;
-  const accepted = ACCEPTED[extname(path).toLowerCase()];
+  const ext = extname(path).toLowerCase();
+  const accepted = ACCEPTED[ext];
   // The API reads the stored bytes, not the name: a file whose bytes differ from its extension is re-encoded.
-  const asIs =
-    accepted !== undefined &&
-    size <= accepted.maxBytes &&
-    bytesMatchExtension(extname(path).toLowerCase(), readHead(file));
+  let asIs =
+    accepted !== undefined && size <= accepted.maxBytes && bytesMatchExtension(ext, readHead(file));
+  let sourcePath: string | undefined;
+  if (kind === "video" && ctx.reencoder.hasVideo) {
+    sourcePath = snapshotPath(path, file, ctx.tempFiles);
+    // An audio-only MP4 is audio whatever its name says.
+    if (!(await ctx.reencoder.hasVideo(sourcePath))) {
+      kind = "audio";
+      asIs = false;
+    }
+  }
   const mayBeCached =
     ctx.opts.upload !== undefined || (asIs ? ctx.cachedSizes.has(size) : ctx.cachedSizes.size > 0);
   const sha256 = mayBeCached ? await stagedSha256(file) : undefined;
@@ -566,7 +603,7 @@ async function planFile(
   if (asIs) {
     return { key: keyFor("as-is"), sourcePath: "", contentType: accepted?.contentType };
   }
-  const sourcePath = snapshotPath(path, file, ctx.tempFiles);
+  sourcePath ??= snapshotPath(path, file, ctx.tempFiles);
   const preset = await ctx.reencoder.choose(sourcePath, kind);
   // Files left as authored stay in the zip; the archive size check names them.
   if (!preset) return null;

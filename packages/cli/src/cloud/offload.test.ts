@@ -372,6 +372,38 @@ describe("offloadHeavyMedia", () => {
     });
   });
 
+  it("treats an audio-only MP4 named .mp4 as audio, whatever brand its ftyp box has", async () => {
+    const audioOnly = Buffer.concat([
+      HEADERS[".mp4"]!,
+      Buffer.alloc(OFFLOAD_MIN_BYTES - HEADERS[".mp4"]!.length, 1),
+    ]);
+    const dir = project({
+      "index.html": html(`<audio src="voice.mp4"></audio>`),
+      "voice.mp4": audioOnly,
+    });
+    const reencoder: Reencoder = {
+      hasVideo: async () => false,
+      choose: vi.fn(async (_path, kind) => (kind === "audio" ? ("audio" as const) : null)),
+      run: vi.fn(async () => ({
+        bytes: Buffer.from("wav"),
+        filename: "voice.wav",
+        contentType: "audio/wav",
+      })),
+    };
+    const upload = fakeUpload();
+
+    const report = await offloadHeavyMedia(dir, buildPublishFileMap(dir), {
+      apiBaseUrl: "https://api.example",
+      upload,
+      reencoder,
+      cachePath: cachePath(),
+    });
+
+    expect(reencoder.choose).toHaveBeenCalledWith(expect.any(String), "audio");
+    expect(report[0]).toMatchObject({ path: "voice.mp4", action: "reencode" });
+    expect(upload.mock.calls[0]![0]).toMatchObject({ filename: "voice.wav" });
+  });
+
   it("only takes bytes as-is when they are the container the extension names", () => {
     const wave = Buffer.from("RIFF\0\0\0\0WAVEfmt ");
     expect(bytesMatchExtension(".wav", wave)).toBe(true);
