@@ -11,7 +11,7 @@ video (`--outcome=error` when you stop without one).
 Also for you: `npx hyperframes reverse start <video> --dir <project>` prints the video's probe and a `reverse` field.
 `signed_in` and `plan` (`free` or `pro`) pick the section below; a `null` plan is unknown, so ask
 `npx hyperframes auth status`. `<project>` is the folder you build in: `init` it there afterwards, which keeps the session
-it saved for `cloud render`. A CLI older than 0.9.4 does not know `reverse start`: use `auth status` for the sign-in and
+it saved for `cloud render`. A CLI that does not know `reverse start` yet: use `auth status` for the sign-in and
 plan and `npx hyperframes measure probe <video>` for the probe.
 
 ## Not signed in yet
