@@ -25,7 +25,7 @@ interface PlanReferenceInput {
   log: ProducerLogger;
 }
 
-/** Optional evidence must not add capture capabilities to a previously browser-free planner. */
+/** Optional evidence must not add capture capabilities to a browser-free planner. */
 export async function readPlanReferenceBackground(
   input: PlanReferenceInput,
 ): Promise<ReferenceBackgroundResult> {
@@ -62,7 +62,7 @@ export async function readPlanReferenceBackground(
     await page.evaluate("window.__hfFlushSync?.()");
     await page.waitForFunction(
       '!!(window.__hf && typeof window.__hf.seek === "function" && window.__hf.duration > 0)',
-      { timeout: input.cfg.playerReadyTimeout },
+      { timeout: input.cfg.playerReadyTimeout, polling: 100 },
     );
     return referenceBackgroundResult(await readReferenceBackground(page));
   } catch (error) {

@@ -45,5 +45,6 @@
   "src/services/videoFrameBorderClip.test.ts",
   "src/utils/audioRegression.test.ts",
   "src/utils/streamDurationParity.test.ts",
-  "src/services/distributed/referenceBackground.integration.test.ts"
+  "src/services/distributed/referenceBackground.integration.test.ts",
+  "src/services/render/planReferenceBackground.polling.test.ts"
 ]
