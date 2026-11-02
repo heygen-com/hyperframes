@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import { buildNpmCommand, buildNpxCommand } from "./npxCommand.js";
 
@@ -13,11 +14,20 @@ describe("buildNpxCommand", () => {
     });
   });
 
-  it("builds for the host platform when none is given", () => {
-    expect(buildNpxCommand(["--version"])).toEqual(
-      buildNpxCommand(["--version"], process.platform),
-    );
-  });
+  // Runs a real npx, so only the dedicated shim job sets HF_NPX_SHIM_E2E; the general shards stay hermetic.
+  it.runIf(process.env.HF_NPX_SHIM_E2E === "1")(
+    "executes the host npx version check through the resolved command",
+    () => {
+      const npx = buildNpxCommand(["--version"]);
+      const version = execFileSync(npx.command, npx.args, {
+        encoding: "utf8",
+        timeout: 30_000,
+      }).trim();
+
+      expect(version).toMatch(/^\d+\.\d+\.\d+/);
+    },
+    60_000,
+  );
 });
 
 describe("buildNpmCommand", () => {
