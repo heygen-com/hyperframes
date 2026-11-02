@@ -301,6 +301,116 @@ describe("Slider", () => {
 });
 
 describe("NumberField", () => {
+  it.each([
+    { label: "above the maximum", value: 24, min: 0, max: 100, text: "150", expected: 100 },
+    { label: "below the minimum", value: 24, min: 10, max: 100, text: "5", expected: 10 },
+    { label: "a zero maximum", value: -24, min: -100, max: 0, text: "10", expected: 0 },
+    { label: "a minimum only", value: 24, min: 10, max: undefined, text: "5", expected: 10 },
+    { label: "a maximum only", value: 24, min: undefined, max: 30, text: "48", expected: 30 },
+  ])("bounds an Enter commit with $label", ({ value, min, max, text, expected }) => {
+    const commits: number[] = [];
+    const host = render(
+      <NumberField
+        label="Size"
+        value={value}
+        min={min}
+        max={max}
+        onCommit={(n) => commits.push(n)}
+        onTrack={track("metric")}
+      />,
+    );
+    const input = host.querySelector("input")!;
+
+    act(() => input.focus());
+    type(input, text);
+    expect(commits).toEqual([]);
+    fire(input, "keydown", { key: "Enter" });
+
+    expect(input.value).toBe(String(expected));
+    expect(document.activeElement).toBe(input);
+    expect(commits).toEqual([expected]);
+    expect(designInputCalls()).toHaveLength(1);
+
+    act(() => input.blur());
+    expect(input.value).toBe(String(expected));
+    expect(commits).toEqual([expected]);
+    expect(designInputCalls()).toHaveLength(1);
+  });
+
+  it("does not commit again when Enter clamps back to the committed bound", () => {
+    const commits: number[] = [];
+    const host = render(
+      <NumberField
+        label="Size"
+        value={100}
+        min={0}
+        max={100}
+        onCommit={(n) => commits.push(n)}
+        onTrack={track("metric")}
+      />,
+    );
+    const input = host.querySelector("input")!;
+
+    act(() => input.focus());
+    type(input, "150");
+    fire(input, "keydown", { key: "Enter" });
+
+    expect(input.value).toBe("100");
+    expect(document.activeElement).toBe(input);
+    expect(commits).toEqual([]);
+    expect(designInputCalls()).toHaveLength(0);
+
+    act(() => input.blur());
+    expect(input.value).toBe("100");
+    expect(commits).toEqual([]);
+    expect(designInputCalls()).toHaveLength(0);
+  });
+
+  it("keeps the bounded text when the parent updates after Enter", async () => {
+    const commits: number[] = [];
+    const onTrack = vi.fn(track("metric"));
+    function Parent() {
+      const [value, setValue] = React.useState(24);
+      return (
+        <>
+          <output>{value}</output>
+          <NumberField
+            label="Size"
+            value={value}
+            max={100}
+            onCommit={(next) => {
+              commits.push(next);
+              queueMicrotask(() => setValue(next));
+            }}
+            onTrack={onTrack}
+          />
+        </>
+      );
+    }
+    const host = render(<Parent />);
+    const input = host.querySelector("input");
+    if (!input) throw new Error("NumberField input missing");
+
+    act(() => input.focus());
+    type(input, "150");
+    fire(input, "keydown", { key: "Enter" });
+    expect(input.value).toBe("100");
+
+    await act(async () => void (await Promise.resolve()));
+
+    expect(host.querySelector("output")?.textContent).toBe("100");
+    expect(host.querySelector("input")).toBe(input);
+    expect(document.activeElement).toBe(input);
+    expect(input.value).toBe("100");
+
+    fire(input, "keydown", { key: "Enter" });
+    act(() => input.blur());
+    expect(input.value).toBe("100");
+    expect(commits).toEqual([100]);
+    expect(onTrack).toHaveBeenCalledTimes(1);
+    expect(designInputCalls()).toHaveLength(1);
+  });
+
   it("commits a typed number on Enter and keeps the unit", () => {
     const commits: number[] = [];
     const host = render(
