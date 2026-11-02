@@ -216,9 +216,9 @@ describe("updateJobStatus", () => {
     expect(surfaceScriptFailure(wrapped, job)).toBe(wrapped);
     const base = { width: 16, height: 16, fps: { num: 30, den: 1 } };
     const failed = { code: "sub_timeline_script_failure" as const, message: "a script threw" };
-    expect(() => withScriptFailureStop(base, job, log).onSubTimelineScriptFailure?.([failed])).toThrow(
-      RenderQualityError,
-    );
+    expect(() =>
+      withScriptFailureStop(base, job, log).onSubTimelineScriptFailure?.([failed]),
+    ).toThrow(RenderQualityError);
     const surfaced = surfaceScriptFailure(wrapped, job);
     expect(surfaced).toBeInstanceOf(RenderQualityError);
     expect(surfaceScriptFailure(surfaced, job)).toBe(surfaced);
