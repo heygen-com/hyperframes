@@ -139,7 +139,6 @@ export interface HfProtocol {
   media?: HfMediaElement[];
   /** Optional: shader transition metadata, populated by @hyperframes/shader-transitions */
   transitions?: HfTransitionMeta[];
-  /** Optional: a clip's window on the composition clock, start references resolved; Infinity end for the root. */
   clipWindow?(el: Element): { start: number; end: number } | null;
 }
 
