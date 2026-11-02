@@ -212,7 +212,6 @@ export interface RunOptions {
   log?: JobLog;
   /** What the call is priced at in credits, named in an out-of-credits refusal that does not say. */
   credits?: number;
-  /** A body field that also carries the sent key, for a route that dedupes on the body and ignores the header. */
   bodyKey?: string;
 }
 

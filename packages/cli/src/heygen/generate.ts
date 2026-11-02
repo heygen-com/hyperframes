@@ -156,7 +156,6 @@ interface Route {
   urls: string[];
   ledger: "image" | "video" | "voice" | "bgm";
   ext: string[];
-  /** The body field the route dedupes on, when it ignores the Idempotency-Key header. */
   bodyKey?: string;
 }
 
@@ -551,7 +550,6 @@ function checkGuide(r: Pick<GenerateRequest, "motion" | "allowCuts">): void {
  *  The route's body runs with a stand-in for the media, so its required flags and conflicts are checked as sent. */
 const VOICE_ID = /^[0-9a-f]{32}$/i;
 
-/** The voice a request speaks in, picked only when it reads a script: an avatar given --audio keeps that voice. */
 export async function voiceFor(r: GenerateRequest): Promise<Voice | undefined> {
   return r.type === "voice" || (r.type === "avatar" && !r.audio) ? pickVoice(r) : undefined;
 }
