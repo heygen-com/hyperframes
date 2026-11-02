@@ -4782,8 +4782,16 @@ export function initSandboxRuntimeModular(): void {
   registerRuntimeCleanup(
     watchSceneWebglContexts(() => {
       rebuildLostVfx(document.body);
-      // A playing transport repaints on its next tick; a paused one needs this seek in place.
-      if (!clock.isPlaying()) applySeek(state.currentTime);
+      // Effects paint on seeks only. A playing transport redraws the scene itself on its next tick.
+      if (clock.isPlaying()) {
+        paintVfx(state.currentTime);
+        return;
+      }
+      // Seeking to the time a timeline is already at calls no onUpdate, so step off it first.
+      const tl = state.capturedTimeline;
+      const at = state.currentTime;
+      if (tl && typeof tl.totalTime === "function") tl.totalTime(at > 1e-3 ? at - 1e-4 : at + 1e-4, false);
+      applySeek(at);
     }),
   );
 
