@@ -254,7 +254,7 @@ fi
 say "Verifying skill installation..."
 
 SKILLS=(hyperframes hyperframes-cli hyperframes-registry media-use \
-        figma slideshow remotion-to-hyperframes)
+        figma slideshow remotion-to-hyperframes reverse-any-video)
 
 MISSING=()
 check_skill() { if [[ -d "$SKILLS_DIR/$1" ]]; then ok "$SKILLS_DIR/$1/"; else MISSING+=("$1"); fi; }

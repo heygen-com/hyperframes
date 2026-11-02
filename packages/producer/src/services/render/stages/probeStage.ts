@@ -2,8 +2,7 @@
 /**
  * probeStage — browser probe + recompile + media reconciliation.
  *
- * Runs only when `needsBrowser` is true (root duration unknown OR there are
- * unresolved nested compositions). Owns the `FileServerHandle` and the
+ * Runs when media discovery needs a browser. Owns the `FileServerHandle` and the
  * `CaptureSession` it creates and returns them so the sequencer can both
  * reuse them downstream (the capture stage reuses the probe session) and
  * clean them up in its `finally` block.
@@ -89,6 +88,7 @@ import { resolveCaptureImageFormat, resolveCaptureJpegQuality } from "../capture
 export interface ProbeStageInput {
   projectDir: string;
   workDir: string;
+  recordReferenceBackground?: CaptureOptions["recordReferenceBackground"];
   job: RenderJob;
   cfg: EngineConfig;
   /**
@@ -433,6 +433,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
       const motionBlur = job.config.motionBlur;
       const captureFormat = resolveCaptureImageFormat({ needsAlpha, motionBlur });
       const captureOpts: CaptureOptions = {
+        recordReferenceBackground: input.recordReferenceBackground,
         width,
         height,
         fps: job.config.fps,

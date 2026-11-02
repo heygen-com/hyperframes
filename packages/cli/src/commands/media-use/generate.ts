@@ -7,6 +7,7 @@ import {
   checkRequest,
   generate,
   parseMask,
+  pickVoice,
   type GenerateRequest,
   type GenerateType,
 } from "../../heygen/generate.js";
@@ -113,7 +114,10 @@ export default defineCommand({
       description: "avatar: the person's own HeyGen avatar look id, instead of --photo",
     },
     script: { type: "string", description: "avatar, voice: the words spoken" },
-    voice: { type: "string", description: "avatar, voice: a HeyGen voice id" },
+    voice: {
+      type: "string",
+      description: "avatar, voice: a HeyGen voice id, or a language for its first voice in it",
+    },
     seconds: {
       type: "string",
       description: "video 5–15 (default 5); music: 30, 60, 120 or 180 (default 30)",
@@ -170,6 +174,9 @@ export default defineCommand({
         bpm: num(args.bpm, "--bpm"),
         instrumental: !args.vocals,
       };
+      const speaks = type === "voice" || (type === "avatar" && !request.audio);
+      const voice = speaks ? await pickVoice(request) : undefined;
+      if (voice) request.voice = voice.voice_id;
       const price = priceOf(request);
       const credits = creditsOf(price);
       if (args.plan) {
@@ -180,6 +187,7 @@ export default defineCommand({
           out: request.out,
           price,
           credits,
+          ...(voice ? { voice } : {}),
           next: "run the same command without --plan to make it",
         };
       }
@@ -189,7 +197,7 @@ export default defineCommand({
         (status) => console.error(`generate: ${status}…`),
         credits ?? undefined,
       );
-      return { ...made, price, credits };
+      return { ...made, price, credits, ...(voice ? { voice } : {}) };
     });
   },
 });

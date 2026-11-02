@@ -30,6 +30,15 @@
  *
  */
 
+export {
+  REFERENCE_BACKGROUND_FIELD,
+  referenceBackgroundResult,
+  createReferenceBackgroundRecorder,
+  readReferenceBackground,
+  type ReferenceBackground,
+  type ReferenceBackgroundResult,
+} from "./services/referenceBackground.js";
+
 // ── Protocol types ─────────────────────────────────────────────────────────────
 export type {
   HfProtocol,
@@ -405,6 +414,7 @@ export {
   type RunFfmpegResult,
 } from "./utils/runFfmpeg.js";
 export { aacSegmentCount, encodeAac } from "./services/aacEncode.js";
+export { applyAudioFxChain } from "./services/audioFxRender.js";
 export {
   ManagedChildProcess,
   type ManagedChildProcessOptions,

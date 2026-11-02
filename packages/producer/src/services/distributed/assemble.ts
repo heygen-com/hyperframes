@@ -1,3 +1,8 @@
+import {
+  REFERENCE_BACKGROUND_FIELD,
+  referenceBackgroundResult,
+  type ReferenceBackgroundResult,
+} from "@hyperframes/engine";
 /**
  * Activity C of the distributed render pipeline.
  *
@@ -63,7 +68,7 @@ import type { DistributedFormat } from "./shared.js";
  * (mp4/mov) or the cumulative byte total of the frame directory
  * (png-sequence).
  */
-export interface AssembleResult {
+export interface AssembleResult extends ReferenceBackgroundResult {
   outputPath: string;
   durationMs: number;
   framesEncoded: number;
@@ -71,7 +76,7 @@ export interface AssembleResult {
 }
 
 /** Shape of the planDir's top-level `plan.json` — only the fields `assemble` needs. */
-interface PlanJsonForAssemble {
+interface PlanJsonForAssemble extends Partial<ReferenceBackgroundResult> {
   protocol?: unknown;
   planHash: string;
   totalFrames: number;
@@ -150,13 +155,17 @@ export async function assemble(
   const chunkPaths = chunkOutputs.flat();
   if (plan.dimensions.format === "png-sequence") {
     // ── 2a. png-sequence: merge frame directories with global re-numbering
-    return mergePngFrameDirs(chunkPaths, outputPath, plan.totalFrames, audioPath, start);
+    return {
+      ...mergePngFrameDirs(chunkPaths, outputPath, plan.totalFrames, audioPath, start),
+      ...referenceBackgroundResult(plan[REFERENCE_BACKGROUND_FIELD]),
+    };
   }
 
   if (chunksAreStitchedMp4(planDir, cfr)) {
     const separateAudio = stitchesSeparateAudio(planDir) && audioPath !== null;
     await writeStitchedMp4(chunkPaths, outputPath, separateAudio ? audioPath : undefined);
     return {
+      ...referenceBackgroundResult(plan[REFERENCE_BACKGROUND_FIELD]),
       outputPath,
       durationMs: Date.now() - start,
       framesEncoded: plan.totalFrames,
@@ -213,6 +222,7 @@ export async function assemble(
 
   const fileSize = existsSync(outputPath) ? statSync(outputPath).size : 0;
   return {
+    ...referenceBackgroundResult(plan[REFERENCE_BACKGROUND_FIELD]),
     outputPath,
     durationMs: Date.now() - start,
     framesEncoded: plan.totalFrames,
@@ -494,7 +504,7 @@ function mergePngFrameDirs(
   totalFrames: number,
   audioPath: string | null,
   startTimeMs: number,
-): AssembleResult {
+): Omit<AssembleResult, typeof REFERENCE_BACKGROUND_FIELD> {
   if (existsSync(outputPath)) rmSync(outputPath, { recursive: true, force: true });
   mkdirSync(outputPath, { recursive: true });
 

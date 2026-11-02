@@ -147,9 +147,10 @@ the others down.
   or put a `truepeak` on the
   [master bus](#the-master-bus-data-fx-chain-on-the-composition-root); a `limiter`
   can let fast peaks through.
-- Export keeps the delivered file under -1 dBTP. If a peak passes that, it lowers
-  the **whole mix** by one flat amount, quiet passages included, and the CLI prints
-  an `audio_lowered` warning.
+- Export keeps the delivered file under -1 dBTP. A mix that passes it goes through
+  a `truepeak` at -3 dBTP, so only its peaks come down. If a peak still gets over,
+  export lowers the **whole mix** by one flat amount, quiet passages included, and
+  the CLI prints an `audio_lowered` warning.
 - The render's master gain, `PRODUCER_AUDIO_GAIN` (default `1`), multiplies the
   finished sum once, before the master bus chain.
 - To check a level, compare the export against its source scaled by the

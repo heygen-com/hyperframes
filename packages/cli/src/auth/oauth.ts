@@ -80,7 +80,7 @@ export interface AuthorizeFlowOptions {
   scope?: string;
   /** Inject a custom fetch (used by tests). */
   fetchImpl?: typeof fetch;
-  /** Override timeout in ms (default 120s). */
+  /** Override timeout in ms (default 60 minutes). */
   timeoutMs?: number;
 }
 
@@ -143,31 +143,32 @@ export async function startAuthorizationCodeFlow(
   const state = generateState();
 
   const loopback = await startLoopback({ state, timeoutMs: opts.timeoutMs });
-  const authorizeUrl = buildAuthorizeUrl({
-    clientId,
-    redirectUri: loopback.redirectUri,
-    scope,
-    state,
-    challenge: pkce.challenge,
-  });
-
-  // Print the host+path only (no state / code_challenge) so live
-  // values can't leak into scrollback / CI logs during the 120s window.
-  console.log(`Opening browser to ${c.dim(authorizeHost(authorizeUrl))} ...`);
-  const { opened } = await openBrowser(authorizeUrl);
-  if (!opened) {
-    // openBrowser already printed the manual URL; surface it as the
-    // last on-screen instruction so it isn't buried above "Waiting…".
-    console.log(c.dim("(open the URL above to continue)"));
-  }
-  console.log(`Waiting for callback on ${c.accent(loopback.redirectUri)} ...`);
-
   let codeResult;
   try {
+    const authorizeUrl = buildAuthorizeUrl({
+      clientId,
+      redirectUri: loopback.redirectUri,
+      scope,
+      state,
+      challenge: pkce.challenge,
+    });
+
+    // Print the host+path only (no state / code_challenge) so live
+    // values can't leak into scrollback / CI logs during the wait.
+    console.log(`Opening browser to ${c.dim(authorizeHost(authorizeUrl))} ...`);
+    const { opened } = await openBrowser(authorizeUrl);
+    if (!opened) {
+      // openBrowser already printed the manual URL; surface it as the
+      // last on-screen instruction so it isn't buried above "Waiting…".
+      console.log(c.dim("(open the URL above to continue)"));
+    }
+    console.log(
+      `Waiting for callback on ${c.accent(loopback.redirectUri)} (up to ${loopback.timeoutLabel}, Ctrl+C to cancel) ...`,
+    );
+
     codeResult = await loopback.result;
-  } catch (err) {
+  } finally {
     await loopback.close().catch(() => {});
-    throw err;
   }
 
   const tokens = await exchangeCodeForTokens({

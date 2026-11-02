@@ -224,6 +224,8 @@ function resolvePlayerCaptureScale(): number {
 }
 
 function resolvePlayerLoadingMode(): "internal" | "player" | "none" {
+  if ((window as { __HF_REPLAY_SKIPPED_FRAMES?: boolean }).__HF_REPLAY_SKIPPED_FRAMES)
+    return "none";
   const raw = readPlayerOption("__HF_SHADER_LOADING", PLAYER_LOADING_PARAM)?.trim().toLowerCase();
   if (raw === "player" || raw === "true" || raw === "1") return "player";
   if (raw === "none" || raw === "false" || raw === "0" || raw === "off") return "none";

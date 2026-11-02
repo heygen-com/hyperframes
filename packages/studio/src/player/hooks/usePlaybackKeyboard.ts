@@ -8,9 +8,15 @@
 
 import { useRef, useCallback } from "react";
 import { useCaptionStore } from "../../captions/store";
-import { shouldIgnorePlaybackShortcutEvent, SHUTTLE_SPEEDS } from "../lib/playbackShortcuts";
+import {
+  razorClaimsKey,
+  shouldIgnorePlaybackShortcutEvent,
+  SHUTTLE_SPEEDS,
+} from "../lib/playbackShortcuts";
 import { canvasNudgeKeysClaimed } from "../../utils/canvasNudgeGate";
 import { usePlayerStore } from "../store/playerStore";
+import { matchesKey, type StudioKeyAction } from "../components/studioShortcuts";
+import { resolveCanvasNudgeDelta } from "../../components/editor/domEditNudge";
 import { stepFrameTime } from "../lib/time";
 import { useLinkedClipPreferences } from "../../utils/linkedClipPreferences";
 import type { PlaybackAdapter } from "../lib/playbackTypes";
@@ -27,12 +33,62 @@ interface UsePlaybackKeyboardParams {
   seek: (time: number, options?: { keepPlaying?: boolean }) => void;
 }
 
-// The razor tool owns plain "a" (return to select) while it's armed; this
-// can't rely on defaultPrevented since both listeners register on window and
-// fire in an order this hook doesn't control. Shift+A and Alt+A are left for
-// the in-point seek below, since only plain A means "exit the razor".
-function shouldRazorClaimPlainA(e: KeyboardEvent): boolean {
-  return !e.shiftKey && !e.altKey && usePlayerStore.getState().activeTool === "razor";
+const FRAME_STEPS = {
+  frameBack: -1,
+  frameForward: 1,
+  frameBackTen: -10,
+  frameForwardTen: 10,
+} as const;
+const PLAYBACK_ACTIONS = [
+  "playPause",
+  ...(Object.keys(FRAME_STEPS) as Array<keyof typeof FRAME_STEPS>),
+  "mute",
+  "loop",
+  "pause",
+  "shuttleBack",
+  "shuttleForward",
+  "inPoint",
+  "clearInPoint",
+  "outPoint",
+  "clearOutPoint",
+  "seekToIn",
+  "seekToOut",
+] as const satisfies readonly StudioKeyAction[];
+type PlaybackAction = (typeof PLAYBACK_ACTIONS)[number];
+
+const playbackActionOf = (e: KeyboardEvent): PlaybackAction | undefined =>
+  PLAYBACK_ACTIONS.find((action) => matchesKey(e, action));
+
+function ignoresPlaybackKey(e: KeyboardEvent): boolean {
+  const captionState = useCaptionStore.getState();
+  return shouldIgnorePlaybackShortcutEvent(e, {
+    isCaptionEditMode: captionState.isEditMode,
+    selectedCaptionSegmentCount: captionState.selectedSegmentIds.size,
+  });
+}
+
+function handleWorkAreaKey(
+  e: KeyboardEvent,
+  action: PlaybackAction,
+  getAdapter: () => PlaybackAdapter | null,
+  seek: UsePlaybackKeyboardParams["seek"],
+): boolean {
+  const store = usePlayerStore.getState();
+  const time = () => getAdapter()?.getTime() ?? store.currentTime;
+  const end = () => store.outPoint ?? getAdapter()?.getDuration() ?? store.duration;
+  const actions: Partial<Record<PlaybackAction, () => void>> = {
+    inPoint: () => store.setInPoint(time()),
+    clearInPoint: () => store.setInPoint(null),
+    outPoint: () => store.setOutPoint(time()),
+    clearOutPoint: () => store.setOutPoint(null),
+    seekToIn: () => seek(store.inPoint ?? 0, { keepPlaying: true }),
+    seekToOut: () => seek(end(), { keepPlaying: true }),
+  };
+  const run = actions[action];
+  if (!run || razorClaimsKey(e)) return false;
+  e.preventDefault();
+  run();
+  return true;
 }
 
 export function usePlaybackKeyboard({
@@ -46,7 +102,7 @@ export function usePlaybackKeyboard({
   pause,
   seek,
 }: UsePlaybackKeyboardParams) {
-  const pressedKeysRef = useRef(new Set<string>());
+  const heldPauseRef = useRef(new Set<string>());
   const playbackKeyDownRef = useRef<(e: KeyboardEvent) => void>(() => {});
   const playbackKeyUpRef = useRef<(e: KeyboardEvent) => void>(() => {});
 
@@ -91,111 +147,47 @@ export function usePlaybackKeyboard({
     }
   }, [play, pause]);
 
-  // Pre-existing dispatcher, already over the complexity gate before this
-  // branch's one-line "a" fix touched it. A real fix is a dispatch-table
-  // rewrite, out of scope here; the branch this PR changed is its own function.
-  // fallow-ignore-next-line complexity
   const handlePlaybackKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      if (e.defaultPrevented) return;
-      const captionState = useCaptionStore.getState();
-      if (
-        shouldIgnorePlaybackShortcutEvent(e, {
-          isCaptionEditMode: captionState.isEditMode,
-          selectedCaptionSegmentCount: captionState.selectedSegmentIds.size,
-        })
-      ) {
-        return;
-      }
-      const key = e.key.toLowerCase();
-      pressedKeysRef.current.add(key);
-      if (e.code === "Space") {
-        e.preventDefault();
-        togglePlay();
-        return;
-      }
+      if (e.defaultPrevented || ignoresPlaybackKey(e)) return;
+      const action = playbackActionOf(e);
+      if (action === "pause") heldPauseRef.current.add(e.code || e.key);
+      if (!action) return;
+      const isFrameStep = action in FRAME_STEPS;
       // A nudgeable canvas selection owns the arrow keys (DomEditOverlay moves
       // the element); frame-stepping would double-handle the same keystroke.
-      const arrowStep = e.code === "ArrowLeft" || e.code === "ArrowRight";
-      if (arrowStep && canvasNudgeKeysClaimed()) return;
-      if (e.code === "ArrowLeft") {
-        e.preventDefault();
-        stepFrames(e.shiftKey ? -10 : -1);
+      if (isFrameStep && canvasNudgeKeysClaimed() && resolveCanvasNudgeDelta(e)) return;
+      if (e.repeat && action !== "playPause" && !isFrameStep) return;
+      const shuttleOrStep = (direction: -1 | 1) =>
+        heldPauseRef.current.size > 0
+          ? stepFrames(direction)
+          : shuttle(direction < 0 ? "backward" : "forward");
+      const player = usePlayerStore.getState();
+      const run: Partial<Record<PlaybackAction, () => void>> = {
+        playPause: togglePlay,
+        frameBack: () => stepFrames(FRAME_STEPS.frameBack),
+        frameForward: () => stepFrames(FRAME_STEPS.frameForward),
+        frameBackTen: () => stepFrames(FRAME_STEPS.frameBackTen),
+        frameForwardTen: () => stepFrames(FRAME_STEPS.frameForwardTen),
+        mute: () => player.setAudioMuted(!player.audioMuted),
+        loop: () => player.setLoopEnabled(!player.loopEnabled),
+        pause,
+        shuttleBack: () => shuttleOrStep(-1),
+        shuttleForward: () => shuttleOrStep(1),
+      };
+      const act = run[action];
+      if (!act) {
+        handleWorkAreaKey(e, action, getAdapter, seek);
         return;
       }
-      if (e.code === "ArrowRight") {
-        e.preventDefault();
-        stepFrames(e.shiftKey ? 10 : 1);
-        return;
-      }
-      if (e.repeat) return;
-      if (key === "m") {
-        e.preventDefault();
-        const state = usePlayerStore.getState();
-        state.setAudioMuted(!state.audioMuted);
-        return;
-      }
-      if (key === "l" && e.shiftKey) {
-        e.preventDefault();
-        const state = usePlayerStore.getState();
-        state.setLoopEnabled(!state.loopEnabled);
-        return;
-      }
-      if (key === "k") {
-        e.preventDefault();
-        pause();
-        return;
-      }
-      if (key === "j") {
-        e.preventDefault();
-        if (pressedKeysRef.current.has("k")) {
-          stepFrames(-1);
-          return;
-        }
-        shuttle("backward");
-        return;
-      }
-      if (key === "l") {
-        e.preventDefault();
-        if (pressedKeysRef.current.has("k")) {
-          stepFrames(1);
-          return;
-        }
-        shuttle("forward");
-        return;
-      }
-      if (key === "i") {
-        e.preventDefault();
-        const t = getAdapter()?.getTime() ?? usePlayerStore.getState().currentTime;
-        usePlayerStore.getState().setInPoint(e.shiftKey ? null : t);
-        return;
-      }
-      if (key === "o") {
-        e.preventDefault();
-        const t = getAdapter()?.getTime() ?? usePlayerStore.getState().currentTime;
-        usePlayerStore.getState().setOutPoint(e.shiftKey ? null : t);
-        return;
-      }
-      if (key === "a") {
-        if (shouldRazorClaimPlainA(e)) return;
-        e.preventDefault();
-        seek(usePlayerStore.getState().inPoint ?? 0, { keepPlaying: true });
-        return;
-      }
-      if (key === "e") {
-        e.preventDefault();
-        const { outPoint } = usePlayerStore.getState();
-        seek(outPoint ?? getAdapter()?.getDuration() ?? usePlayerStore.getState().duration, {
-          keepPlaying: true,
-        });
-        return;
-      }
+      e.preventDefault();
+      act();
     },
     [pause, shuttle, stepFrames, togglePlay, getAdapter, seek],
   );
 
   const handlePlaybackKeyUp = useCallback((e: KeyboardEvent) => {
-    pressedKeysRef.current.delete(e.key.toLowerCase());
+    heldPauseRef.current.delete(e.code || e.key);
   }, []);
 
   playbackKeyDownRef.current = handlePlaybackKeyDown;

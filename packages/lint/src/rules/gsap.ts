@@ -1662,6 +1662,7 @@ export const gsapRules: LintRule<LintContext>[] = [
       options.isSubComposition || rawSource.trimStart().toLowerCase().startsWith("<template");
 
     for (const script of scripts) {
+      if (script.index === -1) continue;
       const content = script.content;
       if (!/gsap\.timeline/.test(content)) continue;
       const hasRegistration =

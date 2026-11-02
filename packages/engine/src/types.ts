@@ -4,6 +4,7 @@
  * The engine's page contract. Any web page that wants to be rendered
  * as video must expose `window.__hf` implementing the HfProtocol interface.
  */
+import type { ReferenceBackground } from "./services/referenceBackground.js";
 import type { AudioFailureDiagnostic } from "./services/audioMixer.types.js";
 import type { Fps } from "@hyperframes/core";
 import type { CompositionLengthSource } from "@hyperframes/core/runtime/composition-length";
@@ -139,13 +140,17 @@ export interface HfProtocol {
   media?: HfMediaElement[];
   /** Optional: shader transition metadata, populated by @hyperframes/shader-transitions */
   transitions?: HfTransitionMeta[];
+  clipWindow?(el: Element): { start: number; end: number } | null;
 }
 
 // ── Capture Types ──────────────────────────────────────────────────────────────
 
 export interface CaptureOptions {
+  /** Shared once-only reader, invoked before capture changes root/body paint. */
+  recordReferenceBackground?: (read: () => Promise<ReferenceBackground>) => Promise<void>;
   width: number;
   height: number;
+  onSubTimelineScriptFailure?: (warnings: readonly CaptureWarning[]) => void;
   /**
    * Producer-resolved composition duration (seconds) — the data-duration
    * clamp actually rendered, which can differ from the page's raw

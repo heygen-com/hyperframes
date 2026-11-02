@@ -68,6 +68,12 @@
       "types": "./dist/atomicFile.d.ts",
       "environments": ["bun", "node"]
     },
+    "./cache-dir": {
+      "source": "./src/cacheDir.ts",
+      "runtime": "./dist/cacheDir.js",
+      "types": "./dist/cacheDir.d.ts",
+      "environments": ["bun", "node"]
+    },
     "./remove-tree": {
       "source": "./src/removeTree.ts",
       "runtime": "./dist/removeTree.js",

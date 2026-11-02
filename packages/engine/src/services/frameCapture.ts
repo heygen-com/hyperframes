@@ -32,6 +32,7 @@ import {
   type RawAuthoredTiming,
 } from "@hyperframes/core";
 
+import { readReferenceBackground } from "./referenceBackground.js";
 import { holdRenderFrameVideos } from "./renderFrameVideoHold.js";
 import { asDrawElementCaptureFailure, DrawElementCaptureError } from "./drawElementCaptureError.js";
 import { encodePng } from "../utils/alphaBlit.js";
@@ -964,6 +965,7 @@ async function initDrawElementOrTransparentBackground(
   page: Page,
   logInitPhase: (phase: string) => void,
 ): Promise<void> {
+  await session.options.recordReferenceBackground?.(() => readReferenceBackground(page));
   const supersampling = (session.options.deviceScaleFactor ?? 1) !== 1;
   // forceScreenshot is an explicit routing decision made upstream (render-mode
   // compat hints like raw requestAnimationFrame, alpha formats, low-memory) —
@@ -2511,6 +2513,10 @@ export function recordSubTimelineWarning(session: CaptureSession, timeoutMs: num
       },
     },
   ]);
+  if (scriptFailure) {
+    const failed = session.warnings.filter((w) => w.code === "sub_timeline_script_failure");
+    session.options?.onSubTimelineScriptFailure?.(failed);
+  }
 }
 
 /**

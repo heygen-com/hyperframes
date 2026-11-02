@@ -156,8 +156,12 @@ function keepSized(el: HTMLMediaElement, scale: number): void {
   if (needed && lowered && copy.light && lightCopyNoLongerNeeded(el, needed)) {
     return restoreOriginal(el);
   }
-  if (boxCovers(copy.box, needed, lowered)) return;
+  if (boxCovers(copy.box, needed, lowered)) return dropUnneededCopy(el);
   requestBox(el, copy, lowered || !needed ? needed : growOnly(needed, copy.box));
+}
+
+function dropUnneededCopy(el: HTMLMediaElement): void {
+  if (pendingUpgrades.delete(el)) noteCopy(el, "ready");
 }
 
 function lightCopyNoLongerNeeded(el: HTMLMediaElement, needed: PreviewProxyBox): boolean {
@@ -193,7 +197,7 @@ function requestBox(el: HTMLMediaElement, copy: BoxedCopy, box: PreviewProxyBox 
   void waitForServedProxy(
     href,
     wanted,
-    (fraction) => noteCopy(el, "making", fraction),
+    (fraction) => wanted() && noteCopy(el, "making", fraction),
     () => isActiveAtPlayhead(el),
   ).then((served) => {
     if (wanted()) noteCopy(el, served ? "ready" : "failed");
@@ -235,12 +239,12 @@ function holdShownFrame(el: HTMLMediaElement): void {
   if (!isVideoElement(el) || heldPosters.has(el)) return;
   const still = stillOf(el);
   if (!still) return;
-  heldPosters.set(el, el.getAttribute("poster"));
+  heldPosters.set(el, { poster: el.getAttribute("poster"), since: performance.now() });
   el.setAttribute("poster", still);
   const letGo = () => {
     for (const type of RELEASE_EVENTS) el.removeEventListener(type, release);
     letGoOfStill.delete(el);
-    const authored = heldPosters.get(el) ?? null;
+    const authored = heldPosters.get(el)?.poster ?? null;
     heldPosters.delete(el);
     if (authored === null) el.removeAttribute("poster");
     else el.setAttribute("poster", authored);
@@ -503,6 +507,11 @@ async function makeCopy(el: HTMLMediaElement, job: CopyJob, scale: number | null
  * emit the one-time diagnostic + console line. Safe to call from any of the
  * three triggers (proactive/reactive/tertiary); a no-op if already swapped.
  */
+function copyVariant(entry: MediaCodecMapEntry | null): string {
+  if (!entry) return "auto";
+  return entry.hasAlpha ? "vp8" : "h264";
+}
+
 export function swapToProxy(
   el: HTMLMediaElement,
   entry: MediaCodecMapEntry | null = null,
@@ -512,7 +521,7 @@ export function swapToProxy(
   if (swappedElements.has(el)) return;
   if (proxyRequested.has(el) && proxyRequested.get(el) === el.getAttribute("src")) return;
   const originalSrc = currentSrcValue(el);
-  const variant = entry ? (entry.hasAlpha ? "vp8" : "h264") : "auto";
+  const variant = copyVariant(entry);
   try {
     new URL(originalSrc, document.baseURI);
   } catch (err) {
@@ -612,6 +621,56 @@ export function levelsWithLighterCopies(): PreviewQuality[] {
         isHeavyForPreview(facts, scalePreviewProxyBox(shown, level)),
       ),
   );
+}
+
+const COPY_AHEAD_CHECK_MS = 2000;
+const COPY_AHEAD_LEVEL: PreviewQuality = 0.5;
+let copiesAheadTimer: ReturnType<typeof setInterval> | null = null;
+let makingCopyAhead = false;
+const copiesAheadDone = new Set<string>();
+
+function copyAheadBox(el: HTMLMediaElement, isShown: (el: HTMLMediaElement) => boolean) {
+  if (displayScale === null || !isShown(el) || swappedElements.has(el)) return null;
+  const shown = shownBox(el, displayScale);
+  return shown && scalePreviewProxyBox(shown, COPY_AHEAD_LEVEL);
+}
+
+/** The 1/2 copy of a clip on screen that is heavy at that size, not yet made. */
+function nextCopyAhead(isShown: (el: HTMLMediaElement) => boolean): string | null {
+  if (previewQuality < 1) return null;
+  for (const el of document.querySelectorAll("video")) {
+    const facts = sourceFactsOf(el);
+    const box = facts && copyAheadBox(el, isShown);
+    if (!facts || !box || !isHeavyForPreview(facts, box)) continue;
+    const variant = copyVariant(codecEntryOf(el));
+    const href = appendProxyParam(currentSrcValue(el), variant, box, true, false);
+    if (!copiesAheadDone.has(href)) return href;
+  }
+  return null;
+}
+
+/** While on, makes those copies one at a time, starting none while `isBusy`. Off by default. */
+export function setCopiesAhead(
+  on: boolean,
+  isBusy: () => boolean,
+  isShown: (el: HTMLMediaElement) => boolean = isActiveAtPlayhead,
+): void {
+  if (copiesAheadTimer !== null) clearInterval(copiesAheadTimer);
+  copiesAheadTimer = null;
+  if (!on) return;
+  const live = () => copiesAheadTimer !== null && !isBusy();
+  const check = () => {
+    if (makingCopyAhead || isBusy()) return;
+    const href = nextCopyAhead(isShown);
+    if (href === null) return;
+    makingCopyAhead = true;
+    void waitForServedProxy(href, live, undefined, undefined, true).then((served) => {
+      makingCopyAhead = false;
+      if (served || live()) copiesAheadDone.add(href);
+    });
+  };
+  copiesAheadTimer = setInterval(check, COPY_AHEAD_CHECK_MS);
+  check();
 }
 
 /** The video files the composition plays, grouped by what they are, never by name. */

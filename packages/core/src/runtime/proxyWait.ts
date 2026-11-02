@@ -12,9 +12,10 @@ function withoutRetryFlag(href: string): string {
   return url.href;
 }
 
-function askHeaders(atPlayhead: boolean): Record<string, string> {
+function askHeaders(atPlayhead: boolean, background: boolean): Record<string, string> {
   const headers: Record<string, string> = { Range: "bytes=0-0" };
   if (atPlayhead) headers[PREVIEW_PROXY_PRIORITY_HEADER] = "1";
+  else if (background) headers[PREVIEW_PROXY_PRIORITY_HEADER] = "0";
   return headers;
 }
 
@@ -32,11 +33,12 @@ export async function waitForServedProxy(
   live: () => boolean,
   onProgress?: (fraction: number) => void,
   atPlayhead: () => boolean = () => false,
+  background = false,
 ): Promise<boolean> {
   let failed = 0;
   let ask = href;
   while (live()) {
-    const headers = askHeaders(atPlayhead());
+    const headers = askHeaders(atPlayhead(), background);
     const res = await fetch(ask, { headers, cache: "no-store" }).catch(() => null);
     ask = withoutRetryFlag(href);
     void res?.body?.cancel().catch(() => {});

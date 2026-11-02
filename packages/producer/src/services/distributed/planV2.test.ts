@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterAll, afterEach, describe, expect, it } from "bun:test";
 import { spawnSync } from "node:child_process";
 import {
   existsSync,
@@ -12,6 +12,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
+import { pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
 import { planFileSha256, recomputePlanHashFromPlanDir } from "../render/stages/freezePlan.js";
 import { canonicalJsonStringify, sha256Hex } from "../render/stages/planHash.js";
@@ -38,6 +39,24 @@ import {
 import { planV2BlobPath } from "./planV2Layout.js";
 import { LocalPlanV2ArtifactPublisher, type PlanV2ArtifactPublisher } from "./planV2Publisher.js";
 import { buildPlanVideosJson, isPlanAudioArtifactPath, type PlanVideosJson } from "./shared.js";
+
+// Frozen public reader/materializer from base 5e50ac1; execute it rather than imitating its hash rules.
+const legacySource = readFileSync(
+  new URL("./__fixtures__/planV2-reader-5e50ac1.txt", import.meta.url),
+  "utf8",
+);
+const legacyRoot = mkdtempSync(join(tmpdir(), "hf-v2-legacy-reader-"));
+afterAll(() => rmSync(legacyRoot, { recursive: true, force: true }));
+const legacyPath = join(legacyRoot, "reader.ts");
+writeFileSync(
+  legacyPath,
+  legacySource.replace(
+    /from "([^"]+)"/g,
+    (_match, specifier: string) =>
+      `from "${specifier.startsWith(".") ? new URL(specifier, import.meta.url).href : import.meta.resolve(specifier)}"`,
+  ),
+);
+const legacyReader = await import(pathToFileURL(legacyPath).href);
 
 const tempDirs: string[] = [];
 
@@ -212,6 +231,39 @@ function chunkAudioPaths(manifest: Readonly<PlanV2Manifest>, chunkIndex: number)
 }
 
 describe("Plan v2 manifest", () => {
+  it("new reference-bearing plans pass the actual base reader and both legacy materializers", () => {
+    expect(sha256Hex(Buffer.from(legacySource))).toBe(
+      "3b78605ea3cc8331f2cf8e28d36b20f8ba486d283dc42b7a4104ad9849aedc4c",
+    );
+    const root = tempPath("hf-v2-old-reader-");
+    const v1 = createV1Plan(root);
+    const expected = { kind: "solid", rgb: [10, 46, 138] };
+    for (const relative of ["plan.json", "meta/composition.json"]) {
+      const path = join(v1, relative);
+      const value = JSON.parse(readFileSync(path, "utf8"));
+      value.reference_background = expected;
+      writeFileSync(path, JSON.stringify(value));
+    }
+    refreshV1PlanHash(v1);
+    const result = createPlanV2FromExecutionPlan(v1, join(root, "v2"));
+    expect(result.reference_background).toEqual(expected);
+    const manifest = legacyReader.readPlanV2Manifest(result.planDir);
+    expect(manifest.planHash).toBe(result.planHash);
+    expect(Object.hasOwn(manifest, "reference_background")).toBe(false);
+    for (const target of [{ role: "chunk", chunkIndex: 0 }, { role: "assembler" }]) {
+      const destination = join(root, `legacy-${target.role}`);
+      legacyReader.materializePlanV2Target(result.planDir, target, destination);
+      expect(
+        JSON.parse(readFileSync(join(destination, "plan.json"), "utf8")).reference_background,
+      ).toEqual(expected);
+      if (target.role === "chunk")
+        expect(
+          JSON.parse(readFileSync(join(destination, "meta/composition.json"), "utf8"))
+            .reference_background,
+        ).toEqual(expected);
+    }
+  });
+
   it("is deterministic without changing the manifest or result wire shapes", () => {
     const root = tempPath("hf-plan-v2-determinism-");
     const v1 = createV1Plan(root, { audio: true });
@@ -227,6 +279,7 @@ describe("Plan v2 manifest", () => {
     expect(first.planProtocol.schemaVersion).toBe(2);
     expect(first.limitations.videoDependencyMode).toBe("exact-rendered-frames");
     expect(Object.keys(first)).toEqual([
+      "reference_background",
       "planDir",
       "manifestPath",
       "planProtocol",

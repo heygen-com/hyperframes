@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, posix, win32 } from "node:path";
+import { pathToFileURL } from "node:url";
 import {
   collectSubCompositionSrcs,
   isUnresolvedAssetPlaceholder,
@@ -156,6 +157,35 @@ describe("resolveProjectRelativeSrc — the one src resolver for lint and render
     expect(resolveProjectRelativeSrc("assets/foo.mp4", projectDir)).toBe(
       join(projectDir, "assets/foo.mp4"),
     );
+  });
+
+  // pathToFileURL gives the host's own form: file:///C:/... on Windows, file:///... elsewhere.
+  it("resolves a file: URL to the file it names, spaces and accents included", () => {
+    const projectDir = join(tmp, "project");
+    const file = join(tmp, "Usu\u00e1rio Teste", "voz \u00f1.wav");
+    mkdirSync(join(tmp, "Usu\u00e1rio Teste"));
+    writeFileSync(file, "");
+    const url = pathToFileURL(file).href;
+    expect(url).toMatch(process.platform === "win32" ? /^file:\/\/\/[A-Z]:\// : /^file:\/\/\/[^/]/);
+
+    expect(resolveProjectRelativeSrc(url, projectDir)).toBe(file);
+  });
+
+  it.runIf(process.platform === "win32")("resolves a Git Bash path to the drive path", () => {
+    const projectDir = join(tmp, "project");
+    const file = join(projectDir, "assets", "foo.mp4");
+    const gitBash = `/${file[0]!.toLowerCase()}${file.slice(2).replaceAll("\\", "/")}`;
+
+    expect(resolveProjectRelativeSrc(gitBash, projectDir).toLowerCase()).toBe(file.toLowerCase());
+  });
+
+  it("treats a file: URL naming no local file as missing, without throwing", () => {
+    const projectDir = join(tmp, "project");
+    const gone = pathToFileURL(join(tmp, "gone.wav")).href;
+
+    for (const url of [gone, "file://not-a-local-host/a.wav", "file:///a%2Fb.wav"]) {
+      expect(existsSync(resolveProjectRelativeSrc(url, projectDir))).toBe(false);
+    }
   });
 
   it("resolves a browser root-absolute URL from the project root", () => {

@@ -3,7 +3,7 @@ import { createRuntimeStartTimeResolver } from "./startResolver";
 import { readMediaRenderId } from "./renderFrameSibling";
 import { defersMedia } from "./timedClipHide";
 import { swallow } from "./diagnostics";
-import { mediaElementTime } from "./mediaClock";
+import { isWebKit, mediaElementTime } from "./mediaClock";
 
 const MEDIA_EDGE_SECONDS = 0.1;
 
@@ -36,7 +36,7 @@ function cancelPlaybackStart(media: HTMLMediaElement): void {
 
 export function prepareUpcomingMedia(media: HTMLMediaElement, isUpcoming: () => boolean): void {
   cancelPlaybackStart(media);
-  if (media.tagName !== "VIDEO" || isRenderFrameVideo(media)) return;
+  if ((media.tagName !== "VIDEO" && !isWebKit()) || isRenderFrameVideo(media)) return;
   const prepare = () => {
     if (!media.isConnected || !media.paused || media.seeking || !isUpcoming()) return;
     const start = readMediaStart(media);

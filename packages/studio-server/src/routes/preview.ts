@@ -44,6 +44,7 @@ import {
 } from "../helpers/safePath.js";
 import { getMimeType } from "../helpers/mime.js";
 import { serveWhileOpen } from "../helpers/servedFiles.js";
+import { openRangeEnd } from "../helpers/mediaRange.js";
 import { buildSubCompositionHtml, hasBaseElement } from "../helpers/subComposition.js";
 import { withRootImportMap } from "../helpers/rootImportMap.js";
 import { withRootPathsRelative } from "../helpers/rootPaths.js";
@@ -764,9 +765,10 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
         if (c.req.query(PREVIEW_PROXY_RETRY_PARAM) !== undefined) {
           retryProxyCopy(project.dir, file, proxyVariant, proxyBox);
         }
-        const priority = c.req.header(PREVIEW_PROXY_PRIORITY_HEADER) === "1";
+        const asked = c.req.header(PREVIEW_PROXY_PRIORITY_HEADER);
+        const urgency = asked === "0" ? { background: true } : { priority: asked === "1" };
         servedPath = await waitForProxy(
-          resolveProxy(project.dir, file, proxyVariant, proxyBox, { priority }),
+          resolveProxy(project.dir, file, proxyVariant, proxyBox, urgency),
           0,
         );
       } catch (err) {
@@ -816,7 +818,9 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     const match = rangeHeader ? /bytes=(\d+)-(\d*)/.exec(rangeHeader) : null;
     if (match) {
       const start = parseInt(match[1]!, 10);
-      const end = match[2] ? parseInt(match[2], 10) : totalSize - 1;
+      const end = match[2]
+        ? parseInt(match[2], 10)
+        : openRangeEnd(start, totalSize - 1, servedContentType);
       const safeEnd = Math.min(end, totalSize - 1);
       if (start > safeEnd) {
         return new Response(null, {
