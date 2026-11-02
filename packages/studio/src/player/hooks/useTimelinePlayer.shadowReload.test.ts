@@ -940,6 +940,32 @@ function stubVisibility(initial: DocumentVisibilityState) {
   };
 }
 
+describe("a shadow reload loading while a write lands", () => {
+  it("loads the file again instead of promoting the one it asked for", () => {
+    const { getApi, root } = renderTimelinePlayerHarness();
+    const liveIframe = makeLiveIframe();
+    act(() => {
+      getApi().iframeRef.current = liveIframe;
+      getApi().onIframeLoad();
+    });
+    act(() => getApi().refreshPlayer());
+    const asked = getApi().previewSlots.find((slot) => slot.role === "shadow")!;
+    act(() => getApi().setShadowIframeNode(makeLiveIframe()));
+
+    // An undo writes while that shadow is still loading.
+    studioWriteHeaders();
+    act(() => {
+      getApi().onShadowIframeLoad(asked.gen);
+      getApi().onShadowReadyChange(asked.gen, true);
+    });
+
+    expect(getApi().iframeRef.current).toBe(liveIframe);
+    const loading = getApi().previewSlots.find((slot) => slot.role === "shadow")!;
+    expect(loading.gen).not.toBe(asked.gen);
+    unmount(root);
+  });
+});
+
 describe("useTimelinePlayer scene swap", () => {
   function liveFilm(swap?: (html: string) => Promise<void>) {
     const { adapter, win } = makeAdapterWindow();
