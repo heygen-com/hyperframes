@@ -21,6 +21,8 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
+import { AGENT_GLOBAL_DIRS } from "./agentDirs.generated.js";
+import { EXTRA_GLOBAL_DIRS } from "./skillsMirror.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -284,7 +286,10 @@ function agentLabel(hostDir: string): string {
 function agentFromDir(dir: string): string {
   const parts = dir.split(sep).filter(Boolean);
   const i = parts.lastIndexOf("skills");
-  return agentLabel(i > 0 ? parts[i - 1]! : (parts[parts.length - 1] ?? ""));
+  if (i >= 2 && parts[i - 2]?.replace(/^\.+/, "") === "gemini" && parts[i - 1] === "config") {
+    return "antigravity";
+  }
+  return agentLabel(i > 0 ? (parts[i - 1] ?? "") : (parts[parts.length - 1] ?? ""));
 }
 
 /** Immediate subdirectory names of `dir` (including symlinked dirs); [] if unreadable. */
@@ -308,14 +313,28 @@ function listSubdirs(dir: string): string[] {
  */
 function discoverSkillRoots(base: string, scope: "project" | "global"): SkillRoot[] {
   const candidates: SkillRoot[] = [];
+  const seen = new Set<string>();
+  const addDir = (dir: string, agent: string): void => {
+    if (seen.has(dir)) return;
+    if (existsSync(dir) && statSync(dir).isDirectory()) {
+      seen.add(dir);
+      candidates.push({ dir, agent, scope });
+    }
+  };
   const add = (hostBase: string, host: string): void => {
-    const dir = join(hostBase, host, "skills");
-    if (existsSync(dir) && statSync(dir).isDirectory())
-      candidates.push({ dir, agent: agentLabel(host), scope });
+    addDir(join(hostBase, host, "skills"), agentLabel(host));
   };
   for (const host of listSubdirs(base)) add(base, host);
   const xdg = join(base, ".config");
   for (const host of listSubdirs(xdg)) add(xdg, host);
+  if (scope === "global") {
+    for (const { agent, base: b, sub } of [...AGENT_GLOBAL_DIRS, ...EXTRA_GLOBAL_DIRS]) {
+      const segs = sub.split("/").filter(Boolean);
+      if (b === "home" && segs.length > 2) {
+        addDir(join(base, ...segs), agent);
+      }
+    }
+  }
   return candidates.sort((a, b) => {
     if (a.agent !== b.agent) {
       if (a.agent === "claude-code") return -1;

@@ -382,6 +382,24 @@ describe("checkSkills install detection", () => {
     expect(res.agent).toBe(agent);
   });
 
+  it.each([
+    [".gemini/config/skills", "antigravity"],
+    [".gemini/antigravity/skills", "antigravity"],
+    [".gemini/antigravity-cli/skills", "antigravity-cli"],
+    [".codeium/windsurf/skills", "windsurf"],
+  ] as const)("locates skills under multi-segment global directory %s (%s)", async (rel, agent) => {
+    const project = join(root, "project");
+    const home = join(root, "home");
+    mkdirSync(project, { recursive: true });
+    mkdirSync(home, { recursive: true });
+    const source = writeManifest(root);
+    installSkill(join(home, rel), "alpha");
+
+    const res = await checkSkills({ source, cwd: project, home });
+    expect(res.location).toBe(join(home, rel));
+    expect(res.agent).toBe(agent);
+  });
+
   it("prefers global scope over project (matches how agents load skills)", async () => {
     const project = join(root, "project");
     const home = join(root, "home");

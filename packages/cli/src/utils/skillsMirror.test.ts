@@ -378,6 +378,28 @@ describe("mirrorGlobalSkills", () => {
     // no per-agent copy created where the universal store already serves Pi
     expect(existsSync(join(home, ".pi", "agent", "skills", "hyperframes"))).toBe(false);
   });
+
+  it("mirrors into Antigravity's ~/.gemini/config/skills when ~/.gemini/config exists", () => {
+    const home = makeHome();
+    seedStore(home, ["hyperframes"]);
+    installMarker(home, ".gemini/config");
+
+    const { mirrored, skipped } = mirrorGlobalSkills({
+      skills: ["hyperframes"],
+      home,
+      platform: "win32",
+      env: ENV,
+    });
+
+    expect(skipped).toEqual([]);
+    expect(mirrored).toContainEqual({
+      agent: "antigravity",
+      dir: join(home, ".gemini", "config", "skills"),
+    });
+    expect(existsSync(join(home, ".gemini", "config", "skills", "hyperframes", "SKILL.md"))).toBe(
+      true,
+    );
+  });
 });
 
 describe("AGENT_GLOBAL_DIRS (generated table)", () => {

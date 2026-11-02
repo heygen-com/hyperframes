@@ -36,7 +36,11 @@ import {
 import { copyDirSync } from "./copyDir.js";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { AGENT_GLOBAL_DIRS, type AgentDirBase } from "./agentDirs.generated.js";
+import {
+  AGENT_GLOBAL_DIRS,
+  type AgentDirBase,
+  type AgentGlobalDir,
+} from "./agentDirs.generated.js";
 
 /**
  * Agents that natively discover the universal `~/.agents/skills` store globally
@@ -54,6 +58,10 @@ import { AGENT_GLOBAL_DIRS, type AgentDirBase } from "./agentDirs.generated.js";
  * here next to the mirror logic that needs it.
  */
 const UNIVERSAL_STORE_READERS = new Set(["pi", "codex"]);
+
+export const EXTRA_GLOBAL_DIRS: readonly AgentGlobalDir[] = [
+  { agent: "antigravity", base: "home", sub: ".gemini/config/skills" },
+];
 
 export interface MirrorResult {
   /** The store mirrored from, or null when no global Claude store was found. */
@@ -308,7 +316,7 @@ export function mirrorGlobalSkills(opts: {
 
   const mirrored: { agent: string; dir: string }[] = [];
   const skipped: MirrorResult["skipped"] = [];
-  for (const { agent, base, sub } of AGENT_GLOBAL_DIRS) {
+  for (const { agent, base, sub } of [...AGENT_GLOBAL_DIRS, ...EXTRA_GLOBAL_DIRS]) {
     const targetDir = join(bases[base], ...sub.split("/").filter(Boolean));
     if (targetDir === source || targetDir === universalStore) continue; // install-owned
     if (UNIVERSAL_STORE_READERS.has(agent)) {
