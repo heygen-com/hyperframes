@@ -1,21 +1,23 @@
+import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, expect, it, vi } from "vitest";
+import { findFFmpeg } from "../browser/ffmpeg.js";
 import snapshotCommand from "./snapshot.js";
 
 const root = mkdtempSync(join(tmpdir(), "hf-snapshot-unreadable-video-"));
 
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
-function writeProject(name: string, clipStart: number): string {
+function writeProject(name: string, clipStart: number, clipDuration = 2): string {
   const dir = join(root, name);
   mkdirSync(dir, { recursive: true });
   writeFileSync(
     join(dir, "index.html"),
     `<!doctype html><html><body style="margin:0;background:#000">
 <div id="root" data-composition-id="main" data-start="0" data-duration="5" data-width="320" data-height="180" style="position:relative;width:320px;height:180px">
-  <video id="v" class="clip" src="clip.mp4" data-start="${clipStart}" data-duration="2" data-track-index="0" muted style="position:absolute;inset:0;width:320px;height:180px"></video>
+  <video id="v" class="clip" src="clip.mp4" data-start="${clipStart}" data-duration="${clipDuration}" data-track-index="0" muted style="position:absolute;inset:0;width:320px;height:180px"></video>
 </div>
 <script>
   window.__timelines = window.__timelines || {};
@@ -61,3 +63,23 @@ it("fails, naming the folder, when a video on screen cannot be read", async () =
   expect(result.error?.message).toMatch(/video frame\(s\) could not be read.*black or stale/);
   expect(readdirSync(join(dir, "out")).some((name) => /at-1\.5s\.png$/.test(name))).toBe(true);
 }, 120_000);
+
+const ffmpeg = findFFmpeg();
+const hasX265 =
+  !!ffmpeg &&
+  execFileSync(ffmpeg, ["-hide_banner", "-encoders"], { encoding: "utf-8" }).includes("libx265");
+
+it.skipIf(!hasX265)(
+  "does not fail for a readable clip held past the end of its source",
+  async () => {
+    const dir = writeProject("held-past-end", 1, 3);
+    execFileSync(ffmpeg!, [
+      ...["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=d=1:r=24:s=160x90"],
+      ...["-c:v", "libx265", "-tag:v", "hvc1", "-pix_fmt", "yuv420p", "-y", join(dir, "clip.mp4")],
+    ]);
+    const result = await resultAt(dir, "3.5");
+
+    expect(result.ok).toBe(true);
+  },
+  120_000,
+);

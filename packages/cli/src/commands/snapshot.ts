@@ -1298,6 +1298,7 @@ export async function captureSnapshots(
               }
               const want = wantAt(time)!;
               const banked = await frameBank.take(ffmpegInput, want);
+              const warned = warnings.length;
               const png = await frameOrWarn(
                 warnings,
                 async () =>
@@ -1311,7 +1312,7 @@ export async function captureSnapshots(
                   ),
               );
               if (!png) {
-                unreadVideoFrames += 1;
+                if (warnings.length > warned) unreadVideoFrames += 1;
                 return null;
               }
               return { videoId: v.id, dataUri: `data:image/png;base64,${png.toString("base64")}` };
@@ -1514,7 +1515,6 @@ interface CapturedSnapshots {
   cleared: string[];
   /** Why a frame may differ from the composition: shown on the console and in `--json`. */
   warnings: string[];
-  /** On-screen video frames that could not be read, so those videos are black or stale in the stills. */
   unreadVideoFrames: number;
   /** --against wrote no pair sheets because sharp could not load. */
   pairSheetsSkipped: boolean;

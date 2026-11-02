@@ -56,12 +56,11 @@ function sanitizeFfprobeDiagnostic(stderr: string, filePath: string): string {
   return `…${redacted.slice(-(FFPROBE_ERROR_MAX_CHARS - 1))}`;
 }
 
-/** Spawn ffprobe with given args, return stdout. Throws on non-zero exit or missing binary. */
-/** An input path ffmpeg or ffprobe cannot mistake for an option, without `--`, which some builds reject. */
 export function inputPathArg(path: string): string {
   return path.startsWith("-") ? `./${path}` : path;
 }
 
+/** Spawn ffprobe with given args, return stdout. Throws on non-zero exit or missing binary. */
 export async function runFfprobe(
   filePath: string,
   argsWithoutInput: string[],
