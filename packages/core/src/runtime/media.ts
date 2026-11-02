@@ -444,7 +444,6 @@ export function syncRuntimeMedia(params: {
    * unity; do not mistake that transport write for an authored volume edit. */
   isWebAudioRouted?: (el: HTMLMediaElement) => boolean;
   forceSync?: boolean;
-  /** A video held or resumed for data keeps its small lag, which steering closes; hard sync still lands a big one. */
   keepLateMedia?: boolean;
   /** False while the playhead is not moving (audio output has not started): a paused video waits for it. */
   clockAdvancing?: boolean;

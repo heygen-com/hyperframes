@@ -3104,7 +3104,6 @@ export function initSandboxRuntimeModular(): void {
     }
   };
   let bufferingFor: HTMLMediaElement[] = [];
-  // Set across a data hold's own media sync: a seek would flush what the starved video has buffered.
   let keepLateMedia = false;
   const preloadNearPlayhead = (
     el: HTMLMediaElement,
@@ -5685,7 +5684,6 @@ export function initSandboxRuntimeModular(): void {
 
   const READY_AHEAD_SECONDS = 1;
   // WebKit reports a paused element as HAVE_CURRENT_DATA however much it has buffered, so its ranges count too.
-  // Elsewhere that state with the bytes in is a decoder waiting for more: not ready.
   const hasDataAhead = (el: HTMLMediaElement): boolean =>
     el.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA || (isWebKit() && canResumeFrom(el));
   // HAVE_FUTURE_DATA can mean one frame, so a held film resumes only on the stricter reading.
@@ -5813,7 +5811,6 @@ export function initSandboxRuntimeModular(): void {
           filmTime: t,
           fps: state.canonicalFps,
           rate: state.playbackRate,
-          // A hold for data is the worst playback there is, not a pause: it must read as choppy.
           playing: playing || bufferingFor.length > 0,
           hidden: document.visibilityState === "hidden",
           waiting:
