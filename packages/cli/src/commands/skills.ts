@@ -130,10 +130,7 @@ function skillSelectionArgs(selection: SkillSelection): string[] {
   return names.flatMap((name) => ["--skill", name]);
 }
 
-// The upstream `skills` CLI, pinned: a bare `npx skills` runs whatever was
-// published last, so an upstream release could change how every install behaves
-// with no HyperFrames release. Bump deliberately, re-checking the lock paths in
-// skillsManifest.ts and the `#<ref>` source syntax used below.
+// Pinned: a bare `npx skills` runs whatever upstream published last.
 const SKILLS_CLI = "skills@1.7.4";
 
 function runSkillsAdd(
@@ -155,10 +152,9 @@ function runSkillsAdd(
 const PLAIN_SKILL_NAME = /^[a-z0-9][a-z0-9._-]*$/i;
 
 // Use the full GitHub URL (not the `owner/repo` slug) as the clone source.
-// --full-depth (see GLOBAL_INSTALL_ARGS_TAIL) clones it at the `#<ref>` the
-// URL names: this CLI's release tag (skillsSourceRef), so the skills match the
-// CLI that runs them. The freshness check reads the manifest at the same ref,
-// so install and check agree.
+// --full-depth (see GLOBAL_INSTALL_ARGS_TAIL) clones it at the `#<ref>` from
+// skillsSourceRef: this CLI's release tag, so the skills match the CLI that
+// runs them. `skills check` reads the manifest at the same ref.
 const SOURCES = [{ name: "HyperFrames", url: "https://github.com/heygen-com/hyperframes" }];
 
 // Fan HyperFrames' own skills out to every other installed agent. Scope by the

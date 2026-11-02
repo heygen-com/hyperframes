@@ -53,11 +53,7 @@ function isAutoInstallDisabled(): boolean {
   );
 }
 
-/**
- * The breaking-change line a version belongs to: `0.<minor>` before 1.0, where
- * semver lets a minor bump break, and `<major>` from 1.0 on. Null when unparsable.
- * Comparing majors alone read 0.8.x -> 0.9.x as the same line and auto-installed it.
- */
+/** `0.<minor>` before 1.0 (a 0.x minor may break), `<major>` after; null when unparsable. */
 function breakingLine(version: string): string | null {
   const match = /^(\d+)\.(\d+)\./.exec(version);
   if (!match) return null;

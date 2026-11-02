@@ -590,10 +590,9 @@ async function fetchManifest(url: string): Promise<SkillsManifest> {
 }
 
 /**
- * Resolve a ref's live commit sha via `git ls-remote`: the branch-raw CDN can serve
+ * Resolve a ref's live sha via `git ls-remote`: the branch-raw CDN can serve
  * stale content for minutes after a push, a SHA-pinned raw URL cannot. Returns
- * null for a slug that is not `owner/repo`, a ref the repo does not have, or when
- * git/network is unavailable.
+ * null for a slug that is not `owner/repo`, a missing ref, or no git/network.
  *
  * GIT_TERMINAL_PROMPT=0 does not stop credential helpers or askpass, and Git
  * Credential Manager (the Git for Windows default) answers a private or missing
@@ -629,12 +628,7 @@ export function cliReleaseTag(version: string = VERSION): string | null {
   return /^\d+\.\d+\.\d+$/.test(version) ? `v${version}` : null;
 }
 
-/**
- * The repo ref skills install from and are checked against: the running CLI's
- * release tag, so an agent reads the skills written for the CLI it drives, not
- * whatever `main` holds today. A build the repo has no tag for (a dev build)
- * falls back to `main`. Install and check both resolve through here, so they agree.
- */
+/** Where skills install from and are checked against: this CLI's release tag, else `main`. */
 export async function skillsSourceRef(
   repoSlug: string = DEFAULT_REPO_SLUG,
   version: string = VERSION,
@@ -656,10 +650,9 @@ function resolveLocalManifest(source: string): SkillsManifest {
 
 /**
  * Fetch the manifest from GitHub. A full URL is fetched directly; an
- * `owner/repo` slug (or the default repo) is read at the ref skills install
- * from (see skillsSourceRef). A release tag never moves, so its raw URL is
- * read as is; `main` is SHA-pinned via `git ls-remote` to dodge raw-CDN lag,
- * falling back to the branch URL when git is unavailable.
+ * `owner/repo` slug is read at skillsSourceRef: a release tag as is (it never
+ * moves), `main` SHA-pinned via `git ls-remote` to dodge raw-CDN lag, falling
+ * back to the branch URL when git is unavailable.
  */
 async function fetchRemoteManifest(source?: string): Promise<SkillsManifest> {
   if (source?.startsWith("http")) return fetchManifest(source);
