@@ -1,4 +1,5 @@
 import { execFileSync, spawn as realSpawn, spawnSync, type ChildProcess } from "node:child_process";
+import os from "node:os";
 import { EventEmitter, once } from "node:events";
 import {
   cpSync,
@@ -66,6 +67,7 @@ type FakeProc = EventEmitter & {
   stderr: EventEmitter;
   stdout: EventEmitter;
   kill: (signal?: string) => void;
+  pid?: number;
 };
 
 function createFakeProc(): FakeProc {
@@ -73,6 +75,7 @@ function createFakeProc(): FakeProc {
   proc.stderr = new EventEmitter();
   proc.stdout = new EventEmitter();
   proc.kill = vi.fn((signal?: string) => void proc.emit("close", null, signal));
+  proc.pid = 4242;
   return proc;
 }
 
@@ -1114,6 +1117,26 @@ describe("resolveProxy", () => {
       expect(clipOf(calls[2]!)).toBe("thumb");
       succeed(calls[2]!);
       await thumb;
+    });
+
+    it("runs a background copy's encode at the lowest priority, until a viewer asks for it", async () => {
+      const setPriority = vi.spyOn(os, "setPriority").mockImplementation(() => {});
+      const { calls, resolveProxy, projectDir } = await oneSlot();
+      const clip = clips(projectDir, ["later", "viewed"]);
+
+      const later = resolveProxy(projectDir, clip.later!, "h264", undefined, { background: true });
+      await flush();
+      const lowered = setPriority.mock.calls.length;
+      succeed(calls[0]!);
+      await later;
+      const viewed = resolveProxy(projectDir, clip.viewed!, "h264", undefined, { priority: true });
+      await flush();
+      succeed(calls[1]!);
+      await viewed;
+
+      expect(lowered).toBe(1);
+      expect(setPriority).toHaveBeenCalledTimes(1);
+      setPriority.mockRestore();
     });
 
     it("moves an already queued copy forward when the preview asks for it", async () => {
