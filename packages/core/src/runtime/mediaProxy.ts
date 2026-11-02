@@ -156,12 +156,12 @@ function keepSized(el: HTMLMediaElement, scale: number): void {
   if (needed && lowered && copy.light && lightCopyNoLongerNeeded(el, needed)) {
     return restoreOriginal(el);
   }
-  if (boxCovers(copy.box, needed, lowered)) {
-    // The copy it has fits, so a copy still being made for an older level or size must not swap in.
-    if (pendingUpgrades.delete(el)) noteCopy(el, "ready");
-    return;
-  }
+  if (boxCovers(copy.box, needed, lowered)) return dropUnneededCopy(el);
   requestBox(el, copy, lowered || !needed ? needed : growOnly(needed, copy.box));
+}
+
+function dropUnneededCopy(el: HTMLMediaElement): void {
+  if (pendingUpgrades.delete(el)) noteCopy(el, "ready");
 }
 
 function lightCopyNoLongerNeeded(el: HTMLMediaElement, needed: PreviewProxyBox): boolean {
