@@ -171,7 +171,7 @@ export function normalizeConfig(partial: Partial<ProjectConfig>): ProjectConfig 
   };
 }
 
-const REVERSE_SESSION_ID = /^[A-Za-z0-9_-]{1,128}$/;
+const REVERSE_SESSION_ID = /^rvs_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 export function normalizeReverseSessionId(raw: unknown): string | undefined {
   return typeof raw === "string" && REVERSE_SESSION_ID.test(raw) ? raw : undefined;

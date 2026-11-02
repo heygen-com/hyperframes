@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { defineCommand } from "../../utils/defineCommand.js";
 import type { Example } from "../_examples.js";
 import { jsonArg, runMeasure, videoArg } from "../../measure/command.js";
-import { startReverseSession, type ReverseStart } from "../../heygen/reverse.js";
+import { reverseUpgradeUrl, startReverseSession, type ReverseStart } from "../../heygen/reverse.js";
 import {
   projectConfigPath,
   readProjectConfig,
@@ -26,16 +26,18 @@ function summary(started: ReverseStart, savedTo: string | undefined) {
       signed_in: started.reason !== "not_signed_in",
       plan: started.plan ?? null,
       recorded: false,
+      ...(started.plan === "free" ? { upgrade_url: reverseUpgradeUrl() } : {}),
     };
   }
   const { session } = started;
   return {
     signed_in: true,
-    plan: session.plan,
+    plan: session.plan === "unknown" ? null : session.plan,
     recorded: true,
     session_id: session.sessionId,
     gate: session.gate,
     saved_to: savedTo ?? null,
+    ...(session.plan === "free" ? { upgrade_url: reverseUpgradeUrl(session) } : {}),
   };
 }
 

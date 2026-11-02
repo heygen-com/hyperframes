@@ -33,16 +33,17 @@ video, so they move and speak as they do in the original. For example:
 
 ## Signed in on Free
 
-Reverse is part of Pro. Say so once, give the upgrade step, and start nothing until they are on Pro. For example:
+Reverse is part of Pro. Say so once, give the upgrade link, and start nothing until they are on Pro. The link is
+`reverse.upgrade_url` from `reverse start`, passed on exactly as printed: it credits the purchase to this run. For
+example:
 
-> Reverse is part of HyperFrames Pro: it re-shoots the people in your video with HeyGen. Upgrade by typing this in the
-> prompt:
+> Reverse is part of HyperFrames Pro: it re-shoots the people in your video with HeyGen. Upgrade here:
 >
-> ```
-> ! npx hyperframes billing subscribe
-> ```
+> https://hyperframes.studio/pricing?feature=reverse&rs=…
 >
-> It opens the plans page and finishes once you're on Pro. Reply "done" and I'll start.
+> Reply "done" once you're on Pro and I'll start.
+
+Only on a CLI without `reverse start`, give `! npx hyperframes billing subscribe` instead.
 
 ## Signed in on Pro
 

@@ -13,6 +13,9 @@ const server = vi.hoisted(() => ({
 const probe = vi.hoisted(() => ({ fail: false }));
 
 vi.mock("../../heygen/reverse.js", () => ({
+  reverseUpgradeUrl: (session?: { sessionId: string; upgradeUrl?: string }) =>
+    session?.upgradeUrl ??
+    `https://plans.test/?feature=reverse${session ? `&rs=${session.sessionId}` : ""}`,
   startReverseSession: async (opts: { resumeSessionId?: string } = {}) => {
     server.resumed.push(opts.resumeSessionId);
     return server.answer;
@@ -28,9 +31,9 @@ vi.mock("../measure/probe.js", () => ({
 const { default: start } = await import("./start.js");
 
 const SESSION = "rvs_0f8fad5b-d9cb-469f-a165-70867728950e";
-const recorded = (): ReverseStart => ({
+const recorded = (plan: "free" | "pro" | "unknown" = "pro", upgradeUrl?: string): ReverseStart => ({
   recorded: true,
-  session: { sessionId: SESSION, plan: "pro", gate: "record" },
+  session: { sessionId: SESSION, plan, gate: "record", ...(upgradeUrl ? { upgradeUrl } : {}) },
 });
 
 let root: string;
@@ -96,6 +99,48 @@ describe("reverse start", () => {
 
     await run();
     expect(server.resumed).toEqual([undefined, SESSION]);
+  });
+
+  it("saves a session whose plan is unknown and prints the plan as null", async () => {
+    server.answer = recorded("unknown");
+    const dir = join(root, "rebuild");
+    await run("--dir", dir);
+    expect(output()).toMatchObject({ ok: true, reverse: { recorded: true, plan: null } });
+    expect(output().reverse).not.toHaveProperty("upgrade_url");
+    expect(config(dir)).toMatchObject({ reverseSessionId: SESSION });
+  });
+
+  it.each<[string, ReverseStart, string]>([
+    [
+      "the server's link",
+      recorded("free", "https://u.test/p?feature=reverse&rs=1"),
+      "https://u.test/p?feature=reverse&rs=1",
+    ],
+    [
+      "the plans page carrying the session",
+      recorded("free"),
+      `https://plans.test/?feature=reverse&rs=${SESSION}`,
+    ],
+    [
+      "the plans page when nothing was recorded",
+      { recorded: false, reason: "unavailable", plan: "free" },
+      "https://plans.test/?feature=reverse",
+    ],
+  ])("prints the upgrade link for Free: %s", async (_label, answer, link) => {
+    server.answer = answer;
+    await run();
+    expect(output()).toMatchObject({ ok: true, reverse: { plan: "free", upgrade_url: link } });
+  });
+
+  it("starts fresh when the saved session is not one the server takes", async () => {
+    writeFileSync(
+      join(root, "hyperframes.json"),
+      JSON.stringify({ reverseSessionId: "rvs_legacy" }),
+    );
+    server.answer = recorded();
+    await run();
+    expect(server.resumed).toEqual([undefined]);
+    expect(config(root)).toMatchObject({ reverseSessionId: SESSION });
   });
 
   it("writes nothing into a folder that is not a project unless --dir names it", async () => {

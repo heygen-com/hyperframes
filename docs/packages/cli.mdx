@@ -1517,7 +1517,8 @@ run started and saves the session HeyGen returns in the project's
 `hyperframes.json`; [`cloud render`](#hyperframes-cloud) then sends that session
 with the render. It then prints the video's [`measure probe`](#measure) JSON,
 with a `reverse` field: whether you are signed in, the plan (`free`, `pro`, or
-`null` when unknown), and the session. It never stops the run: signed out,
+`null` when unknown), the session, and on Free the `upgrade_url` that credits a
+purchase to this run. It never stops the run: signed out,
 offline, or on a server without the route, it skips the session and still
 probes.
 

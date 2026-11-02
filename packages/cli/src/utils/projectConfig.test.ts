@@ -587,6 +587,7 @@ describe("projectConfig", () => {
     it("survives a normalizeConfig round-trip, dropping a malformed id", () => {
       expect(normalizeConfig({ reverseSessionId: SESSION }).reverseSessionId).toBe(SESSION);
       expect(normalizeConfig({ reverseSessionId: "a b" }).reverseSessionId).toBeUndefined();
+      expect(normalizeConfig({ reverseSessionId: "rvs_legacy" }).reverseSessionId).toBeUndefined();
     });
   });
 });

@@ -1,9 +1,9 @@
 // The reverse session the server opens when a reverse run starts, and the plan it read for the account.
 import { resolveCloudAuthHeaders, resolveCloudBaseUrl } from "../cloud/auth.js";
 import { normalizeReverseSessionId } from "../utils/projectConfig.js";
-import { readPlan } from "./plan.js";
+import { pageUrl, readPlan } from "./plan.js";
 
-export type ReversePlan = "free" | "pro";
+export type ReversePlan = "free" | "pro" | "unknown";
 export type ReverseGate = "record" | "block";
 export type ReverseSurface = "cli" | "desktop";
 
@@ -16,7 +16,7 @@ export interface ReverseSession {
 
 export type ReverseStart =
   | { recorded: true; session: ReverseSession }
-  | { recorded: false; reason: "not_signed_in" | "unavailable"; plan?: ReversePlan };
+  | { recorded: false; reason: "not_signed_in" | "unavailable"; plan?: "free" | "pro" };
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
@@ -27,7 +27,7 @@ export function reverseSurface(env: NodeJS.ProcessEnv = process.env): ReverseSur
   return env["HYPERFRAMES_CLIENT"]?.trim() ? "desktop" : "cli";
 }
 
-const PLANS: readonly ReversePlan[] = ["free", "pro"];
+const PLANS: readonly ReversePlan[] = ["free", "pro", "unknown"];
 const GATES: readonly ReverseGate[] = ["record", "block"];
 
 function oneOf<T extends string>(value: unknown, options: readonly T[]): T | undefined {
@@ -46,10 +46,15 @@ function parseSession(body: unknown): ReverseSession | undefined {
 }
 
 /** The plan from the subscription route, for when the reverse route cannot answer. */
-async function fallbackPlan(): Promise<ReversePlan | undefined> {
+async function fallbackPlan(): Promise<"free" | "pro" | undefined> {
   const plan = await readPlan();
   if (!plan) return undefined;
   return plan.plan === "none" ? "free" : "pro";
+}
+
+/** The link that credits a purchase to this run: the server's, else the plans page with the same fields. */
+export function reverseUpgradeUrl(session?: { sessionId: string; upgradeUrl?: string }): string {
+  return session?.upgradeUrl ?? pageUrl("plans", { feature: "reverse", rs: session?.sessionId });
 }
 
 /**

@@ -10,7 +10,7 @@ vi.mock("../cloud/auth.js", () => ({
   resolveCloudBaseUrl: () => "https://api.example.test",
 }));
 
-const { reverseSurface, startReverseSession } = await import("./reverse.js");
+const { reverseSurface, reverseUpgradeUrl, startReverseSession } = await import("./reverse.js");
 
 const START_URL = "https://api2.example.test/v1/hyperframes/reverse/start";
 const PLAN_URL = "https://api2.example.test/v1/payment/hyperframes/subscription";
@@ -78,6 +78,21 @@ describe("startReverseSession", () => {
     expect(calls[0]?.body).toEqual({ surface: "cli", session_id: SESSION });
   });
 
+  it("keeps a session whose plan the server could not read, without reading the plan itself", async () => {
+    serve({
+      [START_URL]: () =>
+        Response.json({
+          data: { session_id: SESSION, plan: "unknown", gate: "block", upgrade_url: null },
+        }),
+      [PLAN_URL]: freePlan,
+    });
+    expect(await startReverseSession()).toEqual({
+      recorded: true,
+      session: { sessionId: SESSION, plan: "unknown", gate: "block" },
+    });
+    expect(calls.map((c) => c.url)).toEqual([START_URL]);
+  });
+
   it("asks nothing when not signed in", async () => {
     auth.signedIn = false;
     serve({});
@@ -105,6 +120,7 @@ describe("startReverseSession", () => {
   it.each([
     ["no session id", { plan: "pro", gate: "record" }],
     ["a session id that is not an id", { session_id: "../x", plan: "pro", gate: "record" }],
+    ["an uppercase session id", { session_id: SESSION.toUpperCase(), plan: "pro", gate: "record" }],
     ["an unknown gate", { session_id: SESSION, plan: "pro", gate: "maybe" }],
     ["an unknown plan", { session_id: SESSION, plan: "team", gate: "record" }],
   ])("treats an answer with %s as unrecorded", async (_label, data) => {
@@ -115,6 +131,19 @@ describe("startReverseSession", () => {
   it("treats a server error as unrecorded", async () => {
     serve({ [START_URL]: () => new Response("boom", { status: 500 }) });
     expect(await startReverseSession()).toMatchObject({ recorded: false, reason: "unavailable" });
+  });
+});
+
+describe("reverseUpgradeUrl", () => {
+  it("passes the server's link on as is, else builds the plans page with the fields checkout reads", () => {
+    vi.stubEnv("HYPERFRAMES_PLANS_URL", "");
+    expect(reverseUpgradeUrl({ sessionId: SESSION, upgradeUrl: "https://u.test/p?rs=1" })).toBe(
+      "https://u.test/p?rs=1",
+    );
+    expect(reverseUpgradeUrl({ sessionId: SESSION })).toBe(
+      `https://hyperframes.studio/pricing?from=cli&feature=reverse&rs=${SESSION}`,
+    );
+    expect(reverseUpgradeUrl()).toBe("https://hyperframes.studio/pricing?from=cli&feature=reverse");
   });
 });
 

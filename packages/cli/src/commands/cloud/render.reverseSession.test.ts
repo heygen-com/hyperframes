@@ -82,6 +82,8 @@ describe("cloud render reverse session", () => {
     ["no hyperframes.json", undefined],
     ["a config without a session", { registry: "https://r.test" }],
     ["a session id that is not an id", { reverseSessionId: "../../etc" }],
+    ["a session id the render endpoint would reject", { reverseSessionId: "rvs_legacy" }],
+    ["an uppercase session id", { reverseSessionId: SESSION.toUpperCase() }],
   ])("leaves the field out with %s", async (_label, config) => {
     if (config) writeConfig(config);
     await runCommand(render, { rawArgs: [project, "--no-wait", "--json"] });
