@@ -124,11 +124,11 @@ export async function pullTemplate(slug: string, dir: string): Promise<string> {
   return dest;
 }
 
-/** Downloads a creator template for a HyperFrames Pro account. The server decides who may have it. */
+/** Downloads a style template for a HyperFrames Pro account. The server decides who may have it. */
 export default defineCommand({
   meta: {
     name: "templates",
-    description: "Pull a creator template into this project (HyperFrames Pro)",
+    description: "Pull a style template into this project (HyperFrames Pro)",
   },
   args: {
     action: { type: "positional", description: "pull", required: true },

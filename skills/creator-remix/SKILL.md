@@ -11,7 +11,7 @@ metadata:
 
 A good episode is one the series' own viewers would take for the next upload: its structure, pacing, look, graphics and sound, on a new topic, in the person's voice and, when the series has a presenter, their own face. Never use a creator's face, voice, footage, logo or show name.
 
-Creator templates are a HyperFrames Pro feature. The CLI pulls them and the server checks the plan.
+Style templates are a HyperFrames Pro feature. The CLI pulls them and the server checks the plan.
 
 | Template | Slug | Series | Makes | The person brings |
 | --- | --- | --- | --- | --- |
