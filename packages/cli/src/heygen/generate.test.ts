@@ -14,9 +14,24 @@ vi.mock("../cloud/auth.js", () => ({
 
 vi.stubEnv("HEYGEN_API_KEY", "k");
 
-const { checkRequest, foldShort, generate, parseMask, ringChange, structureRatio, urlOf } =
-  await import("./generate.js");
+const account = vi.hoisted(() => ({ scope: "acct" as string | null }));
+vi.mock("./v3.js", async (load) => ({
+  ...(await load<typeof import("./v3.js")>()),
+  senderScope: async () => account.scope,
+}));
+
+const {
+  checkRequest,
+  foldShort,
+  generate,
+  parseMask,
+  pickVoice,
+  ringChange,
+  structureRatio,
+  urlOf,
+} = await import("./generate.js");
 const { checkLimit, creditsOf, priceOf } = await import("./pricing.js");
+type GenerateRequest = import("./generate.js").GenerateRequest;
 const ffmpeg = findFFmpeg();
 const project = mkdtempSync(join(tmpdir(), "hf-generate-test-"));
 writeFileSync(join(project, "index.html"), "<html></html>");
@@ -685,5 +700,137 @@ describe("foldShort", () => {
   it("keeps a real cut near the guide's edge, which would land inside a paid shot", () => {
     expect(foldShort([5, 9.7], 10)).toEqual([5, 9.7]);
     expect(foldShort([0.3], 10)).toEqual([0.3]);
+  });
+});
+
+describe("pickVoice", () => {
+  const voice = (id: string, name: string) => ({ voice_id: id.repeat(32), name, gender: "female" });
+  let catalog = [voice("a", "Lin"), voice("b", "Wei")];
+  const asked: string[] = [];
+  const posts: { key: string | null; body: Record<string, unknown> }[] = [];
+  const heygen = () =>
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      asked.push(url);
+      if (url.includes("/v3/voices?")) return json({ data: catalog });
+      if (init?.method === "POST") {
+        const key = new Headers(init.headers).get("Idempotency-Key");
+        posts.push({ key, body: JSON.parse(String(init.body)) });
+      }
+      return json({ data: { id: "j1", status: "pending" } });
+    });
+  afterEach(() => {
+    vi.useRealTimers();
+    account.scope = "acct";
+    catalog = [voice("a", "Lin"), voice("b", "Wei")];
+    asked.length = 0;
+    posts.length = 0;
+  });
+
+  it("takes a voice id as given, without asking HeyGen", async () => {
+    heygen();
+    const r = { type: "voice" as const, out: "vo.mp3", voice: "c".repeat(32) };
+    expect((await pickVoice(r)).voice_id).toBe("c".repeat(32));
+    expect(asked).toEqual([]);
+  });
+
+  it("picks HeyGen's first public voice for a language", async () => {
+    heygen();
+    const r = { type: "voice" as const, out: join(project, "assets/a.mp3"), voice: "Chinese" };
+    expect((await pickVoice(r)).name).toBe("Lin");
+    expect(asked[0]).toBe("https://api.test/v3/voices?type=public&language=Chinese&limit=1");
+  });
+
+  it("lists voices to pick from when none is named", async () => {
+    heygen();
+    await expect(pickVoice({ type: "voice", out: "vo.mp3" })).rejects.toMatchObject({
+      message: "--voice is missing",
+      fix: expect.stringContaining(`${"a".repeat(32)} (Lin, female)`),
+    });
+  });
+
+  // The command's own path: pick, then generate; a timeout, a reordered catalog, the same command.
+  const runOnce = async (r: GenerateRequest) => {
+    const request = { ...r };
+    const picked = await pickVoice(request).catch((err: unknown) => err);
+    if (picked instanceof Error) return picked;
+    request.voice = (picked as { voice_id: string }).voice_id;
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout"] });
+    const run = generate(request).catch((err: unknown) => err);
+    await vi.advanceTimersByTimeAsync(31 * 60_000);
+    vi.useRealTimers();
+    return run;
+  };
+
+  for (const [type, extra] of [
+    ["voice", "mp3"],
+    ["avatar", "mp4"],
+  ] as const) {
+    it.skipIf(!ffmpeg)(
+      `keeps the first voice for a ${type} re-run after the catalog reorders`,
+      async () => {
+        heygen();
+        const face = join(project, "face.png");
+        execFileSync(ffmpeg!, [
+          "-v",
+          "error",
+          "-y",
+          "-f",
+          "lavfi",
+          "-i",
+          "color=red:s=64x64",
+          "-frames:v",
+          "1",
+          face,
+        ]);
+        const r: GenerateRequest = {
+          type,
+          out: join(project, `assets/${type}-retry.${extra}`),
+          voice: "Chinese",
+          script: "你好",
+          ...(type === "avatar" ? { photo: face } : {}),
+        };
+        expect(await runOnce(r)).toMatchObject({ message: "HeyGen job j1 is still pending" });
+        catalog = [voice("b", "Wei"), voice("a", "Lin")];
+        await runOnce(r);
+        expect(posts).toHaveLength(2);
+        expect(posts[1]!.key).toBe(posts[0]!.key);
+        expect(posts[1]!.body).toEqual(posts[0]!.body);
+        expect(posts[0]!.body.voice_id).toBe("a".repeat(32));
+      },
+    );
+  }
+  const shot = (name: string): GenerateRequest => ({
+    type: "voice",
+    out: join(project, `assets/${name}.mp3`),
+    voice: "Chinese",
+    script: "你好",
+  });
+
+  it("refuses before any pick or POST while the account is unknown, then picks once it is", async () => {
+    heygen();
+    account.scope = null;
+    expect(await runOnce(shot("who-later"))).toMatchObject({
+      message: expect.stringContaining("did not say which account"),
+    });
+    expect(posts).toHaveLength(0);
+    expect(asked).toEqual([]);
+    account.scope = "acct";
+    await runOnce(shot("who-later"));
+    expect(posts.map((p) => p.body.voice_id)).toEqual(["a".repeat(32)]);
+  });
+
+  it("refuses a re-run while the account is unknown instead of starting another job", async () => {
+    heygen();
+    await runOnce(shot("who-lost"));
+    account.scope = null;
+    catalog = [voice("b", "Wei"), voice("a", "Lin")];
+    expect(await runOnce(shot("who-lost"))).toMatchObject({
+      message: expect.stringContaining("did not say which account"),
+    });
+    expect(posts).toHaveLength(1);
+    account.scope = "acct";
+    await runOnce(shot("who-lost"));
+    expect(posts[1]!.key).toBe(posts[0]!.key);
+    expect(posts[1]!.body).toEqual(posts[0]!.body);
   });
 });
