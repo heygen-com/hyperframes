@@ -19,28 +19,28 @@ export interface TemplatePack {
 export const TEMPLATES: Record<string, TemplatePack> = {
   "animated-science-explainer": {
     id: "M9003",
-    sha256: "e41ee7746be21561100d03e3897701fbd9c80ff945b03550b7eaeb715af81171",
-    bytes: 25559315,
+    sha256: "4ead405395892545c658a03b48630529943f5598cc15770930c0ffa6b8de58e9",
+    bytes: 25559788,
   },
   "finance-explainer": {
     id: "M9002",
-    sha256: "c9359f8e3c44251ccb7c3624a66b0a577c8100e22d563d1c0b2f53682ad91a54",
-    bytes: 140687104,
+    sha256: "b10efcfad35097ddac8118062701eeb3ef4012f3c9b41704e474964d09d37d11",
+    bytes: 140688140,
   },
   "3d-true-crime": {
     id: "M9005",
-    sha256: "db66d6ed5ed17820d59ab797943f386d6f905a7ecd65fb3628b398c2e55833f4",
-    bytes: 5976055,
+    sha256: "53d1f51eb5b78e3cb60a23625d160952236d5f5fb8d41118798d782a6168eec1",
+    bytes: 5977486,
   },
   "collage-explainer": {
     id: "M9001",
-    sha256: "e19e78c6f2ad360cf1e1601fe807a7b9d8e6e3539b2d35338d10ee22f03c7659",
-    bytes: 36710664,
+    sha256: "395362e3c629706143724e99d72dacb4997d35b978ecc4173901cdef6e70205c",
+    bytes: 36711101,
   },
   "3d-brand-explainer": {
     id: "M9004",
-    sha256: "e05b07ed2f9528ab7165685e794b066a468ac26c1513a15239dae7884c99c904",
-    bytes: 20180129,
+    sha256: "4e5c5eb574f977d3f97a170a5a0d8d442234d34dd51f925dc4a2b93e32826ae8",
+    bytes: 20181051,
   },
 };
 
