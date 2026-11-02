@@ -42,6 +42,7 @@ import {
   skipsHiddenImages,
 } from "./timedClipHide";
 import {
+  inPlayerFrame,
   PREVIEW_ONLY_ATTRS,
   RUNTIME_STAMPED_ATTR,
   STUDIO_PREVIEW_FAR_SCENE_ATTR as FAR_SCENE_ATTR,
@@ -2996,6 +2997,29 @@ export function initSandboxRuntimeModular(): void {
   let moveSceneWindow = (_time: number): boolean => false;
   const LOOKAHEAD_SECONDS = 2;
   const RELEASE_LOOKAHEAD_SECONDS = 4;
+  // The player keeps a connection per file for the clips on screen and the next take only (see inPlayerFrame).
+  const playerFrame = inPlayerFrame(document);
+  const NEXT_TAKE_SPAN_SECONDS = 0.5;
+  let nextTakes: { t: number; bound: number; clips: Set<HTMLMediaElement> } | null = null;
+  const fileOf = (el: HTMLMediaElement) =>
+    el.getAttribute("src") ?? el.querySelector("source")?.getAttribute("src") ?? "";
+  const nextTakeClips = (t: number): Set<HTMLMediaElement> => {
+    if (nextTakes?.t === t && nextTakes.bound === metadataBoundMedia.size) return nextTakes.clips;
+    const byFile = new Map<string, { el: HTMLMediaElement; start: number }[]>();
+    for (const el of metadataBoundMedia) {
+      const file = fileOf(el);
+      const start = resolveAbsoluteMediaStartSeconds(el);
+      if (!el.isConnected || !file || !(start > t)) continue;
+      byFile.set(file, [...(byFile.get(file) ?? []), { el, start }]);
+    }
+    const clips = new Set<HTMLMediaElement>();
+    for (const later of byFile.values()) {
+      const next = Math.min(...later.map((clip) => clip.start));
+      for (const clip of later) if (clip.start <= next + NEXT_TAKE_SPAN_SECONDS) clips.add(clip.el);
+    }
+    nextTakes = { t, bound: metadataBoundMedia.size, clips };
+    return clips;
+  };
   // Unskipped while within the window on either side of the playhead, so a step or shuttle back
   // across a cut finds the clip it left still loaded; the edge checks catch a clip shorter than it.
   const dueSoon = (
@@ -3248,6 +3272,8 @@ export function initSandboxRuntimeModular(): void {
   ): number[] | null => {
     const own = windowOf(node);
     if (!own || !Number.isFinite(own.start)) return null;
+    // Which clip is next on its file flips at every other clip's start.
+    if (playerFrame && isMediaElement(node)) return null;
     const edges: number[] = [];
     for (const ahead of [0, LOOKAHEAD_SECONDS, RELEASE_LOOKAHEAD_SECONDS])
       edges.push(own.start - ahead, own.end - ahead, own.end + ahead);
@@ -3392,7 +3418,9 @@ export function initSandboxRuntimeModular(): void {
         preloadNearPlayhead(
           rawNode,
           isVisibleNow,
-          upcoming || mediaStaysDue(rawNode, visibleAt, currentTime),
+          playerFrame
+            ? nextTakeClips(currentTime).has(rawNode)
+            : upcoming || mediaStaysDue(rawNode, visibleAt, currentTime),
           currentTime,
           dueAtLoopStart(rawNode, visibleAt),
         );
