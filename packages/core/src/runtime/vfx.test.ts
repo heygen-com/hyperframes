@@ -99,7 +99,7 @@ function createMockGl(): WebGL2RenderingContext & MockGl {
     getShaderParameter: () => true,
     getShaderInfoLog: () => "",
     deleteShader: () => {},
-    isContextLost: () => state.lost,
+    isContextLost: () => (gl as unknown as MockGl).lost,
     createProgram: () => ({ id: ++state.programCount }),
     attachShader: () => {},
     linkProgram: () => {},
