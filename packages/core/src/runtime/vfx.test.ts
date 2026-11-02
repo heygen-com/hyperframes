@@ -52,6 +52,7 @@ interface MockGl {
   usedPrograms: unknown[];
   shaderSources: string[];
   viewports: number[][];
+  lost: boolean;
 }
 
 /**
@@ -67,6 +68,7 @@ function createMockGl(): WebGL2RenderingContext & MockGl {
     usedPrograms: [],
     shaderSources: [],
     viewports: [],
+    lost: false,
   };
   let currentProgram: unknown = null;
   const gl = {
@@ -97,6 +99,7 @@ function createMockGl(): WebGL2RenderingContext & MockGl {
     getShaderParameter: () => true,
     getShaderInfoLog: () => "",
     deleteShader: () => {},
+    isContextLost: () => state.lost,
     createProgram: () => ({ id: ++state.programCount }),
     attachShader: () => {},
     linkProgram: () => {},
@@ -416,6 +419,12 @@ describe("vfx runtime", () => {
     paintVfx(0);
     expect(gl!.calls).toEqual([]);
 
+    // Another context has not come back yet: rebuilding now would drop its host.
+    gl!.lost = true;
+    rebuildLostVfx(document.body);
+    expect(gl!.programCount).toBe(1);
+
+    gl!.lost = false;
     rebuildLostVfx(document.body);
     gl!.calls.length = 0;
     paintVfx(0);

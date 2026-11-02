@@ -567,9 +567,10 @@ function watchContextLoss(entry: VfxEntry): void {
   });
 }
 
-/** Rebuilds every chain when a context was lost, so a restored one paints again. */
+/** Rebuilds every chain once none is still waiting on its context: a rebuild on a lost one drops the host for good. */
 export function rebuildLostVfx(root: HTMLElement): void {
-  if (registry.some((entry) => entry.contextLost)) initVfx(root, registryFps);
+  if (!registry.some((entry) => entry.contextLost)) return;
+  if (registry.every((entry) => !entry.gl.isContextLost())) initVfx(root, registryFps);
 }
 
 /** The host's chain, or `null` once the reason it is unusable has been said. */

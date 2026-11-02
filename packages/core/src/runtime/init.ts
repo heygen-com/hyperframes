@@ -4790,7 +4790,8 @@ export function initSandboxRuntimeModular(): void {
       // Seeking to the time a timeline is already at calls no onUpdate, so step off it first.
       const tl = state.capturedTimeline;
       const at = state.currentTime;
-      if (tl && typeof tl.totalTime === "function") tl.totalTime(at > 1e-3 ? at - 1e-4 : at + 1e-4, false);
+      if (tl && typeof tl.totalTime === "function")
+        tl.totalTime(at > 1e-3 ? at - 1e-4 : at + 1e-4, false);
       applySeek(at);
     }),
   );

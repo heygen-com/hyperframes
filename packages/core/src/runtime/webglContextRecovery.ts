@@ -1,4 +1,3 @@
-/** A lost context is allowed to restore; one repaint follows after the scene's own restore handlers ran. */
 export function watchSceneWebglContexts(onRestored: () => void): () => void {
   let frame: number | null = null;
   // Without preventDefault the browser never restores the context.
