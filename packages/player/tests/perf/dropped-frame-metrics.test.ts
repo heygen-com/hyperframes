@@ -1,5 +1,26 @@
 import { describe, expect, it } from "vitest";
-import { summarizeSceneFrames } from "./dropped-frame-metrics.ts";
+import { summarizeFrameIntervals, summarizeSceneFrames } from "./dropped-frame-metrics.ts";
+
+describe("summarizeFrameIntervals", () => {
+  it("counts missed animation frames from the time between visible-frame callbacks", () => {
+    expect(summarizeFrameIntervals([16.7, 33.4, 50], 60)).toEqual({
+      frameBudgetMs: 1000 / 60,
+      observedFrames: 3,
+      missedFrames: 3,
+      expectedFrames: 6,
+      missedPercent: 50,
+      p95IntervalMs: 50,
+      longFrameCount: 0,
+    });
+  });
+
+  it("rejects empty or impossible frame intervals", () => {
+    expect(() => summarizeFrameIntervals([], 60)).toThrow(
+      "at least one frame interval is required",
+    );
+    expect(() => summarizeFrameIntervals([0], 60)).toThrow("frame intervals must be positive");
+  });
+});
 
 describe("summarizeSceneFrames", () => {
   it("keeps missed frame rate and decoder cost separate for each scene", () => {

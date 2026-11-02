@@ -18,11 +18,55 @@ export type SceneFrameSummary = {
   frameBudgetMs: number;
 };
 
+export type FrameIntervalSummary = {
+  frameBudgetMs: number;
+  observedFrames: number;
+  missedFrames: number;
+  expectedFrames: number;
+  missedPercent: number;
+  p95IntervalMs: number;
+  longFrameCount: number;
+};
+
 export function percentile(samples: number[], fraction: number): number | null {
   if (samples.length === 0) return null;
   const sorted = [...samples].sort((a, b) => a - b);
   const index = Math.min(sorted.length - 1, Math.ceil(fraction * sorted.length) - 1);
   return sorted[index] ?? null;
+}
+
+export function summarizeFrameIntervals(
+  intervalsMs: number[],
+  targetFps: number,
+): FrameIntervalSummary {
+  if (!Number.isFinite(targetFps) || targetFps <= 0) {
+    throw new Error("targetFps must be positive");
+  }
+  if (intervalsMs.length === 0) {
+    throw new Error("at least one frame interval is required");
+  }
+
+  const frameBudgetMs = 1_000 / targetFps;
+  for (const interval of intervalsMs) {
+    if (!Number.isFinite(interval) || interval <= 0) {
+      throw new Error("frame intervals must be positive finite numbers");
+    }
+  }
+
+  const missedFrames = intervalsMs.reduce(
+    (total, interval) => total + Math.max(0, Math.round(interval / frameBudgetMs) - 1),
+    0,
+  );
+  const expectedFrames = intervalsMs.length + missedFrames;
+  return {
+    frameBudgetMs,
+    observedFrames: intervalsMs.length,
+    missedFrames,
+    expectedFrames,
+    missedPercent: (missedFrames / expectedFrames) * 100,
+    p95IntervalMs: percentile(intervalsMs, 0.95)!,
+    longFrameCount: intervalsMs.filter((interval) => interval > 50).length,
+  };
 }
 
 function assertFiniteNonNegative(value: number, name: string): void {

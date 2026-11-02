@@ -1,20 +1,21 @@
 #!/usr/bin/env bun
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import type { Frame, Page } from "puppeteer-core";
+import type { Frame } from "puppeteer-core";
 import {
   percentile,
+  summarizeFrameIntervals,
   summarizeSceneFrames,
   type SceneFrameWindow,
 } from "./dropped-frame-metrics.ts";
-import { launchBrowser, loadHostPage, repoPlayerDir, waitForPlayerAssetsReady } from "./runner.ts";
+import { launchBrowser, repoPlayerDir } from "./runner.ts";
 import { startServer } from "./server.ts";
 
 const FIXTURE = "heavy-16x1080";
 const RUNS = 3;
 const SAMPLE_MS = 6_000;
-const FRAME_LOOKUP_TIMEOUT_MS = 10_000;
 const PLAY_CONFIRM_TIMEOUT_MS = 60_000;
+const SCROLL_FPS = 60;
 
 type FrameSample = {
   mediaTime: number;
@@ -48,19 +49,11 @@ declare global {
   interface Window {
     __droppedFrameSamples?: Record<string, FrameSample[]>;
     __droppedFrameActive?: boolean;
+    __scrollFrameIntervals?: number[];
+    __scrollFrameActive?: boolean;
+    __feedPlaybackErrors?: string[];
     __longAnimationFrames?: AnimationFrameSample[] | null;
   }
-}
-
-async function getFixtureFrame(page: Page): Promise<Frame> {
-  const expected = `/fixtures/${FIXTURE}/`;
-  const deadline = Date.now() + FRAME_LOOKUP_TIMEOUT_MS;
-  while (Date.now() < deadline) {
-    const frame = page.frames().find((candidate) => candidate.url().includes(expected));
-    if (frame) return frame;
-    await new Promise((resolvePromise) => setTimeout(resolvePromise, 50));
-  }
-  throw new Error(`[windows-dropped-frames] fixture frame not found: ${FIXTURE}`);
 }
 
 function aggregateScriptCosts(frames: AnimationFrameSample[]): ScriptCost[] {
@@ -112,9 +105,8 @@ async function waitForVideoReadiness(frame: Frame): Promise<void> {
 
 async function readPlaybackState(frame: Frame) {
   return frame.evaluate(() => ({
-    playerPresent: window.__player !== undefined,
-    isPlaying: window.__player?.isPlaying?.() ?? null,
-    time: window.__player?.getTime?.() ?? null,
+    scrollY: window.scrollY,
+    feedPlaybackErrors: window.__feedPlaybackErrors ?? [],
     videos: Array.from(document.querySelectorAll<HTMLVideoElement>("video[data-track-index]")).map(
       (video) => ({
         scene: `tile-${video.dataset.trackIndex ?? "unknown"}`,
@@ -124,6 +116,33 @@ async function readPlaybackState(frame: Frame) {
       }),
     ),
   }));
+}
+
+async function waitForVideosPlaying(frame: Frame): Promise<void> {
+  try {
+    await frame.waitForFunction(
+      () => {
+        const videos = Array.from(
+          document.querySelectorAll<HTMLVideoElement>("video[data-track-index]"),
+        );
+        return (
+          videos.length === 16 &&
+          videos.every(
+            (video) =>
+              video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
+              !video.paused &&
+              video.currentTime > 0,
+          )
+        );
+      },
+      { timeout: PLAY_CONFIRM_TIMEOUT_MS },
+    );
+  } catch (error) {
+    const state = await readPlaybackState(frame);
+    throw new Error(
+      `[windows-dropped-frames] all 16 feed videos did not start: ${JSON.stringify(state)} (${error instanceof Error ? error.message : String(error)})`,
+    );
+  }
 }
 
 async function installFrameSamplers(
@@ -137,7 +156,24 @@ async function installFrameSamplers(
     );
     window.__droppedFrameSamples = {};
     window.__droppedFrameActive = true;
+    window.__scrollFrameIntervals = [];
+    window.__scrollFrameActive = true;
     window.__longAnimationFrames = null;
+
+    let previousFrameAt = 0;
+    let direction = 1;
+    const scroll = (now: number) => {
+      if (!window.__scrollFrameActive) return;
+      if (previousFrameAt > 0) window.__scrollFrameIntervals!.push(now - previousFrameAt);
+      previousFrameAt = now;
+
+      const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+      if (window.scrollY >= maxScroll) direction = -1;
+      if (window.scrollY <= 0) direction = 1;
+      window.scrollBy(0, direction * 3);
+      requestAnimationFrame(scroll);
+    };
+    requestAnimationFrame(scroll);
 
     const supported = PerformanceObserver.supportedEntryTypes.includes("long-animation-frame");
     if (supported) {
@@ -241,28 +277,13 @@ async function run(): Promise<void> {
       const context = await browser.createBrowserContext();
       try {
         const page = await context.newPage();
-        await loadHostPage(page, server.origin, { fixture: FIXTURE, readyTimeoutMs: 60_000 });
-        await waitForPlayerAssetsReady(page, 60_000);
-        const frame = await getFixtureFrame(page);
-        await waitForVideoReadiness(frame);
-
-        await page.evaluate(() => {
-          const player = document.getElementById("player") as
-            | (HTMLElement & { play: () => void })
-            | null;
-          if (!player) throw new Error("player host element is missing");
-          player.play();
+        await page.goto(`${server.origin}/fixtures/${FIXTURE}/index.html`, {
+          waitUntil: "domcontentloaded",
+          timeout: 60_000,
         });
-        try {
-          await frame.waitForFunction(() => window.__player?.isPlaying?.() === true, {
-            timeout: PLAY_CONFIRM_TIMEOUT_MS,
-          });
-        } catch (error) {
-          const state = await readPlaybackState(frame);
-          throw new Error(
-            `[windows-dropped-frames] playback did not start: ${JSON.stringify(state)} (${error instanceof Error ? error.message : String(error)})`,
-          );
-        }
+        const frame = page.mainFrame();
+        await waitForVideoReadiness(frame);
+        await waitForVideosPlaying(frame);
         const { videoCount, targetFps } = await installFrameSamplers(frame);
         if (videoCount !== 16) {
           throw new Error(
@@ -280,9 +301,11 @@ async function run(): Promise<void> {
         const sampleDurationMs = performance.now() - startedAt;
         const result = await frame.evaluate(() => {
           window.__droppedFrameActive = false;
+          window.__scrollFrameActive = false;
           return {
             samples: window.__droppedFrameSamples ?? {},
             longAnimationFrames: window.__longAnimationFrames,
+            scrollFrameIntervals: window.__scrollFrameIntervals ?? [],
           };
         });
         let scenes: ReturnType<typeof summarizeSceneFrames>;
@@ -295,6 +318,7 @@ async function run(): Promise<void> {
           );
         }
         const longFrames = result.longAnimationFrames ?? null;
+        const scrollFrames = summarizeFrameIntervals(result.scrollFrameIntervals, SCROLL_FPS);
         const mainThread =
           longFrames === null
             ? null
@@ -315,7 +339,14 @@ async function run(): Promise<void> {
           const extension = context.getExtension("WEBGL_debug_renderer_info");
           return extension ? context.getParameter(extension.UNMASKED_RENDERER_WEBGL) : "unknown";
         });
-        runs.push({ run: runIndex + 1, sampleDurationMs, scenes, mainThread, webglRenderer: gl });
+        runs.push({
+          run: runIndex + 1,
+          sampleDurationMs,
+          scenes,
+          scrollFrames,
+          mainThread,
+          webglRenderer: gl,
+        });
         console.log(
           `[windows-dropped-frames] run=${runIndex + 1} renderer=${gl ?? "unavailable"} ` +
             scenes
@@ -325,6 +356,10 @@ async function run(): Promise<void> {
               )
               .join(" | "),
         );
+        console.log(
+          `[windows-dropped-frames] scroll:missed=${(scrollFrames.missedFrames / (sampleDurationMs / 1_000)).toFixed(1)}/s (${scrollFrames.missedPercent.toFixed(1)}%) ` +
+            `rAFp95=${scrollFrames.p95IntervalMs.toFixed(1)}ms longFrames=${scrollFrames.longFrameCount}`,
+        );
         if (mainThread === null) {
           console.log("[windows-dropped-frames] Long Animation Frame API unavailable");
         } else {
@@ -333,12 +368,6 @@ async function run(): Promise<void> {
               `total=${mainThread.totalDurationMs.toFixed(1)}ms blocking=${mainThread.totalBlockingMs.toFixed(1)}ms p95=${mainThread.longest?.toFixed(1) ?? "MISSING"}ms`,
           );
         }
-        await page.evaluate(() => {
-          const player = document.getElementById("player") as
-            | (HTMLElement & { pause: () => void })
-            | null;
-          player?.pause();
-        });
       } finally {
         await context.close();
       }
@@ -350,7 +379,7 @@ async function run(): Promise<void> {
       output,
       JSON.stringify(
         {
-          schemaVersion: 1,
+          schemaVersion: 2,
           fixture: FIXTURE,
           browserInfo,
           browserArgs: ["--use-gl=angle", "--use-angle=swiftshader"],
