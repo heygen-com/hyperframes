@@ -9,6 +9,42 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.9.9"
+  description="Released - 2026-11-03"
+  tags={["Release", "Studio Server", "Engine", "CLI"]}
+>
+HyperFrames plan members can pull style templates with `hyperframes templates pull` and make films in them with the style-sampling skill. The CLI now installs skills that match its own release and no longer auto-updates across 0.x minor versions.
+
+## Features
+
+- **Engine:** A script-load failure names where the script came from and why it failed ([dec465949](https://github.com/heygen-com/hyperframes/commit/dec465949b89a97084595ed336708c3e8ad6e3fa), [#7088](https://github.com/heygen-com/hyperframes/pull/7088)).
+- **Skills:** Style templates on the HyperFrames plan ([2daedcdaf](https://github.com/heygen-com/hyperframes/commit/2daedcdafcb6857d04f7c5490d652057656a2129), [#6842](https://github.com/heygen-com/hyperframes/pull/6842)).
+- **CLI:** Diff --offset compares the original at t with yours at t + offset ([3f42dc1c7](https://github.com/heygen-com/hyperframes/commit/3f42dc1c73b0c9915b311e48bd0099b39a0865a9), [#7057](https://github.com/heygen-com/hyperframes/pull/7057)).
+
+## Fixes
+
+- **Studio Server:** A render that ran over 5 minutes can still be read after it finishes ([fc006f713](https://github.com/heygen-com/hyperframes/commit/fc006f713beb8caf46554da468fa578247b8db08), [#7087](https://github.com/heygen-com/hyperframes/pull/7087)).
+- **CLI:** No auto-update across 0.x minors; install skills at the CLI's release tag ([b2acef586](https://github.com/heygen-com/hyperframes/commit/b2acef5869bf6375e855ef3795014e6a3aa46bbb), [#7013](https://github.com/heygen-com/hyperframes/pull/7013)).
+- **Core:** Safari audio frozen after its cut is pulled onto the playhead at 0.5 s behind, not 1 s ([47dddedd6](https://github.com/heygen-com/hyperframes/commit/47dddedd6cd1dea646c5ae53d40bb5821f45590f), [#7082](https://github.com/heygen-com/hyperframes/pull/7082)).
+- **CLI:** Measure cuts reads a zoom that speeds up as a move, not a cut ([7ae108005](https://github.com/heygen-com/hyperframes/commit/7ae108005a148809ccd9c039616f452838a8f918), [#7075](https://github.com/heygen-com/hyperframes/pull/7075)).
+- **CLI:** Measure picks more than 100 frames on ffmpeg 8 ([e9de593fe](https://github.com/heygen-com/hyperframes/commit/e9de593fe972d961869fce7501470e6fb579c985), [#7071](https://github.com/heygen-com/hyperframes/pull/7071)).
+- **Core:** Keep overflowing content and SVG clip paths in motion-blurred frames ([d89bf35b1](https://github.com/heygen-com/hyperframes/commit/d89bf35b1dcd4a1652062148ab1fd4f7ad1897ce), [#7080](https://github.com/heygen-com/hyperframes/pull/7080)).
+- **CLI:** Measure and diff tell an agent what to type after a wrong call ([91e7f4d48](https://github.com/heygen-com/hyperframes/commit/91e7f4d48f8d1abec5005cae4c2f382995c4d2d1), [#7072](https://github.com/heygen-com/hyperframes/pull/7072)).
+- **Studio Server:** A project's signature no longer freezes the host while it walks the files ([ce9830fec](https://github.com/heygen-com/hyperframes/commit/ce9830fece57fec08c7e5fbb7330218b6478571c), [#7073](https://github.com/heygen-com/hyperframes/pull/7073)).
+
+## Performance
+
+- **Studio Server:** Preview steps skip the page parse when a tag scan answers ([4ceec0171](https://github.com/heygen-com/hyperframes/commit/4ceec0171f593ef0a8c979f3d326c5ffc92bd72b), [#7092](https://github.com/heygen-com/hyperframes/pull/7092)).
+- **Parsers:** EnsureHfIds skips the parse when every element already has its id ([35753f382](https://github.com/heygen-com/hyperframes/commit/35753f38211ab4ce1654aec557d2efa1ea470aeb), [#7069](https://github.com/heygen-com/hyperframes/pull/7069)).
+
+## Docs & Examples
+
+- **Skills:** Reverse checks the plan before downloading a linked video ([95a86a19c](https://github.com/heygen-com/hyperframes/commit/95a86a19cc6922d85f667c1464ae6eab8d33a763), [#7076](https://github.com/heygen-com/hyperframes/pull/7076)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.9.8...v0.9.9).
+</Update>
+
+<Update
   label="HyperFrames v0.9.8"
   description="Released - 2026-11-03"
   tags={["Release", "Studio Server", "Producer", "Core"]}
