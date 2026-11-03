@@ -33,6 +33,7 @@ type Win = Window & {
   __hf_page_composite_resolve?: () => boolean;
   __hfMotionBlur?: {
     report: () => { state: string; tier: string | null; reasonCode: string | null; movers: number };
+    probe: () => { state: string; tier: string | null; reasonCode: string | null; movers: number };
   };
 };
 
@@ -299,6 +300,73 @@ describe.skipIf(!hasBrowser)("capture motion blur pixels in Chrome", () => {
     expect(Math.abs(centroid(trail) - centroid(row(sharp.frame, 40)))).toBeLessThan(2);
     expect(ink(trail) / ink(row(sharp.frame, 40))).toBeGreaterThan(0.9);
     expect(ink(trail) / ink(row(sharp.frame, 40))).toBeLessThan(1.1);
+  });
+
+  it("falls back for a WebGL canvas the host page reached first, as Studio does", async (ctx) => {
+    if (!supported) ctx.skip();
+    // The preview is a same-origin iframe. A scene mounts its markup, the host's MutationObserver
+    // walks it (Studio's timeline does), and only then does the scene script call getContext.
+    const scene = composition(
+      `${BOX}<script>
+        window.mountScene = () => document.getElementById("root").insertAdjacentHTML("beforeend", '<div id="scene"><canvas id="gl" width="64" height="36"></canvas></div>');
+        window.startScene = () => document.getElementById("gl").getContext("webgl");
+      </script>`,
+      true,
+      "capture",
+    ).replace("<head>", `<head><script>${acceleratedCanvasTrackerSource()}</script>`);
+    const page = await browser.newPage();
+    try {
+      // Studio installs the tracker in its own window when it loads, before any preview exists.
+      await page.setContent(
+        `<script>${acceleratedCanvasTrackerSource()}</script><iframe id="preview" width="${W}" height="${H}"></iframe>`,
+      );
+      await page.$eval(
+        "#preview",
+        (el, html) =>
+          new Promise((done) => {
+            const frame = el as HTMLIFrameElement;
+            frame.onload = done;
+            frame.srcdoc = html;
+          }),
+        scene,
+      );
+      // The host observes the preview before the runtime boots, as Studio's player does: its
+      // callback runs first and so makes the wrappers of what the scene mounts.
+      await page.evaluate(() => {
+        const frame = document.getElementById("preview") as HTMLIFrameElement;
+        const reached: Element[] = [];
+        Object.assign(window, { reached });
+        new MutationObserver((records) => {
+          for (const record of records)
+            for (const node of Array.from(record.addedNodes))
+              if (node instanceof Element) reached.push(...Array.from(node.children));
+        }).observe(frame.contentDocument?.getElementById("root") as Element, { childList: true });
+      });
+      const preview = page.frames().find((f) => f !== page.mainFrame());
+      if (!preview) throw new Error("no preview frame");
+      await preview.addScriptTag({ content: readFileSync(RUNTIME, "utf8") });
+      await preview.waitForFunction(
+        () => (window as Win & { __playerReady?: boolean }).__playerReady === true,
+      );
+      const result = await page.evaluate(async () => {
+        type Scene = Win & { mountScene: () => void; startScene: () => unknown };
+        const frame = document.getElementById("preview") as HTMLIFrameElement;
+        const view = frame.contentWindow as Scene;
+        view.mountScene();
+        await new Promise((done) => setTimeout(done, 0));
+        const reached = (window as unknown as { reached: Element[] }).reached;
+        const hostRealm = reached.some(
+          (el) => el.id === "gl" && Object.getPrototypeOf(el) === HTMLCanvasElement.prototype,
+        );
+        view.startScene();
+        return { hostRealm, report: view.__hfMotionBlur?.probe() ?? null };
+      });
+      // The canvas really carries the host's prototype, so its getContext runs in the host's realm.
+      expect(result.hostRealm).toBe(true);
+      expect(result.report).toMatchObject({ tier: "filter", reasonCode: "accelerated-canvas" });
+    } finally {
+      await page.close();
+    }
   });
 
   it.each(TIERS)(
