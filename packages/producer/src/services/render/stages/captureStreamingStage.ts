@@ -865,23 +865,20 @@ export async function runCaptureStreamingStage(
             cfg,
           );
         const pollMs = Math.min(budget(), DE_STALL_POLL_MS);
-        const stallTimer = setInterval(
-          () => {
-            if (!watchdogArmed || quiet.idle(pollMs) <= budget()) return;
-            stalled = true;
-            const stallErr = new ParallelCaptureStallError({
-              variant: "drain",
-              captureLabel,
-              stallTimeoutMs: budget(),
-              lastCapturedFrames: resumeFrom + lastCapturedFrames,
-              totalFrames,
-              phaseSummary: phaseSummary(),
-            });
-            parallelReorder.abort(stallErr);
-            stallController.abort();
-          },
-          pollMs,
-        );
+        const stallTimer = setInterval(() => {
+          if (!watchdogArmed || quiet.idle(pollMs) <= budget()) return;
+          stalled = true;
+          const stallErr = new ParallelCaptureStallError({
+            variant: "drain",
+            captureLabel,
+            stallTimeoutMs: budget(),
+            lastCapturedFrames: resumeFrom + lastCapturedFrames,
+            totalFrames,
+            phaseSummary: phaseSummary(),
+          });
+          parallelReorder.abort(stallErr);
+          stallController.abort();
+        }, pollMs);
 
         try {
           workerResults = await executeParallelCapture(

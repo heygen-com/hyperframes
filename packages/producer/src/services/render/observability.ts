@@ -658,25 +658,22 @@ function watchStall(phase: string, rule: StageStallRule) {
     silence.reset();
   };
   const tripped = new Promise<never>((_, reject) => {
-    timer = setInterval(
-      () => {
-        const current = rule.progress();
-        if (rule.complete?.() && !inTail) {
-          inTail = true;
-          return restartWindow(rule.tailMs ?? rule.noProgressMs);
-        }
-        if (current !== last) return restartWindow(rule.noProgressMs);
-        if (silence.idle(pollMs) < budgetMs) return;
-        const error = new RenderStageStalledError(phase, budgetMs, current, detail());
-        if (attempt && !attempt.signal.aborted) {
-          attempt.abort(error);
-          return restartWindow(rule.noProgressMs);
-        }
-        clearInterval(timer);
-        reject(error);
-      },
-      pollMs,
-    );
+    timer = setInterval(() => {
+      const current = rule.progress();
+      if (rule.complete?.() && !inTail) {
+        inTail = true;
+        return restartWindow(rule.tailMs ?? rule.noProgressMs);
+      }
+      if (current !== last) return restartWindow(rule.noProgressMs);
+      if (silence.idle(pollMs) < budgetMs) return;
+      const error = new RenderStageStalledError(phase, budgetMs, current, detail());
+      if (attempt && !attempt.signal.aborted) {
+        attempt.abort(error);
+        return restartWindow(rule.noProgressMs);
+      }
+      clearInterval(timer);
+      reject(error);
+    }, pollMs);
   });
   const openAttempt: OpenStallAttempt = (parent) => {
     attempt = new AbortController();
