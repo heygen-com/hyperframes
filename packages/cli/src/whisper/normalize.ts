@@ -499,6 +499,13 @@ export function formatVtt(words: Word[], opts?: WordsToCuesOptions): string {
 // Public API
 // ---------------------------------------------------------------------------
 
+const NON_FINITE = /"(?:[^"\\]|\\.)*"|-?\b(?:nan(?:\([^)]*\))?|inf(?:inity)?)\b/gi;
+
+/** whisper-cli prints a NaN or infinite float as bare `nan`/`-nan`/`inf`; read those as null. */
+export function parseWhisperJson(text: string): any {
+  return JSON.parse(text.replace(NON_FINITE, (m) => (m.startsWith('"') ? m : "null")));
+}
+
 /**
  * Load and normalize a transcript file to a standard word array.
  *
@@ -523,7 +530,7 @@ export function loadTranscript(filePath: string): { words: Word[]; format: Trans
   }
 
   // JSON formats — parse once, detect, then extract words
-  const parsed = JSON.parse(content);
+  const parsed = parseWhisperJson(content);
   const format = detectJsonFormat(parsed);
 
   // JSON parsers never set id — assign w{index} like the srt/vtt branches above
