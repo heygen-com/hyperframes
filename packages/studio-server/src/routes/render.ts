@@ -178,11 +178,16 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
         ? "off"
         : requestedPageMotionBlur;
 
-    const now = new Date();
-    const jobId = `${project.id}_${formatRenderOutputTimestamp(now)}`;
     const rendersDir = adapter.rendersDir(project);
     mkdirWithinProject(project.dir, rendersDir);
     const ext = FORMAT_EXT[format] ?? ".mp4";
+    // The timestamp has one-second resolution and names the output file, so a second export in the same second
+    // takes a numeric suffix instead of sharing the job and overwriting the first file.
+    const baseId = `${project.id}_${formatRenderOutputTimestamp(new Date())}`;
+    let jobId = baseId;
+    for (let n = 2; renderJobs.has(jobId) || existsSync(join(rendersDir, `${jobId}${ext}`)); n++) {
+      jobId = `${baseId}-${n}`;
+    }
     const outputPath = join(rendersDir, `${jobId}${ext}`);
 
     const jobState = adapter.startRender({
