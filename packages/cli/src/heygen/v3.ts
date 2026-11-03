@@ -108,8 +108,8 @@ function refusal(status: number, body: unknown, estimate?: number): Refused {
     );
   if (/hf_usage_exhausted/i.test(code))
     return new Refused(
-      `out of HyperFrames credits (this step needs ${needs}${balance}); nothing was charged. Run \`npx hyperframes billing top-up${needed ? ` --needed ${needed}` : ""}\`: it opens the page and waits`,
-      `Add credits: ${url ?? pageUrl("credits", { needed })}`,
+      `out of HyperFrames credits (this step needs ${needs}${balance}); nothing was charged. Run \`npx hyperframes billing add-credits${needed ? ` --needed ${needed}` : ""}\`: it opens the page and waits`,
+      `Buy add-on credits: ${url ?? pageUrl("credits", { needed })}`,
     );
   if (/api_key_required/i.test(code))
     return new Refused(
@@ -124,7 +124,7 @@ function refusal(status: number, body: unknown, estimate?: number): Refused {
   if (status === 402 || /insufficient|credit|usage_exhausted|quota/i.test(code))
     return new Refused(
       `HeyGen says there is not enough credit (${code || status})`,
-      "top up at https://app.heygen.com, or sign in with npx hyperframes auth login to use the plan's allowance",
+      "buy add-on credits at https://app.heygen.com, or sign in with npx hyperframes auth login to use the plan's allowance",
     );
   if (/content_policy/i.test(code))
     return new Refused(

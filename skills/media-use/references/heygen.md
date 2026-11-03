@@ -12,7 +12,7 @@
 | Sign-in (OAuth)            | the plan's allowance on subscription credits | avatar videos, video shots, lipsync, cut-outs, images, voices, music and transcription |
 | Inside the HyperFrames app | the app                                      | whatever the app allows; nothing to set up                                             |
 
-A refusal names its fix: `api_key_required` needs an API key, `402` or `insufficient_credit` needs a top-up, `hf_usage_exhausted` means the plan's allowance is used up.
+A refusal names its fix: `api_key_required` needs an API key, `402` or `insufficient_credit` needs add-on credits, `hf_usage_exhausted` means the plan's allowance is used up.
 
 ## Making media: `media-use generate`
 

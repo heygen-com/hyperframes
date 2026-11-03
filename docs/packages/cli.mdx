@@ -2275,19 +2275,20 @@ allowance or estimate what the next video will cost.
 
 ### `billing`
 
-Opens the HyperFrames plans or credits page in the browser, then waits until the
+Opens the HyperFrames plans page (`subscribe`) or the page to buy add-on credits, which are
+used separately from your plan's monthly credits (`add-credits`), in the browser, then waits until the
 account shows the change, so an agent's run carries on by itself. The page is on
 the web app at hyperframes.studio. `HYPERFRAMES_PLANS_URL` and
 `HYPERFRAMES_CREDITS_URL` point it at another page.
 
 ```bash
 npx hyperframes billing subscribe
-npx hyperframes billing top-up --needed 180
+npx hyperframes billing add-credits --needed 180
 ```
 
 | Flag        | Description                                                                |
 | ----------- | -------------------------------------------------------------------------- |
-| `--needed`  | Credits the waiting step needs; `top-up` waits until the balance covers it |
+| `--needed`  | Credits the waiting step needs; `add-credits` waits until the balance covers it |
 | `--feature` | The feature that sent the person here, so a purchase is credited to it |
 | `--session` | The run to credit the purchase to, with `--feature` |
 | `--tool`    | The step that is waiting, shown on the page                                |
