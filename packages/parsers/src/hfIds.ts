@@ -9,7 +9,7 @@
  * so inserting a non-identical sibling never shifts another element's id.
  */
 import { parseHTML } from "linkedom";
-import { assignHfIds, getChildElements } from "./hfIdAssignment.js";
+import { EXCLUDED_TAGS, assignHfIds, getChildElements } from "./hfIdAssignment.js";
 export {
   EXCLUDED_TAGS,
   mintHfId,
@@ -18,17 +18,48 @@ export {
 } from "./hfIdAssignment.js";
 
 export function ensureHfIds(html: string): string {
+  // A bundle stamped at build time has nothing to mint: its parse and serialize would change nothing.
+  if (alreadyStamped(html)) return html;
   const { document, wrapped } = parseFragmentOrDocument(html);
   if (!document.body) return html;
   assignHfIds(document.body);
   return wrapped ? document.body.innerHTML || "" : document.toString();
 }
 
+const isFragment = (html: string) =>
+  !/^(?:<!doctype|<html[\s>/])/i.test(html.replace(/^(?:\s|<!--(?:>|->|[\s\S]*?-->))*/, ""));
+
+/** True when every start tag ensureHfIds would give an id (each element in the body, outside EXCLUDED_TAGS) already
+ * carries a non-empty data-hf-id, read from the source text. Any doubt answers false: a document with no <body> tag,
+ * a table (whose parse can add elements the text has none of), or markup the tag reader cannot follow. */
+function alreadyStamped(html: string): boolean {
+  const tags = startTags(html);
+  if (!tags) return false;
+  const body = tags.findIndex((tag) => tag.name === "body");
+  if (!isFragment(html) && body < 0) return false;
+  return tags
+    .slice(body + 1)
+    .every(
+      (tag) =>
+        !IMPLIED.has(tag.name) &&
+        tag.name !== "table" &&
+        (EXCLUDED_TAGS.has(tag.name) || hasHfId(html, tag)),
+    );
+}
+
+/** A non-empty data-hf-id among the tag's own attributes, never inside a quoted value. */
+function hasHfId(html: string, tag: StartTag): boolean {
+  const open = html.slice(tag.nameEnd, tag.bracket);
+  const name = /\sdata-hf-id\s*=\s*/i.exec(outsideQuotes(open));
+  if (!name) return false;
+  const value = open.slice(name.index + name[0].length);
+  const quote = value[0] === '"' || value[0] === "'" ? value[0] : "";
+  return quote ? value.length > 1 && value[1] !== quote : /^[^\s>]/.test(value);
+}
+
 function parseFragmentOrDocument(html: string) {
   // Wrap fragments so every body element participates in stable ID assignment.
-  const wrapped = !/^(?:<!doctype|<html[\s>/])/i.test(
-    html.replace(/^(?:\s|<!--(?:>|->|[\s\S]*?-->))*/, ""),
-  );
+  const wrapped = isFragment(html);
   const { document } = wrapped
     ? parseHTML(`<!DOCTYPE html><html><head></head><body>${html}</body></html>`)
     : parseHTML(html);
