@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mediaElementTime } from "./mediaClock";
 import {
   isRenderFrameVideo,
+  preloadFromInPoint,
   preloadMedia,
   prepareUpcomingMedia,
   releaseMedia,
@@ -259,5 +260,44 @@ describe("preparing upcoming video playback", () => {
     element.dispatchEvent(new Event("loadedmetadata"));
     expect(element.currentTime).toBeCloseTo(6, 3);
     element.remove();
+  });
+});
+
+describe("a clip due later whose in-point is deep in a shared file, in WebKit", () => {
+  const webkit =
+    "Mozilla/5.0 AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15";
+  afterEach(() => vi.restoreAllMocks());
+
+  it("loads its header only, seeks to the in-point, and only then reads", () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(webkit);
+    const audio = document.createElement("audio");
+    audio.setAttribute("data-media-start", "255");
+    audio.preload = "none";
+    document.body.appendChild(audio);
+    const load = vi.spyOn(audio, "load").mockImplementation(() => {});
+    const preloadWhenLoaded: string[] = [];
+    load.mockImplementation(() => void preloadWhenLoaded.push(audio.preload));
+
+    preloadFromInPoint(audio, () => true);
+    expect(preloadWhenLoaded).toEqual(["metadata"]);
+    expect(audio.preload).toBe("metadata");
+
+    Object.defineProperty(audio, "readyState", { value: 1 });
+    audio.dispatchEvent(new Event("loadedmetadata"));
+    expect(audio.currentTime).toBeCloseTo(255, 3);
+    expect(audio.preload).toBe("auto");
+    audio.remove();
+  });
+
+  it("loads a clip that starts at the file's front, and anything off WebKit, as before", () => {
+    const audio = document.createElement("audio");
+    audio.setAttribute("data-media-start", "255");
+    audio.preload = "none";
+    document.body.appendChild(audio);
+    const load = vi.spyOn(audio, "load").mockImplementation(() => {});
+    preloadFromInPoint(audio, () => true);
+    expect(audio.preload).toBe("auto");
+    expect(load).toHaveBeenCalledTimes(1);
+    audio.remove();
   });
 });

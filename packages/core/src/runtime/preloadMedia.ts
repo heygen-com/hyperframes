@@ -34,18 +34,42 @@ function cancelPlaybackStart(media: HTMLMediaElement): void {
   pendingPlaybackStart.get(media)?.();
 }
 
-export function prepareUpcomingMedia(media: HTMLMediaElement, isUpcoming: () => boolean): void {
+/**
+ * On WebKit a clip whose in-point is deep in a shared file loads its header only, seeks there, and then reads:
+ * at preload auto it first streams ~30 MB from the front of the file, and a dozen of those starve the take that is due.
+ */
+export function preloadFromInPoint(media: HTMLMediaElement, isUpcoming: () => boolean): void {
+  const deep = isWebKit() && !isRenderFrameVideo(media) && readMediaStart(media) > 0;
+  if (!deep) {
+    preloadMedia(media);
+    prepareUpcomingMedia(media, isUpcoming);
+    return;
+  }
+  if (media.preload === "none") media.preload = "metadata";
+  if (media.readyState === 0 && media.networkState !== 2) media.load();
+  prepareUpcomingMedia(media, isUpcoming, () => {
+    media.preload = "auto";
+  });
+}
+
+export function prepareUpcomingMedia(
+  media: HTMLMediaElement,
+  isUpcoming: () => boolean,
+  afterSeek?: () => void,
+): void {
   cancelPlaybackStart(media);
   if ((media.tagName !== "VIDEO" && !isWebKit()) || isRenderFrameVideo(media)) return;
   const prepare = () => {
     if (!media.isConnected || !media.paused || media.seeking || !isUpcoming()) return;
     const start = readMediaStart(media);
-    if (Math.abs(media.currentTime - start) <= 0.02) return;
-    try {
-      media.currentTime = mediaElementTime(start);
-    } catch (error) {
-      swallow("runtime.preload.playbackStart", error);
+    if (Math.abs(media.currentTime - start) > 0.02) {
+      try {
+        media.currentTime = mediaElementTime(start);
+      } catch (error) {
+        swallow("runtime.preload.playbackStart", error);
+      }
     }
+    afterSeek?.();
   };
   if (media.readyState > 0) {
     prepare();

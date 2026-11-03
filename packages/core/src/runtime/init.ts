@@ -19,6 +19,7 @@ import { clipsFirstRenderedIn } from "./firstRenderReveal";
 import { refreshSvgSelectorAliases } from "../compiler/svgSelectorAliases";
 import { RUNTIME_FILLER } from "./protocol";
 import {
+  preloadFromInPoint,
   preloadMedia,
   prepareUpcomingMedia,
   releaseMedia,
@@ -3054,14 +3055,11 @@ export function initSandboxRuntimeModular(): void {
   const armedBy = new WeakMap<HTMLMediaElement, HTMLMediaElement>();
   const armedFrom = new WeakSet<HTMLMediaElement>();
   const approachingMedia = new WeakSet<HTMLMediaElement>();
-  const prepareInWindow = (el: HTMLMediaElement) =>
-    prepareUpcomingMedia(
-      el,
-      () =>
-        !state.tornDown &&
-        mediaNearPlayhead.get(el) === true &&
-        resolveAbsoluteMediaStartSeconds(el) > clock.now(),
-    );
+  const isUpcomingNow = (el: HTMLMediaElement) => () =>
+    !state.tornDown &&
+    mediaNearPlayhead.get(el) === true &&
+    resolveAbsoluteMediaStartSeconds(el) > clock.now();
+  const prepareInWindow = (el: HTMLMediaElement) => prepareUpcomingMedia(el, isUpcomingNow(el));
   // An untracked clip (NaN) shares a track with nothing, as in the timeline payload.
   const hostOf = (el: Element) => el.parentElement?.closest("[data-composition-id]");
   // Clips due soon fetch a few at a time, earliest first: a fast cut sequence has dozens inside the
@@ -3140,8 +3138,7 @@ export function initSandboxRuntimeModular(): void {
     compactWaitingForSlot();
   };
   const startPrefetch = (el: HTMLMediaElement) => {
-    preloadMedia(el);
-    prepareInWindow(el);
+    preloadFromInPoint(el, isUpcomingNow(el));
     if (prefetching.has(el) || el.readyState >= 3) return;
     prefetching.add(el);
     for (const type of PREFETCH_SETTLED_EVENTS) el.addEventListener(type, onPrefetchSettled);
