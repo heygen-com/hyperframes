@@ -1,11 +1,62 @@
+import { createInterface } from "node:readline/promises";
 import { openBrowser } from "../auth/browser.js";
-import { pageUrl, readPlan, type Plan } from "../heygen/plan.js";
+import {
+  addonBlocks,
+  createCheckout,
+  money,
+  pageUrl,
+  readOffer,
+  readPlan,
+  type Offer,
+  type Plan,
+} from "../heygen/plan.js";
 import { c } from "../ui/colors.js";
 import { failCommand } from "../utils/commandResult.js";
+import { isUnattended } from "../utils/attendedTerminal.js";
 import { defineCommand } from "../utils/defineCommand.js";
 
 const describe = (p: Plan | null) =>
   p && p.plan !== "none" ? `${p.plan} plan, ${p.credits.toLocaleString("en-US")} credits` : "Free";
+
+/** The price line the person reads before paying: Pro's monthly price, or what the credits cost against the need. */
+function priceLine(
+  kind: "plans" | "credits",
+  offer: Offer,
+  missing?: number,
+  needed?: number,
+): string | undefined {
+  if (kind === "plans")
+    return offer.pro
+      ? `HyperFrames Pro: ${money(offer.pro.amount, offer.pro.currency)} a month`
+      : undefined;
+  const a = offer.addon;
+  if (!a) return undefined;
+  const blocks = addonBlocks(a, missing);
+  const credits = (blocks * a.unitsPerBlock).toLocaleString("en-US");
+  const price = money(blocks * a.unitAmount, a.currency);
+  return `${needed ? `This run needs ${needed.toLocaleString("en-US")} credits. ` : ""}${credits} credits: ${price}`;
+}
+
+/** Prepares the checkout with the CLI's own token: opens it when a person presses Enter, prints it when nobody can.
+ * A refusal is printed and the page stays the way to buy. */
+async function offerCheckout(kind: "plans" | "credits", before: Plan | null, needed?: number) {
+  const offer = await readOffer();
+  const missing = needed ? needed - (before?.credits ?? 0) : undefined;
+  const line = priceLine(kind, offer, missing, needed);
+  if (line) console.log(line);
+  try {
+    if (isUnattended()) {
+      console.log(`Checkout link: ${c.accent(await createCheckout(kind, offer, missing))}`);
+      return;
+    }
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    await rl.question("Press Enter to pay ");
+    rl.close();
+    await openBrowser(await createCheckout(kind, offer, missing));
+  } catch (error) {
+    console.error(c.error(error instanceof Error ? error.message : String(error)));
+  }
+}
 
 /** Opens the plans or credits page, then waits until the account shows the change, so the run continues on its own. */
 export default defineCommand({
@@ -53,7 +104,8 @@ export default defineCommand({
     });
     console.log(`${action === "subscribe" ? "Plans" : "Credits"} page: ${c.accent(url)}`);
     await openBrowser(url);
-    console.log("Waiting for the person to finish there ...");
+    await offerCheckout(action === "subscribe" ? "plans" : "credits", before, needed);
+    console.log("Waiting for the person to finish ...");
     const deadline = Date.now() + (Number(args.timeout) || 600) * 1000;
     while (Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, 2000));
