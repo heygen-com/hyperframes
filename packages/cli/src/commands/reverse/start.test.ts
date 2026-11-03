@@ -1,5 +1,5 @@
 import { runCommand } from "citty";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -180,6 +180,15 @@ describe("reverse start", () => {
       expect(config(dir)).not.toHaveProperty("reverseSessionId");
     },
   );
+
+  it("names no saved_to when the --dir project's config is broken, and leaves it as it was", async () => {
+    const dir = join(root, "rebuild");
+    mkdirSync(dir);
+    writeFileSync(join(dir, "hyperframes.json"), "{ not json");
+    await run("--dir", dir);
+    expect(output()).toMatchObject({ ok: true, reverse: { recorded: false, saved_to: null } });
+    expect(readFileSync(join(dir, "hyperframes.json"), "utf-8")).toBe("{ not json");
+  });
 
   it("stops a Free account the server blocks, with the subscribe command as the fix, after saving the session", async () => {
     server.answer = recorded(

@@ -67,7 +67,7 @@ function makeProjectStampedWithSkill(dir: string): string | undefined {
     return undefined;
   }
   seedProjectAuthoringSkill(dir, SKILL);
-  return existsSync(projectConfigPath(dir)) ? projectConfigPath(dir) : undefined;
+  return readProjectConfig(dir)?.authoringSkill === SKILL ? projectConfigPath(dir) : undefined;
 }
 
 function saveRun(started: ReverseStart, dir: string | undefined): string | undefined {

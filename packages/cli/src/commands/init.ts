@@ -277,11 +277,16 @@ function getSharedTemplateDir(): string {
   return resolveAssetDir(["..", "templates", "_shared"], ["templates", "_shared"]);
 }
 
+const MEDIA_THE_SCAFFOLD_NEVER_WRITES =
+  /\.(mp4|m4v|mov|webm|mkv|avi|mpe?g|wav|mp3|m4a|aac|ogg|oga|opus|flac)$/i;
+
 function holdsFilesBesideProjectConfigOrSources(
   dir: string,
   sources: (string | undefined)[] = [],
 ): boolean {
-  const kept = new Set(sources.flatMap((s) => (s ? [resolve(s)] : [])));
+  const kept = new Set(
+    sources.flatMap((s) => (s && MEDIA_THE_SCAFFOLD_NEVER_WRITES.test(s) ? [resolve(s)] : [])),
+  );
   return (
     existsSync(dir) &&
     readdirSync(dir).some((name) => name !== "hyperframes.json" && !kept.has(resolve(dir, name)))
@@ -502,7 +507,11 @@ async function handleVideoFile(
       }
 
       if (shouldTranscode) {
-        const mp4Name = localVideoName.replace(/\.[^.]+$/, ".mp4");
+        const sameName = localVideoName.replace(/\.[^.]+$/, ".mp4");
+        const mp4Name =
+          resolve(destDir, sameName) === resolve(videoPath)
+            ? sameName.replace(/\.mp4$/, ".h264.mp4")
+            : sameName;
         const mp4Path = resolve(destDir, mp4Name);
         const spin = clack.spinner();
         spin.start("Transcoding to H.264 MP4...");
