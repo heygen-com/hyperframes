@@ -37,6 +37,17 @@ export function readElementPlaybackStart(el: Element): number {
 const HOLD_END_EVENTS = ["seeked", "loadeddata", "error", "emptied", "abort"] as const;
 export const HOLD_CAP_MS = 5000;
 const WEBKIT_STUCK_AUDIO_SECONDS = 1;
+// A playing WebKit audio element that has not moved for this long is frozen, not starting (it starts ~150 ms late).
+const WEBKIT_FROZEN_AUDIO_SECONDS = 0.4;
+const lastMoved = new WeakMap<HTMLMediaElement, { ct: number; at: number }>();
+function frozenAudioFor(el: HTMLMediaElement, ct: number, now: number): number {
+  const m = lastMoved.get(el);
+  if (!m || m.ct !== ct || el.paused || el.seeking || el.readyState < 3) {
+    lastMoved.set(el, { ct, at: now });
+    return 0;
+  }
+  return now - m.at;
+}
 const releaseHeldVideo = new WeakMap<HTMLMediaElement, () => void>();
 
 // A seeking video still paints its previous frame, and one still fetching its first data paints none (its seek
@@ -242,6 +253,7 @@ function clampVolume(volume: number): number {
  * element at a different file without ever leaving its active window.
  */
 export function evictMediaSyncState(el: HTMLMediaElement): void {
+  lastMoved.delete(el);
   lastOffset.delete(el);
   lastRelativeTime.delete(el);
   strictDriftSamples.delete(el);
@@ -650,8 +662,11 @@ export function syncRuntimeMedia(params: {
       lastOffset.set(el, offset);
       const firstTickOfClip = prevOffset === undefined;
       const offsetJumped = !firstTickOfClip && Math.abs(offset - prevOffset!) > 0.5;
+      const webkitAudio = el.tagName === "AUDIO" && isWebKit();
+      const frozenFor = webkitAudio ? frozenAudioFor(el, currentElTime, params.timeSeconds) : 0;
       const catastrophicDrift =
-        drift > (el.tagName === "AUDIO" && isWebKit() ? WEBKIT_STUCK_AUDIO_SECONDS : 3);
+        drift > (webkitAudio ? WEBKIT_STUCK_AUDIO_SECONDS : 3) ||
+        frozenFor >= WEBKIT_FROZEN_AUDIO_SECONDS;
       // A short audio clip can leave its native element paused just before EOF.
       // When the timeline re-enters the clip, rewind stale forward state at the
       // strict threshold; do not force cold audio forward while it buffers.

@@ -1704,6 +1704,57 @@ describe("syncRuntimeMedia", () => {
     expect(clip.el.currentTime).toBeGreaterThan(1);
   });
 
+  it("pulls a WebKit audio element that sits frozen behind the playhead, well before the 1 s valve", () => {
+    const userAgent = vi
+      .spyOn(navigator, "userAgent", "get")
+      .mockReturnValue(
+        "Mozilla/5.0 AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
+      );
+    const clip = createMockClip({ start: 0, end: 100, mediaStart: 0 }, "audio");
+    Object.defineProperty(clip.el, "paused", { value: false, writable: true, configurable: true });
+    Object.defineProperty(clip.el, "readyState", { value: 4 });
+    Object.defineProperty(clip.el, "currentTime", { value: 0, writable: true });
+    for (const t of [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7]) {
+      syncRuntimeMedia({ clips: [clip], timeSeconds: t, playing: true, playbackRate: 1 });
+    }
+    userAgent.mockRestore();
+    expect(clip.el.currentTime).toBeGreaterThan(0.5);
+  });
+
+  it("leaves a WebKit audio element alone while it is still filling data", () => {
+    const userAgent = vi
+      .spyOn(navigator, "userAgent", "get")
+      .mockReturnValue(
+        "Mozilla/5.0 AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
+      );
+    const clip = createMockClip({ start: 0, end: 100, mediaStart: 0 }, "audio");
+    Object.defineProperty(clip.el, "paused", { value: false, writable: true, configurable: true });
+    Object.defineProperty(clip.el, "readyState", { value: 2 });
+    Object.defineProperty(clip.el, "currentTime", { value: 0, writable: true });
+    for (const t of [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7]) {
+      syncRuntimeMedia({ clips: [clip], timeSeconds: t, playing: true, playbackRate: 1 });
+    }
+    userAgent.mockRestore();
+    expect(clip.el.currentTime).toBe(0);
+  });
+
+  it("leaves a moving WebKit audio element alone at the same lag", () => {
+    const userAgent = vi
+      .spyOn(navigator, "userAgent", "get")
+      .mockReturnValue(
+        "Mozilla/5.0 AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
+      );
+    const clip = createMockClip({ start: 0, end: 100, mediaStart: 0 }, "audio");
+    Object.defineProperty(clip.el, "paused", { value: false, writable: true, configurable: true });
+    Object.defineProperty(clip.el, "currentTime", { value: 0, writable: true });
+    for (const t of [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7]) {
+      (clip.el as { currentTime: number }).currentTime = Math.max(0, t - 0.6);
+      syncRuntimeMedia({ clips: [clip], timeSeconds: t, playing: true, playbackRate: 1 });
+    }
+    userAgent.mockRestore();
+    expect(clip.el.currentTime).toBeLessThan(0.2);
+  });
+
   it("clears offset baseline when clip deactivates — re-entry hard-syncs", () => {
     const clip = createMockClip({ start: 0, end: 5, mediaStart: 0 });
     Object.defineProperty(clip.el, "currentTime", { value: 0, writable: true });
