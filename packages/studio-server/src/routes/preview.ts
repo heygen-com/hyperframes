@@ -56,9 +56,8 @@ import {
   isGsapCoreUrl,
 } from "../helpers/gsapCoreScript.js";
 import {
-  createProjectSignature,
+  createProjectSignatureAsync,
   resolveProjectAndSignature,
-  resolveProjectSignature,
 } from "../helpers/projectSignature.js";
 import {
   createStudioMotionRenderBodyScript,
@@ -369,6 +368,7 @@ kinds.push({name:known[name]===1?name:"other",origin:!path?"unknown":path===runt
 function injectStudioPreviewAugmentations(
   html: string,
   adapter: StudioApiAdapter,
+  signature: string,
   projectDir: string,
   activeCompositionPath: string,
   options: { capture: boolean; gsapBaseUrl: string },
@@ -388,7 +388,7 @@ function injectStudioPreviewAugmentations(
         marked,
         `<meta name="${GSAP_BASE_URL_META}" content="${escapeGsapUrl(options.gsapBaseUrl)}">`,
       ),
-      resolveProjectSignature(adapter, projectDir),
+      signature,
     ),
     options.gsapBaseUrl,
   );
@@ -536,6 +536,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
       bundled = injectStudioPreviewAugmentations(
         ensureHfIds(await transformPreviewHtml(bundled, adapter, project, mainCompositionPath)),
         adapter,
+        signature,
         project.dir,
         mainCompositionPath,
         { capture, gsapBaseUrl },
@@ -549,7 +550,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
         mediaCodecProbeCache,
       );
       bundled = addScenePartsManifest(bundled, [`meta[name="${PROJECT_SIGNATURE_META}"]`]);
-      if (createProjectSignature(project.dir) === signature) {
+      if ((await createProjectSignatureAsync(project.dir)) === signature) {
         rememberPreview(builtKey, bundled);
         if (!capture) adapter.previewDocuments?.write(builtKey, bundled);
       }
@@ -566,6 +567,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
         let fallbackAugmented = injectStudioPreviewAugmentations(
           await transformPreviewHtml(fallbackHtml, adapter, project, fallback.compositionPath),
           adapter,
+          signature,
           project.dir,
           fallback.compositionPath,
           { capture, gsapBaseUrl },
@@ -686,7 +688,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     html = withRootImportMap(html, baseHref);
     recordPreviewReferences(project.dir, html);
     html = ensureHfIds(await transformPreviewHtml(html, adapter, project, compPath));
-    html = injectStudioPreviewAugmentations(html, adapter, project.dir, compPath, {
+    html = injectStudioPreviewAugmentations(html, adapter, signature, project.dir, compPath, {
       capture,
       gsapBaseUrl,
     });
