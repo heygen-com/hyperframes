@@ -18,7 +18,6 @@ import { defineCommand } from "../utils/defineCommand.js";
 const describe = (p: Plan | null) =>
   p && p.plan !== "none" ? `${p.plan} plan, ${p.credits.toLocaleString("en-US")} credits` : "Free";
 
-/** The price line the person reads before paying: Pro's monthly price, or what the credits cost against the need. */
 function priceLine(
   kind: "plans" | "credits",
   offer: Offer,
@@ -39,9 +38,7 @@ function priceLine(
 
 type Done = (p: Plan | null) => boolean;
 
-/** On Enter, reads the plan again: paid on the page meanwhile opens nothing, a plan it cannot read opens nothing
- * (the wait carries on), and a balance that moved shows the new price and asks again before any checkout. */
-async function payOnEnter(
+async function checkoutOnEnterAtTheCurrentPrice(
   kind: "plans" | "credits",
   offer: Offer,
   done: Done,
@@ -72,9 +69,7 @@ async function payOnEnter(
   }
 }
 
-/** Prepares the checkout with the CLI's own token: opens it when a person presses Enter, prints it when nobody can.
- * A refusal is printed and the page stays the way to buy. */
-async function offerCheckout(
+async function offerCheckoutOrPrintTheLink(
   kind: "plans" | "credits",
   before: Plan | null,
   done: Done,
@@ -87,7 +82,7 @@ async function offerCheckout(
   try {
     if (isUnattended())
       console.log(`Checkout link: ${c.accent(await createCheckout(kind, offer, missing))}`);
-    else await payOnEnter(kind, offer, done, line, needed);
+    else await checkoutOnEnterAtTheCurrentPrice(kind, offer, done, line, needed);
   } catch (error) {
     console.error(c.error(error instanceof Error ? error.message : String(error)));
   }
@@ -139,7 +134,12 @@ export default defineCommand({
     });
     console.log(`${action === "subscribe" ? "Plans" : "Credits"} page: ${c.accent(url)}`);
     await openBrowser(url);
-    await offerCheckout(action === "subscribe" ? "plans" : "credits", before, done, needed);
+    await offerCheckoutOrPrintTheLink(
+      action === "subscribe" ? "plans" : "credits",
+      before,
+      done,
+      needed,
+    );
     console.log("Waiting for the person to finish ...");
     const deadline = Date.now() + (Number(args.timeout) || 600) * 1000;
     while (Date.now() < deadline) {
