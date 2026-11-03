@@ -4,7 +4,7 @@ Open-source video rendering framework: write HTML, render video.
 
 ## Skills
 
-This repo ships 9 AI agent skills via [vercel-labs/skills](https://github.com/vercel-labs/skills). Install them before writing compositions — they encode framework-specific patterns that generic docs don't cover. **Default to the core set** (`/hyperframes`, `/hyperframes-cli`, `/hyperframes-registry`, `/media-use`); `/slideshow`, `/remotion-to-hyperframes`, `/reverse-any-video` and `/figma` install on demand. Install all 8 only when the user explicitly asks for the full set.
+This repo ships 9 AI agent skills via [vercel-labs/skills](https://github.com/vercel-labs/skills). Install them before writing compositions — they encode framework-specific patterns that generic docs don't cover. **Default to the core set** (`/hyperframes`, `/hyperframes-cli`, `/hyperframes-registry`, `/media-use`); `/slideshow`, `/remotion-to-hyperframes`, `/reverse-any-video`, `/style-remix` and `/figma` install on demand. Install all 9 only when the user explicitly asks for the full set.
 
 ```bash
 npx hyperframes skills update                         # default: installs/refreshes the core set plus anything already installed
