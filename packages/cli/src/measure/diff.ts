@@ -306,7 +306,6 @@ export function selectFilter(pick: Pick, fpsText: string): string[] {
 export function yoursFilters(pick: Pick, fpsText: string, offset = 0): string[] {
   const rate = offset ? `fps=${fpsText}:start_time=${offset}` : `fps=${fpsText}`;
   const select = selectFilter(pick, fpsText);
-  // SSIM pairs timestamps, so even an untrimmed offset stream must start at zero.
   return [rate, ...(offset && !select.length ? [`setpts=N/(${fpsText})/TB`] : select)];
 }
 
