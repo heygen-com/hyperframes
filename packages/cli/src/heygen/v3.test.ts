@@ -82,7 +82,7 @@ describe("runJob", () => {
       reply(402, { error: { code: "insufficient_credit", message: "no" } }),
     );
     await expect(runJob(X, {}, "k")).rejects.toMatchObject({
-      fix: expect.stringContaining("top up"),
+      fix: expect.stringContaining("add-on credits"),
     });
     vi.stubGlobal("fetch", async () =>
       reply(402, { error: { code: "hf_subscription_required", message: "no plan" } }),
@@ -94,7 +94,7 @@ describe("runJob", () => {
       reply(402, { code: "hf_usage_exhausted", url: "https://pay.test/credits" }),
     );
     await expect(runJob(X, {}, "k")).rejects.toMatchObject({
-      fix: "Add credits: https://pay.test/credits",
+      fix: "Buy add-on credits: https://pay.test/credits",
     });
     vi.stubGlobal("fetch", async () => reply(401, { message: "bad" }));
     await expect(runJob(X, {}, "k")).rejects.toMatchObject({
@@ -114,7 +114,7 @@ describe("runJob", () => {
       message: expect.stringContaining("this step needs about 782 in total"),
     });
     await expect(runJob(X, {}, "k", { credits: 782 })).rejects.toMatchObject({
-      message: expect.stringContaining("billing top-up --needed 782"),
+      message: expect.stringContaining("billing add-credits --needed 782"),
       fix: expect.stringContaining("needed_credits=782"),
     });
     vi.stubGlobal("fetch", async () =>

@@ -12,13 +12,13 @@ export default defineCommand({
   meta: {
     name: "billing",
     description:
-      "Open the HyperFrames plans or credits page and wait until the person is done (subscribe | top-up)",
+      "Open the HyperFrames plans page (subscribe) or buy add-on credits, used separately from your plan's monthly credits (add-credits), and wait until the person is done",
   },
   args: {
-    action: { type: "positional", description: "subscribe | top-up", required: true },
+    action: { type: "positional", description: "subscribe | add-credits", required: true },
     needed: {
       type: "string",
-      description: "Credits the waiting step needs (top-up waits until the balance covers it)",
+      description: "Credits the waiting step needs (add-credits waits until the balance covers it)",
     },
     tool: { type: "string", description: "The step that is waiting, shown on the page" },
     feature: {
@@ -30,9 +30,10 @@ export default defineCommand({
   },
   // fallow-ignore-next-line complexity
   async run({ args }) {
-    const action = String(args.action);
-    if (action !== "subscribe" && action !== "top-up") {
-      console.error(c.error("Use `billing subscribe` or `billing top-up`."));
+    // `top-up` is the old name; it stays a hidden alias so old docs and agents keep working.
+    const action = String(args.action) === "top-up" ? "add-credits" : String(args.action);
+    if (action !== "subscribe" && action !== "add-credits") {
+      console.error(c.error("Use `billing subscribe` or `billing add-credits`."));
       failCommand();
     }
     const needed = Number(args.needed) || undefined;

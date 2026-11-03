@@ -396,7 +396,7 @@ test("a refused HyperFrames-plan call becomes one line with the billing command"
   );
   assert.equal(
     heygenMessage(refused("hf_usage_exhausted")),
-    "Out of HyperFrames credits. Run `npx hyperframes billing top-up`: it opens the page and waits.",
+    "Out of HyperFrames credits. Run `npx hyperframes billing add-credits`: it opens the page and waits.",
   );
   assert.match(
     heygenMessage({ status: 403, body: JSON.stringify({ error: { code: "api_key_required" } }) }),
