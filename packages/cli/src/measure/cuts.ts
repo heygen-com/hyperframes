@@ -20,6 +20,8 @@ const MAX_CUT_FRAMES = 3;
 const FLASH_FRAMES = 4;
 const RETURNED = 0.4;
 const SAME_TONES = 0.8;
+/** A neighbour that changes this share of the peak: the picture was already moving. */
+const IN_MOTION = 0.3;
 
 export interface Cut {
   frame: number;
@@ -95,6 +97,40 @@ const sharedTones = (a: Uint8Array, b: Uint8Array) => {
   return tones(a).reduce((sum, share, bin) => sum + Math.min(share, after[bin]!), 0);
 };
 
+/** `f` scaled by `s` about the centre and shifted by dx,dy, edges held. */
+function moved(f: Uint8Array, s: number, dx: number, dy: number): Uint8Array {
+  const out = new Uint8Array(f.length);
+  const cx = (SIG_W - 1) / 2;
+  const cy = (SIG_H - 1) / 2;
+  for (let y = 0; y < SIG_H; y++) {
+    const sy = Math.min(SIG_H - 1, Math.max(0, Math.round((y - cy - dy) / s + cy)));
+    for (let x = 0; x < SIG_W; x++) {
+      const sx = Math.min(SIG_W - 1, Math.max(0, Math.round((x - cx - dx) / s + cx)));
+      out[y * SIG_W + x] = f[sy * SIG_W + sx]!;
+    }
+  }
+  return out;
+}
+
+/** How far `after` stays from `before` zoomed (0.8–1.25x) and shifted, at the closest of a small search. */
+function movedChange(before: Uint8Array, after: Uint8Array): number {
+  let least = meanAbsDiff(before, after);
+  for (let s = 0.8; s <= 1.25; s += 0.025)
+    for (let dx = -6; dx <= 6; dx++)
+      for (let dy = -4; dy <= 4; dy++)
+        least = Math.min(least, meanAbsDiff(moved(before, s, dx, dy), after));
+  return least;
+}
+
+/**
+ * A camera move peaking past a cut's level: the frames on both sides move too, and the frame before, zoomed or
+ * shifted, nearly gives the one after. A punch-in or punch-out also zooms, but out of or into a still picture.
+ */
+function isMove(frames: Uint8Array[], diffs: number[], c: Cut, end: number): boolean {
+  const inMotion = Math.min(diffs[c.frame - 1] ?? 0, diffs[end] ?? 0) >= IN_MOTION * c.change;
+  return inMotion && movedChange(frames[c.frame - 1]!, frames[end - 1]!) < RETURNED * c.change;
+}
+
 /** Every change that reads as a cut, each marked a flash or a fast move when it is not a new shot. */
 export function classifiedCuts(frames: Uint8Array[]): Cut[] {
   const diffs = frameChanges(frames);
@@ -113,7 +149,8 @@ export function classifiedCuts(frames: Uint8Array[]): Cut[] {
     const returns = Array.from({ length: FLASH_FRAMES }, (_, k) => k + 1).some(
       (k) => back(c.frame - 1, end - 1 + k) || back(c.frame - k, end),
     );
-    return returns ? { ...c, kind: "flash" as const } : c;
+    if (returns) return { ...c, kind: "flash" as const };
+    return isMove(frames, diffs, c, end) ? { ...c, kind: "fast" as const } : c;
   });
 }
 

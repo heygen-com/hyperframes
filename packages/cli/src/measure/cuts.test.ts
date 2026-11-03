@@ -118,6 +118,43 @@ describe("findCuts on moving pictures", () => {
     expect(classifiedCuts(frames).map((c) => c.kind)).toEqual(["fast"]);
   });
 
+  /** A dark window `w` wide on grey, centred, with a lighter title bar. */
+  const window = (w: number) => {
+    const f = new Uint8Array(SIG_W * SIG_H).fill(235);
+    const h = w * 0.8;
+    for (let y = 0; y < SIG_H; y++)
+      for (let x = 0; x < SIG_W; x++) {
+        const top = (SIG_H - 1) / 2 - h / 2;
+        if (Math.abs(x - (SIG_W - 1) / 2) <= w / 2 && Math.abs(y - (SIG_H - 1) / 2) <= h / 2)
+          f[y * SIG_W + x] = y - top < 2 ? 60 : 25;
+      }
+    return f;
+  };
+
+  it("calls a zoom that speeds up past a cut's level a fast move", () => {
+    // stripe 0.2 s: the app window grows 3, 9, 12, 5 grey levels a frame.
+    const widths = [20, 20, 20, 20, 20.5, 22, 25, 30, 32, 33.5, 34.5, 35, 35.5];
+    const frames = [...widths, ...Array<number>(13).fill(36)].map(window);
+    expect(classifiedCuts(frames).map((c) => [c.frame, c.kind])).toEqual([[7, "fast"]]);
+    expect(findCuts(frames)).toEqual([]);
+  });
+
+  it("keeps a punch-in out of a still picture as a cut", () => {
+    const frames = [...Array<number>(13).fill(20), ...Array<number>(13).fill(28)].map(window);
+    expect(findCuts(frames).map((c) => c.frame)).toEqual([13]);
+  });
+
+  // hf-review: a picture still on one side and moving on the other is an edit, not a camera move.
+  it("keeps a punch-in out of a still picture as a cut when the next shot moves", () => {
+    const frames = [...Array<number>(13).fill(20), 25, ...Array<number>(16).fill(27)].map(window);
+    expect(findCuts(frames).map((c) => c.frame)).toEqual([13]);
+  });
+
+  it("keeps a punch-out into a still picture as a cut after a moving shot", () => {
+    const frames = [...Array<number>(16).fill(27), 25, ...Array<number>(13).fill(20)].map(window);
+    expect(findCuts(frames).map((c) => c.frame)).toEqual([17]);
+  });
+
   it("calls a light flash a flash and the cut after it a cut", () => {
     const frames = [...still(100, 20), ...still(250, 2), ...still(100, 20), ...still(30, 20)];
     expect(classifiedCuts(frames).map((c) => [c.frame, c.kind])).toEqual([
