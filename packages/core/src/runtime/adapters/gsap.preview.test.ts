@@ -49,4 +49,49 @@ describe("a preview that plays a pop-in the next word's hide interrupts", () => 
     for (let t = 0; t < 0.9; t += 1 / 60) seekGsapTimeline(timeline as never, t, false, structure);
     expect(word.opacity).toBe(1);
   });
+
+  it("hides the word when the pair sits in a nested timeline running at twice the speed", () => {
+    for (let k = 0; k < 24; k++) {
+      const word = { opacity: 0 };
+      const inner = gsap.timeline();
+      inner.fromTo(word, { opacity: 0 }, { opacity: 1, duration: 0.32, ease: "expo.out" }, 1.08);
+      inner.set(word, { opacity: 0 }, 1.38);
+      const timeline = gsap.timeline({ paused: true });
+      timeline.add(inner.timeScale(2), 0);
+      const structure = { owner: timeline, version: "1" };
+      const dt = 1 / 60;
+      for (let t = (k / 24) * dt; t < 0.9; t += dt) {
+        seekGsapTimeline(timeline as unknown as RuntimeTimelineLike, t, false, structure);
+      }
+      seekGsapTimeline(timeline as unknown as RuntimeTimelineLike, 0.9, false, structure);
+      expect([k, word.opacity]).toEqual([k, 0]);
+    }
+  });
+
+  it("fires each callback once, as a play without the overlap does", () => {
+    for (let k = 0; k < 24; k++) {
+      const calls: string[] = [];
+      const word = { opacity: 0 };
+      const timeline = gsap.timeline({ paused: true });
+      timeline.fromTo(
+        word,
+        { opacity: 0 },
+        {
+          opacity: 1,
+          duration: 0.16,
+          onStart: () => calls.push("start"),
+          onComplete: () => calls.push("done"),
+        },
+        0.54,
+      );
+      timeline.set(word, { opacity: 0 }, 0.69);
+      timeline.call(() => calls.push("call"), [], 0.8);
+      const structure = { owner: timeline, version: "1" };
+      const dt = 1 / 60;
+      for (let t = (k / 24) * dt; t < 1; t += dt) {
+        seekGsapTimeline(timeline as unknown as RuntimeTimelineLike, t, false, structure);
+      }
+      expect([k, calls]).toEqual([k, ["start", "done", "call"]]);
+    }
+  });
 });
