@@ -34,19 +34,17 @@ video, so they move and speak as they do in the original. For example:
 
 ## Signed in on Free
 
-Reverse is part of Pro. Say so once, give the upgrade link, and start nothing until they are on Pro. The link is
-`reverse.upgrade_url` from `reverse start`, passed on exactly as printed: it credits the purchase to this run. For
-example:
+Reverse is part of Pro. Say why in one line, then run the `reverse.subscribe_command` from `reverse start` exactly as
+printed (`npx hyperframes billing subscribe --feature reverse --session <id>`): it opens the plans page in the person's
+browser, credits the purchase to this run, and waits until they are on Pro, so the run goes on by itself. Start nothing
+before it finishes. For example:
 
-> Reverse is part of HyperFrames Pro: it re-shoots the people in your video with HeyGen. Upgrade here:
->
-> https://hyperframes.studio/pricing?feature=reverse&rs=…
->
-> Reply "done" once you're on Pro and I'll start.
+> Reverse is part of HyperFrames Pro: it re-shoots the people in your video with HeyGen. I've opened the upgrade page in
+> your browser and I'll carry on as soon as you're subscribed.
 
-When `reverse start` refuses the run (it exits with an error whose `fix` is the upgrade link), give the person that
-exact link and stop; once they reply that they are on Pro, run `reverse start` again. Only on a CLI without
-`reverse start`, give `! npx hyperframes billing subscribe` instead.
+When `reverse start` refuses the run (it exits with an error whose `fix` is that command), run the `fix` the same way,
+then run `reverse start` again. Only on a CLI without `reverse start`, run `npx hyperframes billing subscribe` instead.
+If the command times out, tell the person and run it again once they say they are ready.
 
 ## Signed in on Pro
 

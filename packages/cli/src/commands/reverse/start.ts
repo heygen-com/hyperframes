@@ -26,13 +26,19 @@ export const examples: Example[] = [
 
 const SKILL = "reverse-any-video";
 
+export function subscribeCommand(sessionId?: string): string {
+  return `npx hyperframes billing subscribe --feature reverse${sessionId ? ` --session ${sessionId}` : ""}`;
+}
+
 function summary(started: ReverseStart, savedTo: string | undefined) {
   if (!started.recorded) {
     return {
       signed_in: started.reason !== "not_signed_in",
       plan: started.plan ?? null,
       recorded: false,
-      ...(started.plan === "free" ? { upgrade_url: reverseUpgradeUrl() } : {}),
+      ...(started.plan === "free"
+        ? { upgrade_url: reverseUpgradeUrl(), subscribe_command: subscribeCommand() }
+        : {}),
     };
   }
   const { session } = started;
@@ -43,16 +49,21 @@ function summary(started: ReverseStart, savedTo: string | undefined) {
     session_id: session.sessionId,
     gate: session.gate,
     saved_to: savedTo ?? null,
-    ...(session.plan === "free" ? { upgrade_url: reverseUpgradeUrl(session) } : {}),
+    ...(session.plan === "free"
+      ? {
+          upgrade_url: reverseUpgradeUrl(session),
+          subscribe_command: subscribeCommand(session.sessionId),
+        }
+      : {}),
   };
 }
 
 function refusalWhenServerBlocksFree(session: ReverseSession): Fix | undefined {
   if (session.gate !== "block" || session.plan !== "free") return undefined;
-  const link = reverseUpgradeUrl(session);
+  const command = subscribeCommand(session.sessionId);
   return new Fix(
-    `Reverse is part of HyperFrames Pro. Upgrade here, then run reverse start again: ${link}`,
-    link,
+    `Reverse is part of HyperFrames Pro. Run \`${command}\`, then run reverse start again.`,
+    command,
   );
 }
 

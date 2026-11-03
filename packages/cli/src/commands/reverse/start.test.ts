@@ -173,20 +173,29 @@ describe("reverse start", () => {
     expect(() => readFileSync(join(dir, "hyperframes.json"))).toThrow();
   });
 
-  it("stops a Free account the server blocks, with its upgrade link as the fix, after saving the session", async () => {
-    const link = "https://hyperframes.studio/pricing?feature=reverse&rs=1";
-    server.answer = recorded("free", link, "block");
+  it("stops a Free account the server blocks, with the subscribe command as the fix, after saving the session", async () => {
+    server.answer = recorded(
+      "free",
+      "https://hyperframes.studio/pricing?feature=reverse&rs=1",
+      "block",
+    );
     const dir = join(root, "rebuild");
     await expect(run("--dir", dir)).rejects.toThrow(CliRuntimeError);
-    expect(output()).toMatchObject({ ok: false, error: expect.stringContaining(link), fix: link });
+    const command = `npx hyperframes billing subscribe --feature reverse --session ${SESSION}`;
+    expect(output()).toMatchObject({
+      ok: false,
+      error: expect.stringContaining(command),
+      fix: command,
+    });
     expect(config(dir)).toMatchObject({ reverseSessionId: SESSION });
   });
 
-  it("builds the attributed plans link when a block names none", async () => {
-    server.answer = recorded("free", undefined, "block");
-    await expect(run()).rejects.toThrow(CliRuntimeError);
-    const link = `https://plans.test/?feature=reverse&rs=${SESSION}`;
-    expect(output()).toMatchObject({ ok: false, error: expect.stringContaining(link), fix: link });
+  it("names the subscribe command on a Free account the server lets through", async () => {
+    server.answer = recorded("free");
+    await run();
+    expect(output().reverse).toMatchObject({
+      subscribe_command: `npx hyperframes billing subscribe --feature reverse --session ${SESSION}`,
+    });
   });
 
   it.each<[string, ReverseStart]>([
