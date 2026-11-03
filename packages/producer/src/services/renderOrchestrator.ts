@@ -2627,9 +2627,12 @@ export function shouldRetryViaPinnedFallback(args: {
    * that mode otherwise had no whole-render fallback for a one-off refusal.
    */
   isTransientCaptureError?: boolean;
+  /** The failed attempt captured through BeginFrame; screenshot is the baseline for any failure there. */
+  isBeginFrameCapture?: boolean;
 }): boolean {
   if (args.isCancellation || args.isEncoderInterrupted) return false;
   if (args.isVerifyError || args.isDeCaptureError) return true;
+  if (args.isBeginFrameCapture === true) return true;
   if (args.isDeRendererStall === true || args.isSequentialCaptureStall === true) return true;
   if (args.isParallelCaptureStall === true || args.isEncoderDeath === true) return true;
   if (args.isTransientCaptureError === true) return true;
@@ -5157,6 +5160,10 @@ async function executeRenderPipeline(input: {
               isParallelCaptureStall: isParallelStall,
               isEncoderDeath,
               isTransientCaptureError: isTransientBrowserError(err),
+              isBeginFrameCapture:
+                !capturePlan.forceScreenshot &&
+                !cfg.useDrawElement &&
+                parallelCaptureMode === "beginframe",
             })
           )
             throw err;
