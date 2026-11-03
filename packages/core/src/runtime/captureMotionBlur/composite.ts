@@ -14,6 +14,8 @@ import { type Affine, invert, sweep, tapWeights, thinTaps } from "./pose";
 export interface MoverFrame {
   w: number;
   h: number;
+  /** Where the drawn box starts in the element's own px (its glow and overflow); default 0, 0. */
+  origin?: [number, number];
   /** The pose the capture shows (frame time). */
   now: Affine;
   /** Poses across the shutter. */

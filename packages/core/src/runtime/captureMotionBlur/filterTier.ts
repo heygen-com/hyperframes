@@ -189,6 +189,7 @@ export function createFilterTier(
       shutterSeconds: config.shutterDeg / 360 / host.fps,
       taps: COPIES,
       frameW: width,
+      scene: root,
       frameH: height,
     });
     const plans: Array<[HTMLElement, FilterPlan]> = [];
