@@ -27,6 +27,7 @@ import { dirname } from "path";
 import {
   type GpuEncoder,
   getCachedGpuEncoder,
+  getCachedNvencPresets,
   getGpuEncoderName,
   buildVideoToolboxRateControlArgs,
   mapPresetForGpuEncoder,
@@ -233,6 +234,7 @@ export function buildStreamingArgs(
   options: StreamingEncoderOptions,
   outputPath: string,
   gpuEncoder: GpuEncoder = null,
+  nvencPresets?: ReadonlySet<string>,
 ): string[] {
   const {
     fps,
@@ -312,7 +314,7 @@ export function buildStreamingArgs(
 
       switch (gpuEncoder) {
         case "nvenc":
-          args.push("-preset", mapPresetForGpuEncoder("nvenc", preset));
+          args.push("-preset", mapPresetForGpuEncoder("nvenc", preset, nvencPresets));
           if (bitrate) args.push("-b:v", bitrate);
           else args.push("-cq", String(quality));
           break;
@@ -473,7 +475,7 @@ export function buildStreamingArgs(
       );
       args.push(
         "-filter_complex",
-        `${video};[0:v]format=rgba[o];[v][o]overlay=format=gbrp,${tail}[vout]`,
+        `${video};[0:v]format=rgba[o];[v][o]overlay=eof_action=endall:format=gbrp,${tail}[vout]`,
         "-map",
         "[vout]",
       );
@@ -513,15 +515,41 @@ export async function spawnStreamingEncoder(
   signal?: AbortSignal,
   config?: Partial<Pick<EngineConfig, "ffmpegStreamingTimeout">>,
 ): Promise<StreamingEncoder> {
-  const outputDir = dirname(outputPath);
-  if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
-
   let gpuEncoder: GpuEncoder = null;
   if (options.useGpu) {
     gpuEncoder = await getCachedGpuEncoder();
   }
 
-  const args = buildStreamingArgs(options, outputPath, gpuEncoder);
+  const nvencPresets = gpuEncoder === "nvenc" ? await getCachedNvencPresets() : undefined;
+  const args = buildStreamingArgs(options, outputPath, gpuEncoder, nvencPresets);
+  const checksJpeg = !options.rawInputFormat && (options.imageFormat ?? "jpeg") === "jpeg";
+  return spawnFfmpegStream(outputPath, args, {
+    signal,
+    config,
+    checkFrame: checksJpeg
+      ? (frame, index) => {
+          const error = jpegInputError(frame);
+          if (error) throw new Error(`Invalid JPEG input at frame ${index}: ${error}`);
+        }
+      : undefined,
+  });
+}
+
+export function spawnFfmpegStream(
+  outputPath: string,
+  args: string[],
+  {
+    signal,
+    config,
+    checkFrame,
+  }: {
+    signal?: AbortSignal;
+    config?: Partial<Pick<EngineConfig, "ffmpegStreamingTimeout">>;
+    checkFrame?: (frame: Buffer, index: number) => void;
+  },
+): StreamingEncoder {
+  const outputDir = dirname(outputPath);
+  if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
 
   const ffmpeg: ChildProcess = spawn(getFfmpegBinary(), args, {
     stdio: ["pipe", "pipe", "pipe"],
@@ -635,10 +663,7 @@ export async function spawnStreamingEncoder(
       // so without this copy the pipe would read partially-overwritten data
       // and flicker.
       const copy = Buffer.from(buffer);
-      if (!options.rawInputFormat && (options.imageFormat ?? "jpeg") === "jpeg") {
-        const error = jpegInputError(copy);
-        if (error) throw new Error(`Invalid JPEG input at frame ${inputFrameIndex}: ${error}`);
-      }
+      checkFrame?.(copy, inputFrameIndex);
       const accepted = stdin.write(copy);
       inputFrameIndex++;
       // Reset inactivity timer immediately ONLY on `accepted === true`. `true`

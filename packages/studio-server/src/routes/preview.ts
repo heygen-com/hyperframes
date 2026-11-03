@@ -25,6 +25,7 @@ import {
   PREVIEW_PROXY_PRIORITY_HEADER,
   PREVIEW_PROXY_PROGRESS_HEADER,
   PREVIEW_PROXY_RETRY_PARAM,
+  PREVIEW_PROXY_STILL_PARAM,
   parsePreviewProxyBox,
 } from "@hyperframes/core";
 import {
@@ -44,6 +45,7 @@ import {
 } from "../helpers/safePath.js";
 import { getMimeType } from "../helpers/mime.js";
 import { serveWhileOpen } from "../helpers/servedFiles.js";
+import { openRangeEnd } from "../helpers/mediaRange.js";
 import { buildSubCompositionHtml, hasBaseElement } from "../helpers/subComposition.js";
 import { withRootImportMap } from "../helpers/rootImportMap.js";
 import { withRootPathsRelative } from "../helpers/rootPaths.js";
@@ -73,6 +75,7 @@ import { injectPreviewVariables } from "../helpers/previewVariables.js";
 import {
   proxyCopyProgress,
   resolveProxy,
+  resolveStill,
   retryProxyCopy,
   waitForProxy,
   ProxyCapacityError,
@@ -739,6 +742,24 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
       }
     }
 
+    // One frame of the video stands in for its copy while that is made; same gate as the copy.
+    const stillParam = c.req.query(PREVIEW_PROXY_STILL_PARAM);
+    if (stillParam !== undefined) {
+      const at = Number(stillParam);
+      if (stillParam === "" || !Number.isFinite(at) || at < 0 || !proxyVariant) {
+        return c.text("not found", 404);
+      }
+      try {
+        const still = await resolveStill(project.dir, file, at, proxyBox);
+        return new Response(readFileSync(still), {
+          headers: { "Content-Type": "image/jpeg", "Cache-Control": "private, max-age=3600" },
+        });
+      } catch (err) {
+        if (isProjectRootMissing(err)) throw err;
+        return c.text("media still failed", 502);
+      }
+    }
+
     const tag = settledFileTag(stat);
     const etag = tag && `"${tag}${proxyEtagSalt(proxyVariant, proxyBox)}"`;
     const cacheHeaders: Record<string, string> = isText
@@ -764,9 +785,10 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
         if (c.req.query(PREVIEW_PROXY_RETRY_PARAM) !== undefined) {
           retryProxyCopy(project.dir, file, proxyVariant, proxyBox);
         }
-        const priority = c.req.header(PREVIEW_PROXY_PRIORITY_HEADER) === "1";
+        const asked = c.req.header(PREVIEW_PROXY_PRIORITY_HEADER);
+        const urgency = asked === "0" ? { background: true } : { priority: asked === "1" };
         servedPath = await waitForProxy(
-          resolveProxy(project.dir, file, proxyVariant, proxyBox, { priority }),
+          resolveProxy(project.dir, file, proxyVariant, proxyBox, urgency),
           0,
         );
       } catch (err) {
@@ -816,7 +838,9 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     const match = rangeHeader ? /bytes=(\d+)-(\d*)/.exec(rangeHeader) : null;
     if (match) {
       const start = parseInt(match[1]!, 10);
-      const end = match[2] ? parseInt(match[2], 10) : totalSize - 1;
+      const end = match[2]
+        ? parseInt(match[2], 10)
+        : openRangeEnd(start, totalSize - 1, servedContentType);
       const safeEnd = Math.min(end, totalSize - 1);
       if (start > safeEnd) {
         return new Response(null, {

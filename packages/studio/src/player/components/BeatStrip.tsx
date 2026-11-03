@@ -1,4 +1,5 @@
 import { memo, useSyncExternalStore } from "react";
+import { matchesKey } from "./studioShortcuts";
 import {
   deleteBeatAtCompositionTime,
   moveBeatCompositionTime,
@@ -184,7 +185,7 @@ function handleBeatDragPointerCancel(event: PointerEvent): void {
 }
 
 function handleBeatDragKeyDown(event: KeyboardEvent): void {
-  if (event.key !== "Escape" || !beatDragActor) return;
+  if (!matchesKey(event, "cancel") || !beatDragActor) return;
   event.preventDefault();
   cancelBeatDrag();
 }

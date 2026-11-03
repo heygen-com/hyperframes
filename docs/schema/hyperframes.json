@@ -79,6 +79,11 @@
           }
         }
       }
+    },
+    "reverseSessionId": {
+      "type": "string",
+      "pattern": "^rvs_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "description": "The reverse session `hyperframes reverse start` received from HeyGen. `hyperframes cloud render` sends it with the render so the rebuilt video is counted against that reverse run."
     }
   }
 }

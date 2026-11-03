@@ -10,7 +10,7 @@ import { ClipMenuAudioItems } from "./clipMenuAudioItems";
 import { ClipMenuLinkItems } from "./clipMenuLinkItems";
 import { menuClasses } from "../../components/ui/menuStyle";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
-import { SPLIT_SHORTCUT_HINT } from "./studioShortcuts";
+import { keyHint, useStudioKeys } from "./studioShortcuts";
 
 const MENU_MARGIN = 8;
 
@@ -97,8 +97,9 @@ export const ClipContextMenu = memo(function ClipContextMenu({
   onDuplicate,
   canPaste,
   hostItems = [],
-  splitShortcut = SPLIT_SHORTCUT_HINT,
+  splitShortcut,
 }: ClipContextMenuProps) {
+  const keys = useStudioKeys();
   const menuRef = useContextMenuDismiss(onClose);
   useMenuKeyboardNav(menuRef);
   const tools = useTimelineEditContextOptional().clipMenuTools !== false;
@@ -160,7 +161,9 @@ export const ClipContextMenu = memo(function ClipContextMenu({
             }}
           >
             <span>{splitLabel}</span>
-            <span className="text-neutral-500 text-[10px] ml-3">{splitShortcut}</span>
+            <span className="text-neutral-500 text-[10px] ml-3">
+              {splitShortcut ?? keyHint("split", keys)}
+            </span>
           </button>
         )}
         {tools && splitLabel && (
@@ -212,7 +215,7 @@ export const ClipContextMenu = memo(function ClipContextMenu({
             }}
           >
             <span>{selectionSize > 1 ? `Copy ${selectionSize} clips` : "Copy"}</span>
-            <span className="text-neutral-500 text-[10px] ml-3">⌘C</span>
+            <span className="text-neutral-500 text-[10px] ml-3">{keyHint("copy", keys)}</span>
           </button>
         )}
         {onPaste && (
@@ -228,7 +231,7 @@ export const ClipContextMenu = memo(function ClipContextMenu({
             }}
           >
             <span>Paste</span>
-            <span className="text-neutral-500 text-[10px] ml-3">⌘V</span>
+            <span className="text-neutral-500 text-[10px] ml-3">{keyHint("paste", keys)}</span>
           </button>
         )}
         {onDuplicate && (
@@ -242,7 +245,7 @@ export const ClipContextMenu = memo(function ClipContextMenu({
             }}
           >
             <span>{selectionSize > 1 ? `Duplicate ${selectionSize} clips` : "Duplicate"}</span>
-            <span className="text-neutral-500 text-[10px] ml-3">⌘D</span>
+            <span className="text-neutral-500 text-[10px] ml-3">{keyHint("duplicate", keys)}</span>
           </button>
         )}
       </div>

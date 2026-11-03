@@ -86,11 +86,14 @@ describe("Vite GIF rendering", () => {
   );
 });
 
+// vi.waitFor gives up after 1 s by default; a loaded Windows runner took longer to finish a mocked render.
+const RENDER_DONE = { timeout: 20_000 };
+
 describe("Studio dev server render jobs", { timeout: 30_000 }, () => {
   it("hands the route's pageMotionBlur to the job, so a preview that could not blur renders unblurred", async () => {
     producer.executeRenderJob.mockResolvedValue(undefined);
     const { state } = await fixture({ format: "mp4", pageMotionBlur: "off" });
-    await vi.waitFor(() => expect(state.status, state.error).toBe("complete"));
+    await vi.waitFor(() => expect(state.status, state.error).toBe("complete"), RENDER_DONE);
     expect(producer.createRenderJob).toHaveBeenCalledWith(
       expect.objectContaining({ pageMotionBlur: "off" }),
     );
@@ -99,7 +102,7 @@ describe("Studio dev server render jobs", { timeout: 30_000 }, () => {
   it("leaves the job's blur to the composition when the route sends none", async () => {
     producer.executeRenderJob.mockResolvedValue(undefined);
     const { state } = await fixture({ format: "mp4" });
-    await vi.waitFor(() => expect(state.status, state.error).toBe("complete"));
+    await vi.waitFor(() => expect(state.status, state.error).toBe("complete"), RENDER_DONE);
     expect(producer.createRenderJob.mock.calls[0]?.[0]).not.toHaveProperty("pageMotionBlur");
   });
 });

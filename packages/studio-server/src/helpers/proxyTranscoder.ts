@@ -9,7 +9,7 @@ import {
   utimesSync,
   writeFileSync,
 } from "node:fs";
-import { availableParallelism, tmpdir, totalmem } from "node:os";
+import os, { availableParallelism, tmpdir, totalmem } from "node:os";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { hdrToSdrToneMapFilter, type PreviewProxyBox } from "@hyperframes/core";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
@@ -26,8 +26,8 @@ import {
   sourceSizeBytes,
   writeCopyIndex,
 } from "./proxyCacheKey.js";
-import { acquireCopyLock } from "./proxyLock.js";
-import { PROXY_VARIANT_CONFIG, type ProxyVariant } from "./mediaCodecMap.js";
+import { acquireCopyLock, CopyLockStalledError } from "./proxyLock.js";
+import { PROXY_STILL_EXTENSION, PROXY_VARIANT_CONFIG, type ProxyVariant } from "./mediaCodecMap.js";
 import { mkdirWithinProject, realpath, realProjectRoot } from "./safePath.js";
 
 /**
@@ -56,6 +56,7 @@ function boundedEnvInteger(name: string, fallback: number, min: number, max: num
 // saturate a typical laptop. Operators of shared/large machines may tune the
 // bounded values without patching the package; invalid values fail safe.
 const MAX_CONCURRENT_TRANSCODES = boundedEnvInteger("HYPERFRAMES_PROXY_MAX_CONCURRENCY", 2, 1, 16);
+const BACKGROUND_NICENESS = 19;
 const MAX_QUEUED_TRANSCODES = boundedEnvInteger("HYPERFRAMES_PROXY_MAX_QUEUE", 8, 0, 256);
 
 const STDERR_TAIL_MAX_CHARS = 4000;
@@ -219,6 +220,7 @@ export function getProxyCachePath(
 interface ProxyJob {
   cachePath: string;
   priority: boolean;
+  background: boolean;
   /** Callers still waiting; one without a signal never leaves, so its copy is always made. */
   callers: number;
   /** Set while the job waits for a slot. */
@@ -694,6 +696,7 @@ async function runFfmpeg(
   box: PreviewProxyBox | undefined,
   signal: AbortSignal,
   onProgress: (progress: ProxyProgress) => void,
+  isBackground: () => boolean = () => false,
 ): Promise<void> {
   const metadata = await probeMediaMetadata(sourcePath);
   const ffmpegPath = findFfBinary("ffmpeg", { configuredMustExist: true });
@@ -738,6 +741,7 @@ async function runFfmpeg(
       TRANSCODE_STALL_MS,
       pieceSignal,
       onEncoded,
+      isBackground(),
     );
   const ranges = chunkRanges(totalSeconds);
   try {
@@ -783,12 +787,21 @@ const OUT_TIME = /^out_time_(?:us|ms)=(\d+)$/;
 
 /** Runs ffmpeg and ends it when it makes no progress for `stallMs`; a slow encode that moves on is left to finish.
  * `onProgress` hears the seconds of output made so far (from `-progress pipe:1`). */
+function lowerPriorityUnlessExited(pid: number): void {
+  try {
+    os.setPriority(pid, BACKGROUND_NICENESS);
+  } catch {
+    return;
+  }
+}
+
 function spawnFfmpeg(
   ffmpegPath: string,
   args: string[],
   stallMs: number,
   signal: AbortSignal,
   onProgress?: (encodedSeconds: number) => void,
+  background = false,
 ): Promise<void> {
   return new Promise((resolvePromise, reject) => {
     signal.throwIfAborted();
@@ -798,6 +811,7 @@ function spawnFfmpeg(
       signal,
       windowsHide: true,
     });
+    if (background && proc.pid !== undefined) lowerPriorityUnlessExited(proc.pid);
     let stalled = false;
     let timer: NodeJS.Timeout | undefined;
     const armStall = (): void => {
@@ -892,7 +906,15 @@ async function transcodeToCache(
       writeCopyIndex(fastIndexPath(cachePath), sameContent);
       return sameContent;
     }
-    const release = await acquireCopyLock(cachePath, job.abandoned.signal);
+    const release = await acquireCopyLock(
+      cachePath,
+      job.abandoned.signal,
+      TRANSCODE_STALL_MS,
+    ).catch((error: unknown) => {
+      throw error instanceof CopyLockStalledError
+        ? new ProxyTranscodeError(error.message, null, "")
+        : error;
+    });
     if (!release) return cachePath;
     const tempPath = join(cacheDir, `.tmp-${randomUUID()}-${basename(cachePath)}`);
     try {
@@ -908,6 +930,7 @@ async function transcodeToCache(
         box,
         job.abandoned.signal,
         (progress) => reportProgress(job, progress),
+        () => job.background && !job.priority,
       );
       renameSync(tempPath, cachePath);
       writeCopyIndex(contentIndex, cachePath);
@@ -1000,6 +1023,7 @@ export async function resolveProxy(
     const job: ProxyJob = {
       cachePath,
       priority: options.priority === true,
+      background: options.background === true,
       callers: 0,
       abandoned: new AbortController(),
       progress: new Set(),
@@ -1077,8 +1101,60 @@ export async function resolveProxies(
   return results;
 }
 
+const stillsInFlight = new Map<string, Promise<string>>();
+
+/** One JPEG of the source at a time (to a tenth of a second), sized like the copy's box. */
+export function resolveStill(
+  projectDir: string,
+  absoluteSourcePath: string,
+  atSeconds: number,
+  box?: PreviewProxyBox,
+): Promise<string> {
+  const source = canonicalizeProxySource(projectDir, absoluteSourcePath);
+  const at = Math.max(0, Math.round(atSeconds * 10) / 10);
+  const key = fastCopyKey(source.sourcePath, PROXY_PARAMS_VERSION, `still@${at}`, box);
+  const cachePath = join(source.projectDir, CACHE_DIR_NAME, `${key}${PROXY_STILL_EXTENSION}`);
+  if (existsSync(cachePath)) return Promise.resolve(cachePath);
+  const shared = stillsInFlight.get(cachePath);
+  if (shared) return shared;
+  const made = makeStill(source, at, box, cachePath).finally(() =>
+    stillsInFlight.delete(cachePath),
+  );
+  stillsInFlight.set(cachePath, made);
+  return made;
+}
+
+async function makeStill(
+  source: CanonicalProxySource,
+  at: number,
+  box: PreviewProxyBox | undefined,
+  cachePath: string,
+): Promise<string> {
+  const ffmpegPath = findFfBinary("ffmpeg", { configuredMustExist: true });
+  if (!ffmpegPath) throw new FfmpegUnavailableError();
+  const filter = await buildVideoFilter(
+    ffmpegPath,
+    source.sourcePath,
+    await probeMediaMetadata(source.sourcePath),
+    false,
+    box,
+  );
+  mkdirWithinProject(source.projectDir, dirname(cachePath));
+  const tempPath = join(dirname(cachePath), `.tmp-${randomUUID()}-${basename(cachePath)}`);
+  try {
+    const args = ["-y", "-ss", String(at), "-i", source.sourcePath, "-map", "0:V:0"];
+    args.push("-frames:v", "1", "-vf", filter, "-pix_fmt", "yuvj420p", "-q:v", "3", tempPath);
+    await spawnFfmpeg(ffmpegPath, args, TRANSCODE_STALL_MS, new AbortController().signal);
+    renameSync(tempPath, cachePath);
+  } finally {
+    rmSync(tempPath, { force: true });
+  }
+  return cachePath;
+}
+
 export interface ResolveProxyOptions {
   priority?: boolean;
+  background?: boolean;
   signal?: AbortSignal;
   /** Hears how far the shared copy has got, from the first caller's start to the copy's end. */
   onProgress?: (progress: ProxyProgress) => void;

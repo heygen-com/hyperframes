@@ -8,7 +8,7 @@ This repo ships AI agent skills via [vercel-labs/skills](https://github.com/verc
 
 ```bash
 npx hyperframes skills update           # default: installs/refreshes the core set plus anything already installed
-npx hyperframes skills                  # all 7 published skills at once
+npx hyperframes skills                  # all 8 published skills at once
 npx skills add heygen-com/hyperframes   # interactive picker (terminal only; repo-internal skills are excluded by default)
 ```
 
@@ -21,6 +21,7 @@ Make any video by asking for it; the `/hyperframes` skill carries the contract a
 - `/figma` — bring Figma into a video: rendered assets, brand tokens, components, storyboard frames as reconstructed motion.
 - `/slideshow` — a presentation, pitch deck or interactive deck. Output is a navigable deck, not a rendered MP4.
 - `/remotion-to-hyperframes` — bring existing video code or footage into HyperFrames (Remotion first; also Motion Canvas, Lottie, Three.js, canvas, or renders from other tools) and verify it frame by frame against the original.
+- `/reverse-any-video` — rebuild any video file as an editable HyperFrames project (motion graphics, talking heads, live action or AI-generated footage) and check the render against the original frame by frame. A HyperFrames Pro feature.
 
 ## Issue and PR triage
 

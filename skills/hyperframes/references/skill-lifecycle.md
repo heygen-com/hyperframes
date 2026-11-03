@@ -5,7 +5,7 @@ Read this reference when installing or updating skills, diagnosing unexpected sk
 For a plugin installation, follow [plugin execution rules](plugin-installation.md); the plugin manager owns updates and every skill is bundled. The commands below apply only to standalone skills.
 
 - **Core set, installed eagerly:** `/hyperframes`, `/hyperframes-cli`, `/hyperframes-registry` and `/media-use`.
-- **On demand:** `/figma`, `/slideshow` and `/remotion-to-hyperframes`, installed with `npx hyperframes skills update <name>`.
+- **On demand:** `/figma`, `/slideshow`, `/remotion-to-hyperframes` and `/reverse-any-video`, installed with `npx hyperframes skills update <name>`.
 
 ## What `init` does
 

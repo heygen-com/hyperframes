@@ -58,6 +58,14 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
   // Scoped job store — not shared across createStudioApi() calls
   const renderJobs = new Map<string, RenderJobState & { createdAt: number }>();
 
+  const nextFreeRenderJobId = (baseId: string, ext: string, rendersDir: string): string => {
+    let jobId = baseId;
+    for (let n = 2; renderJobs.has(jobId) || existsSync(join(rendersDir, `${jobId}${ext}`)); n++) {
+      jobId = `${baseId}-${n}`;
+    }
+    return jobId;
+  };
+
   // TTL cleanup for completed jobs (5 minutes)
   const TTL_MS = 300_000;
   const CLEANUP_INTERVAL_MS = 60_000;
@@ -178,11 +186,14 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
         ? "off"
         : requestedPageMotionBlur;
 
-    const now = new Date();
-    const jobId = `${project.id}_${formatRenderOutputTimestamp(now)}`;
     const rendersDir = adapter.rendersDir(project);
     mkdirWithinProject(project.dir, rendersDir);
     const ext = FORMAT_EXT[format] ?? ".mp4";
+    const jobId = nextFreeRenderJobId(
+      `${project.id}_${formatRenderOutputTimestamp(new Date())}`,
+      ext,
+      rendersDir,
+    );
     const outputPath = join(rendersDir, `${jobId}${ext}`);
 
     const jobState = adapter.startRender({

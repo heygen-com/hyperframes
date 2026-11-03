@@ -1240,6 +1240,62 @@ describe("GSAP rules", () => {
     expect(finding).toBeUndefined();
   });
 
+  describe("a set that fires inside a running tween on the same property", () => {
+    const lint = (body: string) =>
+      lintHyperframeHtml(`
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <h1 id="w" class="clip" data-start="0" data-duration="5" data-track-index="0">IM</h1>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    ${body}
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`);
+    const overlap = (result: Awaited<ReturnType<typeof lint>>) =>
+      result.findings.find((f) => f.code === "overlapping_gsap_tweens");
+
+    it("reports a hide that lands in a pop-in's last frames, naming the element and both times", async () => {
+      const result = await lint(`
+    tl.fromTo("#w", { opacity: 0 }, { opacity: 1, duration: 0.16, ease: "expo.out" }, 0.54);
+    tl.set("#w", { opacity: 0 }, 0.69);`);
+      expect(overlap(result)).toMatchObject({
+        severity: "warning",
+        selector: "#w",
+        message: expect.stringMatching(/set on "#w" for opacity fires at 0\.69s.*0\.54s to 0\.70s/),
+        fixHint: expect.stringContaining("move the set to 0.70s or later"),
+      });
+    });
+
+    it.each([
+      [
+        "after the tween ends",
+        `tl.to("#w", { opacity: 1, duration: 0.16 }, 0.54); tl.set("#w", { opacity: 0 }, 0.7);`,
+      ],
+      [
+        "on the tween's first frame",
+        `tl.to("#w", { opacity: 1, duration: 0.16 }, 0.54); tl.set("#w", { opacity: 0 }, 0.54);`,
+      ],
+      [
+        "on another property",
+        `tl.to("#w", { scale: 1.2, duration: 0.16 }, 0.54); tl.set("#w", { opacity: 0 }, 0.6);`,
+      ],
+      [
+        "on another element",
+        `tl.to("#w", { opacity: 1, duration: 0.16 }, 0.54); tl.set("#x", { opacity: 0 }, 0.6);`,
+      ],
+      [
+        "with two sets and no tween",
+        `tl.set("#w", { opacity: 1 }, 0.5); tl.set("#w", { opacity: 0 }, 0.5);`,
+      ],
+    ])("does not report a set %s", async (_label, body) => {
+      expect(overlap(await lint(body))).toBeUndefined();
+    });
+  });
+
   it("does NOT report overlapping_gsap_tweens when an object-target tween is interleaved (regression)", async () => {
     // Regression: a non-DOM-targeting tween like `tl.to({ _: 0 }, …)` (used to
     // anchor timeline duration) was matched by the regex but skipped by the

@@ -96,9 +96,7 @@ export async function checkForUpdate(force?: boolean): Promise<UpdateCheckResult
 /** Whether the background check should ask the registry: not opted out, and no fresh safe cache. */
 export function updateCheckDue(config = readConfig()): boolean {
   if (updateCheckDisabled()) return false;
-  if (!config.lastUpdateCheck || !config.latestVersion || !isSafeVersion(config.latestVersion)) {
-    return true;
-  }
+  if (!config.lastUpdateCheck || !isSafeCache(config.latestVersion)) return true;
   const fresh = Date.now() - new Date(config.lastUpdateCheck).getTime() < CHECK_INTERVAL_MS;
   return !fresh;
 }
@@ -110,7 +108,7 @@ export function cachedUpdateCheck(): UpdateCheckResult {
 function fallbackResult(cachedLatest?: string): UpdateCheckResult {
   // Only surface a cached version we can prove is safe — a pre-existing
   // poisoned cache must not leak through the fallback path either.
-  const safeCached = safeCachedVersion(cachedLatest);
+  const safeCached = cachedVersionForThisInstall(cachedLatest);
   return {
     current: VERSION,
     latest: safeCached ?? VERSION,
@@ -118,8 +116,11 @@ function fallbackResult(cachedLatest?: string): UpdateCheckResult {
   };
 }
 
-function safeCachedVersion(value: unknown): string | undefined {
-  return typeof value === "string" && isSafeVersion(value) ? value : undefined;
+const isSafeCache = (value: unknown): value is string =>
+  typeof value === "string" && isSafeVersion(value);
+
+function cachedVersionForThisInstall(value: unknown): string | undefined {
+  return isSafeCache(value) && !isNewerSemver(VERSION, value) ? value : undefined;
 }
 
 /**
@@ -127,7 +128,7 @@ function safeCachedVersion(value: unknown): string | undefined {
  * Never fetches. Returns what the last background check found.
  */
 export function getUpdateMeta(): UpdateMeta {
-  const latestVersion = safeCachedVersion(readConfig().latestVersion);
+  const latestVersion = cachedVersionForThisInstall(readConfig().latestVersion);
   return {
     version: VERSION,
     latestVersion,

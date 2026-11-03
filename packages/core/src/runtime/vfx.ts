@@ -552,13 +552,8 @@ function resolveCaptureSource(
  * Only the OUTPUT canvas is watched: `.hf-vfx-src` is a 2-D context and is
  * unaffected by GL context loss.
  *
- * Restore is deliberately unhandled — the entry stays lost for as long as this
- * registry does. `initVfx` already re-scans and re-registers every host when
- * the composition mounts and again when a sub-composition arrives, rebuilding
- * every program, texture and framebuffer from scratch; a second, narrower
- * rebuild path for `webglcontextrestored` alone would duplicate that one and
- * be free to drift from it. `preventDefault()` still runs, so the context is
- * restorable if a follow-up wants to take it.
+ * A lost entry stays lost for as long as its registry does; `rebuildLostVfx`
+ * re-runs `initVfx` once the context is restored, the one rebuild path.
  */
 function watchContextLoss(entry: VfxEntry): void {
   entry.out.addEventListener("webglcontextlost", (event) => {
@@ -570,6 +565,12 @@ function watchContextLoss(entry: VfxEntry): void {
     entry.contextLost = true;
     reportVfxError(`${describeHost(entry.host)}: WebGL context lost.`);
   });
+}
+
+/** Rebuilds every chain once none is still waiting on its context: a rebuild on a lost one drops the host for good. */
+export function rebuildLostVfx(root: HTMLElement): void {
+  if (!registry.some((entry) => entry.contextLost)) return;
+  if (registry.every((entry) => !entry.gl.isContextLost())) initVfx(root, registryFps);
 }
 
 /** The host's chain, or `null` once the reason it is unusable has been said. */

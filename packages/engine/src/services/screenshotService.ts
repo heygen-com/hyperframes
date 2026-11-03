@@ -108,11 +108,15 @@ export async function probeBeginFrameLiveness(
  * Requires chrome-headless-shell with --enable-begin-frame-control and
  * --deterministic-mode flags.
  */
-// Cache the last valid screenshot buffer per page for hasDamage=false frames.
-// When Chrome reports no visual change, we reuse the previous frame rather than
-// attempting Page.captureScreenshot (which times out in beginFrame mode since
-// the compositor is paused).
+// The last buffer beginFrameCapture returned per page. A screenshot BeginFrame always
+// reports damage, so a frame is reused only when a screenshot-less BeginFrame right after
+// the seek reports none. Any BeginFrame sent elsewhere moves the display past this buffer:
+// call forgetBeginFrameCapture first.
 const lastFrameCache = new WeakMap<Page, Buffer>();
+
+export function forgetBeginFrameCapture(page: Page): void {
+  lastFrameCache.delete(page);
+}
 
 const PENDING_FRAME_RETRIES = 5;
 
@@ -156,14 +160,29 @@ export async function beginFrameCapture(
     optimizeForSpeed: true,
   } as const;
 
-  const result = await sendBeginFrame(client, { frameTimeTicks, interval, screenshot });
+  // With a cached buffer, a screenshot-less BeginFrame first draws the seek and reports
+  // whether it changed anything. The screenshot after it is not displayed: a displayed
+  // screenshot frame leaves damage the next probe would report, and a settle frame to
+  // absorb it would draw page changes that nothing captures.
+  const cached = lastFrameCache.get(page);
+  let screenshotTicks = frameTimeTicks;
+  if (cached) {
+    const probe = await sendBeginFrame(client, { frameTimeTicks, interval });
+    if (!probe.hasDamage) return { buffer: cached, hasDamage: false };
+    screenshotTicks = frameTimeTicks + interval / 2;
+  }
+  const result = await sendBeginFrame(client, {
+    frameTimeTicks: screenshotTicks,
+    interval,
+    screenshot,
+    noDisplayUpdates: cached !== undefined,
+  });
 
   let buffer: Buffer;
   if (result.screenshotData) {
     buffer = Buffer.from(result.screenshotData, "base64");
     lastFrameCache.set(page, buffer);
   } else {
-    const cached = lastFrameCache.get(page);
     if (cached) {
       buffer = cached;
     } else {

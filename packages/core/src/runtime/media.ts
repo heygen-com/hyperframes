@@ -1,6 +1,6 @@
 import { swallow } from "./diagnostics";
 import { isClipVisibleAt, isInClipWindow } from "./clipWindow";
-import { mediaElementTime, startsSoundOnlyInsideATap } from "./mediaClock";
+import { isWebKit, mediaElementTime, startsSoundOnlyInsideATap } from "./mediaClock";
 import { sameInstant } from "../clipFacts";
 import { interpolateVolumeGain } from "./mediaVolumeEnvelope.js";
 import { elementVolumeLaneGain } from "./audioAutomationVolume.js";
@@ -22,7 +22,7 @@ import {
   MEDIA_SYNC_TOLERANCE_SECONDS,
   steerMedia,
 } from "./mediaSteer.js";
-export { MEDIA_SYNC_TOLERANCE_SECONDS } from "./mediaSteer.js";
+export { MEDIA_HARD_SYNC_SECONDS, MEDIA_SYNC_TOLERANCE_SECONDS } from "./mediaSteer.js";
 export type { RuntimeMediaClip } from "./types.js";
 export {
   readElementPlaybackRate,
@@ -36,6 +36,7 @@ export function readElementPlaybackStart(el: Element): number {
 
 const HOLD_END_EVENTS = ["seeked", "loadeddata", "error", "emptied", "abort"] as const;
 export const HOLD_CAP_MS = 5000;
+const WEBKIT_STUCK_AUDIO_SECONDS = 1;
 const releaseHeldVideo = new WeakMap<HTMLMediaElement, () => void>();
 
 // A seeking video still paints its previous frame, and one still fetching its first data paints none (its seek
@@ -257,6 +258,11 @@ export function isActiveAtPlayhead(el: HTMLMediaElement): boolean {
   return lastRelativeTime.has(el);
 }
 
+/** The source time the clip shows at the playhead, while it is inside its window. */
+export function sourceTimeAtPlayhead(el: HTMLMediaElement): number | undefined {
+  return lastRelativeTime.get(el);
+}
+
 /** Test-only seam: whether any per-source sync state is still tracked for `el`. */
 export function hasMediaSyncStateForTest(el: HTMLMediaElement): boolean {
   return (
@@ -444,6 +450,7 @@ export function syncRuntimeMedia(params: {
    * unity; do not mistake that transport write for an authored volume edit. */
   isWebAudioRouted?: (el: HTMLMediaElement) => boolean;
   forceSync?: boolean;
+  keepLateMedia?: boolean;
   /** False while the playhead is not moving (audio output has not started): a paused video waits for it. */
   clockAdvancing?: boolean;
   /** How far the next tick will move the playhead: an audio clip due within it starts now. */
@@ -643,7 +650,8 @@ export function syncRuntimeMedia(params: {
       lastOffset.set(el, offset);
       const firstTickOfClip = prevOffset === undefined;
       const offsetJumped = !firstTickOfClip && Math.abs(offset - prevOffset!) > 0.5;
-      const catastrophicDrift = drift > 3;
+      const catastrophicDrift =
+        drift > (el.tagName === "AUDIO" && isWebKit() ? WEBKIT_STUCK_AUDIO_SECONDS : 3);
       // A short audio clip can leave its native element paused just before EOF.
       // When the timeline re-enters the clip, rewind stale forward state at the
       // strict threshold; do not force cold audio forward while it buffers.
@@ -697,6 +705,7 @@ export function syncRuntimeMedia(params: {
       let strictSync = false;
       if (
         !isPlayingMedia &&
+        !params.keepLateMedia &&
         !holdingAhead &&
         !hardSync &&
         !firstTickOfClip &&

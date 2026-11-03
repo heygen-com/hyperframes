@@ -8,7 +8,7 @@ import { Tooltip } from "../../components/ui";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { useLinkedClipPreferences } from "../../utils/linkedClipPreferences";
 import { ShortcutsButton } from "./ShortcutsPanel";
-import type { ShortcutSection } from "./studioShortcuts";
+import { keyHint, useStudioKeys, type ShortcutSection } from "./studioShortcuts";
 import { SpeedMenu } from "./SpeedMenu";
 import { VolumeControl } from "./VolumeControl";
 import { PreviewSeekBar } from "./PreviewSeekBar";
@@ -111,8 +111,9 @@ const FullscreenButton = memo(function FullscreenButton({
   isFullscreen: boolean;
   onToggleFullscreen: () => void;
 }) {
+  const fsKey = keyHint("fullscreen", useStudioKeys());
   return (
-    <Tooltip label={isFullscreen ? "Exit fullscreen (F)" : "Enter fullscreen (F)"}>
+    <Tooltip label={isFullscreen ? `Exit fullscreen (${fsKey})` : `Enter fullscreen (${fsKey})`}>
       <button
         type="button"
         onClick={() => {

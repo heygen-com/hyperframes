@@ -32,6 +32,7 @@ import {
   type RawAuthoredTiming,
 } from "@hyperframes/core";
 
+import { readReferenceBackground } from "./referenceBackground.js";
 import { holdRenderFrameVideos } from "./renderFrameVideoHold.js";
 import { asDrawElementCaptureFailure, DrawElementCaptureError } from "./drawElementCaptureError.js";
 import { encodePng } from "../utils/alphaBlit.js";
@@ -70,6 +71,7 @@ import {
 } from "./browserManager.js";
 import {
   beginFrameCapture,
+  forgetBeginFrameCapture,
   ensureRenderFrameSiblings,
   getCdpSession,
   pageContentExceedsCaptureHeight,
@@ -964,6 +966,7 @@ async function initDrawElementOrTransparentBackground(
   page: Page,
   logInitPhase: (phase: string) => void,
 ): Promise<void> {
+  await session.options.recordReferenceBackground?.(() => readReferenceBackground(page));
   const supersampling = (session.options.deviceScaleFactor ?? 1) !== 1;
   // forceScreenshot is an explicit routing decision made upstream (render-mode
   // compat hints like raw requestAnimationFrame, alpha formats, low-memory) —
@@ -2292,7 +2295,7 @@ export async function pollVideosReady(
             if (ve.readyState >= 2) return true;
             if (ve.error) return true;
             if (ve.networkState === HTMLMediaElement.NETWORK_NO_SOURCE) return true;
-            return false;
+            return !ve.getAttribute("src") && !ve.querySelector("source");
           })
         );
       }, skipIds),
@@ -2413,6 +2416,7 @@ export async function collectMediaReadinessWarnings(
     for (const media of document.querySelectorAll("video")) {
       const mediaElement = media as HTMLMediaElement;
       if (skipped.has(mediaElement.id)) continue;
+      if (!mediaElement.getAttribute("src") && !mediaElement.querySelector("source")) continue;
       const src = mediaElement.currentSrc || mediaElement.getAttribute("src") || "(no src)";
       const failed =
         Boolean(mediaElement.error) ||
@@ -2510,6 +2514,10 @@ export function recordSubTimelineWarning(session: CaptureSession, timeoutMs: num
       },
     },
   ]);
+  if (scriptFailure) {
+    const failed = session.warnings.filter((w) => w.code === "sub_timeline_script_failure");
+    session.options?.onSubTimelineScriptFailure?.(failed);
+  }
 }
 
 /**
@@ -4497,6 +4505,7 @@ async function captureFrameSurface(
         interval: session.beginFrameIntervalMs,
         noDisplayUpdates: false,
       });
+      forgetBeginFrameCapture(page);
       session.beginFrameSeekPresented = true;
     }
     const result = await beginFrameCapture(

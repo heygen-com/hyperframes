@@ -8,7 +8,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { FONT_ALIAS_MAP, resolveAliasDisplayName } from "./aliases.js";
@@ -25,6 +25,7 @@ import {
   type FontDiagnostics,
   type FontDiagPath,
 } from "./fontDiagnostics.js";
+import { hyperframesCacheDir } from "../cacheDir.js";
 
 export type { FontDiagnostics };
 
@@ -1123,7 +1124,7 @@ function resolveFontCacheRoot(): string {
     lambdaFontCacheRoot ??= mkdtempSync(join(tmpdir(), "hyperframes-fonts-"));
     return lambdaFontCacheRoot;
   }
-  return join(homedir(), ".cache", "hyperframes", "fonts");
+  return hyperframesCacheDir("fonts");
 }
 
 // Chrome UA triggers woff2 responses from Google Fonts CSS API

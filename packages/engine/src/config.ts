@@ -90,6 +90,7 @@ export interface EngineConfig {
    * true. Kill switch: `HF_DE_WORKER_ENCODE=false`.
    */
   enableDrawElementWorkerEncode: boolean;
+  useInPageEncode: boolean;
   /**
    * INTERNAL. Set by resolveConfig when it disabled enablePageSideCompositing
    * solely because drawElement was on. Lets the producer's compile-time gates
@@ -306,6 +307,7 @@ export const DEFAULT_CONFIG: EngineConfig = {
   videoLayerPassthrough: false,
   useDrawElement: true,
   enableDrawElementWorkerEncode: true,
+  useInPageEncode: false,
   // Auto-detected per host in `resolveConfig`; defaults off for the raw
   // DEFAULT_CONFIG (used directly by tests and worker-sizing fallbacks).
   lowMemoryMode: false,
@@ -360,6 +362,7 @@ const BOOLEAN_ENGINE_CONFIG_FIELDS = [
   "videoLayerPassthrough",
   "useDrawElement",
   "enableDrawElementWorkerEncode",
+  "useInPageEncode",
   "lowMemoryMode",
   "enablePageSideCompositing",
   "enableChunkedEncode",
@@ -889,6 +892,7 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
       "HF_DE_WORKER_ENCODE",
       DEFAULT_CONFIG.enableDrawElementWorkerEncode,
     ),
+    useInPageEncode: envBool("HF_INPAGE_ENCODE", DEFAULT_CONFIG.useInPageEncode),
     lowMemoryMode: resolveLowMemoryMode(),
     enablePageSideCompositing: envBool(
       "HF_PAGE_SIDE_COMPOSITING",

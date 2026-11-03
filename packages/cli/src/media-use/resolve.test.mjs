@@ -1314,7 +1314,7 @@ test("--from rejects invalid lut cube without registering or leaving a frozen fi
   assert.equal(proc.status, 1, proc.stderr);
   const parsed = JSON.parse(proc.stdout);
   assert.equal(parsed.ok, false);
-  assert.match(parsed.error, /^ingested LUT is invalid: LUT_3D_SIZE 999 exceeds max 64/);
+  assert.match(parsed.error, /^ingested LUT is invalid: LUT_3D_SIZE 999 exceeds max 65/);
   assert.equal(readManifest(tmp).length, 0);
   const lutDir = join(tmp, ".media/luts");
   assert.deepEqual(existsSync(lutDir) ? readdirSync(lutDir) : [], []);

@@ -9,6 +9,8 @@ const ICON_COLOR_BY_KIND = {
   other: "text-panel-container",
 } as const;
 
+import { keyHint, useStudioKeys } from "../../player/components/studioShortcuts";
+
 export function PropertyPanelFlatHeader({
   name,
   meta,
@@ -54,7 +56,7 @@ export function PropertyPanelFlatHeader({
           <button
             type="button"
             aria-label="Ungroup"
-            title="Ungroup (⌘⇧G)"
+            title={`Ungroup (${keyHint("ungroup", useStudioKeys())})`}
             onClick={() => {
               track("button", "Ungroup");
               onUngroup?.();

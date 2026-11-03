@@ -30,6 +30,7 @@ import { AFTER_FONTS_SCRIPT_TYPE } from "@hyperframes/core/compiler";
 import { PREVIEW_BUNDLE_OPTIONS, PREVIEW_CAPTURE_PARAM, registerPreviewRoutes } from "./preview";
 import { registerFileRoutes } from "./files";
 import { createPreviewDocumentStore } from "../helpers/previewDocumentStore";
+import { MAX_OPEN_MEDIA_RANGE_BYTES } from "../helpers/mediaRange";
 import type { StudioApiAdapter } from "../types";
 import {
   affectsPreview,
@@ -1476,6 +1477,12 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       variant?: "h264" | "vp8",
       box?: { width: number; height: number },
     ) => Promise<string>;
+    resolveStillImpl?: (
+      projectDir: string,
+      absoluteSourcePath: string,
+      at: number,
+      box?: { width: number; height: number },
+    ) => Promise<string>;
     scanMapImpl?: ScanMapImpl;
     probeAssetCodecImpl?: () => Promise<{
       codecName: string;
@@ -1501,6 +1508,11 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       );
     vi.doMock("../helpers/proxyTranscoder.js", () => ({
       resolveProxy,
+      resolveStill:
+        opts.resolveStillImpl ??
+        (async () => {
+          throw new Error("no resolveStill impl configured for this test");
+        }),
       waitForProxy,
       ProxyWaitTimeoutError,
       PROXY_PENDING_RETRY_AFTER_SECONDS,
@@ -1594,6 +1606,32 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       expect(ranged.headers.get("Content-Range")).toBe("bytes 0-9/20");
     });
 
+    it("makes the copy at background priority when the request says it is for later", async () => {
+      const projectDir = createProjectDir();
+      writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
+      const resolveProxyMock = vi.fn(async () => {
+        const proxyPath = join(projectDir, "proxy.mp4");
+        writeFileSync(proxyPath, "proxybytes");
+        return proxyPath;
+      });
+      const { registerPreviewRoutes: register } = await loadPreviewModule({
+        resolveProxyImpl: resolveProxyMock,
+      });
+      const app = new Hono();
+      register(app, createAdapter(projectDir));
+
+      await app.request("http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264", {
+        headers: { "X-HF-Proxy-Priority": "0" },
+      });
+      expect(resolveProxyMock).toHaveBeenCalledWith(
+        projectDir,
+        join(projectDir, "clip.mp4"),
+        "h264",
+        undefined,
+        { background: true },
+      );
+    });
+
     it("puts the copy ahead of the queue when the request says the video is at the playhead", async () => {
       const projectDir = createProjectDir();
       writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
@@ -1618,6 +1656,41 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
         undefined,
         { priority: true },
       );
+    });
+
+    it("serves one frame of the video as a JPEG while its copy is made, behind the same gate", async () => {
+      const projectDir = createProjectDir();
+      writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
+      const resolveStillMock = vi.fn(async () => {
+        const stillPath = join(projectDir, "still.jpg");
+        writeFileSync(stillPath, "jpegbytes");
+        return stillPath;
+      });
+      const { registerPreviewRoutes: register } = await loadPreviewModule({
+        resolveStillImpl: resolveStillMock,
+      });
+      const app = new Hono();
+      register(app, createAdapter(projectDir));
+      const url = "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264";
+
+      const still = await app.request(`${url}&hf-proxy-still=12.34`);
+      expect(still.status).toBe(200);
+      expect(still.headers.get("Content-Type")).toBe("image/jpeg");
+      expect(await still.text()).toBe("jpegbytes");
+      expect(resolveStillMock).toHaveBeenCalledWith(
+        projectDir,
+        join(projectDir, "clip.mp4"),
+        12.34,
+        undefined,
+      );
+
+      expect((await app.request(`${url}&hf-proxy-still=-1`)).status).toBe(404);
+      expect((await app.request(`${url}&hf-proxy-still=abc`)).status).toBe(404);
+      expect(
+        (await app.request("http://localhost/projects/demo/preview/clip.mp4?hf-proxy-still=1"))
+          .status,
+      ).toBe(404);
+      expect(resolveStillMock).toHaveBeenCalledTimes(1);
     });
 
     it("honors If-None-Match on a repeat request with a 304, without re-invoking resolveProxy", async () => {
@@ -2663,6 +2736,29 @@ describe("preview asset byte ranges", () => {
     });
     expect(res.status).toBe(416);
     expect(res.headers.get("Content-Range")).toBe("bytes */3");
+  });
+
+  it("answers an open-ended media range with a bounded piece, not the rest of the file", async () => {
+    // A media element reads `bytes=N-` until its buffer is full, then leaves the response open.
+    // Served to EOF, each <video> held one of the browser's six connections, so seven clips on
+    // one file left every other request queued (#6029).
+    const projectDir = createProjectDir();
+    const size = 3 * 1024 * 1024 * 1024;
+    const fd = openSync(join(projectDir, "clip.mp4"), "w");
+    ftruncateSync(fd, size);
+    closeSync(fd);
+
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+    const res = await app.request("http://localhost/projects/demo/preview/clip.mp4", {
+      headers: { Range: "bytes=5000000-" },
+    });
+    expect(res.status).toBe(206);
+    expect(res.headers.get("Content-Range")).toBe(
+      `bytes 5000000-${5000000 + MAX_OPEN_MEDIA_RANGE_BYTES - 1}/${size}`,
+    );
+    expect(res.headers.get("Content-Length")).toBe(String(MAX_OPEN_MEDIA_RANGE_BYTES));
+    expect((await res.arrayBuffer()).byteLength).toBe(MAX_OPEN_MEDIA_RANGE_BYTES);
   });
 });
 

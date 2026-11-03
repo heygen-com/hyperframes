@@ -97,6 +97,12 @@
       "runtime": "./dist/helpers/encoderOptions.js",
       "types": "./dist/helpers/encoderOptions.d.ts",
       "environments": ["bun", "node"]
+    },
+    "./media-range": {
+      "source": "./src/helpers/mediaRange.ts",
+      "runtime": "./dist/helpers/mediaRange.js",
+      "types": "./dist/helpers/mediaRange.d.ts",
+      "environments": ["bun", "node"]
     }
   }
 }

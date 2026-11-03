@@ -2,7 +2,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mediaElementTime } from "./mediaClock";
 import { HF_COLOR_GRADING_ATTR, serializeHfColorGrading } from "../colorGrading";
-import { STUDIO_PREVIEW_LAZY_ATTR, STUDIO_PREVIEW_MARK_META } from "../studioPreviewMark";
+import {
+  PLAYER_FRAME_ATTR,
+  STUDIO_PREVIEW_LAZY_ATTR,
+  STUDIO_PREVIEW_MARK_META,
+} from "../studioPreviewMark";
 import { revealClip } from "./clipReveal";
 import type { RuntimeTimelineLike } from "./types";
 
@@ -62,6 +66,7 @@ function resetRuntimeGlobals(): void {
   window.__timelines = {};
   delete window.__player;
   delete window.__playerReady;
+  delete window.__HF_RELEASE_PASSED_MEDIA;
   delete window.__renderReady;
   delete window.__hfTimelinesBuilding;
   const win = window as {
@@ -90,6 +95,12 @@ const servePreview = () =>
   document.head.appendChild(
     Object.assign(document.createElement("meta"), { name: STUDIO_PREVIEW_MARK_META }),
   );
+const asSafari = () =>
+  vi
+    .spyOn(navigator, "userAgent", "get")
+    .mockReturnValue(
+      "Mozilla/5.0 AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
+    );
 const neverDecodes = (clip: HTMLElement) => {
   withImage(clip).querySelector("img")!.decode = () => new Promise<void>(() => {});
   return clip;
@@ -378,6 +389,32 @@ describe("runtime entry", () => {
     expect(visibility(current, later)).toEqual(["hidden", "visible"]);
   });
 
+  it("redraws a paused scene by stepping its timeline off the current time and back after a WebGL restore", async () => {
+    const root = mountRoot();
+    timed(root, "div", "0");
+    const timeline = window.__timelines.main!;
+    await evaluateRuntime();
+    window.__player!.seek(2);
+    const seen: number[] = [];
+    const totalTime = timeline.totalTime!;
+    timeline.totalTime = (t?: number) => {
+      if (t !== undefined) seen.push(t);
+      return totalTime(t as number);
+    };
+    const frames: FrameRequestCallback[] = [];
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => frames.push(cb));
+
+    const scene = root.appendChild(document.createElement("canvas"));
+    scene.dispatchEvent(new Event("webglcontextlost", { cancelable: true }));
+    scene.dispatchEvent(new Event("webglcontextrestored"));
+    seen.length = 0;
+    frames.splice(0).forEach((cb) => cb(0));
+
+    expect(seen[0]).toBeCloseTo(2 - 1e-4, 6);
+    expect(seen.at(-1)).toBeCloseTo(2, 3);
+    vi.restoreAllMocks();
+  });
+
   it("leaves nothing hidden when the runtime is evaluated a second time", async () => {
     const root = mountRoot();
     const current = timed(root, "div", "0");
@@ -428,6 +465,64 @@ describe("runtime entry", () => {
       expect(now.getAttribute("src")).toBe("now.mp4");
     });
 
+    // Three takes of one file, each a picture and a sound, as an edit cut from a single source is.
+    const takesOfOneFile = () => {
+      const root = mountRoot();
+      const take = (start: string) => {
+        const pair = [timed(root, "video", start), timed(root, "audio", start)];
+        for (const el of pair) el.setAttribute("src", "/source.mp4");
+        return pair;
+      };
+      return [take("0"), take("3"), take("9")];
+    };
+    const inPlayerFrame = (userAgent: "safari" | "chrome") => {
+      const frame = document.createElement("iframe");
+      frame.setAttribute(PLAYER_FRAME_ATTR, "");
+      vi.spyOn(window, "frameElement", "get").mockReturnValue(frame);
+      if (userAgent === "safari") asSafari();
+    };
+
+    it("in the player on Safari a file keeps the take on screen and the next one loading, and frees the rest", async () => {
+      spyLoad();
+      inPlayerFrame("safari");
+      const [first, second, third] = takesOfOneFile();
+
+      await evaluateRuntime();
+      expect([first, second, third].map((take) => armed(...take))).toEqual([
+        [true, true],
+        [true, true],
+        [false, false],
+      ]);
+
+      window.__player?.seek(3.5);
+      expect([first, second, third].map((take) => armed(...take))).toEqual([
+        [false, false],
+        [true, true],
+        [true, true],
+      ]);
+    });
+
+    it("in the player on Chromium every take of a file loads at parse", async () => {
+      spyLoad();
+      inPlayerFrame("chrome");
+      const takes = takesOfOneFile();
+
+      await evaluateRuntime();
+      expect(takes.map((take) => armed(...take))).toEqual([
+        [true, true],
+        [true, true],
+        [true, true],
+      ]);
+    });
+
+    it("in Studio's preview a clip 5 s ahead stays unloaded, as the look-ahead is 2 s", async () => {
+      servePreview();
+      const [now, soon] = videos(mountRoot(), "0", "5");
+
+      await evaluateRuntime();
+      expect(armed(now, soon)).toEqual([true, false]);
+    });
+
     it("loads a clip with no authored length as a render does, so no reload drops its duration", async () => {
       spyLoad();
       servePreview();
@@ -474,6 +569,74 @@ describe("runtime entry", () => {
       expect(armed(...due)).toEqual([true, true, true, true, true]);
     });
 
+    it("refreshes queued prefetch priorities after a composition timing edit", async () => {
+      spyLoad();
+      servePreview();
+      const root = mountRoot();
+      const music = timed(root, "audio", "0.5");
+      music.setAttribute("data-duration", "3600");
+      Object.defineProperty(music, "duration", { configurable: true, value: 3600 });
+      const [first, second, third, movedEarlier] = videos(root, "0.8", "1", "1.2", "1.3");
+
+      await evaluateRuntime();
+      expect(armed(music, first, second, third, movedEarlier)).toEqual([
+        true,
+        true,
+        true,
+        false,
+        false,
+      ]);
+
+      movedEarlier.setAttribute("data-start", "0.6");
+      window.__player?.seek(0.01);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      Object.defineProperty(first, "readyState", { configurable: true, value: 3 });
+      first.dispatchEvent(new Event("canplay"));
+
+      expect(armed(movedEarlier)).toEqual([true]);
+      expect(armed(third)).toEqual([false]);
+    });
+
+    it("keeps the long-track prefetch wave ordered across canplay settlements", async () => {
+      spyLoad();
+      servePreview();
+      const root = mountRoot();
+      const music = timed(root, "audio", "0.5");
+      music.setAttribute("data-duration", "3600");
+      Object.defineProperty(music, "duration", { configurable: true, value: 3600 });
+      const waiting = Array.from({ length: 128 }, (_, index) => {
+        // A deterministic shuffled window makes the priority sort exercise its comparator.
+        const start = 0.1 + (((index * 197) % 509) / 509) * 1.8;
+        return timed(root, "video", String(start));
+      });
+
+      const getAttribute = vi.spyOn(Element.prototype, "getAttribute");
+      await evaluateRuntime();
+      expect(loadsOf(music)).toEqual([1]);
+      const settled = new Set<HTMLMediaElement>();
+      const candidates = [music, ...waiting];
+      let fillCalls = 0;
+      while (settled.size < candidates.length) {
+        const active = candidates.filter(
+          (element) => !settled.has(element) && element.preload === "auto",
+        );
+        if (active.length === 0) break;
+        for (const element of active) {
+          settled.add(element);
+          Object.defineProperty(element, "readyState", { configurable: true, value: 3 });
+          element.dispatchEvent(new Event("canplay"));
+          fillCalls++;
+        }
+      }
+
+      // Every settled media opens one slot; priorities must not be re-read for each refill.
+      const startReads = getAttribute.mock.calls.filter(([name]) => name === "data-start").length;
+      expect(fillCalls).toBe(candidates.length);
+      expect(startReads).toBeLessThan(waiting.length * 60);
+      expect(armed(...waiting).filter(Boolean)).toHaveLength(waiting.length);
+      getAttribute.mockRestore();
+    }, 20_000);
+
     it("prepares a queued split only after a prefetch slot opens", async () => {
       spyLoad();
       servePreview();
@@ -499,6 +662,28 @@ describe("runtime entry", () => {
       expect(queued.currentTime).toBe(mediaElementTime(6));
       expect(loadsOf(queued)).toEqual([1]);
     });
+
+    it.each([
+      [true, 2],
+      [false, 1],
+    ])(
+      "with a capture page flag %s, a fully buffered clip the playhead left is reloaded %s times",
+      async (flag, loadCount) => {
+        spyLoad();
+        servePreview();
+        window.__HF_RELEASE_PASSED_MEDIA = flag;
+        const [now, later] = videos(mountRoot(), "0", "9");
+        Object.defineProperty(now, "duration", { value: 5 });
+        Object.defineProperty(now, "buffered", {
+          value: { length: 1, start: () => 0, end: () => 5 },
+        });
+
+        await evaluateRuntime();
+        window.__player?.seek(7.6);
+        expect(armed(now, later)).toEqual([false, true]);
+        expect(loadsOf(now)).toEqual([loadCount]);
+      },
+    );
 
     it("frees a clip the playhead has passed while it is still downloading, and keeps one that finished", async () => {
       spyLoad();
@@ -847,6 +1032,42 @@ describe("runtime entry", () => {
       untrimmed.removeAttribute("data-duration");
       await Promise.resolve();
       expect([first.preload, later.preload, untrimmed.preload]).toEqual(["", "none", ""]);
+    });
+
+    it("gives each parsed clip preload none in the player's frame, where no clip fetches ahead of the first take", async () => {
+      const frame = document.createElement("iframe");
+      frame.setAttribute(PLAYER_FRAME_ATTR, "");
+      vi.spyOn(window, "frameElement", "get").mockReturnValue(frame);
+      asSafari();
+      const root = mountRoot();
+      timed(root, "div", "0");
+      await evaluateRuntime();
+      const [first, later] = videos(root, "0", "5");
+      await Promise.resolve();
+      expect([first.preload, later.preload]).toEqual(["", "none"]);
+    });
+
+    it("leaves Chromium loading every clip at parse in the player's frame", async () => {
+      const frame = document.createElement("iframe");
+      frame.setAttribute(PLAYER_FRAME_ATTR, "");
+      vi.spyOn(window, "frameElement", "get").mockReturnValue(frame);
+      const root = mountRoot();
+      timed(root, "div", "0");
+      await evaluateRuntime();
+      const [first, later] = videos(root, "0", "5");
+      await Promise.resolve();
+      expect([first.preload, later.preload]).toEqual(["", ""]);
+    });
+
+    it("leaves a frame the player did not mark loading every clip at parse", async () => {
+      vi.spyOn(window, "frameElement", "get").mockReturnValue(document.createElement("iframe"));
+      asSafari();
+      const root = mountRoot();
+      timed(root, "div", "0");
+      await evaluateRuntime();
+      const [first, later] = videos(root, "0", "5");
+      await Promise.resolve();
+      expect([first.preload, later.preload]).toEqual(["", ""]);
     });
 
     it("defers a clip at 0 inside a later scene, by its start in the film", async () => {

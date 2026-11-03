@@ -14,7 +14,16 @@ import { tmpdir } from "node:os";
 import { dirname, extname, join, relative, resolve } from "node:path";
 import { findCuts, signatures } from "../measure/cuts.js";
 import { Fix, probeVideo, projectOf, round, runFfmpeg, videoClip } from "../measure/media.js";
-import { idempotencyKey, runJob, type Job } from "./v3.js";
+import {
+  idempotencyKey,
+  keepVoice,
+  keptVoice,
+  publicVoices,
+  runJob,
+  senderScope,
+  type Job,
+  type Voice,
+} from "./v3.js";
 
 export type GenerateType = "image" | "video" | "avatar" | "voice" | "music";
 export const GENERATE_TYPES: readonly GenerateType[] = [
@@ -59,6 +68,9 @@ export interface Mask {
   window?: [number, number];
 }
 
+type Size = { width: number; height: number };
+const RING_MOVED = 6;
+
 /** `x,y,w,h` or `x,y,w,h,a-b` (seconds of the motion clip). */
 export function parseMask(text: string): Mask {
   const m =
@@ -72,30 +84,40 @@ export function parseMask(text: string): Mask {
 }
 
 /**
- * Fills a box from the pixels around it (ffmpeg delogo): no letter survives, but the box is smeared. Delogo needs a
- * pixel of picture on every side, so boxes are kept 1 px inside the frame.
+ * A box's temporal median over about a second either side: moving text becomes the picture behind it. A stale box
+ * takes the colours of its own frame instead, shrunk until no letter survives.
  */
-function delogoFilters(masks: Mask[], width: number, height: number): string {
-  return masks
-    .flatMap(({ box: [x, y, w, h], window }) => {
-      const [x0, y0] = [Math.max(1, x), Math.max(1, y)];
-      const [x1, y1] = [Math.min(width - 2, x + w), Math.min(height - 2, y + h)];
-      if (x1 - x0 < 1 || y1 - y0 < 1) return [];
-      const when = window ? `:enable='between(t,${window[0]},${window[1]})'` : "";
-      return [`delogo=x=${x0}:y=${y0}:w=${x1 - x0}:h=${y1 - y0}${when}`];
-    })
-    .join(",");
-}
-
-/** A box's temporal median over about a second either side: moving text becomes the picture behind it. */
-function maskFilters(masks: Mask[], fps: number): string {
+function maskFilters(masks: Mask[], fps: number, stale: Mask[]): string {
   const radius = Math.min(127, Math.max(2, Math.round(fps)));
-  const steps = masks.map(({ box: [x, y, w, h], window }, i) => {
-    const when = window ? `:enable='between(t,${window[0]},${window[1]})'` : "";
+  const steps = masks.map((mask, i) => {
+    const [x, y, w, h] = mask.box;
+    const when = mask.window ? `:enable='between(t,${mask.window[0]},${mask.window[1]})'` : "";
     const [w2, h2] = [w - (w % 2), h - (h % 2)];
-    return `[v${i}]split[a${i}][b${i}];[b${i}]crop=${w2}:${h2}:${x}:${y},tmedian=radius=${radius}[m${i}];[a${i}][m${i}]overlay=${x}:${y}${when}[v${i + 1}]`;
+    const fill = stale.includes(mask)
+      ? `scale=3:3:flags=area,scale=${w2}:${h2}:flags=bicubic`
+      : `tmedian=radius=${radius}`;
+    return `[v${i}]split[a${i}][b${i}];[b${i}]crop=${w2}:${h2}:${x}:${y},${fill}[m${i}];[a${i}][m${i}]overlay=${x}:${y}${when}[v${i + 1}]`;
   });
   return `[0:v]null[v0];${steps.join(";")}`;
+}
+
+/** The middle pixel change between two grey frames in a ring round a box. */
+export function ringChange(
+  a: Uint8Array,
+  b: Uint8Array,
+  width: number,
+  [x, y, w, h]: Mask["box"],
+): number {
+  const height = a.length / width;
+  const pad = Math.max(w, h) >> 1;
+  const changes: number[] = [];
+  for (let py = Math.max(0, y - pad); py < Math.min(height, y + h + pad); py += 4)
+    for (let px = Math.max(0, x - pad); px < Math.min(width, x + w + pad); px += 4) {
+      if (px >= x && px < x + w && py >= y && py < y + h) continue;
+      const i = py * width + px;
+      changes.push(Math.abs(a[i]! - b[i]!));
+    }
+  return changes.sort((m, n) => m - n)[changes.length >> 1] ?? 0;
 }
 
 /** Mean absolute pixel step inside a box and in a ring around it: the box holds more edges when inside > ring. */
@@ -204,11 +226,7 @@ const ROUTES: Record<GenerateType, Route> = {
       type: "image",
       image: media(need(r.photo, "--photo", "--photo assets/presenter.png"), "image"),
       script: need(r.script, "--script", '--script "What they say"'),
-      voice_id: need(
-        r.voice,
-        "--voice",
-        "--voice <voice id> (npx hyperframes media-use resolve --type voice lists voices)",
-      ),
+      voice_id: need(r.voice, "--voice", "--voice <voice id or language>"),
       ...(r.aspect ? { aspect_ratio: r.aspect } : {}),
       output_format: "mp4",
     }),
@@ -221,7 +239,7 @@ const ROUTES: Record<GenerateType, Route> = {
     poll: (id) => `/v3/voices/speech/${id}`,
     body: (r) => ({
       text: need(r.script, "--script", '--script "What the voice says"'),
-      voice_id: need(r.voice, "--voice", "--voice <voice id>"),
+      voice_id: need(r.voice, "--voice", "--voice <voice id or language>"),
     }),
     urls: ["audio_url"],
     ledger: "voice",
@@ -262,6 +280,20 @@ function needFile(path: string): void {
     throw new Fix(`no file at ${path}`, "pass a picture or sound from the project");
 }
 
+const shrink = (path: string, out: string) =>
+  runFfmpeg([
+    "-y",
+    "-i",
+    path,
+    "-vf",
+    "scale='min(2048,iw)':'min(2048,ih)':force_original_aspect_ratio=decrease",
+    "-q:v",
+    "3",
+    "-frames:v",
+    "1",
+    out,
+  ]);
+
 /**
  * A picture or a sound as the routes take it inline, pictures shrunk to 2048 px so the body stays small, a motion
  * clip with its masks filled.
@@ -273,19 +305,7 @@ function inline(work: string, masks: Mask[] = []): Media {
       work,
       `in-${Math.random().toString(36).slice(2)}.${{ image: "jpg", audio: "mp3", video: "mp4" }[kind]}`,
     );
-    if (kind === "image")
-      runFfmpeg([
-        "-y",
-        "-i",
-        path,
-        "-vf",
-        "scale='min(2048,iw)':'min(2048,ih)':force_original_aspect_ratio=decrease",
-        "-q:v",
-        "3",
-        "-frames:v",
-        "1",
-        out,
-      ]);
+    if (kind === "image") shrink(path, out);
     else if (kind === "audio")
       runFfmpeg(["-y", "-i", path, "-vn", "-ac", "1", "-c:a", "libmp3lame", "-b:a", "128k", out]);
     // A guide clip only needs its motion: 720 px on the long side, no sound, at most 15 s.
@@ -338,9 +358,26 @@ function structured(clip: string, guide: { width: number; height: number }, mask
   });
 }
 
-/** A copy of the guide with each mask's box filled: the temporal median, and delogo's smear where text stays put. */
+/** The masks whose surroundings change, where the camera moves: a median over time would freeze old frames in them. */
+function staleMasks(path: string, { width, height }: Size, masks: Mask[]): Mask[] {
+  const gray = runFfmpeg([
+    ...["-t", String(GUIDE_MAX_S), "-i", path],
+    ...["-vf", "fps=2", "-pix_fmt", "gray", "-f", "rawvideo", "-"],
+  ]);
+  const frame = (i: number) => gray.subarray(i * width * height, (i + 1) * width * height);
+  const count = Math.floor(gray.length / (width * height));
+  return masks.filter(({ box, window }) => {
+    const seconds = Array.from({ length: Math.max(0, count - 1) }, (_, i) => i).filter(
+      (i) => !window || (i / 2 >= window[0] - 1 && i / 2 <= window[1] + 1),
+    );
+    return seconds.some((i) => ringChange(frame(i), frame(i + 1), width, box) >= RING_MOVED);
+  });
+}
+
+/** A copy of the guide with each mask's box filled: the temporal median, then the frame's colours where text stays put. */
 function fillMasks(path: string, masks: Mask[], work: string): string {
   const info = probeVideo(path);
+  const stale = staleMasks(path, info, masks);
   const encode = (from: string, name: string, filter: string[]) => {
     const out = join(work, name);
     runFfmpeg([
@@ -351,12 +388,15 @@ function fillMasks(path: string, masks: Mask[], work: string): string {
     return out;
   };
   const median = encode(path, "median.mp4", [
-    ...["-t", "15", "-filter_complex", maskFilters(masks, info.fps)],
+    ...["-t", "15", "-filter_complex", maskFilters(masks, info.fps, stale)],
     ...["-map", `[v${masks.length}]`],
   ]);
   const left = structured(median, info, masks).map((s) => s.mask);
   if (!left.length) return median;
-  return encode(median, "delogo.mp4", ["-vf", delogoFilters(left, info.width, info.height)]);
+  return encode(median, "filled.mp4", [
+    ...["-filter_complex", maskFilters(left, info.fps, left)],
+    ...["-map", `[v${left.length}]`],
+  ]);
 }
 
 /**
@@ -393,7 +433,15 @@ export function fitAspect(out: string, aspect: string): string | undefined {
   return `HeyGen returned ${width}x${height} for ${aspect}; cropped to ${w}x${h} (centre), not stretched`;
 }
 
-const MIN_SHOT_S = 0.5;
+function aspectOf(r: GenerateRequest, work: string): string {
+  if (r.aspect || !r.firstFrame) return r.aspect ?? "16:9";
+  const sent = join(work, "first-frame.jpg");
+  shrink(r.firstFrame, sent);
+  const { width, height } = probeVideo(sent);
+  return `${width}:${height}`;
+}
+
+const MIN_SHOT_S = 0.15;
 
 export function foldShort(cuts: number[], length: number): number[] {
   const kept = [...cuts];
@@ -431,6 +479,38 @@ function checkGuide(r: Pick<GenerateRequest, "motion" | "allowCuts">): void {
 
 /** What the real call would refuse, checked without sending anything: `--plan` prices only a request that would run.
  *  The route's body runs with a stand-in for the media, so its required flags and conflicts are checked as sent. */
+const VOICE_ID = /^[0-9a-f]{32}$/i;
+
+export async function pickVoice(r: GenerateRequest): Promise<Voice> {
+  if (r.voice && VOICE_ID.test(r.voice)) return { voice_id: r.voice, name: r.voice };
+  if (!r.voice) {
+    const listed = (await publicVoices("English", 6))
+      .map((v) => `${v.voice_id} (${v.name}, ${v.gender ?? "?"})`)
+      .join("; ");
+    throw new Fix(
+      "--voice is missing",
+      `--voice <language>, e.g. --voice English, for HeyGen's first voice in it, or a voice id: ${listed}`,
+    );
+  }
+  const scope = await senderScope();
+  if (!scope)
+    throw new Fix(
+      "HeyGen did not say which account this sign-in is, so a voice picked now could differ on a re-run",
+      "run the same command again in a minute; pass --voice <voice id> to skip the pick",
+    );
+  const project = projectOf(dirname(resolve(r.out)));
+  const request = idempotencyKey("voice-pick", [
+    JSON.stringify({ ...r, out: resolve(r.out) }),
+    scope,
+  ]);
+  const kept = keptVoice(project, request);
+  if (kept) return kept;
+  const [voice] = await publicVoices(r.voice, 1);
+  if (!voice) throw new Fix(`HeyGen has no public voice for ${r.voice}`, "--voice <voice id>");
+  keepVoice(project, request, voice);
+  return voice;
+}
+
 export function checkRequest(r: GenerateRequest): void {
   const route = ROUTES[r.type];
   if (!route.ext.includes(extname(r.out).toLowerCase()))
@@ -502,14 +582,12 @@ export async function generate(
         cuts = null;
       }
     const notes: string[] = [];
-    if (r.type === "video" && (r.aspect || !r.firstFrame))
+    if (r.type === "video")
       try {
-        const note = fitAspect(out, r.aspect ?? "16:9");
+        const note = fitAspect(out, aspectOf(r, work));
         if (note) notes.push(note);
       } catch (e) {
-        notes.push(
-          `kept HeyGen's size, could not crop to ${r.aspect ?? "16:9"}: ${e instanceof Error ? e.message : e}`,
-        );
+        notes.push(`kept HeyGen's size, could not crop: ${e instanceof Error ? e.message : e}`);
       }
     if (r.masks?.length && r.motion)
       try {
