@@ -1,7 +1,7 @@
 // A rebuild against its original, frame by frame: per-frame SSIM on the original's clock for the whole frame and
 // each cell of a 4x4 grid, the worst moments with their worst cell boxed, cuts on both sides, and per-segment
 // verdicts. The second side is a video file (a render) or a project folder, whose frames are captured at the
-// original's frame times without rendering.
+// original's frame times without rendering. With an offset, the original's frame at t meets yours at t + offset.
 import {
   copyFileSync,
   existsSync,
@@ -125,6 +125,8 @@ export interface DiffOptions {
   project?: string;
   /** Drawn elements to score by themselves, segments or not: boxes in the original's pixels, optional windows. */
   drawn?: { box: [number, number, number, number]; window?: [number, number] }[];
+  /** Seconds yours runs behind the original (negative: ahead): the original's t meets yours' t + offset. */
+  offset?: number;
   log?: (message: string) => void;
 }
 
@@ -172,6 +174,7 @@ export interface SegmentVerdict {
 
 export interface CutReport {
   reference: number[];
+  /** On the original's clock: yours' time minus the offset. */
   yours: number[];
   /** The original's cuts with no cut within a frame of them in yours. */
   missing: number[];
@@ -213,7 +216,8 @@ export interface DiffResult {
   whole_frame_reuse?: WholeFrameReuse;
   worst: Moment[];
   cuts?: CutReport;
-  duration?: { reference: number; yours: number; pass: boolean };
+  /** With an offset the lengths do not compare: `pass` is null and `note` says why. */
+  duration?: { reference: number; yours: number; pass: boolean | null; note?: string };
   sound?: ReturnType<typeof soundOffset>;
   segments?: SegmentVerdict[];
   /** What decides the verdict: every drawn element and each rebuilt segment's area outside the person. */
@@ -225,8 +229,10 @@ export interface DiffResult {
   sheet?: string;
   sbs?: string;
   log: string;
-  /** Every compared frame's SSIM and worst cell. */
+  /** Every compared frame's SSIM and worst cell; `t` is the original's time, yours' is t + offset. */
   frames: string;
+  /** The offset compared at, in seconds, when one was given. */
+  offset?: number;
   warnings: string[];
 }
 
@@ -294,6 +300,55 @@ export function selectFilter(pick: Pick, fpsText: string): string[] {
   if (pick.kind === "all") return [];
   if (pick.kind === "range") return [`select=between(n\\,${pick.k0}\\,${pick.k1 - 1})`, pts];
   return [`select=${pick.ks.map((k) => `eq(n\\,${k})`).join("+")}`, pts];
+}
+
+/** Yours' filters: its n-th frame at the original's rate is yours at n / fps + offset, then the pick's frames. */
+export function yoursFilters(pick: Pick, fpsText: string, offset = 0): string[] {
+  const rate = offset ? `fps=${fpsText}:start_time=${offset}` : `fps=${fpsText}`;
+  return [rate, ...selectFilter(pick, fpsText)];
+}
+
+/**
+ * The original's frames [first, end) whose time plus `offset` falls on one of yours' frames, given yours' length in
+ * frames at the original's rate. A project's length is not known before capture, so its end is the original's.
+ */
+export function overlapFrames(
+  frames: number,
+  fps: number,
+  offset: number,
+  yoursFrames?: number,
+): [number, number] {
+  const shift = offset * fps;
+  const first = Math.min(frames, Math.max(0, Math.ceil(-shift - 1e-6)));
+  const end =
+    yoursFrames === undefined
+      ? frames
+      : Math.min(frames, Math.floor(yoursFrames - 1 - shift + 1e-6) + 1);
+  return [first, Math.max(first, end)];
+}
+
+/** A pick kept to the original's frames [first, end). */
+export function clipPick(pick: Pick, total: number, [first, end]: [number, number]): Pick {
+  if (pick.kind === "at") return { kind: "at", ks: pick.ks.filter((k) => k >= first && k < end) };
+  if (pick.kind === "all" && first <= 0 && end >= total) return pick;
+  const [k0, k1] = pick.kind === "range" ? [pick.k0, pick.k1] : [0, total];
+  return { kind: "range", k0: Math.max(k0, first), k1: Math.min(k1, end) };
+}
+
+/** The times a project is captured at for the original's frames: each frame's time plus the offset. */
+export function captureTimes(ks: number[], fps: number, offset = 0): number[] {
+  return ks.map((k) => (offset ? Math.max(0, k / fps + offset) : k / fps));
+}
+
+/** `--offset` seconds: a number, negative when yours runs ahead of the original. */
+export function parseOffset(text: unknown): number {
+  const value = typeof text === "string" ? text.trim() : "";
+  if (!/^[-+]?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$/i.test(value))
+    throw new Fix(
+      `--offset must be a number of seconds, got "${String(text)}"`,
+      "--offset 0.5 when yours runs half a second behind the original, --offset -0.5 when it runs ahead",
+    );
+  return Number(value);
 }
 
 /** Even cell sizes keep 4:2:0 chroma aligned; the last row and column drop at most a pixel or two. */
@@ -559,9 +614,15 @@ function regeneratedVerdict(
   yours: string,
   ref: VideoInfo,
   roi?: Roi,
+  offset = 0,
 ) {
-  const seconds = s.end - s.start;
-  const [a, b] = [videoClip(reference, s.start, seconds, ref), videoClip(yours, s.start, seconds)];
+  // Yours is read offset seconds later; a segment before yours starts is read from where it does.
+  const from = Math.max(s.start, -offset);
+  const seconds = s.end - from;
+  const [a, b] = [
+    videoClip(reference, from, seconds, ref),
+    videoClip(yours, from + offset, seconds),
+  ];
   // Yours may be another size: the region is the same share of its frame.
   const mine = roi && scaleRoi(roi, b.width / ref.width, b.height / ref.height);
   const energy = compareEnergy(energyCurve(a, roi), energyCurve(b, mine));
@@ -613,6 +674,7 @@ interface VerdictContext {
   drawn: Map<Segment, (DrawnVerdict & { id: string })[]>;
   /** A segment's re-shot person, by the three gates. */
   person: Map<Segment, PersonVerdict>;
+  offset: number;
 }
 
 function segmentVerdicts(
@@ -624,24 +686,7 @@ function segmentVerdicts(
 ): SegmentVerdict[] {
   return segments.map((s) => {
     const head = { id: s.id, window: [s.start, s.end] as [number, number], pixels: s.pixels };
-    if (s.pixels === "regenerated" && !s.drawn) {
-      if (ctx.mode !== "video")
-        return {
-          ...head,
-          pass: null,
-          note: "regenerated pixels are judged on a render: diff a render",
-        };
-      const moved = regeneratedVerdict(s, ctx.reference, ctx.yours, ctx.ref);
-      const person = ctx.person.get(s);
-      // No face to judge (a product shot): motion and look decide.
-      if (!person || person.pass === null) return { ...head, ...moved };
-      return {
-        ...head,
-        pass: person.pass,
-        scored: "the person: framing, text carried in the generated clip, lip sync",
-        person: { ...person, energy: moved.energy, look: moved.look },
-      };
-    }
+    if (s.pixels === "regenerated" && !s.drawn) return regeneratedSegment(s, head, ctx);
     const [a, b] = [frameAt(s.start, ctx.ref.fps), frameAt(s.end, ctx.ref.fps)];
     const mine = ks.flatMap((k, i) => (k >= a && k < b && i < series.frame.length ? [i] : []));
     if (!mine.length)
@@ -659,6 +704,32 @@ function segmentVerdicts(
       worst_cell: lowestCell(mine, series, ks, ctx.ref),
     };
   });
+}
+
+/** A wholly regenerated segment with nothing drawn over it: the person's gates, else motion and look. */
+function regeneratedSegment(
+  s: Segment,
+  head: { id: string; window: [number, number]; pixels: Segment["pixels"] },
+  ctx: VerdictContext,
+): SegmentVerdict {
+  if (ctx.mode !== "video")
+    return {
+      ...head,
+      pass: null,
+      note: "regenerated pixels are judged on a render: diff a render",
+    };
+  if (s.end <= -ctx.offset)
+    return { ...head, pass: null, note: "yours starts after this segment at this offset" };
+  const moved = regeneratedVerdict(s, ctx.reference, ctx.yours, ctx.ref, undefined, ctx.offset);
+  const person = ctx.person.get(s);
+  // No face to judge (a product shot): motion and look decide.
+  if (!person || person.pass === null) return { ...head, ...moved };
+  return {
+    ...head,
+    pass: person.pass,
+    scored: "the person: framing, text carried in the generated clip, lip sync",
+    person: { ...person, energy: moved.energy, look: moved.look },
+  };
 }
 
 /** Of these frames, the cell with the lowest mean SSIM, and the time it is lowest. */
@@ -698,7 +769,14 @@ function mixedVerdict(
   const rest = whole ? [] : cellsOutside(roi, ctx.ref.width, ctx.ref.height);
   const moved =
     ctx.mode === "video"
-      ? regeneratedVerdict(s, ctx.reference, ctx.yours, ctx.ref, whole ? undefined : roi)
+      ? regeneratedVerdict(
+          s,
+          ctx.reference,
+          ctx.yours,
+          ctx.ref,
+          whole ? undefined : roi,
+          ctx.offset,
+        )
       : undefined;
   const gates = ctx.person.get(s);
   const person =
@@ -1018,7 +1096,15 @@ function regionWarnings(segments: Segment[], ref: VideoInfo): string[] {
 
 async function worstMoments(
   picks: number[],
-  ctx: { refClip: Clip; yours: Clip; series: Series; ks: number[]; ref: VideoInfo; outDir: string },
+  ctx: {
+    refClip: Clip;
+    yours: Clip;
+    series: Series;
+    ks: number[];
+    ref: VideoInfo;
+    outDir: string;
+    offset: number;
+  },
 ): Promise<{ worst: Moment[]; sheet?: string }> {
   const { ref, series } = ctx;
   const sw = Math.min(SHEET_W, ref.width);
@@ -1060,7 +1146,7 @@ async function worstMoments(
     images.push(writeImage(join(ctx.outDir, `${tag}-yours.png`), b, sw, sh));
     labels.push(
       `original ${t}s`,
-      `yours ${t}s · ssim ${round(series.frame[i]!, 3)} · cell ${round(cells[c]!, 2)}`,
+      `yours ${round(t + ctx.offset, 3)}s · ssim ${round(series.frame[i]!, 3)} · cell ${round(cells[c]!, 2)}`,
     );
     worst.push({
       t,
@@ -1124,9 +1210,17 @@ export function soundOffset(reference: string, yours: string, ref: VideoInfo, mi
   return { offset_ms: offset, match: round(best[0], 2), pass: Math.abs(offset) <= 1000 / ref.fps };
 }
 
-function sideBySide(reference: string, yours: string, ref: VideoInfo, out: string): string {
+function sideBySide(
+  reference: string,
+  yours: string,
+  ref: VideoInfo,
+  out: string,
+  offset = 0,
+): string {
+  // The side that runs ahead starts later, so the two play in step.
+  const skip = (seconds: number) => (seconds > 0 ? ["-ss", String(seconds)] : []);
   runFfmpeg([
-    ...["-y", "-i", reference, "-i", yours, "-filter_complex"],
+    ...["-y", ...skip(-offset), "-i", reference, ...skip(offset), "-i", yours, "-filter_complex"],
     `[0:v]setsar=1[a];[1:v]scale=${ref.width}:${ref.height},setsar=1[b];[a][b]hstack=inputs=2,pad=ceil(iw/2)*2:ceil(ih/2)*2[v]`,
     ...["-map", "[v]", "-map", "0:a?", "-c:v", "libx264", "-crf", "20", "-pix_fmt", "yuv420p"],
     ...["-c:a", "aac", "-shortest", out],
@@ -1185,32 +1279,44 @@ export async function diffVideos(options: DiffOptions): Promise<DiffResult> {
       "a project folder is compared at chosen times, not whole",
       "pass --at t1,t2 or --range start,end, or render it and diff the render",
     );
-  const pick = choosePick(opts, ref);
-  const ks = pickedFrames(pick, ref.frames);
-  if (!ks.length || ks.some((k) => k >= ref.frames))
+  const asked = choosePick(opts, ref);
+  const askedKs = pickedFrames(asked, ref.frames);
+  if (!askedKs.length || askedKs.some((k) => k >= ref.frames))
     throw new Fix(
       `the original has ${ref.frames} frames (${round(ref.duration, 2)} s)`,
       "pick times inside it",
+    );
+  const yoursInfo = mode === "video" ? probeVideo(opts.yours) : undefined;
+  const offset = opts.offset ?? 0;
+  const yoursFrames = yoursInfo && Math.round(yoursInfo.pictureDuration * ref.fps);
+  const pick = offset
+    ? clipPick(asked, ref.frames, overlapFrames(ref.frames, ref.fps, offset, yoursFrames))
+    : asked;
+  const ks = offset ? pickedFrames(pick, ref.frames) : askedKs;
+  const span = (a: number, b: number) => `${round(a, 3)}–${round(b, 3)} s`;
+  const spanOf = (frames: number[], shift = 0) =>
+    span(frames[0]! / ref.fps + shift, (frames.at(-1)! + 1) / ref.fps + shift);
+  if (!ks.length)
+    throw new Fix(
+      `--offset ${offset} leaves no overlap: the original's ${spanOf(askedKs)} falls at ${spanOf(askedKs, offset)} in yours, which runs ${yoursInfo ? span(0, yoursInfo.pictureDuration) : "from 0 s"}`,
+      "pass an --offset that keeps some of the compared times inside yours",
+    );
+  if (ks.length < askedKs.length)
+    warnings.push(
+      `--offset ${offset}: ${askedKs.length - ks.length} of ${askedKs.length} frames fall outside yours, so the original's ${spanOf(ks)} is compared with yours' ${spanOf(ks, offset)}`,
     );
 
   const select = selectFilter(pick, ref.fpsText);
   const refClip: Clip = { ...videoClip(opts.reference, 0, undefined, ref), filters: select };
   let yours: Clip;
   let seqDir: string | undefined;
-  let yoursInfo: VideoInfo | undefined;
   if (mode === "project") {
-    const captured = await captureProject(
-      opts.yours,
-      ks.map((k) => k / ref.fps),
-      opts,
-      ref,
-    );
+    const captured = await captureProject(opts.yours, captureTimes(ks, ref.fps, offset), opts, ref);
     [yours, seqDir] = [captured.clip, captured.dir];
   } else {
-    yoursInfo = probeVideo(opts.yours);
     yours = {
       ...videoClip(opts.yours, 0, undefined, yoursInfo),
-      filters: [`fps=${ref.fpsText}`, ...select],
+      filters: yoursFilters(pick, ref.fpsText, offset),
     };
   }
 
@@ -1276,21 +1382,37 @@ export async function diffVideos(options: DiffOptions): Promise<DiffResult> {
       ks,
       ref,
       outDir: opts.outDir,
+      offset,
     });
     const cuts = pick.kind === "at" ? undefined : cutReport(refClip, yours, ks[0]!, ref.fps);
+    const whole = yoursInfo && asked.kind === "all";
+    const lengths = yoursInfo && {
+      reference: round(ref.pictureDuration, 3),
+      yours: round(yoursInfo.pictureDuration, 3),
+    };
     const duration =
-      yoursInfo && pick.kind === "all"
-        ? {
-            reference: round(ref.pictureDuration, 3),
-            yours: round(yoursInfo.pictureDuration, 3),
-            pass: Math.abs(ref.pictureDuration - yoursInfo.pictureDuration) <= 1.5 / ref.fps,
-          }
+      whole && lengths
+        ? offset
+          ? {
+              ...lengths,
+              pass: null,
+              note: "not measured: --offset shifts yours against the original, so the whole lengths do not compare",
+            }
+          : {
+              ...lengths,
+              pass: Math.abs(ref.pictureDuration - yoursInfo.pictureDuration) <= 1.5 / ref.fps,
+            }
         : undefined;
     const ledgerText =
       opts.ledger && existsSync(opts.ledger) ? readFileSync(opts.ledger, "utf8") : undefined;
     const people = new Map<Segment, PersonVerdict>();
     let clips: ReturnType<typeof placeClips> = [];
-    if (opts.segments && yoursInfo) {
+    const regenerated = opts.segments?.some((s) => s.regenerated || s.pixels === "regenerated");
+    if (offset && regenerated && yoursInfo)
+      warnings.push(
+        `--offset ${offset}: the person's framing, carried text and lip sync are not measured with an offset; motion and look are, on yours' shifted clock`,
+      );
+    if (opts.segments && yoursInfo && !offset) {
       const project =
         opts.project ??
         (opts.ledger && basename(dirname(opts.ledger)) === ".media"
@@ -1328,6 +1450,7 @@ export async function diffVideos(options: DiffOptions): Promise<DiffResult> {
           t,
           drawn: scoreDrawn(opts.segments, refClip, yours, ks, ref, series.frame.length),
           person: people,
+          offset,
         })
       : undefined;
     if (opts.segments) warnings.push(...regionWarnings(opts.segments, ref));
@@ -1371,13 +1494,10 @@ export async function diffVideos(options: DiffOptions): Promise<DiffResult> {
       warnings.push(
         `${Math.round(reuse.share * 100)}% of frames play the original's whole frame: pass --segments <file> to tell footage from copied drawings`,
       );
-    const sound =
-      yoursInfo && pick.kind === "all"
-        ? soundOffset(opts.reference, opts.yours, ref, yoursInfo)
-        : undefined;
+    const sound = whole ? soundOffset(opts.reference, opts.yours, ref, yoursInfo) : undefined;
     const sbs =
       opts.sbs && mode === "video"
-        ? sideBySide(opts.reference, opts.yours, ref, join(opts.outDir, "sbs.mp4"))
+        ? sideBySide(opts.reference, opts.yours, ref, join(opts.outDir, "sbs.mp4"), offset)
         : undefined;
 
     const judged = segments ? segments.every((s) => s.pass !== false) : passes(overall, t);
@@ -1418,6 +1538,7 @@ export async function diffVideos(options: DiffOptions): Promise<DiffResult> {
       ...(sbs ? { sbs } : {}),
       log: logPath,
       frames: join(opts.outDir, "frames.tsv"),
+      ...(options.offset === undefined ? {} : { offset: options.offset }),
       warnings,
     };
   } finally {
