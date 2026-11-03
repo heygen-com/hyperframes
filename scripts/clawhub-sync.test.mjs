@@ -99,11 +99,34 @@ describe("ClawHub skill sync", () => {
     );
   });
 
-  it("fails rather than skipping further when the next patch is taken too", () => {
-    const clawhub = fakeClawhub({ syncFailed: [creativeTaken], takenVersions: ["1.0.14"] });
+  it("keeps incrementing while consecutive versions are taken, then verifies the final version", () => {
+    const clawhub = fakeClawhub({
+      syncFailed: [creativeTaken],
+      takenVersions: ["1.0.14", "1.0.15"],
+    });
 
-    assert.deepEqual(sync(clawhub), [`hyperframes-creative: ${TAKEN("1.0.14")}`]);
-    assert.equal(clawhub.calls.filter((args) => args[0] === "publish").length, 1);
+    assert.deepEqual(sync(clawhub), []);
+    assert.deepEqual(
+      clawhub.calls
+        .filter((args) => args[0] === "publish")
+        .map((args) => args[args.indexOf("--version") + 1]),
+      ["1.0.14", "1.0.15", "1.0.16"],
+    );
+    assert.deepEqual(clawhub.calls.at(-1), [
+      "inspect",
+      "heygen-com/hyperframes-creative",
+      "--json",
+    ]);
+  });
+
+  it("stops after trying 20 versions and reports the exhausted range", () => {
+    const takenVersions = Array.from({ length: 20 }, (_, index) => `1.0.${14 + index}`);
+    const clawhub = fakeClawhub({ syncFailed: [creativeTaken], takenVersions });
+
+    assert.deepEqual(sync(clawhub), [
+      `hyperframes-creative: tried 20 versions from 1.0.14 through 1.0.33, but all were taken`,
+    ]);
+    assert.equal(clawhub.calls.filter((args) => args[0] === "publish").length, 20);
   });
 
   it("still fails on any other refusal, without retrying it", () => {

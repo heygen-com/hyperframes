@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// `clawhub sync` bumps from the registry's `latest` tag, so a version the registry has hidden
-// blocks the skill for good; an acknowledged one is published one patch past, then checked live.
+// `clawhub sync` bumps from the registry's `latest` tag, so versions the registry has hidden
+// block the skill for good; acknowledged ones are published past each hidden version, then
+// checked live.
 import { spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 
@@ -16,6 +17,7 @@ const SKIPPABLE_TAKEN = new Map([
 ]);
 const OWNER_HANDLE = "heygen-com";
 const OWNER = ["--owner", OWNER_HANDLE];
+const MAX_PUBLISH_VERSIONS = 20;
 
 function takenVersion(message) {
   const match = TAKEN_VERSION.exec(message);
@@ -46,26 +48,41 @@ const syncArgs = (provenance, dryRun) =>
 function versionPastSkippable(slug, message) {
   const taken = takenVersion(message);
   if (!taken || SKIPPABLE_TAKEN.get(slug) !== taken.join(".")) return null;
-  const [major, minor, patch] = taken;
+  return nextPatchVersion(taken);
+}
+
+function nextPatchVersion([major, minor, patch]) {
   return `${major}.${minor}.${patch + 1}`;
 }
 
 function republishTaken(run, provenance, { slug, message }) {
-  const version = versionPastSkippable(slug, message);
-  if (!version) return `${slug}: ${message}`;
+  const firstVersion = versionPastSkippable(slug, message);
+  if (!firstVersion) return `${slug}: ${message}`;
   const folder = `skills/${slug}`;
-  const published = run(
-    ["publish", folder, "--slug", slug, "--version", version, "--source-path", folder].concat(
-      OWNER,
-      provenance,
-    ),
-  );
-  if (!published.ok) return `${slug}: ${published.message}`;
-  const latest = latestTag(run, slug);
-  if (latest !== version)
-    return `${slug}: published ${version}, but the registry's latest is ${latest}`;
-  console.log(`${slug}: ${SKIPPABLE_TAKEN.get(slug)} is taken, published ${version}`);
-  return null;
+  let version = firstVersion;
+  for (let attempts = 1; attempts <= MAX_PUBLISH_VERSIONS; attempts += 1) {
+    const published = run(
+      ["publish", folder, "--slug", slug, "--version", version, "--source-path", folder].concat(
+        OWNER,
+        provenance,
+      ),
+    );
+    if (published.ok) {
+      const latest = latestTag(run, slug);
+      if (latest !== version)
+        return `${slug}: published ${version}, but the registry's latest is ${latest}`;
+      console.log(`${slug}: ${SKIPPABLE_TAKEN.get(slug)} is taken, published ${version}`);
+      return null;
+    }
+
+    const taken = takenVersion(published.message);
+    if (!taken) return `${slug}: ${published.message}`;
+    if (attempts === MAX_PUBLISH_VERSIONS) {
+      break;
+    }
+    version = nextPatchVersion(taken);
+  }
+  return `${slug}: tried ${MAX_PUBLISH_VERSIONS} versions from ${firstVersion} through ${version}, but all were taken`;
 }
 
 export function syncSkills({ run, provenance, dryRun }) {
