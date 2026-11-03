@@ -23,6 +23,7 @@ import {
 import { projectDirMissing } from "../helpers/projectDirMissing.js";
 import { isVariablesPayload, VARIABLES_PAYLOAD_ERROR } from "../helpers/variablesPayload.js";
 import { parseEncoderOptions, type EncoderOptionsBody } from "../helpers/encoderOptions.js";
+import { forgetJobsFinishedLongerThan } from "../helpers/finishedJobs.js";
 
 const VALID_RESOLUTIONS = new Set<string>(VALID_CANVAS_RESOLUTIONS);
 const RENDER_MIME: Record<string, string> = {
@@ -56,7 +57,7 @@ function contentDispositionHeader(disposition: "inline" | "attachment", filename
 
 export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void {
   // Scoped job store — not shared across createStudioApi() calls
-  const renderJobs = new Map<string, RenderJobState & { createdAt: number }>();
+  const renderJobs = new Map<string, RenderJobState>();
 
   const nextFreeRenderJobId = (baseId: string, ext: string, rendersDir: string): string => {
     let jobId = baseId;
@@ -66,7 +67,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     return jobId;
   };
 
-  // TTL cleanup for completed jobs (5 minutes)
+  // A finished job stays readable for 5 minutes after it finishes
   const TTL_MS = 300_000;
   const CLEANUP_INTERVAL_MS = 60_000;
   let cleanupTimer: ReturnType<typeof setInterval> | null = null;
@@ -77,12 +78,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     !process.argv.includes("build");
 
   const cleanupFinishedJobs = () => {
-    const now = Date.now();
-    for (const [key, job] of renderJobs) {
-      if (job.status !== "rendering" && now - job.createdAt > TTL_MS) {
-        renderJobs.delete(key);
-      }
-    }
+    forgetJobsFinishedLongerThan(TTL_MS, renderJobs, (job) => job.status !== "rendering");
     if (renderJobs.size === 0 && cleanupTimer) {
       clearInterval(cleanupTimer);
       cleanupTimer = null;
@@ -213,8 +209,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
       telemetryOptOut: body.telemetryOptOut === true,
       ...(pageMotionBlur === undefined ? {} : { pageMotionBlur }),
     });
-    (jobState as RenderJobState & { createdAt: number }).createdAt = Date.now();
-    renderJobs.set(jobId, jobState as RenderJobState & { createdAt: number });
+    renderJobs.set(jobId, jobState);
 
     ensureCleanupTimer();
 
@@ -410,8 +405,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
           status: file.status,
           progress: 100,
           outputPath: file.path,
-          createdAt: file.createdAt,
-        } as RenderJobState & { createdAt: number });
+        });
       }
     }
     return c.json({ renders: files.map(({ path: _path, ...render }) => render) });

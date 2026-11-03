@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, renameSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { resolveCloudAuthHeaders } from "../cloud/auth.js";
 import { billingBaseUrl } from "../heygen/plan.js";
@@ -84,8 +84,9 @@ async function download(url: string, pack: TemplatePack): Promise<Buffer> {
   return data;
 }
 
-function assertSafeEntries(archive: string): void {
-  const names = execFileSync("tar", ["-tzf", archive], {
+function assertSafeEntries(data: Buffer): void {
+  const names = execFileSync("tar", ["-tzf", "-"], {
+    input: data,
     encoding: "utf8",
     maxBuffer: 1 << 26,
   });
@@ -99,12 +100,10 @@ function unpack(data: Buffer, dest: string): void {
   mkdirSync(dirname(dest), { recursive: true });
   const work = mkdtempSync(`${dest}.part-`);
   try {
-    const archive = join(work, "template.tar.gz");
     const out = join(work, "template");
-    writeFileSync(archive, data);
-    assertSafeEntries(archive);
+    assertSafeEntries(data);
     mkdirSync(out);
-    execFileSync("tar", ["-xzf", archive, "-C", out, "--no-same-owner"]);
+    execFileSync("tar", ["-xzf", "-", "-C", out, "--no-same-owner"], { input: data });
     renameSync(out, dest);
   } finally {
     rmSync(work, { recursive: true, force: true });

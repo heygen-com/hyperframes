@@ -95,7 +95,8 @@ describe("DELETE /render/:jobId", () => {
     }
     writeFileSync(join(rendersDir, "keep.mp4"), "other-render");
 
-    vi.advanceTimersByTime(360_000);
+    // Seen finished by the first sweep (1 min), forgotten 5 min after that.
+    vi.advanceTimersByTime(7 * 60_000);
     expect((await app.request(`/render/${jobId}/progress`)).status).toBe(404);
     expect(existsSync(join(rendersDir, `${jobId}.mp4`))).toBe(true);
 

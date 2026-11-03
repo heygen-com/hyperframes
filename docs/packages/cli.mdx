@@ -107,10 +107,12 @@ their final line, on stderr.
 `2` means the command line itself is wrong: an unknown command or flag, or a
 missing or invalid value.
 
-**Version notices.** An owned install (npm, bun, pnpm, brew) updates itself
+**Version notices.** An owned install (npm, bun, pnpm) updates itself
 quietly in the background and prints one line on the next run:
-`hyperframes auto-updated to v0.1.5`. It never crosses a major version. Anywhere
-it cannot install — `npx`, an unknown installer — you get a notice instead:
+`hyperframes auto-updated to v0.1.5`. It never crosses a major version (before
+1.0, a minor version: 0.8 to 0.9 is a notice, not an install). Anywhere
+it cannot install — Homebrew (run `brew upgrade hyperframes` yourself), `npx`, an
+unknown installer — you get a notice instead:
 
 ```
   Update available: 0.1.4 → 0.1.5
@@ -1520,11 +1522,12 @@ with the render. It then prints the video's [`measure probe`](#measure) JSON,
 with a `reverse` field: whether you are signed in, the plan (`free`, `pro`, or
 `null` when unknown), the session, and on Free the `upgrade_url` and the
 `subscribe_command` ([`billing subscribe`](#billing) with the feature and session) that credit a
-purchase to this run. It stops the run only when HeyGen blocks it for a Free
-account: it then exits non-zero with that command. Signed out, offline, or
-on a server without the route, it skips the session and still probes; `--dir`
-is still created with a `hyperframes.json` naming the skill. `init` accepts that
-folder with the video already in it when it is the `--video` it was given.
+purchase to this run (both `null` when HeyGen says no plan can be bought right now). It stops the
+run only when HeyGen blocks it for a Free account: it then exits non-zero with that command, or,
+without one, says a plan can't be purchased right now. Signed out, offline, or on a server without
+the route, it skips the session and still probes; `--dir` is still created with a
+`hyperframes.json` naming the skill. `init` accepts that folder with the video already in it when
+it is the `--video` it was given.
 
 ```bash
 npx hyperframes reverse start ref.mp4 --dir my-rebuild
@@ -2195,7 +2198,9 @@ Set `HYPERFRAMES_SKIP_SKILLS=1` when something else manages the skills (CI, test
 or an install pinned to one commit). `skills update` and bare `skills` then exit 0
 with a one-line notice and leave the installed skills unchanged.
 
-The CLI installs from the current HyperFrames GitHub source and links the global
+The CLI installs the skills from the HyperFrames release tag that matches its own
+version (`v<version>`), and `check` compares against that same tag, so the skills
+match the CLI that runs them; a development build uses `main`. It links the global
 bundles into whichever compatible agents it finds. After scaffolding, `init`
 installs the core set if it is missing. It never refreshes or removes a skill you already have; run `skills update` for that.
 

@@ -12,9 +12,9 @@
  *               marker. The user is now on the new version.
  *
  * Guardrails:
- *   - Never auto-update across major versions. The user opts in explicitly
- *     via `hyperframes upgrade`.
- *   - Skip on CI, unattended runs (agents, no TTY), dev mode, unknown installer, ephemeral exec (npx),
+ *   - Never auto-update across major versions (or minor versions while in
+ *     0.x). The user opts in explicitly via `hyperframes upgrade`.
+ *   - Skip on CI, unattended runs (agents, no TTY), dev mode, Homebrew, unknown installer, ephemeral exec (npx),
  *     or when `HYPERFRAMES_NO_AUTO_INSTALL` / `HYPERFRAMES_NO_UPDATE_CHECK`
  *     is set.
  *   - If a previous install is still in flight (less than 10 min old), don't
@@ -53,10 +53,11 @@ function isAutoInstallDisabled(): boolean {
   );
 }
 
-/** Parse a semver-ish string's major number; returns NaN for pre-releases etc. */
-function majorOf(version: string): number {
-  const match = /^(\d+)\./.exec(version);
-  return match?.[1] ? Number.parseInt(match[1], 10) : Number.NaN;
+/** `0.<minor>` before 1.0 (a 0.x minor may break), `<major>` after; null when unparsable. */
+function breakingLine(version: string): string | null {
+  const match = /^(\d+)\.(\d+)\./.exec(version);
+  if (!match) return null;
+  return match[1] === "0" ? `0.${match[2]}` : String(match[1]);
 }
 
 /**
@@ -242,16 +243,31 @@ function isSilentUpgrade(latestVersion: string, currentVersion: string): boolean
   }
   if (cmp <= 0) return false;
 
-  // Major-version jumps carry breaking-change risk. Don't silent-install;
-  // the existing `printUpdateNotice` banner nudges the user to run
-  // `hyperframes upgrade` explicitly.
-  const latestMajor = majorOf(latestVersion);
-  const currentMajor = majorOf(currentVersion);
-  if (Number.isFinite(latestMajor) && Number.isFinite(currentMajor) && latestMajor > currentMajor) {
+  // Major-version jumps (minor jumps while in 0.x) carry breaking-change risk.
+  // Don't silent-install; the existing `printUpdateNotice` banner nudges the
+  // user to run `hyperframes upgrade` explicitly.
+  const latestLine = breakingLine(latestVersion);
+  const currentLine = breakingLine(currentVersion);
+  if (latestLine !== null && currentLine !== null && latestLine !== currentLine) {
     log(`[skip] major-bump ${currentVersion} -> ${latestVersion}`);
     return false;
   }
   return true;
+}
+
+/** The install to run unattended, or null when this installer cannot be held to `version`. */
+function backgroundInstaller(
+  version: string,
+): { installCommand: string; invocation: InstallInvocation } | null {
+  const installer = detectInstaller();
+  if (installer.kind === "skip" || installer.kind === "brew") {
+    const brew = `brew upgrade installs the tap's formula, not ${version}; notice only`;
+    log(`[skip] ${installer.kind === "brew" ? brew : installer.reason}`);
+    return null;
+  }
+  const installCommand = installer.installCommand(version);
+  const invocation = installInvocation(installer.kind, version);
+  return installCommand && invocation ? { installCommand, invocation } : null;
 }
 
 /**
@@ -262,14 +278,9 @@ export function scheduleBackgroundInstall(latestVersion: string, currentVersion:
   if (isAutoInstallDisabled()) return false;
   if (!isSilentUpgrade(latestVersion, currentVersion)) return false;
 
-  const installer = detectInstaller();
-  if (installer.kind === "skip") {
-    log(`[skip] ${installer.reason}`);
-    return false;
-  }
-  const installCommand = installer.installCommand(latestVersion);
-  const invocation = installInvocation(installer.kind, latestVersion);
-  if (!installCommand || !invocation) return false;
+  const installer = backgroundInstaller(latestVersion);
+  if (!installer) return false;
+  const { installCommand, invocation } = installer;
 
   const config = readConfig();
 
