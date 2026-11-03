@@ -68,7 +68,7 @@ type GsapWindow = {
 const SCENE_BOUNDARY_EPSILON_SECONDS = 0.05;
 const TWEEN_ENDPOINT_EPSILON_SECONDS = 0.001;
 
-/** Where two windows overlap. A zero-length one (a `set`) overlaps only by landing inside the other, named in `running`. */
+/** Where two windows overlap; a zero-length one (a `set`) only by landing inside the other (`running`). */
 function windowOverlap(
   a: GsapWindow,
   b: GsapWindow,
