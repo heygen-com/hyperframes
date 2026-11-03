@@ -5,7 +5,14 @@ import type { Plan } from "../heygen/plan.js";
 
 const opened = vi.hoisted(() => [] as string[]);
 const checkouts = vi.hoisted(() => [] as { kind: string; missing?: number }[]);
-const state = vi.hoisted(() => ({ plans: [] as (Plan | null)[], unattended: true, enters: 0 }));
+const state = vi.hoisted(() => ({
+  plans: [] as (Plan | null)[],
+  afterPlans: { plan: "pro", credits: 1_000_000 } as Plan | null,
+  unattended: true,
+  enters: 0,
+  enterHeld: false,
+  noPrice: false,
+}));
 
 vi.mock("../auth/browser.js", () => ({
   openBrowser: async (url: string) => void opened.push(url),
@@ -13,7 +20,10 @@ vi.mock("../auth/browser.js", () => ({
 vi.mock("../utils/attendedTerminal.js", () => ({ isUnattended: () => state.unattended }));
 vi.mock("node:readline/promises", () => ({
   createInterface: () => ({
-    question: async () => void state.enters++,
+    question: (_prompt: string, opts?: { signal?: AbortSignal }) =>
+      state.enterHeld
+        ? new Promise((_, reject) => opts?.signal?.addEventListener("abort", reject))
+        : Promise.resolve(void state.enters++),
     close: () => undefined,
   }),
 }));
@@ -21,18 +31,21 @@ vi.mock("../heygen/plan.js", async (importOriginal) => {
   const real = await importOriginal<typeof import("../heygen/plan.js")>();
   return {
     ...real,
-    readPlan: async () => (state.plans.length ? state.plans.shift()! : pro(1_000_000)),
-    readOffer: async () => ({
-      pro: { amount: 2500, currency: "usd" },
-      addon: {
-        unitsPerBlock: 1000,
-        unitAmount: 100,
-        currency: "usd",
-        min: 1,
-        max: 100,
-        recommended: 25,
-      },
-    }),
+    readPlan: async () => (state.plans.length ? state.plans.shift()! : state.afterPlans),
+    readOffer: async () =>
+      state.noPrice
+        ? {}
+        : {
+            pro: { amount: 2500, currency: "usd" },
+            addon: {
+              unitsPerBlock: 1000,
+              unitAmount: 100,
+              currency: "usd",
+              min: 1,
+              max: 100,
+              recommended: 25,
+            },
+          },
     createCheckout: async (kind: string, _offer: unknown, missing?: number) => {
       checkouts.push({ kind, missing });
       return "https://checkout.stripe.com/c/pay/cs_test_1";
@@ -48,8 +61,9 @@ const { default: billing } = await import("./billing.js");
 afterEach(() => {
   opened.length = 0;
   checkouts.length = 0;
-  state.enters = 0;
+  Object.assign(state, { afterPlans: pro(1_000_000), enters: 0, enterHeld: false, noPrice: false });
   vi.restoreAllMocks();
+  vi.useRealTimers();
   consumeCommandResult();
 });
 
@@ -64,10 +78,14 @@ async function billingRun(
   vi.spyOn(console, "log").mockImplementation((line: string) => void logged.push(line));
   vi.spyOn(console, "error").mockImplementation(() => undefined);
   vi.useFakeTimers();
-  const done = runCommand(billing, { rawArgs });
+  const failed = runCommand(billing, { rawArgs }).then(
+    () => undefined,
+    (error: unknown) => error,
+  );
   await vi.advanceTimersByTimeAsync(2000);
-  await done;
+  const error = await failed;
   vi.useRealTimers();
+  if (error) throw error;
   return logged.join("\n");
 }
 
@@ -104,6 +122,40 @@ describe("billing subscribe", () => {
     const out = await billingRun([free, null, pro(0)], false);
     expect(checkouts).toEqual([]);
     expect(out).toContain("Could not read your plan");
+  });
+
+  it.each<[string, Plan | null, boolean]>([
+    ["an unreadable plan, unattended", null, true],
+    ["a stand-in plan, unattended", { plan: "none", credits: 0, mock: true }, true],
+    ["an unreadable plan, attended", null, false],
+  ])("opens no checkout from %s at the start", async (_label, before, unattended) => {
+    const out = await billingRun([before, pro(0)], unattended);
+    expect(checkouts).toEqual([]);
+    expect(state.enters).toBe(0);
+    expect(out).toContain("Could not read your plan");
+  });
+
+  it.each([true, false])(
+    "opens no checkout when the price cannot be read (unattended: %s)",
+    async (unattended) => {
+      state.noPrice = true;
+      const out = await billingRun([free, pro(0)], unattended);
+      expect(checkouts).toEqual([]);
+      expect(out).toContain("Could not read the price");
+    },
+  );
+
+  it("carries on when the person pays on the page and never presses Enter", async () => {
+    state.enterHeld = true;
+    const out = await billingRun([free, pro(0)], false);
+    expect(out).toContain("✓ Done");
+    expect(checkouts).toEqual([]);
+  });
+
+  it("times out while the Enter prompt is still waiting", async () => {
+    Object.assign(state, { enterHeld: true, afterPlans: free });
+    await expect(billingRun([free], false, ["subscribe", "--timeout", "1"])).rejects.toThrow();
+    expect(checkouts).toEqual([]);
   });
 });
 

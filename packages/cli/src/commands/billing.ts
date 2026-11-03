@@ -38,32 +38,49 @@ function priceLine(
 
 type Done = (p: Plan | null) => boolean;
 
+const readFromTheServer = (p: Plan | null): p is Plan => !!p && !p.mock;
+const NO_PLAN = "Could not read your plan, so no checkout opened. Finish on the page.";
+
+async function payOrShowTheNewPrice(
+  kind: "plans" | "credits",
+  offer: Offer,
+  done: Done,
+  shown: string,
+  stop: AbortSignal,
+  needed?: number,
+): Promise<string | undefined> {
+  const now = await readPlan();
+  if (stop.aborted) return undefined;
+  if (!readFromTheServer(now)) return void console.log(NO_PLAN);
+  if (done(now)) return undefined;
+  const missing = needed ? needed - now.credits : undefined;
+  const line = priceLine(kind, offer, missing, needed) ?? shown;
+  if (line !== shown) {
+    console.log(line);
+    return line;
+  }
+  const link = await createCheckout(kind, offer, missing);
+  if (!stop.aborted) await openBrowser(link);
+  return undefined;
+}
+
 async function checkoutOnEnterAtTheCurrentPrice(
   kind: "plans" | "credits",
   offer: Offer,
   done: Done,
-  shown: string | undefined,
+  shown: string,
+  stop: AbortSignal,
   needed?: number,
 ) {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   try {
-    for (;;) {
-      await rl.question("Press Enter to pay ");
-      const now = await readPlan();
-      if (!now || now.mock) {
-        console.log("Could not read your plan, so no checkout opened. Finish on the page.");
-        return;
-      }
-      if (done(now)) return;
-      const missing = needed ? needed - now.credits : undefined;
-      const line = priceLine(kind, offer, missing, needed);
-      if (line === shown) {
-        await openBrowser(await createCheckout(kind, offer, missing));
-        return;
-      }
-      if (line) console.log(line);
-      shown = line;
+    for (let price: string | undefined = shown; price; ) {
+      await rl.question("Press Enter to pay, or finish on the page ", { signal: stop });
+      price = await payOrShowTheNewPrice(kind, offer, done, price, stop, needed);
     }
+  } catch (error) {
+    if (!stop.aborted) throw error;
+    console.log();
   } finally {
     rl.close();
   }
@@ -73,16 +90,20 @@ async function offerCheckoutOrPrintTheLink(
   kind: "plans" | "credits",
   before: Plan | null,
   done: Done,
+  stop: AbortSignal,
   needed?: number,
 ) {
+  if (!readFromTheServer(before)) return void console.log(NO_PLAN);
   const offer = await readOffer();
-  const missing = needed ? needed - (before?.credits ?? 0) : undefined;
+  const missing = needed ? needed - before.credits : undefined;
   const line = priceLine(kind, offer, missing, needed);
-  if (line) console.log(line);
+  if (!line)
+    return void console.log("Could not read the price, so no checkout opened. Finish on the page.");
+  console.log(line);
   try {
     if (isUnattended())
       console.log(`Checkout link: ${c.accent(await createCheckout(kind, offer, missing))}`);
-    else await checkoutOnEnterAtTheCurrentPrice(kind, offer, done, line, needed);
+    else await checkoutOnEnterAtTheCurrentPrice(kind, offer, done, line, stop, needed);
   } catch (error) {
     console.error(c.error(error instanceof Error ? error.message : String(error)));
   }
@@ -134,21 +155,26 @@ export default defineCommand({
     });
     console.log(`${action === "subscribe" ? "Plans" : "Credits"} page: ${c.accent(url)}`);
     await openBrowser(url);
-    await offerCheckoutOrPrintTheLink(
+    console.log("Waiting for the person to finish ...");
+    const stop = new AbortController();
+    const paying = offerCheckoutOrPrintTheLink(
       action === "subscribe" ? "plans" : "credits",
       before,
       done,
+      stop.signal,
       needed,
     );
-    console.log("Waiting for the person to finish ...");
     const deadline = Date.now() + (Number(args.timeout) || 600) * 1000;
-    while (Date.now() < deadline) {
+    let now: Plan | null = null;
+    while (!done(now) && Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, 2000));
-      const now = await readPlan();
-      if (done(now)) {
-        console.log(c.success(`✓ Done: ${describe(now)}. Carry on.`));
-        return;
-      }
+      now = await readPlan();
+    }
+    stop.abort();
+    await paying;
+    if (done(now)) {
+      console.log(c.success(`✓ Done: ${describe(now)}. Carry on.`));
+      return;
     }
     console.error(
       c.error(

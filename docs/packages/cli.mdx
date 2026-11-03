@@ -2263,8 +2263,10 @@ allowance or estimate what the next video will cost.
 Opens the HyperFrames plans or credits page in the browser and prints the price:
 Pro's monthly price, or the credits that cover `--needed` and what they cost. At
 a terminal, Enter opens Stripe's checkout; with no terminal (CI, a coding agent)
-the checkout link is printed instead. Then it waits until the account shows the
-change, so an agent's run carries on by itself. The page is on
+the checkout link is printed instead. When the plan or the price can't be read,
+it opens no checkout and leaves the page to finish on. It waits until the account
+shows the change, whether or not Enter was pressed, so an agent's run carries on
+by itself. The page is on
 the web app at hyperframes.studio. `HYPERFRAMES_PLANS_URL` and
 `HYPERFRAMES_CREDITS_URL` point it at another page.
 
