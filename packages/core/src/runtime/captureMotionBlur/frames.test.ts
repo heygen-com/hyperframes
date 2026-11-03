@@ -177,4 +177,56 @@ describe("readMoverFrames", () => {
     expect(frame).toMatchObject({ w: 260, h: 200 });
     expect(box.getAttribute("style")).toBe("transform: rotate(45deg)");
   });
+
+  // transform: none alone would move an absolute child to an outer containing block while measured.
+  it("keeps a rotated mover the containing block while it is measured", () => {
+    const scene = document.createElement("div");
+    const box = document.createElement("div");
+    const tag = document.createElement("div");
+    box.setAttribute("style", "transform: rotate(45deg)");
+    box.append(tag);
+    scene.append(box);
+    document.body.append(scene);
+    const c = Math.SQRT1_2;
+    const held = () => box.getAttribute("style")?.includes("will-change: transform") ?? false;
+    laidOut(scene, 1920, 1080, [0, 0, 1920, 1080]);
+    laidOut(box, 200, 200, [1100, 600, 1300, 800]);
+    laidOut(tag, 100, 20, [0, 0, 0, 0]);
+    tag.getBoundingClientRect = () => rect(held() ? [1400, 690, 1500, 710] : [300, 90, 400, 110]);
+    const rotated: Affine = { a: c, b: c, c: -c, d: c, e: 1200, f: 600 };
+    const unrotated = translate(IDENTITY, 1100, 600);
+    const off = () => box.getAttribute("style")?.includes("transform: none") ?? false;
+    const frame = readMoverFrames({
+      movers: [box],
+      reader: { pose: () => (off() ? unrotated : rotated), reset: () => {} } as never,
+      seek: () => {},
+      t: 0.5,
+      reads: 2,
+      shutterSeconds: 1 / 45,
+      taps: 4,
+      frameW: 1920,
+      frameH: 1080,
+      scene,
+    }).frames[0];
+    expect(frame).toMatchObject({ w: 400, h: 200, origin: [0, 0] });
+  });
+
+  it("leaves a mover turned only by an ancestor untouched", () => {
+    const scene = document.createElement("div");
+    const box = document.createElement("div");
+    scene.append(box);
+    document.body.append(scene);
+    const c = Math.SQRT1_2;
+    const styles: Array<string | null> = [];
+    laidOut(scene, 1920, 1080, [0, 0, 1920, 1080]);
+    laidOut(box, 200, 200, [1059, 600, 1341, 883]);
+    const measure = box.getBoundingClientRect;
+    box.getBoundingClientRect = () => {
+      styles.push(box.getAttribute("style"));
+      return measure();
+    };
+    read(box, scene, { a: c, b: c, c: -c, d: c, e: 1200, f: 600 });
+    expect(styles.length).toBeGreaterThan(0);
+    expect(styles.every((s) => s === null)).toBe(true);
+  });
 });

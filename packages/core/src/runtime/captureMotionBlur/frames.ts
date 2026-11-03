@@ -71,8 +71,9 @@ function grownBox(el: HTMLElement, pose: Affine, scene: HTMLElement, frameW: num
   return [Math.floor(box[0]), Math.floor(box[1]), Math.ceil(box[2]), Math.ceil(box[3])];
 }
 
-const UNTRANSFORMED =
-  "transform: none !important; rotate: none !important; scale: none !important; translate: none !important";
+const OWN_TRANSFORM = ["transform", "rotate", "scale", "translate"] as const;
+// will-change keeps the mover the containing block of its absolute children.
+const UNTRANSFORMED = `${OWN_TRANSFORM.map((p) => `${p}: none !important`).join("; ")}; will-change: transform !important`;
 
 /** The crop is cut to this box, so it must hold content that overflows the mover (wide text). */
 function contentBox(el: HTMLElement, reader: PoseReader, scene: HTMLElement, frameW: number): Box {
@@ -81,7 +82,8 @@ function contentBox(el: HTMLElement, reader: PoseReader, scene: HTMLElement, fra
     return [0, 0, el.offsetWidth, el.offsetHeight];
   }
   const pose = reader.pose(el);
-  if (pose.b === 0 && pose.c === 0) return grownBox(el, pose, scene, frameW);
+  const ownTransform = OWN_TRANSFORM.some((p) => (cs[p] || "none") !== "none");
+  if ((pose.b === 0 && pose.c === 0) || !ownTransform) return grownBox(el, pose, scene, frameW);
   // Upright rects of rotated content leave its corners out, so it is measured unrotated.
   const style = el.getAttribute("style");
   el.setAttribute("style", `${style ?? ""};${UNTRANSFORMED}`);
