@@ -42,12 +42,10 @@ function heygenOwnBase() {
   }
 }
 
-// A host gateway: the host named its own API base and the key that base accepts. It pays for every call, so it wins
-// over any other credential the environment carries.
+// A host gateway: the host pointed the API base away from HeyGen and set the key that base accepts. It pays for every
+// call, so it wins over any other credential the environment carries.
 const hostGatewayKey = () =>
-  process.env.HEYGEN_API_BASE?.trim() && process.env.HEYGEN_API_KEY
-    ? process.env.HEYGEN_API_KEY
-    : null;
+  !heygenOwnBase() && process.env.HEYGEN_API_KEY ? process.env.HEYGEN_API_KEY : null;
 export const HEYGEN_CLI_SOURCE_HEADERS = { "X-HeyGen-Source": "cli" };
 // Tool-attribution sent on EVERY media-use HeyGen call regardless of auth type, so
 // the backend can isolate media-use consumption from other free TTS / avatar video.

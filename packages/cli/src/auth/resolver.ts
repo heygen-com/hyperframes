@@ -5,7 +5,7 @@
  *   3. `HEYGEN_API_KEY` env, then `HYPERFRAMES_API_KEY`
  *   4. The API key saved in `~/.hyperframes/credentials`
  *
- * The env key goes first for a host app's gateway, and once the login failed to refresh.
+ * The env key goes first for a host app's gateway, and once HeyGen refused to refresh the login.
  * A broken store gives way to an env key, else surfaces `ErrInvalidStore`. A saved API key
  * never replaces an expired login (60s skew).
  */
@@ -133,10 +133,28 @@ function boundToThisClient(tokens: Parameters<typeof assertOAuthIdentity>[0]): b
 
 let loginRefreshFailed = false;
 
-/** After a failed refresh: the env key, which then replaces the login for this process. */
-export function envKeyAfterRefreshFailure(): ApiKeyCredential | undefined {
+/**
+ * After refreshing `refreshToken` failed: a login another process stored since, else the env key when HeyGen refused
+ * the grant (it then replaces the login for this process), else the error. A network or server error throws, since
+ * the login still works and the next call refreshes again.
+ */
+export async function afterRefreshFailure(
+  err: unknown,
+  refreshToken: string | undefined,
+): Promise<ResolvedCredential> {
+  if (!isAuthError(err)) throw err;
+  if (err.code === "LOGIN_CHANGED" || err.code === "REFRESH_FAILED") {
+    const stored = await readStore().catch(() => null);
+    const current = stored?.credentials.oauth?.refresh_token;
+    if (current && current !== refreshToken) {
+      const next = await resolveCredential();
+      if (next.type !== "oauth" || !next.refreshable) return next;
+    }
+  }
+  if (err.code !== "REFRESH_FAILED" && err.code !== "LOGIN_EXPIRED") throw err;
   const key = envApiKey();
-  if (key) loginRefreshFailed = true;
+  if (!key) throw err;
+  loginRefreshFailed = true;
   return key;
 }
 

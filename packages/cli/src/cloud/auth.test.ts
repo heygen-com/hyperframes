@@ -66,6 +66,82 @@ describe("cloud auth: login vs HEYGEN_API_KEY", () => {
     expect(fetchMock).toHaveBeenCalledOnce();
   });
 
+  it("keeps the login through a server error, and refreshes again on the next call", async () => {
+    await persistFreshOAuth({
+      access_token: "stale",
+      refresh_token: "rt",
+      expires_at: anHourAgo(),
+    });
+    process.env["HEYGEN_API_KEY"] = "env-key";
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("unavailable", { status: 503 }))
+      .mockResolvedValueOnce(tokenResponse());
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(resolveCloudAuthHeaders()).rejects.toMatchObject({ code: "API_ERROR" });
+    expect((await resolveCloudAuthHeaders())["authorization"]).toBe("Bearer refreshed");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the login through a network error", async () => {
+    await persistFreshOAuth({
+      access_token: "stale",
+      refresh_token: "rt",
+      expires_at: anHourAgo(),
+    });
+    process.env["HEYGEN_API_KEY"] = "env-key";
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockRejectedValueOnce(new TypeError("fetch failed"))
+        .mockResolvedValueOnce(tokenResponse()),
+    );
+    await expect(resolveCloudAuthHeaders()).rejects.toThrow("fetch failed");
+    expect((await resolveCloudAuthHeaders())["authorization"]).toBe("Bearer refreshed");
+  });
+
+  it("sends one refresh for requests that overlap, and signs both with the login", async () => {
+    await persistFreshOAuth({
+      access_token: "stale",
+      refresh_token: "rt",
+      expires_at: anHourAgo(),
+    });
+    process.env["HEYGEN_API_KEY"] = "env-key";
+    // The server rotates the token, so a second refresh with "rt" would be refused.
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(tokenResponse())
+      .mockResolvedValue(new Response("invalid_grant", { status: 400 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const both = await Promise.all([resolveCloudAuthHeaders(), resolveCloudAuthHeaders()]);
+    expect(both.map((headers) => headers["authorization"])).toEqual([
+      "Bearer refreshed",
+      "Bearer refreshed",
+    ]);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect((await resolveCloudAuthHeaders())["authorization"]).toBe("Bearer refreshed");
+  });
+
+  it("uses the login another process stored instead of the env key", async () => {
+    await persistFreshOAuth({
+      access_token: "stale",
+      refresh_token: "rt",
+      expires_at: anHourAgo(),
+    });
+    process.env["HEYGEN_API_KEY"] = "env-key";
+    const fetchMock = vi.fn(async () => new Response("invalid_grant", { status: 400 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const credential = await resolveCredential();
+    await persistFreshOAuth({ access_token: "other-process", refresh_token: "rt2" });
+    expect(await refreshIfNeeded(credential)).toMatchObject({
+      type: "oauth",
+      access_token: "other-process",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect((await resolveCloudAuthHeaders())["authorization"]).toBe("Bearer other-process");
+  });
+
   it("surfaces the refresh error when no env key is set", async () => {
     await persistFreshOAuth({
       access_token: "stale",

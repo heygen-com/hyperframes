@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { apiBaseUrl } from "./client.js";
 import { refreshTokens } from "./oauth.js";
 import { AuthError, isAuthError } from "./errors.js";
-import { envKeyAfterRefreshFailure, resolveCredential, tryResolveCredential } from "./resolver.js";
+import { afterRefreshFailure, resolveCredential, tryResolveCredential } from "./resolver.js";
 import { writeStore } from "./store.js";
 
 // Avatar helpers can poll for five minutes after submitting paid work.
@@ -28,13 +28,10 @@ export async function withMediaAuthEnvironment<T>(run: (env: NodeJS.ProcessEnv) 
     credential.refresh_token &&
     (credential.refreshable || expiresDuringHelper)
   ) {
-    credential = await refreshTokens(credential.refresh_token).then(
+    const refreshToken = credential.refresh_token;
+    credential = await refreshTokens(refreshToken).then(
       () => resolveCredential(),
-      (error: unknown) => {
-        const fallback = envKeyAfterRefreshFailure();
-        if (!fallback) throw error;
-        return fallback;
-      },
+      (error: unknown) => afterRefreshFailure(error, refreshToken),
     );
   }
 

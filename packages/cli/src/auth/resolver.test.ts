@@ -3,8 +3,8 @@ import { promises as fs } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setupTempAuthEnv } from "./_test-utils.js";
-import { isAuthError } from "./errors.js";
-import { envKeyAfterRefreshFailure, resolveCredential, tryResolveCredential } from "./resolver.js";
+import { ErrApi, ErrLoginChanged, ErrRefreshFailed, isAuthError } from "./errors.js";
+import { afterRefreshFailure, resolveCredential, tryResolveCredential } from "./resolver.js";
 import { writeStore as writeUnboundStore, type Credentials } from "./store.js";
 
 async function writeStore(credentials: Credentials): Promise<void> {
@@ -83,16 +83,27 @@ describe("auth/resolver", () => {
     expect(await resolveCredential()).toMatchObject({ type: "api_key", key: "gateway-token" });
   });
 
-  it("uses the env key for the rest of the process once the login fails to refresh", async () => {
+  it("uses the env key for the rest of the process once HeyGen refuses to refresh the login", async () => {
     await writeStore({
       oauth: { access_token: "at", refresh_token: "rt", expires_at: anHourAgo() },
     });
-    expect(envKeyAfterRefreshFailure()).toBeUndefined();
+    await expect(afterRefreshFailure(ErrRefreshFailed(), "rt")).rejects.toMatchObject({
+      code: "REFRESH_FAILED",
+    });
     expect(await resolveCredential()).toMatchObject({ type: "oauth", refreshable: true });
 
     process.env["HEYGEN_API_KEY"] = "env-key";
+    // A server error or a login another process is changing says nothing about the grant.
+    await expect(afterRefreshFailure(ErrApi(503, "down"), "rt")).rejects.toMatchObject({
+      code: "API_ERROR",
+    });
+    await expect(afterRefreshFailure(ErrLoginChanged(), "rt")).rejects.toMatchObject({
+      code: "LOGIN_CHANGED",
+    });
+    expect(await resolveCredential()).toMatchObject({ type: "oauth", refreshable: true });
+
     const fallback = { type: "api_key", key: "env-key", source: "env" };
-    expect(envKeyAfterRefreshFailure()).toEqual(fallback);
+    expect(await afterRefreshFailure(ErrRefreshFailed(), "rt")).toEqual(fallback);
     expect(await resolveCredential()).toEqual(fallback);
   });
 

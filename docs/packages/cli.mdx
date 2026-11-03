@@ -2301,7 +2301,7 @@ First match wins:
 5. An API key saved with `hyperframes auth login --api-key`
 
 A signed-in session wins over an API key in the environment. The environment key
-is used instead when the session can't be refreshed, or when `HEYGEN_API_URL` or
+is used instead when HeyGen refuses to refresh the session, or when `HEYGEN_API_URL` or
 `HEYGEN_API_BASE` points at a host app's own gateway. To use the environment key
 while signed in, run `hyperframes auth logout`. `auth status` shows which
 credential is in use.

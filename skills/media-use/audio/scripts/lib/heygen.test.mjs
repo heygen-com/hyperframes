@@ -146,6 +146,10 @@ test("a live login wins over HEYGEN_API_KEY; an expired one gives way to it", ()
       };
       writeFileSync(join(dir, "credentials"), JSON.stringify(credential));
       assert.deepEqual(heygenCredential(), { headers: { Authorization: "Bearer at_login" } });
+      // HeyGen's own base is no gateway, so naming it changes nothing.
+      process.env.HEYGEN_API_BASE = "https://api.heygen.com";
+      assert.deepEqual(heygenCredential(), { headers: { Authorization: "Bearer at_login" } });
+      delete process.env.HEYGEN_API_BASE;
       credential.oauth.expires_at = "2000-01-01T00:00:00Z";
       writeFileSync(join(dir, "credentials"), JSON.stringify(credential));
       assert.deepEqual(heygenCredential(), { headers: { "X-Api-Key": "hg_env" } });
