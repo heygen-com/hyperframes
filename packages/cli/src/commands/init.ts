@@ -509,7 +509,7 @@ async function handleVideoFile(
       if (shouldTranscode) {
         const sameName = localVideoName.replace(/\.[^.]+$/, ".mp4");
         const mp4Name =
-          resolve(destDir, sameName) === resolve(videoPath)
+          resolve(destDir, sameName).toLowerCase() === resolve(videoPath).toLowerCase()
             ? sameName.replace(/\.mp4$/, ".h264.mp4")
             : sameName;
         const mp4Path = resolve(destDir, mp4Name);

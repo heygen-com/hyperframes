@@ -32,7 +32,7 @@ const encode = (out: string, codec: string[]) =>
 const codecOf = (file: string) =>
   execFileSync("ffprobe", [
     ...["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=codec_name"],
-    ...["-of", "csv=p=0", file],
+    ...["-of", "csv=p=0", "--", file],
   ])
     .toString()
     .trim();
@@ -100,10 +100,11 @@ it.skipIf(!ffmpeg).each(["index.html", "meta.json", "AGENTS.md"])(
   },
 );
 
-it.skipIf(!hevc)(
-  "transcodes an HEVC .mp4 already in the folder beside it, keeping the original",
-  async () => {
-    const source = join(project, "original.mp4");
+it.skipIf(!hevc).each(["original.mp4", "original.MP4"])(
+  "transcodes an HEVC %s already in the folder beside it, keeping the original",
+  async (name) => {
+    rmSync(join(project, "original.mp4"));
+    const source = join(project, name);
     encode(source, ["-c:v", "libx265", "-tag:v", "hvc1"]);
     const video = readFileSync(source);
     await initWithVideo(source, false);
