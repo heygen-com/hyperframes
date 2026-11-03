@@ -17,6 +17,7 @@ import {
 import {
   STUDIO_PREVIEW_CAPTURE_MODE,
   STUDIO_PREVIEW_MARK_META,
+  STUDIO_PREVIEW_ERROR_KINDS,
   STUDIO_PREVIEW_ERRORS,
 } from "@hyperframes/core/studio-preview-mark";
 import {
@@ -273,7 +274,7 @@ const GSAP_FALLBACK_ATTR = "data-hf-gsap-fallback";
 function gsapCdnFallbackScript(baseUrl: string): string {
   return `<script ${GSAP_FALLBACK_ATTR}>
 (function(){
-  var cdnBase=${JSON.stringify(gsapCdnDist(undefined, baseUrl)).replace(/</g, "\\u003c")};
+  var cdnBase=${scriptJson(gsapCdnDist(undefined, baseUrl))};
   var loaded={};
   function loadFallback(file){
     if(loaded[file])return loaded[file];
@@ -349,9 +350,21 @@ function previewVariablesFromRequest(rawVariables: string | undefined):
 /** Captures screenshot right after a seek, so they get every image eager; media loads near the playhead. */
 export const PREVIEW_CAPTURE_PARAM = "hf-capture";
 
+export function scriptJson(value: unknown): string {
+  return JSON.stringify(value)
+    .replace(/</g, "\\u003c")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
+}
+
 // Studio's console capture attaches at the iframe's load; this keeps what was raised before it.
-const EARLY_ERRORS_SCRIPT = `<script>(function(){var seen=window.${STUDIO_PREVIEW_ERRORS}=[];
-addEventListener("error",function(e){seen.push(e.message||String(e))});})();</script>`;
+const earlyErrorsScript = (
+  runtimeUrl: string,
+) => `<script>(function(){var seen=window.${STUDIO_PREVIEW_ERRORS}=[],kinds=window.${STUDIO_PREVIEW_ERROR_KINDS}=[],known={SyntaxError:1,TypeError:1,ReferenceError:1,RangeError:1},runtime=${scriptJson(new URL(runtimeUrl, "http://x").pathname)};
+addEventListener("error",function(e){seen.push(e.message||String(e));
+var name=e.error&&e.error.constructor&&e.error.constructor.name,path="";
+try{var url=e.filename&&new URL(e.filename,window.location.href);if(url&&url.origin===window.location.origin)path=url.pathname}catch(_){}
+kinds.push({name:known[name]===1?name:"other",origin:!path?"unknown":path===runtime?"runtime":path.indexOf("/api/projects/")===0?"project":"studio"})});})();</script>`;
 
 function injectStudioPreviewAugmentations(
   html: string,
@@ -367,7 +380,7 @@ function injectStudioPreviewAugmentations(
       )
     : injectTagsAtHeadStart(
         lazyPreviewImages(html),
-        `<meta name="${STUDIO_PREVIEW_MARK_META}">${EARLY_ERRORS_SCRIPT}`,
+        `<meta name="${STUDIO_PREVIEW_MARK_META}">${earlyErrorsScript(adapter.runtimeUrl)}`,
       );
   const withFallback = injectGsapCdnFallback(
     injectProjectSignature(
