@@ -174,6 +174,7 @@ describe("runEnvironmentChecks", () => {
     { error: { code: "ENOENT" }, said: "(ENOENT)" },
     { error: { code: "EACCES" }, said: "(EACCES)" },
     { error: { signal: "SIGKILL" }, said: "(signal SIGKILL)" },
+    { error: { code: "ETIMEDOUT", signal: "SIGTERM" }, said: "(ETIMEDOUT)" },
   ])("names how FFmpeg failed to start: $said", async ({ error, said }) => {
     runProcess.mockImplementation((binaryPath: string) => {
       if (binaryPath !== process.env.HYPERFRAMES_FFMPEG_PATH)
