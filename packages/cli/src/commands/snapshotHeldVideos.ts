@@ -111,7 +111,7 @@ export function probeHeldVideo(
   return read;
 }
 
-/** The intrinsic-size hints render gives the same held videos, so a `height:auto` clip lays out as it does with its metadata loaded. */
+/** The intrinsic sizes render gives held videos, so a `height:auto` clip keeps its layout. */
 export async function heldVideoHints(
   projectDir: string,
   videos: readonly { id: string; src: string }[],
