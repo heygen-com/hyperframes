@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const auth = vi.hoisted(() => ({ parked: false }));
 vi.mock("../cloud/auth.js", () => ({
-  resolveCloudAuthHeaders: async () => ({ "x-api-key": "k" }),
+  resolveCloudAuthHeaders: () =>
+    auth.parked ? new Promise(() => undefined) : Promise.resolve({ "x-api-key": "k" }),
   resolveCloudBaseUrl: () => "https://api.example.test",
 }));
 
@@ -16,6 +18,7 @@ const answer = (data: unknown) =>
   });
 
 afterEach(() => {
+  auth.parked = false;
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
 });
@@ -136,5 +139,17 @@ describe("createCheckout", () => {
       /would not open a checkout/,
     );
     expect(sent[0]).toEqual({ quantity: 3, currency: "usd", unit_amount: 100 });
+  });
+});
+
+describe("a stop while signing in", () => {
+  it("returns at once from every billing read when the sign-in is still refreshing", async () => {
+    auth.parked = true;
+    const stop = new AbortController();
+    const reads = [readPlan(stop.signal), readOffer(stop.signal)];
+    const checkout = createCheckout("plans", {}, undefined, stop.signal).catch((e: unknown) => e);
+    stop.abort();
+    expect(await Promise.all(reads)).toEqual([null, {}]);
+    expect(await checkout).toBeInstanceOf(Error);
   });
 });

@@ -28,10 +28,21 @@ const billingBaseUrl = () => resolveCloudBaseUrl().replace("://api.", "://api2."
 const timeoutOrStop = (ms: number, stop?: AbortSignal) =>
   stop ? AbortSignal.any([stop, AbortSignal.timeout(ms)]) : AbortSignal.timeout(ms);
 
+const authHeadersUnlessStopped = (stop?: AbortSignal): Promise<Record<string, string>> =>
+  stop
+    ? Promise.race([
+        resolveCloudAuthHeaders(),
+        new Promise<never>((_, reject) => {
+          if (stop.aborted) reject(stop.reason);
+          stop.addEventListener("abort", () => reject(stop.reason), { once: true });
+        }),
+      ])
+    : resolveCloudAuthHeaders();
+
 export async function readPlan(stop?: AbortSignal): Promise<Plan | null> {
   try {
     const res = await fetch(`${billingBaseUrl()}/v1/payment/hyperframes/subscription`, {
-      headers: { ...(await resolveCloudAuthHeaders()), accept: "application/json" },
+      headers: { ...(await authHeadersUnlessStopped(stop)), accept: "application/json" },
       signal: timeoutOrStop(15_000, stop),
     });
     const body: unknown = await res.json().catch(() => null);
@@ -88,7 +99,7 @@ const int = (v: unknown) =>
 export async function readOffer(stop?: AbortSignal): Promise<Offer> {
   try {
     const res = await fetch(`${billingBaseUrl()}/v1/payment/hyperframes/plans`, {
-      headers: { ...(await resolveCloudAuthHeaders()), accept: "application/json" },
+      headers: { ...(await authHeadersUnlessStopped(stop)), accept: "application/json" },
       signal: timeoutOrStop(15_000, stop),
     });
     const body: unknown = await res.json().catch(() => null);
@@ -164,7 +175,7 @@ export async function createCheckout(
     {
       method: "POST",
       headers: {
-        ...(await resolveCloudAuthHeaders()),
+        ...(await authHeadersUnlessStopped(stop)),
         accept: "application/json",
         "content-type": "application/json",
       },

@@ -205,8 +205,10 @@ describe("auth/oauth", () => {
       process.env["HEYGEN_API_URL"] = "https://api.test.example";
       await writeStore({ oauth: { access_token: "old_at", refresh_token: "old_rt" } });
       let capturedBody: string | undefined;
+      let capturedSignal: AbortSignal | null | undefined;
       const fetchImpl = (async (_url: string, init?: RequestInit) => {
         capturedBody = init?.body as string;
+        capturedSignal = init?.signal;
         return new Response(
           JSON.stringify({
             access_token: "new_at",
@@ -224,6 +226,7 @@ describe("auth/oauth", () => {
       expect(tokens.refresh_token).toBe("new_rt");
       expect(capturedBody).toContain("grant_type=refresh_token");
       expect(capturedBody).toContain("refresh_token=old_rt");
+      expect(capturedSignal).toBeInstanceOf(AbortSignal);
 
       // Should have persisted.
       const { credentials } = await readStore();
