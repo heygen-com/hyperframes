@@ -12,6 +12,8 @@ vi.mock("../heygen/plan.js", async (importOriginal) => {
   const real = await importOriginal<typeof import("../heygen/plan.js")>();
   return {
     ...real,
+    readOffer: async () => ({}),
+    createCheckout: async () => "https://checkout.stripe.com/c/pay/cs_test_1",
     readPlan: async () => ({
       plan: ++plan.calls === 1 ? "none" : "pro",
       credits: plan.calls === 1 ? 0 : 500,
@@ -63,4 +65,19 @@ describe("billing add-credits", () => {
       expect(log.mock.calls.flat().join("\n")).not.toMatch(/deprecat|renamed|top-up/i);
     },
   );
+});
+
+describe("billing without a terminal", () => {
+  it("prints Stripe's checkout link instead of waiting for Enter, and opens only the pricing page", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    vi.useFakeTimers();
+    const done = runCommand(billing, { rawArgs: ["subscribe"] });
+    await vi.advanceTimersByTimeAsync(2000);
+    await done;
+    vi.useRealTimers();
+    expect(log.mock.calls.flat().join("\n")).toContain(
+      "Checkout link: https://checkout.stripe.com/c/pay/cs_test_1",
+    );
+    expect(opened.map((u) => new URL(u).hostname)).toEqual(["hyperframes.studio"]);
+  });
 });
