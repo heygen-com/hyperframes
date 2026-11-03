@@ -134,6 +134,12 @@
       "types": "./dist/studioPreviewMark.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./page-motion-blur": {
+      "source": "./src/pageMotionBlur.ts",
+      "runtime": "./dist/pageMotionBlur.js",
+      "types": "./dist/pageMotionBlur.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./keyframe-defaults": {
       "source": "./src/keyframeDefaults.ts",
       "runtime": "./dist/keyframeDefaults.js",
