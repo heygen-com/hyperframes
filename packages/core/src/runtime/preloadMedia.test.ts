@@ -289,7 +289,46 @@ describe("a clip due later whose in-point is deep in a shared file, in WebKit", 
     audio.remove();
   });
 
-  it("loads a clip that starts at the file's front, and anything off WebKit, as before", () => {
+  it("reads on once its header lands even if it is no longer due, or was re-armed meanwhile", () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(webkit);
+    const make = () => {
+      const audio = document.createElement("audio");
+      audio.setAttribute("data-media-start", "255");
+      audio.preload = "none";
+      document.body.appendChild(audio);
+      vi.spyOn(audio, "load").mockImplementation(() => {});
+      return audio;
+    };
+    const late = make();
+    let due = true;
+    preloadFromInPoint(late, () => due);
+    due = false;
+    late.dispatchEvent(new Event("loadedmetadata"));
+    expect(late.preload).toBe("auto");
+
+    const rearmed = make();
+    preloadFromInPoint(rearmed, () => true);
+    prepareUpcomingMedia(rearmed, () => true);
+    rearmed.dispatchEvent(new Event("loadedmetadata"));
+    expect(rearmed.preload).toBe("auto");
+    late.remove();
+    rearmed.remove();
+  });
+
+  it("loads a WebKit clip that starts at the file's front as before", () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(webkit);
+    const audio = document.createElement("audio");
+    audio.setAttribute("data-media-start", "0");
+    audio.preload = "none";
+    document.body.appendChild(audio);
+    const load = vi.spyOn(audio, "load").mockImplementation(() => {});
+    preloadFromInPoint(audio, () => true);
+    expect(audio.preload).toBe("auto");
+    expect(load).toHaveBeenCalledTimes(1);
+    audio.remove();
+  });
+
+  it("loads a deep clip as before off WebKit", () => {
     const audio = document.createElement("audio");
     audio.setAttribute("data-media-start", "255");
     audio.preload = "none";
