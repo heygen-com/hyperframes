@@ -1,7 +1,7 @@
 // How big the face is and where, ported from hf-media's face_size: OpenCV's frontal and profile Haar cascades on
 // evenly spaced frames, graded by face height over frame height. A regenerated presenter keeps the likeness from
 // FACE_HOLDS up; below FACE_FLOOR a video model cannot carry one at all (the harness's face-size eval, 2026-10-08).
-import { frameAt, round, runFfmpeg, type VideoInfo } from "./media.js";
+import { frameAt, round, runFfmpeg, sumOf, type VideoInfo } from "./media.js";
 import { greyMat, loadOpenCv } from "./opencv.js";
 
 const FACE_HOLDS = 0.25;
@@ -61,7 +61,7 @@ export function readSamples(info: VideoInfo, ks: number[], w: number, h: number)
     const k0 = info.vfr ? 0 : run[0]!;
     const seek = k0 > 0 ? ["-ss", ((k0 - 0.5) / info.fps).toFixed(6)] : [];
     const filters = [
-      `select=${run.map((k) => `eq(n\\,${k - k0})`).join("+")}`,
+      `select=${sumOf(run.map((k) => `eq(n\\,${k - k0})`))}`,
       ...(w !== info.width || h !== info.height ? [`scale=${w}:${h}`] : []),
       "format=gray",
     ];

@@ -22,6 +22,7 @@ import {
   readClip,
   round,
   runFfmpeg,
+  sumOf,
   videoClip,
   type Frames,
   type Roi,
@@ -62,9 +63,9 @@ function runsOf(ks: number[]): [number, number][] {
 
 /** The frames at these indexes (sorted, unique), in order, from one decode pass. */
 function framesAt(info: VideoInfo, ks: number[], roi: Roi, width: number): Frames {
-  const expr = runsOf(ks)
-    .map(([a, b]) => (a === b ? `eq(n\\,${a})` : `between(n\\,${a}\\,${b})`))
-    .join("+");
+  const expr = sumOf(
+    runsOf(ks).map(([a, b]) => (a === b ? `eq(n\\,${a})` : `between(n\\,${a}\\,${b})`)),
+  );
   // Renumbered so the raw output is exactly the picked frames, no gap filled by a repeat.
   const clip = {
     ...videoClip(info.path, 0, undefined, info),

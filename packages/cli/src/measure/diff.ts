@@ -35,6 +35,7 @@ import {
   probeVideo,
   round,
   runFfmpeg,
+  sumOf,
   videoClip,
   writeImage,
   type Clip,
@@ -293,7 +294,7 @@ export function selectFilter(pick: Pick, fpsText: string): string[] {
   const pts = `setpts=N/(${fpsText})/TB`;
   if (pick.kind === "all") return [];
   if (pick.kind === "range") return [`select=between(n\\,${pick.k0}\\,${pick.k1 - 1})`, pts];
-  return [`select=${pick.ks.map((k) => `eq(n\\,${k})`).join("+")}`, pts];
+  return [`select=${sumOf(pick.ks.map((k) => `eq(n\\,${k})`))}`, pts];
 }
 
 /** Even cell sizes keep 4:2:0 chroma aligned; the last row and column drop at most a pixel or two. */

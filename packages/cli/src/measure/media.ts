@@ -32,6 +32,16 @@ function ffprobeBin(): string {
   return bin;
 }
 
+/**
+ * `terms` added up for an ffmpeg expression. ffmpeg 8 refuses an expression nested too deep, and a flat sum counts
+ * one level a term (about 100 in all, less inside other calls), so past 50 the sum nests in halves.
+ */
+export function sumOf(terms: string[]): string {
+  if (terms.length <= 50) return terms.join("+");
+  const half = terms.length >> 1;
+  return `(${sumOf(terms.slice(0, half))})+(${sumOf(terms.slice(half))})`;
+}
+
 /** Runs ffmpeg and returns its stdout; `input` is piped to stdin. */
 export function runFfmpeg(args: string[], input?: Buffer, cwd?: string): Buffer {
   return execFileSync(ffmpegBin(), [...FFMPEG_QUIET, ...args], {
