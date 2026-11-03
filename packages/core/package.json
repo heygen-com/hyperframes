@@ -146,6 +146,12 @@
       "import": "./src/studioPreviewMark.ts",
       "types": "./src/studioPreviewMark.ts"
     },
+    "./page-motion-blur": {
+      "bun": "./src/pageMotionBlur.ts",
+      "node": "./dist/pageMotionBlur.js",
+      "import": "./src/pageMotionBlur.ts",
+      "types": "./src/pageMotionBlur.ts"
+    },
     "./keyframe-defaults": {
       "bun": "./src/keyframeDefaults.ts",
       "node": "./dist/keyframeDefaults.js",
@@ -711,6 +717,10 @@
       "./studio-preview-mark": {
         "import": "./dist/studioPreviewMark.js",
         "types": "./dist/studioPreviewMark.d.ts"
+      },
+      "./page-motion-blur": {
+        "import": "./dist/pageMotionBlur.js",
+        "types": "./dist/pageMotionBlur.d.ts"
       },
       "./keyframe-defaults": {
         "import": "./dist/keyframeDefaults.js",

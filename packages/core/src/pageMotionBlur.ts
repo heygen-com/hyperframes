@@ -13,6 +13,8 @@ const ACCELERATED_CANVASES_GLOBAL = "__hfAcceleratedCanvases";
 /**
  * Remember canvases html-in-canvas cannot capture: WebGL, WebGPU, or handed to an OffscreenCanvas.
  * Self-contained: the engine and the preview run its source ahead of every author script.
+ * A host page that walks a same-origin preview's DOM first gives its canvases the host's
+ * prototype, so such a host (Studio) runs it too; each canvas lands in its own window's set.
  */
 export function installAcceleratedCanvasTracker(): void {
   const key = "__hfAcceleratedCanvases";
@@ -48,13 +50,6 @@ export function installAcceleratedCanvasTracker(): void {
   wrap("transferControlToOffscreen", (canvas) => {
     ownWindowSet(canvas).add(canvas);
   });
-  // A same-origin host that reaches a canvas first gives it the host's prototype: track there too.
-  try {
-    if (window.parent !== window) {
-      const HostFunction = Reflect.get(window.parent, "Function") as FunctionConstructor;
-      new HostFunction(`(${installAcceleratedCanvasTracker.toString()})();`)();
-    }
-  } catch {}
 }
 
 export function isAcceleratedCanvas(canvas: HTMLCanvasElement): boolean {

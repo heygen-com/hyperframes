@@ -1,6 +1,7 @@
 import { buildProjectApiPath } from "../../utils/projectRouting";
 import { forwardRef, useEffect, useRef, useState } from "react";
 import { isLottieAnimationLoaded } from "@hyperframes/core/runtime/lottie-readiness";
+import { installAcceleratedCanvasTracker } from "@hyperframes/core/page-motion-blur";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { applyPreviewVariablesToUrl } from "../../hooks/previewVariablesStore";
 import { HyperframesLoader } from "../../components/ui";
@@ -24,6 +25,10 @@ export function loadPlayerModule(): Promise<unknown> {
 }
 
 if (typeof window !== "undefined") void loadPlayerModule().catch(() => {});
+
+// Studio's observers reach a preview's canvases before its runtime does, which gives them this
+// window's prototype. Tracking here too lets motion blur still see their WebGL and fall back.
+if (typeof window !== "undefined") installAcceleratedCanvasTracker();
 
 interface PlayerProps {
   projectId?: string;

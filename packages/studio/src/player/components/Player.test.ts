@@ -526,3 +526,10 @@ describe("composition loading overlay", () => {
     iframe.remove();
   });
 });
+
+describe("accelerated canvases", () => {
+  it("are tracked in the studio's own window as soon as the player loads", () => {
+    expect("__hfAccelTracked" in HTMLCanvasElement.prototype.getContext).toBe(true);
+    expect(Reflect.get(window, "__hfAcceleratedCanvases")).toBeInstanceOf(WeakSet);
+  });
+});

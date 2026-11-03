@@ -316,7 +316,10 @@ describe.skipIf(!hasBrowser)("capture motion blur pixels in Chrome", () => {
     ).replace("<head>", `<head><script>${acceleratedCanvasTrackerSource()}</script>`);
     const page = await browser.newPage();
     try {
-      await page.setContent(`<iframe id="preview" width="${W}" height="${H}"></iframe>`);
+      // Studio installs the tracker in its own window when it loads, before any preview exists.
+      await page.setContent(
+        `<script>${acceleratedCanvasTrackerSource()}</script><iframe id="preview" width="${W}" height="${H}"></iframe>`,
+      );
       await page.$eval(
         "#preview",
         (el, html) =>
