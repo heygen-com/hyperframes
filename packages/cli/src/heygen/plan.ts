@@ -62,6 +62,7 @@ export function pageUrl(
   if (fields.tool) url.searchParams.set("tool", fields.tool);
   if (fields.feature) url.searchParams.set("feature", fields.feature);
   if (fields.rs) url.searchParams.set("rs", fields.rs);
+  if (kind === "credits" && !fields.base) url.hash = "packs";
   return url.toString();
 }
 
