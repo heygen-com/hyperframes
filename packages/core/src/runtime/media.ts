@@ -37,7 +37,7 @@ export function readElementPlaybackStart(el: Element): number {
 const HOLD_END_EVENTS = ["seeked", "loadeddata", "error", "emptied", "abort"] as const;
 export const HOLD_CAP_MS = 5000;
 const WEBKIT_STUCK_AUDIO_SECONDS = 1;
-// A playing WebKit audio element whose currentTime has not moved for this long while behind the playhead is frozen, not starting.
+// A playing WebKit audio element that has not moved for this long is frozen, not starting (it starts ~150 ms late).
 const WEBKIT_FROZEN_AUDIO_SECONDS = 0.4;
 const lastMoved = new WeakMap<HTMLMediaElement, { ct: number; at: number }>();
 function frozenAudioFor(el: HTMLMediaElement, ct: number, now: number): number {
