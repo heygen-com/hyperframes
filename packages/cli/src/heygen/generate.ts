@@ -347,7 +347,6 @@ function needFile(path: string): void {
 
 const FIT_2048 = "scale='min(2048,iw)':'min(2048,ih)':force_original_aspect_ratio=decrease";
 
-/** The pictures `route` sends inline: its body built once with a media that only records them. */
 function picturesOf(route: Route, r: GenerateRequest): string[] {
   const paths: string[] = [];
   route.body(r, (path, kind) => {
@@ -369,7 +368,6 @@ async function shrunk(paths: string[], work: string): Promise<Map<string, string
     const to = join(work, `picture-${out.size}.jpg`);
     const viaFfmpeg = () =>
       runFfmpeg(["-y", "-i", path, "-vf", FIT_2048, "-q:v", "3", "-frames:v", "1", to]);
-    // ffmpeg, where there is one, covers a sharp that did not install and the HEIC its own build cannot read.
     if (!sharp) viaFfmpeg();
     else
       await sharp(path)
