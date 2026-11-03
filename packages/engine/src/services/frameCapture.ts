@@ -221,7 +221,7 @@ export interface CaptureSession {
    * were hitting that wall — a 705-render spike at the 45s setup bucket).
    */
   scriptLoadFailures: string[];
-  /** Where each of `scriptLoadFailures` came from and why it failed, as closed values (no URL); same order. */
+  /** Closed origin and error of each of `scriptLoadFailures`, same order. */
   scriptLoadCauses?: ScriptLoadCause[];
   /** Uncaught page errors; a timed-out timeline wait with any of these becomes a script failure. */
   pageErrors: string[];
@@ -2515,7 +2515,6 @@ export function recordSubTimelineWarning(session: CaptureSession, timeoutMs: num
         timeoutMs,
         sources,
         pendingCompositionIds: [...pending],
-        ...(scriptFailure && loadCauses.length > 0 && { loadCauses: [...loadCauses] }),
       },
     },
   ]);
@@ -2722,17 +2721,16 @@ function recordScriptLoadFailure(
   }
 }
 
-export type ScriptLoadOrigin = "local" | "cdn" | "remote" | "unknown";
+type ScriptLoadOrigin = "local" | "cdn" | "remote" | "unknown";
 export interface ScriptLoadCause {
   origin: ScriptLoadOrigin;
-  /** `net::ERR_*` from the browser, `http-<status>` for an HTTP error, else `unknown`. */
+  /** `net::ERR_*`, `http-<status>` or `unknown`. */
   code: string;
 }
 
-const CDN_HOSTS =
-  /^(?:cdn\.jsdelivr\.net|fastly\.jsdelivr\.net|unpkg\.com|cdnjs\.cloudflare\.com|ajax\.googleapis\.com|fonts\.googleapis\.com|fonts\.gstatic\.com|esm\.sh|cdn\.skypack\.dev)$/;
+const CDN_HOSTS = /^(?:cdn\.jsdelivr\.net|unpkg\.com|cdnjs\.cloudflare\.com)$/;
 
-/** Which server a failed script came from and why it failed, never the URL, host or path. */
+/** Where a failed script came from and why, never its URL, host or path. */
 export function classifyScriptLoadCause(
   url: string,
   serverUrl: string,
@@ -2752,14 +2750,9 @@ export function classifyScriptLoadCause(
   return { origin, code };
 }
 
-/** The closed suffix the engine's script-failure sentence ends with, for a reader that must not see URLs. */
-export function scriptLoadCauseSuffix(causes: readonly ScriptLoadCause[]): string {
-  return causes.length === 0
-    ? ""
-    : ` [script_load: ${causes
-        .slice(0, 4)
-        .map((c) => `${c.origin}/${c.code}`)
-        .join(", ")}]`;
+function scriptLoadCauseSuffix(causes: readonly ScriptLoadCause[]): string {
+  const shown = causes.slice(0, 4).map((c) => `${c.origin}/${c.code}`);
+  return shown.length === 0 ? "" : ` [script_load: ${shown.join(", ")}]`;
 }
 
 const SCRIPT_ERROR_LABEL = "[HyperFrames] composition script error:";

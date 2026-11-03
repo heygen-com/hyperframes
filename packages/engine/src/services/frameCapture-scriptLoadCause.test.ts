@@ -46,6 +46,5 @@ describe("the script-failure warning", () => {
     expect(
       warning.message.endsWith(" [script_load: local/net::ERR_CONNECTION_RESET, cdn/http-503]"),
     ).toBe(true);
-    expect(warning.details).toMatchObject({ loadCauses: session.scriptLoadCauses });
   });
 });
