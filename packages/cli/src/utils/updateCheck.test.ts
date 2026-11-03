@@ -471,10 +471,10 @@ describe("updateCheckDue / cachedUpdateCheck — what the parent reads without f
     },
   );
 
-  it("treats a cached latest older than the running CLI as unknown and due for a new check", async () => {
+  it("treats a cached latest older than the running CLI as unknown, without re-checking sooner than the daily cadence", async () => {
     vi.doMock("../version.js", () => ({ VERSION: "0.9.6", PRODUCER_VERSION: "0.9.6" }));
     const mod = await load({ lastUpdateCheck: hoursAgo(1), latestVersion: "0.9.5" });
-    expect(mod.updateCheckDue()).toBe(true);
+    expect(mod.updateCheckDue()).toBe(false);
     expect(mod.getUpdateMeta()).toEqual({
       version: "0.9.6",
       latestVersion: undefined,
