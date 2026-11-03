@@ -61,7 +61,8 @@ the end of a run. `reverse start` and `auth status` are for the sign-in: never r
 
 A refused step prints what it needs and the command that fixes it (top up, or pick a plan). Shots are launched all
 at once, so several refuse together: wait until every launched step has answered, add up what each refused step
-needs, and ask once for that total (`--needed <total>`), never for one step at a time. Then relaunch every refused
+needs, and ask once for that total (`--needed <total>`), never for one step at a time. If a refusal prints no
+amount, run plain `billing top-up` for that one. Then relaunch every refused
 step after they reply. Never trim the plan to fit.
 
 > Three steps need 180, 180 and 273 credits and you have 30. Add credits by typing this in the prompt:
