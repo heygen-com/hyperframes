@@ -161,12 +161,14 @@ describe("runJob", () => {
     );
     await expect(runJob(X, {}, "k")).rejects.toMatchObject({
       fix: "Subscribe: https://hyperframes.studio/pricing?from=cli",
+      url: "https://hyperframes.studio/pricing?from=cli",
     });
     vi.stubGlobal("fetch", async () =>
       reply(402, { code: "hf_usage_exhausted", url: "https://pay.test/credits" }),
     );
     await expect(runJob(X, {}, "k")).rejects.toMatchObject({
       fix: "Buy add-on credits: https://pay.test/credits",
+      url: "https://pay.test/credits",
     });
     vi.stubGlobal("fetch", async () => reply(401, { message: "bad" }));
     await expect(runJob(X, {}, "k")).rejects.toMatchObject({

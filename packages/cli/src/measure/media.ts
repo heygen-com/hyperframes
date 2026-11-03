@@ -14,6 +14,7 @@ export class Fix extends Error {
   constructor(
     problem: string,
     readonly fix: string,
+    readonly url?: string,
   ) {
     super(problem);
     this.name = "Fix";
