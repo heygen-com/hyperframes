@@ -17,7 +17,6 @@
 .hfc-gallery .hfc-media :is(img,video) { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; margin:0; border:0; border-radius:0; }
 .hfc-gallery .hfc-preview-host { position:absolute; inset:0; pointer-events:none; opacity:0; }
 .hfc-gallery .hfc-preview-host[data-ready="true"] { opacity:1; }
-.hfc-gallery .hfc-preview-host hyperframes-player { display:block; width:100%; height:100%; pointer-events:none; }
 .hfc-gallery .hfc-fallback { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; padding:24px; height:100%; text-align:center; color:#ccc; background:#141414; }
 .hfc-gallery .hfc-fallback span { color:#999; font-size:10px; }
 .hfc-gallery .hfc-fallback strong { font-size:18px; line-height:1.2; }
