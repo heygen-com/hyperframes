@@ -114,7 +114,7 @@ describe("skillsUpdateCheck", () => {
     // Must resolve against the canonical upstream manifest, not a possibly
     // stale in-repo skills-manifest.json, so this nudge agrees with what
     // `updateSkills` would actually reconcile.
-    expect(mockCheckSkills).toHaveBeenCalledWith({ canonical: true });
+    expect(mockCheckSkills).toHaveBeenCalledWith({ canonical: true, cliVersion: "0.0.0-dev" });
   });
 
   it("does not persist anything when no install was located (nothing meaningful to cache)", async () => {
@@ -228,7 +228,7 @@ describe("skillsUpdateCheck", () => {
 
       expect(skillsCheckDue()).toBe(true);
       await refreshSkillsCache();
-      expect(mockCheckSkills).toHaveBeenCalledWith({ canonical: true });
+      expect(mockCheckSkills).toHaveBeenCalledWith({ canonical: true, cliVersion: "0.0.0-dev" });
       expect(config).toMatchObject({ skillsUpdateAvailable: false, skillsOutdatedCount: 0 });
     });
 

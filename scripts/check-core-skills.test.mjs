@@ -31,6 +31,26 @@ test("the paid-plan cloud final keeps the composition fps and high quality", () 
   }
 });
 
+test("media-use lists Voice Turbo as free only on the Free plan, not for every sign-in", () => {
+  const text = readFileSync(new URL("../skills/media-use/SKILL.md", import.meta.url), "utf8");
+  assert.match(text, /\| Voice Turbo, Free plan: 3 min a month \| Voice Turbo on a paid plan/);
+  assert.doesNotMatch(text, /Voice Turbo \(signed in\)/);
+});
+
+test("reverse builds the project with init --video and asks to top up once for the run's total", () => {
+  const read = (path) =>
+    readFileSync(new URL(`../skills/reverse-any-video/${path}`, import.meta.url), "utf8");
+  const start = read("references/start.md");
+  assert.match(
+    start,
+    /`npx hyperframes init <project> --video <video> --keep-original --skip-transcribe`/,
+  );
+  assert.match(start, /add up what each refused step\s+needs, and ask once for that total/);
+  assert.match(start, /billing top-up --needed <total>|--needed <total>/);
+  assert.doesNotMatch(read("SKILL.md"), /copy the video into the project/);
+  assert.match(read("SKILL.md"), /`init --video` put the video in/);
+});
+
 test("reads the registered commands, quoted or not", () => {
   const source = `const commandLoaders = {\n  init: () => x,\n  "catch-up": () => y,\n};`;
   assert.deepEqual([...registeredCommands(source)], ["init", "catch-up"]);

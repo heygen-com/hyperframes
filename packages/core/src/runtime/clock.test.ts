@@ -426,6 +426,24 @@ describe("TransportClock", () => {
       expect(clock.now()).toBeCloseTo(5.016, 5);
     });
 
+    it("a Play waits for audio that has not started where it began, but never pulls back to audio far behind", () => {
+      const { clock, advance } = createClock({ duration: 30 });
+      clock.seek(5);
+      clock.play();
+      advance(16);
+      expect(clock.now()).toBeCloseTo(5.016, 5);
+      const voice = createMockAudioEl(5, false);
+      clock.attachAudioSource({ el: voice, compositionStart: 0, mediaStart: 0 });
+      advance(100);
+      expect(clock.now()).toBe(5);
+
+      clock.pause();
+      clock.play();
+      advance(16);
+      voice.currentTime = 1;
+      expect(clock.now()).toBeCloseTo(5.016, 5);
+    });
+
     it("does not freeze on a short native loop that wraps", () => {
       const { clock, advance } = createClock({ duration: 30 });
       clock.play();

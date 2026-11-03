@@ -159,6 +159,8 @@ export const PROXY_VARIANT_CONFIG: Record<
   vp8: { extension: ".webm", contentType: "video/webm" },
 };
 
+export const PROXY_STILL_EXTENSION = ".jpg";
+
 export function isProxyVariant(value: string): value is ProxyVariant {
   return Object.hasOwn(PROXY_VARIANT_CONFIG, value);
 }

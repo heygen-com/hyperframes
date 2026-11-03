@@ -51,6 +51,32 @@ function runTests() {
     cleanup();
   });
 
+  test("a template's own pictures are not search hits", () => {
+    setup();
+    drop("halftone-collage/clip-paper.png");
+    drop("textures/paper-grain.png");
+    drop("previews/paper-board.jpg");
+    mkdirSync(join(tmp, "compositions"));
+    writeFileSync(join(tmp, "compositions", "halftone-collage.html"), "x");
+    assert.equal(findExistingAsset(tmp, "paper form", "image"), null);
+    drop("img/paper-form.png");
+    assert.equal(
+      findExistingAsset(tmp, "paper form", "image").relativePath,
+      "assets/img/paper-form.png",
+    );
+    cleanup();
+  });
+
+  test("no search takes a component's sample page for its own, however many ask", () => {
+    setup();
+    drop("highlight-wipe/page-sample.png");
+    mkdirSync(join(tmp, "compositions"));
+    writeFileSync(join(tmp, "compositions", "highlight-wipe.html"), "x");
+    assert.equal(findExistingAsset(tmp, "criminal complaint court filing page", "image"), null);
+    assert.equal(findExistingAsset(tmp, "appeals court opinion first page", "image"), null);
+    cleanup();
+  });
+
   test("a shared stopword alone does not match", () => {
     setup();
     drop("video/the-video.mp4");

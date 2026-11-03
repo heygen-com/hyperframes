@@ -1,4 +1,5 @@
 import { execFileSync, spawn as realSpawn, spawnSync, type ChildProcess } from "node:child_process";
+import os from "node:os";
 import { EventEmitter, once } from "node:events";
 import {
   cpSync,
@@ -6,6 +7,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
   realpathSync,
   rmSync,
   symlinkSync,
@@ -66,6 +68,7 @@ type FakeProc = EventEmitter & {
   stderr: EventEmitter;
   stdout: EventEmitter;
   kill: (signal?: string) => void;
+  pid?: number;
 };
 
 function createFakeProc(): FakeProc {
@@ -73,6 +76,7 @@ function createFakeProc(): FakeProc {
   proc.stderr = new EventEmitter();
   proc.stdout = new EventEmitter();
   proc.kill = vi.fn((signal?: string) => void proc.emit("close", null, signal));
+  proc.pid = 4242;
   return proc;
 }
 
@@ -1116,6 +1120,26 @@ describe("resolveProxy", () => {
       await thumb;
     });
 
+    it("runs a background copy's encode at the lowest priority, until a viewer asks for it", async () => {
+      const setPriority = vi.spyOn(os, "setPriority").mockImplementation(() => {});
+      const { calls, resolveProxy, projectDir } = await oneSlot();
+      const clip = clips(projectDir, ["later", "viewed"]);
+
+      const later = resolveProxy(projectDir, clip.later!, "h264", undefined, { background: true });
+      await flush();
+      const lowered = setPriority.mock.calls.length;
+      succeed(calls[0]!);
+      await later;
+      const viewed = resolveProxy(projectDir, clip.viewed!, "h264", undefined, { priority: true });
+      await flush();
+      succeed(calls[1]!);
+      await viewed;
+
+      expect(lowered).toBe(1);
+      expect(setPriority).toHaveBeenCalledTimes(1);
+      setPriority.mockRestore();
+    });
+
     it("moves an already queued copy forward when the preview asks for it", async () => {
       const { calls, resolveProxy, projectDir } = await oneSlot();
       const clip = clips(projectDir, ["running", "first", "second"]);
@@ -1889,6 +1913,33 @@ describe("resolveProxy", () => {
 
     await expect(result).rejects.toBeInstanceOf(FfmpegUnavailableError);
   });
+});
+
+describe("resolveStill", () => {
+  const canStill = Boolean(realFfmpeg) && Boolean(findFfBinary("ffprobe"));
+
+  it.skipIf(!canStill)(
+    "cuts one JPEG at the asked time and reuses it for the same tenth of a second",
+    async () => {
+      vi.resetModules();
+      vi.doUnmock("./mediaMetadata.js");
+      const { resolveStill } = await import("./proxyTranscoder.js");
+      const projectDir = tmpProject();
+      const clip = join(projectDir, "clip.mp4");
+      execFileSync(realFfmpeg!, [
+        ...["-v", "error", "-f", "lavfi", "-i", "testsrc2=s=320x180:r=25:d=3"],
+        ...["-c:v", "libx264", "-pix_fmt", "yuv420p", clip],
+      ]);
+
+      const first = await resolveStill(projectDir, clip, 1.26, { width: 160, height: 90 });
+      expect(first.endsWith(".jpg")).toBe(true);
+      const bytes = readFileSync(first);
+      expect([bytes[0], bytes[1]]).toEqual([0xff, 0xd8]);
+      expect(await resolveStill(projectDir, clip, 1.34, { width: 160, height: 90 })).toBe(first);
+      expect(await resolveStill(projectDir, clip, 2.5, { width: 160, height: 90 })).not.toBe(first);
+    },
+    60_000,
+  );
 });
 
 describe("sourceFolderKind", () => {

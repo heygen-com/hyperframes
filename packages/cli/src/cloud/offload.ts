@@ -6,16 +6,19 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  closeSync,
   copyFileSync,
   createReadStream,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readFileSync,
+  readSync,
   renameSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { basename, dirname, extname, join, posix, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 import { parseHTML } from "linkedom";
@@ -29,6 +32,7 @@ import {
 import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
 import { probeAudio } from "../audio/analysis/decode.js";
 import { formatBytes } from "../ui/format.js";
+import { bytesMatchExtension } from "./offloadSniff.js";
 import { type PlayedSegment, planTrim } from "./offloadTrim.js";
 import {
   assertUnchanged,
@@ -41,6 +45,7 @@ import {
   stagedSize,
   TEXT_FILE_EXTS,
 } from "../utils/publishProject.js";
+import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
 
 const execFileAsync = promisify(execFile);
 
@@ -139,6 +144,7 @@ export interface OffloadedMedia {
   /** What happened (or, on a dry run, would happen) to the file. */
   action: "upload" | "reencode" | "cached";
   url?: string;
+  asset_id?: string;
   /** Seconds of the source kept when only the parts the composition plays are uploaded. */
   trimmed_to_seconds?: number;
   /** Still referenced from a script or data file, so a copy also stays in the zip. */
@@ -175,6 +181,8 @@ export interface Reencoder {
   choose: (sourcePath: string, kind: MediaKind) => Promise<PresetName | null>;
   /** Positions per second a cut may land on (the frame rate), or null when the file cannot be cut. */
   trimGrid?: (sourcePath: string, kind: MediaKind) => Promise<number | null>;
+  /** Whether a container named as video holds a video stream; `true` when that cannot be told. */
+  hasVideo?: (sourcePath: string) => Promise<boolean>;
   run: (
     sourcePath: string,
     preset: PresetName,
@@ -201,7 +209,7 @@ interface CacheEntry {
 }
 
 function defaultOffloadCachePath(): string {
-  return join(homedir(), ".cache", "hyperframes", "cloud-assets.json");
+  return hyperframesCacheDir("cloud-assets.json");
 }
 
 function readCache(path: string): Record<string, CacheEntry> {
@@ -445,7 +453,34 @@ async function trimGrid(sourcePath: string, kind: MediaKind): Promise<number | n
   return Number.isFinite(fps) && Math.abs(fps - rate(average)) < 0.01 ? fps : null;
 }
 
-const ffmpegReencoder: Reencoder = { choose: choosePreset, trimGrid, run: ffmpegReencode };
+async function hasVideoStream(sourcePath: string): Promise<boolean> {
+  const ffprobe = findFFprobe();
+  if (!ffprobe) return true;
+  try {
+    const { stdout } = await execFileAsync(ffprobe, [
+      "-v",
+      "error",
+      "-select_streams",
+      "v:0",
+      "-show_entries",
+      "stream=codec_type",
+      "-of",
+      "csv=p=0",
+      "--",
+      sourcePath,
+    ]);
+    return stdout.trim() !== "";
+  } catch {
+    return true;
+  }
+}
+
+const ffmpegReencoder: Reencoder = {
+  choose: choosePreset,
+  trimGrid,
+  hasVideo: hasVideoStream,
+  run: ffmpegReencode,
+};
 
 async function stagedSha256(file: StagedFile): Promise<string> {
   if (Buffer.isBuffer(file)) return createHash("sha256").update(file).digest("hex");
@@ -488,7 +523,9 @@ function scriptCode(fileMap: Map<string, StagedFile>): string {
     const text = textOf(path, content);
     if (text === undefined) continue;
     if (/\.html?$/i.test(path)) {
-      for (const script of parseHTML(text).document.querySelectorAll("script:not([src])")) {
+      const { document } = parseHTML(text);
+      const pages = [document, ...[...document.querySelectorAll("template")].map((t) => t.content)];
+      for (const script of pages.flatMap((p) => [...p.querySelectorAll("script:not([src])")])) {
         parts.push(script.textContent ?? "");
       }
     } else if (/\.(m?js|cjs|json)$/i.test(path)) parts.push(text);
@@ -527,16 +564,40 @@ interface FilePlan {
   segments?: PlayedSegment[];
 }
 
+function readHead(file: StagedFile): Buffer {
+  if (Buffer.isBuffer(file)) return file.subarray(0, 16);
+  const fd = openSync(file.absPath, "r");
+  try {
+    const head = Buffer.alloc(16);
+    readSync(fd, head, 0, 16, 0);
+    return head;
+  } finally {
+    closeSync(fd);
+  }
+}
+
 async function planFile(
   ctx: OffloadContext,
   path: string,
   file: StagedFile,
 ): Promise<FilePlan | null> {
-  const kind = mediaKind(path);
+  let kind = mediaKind(path);
   const size = stagedSize(file);
   if (!kind || size < OFFLOAD_MIN_BYTES) return null;
-  const accepted = ACCEPTED[extname(path).toLowerCase()];
-  const asIs = accepted !== undefined && size <= accepted.maxBytes;
+  const ext = extname(path).toLowerCase();
+  const accepted = ACCEPTED[ext];
+  // The API reads the stored bytes, not the name: a file whose bytes differ from its extension is re-encoded.
+  let asIs =
+    accepted !== undefined && size <= accepted.maxBytes && bytesMatchExtension(ext, readHead(file));
+  let sourcePath: string | undefined;
+  if (kind === "video" && ctx.reencoder.hasVideo) {
+    sourcePath = snapshotPath(path, file, ctx.tempFiles);
+    // An audio-only MP4 is audio whatever its name says.
+    if (!(await ctx.reencoder.hasVideo(sourcePath))) {
+      kind = "audio";
+      asIs = false;
+    }
+  }
   const mayBeCached =
     ctx.opts.upload !== undefined || (asIs ? ctx.cachedSizes.has(size) : ctx.cachedSizes.size > 0);
   const sha256 = mayBeCached ? await stagedSha256(file) : undefined;
@@ -544,7 +605,7 @@ async function planFile(
   if (asIs) {
     return { key: keyFor("as-is"), sourcePath: "", contentType: accepted?.contentType };
   }
-  const sourcePath = snapshotPath(path, file, ctx.tempFiles);
+  sourcePath ??= snapshotPath(path, file, ctx.tempFiles);
   const preset = await ctx.reencoder.choose(sourcePath, kind);
   // Files left as authored stay in the zip; the archive size check names them.
   if (!preset) return null;
@@ -599,10 +660,10 @@ async function offloadFile(
   };
   const hit = plan.key === undefined ? undefined : ctx.cache[plan.key];
   if (hit && (!ctx.opts.upload || (await stillServed(hit, ctx.fetchImpl)))) {
-    return { ...item, action: "cached", url: hit.url };
+    return { ...item, action: "cached", url: hit.url, asset_id: hit.asset_id };
   }
   if (!ctx.opts.upload) return item;
-  return { ...item, url: await uploadPlanned(ctx, ctx.opts.upload, path, file, plan) };
+  return { ...item, ...(await uploadPlanned(ctx, ctx.opts.upload, path, file, plan)) };
 }
 
 async function uploadPlanned(
@@ -611,7 +672,7 @@ async function uploadPlanned(
   path: string,
   staged: StagedFile,
   plan: FilePlan,
-): Promise<string> {
+): Promise<{ url: string; asset_id: string }> {
   const filename = basename(path);
   const file: UploadableFile = plan.preset
     ? await ctx.reencoder.run(plan.sourcePath, plan.preset, plan.segments)
@@ -627,7 +688,7 @@ async function uploadPlanned(
     ctx.cache[plan.key] = { asset_id: asset.asset_id, url: asset.url, size_bytes: size };
     writeCache(ctx.cachePath, ctx.cache);
   }
-  return asset.url;
+  return { url: asset.url, asset_id: asset.asset_id };
 }
 
 const GIF_PREFIX = "_animated_gif";
@@ -651,7 +712,7 @@ async function prepareEntryGifs(
     downloadDir: outputDir,
     outputDir,
     outputSrcPrefix: posix.relative(posix.dirname(entryPath), GIF_PREFIX),
-    cacheDir: join(homedir(), ".cache", "hyperframes", "animated-gif"),
+    cacheDir: hyperframesCacheDir("animated-gif"),
     sourceAssets,
   });
   if (result.preparedGifs.length === 0) return;
@@ -775,10 +836,17 @@ function dropReplacedFiles(
   }
 }
 
-/**
- * Whether a reference rewriting could not replace may still load the file: its name anywhere, or its
- * stem and extension both in script code, which can join them at runtime ("clip" + ".mp4").
- */
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+function namesFile(text: string, path: string): boolean {
+  const tokens = text.match(new RegExp(`[\\w./-]*${escapeRegExp(basename(path))}`, "g")) ?? [];
+  return tokens.some((token) => {
+    const tail = token.replace(/^[./]+/, "");
+    return path === tail || path.endsWith(`/${tail}`);
+  });
+}
+
+/** A path ending in its name, or in script code its stem as a string with the extension nearby ("clip" + ".mp4"). */
 function isStillMentioned(
   fileMap: Map<string, StagedFile>,
   path: string,
@@ -786,12 +854,13 @@ function isStillMentioned(
   withoutUrls: (text: string) => string,
 ): boolean {
   const ext = extname(path);
-  if (code.includes(basename(path, ext)) && code.includes(ext.slice(1))) return true;
+  const stem = new RegExp(`["'\`/]${escapeRegExp(basename(path, ext))}\\.?["'\`$]`);
+  if (stem.test(code) && code.includes(ext.slice(1))) return true;
   const name = basename(path);
   for (const [entryPath, content] of fileMap) {
     const contentText = textOf(entryPath, content);
     if (entryPath === path || !contentText?.includes(name)) continue;
-    if (withoutUrls(contentText).includes(name)) return true;
+    if (namesFile(withoutUrls(contentText), path)) return true;
   }
   return false;
 }
@@ -878,7 +947,29 @@ function rewriteCssEntry(absDir: string, entryPath: string, css: string, urlFor:
   return result.modified ? result.css : null;
 }
 
+const TEMPLATE_SCENE_RE = /(<template\b[^>]*>)([\s\S]*?)(<\/template>)/gi;
+
+/** An entry's HTML with each <template> scene rewritten too: the runtime stamps those scenes into the page. */
 function rewriteHtmlEntry(
+  absDir: string,
+  entryPath: string,
+  source: string,
+  urlFor: UrlFor,
+  fileMap: Map<string, StagedFile>,
+): string | null {
+  const html = source.replace(
+    TEMPLATE_SCENE_RE,
+    (full, open: string, inner: string, close: string) => {
+      const next = rewriteHtmlEntry(absDir, entryPath, inner, urlFor, fileMap);
+      return next === null ? full : open + next + close;
+    },
+  );
+  return (
+    rewriteHtmlDocument(absDir, entryPath, html, urlFor, fileMap) ?? (html === source ? null : html)
+  );
+}
+
+function rewriteHtmlDocument(
   absDir: string,
   entryPath: string,
   html: string,

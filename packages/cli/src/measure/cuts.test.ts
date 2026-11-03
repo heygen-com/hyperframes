@@ -24,6 +24,22 @@ describe("cutsIn", () => {
     ]);
   });
 
+  it("finds a jump cut in a nearly still take with a few small moves around it", () => {
+    // dan 9.743 s: most neighbours hold, and the few that move are about 1.5.
+    const few = { 24: 1.5, 26: 1.5, 27: 1.5, 33: 1.5, 35: 1.5 };
+    expect(cutsIn(changes(60, 0.3, { ...few, 30: 11.3 }))).toEqual([
+      { frame: 30, frames: 1, change: 11.3, soft: true },
+    ]);
+  });
+
+  it("finds a cut in live footage where only a few neighbours move, however much", () => {
+    // zaro 1050: the moving neighbours are about 5.8.
+    const few = { 24: 5.8, 26: 5.8, 27: 5.8, 33: 5.8, 35: 5.8 };
+    expect(cutsIn(changes(60, 0.3, { ...few, 30: 20 }))).toEqual([
+      { frame: 30, frames: 1, change: 20 },
+    ]);
+  });
+
   it("leaves a smaller change among moving frames or a stepped animation alone", () => {
     // Hands moving: neighbours up to 5, so 11 is not alone.
     expect(cutsIn(changes(60, 1, { 25: 5, 30: 11 }))).toEqual([]);
@@ -72,6 +88,71 @@ describe("findCuts on moving pictures", () => {
   it("keeps a quick insert shot as two cuts, not two flashes", () => {
     const frames = [...still(100, 20), ...still(30, 8), ...still(100, 20)];
     expect(findCuts(frames).map((c) => c.frame)).toEqual([20, 28]);
+  });
+
+  const slide = (from: number, to: number, n: number) =>
+    Array.from({ length: n }, (_, k) => frame(from + ((to - from) * (k + 1)) / (n + 1)));
+
+  it("keeps a five-frame transition to another shot as a cut", () => {
+    const frames = [...still(40, 20), ...slide(40, 220, 4), ...still(220, 20)];
+    expect(classifiedCuts(frames).map((c) => [c.frame, c.frames, c.kind])).toEqual([
+      [20, 5, undefined],
+    ]);
+  });
+
+  it("keeps a wipe through black between two matching pictures as a cut", () => {
+    // johnny 9.43 s: two views of one map, so the pictures either side share their tones.
+    const frames = [...still(120, 20), ...slide(120, 0, 3), ...still(125, 20)];
+    expect(classifiedCuts(frames).map((c) => [c.frame, c.kind])).toEqual([[20, undefined]]);
+  });
+
+  it("calls a five-frame whip that keeps its tones a fast move", () => {
+    const half = (a: number, b: number) =>
+      new Uint8Array(SIG_W * SIG_H).map((_, i) => (i % SIG_W < SIG_W / 2 ? a : b));
+    const swap = Array.from({ length: 6 }, (_, k) => half(k % 2 ? 30 : 200, k % 2 ? 200 : 30));
+    const frames = [
+      ...Array.from({ length: 20 }, () => swap[0]!),
+      ...swap,
+      ...Array.from({ length: 20 }, () => swap[5]!),
+    ];
+    expect(classifiedCuts(frames).map((c) => c.kind)).toEqual(["fast"]);
+  });
+
+  /** A dark window `w` wide on grey, centred, with a lighter title bar. */
+  const window = (w: number) => {
+    const f = new Uint8Array(SIG_W * SIG_H).fill(235);
+    const h = w * 0.8;
+    for (let y = 0; y < SIG_H; y++)
+      for (let x = 0; x < SIG_W; x++) {
+        const top = (SIG_H - 1) / 2 - h / 2;
+        if (Math.abs(x - (SIG_W - 1) / 2) <= w / 2 && Math.abs(y - (SIG_H - 1) / 2) <= h / 2)
+          f[y * SIG_W + x] = y - top < 2 ? 60 : 25;
+      }
+    return f;
+  };
+
+  it("calls a zoom that speeds up past a cut's level a fast move", () => {
+    // stripe 0.2 s: the app window grows 3, 9, 12, 5 grey levels a frame.
+    const widths = [20, 20, 20, 20, 20.5, 22, 25, 30, 32, 33.5, 34.5, 35, 35.5];
+    const frames = [...widths, ...Array<number>(13).fill(36)].map(window);
+    expect(classifiedCuts(frames).map((c) => [c.frame, c.kind])).toEqual([[7, "fast"]]);
+    expect(findCuts(frames)).toEqual([]);
+  });
+
+  it("keeps a punch-in out of a still picture as a cut", () => {
+    const frames = [...Array<number>(13).fill(20), ...Array<number>(13).fill(28)].map(window);
+    expect(findCuts(frames).map((c) => c.frame)).toEqual([13]);
+  });
+
+  // hf-review: a picture still on one side and moving on the other is an edit, not a camera move.
+  it("keeps a punch-in out of a still picture as a cut when the next shot moves", () => {
+    const frames = [...Array<number>(13).fill(20), 25, ...Array<number>(16).fill(27)].map(window);
+    expect(findCuts(frames).map((c) => c.frame)).toEqual([13]);
+  });
+
+  it("keeps a punch-out into a still picture as a cut after a moving shot", () => {
+    const frames = [...Array<number>(16).fill(27), 25, ...Array<number>(13).fill(20)].map(window);
+    expect(findCuts(frames).map((c) => c.frame)).toEqual([17]);
   });
 
   it("calls a light flash a flash and the cut after it a cut", () => {

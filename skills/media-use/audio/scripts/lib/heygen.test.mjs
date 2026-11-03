@@ -129,6 +129,38 @@ test("a host-injected HEYGEN_ACCESS_TOKEN wins over an API key and is treated as
   });
 });
 
+test("a live login wins over HEYGEN_API_KEY; an expired one gives way to it", () => {
+  withCleanHeygenEnv(() => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-login-vs-env-"));
+    try {
+      process.env.HYPERFRAMES_CONFIG_DIR = dir;
+      process.env.HEYGEN_API_KEY = "hg_env";
+      const credential = {
+        api_key: "saved-wallet",
+        oauth: {
+          client_id: "Zg3LF4FCLoeJoGs2YqMtZ17g",
+          token_endpoint: "https://api2.heygen.com/v1/oauth/token",
+          access_token: "at_login",
+          expires_at: "2099-01-01T00:00:00Z",
+        },
+      };
+      writeFileSync(join(dir, "credentials"), JSON.stringify(credential));
+      assert.deepEqual(heygenCredential(), { headers: { Authorization: "Bearer at_login" } });
+      // HeyGen's own base is no gateway, so naming it changes nothing.
+      process.env.HEYGEN_API_BASE = "https://api.heygen.com";
+      assert.deepEqual(heygenCredential(), { headers: { Authorization: "Bearer at_login" } });
+      delete process.env.HEYGEN_API_BASE;
+      credential.oauth.expires_at = "2000-01-01T00:00:00Z";
+      writeFileSync(join(dir, "credentials"), JSON.stringify(credential));
+      assert.deepEqual(heygenCredential(), { headers: { "X-Api-Key": "hg_env" } });
+      writeFileSync(join(dir, "credentials"), JSON.stringify({ api_key: "saved-wallet" }));
+      assert.deepEqual(heygenCredential(), { headers: { "X-Api-Key": "hg_env" } });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 test("heygenAuthMethod returns api_key for an env API key, without tagging headers", () => {
   withCleanHeygenEnv(() => {
     process.env.HEYGEN_API_KEY = "hg_test";

@@ -111,6 +111,11 @@ import {
   augmentPageNavigationTimeoutError,
   type MotionBlurOptions,
 } from "@hyperframes/engine";
+import {
+  referenceBackgroundResult,
+  createReferenceBackgroundRecorder,
+  type ReferenceBackgroundResult,
+} from "@hyperframes/engine";
 import { join, dirname, resolve } from "path";
 import { totalmem } from "node:os";
 import { randomUUID } from "crypto";
@@ -767,7 +772,7 @@ export interface RenderStageProgress {
   total?: number;
 }
 
-export interface RenderJob {
+export interface RenderJob extends Partial<ReferenceBackgroundResult> {
   id: string;
   config: RenderConfig;
   status: RenderStatus;
@@ -865,6 +870,29 @@ export function applyRenderWarningPolicy(
     throw new RenderQualityError(job.warnings);
   }
 }
+
+export const stopPrepSessionOnScriptFailure = (options: CaptureOptions): CaptureOptions => ({
+  ...options,
+  onSubTimelineScriptFailure: () => {
+    throw new Error("a composition script failed, so this preparation session stops");
+  },
+});
+
+export const surfaceScriptFailure = (error: unknown, job: RenderJob): unknown =>
+  error instanceof RenderQualityError ||
+  error instanceof RenderCancelledError ||
+  !job.warnings?.some((warning) => warning.code === "sub_timeline_script_failure")
+    ? error
+    : new RenderQualityError(job.warnings);
+
+export const withScriptFailureStop = (
+  options: CaptureOptions,
+  job: RenderJob,
+  log: ProducerLogger,
+): CaptureOptions => ({
+  ...options,
+  onSubTimelineScriptFailure: (warnings) => applyRenderWarningPolicy(job, warnings, log),
+});
 
 export class RenderCancelledError extends Error {
   reason: "user_cancelled" | "timeout" | "aborted";
@@ -1530,6 +1558,7 @@ export type RenderConfigInput = Omit<RenderConfig, "fps"> & { fps: FpsInput };
 
 export function createRenderJob(config: RenderConfigInput): RenderJob {
   return {
+    ...referenceBackgroundResult(undefined),
     id: randomUUID(),
     config: {
       ...config,
@@ -2598,9 +2627,12 @@ export function shouldRetryViaPinnedFallback(args: {
    * that mode otherwise had no whole-render fallback for a one-off refusal.
    */
   isTransientCaptureError?: boolean;
+  /** The failed attempt captured through BeginFrame; screenshot is the baseline for any failure there. */
+  isBeginFrameCapture?: boolean;
 }): boolean {
   if (args.isCancellation || args.isEncoderInterrupted) return false;
   if (args.isVerifyError || args.isDeCaptureError) return true;
+  if (args.isBeginFrameCapture === true) return true;
   if (args.isDeRendererStall === true || args.isSequentialCaptureStall === true) return true;
   if (args.isParallelCaptureStall === true || args.isEncoderDeath === true) return true;
   if (args.isTransientCaptureError === true) return true;
@@ -3400,6 +3432,9 @@ async function executeRenderPipeline(input: {
       updateCaptureObservability({ protocolTimeoutMs: scaledProtocolTimeout });
     }
 
+    const recordReferenceBackground = createReferenceBackgroundRecorder((result) =>
+      Object.assign(job, result),
+    );
     const subTimelineWaitMemo: SubTimelineWaitMemo = {};
     const probeResult = await observeRenderStage(
       observability,
@@ -3422,6 +3457,7 @@ async function executeRenderPipeline(input: {
           needsAlpha,
           deviceScaleFactor,
           subTimelineWaitMemo,
+          recordReferenceBackground,
         }),
       // Browser probe is pre-capture; report `browser calibrating` so a
       // slow probe (~64s SwiftShader warm-up on Windows was the reported
@@ -3753,6 +3789,7 @@ async function executeRenderPipeline(input: {
     let routePageMotionBlur: CaptureOptions["pageMotionBlur"];
     const buildCaptureOptions = (): CaptureOptions => ({
       ...captureOptions,
+      recordReferenceBackground,
       ...(routePageMotionBlur ? { pageMotionBlur: routePageMotionBlur } : {}),
       videoMetadataHints,
       skipReadinessVideoIds: videoReadinessSkipIds,
@@ -3786,6 +3823,8 @@ async function executeRenderPipeline(input: {
         });
       },
     });
+    const buildPrepCaptureOptions = () => stopPrepSessionOnScriptFailure(buildCaptureOptions());
+    const buildWorkerCaptureOptions = () => withScriptFailureStop(buildCaptureOptions(), job, log);
     // The engine delivers cached frame bytes as no-store CDP responses.
     // Frame requests bypass the file server's source-video downloads, which
     // can occupy all HTTP connections during native-video drift recovery.
@@ -4014,7 +4053,7 @@ async function executeRenderPipeline(input: {
         probeSession = await createCaptureSession(
           activeFileServer.url,
           framesDir,
-          buildCaptureOptions(),
+          buildPrepCaptureOptions(),
           null,
           { ...cfg, forceScreenshot: captureForceScreenshot },
         );
@@ -4123,7 +4162,7 @@ async function executeRenderPipeline(input: {
             totalFrames,
             forceScreenshot: captureForceScreenshot,
             probeSession,
-            buildCaptureOptions,
+            buildCaptureOptions: buildPrepCaptureOptions,
             createRenderVideoFrameInjector,
             assertNotAborted,
           }),
@@ -4772,7 +4811,7 @@ async function executeRenderPipeline(input: {
             effectiveBitrate,
             deliveryEncoder,
             fileServer: activeFileServer,
-            buildCaptureOptions,
+            buildCaptureOptions: buildWorkerCaptureOptions,
             createRenderVideoFrameInjector,
             hdrDiagnostics,
             abortSignal: attempt,
@@ -4897,7 +4936,7 @@ async function executeRenderPipeline(input: {
                   // Each segment sets its own GOP (at most the interval); hls never reaches this route.
                   ...deliveryEncoder,
                 },
-                buildCaptureOptions,
+                buildCaptureOptions: buildWorkerCaptureOptions,
                 createRenderVideoFrameInjector,
                 abortSignal: executionSignal,
                 assertNotAborted,
@@ -5071,7 +5110,7 @@ async function executeRenderPipeline(input: {
                   // encoder's open-GOP output untouched.
                   ...deliveryEncoder,
                 },
-                buildCaptureOptions,
+                buildCaptureOptions: buildWorkerCaptureOptions,
                 createRenderVideoFrameInjector,
                 abortSignal: executionSignal,
                 assertNotAborted,
@@ -5121,6 +5160,10 @@ async function executeRenderPipeline(input: {
               isParallelCaptureStall: isParallelStall,
               isEncoderDeath,
               isTransientCaptureError: isTransientBrowserError(err),
+              isBeginFrameCapture:
+                !capturePlan.forceScreenshot &&
+                !cfg.useDrawElement &&
+                parallelCaptureMode === "beginframe",
             })
           )
             throw err;
@@ -5345,7 +5388,7 @@ async function executeRenderPipeline(input: {
                 probeSession,
                 captureAttempts,
                 dedupPerfs,
-                buildCaptureOptions,
+                buildCaptureOptions: buildWorkerCaptureOptions,
                 createRenderVideoFrameInjector,
                 abortSignal: executionSignal,
                 assertNotAborted,
@@ -5634,7 +5677,7 @@ async function executeRenderPipeline(input: {
     await eventPublisher.flush();
   } catch (caught) {
     await pendingAudio;
-    const error = tooSlowError ?? caught;
+    const error = surfaceScriptFailure(tooSlowError ?? caught, job);
     if (!tooSlowError && (error instanceof RenderCancelledError || executionSignal?.aborted)) {
       job.error = error instanceof Error ? error.message : "render_cancelled";
       updateJobStatus(job, "cancelled", "Render cancelled", job.progress, onProgress);

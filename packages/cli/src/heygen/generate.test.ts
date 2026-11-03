@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { findFFmpeg } from "../browser/ffmpeg.js";
 import { probeVideo } from "../measure/media.js";
 
@@ -12,11 +12,36 @@ vi.mock("../cloud/auth.js", () => ({
   resolveCloudBaseUrl: () => "https://api.test",
 }));
 
-vi.stubEnv("HEYGEN_API_KEY", "k");
+vi.mock("../cloud/index.js", () => ({ createCloudClient: async () => ({}) }));
+const uploads = vi.hoisted(() => [] as { filename: string; contentType: string }[]);
+vi.mock("../cloud/upload.js", () => ({
+  uploadAssetViaDirectUpload: async (u: { filename: string; contentType: string }) => {
+    uploads.push({ filename: u.filename, contentType: u.contentType });
+    return { asset_id: `asset-${u.filename}` };
+  },
+}));
 
-const { checkRequest, foldShort, generate, parseMask, structureRatio, urlOf } =
-  await import("./generate.js");
+vi.stubEnv("HEYGEN_API_KEY", "k");
+vi.stubEnv("HEYGEN_API_URL", "https://api.test");
+
+const account = vi.hoisted(() => ({ scope: "acct" as string | null }));
+vi.mock("./v3.js", async (load) => ({
+  ...(await load<typeof import("./v3.js")>()),
+  senderScope: async () => account.scope,
+}));
+
+const {
+  checkRequest,
+  foldShort,
+  generate,
+  parseMask,
+  pickVoice,
+  ringChange,
+  structureRatio,
+  urlOf,
+} = await import("./generate.js");
 const { checkLimit, creditsOf, priceOf } = await import("./pricing.js");
+type GenerateRequest = import("./generate.js").GenerateRequest;
 const ffmpeg = findFFmpeg();
 const project = mkdtempSync(join(tmpdir(), "hf-generate-test-"));
 writeFileSync(join(project, "index.html"), "<html></html>");
@@ -24,6 +49,22 @@ afterAll(() => rmSync(project, { recursive: true, force: true }));
 afterEach(() => vi.unstubAllGlobals());
 
 const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200 });
+
+/** Runs `work` to the end with the poll interval's timers fast-forwarded. */
+async function settled<T>(work: Promise<T>): Promise<T> {
+  vi.useFakeTimers({ toFake: ["setTimeout"] });
+  let done = false;
+  const run = work.finally(() => (done = true));
+  try {
+    while (!done) {
+      await new Promise((r) => setImmediate(r));
+      await vi.advanceTimersByTimeAsync(5000);
+    }
+    return await run;
+  } finally {
+    vi.useRealTimers();
+  }
+}
 
 /** A 30 fps clip of these lavfi sources one after another: each new source is a cut. */
 function shots(name: string, sources: string[], size = "180x320"): string {
@@ -206,6 +247,122 @@ describe("generate", () => {
     },
   );
 
+  it.skipIf(!ffmpeg)(
+    "fills a masked box from the current frame while the picture changes",
+    async () => {
+      const guide = shots("changing.mp4", [
+        "color=c=0x202020:d=1.5",
+        "color=c=0xc0c0c0:d=0.5",
+        "color=c=0x202020:d=1.5",
+      ]);
+      const sent = answers(guide);
+      await generate({
+        type: "video",
+        out: join(project, "assets/changing-out.mp4"),
+        prompt: "p",
+        motion: guide,
+        allowCuts: true,
+        masks: [parseMask("30,90,120,50,1.6-1.9")],
+      });
+      const [video] = sent[0]!.reference_videos as { data: string }[];
+      const sentClip = join(project, "changing-sent.mp4");
+      writeFileSync(sentClip, Buffer.from(video!.data, "base64"));
+      const box = execFileSync(ffmpeg!, [
+        ...["-v", "error", "-ss", "1.75", "-i", sentClip, "-frames:v", "1"],
+        ...["-vf", "crop=120:50:30:90,format=gray", "-f", "rawvideo", "-"],
+      ]);
+      expect(box.reduce((a, v) => a + v, 0) / box.length).toBeGreaterThan(150);
+    },
+  );
+
+  it.skipIf(!ffmpeg).each([2, 4, 6])(
+    "fills a %i px wide box while the picture changes",
+    async (width) => {
+      const guide = shots(`narrow-${width}.mp4`, [
+        "color=c=0x202020:d=1.5",
+        "color=c=0xc0c0c0:d=0.5",
+        "color=c=0x202020:d=1.5",
+      ]);
+      const sent = answers(guide);
+      await generate({
+        type: "video",
+        out: join(project, `assets/narrow-${width}-out.mp4`),
+        prompt: "p",
+        motion: guide,
+        allowCuts: true,
+        masks: [parseMask(`20,20,${width},20,1.6-1.9`)],
+      });
+      expect(sent).toHaveLength(1);
+    },
+  );
+
+  it.skipIf(!ffmpeg)("reads only the seconds of the guide it sends", async () => {
+    const guide = join(project, "tail.mp4");
+    execFileSync(ffmpeg!, [
+      ...["-v", "error", "-y", "-f", "lavfi", "-i", "color=c=gray:s=180x320:r=30:d=16"],
+      "-vf",
+      "geq=lum='128+100*sin(X/3)*sin(Y/3)':cb=128:cr=128," +
+        "drawbox=x='30+t*40':y=100:w=20:h=30:color=white:t=fill," +
+        "eq=brightness='if(gt(t,15),0.5,0)':eval=frame",
+      ...["-pix_fmt", "yuv420p", guide],
+    ]);
+    const sent = answers(textured("tail-answer.mp4", "180x320", false));
+    await generate({
+      type: "video",
+      out: join(project, "assets/tail-out.mp4"),
+      prompt: "p",
+      motion: guide,
+      allowCuts: true,
+      masks: [parseMask("30,90,120,50")],
+    });
+    const [video] = sent[0]!.reference_videos as { data: string }[];
+    const sentClip = join(project, "tail-sent.mp4");
+    writeFileSync(sentClip, Buffer.from(video!.data, "base64"));
+    expect(probeVideo(sentClip).duration).toBeLessThanOrEqual(15.1);
+    const box = (f: string) =>
+      execFileSync(ffmpeg!, [
+        ...["-v", "error", "-ss", "1.5", "-i", f, "-frames:v", "1"],
+        ...["-vf", "crop=120:50:30:90,format=gray", "-f", "rawvideo", "-"],
+      ]);
+    const [got, clean] = [box(sentClip), box(textured("tail-clean.mp4", "180x320", false))];
+    expect(got.reduce((a, v, i) => a + Math.abs(v - clean[i]!), 0) / got.length).toBeLessThan(12);
+  });
+
+  it.skipIf(!ffmpeg)("leaves no streaks in a box filled while the picture changes", async () => {
+    const guide = join(project, "stripes.mp4");
+    execFileSync(ffmpeg!, [
+      ...["-v", "error", "-y", "-f", "lavfi", "-i", "color=c=gray:s=180x320:r=30:d=3"],
+      "-vf",
+      "geq=lum='if(lt(mod(X,40),20),220,40)':cb=128:cr=128," +
+        "eq=brightness='if(gt(t,1.5),0.2,0)':eval=frame",
+      ...["-pix_fmt", "yuv420p", guide],
+    ]);
+    const sent = answers(textured("stripes-answer.mp4", "180x320", false));
+    await generate({
+      type: "video",
+      out: join(project, "assets/stripes-out.mp4"),
+      prompt: "p",
+      motion: guide,
+      allowCuts: true,
+      masks: [parseMask("30,90,120,50,1.0-2.0")],
+    });
+    const [video] = sent[0]!.reference_videos as { data: string }[];
+    const sentClip = join(project, "stripes-sent.mp4");
+    writeFileSync(sentClip, Buffer.from(video!.data, "base64"));
+    const gray = execFileSync(ffmpeg!, [
+      ...["-v", "error", "-ss", "1.2", "-i", sentClip, "-frames:v", "1"],
+      ...["-vf", "format=gray", "-f", "rawvideo", "-"],
+    ]);
+    expect(structureRatio(gray, 180, [30, 90, 120, 50]).inside).toBeLessThan(6);
+  });
+
+  it("reads how much the picture round a box changed, whatever moves inside it", () => {
+    const [a, b] = [new Uint8Array(100 * 100).fill(50), new Uint8Array(100 * 100).fill(50)];
+    for (let y = 40; y < 60; y++) for (let x = 40; x < 60; x++) b[y * 100 + x] = 200;
+    expect(ringChange(a, b, 100, [40, 40, 20, 20])).toBe(0);
+    expect(ringChange(a, b.fill(90), 100, [40, 40, 20, 20])).toBe(40);
+  });
+
   it("reads a box with more edges than its surroundings as structure", () => {
     const flat = new Uint8Array(100 * 100).fill(100);
     expect(structureRatio(flat, 100, [40, 40, 20, 20])).toEqual({ inside: 0, ring: 0 });
@@ -259,6 +416,47 @@ describe("generate", () => {
       );
     },
   );
+
+  const still = (name: string, size: string) => {
+    const path = join(project, name);
+    execFileSync(ffmpeg!, [
+      ...["-v", "error", "-y", "-f", "lavfi", "-i", `color=c=red:s=${size}`],
+      ...["-frames:v", "1", path],
+    ]);
+    return path;
+  };
+
+  it.skipIf(!ffmpeg)("crops to the first frame's shape when no --aspect is passed", async () => {
+    answers(textured("first-wide.mp4", "1344x768", false));
+    const r = await generate({
+      type: "video",
+      out: join(project, "assets/first-out.mp4"),
+      prompt: "p",
+      firstFrame: still("first.png", "120x90"),
+    });
+    const { width, height } = probeVideo(r.out);
+    expect([width, height]).toEqual([1024, 768]);
+  });
+
+  it.skipIf(!ffmpeg)("keeps a portrait shot from a phone photo stored sideways", async () => {
+    const first = still("phone.jpg", "160x90");
+    const jpeg = readFileSync(first);
+    // An Exif segment with Orientation=6: the file holds landscape pixels, the picture is portrait.
+    const exif = "ffe10022457869660000" + "4d4d002a00000008000101120003000000010006000000000000";
+    writeFileSync(
+      first,
+      Buffer.concat([jpeg.subarray(0, 2), Buffer.from(exif, "hex"), jpeg.subarray(2)]),
+    );
+    answers(textured("first-tall.mp4", "90x160", false));
+    const r = await generate({
+      type: "video",
+      out: join(project, "assets/phone-out.mp4"),
+      prompt: "p",
+      firstFrame: first,
+    });
+    const { width, height } = probeVideo(r.out);
+    expect([width, height]).toEqual([90, 160]);
+  });
 
   it.skipIf(!ffmpeg)("blanks the motion clip's masked regions before sending it", async () => {
     // A guide with white letters at 40,100 over a moving picture; the mask covers them for its first 0.5 s.
@@ -460,6 +658,7 @@ describe("generate", () => {
       }).usd,
     ).toBe(0.07);
     expect(priceOf({ type: "voice", out: "a.mp3" }).usd).toBeNull();
+    expect(creditsOf(priceOf({ type: "voice", out: "a.mp3", script: "今天聊黄金" }))).toBe(1);
   });
 
   it("prices only a request the real call would accept", () => {
@@ -484,12 +683,118 @@ describe("generate", () => {
     );
   });
 
+  it.skipIf(!ffmpeg)("redoes a shot's mouth to the exact voice", async () => {
+    const video = shots("lips-shot.mp4", ["color=c=red:d=2"]);
+    const audio = join(project, "lips-voice.mp3");
+    writeFileSync(audio, "voice");
+    const sent: { url: string; body?: Record<string, unknown> }[] = [];
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      sent.push({ url, ...(init?.body ? { body: JSON.parse(String(init.body)) } : {}) });
+      if (url === "https://files.test/lips.mp4") return new Response(new Uint8Array([1, 2, 3]));
+      if (init?.method === "POST") return json({ data: { lipsync_id: "lip1" } });
+      return json({
+        data: { id: "lip1", status: "completed", video_url: "https://files.test/lips.mp4" },
+      });
+    });
+    const out = join(project, "lips-out.mp4");
+    const request = { type: "lipsync" as const, video, audio, out };
+    const made = await generate(request);
+    expect(made.job).toBe("lip1");
+    expect(sent[0]!.url).toBe("https://api.test/v3/lipsyncs");
+    expect(sent[0]!.body).toMatchObject({
+      video: { type: "asset_id", asset_id: "asset-lips-shot.mp4" },
+      audio: { type: "asset_id", asset_id: "asset-lips-voice.mp3" },
+      mode: "speed",
+      enable_dynamic_duration: false,
+    });
+    expect(sent[1]!.url).toBe("https://api.test/v3/lipsyncs/lip1");
+    expect(existsSync(out)).toBe(true);
+    expect(creditsOf(priceOf(request))).toBe(14);
+    expect(() => checkRequest({ type: "lipsync", audio, out })).toThrow("--video");
+  });
+
+  it.skipIf(!ffmpeg)("cuts out a WebM or MOV shot as video, with its key in the body", async () => {
+    const posts: Record<string, unknown>[] = [];
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (url === "https://files.test/fg.webm") return new Response(new Uint8Array([1, 2, 3]));
+      if (init?.method === "POST") posts.push(JSON.parse(String(init.body)));
+      return json({
+        data: {
+          id: "bg1",
+          status: "completed",
+          layers: { foreground: "https://files.test/fg.webm" },
+        },
+      });
+    });
+    uploads.length = 0;
+    for (const ext of ["webm", "mov"]) {
+      const video = join(project, `cut-shot.${ext}`);
+      execFileSync(ffmpeg!, [
+        "-v",
+        "error",
+        "-y",
+        "-f",
+        "lavfi",
+        "-i",
+        "color=c=red:s=64x36:d=1",
+        video,
+      ]);
+      const out = join(project, `cut-${ext}.webm`);
+      await generate({ type: "cutout", video, out });
+      await generate({ type: "cutout", video, out });
+    }
+    expect(uploads.map((u) => u.contentType)).toEqual([
+      "video/webm",
+      "video/webm",
+      "video/quicktime",
+      "video/quicktime",
+    ]);
+    // the route dedupes on the body's request_id alone, so a re-run must send the same one
+    const ids = posts.map((p) => p.request_id);
+    expect(ids[0]).toMatch(/\S/);
+    expect(ids[1]).toBe(ids[0]);
+    expect(ids[2]).toBe(ids[3]);
+    expect(ids[2]).not.toBe(ids[0]);
+  });
+
+  it.skipIf(!ffmpeg)("speaks a finished voice as it is, from a photo or a look", async () => {
+    const photo = join(project, "avatar-photo.png");
+    execFileSync(ffmpeg!, [
+      ...["-v", "error", "-y", "-f", "lavfi", "-i", "color=c=red:s=64x36"],
+      ...["-frames:v", "1", photo],
+    ]);
+    const audio = join(project, "avatar-voice.wav");
+    execFileSync(ffmpeg!, [
+      ...["-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=6", audio],
+    ]);
+    const sent: Record<string, unknown>[] = [];
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (url === "https://files.test/a.mp4") return new Response(new Uint8Array([1]));
+      if (init?.body) sent.push(JSON.parse(String(init.body)));
+      return json({
+        data: { id: "v1", status: "completed", video_url: "https://files.test/a.mp4" },
+      });
+    });
+    const out = join(project, "avatar-out.mp4");
+    await generate({ type: "avatar", photo, audio, prompt: "talks with both hands", out });
+    await generate({ type: "avatar", avatar: "look1", audio, out });
+    expect(sent[0]).toMatchObject({
+      type: "image",
+      audio_asset_id: "asset-avatar-voice.wav",
+      motion_prompt: "talks with both hands",
+    });
+    expect(sent[0]).not.toHaveProperty("script");
+    expect(sent[1]).toMatchObject({ type: "avatar", avatar_id: "look1" });
+    expect(creditsOf(priceOf({ type: "avatar", photo, audio, out }))).toBe(116);
+    expect(() => checkRequest({ type: "avatar", photo, out })).toThrow("--script");
+  });
+
   it("prices an avatar on the plan's avatar rows, not its API price", () => {
     const script = Array.from({ length: 30 }, () => "word").join(" ");
     const avatar = priceOf({ type: "avatar", out: "a.mp4", script });
-    expect(creditsOf(avatar)).toBe(200);
+    expect(creditsOf(avatar)).toBe(289);
     expect(avatar.list).toBeCloseTo(1.2167);
-    expect(() => checkLimit(creditsOf(avatar), 220)).not.toThrow();
+    expect(() => checkLimit(creditsOf(avatar), 300)).not.toThrow();
   });
 
   it("charges a reference shot's pictures after the first two", () => {
@@ -500,28 +805,261 @@ describe("generate", () => {
       references: Array.from({ length: pictures }, (_, i) => `${i}.png`),
     });
     const credits = [1, 2, 3, 9].map((n) => creditsOf(priceOf(shot(n))));
-    expect(credits).toEqual([167, 167, 180, 260]);
+    expect(credits).toEqual([250, 250, 270, 390]);
     expect(priceOf(shot(9)).list).toBeCloseTo(0.39);
-    expect(() => checkLimit(credits[3]!, 250)).toThrow("about 260 credits, over --max-credits 250");
-    expect(() => checkLimit(credits[3]!, 260)).not.toThrow();
+    expect(() => checkLimit(credits[3]!, 380)).toThrow("about 390 credits, over --max-credits 380");
+    expect(() => checkLimit(credits[3]!, 390)).not.toThrow();
   });
 
   it("keeps a call under the person's credit limit, or refuses it before sending", () => {
     const shot = creditsOf(priceOf({ type: "video", out: "a.mp4", seconds: 6 }));
-    expect(shot).toBe(72);
+    expect(shot).toBe(108);
     expect(creditsOf(priceOf({ type: "image", out: "a.png" }))).toBe(67);
-    expect(() => checkLimit(shot, 72)).not.toThrow();
-    expect(() => checkLimit(shot, 30)).toThrow("about 72 credits, over --max-credits 30");
+    expect(() => checkLimit(shot, 108)).not.toThrow();
+    expect(() => checkLimit(shot, 30)).toThrow("about 108 credits, over --max-credits 30");
     expect(() => checkLimit(null, 30)).toThrow("cannot be priced ahead");
     expect(() => checkLimit(null, undefined)).not.toThrow();
   });
 });
 
+describe("each route through the generated client", () => {
+  // Keys an earlier refusal in this file marked failed would move this file's keys on.
+  beforeEach(() => {
+    vi.stubEnv("HYPERFRAMES_CONFIG_DIR", mkdtempSync(join(tmpdir(), "hf-route-test-")));
+  });
+  const file = "https://files.test/route-result";
+  const routes = [
+    { type: "image", path: "/v3/images", ext: "png", done: { images: [{ url: file }] } },
+    { type: "video", path: "/v3/models/videos", ext: "mp4", done: { video_url: file } },
+    { type: "avatar", path: "/v3/videos", ext: "mp4", done: { video_url: file } },
+    { type: "voice", path: "/v3/voices/speech", ext: "mp3", done: { audio_url: file } },
+    { type: "music", path: "/v3/audio/music", ext: "mp3", done: { audio_url: file } },
+  ] as const;
+  const request = (type: GenerateRequest["type"], ext: string): GenerateRequest => {
+    const photo = join(project, "route-photo.png");
+    if (type === "avatar")
+      execFileSync(ffmpeg!, [
+        ...["-v", "error", "-y", "-f", "lavfi", "-i", "color=c=red:s=64x64"],
+        ...["-frames:v", "1", photo],
+      ]);
+    return {
+      type,
+      out: join(project, `assets/route-${type}.${ext}`),
+      prompt: "a desk",
+      script: "Hello",
+      voice: "c".repeat(32),
+      ...(type === "avatar" ? { photo } : {}),
+    };
+  };
+
+  for (const { type, path, ext, done } of routes) {
+    const polled = type !== "voice";
+    it.skipIf(!ffmpeg && type === "avatar")(
+      `${type}: posts ${path}${polled ? ", keyed, and polls it to completion" : " once, unkeyed"}`,
+      async () => {
+        const calls: { url: string; method?: string; key: string | null; body?: unknown }[] = [];
+        const answers = polled
+          ? [
+              json({ data: { id: "j/1", status: "pending" } }),
+              json({ data: { id: "j/1", status: "completed", ...done } }),
+            ]
+          : [json({ data: { ...done, duration: 1 } })];
+        vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+          calls.push({
+            url,
+            method: init?.method,
+            key: new Headers(init?.headers).get("Idempotency-Key"),
+            ...(init?.body ? { body: JSON.parse(String(init.body)) } : {}),
+          });
+          if (url === file) return new Response(new Uint8Array([1]));
+          return answers.shift()!;
+        });
+        const r = await settled(generate(request(type, ext)));
+        const [post, ...rest] = calls;
+        expect(post).toMatchObject({ url: `https://api.test${path}`, method: "POST" });
+        expect(post!.key).toEqual(polled ? expect.stringMatching(/^hf-[0-9a-f]{40}$/) : null);
+        expect(post!.body).toBeTypeOf("object");
+        expect(rest.map((c) => [c.url, c.method])).toEqual([
+          ...(polled ? [[`https://api.test${path}/j%2F1`, "GET"]] : []),
+          [file, undefined],
+        ]);
+        expect(r).toMatchObject({ route: path, job: polled ? "j/1" : "" });
+      },
+    );
+
+    it.skipIf(!ffmpeg && type === "avatar")(`${type}: says what a refusal needs`, async () => {
+      vi.stubGlobal(
+        "fetch",
+        async () =>
+          new Response(JSON.stringify({ error: { code: "hf_usage_exhausted" } }), { status: 402 }),
+      );
+      await expect(generate(request(type, ext))).rejects.toThrow("out of HyperFrames credits");
+    });
+  }
+});
+
 describe("foldShort", () => {
-  it("folds a piece under half a second into its neighbour", () => {
-    expect(foldShort([4, 4.2, 8], 10)).toEqual([4.2, 8]);
-    expect(foldShort([0.2, 5], 10)).toEqual([5]);
-    expect(foldShort([5, 9.8], 10)).toEqual([5]);
-    expect(foldShort([2, 2.1, 2.2, 6], 10)).toEqual([2.2, 6]);
+  it("folds a piece of a few frames into its neighbour", () => {
+    expect(foldShort([4, 4.1, 8], 10)).toEqual([4.1, 8]);
+    expect(foldShort([0.1, 5], 10)).toEqual([5]);
+    expect(foldShort([5, 9.9], 10)).toEqual([5]);
+    expect(foldShort([2, 2.05, 2.1, 6], 10)).toEqual([2.1, 6]);
+  });
+
+  it("keeps a real cut near the guide's edge, which would land inside a paid shot", () => {
+    expect(foldShort([5, 9.7], 10)).toEqual([5, 9.7]);
+    expect(foldShort([0.3], 10)).toEqual([0.3]);
+  });
+});
+
+describe("pickVoice", () => {
+  const voice = (id: string, name: string) => ({ voice_id: id.repeat(32), name, gender: "female" });
+  let catalog = [voice("a", "Lin"), voice("b", "Wei")];
+  const asked: string[] = [];
+  const posts: { key: string | null; body: Record<string, unknown> }[] = [];
+  const heygen = () =>
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      asked.push(url);
+      if (url.includes("/v3/voices?")) return json({ data: catalog });
+      if (url === "https://files.test/vo.mp3") return new Response(new Uint8Array([1]));
+      if (init?.method === "POST") {
+        const key = new Headers(init.headers).get("Idempotency-Key");
+        posts.push({ key, body: JSON.parse(String(init.body)) });
+      }
+      // Speech answers in the request; a video is a job to poll.
+      if (url.endsWith("/v3/voices/speech"))
+        return json({ data: { audio_url: "https://files.test/vo.mp3", duration: 1 } });
+      return json({ data: { id: "j1", status: "pending" } });
+    });
+  afterEach(() => {
+    vi.useRealTimers();
+    account.scope = "acct";
+    catalog = [voice("a", "Lin"), voice("b", "Wei")];
+    asked.length = 0;
+    posts.length = 0;
+  });
+
+  it("takes a voice id as given, without asking HeyGen", async () => {
+    heygen();
+    const r = { type: "voice" as const, out: "vo.mp3", voice: "c".repeat(32) };
+    expect((await pickVoice(r)).voice_id).toBe("c".repeat(32));
+    expect(asked).toEqual([]);
+  });
+
+  it("picks HeyGen's first public voice for a language", async () => {
+    heygen();
+    const r = { type: "voice" as const, out: join(project, "assets/a.mp3"), voice: "Chinese" };
+    expect((await pickVoice(r)).name).toBe("Lin");
+    expect(asked[0]).toBe("https://api.test/v3/voices?type=public&language=Chinese&limit=1");
+  });
+
+  it("says what to do when HeyGen will not list its voices", async () => {
+    vi.stubGlobal(
+      "fetch",
+      async () =>
+        new Response(JSON.stringify({ error: { code: "unauthorized" } }), { status: 401 }),
+    );
+    await expect(pickVoice({ type: "voice", out: "vo.mp3" })).rejects.toMatchObject({
+      message: "HeyGen 401 listing its voices",
+      fix: "run the same command again",
+    });
+  });
+
+  it("lists voices to pick from when none is named", async () => {
+    heygen();
+    await expect(pickVoice({ type: "voice", out: "vo.mp3" })).rejects.toMatchObject({
+      message: "--voice is missing",
+      fix: expect.stringContaining(`${"a".repeat(32)} (Lin, female)`),
+    });
+  });
+
+  // The command's own path: pick, then generate; a timeout, a reordered catalog, the same command.
+  const runOnce = async (r: GenerateRequest) => {
+    const request = { ...r };
+    const picked = await pickVoice(request).catch((err: unknown) => err);
+    if (picked instanceof Error) return picked;
+    request.voice = (picked as { voice_id: string }).voice_id;
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout"] });
+    const run = generate(request).catch((err: unknown) => err);
+    await vi.advanceTimersByTimeAsync(31 * 60_000);
+    vi.useRealTimers();
+    return run;
+  };
+
+  for (const [type, extra] of [
+    ["voice", "mp3"],
+    ["avatar", "mp4"],
+  ] as const) {
+    it.skipIf(!ffmpeg)(
+      `keeps the first voice for a ${type} re-run after the catalog reorders`,
+      async () => {
+        heygen();
+        const face = join(project, "face.png");
+        execFileSync(ffmpeg!, [
+          "-v",
+          "error",
+          "-y",
+          "-f",
+          "lavfi",
+          "-i",
+          "color=red:s=64x64",
+          "-frames:v",
+          "1",
+          face,
+        ]);
+        const r: GenerateRequest = {
+          type,
+          out: join(project, `assets/${type}-retry.${extra}`),
+          voice: "Chinese",
+          script: "你好",
+          ...(type === "avatar" ? { photo: face } : {}),
+        };
+        expect(await runOnce(r)).toMatchObject(
+          type === "voice"
+            ? { route: "/v3/voices/speech" }
+            : { message: "HeyGen job j1 is still pending" },
+        );
+        catalog = [voice("b", "Wei"), voice("a", "Lin")];
+        await runOnce(r);
+        expect(posts).toHaveLength(2);
+        expect(posts[1]!.key).toBe(posts[0]!.key);
+        expect(posts[1]!.body).toEqual(posts[0]!.body);
+        expect(posts[0]!.body.voice_id).toBe("a".repeat(32));
+      },
+    );
+  }
+  const shot = (name: string): GenerateRequest => ({
+    type: "voice",
+    out: join(project, `assets/${name}.mp3`),
+    voice: "Chinese",
+    script: "你好",
+  });
+
+  it("refuses before any pick or POST while the account is unknown, then picks once it is", async () => {
+    heygen();
+    account.scope = null;
+    expect(await runOnce(shot("who-later"))).toMatchObject({
+      message: expect.stringContaining("did not say which account"),
+    });
+    expect(posts).toHaveLength(0);
+    expect(asked).toEqual([]);
+    account.scope = "acct";
+    await runOnce(shot("who-later"));
+    expect(posts.map((p) => p.body.voice_id)).toEqual(["a".repeat(32)]);
+  });
+
+  it("refuses a re-run while the account is unknown instead of starting another job", async () => {
+    heygen();
+    await runOnce(shot("who-lost"));
+    account.scope = null;
+    catalog = [voice("b", "Wei"), voice("a", "Lin")];
+    expect(await runOnce(shot("who-lost"))).toMatchObject({
+      message: expect.stringContaining("did not say which account"),
+    });
+    expect(posts).toHaveLength(1);
+    account.scope = "acct";
+    await runOnce(shot("who-lost"));
+    expect(posts[1]!.key).toBe(posts[0]!.key);
+    expect(posts[1]!.body).toEqual(posts[0]!.body);
   });
 });

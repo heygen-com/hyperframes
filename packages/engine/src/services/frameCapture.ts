@@ -11,6 +11,7 @@
 import {
   type Browser,
   type CDPSession,
+  type HTTPRequest,
   type Page,
   type Protocol,
   type Viewport,
@@ -32,6 +33,7 @@ import {
   type RawAuthoredTiming,
 } from "@hyperframes/core";
 
+import { readReferenceBackground } from "./referenceBackground.js";
 import { holdRenderFrameVideos } from "./renderFrameVideoHold.js";
 import { asDrawElementCaptureFailure, DrawElementCaptureError } from "./drawElementCaptureError.js";
 import { encodePng } from "../utils/alphaBlit.js";
@@ -70,6 +72,7 @@ import {
 } from "./browserManager.js";
 import {
   beginFrameCapture,
+  forgetBeginFrameCapture,
   ensureRenderFrameSiblings,
   getCdpSession,
   pageContentExceedsCaptureHeight,
@@ -219,6 +222,8 @@ export interface CaptureSession {
    * were hitting that wall — a 705-render spike at the 45s setup bucket).
    */
   scriptLoadFailures: string[];
+  /** Closed origin and error of each of `scriptLoadFailures`, same order. */
+  scriptLoadCauses?: ScriptLoadCause[];
   /** Uncaught page errors; a timed-out timeline wait with any of these becomes a script failure. */
   pageErrors: string[];
   /** The first VFX chain error; its frames would lack the effect, so it stops the render. */
@@ -964,6 +969,7 @@ async function initDrawElementOrTransparentBackground(
   page: Page,
   logInitPhase: (phase: string) => void,
 ): Promise<void> {
+  await session.options.recordReferenceBackground?.(() => readReferenceBackground(page));
   const supersampling = (session.options.deviceScaleFactor ?? 1) !== 1;
   // forceScreenshot is an explicit routing decision made upstream (render-mode
   // compat hints like raw requestAnimationFrame, alpha formats, low-memory) —
@@ -2292,7 +2298,7 @@ export async function pollVideosReady(
             if (ve.readyState >= 2) return true;
             if (ve.error) return true;
             if (ve.networkState === HTMLMediaElement.NETWORK_NO_SOURCE) return true;
-            return false;
+            return !ve.getAttribute("src") && !ve.querySelector("source");
           })
         );
       }, skipIds),
@@ -2413,6 +2419,7 @@ export async function collectMediaReadinessWarnings(
     for (const media of document.querySelectorAll("video")) {
       const mediaElement = media as HTMLMediaElement;
       if (skipped.has(mediaElement.id)) continue;
+      if (!mediaElement.getAttribute("src") && !mediaElement.querySelector("source")) continue;
       const src = mediaElement.currentSrc || mediaElement.getAttribute("src") || "(no src)";
       const failed =
         Boolean(mediaElement.error) ||
@@ -2469,6 +2476,7 @@ export function recordSubTimelineWarning(session: CaptureSession, timeoutMs: num
     session.pageErrors.length > 0 && session.scriptLoadFailures.length === 0;
   const scriptFailure = isScriptFailure(session);
   const sources = [...session.scriptLoadFailures, ...session.pageErrors];
+  const loadCauses = session.scriptLoadCauses ?? [];
   const pending = session.pendingTimelineIds ?? [];
   const pendingSuffix = pending.length > 0 ? ` (still unregistered: ${pending.join(", ")})` : "";
   const isolated = session.isolatedCompositions ?? [];
@@ -2497,7 +2505,8 @@ export function recordSubTimelineWarning(session: CaptureSession, timeoutMs: num
           `${pendingSuffix} (${sources.join(", ")}). Fix the error; a composition animated by ` +
           `CSS or rAF rather than a GSAP timeline must mark its host with data-no-timeline.`
         : scriptFailure
-          ? `A sub-composition timeline script failed to load (${sources.join(", ")})`
+          ? `A sub-composition timeline script failed to load (${sources.join(", ")})` +
+            scriptLoadCauseSuffix(loadCauses)
           : `Sub-composition timelines did not become ready within ${timeoutMs}ms${pendingSuffix}. ` +
             `This can be intentional: a composition driven by CSS animations or rAF never registers ` +
             `window.__timelines[id], and marking its host with data-no-timeline skips the wait entirely. ` +
@@ -2510,6 +2519,10 @@ export function recordSubTimelineWarning(session: CaptureSession, timeoutMs: num
       },
     },
   ]);
+  if (scriptFailure) {
+    const failed = session.warnings.filter((w) => w.code === "sub_timeline_script_failure");
+    session.options?.onSubTimelineScriptFailure?.(failed);
+  }
 }
 
 /**
@@ -2698,10 +2711,72 @@ function recordPageError(session: CaptureSession, error: string | null): void {
 // (e.g. a `requestfailed` following the 4xx), and repeated <script> tags for
 // the same URL duplicate it further — dedupe so the fail-fast warning names
 // each failed URL once.
-function recordScriptLoadFailure(session: CaptureSession, url: string): void {
+function recordScriptLoadFailure(
+  session: CaptureSession,
+  url: string,
+  cause: ScriptLoadCause,
+): void {
   if (!session.scriptLoadFailures.includes(url)) {
     session.scriptLoadFailures.push(url);
+    (session.scriptLoadCauses ??= []).push(cause);
   }
+}
+
+type ScriptLoadOrigin = "local" | "cdn" | "remote" | "unknown";
+export interface ScriptLoadCause {
+  origin: ScriptLoadOrigin;
+  /** `net::ERR_*`, `http-<status>` or `unknown`. */
+  code: string;
+}
+
+const CDN_HOSTS = /^(?:cdn\.jsdelivr\.net|unpkg\.com|cdnjs\.cloudflare\.com)$/;
+
+/** Where a failed script came from and why, never its URL, host or path. */
+export function classifyScriptLoadCause(
+  url: string,
+  serverUrl: string,
+  failure: string | number,
+): ScriptLoadCause {
+  let origin: ScriptLoadOrigin = "unknown";
+  if (url.startsWith(`${serverUrl}/`)) origin = "local";
+  else if (/^https?:\/\//.test(url)) {
+    origin = CDN_HOSTS.test(new URL(url).hostname) ? "cdn" : "remote";
+  }
+  const code =
+    typeof failure === "number"
+      ? `http-${failure}`
+      : /^net::ERR_[A-Z0-9_]{1,40}$/.test(failure)
+        ? failure
+        : "unknown";
+  return { origin, code };
+}
+
+function scriptLoadCauseSuffix(causes: readonly ScriptLoadCause[]): string {
+  const shown = causes.slice(0, 4).map((c) => `${c.origin}/${c.code}`);
+  return shown.length === 0 ? "" : ` [script_load: ${shown.join(", ")}]`;
+}
+
+const CANCELLED_BY_THE_PAGE_NOT_REFUSED = "net::ERR_ABORTED";
+
+export function recordFailedRequest(
+  session: CaptureSession,
+  request: Pick<HTTPRequest, "resourceType" | "url" | "method" | "failure">,
+): void {
+  const resourceType = request.resourceType();
+  const url = request.url();
+  const failureText = request.failure()?.errorText ?? "unknown";
+  if (resourceType === "script" && failureText !== CANCELLED_BY_THE_PAGE_NOT_REFUSED) {
+    recordScriptLoadFailure(
+      session,
+      url,
+      classifyScriptLoadCause(url, session.serverUrl, failureText),
+    );
+  }
+  if (shouldIgnoreRequestFailureDiagnostic({ resourceType, url, failureText })) return;
+  appendBrowserDiagnostic(
+    session,
+    formatRequestFailureDiagnostic({ method: request.method(), resourceType, url, failureText }),
+  );
 }
 
 const SCRIPT_ERROR_LABEL = "[HyperFrames] composition script error:";
@@ -2801,7 +2876,8 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
 
     // A blocked script can never register its timeline (#3352); a thrown one may still, so it only counts on timeout.
     const scriptFailure = classifyConsoleScriptFailure(type, text);
-    if (scriptFailure) recordScriptLoadFailure(session, scriptFailure);
+    if (scriptFailure)
+      recordScriptLoadFailure(session, scriptFailure, { origin: "unknown", code: "unknown" });
     recordConsoleScriptError(session, classifyConsoleScriptError(type, text));
   });
 
@@ -2815,24 +2891,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     appendBrowserDiagnostic(session, text);
   });
 
-  page.on("requestfailed", (request) => {
-    const resourceType = request.resourceType();
-    const url = request.url();
-    const failureText = request.failure()?.errorText ?? "unknown";
-    if (resourceType === "script") {
-      recordScriptLoadFailure(session, request.url());
-    }
-    if (shouldIgnoreRequestFailureDiagnostic({ resourceType, url, failureText })) return;
-    appendBrowserDiagnostic(
-      session,
-      formatRequestFailureDiagnostic({
-        method: request.method(),
-        resourceType,
-        url,
-        failureText,
-      }),
-    );
-  });
+  page.on("requestfailed", (request) => recordFailedRequest(session, request));
 
   const projectScripts = new Set<string>();
   page.on("response", (response) => {
@@ -2845,7 +2904,13 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
       return;
     }
 
-    if (isScript) recordScriptLoadFailure(session, responseUrl);
+    if (isScript) {
+      recordScriptLoadFailure(
+        session,
+        responseUrl,
+        classifyScriptLoadCause(responseUrl, serverUrl, status),
+      );
+    }
     appendBrowserDiagnostic(
       session,
       formatHttpErrorDiagnostic({
@@ -4497,6 +4562,7 @@ async function captureFrameSurface(
         interval: session.beginFrameIntervalMs,
         noDisplayUpdates: false,
       });
+      forgetBeginFrameCapture(page);
       session.beginFrameSeekPresented = true;
     }
     const result = await beginFrameCapture(

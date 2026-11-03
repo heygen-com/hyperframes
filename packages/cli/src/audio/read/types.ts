@@ -1,6 +1,6 @@
 import type { Span } from "@hyperframes/core/audio-analysis";
 
-export const READ_VERSION = 4;
+export const READ_VERSION = 7;
 
 export type Separation = "stems" | "mix";
 
@@ -32,14 +32,12 @@ export interface Voice {
   medianPitchHz: number | null;
 }
 
-export type EffectKind = "riser" | "boom" | "thump" | "whoosh" | "click" | "tick" | "ding" | "hit";
-
 export type Band = "low" | "mid" | "high";
 
 export interface Effect {
   t: number;
   end: number;
-  kind: EffectKind;
+  kind: "effect";
   group: string;
   band: Band;
   attackMs: number;
@@ -51,18 +49,18 @@ export interface Effect {
   overMusicDb: number | null;
   /** More than one when a quick run of the same sound is reported as one train. */
   count: number;
+  stem: string | null;
 }
 
 export interface EffectGroup {
   id: string;
-  kind: EffectKind;
   count: number;
 }
 
 export interface Effects {
   events: Effect[];
   groups: EffectGroup[];
-  /** Hits that repeat on the music's beat, which are the music's own drums and not listed as effects. */
+  /** The music's own drums, not listed as effects: hits that recur in the drums while music plays, or that repeat on its beat. */
   drumHits: number;
 }
 
@@ -76,11 +74,16 @@ export interface MusicSegment {
   bpm: number | null;
   /** Where a fade out begins, when the segment ends on one. */
   fadeFrom: number | null;
+  stems: StemSpan[];
+}
+
+export interface StemSpan extends Span {
+  name: string;
 }
 
 export interface Piece {
   id: number;
-  /** The stems that carry it, loudest first. */
+  /** The stems that carry most of its first segment, loudest first. */
   instruments: string[];
   bpm: number | null;
   firstAt: number;
@@ -103,6 +106,13 @@ export interface Ambience {
 export interface AudibleStem {
   name: string;
   db: number;
+  spans: Span[];
+  description: string | null;
+}
+
+export interface Description {
+  overall: string;
+  bgmPrompt: string | null;
 }
 
 export interface ReadAudio {
@@ -112,6 +122,10 @@ export interface ReadAudio {
   duration: number;
   separation: Separation;
   stems: AudibleStem[];
+  stemsDir: string | null;
+  voiceFreeMix: string | null;
+  bpm: number | null;
+  description: Description | null;
   transcript: string | null;
   /** Null when the mix alone cannot tell speech from music: no stems and no transcript. */
   voice: Voice | null;

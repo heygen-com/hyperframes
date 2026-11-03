@@ -8,6 +8,7 @@ import { matchTokens } from "./match.mjs";
 const AUDIO_EXT = new Set([".mp3", ".wav", ".ogg", ".m4a", ".aac"]);
 const IMAGE_EXT = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".ico"]);
 const VIDEO_EXT = new Set([".mp4", ".webm", ".mov"]);
+const TEMPLATE_FOLDERS = new Set(["previews", "textures"]);
 
 function audioKind(filePath) {
   const words = filePath.toLowerCase().split(/[^a-z0-9]+/);
@@ -104,6 +105,15 @@ export function adoptExistingAssets(projectDir) {
   return adopted;
 }
 
+// A component's own pictures, and a template's textures and previews, are not media for the film to pick up.
+function belongsToTemplate(projectDir, rel) {
+  const [folder, ...rest] = rel.split("/");
+  if (rest.length === 0) return false;
+  return (
+    TEMPLATE_FOLDERS.has(folder) || existsSync(join(projectDir, "compositions", `${folder}.html`))
+  );
+}
+
 // Adopt a pre-existing assets/ file only when it shares a meaningful word with
 // the intent. The old test — `name.includes(intent) || intent.includes(name)` —
 // silently returned the WRONG file: "whoosh" grabbed a stray who.mp3, and a
@@ -116,6 +126,7 @@ export function findExistingAsset(projectDir, intent, type) {
   const intentTokens = matchTokens(intent);
   if (intentTokens.size === 0) return null;
   for (const rel of walkDir(assetsDir)) {
+    if (belongsToTemplate(projectDir, rel)) continue;
     const t = inferType(rel);
     if (!t || (type && t !== type)) continue;
     const stem = basename(rel, extname(rel));

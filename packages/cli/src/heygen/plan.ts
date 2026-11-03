@@ -22,7 +22,7 @@ function mockPlan(): Plan | null {
 }
 
 // Payment routes live on api2, beside the OAuth ones; the v3 generation routes stay on api.
-const billingBaseUrl = () => resolveCloudBaseUrl().replace("://api.", "://api2.");
+export const billingBaseUrl = () => resolveCloudBaseUrl().replace("://api.", "://api2.");
 
 export async function readPlan(): Promise<Plan | null> {
   try {
@@ -53,11 +53,13 @@ const creditsUrl = () => process.env["HYPERFRAMES_CREDITS_URL"] || `${webBase()}
 /** A plans or credits page link with what the web side reads: `from=cli`, the credits needed, the waiting step. */
 export function pageUrl(
   kind: "plans" | "credits",
-  fields: { needed?: number; tool?: string; base?: string } = {},
+  fields: { needed?: number; tool?: string; feature?: string; rs?: string; base?: string } = {},
 ): string {
   const url = new URL(fields.base ?? (kind === "plans" ? plansUrl() : creditsUrl()));
   url.searchParams.set("from", "cli");
   if (fields.needed) url.searchParams.set("needed_credits", String(fields.needed));
   if (fields.tool) url.searchParams.set("tool", fields.tool);
+  if (fields.feature) url.searchParams.set("feature", fields.feature);
+  if (fields.rs) url.searchParams.set("rs", fields.rs);
   return url.toString();
 }

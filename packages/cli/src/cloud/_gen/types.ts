@@ -9,411 +9,744 @@
 // Add a new path/method to TARGET_ENDPOINTS in
 // scripts/generate_hyperframes_cli_client.py to extend this list.
 
-/**
- * Asset input via base64-encoded content.
- */
 export interface AssetBase64 {
-  /**
-   * Input type discriminator
-   */
   type: "base64";
-  /**
-   * MIME type of the encoded content (e.g. "image/png")
-   */
   media_type: string;
-  /**
-   * Base64-encoded file content
-   */
   data: string;
 }
 
-/**
- * Asset input via HeyGen asset ID from the asset upload endpoint.
- */
 export interface AssetId {
-  /**
-   * Input type discriminator
-   */
   type: "asset_id";
-  /**
-   * HeyGen asset ID from the asset upload endpoint
-   */
   asset_id: string;
 }
 
-/**
- * Asset input via publicly accessible HTTPS URL.
- */
 export interface AssetUrl {
-  /**
-   * Input type discriminator
-   */
   type: "url";
-  /**
-   * Publicly accessible HTTPS URL for the asset
-   */
   url: string;
 }
 
-/**
- * Finalize a presigned upload (POST /v3/assets/{asset_id}/complete).
- */
+export type AudioVoiceType = "public" | "private";
+
+export type AvatarFit = "contain" | "cover";
+
+export interface AvatarIIIEngineConfig {
+  type: "avatar_iii";
+}
+
+export interface AvatarIVEngineConfig {
+  type: "avatar_iv";
+}
+
+export interface AvatarVEngineConfig {
+  type: "avatar_v";
+  reference_look_id?: string | null;
+  more_blinking?: boolean;
+}
+
+export interface AvatarVideoScene {
+  type: "avatar_video";
+  input: StudioAvatarInput;
+}
+
+export interface BackgroundRemovalJob {
+  id: string;
+  status: string;
+  layers?: Record<string, unknown>;
+  duration?: number | null;
+  created_at?: number | null;
+  completed_at?: number | null;
+  error?: string | null;
+}
+
+export interface BackgroundSetting {
+  type: "color" | "image";
+  value?: string | null;
+  url?: string | null;
+  asset_id?: string | null;
+}
+
+export type CaptionFileFormat = "srt";
+
+export interface CaptionSetting {
+  file_format?: CaptionFileFormat;
+  style?: CaptionStyle | null;
+}
+
+export type CaptionStyle = "default";
+
+export type CinematicAvatarModel = "seedance_2" | "heygen_video_1";
+
 export interface CompleteAssetUploadRequest {
-  /**
-   * Optional SHA256 (hex) cross-check.
-   */
   checksum_sha256?: string | null;
 }
 
-/**
- * Result of finalizing an upload.
- */
 export interface CompleteAssetUploadResponse {
-  /**
-   * The reusable asset identifier.
-   */
   asset_id: string;
-  /**
-   * Public URL of the finalized asset.
-   */
   url: string;
-  /**
-   * MIME type detected from the stored bytes.
-   */
   mime_type: string;
-  /**
-   * Size of the stored object in bytes.
-   */
   size_bytes: number;
-  /**
-   * Asset status, e.g. 'processing'.
-   */
   status: "processing";
 }
 
-/**
- * Request to begin a presigned direct-to-S3 upload (POST
- * /v3/assets/direct-uploads).
- */
 export interface CreateAssetUploadRequest {
-  /**
-   * Original filename for reference/metadata. The stored object's extension is
-   * derived from content_type.
-   */
   filename: string;
-  /**
-   * Declared MIME type (e.g. 'video/mp4', 'image/png', 'audio/mpeg',
-   * 'application/pdf', 'application/zip'). Verified against the stored bytes at
-   * completion.
-   */
   content_type: string;
-  /**
-   * Exact byte size of the file. Signed into the upload URL so it cannot be
-   * exceeded.
-   */
   size_bytes: number;
-  /**
-   * Optional SHA256 of the file as hex. When provided, S3 enforces it on upload.
-   */
   checksum_sha256?: string | null;
 }
 
-/**
- * Presigned upload instructions.
- */
 export interface CreateAssetUploadResponse {
-  /**
-   * Reusable asset identifier. Becomes usable after POST
-   * /v3/assets/{asset_id}/complete.
-   */
   asset_id: string;
-  /**
-   * Presigned S3 URL. PUT the raw file bytes here.
-   */
   upload_url: string;
-  /**
-   * Headers that must be sent verbatim on the PUT request.
-   */
   upload_headers: Record<string, unknown>;
-  /**
-   * Seconds until the upload URL expires.
-   */
   expires_in_seconds: number;
-  /**
-   * Maximum allowed upload size in bytes for this content type: 1.5 GB
-   * (1,500,000,000 bytes) per audio file and 200 MiB (209,715,200 bytes) for
-   * other supported files.
-   */
   max_bytes: number;
-  /**
-   * Upload lifecycle status. Always 'pending_upload' here.
-   */
   status: "pending_upload";
 }
 
-/**
- * Request body for POST /v3/hyperframes/renders.
- */
-export interface CreateHyperframesRenderRequest {
-  /**
-   * HyperFrames composition .zip — provide as {type: 'url', url: '...'}, {type:
-   * 'asset_id', asset_id: '...'} (pre-uploaded via POST /v3/assets), or {type:
-   * 'base64', media_type: 'application/zip', data: '...'}. Zip must contain
-   * index.html at the root (or the path you set in `composition`).
-   */
-  project: AssetUrl | AssetId | AssetBase64;
-  /**
-   * Output frames per second. Defaults to 30 if not provided.
-   */
-  fps?: number | null;
-  /**
-   * Render quality preset; higher quality is slower.
-   */
-  quality?: "draft" | "standard" | "high";
-  /**
-   * Output container/codec.
-   */
-  format?: "mp4" | "webm" | "mov";
-  /**
-   * Overrides the quality preset's constant rate factor (lower is higher quality
-   * and a larger file). Integer 0-51 for mp4, 0-63 for webm; ignored for mov.
-   * Omit to use the preset's CRF.
-   */
-  crf?: number | null;
-  /**
-   * Set 'off' to disable page motion blur. Omit or null to keep behavior.
-   */
-  page_motion_blur?: "off" | null;
-  /**
-   * Output resolution tier. Defaults to '1080p'. Pass '4k' for 4K renders
-   * (billed at 1.5x).
-   */
-  resolution?: HyperframesResolution;
-  /**
-   * Output aspect ratio. Defaults to '16:9' (landscape). Pass '9:16' for
-   * portrait or '1:1' for square.
-   */
-  aspect_ratio?: HyperframesAspectRatio;
-  /**
-   * Entry HTML file relative to the project root (e.g. compositions/intro.html).
-   * Defaults to index.html when omitted.
-   */
-  composition?: string | null;
-  /**
-   * Optional overrides for the composition's data-composition-variables. Use
-   * this to parameterise a single composition across multiple renders.
-   */
-  variables?: Record<string, unknown> | null;
-  /**
-   * Free-text label for the render; echoed back in detail responses.
-   */
+export interface CreateBackgroundRemovalRequest {
+  video: AssetUrl | AssetId | AssetBase64;
+  layers?: Array<string>;
   title?: string | null;
-  /**
-   * Opaque client tracking ID, echoed back in webhook payloads.
-   */
+  request_id?: string | null;
+}
+
+export interface CreateHyperframesRenderRequest {
+  project: AssetUrl | AssetId | AssetBase64;
+  fps?: number | null;
+  quality?: "draft" | "standard" | "high";
+  format?: "mp4" | "webm" | "mov";
+  crf?: number | null;
+  resolution?: HyperframesResolution;
+  aspect_ratio?: HyperframesAspectRatio;
+  composition?: string | null;
+  variables?: Record<string, unknown> | null;
+  title?: string | null;
   callback_id?: string | null;
-  /**
-   * Per-request HTTPS webhook URL the render fires when it terminates.
-   */
   callback_url?: string | null;
 }
 
-/**
- * Response for POST /v3/hyperframes/renders.
- */
 export interface CreateHyperframesRenderResponse {
-  /**
-   * HyperFrames render identifier — poll GET /v3/hyperframes/renders/{render_id}
-   * for status.
-   */
   render_id: string;
 }
 
-/**
- * Response for DELETE /v3/hyperframes/renders/{render_id}.
- */
+export interface CreateLipsyncRequest {
+  video: AssetUrl | AssetId;
+  audio: AssetUrl | AssetId;
+  title?: string | null;
+  mode?: VideoTranslationMode;
+  callback_url?: string | null;
+  callback_id?: string | null;
+  enable_caption?: boolean;
+  keep_the_same_format?: boolean | null;
+  enable_dynamic_duration?: boolean;
+  disable_music_track?: boolean;
+  enable_speech_enhancement?: boolean;
+  enable_watermark?: boolean;
+  start_time?: number | null;
+  end_time?: number | null;
+  fps_mode?: string | null;
+  folder_id?: string | null;
+}
+
+export type CreateModelVideoRequest =
+  | TextToVideoRequest
+  | ImageToVideoRequest
+  | ReferenceToVideoRequest;
+
+export interface CreateModelVideoResponse {
+  video_id: string;
+  status?: "pending";
+  input_video_duration?: number | null;
+}
+
+export interface CreateSpeechV3OutputFormat {
+  encoding: "mp3" | "wav";
+  sample_rate_hertz?: number | null;
+  bit_depth?: number | null;
+  num_channels?: number;
+  bitrate_bps?: number | null;
+}
+
+export interface CreateSpeechV3Request {
+  text: string;
+  voice_id: string;
+  input_type?: string;
+  speed?: number;
+  language?: string | null;
+  locale?: string | null;
+  force_regenerate?: boolean;
+  engine?: "heygen_voice" | "starfish" | "orca" | "elevenlabs" | "elevenlabs_v3" | null;
+  settings?: ElevenLabsSpeechSettings | null;
+  brand_glossary_id?: string | null;
+  output_format?: CreateSpeechV3OutputFormat | null;
+}
+
+export interface CreateSpeechV3ResponseData {
+  audio_url: string;
+  duration: number;
+  request_id?: string | null;
+  word_timestamps?: Array<WordWithTimestamp> | null;
+  engine: SpeechEngine;
+}
+
+export interface CreateVideoFromAvatar {
+  title?: string | null;
+  folder_id?: string | null;
+  resolution?: VideoResolution | null;
+  aspect_ratio?: VideoAspectRatio | null;
+  fit?: AvatarFit | null;
+  background?: BackgroundSetting | null;
+  remove_background?: boolean | null;
+  callback_url?: string | null;
+  callback_id?: string | null;
+  watermark?: WatermarkInput | null;
+  caption?: CaptionSetting | null;
+  output_format?: VideoOutputFormat;
+  script?: string | null;
+  voice_id?: string | null;
+  audio_url?: string | null;
+  audio_asset_id?: string | null;
+  voice_settings?: VoiceSettingsInput | null;
+  type: "avatar";
+  avatar_id: string;
+  brand_glossary_id?: string | null;
+  motion_prompt?: string | null;
+  expressiveness?: Expressiveness | null;
+  engine?: AvatarVEngineConfig | AvatarIVEngineConfig | AvatarIIIEngineConfig | null;
+}
+
+export interface CreateVideoFromCinematicAvatar {
+  type: "cinematic_avatar";
+  prompt: string;
+  avatar_id: Array<string>;
+  model?: CinematicAvatarModel | null;
+  references?: Array<AssetUrl | AssetId | AssetBase64> | null;
+  aspect_ratio?: "16:9" | "9:16" | "1:1";
+  resolution?: "720p" | "1080p";
+  auto_duration?: boolean;
+  duration?: number | null;
+  enhance_prompt?: boolean;
+  title?: string | null;
+  folder_id?: string | null;
+}
+
+export interface CreateVideoFromImage {
+  title?: string | null;
+  folder_id?: string | null;
+  resolution?: VideoResolution | null;
+  aspect_ratio?: VideoAspectRatio | null;
+  fit?: AvatarFit | null;
+  background?: BackgroundSetting | null;
+  remove_background?: boolean | null;
+  callback_url?: string | null;
+  callback_id?: string | null;
+  watermark?: WatermarkInput | null;
+  caption?: CaptionSetting | null;
+  output_format?: VideoOutputFormat;
+  script?: string | null;
+  voice_id?: string | null;
+  audio_url?: string | null;
+  audio_asset_id?: string | null;
+  voice_settings?: VoiceSettingsInput | null;
+  type: "image";
+  image: AssetUrl | AssetId | AssetBase64;
+  brand_glossary_id?: string | null;
+  motion_prompt?: string | null;
+  expressiveness?: Expressiveness | null;
+}
+
+export interface CreateVideoFromStudio {
+  type: "studio";
+  title?: string | null;
+  folder_id?: string | null;
+  aspect_ratio?: VideoAspectRatio | null;
+  resolution?: VideoResolution | null;
+  brand_glossary_id?: string | null;
+  callback_url?: string | null;
+  callback_id?: string | null;
+  caption?: CaptionSetting | null;
+  watermark?: WatermarkInput | null;
+  scenes: Array<AvatarVideoScene | ImageScene | VideoScene>;
+}
+
+export type CreateVideoV3RequestBody =
+  | CreateVideoFromAvatar
+  | CreateVideoFromImage
+  | CreateVideoFromCinematicAvatar
+  | CreateVideoFromStudio;
+
+export interface CreateVideoV3Response {
+  video_id: string;
+  status: string;
+  output_format?: VideoOutputFormat;
+  resolution?: VideoResolution | null;
+  resolution_note?: string | null;
+}
+
 export interface DeleteHyperframesRenderResponse {
-  /**
-   * ID of the deleted render.
-   */
   render_id: string;
 }
 
-/**
- * Output aspect ratio. Supported ratios are ``16:9`` (landscape), ``9:16``
- * (portrait), and ``1:1`` (square).
- */
+export interface ElevenLabsEngineSettings {
+  model?: ElevenLabsModel | null;
+  similarity_boost?: number | null;
+  stability?: number | null;
+  style?: number | null;
+  use_speaker_boost?: boolean | null;
+  engine_type: "elevenlabs";
+}
+
+export type ElevenLabsModel =
+  | "eleven_multilingual_v2"
+  | "eleven_turbo_v2_5"
+  | "eleven_flash_v2_5"
+  | "eleven_v3"
+  | "eleven_v4";
+
+export interface ElevenLabsSpeechSettings {
+  model_id:
+    | "eleven_multilingual_v2"
+    | "eleven_flash_v2"
+    | "eleven_flash_v2_5"
+    | "eleven_turbo_v2_5"
+    | "eleven_v3"
+    | "eleven_v4";
+}
+
+export type Expressiveness = "high" | "medium" | "low";
+
+export interface FishEngineSettings {
+  model?: FishModel | null;
+  stability?: number | null;
+  similarity?: number | null;
+  engine_type: "fish";
+}
+
+export type FishModel = "s1" | "s2-pro" | "s2.1-pro";
+
+export interface GptImage25Request {
+  model: "gpt-image-2.5";
+  prompt: string;
+  num_images?: number;
+  aspect_ratio?: "1:1" | "16:9" | "9:16" | "4:3" | "3:4" | null;
+  reference_images?: Array<AssetUrl | AssetId | AssetBase64>;
+}
+
+export interface HeyGenVoiceEngineSettings {
+  engine_type: "heygen_voice" | "orca";
+}
+
 export type HyperframesAspectRatio = "16:9" | "9:16" | "1:1";
 
-/**
- * Detailed HyperFrames render resource.
- */
 export interface HyperframesRenderDetail {
-  /**
-   * Unique render identifier.
-   */
   render_id: string;
-  /**
-   * Current lifecycle state.
-   */
   status: HyperframesRenderStatus;
-  /**
-   * Caller-supplied free-text label.
-   */
   title?: string | null;
-  /**
-   * Caller-supplied client tracking ID.
-   */
   callback_id?: string | null;
-  /**
-   * Presigned download URL for the rendered video. Present only when status is
-   * 'completed'.
-   */
   video_url?: string | null;
-  /**
-   * Presigned download URL for the auto-generated thumbnail.
-   */
   thumbnail_url?: string | null;
-  /**
-   * Video duration in seconds; null until completed.
-   */
   duration?: number | null;
-  /**
-   * Frames per second the render was created at.
-   */
   fps?: number | null;
-  /**
-   * Render quality preset.
-   */
   quality?: "draft" | "standard" | "high" | null;
-  /**
-   * Output container/codec.
-   */
   format: "mp4" | "webm" | "mov";
-  /**
-   * Resolution tier, if one was set.
-   */
   resolution?: HyperframesResolution | null;
-  /**
-   * Aspect ratio, if one was set.
-   */
   aspect_ratio?: HyperframesAspectRatio | null;
-  /**
-   * Composition entry file path.
-   */
   composition?: string | null;
-  /**
-   * Unix timestamp when the render was created.
-   */
   created_at?: number | null;
-  /**
-   * Unix timestamp when the render terminated. Null until status is 'completed'
-   * or 'failed'.
-   */
   completed_at?: number | null;
-  /**
-   * Error description. Present only when status is 'failed'.
-   */
   failure_message?: string | null;
-  /**
-   * Why billing refused a finished render: 'hf_usage_exhausted',
-   * 'hf_subscription_required' or 'api_key_required', for which nothing was
-   * charged and the render can be sent again on a HeyGen API key; or
-   * 'usage_limit_reached', when a usage limit a workspace admin set (the API
-   * key's credit limit or the member's usage limit) was reached; sending the
-   * render again does not help until the limit is raised or resets, and
-   * `failure_message` is the limit's own message; or
-   * 'chunk_frames_exceed_timeout_at_max_chunks', when the render is too long to
-   * export at its size (even split into the most cloud parts allowed, it would
-   * still take longer than the time limit): sending it again fails the same way
-   * until it is shortened or rendered at a lower resolution or frame rate, and
-   * `failure_message` says so. Present only when status is 'failed' for one of
-   * these reasons.
-   */
   failure_code?: string | null;
 }
 
-/**
- * Lifecycle status of a HyperFrames render.
- */
 export type HyperframesRenderStatus = "queued" | "rendering" | "completed" | "failed";
 
-/**
- * Output resolution tier. 4K output uses a 1.5x pricing multiplier.
- */
 export type HyperframesResolution = "1080p" | "4k";
 
+export type ImageCreateRequest = GptImage25Request | NanoBanana2Request | NanoBanana21Request;
+
+export interface ImageScene {
+  type: "image";
+  source: AssetUrl | AssetId | AssetBase64;
+  duration?: number | null;
+  script?: string | null;
+  voice_id?: string | null;
+  audio_url?: string | null;
+  audio_asset_id?: string | null;
+  voice_settings?: VoiceSettingsInput | null;
+}
+
+export interface ImageToVideoRequest {
+  end_user_id?: string | null;
+  mode: "image_to_video";
+  model: "heygen-video-1";
+  prompt: string;
+  prompt_enhancement?: "turbo" | "quality" | "default" | "disabled" | "ultraquality";
+  resolution?: "480p" | "768p" | "1080p" | "2k";
+  duration?: number | "auto";
+  aspect_ratio?: "21:9" | "16:9" | "4:3" | "1:1" | "3:4" | "9:16" | "adaptive" | null;
+  seed?: number | null;
+  callback_url?: string | null;
+  callback_id?: string | null;
+  image: AssetUrl | AssetId | AssetBase64;
+  end_image?: AssetUrl | AssetId | AssetBase64 | null;
+}
+
+export interface LipsyncCreateResponse {
+  lipsync_id: string;
+}
+
+export interface LipsyncDetail {
+  id: string;
+  title?: string | null;
+  status: VideoTranslationStatus;
+  duration?: number | null;
+  video_url?: string | null;
+  caption_url?: string | null;
+  callback_id?: string | null;
+  created_at?: number | null;
+  failure_message?: string | null;
+  failure_code?: string | null;
+}
+
+export interface LyriaMusicRequest {
+  model: "lyria-3-pro";
+  prompt: string;
+  duration_seconds: number;
+  bpm?: number | null;
+  intensity?: number | null;
+  instrumental?: boolean;
+  lyrics?: string | null;
+}
+
+export interface ModelVideoResponse {
+  video_id: string;
+  status: "pending" | "processing" | "completed" | "failed" | "cancelled";
+  model: VideoGenerationModel;
+  created_at: number;
+  video_url?: string | null;
+  duration?: number | null;
+  input_video_duration?: number | null;
+  aspect_ratio?: string | null;
+  width?: number | null;
+  height?: number | null;
+  seed?: number | null;
+  timings?: ModelVideoTimings | null;
+  failure_code?: "generation_failed" | "generation_cancelled" | "usage_limit_reached" | null;
+  failure_message?: string | null;
+}
+
+export interface ModelVideoTimings {
+  inference: number;
+}
+
+export type MusicCreateRequest = LyriaMusicRequest;
+
+export type MusicFailureCode =
+  | "invalid_input"
+  | "content_policy_violation"
+  | "vendor_unavailable"
+  | "vendor_timeout"
+  | "ai_vendor_access_restricted"
+  | "insufficient_credit"
+  | "api_key_required"
+  | "internal_error";
+
+export interface MusicResponse {
+  id: string;
+  status: MusicStatus;
+  model: "lyria-3-pro";
+  created_at?: number | null;
+  requested_duration_seconds: number;
+  duration_seconds?: number | null;
+  audio_url?: string | null;
+  format?: "mp3" | null;
+  failure_code?: MusicFailureCode | null;
+  failure_message?: string | null;
+}
+
+export type MusicStatus = "pending" | "completed" | "failed";
+
+export interface NanoBanana21Request {
+  model: "nano-banana-2.1";
+  prompt: string;
+  num_images?: number;
+  aspect_ratio?: "1:1" | "16:9" | "9:16" | "4:3" | "3:4" | "3:2" | "2:3" | "21:9" | null;
+  reference_images?: Array<AssetUrl | AssetId | AssetBase64>;
+}
+
+export interface NanoBanana2Request {
+  model: "nano-banana-2";
+  prompt: string;
+  num_images?: number;
+  aspect_ratio?: "1:1" | "16:9" | "9:16" | "4:3" | "3:4" | "3:2" | "2:3" | "21:9" | null;
+  reference_images?: Array<AssetUrl | AssetId | AssetBase64>;
+}
+
+export interface PlaybackInput {
+  mode?: "freeze" | "loop" | "fit_to_scene" | null;
+  volume?: number;
+  mute?: boolean;
+}
+
+export interface ReferenceToVideoRequest {
+  end_user_id?: string | null;
+  mode: "reference_to_video";
+  model: "heygen-video-1";
+  prompt: string;
+  prompt_enhancement?: "turbo" | "quality" | "default" | "disabled" | "ultraquality";
+  resolution?: "480p" | "768p" | "1080p" | "2k";
+  duration?: number | "auto";
+  aspect_ratio?: "21:9" | "16:9" | "4:3" | "1:1" | "3:4" | "9:16" | "adaptive";
+  seed?: number | null;
+  callback_url?: string | null;
+  callback_id?: string | null;
+  reference_images?: Array<AssetUrl | AssetId | AssetBase64>;
+  reference_videos?: Array<AssetUrl | AssetId | AssetBase64>;
+  reference_audio?: Array<AssetUrl | AssetId | AssetBase64>;
+}
+
+export interface ScribeV2TranscriptionRequest {
+  audio: AssetUrl | AssetId | AssetBase64;
+  model: "scribe-v2";
+  language?: string | null;
+  word_timestamps?: boolean;
+  diarize?: boolean;
+  num_speakers?: number | null;
+}
+
+export type SpeechEngine = "starfish" | "orca" | "elevenlabs" | "elevenlabs_v3";
+
 export interface StandardAPIError {
-  /**
-   * Machine-readable error code
-   */
   code: string;
-  /**
-   * Human-readable error message
-   */
   message: string;
-  /**
-   * Which request field caused the error
-   */
   param?: string | null;
-  /**
-   * Link to error documentation
-   */
   doc_url?: string | null;
-  /**
-   * Per-item error details for batch/multi-node failures (e.g. graph compilation
-   * errors by node).
-   */
   errors?: Array<StandardAPIErrorDetail>;
-  /**
-   * Request identifier, also returned in the X-HeyGen-Request-Id response
-   * header. Include it when contacting support.
-   */
   request_id?: string;
 }
 
 export interface StandardAPIErrorDetail {
-  /**
-   * Machine-readable error code
-   */
   code: string;
-  /**
-   * Human-readable error message
-   */
   message: string;
-  /**
-   * Graph node id this error pertains to, if applicable
-   */
   node_id?: string;
-  /**
-   * Port name on the node this error pertains to, if applicable
-   */
   port?: string;
-  /**
-   * Field path within the item this error pertains to, if applicable
-   */
   path?: string;
 }
 
-/**
- * Response from uploading an asset via POST /v3/assets.
- */
-export interface UploadAssetV3Response {
-  /**
-   * Unique asset identifier for use in other endpoints like POST
-   * /v3/video-agents
-   */
-  asset_id: string;
-  /**
-   * Public URL of the uploaded asset
-   */
+export interface StarfishEngineSettings {
+  engine_type: "starfish";
+}
+
+export interface StudioAvatarInput {
+  script?: string | null;
+  voice_id?: string | null;
+  audio_url?: string | null;
+  audio_asset_id?: string | null;
+  voice_settings?: VoiceSettingsInput | null;
+  type: "avatar";
+  avatar_id: string;
+  motion_prompt?: string | null;
+  expressiveness?: Expressiveness | null;
+  engine?: AvatarVEngineConfig | AvatarIVEngineConfig | AvatarIIIEngineConfig | null;
+  background?:
+    | StudioColorBackgroundInput
+    | StudioImageBackgroundInput
+    | StudioVideoBackgroundInput
+    | null;
+  remove_background?: boolean | null;
+}
+
+export interface StudioColorBackgroundInput {
+  type: "color";
+  color: string;
+}
+
+export interface StudioImageBackgroundInput {
+  type: "image";
+  source: AssetUrl | AssetId | AssetBase64;
+}
+
+export interface StudioVideoBackgroundInput {
+  type: "video";
+  source: AssetUrl | AssetId | AssetBase64;
+}
+
+export interface TextToVideoRequest {
+  end_user_id?: string | null;
+  mode: "text_to_video";
+  model: "heygen-video-1";
+  prompt: string;
+  prompt_enhancement?: "turbo" | "quality" | "default" | "disabled" | "ultraquality";
+  resolution?: "480p" | "768p" | "1080p" | "2k";
+  duration?: number | "auto";
+  aspect_ratio?: "21:9" | "16:9" | "4:3" | "1:1" | "3:4" | "9:16";
+  seed?: number | null;
+  callback_url?: string | null;
+  callback_id?: string | null;
+}
+
+export interface ThirdPartyGeneratedImage {
   url: string;
-  /**
-   * Detected MIME type of the file
-   */
+  width: number;
+  height: number;
+}
+
+export type ThirdPartyImageFailureCode =
+  | "content_policy_violation"
+  | "partial_generation"
+  | "vendor_unavailable"
+  | "ai_vendor_access_restricted"
+  | "insufficient_credit"
+  | "api_key_required"
+  | "internal_error";
+
+export interface ThirdPartyImageResponse {
+  id: string;
+  status: "pending" | "completed" | "failed";
+  model: string;
+  created_at: number;
+  images: Array<ThirdPartyGeneratedImage>;
+  failure_code?: ThirdPartyImageFailureCode | null;
+  failure_message?: string | null;
+}
+
+export type TranscriptionCreateRequest = ScribeV2TranscriptionRequest;
+
+export type TranscriptionFailureCode =
+  | "invalid_input"
+  | "vendor_unavailable"
+  | "vendor_timeout"
+  | "ai_vendor_access_restricted"
+  | "internal_error"
+  | "insufficient_credit"
+  | "api_key_required"
+  | "rate_limited";
+
+export interface TranscriptionResponse {
+  id: string;
+  status: TranscriptionStatus;
+  model: "scribe-v2";
+  created_at: number;
+  language?: string | null;
+  duration_seconds?: number | null;
+  text?: string | null;
+  segments?: Array<TranscriptionSegment> | null;
+  failure_code?: TranscriptionFailureCode | null;
+  failure_message?: string | null;
+}
+
+export interface TranscriptionSegment {
+  speaker?: string | null;
+  start: number;
+  end: number;
+  text: string;
+  words?: Array<TranscriptionWord> | null;
+}
+
+export type TranscriptionStatus = "pending" | "completed" | "failed";
+
+export interface TranscriptionWord {
+  word: string;
+  start: number;
+  end: number;
+  speaker?: string | null;
+}
+
+export interface UploadAssetV3Response {
+  asset_id: string;
+  url: string;
   mime_type: string;
-  /**
-   * File size in bytes
-   */
   size_bytes: number;
+}
+
+export type VideoAspectRatio = "16:9" | "9:16" | "4:5" | "5:4" | "1:1" | "auto";
+
+export interface VideoDetail {
+  id: string;
+  title?: string | null;
+  status: VideoStatus;
+  created_at?: number | null;
+  completed_at?: number | null;
+  video_url?: string | null;
+  thumbnail_url?: string | null;
+  gif_url?: string | null;
+  captioned_video_url?: string | null;
+  subtitle_url?: string | null;
+  duration?: number | null;
+  folder_id?: string | null;
+  output_language?: string | null;
+  failure_code?: string | null;
+  failure_message?: string | null;
+  video_page_url?: string | null;
+}
+
+export type VideoGenerationModel = "heygen-video-1";
+
+export type VideoOutputFormat = "mp4" | "webm";
+
+export type VideoResolution = "4k" | "1080p" | "720p";
+
+export interface VideoScene {
+  type: "video";
+  source: AssetUrl | AssetId | AssetBase64;
+  playback?: PlaybackInput | null;
+  script?: string | null;
+  voice_id?: string | null;
+  audio_url?: string | null;
+  audio_asset_id?: string | null;
+  voice_settings?: VoiceSettingsInput | null;
+}
+
+export type VideoStatus = "pending" | "processing" | "completed" | "failed";
+
+export type VideoTranslationMode = "speed" | "precision";
+
+export type VideoTranslationStatus = "pending" | "running" | "completed" | "failed";
+
+export interface VoiceSettingsInput {
+  speed?: number;
+  pitch?: number;
+  volume?: number;
+  locale?: string | null;
+  engine_settings?:
+    | ElevenLabsEngineSettings
+    | FishEngineSettings
+    | StarfishEngineSettings
+    | HeyGenVoiceEngineSettings
+    | null;
+}
+
+export interface VoiceV3Item {
+  voice_id: string;
+  name: string;
+  language: string;
+  gender: string;
+  preview_audio_url?: string | null;
+  support_pause: boolean;
+  support_locale: boolean;
+  type: AudioVoiceType;
+  default_engine?: SpeechEngine | null;
+  available_engines?: Array<SpeechEngine>;
+}
+
+export interface WatermarkInput {
+  image: AssetUrl | AssetId | AssetBase64;
+  scale?: number;
+  opacity?: number;
+  placement?: WatermarkPlacement | null;
+}
+
+export interface WatermarkPlacement {
+  position?: WatermarkPosition;
+  offset_x?: number | null;
+  offset_y?: number | null;
+}
+
+export type WatermarkPosition = "top_left" | "top_right" | "bottom_left" | "bottom_right";
+
+export interface WordWithTimestamp {
+  word: string;
+  start: number;
+  end: number;
 }

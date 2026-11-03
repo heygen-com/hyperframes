@@ -72,6 +72,9 @@ declare global {
        *  Lottie; never script-created WAAPI, media or the declared length); repeats may run past it.
        *  Null when unknown. Studio reads it. */
       animationEnd?: () => number | null;
+      /** The window a clip occupies on the composition clock, its start references resolved as the renderer does;
+       *  end is Infinity for the root. Null for an element with no timing. */
+      clipWindow?: (el: Element) => { start: number; end: number } | null;
       /** Borrow an element's playback while the transport clock is paused, so the
        *  runtime's paused-side enforcement leaves it alone. Always release. */
       leasePausedMedia?: (el: HTMLMediaElement) => void;
@@ -117,6 +120,8 @@ declare global {
     __HF_PARITY_MODE?: boolean;
     /** Set by still-capture pages: seeks replay skipped frames at the composition fps, as a render does. */
     __HF_REPLAY_SKIPPED_FRAMES?: boolean;
+    /** Set by check and snapshot, which seek through a film: a clip that leaves its window is freed. */
+    __HF_RELEASE_PASSED_MEDIA?: boolean;
     /** Legacy debug-only fps hint. Render-mode runtime fps uses __HF_EXPORT_RENDER_SEEK_CONFIG.fps. */
     __HF_FPS?: number;
     __HF_MAX_DURATION_SEC?: number;

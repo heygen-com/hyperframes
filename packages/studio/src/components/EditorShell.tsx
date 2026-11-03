@@ -1,4 +1,5 @@
 import { memo, useCallback, type ReactNode } from "react";
+import { matchesKey } from "../player/components/studioShortcuts";
 import { PreviewPane } from "./nle/PreviewPane";
 import { TimelinePane } from "./nle/TimelinePane";
 import { PreviewOverlays } from "./nle/PreviewOverlays";
@@ -293,7 +294,7 @@ function EditorShellBody({
   // Keyboard: Escape to pop composition level
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (e.key === "Escape" && compositionStack.length > 1) {
+      if (matchesKey(e, "cancel") && compositionStack.length > 1) {
         updateCompositionStack((prev) => prev.slice(0, -1));
       }
     },

@@ -93,7 +93,10 @@ function host(
 
 const captureCanvas = (root: HTMLElement) => root.parentElement as HTMLCanvasElement;
 
+const rangeRect = Range.prototype.getBoundingClientRect;
+
 beforeEach(() => {
+  Range.prototype.getBoundingClientRect = () => new DOMRect();
   setFilterFallbackForTests(false);
   contexts = [];
   vi.spyOn(console, "info").mockImplementation(() => {});
@@ -101,6 +104,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  Range.prototype.getBoundingClientRect = rangeRect;
   resetCaptureMotionBlurForTests();
   setFilterFallbackForTests(true);
   vi.restoreAllMocks();
@@ -142,6 +146,28 @@ function movingHost(attrs?: Record<string, string>) {
 }
 
 const PLAY = { playing: true };
+
+/** Paints 0.5 s first, as a mid-film worker does, over one-off calls at 0.3 s and 0.7 s. */
+function textAfterStartingAtHalf(): string {
+  const { h } = movingHost({ "data-motion-blur": "on", "data-motion-blur-events": "on" });
+  const calls = [
+    { at: 0.3, text: "first" },
+    { at: 0.7, text: "second" },
+  ];
+  let head = 0;
+  let text = "";
+  // GSAP fires a one-off call on a loud crossing in either direction.
+  const seek = (t: number, suppress: boolean) => {
+    h.seek(t, suppress);
+    const crossed = calls.filter(({ at }) => Math.min(head, t) < at && at <= Math.max(head, t));
+    if (t < head) crossed.reverse();
+    if (!suppress) for (const call of crossed) text = call.text;
+    head = t;
+  };
+  initCaptureMotionBlur({ ...h, seek });
+  void paintCaptureMotionBlur(0.5, PLAY);
+  return text;
+}
 
 describe("opt-in and off switches", () => {
   it("does nothing for a root that has not opted in", () => {
@@ -659,6 +685,18 @@ const HIDE = "data-hf-motion-blur-hide";
 const ONLY = "data-hf-motion-blur-only";
 const MOVER = "data-hf-motion-blur-mover";
 
+describe("a canvas inside the composition", () => {
+  // Chrome drops a nested canvas's layout offset from drawElementImage unless it has a transform.
+  it("gets a transform while captured, one the composition's own translate overrides", () => {
+    installHtmlInCanvas();
+    const { h } = movingHost({ "data-motion-blur": "on" });
+    initCaptureMotionBlur(h);
+    void paintCaptureMotionBlur(0.1, PLAY);
+    const rules = [...document.head.querySelectorAll("style")].map((s) => s.textContent).join("\n");
+    expect(rules).toContain(`:where([data-hf-motion-blur="capture"] canvas) { translate: 0 0 0; }`);
+  });
+});
+
 describe("two-phase frames", () => {
   it("hides the movers for a background capture, then reveals them and settles", async () => {
     installHtmlInCanvas();
@@ -1036,6 +1074,11 @@ describe("painting", () => {
     const reads = h.seek.mock.calls.filter(([t]) => t > 0);
     expect(reads.length).toBeGreaterThan(0);
     expect(reads.every(([, suppress]) => suppress === false)).toBe(true);
+  });
+
+  it("leaves a worker starting mid-film the state of the calls behind it, not ahead of it", () => {
+    installHtmlInCanvas();
+    expect(textAfterStartingAtHalf()).toBe("first");
   });
 
   it("fires timeline callbacks during discovery only when the root allows events", () => {
@@ -1740,6 +1783,10 @@ describe("paint timeouts", () => {
 describe("filter fallback", () => {
   beforeEach(() => setFilterFallbackForTests(true));
 
+  it("leaves a worker starting mid-film the state of the calls behind it, not ahead of it", () => {
+    expect(textAfterStartingAtHalf()).toBe("first");
+  });
+
   /** A root whose opacity tweens late, which a scan sees and capture cannot draw. */
   const CAPTURE = { "data-motion-blur": "on", "data-motion-blur-tier": "capture" };
   function fadingRoot(fade: { on: boolean }) {
@@ -1936,5 +1983,42 @@ describe("filter fallback", () => {
     resetCaptureMotionBlurForTests();
     expect(el.style.filter).toBe("");
     expect(document.querySelectorAll("filter")).toHaveLength(0);
+  });
+});
+
+describe("the movers-alone capture", () => {
+  // A mover clipped by an SVG <clipPath> elsewhere in the composition: hiding the clip path's
+  // shape empties the clip, so the mover captured as nothing and vanished from blurred frames.
+  it("leaves SVG clip paths and masks visible, hiding the rest of the scene", () => {
+    installHtmlInCanvas();
+    const { root, h } = movingHost();
+    const NS = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(NS, "svg");
+    const defs = document.createElementNS(NS, "defs");
+    const clip = document.createElementNS(NS, "clipPath");
+    const shape = document.createElementNS(NS, "use");
+    clip.append(shape);
+    defs.append(clip);
+    svg.append(defs);
+    const still = document.createElement("div");
+    root.append(svg, still);
+    initCaptureMotionBlur(h);
+    void paintCaptureMotionBlur(0.5, PLAY);
+    expect(root.hasAttribute(ONLY)).toBe(true);
+    // jsdom has no cascade for this: check which elements each isolation rule selects.
+    const rules = [...document.head.querySelectorAll("style")]
+      .flatMap((s) => (s.textContent ?? "").split("\n"))
+      .filter((line) => line.startsWith(`[${ONLY}]`));
+    const selecting = (el: Element, value: string) =>
+      rules.some(
+        (line) =>
+          line.includes(`visibility: ${value}`) && el.matches(line.slice(0, line.indexOf("{"))),
+      );
+    expect(selecting(still, "hidden")).toBe(true);
+    expect(selecting(still, "visible")).toBe(false);
+    // Neither hidden itself nor left to inherit its <svg>'s hidden: its <defs> is made visible.
+    expect(selecting(shape, "hidden")).toBe(false);
+    expect(selecting(clip, "hidden")).toBe(false);
+    expect(selecting(defs, "visible")).toBe(true);
   });
 });

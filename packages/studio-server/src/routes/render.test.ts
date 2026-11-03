@@ -44,6 +44,36 @@ function buildApp(spy: ReturnType<typeof vi.fn>): {
   return { app, rendersDir, cleanup: () => rmSync(rendersDir, { recursive: true, force: true }) };
 }
 
+describe("POST /projects/:id/render — job ids", () => {
+  it("gives two exports started in the same second their own job and output file", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-02T12:00:00Z"));
+    const spy = vi.fn();
+    const { app, rendersDir, cleanup } = buildApp(spy);
+    try {
+      const start = () =>
+        app.request("http://localhost/projects/demo/render", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ fps: 30, quality: "standard", format: "mp4" }),
+        });
+      const [first, second] = await Promise.all([start(), start()]);
+      const ids = [
+        ((await first.json()) as { jobId: string }).jobId,
+        ((await second.json()) as { jobId: string }).jobId,
+      ];
+
+      expect(new Set(ids).size).toBe(2);
+      expect(spy.mock.calls.map(([opts]) => opts.outputPath)).toEqual(
+        ids.map((id) => join(rendersDir, `${id}.mp4`)),
+      );
+    } finally {
+      vi.useRealTimers();
+      cleanup();
+    }
+  });
+});
+
 describe("GET /projects/:id/renders — stale sidecar status", () => {
   it("does not mark an existing output failed from stale metadata", async () => {
     const spy = vi.fn();

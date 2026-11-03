@@ -233,6 +233,9 @@ const PENDING = Symbol("pending");
 const dirs: string[] = [];
 // A test over SLOW_TEST_MS prints where its real time went, so a slow CI run names the step.
 const SLOW_TEST_MS = 2_000;
+// A render's cold start (module loads, temp dirs) can take over a second on a loaded CI runner. Fake time that
+// moves before the first attempt is held spends the test's window early. Kept under vitest's 5 s test timeout.
+const START_BUDGET_MS = 4_000;
 const spent = new Map<string, number>();
 let testStarted = 0;
 let budgetRanOut = 0;
@@ -332,8 +335,8 @@ async function untilHeld(outcome: () => unknown, budget: { ms: number }): Promis
 
 /** Jumps fake time to the next timer while the scripted attempt waits, with real IO between steps. */
 async function runFor(ms: number, outcome: () => unknown): Promise<void> {
+  await timed("wait for held", () => untilHeld(outcome, { ms: START_BUDGET_MS }));
   const budget = { ms: 1_000 };
-  await timed("wait for held", () => untilHeld(outcome, budget));
   for (let elapsed = 0; elapsed < ms && outcome() === PENDING; ) {
     await timed("io turns", ioTurns);
     await timed("wait for held", () => untilHeld(outcome, budget));

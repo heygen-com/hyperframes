@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { contrast } from "./drawn.js";
 import { faceBoxes } from "./face.js";
-import { pearson, probeVideo, round, runFfmpeg, type Roi, type VideoInfo } from "./media.js";
+import { pearson, probeVideo, round, runFfmpeg, sumOf, type Roi, type VideoInfo } from "./media.js";
 import { avSync, type SyncResult } from "./sync.js";
 
 /** A shot's framing is clearly wrong when, by the shot's medians, the face centre sits over FRAMING_SHIFT face heights
@@ -254,7 +254,7 @@ function boxAt(
   const work = mkdtempSync(join(tmpdir(), "hf-person-"));
   try {
     const filters = [
-      `select=${unique.map((k) => `eq(n\\,${k})`).join("+")}`,
+      `select=${sumOf(unique.map((k) => `eq(n\\,${k})`))}`,
       `scale=${w}:${h}:force_original_aspect_ratio=increase:flags=bicubic`,
       `crop=${w}:${h}`,
       `crop=${box[2]}:${box[3]}:${box[0]}:${box[1]}`,

@@ -1,3 +1,9 @@
+import {
+  REFERENCE_BACKGROUND_FIELD,
+  referenceBackgroundResult,
+  createReferenceBackgroundRecorder,
+  type ReferenceBackgroundResult,
+} from "@hyperframes/engine";
 import { audioFailureDiagnostics } from "@hyperframes/engine";
 /**
  * Activity A of the distributed render pipeline.
@@ -76,6 +82,7 @@ import {
   assertVideoExtractionSucceeded,
   runExtractVideosStage,
 } from "../render/stages/extractVideosStage.js";
+import { readPlanReferenceBackground } from "../render/planReferenceBackground.js";
 import { runProbeStage } from "../render/stages/probeStage.js";
 import {
   type ChunkSliceJson,
@@ -302,7 +309,7 @@ export interface DistributedRenderConfig extends Pick<RenderRequestOptions, "pag
 }
 
 /** Shared local representation consumed by both distributed plan transports. */
-export interface LocalExecutionPlan {
+export interface LocalExecutionPlan extends Partial<ReferenceBackgroundResult> {
   executionPlanDir: string;
   executionPlanHash: string;
   chunkCount: number;
@@ -363,7 +370,7 @@ export function logPlanStage(log: ProducerLogger, stage: string, startedAt: numb
  * @deprecated Use `planV2()` or `planV2WithPublisher()` for new integrations.
  * The v1 result remains supported for existing transports.
  */
-export interface PlanResult {
+export interface PlanResult extends Partial<ReferenceBackgroundResult> {
   planDir: string;
   planProtocol: Readonly<PlanProtocolV1Descriptor>;
   planHash: string;
@@ -1340,10 +1347,11 @@ async function compilePlanComposition(
   }
 
   // ── Probe ──
-  // Browser probe runs only when needed. For statically-resolvable durations
-  // this is a near-zero pass.
   stageStarted = Date.now();
   const probeResult = await runProbeStage({
+    recordReferenceBackground: createReferenceBackgroundRecorder((result) =>
+      Object.assign(job, result),
+    ),
     projectDir,
     workDir,
     job,
@@ -1361,6 +1369,21 @@ async function compilePlanComposition(
     subTimelineWaitMemo: {},
   });
   logPlanStage(log, "probe", stageStarted);
+  if (!probeResult.probeSession) {
+    stageStarted = Date.now();
+    Object.assign(
+      job,
+      await readPlanReferenceBackground({
+        projectDir,
+        workDir,
+        cfg,
+        log,
+        options: { width, height, fps: job.config.fps, variables: job.config.variables },
+      }),
+    );
+    assertNotAborted();
+    logPlanStage(log, "reference_background", stageStarted);
+  }
   compiled = probeResult.compiled;
   job.duration = probeResult.duration;
   job.totalFrames = probeResult.totalFrames;
@@ -1709,6 +1732,7 @@ export async function buildLocalExecutionPlan(
   // the planDir to compute planHash from the actual bytes the chunk worker
   // will read.
   const compositionJson: CompositionMetadataJson = {
+    ...referenceBackgroundResult(job[REFERENCE_BACKGROUND_FIELD]),
     durationSeconds: job.duration ?? 0,
     width,
     height,
@@ -1789,6 +1813,7 @@ export async function buildLocalExecutionPlan(
   });
 
   return {
+    ...referenceBackgroundResult(job[REFERENCE_BACKGROUND_FIELD]),
     executionPlanDir: planDir,
     executionPlanHash: planHash,
     chunkCount,
@@ -1849,6 +1874,7 @@ export async function plan(
 ): Promise<PlanResult> {
   const executionPlan = await buildLocalExecutionPlan(projectDir, config, planDir, options);
   return {
+    ...referenceBackgroundResult(executionPlan[REFERENCE_BACKGROUND_FIELD]),
     planDir: executionPlan.executionPlanDir,
     planProtocol: PLAN_PROTOCOL_V1,
     planHash: executionPlan.executionPlanHash,

@@ -3,14 +3,14 @@
 // Haar face models, pinned by size and sha256, into ~/.cache/hyperframes/opencv/<version>/.
 import { mkdirSync, readFileSync, renameSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
-import { homedir } from "node:os";
 import { join } from "node:path";
+import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
 import { downloadToFile } from "../cloud/download.js";
 import { verifies, type ModelFile } from "../whisper/modelFile.js";
 import { Fix } from "./media.js";
 
 const VERSION = "4.10.0";
-export const OPENCV_DIR = join(homedir(), ".cache", "hyperframes", "opencv", VERSION);
+export const OPENCV_DIR = hyperframesCacheDir("opencv", VERSION);
 
 interface Pinned extends ModelFile {
   url: string;

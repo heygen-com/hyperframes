@@ -14,7 +14,7 @@ import * as clack from "../ui/prompts.js";
 import { realpath, type ItemType, type RegistryItem } from "@hyperframes/core";
 import { c } from "../ui/colors.js";
 import { loadAllItems } from "../registry/resolver.js";
-import { fetchRegistryManifest } from "../registry/remote.js";
+import { readRegistryManifest } from "../registry/remote.js";
 import { loadProjectConfig, DEFAULT_PROJECT_CONFIG } from "../utils/projectConfig.js";
 import { relative, resolve } from "node:path";
 import { finishCommand } from "../utils/commandResult.js";
@@ -232,9 +232,12 @@ export default defineCommand({
 
     // Asked for the whole manifest on purpose: its item list defines coverage,
     // and its artifact revision is the one owner of vector freshness.
-    const manifest = await fetchRegistryManifest(config.registry);
-    const entries = manifest?.items ?? [];
-    const artifactRevision = manifest?.catalogArtifact?.revision;
+    const manifest = await readRegistryManifest(config.registry).catch((error: unknown) => {
+      console.error(error instanceof Error ? error.message : String(error));
+      return finishCommand(1);
+    });
+    const entries = manifest.items;
+    const artifactRevision = manifest.catalogArtifact?.revision;
     const catalog = entries.filter((e) => e.type !== "hyperframes:example");
     const registryNames = new Set(catalog.map((e) => e.name));
     const filtered = typeFilter ? catalog.filter((e) => e.type === typeFilter) : catalog;

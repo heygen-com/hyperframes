@@ -30,6 +30,15 @@
  *
  */
 
+export {
+  REFERENCE_BACKGROUND_FIELD,
+  referenceBackgroundResult,
+  createReferenceBackgroundRecorder,
+  readReferenceBackground,
+  type ReferenceBackground,
+  type ReferenceBackgroundResult,
+} from "./services/referenceBackground.js";
+
 // ── Protocol types ─────────────────────────────────────────────────────────────
 export type {
   HfProtocol,
@@ -149,6 +158,7 @@ export {
   waitForImagesReady,
   evaluateHfDiagnostic,
   buildZeroDurationDiagnostic,
+  applyVideoMetadataHints,
 } from "./services/frameCapture.js";
 export {
   CaptureFailure,
@@ -164,6 +174,7 @@ export {
 
 // ── Screenshot (BeginFrame) ─────────────────────────────────────────────────────
 export { installMediaRenderIdBridge } from "./services/mediaRenderIdBridge.js";
+export { holdRenderFrameVideos } from "./services/renderFrameVideoHold.js";
 export {
   beginFrameCapture,
   pageScreenshotCapture,
@@ -217,6 +228,18 @@ export {
   type StreamingEncoderResult,
   type FrameReorderBuffer,
 } from "./services/streamingEncoder.js";
+export {
+  spawnChunkStreamingEncoder,
+  buildChunkStreamingArgs,
+  BT709_LIMITED,
+  type ChunkColour,
+  type ChunkStreamingOptions,
+} from "./services/chunkStreamingEncoder.js";
+export {
+  resolveInPageEncode,
+  type InPageEncodeDecision,
+  type InPageEncodeInput,
+} from "./services/inPageEncodeEligibility.js";
 
 // ── Media processing ───────────────────────────────────────────────────────────
 export {
@@ -405,6 +428,7 @@ export {
   type RunFfmpegResult,
 } from "./utils/runFfmpeg.js";
 export { aacSegmentCount, encodeAac } from "./services/aacEncode.js";
+export { applyAudioFxChain } from "./services/audioFxRender.js";
 export {
   ManagedChildProcess,
   type ManagedChildProcessOptions,

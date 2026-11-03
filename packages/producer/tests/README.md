@@ -94,7 +94,7 @@ passing in the summary):
 - `fps.den !== 1` — distributed mode is integer-fps only (no NTSC).
 - `fps.num` not in `DISTRIBUTED_FPS` (`@hyperframes/core`) — closed set per `DistributedRenderConfig`.
 - `format === "webm"` — `plan()` refuses webm.
-- `hdr === true` — distributed mode is SDR-only at v1.
+- `hdr === true` — distributed mode is SDR-only.
 
 Both modes use the fixture's authored `minPsnr` as the per-test
 threshold — distributed must clear the same quality bar in-process

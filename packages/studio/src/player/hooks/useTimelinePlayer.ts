@@ -43,8 +43,7 @@ import { createPreviewMessageHandler } from "./previewMessageRouter";
 import { usePreviewQualityForwarding } from "./usePreviewQualityForwarding";
 import { timelineElementsChanged } from "./timelinePlayerSync";
 import { safeContentDocument } from "./timelineSyncHydration";
-import { sceneSwapFor, supersededByNewerEdit } from "../sceneSwap";
-import { whileScriptWrites } from "../previewReloading";
+import { sceneSwapFor, supersededByNewerEdit, swapFreshly } from "../sceneSwap";
 
 export interface UseTimelinePlayerOptions {
   /** Runs right after a reloaded preview becomes the live iframe. */
@@ -506,13 +505,7 @@ export function useTimelinePlayer({
       !!iframe.contentDocument && isStudioManualEditGestureLiveIn(iframe.contentDocument);
     if (!swap || isRefreshingRef.current || swapWouldReplaceGestureNode)
       return reloadWholeFilm(url.toString());
-    whileScriptWrites(() => swap(url.toString(), isCurrent, cancel.signal)).catch(
-      (error: unknown) => {
-        if (!isCurrent()) return;
-        logReload("scene-swap-refused", { reason: String(error) });
-        reloadWholeFilm(url.toString());
-      },
-    );
+    swapFreshly(swap, url, isCurrent, cancel.signal, reloadWholeFilm);
   }, [reloadWholeFilm, previewGeneration]);
   const pauseRef = useRef(pause);
   pauseRef.current = pause;

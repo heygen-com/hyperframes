@@ -1208,6 +1208,8 @@ export interface VideoLayerInput {
   filters: string[];
 }
 
+const VIDEO_LAYER_TAIL_SLACK_SECONDS = 0.5;
+
 /** ffmpeg input and filters showing the same frames and colour as extraction; undefined if unsupported. */
 export async function buildVideoLayerInput(
   videoPath: string,
@@ -1219,7 +1221,8 @@ export async function buildVideoLayerInput(
 ): Promise<VideoLayerInput | undefined> {
   const metadata = await extractMediaMetadata(videoPath);
   if (
-    startTime + duration > resolvePlayableVideoDuration(metadata) + 1e-3 ||
+    startTime + duration >
+      resolvePlayableVideoDuration(metadata) + VIDEO_LAYER_TAIL_SLACK_SECONDS ||
     isHdrColorSpaceUtil(metadata.colorSpace) ||
     metadata.isVFR ||
     metadata.hasAlpha ||
@@ -1243,6 +1246,7 @@ export async function buildVideoLayerInput(
         : `scale=${canvas.width}:${canvas.height}:flags=bicubic`,
     );
   }
+  filters.push(`tpad=stop_mode=clone:stop_duration=${VIDEO_LAYER_TAIL_SLACK_SECONDS * 2}`);
   return {
     inputArgs: [
       "-noaccurate_seek",
@@ -1251,8 +1255,6 @@ export async function buildVideoLayerInput(
       ...urlInputArgs(videoPath),
       "-i",
       videoPath,
-      "-t",
-      formatFfmpegSeconds(duration),
     ],
     filters,
   };

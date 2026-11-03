@@ -21,6 +21,11 @@ export default defineCommand({
       description: "Credits the waiting step needs (top-up waits until the balance covers it)",
     },
     tool: { type: "string", description: "The step that is waiting, shown on the page" },
+    feature: {
+      type: "string",
+      description: "The feature that sent the person here, so a purchase is credited to it",
+    },
+    session: { type: "string", description: "The run to credit the purchase to (with --feature)" },
     timeout: { type: "string", description: "Seconds to wait (default 600)" },
   },
   // fallow-ignore-next-line complexity
@@ -40,7 +45,12 @@ export default defineCommand({
       console.log(c.success(`✓ Already covered: ${describe(before)}.`));
       return;
     }
-    const url = pageUrl(action === "subscribe" ? "plans" : "credits", { needed, tool: args.tool });
+    const url = pageUrl(action === "subscribe" ? "plans" : "credits", {
+      needed,
+      tool: args.tool,
+      feature: args.feature,
+      rs: args.session,
+    });
     console.log(`${action === "subscribe" ? "Plans" : "Credits"} page: ${c.accent(url)}`);
     await openBrowser(url);
     console.log("Waiting for the person to finish there ...");

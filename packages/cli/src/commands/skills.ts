@@ -5,6 +5,7 @@ import * as clack from "../ui/prompts.js";
 import { c } from "../ui/colors.js";
 import { diag } from "../ui/diagnostics.js";
 import { buildNpxCommand } from "../utils/npxCommand.js";
+import { VERSION } from "../version.js";
 import { withMeta } from "../utils/updateCheck.js";
 import {
   checkSkills,
@@ -14,6 +15,7 @@ import {
   presentSkills,
   RETIRED_SKILLS,
   retiredSkillNotice,
+  cliReleaseTag,
   type SkillDiff,
   type SkillsCheckResult,
 } from "../utils/skillsManifest.js";
@@ -105,7 +107,7 @@ function spawnNpx(args: string[], opts: { cwd?: string } = {}): Promise<void> {
 // Why --copy: real files (not the upstream symlink default, which re-serialises
 // each SKILL.md's frontmatter) so an installed bundle byte-matches the published
 // manifest and `skills check` reads it as current. Why --full-depth: it forces a
-// full `git clone` of HEAD; without it even a full-URL `skills add` fetches the
+// full `git clone` of the requested ref; without it even a full-URL `skills add` fetches the
 // skills.sh registry blob, which lags GitHub main by hours, so a fresh install
 // would read as several skills "outdated" (verified: blob → ~9 outdated;
 // --full-depth → all current).
@@ -129,13 +131,16 @@ function skillSelectionArgs(selection: SkillSelection): string[] {
   return names.flatMap((name) => ["--skill", name]);
 }
 
+// Pinned: a bare `npx skills` runs whatever upstream published last.
+const SKILLS_CLI = "skills@1.5.13";
+
 function runSkillsAdd(
   source: string,
   selection: SkillSelection,
   opts: { cwd?: string } = {},
 ): Promise<void> {
   return spawnNpx(
-    ["skills", "add", source, ...skillSelectionArgs(selection), ...GLOBAL_INSTALL_ARGS_TAIL],
+    [SKILLS_CLI, "add", source, ...skillSelectionArgs(selection), ...GLOBAL_INSTALL_ARGS_TAIL],
     opts,
   );
 }
@@ -147,10 +152,9 @@ function runSkillsAdd(
 // on the Windows `cmd.exe` spawn path, where arg escaping is fragile.
 const PLAIN_SKILL_NAME = /^[a-z0-9][a-z0-9._-]*$/i;
 
-// Use the full GitHub URL (not the `owner/repo` slug) as the clone source. The
-// freshness comes from --full-depth (see GLOBAL_INSTALL_ARGS_TAIL), which clones the
-// repo at latest `main`; the URL just names what to clone. Our freshness check
-// resolves "latest" straight from GitHub too, so install and check agree.
+// Use the full GitHub URL (not the `owner/repo` slug) as the clone source.
+// --full-depth (see GLOBAL_INSTALL_ARGS_TAIL) clones it at `#<ref>`: the ref the
+// check read its manifest at (this CLI's release tag), so check and install agree.
 const SOURCES = [{ name: "HyperFrames", url: "https://github.com/heygen-com/hyperframes" }];
 
 // Fan HyperFrames' own skills out to every other installed agent. Scope by the
@@ -242,13 +246,14 @@ function sanitizeSelection(selection: SkillSelection): SkillSelection | null {
 
 async function installSkills(
   selection: SkillSelection,
-  opts: { cwd?: string; strict?: boolean } = {},
+  opts: { cwd?: string; strict?: boolean; ref: string },
 ): Promise<void> {
   const safeSelection = sanitizeSelection(selection);
   if (safeSelection === null) return;
 
   if (!skillsToolingReady(opts.strict ?? false)) return;
 
+  const { ref } = opts;
   // stderr (via diag): installSkills runs on the `skills update --json` path before
   // its JSON envelope is written to stdout — progress here must not corrupt it.
   for (const source of SOURCES) {
@@ -256,7 +261,7 @@ async function installSkills(
     diag.notice(c.bold(`Installing ${source.name} skills...`));
     diag.notice();
     try {
-      await runSkillsAdd(source.url, safeSelection, opts);
+      await runSkillsAdd(ref === "main" ? source.url : `${source.url}#${ref}`, safeSelection, opts);
     } catch (err) {
       if (opts.strict) throw err instanceof Error ? err : new Error(String(err));
       // warn, not notice: this is a non-fatal skip after a caught install error.
@@ -341,7 +346,7 @@ export async function updateSkills(
     // that no longer exists, and verifyInstalled would strict-throw on a
     // "failure" that was never real. Resolving canonically means a retired
     // skill simply never appears as a target in the first place.
-    check = await checkSkills({ cwd: opts.cwd, canonical: true });
+    check = await checkSkills({ cwd: opts.cwd, canonical: true, cliVersion: VERSION });
   } catch (err) {
     // A *malformed* canonical manifest (the server was reached, but served a
     // bad shape) is otherwise indistinguishable from being offline — both fall
@@ -402,7 +407,7 @@ export async function updateSkills(
   };
 
   if (toInstall.length > 0) {
-    await installSkills(result.installed, { cwd: opts.cwd, strict });
+    await installSkills(result.installed, { cwd: opts.cwd, strict, ref: check.ref ?? "main" });
     verifyInstalled(result.installed, { strict, cwd: opts.cwd });
   }
   // The install (or the fresh canonical check confirming everything current)
@@ -479,7 +484,11 @@ async function updateSkillsOffline(
   );
 
   if (absent.length > 0) {
-    await installSkills(absent, { cwd: opts.cwd, strict: opts.strict });
+    await installSkills(absent, {
+      cwd: opts.cwd,
+      strict: opts.strict,
+      ref: cliReleaseTag(VERSION) ?? "main",
+    });
     verifyInstalled(absent, opts);
   }
   return {
@@ -572,6 +581,7 @@ const checkCommand = defineCommand({
     const result = await checkSkills({
       dir: args.dir,
       source: args.source,
+      cliVersion: VERSION,
     });
 
     if (args.json) console.log(JSON.stringify(withMeta(result), null, 2));

@@ -93,7 +93,13 @@ function gsapNeverRendered(timeline: RuntimeTimelineLike): boolean {
 }
 
 const lastRenderSeek = new WeakMap<object, number>();
-const sharedPropertySpans = new WeakMap<object, { version: string; spans: [number, number][] }>();
+type OverlapSpan = {
+  laterStart: number;
+  sharedEnd: number;
+  earlierEnd: number;
+  laterIsSet: boolean;
+};
+const sharedPropertySpans = new WeakMap<object, { version: string; spans: OverlapSpan[] }>();
 const NOT_PROPERTIES = new Set([
   "duration",
   "ease",
@@ -167,7 +173,7 @@ function writeOf(tween: PlacedTween, timeline: RuntimeTimelineLike): PropertyWri
   );
 }
 
-function spansWhereTweensShareAProperty(timeline: RuntimeTimelineLike): [number, number][] {
+function spansWhereTweensShareAProperty(timeline: RuntimeTimelineLike): OverlapSpan[] {
   const writes = new Map<object, PropertyWrite[]>();
   for (const child of timeline.getChildren?.(true, true, false) ?? []) {
     const tween = child as PlacedTween;
@@ -183,17 +189,50 @@ function sharesAProperty(a: PropertyWrite, b: PropertyWrite): boolean {
   return !a.properties || !b.properties || [...a.properties].some((p) => b.properties!.has(p));
 }
 
-function overlapsOnOneTarget(writes: PropertyWrite[]): [number, number][] {
-  const spans: [number, number][] = [];
+function overlapsOnOneTarget(writes: PropertyWrite[]): OverlapSpan[] {
+  const spans: OverlapSpan[] = [];
   writes.sort((x, y) => x.start - y.start);
   writes.forEach((first, i) => {
     for (const second of writes.slice(i + 1)) {
       if (second.start >= first.end) break;
       if (sharesAProperty(first, second))
-        spans.push([second.start, Math.min(first.end, second.end)]);
+        spans.push({
+          laterStart: second.start,
+          sharedEnd: Math.min(first.end, second.end),
+          earlierEnd: first.end,
+          laterIsSet: second.end === second.start,
+        });
     }
   });
   return spans;
+}
+
+function overlapSpansOf(timeline: RuntimeTimelineLike, version: string): OverlapSpan[] {
+  let cached = sharedPropertySpans.get(timeline);
+  if (cached?.version !== version) {
+    cached = { version, spans: spansWhereTweensShareAProperty(timeline) };
+    sharedPropertySpans.set(timeline, cached);
+  }
+  return cached.spans;
+}
+
+const OVERLAP_RESTART = 1e-4;
+
+function settleOverlapsEndedBetween(
+  timeline: RuntimeTimelineLike,
+  from: number,
+  to: number,
+  version: string,
+): void {
+  if (!(to > from)) return;
+  let restart = Infinity;
+  for (const { laterStart, earlierEnd, laterIsSet } of overlapSpansOf(timeline, version)) {
+    if (laterIsSet && earlierEnd > from && earlierEnd <= to)
+      restart = Math.min(restart, laterStart);
+  }
+  if (restart === Infinity || restart >= from) return;
+  timeline.totalTime?.(Math.max(0, restart - OVERLAP_RESTART), true);
+  timeline.totalTime?.(to, true);
 }
 
 function framesSkippedSinceLastSeek(
@@ -207,13 +246,8 @@ function framesSkippedSinceLastSeek(
   const skipped =
     last === undefined ? Math.floor(t * fps + 1e-6) : Math.ceil((t - last) * fps - 1e-6) - 1;
   if (skipped < 1) return [];
-  let cached = sharedPropertySpans.get(timeline);
-  if (cached?.version !== version) {
-    cached = { version, spans: spansWhereTweensShareAProperty(timeline) };
-    sharedPropertySpans.set(timeline, cached);
-  }
   const replay = new Set<number>();
-  for (const [from, to] of cached.spans) {
+  for (const { laterStart: from, sharedEnd: to } of overlapSpansOf(timeline, version)) {
     const nearest = Math.max(1, Math.ceil((t - to) * fps - 1e-6) - 1);
     const farthest = Math.min(skipped, Math.floor((t - from) * fps + 1e-6) + 1);
     for (let back = nearest; back <= farthest; back++) replay.add(back);
@@ -239,6 +273,7 @@ export function seekGsapTimeline(
   }
   const from = Number(timeline.totalTime());
   timeline.totalTime(t, suppressEvents);
+  if (!renderFps) settleOverlapsEndedBetween(timeline, from, t, structure?.version ?? "");
   if (t < from && structure) reapplyStepsInAuthoredOrder(timeline, structure, t);
   if (from !== t || !gsapNeverRendered(timeline)) return false;
   rerenderGsapTimelineAt(

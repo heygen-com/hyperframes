@@ -30,6 +30,7 @@ import { join, extname, resolve, sep } from "node:path";
 import { injectScriptsAtHeadStart, injectScriptsIntoHtml } from "@hyperframes/core/compiler";
 import { fpsToNumber, type Fps } from "@hyperframes/core";
 import { stripSdrPngColourTags } from "@hyperframes/core/compiler/png-colour-tags";
+import { openRangeEnd } from "@hyperframes/studio-server/media-range";
 import { getVerifiedHyperframeRuntimeSource } from "./hyperframeRuntimeLoader.js";
 import { getHfEarlyStub } from "../generated/hf-early-stub-inline.js";
 import { defaultLogger, type ProducerLogger } from "../logger.js";
@@ -144,7 +145,7 @@ export type RangeRequest =
  *
  * Supports the three forms of `bytes=...`:
  *   - `bytes=START-END`: closed range, both bounds inclusive.
- *   - `bytes=START-`: open-ended, serve from START to EOF.
+ *   - `bytes=start-`: open-ended, from start to EOF (audio/video: see `openRangeEnd`).
  *   - `bytes=-SUFFIX`: last SUFFIX bytes.
  *
  * Multi-range requests (`bytes=0-99,200-299`) are treated as `absent`. The
@@ -154,7 +155,11 @@ export type RangeRequest =
  *
  * Exported for unit tests; not part of the public package surface.
  */
-export function parseRangeHeader(header: string | null | undefined, size: number): RangeRequest {
+export function parseRangeHeader(
+  header: string | null | undefined,
+  size: number,
+  contentType = "application/octet-stream",
+): RangeRequest {
   if (!header) return { kind: "absent" };
   const match = /^\s*bytes\s*=\s*(.*?)\s*$/i.exec(header);
   if (!match) return { kind: "absent" };
@@ -183,10 +188,10 @@ export function parseRangeHeader(header: string | null | undefined, size: number
   const start = Number(rawStart);
   if (!Number.isFinite(start)) return { kind: "absent" };
 
-  // Open-ended form: `bytes=START-` returns from START to EOF.
+  // Open-ended form: `bytes=start-` returns from start to EOF, or one bounded piece of audio/video.
   if (rawEnd === "") {
     if (start >= size) return { kind: "unsatisfiable" };
-    return { kind: "satisfiable", start, end: size - 1 };
+    return { kind: "satisfiable", start, end: openRangeEnd(start, size - 1, contentType) };
   }
 
   // Closed form: `bytes=START-END`
@@ -866,7 +871,7 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
       // full-body 200s) so the client knows ranges are supported.
       const totalSize = stat.size;
       const rangeHeader = c.req.header("range");
-      const rangeRequest = parseRangeHeader(rangeHeader, totalSize);
+      const rangeRequest = parseRangeHeader(rangeHeader, totalSize, contentType);
 
       if (rangeRequest.kind === "unsatisfiable") {
         // 416 Range Not Satisfiable. RFC 7233 §4.4 mandates `Content-Range`
