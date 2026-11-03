@@ -93,9 +93,12 @@ function gsapNeverRendered(timeline: RuntimeTimelineLike): boolean {
 }
 
 const lastRenderSeek = new WeakMap<object, number>();
-/** Where a later tween starts inside an earlier one on a shared property: [later start, where both run, earlier end,
- * whether the later one is a zero-duration set]. */
-type OverlapSpan = [number, number, number, boolean];
+type OverlapSpan = {
+  laterStart: number;
+  sharedEnd: number;
+  earlierEnd: number;
+  laterIsSet: boolean;
+};
 const sharedPropertySpans = new WeakMap<object, { version: string; spans: OverlapSpan[] }>();
 const NOT_PROPERTIES = new Set([
   "duration",
@@ -193,12 +196,12 @@ function overlapsOnOneTarget(writes: PropertyWrite[]): OverlapSpan[] {
     for (const second of writes.slice(i + 1)) {
       if (second.start >= first.end) break;
       if (sharesAProperty(first, second))
-        spans.push([
-          second.start,
-          Math.min(first.end, second.end),
-          first.end,
-          second.end === second.start,
-        ]);
+        spans.push({
+          laterStart: second.start,
+          sharedEnd: Math.min(first.end, second.end),
+          earlierEnd: first.end,
+          laterIsSet: second.end === second.start,
+        });
     }
   });
   return spans;
@@ -215,8 +218,6 @@ function overlapSpansOf(timeline: RuntimeTimelineLike, version: string): Overlap
 
 const OVERLAP_RESTART = 1e-4;
 
-/** A tween ending in a later tick than a set inside it overwrites the set; re-render from before the set, as a seek
- * would. */
 function settleOverlapsEndedBetween(
   timeline: RuntimeTimelineLike,
   from: number,
@@ -225,8 +226,9 @@ function settleOverlapsEndedBetween(
 ): void {
   if (!(to > from)) return;
   let restart = Infinity;
-  for (const [start, , tail, instant] of overlapSpansOf(timeline, version)) {
-    if (instant && tail > from && tail <= to) restart = Math.min(restart, start);
+  for (const { laterStart, earlierEnd, laterIsSet } of overlapSpansOf(timeline, version)) {
+    if (laterIsSet && earlierEnd > from && earlierEnd <= to)
+      restart = Math.min(restart, laterStart);
   }
   if (restart === Infinity || restart >= from) return;
   timeline.totalTime?.(Math.max(0, restart - OVERLAP_RESTART), true);
@@ -245,7 +247,7 @@ function framesSkippedSinceLastSeek(
     last === undefined ? Math.floor(t * fps + 1e-6) : Math.ceil((t - last) * fps - 1e-6) - 1;
   if (skipped < 1) return [];
   const replay = new Set<number>();
-  for (const [from, to] of overlapSpansOf(timeline, version)) {
+  for (const { laterStart: from, sharedEnd: to } of overlapSpansOf(timeline, version)) {
     const nearest = Math.max(1, Math.ceil((t - to) * fps - 1e-6) - 1);
     const farthest = Math.min(skipped, Math.floor((t - from) * fps + 1e-6) + 1);
     for (let back = nearest; back <= farthest; back++) replay.add(back);
