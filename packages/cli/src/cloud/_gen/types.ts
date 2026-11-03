@@ -124,6 +124,7 @@ export interface CreateHyperframesRenderRequest {
   title?: string | null;
   callback_id?: string | null;
   callback_url?: string | null;
+  reverse_session_id?: string | null;
 }
 
 export interface CreateHyperframesRenderResponse {
@@ -200,6 +201,7 @@ export interface CreateVideoFromAvatar {
   remove_background?: boolean | null;
   callback_url?: string | null;
   callback_id?: string | null;
+  output_upload?: OutputUploadRequest | null;
   watermark?: WatermarkInput | null;
   caption?: CaptionSetting | null;
   output_format?: VideoOutputFormat;
@@ -241,6 +243,7 @@ export interface CreateVideoFromImage {
   remove_background?: boolean | null;
   callback_url?: string | null;
   callback_id?: string | null;
+  output_upload?: OutputUploadRequest | null;
   watermark?: WatermarkInput | null;
   caption?: CaptionSetting | null;
   output_format?: VideoOutputFormat;
@@ -483,6 +486,12 @@ export interface NanoBanana2Request {
   reference_images?: Array<AssetUrl | AssetId | AssetBase64>;
 }
 
+export interface OutputUploadRequest {
+  video: UploadTargetRequest;
+  captions?: UploadTargetRequest | null;
+  thumbnail?: UploadTargetRequest | null;
+}
+
 export interface PlaybackInput {
   mode?: "freeze" | "loop" | "fit_to_scene" | null;
   volume?: number;
@@ -658,6 +667,11 @@ export interface UploadAssetV3Response {
   url: string;
   mime_type: string;
   size_bytes: number;
+}
+
+export interface UploadTargetRequest {
+  url: string;
+  headers?: Record<string, unknown>;
 }
 
 export type VideoAspectRatio = "16:9" | "9:16" | "4:5" | "5:4" | "1:1" | "auto";
