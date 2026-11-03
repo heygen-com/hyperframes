@@ -1,6 +1,6 @@
 // Page motion blur through a real multi-worker render (#6967): outside the trail of everything
 // that moved, a blur-on render must equal the blur-off render frame by frame. A PNG sequence is
-// lossless and does not encode while capturing, so each of the 4 workers captures one contiguous
+// lossless and does not encode while capturing, so each worker captures one contiguous
 // block of frames and every block but the first starts mid-film. Needs Chrome + ffmpeg: integration lane.
 
 import { spawnSync } from "node:child_process";
@@ -11,8 +11,12 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { decodePng, distributeFrames, getFfmpegBinary, resolveConfig } from "@hyperframes/engine";
 import {
   compareTiles,
+  tilesOutsideRegion,
   trailMask,
+  withinSymptomBand,
+  type BadBlock,
   type Differential,
+  type Rect,
   type Rgba,
 } from "../../../../engine/src/services/__fixtures__/blurDifferential.js";
 import {
@@ -21,6 +25,8 @@ import {
 } from "../../../../engine/src/services/__fixtures__/motionBlur/fixtures.js";
 import {
   INVARIANTS,
+  MEASURED_LABEL_EARLY_RENDER,
+  MEASURED_SCROLL_LOSS_RENDER,
   RENDER_OUTSIDE_MAX_MAE,
 } from "../../../../engine/src/services/__fixtures__/motionBlur/thresholds.js";
 import { createRenderJob, executeRenderJob } from "../renderOrchestrator.js";
@@ -43,7 +49,6 @@ const REQUIRED_STARTS = new Map<string, { from: number; to: number; count: numbe
 ]);
 const MIN_SECONDS = 1.2;
 const RENDER_TIMEOUT_MS = 600_000;
-const REGION_TOLERANCE_PX = 2;
 
 const FIXTURE_NAMES = [
   "callbacks",
@@ -53,20 +58,18 @@ const FIXTURE_NAMES = [
   "overflow-wordmark",
 ] as const;
 
-interface Rect {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
 interface KnownBug {
+  title: string;
   reason: string;
-  /** The element whose rect the bad tiles must touch, in CSS px from the fixture's markup. */
+  /** The element whose rect every bad tile must touch, in CSS px from the fixture's markup. */
   regionId: string;
   region: (f: BlurFixture) => Rect;
   /** Output frames in which blur on really differs from blur off today. */
   frames: (n: number) => boolean;
+  /** Worst-tile MAE of the symptom where it was pinned. */
+  measuredMae: number;
+  /** Set when the symptom must appear in those frames: what to edit when it no longer does. */
+  ifFixed?: string;
 }
 
 const markupOf = (f: BlurFixture, id: string): string =>
@@ -93,24 +96,35 @@ function glyphFromMarkup(f: BlurFixture, id: string): Rect {
   return { x: cssPx(f, id, "left"), y: cssPx(f, id, "top"), width: 0.6 * size, height: 1.2 * size };
 }
 
-/** Cases where blur on really differs from blur off today. They pin the symptom and fail once it is fixed. */
+/**
+ * Cases where blur on really differs from blur off today. Whatever differs must stay inside the
+ * pinned region and keep its measured size. A case with `ifFixed` also requires the symptom to
+ * appear and fails once it is fixed; the others only bound it, because it is a race.
+ */
 const KNOWN_REAL_DIFFERENCES = new Map<string, KnownBug>([
   [
     "scroll-list",
     {
+      title:
+        "scroll-list: any loss after a worker's first wrap stays inside #list (KNOWN BUG, flip lives in the engine differential)",
       reason: "scroll-list loses its scroll offset after a worker's first wrap",
       regionId: "list",
       region: (f) => boxFromMarkup(f, "list"),
       frames: (n) => n >= 28,
+      measuredMae: MEASURED_SCROLL_LOSS_RENDER,
     },
   ],
   [
     "callbacks",
     {
+      title: "KNOWN BUG on main: callbacks shows its label B before the call that sets it",
       reason: "callbacks shows its label B before the call that sets it",
       regionId: "label",
       region: (f) => glyphFromMarkup(f, "label"),
       frames: (n) => n < 15,
+      measuredMae: MEASURED_LABEL_EARLY_RENDER,
+      ifFixed:
+        "delete the callbacks entry from KNOWN_REAL_DIFFERENCES; keep WORKERS_BY_FIXTURE and REQUIRED_STARTS, which make the rewind regression visible after the fix",
     },
   ],
 ]);
@@ -217,28 +231,32 @@ function firstBad(results: readonly FrameResult[]): string {
   );
 }
 
-function tileTouches(tile: { x: number; y: number }, block: number, rect: Rect): boolean {
-  const left = rect.x - REGION_TOLERANCE_PX;
-  const top = rect.y - REGION_TOLERANCE_PX;
-  const right = rect.x + rect.width + REGION_TOLERANCE_PX;
-  const bottom = rect.y + rect.height + REGION_TOLERANCE_PX;
-  return tile.x < right && tile.x + block > left && tile.y < bottom && tile.y + block > top;
+function expectNoNewDefect(f: BlurFixture, known: KnownBug, bad: readonly BadBlock[]): void {
+  const region = known.region(f);
+  expect(
+    tilesOutsideRegion(bad, INVARIANTS.block, region, 1),
+    `a new defect outside the ${known.regionId} rect ${JSON.stringify(region)}`,
+  ).toEqual([]);
 }
 
 function expectKnownBug(f: BlurFixture, known: KnownBug, results: readonly FrameResult[]): void {
   const pinned = results.filter((x) => known.frames(x.frame));
   const rest = results.filter((x) => !known.frames(x.frame));
-  const fixed = `${known.reason}: this case pins a known bug; if it now passes, delete the case and assert zero bad tiles`;
-  const region = known.region(f);
   const bad = pinned.flatMap((x) => x.outside.bad);
-  expect(bad.length, fixed).toBeGreaterThan(0);
-  expect(Math.max(...pinned.map((x) => x.outside.worstMae)), fixed).toBeGreaterThan(
-    RENDER_OUTSIDE_MAX_MAE,
-  );
-  expect(
-    bad.some((tile) => tileTouches(tile, INVARIANTS.block, region)),
-    `bad tiles ${firstBad(pinned)} miss the ${known.regionId} rect ${JSON.stringify(region)}`,
-  ).toBe(true);
+  if (known.ifFixed) {
+    expect(
+      bad.length,
+      `${known.reason}: this case pins a known bug; if it now passes, ${known.ifFixed}`,
+    ).toBeGreaterThan(0);
+  }
+  expectNoNewDefect(f, known, bad);
+  if (bad.length > 0) {
+    const worstMae = Math.max(...pinned.map((x) => x.outside.worstMae));
+    expect(
+      withinSymptomBand(worstMae, known.measuredMae),
+      `the pinned symptom changed: re-measure (worst MAE ${worstMae.toFixed(2)}, pinned at ${known.measuredMae})`,
+    ).toBe(true);
+  }
   expect(
     rest.flatMap((x) => x.outside.bad),
     `${f.name} outside the pinned frames ${firstBad(rest)}`,
@@ -287,7 +305,7 @@ function defineFixtureCases(f: BlurFixture): void {
 
     const known = KNOWN_REAL_DIFFERENCES.get(f.name);
     if (known) {
-      it(`KNOWN BUG on main: ${known.reason}`, () => expectKnownBug(f, known, results));
+      it(known.title, () => expectKnownBug(f, known, results));
     } else {
       it("outside the trail, blur on equals blur off in every frame", () =>
         expectEqualOutsideTrail(f, results));
@@ -303,7 +321,7 @@ function defineFixtureCases(f: BlurFixture): void {
   });
 }
 
-describe.skipIf(!HAS_FFMPEG)("page motion blur through a 4-worker render", () => {
+describe.skipIf(!HAS_FFMPEG)("page motion blur through a multi-worker render", () => {
   beforeAll(() => {
     root = mkdtempSync(join(tmpdir(), "hf-blur-differential-"));
   });
