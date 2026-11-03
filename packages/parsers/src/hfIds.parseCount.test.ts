@@ -39,6 +39,14 @@ describe("ensureHfIds on a document whose elements all carry their ids", () => {
     expect(parses.count).toBe(2);
   });
 
+  it("parses a stamped page not opening <head> then <body>: callers re-parsing the output expect both", () => {
+    const headless = `<!DOCTYPE html><html><body><div data-hf-id="hf-a1b2">x</div></body></html>`;
+    expect(ensureHfIds(headless)).toContain("<head></head><body>");
+    expect(parses.count).toBe(1);
+    ensureHfIds(`<!DOCTYPE html><html><head><title>t</title><body><p data-hf-id="hf-a1b2">x</p></body></html>`);
+    expect(parses.count).toBe(2);
+  });
+
   it("checks a fragment from its first tag, so elements before a stray <body> still get their ids", () => {
     const minted = ensureHfIds(`<p>y</p><body><div data-hf-id="hf-a1b2">x</div>`);
     expect(minted).toMatch(/<p data-hf-id="hf-[0-9a-z]+">y<\/p>/);

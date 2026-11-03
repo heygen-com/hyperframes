@@ -18,7 +18,6 @@ export {
 } from "./hfIdAssignment.js";
 
 export function ensureHfIds(html: string): string {
-  // A bundle stamped at build time has nothing to mint: its parse and serialize would change nothing.
   if (alreadyStamped(html)) return html;
   const { document, wrapped } = parseFragmentOrDocument(html);
   if (!document.body) return html;
@@ -29,15 +28,11 @@ export function ensureHfIds(html: string): string {
 const isFragment = (html: string) =>
   !/^(?:<!doctype|<html[\s>/])/i.test(html.replace(/^(?:\s|<!--(?:>|->|[\s\S]*?-->))*/, ""));
 
-/** True when every start tag ensureHfIds would give an id (each element in the body, outside EXCLUDED_TAGS) already
- * carries a non-empty data-hf-id, read from the source text. Any doubt answers false: a document with no <body> tag,
- * a table (whose parse can add elements the text has none of), or markup the tag reader cannot follow. */
 function alreadyStamped(html: string): boolean {
   const tags = startTags(html);
   if (!tags) return false;
-  // A fragment's every tag is body content, a stray <body> among them included (which then takes the parse).
   const body = isFragment(html) ? -1 : tags.findIndex((tag) => tag.name === "body");
-  if (!isFragment(html) && body < 0) return false;
+  if (!isFragment(html) && !opensHeadThenBody(html, tags, body)) return false;
   return tags
     .slice(body + 1)
     .every(
@@ -48,7 +43,19 @@ function alreadyStamped(html: string): boolean {
     );
 }
 
-/** A non-empty data-hf-id among the tag's own attributes, never inside a quoted value. */
+const HEAD_CONTENT = new Set(["meta", "link", "base", "title", "style", "script"]);
+
+// The parse path's document.body read adds any missing <head>/<body>, and callers re-parsing its output expect both.
+function opensHeadThenBody(html: string, tags: StartTag[], body: number): boolean {
+  if (body < 0 || tags[0]?.name !== "html" || tags[1]?.name !== "head") return false;
+  const inHead = tags.slice(2, body);
+  if (!inHead.every((tag) => HEAD_CONTENT.has(tag.name))) return false;
+  const last = inHead.at(-1) ?? tags[1]!;
+  const from = RAW_TEXT.has(last.name) ? rawTextEnd(html, last.name, last.bracket) : last.bracket;
+  const between = from < 0 ? "" : html.slice(from, html.lastIndexOf("<", tags[body]!.nameEnd));
+  return /<\/head\s*>/i.test(between.replace(/<!--[\s\S]*?-->/g, ""));
+}
+
 function hasHfId(html: string, tag: StartTag): boolean {
   const open = html.slice(tag.nameEnd, tag.bracket);
   const name = /\sdata-hf-id\s*=\s*/i.exec(outsideQuotes(open));
