@@ -154,13 +154,19 @@ export const FIXTURES: readonly BlurFixture[] = [
   fixture({ name: "held-card" }),
   fixture({
     name: "nested-canvas-offset",
-    extra: `<canvas id="c" width="320" height="100" style="position:absolute;left:0;top:80px"></canvas>
-      <script>
-        const ctx = document.getElementById("c").getContext("2d");
-        ctx.fillStyle = "#fff";
-        ctx.font = "700 48px monospace";
-        ctx.fillText("OPEN", 20, 60);
-      </script>`,
+    style:
+      ".clip { position: absolute; inset: 0; overflow: hidden; will-change: transform, filter, opacity }",
+    extra: `<section class="clip"><canvas id="hcanvas" width="320" height="100" style="position:absolute;left:0;top:80px"></canvas></section>`,
+    script: `const cvx = document.getElementById("hcanvas").getContext("2d");
+      const draw = () => {
+        cvx.clearRect(0, 0, 320, 100);
+        cvx.strokeStyle = "#fff";
+        cvx.strokeRect(2, 2, 316, 96);
+        cvx.fillStyle = "#fff";
+        cvx.font = "700 48px monospace";
+        cvx.fillText("OPEN", 20, 60);
+      };
+      tl.to({}, { duration: 2, onUpdate: draw }, 0);`,
   }),
   fixture({
     name: "scroll-list",
@@ -203,8 +209,10 @@ export const FIXTURES: readonly BlurFixture[] = [
     checkpoints: frames(24, 30, 45),
     expectOn: { tier: "filter", reasonCode: "accelerated-canvas" },
   }),
+  // The flip tile stays sharp beside the blurred card: no time in the trail matches an average of its poses.
   fixture({
     name: "flip-card-3d",
+    moving: [],
     captureTier: false,
     extra: FLIP,
     style: "@keyframes flip { to { transform: rotateY(180deg) } }",
@@ -223,14 +231,18 @@ export const FIXTURES: readonly BlurFixture[] = [
     cardStyle: "background:#1f2a44",
     cardContent: `<div style="position:absolute;left:20px;top:0;width:40px;height:40px;background:linear-gradient(135deg,#ff7a59,#ffd166);clip-path:url(#logoClip)"></div>`,
   }),
+  // The iframe stays sharp beside the blurred card: no time in the trail matches an average of its poses.
   fixture({
     name: "iframe-in-root",
+    moving: [],
     captureTier: false,
     extra: `<iframe id="frame" srcdoc='<body style="margin:0;background:#a33;color:#fff">framed</body>' style="position:absolute;left:10px;top:10px;width:120px;height:60px;border:0"></iframe>`,
     expectOn: { tier: "filter", reasonCode: "iframe-in-root" },
   }),
+  // The custom element stays sharp beside the blurred card: no time in the trail matches an average of its poses.
   fixture({
     name: "custom-element-in-root",
+    moving: [],
     captureTier: false,
     extra: `<hf-badge style="position:absolute;left:10px;top:10px;display:block;width:120px;height:60px"></hf-badge>
       <script>

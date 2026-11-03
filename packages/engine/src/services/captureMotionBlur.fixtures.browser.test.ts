@@ -11,6 +11,9 @@ import {
 import { FIXTURES } from "./__fixtures__/motionBlur/fixtures.js";
 import type { Rgba } from "./__fixtures__/blurDifferential.js";
 
+// A fixture with no `moving` times still slides its card in at 0.2 s: that is where `blurs` is read.
+const PROBE_WHILE_CARD_SLIDES = 6 / 30;
+
 describe.skipIf(!hasBrowser)("capture motion blur fixtures in Chrome", () => {
   let browser: Browser;
   let supported = false;
@@ -31,7 +34,7 @@ describe.skipIf(!hasBrowser)("capture motion blur fixtures in Chrome", () => {
       if (!supported) ctx.skip();
       const size = { width: fixture.width, height: fixture.height };
       const first = fixture.checkpoints[0] ?? 0;
-      const moving = fixture.moving[0] ?? 0;
+      const moving = fixture.moving[0] ?? PROBE_WHILE_CARD_SLIDES;
       const errors: string[] = [];
       const watch = (page: Awaited<ReturnType<typeof openFixture>>): void => {
         page.on("pageerror", (e) => errors.push(String(e)));
@@ -79,7 +82,6 @@ describe.skipIf(!hasBrowser)("capture motion blur fixtures in Chrome", () => {
   it.each(FIXTURES)("places the checkpoints of $name inside its holds on frame boundaries", (f) => {
     const onFrame = (t: number): boolean => Math.abs(t * 30 - Math.round(t * 30)) < 1e-9;
     expect(f.checkpoints.length).toBeGreaterThan(0);
-    expect(f.moving.length).toBeGreaterThan(0);
     for (const t of [...f.checkpoints, ...f.moving]) {
       expect(onFrame(t)).toBe(true);
       expect(t).toBeLessThanOrEqual(f.durationSeconds);
