@@ -38,7 +38,14 @@ export async function launch(): Promise<{ browser: Browser; supported: boolean }
   const browser = await puppeteer.launch({
     executablePath: chromePath,
     headless: true,
-    args: ["--no-sandbox", "--disable-dev-shm-usage", "--enable-features=CanvasDrawElement"],
+    // Windows ClearType and Linux fontconfig subpixel text colour DOM glyphs but not the capture canvas;
+    // that is a host setting, not blur, so both arms draw grayscale text.
+    args: [
+      "--no-sandbox",
+      "--disable-dev-shm-usage",
+      "--enable-features=CanvasDrawElement",
+      "--disable-lcd-text",
+    ],
   });
   const probe = await browser.newPage();
   const supported = await probe.evaluate(

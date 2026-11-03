@@ -322,11 +322,27 @@ function defineFixtureCases(f: BlurFixture): void {
 }
 
 describe.skipIf(!HAS_FFMPEG)("page motion blur through a multi-worker render", () => {
+  let priorFontconfig: string | undefined;
+
   beforeAll(() => {
     root = mkdtempSync(join(tmpdir(), "hf-blur-differential-"));
+    // A host with fontconfig subpixel text colours DOM glyphs but not the capture canvas. That is a
+    // host setting, not blur, so both arms draw grayscale text.
+    priorFontconfig = process.env.FONTCONFIG_FILE;
+    const conf = join(root, "fonts.conf");
+    writeFileSync(
+      conf,
+      `<?xml version="1.0"?><!DOCTYPE fontconfig SYSTEM "fonts.dtd"><fontconfig>
+<include ignore_missing="yes">/etc/fonts/fonts.conf</include>
+<match target="font"><edit name="rgba" mode="assign"><const>none</const></edit></match>
+</fontconfig>`,
+    );
+    process.env.FONTCONFIG_FILE = conf;
   });
 
   afterAll(() => {
+    if (priorFontconfig === undefined) delete process.env.FONTCONFIG_FILE;
+    else process.env.FONTCONFIG_FILE = priorFontconfig;
     if (root) rmSync(root, { recursive: true, force: true });
   });
 
