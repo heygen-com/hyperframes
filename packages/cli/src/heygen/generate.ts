@@ -24,6 +24,7 @@ import type {
 } from "../cloud/_gen/types.js";
 import { findCuts, signatures } from "../measure/cuts.js";
 import { Fix, probeVideo, projectOf, round, runFfmpeg, videoClip } from "../measure/media.js";
+import { loadSharp } from "../utils/optionalPackages.js";
 import {
   idempotencyKey,
   keepVoice,
@@ -344,36 +345,57 @@ function needFile(path: string): void {
     throw new Fix(`no file at ${path}`, "pass a picture or sound from the project");
 }
 
-const shrink = (path: string, out: string) =>
-  runFfmpeg([
-    "-y",
-    "-i",
-    path,
-    "-vf",
-    "scale='min(2048,iw)':'min(2048,ih)':force_original_aspect_ratio=decrease",
-    "-q:v",
-    "3",
-    "-frames:v",
-    "1",
-    out,
-  ]);
+const FIT_2048 = "scale='min(2048,iw)':'min(2048,ih)':force_original_aspect_ratio=decrease";
 
-/**
- * A picture or a sound as the routes take it inline, pictures shrunk to 2048 px so the body stays small, a motion
- * clip with its masks filled.
- */
-function inline(work: string, masks: Mask[] = []): Media {
+function picturesOf(route: Route, r: GenerateRequest): string[] {
+  const paths: string[] = [];
+  route.body(r, (path, kind) => {
+    if (kind === "image") paths.push(path);
+    return {};
+  });
+  return paths;
+}
+
+const sharpOrNone = () => loadSharp("media-use pictures").catch(() => null);
+
+/** Each picture upright and at most 2048 px, as a JPEG in `work`. sharp, not ffmpeg: a picture alone never needs it. */
+async function shrunk(paths: string[], work: string): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (!paths.length) return out;
+  const sharp = await sharpOrNone();
+  for (const path of new Set(paths)) {
+    needFile(path);
+    const to = join(work, `picture-${out.size}.jpg`);
+    const viaFfmpeg = () =>
+      runFfmpeg(["-y", "-i", path, "-vf", FIT_2048, "-q:v", "3", "-frames:v", "1", to]);
+    if (!sharp) viaFfmpeg();
+    else
+      await sharp(path)
+        .rotate()
+        .resize(2048, 2048, { fit: "inside", withoutEnlargement: true })
+        .jpeg({ quality: 90 })
+        .toFile(to)
+        .catch(viaFfmpeg);
+    out.set(path, to);
+  }
+  return out;
+}
+
+/** A picture, sound or motion clip as the routes take it inline: pictures from `shrunk`, clips with masks filled. */
+function inline(work: string, pictures: Map<string, string>, masks: Mask[] = []): Media {
   return (path, kind) => {
     needFile(path);
-    const out = join(
-      work,
-      `in-${Math.random().toString(36).slice(2)}.${{ image: "jpg", audio: "mp3", video: "mp4" }[kind]}`,
-    );
-    if (kind === "image") shrink(path, out);
-    else if (kind === "audio")
+    const out =
+      kind === "image"
+        ? pictures.get(path)!
+        : join(
+            work,
+            `in-${Math.random().toString(36).slice(2)}.${{ audio: "mp3", video: "mp4" }[kind]}`,
+          );
+    if (kind === "audio")
       runFfmpeg(["-y", "-i", path, "-vn", "-ac", "1", "-c:a", "libmp3lame", "-b:a", "128k", out]);
     // A guide clip only needs its motion: 720 px on the long side, no sound, at most 15 s.
-    else {
+    else if (kind === "video") {
       const guide = masks.length ? fillMasks(path, masks, work) : path;
       const scale = "scale='if(gt(iw,ih),min(720,iw),-2)':'if(gt(iw,ih),-2,min(720,ih))'";
       runFfmpeg([
@@ -525,11 +547,11 @@ function fitAspect(out: string, aspect: string): string | undefined {
   return `HeyGen returned ${width}x${height} for ${aspect}; cropped to ${w}x${h} (centre), not stretched`;
 }
 
-function aspectOf(r: GenerateRequest, work: string): string {
+async function aspectOf(r: GenerateRequest, pictures: Map<string, string>): Promise<string> {
   if (r.aspect || !r.firstFrame) return r.aspect ?? "16:9";
-  const sent = join(work, "first-frame.jpg");
-  shrink(r.firstFrame, sent);
-  const { width, height } = probeVideo(sent);
+  const sent = pictures.get(r.firstFrame)!;
+  const sharp = await sharpOrNone();
+  const { width, height } = sharp ? await sharp(sent).metadata() : probeVideo(sent);
   return `${width}:${height}`;
 }
 
@@ -647,7 +669,8 @@ export async function generate(
   try {
     const sources = assetsOf(r);
     const ids = await uploaded(sources);
-    const local = inline(work, r.masks);
+    const pictures = await shrunk(picturesOf(route, r), work);
+    const local = inline(work, pictures, r.masks);
     const body = route.body(r, (path, kind) =>
       ids.has(path) ? { type: "asset_id", asset_id: ids.get(path) } : local(path, kind),
     );
@@ -687,7 +710,7 @@ export async function generate(
     const notes: string[] = [];
     if (r.type === "video")
       try {
-        const note = fitAspect(out, aspectOf(r, work));
+        const note = fitAspect(out, await aspectOf(r, pictures));
         if (note) notes.push(note);
       } catch (e) {
         notes.push(`kept HeyGen's size, could not crop: ${e instanceof Error ? e.message : e}`);
