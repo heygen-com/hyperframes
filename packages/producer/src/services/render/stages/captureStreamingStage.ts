@@ -656,16 +656,20 @@ async function runWorkerEncodePipelineLoop(
   await drainPrev();
 }
 
+const STALL_RESUMES_BEFORE_FALLBACK = 3;
+
 /** A sequential stall resumes at the first unwritten frame when frames landed since the last resume. */
 function resumesAfterStall(
   error: unknown,
   abortSignal: AbortSignal | undefined,
   resume: { from: number; written: number },
+  resumes: number,
 ): boolean {
   return (
     error instanceof SequentialCaptureStallError &&
     abortSignal?.aborted !== true &&
-    resume.written > resume.from
+    resume.written > resume.from &&
+    resumes < STALL_RESUMES_BEFORE_FALLBACK
   );
 }
 
@@ -786,6 +790,7 @@ export async function runCaptureStreamingStage(
       let parallelGuardRan = false;
       let writtenFrames = 0;
       let resumeFrom = 0;
+      let resumes = 0;
       let workerResults: Awaited<ReturnType<typeof executeParallelCapture>>;
       for (;;) {
         const parallelReorder = createFrameReorderBuffer(resumeFrom, totalFrames);
@@ -932,13 +937,19 @@ export async function runCaptureStreamingStage(
         } catch (err) {
           // A wedged worker loses nothing already written: fresh workers continue from the first
           // unwritten frame. A stall before any new frame landed falls through.
-          if (stalled && abortSignal?.aborted !== true && writtenFrames > resumeFrom) {
+          if (
+            stalled &&
+            abortSignal?.aborted !== true &&
+            writtenFrames > resumeFrom &&
+            resumes < STALL_RESUMES_BEFORE_FALLBACK
+          ) {
             log.warn("[Render] Parallel capture stalled; resuming from the first unwritten frame", {
               resumeFrom: writtenFrames,
               totalFrames,
               workerPhases: phaseSummary(),
             });
             resumeFrom = writtenFrames;
+            resumes++;
             continue;
           }
           // Surface the TYPED drain error (DrawElementVerificationError) so the
@@ -983,6 +994,7 @@ export async function runCaptureStreamingStage(
       // Sequential capture → streaming encode
 
       const resume = { from: 0, written: 0 };
+      let resumes = 0;
       for (;;) {
         const videoInjector = createRenderVideoFrameInjector();
         const session =
@@ -1117,7 +1129,7 @@ export async function runCaptureStreamingStage(
           // fallow-ignore-next-line code-duplication
         } catch (error) {
           lastBrowserConsole = session.browserConsoleBuffer;
-          if (!resumesAfterStall(error, abortSignal, resume)) {
+          if (!resumesAfterStall(error, abortSignal, resume, resumes)) {
             throw wrapCaptureStageError(error, lastBrowserConsole);
           }
           log.warn("[Render] Sequential capture stalled; resuming from the first unwritten frame", {
@@ -1125,6 +1137,7 @@ export async function runCaptureStreamingStage(
             totalFrames,
           });
           resume.from = resume.written;
+          resumes++;
           resumed = true;
         } finally {
           // Keep the latest console buffer for success and cleanup-error summaries.

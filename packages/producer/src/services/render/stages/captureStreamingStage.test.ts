@@ -58,10 +58,12 @@ let hangSequentialUntilStall = false;
 // Sequential capture that wedges the first `hangsLeft` times it is asked for frame `hangAtFrame`.
 let hangAtFrame: number | null = null;
 let hangsLeft = 0;
+const hangOnceAt = new Set<number>();
 const capturedFrames: number[] = [];
 let sessionsCreated = 0;
 const hangsAt = (frameIndex: number): boolean => {
   capturedFrames.push(frameIndex);
+  if (hangOnceAt.delete(frameIndex)) return true;
   if (hangAtFrame !== frameIndex || hangsLeft === 0) return false;
   hangsLeft--;
   return true;
@@ -583,6 +585,12 @@ describe("runCaptureStreamingStage", () => {
       expect(written()).toEqual(Array.from({ length: 10 }, (_, i) => `f${i}`));
     });
 
+    it("hands the fourth stall to the fallback after three resumes, even with new frames", async () => {
+      const { caught } = await run([2, 2, 2, 2], "screenshot");
+      expect((caught as Error).name).toBe("ParallelCaptureStallError");
+      expect(distributeCalls.map((call) => call.rangeStart)).toEqual([0, 2, 4, 6]);
+    });
+
     it("falls back to the typed stall when a resume lands no new frame", async () => {
       const { caught } = await run([4, 0], "screenshot");
       expect((caught as Error).name).toBe("ParallelCaptureStallError");
@@ -661,6 +669,15 @@ describe("runCaptureStreamingStage", () => {
       expect((caught as Error).message).toContain("Sequential screenshot capture stalled");
       expect(capturedFrames).toEqual([0, 1, 2, 3, 4, 4]);
       expect(sessionsCreated).toBe(2);
+    });
+
+    it("hands the fourth stall to the fallback after three resumes, even with new frames", async () => {
+      for (const frame of [2, 4, 6, 8]) hangOnceAt.add(frame);
+      const { caught } = await run("screenshot", -1, 0);
+      hangOnceAt.clear();
+      expect((caught as Error).message).toContain("Sequential screenshot capture stalled");
+      expect(capturedFrames).toEqual([0, 1, 2, 2, 3, 4, 4, 5, 6, 6, 7, 8]);
+      expect(sessionsCreated).toBe(4);
     });
 
     it("leaves a stall before any frame was written to the orchestrator's retry", async () => {
