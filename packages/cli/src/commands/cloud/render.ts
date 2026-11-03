@@ -127,11 +127,6 @@ export default defineCommand({
     },
     quality: { type: "string", description: "draft | standard | high (default: standard)" },
     format: { type: "string", description: "mp4 | webm | mov (default: mp4)" },
-    "page-motion-blur": {
-      type: "string",
-      description:
-        "Set off to disable authored page motion blur. Omit to keep the current cloud behavior.",
-    },
     resolution: {
       type: "string",
       description: "Resolution tier: 1080p | 4k (default: 1080p; 4k is billed at 1.5x)",
@@ -227,9 +222,6 @@ export default defineCommand({
     const asJson = Boolean(args.json);
     const quality = parseEnumFlag(args.quality, VALID_QUALITY, { flag: "--quality" });
     const format = parseEnumFlag(args.format, VALID_FORMAT, { flag: "--format" });
-    const pageMotionBlur = parseEnumFlag(args["page-motion-blur"], ["off"] as const, {
-      flag: "--page-motion-blur",
-    });
     const resolution = parseEnumFlag(args.resolution, VALID_RESOLUTION, {
       flag: "--resolution",
     });
@@ -309,7 +301,6 @@ export default defineCommand({
       quality,
       format,
       resolution,
-      pageMotionBlur,
       aspectRatio,
       composition: args.composition,
       variables,
@@ -842,7 +833,6 @@ interface SubmitOptions {
   fps: number | undefined;
   quality: "draft" | "standard" | "high" | undefined;
   format: "mp4" | "webm" | "mov" | undefined;
-  pageMotionBlur: NonNullable<CreateHyperframesRenderRequest["page_motion_blur"]> | undefined;
   resolution: CreateHyperframesRenderRequest["resolution"] | undefined;
   aspectRatio: CreateHyperframesRenderRequest["aspect_ratio"] | undefined;
   composition: string | undefined;
@@ -880,7 +870,6 @@ function buildRenderBody(opts: SubmitOptions): RenderRequestBody {
   if (opts.fps !== undefined) body.fps = opts.fps;
   if (opts.quality !== undefined) body.quality = opts.quality;
   if (opts.format !== undefined) body.format = opts.format;
-  if (opts.pageMotionBlur !== undefined) body.page_motion_blur = opts.pageMotionBlur;
   if (opts.resolution !== undefined) body.resolution = opts.resolution;
   if (opts.aspectRatio !== undefined) body.aspect_ratio = opts.aspectRatio;
   if (opts.composition !== undefined) body.composition = opts.composition;
