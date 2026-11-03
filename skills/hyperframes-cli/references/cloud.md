@@ -32,7 +32,7 @@ npx hyperframes auth refresh            # force-refresh an OAuth token before a 
 npx hyperframes auth logout             # clear the stored credential
 ```
 
-Credential resolution order (first match wins): `HEYGEN_API_KEY`, then `HYPERFRAMES_API_KEY`, then `HEYGEN_ACCESS_TOKEN` (an OAuth token a host app injects; never refreshed or saved), then `~/.hyperframes/credentials`. `HYPERFRAMES_ENV=dev` selects the dev client, OAuth/API hosts and `~/.hyperframes/dev/credentials` together. `HYPERFRAMES_CONFIG_DIR` overrides the credentials root. `HEYGEN_API_URL` overrides the API host.
+Credential resolution order (first match wins): `HEYGEN_ACCESS_TOKEN` (an OAuth token a host app injects; never refreshed or saved), then the `hyperframes auth login` session in `~/.hyperframes/credentials` (refreshed when expired), then `HEYGEN_API_KEY`, then `HYPERFRAMES_API_KEY`, then a key saved with `auth login --api-key`. A signed-in session wins over an env key; the env key is used if HeyGen refuses to refresh the session or `HEYGEN_API_URL` points at a host app's gateway. `auth status` shows which one is in use; `auth logout` makes the env key win. `HYPERFRAMES_ENV=dev` selects the dev client, OAuth/API hosts and `~/.hyperframes/dev/credentials` together. `HYPERFRAMES_CONFIG_DIR` overrides the credentials root. `HEYGEN_API_URL` overrides the API host.
 
 ## The render pipeline
 

@@ -29,6 +29,7 @@ import {
   type StoredUserInfo,
   type UserInfo,
 } from "../../auth/index.js";
+import { refreshIfNeeded } from "../../cloud/auth.js";
 import { getSystemMeta } from "../../telemetry/system.js";
 import { c } from "../../ui/colors.js";
 import { pageUrl, readPlan, type Plan } from "../../heygen/plan.js";
@@ -95,7 +96,8 @@ export default defineCommand({
       return;
     }
 
-    const status = await verify(credential);
+    const resolved = credential;
+    const status = await verify(await refreshIfNeeded(resolved).catch(() => resolved));
     if (asJson) printJsonStatus(status);
     else printHumanStatus(status);
     setCommandExitCode(status.apiError ? 1 : 0);

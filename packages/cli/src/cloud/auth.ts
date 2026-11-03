@@ -14,8 +14,13 @@
  */
 
 import { apiBaseUrl, buildAuthHeaders } from "../auth/client.js";
+import { ErrLoginExpired } from "../auth/errors.js";
 import { refreshTokens } from "../auth/oauth.js";
-import { resolveCredential, type ResolvedCredential } from "../auth/resolver.js";
+import {
+  afterRefreshFailure,
+  resolveCredential,
+  type ResolvedCredential,
+} from "../auth/resolver.js";
 
 /**
  * Build the cloud client's `getAuthHeaders` callback. Each invocation
@@ -38,11 +43,25 @@ export function resolveCloudBaseUrl(): string {
   return apiBaseUrl();
 }
 
+export interface RefreshIfNeededOptions {
+  /** When HeyGen refuses the refresh, use an API key from the environment instead of throwing. Default true. */
+  envFallback?: boolean;
+}
+
 // fallow-ignore-next-line complexity
-export async function refreshIfNeeded(credential: ResolvedCredential): Promise<ResolvedCredential> {
+export async function refreshIfNeeded(
+  credential: ResolvedCredential,
+  opts: RefreshIfNeededOptions = {},
+): Promise<ResolvedCredential> {
   if (credential.type !== "oauth") return credential;
   if (!credential.refreshable || !credential.refresh_token) return credential;
-  const fresh = await refreshTokens(credential.refresh_token);
+  let fresh;
+  try {
+    fresh = await refreshTokens(credential.refresh_token);
+  } catch (err) {
+    if (opts.envFallback === false) throw err;
+    return await afterRefreshFailure(err, credential.refresh_token);
+  }
   return {
     ...credential,
     access_token: fresh.access_token,
@@ -63,15 +82,18 @@ function parseDateOrUndef(value: string | undefined): Date | undefined {
  * expiry. Used by `createCloudClient`'s 401-retry path when the server
  * rejects a token that the local resolver thought was still valid (e.g.
  * server-side revocation, clock skew, IdP rotation). No-op for API-key
- * credentials.
- *
- * Throws if the credential can't be refreshed (no refresh_token, or the
- * IdP refresh call itself fails). Callers should let the throw surface
- * — the original 401 is what the user needs to see, not a confusing
- * "refresh failed" message.
+ * credentials and a host app's token. When HeyGen refuses the refresh,
+ * an env API key takes over; without one, or on a network or server error,
+ * this throws, and callers should surface the original 401 rather than a
+ * confusing "refresh failed".
  */
 export async function forceRefreshCredentials(): Promise<void> {
   const credential = await resolveCredential();
-  if (credential.type !== "oauth" || !credential.refresh_token) return;
-  await refreshTokens(credential.refresh_token);
+  if (credential.type !== "oauth" || credential.source === "env_oauth") return;
+  try {
+    if (!credential.refresh_token) throw ErrLoginExpired();
+    await refreshTokens(credential.refresh_token);
+  } catch (err) {
+    await afterRefreshFailure(err, credential.refresh_token);
+  }
 }

@@ -355,10 +355,21 @@ function retryAfterSeconds(response: Response, nowMs: number): number | undefine
   return Math.min(Math.max(Math.ceil((retryAt - nowMs) / 1000), 0), MAX_DEVICE_POLL_SECONDS);
 }
 
-export async function refreshTokens(
+const refreshing = new Map<string, Promise<OAuthTokens>>();
+
+/** Refresh the stored login. Calls that overlap in this process share one request, since the server rotates the token. */
+export function refreshTokens(
   refresh_token: string,
   opts: RefreshOptions = {},
 ): Promise<OAuthTokens> {
+  const pending = refreshing.get(refresh_token);
+  if (pending) return pending;
+  const request = refreshOnce(refresh_token, opts).finally(() => refreshing.delete(refresh_token));
+  refreshing.set(refresh_token, request);
+  return request;
+}
+
+async function refreshOnce(refresh_token: string, opts: RefreshOptions): Promise<OAuthTokens> {
   const { credentials } = await readStore();
   if (credentials.oauth?.refresh_token !== refresh_token) throw ErrLoginChanged();
   assertOAuthIdentity(credentials.oauth);
@@ -380,7 +391,7 @@ export async function refreshTokens(
   });
 
   if (res.status === 400 || res.status === 401) {
-    throw ErrRefreshFailed(await safeText(res));
+    throw ErrRefreshFailed(await safeText(res), { refused: true });
   }
   if (!res.ok) {
     throw ErrApi(res.status, (await safeText(res)) || res.statusText);
