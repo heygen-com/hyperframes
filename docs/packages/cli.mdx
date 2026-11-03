@@ -2287,7 +2287,7 @@ and `component` (import an editable component). Run it bare for usage. See
 
 `npx hyperframes events` lets an installed workflow skill emit a usage event
 (`--skill`, `--event`, `--outcome`). Like the rest of [`telemetry`](#telemetry),
-it is anonymous until you sign in. Nothing calls it by hand.
+it is anonymous until you sign in. Skills that explicitly request phase telemetry may invoke `hyperframes events` manually. The command is otherwise not intended for routine invocation.
 
 ## hyperframes auth
 
