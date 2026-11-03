@@ -1,6 +1,17 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, renameSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  rmdirSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { resolveCloudAuthHeaders } from "../cloud/auth.js";
 import { billingBaseUrl } from "../heygen/plan.js";
@@ -95,8 +106,10 @@ function assertSafeEntries(data: Buffer): void {
       throw new PullRefused(`The template holds an unsafe path (${name}); nothing was unpacked.`);
 }
 
+const PULLED = ".template-sha256";
+
 /** Unpacks the pack beside `dest` and moves it in whole, so `dest` only ever holds a complete template. */
-function unpack(data: Buffer, dest: string): void {
+function unpack(data: Buffer, dest: string, pack: TemplatePack): void {
   mkdirSync(dirname(dest), { recursive: true });
   const work = mkdtempSync(`${dest}.part-`);
   try {
@@ -104,13 +117,15 @@ function unpack(data: Buffer, dest: string): void {
     assertSafeEntries(data);
     mkdirSync(out);
     execFileSync("tar", ["-xzf", "-", "-C", out, "--no-same-owner"], { input: data });
+    writeFileSync(join(out, PULLED), pack.sha256);
+    if (existsSync(dest)) rmdirSync(dest); // only ever the empty folder pulledHere let through
     renameSync(out, dest);
   } finally {
     rmSync(work, { recursive: true, force: true });
   }
 }
 
-/** Fetches the template into `<dir>/templates/<slug>/` and returns that path; one already there stays as it is. */
+/** Fetches the template into `<dir>/templates/<slug>/` and returns that path; one this pull left there is kept. */
 export async function pullTemplate(slug: string, dir: string): Promise<string> {
   const pack = TEMPLATES[slug];
   if (!pack)
@@ -118,9 +133,21 @@ export async function pullTemplate(slug: string, dir: string): Promise<string> {
       `No template "${slug}". Templates: ${Object.keys(TEMPLATES).join(", ")}.`,
     );
   const dest = resolve(dir, "templates", slug);
-  if (existsSync(dest)) return dest;
-  unpack(await download(await bundleUrl(pack), pack), dest);
+  if (pulledHere(dest, pack)) return dest;
+  unpack(await download(await bundleUrl(pack), pack), dest, pack);
   return dest;
+}
+
+/** Whether `dest` holds this pack, by the hash a pull records last. Anything but an empty folder stops the pull. */
+function pulledHere(dest: string, pack: TemplatePack): boolean {
+  if (!existsSync(dest)) return false;
+  const folder = statSync(dest).isDirectory();
+  const record = join(dest, PULLED);
+  if (folder && existsSync(record) && readFileSync(record, "utf8") === pack.sha256) return true;
+  if (folder && readdirSync(dest).length === 0) return false;
+  throw new PullRefused(
+    `${dest} is there but is not this template; nothing was downloaded. Move it aside and run the pull again.`,
+  );
 }
 
 /** Downloads a style template for a HyperFrames Pro account. The server decides who may have it. */
