@@ -123,11 +123,11 @@ function movedChange(before: Uint8Array, after: Uint8Array): number {
 }
 
 /**
- * A camera move peaking past a cut's level: the frames either side move too, and the frame before, zoomed or
- * shifted, nearly gives the one after. A punch-in also zooms, but out of stillness.
+ * A camera move peaking past a cut's level: the frames on both sides move too, and the frame before, zoomed or
+ * shifted, nearly gives the one after. A punch-in or punch-out also zooms, but out of or into a still picture.
  */
 function isMove(frames: Uint8Array[], diffs: number[], c: Cut, end: number): boolean {
-  const inMotion = Math.max(diffs[c.frame - 1] ?? 0, diffs[end] ?? 0) >= IN_MOTION * c.change;
+  const inMotion = Math.min(diffs[c.frame - 1] ?? 0, diffs[end] ?? 0) >= IN_MOTION * c.change;
   return inMotion && movedChange(frames[c.frame - 1]!, frames[end - 1]!) < RETURNED * c.change;
 }
 

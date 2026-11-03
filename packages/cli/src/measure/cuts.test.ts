@@ -144,6 +144,17 @@ describe("findCuts on moving pictures", () => {
     expect(findCuts(frames).map((c) => c.frame)).toEqual([13]);
   });
 
+  // hf-review: a picture still on one side and moving on the other is an edit, not a camera move.
+  it("keeps a punch-in out of a still picture as a cut when the next shot moves", () => {
+    const frames = [...Array<number>(13).fill(20), 25, ...Array<number>(16).fill(27)].map(window);
+    expect(findCuts(frames).map((c) => c.frame)).toEqual([13]);
+  });
+
+  it("keeps a punch-out into a still picture as a cut after a moving shot", () => {
+    const frames = [...Array<number>(16).fill(27), 25, ...Array<number>(13).fill(20)].map(window);
+    expect(findCuts(frames).map((c) => c.frame)).toEqual([17]);
+  });
+
   it("calls a light flash a flash and the cut after it a cut", () => {
     const frames = [...still(100, 20), ...still(250, 2), ...still(100, 20), ...still(30, 20)];
     expect(classifiedCuts(frames).map((c) => [c.frame, c.kind])).toEqual([
