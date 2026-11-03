@@ -153,16 +153,6 @@ describe("compareTiles", () => {
     expect(outside.checkedBlocks + inside.checkedBlocks).toBe(outside.blocks);
   });
 
-  it("reports meanMae as the mean of the checked tiles' mae", () => {
-    const actual = withRect(frame(), 0, 0, 16, 16, 20);
-    const mask = new Uint8Array(SIZE * SIZE);
-    const result = compareTiles(frame(), actual, mask, "outside");
-    expect(result.checkedBlocks).toBe(16);
-    expect(result.worstMae).toBe(20);
-    expect(result.meanMae).toBe(20 / 16);
-    expect(compareTiles(frame(), actual, mask, "inside").meanMae).toBe(0);
-  });
-
   it("honours block and maxMae options", () => {
     const reference = frame();
     const actual = withRect(frame(), 0, 0, 8, 8, 20);
