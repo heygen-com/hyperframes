@@ -22,7 +22,7 @@ Make any video by asking for it; the `/hyperframes` skill carries the contract a
 - `/slideshow` — a presentation, pitch deck or interactive deck. Output is a navigable deck, not a rendered MP4.
 - `/remotion-to-hyperframes` — bring existing video code or footage into HyperFrames (Remotion first; also Motion Canvas, Lottie, Three.js, canvas, or renders from other tools) and verify it frame by frame against the original.
 - `/reverse-any-video` — rebuild any video file as an editable HyperFrames project (motion graphics, talking heads, live action or AI-generated footage) and check the render against the original frame by frame. A HyperFrames Pro feature.
-- `/style-remix` — make a new episode on your topic in one of five proven styles (Collage Explainer, Finance Explainer, Animated Science Explainer, 3D Brand Explainer, 3D True Crime). A HyperFrames Pro feature.
+- `/style-sampling` — make a new episode on your topic in one of five proven styles (Collage Explainer, Finance Explainer, Animated Science Explainer, 3D Brand Explainer, 3D True Crime). A HyperFrames Pro feature.
 
 ## Issue and PR triage
 

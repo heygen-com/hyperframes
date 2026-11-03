@@ -134,7 +134,7 @@ export default defineCommand({
     action: { type: "positional", description: "pull", required: true },
     slug: {
       type: "positional",
-      description: "The template's slug, from the style-remix skill",
+      description: "The template's slug, from the style-sampling skill",
       required: true,
     },
     dir: {
