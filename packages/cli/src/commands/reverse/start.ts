@@ -26,7 +26,6 @@ export const examples: Example[] = [
 
 const SKILL = "reverse-any-video";
 
-/** The command that opens the plans page credited to this run and waits for the subscription. */
 export function subscribeCommand(sessionId?: string): string {
   return `npx hyperframes billing subscribe --feature reverse${sessionId ? ` --session ${sessionId}` : ""}`;
 }
