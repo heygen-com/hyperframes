@@ -13,8 +13,6 @@ export interface BlurFixture {
   checkpoints: readonly number[];
   /** Times while a mover moves. */
   moving: readonly number[];
-  /** True when the runtime blurs the mover, false when it blocks blur and draws the plain frame. */
-  blurs: boolean;
   html(blur: "on" | "off"): string;
   expectOn: {
     state: "on" | "off";
@@ -125,7 +123,6 @@ function fixture(spec: Spec): BlurFixture {
     fps: 30,
     checkpoints: spec.checkpoints ?? frames(15, 30, 45),
     moving: spec.moving ?? frames(6, 54),
-    blurs: true,
     html: (blur) => compose(spec, blur),
     expectOn: { state: "on", tier: "capture", reasonCode: null, ...spec.expectOn },
   };

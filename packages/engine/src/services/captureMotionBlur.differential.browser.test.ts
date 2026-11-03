@@ -271,7 +271,7 @@ describe.skipIf(!hasBrowser)("capture motion blur against blur off in Chrome", (
   }, 30_000);
   afterAll(() => closeTestChrome(launched));
 
-  for (const f of FIXTURES.filter((x) => x.blurs)) defineFixtureCases(f);
+  for (const f of FIXTURES) defineFixtureCases(f);
 
   describe("the blur-off reference is a valid yardstick", () => {
     for (const name of ["held-card", "callbacks"]) {

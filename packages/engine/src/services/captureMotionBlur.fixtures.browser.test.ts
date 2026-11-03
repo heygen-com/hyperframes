@@ -11,7 +11,7 @@ import {
 import { FIXTURES } from "./__fixtures__/motionBlur/fixtures.js";
 import type { Rgba } from "./__fixtures__/blurDifferential.js";
 
-// A fixture with no `moving` times still slides its card in at 0.2 s: that is where `blurs` is read.
+// A fixture with no `moving` times still slides its card in at 0.2 s: that is where blur on and blur off must differ.
 const PROBE_WHILE_CARD_SLIDES = 6 / 30;
 const CASE_TIMEOUT_MS = 30_000;
 
@@ -73,7 +73,7 @@ describe.skipIf(!hasBrowser)("capture motion blur fixtures in Chrome", () => {
           expect(report?.movers ?? 0).toBeGreaterThanOrEqual(minMovers ?? 1);
         }
         const differs = !Buffer.from(blurredMoving.data).equals(Buffer.from(sharpMoving.data));
-        expect(differs).toBe(fixture.blurs);
+        expect(differs).toBe(true);
       } finally {
         await on.close();
       }
