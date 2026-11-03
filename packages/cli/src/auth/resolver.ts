@@ -135,8 +135,8 @@ let loginRefreshFailed = false;
 
 /**
  * After refreshing `refreshToken` failed: a login another process stored since, else the env key when HeyGen refused
- * the grant (it then replaces the login for this process), else the error. A network or server error throws, since
- * the login still works and the next call refreshes again.
+ * the grant (it then replaces the login for this process), else the error. A network or server error, or a reply the
+ * CLI couldn't read, throws: the login may still work, and the next call refreshes again.
  */
 export async function afterRefreshFailure(
   err: unknown,
@@ -151,7 +151,7 @@ export async function afterRefreshFailure(
       if (next.type !== "oauth" || !next.refreshable) return next;
     }
   }
-  if (err.code !== "REFRESH_FAILED" && err.code !== "LOGIN_EXPIRED") throw err;
+  if (!err.refused && err.code !== "LOGIN_EXPIRED") throw err;
   const key = envApiKey();
   if (!key) throw err;
   loginRefreshFailed = true;

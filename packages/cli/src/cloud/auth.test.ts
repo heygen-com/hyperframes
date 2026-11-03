@@ -83,6 +83,29 @@ describe("cloud auth: login vs HEYGEN_API_KEY", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it("keeps the login through a reply it cannot read", async () => {
+    await persistFreshOAuth({
+      access_token: "stale",
+      refresh_token: "rt",
+      expires_at: anHourAgo(),
+    });
+    process.env["HEYGEN_API_KEY"] = "env-key";
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ token_type: "Bearer" }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        )
+        .mockResolvedValueOnce(tokenResponse()),
+    );
+    await expect(resolveCloudAuthHeaders()).rejects.toMatchObject({ code: "REFRESH_FAILED" });
+    expect((await resolveCloudAuthHeaders())["authorization"]).toBe("Bearer refreshed");
+  });
+
   it("keeps the login through a network error", async () => {
     await persistFreshOAuth({
       access_token: "stale",

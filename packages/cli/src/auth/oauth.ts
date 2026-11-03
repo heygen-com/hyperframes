@@ -391,7 +391,7 @@ async function refreshOnce(refresh_token: string, opts: RefreshOptions): Promise
   });
 
   if (res.status === 400 || res.status === 401) {
-    throw ErrRefreshFailed(await safeText(res));
+    throw ErrRefreshFailed(await safeText(res), { refused: true });
   }
   if (!res.ok) {
     throw ErrApi(res.status, (await safeText(res)) || res.statusText);

@@ -87,7 +87,8 @@ describe("auth/resolver", () => {
     await writeStore({
       oauth: { access_token: "at", refresh_token: "rt", expires_at: anHourAgo() },
     });
-    await expect(afterRefreshFailure(ErrRefreshFailed(), "rt")).rejects.toMatchObject({
+    const refused = ErrRefreshFailed("invalid_grant", { refused: true });
+    await expect(afterRefreshFailure(refused, "rt")).rejects.toMatchObject({
       code: "REFRESH_FAILED",
     });
     expect(await resolveCredential()).toMatchObject({ type: "oauth", refreshable: true });
@@ -100,10 +101,14 @@ describe("auth/resolver", () => {
     await expect(afterRefreshFailure(ErrLoginChanged(), "rt")).rejects.toMatchObject({
       code: "LOGIN_CHANGED",
     });
+    // Nor does a reply the CLI couldn't read.
+    await expect(
+      afterRefreshFailure(ErrRefreshFailed("no access_token"), "rt"),
+    ).rejects.toMatchObject({ code: "REFRESH_FAILED" });
     expect(await resolveCredential()).toMatchObject({ type: "oauth", refreshable: true });
 
     const fallback = { type: "api_key", key: "env-key", source: "env" };
-    expect(await afterRefreshFailure(ErrRefreshFailed(), "rt")).toEqual(fallback);
+    expect(await afterRefreshFailure(refused, "rt")).toEqual(fallback);
     expect(await resolveCredential()).toEqual(fallback);
   });
 
