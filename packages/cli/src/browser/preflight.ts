@@ -99,7 +99,6 @@ async function readToolVersion(
       typeof error === "object" && error !== null && name in error
         ? (error as Record<string, unknown>)[name]
         : undefined;
-    // How it failed to start: its exit code, else the OS error code (ENOENT), else the signal that ended it.
     const status = field("status");
     const code = field("code");
     const killedBy = field("signal");
