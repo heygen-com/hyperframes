@@ -24,6 +24,45 @@ describe("diff ends the process once its result is out", () => {
     expect(scheduleCliExit).toHaveBeenLastCalledWith(1);
   });
 
+  it("prints ok: false with a fix for an --offset that is not a number", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const missing = join(dir, "missing.mp4");
+    await expect(
+      diffCommand.run?.({
+        args: { reference: missing, yours: missing, json: true, offset: "soon" },
+        rawArgs: [],
+      } as never),
+    ).rejects.toThrow();
+    expect(JSON.parse(String(log.mock.calls.at(-1)?.[0]))).toMatchObject({
+      ok: false,
+      error: '--offset must be a number of seconds, got "soon"',
+      fix: expect.stringContaining("--offset 0.5"),
+    });
+    expect(scheduleCliExit).toHaveBeenLastCalledWith(1);
+  });
+
+  it.each([
+    { kind: "video", yours: join(dir, "missing.mp4"), offset: "1e309" },
+    { kind: "project folder", yours: dir, offset: "+1e309" },
+  ])(
+    "refuses a non-finite --offset for a $kind before reading media",
+    async ({ yours, offset }) => {
+      const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+      await expect(
+        diffCommand.run?.({
+          args: { reference: join(dir, "missing.mp4"), yours, json: true, offset },
+          rawArgs: [],
+        } as never),
+      ).rejects.toThrow();
+      expect(JSON.parse(String(log.mock.calls.at(-1)?.[0]))).toMatchObject({
+        ok: false,
+        error: `--offset must be a number of seconds, got "${offset}"`,
+        fix: expect.stringContaining("--offset 0.5"),
+      });
+      expect(scheduleCliExit).toHaveBeenLastCalledWith(1);
+    },
+  );
+
   describe.skipIf(noTools)("with a clip", () => {
     loadOpenCvFirst();
 

@@ -1574,12 +1574,22 @@ npx hyperframes diff original.mp4 renders/final.mp4 --segments segments.md --sbs
 | ----------------------------------------- | -------------------------------------------------------------------- |
 | `--at`                                    | Compare only these seconds                                           |
 | `--range`                                 | Compare every frame of `start,end` seconds                           |
+| `--offset`                                | Compare the original at t with yours at t + offset seconds           |
 | `--segments`                              | A verdict per `## S01 · a–b s` segment of a file                     |
 | `--drawn`                                 | Score one drawn element's box `x,y,w,h[,a-b]` by itself (repeatable) |
 | `--min-mean` / `--min-p05` / `--min-cell` | The SSIM bars to pass                                                |
 | `--sbs`                                   | Also write an original-beside-yours video                            |
 | `--out`                                   | Folder for the sheet and log (default `.hyperframes/diff/<yours>`)   |
 | `--json`                                  | Print one JSON result                                                |
+
+`--offset` takes seconds, negative when yours runs ahead of the original. Every
+per-frame score, cut and missing-content span is then read from yours at
+t + offset, and a project folder is captured at those times. The comparison keeps
+to the stretch where both sides have frames: `window` reports it and `warnings`
+says when frames were left out. `frames.tsv` keeps the original's time in `t`;
+yours' time is t + offset. The sound keeps its own offset measurement, the
+duration is reported as not measured, and the JSON result echoes `offset`. An
+offset that leaves no overlap is refused with a fix.
 
 ## Edit from the command line
 
