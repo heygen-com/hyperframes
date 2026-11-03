@@ -137,8 +137,6 @@ function refusal(status: number, body: unknown, estimate?: number): Refused {
   );
 }
 
-/** A HeyGen job: the route it is created on (what its key, log and messages name), how it starts, and how its
- *  status is read. A route that answers in the request itself has no status to poll. */
 export interface JobRoute {
   path: string;
   start: (
@@ -173,7 +171,6 @@ async function call(
         `no answer from HeyGen for ${route} (${err instanceof Error ? err.message : String(err)})`,
         resume,
       );
-    // Below 300 the answer was not JSON; at 500 and above, or with no body, it says nothing about the job.
     if (err.status >= 500 || err.status < 300 || err.raw == null)
       throw new Fix(`HeyGen ${err.status} for ${route} with no readable answer`, resume);
     const refused = refusal(err.status, err.raw, estimate);
