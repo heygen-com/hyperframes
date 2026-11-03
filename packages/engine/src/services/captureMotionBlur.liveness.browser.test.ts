@@ -1,0 +1,220 @@
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import type { Browser, Frame, Page } from "puppeteer-core";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { acceleratedCanvasTrackerSource } from "@hyperframes/core";
+import { closeTestChrome } from "./__fixtures__/loopback.js";
+import { RUNTIME, hasBrowser, launch } from "./__fixtures__/motionBlur/blurPage.js";
+import { FIXTURES, type BlurFixture } from "./__fixtures__/motionBlur/fixtures.js";
+
+const MIN_CLOCK_ADVANCE_S = 0.3;
+const MIN_DISTINCT_FRAMES = 3;
+const LIVENESS_DEADLINE_MS = 3_000;
+const BLANK_WINDOW_MS = 400;
+const CASE_TIMEOUT_MS = 30_000;
+
+type PlayerWindow = Window & {
+  __playerReady?: boolean;
+  __player?: { play: () => void; pause: () => void; getTime: () => number };
+};
+
+interface BlankCensus {
+  callbacks: number;
+  wrapped: number;
+  blank: number;
+}
+
+const playable = FIXTURES.filter((f) => f.expectOn.state === "on");
+const captureTier = FIXTURES.filter(
+  (f) => f.expectOn.state === "on" && f.expectOn.tier === "capture",
+);
+
+/**
+ * The preview as Studio builds it: the tracker in the host window, the composition in an iframe
+ * the host's MutationObserver already watches, the runtime booted inside it. No render-mode seek
+ * config, so the runtime takes its playing path.
+ */
+async function openPreview(
+  browser: Browser,
+  fixture: BlurFixture,
+): Promise<{ page: Page; preview: Frame }> {
+  const page = await browser.newPage();
+  await page.setViewport({
+    width: fixture.width,
+    height: fixture.height,
+    deviceScaleFactor: fixture.dpr,
+  });
+  await page.setContent(
+    `<style>html,body{margin:0}iframe{display:block;border:0}</style><script>${acceleratedCanvasTrackerSource()}</script><iframe id="preview" width="${fixture.width}" height="${fixture.height}"></iframe>`,
+  );
+  await page.$eval(
+    "#preview",
+    (el, html) =>
+      new Promise((done) => {
+        const frame = el as HTMLIFrameElement;
+        frame.onload = done;
+        frame.srcdoc = html;
+      }),
+    fixture.html("on"),
+  );
+  await page.evaluate(() => {
+    const frame = document.getElementById("preview") as HTMLIFrameElement;
+    new MutationObserver(() => {}).observe(
+      frame.contentDocument?.getElementById("root") as Element,
+      {
+        childList: true,
+      },
+    );
+  });
+  const preview = page.frames().find((f) => f !== page.mainFrame());
+  if (!preview) throw new Error("no preview frame");
+  await preview.addScriptTag({ content: readFileSync(RUNTIME, "utf8") });
+  await preview.waitForFunction(() => (window as PlayerWindow).__playerReady === true);
+  return { page, preview };
+}
+
+const clockOf = (preview: Frame): Promise<number> =>
+  preview.evaluate(() => (window as PlayerWindow).__player?.getTime() ?? -1);
+
+async function startPlaying(preview: Frame): Promise<void> {
+  await preview.evaluate(() => (window as PlayerWindow).__player?.play());
+}
+
+async function stopPlaying(preview: Frame): Promise<void> {
+  await preview.evaluate(() => (window as PlayerWindow).__player?.pause());
+}
+
+const hashOf = (png: Uint8Array): string => createHash("md5").update(png).digest("hex");
+
+/** Screenshots of the preview while it plays, until the clock and the pixels have both moved or time runs out. */
+async function watchPreview(
+  page: Page,
+  preview: Frame,
+  fixture: BlurFixture,
+): Promise<{ advanced: number; distinct: number }> {
+  const clip = { x: 0, y: 0, width: fixture.width, height: fixture.height };
+  const seen = new Set<string>();
+  const clock0 = await clockOf(preview);
+  let advanced = 0;
+  const deadline = Date.now() + LIVENESS_DEADLINE_MS;
+  await startPlaying(preview);
+  while (Date.now() < deadline) {
+    seen.add(hashOf(await page.screenshot({ type: "png", clip })));
+    advanced = (await clockOf(preview)) - clock0;
+    if (advanced >= MIN_CLOCK_ADVANCE_S && seen.size >= MIN_DISTINCT_FRAMES) break;
+  }
+  return { advanced, distinct: seen.size };
+}
+
+async function checkKeepsChanging(browser: Browser, fixture: BlurFixture): Promise<void> {
+  const { page, preview } = await openPreview(browser, fixture);
+  try {
+    const { advanced, distinct } = await watchPreview(page, preview, fixture);
+    expect(
+      advanced,
+      `the preview never played: ${fixture.name}'s clock moved ${advanced.toFixed(3)} s in ${LIVENESS_DEADLINE_MS} ms`,
+    ).toBeGreaterThanOrEqual(MIN_CLOCK_ADVANCE_S);
+    expect(
+      distinct,
+      `the preview froze: ${fixture.name}'s clock advanced ${advanced.toFixed(3)} s but the pixels showed ${distinct} distinct frames`,
+    ).toBeGreaterThanOrEqual(MIN_DISTINCT_FRAMES);
+  } finally {
+    await page.close();
+  }
+}
+
+/** Plays for BLANK_WINDOW_MS and counts, in each animation frame callback, a wrapped root over an empty output canvas. */
+async function censusOfBlankFrames(browser: Browser, fixture: BlurFixture): Promise<BlankCensus> {
+  const { page, preview } = await openPreview(browser, fixture);
+  try {
+    return await preview.evaluate(
+      (windowMs) =>
+        new Promise<BlankCensus>((done) => {
+          const census = { callbacks: 0, wrapped: 0, blank: 0 };
+          const root = document.getElementById("root") as HTMLElement;
+          const output = (): HTMLCanvasElement | null =>
+            document.querySelector('canvas[data-hf-motion-blur="output"]');
+          const hasInk = (canvas: HTMLCanvasElement): boolean => {
+            const ctx = canvas.getContext("2d");
+            if (!ctx) return true;
+            for (let i = 0; i < 8; i++)
+              for (let j = 0; j < 8; j++) {
+                const x = Math.floor(((i + 0.5) / 8) * canvas.width);
+                const y = Math.floor(((j + 0.5) / 8) * canvas.height);
+                if ((ctx.getImageData(x, y, 1, 1).data[3] ?? 0) > 0) return true;
+              }
+            return false;
+          };
+          const onFrame = (): void => {
+            census.callbacks++;
+            const out = output();
+            const parent = root.parentElement;
+            if (out && parent?.getAttribute("data-hf-motion-blur") === "capture") {
+              census.wrapped++;
+              if (!hasInk(out)) census.blank++;
+            }
+          };
+          const start = performance.now();
+          const tick = (): void => {
+            onFrame();
+            if (performance.now() - start < windowMs) requestAnimationFrame(tick);
+            else done(census);
+          };
+          (window as PlayerWindow).__player?.play();
+          requestAnimationFrame(tick);
+        }),
+      BLANK_WINDOW_MS,
+    );
+  } finally {
+    await stopPlaying(preview).catch(() => {});
+    await page.close();
+  }
+}
+
+async function censusOfAll(browser: Browser): Promise<{ name: string; census: BlankCensus }[]> {
+  const rows: { name: string; census: BlankCensus }[] = [];
+  for (const fixture of captureTier)
+    rows.push({ name: fixture.name, census: await censusOfBlankFrames(browser, fixture) });
+  return rows;
+}
+
+const describeRow = ({ name, census }: { name: string; census: BlankCensus }): string =>
+  `${name}: ${census.callbacks} callbacks, ${census.wrapped} wrapped, ${census.blank} blank`;
+
+describe.skipIf(!hasBrowser)("a playing capture motion blur preview in Chrome", () => {
+  let browser: Browser;
+  let supported = false;
+
+  beforeAll(async () => {
+    ({ browser, supported } = await launch());
+  }, 30_000);
+  afterAll(() => closeTestChrome(browser));
+
+  it.each(playable)(
+    "keeps changing while a $name preview plays",
+    async (fixture, ctx) => {
+      if (!supported) ctx.skip();
+      await checkKeepsChanging(browser, fixture);
+    },
+    CASE_TIMEOUT_MS,
+  );
+
+  it(
+    "KNOWN BUG on main: preview shows a blank frame after play() (capture tier)",
+    async (ctx) => {
+      if (!supported) ctx.skip();
+      const rows = await censusOfAll(browser);
+      const summary = rows.map(describeRow).join("; ");
+      console.info(`blank-frame census over the first ${BLANK_WINDOW_MS} ms of play(): ${summary}`);
+      expect(
+        rows.reduce((sum, row) => sum + row.census.wrapped, 0),
+        `the detector never saw a wrapped root, so it cannot see a blank frame: ${summary}`,
+      ).toBeGreaterThan(0);
+      expect(
+        rows.reduce((sum, row) => sum + row.census.blank, 0),
+        `preview shows a blank frame after play(): this case pins a known bug; if it now passes, delete the case and assert zero blank frames (${summary})`,
+      ).toBeGreaterThan(0);
+    },
+    CASE_TIMEOUT_MS * 2,
+  );
+});
