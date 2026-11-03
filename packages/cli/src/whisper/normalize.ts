@@ -41,7 +41,7 @@ export function detectFormat(filePath: string): TranscriptFormat {
   const ext = extname(filePath).toLowerCase();
   if (ext === ".srt") return "srt";
   if (ext === ".vtt") return "vtt";
-  if (ext === ".json") return detectJsonFormat(JSON.parse(readJsonFileText(filePath)));
+  if (ext === ".json") return detectJsonFormat(parseWhisperJson(readJsonFileText(filePath)));
   throw new Error(`Unsupported transcript file extension: ${ext}. Use .json, .srt, or .vtt`);
 }
 
@@ -499,11 +499,13 @@ export function formatVtt(words: Word[], opts?: WordsToCuesOptions): string {
 // Public API
 // ---------------------------------------------------------------------------
 
-const NON_FINITE = /"(?:[^"\\]|\\.)*"|-?\b(?:nan(?:\([^)]*\))?|inf(?:inity)?)\b/gi;
+const BARE_NAN_OR_INF_OUTSIDE_STRINGS =
+  /"(?:[^"\\]|\\.)*"|-?\b(?:nan(?:\([^)]*\))?|inf(?:inity)?)(?!\w)/gi;
 
-/** whisper-cli prints a NaN or infinite float as bare `nan`/`-nan`/`inf`; read those as null. */
 export function parseWhisperJson(text: string): any {
-  return JSON.parse(text.replace(NON_FINITE, (m) => (m.startsWith('"') ? m : "null")));
+  return JSON.parse(
+    text.replace(BARE_NAN_OR_INF_OUTSIDE_STRINGS, (m) => (m.startsWith('"') ? m : "null")),
+  );
 }
 
 /**
