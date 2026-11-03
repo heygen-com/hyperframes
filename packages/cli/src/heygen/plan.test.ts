@@ -5,7 +5,8 @@ vi.mock("../cloud/auth.js", () => ({
   resolveCloudBaseUrl: () => "https://api.example.test",
 }));
 
-const { pageUrl, readPlan } = await import("./plan.js");
+const { addonBlocks, createCheckout, pageUrl, readOffer, readPlan, stripeCheckoutUrl } =
+  await import("./plan.js");
 
 const asked: string[] = [];
 const answer = (data: unknown) =>
@@ -54,5 +55,86 @@ describe("pageUrl", () => {
     expect(pageUrl("plans")).toBe("https://hyperframes.studio/pricing?from=cli");
     vi.stubEnv("HYPERFRAMES_PLANS_URL", "https://example.test/plans");
     expect(pageUrl("plans")).toBe("https://example.test/plans?from=cli");
+  });
+});
+
+const PLANS = {
+  plans: [
+    { plan_name: "pro", period: "month", amount: 4200, currency: "usd", monthly_units: 42000 },
+  ],
+  addons_enabled: true,
+  addon: {
+    units_per_block: 1000,
+    unit_amount: 100,
+    currency: "usd",
+    min_quantity: 1,
+    max_quantity: 100,
+    recommended: 25,
+  },
+};
+
+describe("readOffer", () => {
+  it("reads Pro's price and the credit block offer", async () => {
+    answer(PLANS);
+    const offer = await readOffer();
+    expect(offer.pro).toEqual({ amount: 4200, currency: "usd" });
+    expect(offer.addon).toMatchObject({ unitsPerBlock: 1000, unitAmount: 100, recommended: 25 });
+    answer({ ...PLANS, addons_enabled: false });
+    expect((await readOffer()).addon).toBeUndefined();
+  });
+});
+
+describe("addonBlocks", () => {
+  it("rounds the missing credits up to blocks, within the offer's limits", async () => {
+    answer(PLANS);
+    const addon = (await readOffer()).addon!;
+    expect(addonBlocks(addon, 2500)).toBe(3);
+    expect(addonBlocks(addon, 5_000_000)).toBe(100);
+    expect(addonBlocks(addon)).toBe(25);
+  });
+});
+
+describe("stripeCheckoutUrl", () => {
+  it("opens only Stripe's own checkout page", () => {
+    expect(stripeCheckoutUrl("https://checkout.stripe.com/c/pay/cs_test_1")).toBe(
+      "https://checkout.stripe.com/c/pay/cs_test_1",
+    );
+    for (const bad of [
+      "http://checkout.stripe.com/c/pay/x",
+      "https://checkout.stripe.com.evil.test/c/pay/x",
+      "https://evil.test/?u=checkout.stripe.com",
+      "javascript:alert(1)",
+      42,
+    ])
+      expect(stripeCheckoutUrl(bad)).toBeUndefined();
+  });
+});
+
+describe("createCheckout", () => {
+  it("asks for Pro with the CLI's own token and returns Stripe's page", async () => {
+    const sent: { url: string; body: Record<string, unknown> }[] = [];
+    vi.stubGlobal("fetch", async (url: string, init: { body: string }) => {
+      sent.push({ url, body: JSON.parse(init.body) });
+      return new Response(
+        JSON.stringify({ data: { url: "https://checkout.stripe.com/c/pay/cs_test_1" } }),
+      );
+    });
+    expect(await createCheckout("plans", {})).toBe("https://checkout.stripe.com/c/pay/cs_test_1");
+    expect(sent[0]!.url).toBe("https://api2.example.test/v1/payment/hyperframes/checkout");
+    expect(sent[0]!.body).toMatchObject({ plan_name: "pro", period: "month" });
+  });
+
+  it("asks for the credit blocks the offer showed, and refuses a page that is not Stripe's", async () => {
+    answer(PLANS);
+    const offer = await readOffer();
+    const sent: Record<string, unknown>[] = [];
+    vi.stubGlobal("fetch", async (_url: string, init: { body: string }) => {
+      sent.push(JSON.parse(init.body));
+      return new Response(JSON.stringify({ data: { url: "https://evil.test/pay" } }));
+    });
+    await expect(createCheckout("credits", offer, 2500)).rejects.toThrow(
+      /would not open a checkout/,
+    );
+    expect(sent[0]).toEqual({ quantity: 3, currency: "usd", unit_amount: 100 });
   });
 });
