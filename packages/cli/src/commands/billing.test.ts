@@ -12,6 +12,7 @@ const state = vi.hoisted(() => ({
   enters: 0,
   enterHeld: false,
   noPrice: false,
+  proPrices: [] as number[],
 }));
 
 vi.mock("../auth/browser.js", () => ({
@@ -36,7 +37,7 @@ vi.mock("../heygen/plan.js", async (importOriginal) => {
       state.noPrice
         ? {}
         : {
-            pro: { amount: 2500, currency: "usd" },
+            pro: { amount: state.proPrices.shift() ?? 2500, currency: "usd" },
             addon: {
               unitsPerBlock: 1000,
               unitAmount: 100,
@@ -61,7 +62,9 @@ const { default: billing } = await import("./billing.js");
 afterEach(() => {
   opened.length = 0;
   checkouts.length = 0;
-  Object.assign(state, { afterPlans: pro(1_000_000), enters: 0, enterHeld: false, noPrice: false });
+  Object.assign(state, {
+    ...{ afterPlans: pro(1_000_000), enters: 0, enterHeld: false, noPrice: false, proPrices: [] },
+  });
   vi.restoreAllMocks();
   vi.useRealTimers();
   consumeCommandResult();
@@ -144,6 +147,14 @@ describe("billing subscribe", () => {
       expect(out).toContain("Could not read the price");
     },
   );
+
+  it("shows a Pro price that changed before Enter and asks again", async () => {
+    state.proPrices = [2500, 3000, 3000];
+    const out = await billingRun([free, free, free, pro(0)], false);
+    expect(out).toContain("HyperFrames Pro: $30.00 a month");
+    expect(state.enters).toBe(2);
+    expect(checkouts).toEqual([{ kind: "plans" }]);
+  });
 
   it("carries on when the person pays on the page and never presses Enter", async () => {
     state.enterHeld = true;
