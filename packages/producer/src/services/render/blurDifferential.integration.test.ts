@@ -8,7 +8,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { decodePng, getFfmpegBinary, resolveConfig } from "@hyperframes/engine";
+import { decodePng, distributeFrames, getFfmpegBinary, resolveConfig } from "@hyperframes/engine";
 import {
   compareTiles,
   trailMask,
@@ -30,6 +30,17 @@ const HAS_FFMPEG = spawnSync(FFMPEG, ["-version"], { encoding: "utf-8" }).status
 
 const FPS = 30;
 const WORKERS = 4;
+/**
+ * `callbacks` calls at frames 15, 16 and 30. A worker whose block starts on a call
+ * sees the bug only by timing; one starting strictly between the calls always does (#6967).
+ * 7 workers over 60 frames start at 0, 9, 18, 27, 36, 45 and 54.
+ */
+const WORKERS_BY_FIXTURE = new Map<string, number>([["callbacks", 7]]);
+/** Block starts the partition must have, at least `count` of them in [from, to]. */
+const REQUIRED_STARTS = new Map<string, { from: number; to: number; count: number }>([
+  ["callbacks", { from: 18, to: 28, count: 2 }],
+  ["scroll-list", { from: 28, to: Infinity, count: 2 }],
+]);
 const MIN_SECONDS = 1.2;
 const RENDER_TIMEOUT_MS = 600_000;
 const REGION_TOLERANCE_PX = 2;
@@ -53,9 +64,33 @@ interface KnownBug {
   reason: string;
   /** The element whose rect the bad tiles must touch, in CSS px from the fixture's markup. */
   regionId: string;
-  region: Rect;
+  region: (f: BlurFixture) => Rect;
   /** Output frames in which blur on really differs from blur off today. */
   frames: (n: number) => boolean;
+}
+
+const markupOf = (f: BlurFixture, id: string): string =>
+  new RegExp(`<[^>]*id="${id}"[^>]*>`).exec(f.html("off"))?.[0] ?? "";
+
+function cssPx(f: BlurFixture, id: string, property: string): number {
+  const px = new RegExp(`(?:^|[;"\\s])${property}:\\s*(-?[\\d.]+)px`).exec(markupOf(f, id))?.[1];
+  if (px === undefined) throw new Error(`#${id} in ${f.name} has no ${property} in px`);
+  return Number(px);
+}
+
+/** The element's box from its inline left, top, width and height. */
+const boxFromMarkup = (f: BlurFixture, id: string): Rect => ({
+  x: cssPx(f, id, "left"),
+  y: cssPx(f, id, "top"),
+  width: cssPx(f, id, "width"),
+  height: cssPx(f, id, "height"),
+});
+
+/** One glyph of the element's text: left and top from its inline style; a monospace advance is 0.6 em, a line 1.2 em. */
+function glyphFromMarkup(f: BlurFixture, id: string): Rect {
+  const size = Number(/font:\s*\d+\s+([\d.]+)px/.exec(markupOf(f, id))?.[1]);
+  if (Number.isNaN(size)) throw new Error(`#${id} in ${f.name} has no font size in px`);
+  return { x: cssPx(f, id, "left"), y: cssPx(f, id, "top"), width: 0.6 * size, height: 1.2 * size };
 }
 
 /** Cases where blur on really differs from blur off today. They pin the symptom and fail once it is fixed. */
@@ -65,7 +100,7 @@ const KNOWN_REAL_DIFFERENCES = new Map<string, KnownBug>([
     {
       reason: "scroll-list loses its scroll offset after a worker's first wrap",
       regionId: "list",
-      region: { x: 8, y: 8, width: 160, height: 120 },
+      region: (f) => boxFromMarkup(f, "list"),
       frames: (n) => n >= 28,
     },
   ],
@@ -74,8 +109,7 @@ const KNOWN_REAL_DIFFERENCES = new Map<string, KnownBug>([
     {
       reason: "callbacks shows its label B before the call that sets it",
       regionId: "label",
-      // One 24 px monospace glyph at left 10, top 10.
-      region: { x: 10, y: 10, width: 40, height: 30 },
+      region: (f) => glyphFromMarkup(f, "label"),
       frames: (n) => n < 15,
     },
   ],
@@ -113,7 +147,7 @@ async function renderFixture(f: BlurFixture, blur: "on" | "off", tag: string): P
     quality: "standard",
     hdrMode: "force-sdr",
     useGpu: false,
-    workers: WORKERS,
+    workers: workersFor(f),
     logger: { info() {}, warn() {}, error() {}, debug() {} },
     producerConfig: resolveConfig({ browserGpuMode: "software" }),
   });
@@ -131,6 +165,13 @@ async function renderAll(f: BlurFixture): Promise<Renders> {
   const off2 = await renderFixture(f, "off", "off2");
   const on = await renderFixture(f, "on", "on");
   return { off, off2, on };
+}
+
+const workersFor = (f: BlurFixture): number => WORKERS_BY_FIXTURE.get(f.name) ?? WORKERS;
+
+function blockStarts(f: BlurFixture): number[] {
+  const frames = Math.round(f.durationSeconds * FPS);
+  return distributeFrames(frames, workersFor(f), "", 0).map((task) => task.startFrame);
 }
 
 const radiusPx = (f: BlurFixture): number => Math.ceil(2 * f.dpr);
@@ -188,7 +229,7 @@ function expectKnownBug(f: BlurFixture, known: KnownBug, results: readonly Frame
   const pinned = results.filter((x) => known.frames(x.frame));
   const rest = results.filter((x) => !known.frames(x.frame));
   const fixed = `${known.reason}: this case pins a known bug; if it now passes, delete the case and assert zero bad tiles`;
-  const { region } = known;
+  const region = known.region(f);
   const bad = pinned.flatMap((x) => x.outside.bad);
   expect(bad.length, fixed).toBeGreaterThan(0);
   expect(Math.max(...pinned.map((x) => x.outside.worstMae)), fixed).toBeGreaterThan(
@@ -219,6 +260,16 @@ function defineFixtureCases(f: BlurFixture): void {
       expect(f.durationSeconds).toBeGreaterThanOrEqual(MIN_SECONDS);
       results = compareFixture(f, await renderAll(f));
     }, RENDER_TIMEOUT_MS);
+
+    const required = REQUIRED_STARTS.get(f.name);
+    if (required) {
+      it("partitions the frames so workers start where the bug shows", () => {
+        const starts = blockStarts(f).filter((n) => n >= required.from && n <= required.to);
+        expect(starts.length, `block starts ${blockStarts(f)}`).toBeGreaterThanOrEqual(
+          required.count,
+        );
+      });
+    }
 
     it("renders blur off the same way twice", () => {
       expect(Math.max(...results.map((x) => x.noise.worstMae))).toBeLessThanOrEqual(

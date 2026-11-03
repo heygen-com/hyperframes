@@ -5,8 +5,8 @@ export const OUTSIDE_FLOOR = 1;
 
 // Through the producer's 4-worker PNG render. Noise: blur off rendered twice, five fixtures, bit-identical.
 export const MEASURED_RENDER_NOISE = 0;
-// Smallest worst-tile MAE the rewind mutation produced when the render caught it (3 of 5 runs, `callbacks`).
-export const MEASURED_RENDER_REWIND_MUTATION = 111.085;
+// Worst-tile MAE of the rewind mutation through the render (`callbacks`, 7 workers; caught 8 of 8 runs, always 97.02).
+export const MEASURED_RENDER_REWIND_MUTATION = 97.02;
 
 export const MEASURED_INSIDE_NOISE = 10.993;
 export const MEASURED_CONTENT_CUT_MUTATION = 130.129;
