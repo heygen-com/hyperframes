@@ -133,6 +133,17 @@ describe("managed binary call sites retry a locked executable", () => {
     expect(spawn).toHaveBeenCalledTimes(4);
   });
 
+  it("the cached GPU encoder does not keep a lock that outlasted the retries", async () => {
+    // Calls 1-3 locked (the first render gives up), 4 `-encoders` for the second render.
+    const spawn = spawnLockedOn([1, 2, 3], [" V....D libx264  H.264\n"]);
+    vi.doMock("child_process", () => ({ spawn }));
+    const { getCachedGpuEncoder } = await import("./gpuEncoder.js");
+
+    await expect(afterRetries(getCachedGpuEncoder())).rejects.toThrow(/after 3 attempts/);
+    await expect(afterRetries(getCachedGpuEncoder())).resolves.toBeNull();
+    expect(spawn).toHaveBeenCalledTimes(4);
+  });
+
   it("psnr filter discovery, so a lock is not cached as no filters", async () => {
     const execFile = execFileLockedOnce({ stdout: " ... psnr              VV->V      PSNR\n" });
     vi.doMock("node:child_process", () => ({ execFile }));

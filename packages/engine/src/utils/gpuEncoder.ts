@@ -105,7 +105,11 @@ export async function detectGpuEncoder(): Promise<GpuEncoder> {
 let cachedGpuEncoder: Promise<GpuEncoder> | undefined = undefined;
 
 export function getCachedGpuEncoder(): Promise<GpuEncoder> {
-  cachedGpuEncoder ??= detectGpuEncoder();
+  cachedGpuEncoder ??= detectGpuEncoder().catch((error: unknown) => {
+    // A lock that outlasted the retries says nothing about the GPU, so the next render asks again.
+    cachedGpuEncoder = undefined;
+    throw error;
+  });
   return cachedGpuEncoder;
 }
 
