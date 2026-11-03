@@ -13,6 +13,15 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, join, relative, resolve } from "node:path";
+import type {
+  CreateBackgroundRemovalRequest,
+  CreateLipsyncRequest,
+  CreateModelVideoRequest,
+  CreateSpeechV3Request,
+  CreateVideoV3RequestBody,
+  ImageCreateRequest,
+  MusicCreateRequest,
+} from "../cloud/_gen/types.js";
 import { findCuts, signatures } from "../measure/cuts.js";
 import { Fix, probeVideo, projectOf, round, runFfmpeg, videoClip } from "../measure/media.js";
 import {
@@ -23,6 +32,7 @@ import {
   runJob,
   senderScope,
   type Job,
+  type JobRoute,
   type Voice,
 } from "./v3.js";
 
@@ -148,15 +158,12 @@ export function structureRatio(
   return { inside: sum[0]! / (n[0] || 1), ring: sum[1]! / (n[1] || 1) };
 }
 
-interface Route {
-  path: string;
-  poll: (id: string) => string;
+interface Route extends JobRoute {
   body: (r: GenerateRequest, media: Media) => Record<string, unknown>;
   /** Where the finished job keeps the file's URL. */
   urls: string[];
   ledger: "image" | "video" | "voice" | "bgm";
   ext: string[];
-  bodyKey?: string;
 }
 
 type Media = (path: string, kind: "image" | "audio" | "video") => Record<string, unknown>;
@@ -176,7 +183,9 @@ const need = <T>(value: T | undefined, flag: string, example: string): T => {
 const ROUTES: Record<GenerateType, Route> = {
   image: {
     path: "/v3/images",
-    poll: (id) => `/v3/images/${id}`,
+    start: (c, body, key, signal) =>
+      c.createImage({ body: body as ImageCreateRequest, idempotencyKey: key, signal }),
+    status: (c, id, signal) => c.getImage({ generation_id: id, signal }),
     body: (r, media) => ({
       model: r.model ?? DEFAULTS.image,
       prompt: need(r.prompt, "--prompt", '--prompt "the same room, empty, no text"'),
@@ -192,7 +201,9 @@ const ROUTES: Record<GenerateType, Route> = {
   },
   video: {
     path: "/v3/models/videos",
-    poll: (id) => `/v3/models/videos/${id}`,
+    start: (c, body, key, signal) =>
+      c.createModelVideo({ body: body as CreateModelVideoRequest, idempotencyKey: key, signal }),
+    status: (c, id, signal) => c.getModelVideo({ video_id: id, signal }),
     // fallow-ignore-next-line complexity
     body: (r, media) => {
       const spoken = !!r.audio || !!r.references?.length || !!r.motion;
@@ -225,7 +236,9 @@ const ROUTES: Record<GenerateType, Route> = {
   },
   lipsync: {
     path: "/v3/lipsyncs",
-    poll: (id) => `/v3/lipsyncs/${id}`,
+    start: (c, body, key, signal) =>
+      c.createLipsyncV3({ body: body as CreateLipsyncRequest, idempotencyKey: key, signal }),
+    status: (c, id, signal) => c.getLipsyncV3({ lipsync_id: id, signal }),
     body: (r, media) => ({
       video: media(need(r.video, "--video", "--video work/s01.mp4"), "video"),
       audio: media(need(r.audio, "--audio", "--audio work/s01.mp3"), "audio"),
@@ -240,7 +253,12 @@ const ROUTES: Record<GenerateType, Route> = {
   },
   cutout: {
     path: "/v3/background-removals",
-    poll: (id) => `/v3/background-removals/${id}`,
+    start: (c, body, key, signal) =>
+      c.createBackgroundRemoval({
+        body: { ...(body as CreateBackgroundRemovalRequest), request_id: key },
+        signal,
+      }),
+    status: (c, id, signal) => c.getBackgroundRemoval({ job_id: id, signal }),
     body: (r, media) => ({
       video: media(need(r.video, "--video", "--video assets/presenter.mp4"), "video"),
       layers: ["foreground"],
@@ -248,11 +266,12 @@ const ROUTES: Record<GenerateType, Route> = {
     urls: ["layers.foreground"],
     ledger: "video",
     ext: [".webm", ".mov"],
-    bodyKey: "request_id",
   },
   avatar: {
     path: "/v3/videos",
-    poll: (id) => `/v3/videos/${id}`,
+    start: (c, body, key, signal) =>
+      c.createVideo({ body: body as CreateVideoV3RequestBody, idempotencyKey: key, signal }),
+    status: (c, id, signal) => c.getVideoV3({ video_id: id, signal }),
     body: (r, media) => ({
       ...(r.avatar
         ? { type: "avatar", avatar_id: r.avatar }
@@ -276,8 +295,10 @@ const ROUTES: Record<GenerateType, Route> = {
     ext: [".mp4"],
   },
   voice: {
+    // Speech answers in the request and takes no Idempotency-Key, so there is no status to poll.
     path: "/v3/voices/speech",
-    poll: (id) => `/v3/voices/speech/${id}`,
+    start: (c, body, _key, signal) =>
+      c.createSpeechV3({ body: body as CreateSpeechV3Request, signal }),
     body: (r) => ({
       text: need(r.script, "--script", '--script "What the voice says"'),
       voice_id: need(r.voice, "--voice", "--voice <voice id or language>"),
@@ -288,7 +309,9 @@ const ROUTES: Record<GenerateType, Route> = {
   },
   music: {
     path: "/v3/audio/music",
-    poll: (id) => `/v3/audio/music/${id}`,
+    start: (c, body, key, signal) =>
+      c.createMusic({ body: body as MusicCreateRequest, idempotencyKey: key, signal }),
+    status: (c, id, signal) => c.getMusic({ music_id: id, signal }),
     body: (r) => ({
       model: r.model ?? DEFAULTS.music,
       prompt: need(r.prompt, "--prompt", '--prompt "warm lo-fi beat, soft keys"'),
@@ -631,7 +654,7 @@ export async function generate(
     // An asset id is new on every upload; the files say whether this is the same job.
     const sent = [...ids.values()].reduce((t, id) => t.replaceAll(id, ""), JSON.stringify(body));
     const key = idempotencyKey(route.path, [...sources.map((p) => readFileSync(p)), sent]);
-    const job = await runJob(route.path, body, key, (id) => route.poll(encodeURIComponent(id)), {
+    const job = await runJob(route, body, key, {
       log: {
         projectDir: project ?? process.cwd(),
         what: `generate ${r.type} ${relative(project ?? ".", out)}`,
@@ -639,7 +662,6 @@ export async function generate(
       onWait: (j) => onWait?.(j.status),
       timeoutMs: 30 * 60_000,
       credits,
-      bodyKey: route.bodyKey,
     });
     const url = urlOf(job, route.urls);
     if (!url)
