@@ -26,6 +26,10 @@ export type AudioClockSource =
 const STALL_THRESHOLD_MS = 500;
 const STALL_ADJUSTED_LAG_MS = 33;
 const HAVE_FUTURE_DATA = 3;
+/** How long a Play waits for its audio to start moving before the film runs on without it. */
+const AUDIO_START_WAIT_MS = 1500;
+/** Media sync's tolerance: audio further than this from where the Play began is not starting there. */
+const AUDIO_START_TOLERANCE_SECONDS = 0.04;
 
 export class TransportClock {
   private _baseTime = 0;
@@ -40,6 +44,8 @@ export class TransportClock {
   /** Wall-clock time of the last `now()` read while playing; null while paused. */
   private _lastReadMs: number | null = null;
   private _lastNow = 0;
+  /** Set by a Play or a seek while playing until the followed element first moves; `from` is where it stood. */
+  private _awaitingAudio: { sinceMs: number; at: number; from: number | null } | null = null;
 
   constructor(opts?: {
     initialTime?: number;
@@ -89,12 +95,27 @@ export class TransportClock {
   ): number | null {
     const { el, compositionStart, mediaStart, rate } = source;
     if (el.paused || !Number.isFinite(el.currentTime)) return null;
-    if (el.seeking) return null;
+    const waiting = this._waitingForAudio();
+    if (el.seeking) return waiting ? this._lastNow : null;
     const spec = rate ?? 1;
     const time = timeAtSourceTime(spec, el.currentTime - mediaStart) + compositionStart;
+    if (waiting) {
+      // Audio reports playing before its output starts; running on without it leaves it to catch up fast.
+      waiting.from ??= time;
+      const startsHere = Math.abs(waiting.from - waiting.at) <= AUDIO_START_TOLERANCE_SECONDS;
+      if (startsHere && time === waiting.from) return time;
+      this._awaitingAudio = null;
+    }
     if (time >= this._lastNow) return time;
     const wrapped = el.loop && this._lastNow - time > timeAtSourceTime(spec, el.duration) / 2;
     return !wrapped && el.readyState < HAVE_FUTURE_DATA ? this._lastNow : null;
+  }
+
+  private _waitingForAudio(): { sinceMs: number; at: number; from: number | null } | null {
+    const waiting = this._awaitingAudio;
+    if (waiting && this._nowMs() - waiting.sinceMs > AUDIO_START_WAIT_MS)
+      this._awaitingAudio = null;
+    return this._awaitingAudio;
   }
 
   /** Folds a >500ms gap since the last read into `_playStartMs` so it's never reported as played time. */
@@ -114,6 +135,7 @@ export class TransportClock {
     if (this._playStartMs !== null) return false;
     if (this._baseTime >= this.getEnd()) return false;
     this._playStartMs = this._nowMs();
+    this._awaitingAudio = { sinceMs: this._playStartMs, at: this._baseTime, from: null };
     this._lastNow = this._baseTime;
     // Not a stall: the gap since the clock was last read (possibly a long
     // paused idle) says nothing about lost playback time, since none was
@@ -138,6 +160,7 @@ export class TransportClock {
     this._lastNow = clamped;
     if (this._playStartMs !== null) {
       this._playStartMs = this._nowMs();
+      this._awaitingAudio = { sinceMs: this._playStartMs, at: clamped, from: null };
       // Same reasoning as `play()`: the seek itself, not any elapsed gap
       // since the last read, is why the reported time is moving now.
       this._lastReadMs = null;
