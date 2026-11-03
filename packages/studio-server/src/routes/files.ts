@@ -1126,9 +1126,10 @@ function updateReferences(
       .filter((path) => path.startsWith(`${dir}/`))
       .map((path) => path.slice(at + 1));
     const [from, to] = [oldPath.slice(at + 1), posix.relative(dir, newPath)];
+    const everywhere = filesOnly(existing.map((path) => posix.relative(dir, path)));
     parentFolderEdits.set(dir, {
       css: referenceEdits(from, to, isDirectory, inside, { targets: null }),
-      html: referenceEdits(from, to, isDirectory, inside, { targets: filesOnly(inside) }),
+      html: referenceEdits(from, to, isDirectory, inside, { targets: everywhere }),
     });
   }
   let updatedCount = 0;

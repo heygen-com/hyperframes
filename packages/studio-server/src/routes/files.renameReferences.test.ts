@@ -791,6 +791,20 @@ describe("renaming a folder over the route", () => {
     );
   });
 
+  it("in HTML follows a folder moved out of the page's folder", async () => {
+    const project = mkdtempSync(join(tmpdir(), "hf-rename-refs-"));
+    dirs.push(project);
+    mkdirSync(join(project, "assets", "clips"), { recursive: true });
+    mkdirSync(join(project, "media"));
+    writeFileSync(join(project, "assets", "clips", "a.png"), "x");
+    writeFileSync(join(project, "assets", "i.html"), '<img src="clips/a.png">');
+
+    expect((await renameIn(project, "assets/clips", "media/clips")).status).toBe(200);
+    expect(readFileSync(join(project, "assets", "i.html"), "utf8")).toBe(
+      '<img src="../media/clips/a.png">',
+    );
+  });
+
   it("in HTML gives a path the runtime reads from the root to the root pass, where both readings match", async () => {
     const project = mkdtempSync(join(tmpdir(), "hf-rename-refs-"));
     dirs.push(project);
