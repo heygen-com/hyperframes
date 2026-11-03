@@ -17,6 +17,8 @@ which copies the video in untouched under its own file name and keeps the sessio
 refuses a folder that already holds other files. Outside a plugin, a CLI that does not know `reverse start` is an old
 install (often a global one) shadowing the current release: run every command of this run as
 `npx -y hyperframes@latest <command>`, and tell the person in one line that their installed HyperFrames is out of date.
+Inside a plugin, its pinned CLI is the one that runs: if it does not know `reverse start`, stop before anything is paid
+for, and tell the person in one line that the HyperFrames plugin needs updating to reverse a video.
 
 ## Not signed in yet
 
@@ -47,9 +49,8 @@ before it finishes. Give the `reverse.upgrade_url`, when it isn't `null`, as a l
 
 When `reverse start` refuses the run (it exits with an error whose `fix` is that command), run the `fix` the same way,
 then run `reverse start` again. When `subscribe_command` is `null` (or the refusal names no command), a plan can't be
-purchased right now: say so plainly, give no link, run nothing, and stop. Only on a plugin's CLI without
-`reverse start`, run `npx hyperframes billing subscribe` instead. If the command times out, tell the person and run it again once they say
-they are ready.
+purchased right now: say so plainly, give no link, run nothing, and stop. If the command times out, tell the person
+and run it again once they say they are ready.
 
 ## Signed in on Pro
 
