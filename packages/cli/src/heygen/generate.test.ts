@@ -3,7 +3,8 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { findFFmpeg } from "../browser/ffmpeg.js";
+import { FFMPEG_PATH_ENV, findFFmpeg } from "../browser/ffmpeg.js";
+import { loadSharp } from "../utils/optionalPackages.js";
 import { probeVideo } from "../measure/media.js";
 
 vi.mock("../cloud/auth.js", () => ({
@@ -130,6 +131,64 @@ describe("generate", () => {
     const ledger = readFileSync(join(project, ".media/manifest.jsonl"), "utf8");
     expect(ledger).toContain('"source":"generated"');
     expect(ledger).toContain('"references":["ref.png"]');
+  });
+
+  it("sends a picture with no ffmpeg on the machine, shrunk to 2048 px", async () => {
+    const big = join(project, "big.png");
+    const sharp = await loadSharp("test");
+    await sharp({ create: { width: 3000, height: 1000, channels: 3, background: "#c33" } })
+      .png()
+      .toFile(big);
+    const before = process.env[FFMPEG_PATH_ENV];
+    process.env[FFMPEG_PATH_ENV] = join(project, "no-ffmpeg");
+    const sent: Record<string, unknown>[] = [];
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (init?.body) sent.push(JSON.parse(String(init.body)));
+      if (url === "https://files.test/big.png") return new Response(new Uint8Array([1]));
+      return json({
+        data: { id: "img2", status: "completed", images: [{ url: "https://files.test/big.png" }] },
+      });
+    });
+    try {
+      await generate({
+        type: "image",
+        out: join(project, "assets/big-out.png"),
+        prompt: "p",
+        references: [big],
+      });
+    } finally {
+      if (before === undefined) delete process.env[FFMPEG_PATH_ENV];
+      else process.env[FFMPEG_PATH_ENV] = before;
+    }
+    const [picture] = (sent[0]!.reference_images as { media_type: string; data: string }[])!;
+    expect(picture!.media_type).toBe("image/jpeg");
+    const { width, height, format } = await sharp(Buffer.from(picture!.data, "base64")).metadata();
+    expect([format, width, height]).toEqual(["jpeg", 2048, 683]);
+  });
+
+  it.skipIf(!ffmpeg)("sends a picture sharp cannot read through ffmpeg", async () => {
+    const bmp = join(project, "still.bmp");
+    execFileSync(ffmpeg!, [
+      ...["-v", "error", "-y", "-f", "lavfi", "-i", "color=c=blue:s=40x30", "-frames:v", "1", bmp],
+    ]);
+    const sent: Record<string, unknown>[] = [];
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (init?.body) sent.push(JSON.parse(String(init.body)));
+      if (url === "https://files.test/bmp.png") return new Response(new Uint8Array([1]));
+      return json({
+        data: { id: "img3", status: "completed", images: [{ url: "https://files.test/bmp.png" }] },
+      });
+    });
+    await generate({
+      type: "image",
+      out: join(project, "assets/bmp-out.png"),
+      prompt: "p",
+      references: [bmp],
+    });
+    const [picture] = sent[0]!.reference_images as { data: string }[];
+    const sharp = await loadSharp("test");
+    const { width, height, format } = await sharp(Buffer.from(picture!.data, "base64")).metadata();
+    expect([format, width, height]).toEqual(["jpeg", 40, 30]);
   });
 
   it.skipIf(!ffmpeg)("re-shoots a person speaking a stretch of the original voice", async () => {
@@ -980,10 +1039,20 @@ describe("pickVoice", () => {
     if (picked instanceof Error) return picked;
     request.voice = (picked as { voice_id: string }).voice_id;
     vi.useFakeTimers({ toFake: ["Date", "setTimeout"] });
-    const run = generate(request).catch((err: unknown) => err);
-    await vi.advanceTimersByTimeAsync(31 * 60_000);
-    vi.useRealTimers();
-    return run;
+    let done = false;
+    const run = generate(request)
+      .catch((err: unknown) => err)
+      .finally(() => (done = true));
+    // A photo is read before the first poll, so the clock moves until the run ends, not in one jump.
+    try {
+      while (!done) {
+        await new Promise((r) => setImmediate(r));
+        await vi.advanceTimersByTimeAsync(60_000);
+      }
+      return await run;
+    } finally {
+      vi.useRealTimers();
+    }
   };
 
   for (const [type, extra] of [
