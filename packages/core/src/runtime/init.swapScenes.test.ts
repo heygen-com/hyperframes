@@ -1974,6 +1974,24 @@ describe("the preview's scene window", () => {
     expect(parked()).toEqual(["s2"]);
   });
 
+  // A hidden page runs timers about once a second once they chain; a mount that waits on them takes seconds.
+  it("mounts a held scene in about the time it takes with timers a hidden page clamps", async () => {
+    bootWindowed([S0, S1, S2], trackingRoot().root);
+    await tick();
+    const unclamped = window.setTimeout;
+    const CLAMP_MS = 200;
+    window.setTimeout = ((fn: TimerHandler, ms = 0, ...args: unknown[]) =>
+      unclamped(fn, Math.max(Number(ms) || 0, CLAMP_MS), ...args)) as typeof window.setTimeout;
+    try {
+      const started = performance.now();
+      await window.__hfHoldScenes!(["s2"]);
+      expect(sceneHost("s2").textContent).toBe("two");
+      expect(performance.now() - started).toBeLessThan(CLAMP_MS);
+    } finally {
+      window.setTimeout = unclamped;
+    }
+  });
+
   it("keeps each holder's scenes, so the inspector letting go leaves Studio's held scene mounted", async () => {
     bootWindowed([S0, S1, S2], trackingRoot().root);
     await tick();

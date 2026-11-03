@@ -141,7 +141,7 @@ import {
 import { createRuntimeStartTimeResolver } from "./startResolver";
 import { createClipTree } from "./clipTree";
 import { loadCompositions } from "./compositionLoader";
-import { runScriptsAfterFonts, waitForFonts } from "./afterFonts";
+import { nextUnclampedTask, runScriptsAfterFonts, waitForFonts } from "./afterFonts";
 import {
   applyCaptionOverrides,
   applyFetchedCaptionOverrides,
@@ -4291,7 +4291,7 @@ export function initSandboxRuntimeModular(): void {
     if (!recorded || !id || !globalTimeline?.getChildren) return;
     // The gate lets a scene's script wait on fonts only, so their settling ends it.
     await waitForFonts();
-    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    await nextUnclampedTask();
     // The runtime rebuilds its root while the scene settles; that root, and other scenes' records, are not its.
     const known = new Set<unknown>([...Object.values(recorded).flat(), ...ownedElsewhere([id])]);
     const late = globalTimeline
@@ -4627,7 +4627,6 @@ export function initSandboxRuntimeModular(): void {
   );
   let windowWork: Promise<void> | null = null;
   let windowNear = "";
-  const nextTask = () => new Promise((resolve) => window.setTimeout(resolve, 0));
   // A host and its stand-in trade style, a display:none the visibility pass wrote included; the way back goes along.
   const moveDisplayHide = (from: Element, to: Element) => {
     const hidden = displayBeforeHide.get(from as StylableElement);
@@ -4643,12 +4642,12 @@ export function initSandboxRuntimeModular(): void {
     refreshSvgSelectorAliases();
     const captionHosts = host.querySelector(".caption-group") ? [host] : [];
     const captionOverrides = captionHosts.length > 0 ? await fetchCaptionOverrides() : [];
-    await nextTask();
+    await nextUnclampedTask();
     await runSceneScripts(
       [host],
       scripts.map((el) => document.body.appendChild(el)),
     );
-    await nextTask();
+    await nextUnclampedTask();
     parkedNames.delete(name);
     if (!state.tornDown) settleChangedScenes([host], captionHosts, captionOverrides, true);
   };
@@ -4719,7 +4718,7 @@ export function initSandboxRuntimeModular(): void {
       if (landed) await mountScene(landed.name);
       else if (toMount) {
         // A neighbour waits a turn: a seek queued meanwhile may want another scene first.
-        await nextTask();
+        await nextUnclampedTask();
         if (wantedNow(toMount.name)) await mountScene(toMount.name);
       } else for (const { name } of toRetire) retireScene(name);
     })().finally(() => {

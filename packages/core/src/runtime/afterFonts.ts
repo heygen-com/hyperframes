@@ -91,7 +91,8 @@ export const PREVIEW_SCRIPT_SLICE_MS = 50;
 /** A render's virtual clock holds every timer until it advances, so only a preview gives the page turns. */
 const givesTurns = () => !(window as { __HF_VIRTUAL_TIME__?: unknown }).__HF_VIRTUAL_TIME__;
 
-function nextUnclampedTask(): Promise<void> {
+/** A new task that a hidden page does not delay: it clamps chained timers to one a second, not message tasks. */
+export function nextUnclampedTask(): Promise<void> {
   const scheduler = (globalThis as { scheduler?: { yield?: () => Promise<void> } }).scheduler;
   if (typeof scheduler?.yield === "function") return scheduler.yield();
   return new Promise((resolve) => {
