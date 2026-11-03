@@ -13,6 +13,8 @@ const state = vi.hoisted(() => ({
   enterHeld: false,
   noPrice: false,
   proPrices: [] as number[],
+  offerReads: 0,
+  offersHeldFrom: Infinity,
 }));
 
 vi.mock("../auth/browser.js", () => ({
@@ -33,20 +35,22 @@ vi.mock("../heygen/plan.js", async (importOriginal) => {
   return {
     ...real,
     readPlan: async () => (state.plans.length ? state.plans.shift()! : state.afterPlans),
-    readOffer: async () =>
-      state.noPrice
-        ? {}
-        : {
-            pro: { amount: state.proPrices.shift() ?? 2500, currency: "usd" },
-            addon: {
-              unitsPerBlock: 1000,
-              unitAmount: 100,
-              currency: "usd",
-              min: 1,
-              max: 100,
-              recommended: 25,
+    readOffer: async (stop?: AbortSignal) =>
+      state.offerReads++ >= state.offersHeldFrom
+        ? new Promise((resolve) => stop?.addEventListener("abort", () => resolve({})))
+        : state.noPrice
+          ? {}
+          : {
+              pro: { amount: state.proPrices.shift() ?? 2500, currency: "usd" },
+              addon: {
+                unitsPerBlock: 1000,
+                unitAmount: 100,
+                currency: "usd",
+                min: 1,
+                max: 100,
+                recommended: 25,
+              },
             },
-          },
     createCheckout: async (kind: string, _offer: unknown, missing?: number) => {
       checkouts.push({ kind, missing });
       return "https://checkout.stripe.com/c/pay/cs_test_1";
@@ -64,6 +68,7 @@ afterEach(() => {
   checkouts.length = 0;
   Object.assign(state, {
     ...{ afterPlans: pro(1_000_000), enters: 0, enterHeld: false, noPrice: false, proPrices: [] },
+    ...{ offerReads: 0, offersHeldFrom: Infinity },
   });
   vi.restoreAllMocks();
   vi.useRealTimers();
@@ -160,6 +165,28 @@ describe("billing subscribe", () => {
     state.enterHeld = true;
     const out = await billingRun([free, pro(0)], false);
     expect(out).toContain("✓ Done");
+    expect(checkouts).toEqual([]);
+  });
+
+  it("prepares no checkout link when the page is paid while the price is still loading", async () => {
+    state.offersHeldFrom = 0;
+    const out = await billingRun([free, pro(0)], true);
+    expect(out).toContain("✓ Done");
+    expect(out).not.toContain("Checkout link");
+    expect(checkouts).toEqual([]);
+  });
+
+  it("prepares no checkout when the page is paid while Enter's price read is pending", async () => {
+    state.offersHeldFrom = 1;
+    const out = await billingRun([free, free, pro(0)], false);
+    expect(out).toContain("✓ Done");
+    expect(state.enters).toBe(1);
+    expect(checkouts).toEqual([]);
+  });
+
+  it("times out, preparing no checkout, while Enter's price read is pending", async () => {
+    Object.assign(state, { offersHeldFrom: 1, afterPlans: free });
+    await expect(billingRun([free], false, ["subscribe", "--timeout", "1"])).rejects.toThrow();
     expect(checkouts).toEqual([]);
   });
 

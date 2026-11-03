@@ -49,11 +49,12 @@ async function payOrShowTheNewPrice(
   stop: AbortSignal,
   needed?: number,
 ): Promise<string | undefined> {
-  const now = await readPlan();
+  const now = await readPlan(stop);
   if (stop.aborted) return undefined;
   if (!readFromTheServer(now)) return void console.log(NO_PLAN);
   if (done(now)) return undefined;
-  const offer = await readOffer();
+  const offer = await readOffer(stop);
+  if (stop.aborted) return undefined;
   const missing = needed ? needed - now.credits : undefined;
   const line = priceLine(kind, offer, missing, needed);
   if (!line) return void console.log(NO_PRICE);
@@ -61,7 +62,7 @@ async function payOrShowTheNewPrice(
     console.log(line);
     return line;
   }
-  const link = await createCheckout(kind, offer, missing);
+  const link = await createCheckout(kind, offer, missing, stop);
   if (!stop.aborted) await openBrowser(link);
   return undefined;
 }
@@ -87,6 +88,16 @@ async function checkoutOnEnterAtTheCurrentPrice(
   }
 }
 
+async function printTheCheckoutLink(
+  kind: "plans" | "credits",
+  offer: Offer,
+  stop: AbortSignal,
+  missing?: number,
+) {
+  const link = await createCheckout(kind, offer, missing, stop);
+  if (!stop.aborted) console.log(`Checkout link: ${c.accent(link)}`);
+}
+
 async function offerCheckoutOrPrintTheLink(
   kind: "plans" | "credits",
   before: Plan | null,
@@ -95,17 +106,19 @@ async function offerCheckoutOrPrintTheLink(
   needed?: number,
 ) {
   if (!readFromTheServer(before)) return void console.log(NO_PLAN);
-  const offer = await readOffer();
+  const offer = await readOffer(stop);
+  if (stop.aborted) return;
   const missing = needed ? needed - before.credits : undefined;
   const line = priceLine(kind, offer, missing, needed);
   if (!line) return void console.log(NO_PRICE);
   console.log(line);
   try {
-    if (isUnattended())
-      console.log(`Checkout link: ${c.accent(await createCheckout(kind, offer, missing))}`);
-    else await checkoutOnEnterAtTheCurrentPrice(kind, done, line, stop, needed);
+    await (isUnattended()
+      ? printTheCheckoutLink(kind, offer, stop, missing)
+      : checkoutOnEnterAtTheCurrentPrice(kind, done, line, stop, needed));
   } catch (error) {
-    console.error(c.error(error instanceof Error ? error.message : String(error)));
+    if (!stop.aborted)
+      console.error(c.error(error instanceof Error ? error.message : String(error)));
   }
 }
 
