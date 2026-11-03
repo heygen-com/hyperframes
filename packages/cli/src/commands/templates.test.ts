@@ -69,11 +69,51 @@ describe("pullTemplate", () => {
     );
   });
 
-  it("leaves a template that is already there alone and spends no call", async () => {
+  it("leaves a template it pulled before alone and spends no call", async () => {
     const fetchMock = serve({});
-    mkdirSync(join(dir, "templates", "sample"), { recursive: true });
+    await pullTemplate("sample", dir);
+    fetchMock.mockClear();
     await pullTemplate("sample", dir);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("fills an empty folder where the template goes", async () => {
+    serve({});
+    mkdirSync(join(dir, "templates", "sample"), { recursive: true });
+    const path = await pullTemplate("sample", dir);
+    expect(readFileSync(join(path, "SKILL.md"), "utf8")).toBe("# sample\n");
+  });
+
+  it("stops at a file or someone else's folder where the template goes, and leaves it as it was", async () => {
+    const fetchMock = serve({});
+    const dest = join(dir, "templates", "sample");
+    mkdirSync(join(dir, "templates"), { recursive: true });
+    writeFileSync(dest, "notes");
+    await expect(pullTemplate("sample", dir)).rejects.toThrow("not this template");
+    expect(readFileSync(dest, "utf8")).toBe("notes");
+    rmSync(dest);
+    mkdirSync(dest);
+    writeFileSync(join(dest, "mine.md"), "mine");
+    await expect(pullTemplate("sample", dir)).rejects.toThrow("not this template");
+    expect(readFileSync(join(dest, "mine.md"), "utf8")).toBe("mine");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("names a pull of an older pin as such and leaves it", async () => {
+    const fetchMock = serve({});
+    const dest = join(dir, "templates", "sample");
+    mkdirSync(dest, { recursive: true });
+    writeFileSync(join(dest, ".template-sha256"), "0".repeat(64));
+    await expect(pullTemplate("sample", dir)).rejects.toThrow("older pull of this template");
+    expect(readFileSync(join(dest, ".template-sha256"), "utf8")).toBe("0".repeat(64));
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps an empty folder when the pull is refused", async () => {
+    serve({ status: 402 });
+    mkdirSync(join(dir, "templates", "sample"), { recursive: true });
+    await expect(pullTemplate("sample", dir)).rejects.toThrow("billing subscribe");
+    expect(existsSync(join(dir, "templates", "sample"))).toBe(true);
   });
 
   it("turns a 402 into the upgrade step and writes nothing", async () => {
