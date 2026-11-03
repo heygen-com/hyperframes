@@ -8,6 +8,7 @@ import {
   resolveItemsByTag,
   unreachableRegistryMessage,
 } from "./resolver.js";
+import { DEFAULT_REGISTRY_URL, REGISTRY_MIRROR_URL } from "./transport.js";
 
 const MANIFEST: RegistryManifest = {
   $schema: "https://hyperframes.heygen.com/schema/registry.json",
@@ -119,6 +120,27 @@ describe("registry resolver", () => {
       const items = await loadAllItems(entries, { baseUrl });
       expect(items.map((i) => i.name).sort()).toEqual(["alpha", "beta", "gamma"]);
       expect(items.find((i) => i.name === "alpha")?.title).toBe("ALPHA");
+    });
+
+    it("stops starting new batches after the raw host times out, whatever the mirror said", async () => {
+      const fetchMock = vi.fn(async (url: string) => {
+        if (url.startsWith(REGISTRY_MIRROR_URL)) {
+          throw new Error("fetch failed", { cause: new Error("self-signed certificate") });
+        }
+        throw new DOMException("timed out", "TimeoutError");
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      const id = crypto.randomUUID();
+      const entries = Array.from({ length: 100 }, (_, i) => ({
+        name: `t-${id}-${i}`,
+        type: "hyperframes:example" as const,
+      }));
+      const items = await loadAllItems(entries, {
+        baseUrl: DEFAULT_REGISTRY_URL,
+        onWarn: () => {},
+      });
+      expect(items).toEqual([]);
+      expect(fetchMock).toHaveBeenCalledTimes(64); // 32 items, the mirror then raw GitHub each
     });
 
     it("skips items whose manifest fails to load (warning, not failure)", async () => {

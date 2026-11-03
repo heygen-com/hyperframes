@@ -460,6 +460,25 @@ describe("fetchItemFile retries", () => {
     expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 
+  it("retries a transient raw GitHub reset even when the mirror failed on TLS", async () => {
+    const tls = () =>
+      new Error("fetch failed", {
+        cause: new Error("self-signed certificate in certificate chain"),
+      });
+    const reset = () => new Error("fetch failed", { cause: new Error("ECONNRESET") });
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValueOnce(tls())
+      .mockRejectedValueOnce(reset())
+      .mockRejectedValueOnce(tls())
+      .mockResolvedValueOnce(new Response("<div>ok</div>"));
+
+    await expect(fetchItemFile(item, file, DEFAULT_REGISTRY_URL)).resolves.toEqual(
+      Buffer.from("<div>ok</div>"),
+    );
+    expect(fetchSpy).toHaveBeenCalledTimes(4);
+  });
+
   it("does not retry a certificate failure, which fails identically every time", async () => {
     // The reported case: a private registry with a self-signed certificate.
     // Retrying only makes the user wait three times as long for one answer.

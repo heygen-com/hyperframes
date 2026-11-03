@@ -39,6 +39,16 @@ const why = (error: unknown) => {
   return String(cause?.code ?? cause?.message ?? (error as Error)?.message ?? error);
 };
 
+export class RegistryUnreachableError extends Error {
+  constructor(mirrorFailure: string, rawFailure: unknown) {
+    super(
+      `Neither registry host answered: ${new URL(REGISTRY_MIRROR_URL).host} (${mirrorFailure}), ${new URL(DEFAULT_REGISTRY_URL).host} (${why(rawFailure)})`,
+      { cause: rawFailure },
+    );
+    this.name = rawFailure instanceof Error ? rawFailure.name : "Error";
+  }
+}
+
 export async function fetchRegistryHttps(value: string, signal: AbortSignal): Promise<Response> {
   if (!value.startsWith(`${DEFAULT_REGISTRY_URL}/`)) return fetchFollowing(value, signal);
   const mirrored = REGISTRY_MIRROR_URL + value.slice(DEFAULT_REGISTRY_URL.length);
@@ -62,10 +72,7 @@ export async function fetchRegistryHttps(value: string, signal: AbortSignal): Pr
   try {
     return await fetchFollowing(value, signal);
   } catch (error) {
-    throw new Error(
-      `Neither registry host answered: ${new URL(REGISTRY_MIRROR_URL).host} (${mirrorFailure}), ${new URL(DEFAULT_REGISTRY_URL).host} (${why(error)})`,
-      { cause: error },
-    );
+    throw new RegistryUnreachableError(mirrorFailure, error);
   }
 }
 

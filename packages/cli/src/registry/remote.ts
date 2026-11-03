@@ -3,6 +3,7 @@ import { publishRegistryFile, registryRoot } from "./publication.js";
 import {
   DEFAULT_REGISTRY_URL,
   fetchRegistryHttps,
+  RegistryUnreachableError,
   registryHttpsUrl,
   registryPathUrl,
 } from "./transport.js";
@@ -221,7 +222,8 @@ export function describeCauseChain(err: unknown): string {
  * wait three times as long for the same message.
  */
 function isRetryableTransport(err: unknown): boolean {
-  const text = describeCauseChain(err).toLowerCase();
+  const raw = err instanceof RegistryUnreachableError ? err.cause : err;
+  const text = describeCauseChain(raw).toLowerCase();
   if (/certificate|self-signed|self signed|unable to verify|altname|ssl|tls/.test(text)) {
     return false;
   }
