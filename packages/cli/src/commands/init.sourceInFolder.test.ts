@@ -6,6 +6,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -20,6 +21,13 @@ vi.mock("../telemetry/events.js", () => ({ trackInitTemplate: vi.fn() }));
 const ffmpeg = spawnSync("ffmpeg", ["-version"]).status === 0;
 const hevc =
   ffmpeg && spawnSync("ffmpeg", ["-hide_banner", "-encoders"]).stdout.includes("libx265");
+const caseBlind = (() => {
+  const probe = mkdtempSync(join(tmpdir(), "hf-case-"));
+  writeFileSync(join(probe, "a"), "");
+  const blind = existsSync(join(probe, "A"));
+  rmSync(probe, { recursive: true, force: true });
+  return blind;
+})();
 let dir: string;
 let project: string;
 
@@ -76,6 +84,17 @@ it.skipIf(!ffmpeg)(
     expect(existsSync(join(project, "index.html"))).toBe(true);
     expect(readFileSync(join(project, "original.mp4")).equals(video)).toBe(true);
     expect(readFileSync(join(project, "hyperframes.json"), "utf-8")).toContain("reverse-any-video");
+  },
+);
+
+it.skipIf(!ffmpeg || !caseBlind)(
+  "scaffolds when the video in the folder is named in another case on a case-blind disk",
+  async () => {
+    renameSync(join(project, "original.mp4"), join(project, "Original.MP4"));
+    const video = readFileSync(join(project, "Original.MP4"));
+    await initWithVideo(join(project, "original.mp4"));
+    expect(existsSync(join(project, "index.html"))).toBe(true);
+    expect(readFileSync(join(project, "Original.MP4")).equals(video)).toBe(true);
   },
 );
 

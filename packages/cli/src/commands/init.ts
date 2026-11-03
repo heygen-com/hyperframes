@@ -25,6 +25,7 @@ import {
   existsSync,
   mkdirSync,
   copyFileSync,
+  statSync,
   writeFileSync,
   readFileSync,
   readdirSync,
@@ -280,21 +281,34 @@ function getSharedTemplateDir(): string {
 const MEDIA_THE_SCAFFOLD_NEVER_WRITES =
   /\.(mp4|m4v|mov|webm|mkv|avi|mpe?g|wav|mp3|m4a|aac|ogg|oga|opus|flac)$/i;
 
+function fileOnDisk(path: string): string | undefined {
+  try {
+    const { dev, ino } = statSync(path);
+    return `${dev}:${ino}`;
+  } catch {
+    return undefined;
+  }
+}
+
 function holdsFilesBesideProjectConfigOrSources(
   dir: string,
   sources: (string | undefined)[] = [],
 ): boolean {
   const kept = new Set(
-    sources.flatMap((s) => (s && MEDIA_THE_SCAFFOLD_NEVER_WRITES.test(s) ? [resolve(s)] : [])),
+    sources.flatMap((s) => (s && MEDIA_THE_SCAFFOLD_NEVER_WRITES.test(s) ? [fileOnDisk(s)] : [])),
   );
+  kept.delete(undefined);
+  const isKeptSource = (name: string) =>
+    MEDIA_THE_SCAFFOLD_NEVER_WRITES.test(name) && kept.has(fileOnDisk(resolve(dir, name)));
   return (
     existsSync(dir) &&
-    readdirSync(dir).some((name) => name !== "hyperframes.json" && !kept.has(resolve(dir, name)))
+    readdirSync(dir).some((name) => name !== "hyperframes.json" && !isKeptSource(name))
   );
 }
 
 function copyIntoProjectUnlessAlreadyThere(src: string, dest: string): void {
-  if (resolve(src) !== resolve(dest)) copyFileSync(src, dest);
+  const same = resolve(src) === resolve(dest) || fileOnDisk(src) === (fileOnDisk(dest) ?? "");
+  if (!same) copyFileSync(src, dest);
 }
 
 /** The longest folder name the common disks hold: 255 UTF-8 bytes on Linux, 255 UTF-16 units on macOS and Windows. */
