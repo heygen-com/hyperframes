@@ -2105,7 +2105,9 @@ export async function compileForRender(
   const fontHtml = injectTextRenderingRule(
     coalesceHeadStylesAndBodyScripts(promoteCssImportsToLinkTags(sanitizedHtml)),
   );
-  const hostFontsMissing = options.allowSystemFontCapture === false;
+  // Both Docker images set CONTAINER=true: `render --docker` and the goldens keep the cloud's Inter.
+  const hostFontsMissing =
+    options.allowSystemFontCapture === false || process.env.CONTAINER === "true";
   const normalizedFontHtml = hostFontsMissing
     ? normalizeSystemFontPrimaryFamilies(fontHtml)
     : fontHtml;

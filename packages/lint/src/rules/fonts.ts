@@ -242,7 +242,7 @@ export const fontRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
         severity: "warning",
         message:
           `Text set in a system font stack (${[...stacks].join("; ")}) renders in this computer's font locally, ` +
-          "as in the preview, but in Inter on cloud renders, which have no system fonts.",
+          "as in the preview, but in Inter on cloud and --docker renders, which have no system fonts.",
         fixHint:
           "Put a named font first (Inter, or a family with an @font-face) so local and cloud renders match.",
       },

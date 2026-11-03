@@ -136,7 +136,7 @@ describe("font rules", () => {
       expect(findings).toHaveLength(1);
       expect(findings[0]?.severity).toBe("warning");
       expect(findings[0]?.message).toContain("system-ui, -apple-system, sans-serif");
-      expect(findings[0]?.message).toContain("Inter on cloud renders");
+      expect(findings[0]?.message).toContain("Inter on cloud and --docker renders");
       expect(findings[0]?.line).toBe(2);
     });
 

@@ -1233,6 +1233,18 @@ describe("detectShaderTransitionUsage", () => {
   });
 });
 
+async function withContainerEnv<T>(value: string | undefined, run: () => Promise<T>): Promise<T> {
+  const prior = process.env.CONTAINER;
+  if (value === undefined) delete process.env.CONTAINER;
+  else process.env.CONTAINER = value;
+  try {
+    return await run();
+  } finally {
+    if (prior === undefined) delete process.env.CONTAINER;
+    else process.env.CONTAINER = prior;
+  }
+}
+
 describe("system-primary font normalization", () => {
   it("promotes Inter before system/generic primary stacks before distributed plan validation", async () => {
     const projectDir = mkdtempSync(join(tmpdir(), "hf-system-primary-font-"));
@@ -1339,12 +1351,38 @@ describe("system-primary font normalization", () => {
   style="font-family: -apple-system, sans-serif"><span class="n">1,234.5</span></div></body></html>`,
     );
 
-    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    const compiled = await withContainerEnv(undefined, () =>
+      compileForRender(projectDir, join(projectDir, "index.html"), projectDir),
+    );
 
     const compact = compiled.html.replace(/\s+/g, "");
     expect(compact).toContain("font-family:system-ui,-apple-system,sans-serif");
     expect(compact).toContain("font-family:-apple-system,sans-serif");
     expect(compact).not.toContain("Inter,");
+  });
+
+  it("promotes Inter inside the Docker images, which set CONTAINER=true", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-container-system-font-"));
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!doctype html><html><head><style>.n { font-family: system-ui, sans-serif; }</style></head>
+<body><div data-composition-id="root" data-width="640" data-height="360" data-duration="1"><span class="n">1</span></div></body></html>`,
+    );
+
+    const compiled = await withContainerEnv("true", () =>
+      compileForRender(projectDir, join(projectDir, "index.html"), projectDir),
+    );
+
+    expect(compiled.html.replace(/\s+/g, "")).toContain("font-family:Inter,");
+  });
+
+  it("keeps CONTAINER=true in both Docker images", () => {
+    for (const rel of [
+      "../../../../Dockerfile.test",
+      "../../../cli/src/docker/Dockerfile.render",
+    ]) {
+      expect(readFileSync(join(import.meta.dirname, rel), "utf8")).toMatch(/^ENV CONTAINER=true$/m);
+    }
   });
 });
 
