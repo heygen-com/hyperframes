@@ -367,6 +367,7 @@ kinds.push({name:known[name]===1?name:"other",origin:!path?"unknown":path===runt
 
 function injectStudioPreviewAugmentations(
   html: string,
+  adapter: StudioApiAdapter,
   signature: string,
   projectDir: string,
   activeCompositionPath: string,
@@ -534,6 +535,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
       // Also covers elements the adapter injected; ids already present are kept.
       bundled = injectStudioPreviewAugmentations(
         ensureHfIds(await transformPreviewHtml(bundled, adapter, project, mainCompositionPath)),
+        adapter,
         signature,
         project.dir,
         mainCompositionPath,
@@ -564,6 +566,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
         );
         let fallbackAugmented = injectStudioPreviewAugmentations(
           await transformPreviewHtml(fallbackHtml, adapter, project, fallback.compositionPath),
+          adapter,
           signature,
           project.dir,
           fallback.compositionPath,
@@ -685,7 +688,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     html = withRootImportMap(html, baseHref);
     recordPreviewReferences(project.dir, html);
     html = ensureHfIds(await transformPreviewHtml(html, adapter, project, compPath));
-    html = injectStudioPreviewAugmentations(html, signature, project.dir, compPath, {
+    html = injectStudioPreviewAugmentations(html, adapter, signature, project.dir, compPath, {
       capture,
       gsapBaseUrl,
     });
