@@ -37,7 +37,7 @@ Signing in is the same OAuth step as creating an account — new users land on t
   </Step>
 </Steps>
 
-HyperFrames uses its own public OAuth client and stores credentials in `~/.hyperframes/credentials` (mode `0600`). Sign in again after upgrading from the shared HeyGen login. The separate [`heygen` CLI](https://github.com/heygen-com/heygen-cli) keeps its own login in `~/.heygen`; HyperFrames does not move or delete it. An expired HyperFrames OAuth session requires refresh or sign-in and never selects a saved API key instead. An explicit API-key login or environment key selects API-key billing.
+HyperFrames uses its own public OAuth client and stores credentials in `~/.hyperframes/credentials` (mode `0600`). Sign in again after upgrading from the shared HeyGen login. The separate [`heygen` CLI](https://github.com/heygen-com/heygen-cli) keeps its own login in `~/.heygen`; HyperFrames does not move or delete it. A signed-in HyperFrames session wins over `HEYGEN_API_KEY` in the environment. The environment key is used only when no session is signed in, when HeyGen refuses to refresh the session, or when a host app routes calls through its own gateway. An expired session never selects a saved API key instead. An API key, from the environment or `auth login --api-key`, selects API-key billing.
 
 `auth status` verifies identity. For a dedicated HyperFrames OAuth login it reports the billing product, but the HyperFrames balance is unavailable here: `/v3/users/me` returns generic HeyGen account billing fields. Those raw fields remain in JSON and are not presented as the HyperFrames balance. Host-injected or custom-client OAuth is reported as an unverified billing product.
 
@@ -54,13 +54,14 @@ sound retrieval. It resolves first-match-wins:
 
 1. `HEYGEN_API_BASE` with `HEYGEN_API_KEY` — a host app's own gateway, set by the app that started the workflow
 2. `HEYGEN_ACCESS_TOKEN` — an OAuth token a host app injects
-3. `HEYGEN_API_KEY` — environment variable
-4. `HYPERFRAMES_API_KEY` — alias, for parity with other tools
-5. `~/.hyperframes/credentials` — written by `hyperframes auth login`
+3. The session `hyperframes auth login` saved in `~/.hyperframes/credentials`, while it is unexpired
+4. `HEYGEN_API_KEY` — environment variable
+5. `HYPERFRAMES_API_KEY` — alias, for parity with other tools
+6. An API key saved in `~/.hyperframes/credentials` by `hyperframes auth login --api-key`
 
 A nearby project `.env` can supply the keys, but never `HEYGEN_API_BASE`. Point at a different config directory
-with `HYPERFRAMES_CONFIG_DIR`. The `hyperframes` CLI's own commands check the API keys before `HEYGEN_ACCESS_TOKEN`; see
-the [CLI reference](/packages/cli). When `media-use` invokes the separate `heygen` executable, it supplies an isolated temporary credential containing the selected access token. That helper cannot refresh a HyperFrames grant or pick up another HeyGen login.
+with `HYPERFRAMES_CONFIG_DIR`. The scripts can't refresh a session; the `hyperframes` CLI's own commands use the same
+order and refresh an expired session first. See the [CLI reference](/packages/cli). When `media-use` invokes the separate `heygen` executable, it supplies an isolated temporary credential containing the selected access token. That helper cannot refresh a HyperFrames grant or pick up another HeyGen login.
 
 ## Providers used by agent workflows
 
@@ -71,7 +72,7 @@ vision key is available.
 
 | Capability | Provider order | Key(s) — first match wins | Local dependency |
 |------------|----------------|---------------------------|------------------|
-| **Voice (TTS)** | HeyGen → ElevenLabs → Kokoro | `HEYGEN_API_KEY` → `HYPERFRAMES_API_KEY` → `~/.hyperframes` · then `ELEVENLABS_API_KEY` | Kokoro: `pip install kokoro-onnx soundfile` |
+| **Voice (TTS)** | HeyGen → ElevenLabs → Kokoro | HeyGen credential (above) · then `ELEVENLABS_API_KEY` | Kokoro: `pip install kokoro-onnx soundfile` |
 | **Music (BGM)** | HeyGen library → Lyria → MusicGen | HeyGen credential (above) · then `GEMINI_API_KEY` → `GOOGLE_API_KEY` | MusicGen: `pip install transformers torch soundfile numpy` |
 | **Sound effects** | HeyGen library → bundled library | HeyGen credential (above) | bundled — no deps |
 | **Capture descriptions** | OpenRouter → Gemini | `OPENROUTER_API_KEY` → `GEMINI_API_KEY` | None; optional for [website capture](/guides/product-launch-video) |

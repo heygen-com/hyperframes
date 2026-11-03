@@ -158,6 +158,7 @@ export {
   waitForImagesReady,
   evaluateHfDiagnostic,
   buildZeroDurationDiagnostic,
+  applyVideoMetadataHints,
 } from "./services/frameCapture.js";
 export {
   CaptureFailure,
@@ -173,6 +174,7 @@ export {
 
 // ── Screenshot (BeginFrame) ─────────────────────────────────────────────────────
 export { installMediaRenderIdBridge } from "./services/mediaRenderIdBridge.js";
+export { holdRenderFrameVideos } from "./services/renderFrameVideoHold.js";
 export {
   beginFrameCapture,
   pageScreenshotCapture,

@@ -403,6 +403,7 @@ describe("updateCheckDue / cachedUpdateCheck — what the parent reads without f
   afterEach(() => {
     vi.doUnmock("../telemetry/config.js");
     vi.doUnmock("./env.js");
+    vi.doUnmock("../version.js");
     vi.resetModules();
     vi.unstubAllEnvs();
   });
@@ -470,7 +471,19 @@ describe("updateCheckDue / cachedUpdateCheck — what the parent reads without f
     },
   );
 
-  it.each(["0.0.1", "999.0.0", "999.0.0-beta.1+build.5"])(
+  it("treats a cached latest older than the running CLI as unknown, without re-checking sooner than the daily cadence", async () => {
+    vi.doMock("../version.js", () => ({ VERSION: "0.9.6", PRODUCER_VERSION: "0.9.6" }));
+    const mod = await load({ lastUpdateCheck: hoursAgo(1), latestVersion: "0.9.5" });
+    expect(mod.updateCheckDue()).toBe(false);
+    expect(mod.getUpdateMeta()).toEqual({
+      version: "0.9.6",
+      latestVersion: undefined,
+      updateAvailable: false,
+    });
+    expect(mod.cachedUpdateCheck().latest).toBe("0.9.6");
+  });
+
+  it.each(["999.0.0", "999.0.0-beta.1+build.5"])(
     "preserves safe cached version %s and the update-check result in metadata",
     async (latestVersion) => {
       const mod = await load({ latestVersion });

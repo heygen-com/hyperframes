@@ -4,6 +4,8 @@ export const PREVIEW_PROXY_BOX_PARAM = "hf-proxy-box";
 export const PREVIEW_PROXY_LIGHT_PARAM = "hf-proxy-light";
 
 export const PREVIEW_PROXY_RETRY_PARAM = "hf-proxy-retry";
+
+export const PREVIEW_PROXY_STILL_PARAM = "hf-proxy-still";
 export const PREVIEW_PROXY_PROGRESS_HEADER = "X-HF-Proxy-Progress";
 export const PREVIEW_PROXY_PRIORITY_HEADER = "X-HF-Proxy-Priority";
 

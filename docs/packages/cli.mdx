@@ -818,19 +818,20 @@ npx hyperframes audio refs/episode.mp4 --read --range 60,70   # only what overla
   the `pause` kind and say what still plays through them: the effects in them,
   the music or ambience with its times, the recording's level when no bed is
   read, or `silent` under -55 dBFS.
-- **effects**: each sound effect with a kind (`riser`, `boom`, `thump`, `whoosh`,
-  `click`, `tick`, `ding`, `hit`), the group of identical sounds it belongs to
-  (`S1` is the most used), band, attack, tail, its peak, and where it falls in a
-  pause. The peak is the loudest 20 ms of the whole recording at the effect, in
-  dBFS, so it does not depend on how a stem was separated or encoded; the figure
-  after it names its reference: `+4 dB over music` against the music's level in
-  the second before the effect (after it, when the music starts with it), `+12 dB
-  over what played before` against the recording's median level in the half
-  second before, or `out of silence`. A sound ends where the next one starts, so
-  a run of drum hits is not read as one long riser. Quick runs of one sound are a
-  single line with a count; hits on the music's beat are the music's own drums,
-  and sounds more than 20 dB under the recording are separation residue nobody
-  hears; both are left out.
+- **effects**: every event is labelled `effect`, without assigning a sound kind.
+  Similar sounds belong to groups `S1`, `S2` and so on (`S1` is the most used).
+  Each event keeps its time, source stem, frequency band, attack, tail, peak,
+  level above the surrounding music, and position within a pause. The peak is
+  the loudest 20 ms of the whole recording at the effect, in dBFS, so it does
+  not depend on how a stem was separated or encoded; the figure after it names
+  its reference: `+4 dB over music` against the music's level in the second
+  before the effect (after it, when the music starts with it), `+12 dB over what
+  played before` against the recording's median level in the half second
+  before, or `out of silence`. A sound ends where the next one starts. Quick
+  runs of one sound are a single line with a count; hits on the music's beat
+  are the music's own drums, and sounds more than 20 dB under the recording are
+  separation residue nobody hears; both are left out. Group summaries give the
+  group ids and counts, not sound kinds.
 - **music**: the bed split at its cut-outs, each part naming its piece, the
   instruments that carry it and its tempo, whether it starts, resumes after a
   break, returns or is new, and where it fades. Music and ambience must be
@@ -935,8 +936,8 @@ FFmpeg.
 
 Only at `--quality best` is audio uploaded. Stems and the `api` provider then
 call HeyGen, which may bill your account, with the same credential as the other
-HeyGen commands: `HEYGEN_API_KEY`, `HYPERFRAMES_API_KEY`, `HEYGEN_ACCESS_TOKEN`,
-or a credential saved by `hyperframes auth login`, on the API at
+HeyGen commands (see [`hyperframes auth`](#hyperframes-auth) for the order),
+on the API at
 `HEYGEN_API_URL` when set. API keys are sent as `x-api-key`; OAuth credentials
 are sent as bearer tokens. If the service refuses a request, analysis falls
 back with a warning. Without a credential, stems are skipped and `api` is
@@ -2293,10 +2294,17 @@ of the `heygen` CLI. A previous shared login requires a fresh HyperFrames sign-i
 
 First match wins:
 
-1. `HEYGEN_API_KEY`
-2. `HYPERFRAMES_API_KEY` (a HyperFrames alias for the same thing)
-3. `HEYGEN_ACCESS_TOKEN` (an OAuth token a host app injects; never refreshed or saved)
-4. `~/.hyperframes/credentials`
+1. `HEYGEN_ACCESS_TOKEN` (an OAuth token a host app injects; never refreshed or saved)
+2. Your `hyperframes auth login` session in `~/.hyperframes/credentials`. An expired session is refreshed first.
+3. `HEYGEN_API_KEY`
+4. `HYPERFRAMES_API_KEY` (a HyperFrames alias for the same thing)
+5. An API key saved with `hyperframes auth login --api-key`
+
+A signed-in session wins over an API key in the environment. The environment key
+is used instead when HeyGen refuses to refresh the session, or when `HEYGEN_API_URL` or
+`HEYGEN_API_BASE` points at a host app's own gateway. To use the environment key
+while signed in, run `hyperframes auth logout`. `auth status` shows which
+credential is in use.
 
 ### `auth login`
 
@@ -2357,9 +2365,9 @@ hyperframes auth logout --yes            # no prompt
 
 | Variable              | Description                                      |
 | --------------------- | ------------------------------------------------ |
-| `HEYGEN_API_KEY`      | Override the stored credential.                  |
+| `HEYGEN_API_KEY`      | API key, used when no session is signed in. Wins over a key saved with `--api-key`. |
 | `HYPERFRAMES_API_KEY` | Alias for `HEYGEN_API_KEY`.                      |
-| `HEYGEN_ACCESS_TOKEN` | OAuth token from a host app; never refreshed.    |
+| `HEYGEN_ACCESS_TOKEN` | OAuth token from a host app; used first, never refreshed. |
 | `HEYGEN_API_URL`      | API base URL (default `https://api.heygen.com`). |
 | `HYPERFRAMES_CONFIG_DIR` | Credentials root (default `~/.hyperframes`). |
 | `HYPERFRAMES_ENV` | `prod` (default) or `dev`; `dev` uses a separate credential directory. Hosts and the OAuth client id come from `HEYGEN_API_URL` and `HYPERFRAMES_OAUTH_*`. |

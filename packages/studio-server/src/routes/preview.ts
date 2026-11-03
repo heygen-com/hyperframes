@@ -25,6 +25,7 @@ import {
   PREVIEW_PROXY_PRIORITY_HEADER,
   PREVIEW_PROXY_PROGRESS_HEADER,
   PREVIEW_PROXY_RETRY_PARAM,
+  PREVIEW_PROXY_STILL_PARAM,
   parsePreviewProxyBox,
 } from "@hyperframes/core";
 import {
@@ -74,6 +75,7 @@ import { injectPreviewVariables } from "../helpers/previewVariables.js";
 import {
   proxyCopyProgress,
   resolveProxy,
+  resolveStill,
   retryProxyCopy,
   waitForProxy,
   ProxyCapacityError,
@@ -737,6 +739,24 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
       proxyVariant = resolveProxyVariantRequest(proxyParam, facts) ?? undefined;
       if (!proxyVariant) {
         return c.text("media proxy variant does not match asset", 422);
+      }
+    }
+
+    // One frame of the video stands in for its copy while that is made; same gate as the copy.
+    const stillParam = c.req.query(PREVIEW_PROXY_STILL_PARAM);
+    if (stillParam !== undefined) {
+      const at = Number(stillParam);
+      if (stillParam === "" || !Number.isFinite(at) || at < 0 || !proxyVariant) {
+        return c.text("not found", 404);
+      }
+      try {
+        const still = await resolveStill(project.dir, file, at, proxyBox);
+        return new Response(readFileSync(still), {
+          headers: { "Content-Type": "image/jpeg", "Cache-Control": "private, max-age=3600" },
+        });
+      } catch (err) {
+        if (isProjectRootMissing(err)) throw err;
+        return c.text("media still failed", 502);
       }
     }
 

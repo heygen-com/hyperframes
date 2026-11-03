@@ -27,7 +27,7 @@ import {
   writeCopyIndex,
 } from "./proxyCacheKey.js";
 import { acquireCopyLock, CopyLockStalledError } from "./proxyLock.js";
-import { PROXY_VARIANT_CONFIG, type ProxyVariant } from "./mediaCodecMap.js";
+import { PROXY_STILL_EXTENSION, PROXY_VARIANT_CONFIG, type ProxyVariant } from "./mediaCodecMap.js";
 import { mkdirWithinProject, realpath, realProjectRoot } from "./safePath.js";
 
 /**
@@ -1099,6 +1099,57 @@ export async function resolveProxies(
   const workers = Math.min(MAX_CONCURRENT_TRANSCODES, sources.length);
   await Promise.all(Array.from({ length: workers }, worker));
   return results;
+}
+
+const stillsInFlight = new Map<string, Promise<string>>();
+
+/** One JPEG of the source at a time (to a tenth of a second), sized like the copy's box. */
+export function resolveStill(
+  projectDir: string,
+  absoluteSourcePath: string,
+  atSeconds: number,
+  box?: PreviewProxyBox,
+): Promise<string> {
+  const source = canonicalizeProxySource(projectDir, absoluteSourcePath);
+  const at = Math.max(0, Math.round(atSeconds * 10) / 10);
+  const key = fastCopyKey(source.sourcePath, PROXY_PARAMS_VERSION, `still@${at}`, box);
+  const cachePath = join(source.projectDir, CACHE_DIR_NAME, `${key}${PROXY_STILL_EXTENSION}`);
+  if (existsSync(cachePath)) return Promise.resolve(cachePath);
+  const shared = stillsInFlight.get(cachePath);
+  if (shared) return shared;
+  const made = makeStill(source, at, box, cachePath).finally(() =>
+    stillsInFlight.delete(cachePath),
+  );
+  stillsInFlight.set(cachePath, made);
+  return made;
+}
+
+async function makeStill(
+  source: CanonicalProxySource,
+  at: number,
+  box: PreviewProxyBox | undefined,
+  cachePath: string,
+): Promise<string> {
+  const ffmpegPath = findFfBinary("ffmpeg", { configuredMustExist: true });
+  if (!ffmpegPath) throw new FfmpegUnavailableError();
+  const filter = await buildVideoFilter(
+    ffmpegPath,
+    source.sourcePath,
+    await probeMediaMetadata(source.sourcePath),
+    false,
+    box,
+  );
+  mkdirWithinProject(source.projectDir, dirname(cachePath));
+  const tempPath = join(dirname(cachePath), `.tmp-${randomUUID()}-${basename(cachePath)}`);
+  try {
+    const args = ["-y", "-ss", String(at), "-i", source.sourcePath, "-map", "0:V:0"];
+    args.push("-frames:v", "1", "-vf", filter, "-pix_fmt", "yuvj420p", "-q:v", "3", tempPath);
+    await spawnFfmpeg(ffmpegPath, args, TRANSCODE_STALL_MS, new AbortController().signal);
+    renameSync(tempPath, cachePath);
+  } finally {
+    rmSync(tempPath, { force: true });
+  }
+  return cachePath;
 }
 
 export interface ResolveProxyOptions {

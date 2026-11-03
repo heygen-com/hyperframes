@@ -10,8 +10,9 @@ video (`--outcome=error` when you stop without one).
 
 Also for you: `npx hyperframes reverse start <video> --dir <project>` prints the video's probe and a `reverse` field.
 `signed_in` and `plan` (`free` or `pro`) pick the section below; a `null` plan is unknown, so ask
-`npx hyperframes auth status`. `<project>` is the folder you build in: `init` it there afterwards, which keeps the session
-it saved for `cloud render`. A CLI that does not know `reverse start` yet: use `auth status` for the sign-in and
+`npx hyperframes auth status`. `<project>` is the folder you build in: afterwards run `npx hyperframes init <project> --video <video> --keep-original --skip-transcribe`,
+which copies the video in untouched under its own file name and keeps the session it saved for `cloud render`. Keep the video out of `<project>` until then: `init`
+refuses a folder that already holds other files. A CLI that does not know `reverse start` yet: use `auth status` for the sign-in and
 plan and `npx hyperframes measure probe <video>` for the probe.
 
 ## Not signed in yet
@@ -58,16 +59,19 @@ the end of a run. `reverse start` and `auth status` are for the sign-in: never r
 
 ## Out of credits mid-run
 
-A refused step prints what it needs and the command that fixes it (top up, or pick a plan). Ask the person to run that
-command, then run the same step again once they reply. Never trim the plan to fit.
+A refused step prints what it needs and the command that fixes it (top up, or pick a plan). Shots are launched all
+at once, so several refuse together: wait until every launched step has answered, add up what each refused step
+needs, and ask once for that total (`--needed <total>`), never for one step at a time. If a refusal prints no
+amount, run plain `billing top-up` for that one. Then relaunch every refused
+step after they reply. Never trim the plan to fit.
 
-> This step needs 180 credits and you have 30. Add credits by typing this in the prompt:
+> Three steps need 180, 180 and 273 credits and you have 30. Add credits by typing this in the prompt:
 >
 > ```
-> ! npx hyperframes billing top-up --needed 180
+> ! npx hyperframes billing top-up --needed 633
 > ```
 >
-> It opens the top-up page and finishes once your balance covers the step. Reply "done" and I'll pick up right
+> It opens the top-up page and finishes once your balance covers all of them. Reply "done" and I'll pick up right
 > where I stopped.
 
 ## Time

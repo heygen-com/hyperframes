@@ -194,7 +194,7 @@ export default defineCommand({
             !credential
               ? `${flag} requires authentication. Run 'hyperframes auth login' first.`
               : envKey
-                ? `${flag} requires a login; ${envKey} cannot own a project. Unset it and run 'hyperframes auth login'.`
+                ? `${flag} requires a login; ${envKey} cannot own a project. Run 'hyperframes auth login'.`
                 : `${flag} requires a login; an API key cannot own a project. Run 'hyperframes auth login'.`,
           )}`,
         );
