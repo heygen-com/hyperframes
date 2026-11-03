@@ -4,6 +4,20 @@ import { consumeCommandResult } from "../utils/commandResult.js";
 
 const opened = vi.hoisted(() => [] as string[]);
 const plan = vi.hoisted(() => ({ calls: 0 }));
+const terminal = vi.hoisted(() => ({ attended: false, checkouts: 0 }));
+
+vi.mock("../utils/attendedTerminal.js", () => ({ isUnattended: () => !terminal.attended }));
+vi.mock("node:readline/promises", () => ({
+  createInterface: () => ({
+    question: (_q: string, opts: { signal: AbortSignal }) =>
+      new Promise((_resolve, reject) =>
+        opts.signal.addEventListener("abort", () =>
+          reject(Object.assign(new Error("aborted"), { name: "AbortError" })),
+        ),
+      ),
+    close: () => undefined,
+  }),
+}));
 
 vi.mock("../auth/browser.js", () => ({
   openBrowser: async (url: string) => void opened.push(url),
@@ -13,7 +27,10 @@ vi.mock("../heygen/plan.js", async (importOriginal) => {
   return {
     ...real,
     readOffer: async () => ({}),
-    createCheckout: async () => "https://checkout.stripe.com/c/pay/cs_test_1",
+    createCheckout: async () => {
+      terminal.checkouts++;
+      return "https://checkout.stripe.com/c/pay/cs_test_1";
+    },
     readPlan: async () => ({
       plan: ++plan.calls === 1 ? "none" : "pro",
       credits: plan.calls === 1 ? 0 : 500,
@@ -26,6 +43,8 @@ const { default: billing } = await import("./billing.js");
 afterEach(() => {
   opened.length = 0;
   plan.calls = 0;
+  terminal.attended = false;
+  terminal.checkouts = 0;
   vi.restoreAllMocks();
   consumeCommandResult();
 });
@@ -78,6 +97,20 @@ describe("billing without a terminal", () => {
     expect(log.mock.calls.flat().join("\n")).toContain(
       "Checkout link: https://checkout.stripe.com/c/pay/cs_test_1",
     );
+    expect(opened.map((u) => new URL(u).hostname)).toEqual(["hyperframes.studio"]);
+  });
+});
+
+describe("billing at a terminal", () => {
+  it("finishes when the purchase lands while Press Enter is still waiting, and makes no second checkout", async () => {
+    terminal.attended = true;
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    vi.useFakeTimers();
+    const done = runCommand(billing, { rawArgs: ["subscribe"] });
+    await vi.advanceTimersByTimeAsync(2000);
+    await done;
+    vi.useRealTimers();
+    expect(terminal.checkouts).toBe(0);
     expect(opened.map((u) => new URL(u).hostname)).toEqual(["hyperframes.studio"]);
   });
 });

@@ -18,7 +18,6 @@ import { defineCommand } from "../utils/defineCommand.js";
 const describe = (p: Plan | null) =>
   p && p.plan !== "none" ? `${p.plan} plan, ${p.credits.toLocaleString("en-US")} credits` : "Free";
 
-/** The price line the person reads before paying: Pro's monthly price, or what the credits cost against the need. */
 function priceLine(
   kind: "plans" | "credits",
   offer: Offer,
@@ -37,9 +36,12 @@ function priceLine(
   return `${needed ? `This run needs ${needed.toLocaleString("en-US")} credits. ` : ""}${credits} add-on credits: ${price}`;
 }
 
-/** Prepares the checkout with the CLI's own token: opens it when a person presses Enter, prints it when nobody can.
- * A refusal is printed and the page stays the way to buy. */
-async function offerCheckout(kind: "plans" | "credits", before: Plan | null, needed?: number) {
+async function offerCheckout(
+  kind: "plans" | "credits",
+  before: Plan | null,
+  signal: AbortSignal,
+  needed?: number,
+) {
   const offer = await readOffer();
   const missing = needed ? needed - (before?.credits ?? 0) : undefined;
   const line = priceLine(kind, offer, missing, needed);
@@ -50,10 +52,14 @@ async function offerCheckout(kind: "plans" | "credits", before: Plan | null, nee
       return;
     }
     const rl = createInterface({ input: process.stdin, output: process.stdout });
-    await rl.question("Press Enter to pay ");
-    rl.close();
+    try {
+      await rl.question("Press Enter to pay ", { signal });
+    } finally {
+      rl.close();
+    }
     await openBrowser(await createCheckout(kind, offer, missing));
   } catch (error) {
+    if (signal.aborted) return;
     console.error(c.error(error instanceof Error ? error.message : String(error)));
   }
 }
@@ -104,16 +110,22 @@ export default defineCommand({
     });
     console.log(`${action === "subscribe" ? "Plans" : "Credits"} page: ${c.accent(url)}`);
     await openBrowser(url);
-    await offerCheckout(action === "subscribe" ? "plans" : "credits", before, needed);
-    console.log("Waiting for the person to finish ...");
     const deadline = Date.now() + (Number(args.timeout) || 600) * 1000;
-    while (Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, 2000));
-      const now = await readPlan();
-      if (done(now)) {
-        console.log(c.success(`✓ Done: ${describe(now)}. Carry on.`));
-        return;
+    const stop = new AbortController();
+    const waiting = (async () => {
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const now = await readPlan();
+        if (done(now)) return now;
       }
+      return null;
+    })().finally(() => stop.abort());
+    await offerCheckout(action === "subscribe" ? "plans" : "credits", before, stop.signal, needed);
+    console.log("Waiting for the person to finish ...");
+    const now = await waiting;
+    if (now) {
+      console.log(c.success(`✓ Done: ${describe(now)}. Carry on.`));
+      return;
     }
     console.error(
       c.error(
