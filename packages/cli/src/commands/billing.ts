@@ -37,12 +37,47 @@ function priceLine(
   return `${needed ? `This run needs ${needed.toLocaleString("en-US")} credits. ` : ""}${credits} credits: ${price}`;
 }
 
+type Done = (p: Plan | null) => boolean;
+
+/** On Enter, reads the plan again: paid on the page meanwhile opens nothing, a plan it cannot read opens nothing
+ * (the wait carries on), and a balance that moved shows the new price and asks again before any checkout. */
+async function payOnEnter(
+  kind: "plans" | "credits",
+  offer: Offer,
+  done: Done,
+  shown: string | undefined,
+  needed?: number,
+) {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    for (;;) {
+      await rl.question("Press Enter to pay ");
+      const now = await readPlan();
+      if (!now || now.mock) {
+        console.log("Could not read your plan, so no checkout opened. Finish on the page.");
+        return;
+      }
+      if (done(now)) return;
+      const missing = needed ? needed - now.credits : undefined;
+      const line = priceLine(kind, offer, missing, needed);
+      if (line === shown) {
+        await openBrowser(await createCheckout(kind, offer, missing));
+        return;
+      }
+      if (line) console.log(line);
+      shown = line;
+    }
+  } finally {
+    rl.close();
+  }
+}
+
 /** Prepares the checkout with the CLI's own token: opens it when a person presses Enter, prints it when nobody can.
- * A refusal is printed and the page stays the way to buy. Bought on the page before Enter: no second checkout. */
+ * A refusal is printed and the page stays the way to buy. */
 async function offerCheckout(
   kind: "plans" | "credits",
   before: Plan | null,
-  done: (p: Plan | null) => boolean,
+  done: Done,
   needed?: number,
 ) {
   const offer = await readOffer();
@@ -50,15 +85,9 @@ async function offerCheckout(
   const line = priceLine(kind, offer, missing, needed);
   if (line) console.log(line);
   try {
-    if (isUnattended()) {
+    if (isUnattended())
       console.log(`Checkout link: ${c.accent(await createCheckout(kind, offer, missing))}`);
-      return;
-    }
-    const rl = createInterface({ input: process.stdin, output: process.stdout });
-    await rl.question("Press Enter to pay ");
-    rl.close();
-    if (done(await readPlan())) return;
-    await openBrowser(await createCheckout(kind, offer, missing));
+    else await payOnEnter(kind, offer, done, line, needed);
   } catch (error) {
     console.error(c.error(error instanceof Error ? error.message : String(error)));
   }
