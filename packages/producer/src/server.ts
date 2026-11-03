@@ -103,7 +103,6 @@ interface RenderInput {
   bufferSize?: string;
   useGpu: boolean;
   debug: boolean;
-  /** Capture with screenshots for this render only, whatever the environment says. */
   forceScreenshot?: true;
   strictness: RenderConfig["strictness"];
   entryFile?: string;
