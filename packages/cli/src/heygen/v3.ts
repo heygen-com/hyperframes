@@ -91,7 +91,7 @@ function liveKey(key: string, scope: string | null): string {
 /** A refused call says what to do: sign in, subscribe, add credits, or change the request. `estimate` is the
  *  caller's own price for the call (what `--plan` prints), named when HeyGen does not say what the step needs. */
 // fallow-ignore-next-line complexity
-function refusal(status: number, body: unknown, estimate?: number): Refused {
+async function refusal(status: number, body: unknown, estimate?: number): Promise<Refused> {
   const err = isRecord(body) && isRecord(body.error) ? body.error : isRecord(body) ? body : {};
   const code = String(err.code ?? err.failure_code ?? "");
   const message = String(err.message ?? err.failure_message ?? "").slice(0, 300);
@@ -104,12 +104,12 @@ function refusal(status: number, body: unknown, estimate?: number): Refused {
   if (/hf_subscription_required/i.test(code))
     return new Refused(
       `this is a HyperFrames Pro feature; nothing was charged. Run \`npx hyperframes billing subscribe\`: it opens the page and waits`,
-      `Subscribe: ${url ?? pageUrl("plans", { needed })}`,
+      `Subscribe: ${url ?? (await pageUrl("plans", { needed }))}`,
     );
   if (/hf_usage_exhausted/i.test(code))
     return new Refused(
       `out of HyperFrames credits (this step needs ${needs}${balance}); nothing was charged. Run \`npx hyperframes billing add-credits${needed ? ` --needed ${needed}` : ""}\`: it opens the page and waits`,
-      `Buy add-on credits: ${url ?? pageUrl("credits", { needed })}`,
+      `Buy add-on credits: ${url ?? (await pageUrl("credits", { needed }))}`,
     );
   if (/api_key_required/i.test(code))
     return new Refused(
@@ -173,7 +173,7 @@ async function call(
       );
     if (err.status >= 500 || err.status < 300 || err.raw == null)
       throw new Fix(`HeyGen ${err.status} for ${route} with no readable answer`, resume);
-    const refused = refusal(err.status, err.raw, estimate);
+    const refused = await refusal(err.status, err.raw, estimate);
     refused.status = err.status;
     throw refused;
   }
@@ -260,7 +260,7 @@ export async function runJob(
   if (opts.log) log(opts.log, { route, id: job.id, key: sent, status: job.status });
   if (!/^(completed|succeeded|success|done)$/i.test(job.status)) {
     markFailed(sent, scope);
-    throw refusal(422, {
+    throw await refusal(422, {
       error: { code: job.failure_code ?? job.status, message: job.failure_message ?? "" },
     });
   }

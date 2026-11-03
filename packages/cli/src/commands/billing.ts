@@ -102,7 +102,7 @@ export default defineCommand({
       console.log(c.success(`✓ Already covered: ${describe(before)}.`));
       return;
     }
-    const url = pageUrl(action === "subscribe" ? "plans" : "credits", {
+    const url = await pageUrl(action === "subscribe" ? "plans" : "credits", {
       needed,
       tool: args.tool,
       feature: args.feature,

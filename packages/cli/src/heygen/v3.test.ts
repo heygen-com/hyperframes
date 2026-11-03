@@ -224,7 +224,8 @@ describe("runJob", () => {
   it("does not let one account's failure move another account's key", async () => {
     const keys: (string | null)[] = [];
     const run = (answers: Response[]) => {
-      vi.stubGlobal("fetch", async (_url: string, init: RequestInit) => {
+      vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
+        if (url.endsWith("/v1/pacific/account.get")) return reply(404, {}); // the refusal link's workspace read
         keys.push(new Headers(init.headers).get("Idempotency-Key"));
         return answers.shift()!;
       });
@@ -252,6 +253,7 @@ describe("runJob", () => {
     ) => {
       const keys: (string | null)[] = [];
       vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
+        if (url.endsWith("/v1/pacific/account.get")) return reply(404, {}); // the refusal link's workspace read
         if (!url.endsWith("/v3/users/me")) {
           if (init.method === "POST") keys.push(new Headers(init.headers).get("Idempotency-Key"));
           const answer = answers.shift()!;

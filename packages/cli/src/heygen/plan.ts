@@ -51,11 +51,26 @@ const webBase = () => "https://hyperframes.studio";
 const plansUrl = () => process.env["HYPERFRAMES_PLANS_URL"] || `${webBase()}/pricing`;
 const creditsUrl = () => process.env["HYPERFRAMES_CREDITS_URL"] || `${webBase()}/pricing`;
 
-/** A plans or credits page link with what the web side reads: `from=cli`, the credits needed, the waiting step. */
-export function pageUrl(
+async function signedInSpace(): Promise<string | undefined> {
+  try {
+    const res = await fetch(`${billingBaseUrl()}/v1/pacific/account.get`, {
+      headers: { ...(await resolveCloudAuthHeaders()), accept: "application/json" },
+      signal: AbortSignal.timeout(5_000),
+    });
+    const body: unknown = await res.json().catch(() => null);
+    const data = isRecord(body) && isRecord(body.data) ? body.data : null;
+    const id = data && isRecord(data.space_info) ? data.space_info.space_id : undefined;
+    return typeof id === "string" && /^[a-zA-Z0-9-]{1,64}$/.test(id) ? id : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** A plans or credits page link with what the web side reads, incl. the signed-in `workspace_hint`. */
+export async function pageUrl(
   kind: "plans" | "credits",
   fields: { needed?: number; tool?: string; feature?: string; rs?: string; base?: string } = {},
-): string {
+): Promise<string> {
   const url = new URL(fields.base ?? (kind === "plans" ? plansUrl() : creditsUrl()));
   url.searchParams.set("from", "cli");
   if (fields.needed) url.searchParams.set("needed_credits", String(fields.needed));
@@ -63,6 +78,8 @@ export function pageUrl(
   if (fields.feature) url.searchParams.set("feature", fields.feature);
   if (fields.rs) url.searchParams.set("rs", fields.rs);
   if (kind === "credits" && !fields.base) url.hash = "packs";
+  const space = await signedInSpace();
+  if (space) url.searchParams.set("workspace_hint", space);
   return url.toString();
 }
 

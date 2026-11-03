@@ -148,19 +148,21 @@ describe("startReverseSession", () => {
 });
 
 describe("reverseUpgradeUrl", () => {
-  it("passes the server's link on as is, else builds the plans page with the fields checkout reads", () => {
+  it("passes the server's link on as is, else builds the plans page with the fields checkout reads", async () => {
     vi.stubEnv("HYPERFRAMES_PLANS_URL", "");
-    expect(reverseUpgradeUrl({ sessionId: SESSION, upgradeUrl: "https://u.test/p?rs=1" })).toBe(
-      "https://u.test/p?rs=1",
-    );
-    expect(reverseUpgradeUrl({ sessionId: SESSION })).toBe(
+    expect(
+      await reverseUpgradeUrl({ sessionId: SESSION, upgradeUrl: "https://u.test/p?rs=1" }),
+    ).toBe("https://u.test/p?rs=1");
+    expect(await reverseUpgradeUrl({ sessionId: SESSION })).toBe(
       `https://hyperframes.studio/pricing?from=cli&feature=reverse&rs=${SESSION}`,
     );
-    expect(reverseUpgradeUrl()).toBe("https://hyperframes.studio/pricing?from=cli&feature=reverse");
+    expect(await reverseUpgradeUrl()).toBe(
+      "https://hyperframes.studio/pricing?from=cli&feature=reverse",
+    );
   });
 
-  it("is null when the server withholds the link, instead of building one", () => {
-    expect(reverseUpgradeUrl({ sessionId: SESSION, upgradeUrl: null })).toBeNull();
+  it("is null when the server withholds the link, instead of building one", async () => {
+    expect(await reverseUpgradeUrl({ sessionId: SESSION, upgradeUrl: null })).toBeNull();
   });
 });
 

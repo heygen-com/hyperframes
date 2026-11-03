@@ -54,12 +54,14 @@ async function fallbackPlan(): Promise<"free" | "pro" | undefined> {
 }
 
 /** The link that credits a purchase to this run: the server's (null: none can be bought), else the plans page. */
-export function reverseUpgradeUrl(session?: {
+export async function reverseUpgradeUrl(session?: {
   sessionId: string;
   upgradeUrl?: string | null;
-}): string | null {
+}): Promise<string | null> {
   if (session?.upgradeUrl === null) return null;
-  return session?.upgradeUrl ?? pageUrl("plans", { feature: "reverse", rs: session?.sessionId });
+  return (
+    session?.upgradeUrl ?? (await pageUrl("plans", { feature: "reverse", rs: session?.sessionId }))
+  );
 }
 
 /**

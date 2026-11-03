@@ -1,5 +1,5 @@
 import { runCommand } from "citty";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { consumeCommandResult } from "../utils/commandResult.js";
 
 const opened = vi.hoisted(() => [] as string[]);
@@ -22,6 +22,10 @@ vi.mock("node:readline/promises", () => ({
 vi.mock("../auth/browser.js", () => ({
   openBrowser: async (url: string) => void opened.push(url),
 }));
+vi.mock("../cloud/auth.js", () => ({
+  resolveCloudAuthHeaders: async () => ({ "x-api-key": "k" }),
+  resolveCloudBaseUrl: () => "https://api.example.test",
+}));
 vi.mock("../heygen/plan.js", async (importOriginal) => {
   const real = await importOriginal<typeof import("../heygen/plan.js")>();
   return {
@@ -40,7 +44,15 @@ vi.mock("../heygen/plan.js", async (importOriginal) => {
 
 const { default: billing } = await import("./billing.js");
 
+beforeEach(() => {
+  vi.stubGlobal(
+    "fetch",
+    async () => new Response(JSON.stringify({ data: { space_info: { space_id: "sp-1" } } })),
+  );
+});
+
 afterEach(() => {
+  vi.unstubAllGlobals();
   opened.length = 0;
   plan.calls = 0;
   terminal.attended = false;
@@ -62,6 +74,7 @@ describe("billing subscribe", () => {
     const url = new URL(opened[0] ?? "");
     expect(url.searchParams.get("feature")).toBe("reverse");
     expect(url.searchParams.get("rs")).toBe("rvs_abc");
+    expect(url.searchParams.get("workspace_hint")).toBe("sp-1");
   });
 });
 
