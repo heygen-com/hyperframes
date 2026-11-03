@@ -93,7 +93,10 @@ function host(
 
 const captureCanvas = (root: HTMLElement) => root.parentElement as HTMLCanvasElement;
 
+const rangeRect = Range.prototype.getBoundingClientRect;
+
 beforeEach(() => {
+  Range.prototype.getBoundingClientRect = () => new DOMRect();
   setFilterFallbackForTests(false);
   contexts = [];
   vi.spyOn(console, "info").mockImplementation(() => {});
@@ -101,6 +104,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  Range.prototype.getBoundingClientRect = rangeRect;
   resetCaptureMotionBlurForTests();
   setFilterFallbackForTests(true);
   vi.restoreAllMocks();

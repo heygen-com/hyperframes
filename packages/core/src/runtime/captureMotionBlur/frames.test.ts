@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { readMoverFrames } from "./frames";
-import { IDENTITY, translate } from "./pose";
+import { type Affine, IDENTITY, translate } from "./pose";
 
 /** Fixed layout for jsdom: an element's offset box and its client rect. */
 function laidOut(el: HTMLElement, w: number, h: number, rect: [number, number, number, number]) {
@@ -11,7 +11,48 @@ function laidOut(el: HTMLElement, w: number, h: number, rect: [number, number, n
     ({ left, top, right, bottom, width: right - left, height: bottom - top }) as DOMRect;
 }
 
+const rect = ([left, top, right, bottom]: [number, number, number, number]) =>
+  ({ left, top, right, bottom, width: right - left, height: bottom - top }) as DOMRect;
+
+/** jsdom has no Range rects: the text inside a node measures as `of(node)`. */
+function textRects(of: (node: Node) => [number, number, number, number]) {
+  let node: Node | null = null;
+  const proto = Range.prototype as unknown as Record<string, unknown>;
+  proto.selectNodeContents = (n: Node) => {
+    node = n;
+  };
+  proto.getBoundingClientRect = () => rect(node ? of(node) : [0, 0, 0, 0]);
+}
+
+function read(mover: HTMLElement, scene: HTMLElement, pose: Affine) {
+  return readMoverFrames({
+    movers: [mover],
+    reader: { pose: () => pose, reset: () => {} } as never,
+    seek: () => {},
+    t: 0.5,
+    reads: 2,
+    shutterSeconds: 1 / 45,
+    taps: 4,
+    frameW: 1920,
+    frameH: 1080,
+    scene,
+  }).frames[0];
+}
+
+const RANGE_STUBS = ["selectNodeContents", "getBoundingClientRect"];
+const realRange = RANGE_STUBS.map(
+  (k) => (Range.prototype as unknown as Record<string, unknown>)[k],
+);
+
 describe("readMoverFrames", () => {
+  beforeEach(() => textRects(() => [0, 0, 0, 0]));
+  afterEach(() => {
+    RANGE_STUBS.forEach((k, i) => {
+      (Range.prototype as unknown as Record<string, unknown>)[k] = realRange[i];
+    });
+    document.body.innerHTML = "";
+  });
+
   // A wordmark in a 540 px box whose one-line text runs to 1528 px: the box is the layout, the
   // text is the picture. Cropping to the box drew "HyperFra" for "HyperFrames Studio".
   it("sizes the redraw to content that overflows the mover's box", () => {
@@ -44,7 +85,6 @@ describe("readMoverFrames", () => {
     expect(x).toBe(0.5);
     expect(frames[0]?.w).toBeGreaterThanOrEqual(1528);
     expect(frames[0]?.h).toBeGreaterThanOrEqual(240);
-    document.body.innerHTML = "";
   });
 
   it("keeps the box as it is when its content stays inside", () => {
@@ -71,6 +111,38 @@ describe("readMoverFrames", () => {
       scene,
     });
     expect(frames[0]).toMatchObject({ w: 200, h: 100, now: pose });
-    document.body.innerHTML = "";
+  });
+  // A block child is as wide as the mover however long its text: only the text's own rects show it.
+  it("sizes the redraw to text that overflows a block child", () => {
+    const scene = document.createElement("div");
+    const brand = document.createElement("div");
+    const word = document.createElement("div");
+    word.textContent = "HyperFrames Studio";
+    brand.append(word);
+    scene.append(brand);
+    document.body.append(scene);
+    laidOut(scene, 1920, 1080, [0, 0, 1920, 1080]);
+    laidOut(brand, 540, 110, [100, 50, 640, 160]);
+    laidOut(word, 540, 110, [100, 50, 640, 160]);
+    textRects(() => [100, 50, 981, 160]);
+    expect(read(brand, scene, translate(IDENTITY, 100, 50))?.w).toBe(881);
+  });
+
+  // Upright client rects of a rotated mover's children cover its corners, not its content.
+  it("keeps a rotated mover's box when its content stays inside", () => {
+    const scene = document.createElement("div");
+    const box = document.createElement("div");
+    const fill = document.createElement("div");
+    box.append(fill);
+    scene.append(box);
+    document.body.append(scene);
+    const c = Math.SQRT1_2;
+    const upright: [number, number, number, number] = [1059, 600, 1341, 883];
+    laidOut(scene, 1920, 1080, [0, 0, 1920, 1080]);
+    laidOut(box, 200, 200, upright);
+    laidOut(fill, 200, 200, upright);
+    textRects(() => upright);
+    const frame = read(box, scene, { a: c, b: c, c: -c, d: c, e: 1200, f: 600 });
+    expect(frame).toMatchObject({ w: 200, h: 200 });
   });
 });

@@ -28,6 +28,14 @@ function clientToMover(pose: Affine, scene: HTMLElement, frameW: number): Affine
   });
 }
 
+const SUBPIXEL = 0.5;
+
+const within = (r: DOMRect, o: DOMRect): boolean =>
+  r.left >= o.left - SUBPIXEL &&
+  r.top >= o.top - SUBPIXEL &&
+  r.right <= o.right + SUBPIXEL &&
+  r.bottom <= o.bottom + SUBPIXEL;
+
 function growToRect(box: Box, back: Affine, r: DOMRect): void {
   for (const [x, y] of [
     [r.left, r.top],
@@ -51,10 +59,16 @@ function contentBox(el: HTMLElement, pose: Affine, scene: HTMLElement, frameW: n
   if (cs.overflowX !== "visible" && cs.overflowY !== "visible") return box;
   const back = clientToMover(pose, scene, frameW);
   if (!back) return box;
+  const own = el.getBoundingClientRect();
+  const growOutside = (r: DOMRect): void => {
+    if (r.width && r.height && !within(r, own)) growToRect(box, back, r);
+  };
+  const text = el.ownerDocument.createRange();
+  text.selectNodeContents(el);
+  growOutside(text.getBoundingClientRect());
   const walker = el.ownerDocument.createTreeWalker(el, NodeFilter.SHOW_ELEMENT);
   for (let n = 0; n < CONTENT_NODE_LIMIT && walker.nextNode(); n++) {
-    const r = (walker.currentNode as Element).getBoundingClientRect();
-    if (r.width && r.height) growToRect(box, back, r);
+    growOutside((walker.currentNode as Element).getBoundingClientRect());
   }
   return [Math.floor(box[0]), Math.floor(box[1]), Math.ceil(box[2]), Math.ceil(box[3])];
 }
