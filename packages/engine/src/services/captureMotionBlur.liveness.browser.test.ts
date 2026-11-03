@@ -10,7 +10,7 @@ import { FIXTURES, type BlurFixture } from "./__fixtures__/motionBlur/fixtures.j
 const MIN_CLOCK_ADVANCE_S = 0.3;
 const MIN_DISTINCT_FRAMES = 3;
 const LIVENESS_DEADLINE_MS = 3_000;
-const BLANK_WINDOW_MS = 400;
+const WRAP_DEADLINE_MS = 3_000;
 const CASE_TIMEOUT_MS = 30_000;
 
 type PlayerWindow = Window & {
@@ -19,7 +19,6 @@ type PlayerWindow = Window & {
 };
 
 interface BlankCensus {
-  callbacks: number;
   wrapped: number;
   blank: number;
   /** Wrapped callbacks whose output canvas has no 2d context, which the detector cannot read. */
@@ -125,17 +124,22 @@ async function checkKeepsChanging(browser: Browser, fixture: BlurFixture): Promi
   }
 }
 
-/** Plays for BLANK_WINDOW_MS and counts, in each animation frame callback, a wrapped root over an empty output canvas. */
+/**
+ * Plays until the root is wrapped and reads the output canvas the moment the wrap lands. A MutationObserver
+ * runs when the wrap's own task ends, so the read cannot fall between two polls. The wrap clears the output and
+ * moves the root into the capture canvas, which the page does not render; the first draw needs a later paint.
+ * An output with no ink at that moment is what the next presented frame shows. How many frames reach the
+ * screen before the first draw depends on where the wrap falls between two vsyncs (zero or one here), so that
+ * count is not asserted.
+ */
 async function censusOfBlankFrames(browser: Browser, fixture: BlurFixture): Promise<BlankCensus> {
   const { page, preview } = await openPreview(browser, fixture);
   try {
     return await preview.evaluate(
-      (windowMs) =>
+      (deadlineMs) =>
         new Promise<BlankCensus>((done) => {
-          const census = { callbacks: 0, wrapped: 0, blank: 0, unreadable: 0 };
+          const census = { wrapped: 0, blank: 0, unreadable: 0 };
           const root = document.getElementById("root") as HTMLElement;
-          const output = (): HTMLCanvasElement | null =>
-            document.querySelector('canvas[data-hf-motion-blur="output"]');
           const hasInk = (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement): boolean => {
             for (let i = 0; i < 8; i++)
               for (let j = 0; j < 8; j++) {
@@ -145,27 +149,26 @@ async function censusOfBlankFrames(browser: Browser, fixture: BlurFixture): Prom
               }
             return false;
           };
-          const onFrame = (): void => {
-            census.callbacks++;
-            const out = output();
-            const parent = root.parentElement;
-            if (out && parent?.getAttribute("data-hf-motion-blur") === "capture") {
-              census.wrapped++;
-              const ctx = out.getContext("2d");
-              if (!ctx) census.unreadable++;
-              else if (!hasInk(ctx, out)) census.blank++;
-            }
-          };
-          const start = performance.now();
-          const tick = (): void => {
-            onFrame();
-            if (performance.now() - start < windowMs) requestAnimationFrame(tick);
-            else done(census);
-          };
+          const observer = new MutationObserver(() => {
+            if (root.parentElement?.getAttribute("data-hf-motion-blur") !== "capture") return;
+            observer.disconnect();
+            census.wrapped++;
+            const out = document.querySelector<HTMLCanvasElement>(
+              'canvas[data-hf-motion-blur="output"]',
+            );
+            const ctx = out?.getContext("2d");
+            if (!out || !ctx) census.unreadable++;
+            else if (!hasInk(ctx, out)) census.blank++;
+            done(census);
+          });
+          observer.observe(document, { subtree: true, childList: true });
+          setTimeout(() => {
+            observer.disconnect();
+            done(census);
+          }, deadlineMs);
           (window as PlayerWindow).__player?.play();
-          requestAnimationFrame(tick);
         }),
-      BLANK_WINDOW_MS,
+      WRAP_DEADLINE_MS,
     );
   } finally {
     await stopPlaying(preview).catch(() => {});
@@ -181,7 +184,7 @@ async function censusOfAll(browser: Browser): Promise<{ name: string; census: Bl
 }
 
 const describeRow = ({ name, census }: { name: string; census: BlankCensus }): string =>
-  `${name}: ${census.callbacks} callbacks, ${census.wrapped} wrapped, ${census.blank} blank, ${census.unreadable} unreadable`;
+  `${name}: ${census.wrapped} wrapped, ${census.blank} blank, ${census.unreadable} unreadable`;
 
 describe.skipIf(!hasBrowser)("a playing capture motion blur preview in Chrome", () => {
   let browser: Browser;
@@ -215,11 +218,11 @@ describe.skipIf(!hasBrowser)("a playing capture motion blur preview in Chrome", 
       ).toBe(0);
       expect(
         total((c) => c.wrapped),
-        `the detector never saw a wrapped root, so it cannot see a blank frame (${summary})`,
-      ).toBeGreaterThan(0);
+        `the detector did not see every fixture's root wrapped, so it cannot see a blank frame (${summary})`,
+      ).toBe(rows.length);
       expect(
         total((c) => c.blank),
-        `no blank frame seen after play(). Either the bug is fixed (delete this case, keep the wrapped > 0 guard and assert blank == 0) or the detector missed it on this runner (its animation frame callbacks missed the gap between the wrap and the first draw). Census over the first ${BLANK_WINDOW_MS} ms: ${summary}`,
+        `no blank frame seen after play(). Either the bug is fixed (delete this case, keep the wrapped > 0 guard and assert blank == 0) or the wrap no longer leaves the output empty (${summary})`,
       ).toBeGreaterThan(0);
     },
     CASE_TIMEOUT_MS * 2,
