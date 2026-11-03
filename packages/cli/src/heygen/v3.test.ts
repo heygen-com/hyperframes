@@ -182,6 +182,20 @@ describe("runJob", () => {
     });
   });
 
+  it.each(["hf_subscription_required", "hf_usage_exhausted"])(
+    "gives no purchase link for %s when HeyGen withholds it (url: null)",
+    async (code) => {
+      vi.stubGlobal("fetch", async () => reply(402, { error: { code, url: null } }));
+      const refused = await runJob(X, {}, "k").catch((err: unknown) => err);
+      expect(refused).toMatchObject({
+        fix: expect.stringContaining("can't be purchased right now"),
+      });
+      expect(refused).toMatchObject({ url: undefined });
+      expect(JSON.stringify(refused)).not.toContain("https://");
+      expect(String((refused as Error).message)).not.toContain("https://");
+    },
+  );
+
   it("names what an out-of-credits step needs, from the call's own price when HeyGen does not say", async () => {
     vi.stubGlobal("fetch", async () => reply(402, { error: { code: "hf_usage_exhausted" } }));
     await expect(runJob(X, {}, "k", { credits: 782 })).rejects.toMatchObject({

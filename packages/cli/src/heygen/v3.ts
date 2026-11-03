@@ -97,12 +97,18 @@ async function refusal(status: number, body: unknown, estimate?: number): Promis
   const code = String(err.code ?? err.failure_code ?? "");
   const message = String(err.message ?? err.failure_message ?? "").slice(0, 300);
   const url = typeof err.url === "string" ? err.url : undefined;
+  const purchaseClosed = err.url === null;
   const given = Number(err.needed_credits) || undefined;
   const needed = given ?? (estimate || undefined);
   const needs = given ? `${given} in total` : needed ? `about ${needed} in total` : "more";
   const balance = err.balance === undefined ? "" : `, balance ${String(err.balance)}`;
   // The fix is the one line the agent relays as printed; the problem says how to wait for the person.
   if (/hf_subscription_required/i.test(code)) {
+    if (purchaseClosed)
+      return new Refused(
+        "this is a HyperFrames Pro feature, and a plan can't be purchased right now; nothing was charged",
+        "tell the person a plan can't be purchased right now, and give no link",
+      );
     const link = url ?? (await pageUrl("plans", { needed }));
     return new Refused(
       `this is a HyperFrames Pro feature; nothing was charged. Run \`npx hyperframes billing subscribe\`: it opens the page and waits`,
@@ -111,6 +117,11 @@ async function refusal(status: number, body: unknown, estimate?: number): Promis
     );
   }
   if (/hf_usage_exhausted/i.test(code)) {
+    if (purchaseClosed)
+      return new Refused(
+        `out of HyperFrames credits (this step needs ${needs}${balance}), and credits can't be purchased right now; nothing was charged`,
+        "tell the person credits can't be purchased right now, and give no link",
+      );
     const link = url ?? (await pageUrl("credits", { needed }));
     return new Refused(
       `out of HyperFrames credits (this step needs ${needs}${balance}); nothing was charged. Run \`npx hyperframes billing add-credits${needed ? ` --needed ${needed}` : ""}\`: it opens the page and waits`,
