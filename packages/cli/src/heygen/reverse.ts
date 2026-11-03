@@ -11,7 +11,7 @@ export interface ReverseSession {
   sessionId: string;
   plan: ReversePlan;
   gate: ReverseGate;
-  upgradeUrl?: string;
+  upgradeUrl?: string | null;
 }
 
 export type ReverseStart =
@@ -41,7 +41,8 @@ function parseSession(body: unknown): ReverseSession | undefined {
   const plan = oneOf(data.plan, PLANS);
   const gate = oneOf(data.gate, GATES);
   if (!sessionId || !plan || !gate) return undefined;
-  const upgradeUrl = typeof data.upgrade_url === "string" ? { upgradeUrl: data.upgrade_url } : {};
+  const url = data.upgrade_url;
+  const upgradeUrl = typeof url === "string" || url === null ? { upgradeUrl: url } : {};
   return { sessionId, plan, gate, ...upgradeUrl };
 }
 
@@ -52,8 +53,12 @@ async function fallbackPlan(): Promise<"free" | "pro" | undefined> {
   return plan.plan === "none" ? "free" : "pro";
 }
 
-/** The link that credits a purchase to this run: the server's, else the plans page with the same fields. */
-export function reverseUpgradeUrl(session?: { sessionId: string; upgradeUrl?: string }): string {
+/** The link that credits a purchase to this run: the server's (null: none can be bought), else the plans page. */
+export function reverseUpgradeUrl(session?: {
+  sessionId: string;
+  upgradeUrl?: string | null;
+}): string | null {
+  if (session?.upgradeUrl === null) return null;
   return session?.upgradeUrl ?? pageUrl("plans", { feature: "reverse", rs: session?.sessionId });
 }
 
