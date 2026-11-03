@@ -274,7 +274,7 @@ const GSAP_FALLBACK_ATTR = "data-hf-gsap-fallback";
 function gsapCdnFallbackScript(baseUrl: string): string {
   return `<script ${GSAP_FALLBACK_ATTR}>
 (function(){
-  var cdnBase=${JSON.stringify(gsapCdnDist(undefined, baseUrl)).replace(/</g, "\\u003c")};
+  var cdnBase=${scriptJson(gsapCdnDist(undefined, baseUrl))};
   var loaded={};
   function loadFallback(file){
     if(loaded[file])return loaded[file];
@@ -350,10 +350,17 @@ function previewVariablesFromRequest(rawVariables: string | undefined):
 /** Captures screenshot right after a seek, so they get every image eager; media loads near the playhead. */
 export const PREVIEW_CAPTURE_PARAM = "hf-capture";
 
+export function scriptJson(value: unknown): string {
+  return JSON.stringify(value)
+    .replace(/</g, "\\u003c")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
+}
+
 // Studio's console capture attaches at the iframe's load; this keeps what was raised before it.
 const earlyErrorsScript = (
   runtimeUrl: string,
-) => `<script>(function(){var seen=window.${STUDIO_PREVIEW_ERRORS}=[],kinds=window.${STUDIO_PREVIEW_ERROR_KINDS}=[],known={SyntaxError:1,TypeError:1,ReferenceError:1,RangeError:1},runtime=${JSON.stringify(new URL(runtimeUrl, "http://x").pathname)};
+) => `<script>(function(){var seen=window.${STUDIO_PREVIEW_ERRORS}=[],kinds=window.${STUDIO_PREVIEW_ERROR_KINDS}=[],known={SyntaxError:1,TypeError:1,ReferenceError:1,RangeError:1},runtime=${scriptJson(new URL(runtimeUrl, "http://x").pathname)};
 addEventListener("error",function(e){seen.push(e.message||String(e));
 var name=e.error&&e.error.constructor&&e.error.constructor.name,path="";
 try{var url=e.filename&&new URL(e.filename,window.location.href);if(url&&url.origin===window.location.origin)path=url.pathname}catch(_){}

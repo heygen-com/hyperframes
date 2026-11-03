@@ -28,7 +28,12 @@ import {
   STUDIO_PREVIEW_MARK_META,
 } from "@hyperframes/core/studio-preview-mark";
 import { AFTER_FONTS_SCRIPT_TYPE } from "@hyperframes/core/compiler";
-import { PREVIEW_BUNDLE_OPTIONS, PREVIEW_CAPTURE_PARAM, registerPreviewRoutes } from "./preview";
+import {
+  PREVIEW_BUNDLE_OPTIONS,
+  PREVIEW_CAPTURE_PARAM,
+  registerPreviewRoutes,
+  scriptJson,
+} from "./preview";
 import { registerFileRoutes } from "./files";
 import { createPreviewDocumentStore } from "../helpers/previewDocumentStore";
 import { MAX_OPEN_MEDIA_RANGE_BYTES } from "../helpers/mediaRange";
@@ -373,6 +378,12 @@ describe("registerPreviewRoutes", () => {
     );
     raise({ message: "Uncaught Error: GSAP could not load" });
     expect(previewWindow[STUDIO_PREVIEW_ERRORS]).toEqual(["Uncaught Error: GSAP could not load"]);
+  });
+
+  it("writes a value into a script so it cannot close the tag or end the line", () => {
+    const out = scriptJson("</script><!--\u2028\u2029");
+    expect(out).not.toMatch(/<|\u2028|\u2029/);
+    expect(JSON.parse(out)).toBe("</script><!--\u2028\u2029");
   });
 
   it("records the kind and origin of each early error, never its text, and leaves the messages as they were", async () => {
