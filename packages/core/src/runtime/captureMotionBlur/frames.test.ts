@@ -145,4 +145,36 @@ describe("readMoverFrames", () => {
     const frame = read(box, scene, { a: c, b: c, c: -c, d: c, e: 1200, f: 600 });
     expect(frame).toMatchObject({ w: 200, h: 200 });
   });
+
+  // Its unrotated text at local y 90-110 runs to x 260; rotated, that lands in the upright rect's corner.
+  it("sizes a rotated mover's redraw to text that overflows it", () => {
+    const scene = document.createElement("div");
+    const box = document.createElement("div");
+    box.setAttribute("style", "transform: rotate(45deg)");
+    box.textContent = "HyperFrames";
+    scene.append(box);
+    document.body.append(scene);
+    const c = Math.SQRT1_2;
+    const rotated: Affine = { a: c, b: c, c: -c, d: c, e: 1200, f: 600 };
+    const unrotated = translate(IDENTITY, 1100, 600);
+    const off = () => box.getAttribute("style")?.includes("transform: none") ?? false;
+    laidOut(scene, 1920, 1080, [0, 0, 1920, 1080]);
+    laidOut(box, 200, 200, [0, 0, 0, 0]);
+    box.getBoundingClientRect = () => rect(off() ? [1100, 600, 1300, 800] : [1059, 600, 1341, 883]);
+    textRects(() => (off() ? [1100, 690, 1360, 710] : [1122, 663, 1320, 862]));
+    const frame = readMoverFrames({
+      movers: [box],
+      reader: { pose: () => (off() ? unrotated : rotated), reset: () => {} } as never,
+      seek: () => {},
+      t: 0.5,
+      reads: 2,
+      shutterSeconds: 1 / 45,
+      taps: 4,
+      frameW: 1920,
+      frameH: 1080,
+      scene,
+    }).frames[0];
+    expect(frame).toMatchObject({ w: 260, h: 200 });
+    expect(box.getAttribute("style")).toBe("transform: rotate(45deg)");
+  });
 });

@@ -14,6 +14,7 @@ import {
 const CONTENT_NODE_LIMIT = 256;
 
 type Box = [number, number, number, number];
+type PoseReader = ReturnType<typeof createPoseReader>;
 
 function clientToMover(pose: Affine, scene: HTMLElement, frameW: number): Affine | null {
   const sr = scene.getBoundingClientRect();
@@ -52,11 +53,8 @@ function growToRect(box: Box, back: Affine, r: DOMRect): void {
   }
 }
 
-/** The crop is cut to this box, so it must hold content that overflows the mover (wide text). */
-function contentBox(el: HTMLElement, pose: Affine, scene: HTMLElement, frameW: number): Box {
+function grownBox(el: HTMLElement, pose: Affine, scene: HTMLElement, frameW: number): Box {
   const box: Box = [0, 0, el.offsetWidth, el.offsetHeight];
-  const cs = getComputedStyle(el);
-  if (cs.overflowX !== "visible" && cs.overflowY !== "visible") return box;
   const back = clientToMover(pose, scene, frameW);
   if (!back) return box;
   const own = el.getBoundingClientRect();
@@ -73,9 +71,33 @@ function contentBox(el: HTMLElement, pose: Affine, scene: HTMLElement, frameW: n
   return [Math.floor(box[0]), Math.floor(box[1]), Math.ceil(box[2]), Math.ceil(box[3])];
 }
 
+const UNTRANSFORMED =
+  "transform: none !important; rotate: none !important; scale: none !important; translate: none !important";
+
+/** The crop is cut to this box, so it must hold content that overflows the mover (wide text). */
+function contentBox(el: HTMLElement, reader: PoseReader, scene: HTMLElement, frameW: number): Box {
+  const cs = getComputedStyle(el);
+  if (cs.overflowX !== "visible" && cs.overflowY !== "visible") {
+    return [0, 0, el.offsetWidth, el.offsetHeight];
+  }
+  const pose = reader.pose(el);
+  if (pose.b === 0 && pose.c === 0) return grownBox(el, pose, scene, frameW);
+  // Upright rects of rotated content leave its corners out, so it is measured unrotated.
+  const style = el.getAttribute("style");
+  el.setAttribute("style", `${style ?? ""};${UNTRANSFORMED}`);
+  reader.reset();
+  try {
+    return grownBox(el, reader.pose(el), scene, frameW);
+  } finally {
+    if (style === null) el.removeAttribute("style");
+    else el.setAttribute("style", style);
+    reader.reset();
+  }
+}
+
 export interface FrameRequest {
   movers: HTMLElement[];
-  reader: ReturnType<typeof createPoseReader>;
+  reader: PoseReader;
   seek: (t: number) => void;
   restore?: (t: number) => void;
   t: number;
@@ -109,10 +131,10 @@ export function readMoverFrames(req: FrameRequest): { els: HTMLElement[]; frames
   r.reset();
   const frames = visible.map((el, i) => {
     const pad = req.pads?.get(el) ?? 0;
-    const pose = r.pose(el);
     const [x0, y0, x1, y1] = req.scene
-      ? contentBox(el, pose, req.scene, req.frameW)
+      ? contentBox(el, r, req.scene, req.frameW)
       : [0, 0, el.offsetWidth, el.offsetHeight];
+    const pose = r.pose(el);
     const w = x1 - x0 + 2 * pad;
     const h = y1 - y0 + 2 * pad;
     const ox = x0 - pad;
