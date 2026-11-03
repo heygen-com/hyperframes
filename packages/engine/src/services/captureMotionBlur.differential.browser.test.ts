@@ -129,6 +129,32 @@ async function measureOutside(
     block: INVARIANTS.block,
     maxMae: INVARIANTS.outsideMaxMae,
   });
+  // TEMP-DIAG: remove after the Linux/Windows text-tile difference is explained.
+  const worst = d.bad[0];
+  if (worst) {
+    const tile = (img: Rgba): { chroma: number; lum: string } => {
+      let chroma = 0;
+      const rows: string[] = [];
+      for (let y = 0; y < 16; y++) {
+        let row = "";
+        for (let x = 0; x < 16; x++) {
+          const i = ((worst.y + y) * img.width + worst.x + x) * 4;
+          const r = img.data[i] ?? 0;
+          const g = img.data[i + 1] ?? 0;
+          const b = img.data[i + 2] ?? 0;
+          chroma = Math.max(chroma, Math.abs(r - g) + Math.abs(g - b));
+          row += g.toString(16).padStart(2, "0");
+        }
+        rows.push(row);
+      }
+      return { chroma, lum: rows.join("/") };
+    };
+    const a = tile(reference);
+    const b = tile(onFrame);
+    console.error(
+      `[diag] ${f.name}@${t} tile(${worst.x},${worst.y}) off.chroma=${a.chroma} on.chroma=${b.chroma}\n off=${a.lum}\n on =${b.lum}`,
+    );
+  }
   return { d, region };
 }
 
