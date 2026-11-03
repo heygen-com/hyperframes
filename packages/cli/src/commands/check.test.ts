@@ -1,3 +1,4 @@
+import type { CheckProgress } from "../utils/checkProgress.js";
 import { runCommand } from "citty";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -2275,6 +2276,40 @@ describe("check pipeline", () => {
         "check_runtime_failure",
       );
       expect(collectLayout.mock.calls.length * 30).toBeGreaterThan(120);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("slow analysis calls that each finish keep the check alive past 120 s", async () => {
+    vi.useFakeTimers();
+    try {
+      let analysing = false;
+      const slowWhenAnalysing = async () => {
+        if (analysing) await new Promise((resolve) => setTimeout(resolve, 100_000));
+      };
+      const hasNoTimelineDeclaration = vi.fn(async () => {
+        await slowWhenAnalysing();
+        return false;
+      });
+      const getCanvas = vi.fn(async () => {
+        await slowWhenAnalysing();
+        return { width: 1920, height: 1080 };
+      });
+      const driver = fakeDriver({ hasNoTimelineDeclaration, getCanvas });
+      const { deps } = dependencies(driver);
+      deps.runBrowserCheck = async (_project, options, motion, deadline) => {
+        deadline!.start();
+        const report: CheckProgress = (phase) => {
+          if (phase === "analyze") analysing = true;
+        };
+        return runAuditGrid(driver, options, motion, undefined, deadline!.enter, report);
+      };
+      const pending = runCheckPipeline(PROJECT, DEFAULT_CHECK_OPTIONS, deps);
+      await vi.advanceTimersByTimeAsync(2_000_000);
+      const codes = (await pending).runtime.findings.map((finding) => finding.code);
+      expect(codes).not.toContain("check_runtime_failure");
+      expect(hasNoTimelineDeclaration).toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }
