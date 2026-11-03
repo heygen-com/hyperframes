@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mediaElementTime } from "./mediaClock";
 import {
   isRenderFrameVideo,
+  preloadFromInPoint,
   preloadMedia,
   prepareUpcomingMedia,
   releaseMedia,
@@ -259,5 +260,65 @@ describe("preparing upcoming video playback", () => {
     element.dispatchEvent(new Event("loadedmetadata"));
     expect(element.currentTime).toBeCloseTo(6, 3);
     element.remove();
+  });
+});
+
+describe("a clip due later whose in-point is deep in a shared file, in WebKit", () => {
+  const webkit =
+    "Mozilla/5.0 AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15";
+  afterEach(() => vi.restoreAllMocks());
+  const clip = (mediaStart: string) => {
+    const audio = document.createElement("audio");
+    audio.setAttribute("data-media-start", mediaStart);
+    audio.preload = "none";
+    document.body.appendChild(audio);
+    return audio;
+  };
+
+  it("sets its start position before it reads, so the first read is at the in-point", () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(webkit);
+    const audio = clip("255");
+    const order: string[] = [];
+    let position = 0;
+    Object.defineProperty(audio, "currentTime", {
+      get: () => position,
+      set: (to: number) => {
+        order.push(`start:${preloadAt()}`);
+        position = to;
+      },
+    });
+    const preloadAt = () => audio.preload;
+    vi.spyOn(audio, "load").mockImplementation(() => void order.push(`load:${audio.preload}`));
+    preloadFromInPoint(audio, () => true);
+    expect(order[0]).toBe("start:none");
+    expect(position).toBeCloseTo(255, 3);
+    expect(audio.preload).toBe("auto");
+    audio.remove();
+  });
+
+  it("does not reload a clip whose load is already pending", () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(webkit);
+    const audio = clip("255");
+    Object.defineProperty(audio, "networkState", { value: 1 });
+    const load = vi.spyOn(audio, "load").mockImplementation(() => {});
+    preloadFromInPoint(audio, () => true);
+    expect(load).not.toHaveBeenCalled();
+    expect(audio.preload).toBe("auto");
+    audio.remove();
+  });
+
+  it("loads a WebKit clip at the front of its file, and a deep one off WebKit, as before", () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(webkit);
+    const front = clip("0");
+    const load = vi.spyOn(front, "load").mockImplementation(() => {});
+    preloadFromInPoint(front, () => true);
+    expect(front.currentTime).toBe(0);
+    expect(load).toHaveBeenCalledTimes(1);
+    vi.restoreAllMocks();
+    const deep = clip("255");
+    preloadFromInPoint(deep, () => true);
+    expect(deep.currentTime).toBe(0);
+    front.remove();
+    deep.remove();
   });
 });

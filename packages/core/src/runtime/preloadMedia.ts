@@ -34,6 +34,25 @@ function cancelPlaybackStart(media: HTMLMediaElement): void {
   pendingPlaybackStart.get(media)?.();
 }
 
+export function preloadFromInPoint(media: HTMLMediaElement, isUpcoming: () => boolean): void {
+  const deep = isWebKit() && !isRenderFrameVideo(media) && readMediaStart(media) > 0;
+  if (!deep) {
+    preloadMedia(media);
+    prepareUpcomingMedia(media, isUpcoming);
+    return;
+  }
+  if (media.readyState === 0) {
+    try {
+      media.currentTime = mediaElementTime(readMediaStart(media));
+    } catch (error) {
+      swallow("runtime.preload.defaultStart", error);
+    }
+  }
+  if (media.preload !== "auto") media.preload = "auto";
+  if (media.readyState === 0 && media.networkState === 0) media.load();
+  prepareUpcomingMedia(media, isUpcoming);
+}
+
 export function prepareUpcomingMedia(media: HTMLMediaElement, isUpcoming: () => boolean): void {
   cancelPlaybackStart(media);
   if ((media.tagName !== "VIDEO" && !isWebKit()) || isRenderFrameVideo(media)) return;
