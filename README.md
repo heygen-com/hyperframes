@@ -11,7 +11,7 @@
   <a href="https://www.npmjs.com/package/hyperframes"><img src="https://img.shields.io/npm/dm/hyperframes.svg?style=flat" alt="npm downloads"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License"></a>
   <a href="https://nodejs.org"><img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js"></a>
-  <a href="https://discord.gg/EbK98HBPdk"><img src="https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white" alt="Discord"></a>
+  <a href="https://discord.com/invite/xK4S8a6N5G"><img src="https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white" alt="Discord"></a>
 </p>
 
 <p align="center"><b>Write HTML. Render video. Built for agents.</b></p>
@@ -23,7 +23,7 @@
   <a href="https://hyperframes.studio/">Playground</a> |
   <a href="https://hyperframes.heygen.com/catalog/blocks/data-chart">Catalog</a> |
   <a href="https://hyperframes.heygen.com/introduction">Docs</a> |
-  <a href="https://discord.gg/EbK98HBPdk">Discord</a>
+  <a href="https://discord.com/invite/xK4S8a6N5G">Discord</a>
 </p>
 
 <p align="center">
@@ -327,7 +327,7 @@ Full documentation: [hyperframes.heygen.com/introduction](https://hyperframes.he
 
 HyperFrames is used in production at [HeyGen](https://www.heygen.com), with community examples from teams like [tldraw](https://tldraw.com), [TanStack](https://tanstack.com), and others in [ADOPTERS.md](ADOPTERS.md). Open a PR if your team is using HyperFrames.
 
-- Questions and ideas: [Discord](https://discord.gg/EbK98HBPdk)
+- Questions and ideas: [Discord](https://discord.com/invite/xK4S8a6N5G)
 - Bugs and feature requests: [GitHub Issues](https://github.com/heygen-com/hyperframes/issues)
 - User research: [Book a casual 30-minute conversation with the HyperFrames team](https://calendar.google.com/calendar/u/0/appointments/schedules/AcZssZ2cSpKoDgmcmRrgekrnrgqmvPT8W6F2Zg6e7MY7IJqaZKwpn_I0NdTHkN390iguMepE_NVg8ezb?gv=true) — no preparation or sales pitch
 - Security reports: [SECURITY.md](SECURITY.md)
