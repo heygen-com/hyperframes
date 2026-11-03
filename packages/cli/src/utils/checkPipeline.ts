@@ -1,3 +1,4 @@
+import { DEFAULT_CONFIG } from "@hyperframes/engine";
 import { BrowserCleanupError, onStopSignal } from "../browser/launch.js";
 import type { CheckProgress } from "./checkProgress.js";
 import {
@@ -120,7 +121,7 @@ export const DEFAULT_CHECK_OPTIONS: CheckOptions = {
   maxIssues: 80,
   collapseStatic: true,
   tolerance: 2,
-  timeout: 10_000,
+  timeout: DEFAULT_CONFIG.playerReadyTimeout,
   contrast: true,
   strict: false,
   snapshots: false,
