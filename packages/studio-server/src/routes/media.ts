@@ -6,7 +6,7 @@ import type { MediaProcessingJobState, StudioApiAdapter } from "../types.js";
 import { requestedProjectPath } from "../helpers/requestSubPath.js";
 import { mkdirWithinProject, pinWithinProject, resolveWithinProject } from "../helpers/safePath.js";
 import { probeMediaMetadata } from "../helpers/mediaMetadata.js";
-import { sweepFinishedJobs } from "../helpers/finishedJobs.js";
+import { forgetJobsFinishedLongerThan } from "../helpers/finishedJobs.js";
 
 const VIDEO_EXTENSIONS = new Set([
   ".mp4",
@@ -131,10 +131,10 @@ export function registerMediaRoutes(
   const readMediaMetadata = options.probeMediaMetadata ?? probeMediaMetadata;
 
   function cleanupFinishedJobs(): void {
-    sweepFinishedJobs(
+    forgetJobsFinishedLongerThan(
+      TTL_MS,
       mediaJobs,
       (job) => job.status === "complete" || job.status === "failed",
-      TTL_MS,
     );
   }
 

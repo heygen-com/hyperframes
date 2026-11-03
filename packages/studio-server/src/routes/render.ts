@@ -23,7 +23,7 @@ import {
 import { projectDirMissing } from "../helpers/projectDirMissing.js";
 import { isVariablesPayload, VARIABLES_PAYLOAD_ERROR } from "../helpers/variablesPayload.js";
 import { parseEncoderOptions, type EncoderOptionsBody } from "../helpers/encoderOptions.js";
-import { sweepFinishedJobs } from "../helpers/finishedJobs.js";
+import { forgetJobsFinishedLongerThan } from "../helpers/finishedJobs.js";
 
 const VALID_RESOLUTIONS = new Set<string>(VALID_CANVAS_RESOLUTIONS);
 const RENDER_MIME: Record<string, string> = {
@@ -78,7 +78,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     !process.argv.includes("build");
 
   const cleanupFinishedJobs = () => {
-    sweepFinishedJobs(renderJobs, (job) => job.status !== "rendering", TTL_MS);
+    forgetJobsFinishedLongerThan(TTL_MS, renderJobs, (job) => job.status !== "rendering");
     if (renderJobs.size === 0 && cleanupTimer) {
       clearInterval(cleanupTimer);
       cleanupTimer = null;

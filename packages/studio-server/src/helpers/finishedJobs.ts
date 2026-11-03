@@ -1,18 +1,16 @@
-// The adapter finishes a job by changing it in place, so a sweep notes when it first sees each job finished.
-const finishedSince = new WeakMap<object, number>();
+// The adapter finishes a job in place, so its finish time is when a sweep first sees it finished.
+const firstSeenFinishedAt = new WeakMap<object, number>();
 
-/** Forgets the jobs finished for longer than `ttlMs`, counted from when they finished, never from when they started:
- * a render that ran longer than the TTL stays readable after it ends. */
-export function sweepFinishedJobs<T extends object>(
-  jobs: Map<string, T>,
-  finished: (job: T) => boolean,
+export function forgetJobsFinishedLongerThan<T extends object>(
   ttlMs: number,
+  jobs: Map<string, T>,
+  isFinished: (job: T) => boolean,
   now = Date.now(),
 ): void {
   for (const [id, job] of jobs) {
-    if (!finished(job)) continue;
-    const since = finishedSince.get(job) ?? now;
-    finishedSince.set(job, since);
-    if (now - since > ttlMs) jobs.delete(id);
+    if (!isFinished(job)) continue;
+    const finishedAt = firstSeenFinishedAt.get(job) ?? now;
+    firstSeenFinishedAt.set(job, finishedAt);
+    if (now - finishedAt > ttlMs) jobs.delete(id);
   }
 }
