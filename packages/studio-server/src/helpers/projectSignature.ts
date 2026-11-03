@@ -264,7 +264,9 @@ export async function resolveProjectSignature(
   adapter: StudioApiAdapter,
   projectDir: string,
 ): Promise<string> {
-  return (await adapter.getProjectSignature?.(projectDir)) ?? createProjectSignatureAsync(projectDir);
+  return (
+    (await adapter.getProjectSignature?.(projectDir)) ?? createProjectSignatureAsync(projectDir)
+  );
 }
 
 /** The shared route opening: resolve the project (null → caller 404s) with its signature. */

@@ -685,12 +685,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     html = withRootImportMap(html, baseHref);
     recordPreviewReferences(project.dir, html);
     html = ensureHfIds(await transformPreviewHtml(html, adapter, project, compPath));
-    html = injectStudioPreviewAugmentations(
-      html,
-      signature,
-      project.dir,
-      compPath,
-      {
+    html = injectStudioPreviewAugmentations(html, signature, project.dir, compPath, {
       capture,
       gsapBaseUrl,
     });

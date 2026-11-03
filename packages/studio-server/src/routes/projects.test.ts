@@ -75,7 +75,8 @@ describe("GET /projects/:id/signature", () => {
   // desktop app's main process) for the whole walk.
   it("lets the event loop run while it walks a project", async () => {
     const projectDir = createProjectDir();
-    for (let i = 0; i < 300; i++) writeFileSync(join(projectDir, `clip-${i}.html`), COMPOSITION_HTML);
+    for (let i = 0; i < 300; i++)
+      writeFileSync(join(projectDir, `clip-${i}.html`), COMPOSITION_HTML);
     const app = new Hono();
     registerProjectRoutes(app, createAdapter(projectDir));
     let turns = 0;
