@@ -27,7 +27,7 @@ export interface BlurReport {
 }
 
 export type BlurWindow = Window & {
-  __player?: { renderSeek?: (t: number) => void };
+  __player?: { renderSeek?: (t: number, options?: { subFrameDivisions?: number }) => void };
   __hf_page_composite_pending?: boolean;
   __hf_page_composite_prepare?: () => Promise<boolean>;
   __hf_page_composite_resolve?: () => boolean;
@@ -69,12 +69,20 @@ export async function openFixture(
 }
 
 /** One frame the way the engine takes it: seek, wait for the page, composite, screenshot. */
-export async function captureFrame(page: Page, t: number): Promise<Rgba> {
-  const pending = await page.evaluate((time) => {
-    const w = window as BlurWindow;
-    w.__player?.renderSeek?.(time);
-    return w.__hf_page_composite_pending === true;
-  }, t);
+export async function captureFrame(
+  page: Page,
+  t: number,
+  options?: { subFrameDivisions?: number },
+): Promise<Rgba> {
+  const pending = await page.evaluate(
+    (time, seekOptions) => {
+      const w = window as BlurWindow;
+      w.__player?.renderSeek?.(time, seekOptions);
+      return w.__hf_page_composite_pending === true;
+    },
+    t,
+    options,
+  );
   await waitForPendingSeekCompletion(page);
   if (pending) {
     await page.evaluate(async () => {

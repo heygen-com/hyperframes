@@ -19,6 +19,7 @@ export interface Differential {
   checkedBlocks: number;
   checkedFraction: number;
   worstMae: number;
+  meanMae: number;
   bad: BadBlock[];
 }
 
@@ -178,6 +179,7 @@ export function compareTiles(
   let checkedBlocks = 0;
   let checkedPixels = 0;
   let worstMae = 0;
+  let maeSum = 0;
   const bad: BadBlock[] = [];
   for (let y = 0; y < height; y += block) {
     for (let x = 0; x < width; x += block) {
@@ -188,6 +190,7 @@ export function compareTiles(
       checkedPixels += stats.pixels;
       const mae = stats.absDiffSum / (stats.pixels * 3);
       worstMae = Math.max(worstMae, mae);
+      maeSum += mae;
       if (mae > maxMae) bad.push({ x, y, mae });
     }
   }
@@ -196,6 +199,7 @@ export function compareTiles(
     checkedBlocks,
     checkedFraction: checkedPixels / (width * height),
     worstMae,
+    meanMae: checkedBlocks === 0 ? 0 : maeSum / checkedBlocks,
     bad,
   };
 }
