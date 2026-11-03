@@ -39,6 +39,12 @@ describe("ensureHfIds on a document whose elements all carry their ids", () => {
     expect(parses.count).toBe(2);
   });
 
+  it("checks a fragment from its first tag, so elements before a stray <body> still get their ids", () => {
+    const minted = ensureHfIds(`<p>y</p><body><div data-hf-id="hf-a1b2">x</div>`);
+    expect(minted).toMatch(/<p data-hf-id="hf-[0-9a-z]+">y<\/p>/);
+    expect(parses.count).toBe(1);
+  });
+
   it("reads an id only from the tag's own attributes, never from a quoted value", () => {
     const html = page(`<div title='data-hf-id="hf-zzzz"'>x</div>`);
     expect(ensureHfIds(html)).toMatch(/<div data-hf-id="hf-[0-9a-z]+" title=/);

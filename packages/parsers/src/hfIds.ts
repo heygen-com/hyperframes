@@ -35,7 +35,8 @@ const isFragment = (html: string) =>
 function alreadyStamped(html: string): boolean {
   const tags = startTags(html);
   if (!tags) return false;
-  const body = tags.findIndex((tag) => tag.name === "body");
+  // A fragment's every tag is body content, a stray <body> among them included (which then takes the parse).
+  const body = isFragment(html) ? -1 : tags.findIndex((tag) => tag.name === "body");
   if (!isFragment(html) && body < 0) return false;
   return tags
     .slice(body + 1)
