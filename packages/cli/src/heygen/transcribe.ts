@@ -3,10 +3,20 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { TranscriptionCreateRequest } from "../cloud/_gen/types.js";
 import { runFfmpeg } from "../measure/media.js";
-import { idempotencyKey, runJob } from "./v3.js";
+import { idempotencyKey, runJob, type JobRoute } from "./v3.js";
 
-const ROUTE = "/v3/audio/transcriptions";
+const ROUTE: JobRoute = {
+  path: "/v3/audio/transcriptions",
+  start: (c, body, key, signal) =>
+    c.createTranscription({
+      body: body as TranscriptionCreateRequest,
+      idempotencyKey: key,
+      signal,
+    }),
+  status: (c, id, signal) => c.getTranscription({ transcription_id: id, signal }),
+};
 const MODEL = "scribe-v2";
 
 export interface HeygenTranscript {
@@ -74,8 +84,7 @@ export async function transcribeWithHeygen(
         audio: { type: "base64", media_type: "audio/mpeg", data: audio.toString("base64") },
         diarize,
       },
-      idempotencyKey(ROUTE, [audio, String(diarize)]),
-      (id) => `${ROUTE}/${encodeURIComponent(id)}`,
+      idempotencyKey(ROUTE.path, [audio, String(diarize)]),
       {
         log: { projectDir: opts.projectDir, what: `transcribe ${inputPath}` },
         timeoutMs: 10 * 60_000,

@@ -2,6 +2,8 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { CreateModelVideoRequest } from "../cloud/_gen/types.js";
+import type { JobRoute } from "./v3.js";
 
 vi.mock("../cloud/auth.js", () => ({
   resolveCloudAuthHeaders: async () => ({ "x-api-key": "k" }),
@@ -10,6 +12,14 @@ vi.mock("../cloud/auth.js", () => ({
 }));
 
 const { idempotencyKey, runJob } = await import("./v3.js");
+
+/** A job route through the generated client: the create and the status GET it polls. */
+const X: JobRoute = {
+  path: "/v3/models/videos",
+  start: (c, body, key, signal) =>
+    c.createModelVideo({ body: body as CreateModelVideoRequest, idempotencyKey: key, signal }),
+  status: (c, id, signal) => c.getModelVideo({ video_id: id, signal }),
+};
 
 const reply = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -35,12 +45,12 @@ describe("runJob", () => {
       calls.push({ url, init });
       return answers.shift()!;
     });
-    const job = await runJob("/v3/x", { a: 1 }, "hf-key", (id) => `/v3/x/${id}`, { intervalMs: 1 });
+    const job = await runJob(X, { a: 1 }, "hf-key", { intervalMs: 1 });
     expect(job.output).toEqual({ json: { ok: 1 } });
     expect(calls.map((c) => c.url)).toEqual([
-      "https://api.test/v3/x",
-      "https://api.test/v3/x/j1",
-      "https://api.test/v3/x/j1",
+      "https://api.test/v3/models/videos",
+      "https://api.test/v3/models/videos/j1",
+      "https://api.test/v3/models/videos/j1",
     ]);
     expect(new Headers(calls[0]!.init.headers).get("Idempotency-Key")).toBe("hf-key");
   });
@@ -49,50 +59,50 @@ describe("runJob", () => {
     vi.stubGlobal("fetch", async () =>
       reply(402, { error: { code: "insufficient_credit", message: "no" } }),
     );
-    await expect(runJob("/v3/x", {}, "k", (id) => id)).rejects.toMatchObject({
+    await expect(runJob(X, {}, "k")).rejects.toMatchObject({
       fix: expect.stringContaining("top up"),
     });
     vi.stubGlobal("fetch", async () =>
       reply(402, { error: { code: "hf_subscription_required", message: "no plan" } }),
     );
-    await expect(runJob("/v3/x", {}, "k", (id) => id)).rejects.toMatchObject({
+    await expect(runJob(X, {}, "k")).rejects.toMatchObject({
       fix: "Subscribe: https://hyperframes.studio/pricing?from=cli",
     });
     vi.stubGlobal("fetch", async () =>
       reply(402, { code: "hf_usage_exhausted", url: "https://pay.test/credits" }),
     );
-    await expect(runJob("/v3/x", {}, "k", (id) => id)).rejects.toMatchObject({
+    await expect(runJob(X, {}, "k")).rejects.toMatchObject({
       fix: "Add credits: https://pay.test/credits",
     });
     vi.stubGlobal("fetch", async () => reply(401, { message: "bad" }));
-    await expect(runJob("/v3/x", {}, "k", (id) => id)).rejects.toMatchObject({
+    await expect(runJob(X, {}, "k")).rejects.toMatchObject({
       fix: "npx hyperframes auth login",
     });
     vi.stubGlobal("fetch", async () =>
       reply(200, { data: { id: "j", status: "failed", failure_code: "content_policy_violation" } }),
     );
-    await expect(runJob("/v3/x", {}, "k", (id) => id)).rejects.toMatchObject({
+    await expect(runJob(X, {}, "k")).rejects.toMatchObject({
       fix: expect.stringContaining("reword"),
     });
   });
 
   it("names what an out-of-credits step needs, from the call's own price when HeyGen does not say", async () => {
     vi.stubGlobal("fetch", async () => reply(402, { error: { code: "hf_usage_exhausted" } }));
-    await expect(runJob("/v3/x", {}, "k", (id) => id, { credits: 782 })).rejects.toMatchObject({
+    await expect(runJob(X, {}, "k", { credits: 782 })).rejects.toMatchObject({
       message: expect.stringContaining("this step needs about 782 in total"),
     });
-    await expect(runJob("/v3/x", {}, "k", (id) => id, { credits: 782 })).rejects.toMatchObject({
+    await expect(runJob(X, {}, "k", { credits: 782 })).rejects.toMatchObject({
       message: expect.stringContaining("billing top-up --needed 782"),
       fix: expect.stringContaining("needed_credits=782"),
     });
     vi.stubGlobal("fetch", async () =>
       reply(402, { error: { code: "hf_usage_exhausted", needed_credits: 180, balance: 30 } }),
     );
-    await expect(runJob("/v3/x", {}, "k", (id) => id, { credits: 782 })).rejects.toMatchObject({
+    await expect(runJob(X, {}, "k", { credits: 782 })).rejects.toMatchObject({
       message: expect.stringContaining("this step needs 180 in total, balance 30"),
     });
     vi.stubGlobal("fetch", async () => reply(402, { error: { code: "hf_usage_exhausted" } }));
-    await expect(runJob("/v3/x", {}, "k", (id) => id)).rejects.toMatchObject({
+    await expect(runJob(X, {}, "k")).rejects.toMatchObject({
       message: expect.stringContaining("this step needs more"),
     });
   });
@@ -104,7 +114,7 @@ describe("runJob", () => {
         if (init.method === "POST") keys.push(new Headers(init.headers).get("Idempotency-Key"));
         return answers.shift()!;
       });
-      return runJob("/v3/x", {}, key, (id) => `/v3/x/${id}`, { intervalMs: 1 });
+      return runJob(X, {}, key, { intervalMs: 1 });
     };
     const failed = () => [
       reply(200, { data: { id: "j", status: "pending" } }),
@@ -146,8 +156,8 @@ describe("runJob", () => {
         keys.push(new Headers(init.headers).get("Idempotency-Key"));
         return answers.shift()!;
       });
-      await expect(runJob("/v3/x", {}, key, (id) => id)).rejects.toThrow();
-      await runJob("/v3/x", {}, key, (id) => id);
+      await expect(runJob(X, {}, key)).rejects.toThrow();
+      await runJob(X, {}, key);
       expect(keys).toEqual([key, key]);
     },
   );
@@ -159,7 +169,7 @@ describe("runJob", () => {
         keys.push(new Headers(init.headers).get("Idempotency-Key"));
         return answers.shift()!;
       });
-      return runJob("/v3/x", {}, "hf-shared", (id) => id);
+      return runJob(X, {}, "hf-shared");
     };
     vi.stubEnv("HEYGEN_API_KEY", "payer-a");
     await expect(run([reply(402, { code: "hf_usage_exhausted" })])).rejects.toThrow();
@@ -214,11 +224,11 @@ describe("runJob", () => {
         done(),
       ]);
       signIn("a");
-      await runJob("/v3/x", {}, "hf-host", (id) => id);
+      await runJob(X, {}, "hf-host");
       signIn("b");
-      await expect(runJob("/v3/x", {}, "hf-host", (id) => id)).rejects.toThrow();
+      await expect(runJob(X, {}, "hf-host")).rejects.toThrow();
       signIn("a");
-      await runJob("/v3/x", {}, "hf-host", (id) => id);
+      await runJob(X, {}, "hf-host");
       expect(keys).toEqual(["hf-host", "hf-host", "hf-host"]);
     });
 
@@ -234,14 +244,12 @@ describe("runJob", () => {
         done(),
       ]);
       signIn("b");
-      await runJob("/v3/x", {}, "hf-switch", (id) => id);
+      await runJob(X, {}, "hf-switch");
       signIn("a");
-      await expect(
-        runJob("/v3/x", {}, "hf-switch", (id) => id, { intervalMs: 1 }),
-      ).rejects.toThrow();
-      await runJob("/v3/x", {}, "hf-switch", (id) => id);
+      await expect(runJob(X, {}, "hf-switch", { intervalMs: 1 })).rejects.toThrow();
+      await runJob(X, {}, "hf-switch");
       signIn("a");
-      await runJob("/v3/x", {}, "hf-switch", (id) => id);
+      await runJob(X, {}, "hf-switch");
       expect(keys).toEqual(["hf-switch", "hf-switch", "hf-switch", "hf-switch-1"]);
     });
 
@@ -257,7 +265,7 @@ describe("runJob", () => {
         return done();
       });
       signIn("a");
-      await runJob("/v3/x", {}, "hf-window", (id) => id);
+      await runJob(X, {}, "hf-window");
       expect(seen).toEqual(["Bearer a"]);
     });
 
@@ -267,26 +275,89 @@ describe("runJob", () => {
         done(),
       ]);
       signIn("a");
-      await expect(runJob("/v3/x", {}, "hf-unknown", (id) => id)).rejects.toThrow();
-      await runJob("/v3/x", {}, "hf-unknown", (id) => id);
+      await expect(runJob(X, {}, "hf-unknown")).rejects.toThrow();
+      await runJob(X, {}, "hf-unknown");
       expect(keys).toEqual(["hf-unknown", "hf-unknown"]);
     });
 
     it("sends a job that failed for this account as a new one", async () => {
       const keys = server(accounts, [failed(), done()]);
       signIn("a");
-      await expect(runJob("/v3/x", {}, "hf-own", (id) => id)).rejects.toThrow();
-      await runJob("/v3/x", {}, "hf-own", (id) => id);
+      await expect(runJob(X, {}, "hf-own")).rejects.toThrow();
+      await runJob(X, {}, "hf-own");
       expect(keys).toEqual(["hf-own", "hf-own-1"]);
     });
 
     it("keeps the key through a lost answer, then a new sign-in", async () => {
       const keys = server(accounts, [reply(401, { message: "expired" }), done()]);
       signIn("a");
-      await expect(runJob("/v3/x", {}, "hf-resigned", (id) => id)).rejects.toThrow();
-      await runJob("/v3/x", {}, "hf-resigned", (id) => id);
+      await expect(runJob(X, {}, "hf-resigned")).rejects.toThrow();
+      await runJob(X, {}, "hf-resigned");
       expect(keys).toEqual(["hf-resigned", "hf-resigned"]);
     });
+  });
+
+  it("sends the request as JSON and polls the status route with a GET", async () => {
+    const calls: { url: string; init: RequestInit }[] = [];
+    const answers = [
+      reply(202, { data: { video_id: "v/1", status: "pending" } }),
+      reply(200, { data: { id: "v/1", status: "completed" } }),
+    ];
+    vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
+      calls.push({ url, init });
+      return answers.shift()!;
+    });
+    const job = await runJob(X, { prompt: "p" }, "hf-shape", { intervalMs: 1 });
+    expect(job).toMatchObject({ id: "v/1", status: "completed" });
+    const [post, get] = calls;
+    expect(post!.init.method).toBe("POST");
+    expect(JSON.parse(String(post!.init.body))).toEqual({ prompt: "p" });
+    const headers = new Headers(post!.init.headers);
+    expect(headers.get("content-type")).toBe("application/json");
+    expect(headers.get("x-api-key")).toBe("payer");
+    expect(get!.url).toBe("https://api.test/v3/models/videos/v%2F1");
+    expect(get!.init.method).toBe("GET");
+    expect(get!.init.body).toBeUndefined();
+  });
+
+  it("asks again for an answer it could not read or never got", async () => {
+    vi.stubGlobal("fetch", async () => reply(503, { error: { code: "unavailable" } }));
+    await expect(runJob(X, {}, "hf-503")).rejects.toMatchObject({
+      message: "HeyGen 503 for /v3/models/videos with no readable answer",
+      fix: "run the same command again: it resumes the same job",
+    });
+    vi.stubGlobal("fetch", async () => new Response("<html>", { status: 400 }));
+    await expect(runJob(X, {}, "hf-html")).rejects.toThrow("HeyGen 400 for /v3/models/videos");
+    vi.stubGlobal("fetch", async () => new Response("not json", { status: 200 }));
+    await expect(runJob(X, {}, "hf-text")).rejects.toThrow("HeyGen 200 for /v3/models/videos");
+    vi.stubGlobal("fetch", async () => {
+      throw new TypeError("fetch failed");
+    });
+    await expect(runJob(X, {}, "hf-lost")).rejects.toMatchObject({
+      message: "no answer from HeyGen for /v3/models/videos (fetch failed)",
+    });
+    const keys: (string | null)[] = [];
+    vi.stubGlobal("fetch", async (_url: string, init: RequestInit) => {
+      keys.push(new Headers(init.headers).get("Idempotency-Key"));
+      return reply(200, { data: { id: "j", status: "completed" } });
+    });
+    await runJob(X, {}, "hf-503");
+    expect(keys).toEqual(["hf-503"]);
+  });
+
+  it("takes the answer of a route with no status as final", async () => {
+    const calls: string[] = [];
+    vi.stubGlobal("fetch", async (url: string) => {
+      calls.push(url);
+      return reply(200, { data: { audio_url: "https://files.test/a.mp3", duration: 1 } });
+    });
+    const sync = { path: X.path, start: X.start };
+    expect(await runJob(sync, {}, "hf-sync")).toMatchObject({
+      id: "",
+      status: "completed",
+      audio_url: "https://files.test/a.mp3",
+    });
+    expect(calls).toHaveLength(1);
   });
 
   it("keys the same request the same way", () => {
