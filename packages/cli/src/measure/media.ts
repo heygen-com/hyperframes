@@ -90,7 +90,13 @@ const rate = (text: string | undefined): number => {
 // fallow-ignore-next-line complexity
 export function probeVideo(path: string): VideoInfo {
   if (!existsSync(path))
-    throw new Fix(`no file at ${path}`, "pass the video's path from the project folder");
+    throw new Fix(
+      `no file at ${path}`,
+      // `D:video\clip.mp4` reached us as `D:videoclip.mp4`: an unquoted Windows path in bash.
+      /^[A-Za-z]:[^\\/]/.test(path)
+        ? "the shell dropped the backslashes: quote the path or write it with / (D:/video/clip.mp4)"
+        : "pass the video's path from the project folder",
+    );
   let json: { streams?: ProbeStream[]; format?: { duration?: string } };
   try {
     json = JSON.parse(

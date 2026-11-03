@@ -159,8 +159,8 @@ export default defineCommand({
     yours: {
       type: "positional",
       description:
-        "A rendered video, or a project folder (captured at the original's frame times, no render)",
-      required: true,
+        "A rendered video, or a project folder (captured at the original's frame times, no render) (required)",
+      required: false,
     },
     at: { type: "string", description: "Compare only these seconds, e.g. 0.5,2.4" },
     range: { type: "string", description: "Compare every frame of start,end seconds" },
@@ -216,6 +216,11 @@ export default defineCommand({
     try {
       if (args.at !== undefined && args.range !== undefined)
         throw new Fix("--at and --range both given", "pass one of them");
+      if (args.yours === undefined)
+        throw new Fix(
+          "diff compares two: the original and yours",
+          "hyperframes diff <original.mp4> <your render.mp4 | your project folder>",
+        );
       const yours = resolve(String(args.yours));
       const stem = basename(yours, extname(yours)) || "project";
       const segmentsFile = args.segments === undefined ? undefined : resolve(String(args.segments));
