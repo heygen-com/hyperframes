@@ -3,11 +3,21 @@ export const MEASURED_CANVAS_MUTATION = 169.741;
 export const MEASURED_REWIND_MUTATION = 106.099;
 export const OUTSIDE_FLOOR = 1;
 
+// Through the producer's 4-worker PNG render. Noise: blur off rendered twice, five fixtures, bit-identical.
+export const MEASURED_RENDER_NOISE = 0;
+// Smallest worst-tile MAE the rewind mutation produced when the render caught it (3 of 5 runs, `callbacks`).
+export const MEASURED_RENDER_REWIND_MUTATION = 111.085;
+
 export const MEASURED_INSIDE_NOISE = 10.993;
 export const MEASURED_CONTENT_CUT_MUTATION = 130.129;
 export const MEASURED_CLIP_PATH_MUTATION = 124.322;
 
 const geometricMean = (a: number, b: number): number => Math.sqrt(a * b);
+
+export const RENDER_OUTSIDE_MAX_MAE = Math.max(
+  OUTSIDE_FLOOR,
+  geometricMean(MEASURED_RENDER_NOISE, MEASURED_RENDER_REWIND_MUTATION),
+);
 
 export const INVARIANTS = {
   block: 16,
