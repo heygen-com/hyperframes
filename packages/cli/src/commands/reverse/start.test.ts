@@ -165,13 +165,21 @@ describe("reverse start", () => {
       { recorded: false, reason: "unavailable", plan: "free" },
       { signed_in: true, plan: "free", recorded: false },
     ],
-  ])("never stops the run when %s", async (_label, answer, reverse) => {
-    server.answer = answer;
-    const dir = join(root, "rebuild");
-    await run("--dir", dir);
-    expect(output()).toMatchObject({ ok: true, width: 1080, reverse });
-    expect(() => readFileSync(join(dir, "hyperframes.json"))).toThrow();
-  });
+  ])(
+    "never stops the run when %s, and still makes the --dir project",
+    async (_label, answer, reverse) => {
+      server.answer = answer;
+      const dir = join(root, "rebuild");
+      await run("--dir", dir);
+      expect(output()).toMatchObject({
+        ok: true,
+        width: 1080,
+        reverse: { ...reverse, saved_to: join(dir, "hyperframes.json") },
+      });
+      expect(config(dir)).toMatchObject({ authoringSkill: "reverse-any-video" });
+      expect(config(dir)).not.toHaveProperty("reverseSessionId");
+    },
+  );
 
   it("stops a Free account the server blocks, with the subscribe command as the fix, after saving the session", async () => {
     server.answer = recorded(

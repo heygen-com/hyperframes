@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { defineCommand } from "../../utils/defineCommand.js";
 import type { Example } from "../_examples.js";
 import { jsonArg, runMeasure, videoArg } from "../../measure/command.js";
@@ -13,6 +13,7 @@ import {
   projectConfigPath,
   readProjectConfig,
   recordProjectReverseSession,
+  seedProjectAuthoringSkill,
 } from "../../utils/projectConfig.js";
 import { probeReport } from "../measure/probe.js";
 
@@ -36,6 +37,7 @@ function summary(started: ReverseStart, savedTo: string | undefined) {
       signed_in: started.reason !== "not_signed_in",
       plan: started.plan ?? null,
       recorded: false,
+      saved_to: savedTo ?? null,
       ...(started.plan === "free"
         ? { upgrade_url: reverseUpgradeUrl(), subscribe_command: subscribeCommand() }
         : {}),
@@ -56,6 +58,24 @@ function summary(started: ReverseStart, savedTo: string | undefined) {
         }
       : {}),
   };
+}
+
+/** With no session to keep, `--dir` is still made and stamped with the skill, so init and renders find the project. */
+function stampProject(dir: string): string | undefined {
+  try {
+    mkdirSync(dir, { recursive: true });
+  } catch {
+    return undefined;
+  }
+  seedProjectAuthoringSkill(dir, SKILL);
+  return existsSync(projectConfigPath(dir)) ? projectConfigPath(dir) : undefined;
+}
+
+/** Where the run was kept: the session in `--dir` or the current project, else `--dir` stamped with the skill. */
+function saveRun(started: ReverseStart, dir: string | undefined): string | undefined {
+  if (started.recorded && (dir !== undefined || existsSync(projectConfigPath("."))))
+    return recordProjectReverseSession(dir ?? ".", started.session.sessionId, SKILL);
+  return dir === undefined ? undefined : stampProject(dir);
 }
 
 function refusalWhenServerBlocksFree(session: ReverseSession): Fix | undefined {
@@ -90,10 +110,7 @@ export default defineCommand({
       const started = await startReverseSession({
         resumeSessionId: readProjectConfig(projectDir)?.reverseSessionId,
       });
-      const save = started.recorded && (dir !== undefined || existsSync(projectConfigPath(".")));
-      const savedTo = save
-        ? recordProjectReverseSession(projectDir, started.session.sessionId, SKILL)
-        : undefined;
+      const savedTo = saveRun(started, dir);
       const refused = started.recorded ? refusalWhenServerBlocksFree(started.session) : undefined;
       if (refused) throw refused;
       return { reverse: summary(started, savedTo), ...probe };
