@@ -107,10 +107,12 @@ their final line, on stderr.
 `2` means the command line itself is wrong: an unknown command or flag, or a
 missing or invalid value.
 
-**Version notices.** An owned install (npm, bun, pnpm, brew) updates itself
+**Version notices.** An owned install (npm, bun, pnpm) updates itself
 quietly in the background and prints one line on the next run:
-`hyperframes auto-updated to v0.1.5`. It never crosses a major version. Anywhere
-it cannot install — `npx`, an unknown installer — you get a notice instead:
+`hyperframes auto-updated to v0.1.5`. It never crosses a major version (before
+1.0, a minor version: 0.8 to 0.9 is a notice, not an install). Anywhere
+it cannot install — Homebrew (run `brew upgrade hyperframes` yourself), `npx`, an
+unknown installer — you get a notice instead:
 
 ```
   Update available: 0.1.4 → 0.1.5
@@ -2193,7 +2195,9 @@ Set `HYPERFRAMES_SKIP_SKILLS=1` when something else manages the skills (CI, test
 or an install pinned to one commit). `skills update` and bare `skills` then exit 0
 with a one-line notice and leave the installed skills unchanged.
 
-The CLI installs from the current HyperFrames GitHub source and links the global
+The CLI installs the skills from the HyperFrames release tag that matches its own
+version (`v<version>`), and `check` compares against that same tag, so the skills
+match the CLI that runs them; a development build uses `main`. It links the global
 bundles into whichever compatible agents it finds. After scaffolding, `init`
 installs the core set if it is missing. It never refreshes or removes a skill you already have; run `skills update` for that.
 

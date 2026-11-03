@@ -13,6 +13,7 @@ import { isUnattended } from "./attendedTerminal.js";
 import { hostAnswers } from "./hostAnswers.js";
 import { checkSkills } from "./skillsManifest.js";
 import { updateCheckDisabled } from "./updateCheck.js";
+import { VERSION } from "../version.js";
 
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -43,7 +44,7 @@ export async function refreshSkillsCache(): Promise<void> {
   // `canonical: true` so this nudge's counts agree with `updateSkills`'s
   // source of truth — otherwise a stale in-repo skills-manifest.json (e.g.
   // inside a hyperframes checkout) can produce a false-positive count here.
-  const result = await checkSkills({ canonical: true });
+  const result = await checkSkills({ canonical: true, cliVersion: VERSION });
   // Only record a meaningful check when skills were actually found.
   if (result.location) {
     // Fresh read: this runs in a background child, beside the command's own config writes.

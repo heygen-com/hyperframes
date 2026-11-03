@@ -210,7 +210,7 @@ describe("hyperframes skills", () => {
     const first = state.spawnCalls[0];
     expect(first).toBeDefined();
     expect(first!.command).toBe("npx");
-    expect(first!.args).toContain("skills");
+    expect(first!.args).toContain("skills@1.5.13");
     expect(first!.args).toContain("add");
     expect(first!.env?.GIT_CLONE_PROTECTION_ACTIVE).toBe("0");
     // --full-depth clones the repo; skip LFS so we don't drag in unrelated blobs.
@@ -223,7 +223,7 @@ describe("hyperframes skills", () => {
       "npx",
       ["--version"],
       [
-        "skills",
+        "skills@1.5.13",
         "add",
         "https://github.com/heygen-com/hyperframes",
         "--skill",
@@ -240,7 +240,7 @@ describe("hyperframes skills", () => {
       "npx",
       ["--version"],
       [
-        "skills",
+        "skills@1.5.13",
         "add",
         "https://github.com/heygen-com/hyperframes",
         "--skill",
@@ -261,7 +261,7 @@ describe("hyperframes skills", () => {
         "/s",
         "/c",
         "npx.cmd",
-        "skills",
+        "skills@1.5.13",
         "add",
         "https://github.com/heygen-com/hyperframes",
         "--skill",
@@ -320,6 +320,25 @@ describe("hyperframes skills", () => {
     // `--agent` must be followed by a concrete key, never the `'*'` wildcard
     const agentValue = args[args.indexOf("--agent") + 1];
     expect(agentValue).not.toBe("*");
+  });
+
+  // The install uses the ref the check compared against (the CLI's release
+  // tag), resolved once, through the pinned skills CLI.
+  it("skills update installs at the ref its check read, through the pinned skills CLI", async () => {
+    setPlatform("linux");
+    const { checkSkills } = await import("../utils/skillsManifest.js");
+    vi.mocked(checkSkills).mockResolvedValueOnce({ ...DEFAULT_CHECK, ref: "v0.9.3" } as never);
+
+    await runSkillsUpdate();
+
+    expect(await commandExitCode()).toBe(0);
+    const args = state.spawnCalls[0]?.args ?? [];
+    expect(args.slice(0, 3)).toEqual([
+      "skills@1.5.13",
+      "add",
+      "https://github.com/heygen-com/hyperframes#v0.9.3",
+    ]);
+    expect(args).toContain("--full-depth");
   });
 
   it("skills update refreshes an outdated installed workflow (but never expands)", async () => {
