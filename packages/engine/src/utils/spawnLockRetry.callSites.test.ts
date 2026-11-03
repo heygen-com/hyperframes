@@ -150,4 +150,52 @@ describe("managed binary call sites retry a locked executable", () => {
     await expect(afterRetries(psnrDb(Buffer.from("a"), Buffer.from("b")))).resolves.toBe(42.5);
     expect(execFile.run).toHaveBeenCalledTimes(2);
   });
+
+  it("the ffprobe version read for probe facts, so a lock is not cached as the version", async () => {
+    let versionCalls = 0;
+    const spawn = vi.fn((_binary: string, args: string[]) => {
+      if (!args.includes("-version"))
+        return fakeProcess(JSON.stringify({ streams: [], format: {} }));
+      versionCalls += 1;
+      if (versionCalls === 1) throw lockedError();
+      return fakeProcess("ffprobe version 7.1 Copyright (c) 2007-2024\n");
+    });
+    vi.doMock("child_process", () => ({ spawn }));
+    const { buildProbeFactsText } = await import("./ffprobe.js");
+
+    const facts = JSON.parse(await afterRetries(buildProbeFactsText("/tmp/locked-facts.mp4")));
+
+    expect(facts.ffprobeMajor).toBe(7);
+    expect(versionCalls).toBe(2);
+  });
+
+  it("the setts duration check before an AAC encode, and a lock that outlasts it is not cached", async () => {
+    let calls = 0;
+    const execFile = vi.fn(
+      (
+        _binary: string,
+        _args: string[],
+        _options: object,
+        done: (e: null, out: string) => void,
+      ) => {
+        calls += 1;
+        // Locked for the first encode's three attempts, free for the second encode.
+        if (calls <= 3) throw lockedError();
+        done(null, "");
+      },
+    );
+    const runFfmpeg = vi.fn(async () => ({ success: true }));
+    vi.doMock("node:child_process", () => ({ execFile }));
+    vi.doMock("../utils/runFfmpeg.js", () => ({ runFfmpeg }));
+    const { encodeAac } = await import("../services/aacEncode.js");
+
+    await expect(
+      afterRetries(encodeAac("in.wav", "out.aac", 10, { timeout: 1000 })),
+    ).rejects.toThrow(/after 3 attempts/);
+    await expect(
+      afterRetries(encodeAac("in.wav", "out.aac", 10, { timeout: 1000 })),
+    ).resolves.toEqual({ success: true });
+    expect(calls).toBe(4);
+    expect(runFfmpeg).toHaveBeenCalledTimes(1);
+  });
 });

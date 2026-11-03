@@ -9,6 +9,7 @@ import { removeScratch } from "@hyperframes/core/remove-scratch";
 import { dirname, join } from "node:path";
 import { getFfmpegBinary } from "../utils/ffmpegBinaries.js";
 import { runFfmpeg, type RunFfmpegResult } from "../utils/runFfmpeg.js";
+import { retrySpawnWhileLocked } from "../utils/spawnLockRetry.js";
 
 const SAMPLE_RATE = 48_000;
 const FRAME_SAMPLES = 1024;
@@ -64,18 +65,24 @@ const settsDurationSupport = new Map<string, Promise<boolean>>();
 function supportsSettsDuration(binary = getFfmpegBinary()): Promise<boolean> {
   let supported = settsDurationSupport.get(binary);
   if (!supported) {
-    supported = new Promise((resolve) => {
-      execFile(
-        binary,
-        ["-hide_banner", "-h", "bsf=setts"],
-        { windowsHide: true },
-        (error, stdout) => {
-          // A binary that cannot even print help fails the encode with its own error, not this one.
-          resolve(error !== null || stdout.includes("duration"));
-        },
-      );
-    });
+    supported = retrySpawnWhileLocked(
+      binary,
+      () =>
+        new Promise<boolean>((resolve) => {
+          execFile(
+            binary,
+            ["-hide_banner", "-h", "bsf=setts"],
+            { windowsHide: true },
+            (error, stdout) => {
+              // A binary that cannot even print help fails the encode with its own error, not this one.
+              resolve(error !== null || stdout.includes("duration"));
+            },
+          );
+        }),
+    );
     settsDurationSupport.set(binary, supported);
+    // A lock that outlasted the retries says nothing about the binary, so the next encode asks again.
+    supported.catch(() => settsDurationSupport.delete(binary));
   }
   return supported;
 }

@@ -487,10 +487,18 @@ let runtimeFfprobeMajor: Promise<number | undefined> | undefined;
 
 /** The major version of the ffprobe this process runs; undefined when it cannot be read. */
 function ffprobeMajor(): Promise<number | undefined> {
-  runtimeFfprobeMajor ??= new Promise((resolve) => {
+  runtimeFfprobeMajor ??= retrySpawnWhileLocked(getFfprobeBinary(), readFfprobeMajor).catch(() => {
+    // A lock that outlasted the retries says nothing about the version, so the next call asks again.
+    runtimeFfprobeMajor = undefined;
+    return undefined;
+  });
+  return runtimeFfprobeMajor;
+}
+
+function readFfprobeMajor(): Promise<number | undefined> {
+  return new Promise((resolve) => {
     let out = "";
-    const binary = getFfprobeBinary();
-    const proc = spawn(binary, ["-version"], {
+    const proc = spawn(getFfprobeBinary(), ["-version"], {
       stdio: ["ignore", "pipe", "ignore"],
       windowsHide: true,
     });
@@ -498,7 +506,6 @@ function ffprobeMajor(): Promise<number | undefined> {
     proc.on("error", () => resolve(undefined));
     proc.on("close", () => resolve(Number(/version n?(\d+)/.exec(out)?.[1]) || undefined));
   });
-  return runtimeFfprobeMajor;
 }
 
 /** What a site stores beside a video: its ffprobe JSON and the final-frame facts a plan would otherwise probe for. */
