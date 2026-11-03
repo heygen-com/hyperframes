@@ -58,10 +58,9 @@ function opensHeadThenBody(html: string, tags: StartTag[], body: number): boolea
 
 function closesHead(html: string, last: StartTag, body: StartTag): boolean {
   const from = RAW_TEXT.has(last.name) ? rawTextEnd(html, last.name, last.bracket) : last.bracket;
-  const between = html
-    .slice(from, html.lastIndexOf("<", body.nameEnd))
-    .replace(/<!--[\s\S]*?-->/g, "");
-  return from >= 0 && /<\/head\s*>/i.test(between);
+  const between = html.slice(from, html.lastIndexOf("<", body.nameEnd));
+  const marks = between.matchAll(/<!--[\s\S]*?-->|<\/head\s*>/gi);
+  return from >= 0 && [...marks].some((mark) => !mark[0].startsWith("<!--"));
 }
 
 function hasHfId(html: string, tag: StartTag): boolean {

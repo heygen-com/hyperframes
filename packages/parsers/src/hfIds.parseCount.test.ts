@@ -46,6 +46,7 @@ describe("ensureHfIds on a document whose elements all carry their ids", () => {
       `<html><head><title>t</title><body><p data-hf-id="hf-a1b2">x</p></body></html>`,
       `<html><head><div data-hf-id="hf-c3d4">x</div></head><body><p data-hf-id="hf-a1b2">x</p></body></html>`,
       `<html><head></head></html>`,
+      `<html><head><title>t</title><!-- </head> --><body><p data-hf-id="hf-a1b2">x</p></body></html>`,
     ];
     for (const html of shapes) ensureHfIds(html);
     expect(parses.count).toBe(1 + shapes.length);
