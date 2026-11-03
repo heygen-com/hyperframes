@@ -2,7 +2,12 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Page } from "puppeteer-core";
-import { BACKGROUND_DECODE_TIMEOUT_MS, decodeDynamicCssBackgroundImages } from "./frameCapture.js";
+import {
+  BACKGROUND_DECODE_TIMEOUT_MS,
+  decodeDynamicCssBackgroundImages,
+  recordBackgroundDecodeTimeouts,
+  type CaptureSession,
+} from "./frameCapture.js";
 
 function makeMockPage(
   getBackgroundImage: () => string,
@@ -139,6 +144,30 @@ describe("decodeDynamicCssBackgroundImages", () => {
     expect(decoded).toEqual(["/assets/stuck.jpg"]);
   });
 
+  it("reports a timed-out url without its credentials or query, in the text and the warning", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const session = { warnings: [], browserConsoleBuffer: [] } as unknown as CaptureSession;
+    const secret = "https://user:pw@cdn.test/bg.jpg?token=SECRET#frag";
+
+    recordBackgroundDecodeTimeouts(session, [secret]);
+    recordBackgroundDecodeTimeouts(session, [secret]);
+
+    expect(session.browserConsoleBuffer.join("\n")).toContain("https://cdn.test/bg.jpg");
+    expect(JSON.stringify([session.browserConsoleBuffer, session.warnings])).not.toMatch(
+      /SECRET|user|pw@|frag/,
+    );
+    expect(session.warnings).toEqual([
+      expect.objectContaining({
+        code: "media_readiness_timeout",
+        details: {
+          mediaType: "image",
+          sources: ["https://cdn.test/bg.jpg"],
+          timeoutMs: BACKGROUND_DECODE_TIMEOUT_MS,
+        },
+      }),
+    ]);
+  });
+
   it("installs a page-local decoder that can run after an in-page seek", async () => {
     let backgroundImage = 'url("/assets/row-0.jpg")';
     const decoded: string[] = [];
@@ -168,7 +197,7 @@ describe("decodeDynamicCssBackgroundImages", () => {
     );
 
     expect(batchSource).toMatch(
-      /aw\.__hf\.seek\(t\);\s*await aw\.__hfWaitForSeekCompletion\?\.\(\);\s*await aw\.__hfDecodeDynamicCssBackgroundImages\?\.\(\);/,
+      /aw\.__hf\.seek\(t\);\s*await aw\.__hfWaitForSeekCompletion\?\.\(\);\s*const late = await aw\.__hfDecodeDynamicCssBackgroundImages\?\.\(\);\s*if \(late\?\.length\) \(aw\.__hf_css_background_late \?\?= \[\]\)\.push\(\.\.\.late\);/,
     );
   });
 });

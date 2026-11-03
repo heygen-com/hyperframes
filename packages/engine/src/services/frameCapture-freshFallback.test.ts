@@ -125,6 +125,7 @@ describe("fresh screenshot fallback", () => {
       vi.mocked(produceDrawElementFrameBatch).mockImplementationOnce(async () => ({
         encodeResults: [Promise.resolve(Buffer.from("ok")), Promise.reject(timedOut(8))],
         failedAt: null,
+        lateBackgrounds: [],
       }));
       const results = await captureFramesBatchPipelined(await session(), [7, 8], [7 / 30, 8 / 30]);
       expect((await results[0]!.encodeResult).toString()).toBe("ok");
@@ -255,6 +256,7 @@ describe("fresh screenshot fallback", () => {
       vi.mocked(produceDrawElementFrameBatch).mockResolvedValueOnce({
         encodeResults: [prefix],
         failedAt: 1,
+        lateBackgrounds: [],
         error,
       });
       await expect(

@@ -1385,7 +1385,7 @@ async function finalizeDrawElementInit(
   const { transparent, forceDE } = opts;
   // Install the page-local decoder before batch drawElement capture begins;
   // the batch loop re-runs it after every in-page seek.
-  await decodeDynamicCssBackgroundImages(page);
+  recordBackgroundDecodeTimeouts(session, await decodeDynamicCssBackgroundImages(page));
   // Self-verification ground truth: must run pre-injection — after the canvas
   // wraps the root, a page screenshot shows the canvas's last-drawn bitmap,
   // not the live DOM (see the Lim 6 boundary-screenshot note).
@@ -2495,6 +2495,29 @@ function recordCaptureWarnings(session: CaptureSession, warnings: readonly Captu
   }
 }
 
+/** Report background urls that timed out decoding; the shown url drops credentials and query. */
+export function recordBackgroundDecodeTimeouts(
+  session: CaptureSession,
+  urls: readonly string[] | undefined,
+): void {
+  // Mocked pages answer evaluate() with undefined, so tolerate a missing list.
+  if (!urls?.length) return;
+  const sources = [...new Set(urls.map(sanitizeDiagnosticUrl))].sort();
+  for (const source of sources) {
+    appendBrowserDiagnostic(
+      session,
+      `[FrameCapture] background image still decoding after ${BACKGROUND_DECODE_TIMEOUT_MS}ms, captured without it: ${source}`,
+    );
+  }
+  recordCaptureWarnings(session, [
+    {
+      code: "media_readiness_timeout",
+      message: `image media did not finish decoding within ${BACKGROUND_DECODE_TIMEOUT_MS}ms`,
+      details: { mediaType: "image", sources, timeoutMs: BACKGROUND_DECODE_TIMEOUT_MS },
+    },
+  ]);
+}
+
 export function recordSubTimelineWarning(session: CaptureSession, timeoutMs: number): void {
   const outcome = session.subTimelineWaitOutcome;
   if (outcome === "ready" || !outcome) return;
@@ -3382,12 +3405,7 @@ async function prepareFrameForCapture(
 
   session.captureStep = "decoding CSS background images";
   // Mocked pages answer evaluate() with undefined, so tolerate a missing list.
-  for (const url of (await decodeDynamicCssBackgroundImages(page)) ?? []) {
-    appendBrowserDiagnostic(
-      session,
-      `[FrameCapture] background image still decoding after ${BACKGROUND_DECODE_TIMEOUT_MS}ms, captured without it: ${url}`,
-    );
-  }
+  recordBackgroundDecodeTimeouts(session, await decodeDynamicCssBackgroundImages(page));
 
   const seekMs = Date.now() - seekStart;
 
@@ -5243,13 +5261,14 @@ export async function captureFramesBatchPipelined(
   const quantized = times.map((t) => quantizeTimeToFrame(t, fps));
 
   session.captureStep = "capturing the frame";
-  const { encodeResults, failedAt, error } = await produceDrawElementFrameBatch(
+  const { encodeResults, failedAt, error, lateBackgrounds } = await produceDrawElementFrameBatch(
     page,
     quantized,
     options.width,
     options.height,
     options.quality ?? 80,
   );
+  recordBackgroundDecodeTimeouts(session, lateBackgrounds);
 
   // A later batch failure abandons this prefix. Its asynchronous encodes can
   // still reject while session cleanup shuts the worker down.
