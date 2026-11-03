@@ -158,6 +158,7 @@ export {
   waitForImagesReady,
   evaluateHfDiagnostic,
   buildZeroDurationDiagnostic,
+  applyVideoMetadataHints,
 } from "./services/frameCapture.js";
 export {
   CaptureFailure,

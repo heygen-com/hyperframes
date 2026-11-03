@@ -126,7 +126,8 @@ export interface OpenSettledCompositionPageOptions {
   // Runs after the page exists but before page.goto, so console/pageerror/
   // request listeners can attach without missing load-time events.
   beforeNavigate?: (page: Page) => void | Promise<void>;
-  onLoaded?: () => void;
+  // Runs after navigation and before the render-ready wait.
+  onLoaded?: (page: Page) => void | Promise<void>;
   // Started before the project was bundled; used only if it was launched with the same arguments.
   prelaunched?: PrelaunchedBrowser;
 }
@@ -349,7 +350,7 @@ export async function openSettledCompositionPage(
     await options.beforeNavigate?.(page);
     await gotoWhenSent(page, url, pageNavigationTimeoutMs(options.navigationTimeoutMs));
     await assertWebGpuAdapterAvailable(page, requiresWebGpu, softwareWebGpu);
-    options.onLoaded?.();
+    await options.onLoaded?.(page);
     const renderReadyTimedOut = !(await waitForCompositionSettle(page, options));
     return { browser: chromeBrowser, page, renderReadyTimedOut };
   } catch (err) {

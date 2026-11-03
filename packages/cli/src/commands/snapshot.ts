@@ -5,6 +5,7 @@ import {
   downloadToTemp,
   evaluateHfDiagnostic,
   extractMediaMetadata,
+  applyVideoMetadataHints,
   holdRenderFrameVideos,
   isHdrColorSpace,
   sdrCanvasColourFilters,
@@ -95,9 +96,12 @@ import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg
 import { parseAngle, type Camera } from "./motionShotLayout.js";
 import { createFrameBank, type FrameWant, type PlannedFrame } from "./snapshotFrameBank.js";
 import {
+  heldVideoHints,
   localVideoRenderIds,
-  probeSourceDuration,
+  localVideos,
+  probeHeldVideo,
   projectLocalFile,
+  type HeldVideoProbe,
 } from "./snapshotHeldVideos.js";
 import type { Example } from "./_examples.js";
 import { loadInstalledSharp, loadOptionalPackage } from "../utils/optionalPackages.js";
@@ -968,6 +972,8 @@ export async function captureSnapshots(
   }
   const server = await serveCapturePage(projectDir, html, opts.autoProxy);
   const heldVideoIds = localVideoRenderIds(html);
+  const heldProbes = new Map<string, Promise<HeldVideoProbe>>();
+  const heldHints = await heldVideoHints(projectDir, localVideos(html), heldProbes);
 
   const savedPaths: string[] = [];
   let pairSheetFailure: string | null = null;
@@ -989,6 +995,7 @@ export async function captureSnapshots(
             MEDIA_RENDER_ID_ATTR,
           );
       },
+      onLoaded: (target) => applyVideoMetadataHints(target, heldHints),
     });
 
     try {
@@ -1195,7 +1202,6 @@ export async function captureSnapshots(
       });
       const plannedClips = new Set<string>();
       const heldVideos = new Set(heldVideoIds);
-      const sourceDurations = new Map<string, Promise<number>>();
       const loopStartedAt = performance.now();
       let seekMs = 0;
       let videoMs = 0;
@@ -1259,7 +1265,7 @@ export async function captureSnapshots(
                 : null;
               return video.srcDuration > 0 || !file
                 ? video
-                : { ...video, srcDuration: await probeSourceDuration(file, sourceDurations) };
+                : { ...video, srcDuration: (await probeHeldVideo(file, heldProbes)).duration };
             }),
           );
           let unreadable = 0;
