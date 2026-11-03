@@ -180,7 +180,7 @@ async function call(
   if (data == null) throw new Fix(`HeyGen answered ${route} with no readable answer`, resume);
   if (!isRecord(data))
     throw new Fix(`HeyGen answered ${route} with no job`, "run the same command again");
-  const id = data.id ?? data.job_id ?? data.video_id ?? data.generation_id;
+  const id = data.id ?? data.job_id ?? data.video_id ?? data.generation_id ?? data.lipsync_id;
   return {
     ...data,
     id: typeof id === "string" ? id : "",
@@ -239,7 +239,8 @@ export async function runJob(
     if (err instanceof Refused && !KEEPS_KEY.has(err.status)) markFailed(sent, scope);
     throw err;
   }
-  if (opts.log) log(opts.log, { route, id: job.id, key: sent, status: job.status });
+  const waits = RUNNING.has(job.status.toLowerCase());
+  if (opts.log && waits) log(opts.log, { route, id: job.id, key: sent, status: job.status });
   const status = jobRoute.status;
   while (status && RUNNING.has(job.status.toLowerCase())) {
     if (Date.now() - started > (opts.timeoutMs ?? 15 * 60_000))

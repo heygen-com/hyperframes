@@ -18,7 +18,7 @@
       "files": 13
     },
     "media-use": {
-      "hash": "23d3e8801d9cb398",
+      "hash": "48db8eb3e041c589",
       "files": 117
     },
     "remotion-to-hyperframes": {
@@ -31,6 +31,10 @@
     },
     "slideshow": {
       "hash": "c8a591e2aa7a6d86",
+      "files": 2
+    },
+    "style-sampling": {
+      "hash": "2c7a5d72f475437c",
       "files": 2
     }
   }

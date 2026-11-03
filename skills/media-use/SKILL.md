@@ -20,13 +20,13 @@ It prints one line, `resolved <id> → <path> (<type>, <metadata>)`. List reusab
 | Need | Free | HyperFrames credits | Local or the person's own key (only when they ask) |
 | --- | --- | --- | --- |
 | Music (`bgm`) | HeyGen catalog of 10k+ tracks (signed in) | Generated track | Local MusicGen |
-| Sound effects (`sfx`) | Openverse (credit CC BY sounds); 21 bundled offline | | |
+| Sound effects (`sfx`) | HeyGen (signed in); Openverse (credit CC BY); bundled | | |
 | Images, icons | HeyGen asset search, 75k+ (signed in) | Generated images | Local FLUX (mflux), if installed |
 | Logos (`logo`) | theSVG, GitHub avatar, favicon; never redrawn | | |
 | Voiceover (`voice`) | Voice Turbo, Free plan: 3 min a month | Voice Turbo on a paid plan, other HeyGen voices, cloning | `npx hyperframes tts` (Kokoro on device) |
 | A presenter speaking | | Avatar video (`--type video`) | Local LTX for generic clips, if installed |
 | Transcripts | `npx hyperframes transcribe` (Parakeet or whisper) | | |
-| Cutouts | | `heygen background-removal` | `npx hyperframes remove-background` |
+| Cutouts | | Video: `--type cutout` | `npx hyperframes remove-background` |
 | Grades, LUTs, looks | `npx hyperframes media-treatment` | | |
 
 **Sign in.** Every time a request needs a HeyGen model or the catalog, run `npx hyperframes auth status` first. Not signed in: tell the person in one line that sign-in is free and gives the music catalog, asset search and 3 min of Voice Turbo a month on the Free plan, ask them to type an exclamation mark and `npx hyperframes auth login` in the prompt, and wait until they say it is done. Use local tools only when the person asks, not as a fallback.

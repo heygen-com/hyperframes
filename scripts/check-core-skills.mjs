@@ -20,6 +20,7 @@ export const CORE_SKILLS = {
   slideshow: 5120,
   "remotion-to-hyperframes": 5120,
   "reverse-any-video": 5120,
+  "style-sampling": 5120,
 };
 
 /** @param {string} skill */

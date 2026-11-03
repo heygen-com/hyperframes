@@ -2,9 +2,9 @@
 // The route runs inside the POST and takes an API key; the Idempotency-Key makes a re-run free.
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { TranscriptionCreateRequest } from "../cloud/_gen/types.js";
-import { runFfmpeg } from "../measure/media.js";
+import { projectOf, runFfmpeg } from "../measure/media.js";
 import { idempotencyKey, runJob, type JobRoute } from "./v3.js";
 
 const ROUTE: JobRoute = {
@@ -53,7 +53,7 @@ export function wordsOf(job: Record<string, unknown>) {
 export async function transcribeWithHeygen(
   inputPath: string,
   transcriptPath: string,
-  opts: { diarize?: boolean; projectDir?: string; onStatus?: (message: string) => void } = {},
+  opts: { diarize?: boolean; onStatus?: (message: string) => void } = {},
 ): Promise<HeygenTranscript> {
   const work = mkdtempSync(join(tmpdir(), "hf-heygen-asr-"));
   try {
@@ -86,7 +86,10 @@ export async function transcribeWithHeygen(
       },
       idempotencyKey(ROUTE.path, [audio, String(diarize)]),
       {
-        log: { projectDir: opts.projectDir, what: `transcribe ${inputPath}` },
+        log: {
+          projectDir: projectOf(dirname(transcriptPath)) ?? process.cwd(),
+          what: `transcribe ${inputPath}`,
+        },
         timeoutMs: 10 * 60_000,
       },
     );

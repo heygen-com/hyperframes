@@ -1,6 +1,7 @@
-// New media on HeyGen for `media-use generate`: a still (optionally edited from a reference), a shot (optionally from
-// a first frame), a person speaking from one photo, a voice reading text, or music. Every call is priced first with
-// --plan, keyed for idempotency, downloaded into the project and recorded in the media ledger as generated.
+// New media on HeyGen for `media-use generate`: a still, a shot, a shot's mouth redone to a voice, a person speaking
+// from one photo, a voice, or music. Every call is priced first with --plan, keyed for idempotency, downloaded into
+// the project and recorded in the media ledger as generated.
+import { randomUUID } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
@@ -11,8 +12,10 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, extname, join, relative, resolve } from "node:path";
+import { basename, dirname, extname, join, relative, resolve } from "node:path";
 import type {
+  CreateBackgroundRemovalRequest,
+  CreateLipsyncRequest,
   CreateModelVideoRequest,
   CreateSpeechV3Request,
   CreateVideoV3RequestBody,
@@ -33,11 +36,13 @@ import {
   type Voice,
 } from "./v3.js";
 
-export type GenerateType = "image" | "video" | "avatar" | "voice" | "music";
+export type GenerateType = "image" | "video" | "lipsync" | "avatar" | "cutout" | "voice" | "music";
 export const GENERATE_TYPES: readonly GenerateType[] = [
   "image",
   "video",
+  "lipsync",
   "avatar",
+  "cutout",
   "voice",
   "music",
 ];
@@ -48,8 +53,10 @@ export interface GenerateRequest {
   prompt?: string;
   /** image: pictures the result is edited from or styled after. video: the person or things to keep in the shot. */
   references?: string[];
-  /** video: speech the person in the references says, lips in sync (a stretch of the original's voice). */
+  /** video: speech as a reference, which the model re-paces. lipsync and avatar: the exact voice, kept as it is. */
   audio?: string;
+  /** lipsync: the shot whose mouth is redone. cutout: the shot whose background is removed. */
+  video?: string;
   /** video: a clip whose camera and body motion the shot follows (the original's same stretch, up to 15 s). */
   motion?: string;
   /** video: skip the one-shot check of the motion clip (a guide a person has looked at). */
@@ -60,6 +67,8 @@ export interface GenerateRequest {
   firstFrame?: string;
   /** avatar: the photo of the person who speaks. */
   photo?: string;
+  /** avatar: the person's own HeyGen avatar look, instead of a photo. */
+  avatar?: string;
   /** avatar and voice: what is said. */
   script?: string;
   voice?: string;
@@ -157,10 +166,7 @@ interface Route extends JobRoute {
   ext: string[];
 }
 
-type Media = (
-  path: string,
-  kind: "image" | "audio" | "video",
-) => { type: "base64"; media_type: string; data: string };
+type Media = (path: string, kind: "image" | "audio" | "video") => Record<string, unknown>;
 
 const DEFAULTS = { image: "nano-banana-2", video: "heygen-video-1", music: "lyria-3-pro" } as const;
 const VIDEO_RESOLUTION = "768p";
@@ -200,7 +206,6 @@ const ROUTES: Record<GenerateType, Route> = {
     status: (c, id, signal) => c.getModelVideo({ video_id: id, signal }),
     // fallow-ignore-next-line complexity
     body: (r, media) => {
-      // A person speaking given audio is a reference shot: the references show who, the audio drives the lips.
       const spoken = !!r.audio || !!r.references?.length || !!r.motion;
       if (spoken && r.firstFrame)
         throw new Fix(
@@ -229,17 +234,60 @@ const ROUTES: Record<GenerateType, Route> = {
     ledger: "video",
     ext: [".mp4", ".mov", ".webm"],
   },
+  lipsync: {
+    path: "/v3/lipsyncs",
+    start: (c, body, key, signal) =>
+      c.createLipsyncV3({ body: body as CreateLipsyncRequest, idempotencyKey: key, signal }),
+    status: (c, id, signal) => c.getLipsyncV3({ lipsync_id: id, signal }),
+    body: (r, media) => ({
+      video: media(need(r.video, "--video", "--video work/s01.mp4"), "video"),
+      audio: media(need(r.audio, "--audio", "--audio work/s01.mp3"), "audio"),
+      mode: "speed",
+      enable_dynamic_duration: false,
+      fps_mode: "cfr",
+      keep_the_same_format: true,
+    }),
+    urls: ["video_url"],
+    ledger: "video",
+    ext: [".mp4"],
+  },
+  cutout: {
+    path: "/v3/background-removals",
+    start: (c, body, key, signal) =>
+      c.createBackgroundRemoval({
+        body: { ...(body as CreateBackgroundRemovalRequest), request_id: key },
+        signal,
+      }),
+    status: (c, id, signal) => c.getBackgroundRemoval({ job_id: id, signal }),
+    body: (r, media) => ({
+      video: media(need(r.video, "--video", "--video assets/presenter.mp4"), "video"),
+      layers: ["foreground"],
+    }),
+    urls: ["layers.foreground"],
+    ledger: "video",
+    ext: [".webm", ".mov"],
+  },
   avatar: {
     path: "/v3/videos",
     start: (c, body, key, signal) =>
       c.createVideo({ body: body as CreateVideoV3RequestBody, idempotencyKey: key, signal }),
     status: (c, id, signal) => c.getVideoV3({ video_id: id, signal }),
     body: (r, media) => ({
-      type: "image",
-      image: media(need(r.photo, "--photo", "--photo assets/presenter.png"), "image"),
-      script: need(r.script, "--script", '--script "What they say"'),
-      voice_id: need(r.voice, "--voice", "--voice <voice id or language>"),
+      ...(r.avatar
+        ? { type: "avatar", avatar_id: r.avatar }
+        : {
+            type: "image",
+            image: media(need(r.photo, "--photo", "--photo assets/presenter.png"), "image"),
+            ...(r.prompt ? { motion_prompt: r.prompt } : {}),
+          }),
+      ...(r.audio
+        ? { audio_asset_id: media(r.audio, "audio").asset_id }
+        : {
+            script: need(r.script, "--script", '--script "What they say"'),
+            voice_id: need(r.voice, "--voice", "--voice <voice id or language>"),
+          }),
       ...(r.aspect ? { aspect_ratio: r.aspect } : {}),
+      resolution: "1080p",
       output_format: "mp4",
     }),
     urls: ["video_url"],
@@ -341,6 +389,34 @@ function inline(work: string, masks: Mask[] = []): Media {
   };
 }
 
+/** Files a route takes as asset ids, not inline. */
+function assetsOf(r: GenerateRequest): string[] {
+  if (r.type === "lipsync") return [r.video!, r.audio!];
+  if (r.type === "cutout") return [r.video!];
+  return r.type === "avatar" && r.audio ? [r.audio] : [];
+}
+
+/** Uploads them whole; the asset id of each path. */
+async function uploaded(paths: string[]): Promise<Map<string, string>> {
+  const ids = new Map<string, string>();
+  if (!paths.length) return ids;
+  const { createCloudClient } = await import("../cloud/index.js");
+  const { uploadAssetViaDirectUpload } = await import("../cloud/upload.js");
+  const { getMimeType } = await import("@hyperframes/studio-server");
+  const client = await createCloudClient();
+  for (const path of paths) {
+    const asset = await uploadAssetViaDirectUpload({
+      client,
+      bytes: new Uint8Array(readFileSync(path)),
+      filename: basename(path),
+      contentType: getMimeType(path),
+      idempotencyKey: randomUUID(),
+    });
+    ids.set(path, asset.asset_id);
+  }
+  return ids;
+}
+
 /**
  * The seconds where a new shot starts in a video's first `seconds`, and the length read. A cut within a frame of
  * either end leaves a stray frame, not a second shot, and does not count.
@@ -419,7 +495,7 @@ function fillMasks(path: string, masks: Mask[], work: string): string {
  * HeyGen answers a 16:9 request at 1344x768 (1.75:1). The result is cropped, centred, to the requested ratio
  * (1344x756) rather than stretched; returns a note on what was done, or nothing when it already fits.
  */
-export function fitAspect(out: string, aspect: string): string | undefined {
+function fitAspect(out: string, aspect: string): string | undefined {
   const [aw, ah] = aspect.split(":").map(Number);
   if (!aw || !ah) return;
   const { width, height } = probeVideo(out);
@@ -497,6 +573,10 @@ function checkGuide(r: Pick<GenerateRequest, "motion" | "allowCuts">): void {
  *  The route's body runs with a stand-in for the media, so its required flags and conflicts are checked as sent. */
 const VOICE_ID = /^[0-9a-f]{32}$/i;
 
+export async function voiceFor(r: GenerateRequest): Promise<Voice | undefined> {
+  return r.type === "voice" || (r.type === "avatar" && !r.audio) ? pickVoice(r) : undefined;
+}
+
 export async function pickVoice(r: GenerateRequest): Promise<Voice> {
   if (r.voice && VOICE_ID.test(r.voice)) return { voice_id: r.voice, name: r.voice };
   if (!r.voice) {
@@ -565,11 +645,18 @@ export async function generate(
   const project = projectOf(dirname(out));
   const work = mkdtempSync(join(tmpdir(), "hf-generate-"));
   try {
-    const body = route.body(r, inline(work, r.masks));
-    const key = idempotencyKey(route.path, [JSON.stringify(body)]);
+    const sources = assetsOf(r);
+    const ids = await uploaded(sources);
+    const local = inline(work, r.masks);
+    const body = route.body(r, (path, kind) =>
+      ids.has(path) ? { type: "asset_id", asset_id: ids.get(path) } : local(path, kind),
+    );
+    // An asset id is new on every upload; the files say whether this is the same job.
+    const sent = [...ids.values()].reduce((t, id) => t.replaceAll(id, ""), JSON.stringify(body));
+    const key = idempotencyKey(route.path, [...sources.map((p) => readFileSync(p)), sent]);
     const job = await runJob(route, body, key, {
       log: {
-        projectDir: project ?? undefined,
+        projectDir: project ?? process.cwd(),
         what: `generate ${r.type} ${relative(project ?? ".", out)}`,
       },
       onWait: (j) => onWait?.(j.status),
@@ -634,7 +721,9 @@ export async function generate(
           ...(r.references?.length ? { references: r.references.map(describe) } : {}),
           ...(r.firstFrame ? { first_frame: describe(r.firstFrame) } : {}),
           ...(r.photo ? { photo: describe(r.photo) } : {}),
+          ...(r.avatar ? { avatar: r.avatar } : {}),
           ...(r.audio ? { audio: describe(r.audio) } : {}),
+          ...(r.video ? { video: describe(r.video) } : {}),
           ...(r.motion ? { motion: describe(r.motion) } : {}),
           ...(r.masks?.length
             ? { motion_masks: r.masks.map((m) => [...m.box, ...(m.window ?? [])]) }

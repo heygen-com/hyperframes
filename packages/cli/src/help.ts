@@ -66,6 +66,7 @@ const GROUPS: Group[] = [
       ],
       ["reverse", "Open a reverse-any-video run: note it with HeyGen, then probe the video"],
       ["billing", "Open the HyperFrames plans or credits page and wait until it is done"],
+      ["templates", "Pull a style template into this project (HyperFrames Pro)"],
       ["info", "Print project metadata"],
       ["compositions", "List all compositions in a project"],
       ["timeline", "Print the project's tracks and clips"],

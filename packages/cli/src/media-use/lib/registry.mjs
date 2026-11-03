@@ -23,7 +23,7 @@
 // (e.g. "make an image with codex").
 
 import { bgmProvider } from "./bgm-provider.mjs";
-import { OPENVERSE_SFX_PROVIDER, sfxProvider } from "./sfx-provider.mjs";
+import { heygenSfxProvider, OPENVERSE_SFX_PROVIDER, sfxProvider } from "./sfx-provider.mjs";
 import { bundledSfxProvider } from "./bundled-sfx-provider.mjs";
 import { imageProvider, iconProvider } from "./image-provider.mjs";
 import { brandProvider } from "./brand-provider.mjs";
@@ -48,6 +48,7 @@ const P = (name, caps) => ({ name, network: true, paid: true, ...caps }); // rem
 const REGISTRY = {
   bgm: [N("heygen.audio.sounds", { search: bgmProvider.search })],
   sfx: [
+    N("heygen.audio.sounds", { search: heygenSfxProvider.search }),
     N(OPENVERSE_SFX_PROVIDER, { search: sfxProvider.search }),
     A("bundled.sfx", { search: bundledSfxProvider.search }),
   ],

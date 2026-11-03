@@ -1265,7 +1265,9 @@ async function reuseGlobal(shaArg) {
     process.exit(2);
   }
   if (!rec) {
-    console.error(`error: no reusable global asset matches sha "${shaArg}"`);
+    console.error(
+      `error: no reusable global asset matches sha "${shaArg}". --reuse takes a sha from \`resolve --candidates\`; to skip the caches, pass --provider <name> instead`,
+    );
     process.exit(1);
   }
   // Do not import an asset under the wrong type.
