@@ -15,7 +15,7 @@ Reverse is a HyperFrames Pro feature: go on only on a paid plan, not Free. Open 
 
 1. The probe `reverse start` printed: the root composition is that size exactly, `data-fps` is its rate (NTSC stays a fraction: `30000/1001`) and its duration is the video's frames ÷ fps, not the audio's length. `init`'s default canvas is wrong for most videos.
 2. `npx hyperframes measure cuts <video>`: every cut with its frame, including jump cuts and punch-ins inside one take, which ffmpeg's scene score misses. Every shot starts at its listed time. Write times as frame ÷ fps rounded down (frame 83 at 30 fps is `2.766666`): `2.767` lands a frame late.
-3. The sound is the original's: the video is in the project from `init --video` (see `references/start.md`); play it as one `<audio src="<its file name>">` over the whole film (no extracted or re-encoded track); every clip is muted.
+3. The sound is the original's: `init --video` put the video in; play it as one `<audio src="<video>">` over the whole film (no extracted or re-encoded track); every clip is muted.
 4. Read consecutive frames wherever something changes: each cut, entrance, exit and transition, a few frames either side (`npx hyperframes measure frames --range a,b --roi x,y,w,h`). Sheets a second or a quarter apart miss 1–3-frame timing, which way things enter and leave, blurs and dissolves at cuts, and one-frame flashes.
 
 ## Every layer
