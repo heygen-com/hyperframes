@@ -124,7 +124,7 @@ describe("loadTranscript", () => {
     );
   });
 
-  it("reads whisper-cli output whose floats are nan, -nan or inf", () => {
+  it("reads whisper-cli output whose floats are nan, -nan, inf or MSVC's -nan(ind)", () => {
     // Token objects as whisper.cpp's cli.cpp writes them: tab-indented, floats via iostream.
     const token = (text: string, from: number, to: number, p: string) =>
       [
@@ -147,6 +147,7 @@ describe("loadTranscript", () => {
       token(" nan", 0, 500, "nan"),
       token(" world", 600, 1200, "-nan"),
       token(" again", 1300, 1800, "inf"),
+      token(" later", 1900, 2400, "-nan(ind)"),
     ].join(",\n")}\n\t\t\t]\n\t\t}\n\t]\n}\n`;
     const { words, format } = loadTranscript(tmpFile("transcript.json", raw));
     expect(format).toBe("whisper-cpp");
@@ -154,6 +155,7 @@ describe("loadTranscript", () => {
       { text: "nan", start: 0, end: 0.5, id: "w0" },
       { text: "world", start: 0.6, end: 1.2, id: "w1" },
       { text: "again", start: 1.3, end: 1.8, id: "w2" },
+      { text: "later", start: 1.9, end: 2.4, id: "w3" },
     ]);
   });
 
