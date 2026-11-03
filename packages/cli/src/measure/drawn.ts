@@ -186,7 +186,7 @@ export function readDrawn(
       `[0:v]${[...clip.filters, "setsar=1", `scale=${width}:${height}:flags=bicubic`].join(",")},split=${jobs.length}${tags}`,
       ...jobs.map(({ box: [x, y, w, h], frames }, j) => {
         const pick = sumOf(frames.map((k) => `eq(n\\,${k})`));
-        return `[d${j}]select=${pick},crop=${w}:${h}:${x}:${y},format=rgb24[e${j}]`;
+        return `[d${j}]select=${pick},format=rgb24,crop=${w}:${h}:${x}:${y}[e${j}]`;
       }),
     ].join(";");
     const outs = jobs.flatMap((_, j) => [
