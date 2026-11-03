@@ -93,7 +93,10 @@ function host(
 
 const captureCanvas = (root: HTMLElement) => root.parentElement as HTMLCanvasElement;
 
+const rangeRect = Range.prototype.getBoundingClientRect;
+
 beforeEach(() => {
+  Range.prototype.getBoundingClientRect = () => new DOMRect();
   setFilterFallbackForTests(false);
   contexts = [];
   vi.spyOn(console, "info").mockImplementation(() => {});
@@ -101,6 +104,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  Range.prototype.getBoundingClientRect = rangeRect;
   resetCaptureMotionBlurForTests();
   setFilterFallbackForTests(true);
   vi.restoreAllMocks();
@@ -1979,5 +1983,42 @@ describe("filter fallback", () => {
     resetCaptureMotionBlurForTests();
     expect(el.style.filter).toBe("");
     expect(document.querySelectorAll("filter")).toHaveLength(0);
+  });
+});
+
+describe("the movers-alone capture", () => {
+  // A mover clipped by an SVG <clipPath> elsewhere in the composition: hiding the clip path's
+  // shape empties the clip, so the mover captured as nothing and vanished from blurred frames.
+  it("leaves SVG clip paths and masks visible, hiding the rest of the scene", () => {
+    installHtmlInCanvas();
+    const { root, h } = movingHost();
+    const NS = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(NS, "svg");
+    const defs = document.createElementNS(NS, "defs");
+    const clip = document.createElementNS(NS, "clipPath");
+    const shape = document.createElementNS(NS, "use");
+    clip.append(shape);
+    defs.append(clip);
+    svg.append(defs);
+    const still = document.createElement("div");
+    root.append(svg, still);
+    initCaptureMotionBlur(h);
+    void paintCaptureMotionBlur(0.5, PLAY);
+    expect(root.hasAttribute(ONLY)).toBe(true);
+    // jsdom has no cascade for this: check which elements each isolation rule selects.
+    const rules = [...document.head.querySelectorAll("style")]
+      .flatMap((s) => (s.textContent ?? "").split("\n"))
+      .filter((line) => line.startsWith(`[${ONLY}]`));
+    const selecting = (el: Element, value: string) =>
+      rules.some(
+        (line) =>
+          line.includes(`visibility: ${value}`) && el.matches(line.slice(0, line.indexOf("{"))),
+      );
+    expect(selecting(still, "hidden")).toBe(true);
+    expect(selecting(still, "visible")).toBe(false);
+    // Neither hidden itself nor left to inherit its <svg>'s hidden: its <defs> is made visible.
+    expect(selecting(shape, "hidden")).toBe(false);
+    expect(selecting(clip, "hidden")).toBe(false);
+    expect(selecting(defs, "visible")).toBe(true);
   });
 });

@@ -65,6 +65,8 @@ const HIDE_ATTR = "data-hf-motion-blur-hide";
 /** On the root while the movers alone are captured; the movers carry MOVER_ATTR. */
 const ONLY_ATTR = "data-hf-motion-blur-only";
 const MOVER_ATTR = "data-hf-motion-blur-mover";
+const SVG_DRAWN_BY_REFERENCE = ["defs", "clipPath", "mask", "pattern", "marker", "symbol"];
+const IN_SVG_RESOURCE = SVG_DRAWN_BY_REFERENCE.flatMap((tag) => [tag, `${tag} *`]).join(", ");
 const NESTED_CANVAS_KEEPS_ITS_PLACE = `:where([data-hf-motion-blur="capture"] canvas) { translate: 0 0 0; }`;
 
 interface Job {
@@ -169,8 +171,9 @@ function createInstance(host: CaptureMotionBlurHost, config: Config, form: HtmlI
     `[${HIDE_ATTR}] { opacity: 0 !important; }`,
     // The root stays visible: a rotated or scaled mover under a hidden root is captured at the origin, untransformed.
     `[${ONLY_ATTR}] { background: none !important; border-color: transparent !important; box-shadow: none !important; outline-color: transparent !important; }`,
-    `[${ONLY_ATTR}]::before, [${ONLY_ATTR}]::after, [${ONLY_ATTR}] *:not([${MOVER_ATTR}], [${MOVER_ATTR}] *) { visibility: hidden !important; }`,
+    `[${ONLY_ATTR}]::before, [${ONLY_ATTR}]::after, [${ONLY_ATTR}] *:not([${MOVER_ATTR}], [${MOVER_ATTR}] *, ${IN_SVG_RESOURCE}) { visibility: hidden !important; }`,
     `[${ONLY_ATTR}] [${MOVER_ATTR}] { visibility: visible !important; }`,
+    `[${ONLY_ATTR}] :is(${SVG_DRAWN_BY_REFERENCE.join(", ")}) { visibility: visible !important; }`,
     NESTED_CANVAS_KEEPS_ITS_PLACE,
   ].join("\n");
 
@@ -280,6 +283,7 @@ function createInstance(host: CaptureMotionBlurHost, config: Config, form: HtmlI
       taps: config.samples,
       pads,
       frameW: width,
+      scene: root,
       frameH: height,
     });
   }
