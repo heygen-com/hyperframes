@@ -518,6 +518,82 @@ describe("runCaptureStreamingStage", () => {
     expect(input.abortSignal).toBeUndefined();
   });
 
+  describe("a system sleep during capture", () => {
+    const settled = (promise: Promise<unknown>) => {
+      const state = { rejected: undefined as unknown, done: false };
+      promise.then(
+        () => (state.done = true),
+        (error) => {
+          state.done = true;
+          state.rejected = error;
+        },
+      );
+      return state;
+    };
+    const after = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+    const realNow = Date.now;
+    const sleepFor = (ms: number) => {
+      const skew = ms;
+      Date.now = () => realNow() + skew;
+    };
+    const input = {
+      session: { captureMode: "screenshot", captureStep: "" },
+      frameIndex: 3,
+      totalFrames: 9,
+      stallTimeoutMs: 400,
+    } as const;
+
+    it("does not trip a sequential capture the moment the machine wakes", async () => {
+      const { raceAgainstStall } = await import("./captureStreamingStage.js");
+      const state = settled(raceAgainstStall(new Promise<never>(() => {}), 400, input));
+      await after(100);
+      sleepFor(10 * 3_600_000);
+      try {
+        await after(500);
+        expect(state.done).toBe(false);
+        await after(1_000);
+      } finally {
+        Date.now = realNow;
+      }
+      expect((state.rejected as Error).name).toBe("SequentialCaptureStallError");
+    });
+
+    it("trips a sequential capture that makes no progress on time", async () => {
+      const { raceAgainstStall } = await import("./captureStreamingStage.js");
+      const state = settled(raceAgainstStall(new Promise<never>(() => {}), 200, input));
+      await after(700);
+      expect((state.rejected as Error).name).toBe("SequentialCaptureStallError");
+    });
+
+    it("does not trip the parallel watchdog the moment the machine wakes", async () => {
+      hangParallelUntilAbort = true;
+      const prev = process.env.HF_DE_STALL_MS;
+      process.env.HF_DE_STALL_MS = "100";
+      const { runCaptureStreamingStage } = await import("./captureStreamingStage.js");
+      const baseInput = createInput({ forceScreenshot: false, ffmpegStreamingTimeout: 3_600_000 });
+      const started = Date.now();
+      const run = runCaptureStreamingStage({
+        ...baseInput,
+        totalFrames: 100,
+        plan: { ...baseInput.plan, workerCount: 2, forceParallelStream: true },
+        parallelCaptureLabel: "screenshot",
+      }).catch((error: unknown) => error);
+      await after(30);
+      sleepFor(10 * 3_600_000);
+      let caught: unknown;
+      try {
+        caught = await run;
+      } finally {
+        Date.now = realNow;
+        hangParallelUntilAbort = false;
+        if (prev === undefined) delete process.env.HF_DE_STALL_MS;
+        else process.env.HF_DE_STALL_MS = prev;
+      }
+      expect((caught as Error).name).toBe("ParallelCaptureStallError");
+      expect(Date.now() - started).toBeGreaterThanOrEqual(190);
+    });
+  });
+
   describe("a parallel capture stall", () => {
     const run = async (
       afterFrames: number | number[],

@@ -215,6 +215,43 @@ describe("RenderObservabilityRecorder", () => {
     vi.useRealTimers();
   });
 
+  describe("the stall watchdog across a system sleep", () => {
+    const watch = () => {
+      const recorder = new RenderObservabilityRecorder({
+        pipelineStartMs: Date.now(),
+        log: makeLog(),
+        renderJobId: "render-stall-sleep",
+      });
+      const outcome: { error?: unknown } = {};
+      observeRenderStage(recorder, "capture_disk", undefined, () => new Promise<void>(() => {}), {
+        stall: { progress: () => 0, noProgressMs: 10_000, firstProgressMs: 10_000 },
+      }).catch((error: unknown) => {
+        outcome.error = error;
+      });
+      return outcome;
+    };
+
+    it("does not read a ten-hour sleep as no progress", async () => {
+      vi.useFakeTimers();
+      const outcome = watch();
+      await vi.advanceTimersByTimeAsync(3_000);
+      vi.setSystemTime(Date.now() + 10 * 3_600_000);
+      await vi.advanceTimersByTimeAsync(9_000);
+      expect(outcome.error).toBeUndefined();
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(outcome.error).toBeInstanceOf(Error);
+      vi.useRealTimers();
+    });
+
+    it("still stalls when the process runs on time and no progress lands", async () => {
+      vi.useFakeTimers();
+      const outcome = watch();
+      await vi.advanceTimersByTimeAsync(11_000);
+      expect((outcome.error as Error).message).toContain("no progress for 10000ms");
+      vi.useRealTimers();
+    });
+  });
+
   it("tells the stall rule each time a capture attempt opens", async () => {
     const recorder = new RenderObservabilityRecorder({
       pipelineStartMs: Date.now(),
