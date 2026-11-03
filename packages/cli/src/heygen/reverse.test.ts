@@ -81,9 +81,7 @@ describe("startReverseSession", () => {
   it("keeps a session whose plan the server could not read, without reading the plan itself", async () => {
     serve({
       [START_URL]: () =>
-        Response.json({
-          data: { session_id: SESSION, plan: "unknown", gate: "block", upgrade_url: null },
-        }),
+        Response.json({ data: { session_id: SESSION, plan: "unknown", gate: "block" } }),
       [PLAN_URL]: freePlan,
     });
     expect(await startReverseSession()).toEqual({
@@ -91,6 +89,21 @@ describe("startReverseSession", () => {
       session: { sessionId: SESSION, plan: "unknown", gate: "block" },
     });
     expect(calls.map((c) => c.url)).toEqual([START_URL]);
+  });
+
+  it.each([
+    ["a link", { upgrade_url: "https://u.test/p" }, { upgradeUrl: "https://u.test/p" }],
+    ["null, as the server withholds the link", { upgrade_url: null }, { upgradeUrl: null }],
+    ["no field, as an older server sends", {}, {}],
+  ])("reads upgrade_url when it is %s", async (_label, field, read) => {
+    serve({
+      [START_URL]: () =>
+        Response.json({ data: { session_id: SESSION, plan: "free", gate: "block", ...field } }),
+    });
+    expect(await startReverseSession()).toEqual({
+      recorded: true,
+      session: { sessionId: SESSION, plan: "free", gate: "block", ...read },
+    });
   });
 
   it("asks nothing when not signed in", async () => {
@@ -144,6 +157,10 @@ describe("reverseUpgradeUrl", () => {
       `https://hyperframes.studio/pricing?from=cli&feature=reverse&rs=${SESSION}`,
     );
     expect(reverseUpgradeUrl()).toBe("https://hyperframes.studio/pricing?from=cli&feature=reverse");
+  });
+
+  it("is null when the server withholds the link, instead of building one", () => {
+    expect(reverseUpgradeUrl({ sessionId: SESSION, upgradeUrl: null })).toBeNull();
   });
 });
 

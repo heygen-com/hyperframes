@@ -12,10 +12,13 @@ const server = vi.hoisted(() => ({
 }));
 const probe = vi.hoisted(() => ({ fail: false }));
 
-vi.mock("../../heygen/reverse.js", () => ({
-  reverseUpgradeUrl: (session?: { sessionId: string; upgradeUrl?: string }) =>
-    session?.upgradeUrl ??
-    `https://plans.test/?feature=reverse${session ? `&rs=${session.sessionId}` : ""}`,
+vi.mock("../../heygen/plan.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../heygen/plan.js")>()),
+  pageUrl: (_kind: string, fields: { feature?: string; rs?: string } = {}) =>
+    `https://plans.test/?feature=${fields.feature}${fields.rs ? `&rs=${fields.rs}` : ""}`,
+}));
+vi.mock("../../heygen/reverse.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../heygen/reverse.js")>()),
   startReverseSession: async (opts: { resumeSessionId?: string } = {}) => {
     server.resumed.push(opts.resumeSessionId);
     return server.answer;
@@ -33,11 +36,11 @@ const { default: start } = await import("./start.js");
 const SESSION = "rvs_0f8fad5b-d9cb-469f-a165-70867728950e";
 const recorded = (
   plan: "free" | "pro" | "unknown" = "pro",
-  upgradeUrl?: string,
+  upgradeUrl?: string | null,
   gate: "record" | "block" = "record",
 ): ReverseStart => ({
   recorded: true,
-  session: { sessionId: SESSION, plan, gate, ...(upgradeUrl ? { upgradeUrl } : {}) },
+  session: { sessionId: SESSION, plan, gate, ...(upgradeUrl !== undefined ? { upgradeUrl } : {}) },
 });
 
 let root: string;
@@ -114,7 +117,7 @@ describe("reverse start", () => {
     expect(config(dir)).toMatchObject({ reverseSessionId: SESSION });
   });
 
-  it.each<[string, ReverseStart, string]>([
+  it.each<[string, ReverseStart, string | null]>([
     [
       "the server's link",
       recorded("free", "https://u.test/p?feature=reverse&rs=1"),
@@ -130,6 +133,7 @@ describe("reverse start", () => {
       { recorded: false, reason: "unavailable", plan: "free" },
       "https://plans.test/?feature=reverse",
     ],
+    ["no link when the server withholds it", recorded("free", null), null],
   ])("prints the upgrade link for Free: %s", async (_label, answer, link) => {
     server.answer = answer;
     await run();
@@ -196,6 +200,25 @@ describe("reverse start", () => {
     expect(output().reverse).toMatchObject({
       subscribe_command: `npx hyperframes billing subscribe --feature reverse --session ${SESSION}`,
     });
+  });
+
+  it("names no subscribe command when the server withholds the link", async () => {
+    server.answer = recorded("free", null);
+    await run();
+    expect(output().reverse).toMatchObject({ upgrade_url: null, subscribe_command: null });
+  });
+
+  it("names no link when the server blocks Free and withholds the link: no plan can be bought now", async () => {
+    server.answer = recorded("free", null, "block");
+    const dir = join(root, "rebuild");
+    await expect(run("--dir", dir)).rejects.toThrow(CliRuntimeError);
+    expect(output()).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("can't be purchased right now"),
+    });
+    expect(printed.at(-1)).not.toContain("http");
+    expect(printed.at(-1)).not.toContain("billing subscribe");
+    expect(config(dir)).toMatchObject({ reverseSessionId: SESSION });
   });
 
   it.each<[string, ReverseStart]>([

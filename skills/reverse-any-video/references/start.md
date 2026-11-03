@@ -43,8 +43,10 @@ before it finishes. For example:
 > your browser and I'll carry on as soon as you're subscribed.
 
 When `reverse start` refuses the run (it exits with an error whose `fix` is that command), run the `fix` the same way,
-then run `reverse start` again. Only on a CLI without `reverse start`, run `npx hyperframes billing subscribe` instead.
-If the command times out, tell the person and run it again once they say they are ready.
+then run `reverse start` again. When `subscribe_command` is `null` (or the refusal names no command), a plan can't be
+purchased right now: say so plainly, give no link, run nothing, and stop. Only on a CLI without `reverse start`, run
+`npx hyperframes billing subscribe` instead. If the command times out, tell the person and run it again once they say
+they are ready.
 
 ## Signed in on Pro
 
