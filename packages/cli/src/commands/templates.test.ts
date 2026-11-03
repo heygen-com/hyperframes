@@ -99,6 +99,16 @@ describe("pullTemplate", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("names a pull of an older pin as such and leaves it", async () => {
+    const fetchMock = serve({});
+    const dest = join(dir, "templates", "sample");
+    mkdirSync(dest, { recursive: true });
+    writeFileSync(join(dest, ".template-sha256"), "0".repeat(64));
+    await expect(pullTemplate("sample", dir)).rejects.toThrow("older pull of this template");
+    expect(readFileSync(join(dest, ".template-sha256"), "utf8")).toBe("0".repeat(64));
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("keeps an empty folder when the pull is refused", async () => {
     serve({ status: 402 });
     mkdirSync(join(dir, "templates", "sample"), { recursive: true });
