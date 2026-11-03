@@ -528,7 +528,7 @@ describe("composition loading overlay", () => {
 });
 
 describe("accelerated canvases", () => {
-  it("are tracked in the studio's own window as soon as the player loads", () => {
+  it("are tracked in Studio's window, whose prototype a preview canvas gets when Studio reaches it first", () => {
     expect("__hfAccelTracked" in HTMLCanvasElement.prototype.getContext).toBe(true);
     expect(Reflect.get(window, "__hfAcceleratedCanvases")).toBeInstanceOf(WeakSet);
   });
