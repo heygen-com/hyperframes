@@ -53,6 +53,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
+import { sumOf } from "../measure/media.js";
 import { resolve, join, relative, isAbsolute, basename, posix } from "node:path";
 import {
   DEFAULT_ZOOM_SCALE,
@@ -721,7 +722,7 @@ export async function extractVideoFrameToBuffer(
 export function selectFirstFrameAfterEach(offsets: number[]): string {
   const sinceLast = "if(isnan(prev_selected_t)\\,-1\\,prev_selected_t-start_t)";
   const open = offsets.map((offset) => `gte(t-start_t\\,${offset})*gt(${offset}\\,${sinceLast})`);
-  return `select=gt(${open.join("+")}\\,0)`;
+  return `select=gt(${sumOf(open)}\\,0)`;
 }
 
 /** One ffmpeg pass that writes every planned frame of a video: the source decodes from the earliest keyframe once.

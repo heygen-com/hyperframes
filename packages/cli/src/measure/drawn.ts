@@ -4,7 +4,7 @@
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { round, runFfmpeg, type Clip, type Roi } from "./media.js";
+import { round, runFfmpeg, sumOf, type Clip, type Roi } from "./media.js";
 
 export const DRAWN_MIN_MEAN = 0.8;
 const DRAWN_MIN_P05 = 0.65;
@@ -185,7 +185,7 @@ export function readDrawn(
     const graph = [
       `[0:v]${[...clip.filters, "setsar=1", `scale=${width}:${height}:flags=bicubic`].join(",")},split=${jobs.length}${tags}`,
       ...jobs.map(({ box: [x, y, w, h], frames }, j) => {
-        const pick = frames.map((k) => `eq(n\\,${k})`).join("+");
+        const pick = sumOf(frames.map((k) => `eq(n\\,${k})`));
         return `[d${j}]select=${pick},crop=${w}:${h}:${x}:${y},format=rgb24[e${j}]`;
       }),
     ].join(";");
