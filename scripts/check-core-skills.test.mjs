@@ -37,7 +37,7 @@ test("media-use lists Voice Turbo as free only on the Free plan, not for every s
   assert.doesNotMatch(text, /Voice Turbo \(signed in\)/);
 });
 
-test("reverse builds the project with init --video and asks to top up once for the run's total", () => {
+test("reverse builds the project with init --video and asks for the run's total once", () => {
   const read = (path) =>
     readFileSync(new URL(`../skills/reverse-any-video/${path}`, import.meta.url), "utf8");
   const start = read("references/start.md");
@@ -45,8 +45,10 @@ test("reverse builds the project with init --video and asks to top up once for t
     start,
     /`npx hyperframes init <project> --video <video> --keep-original --skip-transcribe`/,
   );
-  assert.match(start, /add up what each refused step\s+needs, and ask once for that total/);
-  assert.match(start, /billing top-up --needed <total>|--needed <total>/);
+  assert.match(
+    start,
+    /add up what each refused step\s+needs, and run `npx hyperframes billing (?:top-up|add-credits) --needed <total>` once for that total/,
+  );
   assert.doesNotMatch(read("SKILL.md"), /copy the video into the project/);
   assert.match(read("SKILL.md"), /`init --video` put the video in/);
 });
