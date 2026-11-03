@@ -124,6 +124,7 @@ export interface CreateHyperframesRenderRequest {
   title?: string | null;
   callback_id?: string | null;
   callback_url?: string | null;
+  reverse_session_id?: string | null;
 }
 
 export interface CreateHyperframesRenderResponse {
