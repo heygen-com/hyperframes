@@ -32,6 +32,11 @@ describe("offset frame times", () => {
     ]);
     expect(yoursFilters({ kind: "all" }, "30000/1001", -0.25)).toEqual([
       "fps=30000/1001:start_time=-0.25",
+      "setpts=N/(30000/1001)/TB",
+    ]);
+    expect(yoursFilters({ kind: "all" }, "30", 0.5)).toEqual([
+      "fps=30:start_time=0.5",
+      "setpts=N/(30)/TB",
     ]);
   });
 
@@ -73,7 +78,18 @@ describe("offset frame times", () => {
     expect(parseOffset("0.5")).toBe(0.5);
     expect(parseOffset("-0.5")).toBe(-0.5);
     expect(parseOffset(" 2 ")).toBe(2);
-    for (const bad of ["", "abc", "0.5s", "1,2", "0x10", "Infinity", true])
+    for (const bad of [
+      "",
+      "abc",
+      "0.5s",
+      "1,2",
+      "0x10",
+      "Infinity",
+      "1e309",
+      "+1e309",
+      "-1e309",
+      true,
+    ])
       expect(() => parseOffset(bad)).toThrow(Fix);
     try {
       parseOffset("abc");
@@ -117,6 +133,21 @@ describe.skipIf(noTools)("diffVideos with an offset", () => {
     expect(rows[0]).toBe("t\tframe\tssim\tworst_cell\tcell");
     expect(rows).toHaveLength(76);
     expect(rows[1]!.split("\t").slice(0, 2)).toEqual(["0", "0"]);
+  });
+
+  it("compares every original frame with an untrimmed late render", async () => {
+    const yours = clip("late-full.mp4", ["-i", ref, "-vf", "tpad=start_duration=0.5"]);
+    const r = await diffVerdicts({
+      reference: ref,
+      yours,
+      offset: 0.5,
+      outDir: join(dir, "late-full"),
+    });
+    expect(r.ssim.mean).toBeGreaterThan(0.99);
+    expect(r.ssim.frames).toBe(90);
+    expect(r.window).toEqual([0, 3]);
+    expect(r.warnings).toEqual([]);
+    expect(r.pass).toBe(true);
   });
 
   it("compares an early render with a negative offset, clipped to its start", async () => {

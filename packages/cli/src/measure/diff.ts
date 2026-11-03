@@ -305,7 +305,9 @@ export function selectFilter(pick: Pick, fpsText: string): string[] {
 /** Yours' filters: its n-th frame at the original's rate is yours at n / fps + offset, then the pick's frames. */
 export function yoursFilters(pick: Pick, fpsText: string, offset = 0): string[] {
   const rate = offset ? `fps=${fpsText}:start_time=${offset}` : `fps=${fpsText}`;
-  return [rate, ...selectFilter(pick, fpsText)];
+  const select = selectFilter(pick, fpsText);
+  // SSIM pairs timestamps, so even an untrimmed offset stream must start at zero.
+  return [rate, ...(offset && !select.length ? [`setpts=N/(${fpsText})/TB`] : select)];
 }
 
 /** The original's frames [first, end) that land on yours at t + offset; a project's end is unknown before capture. */
@@ -338,7 +340,7 @@ export function captureTimes(ks: number[], fps: number, offset = 0): number[] {
 /** `--offset` seconds: a number, negative when yours runs ahead of the original. */
 export function parseOffset(text: unknown): number {
   const value = typeof text === "string" ? text.trim() : "";
-  if (!/^[-+]?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$/i.test(value))
+  if (!/^[-+]?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$/i.test(value) || !Number.isFinite(Number(value)))
     throw new Fix(
       `--offset must be a number of seconds, got "${String(text)}"`,
       "--offset 0.5 when yours runs half a second behind the original, --offset -0.5 when it runs ahead",
