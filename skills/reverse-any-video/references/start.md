@@ -11,7 +11,7 @@ video (`--outcome=error` when you stop without one).
 
 Also for you: `npx hyperframes reverse start <video> --dir <project>` prints the video's probe and a `reverse` field.
 `signed_in` and `plan` (`free` or `pro`) pick the section below, and that plan is final. Only a `null` plan is unknown:
-then ask `npx hyperframes auth status` and read its `hyperframes` field, never `user.subscription`, which is the HeyGen
+then ask `npx hyperframes auth status --json` and read its `hyperframes` field, never `user.subscription`, which is the HeyGen
 app's plan and does not unlock Reverse. `<project>` is the folder you build in: afterwards run `npx hyperframes init <project> --video <video> --keep-original --skip-transcribe`,
 which copies the video in untouched under its own file name and keeps the session it saved for `cloud render`. Keep the video out of `<project>` until then: `init`
 refuses a folder that already holds other files. Outside a plugin, a CLI that does not know `reverse start` is an old
@@ -31,23 +31,24 @@ video, so they move and speak as they do in the original. For example:
 > and check it against the original until it matches.
 
 Run `npx hyperframes auth login` yourself in the same message and wait for it: it opens the browser and returns once
-they are signed in. Where it can't open a browser it prints a link and a code instead: give both. Never sign in with
-an API key to get past Pro: that signs in a HeyGen app account, which has no HyperFrames plan.
+they are signed in. When the browser does not open, it prints the sign-in link: give it. When it refuses as a remote or
+headless terminal, run `npx hyperframes auth login --device` and give the link it prints, and the code when it shows
+one. Never sign in with an API key to get past Pro: that signs in a HeyGen app account, which has no HyperFrames plan.
 
 ## Signed in on Free
 
 Reverse is part of Pro. Say why in one line, then run the `reverse.subscribe_command` from `reverse start` exactly as
 printed (`npx hyperframes billing subscribe --feature reverse --session <id>`): it opens the plans page in the person's
 browser, credits the purchase to this run, and waits until they are on Pro, so the run goes on by itself. Start nothing
-before it finishes. Give the `reverse.upgrade_url` as a link in the same message. For example:
+before it finishes. Give the `reverse.upgrade_url`, when it isn't `null`, as a link in the same message. For example:
 
 > Reverse is part of HyperFrames Pro: it re-shoots the people in your video with HeyGen. I've opened the upgrade page in
 > your browser (or open it here: <upgrade_url>) and I'll carry on as soon as you're subscribed.
 
 When `reverse start` refuses the run (it exits with an error whose `fix` is that command), run the `fix` the same way,
 then run `reverse start` again. When `subscribe_command` is `null` (or the refusal names no command), a plan can't be
-purchased right now: say so plainly, give no link, run nothing, and stop. Only on a CLI without `reverse start`, run
-`npx hyperframes billing subscribe` instead. If the command times out, tell the person and run it again once they say
+purchased right now: say so plainly, give no link, run nothing, and stop. Only on a plugin's CLI without
+`reverse start`, run `npx hyperframes billing subscribe` instead. If the command times out, tell the person and run it again once they say
 they are ready.
 
 ## Signed in on Pro
