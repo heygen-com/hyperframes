@@ -2123,6 +2123,10 @@ export const ALLOWED_DELETIONS = new Map([
     "skills/remotion-to-hyperframes/scripts/render_diff.sh",
     "remotion-to-hyperframes now compares with `hyperframes diff` instead of its own shell scripts",
   ],
+  [
+    "packages/cli/src/commands/cloud/render.pageMotionBlur.test.ts",
+    "tests for the removed cloud render --page-motion-blur flag; the hosted render API never accepted the field",
+  ],
 ]);
 
 export function parseBase(argv, fallback = "origin/main") {

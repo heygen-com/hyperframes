@@ -165,7 +165,8 @@ import { stillStandsIn, unheldPoster, unproxiedSrc } from "./proxySrc";
 import { applyVariableBindings, unproxiedMediaSrc } from "./applyVariableBindings";
 import { createColorGradingRuntime, type RuntimeColorGradingApi } from "./colorGrading";
 import { COLOR_GRADING_AUTHORED_OPACITY_ATTR } from "../colorGrading";
-import { initVfx, paintVfx } from "./vfx";
+import { initVfx, paintVfx, rebuildLostVfx } from "./vfx";
+import { watchSceneWebglContexts } from "./webglContextRecovery";
 import {
   captureMotionBlurBusy,
   initCaptureMotionBlur,
@@ -4778,6 +4779,22 @@ export function initSandboxRuntimeModular(): void {
   // Per-pixel effect chains: compile once here, repaint on every seek below.
   initVfx(document.body, state.canonicalFps);
   initMotionBlur();
+  registerRuntimeCleanup(
+    watchSceneWebglContexts(() => {
+      rebuildLostVfx(document.body);
+      // Effects paint on seeks only. A playing transport redraws the scene itself on its next tick.
+      if (clock.isPlaying()) {
+        paintVfx(state.currentTime);
+        return;
+      }
+      // Seeking to the time a timeline is already at calls no onUpdate, so step off it first.
+      const tl = state.capturedTimeline;
+      const at = state.currentTime;
+      if (tl && typeof tl.totalTime === "function")
+        tl.totalTime(at > 1e-3 ? at - 1e-4 : at + 1e-4, false);
+      applySeek(at);
+    }),
+  );
 
   const applyPlaybackRate = (nextRate: number) => {
     const parsed = Number(nextRate);

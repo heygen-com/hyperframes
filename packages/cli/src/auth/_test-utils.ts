@@ -9,6 +9,7 @@
 import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { _resetLoginRefreshFailureForTests } from "./resolver.js";
 
 const ENV_KEYS = [
   "HEYGEN_API_KEY",
@@ -48,8 +49,10 @@ export async function setupTempAuthEnv(prefix = "hf-auth-test-"): Promise<EnvFix
     delete process.env[k];
   }
   process.env["HYPERFRAMES_CONFIG_DIR"] = dir;
+  _resetLoginRefreshFailureForTests();
 
   const restore = async (): Promise<void> => {
+    _resetLoginRefreshFailureForTests();
     for (const k of ENV_KEYS) {
       const v = saved[k];
       if (v === undefined) delete process.env[k];

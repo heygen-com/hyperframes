@@ -389,6 +389,32 @@ describe("runtime entry", () => {
     expect(visibility(current, later)).toEqual(["hidden", "visible"]);
   });
 
+  it("redraws a paused scene by stepping its timeline off the current time and back after a WebGL restore", async () => {
+    const root = mountRoot();
+    timed(root, "div", "0");
+    const timeline = window.__timelines.main!;
+    await evaluateRuntime();
+    window.__player!.seek(2);
+    const seen: number[] = [];
+    const totalTime = timeline.totalTime!;
+    timeline.totalTime = (t?: number) => {
+      if (t !== undefined) seen.push(t);
+      return totalTime(t as number);
+    };
+    const frames: FrameRequestCallback[] = [];
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => frames.push(cb));
+
+    const scene = root.appendChild(document.createElement("canvas"));
+    scene.dispatchEvent(new Event("webglcontextlost", { cancelable: true }));
+    scene.dispatchEvent(new Event("webglcontextrestored"));
+    seen.length = 0;
+    frames.splice(0).forEach((cb) => cb(0));
+
+    expect(seen[0]).toBeCloseTo(2 - 1e-4, 6);
+    expect(seen.at(-1)).toBeCloseTo(2, 3);
+    vi.restoreAllMocks();
+  });
+
   it("leaves nothing hidden when the runtime is evaluated a second time", async () => {
     const root = mountRoot();
     const current = timed(root, "div", "0");

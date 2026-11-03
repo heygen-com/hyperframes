@@ -11,7 +11,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, extname, join } from "node:path";
 import { buildPublishFileMap, stagePublishFiles } from "../utils/publishProject.js";
 import {
   type GifPrep,
@@ -20,6 +20,7 @@ import {
   type Reencoder,
   type UploadableFile,
 } from "./offload.js";
+import { bytesMatchExtension } from "./offloadSniff.js";
 
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
@@ -37,12 +38,30 @@ afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
+// The first bytes a real file of each extension starts with; HEAVY stands in for an honest file.
+const HEADERS: Record<string, Buffer> = {
+  ".mp4": Buffer.concat([Buffer.from([0, 0, 0, 24]), Buffer.from("ftypisom")]),
+  ".mov": Buffer.concat([Buffer.from([0, 0, 0, 20]), Buffer.from("ftypqt  ")]),
+  ".png": Buffer.from([0x89, 0x50, 0x4e, 0x47, 13, 10, 26, 10]),
+  ".mp3": Buffer.from("ID3\u0004\u0000"),
+  ".webm": Buffer.from([0x1a, 0x45, 0xdf, 0xa3]),
+};
+
+function honest(path: string): Buffer {
+  const header = HEADERS[extname(path).toLowerCase()] ?? Buffer.alloc(0);
+  return Buffer.concat([header, HEAVY.subarray(header.length)]);
+}
+
 function project(files: Record<string, string | Buffer>): string {
   const dir = mkdtempSync(join(tmpdir(), "hf-offload-test-"));
   dirs.push(dir);
   for (const [path, content] of Object.entries(files)) {
     mkdirSync(dirname(join(dir, path)), { recursive: true });
-    writeFileSync(join(dir, path), content);
+    const header = content === HEAVY ? HEADERS[extname(path).toLowerCase()] : undefined;
+    writeFileSync(
+      join(dir, path),
+      header ? Buffer.concat([header, HEAVY.subarray(header.length)]) : content,
+    );
   }
   return dir;
 }
@@ -319,6 +338,82 @@ describe("offloadHeavyMedia", () => {
     expect(fileMap.has("take.mkv")).toBe(false);
   });
 
+  it("re-encodes an AAC file named .mp3 instead of uploading it as audio/mpeg", async () => {
+    const m4a = Buffer.concat([
+      Buffer.from([0, 0, 0, 28]),
+      Buffer.from("ftypM4A "),
+      Buffer.alloc(OFFLOAD_MIN_BYTES, 1),
+    ]);
+    const dir = project({
+      "index.html": html(`<audio src="song.mp3"></audio>`),
+      "song.mp3": m4a,
+    });
+    const reencoder: Reencoder = {
+      choose: vi.fn(async () => "audio" as const),
+      run: vi.fn(async () => ({
+        bytes: Buffer.from("wav"),
+        filename: "song.wav",
+        contentType: "audio/wav",
+      })),
+    };
+    const upload = fakeUpload();
+
+    const report = await offloadHeavyMedia(dir, buildPublishFileMap(dir), {
+      apiBaseUrl: "https://api.example",
+      upload,
+      reencoder,
+      cachePath: cachePath(),
+    });
+
+    expect(report[0]).toMatchObject({ path: "song.mp3", action: "reencode" });
+    expect(upload.mock.calls[0]![0]).toMatchObject({
+      filename: "song.wav",
+      contentType: "audio/wav",
+    });
+  });
+
+  it("treats an audio-only MP4 named .mp4 as audio, whatever brand its ftyp box has", async () => {
+    const audioOnly = Buffer.concat([
+      HEADERS[".mp4"]!,
+      Buffer.alloc(OFFLOAD_MIN_BYTES - HEADERS[".mp4"]!.length, 1),
+    ]);
+    const dir = project({
+      "index.html": html(`<audio src="voice.mp4"></audio>`),
+      "voice.mp4": audioOnly,
+    });
+    const reencoder: Reencoder = {
+      hasVideo: async () => false,
+      choose: vi.fn(async (_path, kind) => (kind === "audio" ? ("audio" as const) : null)),
+      run: vi.fn(async () => ({
+        bytes: Buffer.from("wav"),
+        filename: "voice.wav",
+        contentType: "audio/wav",
+      })),
+    };
+    const upload = fakeUpload();
+
+    const report = await offloadHeavyMedia(dir, buildPublishFileMap(dir), {
+      apiBaseUrl: "https://api.example",
+      upload,
+      reencoder,
+      cachePath: cachePath(),
+    });
+
+    expect(reencoder.choose).toHaveBeenCalledWith(expect.any(String), "audio");
+    expect(report[0]).toMatchObject({ path: "voice.mp4", action: "reencode" });
+    expect(upload.mock.calls[0]![0]).toMatchObject({ filename: "voice.wav" });
+  });
+
+  it("only takes bytes as-is when they are the container the extension names", () => {
+    const wave = Buffer.from("RIFF\0\0\0\0WAVEfmt ");
+    expect(bytesMatchExtension(".wav", wave)).toBe(true);
+    expect(bytesMatchExtension(".mp3", wave)).toBe(false);
+    expect(bytesMatchExtension(".mp3", Buffer.from([0xff, 0xfb, 0x90, 0x00]))).toBe(true);
+    expect(bytesMatchExtension(".mp4", HEADERS[".mp4"]!)).toBe(true);
+    expect(bytesMatchExtension(".mp4", Buffer.from("\0\0\0\x1cftypM4A "))).toBe(false);
+    expect(bytesMatchExtension(".jpg", HEADERS[".png"]!)).toBe(false);
+  });
+
   it("fails naming the file when a re-encode is still over the asset cap", async () => {
     const dir = project({
       "index.html": html(`<video src="long.mkv"></video>`),
@@ -417,7 +512,7 @@ describe("offloadHeavyMedia", () => {
     });
     const gifPrep = vi.fn<GifPrep>(async (input, options) => {
       const outputPath = join(options.outputDir, "hfgif-v1-abc.webm");
-      writeFileSync(outputPath, HEAVY);
+      writeFileSync(outputPath, honest(outputPath));
       return {
         html: input.replace(
           `<img src="media/loop.gif" data-loop="true" data-duration="4" />`,
@@ -464,7 +559,7 @@ describe("offloadHeavyMedia", () => {
     const gifPrep = vi.fn<GifPrep>(async (input, options) => {
       prepared = readFileSync(options.sourceAssets!.get("logo.gif")!);
       const outputPath = join(options.outputDir, "hfgif-v1-abc.webm");
-      writeFileSync(outputPath, HEAVY);
+      writeFileSync(outputPath, honest(outputPath));
       return {
         html: input.replace(
           `<img src="logo.gif" />`,

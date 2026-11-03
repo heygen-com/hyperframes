@@ -22,6 +22,7 @@ vi.mock("../cloud/upload.js", () => ({
 }));
 
 vi.stubEnv("HEYGEN_API_KEY", "k");
+vi.stubEnv("HEYGEN_API_URL", "https://api.test");
 
 const account = vi.hoisted(() => ({ scope: "acct" as string | null }));
 vi.mock("./v3.js", async (load) => ({

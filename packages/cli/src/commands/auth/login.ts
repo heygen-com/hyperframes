@@ -1,5 +1,5 @@
 import { failCommand, failUsage, requestCliExit } from "../../utils/commandResult.js";
-import { envFlagEnabled, isAttendedTerminal, isCI } from "../../utils/attendedTerminal.js";
+import { envFlagEnabled, isCI } from "../../utils/attendedTerminal.js";
 import { isAgentDriven } from "../../telemetry/agent_runtime.js";
 /**
  * `hyperframes auth login` — sign in to HeyGen.
@@ -70,7 +70,8 @@ export default defineCommand({
     },
     device: {
       type: "boolean",
-      description: "Use an attended device code (for SSH/headless terminals; never for CI).",
+      description:
+        "Use a device code approved in any browser (for SSH, headless or agent-run terminals; never for CI).",
     },
   },
   // fallow-ignore-next-line complexity
@@ -123,11 +124,11 @@ function agentShellOnThisMachine(): boolean {
   return !isCI() && isAgentDriven();
 }
 
-function assertAttendedDeviceFlow(): void {
-  if (!isAttendedTerminal()) {
+function assertDeviceFlowAllowed(): void {
+  if (isCI()) {
     console.error(
       c.error(
-        "`--device` requires an attended terminal and is disabled in CI. Use an API key or workload credential for automation.",
+        "`--device` needs a person to approve it and is disabled in CI. Use an API key or workload credential for automation.",
       ),
     );
     failUsage();
@@ -135,7 +136,7 @@ function assertAttendedDeviceFlow(): void {
 }
 
 async function runDeviceLogin(): Promise<void> {
-  assertAttendedDeviceFlow();
+  assertDeviceFlowAllowed();
   assertOAuthConfiguredOrExit();
   const { trackAuthLoginStarted, trackAuthLoginCompleted, trackAuthLoginFailed, identifyUser } =
     await import("../../telemetry/index.js");
@@ -191,7 +192,7 @@ async function runDeviceLogin(): Promise<void> {
   console.log(c.success(`✓ Signed in as ${identity}.`));
 }
 
-// The tokens this login just issued, never a resolved credential: an env credential would outrank them.
+// The tokens this login just issued, never a resolved credential: an env credential can outrank them.
 function issuedCredential(tokens: { access_token: string; refresh_token?: string }) {
   return {
     type: "oauth" as const,

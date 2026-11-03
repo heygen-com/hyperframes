@@ -16,6 +16,7 @@ export function defersMediaIn(doc: Document): boolean {
 export const STUDIO_PREVIEW_UPCOMING_ATTR = "data-hf-upcoming";
 export const STUDIO_PREVIEW_LAZY_ATTR = "data-hf-preview-lazy";
 export const STUDIO_PREVIEW_ERRORS = "__hfPreviewErrors";
+export const STUDIO_PREVIEW_ERROR_KINDS = "__hfPreviewErrorKinds";
 
 export const refusedPreviewMessage = (status: number) =>
   `The preview page could not be loaded (HTTP ${status}).`;

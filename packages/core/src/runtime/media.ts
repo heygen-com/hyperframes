@@ -258,6 +258,11 @@ export function isActiveAtPlayhead(el: HTMLMediaElement): boolean {
   return lastRelativeTime.has(el);
 }
 
+/** The source time the clip shows at the playhead, while it is inside its window. */
+export function sourceTimeAtPlayhead(el: HTMLMediaElement): number | undefined {
+  return lastRelativeTime.get(el);
+}
+
 /** Test-only seam: whether any per-source sync state is still tracked for `el`. */
 export function hasMediaSyncStateForTest(el: HTMLMediaElement): boolean {
   return (

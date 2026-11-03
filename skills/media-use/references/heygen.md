@@ -4,7 +4,7 @@
 
 ## Signing in
 
-`npx hyperframes auth status` says what is signed in. The credential is read in this order: `HEYGEN_API_KEY`, `HYPERFRAMES_API_KEY`, a host app's `HEYGEN_ACCESS_TOKEN`, then `~/.hyperframes/credentials`, which `npx hyperframes auth login` writes. `heygen auth login` is a separate sign-in that only the `heygen` CLI reads.
+`npx hyperframes auth status` says what is signed in. The credential is read in this order: a host app's `HEYGEN_ACCESS_TOKEN`, the session `npx hyperframes auth login` saved in `~/.hyperframes/credentials`, `HEYGEN_API_KEY`, `HYPERFRAMES_API_KEY`, then an API key saved with `auth login --api-key`. A signed-in session wins over an env key; the env key is used when HeyGen refuses to refresh the session. `heygen auth login` is a separate sign-in that only the `heygen` CLI reads.
 
 | Credential                 | Pays with                                    | Covers                                                                                 |
 | -------------------------- | -------------------------------------------- | -------------------------------------------------------------------------------------- |

@@ -22,12 +22,18 @@ import { tmpdir } from "node:os";
 import { join, parse } from "node:path";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import {
+  STUDIO_PREVIEW_ERROR_KINDS,
   STUDIO_PREVIEW_ERRORS,
   STUDIO_PREVIEW_CAPTURE_MODE,
   STUDIO_PREVIEW_MARK_META,
 } from "@hyperframes/core/studio-preview-mark";
 import { AFTER_FONTS_SCRIPT_TYPE } from "@hyperframes/core/compiler";
-import { PREVIEW_BUNDLE_OPTIONS, PREVIEW_CAPTURE_PARAM, registerPreviewRoutes } from "./preview";
+import {
+  PREVIEW_BUNDLE_OPTIONS,
+  PREVIEW_CAPTURE_PARAM,
+  registerPreviewRoutes,
+  scriptJson,
+} from "./preview";
 import { registerFileRoutes } from "./files";
 import { createPreviewDocumentStore } from "../helpers/previewDocumentStore";
 import { MAX_OPEN_MEDIA_RANGE_BYTES } from "../helpers/mediaRange";
@@ -372,6 +378,63 @@ describe("registerPreviewRoutes", () => {
     );
     raise({ message: "Uncaught Error: GSAP could not load" });
     expect(previewWindow[STUDIO_PREVIEW_ERRORS]).toEqual(["Uncaught Error: GSAP could not load"]);
+  });
+
+  it("writes a value into a script so it cannot close the tag or end the line", () => {
+    const out = scriptJson("</script><!--\u2028\u2029");
+    expect(out).not.toMatch(/<|\u2028|\u2029/);
+    expect(JSON.parse(out)).toBe("</script><!--\u2028\u2029");
+  });
+
+  it("records the kind and origin of each early error, never its text, and leaves the messages as they were", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(
+      join(projectDir, "index.html"),
+      "<!DOCTYPE html><html><head></head><body></body></html>",
+    );
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+    const html = await (await app.request("http://localhost/projects/demo/preview")).text();
+    const body =
+      new RegExp(`<script>([^<]*${STUDIO_PREVIEW_ERROR_KINDS}[^<]*)</script>`).exec(html)?.[1] ??
+      "";
+
+    const previewWindow: Record<string, unknown> = {
+      location: { href: "http://localhost/api/projects/demo/preview/", origin: "http://localhost" },
+    };
+    let raise: (event: object) => void = () => undefined;
+    new Function("window", "addEventListener", body)(
+      previewWindow,
+      (_type: string, listener: typeof raise) => (raise = listener),
+    );
+    class Custom extends Error {}
+    raise({
+      message: "a",
+      error: new SyntaxError("secret one"),
+      filename: "http://localhost/api/runtime.js",
+    });
+    raise({
+      message: "b",
+      error: new TypeError("secret two"),
+      filename: "http://localhost/api/projects/demo/preview/app.js",
+    });
+    raise({
+      message: "c",
+      error: new Custom("secret three"),
+      filename: "http://localhost/assets/studio.js",
+    });
+    raise({ message: "d", filename: "https://cdn.example.com/lib.js" });
+    raise({ message: "e", error: new ReferenceError("secret four"), filename: "" });
+
+    expect(previewWindow[STUDIO_PREVIEW_ERRORS]).toEqual(["a", "b", "c", "d", "e"]);
+    expect(previewWindow[STUDIO_PREVIEW_ERROR_KINDS]).toEqual([
+      { name: "SyntaxError", origin: "runtime" },
+      { name: "TypeError", origin: "project" },
+      { name: "other", origin: "studio" },
+      { name: "other", origin: "unknown" },
+      { name: "ReferenceError", origin: "unknown" },
+    ]);
+    expect(JSON.stringify(previewWindow[STUDIO_PREVIEW_ERROR_KINDS])).not.toContain("secret");
   });
 
   it("serves a later scene's image lazy, and captures every image eager under a capture-mode mark", async () => {
@@ -1477,6 +1540,12 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       variant?: "h264" | "vp8",
       box?: { width: number; height: number },
     ) => Promise<string>;
+    resolveStillImpl?: (
+      projectDir: string,
+      absoluteSourcePath: string,
+      at: number,
+      box?: { width: number; height: number },
+    ) => Promise<string>;
     scanMapImpl?: ScanMapImpl;
     probeAssetCodecImpl?: () => Promise<{
       codecName: string;
@@ -1502,6 +1571,11 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       );
     vi.doMock("../helpers/proxyTranscoder.js", () => ({
       resolveProxy,
+      resolveStill:
+        opts.resolveStillImpl ??
+        (async () => {
+          throw new Error("no resolveStill impl configured for this test");
+        }),
       waitForProxy,
       ProxyWaitTimeoutError,
       PROXY_PENDING_RETRY_AFTER_SECONDS,
@@ -1645,6 +1719,41 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
         undefined,
         { priority: true },
       );
+    });
+
+    it("serves one frame of the video as a JPEG while its copy is made, behind the same gate", async () => {
+      const projectDir = createProjectDir();
+      writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
+      const resolveStillMock = vi.fn(async () => {
+        const stillPath = join(projectDir, "still.jpg");
+        writeFileSync(stillPath, "jpegbytes");
+        return stillPath;
+      });
+      const { registerPreviewRoutes: register } = await loadPreviewModule({
+        resolveStillImpl: resolveStillMock,
+      });
+      const app = new Hono();
+      register(app, createAdapter(projectDir));
+      const url = "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264";
+
+      const still = await app.request(`${url}&hf-proxy-still=12.34`);
+      expect(still.status).toBe(200);
+      expect(still.headers.get("Content-Type")).toBe("image/jpeg");
+      expect(await still.text()).toBe("jpegbytes");
+      expect(resolveStillMock).toHaveBeenCalledWith(
+        projectDir,
+        join(projectDir, "clip.mp4"),
+        12.34,
+        undefined,
+      );
+
+      expect((await app.request(`${url}&hf-proxy-still=-1`)).status).toBe(404);
+      expect((await app.request(`${url}&hf-proxy-still=abc`)).status).toBe(404);
+      expect(
+        (await app.request("http://localhost/projects/demo/preview/clip.mp4?hf-proxy-still=1"))
+          .status,
+      ).toBe(404);
+      expect(resolveStillMock).toHaveBeenCalledTimes(1);
     });
 
     it("honors If-None-Match on a repeat request with a 304, without re-invoking resolveProxy", async () => {

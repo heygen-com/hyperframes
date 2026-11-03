@@ -440,12 +440,10 @@ describe("auth login", () => {
     expect(deviceAuth.start).toHaveBeenCalledOnce();
   });
 
-  it("refuses device authorization when either terminal stream is not a TTY", async () => {
-    Object.defineProperty(process.stdout, "isTTY", {
-      configurable: true,
-      value: undefined,
-    });
-    await expect(runCommand({ device: true })).rejects.toThrow(/Invalid command usage/);
-    expect(deviceAuth.start).not.toHaveBeenCalled();
+  it("runs device authorization without a terminal, where only a URL and code are printed", async () => {
+    Object.defineProperty(process.stdin, "isTTY", { configurable: true, value: undefined });
+    Object.defineProperty(process.stdout, "isTTY", { configurable: true, value: undefined });
+    await runCommand({ device: true });
+    expect(deviceAuth.start).toHaveBeenCalledOnce();
   });
 });

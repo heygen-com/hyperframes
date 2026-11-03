@@ -103,6 +103,7 @@ interface RenderInput {
   bufferSize?: string;
   useGpu: boolean;
   debug: boolean;
+  forceScreenshot?: true;
   strictness: RenderConfig["strictness"];
   entryFile?: string;
   /**
@@ -220,6 +221,7 @@ export function parseRenderOptions(body: Record<string, unknown>): Omit<RenderIn
   const maxRenderMs = typeof body.maxRenderMs === "number" ? body.maxRenderMs : undefined;
   const useGpu = body.gpu === true;
   const debug = body.debug === true;
+  const forceScreenshot = body.forceScreenshot === true ? true : undefined;
   // Preserve the pre-structured-warning HTTP contract for callers that do
   // not yet send this field. Strict readiness is an explicit opt-in via
   // `bestEffort: false`; omission must keep producing degraded output with
@@ -251,6 +253,7 @@ export function parseRenderOptions(body: Record<string, unknown>): Omit<RenderIn
     bufferSize,
     useGpu,
     debug,
+    forceScreenshot,
     strictness,
     entryFile,
     format,
@@ -303,6 +306,7 @@ function buildRenderJobConfig(input: RenderInput, outputPath: string, log: Produ
   const request = createRenderRequest({
     projectDir: input.projectDir,
     outputPath,
+    engineOverrides: input.forceScreenshot ? { forceScreenshot: true } : undefined,
     options: {
       fps: input.fps,
       quality: input.quality,

@@ -190,7 +190,9 @@ export async function resolvePublishCredential(
     const expired =
       credential.type === "oauth" && isTokenExpired(credential.expires_at, new Date());
     if (expired && !credential.refresh_token) throw new Error(LOGIN_EXPIRED);
-    return await refreshIfNeeded(expired ? { ...credential, refreshable: true } : credential);
+    return await refreshIfNeeded(expired ? { ...credential, refreshable: true } : credential, {
+      envFallback: checked === undefined,
+    });
   } catch (error) {
     if (isAuthError(error) && (error.code === "REFRESH_FAILED" || error.code === "LOGIN_EXPIRED")) {
       throw new Error(LOGIN_EXPIRED);

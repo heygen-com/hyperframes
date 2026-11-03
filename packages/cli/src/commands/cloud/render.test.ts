@@ -136,7 +136,11 @@ describe("cloud render --dry-run with heavy media", () => {
       `<!doctype html><html><body><div data-composition-id="main" data-width="1920" data-height="1080"><video src="clip.mp4"></video></div></body></html>`,
       "utf-8",
     );
-    writeFileSync(join(dir, "clip.mp4"), Buffer.alloc(6 * 1024 * 1024, 1));
+    const mp4Header = Buffer.concat([Buffer.from([0, 0, 0, 24]), Buffer.from("ftypisom")]);
+    writeFileSync(
+      join(dir, "clip.mp4"),
+      Buffer.concat([mp4Header, Buffer.alloc(6 * 1024 * 1024 - mp4Header.length, 1)]),
+    );
     const result = spawnSync(
       "bun",
       ["run", cliEntry, "cloud", "render", dir, "--dry-run", "--json"],

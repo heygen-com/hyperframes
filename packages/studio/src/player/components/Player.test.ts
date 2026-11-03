@@ -526,3 +526,10 @@ describe("composition loading overlay", () => {
     iframe.remove();
   });
 });
+
+describe("accelerated canvases", () => {
+  it("are tracked in Studio's window, whose prototype a preview canvas gets when Studio reaches it first", () => {
+    expect("__hfAccelTracked" in HTMLCanvasElement.prototype.getContext).toBe(true);
+    expect(Reflect.get(window, "__hfAcceleratedCanvases")).toBeInstanceOf(WeakSet);
+  });
+});

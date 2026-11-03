@@ -38,9 +38,9 @@ ${c.bold("SUBCOMMANDS:")}
   ${c.accent("logout")}   ${c.dim("Remove the stored credential (--keep-api-key for OAuth-only).")}
 
 ${c.bold("ENV VARS:")}
-  ${c.accent("HEYGEN_API_KEY")}              Override the stored credential.
+  ${c.accent("HEYGEN_API_KEY")}              API key; used when no login is active (or it can't refresh), before a saved key.
   ${c.accent("HYPERFRAMES_API_KEY")}         Alias for HEYGEN_API_KEY.
-  ${c.accent("HEYGEN_ACCESS_TOKEN")}         OAuth token from a host app; used after the API keys, never refreshed or saved.
+  ${c.accent("HEYGEN_ACCESS_TOKEN")}         OAuth token from a host app; used first, never refreshed or saved.
   ${c.accent("HEYGEN_API_URL")}              Override the API base URL (default https://api.heygen.com).
   ${c.accent("HYPERFRAMES_ENV")}           prod (default) or dev; dev keeps credentials in a separate directory.
   ${c.accent("HYPERFRAMES_CONFIG_DIR")}           Override the credentials directory (default ~/.hyperframes).
