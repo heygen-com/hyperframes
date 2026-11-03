@@ -42,7 +42,7 @@ const WEBKIT_FROZEN_AUDIO_SECONDS = 0.4;
 const lastMoved = new WeakMap<HTMLMediaElement, { ct: number; at: number }>();
 function frozenAudioFor(el: HTMLMediaElement, ct: number, now: number): number {
   const m = lastMoved.get(el);
-  if (!m || m.ct !== ct || el.paused || el.seeking) {
+  if (!m || m.ct !== ct || el.paused || el.seeking || el.readyState < 3) {
     lastMoved.set(el, { ct, at: now });
     return 0;
   }
@@ -253,6 +253,7 @@ function clampVolume(volume: number): number {
  * element at a different file without ever leaving its active window.
  */
 export function evictMediaSyncState(el: HTMLMediaElement): void {
+  lastMoved.delete(el);
   lastOffset.delete(el);
   lastRelativeTime.delete(el);
   strictDriftSamples.delete(el);
