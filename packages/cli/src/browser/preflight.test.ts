@@ -170,6 +170,24 @@ describe("runEnvironmentChecks", () => {
     expect(result.ffmpegPath).toBeUndefined();
   });
 
+  it.each([
+    { error: { code: "ENOENT" }, said: "(ENOENT)" },
+    { error: { code: "EACCES" }, said: "(EACCES)" },
+    { error: { signal: "SIGKILL" }, said: "(signal SIGKILL)" },
+    { error: { code: "ETIMEDOUT", signal: "SIGTERM" }, said: "(ETIMEDOUT)" },
+  ])("names how FFmpeg failed to start: $said", async ({ error, said }) => {
+    runProcess.mockImplementation((binaryPath: string) => {
+      if (binaryPath !== process.env.HYPERFRAMES_FFMPEG_PATH)
+        return Promise.resolve({ stdout: "ffprobe version 7.1.1\n", stderr: "" });
+      throw Object.assign(new Error("spawn failed"), error);
+    });
+
+    const result = await runEnvironmentChecks();
+    const ffmpeg = result.outcomes.find((outcome) => outcome.name === "FFmpeg");
+
+    expect(ffmpeg?.detail).toBe(`Failed to run "${process.execPath}" -version ${said}.`);
+  });
+
   // Windows DLL advice only on Windows; elsewhere the platform install hint.
   describe("FFmpeg cannot-start hint is platform-specific", () => {
     const realPlatform = process.platform;
