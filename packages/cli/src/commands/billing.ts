@@ -38,8 +38,13 @@ function priceLine(
 }
 
 /** Prepares the checkout with the CLI's own token: opens it when a person presses Enter, prints it when nobody can.
- * A refusal is printed and the page stays the way to buy. */
-async function offerCheckout(kind: "plans" | "credits", before: Plan | null, needed?: number) {
+ * A refusal is printed and the page stays the way to buy. Bought on the page before Enter: no second checkout. */
+async function offerCheckout(
+  kind: "plans" | "credits",
+  before: Plan | null,
+  done: (p: Plan | null) => boolean,
+  needed?: number,
+) {
   const offer = await readOffer();
   const missing = needed ? needed - (before?.credits ?? 0) : undefined;
   const line = priceLine(kind, offer, missing, needed);
@@ -52,6 +57,7 @@ async function offerCheckout(kind: "plans" | "credits", before: Plan | null, nee
     const rl = createInterface({ input: process.stdin, output: process.stdout });
     await rl.question("Press Enter to pay ");
     rl.close();
+    if (done(await readPlan())) return;
     await openBrowser(await createCheckout(kind, offer, missing));
   } catch (error) {
     console.error(c.error(error instanceof Error ? error.message : String(error)));
@@ -104,7 +110,7 @@ export default defineCommand({
     });
     console.log(`${action === "subscribe" ? "Plans" : "Credits"} page: ${c.accent(url)}`);
     await openBrowser(url);
-    await offerCheckout(action === "subscribe" ? "plans" : "credits", before, needed);
+    await offerCheckout(action === "subscribe" ? "plans" : "credits", before, done, needed);
     console.log("Waiting for the person to finish ...");
     const deadline = Date.now() + (Number(args.timeout) || 600) * 1000;
     while (Date.now() < deadline) {
