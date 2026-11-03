@@ -141,9 +141,9 @@ describe("reverseUpgradeUrl", () => {
       "https://u.test/p?rs=1",
     );
     expect(reverseUpgradeUrl({ sessionId: SESSION })).toBe(
-      `https://hyperframes.studio/pricing?from=cli&feature=reverse&rs=${SESSION}`,
+      `https://hyperframes.studio/billing?from=cli&feature=reverse&rs=${SESSION}`,
     );
-    expect(reverseUpgradeUrl()).toBe("https://hyperframes.studio/pricing?from=cli&feature=reverse");
+    expect(reverseUpgradeUrl()).toBe("https://hyperframes.studio/billing?from=cli&feature=reverse");
   });
 });
 

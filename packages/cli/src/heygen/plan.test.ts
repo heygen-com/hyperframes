@@ -42,16 +42,16 @@ describe("pageUrl", () => {
     vi.stubEnv("HYPERFRAMES_PLANS_URL", "");
     vi.stubEnv("HYPERFRAMES_CREDITS_URL", "");
     vi.stubEnv("HYPERFRAMES_ENV", "prod");
-    expect(pageUrl("plans")).toBe("https://hyperframes.studio/pricing?from=cli");
-    expect(pageUrl("credits")).toBe("https://hyperframes.studio/pricing?from=cli");
+    expect(pageUrl("plans")).toBe("https://hyperframes.studio/billing?from=cli");
+    expect(pageUrl("credits")).toBe("https://hyperframes.studio/billing?from=cli");
     expect(pageUrl("plans", { feature: "reverse", rs: "rvs_x" })).toBe(
-      "https://hyperframes.studio/pricing?from=cli&feature=reverse&rs=rvs_x",
+      "https://hyperframes.studio/billing?from=cli&feature=reverse&rs=rvs_x",
     );
     expect(pageUrl("credits", { needed: 180, tool: "reverse" })).toBe(
-      "https://hyperframes.studio/pricing?from=cli&needed_credits=180&tool=reverse",
+      "https://hyperframes.studio/billing?from=cli&needed_credits=180&tool=reverse",
     );
     vi.stubEnv("HYPERFRAMES_ENV", "dev");
-    expect(pageUrl("plans")).toBe("https://hyperframes.studio/pricing?from=cli");
+    expect(pageUrl("plans")).toBe("https://hyperframes.studio/billing?from=cli");
     vi.stubEnv("HYPERFRAMES_PLANS_URL", "https://example.test/plans");
     expect(pageUrl("plans")).toBe("https://example.test/plans?from=cli");
   });

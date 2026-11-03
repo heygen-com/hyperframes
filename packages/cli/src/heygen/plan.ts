@@ -47,8 +47,8 @@ export async function readPlan(): Promise<Plan | null> {
 }
 
 const webBase = () => "https://hyperframes.studio";
-const plansUrl = () => process.env["HYPERFRAMES_PLANS_URL"] || `${webBase()}/pricing`;
-const creditsUrl = () => process.env["HYPERFRAMES_CREDITS_URL"] || `${webBase()}/pricing`;
+const plansUrl = () => process.env["HYPERFRAMES_PLANS_URL"] || `${webBase()}/billing`;
+const creditsUrl = () => process.env["HYPERFRAMES_CREDITS_URL"] || `${webBase()}/billing`;
 
 /** A plans or credits page link with what the web side reads: `from=cli`, the credits needed, the waiting step. */
 export function pageUrl(
