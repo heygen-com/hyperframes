@@ -215,12 +215,8 @@ function overlapSpansOf(timeline: RuntimeTimelineLike, version: string): Overlap
 
 const OVERLAP_RESTART = 1e-4;
 
-/**
- * A tween that ends in a later step than a set inside it overwrites the set, which a seek over both never does (it
- * renders them in start order): playing forward ends a pop-in after the hide that interrupted it, leaving the word
- * showing. Two running tweens agree already, each rendering every step. Re-render from just before the set so
- * playing lands where a seek does.
- */
+/** A tween ending in a later tick than a set inside it overwrites the set; re-render from before the set, as a seek
+ * would. */
 function settleOverlapsEndedBetween(
   timeline: RuntimeTimelineLike,
   from: number,
