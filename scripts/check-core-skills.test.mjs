@@ -31,6 +31,12 @@ test("the paid-plan cloud final keeps the composition fps and high quality", () 
   }
 });
 
+test("media-use lists Voice Turbo as free only on the Free plan, not for every sign-in", () => {
+  const text = readFileSync(new URL("../skills/media-use/SKILL.md", import.meta.url), "utf8");
+  assert.match(text, /\| Voice Turbo, Free plan: 3 min a month \| Voice Turbo on a paid plan/);
+  assert.doesNotMatch(text, /Voice Turbo \(signed in\)/);
+});
+
 test("reverse builds the project with init --video and asks to top up once for the run's total", () => {
   const read = (path) =>
     readFileSync(new URL(`../skills/reverse-any-video/${path}`, import.meta.url), "utf8");
