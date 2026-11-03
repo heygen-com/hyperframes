@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { compareTiles, meanFrame, trailMask, type Rgba } from "./blurDifferential.js";
+import {
+  compareTiles,
+  meanFrame,
+  tileTouches,
+  tilesOutsideRegion,
+  trailMask,
+  withinSymptomBand,
+  type Rgba,
+} from "./blurDifferential.js";
 
 const SIZE = 64;
 
@@ -170,5 +178,33 @@ describe("compareTiles", () => {
     const mask = new Uint8Array(SIZE * SIZE);
     expect(() => compareTiles(frame(), small, mask, "outside")).toThrow(/size/i);
     expect(() => compareTiles(frame(), frame(), new Uint8Array(10), "outside")).toThrow(/mask/i);
+  });
+});
+
+describe("pinned-symptom helpers", () => {
+  const rect = { x: 10, y: 10, width: 20, height: 20 };
+
+  it("scales the CSS-pixel rect and its tolerance by the device pixel ratio", () => {
+    // dpr 2: the rect spans device px 20..60 and the 2 px tolerance becomes 4 px, so 16..64.
+    expect(tileTouches({ x: 64, y: 20 }, 16, rect, 2)).toBe(false);
+    expect(tileTouches({ x: 48, y: 20 }, 16, rect, 2)).toBe(true);
+    expect(tileTouches({ x: 1, y: 20 }, 16, rect, 2)).toBe(true);
+    expect(tileTouches({ x: 0, y: 20 }, 16, rect, 2)).toBe(false);
+    // The same device-pixel tile at dpr 1 sits far outside the unscaled rect.
+    expect(tileTouches({ x: 48, y: 20 }, 16, rect, 1)).toBe(false);
+  });
+
+  it("lists the bad tiles that miss the rect", () => {
+    const touching = { x: 0, y: 0, mae: 5 };
+    const far = { x: 160, y: 160, mae: 9 };
+    expect(tilesOutsideRegion([touching, far], 16, rect, 1)).toEqual([far]);
+    expect(tilesOutsideRegion([touching], 16, rect, 1)).toEqual([]);
+  });
+
+  it("accepts a worst MAE from half to double the measured one", () => {
+    expect(withinSymptomBand(5, 10)).toBe(true);
+    expect(withinSymptomBand(20, 10)).toBe(true);
+    expect(withinSymptomBand(4.9, 10)).toBe(false);
+    expect(withinSymptomBand(20.1, 10)).toBe(false);
   });
 });

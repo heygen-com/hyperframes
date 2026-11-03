@@ -13,6 +13,7 @@ import type { Rgba } from "./__fixtures__/blurDifferential.js";
 
 // A fixture with no `moving` times still slides its card in at 0.2 s: that is where `blurs` is read.
 const PROBE_WHILE_CARD_SLIDES = 6 / 30;
+const CASE_TIMEOUT_MS = 30_000;
 
 describe.skipIf(!hasBrowser)("capture motion blur fixtures in Chrome", () => {
   let browser: Browser;
@@ -77,6 +78,7 @@ describe.skipIf(!hasBrowser)("capture motion blur fixtures in Chrome", () => {
         await on.close();
       }
     },
+    CASE_TIMEOUT_MS,
   );
 
   it.each(FIXTURES)("places the checkpoints of $name inside its holds on frame boundaries", (f) => {

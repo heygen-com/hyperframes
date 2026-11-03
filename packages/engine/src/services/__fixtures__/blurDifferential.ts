@@ -199,3 +199,43 @@ export function compareTiles(
     bad,
   };
 }
+
+export interface Rect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+const REGION_TOLERANCE_PX = 2;
+const SYMPTOM_BAND = { low: 0.5, high: 2 };
+
+/** True when the tile, in device pixels, overlaps the CSS-pixel rect widened by the tolerance. */
+export function tileTouches(
+  tile: { x: number; y: number },
+  block: number,
+  rect: Rect,
+  dpr: number,
+): boolean {
+  const pad = REGION_TOLERANCE_PX * dpr;
+  const left = rect.x * dpr - pad;
+  const top = rect.y * dpr - pad;
+  const right = (rect.x + rect.width) * dpr + pad;
+  const bottom = (rect.y + rect.height) * dpr + pad;
+  return tile.x < right && tile.x + block > left && tile.y < bottom && tile.y + block > top;
+}
+
+/** The bad tiles that do not touch the rect: a defect somewhere the pinned symptom does not explain. */
+export function tilesOutsideRegion(
+  bad: readonly BadBlock[],
+  block: number,
+  rect: Rect,
+  dpr: number,
+): BadBlock[] {
+  return bad.filter((tile) => !tileTouches(tile, block, rect, dpr));
+}
+
+/** True when a pinned symptom's worst MAE is still within half to double of the value measured when it was pinned. */
+export function withinSymptomBand(worstMae: number, measured: number): boolean {
+  return worstMae >= SYMPTOM_BAND.low * measured && worstMae <= SYMPTOM_BAND.high * measured;
+}

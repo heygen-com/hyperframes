@@ -3,8 +3,11 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   compareTiles,
   meanFrame,
+  tilesOutsideRegion,
   trailMask,
+  withinSymptomBand,
   type Differential,
+  type Rect,
   type Rgba,
 } from "./__fixtures__/blurDifferential.js";
 import { closeTestChrome } from "./__fixtures__/loopback.js";
@@ -15,7 +18,11 @@ import {
   openFixture,
 } from "./__fixtures__/motionBlur/blurPage.js";
 import { FIXTURES, type BlurFixture } from "./__fixtures__/motionBlur/fixtures.js";
-import { INVARIANTS } from "./__fixtures__/motionBlur/thresholds.js";
+import {
+  INVARIANTS,
+  MEASURED_LABEL_EARLY_FRESH_PAINT,
+  MEASURED_SCROLL_LOSS_FRESH_PAINT,
+} from "./__fixtures__/motionBlur/thresholds.js";
 
 const FPS = 30;
 const frameTime = (n: number): number => n / FPS;
@@ -25,17 +32,21 @@ const CASE_TIMEOUT_MS = 60_000;
 
 interface KnownBug {
   reason: string;
-  /** The element whose rect the bad tiles must touch. */
+  /** The element whose rect every bad tile must touch. */
   regionId: string;
+  /** Worst-tile MAE of the symptom where it was pinned. */
+  measuredMae: number;
 }
 
 const SCROLL_LOSS: KnownBug = {
   reason: "scroll-list loses its scroll offset on a fresh first paint",
   regionId: "list",
+  measuredMae: MEASURED_SCROLL_LOSS_FRESH_PAINT,
 };
 const LABEL_EARLY: KnownBug = {
   reason: "callbacks shows its label B before the call that sets it",
   regionId: "label",
+  measuredMae: MEASURED_LABEL_EARLY_FRESH_PAINT,
 };
 
 /** Cases where blur on really differs from blur off today. They pin the symptom and fail once it is fixed. */
@@ -52,15 +63,6 @@ const KNOWN_REAL_DIFFERENCES = new Map<string, KnownBug>([
 const EXTRA_OUTSIDE_TIMES = new Map<string, readonly number[]>([
   ["callbacks", [frameTime(6), frameTime(9), frameTime(12)]],
 ]);
-
-interface Rect {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
-const REGION_TOLERANCE_PX = 2;
 
 const radiusPx = (f: BlurFixture): number => Math.ceil(2 * f.dpr);
 const sizeOf = (f: BlurFixture): { width: number; height: number } => ({
@@ -138,21 +140,6 @@ async function elementRect(page: Page, id: string | undefined): Promise<Rect> {
   return box ?? { x: 0, y: 0, width: 0, height: 0 };
 }
 
-/** True when the tile, in device pixels, overlaps the CSS-pixel rect widened by the tolerance. */
-function tileTouches(
-  tile: { x: number; y: number },
-  block: number,
-  rect: Rect,
-  dpr: number,
-): boolean {
-  const pad = REGION_TOLERANCE_PX * dpr;
-  const left = rect.x * dpr - pad;
-  const top = rect.y * dpr - pad;
-  const right = (rect.x + rect.width) * dpr + pad;
-  const bottom = (rect.y + rect.height) * dpr + pad;
-  return tile.x < right && tile.x + block > left && tile.y < bottom && tile.y + block > top;
-}
-
 const caseName = (what: string, f: BlurFixture, t: number): string => `${what}: ${f.name} at ${t}`;
 
 let launched: Browser | undefined;
@@ -175,13 +162,16 @@ function defineKnownBugCase(f: BlurFixture, t: number, known: KnownBug): void {
     async (ctx) => {
       if (!supported) ctx.skip();
       const { d, region } = await measureOutside(chrome(), f, t, known.regionId);
-      const fixed = `${known.reason}: this case pins a known bug; if it now passes, delete the case and the KNOWN_REAL_DIFFERENCES entry`;
+      const fixed = `${known.reason}: this case pins a known bug; if it now passes, delete its \`outside:${f.name}@${t}\` entry from KNOWN_REAL_DIFFERENCES, which makes it an ordinary outside case`;
       expect(d.checkedFraction).toBeGreaterThanOrEqual(INVARIANTS.minCheckedFraction);
       expect(d.bad.length, fixed).toBeGreaterThan(0);
-      expect(d.worstMae, fixed).toBeGreaterThan(INVARIANTS.outsideMaxMae);
       expect(
-        d.bad.some((tile) => tileTouches(tile, INVARIANTS.block, region, f.dpr)),
-        `bad tiles ${firstFive(d)} miss the ${known.regionId} rect ${JSON.stringify(region)}`,
+        tilesOutsideRegion(d.bad, INVARIANTS.block, region, f.dpr),
+        `a new defect outside the ${known.regionId} rect ${JSON.stringify(region)}: ${firstFive(d)}`,
+      ).toEqual([]);
+      expect(
+        withinSymptomBand(d.worstMae, known.measuredMae),
+        `the pinned symptom changed: re-measure (worst MAE ${d.worstMae.toFixed(2)}, pinned at ${known.measuredMae})`,
       ).toBe(true);
     },
     CASE_TIMEOUT_MS,

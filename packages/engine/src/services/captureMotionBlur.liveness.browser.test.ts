@@ -22,6 +22,8 @@ interface BlankCensus {
   callbacks: number;
   wrapped: number;
   blank: number;
+  /** Wrapped callbacks whose output canvas has no 2d context, which the detector cannot read. */
+  unreadable: number;
 }
 
 const playable = FIXTURES.filter((f) => f.expectOn.state === "on");
@@ -130,13 +132,11 @@ async function censusOfBlankFrames(browser: Browser, fixture: BlurFixture): Prom
     return await preview.evaluate(
       (windowMs) =>
         new Promise<BlankCensus>((done) => {
-          const census = { callbacks: 0, wrapped: 0, blank: 0 };
+          const census = { callbacks: 0, wrapped: 0, blank: 0, unreadable: 0 };
           const root = document.getElementById("root") as HTMLElement;
           const output = (): HTMLCanvasElement | null =>
             document.querySelector('canvas[data-hf-motion-blur="output"]');
-          const hasInk = (canvas: HTMLCanvasElement): boolean => {
-            const ctx = canvas.getContext("2d");
-            if (!ctx) return true;
+          const hasInk = (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement): boolean => {
             for (let i = 0; i < 8; i++)
               for (let j = 0; j < 8; j++) {
                 const x = Math.floor(((i + 0.5) / 8) * canvas.width);
@@ -151,7 +151,9 @@ async function censusOfBlankFrames(browser: Browser, fixture: BlurFixture): Prom
             const parent = root.parentElement;
             if (out && parent?.getAttribute("data-hf-motion-blur") === "capture") {
               census.wrapped++;
-              if (!hasInk(out)) census.blank++;
+              const ctx = out.getContext("2d");
+              if (!ctx) census.unreadable++;
+              else if (!hasInk(ctx, out)) census.blank++;
             }
           };
           const start = performance.now();
@@ -179,7 +181,7 @@ async function censusOfAll(browser: Browser): Promise<{ name: string; census: Bl
 }
 
 const describeRow = ({ name, census }: { name: string; census: BlankCensus }): string =>
-  `${name}: ${census.callbacks} callbacks, ${census.wrapped} wrapped, ${census.blank} blank`;
+  `${name}: ${census.callbacks} callbacks, ${census.wrapped} wrapped, ${census.blank} blank, ${census.unreadable} unreadable`;
 
 describe.skipIf(!hasBrowser)("a playing capture motion blur preview in Chrome", () => {
   let browser: Browser;
@@ -205,14 +207,19 @@ describe.skipIf(!hasBrowser)("a playing capture motion blur preview in Chrome", 
       if (!supported) ctx.skip();
       const rows = await censusOfAll(browser);
       const summary = rows.map(describeRow).join("; ");
-      console.info(`blank-frame census over the first ${BLANK_WINDOW_MS} ms of play(): ${summary}`);
+      const total = (pick: (census: BlankCensus) => number): number =>
+        rows.reduce((sum, row) => sum + pick(row.census), 0);
       expect(
-        rows.reduce((sum, row) => sum + row.census.wrapped, 0),
-        `the detector never saw a wrapped root, so it cannot see a blank frame: ${summary}`,
+        total((c) => c.unreadable),
+        `the output canvas has no 2d context, so the detector is blind and cannot see a blank frame (${summary})`,
+      ).toBe(0);
+      expect(
+        total((c) => c.wrapped),
+        `the detector never saw a wrapped root, so it cannot see a blank frame (${summary})`,
       ).toBeGreaterThan(0);
       expect(
-        rows.reduce((sum, row) => sum + row.census.blank, 0),
-        `preview shows a blank frame after play(): this case pins a known bug; if it now passes, delete the case and assert zero blank frames (${summary})`,
+        total((c) => c.blank),
+        `no blank frame seen after play(). Either the bug is fixed (delete this case, keep the wrapped > 0 guard and assert blank == 0) or the detector missed it on this runner (its animation frame callbacks missed the gap between the wrap and the first draw). Census over the first ${BLANK_WINDOW_MS} ms: ${summary}`,
       ).toBeGreaterThan(0);
     },
     CASE_TIMEOUT_MS * 2,
