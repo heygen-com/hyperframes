@@ -47,13 +47,21 @@ const HEAD_CONTENT = new Set(["meta", "link", "base", "title", "style", "script"
 
 // The parse path's document.body read adds any missing <head>/<body>, and callers re-parsing its output expect both.
 function opensHeadThenBody(html: string, tags: StartTag[], body: number): boolean {
-  if (body < 0 || tags[0]?.name !== "html" || tags[1]?.name !== "head") return false;
+  const [first, head] = tags;
+  if (body < 0 || first?.name !== "html" || head?.name !== "head") return false;
   const inHead = tags.slice(2, body);
-  if (!inHead.every((tag) => HEAD_CONTENT.has(tag.name))) return false;
-  const last = inHead.at(-1) ?? tags[1]!;
+  return (
+    inHead.every((tag) => HEAD_CONTENT.has(tag.name)) &&
+    closesHead(html, inHead.at(-1) ?? head, tags[body]!)
+  );
+}
+
+function closesHead(html: string, last: StartTag, body: StartTag): boolean {
   const from = RAW_TEXT.has(last.name) ? rawTextEnd(html, last.name, last.bracket) : last.bracket;
-  const between = from < 0 ? "" : html.slice(from, html.lastIndexOf("<", tags[body]!.nameEnd));
-  return /<\/head\s*>/i.test(between.replace(/<!--[\s\S]*?-->/g, ""));
+  const between = html
+    .slice(from, html.lastIndexOf("<", body.nameEnd))
+    .replace(/<!--[\s\S]*?-->/g, "");
+  return from >= 0 && /<\/head\s*>/i.test(between);
 }
 
 function hasHfId(html: string, tag: StartTag): boolean {
