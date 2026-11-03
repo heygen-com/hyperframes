@@ -183,8 +183,7 @@ export interface CreateHyperframesRenderRequest {
    */
   crf?: number | null;
   /**
-   * Output resolution tier. Defaults to '1080p'. Pass '4k' for 4K renders
-   * (billed at 1.5x).
+   * Output resolution tier. Defaults to '1080p'. Pass '4k' for 4K renders.
    */
   resolution?: HyperframesResolution;
   /**
@@ -337,7 +336,7 @@ export interface HyperframesRenderDetail {
 export type HyperframesRenderStatus = "queued" | "rendering" | "completed" | "failed";
 
 /**
- * Output resolution tier. 4K output uses a 1.5x pricing multiplier.
+ * Output resolution tier.
  */
 export type HyperframesResolution = "1080p" | "4k";
 
