@@ -246,6 +246,13 @@ describe("createRenderPlan", () => {
     expect(vi.mocked(console.error).mock.calls.flat().join("\n")).toContain(flag);
   });
 
+  it.each(["abc", "10x", "0", "0M"])("rejects --video-bitrate %s before capture", (value) => {
+    expect(() =>
+      createRenderPlan({ dir: projectDir, format: "mp4", "video-bitrate": value }),
+    ).toThrow(CliUsageError);
+    expect(vi.mocked(console.error).mock.calls.flat().join("\n")).toContain("video-bitrate");
+  });
+
   it("keeps MP4 and WebM rate controls available", () => {
     expect(createRenderPlan({ dir: projectDir, format: "mp4", crf: "18" }).crf).toBe(18);
     expect(

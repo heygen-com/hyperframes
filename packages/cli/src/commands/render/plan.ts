@@ -16,6 +16,7 @@ import {
   EXTRACT_CACHE_DIR_DISABLED_ALIASES,
   MAX_VP9_CPU_USED,
   MIN_VP9_CPU_USED,
+  appendRateCapArgs,
   isVideoFrameFormat,
   type ProresProfile,
   type VideoFrameFormat,
@@ -567,6 +568,18 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
       `Got "${args["video-bitrate"]}". Must be a non-empty bitrate such as "10M".`,
     );
     failUsage();
+  }
+  if (videoBitrate) {
+    // Same parser as --max-bitrate, so a bad value fails here, not after capture in ffmpeg.
+    try {
+      appendRateCapArgs([], { maxBitrate: videoBitrate });
+    } catch {
+      errorBox(
+        "Invalid video-bitrate",
+        `Got "${videoBitrate}". Must be a positive bitrate such as "10M" or "8000k".`,
+      );
+      failUsage();
+    }
   }
   if (format === "mov" && (crf !== undefined || videoBitrate !== undefined)) {
     const flag = crf !== undefined ? "--crf" : "--video-bitrate";
