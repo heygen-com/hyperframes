@@ -221,6 +221,8 @@ export interface CaptureSession {
    * were hitting that wall — a 705-render spike at the 45s setup bucket).
    */
   scriptLoadFailures: string[];
+  /** Where each of `scriptLoadFailures` came from and why it failed, as closed values (no URL); same order. */
+  scriptLoadCauses?: ScriptLoadCause[];
   /** Uncaught page errors; a timed-out timeline wait with any of these becomes a script failure. */
   pageErrors: string[];
   /** The first VFX chain error; its frames would lack the effect, so it stops the render. */
@@ -2473,6 +2475,7 @@ export function recordSubTimelineWarning(session: CaptureSession, timeoutMs: num
     session.pageErrors.length > 0 && session.scriptLoadFailures.length === 0;
   const scriptFailure = isScriptFailure(session);
   const sources = [...session.scriptLoadFailures, ...session.pageErrors];
+  const loadCauses = session.scriptLoadCauses ?? [];
   const pending = session.pendingTimelineIds ?? [];
   const pendingSuffix = pending.length > 0 ? ` (still unregistered: ${pending.join(", ")})` : "";
   const isolated = session.isolatedCompositions ?? [];
@@ -2501,7 +2504,8 @@ export function recordSubTimelineWarning(session: CaptureSession, timeoutMs: num
           `${pendingSuffix} (${sources.join(", ")}). Fix the error; a composition animated by ` +
           `CSS or rAF rather than a GSAP timeline must mark its host with data-no-timeline.`
         : scriptFailure
-          ? `A sub-composition timeline script failed to load (${sources.join(", ")})`
+          ? `A sub-composition timeline script failed to load (${sources.join(", ")})` +
+            scriptLoadCauseSuffix(loadCauses)
           : `Sub-composition timelines did not become ready within ${timeoutMs}ms${pendingSuffix}. ` +
             `This can be intentional: a composition driven by CSS animations or rAF never registers ` +
             `window.__timelines[id], and marking its host with data-no-timeline skips the wait entirely. ` +
@@ -2511,6 +2515,7 @@ export function recordSubTimelineWarning(session: CaptureSession, timeoutMs: num
         timeoutMs,
         sources,
         pendingCompositionIds: [...pending],
+        ...(scriptFailure && loadCauses.length > 0 && { loadCauses: [...loadCauses] }),
       },
     },
   ]);
@@ -2706,10 +2711,55 @@ function recordPageError(session: CaptureSession, error: string | null): void {
 // (e.g. a `requestfailed` following the 4xx), and repeated <script> tags for
 // the same URL duplicate it further — dedupe so the fail-fast warning names
 // each failed URL once.
-function recordScriptLoadFailure(session: CaptureSession, url: string): void {
+function recordScriptLoadFailure(
+  session: CaptureSession,
+  url: string,
+  cause: ScriptLoadCause,
+): void {
   if (!session.scriptLoadFailures.includes(url)) {
     session.scriptLoadFailures.push(url);
+    (session.scriptLoadCauses ??= []).push(cause);
   }
+}
+
+export type ScriptLoadOrigin = "local" | "cdn" | "remote" | "unknown";
+export interface ScriptLoadCause {
+  origin: ScriptLoadOrigin;
+  /** `net::ERR_*` from the browser, `http-<status>` for an HTTP error, else `unknown`. */
+  code: string;
+}
+
+const CDN_HOSTS =
+  /^(?:cdn\.jsdelivr\.net|fastly\.jsdelivr\.net|unpkg\.com|cdnjs\.cloudflare\.com|ajax\.googleapis\.com|fonts\.googleapis\.com|fonts\.gstatic\.com|esm\.sh|cdn\.skypack\.dev)$/;
+
+/** Which server a failed script came from and why it failed, never the URL, host or path. */
+export function classifyScriptLoadCause(
+  url: string,
+  serverUrl: string,
+  failure: string | number,
+): ScriptLoadCause {
+  let origin: ScriptLoadOrigin = "unknown";
+  if (url.startsWith(`${serverUrl}/`)) origin = "local";
+  else if (/^https?:\/\//.test(url)) {
+    origin = CDN_HOSTS.test(new URL(url).hostname) ? "cdn" : "remote";
+  }
+  const code =
+    typeof failure === "number"
+      ? `http-${failure}`
+      : /^net::ERR_[A-Z0-9_]{1,40}$/.test(failure)
+        ? failure
+        : "unknown";
+  return { origin, code };
+}
+
+/** The closed suffix the engine's script-failure sentence ends with, for a reader that must not see URLs. */
+export function scriptLoadCauseSuffix(causes: readonly ScriptLoadCause[]): string {
+  return causes.length === 0
+    ? ""
+    : ` [script_load: ${causes
+        .slice(0, 4)
+        .map((c) => `${c.origin}/${c.code}`)
+        .join(", ")}]`;
 }
 
 const SCRIPT_ERROR_LABEL = "[HyperFrames] composition script error:";
@@ -2809,7 +2859,8 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
 
     // A blocked script can never register its timeline (#3352); a thrown one may still, so it only counts on timeout.
     const scriptFailure = classifyConsoleScriptFailure(type, text);
-    if (scriptFailure) recordScriptLoadFailure(session, scriptFailure);
+    if (scriptFailure)
+      recordScriptLoadFailure(session, scriptFailure, { origin: "unknown", code: "unknown" });
     recordConsoleScriptError(session, classifyConsoleScriptError(type, text));
   });
 
@@ -2828,7 +2879,11 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     const url = request.url();
     const failureText = request.failure()?.errorText ?? "unknown";
     if (resourceType === "script") {
-      recordScriptLoadFailure(session, request.url());
+      recordScriptLoadFailure(
+        session,
+        url,
+        classifyScriptLoadCause(url, session.serverUrl, failureText),
+      );
     }
     if (shouldIgnoreRequestFailureDiagnostic({ resourceType, url, failureText })) return;
     appendBrowserDiagnostic(
@@ -2853,7 +2908,13 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
       return;
     }
 
-    if (isScript) recordScriptLoadFailure(session, responseUrl);
+    if (isScript) {
+      recordScriptLoadFailure(
+        session,
+        responseUrl,
+        classifyScriptLoadCause(responseUrl, serverUrl, status),
+      );
+    }
     appendBrowserDiagnostic(
       session,
       formatHttpErrorDiagnostic({
