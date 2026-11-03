@@ -60,8 +60,7 @@ function summary(started: ReverseStart, savedTo: string | undefined) {
   };
 }
 
-/** With no session to keep, `--dir` is still made and stamped with the skill, so init and renders find the project. */
-function stampProject(dir: string): string | undefined {
+function makeProjectStampedWithSkill(dir: string): string | undefined {
   try {
     mkdirSync(dir, { recursive: true });
   } catch {
@@ -71,11 +70,10 @@ function stampProject(dir: string): string | undefined {
   return existsSync(projectConfigPath(dir)) ? projectConfigPath(dir) : undefined;
 }
 
-/** Where the run was kept: the session in `--dir` or the current project, else `--dir` stamped with the skill. */
 function saveRun(started: ReverseStart, dir: string | undefined): string | undefined {
   if (started.recorded && (dir !== undefined || existsSync(projectConfigPath("."))))
     return recordProjectReverseSession(dir ?? ".", started.session.sessionId, SKILL);
-  return dir === undefined ? undefined : stampProject(dir);
+  return dir === undefined ? undefined : makeProjectStampedWithSkill(dir);
 }
 
 function refusalWhenServerBlocksFree(session: ReverseSession): Fix | undefined {

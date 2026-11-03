@@ -277,9 +277,10 @@ function getSharedTemplateDir(): string {
   return resolveAssetDir(["..", "templates", "_shared"], ["templates", "_shared"]);
 }
 
-/** Whether `dir` holds anything init would clobber: besides hyperframes.json and the video or audio it was handed
- * from inside that folder (`reverse start --dir` makes the folder, and the video is often downloaded into it). */
-function holdsFilesBesideProjectConfig(dir: string, sources: (string | undefined)[] = []): boolean {
+function holdsFilesBesideProjectConfigOrSources(
+  dir: string,
+  sources: (string | undefined)[] = [],
+): boolean {
   const kept = new Set(sources.flatMap((s) => (s ? [resolve(s)] : [])));
   return (
     existsSync(dir) &&
@@ -287,8 +288,7 @@ function holdsFilesBesideProjectConfig(dir: string, sources: (string | undefined
   );
 }
 
-/** A source already in the project, at the name it would be copied to, stays where it is. */
-function copyIntoProject(src: string, dest: string): void {
+function copyIntoProjectUnlessAlreadyThere(src: string, dest: string): void {
   if (resolve(src) !== resolve(dest)) copyFileSync(src, dest);
 }
 
@@ -512,10 +512,10 @@ async function handleVideoFile(
           localVideoName = mp4Name;
         } else {
           spin.stop(c.warn("Transcode failed — copying original file"));
-          copyIntoProject(videoPath, resolve(destDir, localVideoName));
+          copyIntoProjectUnlessAlreadyThere(videoPath, resolve(destDir, localVideoName));
         }
       } else {
-        copyIntoProject(videoPath, resolve(destDir, localVideoName));
+        copyIntoProjectUnlessAlreadyThere(videoPath, resolve(destDir, localVideoName));
       }
     } else {
       if (interactive) {
@@ -525,10 +525,10 @@ async function handleVideoFile(
         console.log(c.warn("ffmpeg not installed — cannot transcode. Copying original."));
         console.log(c.dim("Install: ") + c.accent(getFFmpegInstallHint()));
       }
-      copyIntoProject(videoPath, resolve(destDir, localVideoName));
+      copyIntoProjectUnlessAlreadyThere(videoPath, resolve(destDir, localVideoName));
     }
   } else {
-    copyIntoProject(videoPath, resolve(destDir, localVideoName));
+    copyIntoProjectUnlessAlreadyThere(videoPath, resolve(destDir, localVideoName));
   }
 
   return { meta, localVideoName };
@@ -872,7 +872,7 @@ export default defineCommand({
         failCommand();
       }
 
-      if (holdsFilesBesideProjectConfig(destDir, [videoFlag, audioFlag])) {
+      if (holdsFilesBesideProjectConfigOrSources(destDir, [videoFlag, audioFlag])) {
         console.error(c.error(`Directory already exists and is not empty: ${name}`));
         failCommand();
       }
@@ -920,7 +920,7 @@ export default defineCommand({
       // Handle audio
       if (audioPath) {
         sourceFilePath = audioPath;
-        copyIntoProject(audioPath, resolve(destDir, basename(audioPath)));
+        copyIntoProjectUnlessAlreadyThere(audioPath, resolve(destDir, basename(audioPath)));
         const { getMediaDurationSeconds } = await import("../whisper/transcribe.js");
         videoDuration = getMediaDurationSeconds(audioPath) ?? undefined;
         console.log(`Audio: ${basename(audioPath)}`);
@@ -1054,7 +1054,7 @@ export default defineCommand({
       failCommand();
     }
 
-    if (holdsFilesBesideProjectConfig(destDir, [videoFlag, audioFlag])) {
+    if (holdsFilesBesideProjectConfigOrSources(destDir, [videoFlag, audioFlag])) {
       const overwrite = await clack.confirm({
         message: `Directory ${c.accent(name)} already exists and is not empty. Overwrite?`,
         initialValue: false,
@@ -1095,7 +1095,7 @@ export default defineCommand({
       }
       mkdirSync(destDir, { recursive: true });
       sourceFilePath = audioPath;
-      copyIntoProject(audioPath, resolve(destDir, basename(audioPath)));
+      copyIntoProjectUnlessAlreadyThere(audioPath, resolve(destDir, basename(audioPath)));
       const { getMediaDurationSeconds } = await import("../whisper/transcribe.js");
       videoDuration = getMediaDurationSeconds(audioPath) ?? undefined;
       clack.log.info(`Audio copied to ${c.accent(basename(audioPath))}`);
