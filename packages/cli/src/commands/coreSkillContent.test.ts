@@ -20,6 +20,15 @@ describe("hyperframes contract docs", () => {
     expect(minimal).toMatch(/window\.__timelines\["main"\]/);
   });
 
+  it("says a video carries its own data-start and its wrapper stays untimed", () => {
+    expect(read("skills", "hyperframes", "SKILL.md")).toContain(
+      "Time the `<video>`, never its wrapper.",
+    );
+    expect(read("skills", "hyperframes", "references", "format.md")).toContain(
+      "Keep `data-start` on the `<video>`; leave its wrapper untimed",
+    );
+  });
+
   it("teaches check as the canonical quality gate", () => {
     const skill = read("skills", "hyperframes", "SKILL.md");
 

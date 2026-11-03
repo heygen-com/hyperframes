@@ -646,7 +646,7 @@ export const mediaRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = 
         message: `<video> with data-start is nested inside <${parent.name}${parent.id ? ` id="${parent.id}"` : ""}> which also has data-start. The frame extractor resolves the video's start from its own data-start without the wrapper's offset, while visibility uses the wrapper's window, so the two disagree: the clip shows the wrong source frames and then disappears partway through its slot.`,
         elementId: readAttr(tag.raw, "id") || undefined,
         fixHint:
-          "Time the wrapper OR the video, never both: remove data-start from the wrapper (use it as a non-timed visual container), or move the <video> up to be a direct child of the stage.",
+          "Keep data-start on the <video> and remove it from the wrapper (use the wrapper as a non-timed visual container), or move the <video> up to be a direct child of the stage.",
         snippet: truncateSnippet(tag.raw),
       });
     }

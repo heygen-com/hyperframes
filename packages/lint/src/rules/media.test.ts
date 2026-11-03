@@ -418,6 +418,19 @@ describe("media rules", () => {
     expect(audio).toContain('data-start="0"');
   });
 
+  it("tells a timed video in a timed wrapper to keep timing on the video, not the wrapper", async () => {
+    const result = await lintHyperframeHtml(`
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="w" data-start="2" data-duration="6"><video id="v" src="a.mp4" data-start="2" data-duration="6" muted></video></div>
+  </div>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["c1"] = gsap.timeline({ paused: true });</script>
+</body></html>`);
+    const hint = result.findings.find((f) => f.code === "video_nested_in_timed_element")?.fixHint;
+    expect(hint).toContain("Keep data-start on the <video> and remove it from the wrapper");
+    expect(hint).not.toContain("wrapper OR the video");
+  });
+
   it("allows audible video clips to omit muted when data-has-audio is true", async () => {
     const html = `
 <html><body>
