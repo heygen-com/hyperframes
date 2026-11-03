@@ -30,6 +30,14 @@ export function subscribeCommand(sessionId?: string): string {
   return `npx hyperframes billing subscribe --feature reverse${sessionId ? ` --session ${sessionId}` : ""}`;
 }
 
+function freeFields(session: ReverseSession) {
+  const link = reverseUpgradeUrl(session);
+  return {
+    upgrade_url: link,
+    subscribe_command: link === null ? null : subscribeCommand(session.sessionId),
+  };
+}
+
 function summary(started: ReverseStart, savedTo: string | undefined) {
   if (!started.recorded) {
     return {
@@ -49,17 +57,18 @@ function summary(started: ReverseStart, savedTo: string | undefined) {
     session_id: session.sessionId,
     gate: session.gate,
     saved_to: savedTo ?? null,
-    ...(session.plan === "free"
-      ? {
-          upgrade_url: reverseUpgradeUrl(session),
-          subscribe_command: subscribeCommand(session.sessionId),
-        }
-      : {}),
+    ...(session.plan === "free" ? freeFields(session) : {}),
   };
 }
 
 function refusalWhenServerBlocksFree(session: ReverseSession): Fix | undefined {
   if (session.gate !== "block" || session.plan !== "free") return undefined;
+  if (reverseUpgradeUrl(session) === null) {
+    return new Fix(
+      "Reverse is part of HyperFrames Pro, and a plan can't be purchased right now.",
+      "Run reverse start again once this account is on Pro.",
+    );
+  }
   const command = subscribeCommand(session.sessionId);
   return new Fix(
     `Reverse is part of HyperFrames Pro. Run \`${command}\`, then run reverse start again.`,
