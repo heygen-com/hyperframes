@@ -149,6 +149,15 @@ describe("transparent snapshot capture", () => {
     );
   });
 
+  it("holds the project's local videos out of Chrome and reads their durations and sizes from FFprobe", () => {
+    const source = readFileSync(new URL("./snapshot.ts", import.meta.url), "utf8");
+    expect(source).toContain("localVideoRenderIds(html)");
+    expect(source).toContain("target.evaluateOnNewDocument(");
+    expect(source).toContain("holdRenderFrameVideos,");
+    expect(source).toContain("probeHeldVideo(file, heldProbes)");
+    expect(source).toContain("applyVideoMetadataHints(target, heldHints)");
+  });
+
   it("exposes --proxy and forwards it to the snapshot page server", () => {
     const source = readFileSync(new URL("./snapshot.ts", import.meta.url), "utf8");
     expect(source).toContain("proxy: {");
