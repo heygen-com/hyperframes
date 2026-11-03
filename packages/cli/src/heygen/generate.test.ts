@@ -22,6 +22,16 @@ vi.mock("../cloud/upload.js", () => ({
   },
 }));
 
+const sharpGone = vi.hoisted(() => ({ on: false }));
+vi.mock("../utils/optionalPackages.js", async (load) => {
+  const real = await load<typeof import("../utils/optionalPackages.js")>();
+  return {
+    ...real,
+    loadSharp: (feature: string) =>
+      sharpGone.on ? Promise.reject(new Error("no sharp here")) : real.loadSharp(feature),
+  };
+});
+
 vi.stubEnv("HEYGEN_API_KEY", "k");
 vi.stubEnv("HEYGEN_API_URL", "https://api.test");
 
@@ -189,6 +199,45 @@ describe("generate", () => {
     const sharp = await loadSharp("test");
     const { width, height, format } = await sharp(Buffer.from(picture!.data, "base64")).metadata();
     expect([format, width, height]).toEqual(["jpeg", 40, 30]);
+  });
+
+  it.skipIf(!ffmpeg)("sends pictures through ffmpeg when sharp cannot be loaded", async () => {
+    answers(textured("no-sharp.mp4", "1344x768", false));
+    sharpGone.on = true;
+    try {
+      const r = await generate({
+        type: "video",
+        out: join(project, "assets/no-sharp-out.mp4"),
+        prompt: "p",
+        firstFrame: still("no-sharp.png", "120x90"),
+      });
+      const { width, height } = probeVideo(r.out);
+      expect([width, height]).toEqual([1024, 768]);
+    } finally {
+      sharpGone.on = false;
+    }
+  });
+
+  it("prepares only the pictures the route sends: --avatar leaves a stale --photo alone", async () => {
+    const sent: Record<string, unknown>[] = [];
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (init?.body) sent.push(JSON.parse(String(init.body)));
+      if (url === "https://files.test/av.mp4") return new Response(new Uint8Array([1]));
+      return json({
+        data: { id: "av1", status: "completed", video_url: "https://files.test/av.mp4" },
+      });
+    });
+    await settled(
+      generate({
+        type: "avatar",
+        out: join(project, "assets/av-out.mp4"),
+        avatar: "look-1",
+        photo: join(project, "gone.png"),
+        script: "hi",
+        voice: "v1",
+      }),
+    );
+    expect(sent[0]).toMatchObject({ type: "avatar", avatar_id: "look-1" });
   });
 
   it.skipIf(!ffmpeg)("re-shoots a person speaking a stretch of the original voice", async () => {

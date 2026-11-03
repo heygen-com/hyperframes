@@ -347,26 +347,37 @@ function needFile(path: string): void {
 
 const FIT_2048 = "scale='min(2048,iw)':'min(2048,ih)':force_original_aspect_ratio=decrease";
 
-const picturesOf = (r: GenerateRequest): string[] =>
-  [...(r.references ?? []), r.firstFrame, r.photo].filter((p): p is string => Boolean(p));
+/** The pictures `route` sends inline: its body built once with a media that only records them. */
+function picturesOf(route: Route, r: GenerateRequest): string[] {
+  const paths: string[] = [];
+  route.body(r, (path, kind) => {
+    if (kind === "image") paths.push(path);
+    return {};
+  });
+  return paths;
+}
+
+const sharpOrNone = () => loadSharp("media-use pictures").catch(() => null);
 
 /** Each picture upright and at most 2048 px, as a JPEG in `work`. sharp, not ffmpeg: a picture alone never needs it. */
 async function shrunk(paths: string[], work: string): Promise<Map<string, string>> {
   const out = new Map<string, string>();
   if (!paths.length) return out;
-  const sharp = await loadSharp("media-use pictures");
+  const sharp = await sharpOrNone();
   for (const path of new Set(paths)) {
     needFile(path);
     const to = join(work, `picture-${out.size}.jpg`);
-    // sharp's own build reads no HEIC; ffmpeg does, where there is one.
-    await sharp(path)
-      .rotate()
-      .resize(2048, 2048, { fit: "inside", withoutEnlargement: true })
-      .jpeg({ quality: 90 })
-      .toFile(to)
-      .catch(() =>
-        runFfmpeg(["-y", "-i", path, "-vf", FIT_2048, "-q:v", "3", "-frames:v", "1", to]),
-      );
+    const viaFfmpeg = () =>
+      runFfmpeg(["-y", "-i", path, "-vf", FIT_2048, "-q:v", "3", "-frames:v", "1", to]);
+    // ffmpeg, where there is one, covers a sharp that did not install and the HEIC its own build cannot read.
+    if (!sharp) viaFfmpeg();
+    else
+      await sharp(path)
+        .rotate()
+        .resize(2048, 2048, { fit: "inside", withoutEnlargement: true })
+        .jpeg({ quality: 90 })
+        .toFile(to)
+        .catch(viaFfmpeg);
     out.set(path, to);
   }
   return out;
@@ -540,8 +551,9 @@ function fitAspect(out: string, aspect: string): string | undefined {
 
 async function aspectOf(r: GenerateRequest, pictures: Map<string, string>): Promise<string> {
   if (r.aspect || !r.firstFrame) return r.aspect ?? "16:9";
-  const sharp = await loadSharp("media-use pictures");
-  const { width, height } = await sharp(pictures.get(r.firstFrame)!).metadata();
+  const sent = pictures.get(r.firstFrame)!;
+  const sharp = await sharpOrNone();
+  const { width, height } = sharp ? await sharp(sent).metadata() : probeVideo(sent);
   return `${width}:${height}`;
 }
 
@@ -659,7 +671,7 @@ export async function generate(
   try {
     const sources = assetsOf(r);
     const ids = await uploaded(sources);
-    const pictures = await shrunk(picturesOf(r), work);
+    const pictures = await shrunk(picturesOf(route, r), work);
     const local = inline(work, pictures, r.masks);
     const body = route.body(r, (path, kind) =>
       ids.has(path) ? { type: "asset_id", asset_id: ids.get(path) } : local(path, kind),
