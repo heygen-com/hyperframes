@@ -11,12 +11,10 @@ import {
   translate,
 } from "./pose";
 
-/** Descendants read per mover per frame for its painted extent. */
 const CONTENT_NODE_LIMIT = 256;
 
 type Box = [number, number, number, number];
 
-/** Maps client px back into the mover's own px: pose maps mover px to scene px, and the scene sits at its client rect, scaled to the frame. */
 function clientToMover(pose: Affine, scene: HTMLElement, frameW: number): Affine | null {
   const sr = scene.getBoundingClientRect();
   const s = frameW > 0 && sr.width > 0 ? sr.width / frameW : 1;
@@ -30,7 +28,6 @@ function clientToMover(pose: Affine, scene: HTMLElement, frameW: number): Affine
   });
 }
 
-/** Grows `box` to hold client rect `r`, mapped into the mover's px by `back`. */
 function growToRect(box: Box, back: Affine, r: DOMRect): void {
   for (const [x, y] of [
     [r.left, r.top],
@@ -47,11 +44,7 @@ function growToRect(box: Box, back: Affine, r: DOMRect): void {
   }
 }
 
-/**
- * The mover's painted extent in its own px, `[x0, y0, x1, y1]`: its border box, grown to every
- * descendant that overflows it (text wider than the box, positioned children). The crop is cut to
- * this box, so content outside it would be dropped from the redraw.
- */
+/** The crop is cut to this box, so it must hold content that overflows the mover (wide text). */
 function contentBox(el: HTMLElement, pose: Affine, scene: HTMLElement, frameW: number): Box {
   const box: Box = [0, 0, el.offsetWidth, el.offsetHeight];
   const cs = getComputedStyle(el);
@@ -79,7 +72,6 @@ export interface FrameRequest {
   taps: number | null;
   /** Px each mover's box grows by on every side (its glow); none for a mover not listed. */
   pads?: ReadonlyMap<HTMLElement, number>;
-  /** The composition root the poses are relative to; with it, overflowing content is kept. */
   scene?: HTMLElement;
   frameW: number;
   frameH: number;
