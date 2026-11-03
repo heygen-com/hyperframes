@@ -8,6 +8,7 @@ import { configDir } from "../auth/paths.js";
 import { AuthClient, buildAuthHeaders } from "../auth/client.js";
 import { resolveCredential } from "../auth/resolver.js";
 import { refreshIfNeeded, resolveCloudAuthHeaders, resolveCloudBaseUrl } from "../cloud/auth.js";
+import { HyperframesApiError, HyperframesCloudClient } from "../cloud/_gen/client.js";
 import { Fix } from "../measure/media.js";
 import { pageUrl } from "./plan.js";
 
@@ -136,47 +137,47 @@ function refusal(status: number, body: unknown, estimate?: number): Refused {
   );
 }
 
+export interface JobRoute {
+  path: string;
+  start: (
+    client: HyperframesCloudClient,
+    body: unknown,
+    key: string,
+    signal: AbortSignal,
+  ) => Promise<unknown>;
+  status?: (client: HyperframesCloudClient, id: string, signal: AbortSignal) => Promise<unknown>;
+}
+
+const clientFor = (auth: Record<string, string>) =>
+  new HyperframesCloudClient({ baseUrl: resolveCloudBaseUrl(), getAuthHeaders: () => auth });
+
+const resume = "run the same command again: it resumes the same job";
+
 // fallow-ignore-next-line complexity
 async function call(
-  method: "GET" | "POST",
   route: string,
-  body?: unknown,
-  key?: string,
+  send: (client: HyperframesCloudClient, signal: AbortSignal) => Promise<unknown>,
+  timeoutMs: number,
   estimate?: number,
   auth?: Record<string, string>,
 ): Promise<Job> {
-  const headers: Record<string, string> = {
-    ...(auth ?? (await resolveCloudAuthHeaders().catch(noSignIn))),
-    accept: "application/json",
-  };
-  if (body !== undefined) headers["content-type"] = "application/json";
-  if (key) headers["Idempotency-Key"] = key;
-  let res: Response;
+  const client = clientFor(auth ?? (await resolveCloudAuthHeaders().catch(noSignIn)));
+  let data: unknown;
   try {
-    res = await fetch(`${resolveCloudBaseUrl()}${route}`, {
-      method,
-      headers,
-      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-      signal: AbortSignal.timeout(method === "POST" ? 180_000 : 30_000),
-    });
+    data = await send(client, AbortSignal.timeout(timeoutMs));
   } catch (err) {
-    throw new Fix(
-      `no answer from HeyGen for ${route} (${err instanceof Error ? err.message : String(err)})`,
-      "run the same command again: it resumes the same job",
-    );
-  }
-  const value: unknown = await res.json().catch(() => null);
-  if (res.status >= 500 || value === null)
-    throw new Fix(
-      `HeyGen ${res.status} for ${route} with no readable answer`,
-      "run the same command again: it resumes the same job",
-    );
-  if (!res.ok) {
-    const refused = refusal(res.status, value, estimate);
-    refused.status = res.status;
+    if (!(err instanceof HyperframesApiError))
+      throw new Fix(
+        `no answer from HeyGen for ${route} (${err instanceof Error ? err.message : String(err)})`,
+        resume,
+      );
+    if (err.status >= 500 || err.status < 300 || err.raw == null)
+      throw new Fix(`HeyGen ${err.status} for ${route} with no readable answer`, resume);
+    const refused = refusal(err.status, err.raw, estimate);
+    refused.status = err.status;
     throw refused;
   }
-  const data = isRecord(value) && isRecord(value.data) ? value.data : value;
+  if (data == null) throw new Fix(`HeyGen answered ${route} with no readable answer`, resume);
   if (!isRecord(data))
     throw new Fix(`HeyGen answered ${route} with no job`, "run the same command again");
   const id = data.id ?? data.job_id ?? data.video_id ?? data.generation_id;
@@ -214,26 +215,33 @@ export interface RunOptions {
   credits?: number;
 }
 
-/** Starts a job (or picks up the one this key already started) and polls `pollRoute(id)` until it ends. */
+/** Starts a job (or picks up the one this key already started) and polls its status until it ends. */
 export async function runJob(
-  route: string,
+  jobRoute: JobRoute,
   body: unknown,
   key: string,
-  pollRoute: (id: string) => string,
   opts: RunOptions = {},
 ): Promise<Job> {
   const started = Date.now();
+  const route = jobRoute.path;
   const { auth, scope } = await jobSender();
   const sent = liveKey(key, scope);
   let job: Job;
   try {
-    job = await call("POST", route, body, sent, opts.credits, auth);
+    job = await call(
+      route,
+      (client, signal) => jobRoute.start(client, body, sent, signal),
+      180_000,
+      opts.credits,
+      auth,
+    );
   } catch (err) {
     if (err instanceof Refused && !KEEPS_KEY.has(err.status)) markFailed(sent, scope);
     throw err;
   }
   if (opts.log) log(opts.log, { route, id: job.id, key: sent, status: job.status });
-  while (RUNNING.has(job.status.toLowerCase())) {
+  const status = jobRoute.status;
+  while (status && RUNNING.has(job.status.toLowerCase())) {
     if (Date.now() - started > (opts.timeoutMs ?? 15 * 60_000))
       throw new Fix(
         `HeyGen job ${job.id} is still ${job.status}`,
@@ -241,7 +249,12 @@ export async function runJob(
       );
     opts.onWait?.(job);
     await new Promise((r) => setTimeout(r, opts.intervalMs ?? 5000));
-    job = await call("GET", pollRoute(job.id));
+    const id = job.id;
+    job = await call(
+      `${route}/${encodeURIComponent(id)}`,
+      (client, signal) => status(client, id, signal),
+      30_000,
+    );
   }
   if (opts.log) log(opts.log, { route, id: job.id, key: sent, status: job.status });
   if (!/^(completed|succeeded|success|done)$/i.test(job.status)) {
@@ -265,23 +278,19 @@ const isVoice = (v: unknown): v is Voice =>
 
 /** HeyGen's public voices for a language, best first; a language it does not know gets multilingual ones. */
 export async function publicVoices(language: string, limit: number): Promise<Voice[]> {
-  const headers = {
-    ...(await resolveCloudAuthHeaders().catch(noSignIn)),
-    accept: "application/json",
-  };
-  const query = new URLSearchParams({ type: "public", language, limit: String(limit) });
-  const res = await fetch(`${resolveCloudBaseUrl()}/v3/voices?${query}`, {
-    headers,
-    signal: AbortSignal.timeout(30_000),
-  }).catch((err: unknown) => {
-    throw new Fix(
-      `no answer from HeyGen for its voices (${err instanceof Error ? err.message : String(err)})`,
-      "run the same command again",
-    );
-  });
-  const value: unknown = await res.json().catch(() => null);
-  if (!res.ok || !isRecord(value) || !Array.isArray(value.data))
-    throw new Fix(`HeyGen ${res.status} listing its voices`, "run the same command again");
+  const client = clientFor(await resolveCloudAuthHeaders().catch(noSignIn));
+  const value = await client
+    .listVoicesV3({ type: "public", language, limit, signal: AbortSignal.timeout(30_000) })
+    .catch((err: unknown) => {
+      if (err instanceof HyperframesApiError)
+        throw new Fix(`HeyGen ${err.status} listing its voices`, "run the same command again");
+      throw new Fix(
+        `no answer from HeyGen for its voices (${err instanceof Error ? err.message : String(err)})`,
+        "run the same command again",
+      );
+    });
+  if (!isRecord(value) || !Array.isArray(value.data))
+    throw new Fix("HeyGen answered its voices with no list", "run the same command again");
   return value.data
     .filter(isVoice)
     .map(({ voice_id, name, language, gender }) => ({ voice_id, name, language, gender }));

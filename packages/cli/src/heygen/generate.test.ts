@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { findFFmpeg } from "../browser/ffmpeg.js";
 import { probeVideo } from "../measure/media.js";
 
@@ -40,6 +40,22 @@ afterAll(() => rmSync(project, { recursive: true, force: true }));
 afterEach(() => vi.unstubAllGlobals());
 
 const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200 });
+
+/** Runs `work` to the end with the poll interval's timers fast-forwarded. */
+async function settled<T>(work: Promise<T>): Promise<T> {
+  vi.useFakeTimers({ toFake: ["setTimeout"] });
+  let done = false;
+  const run = work.finally(() => (done = true));
+  try {
+    while (!done) {
+      await new Promise((r) => setImmediate(r));
+      await vi.advanceTimersByTimeAsync(5000);
+    }
+    return await run;
+  } finally {
+    vi.useRealTimers();
+  }
+}
 
 /** A 30 fps clip of these lavfi sources one after another: each new source is a cut. */
 function shots(name: string, sources: string[], size = "180x320"): string {
@@ -690,6 +706,82 @@ describe("generate", () => {
   });
 });
 
+describe("each route through the generated client", () => {
+  // Keys an earlier refusal in this file marked failed would move this file's keys on.
+  beforeEach(() => {
+    vi.stubEnv("HYPERFRAMES_CONFIG_DIR", mkdtempSync(join(tmpdir(), "hf-route-test-")));
+  });
+  const file = "https://files.test/route-result";
+  const routes = [
+    { type: "image", path: "/v3/images", ext: "png", done: { images: [{ url: file }] } },
+    { type: "video", path: "/v3/models/videos", ext: "mp4", done: { video_url: file } },
+    { type: "avatar", path: "/v3/videos", ext: "mp4", done: { video_url: file } },
+    { type: "voice", path: "/v3/voices/speech", ext: "mp3", done: { audio_url: file } },
+    { type: "music", path: "/v3/audio/music", ext: "mp3", done: { audio_url: file } },
+  ] as const;
+  const request = (type: GenerateRequest["type"], ext: string): GenerateRequest => {
+    const photo = join(project, "route-photo.png");
+    if (type === "avatar")
+      execFileSync(ffmpeg!, [
+        ...["-v", "error", "-y", "-f", "lavfi", "-i", "color=c=red:s=64x64"],
+        ...["-frames:v", "1", photo],
+      ]);
+    return {
+      type,
+      out: join(project, `assets/route-${type}.${ext}`),
+      prompt: "a desk",
+      script: "Hello",
+      voice: "c".repeat(32),
+      ...(type === "avatar" ? { photo } : {}),
+    };
+  };
+
+  for (const { type, path, ext, done } of routes) {
+    const polled = type !== "voice";
+    it.skipIf(!ffmpeg && type === "avatar")(
+      `${type}: posts ${path}${polled ? ", keyed, and polls it to completion" : " once, unkeyed"}`,
+      async () => {
+        const calls: { url: string; method?: string; key: string | null; body?: unknown }[] = [];
+        const answers = polled
+          ? [
+              json({ data: { id: "j/1", status: "pending" } }),
+              json({ data: { id: "j/1", status: "completed", ...done } }),
+            ]
+          : [json({ data: { ...done, duration: 1 } })];
+        vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+          calls.push({
+            url,
+            method: init?.method,
+            key: new Headers(init?.headers).get("Idempotency-Key"),
+            ...(init?.body ? { body: JSON.parse(String(init.body)) } : {}),
+          });
+          if (url === file) return new Response(new Uint8Array([1]));
+          return answers.shift()!;
+        });
+        const r = await settled(generate(request(type, ext)));
+        const [post, ...rest] = calls;
+        expect(post).toMatchObject({ url: `https://api.test${path}`, method: "POST" });
+        expect(post!.key).toEqual(polled ? expect.stringMatching(/^hf-[0-9a-f]{40}$/) : null);
+        expect(post!.body).toBeTypeOf("object");
+        expect(rest.map((c) => [c.url, c.method])).toEqual([
+          ...(polled ? [[`https://api.test${path}/j%2F1`, "GET"]] : []),
+          [file, undefined],
+        ]);
+        expect(r).toMatchObject({ route: path, job: polled ? "j/1" : "" });
+      },
+    );
+
+    it.skipIf(!ffmpeg && type === "avatar")(`${type}: says what a refusal needs`, async () => {
+      vi.stubGlobal(
+        "fetch",
+        async () =>
+          new Response(JSON.stringify({ error: { code: "hf_usage_exhausted" } }), { status: 402 }),
+      );
+      await expect(generate(request(type, ext))).rejects.toThrow("out of HyperFrames credits");
+    });
+  }
+});
+
 describe("foldShort", () => {
   it("folds a piece of a few frames into its neighbour", () => {
     expect(foldShort([4, 4.1, 8], 10)).toEqual([4.1, 8]);
@@ -713,10 +805,14 @@ describe("pickVoice", () => {
     vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
       asked.push(url);
       if (url.includes("/v3/voices?")) return json({ data: catalog });
+      if (url === "https://files.test/vo.mp3") return new Response(new Uint8Array([1]));
       if (init?.method === "POST") {
         const key = new Headers(init.headers).get("Idempotency-Key");
         posts.push({ key, body: JSON.parse(String(init.body)) });
       }
+      // Speech answers in the request; a video is a job to poll.
+      if (url.endsWith("/v3/voices/speech"))
+        return json({ data: { audio_url: "https://files.test/vo.mp3", duration: 1 } });
       return json({ data: { id: "j1", status: "pending" } });
     });
   afterEach(() => {
@@ -739,6 +835,18 @@ describe("pickVoice", () => {
     const r = { type: "voice" as const, out: join(project, "assets/a.mp3"), voice: "Chinese" };
     expect((await pickVoice(r)).name).toBe("Lin");
     expect(asked[0]).toBe("https://api.test/v3/voices?type=public&language=Chinese&limit=1");
+  });
+
+  it("says what to do when HeyGen will not list its voices", async () => {
+    vi.stubGlobal(
+      "fetch",
+      async () =>
+        new Response(JSON.stringify({ error: { code: "unauthorized" } }), { status: 401 }),
+    );
+    await expect(pickVoice({ type: "voice", out: "vo.mp3" })).rejects.toMatchObject({
+      message: "HeyGen 401 listing its voices",
+      fix: "run the same command again",
+    });
   });
 
   it("lists voices to pick from when none is named", async () => {
@@ -790,7 +898,11 @@ describe("pickVoice", () => {
           script: "你好",
           ...(type === "avatar" ? { photo: face } : {}),
         };
-        expect(await runOnce(r)).toMatchObject({ message: "HeyGen job j1 is still pending" });
+        expect(await runOnce(r)).toMatchObject(
+          type === "voice"
+            ? { route: "/v3/voices/speech" }
+            : { message: "HeyGen job j1 is still pending" },
+        );
         catalog = [voice("b", "Wei"), voice("a", "Lin")];
         await runOnce(r);
         expect(posts).toHaveLength(2);

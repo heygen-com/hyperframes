@@ -5,15 +5,35 @@
  * experiment-framework to regenerate.
  */
 import type {
+  BackgroundRemovalJob,
   CompleteAssetUploadRequest,
   CompleteAssetUploadResponse,
   CreateAssetUploadRequest,
   CreateAssetUploadResponse,
+  CreateBackgroundRemovalRequest,
   CreateHyperframesRenderRequest,
   CreateHyperframesRenderResponse,
+  CreateLipsyncRequest,
+  CreateModelVideoRequest,
+  CreateModelVideoResponse,
+  CreateSpeechV3Request,
+  CreateSpeechV3ResponseData,
+  CreateVideoV3RequestBody,
+  CreateVideoV3Response,
   DeleteHyperframesRenderResponse,
   HyperframesRenderDetail,
+  ImageCreateRequest,
+  LipsyncCreateResponse,
+  LipsyncDetail,
+  ModelVideoResponse,
+  MusicCreateRequest,
+  MusicResponse,
+  ThirdPartyImageResponse,
+  TranscriptionCreateRequest,
+  TranscriptionResponse,
   UploadAssetV3Response,
+  VideoDetail,
+  VoiceV3Item,
 } from "./types.js";
 
 export type AuthHeaders = Record<string, string>;
@@ -201,11 +221,6 @@ export class HyperframesCloudClient {
     });
   }
 
-  /**
-   * Upload Asset
-   *
-   * Uploads a file (image, video, audio, PDF, or SRT subtitle) and returns an asset_id for use in other endpoints. Max 50 MB, or 32 MB for an image. Supported types: png, jpeg, mp4, webm, mp3, wav, pdf, srt. A file is checked against the content policy after it is uploaded; if it is blocked, the asset is removed and later requests for it return not found.
-   */
   async uploadAsset(args: {
     file: Blob | Buffer | Uint8Array;
     filename: string;
@@ -229,11 +244,6 @@ export class HyperframesCloudClient {
     });
   }
 
-  /**
-   * Create Asset Upload
-   *
-   * Begin a direct-to-S3 upload. Returns an asset_id and a presigned upload_url; PUT the file bytes to upload_url, then call POST /v3/assets/{asset_id}/complete. Unlike POST /v3/assets (which proxies the bytes), this never sends the file through the API.
-   */
   async createAssetUpload(args: {
     body: CreateAssetUploadRequest;
     idempotencyKey?: string;
@@ -248,11 +258,6 @@ export class HyperframesCloudClient {
     });
   }
 
-  /**
-   * Complete Asset Upload
-   *
-   * Finalize a direct-to-S3 upload into a reusable asset. Call after the upload PUT returns 200. Idempotent: repeated calls return the same finalized asset.
-   */
   async completeAssetUpload(args: {
     asset_id: string;
     body: CompleteAssetUploadRequest;
@@ -266,11 +271,6 @@ export class HyperframesCloudClient {
     });
   }
 
-  /**
-   * Create HyperFrames Render
-   *
-   * Renders a HyperFrames composition (an HTML+JS+assets project bundled as a .zip) into a video. Submit the project via `url`, `asset_id` (pre-uploaded via POST /v3/assets), or inline `base64`. Returns a `render_id` to poll via GET /v3/hyperframes/renders/{render_id}.
-   */
   async createRender(args: {
     body: CreateHyperframesRenderRequest;
     idempotencyKey?: string;
@@ -285,11 +285,6 @@ export class HyperframesCloudClient {
     });
   }
 
-  /**
-   * List HyperFrames Renders
-   *
-   * Returns a cursor-paginated list of HyperFrames renders in the account, newest first.
-   */
   async listRenders(args: { limit?: number; token?: string; signal?: AbortSignal }): Promise<{
     data?: Array<HyperframesRenderDetail>;
     has_more?: boolean;
@@ -312,11 +307,6 @@ export class HyperframesCloudClient {
     });
   }
 
-  /**
-   * Get HyperFrames Render
-   *
-   * Returns full details for a single HyperFrames render, including status and signed video_url when complete.
-   */
   async getRender(args: {
     render_id: string;
     signal?: AbortSignal;
@@ -328,11 +318,6 @@ export class HyperframesCloudClient {
     });
   }
 
-  /**
-   * Delete HyperFrames Render
-   *
-   * Soft-deletes a HyperFrames render. Subsequent GETs return 404.
-   */
   async deleteRender(args: {
     render_id: string;
     signal?: AbortSignal;
@@ -340,6 +325,212 @@ export class HyperframesCloudClient {
     return await this.request<DeleteHyperframesRenderResponse>({
       method: "DELETE",
       path: `/v3/hyperframes/renders/${encodeURIComponent(args.render_id)}`,
+      signal: args.signal,
+    });
+  }
+
+  async createImage(args: {
+    body: ImageCreateRequest;
+    idempotencyKey: string;
+    signal?: AbortSignal;
+  }): Promise<ThirdPartyImageResponse> {
+    return await this.request<ThirdPartyImageResponse>({
+      method: "POST",
+      path: "/v3/images",
+      body: args.body,
+      idempotencyKey: args.idempotencyKey,
+      signal: args.signal,
+    });
+  }
+
+  async getImage(args: {
+    generation_id: string;
+    signal?: AbortSignal;
+  }): Promise<ThirdPartyImageResponse> {
+    return await this.request<ThirdPartyImageResponse>({
+      method: "GET",
+      path: `/v3/images/${encodeURIComponent(args.generation_id)}`,
+      signal: args.signal,
+    });
+  }
+
+  async createModelVideo(args: {
+    body: CreateModelVideoRequest;
+    idempotencyKey?: string;
+    signal?: AbortSignal;
+  }): Promise<CreateModelVideoResponse> {
+    return await this.request<CreateModelVideoResponse>({
+      method: "POST",
+      path: "/v3/models/videos",
+      body: args.body,
+      idempotencyKey: args.idempotencyKey,
+      signal: args.signal,
+    });
+  }
+
+  async getModelVideo(args: {
+    video_id: string;
+    signal?: AbortSignal;
+  }): Promise<ModelVideoResponse> {
+    return await this.request<ModelVideoResponse>({
+      method: "GET",
+      path: `/v3/models/videos/${encodeURIComponent(args.video_id)}`,
+      signal: args.signal,
+    });
+  }
+
+  async createVideo(args: {
+    body: CreateVideoV3RequestBody;
+    idempotencyKey?: string;
+    signal?: AbortSignal;
+  }): Promise<CreateVideoV3Response> {
+    return await this.request<CreateVideoV3Response>({
+      method: "POST",
+      path: "/v3/videos",
+      body: args.body,
+      idempotencyKey: args.idempotencyKey,
+      signal: args.signal,
+    });
+  }
+
+  async getVideoV3(args: { video_id: string; signal?: AbortSignal }): Promise<VideoDetail> {
+    return await this.request<VideoDetail>({
+      method: "GET",
+      path: `/v3/videos/${encodeURIComponent(args.video_id)}`,
+      signal: args.signal,
+    });
+  }
+
+  async listVoicesV3(args: {
+    type?: "public" | "private";
+    engine?: string;
+    language?: string;
+    gender?: string;
+    limit?: number;
+    token?: string;
+    signal?: AbortSignal;
+  }): Promise<{ data?: Array<VoiceV3Item>; has_more?: boolean; next_token?: string | null }> {
+    const query: Record<string, string | number | undefined> = {
+      type: args.type,
+      engine: args.engine,
+      language: args.language,
+      gender: args.gender,
+      limit: args.limit,
+      token: args.token,
+    };
+    return await this.request<{
+      data?: Array<VoiceV3Item>;
+      has_more?: boolean;
+      next_token?: string | null;
+    }>({
+      method: "GET",
+      path: "/v3/voices",
+      query,
+      unwrapData: false,
+      signal: args.signal,
+    });
+  }
+
+  async createSpeechV3(args: {
+    body: CreateSpeechV3Request;
+    signal?: AbortSignal;
+  }): Promise<CreateSpeechV3ResponseData> {
+    return await this.request<CreateSpeechV3ResponseData>({
+      method: "POST",
+      path: "/v3/voices/speech",
+      body: args.body,
+      signal: args.signal,
+    });
+  }
+
+  async createMusic(args: {
+    body: MusicCreateRequest;
+    idempotencyKey: string;
+    signal?: AbortSignal;
+  }): Promise<MusicResponse> {
+    return await this.request<MusicResponse>({
+      method: "POST",
+      path: "/v3/audio/music",
+      body: args.body,
+      idempotencyKey: args.idempotencyKey,
+      signal: args.signal,
+    });
+  }
+
+  async getMusic(args: { music_id: string; signal?: AbortSignal }): Promise<MusicResponse> {
+    return await this.request<MusicResponse>({
+      method: "GET",
+      path: `/v3/audio/music/${encodeURIComponent(args.music_id)}`,
+      signal: args.signal,
+    });
+  }
+
+  async createTranscription(args: {
+    body: TranscriptionCreateRequest;
+    idempotencyKey: string;
+    signal?: AbortSignal;
+  }): Promise<TranscriptionResponse> {
+    return await this.request<TranscriptionResponse>({
+      method: "POST",
+      path: "/v3/audio/transcriptions",
+      body: args.body,
+      idempotencyKey: args.idempotencyKey,
+      signal: args.signal,
+    });
+  }
+
+  async getTranscription(args: {
+    transcription_id: string;
+    signal?: AbortSignal;
+  }): Promise<TranscriptionResponse> {
+    return await this.request<TranscriptionResponse>({
+      method: "GET",
+      path: `/v3/audio/transcriptions/${encodeURIComponent(args.transcription_id)}`,
+      signal: args.signal,
+    });
+  }
+
+  async createLipsyncV3(args: {
+    body: CreateLipsyncRequest;
+    idempotencyKey?: string;
+    signal?: AbortSignal;
+  }): Promise<LipsyncCreateResponse> {
+    return await this.request<LipsyncCreateResponse>({
+      method: "POST",
+      path: "/v3/lipsyncs",
+      body: args.body,
+      idempotencyKey: args.idempotencyKey,
+      signal: args.signal,
+    });
+  }
+
+  async getLipsyncV3(args: { lipsync_id: string; signal?: AbortSignal }): Promise<LipsyncDetail> {
+    return await this.request<LipsyncDetail>({
+      method: "GET",
+      path: `/v3/lipsyncs/${encodeURIComponent(args.lipsync_id)}`,
+      signal: args.signal,
+    });
+  }
+
+  async createBackgroundRemoval(args: {
+    body: CreateBackgroundRemovalRequest;
+    signal?: AbortSignal;
+  }): Promise<BackgroundRemovalJob> {
+    return await this.request<BackgroundRemovalJob>({
+      method: "POST",
+      path: "/v3/background-removals",
+      body: args.body,
+      signal: args.signal,
+    });
+  }
+
+  async getBackgroundRemoval(args: {
+    job_id: string;
+    signal?: AbortSignal;
+  }): Promise<BackgroundRemovalJob> {
+    return await this.request<BackgroundRemovalJob>({
+      method: "GET",
+      path: `/v3/background-removals/${encodeURIComponent(args.job_id)}`,
       signal: args.signal,
     });
   }
