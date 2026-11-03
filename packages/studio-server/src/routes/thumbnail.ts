@@ -17,7 +17,10 @@ import { createHash, randomUUID } from "node:crypto";
 import type { StudioApiAdapter } from "../types.js";
 import { STUDIO_MANUAL_EDITS_PATH } from "../helpers/manualEditsRenderScript.js";
 import { compositionInputSignature } from "../helpers/compositionInputs.js";
-import { createProjectSignature, resolveProjectAndSignature } from "../helpers/projectSignature.js";
+import {
+  createProjectSignatureAsync,
+  resolveProjectAndSignature,
+} from "../helpers/projectSignature.js";
 import { STUDIO_MOTION_PATH } from "../helpers/studioMotionRenderScript.js";
 import { thumbnailGenerationCoordinator } from "./thumbnailGenerationCoordinator.js";
 import { requestSubPath } from "../helpers/requestSubPath.js";
@@ -134,7 +137,7 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
     const source = htmlFile ? readFileOnce(htmlFile) : "not-a-file";
     if (source === "not-a-file") return c.json({ error: "not found" }, 404);
     // Keyed on what this composition renders from, so editing one scene leaves the others cached.
-    const inputSignature = compositionInputSignature(project.dir, compPath, projectSignature);
+    const inputSignature = await compositionInputSignature(project.dir, compPath, projectSignature);
 
     const url = new URL(c.req.url, `http://${c.req.header("host") || "localhost"}`);
     const rawSeekTime = url.searchParams.get("t");
@@ -246,15 +249,15 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
           if (!generated) return null;
           const previewCopiesAtEnd = proxyActivityMark(project.dir);
           const afterGeneration = await resolveProjectAndSignature(adapter, project.id);
-          const inputsUnchanged = (signature: string) =>
-            compositionInputSignature(project.dir, compPath, signature) === inputSignature;
+          const inputsUnchanged = async (signature: string) =>
+            (await compositionInputSignature(project.dir, compPath, signature)) === inputSignature;
           // Both the adapter's signature and a fresh one: the adapter's can lag the watcher.
           if (
             previewCopiesAtStart === null ||
             previewCopiesAtEnd !== previewCopiesAtStart ||
             afterGeneration?.project.dir !== project.dir ||
-            !inputsUnchanged(afterGeneration.signature) ||
-            !inputsUnchanged(createProjectSignature(project.dir))
+            !(await inputsUnchanged(afterGeneration.signature)) ||
+            !(await inputsUnchanged(await createProjectSignatureAsync(project.dir)))
           ) {
             // The browser may have rendered content written after this request
             // captured its cache identity. Return the pixels to this caller,
