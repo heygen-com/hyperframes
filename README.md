@@ -27,7 +27,7 @@
 </p>
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/f6ff9fae-f33d-4f68-bd54-f3ed4ba6473b" alt="HyperFrames app opening from the Dock: native Mac and Linux app now available" width="800">
+  <img src="https://github.com/user-attachments/assets/f6ff9fae-f33d-4f68-bd54-f3ed4ba6473b" alt="The HyperFrames Studio app opening from the Dock: free for Mac, Windows and Linux" width="800">
 </p>
 
 <p align="center">
