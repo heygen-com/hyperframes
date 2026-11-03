@@ -1,7 +1,7 @@
 // A rebuild against its original, frame by frame: per-frame SSIM on the original's clock for the whole frame and
 // each cell of a 4x4 grid, the worst moments with their worst cell boxed, cuts on both sides, and per-segment
 // verdicts. The second side is a video file (a render) or a project folder, whose frames are captured at the
-// original's frame times without rendering. With an offset, the original's frame at t meets yours at t + offset.
+// original's frame times without rendering.
 import {
   copyFileSync,
   existsSync,
@@ -308,10 +308,7 @@ export function yoursFilters(pick: Pick, fpsText: string, offset = 0): string[] 
   return [rate, ...selectFilter(pick, fpsText)];
 }
 
-/**
- * The original's frames [first, end) whose time plus `offset` falls on one of yours' frames, given yours' length in
- * frames at the original's rate. A project's length is not known before capture, so its end is the original's.
- */
+/** The original's frames [first, end) that land on yours at t + offset; a project's end is unknown before capture. */
 export function overlapFrames(
   frames: number,
   fps: number,
@@ -327,7 +324,6 @@ export function overlapFrames(
   return [first, Math.max(first, end)];
 }
 
-/** A pick kept to the original's frames [first, end). */
 export function clipPick(pick: Pick, total: number, [first, end]: [number, number]): Pick {
   if (pick.kind === "at") return { kind: "at", ks: pick.ks.filter((k) => k >= first && k < end) };
   if (pick.kind === "all" && first <= 0 && end >= total) return pick;
@@ -335,7 +331,6 @@ export function clipPick(pick: Pick, total: number, [first, end]: [number, numbe
   return { kind: "range", k0: Math.max(k0, first), k1: Math.min(k1, end) };
 }
 
-/** The times a project is captured at for the original's frames: each frame's time plus the offset. */
 export function captureTimes(ks: number[], fps: number, offset = 0): number[] {
   return ks.map((k) => (offset ? Math.max(0, k / fps + offset) : k / fps));
 }
@@ -616,7 +611,6 @@ function regeneratedVerdict(
   roi?: Roi,
   offset = 0,
 ) {
-  // Yours is read offset seconds later; a segment before yours starts is read from where it does.
   const from = Math.max(s.start, -offset);
   const seconds = s.end - from;
   const [a, b] = [
@@ -1217,7 +1211,6 @@ function sideBySide(
   out: string,
   offset = 0,
 ): string {
-  // The side that runs ahead starts later, so the two play in step.
   const skip = (seconds: number) => (seconds > 0 ? ["-ss", String(seconds)] : []);
   runFfmpeg([
     ...["-y", ...skip(-offset), "-i", reference, ...skip(offset), "-i", yours, "-filter_complex"],
