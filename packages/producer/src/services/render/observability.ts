@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { createStallClock } from "./stallClock.js";
 import { redactTelemetryString } from "@hyperframes/core";
 import { CaptureFailure } from "@hyperframes/engine";
 import type { ProducerLogger } from "../../logger.js";
@@ -646,14 +647,15 @@ function watchStall(phase: string, rule: StageStallRule) {
   const detail = rule.detail ?? (() => undefined);
   let last = rule.progress();
   let budgetMs = rule.firstProgressMs;
-  let lastChangeAt = Date.now();
+  const silence = createStallClock();
+  const pollMs = Math.min(STALL_POLL_MS, rule.noProgressMs, rule.firstProgressMs);
   let attempt: AbortController | undefined;
   let timer: ReturnType<typeof setInterval> | undefined;
   let inTail = false;
   const restartWindow = (ms: number) => {
     last = rule.progress();
     budgetMs = ms;
-    lastChangeAt = Date.now();
+    silence.reset();
   };
   const tripped = new Promise<never>((_, reject) => {
     timer = setInterval(
@@ -664,7 +666,7 @@ function watchStall(phase: string, rule: StageStallRule) {
           return restartWindow(rule.tailMs ?? rule.noProgressMs);
         }
         if (current !== last) return restartWindow(rule.noProgressMs);
-        if (Date.now() - lastChangeAt < budgetMs) return;
+        if (silence.idle(pollMs) < budgetMs) return;
         const error = new RenderStageStalledError(phase, budgetMs, current, detail());
         if (attempt && !attempt.signal.aborted) {
           attempt.abort(error);
@@ -673,7 +675,7 @@ function watchStall(phase: string, rule: StageStallRule) {
         clearInterval(timer);
         reject(error);
       },
-      Math.min(STALL_POLL_MS, rule.noProgressMs, rule.firstProgressMs),
+      pollMs,
     );
   });
   const openAttempt: OpenStallAttempt = (parent) => {

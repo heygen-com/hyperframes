@@ -79,6 +79,7 @@ import {
   pushWorkerPageErrors,
   withWorkerPageErrors,
 } from "../perfSummary.js";
+import { createStallClock } from "../stallClock.js";
 import { ensureFrameWritten } from "./captureHdrFrameShared.js";
 import { reportEncodeProgress, reportFrameProgress, reportWorkerStartup } from "../shared.js";
 import { encoderFailureError } from "../encoderInterruption.js";
@@ -220,24 +221,31 @@ export function raceAgainstStall<T>(
   signal?: AbortSignal,
 ): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(
-      () => {
-        reject(
-          signal?.aborted
-            ? new Error(
-                `[Render] Sequential ${captureModeLabel(input.session.captureMode)} capture aborted ` +
-                  `while a capture call was in flight (frame ${input.frameIndex}/${input.totalFrames}).`,
-              )
-            : new SequentialCaptureStallError(
-                input.session,
-                input.stallTimeoutMs,
-                input.frameIndex,
-                input.totalFrames,
-              ),
-        );
-      },
-      Math.max(0, deadlineMs),
-    );
+    const clock = createStallClock();
+    const trip = () =>
+      reject(
+        signal?.aborted
+          ? new Error(
+              `[Render] Sequential ${captureModeLabel(input.session.captureMode)} capture aborted ` +
+                `while a capture call was in flight (frame ${input.frameIndex}/${input.totalFrames}).`,
+            )
+          : new SequentialCaptureStallError(
+              input.session,
+              input.stallTimeoutMs,
+              input.frameIndex,
+              input.totalFrames,
+            ),
+      );
+    const deadline = Math.max(0, deadlineMs);
+    let wait = Math.min(deadline, DE_STALL_POLL_MS);
+    let timer: ReturnType<typeof setTimeout>;
+    const look = () => {
+      const idle = clock.idle(wait);
+      if (idle >= deadline) return trip();
+      wait = Math.min(deadline - idle, DE_STALL_POLL_MS);
+      timer = setTimeout(look, wait);
+    };
+    timer = setTimeout(look, wait);
     promise.then(
       (value) => {
         clearTimeout(timer);
@@ -514,21 +522,21 @@ async function runWorkerEncodePipelineLoop(
     item.trusted ? Promise.resolve(buf) : guard(session, item.idx, buf);
   const captureRisk = async (idx: number): Promise<Buffer> => {
     await risk!.open();
-    lastProgressAt = Date.now();
+    quiet.reset();
     return raceAgainstStall(
       risk!.capture(idx, frameTime(idx)),
-      stallTimeoutMs - (Date.now() - lastProgressAt),
+      stallTimeoutMs - quiet.idle(0),
       { session, frameIndex: idx, totalFrames, stallTimeoutMs },
       abortSignal,
     );
   };
 
   const stallTimeoutMs = resolveCaptureStallTimeoutMs();
-  let lastProgressAt = Date.now();
+  const quiet = createStallClock();
   const captureWithStallGuard = <T>(idx: number, promise: Promise<T>): Promise<T> =>
     raceAgainstStall(
       promise,
-      stallTimeoutMs - (Date.now() - lastProgressAt),
+      stallTimeoutMs - quiet.idle(0),
       { session, frameIndex: idx, totalFrames, stallTimeoutMs },
       abortSignal,
     );
@@ -545,7 +553,7 @@ async function runWorkerEncodePipelineLoop(
     reorderBuffer.advanceTo(prev.idx + 1);
     job.framesRendered = prev.idx + 1;
     resume.written = prev.idx + 1;
-    lastProgressAt = Date.now();
+    quiet.reset();
     reportFrameProgress(
       job,
       `Streaming frame ${prev.idx + 1}/${totalFrames}`,
@@ -574,7 +582,7 @@ async function runWorkerEncodePipelineLoop(
       reorderBuffer.advanceTo(item.idx + 1);
       job.framesRendered = item.idx + 1;
       resume.written = item.idx + 1;
-      lastProgressAt = Date.now();
+      quiet.reset();
       reportFrameProgress(
         job,
         `Streaming frame ${item.idx + 1}/${totalFrames}`,
@@ -837,7 +845,7 @@ export async function runCaptureStreamingStage(
         }
         const stallTimeoutMs = resolveCaptureStallTimeoutMs();
         let lastCapturedFrames = 0;
-        let lastProgressAt = Date.now();
+        const quiet = createStallClock();
         const workerPhases = new Map<number, string>();
         const phaseDetail = (phase: ParallelWorkerPhaseDiagnostic) =>
           `phase=${phase.phase} frame=${phase.frameIndex ?? "n/a"} step=${phase.readStep?.() ?? "n/a"} ` +
@@ -856,9 +864,10 @@ export async function runCaptureStreamingStage(
             captureLabel === "BeginFrame",
             cfg,
           );
+        const pollMs = Math.min(budget(), DE_STALL_POLL_MS);
         const stallTimer = setInterval(
           () => {
-            if (!watchdogArmed || Date.now() - lastProgressAt <= budget()) return;
+            if (!watchdogArmed || quiet.idle(pollMs) <= budget()) return;
             stalled = true;
             const stallErr = new ParallelCaptureStallError({
               variant: "drain",
@@ -871,7 +880,7 @@ export async function runCaptureStreamingStage(
             parallelReorder.abort(stallErr);
             stallController.abort();
           },
-          Math.min(budget(), DE_STALL_POLL_MS),
+          pollMs,
         );
 
         try {
@@ -888,7 +897,7 @@ export async function runCaptureStreamingStage(
                 workerPhases.set(phase.workerId, phaseDetail(phase));
                 if (phase.phase === "frame_capture" && !watchdogArmed) {
                   watchdogArmed = true;
-                  lastProgressAt = Date.now();
+                  quiet.reset();
                 }
                 log.info("[Render] Parallel capture worker phase", {
                   workerId: phase.workerId,
@@ -904,7 +913,7 @@ export async function runCaptureStreamingStage(
               }
               if (progress.capturedFrames > lastCapturedFrames) {
                 lastCapturedFrames = progress.capturedFrames;
-                lastProgressAt = Date.now();
+                quiet.reset();
                 watchdogArmed = true;
               }
               const doneFrames = resumeFrom + progress.capturedFrames;
