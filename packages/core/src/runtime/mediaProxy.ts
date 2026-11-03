@@ -1,6 +1,11 @@
 import { postRuntimeMessage } from "./bridge";
 import { swallow } from "./diagnostics";
-import { evictMediaSyncState, HOLD_CAP_MS, isActiveAtPlayhead } from "./media";
+import {
+  evictMediaSyncState,
+  HOLD_CAP_MS,
+  isActiveAtPlayhead,
+  sourceTimeAtPlayhead,
+} from "./media";
 import { findInjectedRenderFrame } from "./renderFrameSibling";
 import type { RuntimeJson } from "./types";
 import { isVideoElement } from "./domRealm";
@@ -17,6 +22,7 @@ import {
   PREVIEW_PROXY_BOX_PARAM,
   PREVIEW_PROXY_LIGHT_PARAM,
   PREVIEW_PROXY_RETRY_PARAM,
+  PREVIEW_PROXY_STILL_PARAM,
   quantizePreviewProxyBox,
   scalePreviewProxyBox,
   type PreviewProxyBox,
@@ -193,14 +199,14 @@ function requestBox(el: HTMLMediaElement, copy: BoxedCopy, box: PreviewProxyBox 
   pendingUpgrades.set(el, href);
   const wanted = () =>
     pendingUpgrades.get(el) === href && el.isConnected && el.getAttribute("src") === copy.href;
-  noteCopy(el, "making");
+  noteCopy(el, "making", null, copy.light);
   void waitForServedProxy(
     href,
     wanted,
-    (fraction) => wanted() && noteCopy(el, "making", fraction),
+    (fraction) => wanted() && noteCopy(el, "making", fraction, copy.light),
     () => isActiveAtPlayhead(el),
   ).then((served) => {
-    if (wanted()) noteCopy(el, served ? "ready" : "failed");
+    if (wanted()) noteCopy(el, served ? "ready" : "failed", null, copy.light);
     if (served && wanted()) loadProxy(el, href, copy.originalSrc, copy.variant, box, copy.light);
     if (pendingUpgrades.get(el) === href) pendingUpgrades.delete(el);
   });
@@ -390,6 +396,27 @@ function lookupCodecMapEntry<T>(pathname: string, map: Record<string, T>): T | n
   );
 }
 
+const stills = new WeakSet<HTMLMediaElement>();
+
+/** While a file the browser cannot play is being copied, its own frame at the playhead stands in as the poster. */
+function showStill(
+  el: HTMLMediaElement,
+  originalSrc: string,
+  variant: string,
+  box: PreviewProxyBox | null,
+): void {
+  const at = sourceTimeAtPlayhead(el);
+  if (at === undefined || stills.has(el) || el.hasAttribute("poster")) return;
+  const url = new URL(appendProxyParam(originalSrc, variant, box), document.baseURI);
+  url.searchParams.set(PREVIEW_PROXY_STILL_PARAM, at.toFixed(1));
+  stills.add(el);
+  el.setAttribute("poster", url.href);
+}
+
+function dropStill(el: HTMLMediaElement): void {
+  if (stills.delete(el)) el.removeAttribute("poster");
+}
+
 function appendProxyParam(
   src: string,
   variant: string,
@@ -471,14 +498,18 @@ async function makeCopy(el: HTMLMediaElement, job: CopyJob, scale: number | null
     lightFacts !== undefined,
     retryNext.delete(el),
   );
-  noteCopy(el, "making");
+  const light = lightFacts !== undefined;
+  noteCopy(el, "making", null, light);
   const served = await waitForServedProxy(
     proxiedSrc,
     live,
-    (fraction) => noteCopy(el, "making", fraction),
+    (fraction) => noteCopy(el, "making", fraction, light),
     () => isActiveAtPlayhead(el),
+    false,
+    light ? undefined : () => showStill(el, originalSrc, variant, box),
   );
   if (!live()) {
+    dropStill(el);
     if (proxyRequested.get(el) === originalAttr) proxyRequested.delete(el);
     if (lightFacts && el.isConnected && el.getAttribute("src") === originalAttr) {
       applyPreviewQuality(el);
@@ -486,11 +517,11 @@ async function makeCopy(el: HTMLMediaElement, job: CopyJob, scale: number | null
     return;
   }
   if (!served) {
-    noteCopy(el, "failed");
+    noteCopy(el, "failed", null, light);
     emitUnavailableDiagnostic(el, "proxy_playback_failed", originalSrc);
     return;
   }
-  noteCopy(el, "ready");
+  noteCopy(el, "ready", null, light);
   swappedElements.set(el, originalAttr);
   if (lightFacts) lightElements.add(el);
   loadProxy(el, proxiedSrc, originalSrc, variant, box, lightFacts !== undefined);
@@ -499,7 +530,7 @@ async function makeCopy(el: HTMLMediaElement, job: CopyJob, scale: number | null
   return new Promise((landed) => {
     el.addEventListener("loadeddata", landed, { once: true });
     el.addEventListener("error", landed, { once: true });
-  });
+  }).then(() => dropStill(el));
 }
 
 /**
