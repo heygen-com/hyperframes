@@ -1176,6 +1176,37 @@ describe("keepBrokenImageAborts", () => {
     ]);
   });
 
+  it("reports a still-broken aborted image even when its URL ends in a video suffix", async () => {
+    const base = "http://127.0.0.1:3000/assets";
+    mountCanvasFixture(`<img id="stuck" src="${base}/plate.mkv">`);
+    (document.getElementById("stuck") as HTMLImageElement).decode = () =>
+      Promise.reject(new Error("broken"));
+    const aborted = (url: string, resourceType: string) => ({
+      url: () => url,
+      failure: () => ({ errorText: "net::ERR_ABORTED" }),
+      resourceType: () => resourceType,
+    });
+    const page = fakePage();
+    page.on = vi.fn((event: string, handler: (request: ReturnType<typeof aborted>) => void) => {
+      if (event !== "requestfailed") return;
+      handler(aborted(`${base}/plate.mkv`, "image"));
+      handler(aborted(`${base}/clip.mkv`, "fetch"));
+    });
+    installSessionMock(page);
+
+    const result = await runBrowserCheck(
+      PROJECT,
+      { ...DEFAULT_CHECK_OPTIONS, samples: 1, contrast: false },
+      { kind: "none" },
+      runAuditGrid,
+    );
+
+    const failed = result.runtimeFindings.filter((finding) => finding.code === "request_failed");
+    expect(failed.map((finding) => finding.message)).toEqual([
+      "Failed to load assets/plate.mkv: net::ERR_ABORTED",
+    ]);
+  });
+
   it("does not report an aborted image whose reload is still pending at the cap", async () => {
     const url = "http://127.0.0.1:3000/assets/slow.png";
     mountCanvasFixture(`<img id="slow" src="${url}">`);
