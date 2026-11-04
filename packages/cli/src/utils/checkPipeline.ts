@@ -3,6 +3,7 @@ import { BrowserCleanupError, onStopSignal } from "../browser/launch.js";
 import type { CheckProgress } from "./checkProgress.js";
 import {
   CheckDeadline,
+  CheckCopiesUnfinishedError,
   CheckDeadlineError,
   CheckStoppedError,
   idleWindow,
@@ -2257,9 +2258,12 @@ function emptyBrowserResult(): CheckBrowserResult {
   };
 }
 
-function runtimeFailure(error: unknown, code = "check_runtime_failure"): CheckFinding {
+function runtimeFailure(error: unknown, code?: string): CheckFinding {
   return findingAtRoot(
-    code,
+    code ??
+      (error instanceof CheckCopiesUnfinishedError
+        ? "media_copies_unfinished"
+        : "check_runtime_failure"),
     "error",
     normalizeErrorMessage(error),
     error instanceof CheckDeadlineError ? (error.sourceFile ?? "index.html") : "index.html",

@@ -1,5 +1,5 @@
 import { DEFAULT_CONFIG } from "@hyperframes/engine";
-import type { CheckDeadline } from "./checkDeadline.js";
+import { CheckCopiesUnfinishedError, COPY_BUDGET_MS, type CheckDeadline } from "./checkDeadline.js";
 import { SEEK_SETTLES_BEFORE_PROTOCOL_TIMEOUT_MS } from "../capture/captureTimeout.js";
 import { logCheckProgress } from "./checkProgress.js";
 import { BrowserCleanupError, closeManagedBrowser, onStopSignal } from "../browser/launch.js";
@@ -43,6 +43,7 @@ import {
 } from "./contrastMotion.js";
 import { resolveAutoProxy } from "./projectConfig.js";
 import { findStageProxyBox } from "./compositionViewport.js";
+import { mediaUsedSeconds } from "./mediaUsedSeconds.js";
 import type { PreviewProxyBox } from "@hyperframes/core";
 import { injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document";
 import {
@@ -58,6 +59,7 @@ import {
 import {
   FfmpegUnavailableError,
   getProxyCachePath,
+  proxyWindowSeconds,
   resolveProxies,
   type ProxyProgress,
 } from "@hyperframes/studio-server/proxy-transcoder";
@@ -168,9 +170,11 @@ function startCopyHeartbeat(
   progress: (index: number, progress: ProxyProgress) => void;
   settled: (index: number) => void;
   stop: () => void;
+  percent: (index: number) => string;
 } {
   const startedAt = Date.now();
   const latest = new Map<number, ProxyProgress>();
+  const last = new Map<number, ProxyProgress>();
   const total = cached.filter((isCached) => !isCached).length;
   let finished = 0;
   const timer = setInterval(() => {
@@ -186,13 +190,42 @@ function startCopyHeartbeat(
   }, COPY_HEARTBEAT_MS);
   timer.unref();
   return {
-    progress: (index, progress) => void latest.set(index, progress),
+    progress: (index, progress) => {
+      latest.set(index, progress);
+      last.set(index, progress);
+    },
+    percent: (index) => {
+      const { doneSeconds = 0, totalSeconds } = last.get(index) ?? {};
+      return totalSeconds
+        ? `${Math.min(100, Math.floor((doneSeconds / totalSeconds) * 100))}%`
+        : "not started";
+    },
     settled: (index) => {
       latest.delete(index);
       if (!cached[index]) finished += 1;
     },
     stop: () => clearInterval(timer),
   };
+}
+
+/** Absolute path -> seconds of it the composition plays, for the given files worth copying only in part. */
+async function copyWindows(
+  projectDir: string,
+  html: string,
+  pathnames: Iterable<string>,
+): Promise<Map<string, number>> {
+  const used = mediaUsedSeconds(html);
+  const windows = new Map<string, number>();
+  await Promise.all(
+    [...pathnames].map(async (pathname) => {
+      const seconds = used.get(pathname);
+      if (seconds === undefined) return;
+      const sourcePath = resolve(projectDir, pathname.replace(/^\/+/, ""));
+      const window = await proxyWindowSeconds(sourcePath, seconds);
+      if (window !== undefined) windows.set(sourcePath, window);
+    }),
+  );
+  return windows;
 }
 
 /**
@@ -211,8 +244,14 @@ export async function preResolveHostileMediaProxies(
   projectDir: string,
   html: string,
   autoProxyOverride?: boolean,
+  budgetMs?: number,
 ): Promise<ProxyPreResolution> {
-  const none: ProxyPreResolution = { findings: [], failedPaths: new Set(), files: [] };
+  const none: ProxyPreResolution = {
+    findings: [],
+    failedPaths: new Set(),
+    files: [],
+    limits: new Map(),
+  };
   if (!resolveAutoProxy(projectDir, autoProxyOverride)) return none;
   let codecMap: Awaited<ReturnType<typeof scanProjectMediaCodecMap>>;
   try {
@@ -230,7 +269,14 @@ export async function preResolveHostileMediaProxies(
 
   const startedAt = Date.now();
   const stageBox = findStageProxyBox(html);
-  const sources = hostileEntries.map(([pathname, facts]) => {
+  const sources: Array<{
+    pathname: string;
+    file: string;
+    sourcePath: string;
+    variant: ReturnType<typeof proxyVariantFor>;
+    box: PreviewProxyBox | undefined;
+    limitSeconds?: number;
+  }> = hostileEntries.map(([pathname, facts]) => {
     const file = pathname.replace(/^\/+/, "");
     return {
       pathname,
@@ -240,6 +286,15 @@ export async function preResolveHostileMediaProxies(
       box: stageBox,
     };
   });
+  const windows =
+    mediaUsedSeconds(html).size > 0
+      ? await copyWindows(
+          projectDir,
+          html,
+          sources.map(({ pathname }) => pathname),
+        )
+      : new Map<string, number>();
+  for (const source of sources) source.limitSeconds = windows.get(source.sourcePath);
   const total = hostileEntries.length;
   const cached = sources.map((source) => proxyCached(projectDir, source));
   const toMake = cached.filter((isCached) => !isCached).length;
@@ -252,6 +307,14 @@ export async function preResolveHostileMediaProxies(
   const heartbeat = startCopyHeartbeat(sources, cached);
   const stopped = new AbortController();
   const forgetStop = onStopSignal(() => stopped.abort());
+  let overBudget: number | undefined;
+  const budget =
+    budgetMs === undefined
+      ? undefined
+      : setTimeout(() => {
+          overBudget = budgetMs;
+          stopped.abort();
+        }, budgetMs);
   const results = await resolveProxies(
     projectDir,
     sources,
@@ -265,7 +328,14 @@ export async function preResolveHostileMediaProxies(
   ).finally(() => {
     heartbeat.stop();
     forgetStop();
+    clearTimeout(budget);
   });
+  const unfinished = sources.flatMap(({ file }, index) =>
+    results[index]!.status === "rejected" ? [`${file} ${heartbeat.percent(index)}`] : [],
+  );
+  if (overBudget !== undefined && unfinished.length > 0) {
+    throw new CheckCopiesUnfinishedError(overBudget, unfinished);
+  }
   const failures = sources.flatMap((source, index) => {
     const result = results[index]!;
     return result.status === "rejected" ? [{ ...source, reason: result.reason }] : [];
@@ -295,7 +365,12 @@ export async function preResolveHostileMediaProxies(
     }
     return { file, state: cached[index] ? "cached" : "ready" };
   });
-  return { findings, failedPaths: new Set(failures.map(({ pathname }) => pathname)), files };
+  return {
+    findings,
+    failedPaths: new Set(failures.map(({ pathname }) => pathname)),
+    files,
+    limits: windows,
+  };
 }
 
 function proxyCached(
@@ -304,10 +379,19 @@ function proxyCached(
     sourcePath: string;
     variant: ReturnType<typeof proxyVariantFor>;
     box?: PreviewProxyBox;
+    limitSeconds?: number;
   },
 ): boolean {
   try {
-    return existsSync(getProxyCachePath(projectDir, source.sourcePath, source.variant, source.box));
+    return existsSync(
+      getProxyCachePath(
+        projectDir,
+        source.sourcePath,
+        source.variant,
+        source.box,
+        source.limitSeconds,
+      ),
+    );
   } catch {
     return false;
   }
@@ -325,6 +409,8 @@ interface ProxyPreResolution {
   failedPaths: Set<string>;
   /** One entry per browser-hostile video, in project order. */
   files: PreparedMediaFile[];
+  /** Absolute path -> seconds from the start that the composition plays, for the copies made short. */
+  limits: Map<string, number>;
 }
 
 function proxyFailedDraft(message: string): RuntimeDraft {
@@ -353,11 +439,11 @@ export async function runBrowserCheck(
 ): Promise<CheckBrowserResult> {
   const html = await loadCheckHtmlWithDeferredMedia(project.dir);
   deadline?.enter("copies");
-  const { findings: drafts, failedPaths } = await preResolveHostileMediaProxies(
-    project.dir,
-    html,
-    options.autoProxy,
-  );
+  const {
+    findings: drafts,
+    failedPaths,
+    limits,
+  } = await preResolveHostileMediaProxies(project.dir, html, options.autoProxy, COPY_BUDGET_MS);
   deadline?.enter("launch");
   const server = await serveStaticProjectHtml(
     project.dir,
@@ -365,6 +451,7 @@ export async function runBrowserCheck(
     "Failed to bind check server",
     [],
     options.autoProxy,
+    limits,
   );
   const clock = createRuntimeClock();
   let failure: { kind: "none" } | { kind: "failed"; error: unknown } = { kind: "none" };
@@ -667,6 +754,7 @@ async function withFindingCapturePage<T>(
     "Failed to bind check server",
     [],
     options.autoProxy,
+    await copyWindows(project.dir, html, mediaUsedSeconds(html).keys()),
   );
   let chromeBrowser: import("puppeteer-core").Browser | undefined;
   let failure: { kind: "none" } | { kind: "failed"; error: unknown } = { kind: "none" };
