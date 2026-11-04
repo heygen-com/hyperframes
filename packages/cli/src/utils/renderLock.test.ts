@@ -1,9 +1,19 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { acquireRenderLock, RenderLockBusy, type RenderLockHolder } from "./renderLock.js";
+import type { Holder } from "./projectLock.js";
 import { acquireRenderSlot } from "../commands/render/renderSlot.js";
 
 let dir: string;
@@ -103,16 +113,70 @@ describe("acquireRenderLock", () => {
     }
   });
 
-  describe("a lock file left half-written", () => {
-    const writeUnreadable = (file: string, ageMs: number) => {
-      mkdirSync(join(dir, "locks"), { recursive: true });
-      writeFileSync(file, '{"pid":');
-      const at = (Date.now() - ageMs) / 1000;
-      utimesSync(file, at, at);
+  describe("a lock file that cannot be read yet", () => {
+    /** A contender that opens the lock exclusively, then stalls before writing its holder. */
+    const pausedAfterOpen = (gate: Promise<void>) => async (file: string, holder: Holder) => {
+      closeSync(openSync(file, "wx"));
+      await gate;
+      writeFileSync(file, JSON.stringify(holder));
+      return true;
     };
 
-    it("is reclaimed once it is older than any real write", async () => {
-      writeUnreadable(path, 60_000);
+    it("is not taken from a live contender paused between opening and writing it", async () => {
+      vi.useFakeTimers({ now: Date.now() });
+      let resume: () => void = () => {};
+      const writerA = acquireRenderLock({
+        project: "/work/a",
+        wait: false,
+        path,
+        env: {},
+        claim: pausedAfterOpen(new Promise<void>((resolve) => (resume = resolve))),
+      });
+      let heldByB = false;
+      const writerB = acquireRenderLock({ project: "/work/b", wait: true, path, env: {} }).then(
+        (release) => {
+          heldByB = true;
+          return release;
+        },
+      );
+
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(heldByB).toBe(false);
+      await expect(
+        acquireRenderLock({ project: "/work/c", wait: false, path, env: {} }),
+      ).rejects.toBeInstanceOf(RenderLockBusy);
+
+      resume();
+      const releaseA = await writerA;
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(heldByB).toBe(false);
+      releaseA();
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(heldByB).toBe(true);
+      (await writerB)();
+    });
+
+    it("is reclaimed when the contender that opened it died before writing", async () => {
+      void acquireRenderLock({
+        project: "/work/a",
+        wait: false,
+        path,
+        env: {},
+        pid: deadPid(),
+        claim: pausedAfterOpen(new Promise<void>(() => {})),
+      });
+      await vi.waitFor(() => expect(existsSync(path)).toBe(true));
+
+      const release = await acquireRenderLock({ project: "/work/b", wait: false, path, env: {} });
+
+      expect(readdirSync(join(dir, "locks")).filter((n) => n.includes(".owner-"))).toHaveLength(1);
+      release();
+      expect(readdirSync(join(dir, "locks"))).toEqual([]);
+    });
+
+    it("is reclaimed when no contender is left at all", async () => {
+      mkdirSync(join(dir, "locks"), { recursive: true });
+      writeFileSync(path, '{"pid":');
 
       const release = await acquireRenderLock({
         project: "/work/next",
@@ -125,32 +189,6 @@ describe("acquireRenderLock", () => {
       expect(existsSync(path)).toBe(false);
     });
 
-    it("is left alone while it may still be being written", async () => {
-      writeUnreadable(path, 0);
-
-      await expect(
-        acquireRenderLock({ project: "/work/next", wait: false, path, env: {} }),
-      ).rejects.toBeInstanceOf(RenderLockBusy);
-    });
-
-    it("stops a waiting render from waiting forever", async () => {
-      vi.useFakeTimers({ now: Date.now() });
-      writeUnreadable(path, 0);
-      let started = false;
-      const next = acquireRenderLock({ project: "/work/next", wait: true, path, env: {} }).then(
-        (release) => {
-          started = true;
-          return release;
-        },
-      );
-
-      await vi.advanceTimersByTimeAsync(2_000);
-      expect(started).toBe(false);
-      await vi.advanceTimersByTimeAsync(10_000);
-      expect(started).toBe(true);
-      (await next)();
-    });
-
     it("reclaims a half-written takeover file next to a dead holder", async () => {
       const killed: RenderLockHolder = {
         pid: deadPid(),
@@ -160,7 +198,7 @@ describe("acquireRenderLock", () => {
       };
       mkdirSync(join(dir, "locks"), { recursive: true });
       writeFileSync(path, JSON.stringify(killed));
-      writeUnreadable(`${path}.break`, 60_000);
+      writeFileSync(`${path}.break`, '{"pid":');
 
       const release = await acquireRenderLock({
         project: "/work/next",

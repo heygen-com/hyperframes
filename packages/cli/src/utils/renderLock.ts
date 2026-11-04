@@ -1,7 +1,9 @@
-import { existsSync, mkdirSync, statSync, unlinkSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
+import { processIdentity } from "./orphanCleanup.js";
 import { alive, readHolder, release, takeOver, tryAcquire, type Holder } from "./projectLock.js";
+import { liveOtherOwners, removeIfPresent, writeOwnerMarker } from "./renderLockOwners.js";
 
 /** Who holds this user account's render slot. */
 export interface RenderLockHolder extends Holder {
@@ -28,20 +30,11 @@ export interface RenderLockOptions {
   path?: string;
   pollMs?: number;
   env?: NodeJS.ProcessEnv;
+  pid?: number;
+  claim?: (path: string, holder: Holder) => boolean | Promise<boolean>;
 }
 
 const POLL_MS = 1_000;
-/** Far longer than writing a few hundred bytes takes: a file still unreadable after it was abandoned mid-write. */
-const ABANDONED_WRITE_MS = 5_000;
-
-function abandonedWrite(path: string): boolean {
-  if (readHolder(path)) return false;
-  try {
-    return Date.now() - statSync(path).mtimeMs > ABANDONED_WRITE_MS;
-  } catch {
-    return false;
-  }
-}
 
 const renderLockPath = () => hyperframesCacheDir("locks", "render.lock");
 
@@ -73,18 +66,20 @@ function pause(ms: number, signal: AbortSignal | undefined): Promise<void> {
   });
 }
 
-/** A takeover whose own process died mid-takeover leaves `.break` behind for good. */
-function clearAbandonedBreak(path: string, current: RenderLockHolder | null): boolean {
+/** Claims a lock or `.break` only a dead writer could have left: unreadable ones need no live contender. */
+function reclaimAbandoned(path: string, holder: Holder, marker: string): boolean {
+  const current = readHolder(path);
   if (current && alive(current.pid)) return false;
   const breakPath = `${path}.break`;
-  const breaker = readHolder(breakPath);
-  if (breaker ? alive(breaker.pid) : !abandonedWrite(breakPath)) return false;
-  try {
-    unlinkSync(breakPath);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  if (existsSync(breakPath)) {
+    const breaker = readHolder(breakPath);
+    if (breaker ? alive(breaker.pid) : liveOtherOwners(path, marker) > 0) return false;
+    removeIfPresent(breakPath);
+    return tryAcquire(path, holder);
   }
-  return true;
+  const writerGone = () =>
+    existsSync(path) && !readHolder(path) && liveOtherOwners(path, marker) === 0;
+  return writerGone() && takeOver(path, holder, writerGone);
 }
 
 const sameWaitTarget = (a: RenderLockHolder | null, b: RenderLockHolder | null) =>
@@ -98,20 +93,33 @@ export async function acquireRenderLock(options: RenderLockOptions): Promise<() 
   if (renderLockDisabled(options.env)) return () => {};
   const path = options.path ?? renderLockPath();
   mkdirSync(dirname(path), { recursive: true });
+  const pid = options.pid ?? process.pid;
+  const owner = { pid, identity: processIdentity(pid) };
+  const claim = options.claim ?? tryAcquire;
+  liveOtherOwners(path);
   const holder: RenderLockHolder = {
-    pid: process.pid,
+    pid,
     command: "render",
     startedAt: Date.now(),
     project: options.project,
   };
   let waitingBehind: RenderLockHolder | null | undefined;
-  while (!tryAcquire(path, holder)) {
+  for (;;) {
+    const marker = writeOwnerMarker(path, owner);
+    let held = false;
+    try {
+      held = (await claim(path, holder)) || reclaimAbandoned(path, holder, marker);
+    } finally {
+      if (!held) removeIfPresent(marker);
+    }
+    if (held) {
+      return () => {
+        release(path, holder);
+        removeIfPresent(marker);
+      };
+    }
     const current = readHolder<RenderLockHolder>(path);
     if (!current && !existsSync(path)) continue;
-    if (clearAbandonedBreak(path, current)) continue;
-    if (!current && abandonedWrite(path) && takeOver(path, holder, () => abandonedWrite(path))) {
-      break;
-    }
     if (!options.wait) throw new RenderLockBusy(current, path);
     if (waitingBehind === undefined || !sameWaitTarget(waitingBehind, current)) {
       waitingBehind = current;
@@ -119,5 +127,4 @@ export async function acquireRenderLock(options: RenderLockOptions): Promise<() 
     }
     await pause(options.pollMs ?? POLL_MS, options.signal);
   }
-  return () => release(path, holder);
 }
