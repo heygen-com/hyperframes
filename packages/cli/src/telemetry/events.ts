@@ -993,6 +993,23 @@ export function trackTranscribeUnavailable(props: { optional: boolean }): void {
   trackEvent("transcribe_unavailable", { optional: props.optional });
 }
 
+// A reverse session could not be recorded. `cause` is a closed set (never free text) so an
+// alert can page on a failing start route; `status` is the HTTP status when there was one.
+export type ReverseUnrecordedCause =
+  | "not_signed_in"
+  | "http_4xx"
+  | "http_5xx"
+  | "http_other"
+  | "network"
+  | "bad_body";
+
+export function trackReverseStartUnrecorded(props: {
+  cause: ReverseUnrecordedCause;
+  status?: number;
+}): void {
+  trackEvent("cli_reverse_start_unrecorded", { cause: props.cause, status: props.status });
+}
+
 // grade-compare / compare stand up headless Chrome and render up to 16 cells.
 // Cell count, truncation-cap hits, and whether the render-ready timeout fired
 // are the signals needed before safely lifting the cap. Low-cardinality only.
