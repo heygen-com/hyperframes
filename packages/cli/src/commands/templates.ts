@@ -36,23 +36,23 @@ export const TEMPLATES: Record<string, TemplatePack> = {
   },
   "finance-explainer": {
     id: "M9002",
-    sha256: "f04de341a100178002f8178669515ab1a54c1ff4446f7dd3adbcaafe62c8bd00",
-    bytes: 140483717,
+    sha256: "52be65859022d8c6b1ed2e3701d875d95b6dce87a8e5bf16e4f2581a56cf746e",
+    bytes: 140483725,
   },
   "3d-true-crime": {
     id: "M9005",
-    sha256: "7f4f92390eb0ae5d66d7483f53d086ef5ce1450bec6e06afa84db323c2b999b5",
-    bytes: 6544601,
+    sha256: "62959b0b978fb97727f06346b9ea5aaf3d8dcf6992f574cbe525bbe893cff287",
+    bytes: 6544603,
   },
   "collage-explainer": {
     id: "M9001",
-    sha256: "1af02695226fd3132de60a900f2f7dc6e1226346122f7f07abea9fb7ae76d81c",
-    bytes: 36702234,
+    sha256: "a25529d8ee1dfb09187a6ccc0978d7127a4306992287e68c06f358914d9f1496",
+    bytes: 36702236,
   },
   "3d-brand-explainer": {
     id: "M9004",
-    sha256: "bb1537160f4e29bd020d7ec1226df1665e3710b5c5e1b8c8f46c7e9006f96038",
-    bytes: 20126744,
+    sha256: "24d1f3e4bc1d5e6d843e12fc094223f8df6f27f798094940f23c33076ac434a6",
+    bytes: 20126746,
   },
 };
 
