@@ -62,24 +62,35 @@ interface FontShorthandFamilies {
   certain: boolean;
 }
 
+const headOf = ({ text, masked }: Token) =>
+  masked.includes("/") ? text.slice(0, masked.indexOf("/")) : text;
+
+function findSize(list: Token[]): { at: number; unsure: boolean } {
+  let unsure = false;
+  for (let i = 0; i < list.length; i++) {
+    const head = headOf(list[i]!);
+    const isVar = CUSTOM_PROPERTY.test(head);
+    if (isSize(head) || (isVar && carriesLineHeight(list, i))) return { at: i, unsure };
+    if (!isVar && !PRE_SIZE_KEYWORD.test(head)) unsure = true;
+  }
+  return { at: -1, unsure };
+}
+
+function lastLeadingVar(list: Token[]): number {
+  let last = -1;
+  for (let i = 0; i < list.length - 1; i++) if (CUSTOM_PROPERTY.test(list[i]!.text)) last = i;
+  return last;
+}
+
 /** The family list of a `font` shorthand, after its optional style/weight/width, size and line height. */
 export function parseFontShorthand(value: string): FontShorthandFamilies {
   const list = tokens(value);
   if (list.length === 1 && NO_FAMILY.test(list[0]!.text)) return { families: "", certain: true };
   const rest = (from: number) => (list[from] ? value.slice(list[from].start).trim() : "");
-  let unsure = false;
-  for (let i = 0; i < list.length; i++) {
-    const { text, masked } = list[i]!;
-    const head = text.slice(0, masked.indexOf("/") >= 0 ? masked.indexOf("/") : undefined);
-    if (isSize(head) || (CUSTOM_PROPERTY.test(head) && carriesLineHeight(list, i))) {
-      return { families: rest(familyStart(list, i)), certain: !unsure };
-    }
-    if (CUSTOM_PROPERTY.test(head)) continue;
-    if (!PRE_SIZE_KEYWORD.test(text)) unsure = true;
-  }
-  let lastVar = -1;
-  for (let i = 0; i < list.length - 1; i++) if (CUSTOM_PROPERTY.test(list[i]!.text)) lastVar = i;
-  if (lastVar < 0) return { families: "", certain: !unsure };
+  const size = findSize(list);
+  if (size.at >= 0) return { families: rest(familyStart(list, size.at)), certain: !size.unsure };
+  const lastVar = lastLeadingVar(list);
+  if (lastVar < 0) return { families: "", certain: !size.unsure };
   return { families: rest(lastVar + 1), certain: false };
 }
 
