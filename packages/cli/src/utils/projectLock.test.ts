@@ -98,6 +98,24 @@ describe("withProjectLock", () => {
     );
   });
 
+  it("says who it is waiting for after a few seconds, so a queued command does not read as hung", async () => {
+    const dir = project();
+    hold(dir, process.pid);
+    const said = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const base = Date.now();
+    const clock = vi
+      .spyOn(Date, "now")
+      .mockReturnValueOnce(base)
+      .mockReturnValue(base + 6_000);
+    await expect(withProjectLock(dir, "check", async () => "ran", locked(300))).rejects.toThrow(
+      ProjectLockTimeout,
+    );
+    clock.mockRestore();
+    expect(said).toHaveBeenCalledTimes(1);
+    expect(said.mock.calls[0]?.[0]).toContain(`waiting for check (pid ${process.pid}, running `);
+    said.mockRestore();
+  });
+
   it("takes over a lock whose process has exited", async () => {
     const dir = project();
     hold(dir, 2 ** 22 + 12345);

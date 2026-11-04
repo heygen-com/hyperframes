@@ -71,6 +71,17 @@ function tryAcquire(path: string, holder: Holder): boolean {
   return false;
 }
 
+const FIRST_NOTICE_MS = 5_000;
+const NOTICE_EVERY_MS = 30_000;
+
+function sayWaiting(current: Holder | null, waitMs: number): void {
+  if (!current) return;
+  const running = Math.round((Date.now() - current.startedAt) / 1000);
+  console.error(
+    `[hyperframes] waiting for ${current.command} (pid ${current.pid}, running ${running}s) to finish with this project; waiting up to ${Math.round(waitMs / 1000)}s`,
+  );
+}
+
 export async function withProjectLock<T>(
   projectDir: string,
   command: string,
@@ -82,7 +93,12 @@ export async function withProjectLock<T>(
   mkdirSync(dirname(path), { recursive: true });
   const holder: Holder = { pid: process.pid, command, startedAt: Date.now() };
   const deadline = holder.startedAt + context.projectLock.waitMs;
+  let nextNoticeAt = holder.startedAt + FIRST_NOTICE_MS;
   while (!tryAcquire(path, holder)) {
+    if (Date.now() >= nextNoticeAt) {
+      nextNoticeAt = Date.now() + NOTICE_EVERY_MS;
+      sayWaiting(readHolder(path), context.projectLock.waitMs);
+    }
     const remaining = deadline - Date.now();
     if (remaining <= 0) {
       const current = readHolder(path);
