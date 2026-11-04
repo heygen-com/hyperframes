@@ -119,3 +119,20 @@ export function createReviewBoardManifest(
     throw new Error("Storyboard manifest exceeds 1 MiB");
   return result;
 }
+
+function canonicalValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalValue);
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value)
+        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+        .map(([key, item]) => [key, canonicalValue(item)]),
+    );
+  }
+  return value;
+}
+
+/** Persist these exact UTF-8 bytes as storyboard.review.json before syncing a review board. */
+export function serializeReviewBoardManifest(manifest: ReviewBoardManifest): string {
+  return JSON.stringify(canonicalValue(manifest));
+}

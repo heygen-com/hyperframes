@@ -240,3 +240,11 @@ await adapter.seekFrame(42);
     Turn a project into a finished video from Node.js.
   </Card>
 </CardGroup>
+
+
+Use `serializeReviewBoardManifest(manifest)` to persist canonical UTF-8 JSON as
+`storyboard.review.json` before a composition sync. Its sorted keys, explicit nulls,
+and compact encoding match the review backend's manifest digest. Upload stills
+through the review service first, then capture this file and the exact still bytes
+in the same committed snapshot. A sync publication can prove those bytes without
+using mutable filenames or treating a conflict copy as a published revision.

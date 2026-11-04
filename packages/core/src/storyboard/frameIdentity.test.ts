@@ -1,8 +1,9 @@
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import fixture from "./fixtures/storyboard-manifest-v1.json";
 import { assignMissingFrameIds, setFrameFieldById } from "./frameIdentity.js";
 import { parseStoryboard } from "./parseStoryboard.js";
-import { createReviewBoardManifest } from "./reviewManifest.js";
+import { createReviewBoardManifest, serializeReviewBoardManifest } from "./reviewManifest.js";
 
 const a = "11111111111141118111111111111111";
 const b = "22222222222242228222222222222222";
@@ -49,6 +50,9 @@ Still to sketch.`;
       ]),
     });
     expect(result).toEqual(fixture);
+    expect(createHash("sha256").update(serializeReviewBoardManifest(result)).digest("hex")).toBe(
+      "3584d46ab1fa19631257555ed5bdab952dd5353b00f97606617406108a091978",
+    );
   });
 
   it("refuses out-of-bounds timing, text and dimensions", () => {

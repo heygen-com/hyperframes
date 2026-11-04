@@ -17,6 +17,7 @@ export {
 } from "./frameIdentity.js";
 export {
   createReviewBoardManifest,
+  serializeReviewBoardManifest,
   type ReviewBoardManifest,
   type ReviewBoardFrame,
   type ReviewBoardStill,
