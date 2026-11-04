@@ -2,15 +2,8 @@
 // from one photo, a voice, or music. Every call is priced first with --plan, keyed for idempotency, downloaded into
 // the project and recorded in the media ledger as generated.
 import { randomUUID } from "node:crypto";
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { makeOutputFolder } from "../utils/outputFolder.js";
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, join, relative, resolve } from "node:path";
 import type {
@@ -663,7 +656,7 @@ export async function generate(
   checkRequest(r);
   const route = ROUTES[r.type];
   const out = resolve(r.out);
-  mkdirSync(dirname(out), { recursive: true });
+  makeOutputFolder(dirname(out));
   const project = projectOf(dirname(out));
   const work = mkdtempSync(join(tmpdir(), "hf-generate-"));
   try {
