@@ -461,17 +461,13 @@ function exitAfterPostRenderTermination(
   process.exit(0);
 }
 
-// A closed pipe (EPIPE) is the NORMAL teardown when the CLI runs under a
-// piped agent (Claude Code, Codex, …) — the reader may stop consuming as
-// soon as it has what it needs. Exit cleanly, but only score the run as a
-// failure when the pipe died BEFORE the render artifact was validated:
-// unconditionally setting `commandFailed = true` here marked every piped
-// successful render as success:false (0.7.65–0.7.90). Delivery of anything
-// still queued (render_complete's eager flush() dies with the process) is
-// owned by the unconditional flushSync() in the `exit` handler below.
+// A closed pipe (EPIPE) is the normal teardown under a piped agent: exit without a crash. A run that had not delivered
+// (a refused or interrupted render) still exits 1, so `| head` cannot turn a failure into success.
+// The `exit` handler's flushSync() delivers anything still queued.
 function handleStreamEpipe(): never {
-  if (!isRunDelivered()) commandFailed = true;
-  process.exit(0);
+  const delivered = isRunDelivered();
+  if (!delivered) commandFailed = true;
+  process.exit(delivered ? 0 : 1);
 }
 
 // Success gate for the cli_command_result telemetry field. `commandFailed`

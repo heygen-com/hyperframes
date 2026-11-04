@@ -366,7 +366,7 @@ describe("CLI lifecycle", () => {
     }
   });
 
-  it("still scores an EPIPE before the artifact is validated as a failure", async () => {
+  it("exits 1 and scores a failure when the pipe closes before the run delivered", async () => {
     const trackCommandResult = vi.fn();
     const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
     try {
@@ -376,7 +376,8 @@ describe("CLI lifecycle", () => {
       process.argv = ["node", "cli.ts", "init", "--json"];
       await import("./cli.js");
 
-      expect(exitSpy).toHaveBeenCalledWith(0);
+      // `hyperframes render … | head -1` on a refused render exited 0 (CLI 0.9.11)
+      expect(exitSpy).toHaveBeenCalledWith(1);
       expect(trackCommandResult).toHaveBeenCalledWith(expect.objectContaining({ success: false }));
     } finally {
       exitSpy.mockRestore();
