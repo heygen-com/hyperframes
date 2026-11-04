@@ -15,6 +15,7 @@ export interface LocalShareState {
   changed: boolean;
   audience: LocalShareAudience | null;
   spaceId: string | null;
+  source: "not_checked" | "ready" | "video_only";
 }
 export interface LocalShareJob {
   id: string;
@@ -30,7 +31,11 @@ export interface LocalShareSnapshot {
   job: LocalShareJob | null;
 }
 export type LocalShareAction = {
-  action: "share" | "update" | "access" | "off" | "on";
+  action: "share" | "update" | "access" | "off" | "on" | "login";
   audience?: LocalShareAudience;
   space?: string;
+  videoOnly?: boolean;
 };
+export type LocalShareInteraction =
+  | { event: "share_opened"; link: "none" | "live" | "changed" }
+  | { event: "share_link_copied"; via: "copy" };

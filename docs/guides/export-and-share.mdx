@@ -165,14 +165,19 @@ editor or its render queue.
 ## Share from the local Studio preview
 
 Open a project with `hyperframes preview`, then choose **Share** beside **Export**.
-Sign in with `hyperframes auth login` in your terminal if prompted, then refresh
-sharing. Credentials stay in the local CLI process.
+Choose **Sign in in browser** if prompted. You can also run
+`hyperframes auth login` in your terminal, then refresh sharing. Credentials stay
+in the local CLI process.
 
 Choose the workspace and who can access the project, then choose **Create share
 link**. Studio finishes saving pending edits before it renders and uploads the
 project. The five free shared-project allowance is the same allowance used by
 Desktop and the CLI. The workspace meter comes from the server; retries of an
 existing registration do not need an extra slot.
+
+Project files are included when available for the workspace. The panel reports
+whether the last Studio upload included files or was video only. If attaching
+files fails, retry the upload or explicitly choose **Retry with video only**.
 
 When the video is ready, choose **Copy link**. Local edits do not automatically
 replace the shared video: **Update shared version** uploads the saved project to

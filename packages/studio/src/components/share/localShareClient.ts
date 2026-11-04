@@ -27,7 +27,8 @@ function isState(value: unknown): value is LocalShareState {
     text(value.manageUrl) &&
     typeof value.changed === "boolean" &&
     (value.audience === null || isAudience(value.audience)) &&
-    nullableText(value.spaceId)
+    nullableText(value.spaceId) &&
+    ["not_checked", "ready", "video_only"].includes(String(value.source))
   );
 }
 function isSpace(value: unknown): value is LocalShareSpace {
@@ -71,6 +72,7 @@ export class LocalShareError extends Error {
   constructor(
     public readonly code: string,
     message: string,
+    public readonly job: LocalShareJob | null = null,
   ) {
     super(message);
   }
@@ -100,7 +102,8 @@ function responseError(body: unknown): LocalShareError {
     record(body) && text(body.message)
       ? body.message
       : "Sharing is unavailable. Try again from a local Studio preview.";
-  return new LocalShareError(code, message);
+  const job = record(body) && isJob(body.job) ? body.job : null;
+  return new LocalShareError(code, message, job);
 }
 
 export async function shareBootstrap(signal: AbortSignal): Promise<string> {

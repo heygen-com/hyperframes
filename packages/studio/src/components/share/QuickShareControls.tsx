@@ -169,3 +169,58 @@ function ManageShare({ model, snapshot, url }: Props & { url: string | null }) {
     </>
   );
 }
+
+export function ShareSourceStatus({ model, snapshot }: Props) {
+  const last = snapshot.job?.result;
+  const recover = snapshot.job?.error?.code === "source_unavailable";
+  let message = "Project files are checked when you share.";
+  if (last?.source === "video_only")
+    message = "Last Studio upload: video only. Project files weren’t included.";
+  if (last?.source === "ready")
+    message =
+      last.state === "ready"
+        ? "Last Studio upload: project files included."
+        : "Project files are ready; sharing is still processing.";
+  return (
+    <>
+      <p className="text-step-11 text-text-3">{message}</p>
+      {recover ? (
+        <Button
+          disabled={model.busy}
+          onClick={() => void model.run({ action: "update", videoOnly: true })}
+        >
+          Retry with video only
+        </Button>
+      ) : null}
+    </>
+  );
+}
+
+export function ShareLogin({ model }: { model: QuickShareModel }) {
+  if (
+    !model.errorCode ||
+    ![
+      "not_configured",
+      "unauthenticated",
+      "login_expired",
+      "login_changed",
+      "refresh_failed",
+      "device_auth_failed",
+    ].includes(model.errorCode)
+  )
+    return null;
+  return (
+    <>
+      <Button
+        variant="primary"
+        disabled={model.busy}
+        onClick={() => void model.run({ action: "login" })}
+      >
+        Sign in in browser
+      </Button>
+      <p className="text-step-11 text-text-3">
+        Or run <code>hyperframes auth login</code> in your terminal, then refresh.
+      </p>
+    </>
+  );
+}

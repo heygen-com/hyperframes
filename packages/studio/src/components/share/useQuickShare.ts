@@ -7,8 +7,10 @@ import type {
 } from "@hyperframes/studio-server";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { LocalShareError, shareAction, shareJob, shareSnapshot } from "./localShareClient";
+import { shareInteraction } from "./localShareTelemetry";
 const STEP_LABELS: Record<string, string> = {
   preparing: "Preparing your video…",
+  signing_in: "Finish signing in in your browser…",
   uploading: "Uploading your video…",
   processing: "Processing your video…",
   checking: "Checking your video…",
@@ -24,7 +26,9 @@ export function useQuickShare(token: string, beforeShare?: () => Promise<void>) 
   const [spaceId, setSpaceId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const opened = useRef(false);
   const lifetime = useRef<AbortController | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [progress, setProgress] = useState("");
@@ -39,6 +43,7 @@ export function useQuickShare(token: string, beforeShare?: () => Promise<void>) 
           .then((next) => poll(next, signal))
           .catch((cause) => {
             if (!signal.aborted) {
+              recordOpen(null);
               setError(failure(cause));
               setBusy(false);
             }
@@ -54,11 +59,13 @@ export function useQuickShare(token: string, beforeShare?: () => Promise<void>) 
   }
   async function refresh(signal: AbortSignal) {
     setError(null);
+    setErrorCode(null);
     setBusy(true);
     if (timer.current) clearTimeout(timer.current);
     try {
       const next = await shareSnapshot(token, signal);
       if (signal.aborted) return;
+      recordOpen(next);
       setSnapshot(next);
       resetSelection(next);
       if (next.job?.error) setError(next.job.error.message);
@@ -82,6 +89,7 @@ export function useQuickShare(token: string, beforeShare?: () => Promise<void>) 
     if (!signal || signal.aborted || busy) return;
     setBusy(true);
     setError(null);
+    setErrorCode(null);
     setCopied(false);
     setProgress("Preparing share…");
     try {
@@ -91,13 +99,26 @@ export function useQuickShare(token: string, beforeShare?: () => Promise<void>) 
       reportFailure(cause, signal);
     }
   }
+  function recordOpen(value: LocalShareSnapshot | null) {
+    if (opened.current) return;
+    opened.current = true;
+    const share = value?.share;
+    const link = share?.url ? (share.changed ? "changed" : "live") : "none";
+    shareInteraction(token, { event: "share_opened", link });
+  }
   function resetSelection(next: LocalShareSnapshot) {
     setAudience(next.share.audience ?? "");
     setSpaceId(next.share.spaceId ?? next.spaces.find((space) => space.bound)?.id ?? "");
   }
   function reportFailure(cause: unknown, signal: AbortSignal) {
     if (signal.aborted) return;
+    recordOpen(null);
     setError(failure(cause));
+    setErrorCode(cause instanceof LocalShareError ? cause.code : null);
+    if (cause instanceof LocalShareError && cause.job?.state === "running") {
+      void poll(cause.job, signal);
+      return;
+    }
     setBusy(false);
     setProgress("");
   }
@@ -108,6 +129,7 @@ export function useQuickShare(token: string, beforeShare?: () => Promise<void>) 
     try {
       await navigator.clipboard.writeText(url);
       setCopied(true);
+      shareInteraction(token, { event: "share_link_copied", via: "copy" });
     } catch {
       setError("Couldn’t copy. Open the shared page and copy its address.");
     }
@@ -120,6 +142,7 @@ export function useQuickShare(token: string, beforeShare?: () => Promise<void>) 
     setSpaceId,
     busy,
     error,
+    errorCode,
     copied,
     progress,
     run,

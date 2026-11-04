@@ -7,6 +7,8 @@ import type { Button } from "../ui/Button";
 type ButtonProps = React.ComponentProps<typeof Button>;
 import type { SelectProps } from "../ui/Select";
 
+const interaction = vi.hoisted(() => vi.fn());
+vi.mock("./localShareTelemetry", () => ({ shareInteraction: interaction }));
 vi.mock("../ui", () => ({
   Button: ({ children, variant: _variant, ...props }: ButtonProps) => (
     <button {...props}>{children}</button>
@@ -36,10 +38,12 @@ let calls: unknown[];
 let job: LocalShareJob;
 const token = "a".repeat(43);
 beforeEach(() => {
+  interaction.mockReset();
   calls = [];
   snapshot = {
     versionSharing: true,
     share: {
+      source: "not_checked",
       state: "not_shared",
       url: null,
       manageUrl: "https://hyperframes.dev/shares",
@@ -183,4 +187,75 @@ it("recovers a failed job on reopening instead of silently dropping the error", 
   await mount();
   expect(host.querySelector('[role="alert"]')?.textContent).toContain("The upload failed");
   expect(calls).toEqual([]);
+});
+
+it("offers video-only recovery explicitly after a failed source upload", async () => {
+  snapshot.share = {
+    ...snapshot.share,
+    state: "processing",
+    audience: "private",
+    spaceId: "team1",
+  };
+  snapshot.job = {
+    ...job,
+    state: "failed",
+    error: { code: "source_unavailable", message: "Project files could not be attached." },
+  };
+  await mount();
+  expect(calls).toEqual([]);
+  await act(async () => button("Retry with video only")?.click());
+  expect(calls).toEqual([{ action: "update", videoOnly: true }]);
+});
+it("labels files as included only after a ready upload result", async () => {
+  snapshot.job = {
+    ...job,
+    state: "done",
+    result: { ...snapshot.share, state: "ready", source: "ready" },
+  };
+  await mount();
+  expect(host.textContent).toContain("Last Studio upload: project files included.");
+});
+it("starts browser login only after an explicit press and recovers signed-out polling", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith("/actions")) {
+        calls.push(JSON.parse(String(init?.body)));
+        return Response.json({ ...job, step: "signing_in" });
+      }
+      return Response.json(
+        { code: "unauthenticated", message: "Sign in to share.", job: null },
+        { status: 400 },
+      );
+    }),
+  );
+  await mount();
+  expect(calls).toEqual([]);
+  expect(button("Sign in in browser")).toBeDefined();
+  await act(async () => button("Sign in in browser")?.click());
+  expect(calls).toEqual([{ action: "login" }]);
+  expect(host.textContent).toContain("Finish signing in in your browser");
+});
+
+it("records a copy only after the clipboard succeeds and opening once per panel", async () => {
+  snapshot.share = {
+    ...snapshot.share,
+    state: "ready",
+    url: "https://hyperframes.dev/r/old",
+    audience: "private",
+    spaceId: "team1",
+  };
+  const copy = vi.spyOn(navigator.clipboard, "writeText");
+  copy.mockRejectedValueOnce(new Error("denied")).mockResolvedValue(undefined);
+  await mount();
+  expect(interaction).toHaveBeenCalledExactlyOnceWith(token, {
+    event: "share_opened",
+    link: "live",
+  });
+  await act(async () => button("Copy link")?.click());
+  expect(interaction).toHaveBeenCalledTimes(1);
+  await act(async () => button("Copy link")?.click());
+  expect(interaction).toHaveBeenLastCalledWith(token, { event: "share_link_copied", via: "copy" });
+  expect(calls).toEqual([]);
+  copy.mockRestore();
 });

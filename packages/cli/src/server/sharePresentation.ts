@@ -21,6 +21,7 @@ export function presentShare(value: ShareState): LocalShareState {
     changed: Boolean(value.share && value.version.last && !value.version.last.current),
     audience: value.share?.access ?? null,
     spaceId: value.share?.space?.id ?? null,
+    source: value.source.at,
   };
 }
 

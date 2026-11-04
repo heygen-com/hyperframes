@@ -2,9 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
 import type { ShareService, ShareState } from "../share/service.js";
 import { mountShareRoutes } from "./shareRoutes.js";
+import { AuthError } from "../auth/errors.js";
 import { createShareCsrf, localShareRequestAllowed } from "./shareBoundary.js";
 
 const state: ShareState = {
+  source: { at: "not_checked" },
   share: null,
   version: { last: null, source: "none", exporting: null, failure: null },
   pending: null,
@@ -26,8 +28,10 @@ function fixture() {
   };
   const app = new Hono();
   const create = vi.fn(async () => service);
-  mountShareRoutes(app, "/fixed/project", create);
-  return { app, service, create };
+  const login = vi.fn(async () => {});
+  const track = vi.fn();
+  mountShareRoutes(app, "/fixed/project", create, login, track);
+  return { app, service, create, login, track };
 }
 const headers = {
   host: "localhost:3000",
@@ -133,6 +137,7 @@ it("keeps one server job alive after the request completes and recovers it on re
     action: "share",
     audience: "private",
     space: "team1",
+    videoOnly: undefined,
   });
   expect(response.status).toBe(202);
   const started = await response.json();
@@ -148,6 +153,7 @@ it("keeps one server job alive after the request completes and recovers it on re
     action: "share",
     audience: "private",
     space: "team1",
+    videoOnly: undefined,
   });
 });
 it("returns failed jobs without changing access or retrying automatically", async () => {
@@ -180,3 +186,70 @@ it.each(["off", "on", "access"] as const)(
     expect(service.run).not.toHaveBeenCalled();
   },
 );
+
+it("runs one browser sign-in job without returning credentials and verifies identity afterward", async () => {
+  const { app, service, login, create } = fixture();
+  const csrf = await token(app);
+  vi.mocked(service.status).mockRejectedValue(new AuthError("UNAUTHENTICATED", "Sign in first"));
+  let finish = () => {};
+  login.mockImplementation(
+    () =>
+      new Promise<void>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const started = await (await request(app, "actions", csrf, { action: "login" })).json();
+  expect(started.step).toBe("signing_in");
+  expect((await request(app, "actions", csrf, { action: "login" })).status).toBe(409);
+  const reopening = await (await request(app, "snapshot", csrf)).json();
+  expect(reopening.code).toBe("unauthenticated");
+  expect(reopening.job.id).toBe(started.id);
+  vi.mocked(service.status).mockResolvedValue(state);
+  finish();
+  await vi.waitFor(async () =>
+    expect((await (await request(app, `jobs/${started.id}`, csrf)).json()).state).toBe("done"),
+  );
+  expect(login).toHaveBeenCalledOnce();
+  expect(create).toHaveBeenCalledTimes(2);
+  const complete = await (await request(app, "snapshot", csrf)).json();
+  expect(JSON.stringify(complete)).not.toMatch(/access_token|refresh_token|authorize_url/);
+  expect(service.run).not.toHaveBeenCalled();
+});
+it("passes explicit video-only recovery and rejects nonboolean bypass values", async () => {
+  const { app, service } = fixture();
+  const csrf = await token(app);
+  expect(
+    (await request(app, "actions", csrf, { action: "update", videoOnly: "true" })).status,
+  ).toBe(400);
+  await request(app, "actions", csrf, { action: "update", videoOnly: true });
+  await vi.waitFor(() =>
+    expect(service.run).toHaveBeenCalledWith({
+      action: "update",
+      audience: undefined,
+      space: undefined,
+      videoOnly: true,
+    }),
+  );
+});
+
+it("requires the same boundary for events and never forwards arbitrary properties", async () => {
+  const { app, track } = fixture();
+  const csrf = await token(app);
+  expect((await request(app, "events", "", { event: "share_opened", link: "live" })).status).toBe(
+    403,
+  );
+  expect(
+    (await request(app, "events", csrf, { event: "share_opened", link: "live", url: "secret" }))
+      .status,
+  ).toBe(400);
+  expect(
+    (await request(app, "events", csrf, { event: "share_link_copied", via: "update" })).status,
+  ).toBe(400);
+  expect(
+    (await request(app, "events", csrf, { event: "share_opened", link: "changed" })).status,
+  ).toBe(204);
+  expect(track).toHaveBeenCalledExactlyOnceWith(
+    { event: "share_opened", link: "changed" },
+    "local_studio",
+  );
+});

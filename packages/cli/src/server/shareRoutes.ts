@@ -11,21 +11,30 @@ import type { ReviewExportProgress } from "@hyperframes/share";
 import type { ShareService } from "../share/service.js";
 import { shareError } from "../share/errors.js";
 import { createShareCsrf, localShareRequestAllowed } from "./shareBoundary.js";
+import { trackShareInteraction } from "../share/telemetry.js";
+import { shareEventInput } from "./shareEvents.js";
 import { presentShare, presentSpaces } from "./sharePresentation.js";
 
 const AUDIENCES: readonly LocalShareAudience[] = ["public", "team", "invite", "private"];
 function actionInput(value: unknown): LocalShareAction | null {
   if (!isRecord(value)) return null;
   const record = Object.fromEntries(Object.entries(value));
-  if (Object.keys(record).some((key) => !["action", "audience", "space"].includes(key)))
+  if (
+    Object.keys(record).some((key) => !["action", "audience", "space", "videoOnly"].includes(key))
+  )
     return null;
-  const { action, audience, space } = record;
+  const { action, audience, space, videoOnly } = record;
   if (!isAction(action)) return null;
   const chosen = AUDIENCES.find((mode) => mode === audience);
   if (audience !== undefined && !chosen) return null;
-  if (!validSpace(space)) return null;
+  const options = actionOptions(space, videoOnly);
+  if (!options) return null;
   if (["share", "access"].includes(action) && !chosen) return null;
-  return { action, audience: chosen, space };
+  return {
+    action,
+    audience: chosen,
+    ...options,
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -33,9 +42,20 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isAction(value: unknown): value is LocalShareAction["action"] {
-  return ["share", "update", "access", "off", "on"].some((action) => action === value);
+  return ["share", "update", "access", "off", "on", "login"].some((action) => action === value);
 }
-function validSpace(value: unknown): value is string | undefined {
+function actionOptions(
+  space: unknown,
+  videoOnly: unknown,
+): Pick<LocalShareAction, "space" | "videoOnly"> | null {
+  if (!validSpace(space)) return null;
+  if (videoOnly !== undefined && typeof videoOnly !== "boolean") return null;
+  const options: Pick<LocalShareAction, "space" | "videoOnly"> = {};
+  if (typeof space === "string") options.space = space;
+  if (videoOnly === true) options.videoOnly = true;
+  return options;
+}
+function validSpace(value: unknown): boolean {
   return value === undefined || (typeof value === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(value));
 }
 
@@ -44,12 +64,21 @@ type CreateService = (
   progress: (value: ReviewExportProgress | null) => void,
 ) => Promise<ShareService>;
 const defaultCreate: CreateService = async (path, progress) =>
-  (await import("../share/service.js")).createShareService(path, progress);
+  (await import("../share/service.js")).createShareService(path, progress, {
+    surface: "local_studio",
+  });
+
+async function defaultLogin(): Promise<void> {
+  const { startAuthorizationCodeFlow } = await import("../auth/oauth.js");
+  await startAuthorizationCodeFlow({ timeoutMs: 300_000 });
+}
 
 export function mountShareRoutes(
   app: Hono,
   projectDir: string,
   create: CreateService = defaultCreate,
+  login: () => Promise<void> = defaultLogin,
+  track: typeof trackShareInteraction = trackShareInteraction,
 ): void {
   const routes = new Hono();
   const csrf = createShareCsrf();
@@ -72,6 +101,12 @@ export function mountShareRoutes(
   });
   routes.use("*", bodyLimit({ maxSize: 4096 }));
   routes.get("/bootstrap", (c) => c.json({ csrf: csrf.token }));
+  routes.post("/events", async (c) => {
+    const event = shareEventInput(await c.req.json().catch(() => null));
+    if (!event) return c.json({ code: "invalid_event", message: "Unknown sharing event." }, 400);
+    track(event, "local_studio");
+    return c.body(null, 204);
+  });
   routes.get("/snapshot", async (c) => {
     try {
       const sharing = await getService();
@@ -87,7 +122,7 @@ export function mountShareRoutes(
         job,
       } satisfies LocalShareSnapshot);
     } catch (error) {
-      return c.json(shareError(error), 400);
+      return c.json({ ...shareError(error), job }, 400);
     }
   });
   routes.get("/jobs/:id", (c) =>
@@ -110,26 +145,19 @@ export function mountShareRoutes(
     const current: LocalShareJob = {
       id: randomUUID(),
       state: "running",
-      step: "preparing",
+      step: input.action === "login" ? "signing_in" : "preparing",
       result: null,
       error: null,
     };
     job = current;
     void (async () => {
       try {
+        if (input.action === "login") {
+          await login();
+          service = null;
+        }
         const sharing = await getService();
-        const result =
-          input.action === "access" && input.audience
-            ? await sharing.setAccess(input.audience)
-            : input.action === "off"
-              ? await sharing.linkOff()
-              : input.action === "on"
-                ? await sharing.linkOn()
-                : await sharing.run({
-                    action: input.action === "update" ? "update" : "share",
-                    audience: input.audience,
-                    space: input.space,
-                  });
+        const result = await executeAction(sharing, input);
         current.result = presentShare(result);
         current.state = "done";
       } catch (error) {
@@ -140,4 +168,17 @@ export function mountShareRoutes(
     return c.json(current, 202);
   });
   app.route("/api/share", routes);
+}
+
+function executeAction(sharing: ShareService, input: LocalShareAction) {
+  if (input.action === "login") return sharing.status();
+  if (input.action === "access" && input.audience) return sharing.setAccess(input.audience);
+  if (input.action === "off") return sharing.linkOff();
+  if (input.action === "on") return sharing.linkOn();
+  return sharing.run({
+    action: input.action === "update" ? "update" : "share",
+    audience: input.audience,
+    space: input.space,
+    videoOnly: input.videoOnly,
+  });
 }

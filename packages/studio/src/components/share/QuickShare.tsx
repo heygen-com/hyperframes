@@ -3,7 +3,13 @@ import { useMountEffect } from "../../hooks/useMountEffect";
 import { Button, Popover } from "../ui";
 import { shareBootstrap, safeShareUrl } from "./localShareClient";
 import { useQuickShare } from "./useQuickShare";
-import { ShareSettings, ShareNotices, ShareActions } from "./QuickShareControls";
+import {
+  ShareSettings,
+  ShareNotices,
+  ShareActions,
+  ShareSourceStatus,
+  ShareLogin,
+} from "./QuickShareControls";
 export function QuickShare({ beforeShare }: { beforeShare?: () => Promise<void> }) {
   const [token, setToken] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
@@ -52,6 +58,7 @@ export function QuickShareContent({
         <>
           <ShareSettings model={model} snapshot={snapshot} />
           <ShareNotices model={model} snapshot={snapshot} />
+          <ShareSourceStatus model={model} snapshot={snapshot} />
           <ShareActions model={model} snapshot={snapshot} url={url} />
         </>
       ) : null}
@@ -59,6 +66,7 @@ export function QuickShareContent({
       {progress ? (
         <p role="status">{progress} You can close this panel; keep Studio running.</p>
       ) : null}
+      <ShareLogin model={model} />
       {error ? (
         <p role="alert" className="text-step-11 text-text-2">
           {error}

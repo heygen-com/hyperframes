@@ -85,4 +85,5 @@ export type {
   LocalShareJob,
   LocalShareSnapshot,
   LocalShareAction,
+  LocalShareInteraction,
 } from "./localShare.js";
