@@ -43,7 +43,7 @@ test("reverse builds the project with init --video and asks for the run's total 
   const start = read("references/start.md");
   assert.match(
     start,
-    /`npx hyperframes init <project> --video <video> --keep-original --skip-transcribe`/,
+    /`npx hyperframes init <project> --video <video> --keep-original --skip-transcribe --skip-skills`/,
   );
   assert.match(
     start,

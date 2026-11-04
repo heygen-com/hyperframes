@@ -3,7 +3,7 @@ name: hyperframes-cli
 description: The HyperFrames CLI by job - scaffold, check, look at frames, edit the timeline, preview, render locally or in the cloud, publish, project history - plus reading its JSON and recovering from build or render failures.
 ---
 
-**Plugin installs:** Before setup or freshness commands, follow [plugin execution rules](../hyperframes/references/plugin-installation.md) when this skill is inside a HyperFrames plugin.
+**Plugin installs:** Inside a HyperFrames plugin, follow [plugin execution rules](../hyperframes/references/plugin-installation.md).
 
 # HyperFrames CLI
 
@@ -15,7 +15,7 @@ A `--json` result may carry `_meta.updateNotice`: a newer HyperFrames release is
 
 | Job | Commands |
 | --- | --- |
-| Start | `init <dir>` (blank; `--example <name>` only when asked), `capture <url>` |
+| Start | `init <dir> --skip-skills` (blank; `--example <name>` only when asked), `capture <url>` |
 | Read a project | `info`, `compositions`, `timeline --json`, `docs <topic>` |
 | Check it | `lint` while writing; `check --json` as the gate (lint, runtime, layout, contrast) |
 | Look at it | `snapshot` (`--at <t,…>`, `--range START,END`, `--composition <id>`, `--zoom`, `--angle`, `--against <video>`), `keyframes`, `compare`, `audio` |
@@ -24,7 +24,7 @@ A `--json` result may carry `_meta.updateNotice`: a newer HyperFrames release is
 | Media and sound | `media-treatment`, `grade-compare`, `remove-background`, `tts`, `transcribe`, `beats`, `normalize-audio` (`/media-use`) |
 | Show and ship | `preview`, `present` (`/slideshow`), `render`, `publish`, `cloud`, `lambda`, `cloudrun` |
 | Desktop app | `open`, `catch-up` |
-| Upkeep | `doctor`, `browser`, `upgrade`, `skills`, `usage`, `clean`, `feedback` |
+| Upkeep | `doctor`, `browser`, `upgrade`, `usage`, `clean`, `feedback` |
 
 `validate`, `inspect` and `layout` are deprecated aliases of `check`; `events` is telemetry for skills' own scripts. Don't run them.
 
