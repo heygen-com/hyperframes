@@ -105,7 +105,9 @@ describe("captionImagesWithGemini — request and outcome handling", () => {
     dirs.push(dir);
     geminiOnly();
     vi.stubEnv("HYPERFRAMES_GEMINI_MODEL", "gemini-test-model");
-    let request: { model: string; contents: Array<{ parts: Array<{ inlineData?: unknown }> }> } | undefined;
+    let request:
+      | { model: string; contents: Array<{ parts: Array<{ inlineData?: unknown }> }> }
+      | undefined;
     generateContentMock.mockImplementation(async (value: typeof request) => {
       request = value;
       return { text: "A dark hero with blue accents." };

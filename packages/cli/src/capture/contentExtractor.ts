@@ -294,8 +294,9 @@ export async function captionImagesWithGemini(
   // (`captionOne`), so the batching and SVG-rasterization loops stay provider-agnostic.
   const provider: "vertex" | "gemini" = useVertex ? "vertex" : "gemini";
   const providerName = { vertex: "Vertex AI", gemini: "Gemini" }[provider];
-  // Override per provider via HYPERFRAMES_VERTEX_MODEL / HYPERFRAMES_GEMINI_MODEL. Vertex publishes a different model set than the Gemini API —
-  // the API's flash-lite preview id is not resolvable there — so it carries its own default.
+  // Override per provider via HYPERFRAMES_VERTEX_MODEL / HYPERFRAMES_GEMINI_MODEL. Vertex
+  // publishes a different model set than the Gemini API (the API's flash-lite preview id is
+  // not resolvable there), so it carries its own default.
   const model = {
     vertex: process.env.HYPERFRAMES_VERTEX_MODEL || "gemini-2.5-flash",
     gemini: process.env.HYPERFRAMES_GEMINI_MODEL || "gemini-3.1-flash-lite-preview",

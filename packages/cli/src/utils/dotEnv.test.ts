@@ -13,10 +13,7 @@ describe("applyDotEnv", () => {
 
   it("reads a comment after an empty value as no value", () => {
     const env: NodeJS.ProcessEnv = {};
-    applyDotEnv(
-      "GEMINI_API_KEY= # paste your key here\nGOOGLE_API_KEY=\t# later\nHASH=#abc",
-      env,
-    );
+    applyDotEnv("GEMINI_API_KEY= # paste your key here\nGOOGLE_API_KEY=\t# later\nHASH=#abc", env);
     expect(env).toEqual({ GEMINI_API_KEY: "", GOOGLE_API_KEY: "", HASH: "#abc" });
   });
 
