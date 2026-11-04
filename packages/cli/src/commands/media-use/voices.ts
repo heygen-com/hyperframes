@@ -14,7 +14,7 @@ export default defineCommand({
       "List the voice clones on the HyperFrames account that makes the film. Never use `heygen voice list` for this: that is a separate sign-in and can be another account",
   },
   args: {
-    limit: { type: "string", description: "How many to list, 1–100 (default 20)" },
+    limit: { type: "string", description: "How many to list (default 20)" },
     json: jsonArg,
   },
   async run({ args }) {

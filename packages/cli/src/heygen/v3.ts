@@ -305,7 +305,6 @@ async function listVoices(query: { type: "public" | "private"; language?: string
 export const publicVoices = (language: string, limit: number): Promise<Voice[]> =>
   listVoices({ type: "public", language }, limit);
 
-/** The voice clones of the HyperFrames sign-in's own workspace, never the separate heygen CLI's account. */
 export const ownVoices = (limit: number): Promise<Voice[]> =>
   listVoices({ type: "private" }, limit);
 
