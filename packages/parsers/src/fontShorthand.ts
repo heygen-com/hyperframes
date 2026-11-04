@@ -53,7 +53,7 @@ function familyStart(list: Token[], at: number): number {
   return next?.startsWith("/") ? at + 2 : at + 1;
 }
 
-export interface FontShorthandFamilies {
+interface FontShorthandFamilies {
   families: string;
   /** False when the shorthand's size cannot be told from its family: `families` is a best guess. */
   certain: boolean;
