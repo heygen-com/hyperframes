@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -101,6 +101,77 @@ describe("acquireRenderLock", () => {
     } finally {
       vi.unstubAllEnvs();
     }
+  });
+
+  describe("a lock file left half-written", () => {
+    const writeUnreadable = (file: string, ageMs: number) => {
+      mkdirSync(join(dir, "locks"), { recursive: true });
+      writeFileSync(file, '{"pid":');
+      const at = (Date.now() - ageMs) / 1000;
+      utimesSync(file, at, at);
+    };
+
+    it("is reclaimed once it is older than any real write", async () => {
+      writeUnreadable(path, 60_000);
+
+      const release = await acquireRenderLock({
+        project: "/work/next",
+        wait: false,
+        path,
+        env: {},
+      });
+
+      release();
+      expect(existsSync(path)).toBe(false);
+    });
+
+    it("is left alone while it may still be being written", async () => {
+      writeUnreadable(path, 0);
+
+      await expect(
+        acquireRenderLock({ project: "/work/next", wait: false, path, env: {} }),
+      ).rejects.toBeInstanceOf(RenderLockBusy);
+    });
+
+    it("stops a waiting render from waiting forever", async () => {
+      vi.useFakeTimers({ now: Date.now() });
+      writeUnreadable(path, 0);
+      let started = false;
+      const next = acquireRenderLock({ project: "/work/next", wait: true, path, env: {} }).then(
+        (release) => {
+          started = true;
+          return release;
+        },
+      );
+
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(started).toBe(false);
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(started).toBe(true);
+      (await next)();
+    });
+
+    it("reclaims a half-written takeover file next to a dead holder", async () => {
+      const killed: RenderLockHolder = {
+        pid: deadPid(),
+        command: "render",
+        startedAt: 1,
+        project: "/work/killed",
+      };
+      mkdirSync(join(dir, "locks"), { recursive: true });
+      writeFileSync(path, JSON.stringify(killed));
+      writeUnreadable(`${path}.break`, 60_000);
+
+      const release = await acquireRenderLock({
+        project: "/work/next",
+        wait: false,
+        path,
+        env: {},
+      });
+
+      release();
+      expect(existsSync(`${path}.break`)).toBe(false);
+    });
   });
 
   it("lets renders run side by side with HYPERFRAMES_RENDER_LOCK=off", async () => {

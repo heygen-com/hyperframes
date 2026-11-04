@@ -1,7 +1,7 @@
-import { existsSync, mkdirSync, unlinkSync } from "node:fs";
+import { existsSync, mkdirSync, statSync, unlinkSync } from "node:fs";
 import { dirname } from "node:path";
 import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
-import { alive, readHolder, release, tryAcquire, type Holder } from "./projectLock.js";
+import { alive, readHolder, release, takeOver, tryAcquire, type Holder } from "./projectLock.js";
 
 /** Who holds this user account's render slot. */
 export interface RenderLockHolder extends Holder {
@@ -31,6 +31,17 @@ export interface RenderLockOptions {
 }
 
 const POLL_MS = 1_000;
+/** Far longer than writing a few hundred bytes takes: a file still unreadable after it was abandoned mid-write. */
+const ABANDONED_WRITE_MS = 5_000;
+
+function abandonedWrite(path: string): boolean {
+  if (readHolder(path)) return false;
+  try {
+    return Date.now() - statSync(path).mtimeMs > ABANDONED_WRITE_MS;
+  } catch {
+    return false;
+  }
+}
 
 const renderLockPath = () => hyperframesCacheDir("locks", "render.lock");
 
@@ -62,12 +73,12 @@ function pause(ms: number, signal: AbortSignal | undefined): Promise<void> {
   });
 }
 
-/** A takeover of a dead holder whose own process died mid-takeover leaves `.break` behind for good. */
+/** A takeover whose own process died mid-takeover leaves `.break` behind for good. */
 function clearAbandonedBreak(path: string, current: RenderLockHolder | null): boolean {
   if (current && alive(current.pid)) return false;
   const breakPath = `${path}.break`;
   const breaker = readHolder(breakPath);
-  if (!breaker || alive(breaker.pid)) return false;
+  if (breaker ? alive(breaker.pid) : !abandonedWrite(breakPath)) return false;
   try {
     unlinkSync(breakPath);
   } catch (error) {
@@ -98,6 +109,9 @@ export async function acquireRenderLock(options: RenderLockOptions): Promise<() 
     const current = readHolder<RenderLockHolder>(path);
     if (!current && !existsSync(path)) continue;
     if (clearAbandonedBreak(path, current)) continue;
+    if (!current && abandonedWrite(path) && takeOver(path, holder, () => abandonedWrite(path))) {
+      break;
+    }
     if (!options.wait) throw new RenderLockBusy(current, path);
     if (waitingBehind === undefined || !sameWaitTarget(waitingBehind, current)) {
       waitingBehind = current;
