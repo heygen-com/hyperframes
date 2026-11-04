@@ -154,10 +154,10 @@ describe("reverseUpgradeUrl", () => {
       await reverseUpgradeUrl({ sessionId: SESSION, upgradeUrl: "https://u.test/p?rs=1" }),
     ).toBe("https://u.test/p?rs=1");
     expect(await reverseUpgradeUrl({ sessionId: SESSION })).toBe(
-      `https://hyperframes.studio/pricing?from=cli&feature=reverse&rs=${SESSION}`,
+      `https://hyperframes.studio/pricing?from=cli&utm_source=cli&skill=reverse-any-video&feature=reverse&rs=${SESSION}`,
     );
     expect(await reverseUpgradeUrl()).toBe(
-      "https://hyperframes.studio/pricing?from=cli&feature=reverse",
+      "https://hyperframes.studio/pricing?from=cli&utm_source=cli&skill=reverse-any-video&feature=reverse",
     );
   });
 

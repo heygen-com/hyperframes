@@ -11,7 +11,9 @@ import { refreshIfNeeded, resolveCloudAuthHeaders, resolveCloudBaseUrl } from ".
 import { HyperframesApiError, HyperframesCloudClient } from "../cloud/_gen/client.js";
 import { Fix } from "../measure/media.js";
 import { creditLimit, creditsSpent } from "../media-use/lib/credit-limit.mjs";
-import { pageUrl } from "./plan.js";
+import { cliCheckoutLink, pageUrl } from "./plan.js";
+
+const MEDIA_USE_SKILL = "media-use";
 
 export interface Job {
   id: string;
@@ -104,13 +106,13 @@ async function refusal(status: number, body: unknown, estimate?: number): Promis
   // The fix is the one line the agent relays as printed; the problem says how to wait for the person.
   if (/hf_subscription_required/i.test(code))
     return new Refused(
-      `this is a HyperFrames Pro feature; nothing was charged. Run \`npx hyperframes billing subscribe\`: it opens the page and waits`,
-      `Subscribe: ${url ?? (await pageUrl("plans", { needed }))}`,
+      `this is a HyperFrames Pro feature; nothing was charged. Run \`npx hyperframes billing subscribe --skill ${MEDIA_USE_SKILL}\`: it opens the page and waits`,
+      `Subscribe: ${url ? cliCheckoutLink(url, MEDIA_USE_SKILL) : await pageUrl("plans", { needed, skill: MEDIA_USE_SKILL })}`,
     );
   if (/hf_usage_exhausted/i.test(code))
     return new Refused(
-      `out of HyperFrames credits (this step needs ${needs}${balance}); nothing was charged. Run \`npx hyperframes billing add-credits${needed ? ` --needed ${needed}` : ""}\`: it opens the page and waits`,
-      `Buy add-on credits: ${url ?? (await pageUrl("credits", { needed }))}`,
+      `out of HyperFrames credits (this step needs ${needs}${balance}); nothing was charged. Run \`npx hyperframes billing add-credits${needed ? ` --needed ${needed}` : ""} --skill ${MEDIA_USE_SKILL}\`: it opens the page and waits`,
+      `Buy add-on credits: ${url ? cliCheckoutLink(url, MEDIA_USE_SKILL) : await pageUrl("credits", { needed, skill: MEDIA_USE_SKILL })}`,
     );
   if (/api_key_required/i.test(code))
     return new Refused(
@@ -125,7 +127,7 @@ async function refusal(status: number, body: unknown, estimate?: number): Promis
   if (status === 402 || /insufficient|credit|usage_exhausted|quota/i.test(code))
     return new Refused(
       `HeyGen says there is not enough credit (${code || status})`,
-      "buy add-on credits at https://app.heygen.com, or sign in with npx hyperframes auth login to use the plan's allowance",
+      "buy add-on credits at https://app.heygen.com/?utm_source=cli, or sign in with npx hyperframes auth login to use the plan's allowance",
     );
   if (/content_policy/i.test(code))
     return new Refused(

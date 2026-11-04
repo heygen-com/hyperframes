@@ -27,7 +27,7 @@ export const examples: Example[] = [
 const SKILL = "reverse-any-video";
 
 export function subscribeCommand(sessionId?: string): string {
-  return `npx hyperframes billing subscribe --feature reverse${sessionId ? ` --session ${sessionId}` : ""}`;
+  return `npx hyperframes billing subscribe --feature reverse --skill ${SKILL}${sessionId ? ` --session ${sessionId}` : ""}`;
 }
 
 async function freeFields(session: ReverseSession) {

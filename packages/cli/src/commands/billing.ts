@@ -2,6 +2,7 @@ import { createInterface } from "node:readline/promises";
 import { openBrowser } from "../auth/browser.js";
 import {
   addonBlocks,
+  checkoutSkill,
   createCheckout,
   money,
   pageUrl,
@@ -40,7 +41,8 @@ async function offerCheckout(
   kind: "plans" | "credits",
   before: Plan | null,
   signal: AbortSignal,
-  needed?: number,
+  needed: number | undefined,
+  source: { skill?: string; baseline?: number },
 ) {
   const offer = await readOffer();
   const missing = needed ? needed - (before?.credits ?? 0) : undefined;
@@ -48,7 +50,7 @@ async function offerCheckout(
   if (line) console.log(line);
   try {
     if (isUnattended()) {
-      console.log(`Checkout link: ${c.accent(await createCheckout(kind, offer, missing))}`);
+      console.log(`Checkout link: ${c.accent(await createCheckout(kind, offer, missing, source))}`);
       return;
     }
     const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -57,7 +59,7 @@ async function offerCheckout(
     } finally {
       rl.close();
     }
-    await openBrowser(await createCheckout(kind, offer, missing));
+    await openBrowser(await createCheckout(kind, offer, missing, source));
   } catch (error) {
     if (signal.aborted) return;
     console.error(c.error(error instanceof Error ? error.message : String(error)));
@@ -83,6 +85,11 @@ export default defineCommand({
       description: "The feature that sent the person here, so a purchase is credited to it",
     },
     session: { type: "string", description: "The run to credit the purchase to (with --feature)" },
+    skill: {
+      type: "string",
+      description:
+        "The skill that sent the person here, recorded with the purchase (default: the project's own skill)",
+    },
     timeout: { type: "string", description: "Seconds to wait (default 600)" },
   },
   // fallow-ignore-next-line complexity
@@ -93,6 +100,7 @@ export default defineCommand({
       failCommand();
     }
     const needed = Number(args.needed) || undefined;
+    const skill = checkoutSkill(args.skill);
     const before = await readPlan();
     const done = (p: Plan | null) =>
       action === "subscribe"
@@ -107,6 +115,7 @@ export default defineCommand({
       tool: args.tool,
       feature: args.feature,
       rs: args.session,
+      skill,
     });
     console.log(`${action === "subscribe" ? "Plans" : "Credits"} page: ${c.accent(url)}`);
     await openBrowser(url);
@@ -120,7 +129,10 @@ export default defineCommand({
       }
       return null;
     })().finally(() => stop.abort());
-    await offerCheckout(action === "subscribe" ? "plans" : "credits", before, stop.signal, needed);
+    await offerCheckout(action === "subscribe" ? "plans" : "credits", before, stop.signal, needed, {
+      skill,
+      baseline: before?.credits,
+    });
     console.log("Waiting for the person to finish ...");
     const now = await waiting;
     if (now) {

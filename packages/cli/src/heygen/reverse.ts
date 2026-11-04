@@ -1,7 +1,9 @@
 // The reverse session the server opens when a reverse run starts, and the plan it read for the account.
 import { resolveCloudAuthHeaders, resolveCloudBaseUrl } from "../cloud/auth.js";
 import { normalizeReverseSessionId } from "../utils/projectConfig.js";
-import { pageUrl, readPlan } from "./plan.js";
+import { cliCheckoutLink, pageUrl, readPlan } from "./plan.js";
+
+const SKILL = "reverse-any-video";
 
 export type ReversePlan = "free" | "pro" | "unknown";
 export type ReverseGate = "record" | "block";
@@ -59,9 +61,8 @@ export async function reverseUpgradeUrl(session?: {
   upgradeUrl?: string | null;
 }): Promise<string | null> {
   if (session?.upgradeUrl === null) return null;
-  return (
-    session?.upgradeUrl ?? (await pageUrl("plans", { feature: "reverse", rs: session?.sessionId }))
-  );
+  if (session?.upgradeUrl) return cliCheckoutLink(session.upgradeUrl, SKILL);
+  return pageUrl("plans", { feature: "reverse", rs: session?.sessionId, skill: SKILL });
 }
 
 /**

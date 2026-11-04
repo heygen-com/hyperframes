@@ -4,7 +4,7 @@ import { consumeCommandResult } from "../utils/commandResult.js";
 
 const opened = vi.hoisted(() => [] as string[]);
 const plan = vi.hoisted(() => ({ calls: 0 }));
-const terminal = vi.hoisted(() => ({ attended: false, checkouts: 0 }));
+const terminal = vi.hoisted(() => ({ attended: false, checkouts: 0, args: [] as unknown[][] }));
 
 vi.mock("../utils/attendedTerminal.js", () => ({ isUnattended: () => !terminal.attended }));
 vi.mock("node:readline/promises", () => ({
@@ -31,8 +31,9 @@ vi.mock("../heygen/plan.js", async (importOriginal) => {
   return {
     ...real,
     readOffer: async () => ({}),
-    createCheckout: async () => {
+    createCheckout: async (...args: unknown[]) => {
       terminal.checkouts++;
+      terminal.args.push(args);
       return "https://checkout.stripe.com/c/pay/cs_test_1";
     },
     readPlan: async () => ({
@@ -57,6 +58,7 @@ afterEach(() => {
   plan.calls = 0;
   terminal.attended = false;
   terminal.checkouts = 0;
+  terminal.args.length = 0;
   vi.restoreAllMocks();
   consumeCommandResult();
 });
@@ -75,6 +77,23 @@ describe("billing subscribe", () => {
     expect(url.searchParams.get("feature")).toBe("reverse");
     expect(url.searchParams.get("rs")).toBe("rvs_abc");
     expect(url.searchParams.get("workspace_hint")).toBe("sp-1");
+  });
+
+  it("names the skill that sent the person on the page and on the terminal checkout", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    vi.useFakeTimers();
+    const done = runCommand(billing, {
+      rawArgs: ["subscribe", "--feature", "templates", "--skill", "style-sampling"],
+    });
+    await vi.advanceTimersByTimeAsync(2000);
+    await done;
+    vi.useRealTimers();
+    const url = new URL(opened[0] ?? "");
+    expect(url.searchParams.get("from")).toBe("cli");
+    expect(url.searchParams.get("skill")).toBe("style-sampling");
+    expect(terminal.args).toEqual([
+      ["plans", {}, undefined, { skill: "style-sampling", baseline: 0 }],
+    ]);
   });
 });
 
