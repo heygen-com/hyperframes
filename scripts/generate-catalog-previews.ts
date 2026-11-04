@@ -583,7 +583,16 @@ function writeCard(item: CatalogItem, previewMp4: string): void {
     ...["-preset", "slow", "-pix_fmt", "yuv420p", "-an", "-movflags", "+faststart", cardMp4],
   ]);
 
-  const probe = ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", cardMp4];
+  const probe = [
+    "-v",
+    "error",
+    "-show_entries",
+    "format=duration",
+    "-of",
+    "csv=p=0",
+    "--",
+    cardMp4,
+  ];
   const seconds = Number(execFileSync("ffprobe", probe).toString());
   const candidates = POSTER_CANDIDATES.map((share, i) => {
     const file = join(outDir, `${item.name}.poster-${i}.jpg`);

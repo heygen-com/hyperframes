@@ -96,3 +96,20 @@
   outline: 2px solid color-mix(in srgb, currentColor 40%, transparent);
   outline-offset: 2px;
 }
+
+/* Pause previews: the visitor's stop for the looping cards. */
+.hfc-gallery .hfc-pause {
+  margin-top: 14px;
+  padding: 7px 14px;
+  border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.hfc-gallery .hfc-pause:focus-visible {
+  outline: 2px solid color-mix(in srgb, currentColor 45%, transparent);
+  outline-offset: 2px;
+}
