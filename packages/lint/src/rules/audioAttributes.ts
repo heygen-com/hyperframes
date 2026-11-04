@@ -38,11 +38,17 @@ function parseEnvelope(json: string): ({ version?: unknown } & Record<string, un
   } catch (err) {
     return `it is not valid JSON (${(err as Error).message})`;
   }
-  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return "it is not a JSON object";
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw))
+    return "it is not a JSON object";
   return raw as { version?: unknown } & Record<string, unknown>;
 }
 
-function entryShapeError(attr: AudioAttribute, item: string, i: number, entry: unknown): string | null {
+function entryShapeError(
+  attr: AudioAttribute,
+  item: string,
+  i: number,
+  entry: unknown,
+): string | null {
   if (typeof entry !== "object" || entry === null) return `${item} ${i} is not an object`;
   const fields = entry as Record<string, unknown>;
   if (attr === "data-fx-chain") {
