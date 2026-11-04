@@ -395,11 +395,60 @@ test("a sound effect nothing matches is a plain miss that never names the HeyGen
     assert.equal(result.status, 1, result.stderr);
     const parsed = JSON.parse(result.stdout);
     assert.equal(parsed.code, undefined);
-    assert.equal(parsed.error, 'no provider could resolve sfx: "dog barking"');
+    assert.match(
+      parsed.error,
+      /^no sound effect matched "dog barking": HeyGen sound search \(min score 0\.4\)/,
+    );
   } finally {
     server.close();
     cleanup();
   }
+});
+
+test("a HeyGen sound effect under the confident score is flagged with its score, not returned silently", () => {
+  setup();
+  const sound = { id: "s1", audio_url: "https://cdn.openverse.test/crumple.mp3", score: 0.43 };
+  const binDir = writeFakeHeygen(`echo '${JSON.stringify({ data: [sound] })}'`);
+  const result = spawnResolve(
+    ["--type", "sfx", "--intent", "rubber stamp", "--project", tmp, "--json"],
+    { env: { HOME: tmp, PATH: binDir }, nodeArgs: openverseImport([]) },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  const parsed = JSON.parse(result.stdout);
+  assert.equal(parsed.provenance.provider, "heygen.audio.sounds");
+  assert.deepEqual(parsed.match, { score: 0.43, min_score: 0.4, low_confidence: true });
+  assert.match(result.stderr, /low-confidence match for "rubber stamp".*search score 0\.43/);
+  cleanup();
+});
+
+test("a HeyGen sound search with no match says so with the min score it used", () => {
+  setup();
+  const binDir = writeFakeHeygen(`echo '{"data":[]}'`);
+  const result = spawnResolve(["--type", "sfx", "--intent", "whoosh", "--project", tmp, "--json"], {
+    env: { HOME: tmp, PATH: binDir },
+    nodeArgs: openverseImport([]),
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(JSON.parse(result.stdout).provenance.provider, "bundled.sfx");
+  assert.match(result.stderr, /HeyGen sound search matched nothing for "whoosh" at min score 0\.4/);
+  cleanup();
+});
+
+test("a project sound found by one shared word of its file name is flagged, not handed back as a match", () => {
+  setup();
+  mkdirSync(join(tmp, "assets/sfx"), { recursive: true });
+  writeFileSync(join(tmp, "assets/sfx/paper-crumple-sound.mp3"), "crumple");
+  const result = spawnResolve(
+    ["--type", "sfx", "--intent", "rubber stamp sound", "--project", tmp, "--json"],
+    { env: { HOME: tmp, PATH: tmp } },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  const parsed = JSON.parse(result.stdout);
+  assert.equal(parsed.path, "assets/sfx/paper-crumple-sound.mp3");
+  assert.equal(parsed.match.low_confidence, true);
+  assert.deepEqual(parsed.match.matched_words, ["sound"]);
+  assert.match(result.stderr, /low-confidence match for "rubber stamp sound"/);
+  cleanup();
 });
 
 test("music with an outdated HeyGen CLI fails naming the update", () => {

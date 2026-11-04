@@ -3,18 +3,32 @@ import { OpenverseUnavailableError, searchOpenverseSfx } from "./openverse.mjs";
 
 export const OPENVERSE_SFX_PROVIDER = "openverse.audio";
 
+// Good effects score 0.5-0.67, under the server's default floor of 0.7, so the floor is lowered; a match under
+// SFX_CONFIDENT_SCORE is still returned, flagged so the caller listens before placing it.
+export const SFX_MIN_SCORE = 0.4;
+export const SFX_CONFIDENT_SCORE = 0.5;
+
 export const heygenSfxProvider = {
   async search(intent) {
-    // Good effects score 0.5-0.67, under the server's default floor of 0.7.
     const results = heygenSearch("audio sounds list", intent, {
       type: "sound_effects",
-      minScore: 0.4,
+      minScore: SFX_MIN_SCORE,
+      onEmpty: () =>
+        console.error(
+          `media-use: HeyGen sound search matched nothing for "${intent}" at min score ${SFX_MIN_SCORE}; trying the next source`,
+        ),
     });
     if (!results) return null;
     const best = results[0];
+    const score = typeof best.score === "number" ? best.score : null;
     return {
       url: best.audio_url,
       source: "search",
+      match: {
+        score,
+        min_score: SFX_MIN_SCORE,
+        low_confidence: score === null || score < SFX_CONFIDENT_SCORE,
+      },
       metadata: {
         description: best.description || intent,
         duration: best.duration || null,

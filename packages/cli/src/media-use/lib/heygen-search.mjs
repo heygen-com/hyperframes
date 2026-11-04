@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { HEYGEN_CLIENT_SOURCE_ARGV, reportHeygenFailure } from "./heygen-cli.mjs";
 
-export function heygenSearch(subcommand, query, { type, limit = 5, minScore } = {}) {
+export function heygenSearch(subcommand, query, { type, limit = 5, minScore, onEmpty } = {}) {
   // execFileSync with an argv array (no shell), so query/type/etc. are passed as
   // literal arguments — no quoting tricks, no command injection. subcommand is a
   // hardcoded multi-word string (e.g. "audio sounds list"), split into tokens.
@@ -41,5 +41,7 @@ export function heygenSearch(subcommand, query, { type, limit = 5, minScore } = 
   }
 
   const data = parsed?.data;
-  return Array.isArray(data) && data.length > 0 ? data : null;
+  if (Array.isArray(data) && data.length > 0) return data;
+  onEmpty?.();
+  return null;
 }
