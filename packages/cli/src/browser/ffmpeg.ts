@@ -1,9 +1,14 @@
 import { getCachedGpuEncoder } from "@hyperframes/engine";
-import { findFfBinary, getSkippedX86Binary } from "@hyperframes/parsers/ff-binaries";
+import {
+  FFMPEG_PATH_ENV,
+  FFPROBE_PATH_ENV,
+  findFfBinary,
+  getSkippedX86Binary,
+} from "@hyperframes/parsers/ff-binaries";
 import { detectLinuxDistro, ffmpegInstallCommand } from "./linuxDeps.js";
 import { runCancellableProcess } from "../utils/cancellableProcess.js";
 
-export { FFMPEG_PATH_ENV, FFPROBE_PATH_ENV } from "@hyperframes/parsers/ff-binaries";
+export { FFMPEG_PATH_ENV, FFPROBE_PATH_ENV };
 
 export type H264EncoderMode = "software" | "gpu";
 
@@ -117,6 +122,9 @@ function installHint(): string {
   // this would otherwise interpolate "undefined, or download the ...".
   if (command && process.platform === "win32") {
     return `${command}, or download the 64-bit build from ${FFMPEG_DOWNLOAD_URL}#build-windows and add its bin/ directory to PATH.`;
+  }
+  if (command && process.platform === "darwin") {
+    return `${command}, or without Homebrew point ${FFMPEG_PATH_ENV} and ${FFPROBE_PATH_ENV} at ffmpeg and ffprobe binaries, or copy both into .hyperframes/bin`;
   }
   if (command) return command;
   if (process.platform === "linux") return ffmpegInstallCommand("unknown");
