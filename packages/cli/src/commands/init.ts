@@ -232,6 +232,15 @@ function isWebCompatible(codec: string): boolean {
   return WEB_CODECS.has(codec.toLowerCase());
 }
 
+// Only render needs FFmpeg, so without this an agent finds out at the last step.
+function missingRenderToolsWarning(): string | undefined {
+  const missing: string[] = [];
+  if (!findFFmpeg()) missing.push("FFmpeg");
+  if (!findFFprobe()) missing.push("FFprobe");
+  if (missing.length === 0) return undefined;
+  return `${missing.join(" and ")} not found: preview and check work, but render needs ${missing.length > 1 ? "both" : "it"}. Install: ${getFFmpegInstallHint()}`;
+}
+
 // hasFFmpeg is imported from whisper/manager.ts to avoid duplication
 
 export function transcodeToMp4(inputPath: string, outputPath: string): Promise<boolean> {
@@ -1079,6 +1088,9 @@ export default defineCommand({
         shownName === null
           ? c.accent(command)
           : `${c.accent(`cd ${shownName}`)} && ${c.accent(command)}`;
+      const renderToolsWarning = missingRenderToolsWarning();
+      if (renderToolsWarning) console.log(c.warn(renderToolsWarning));
+
       console.log();
       console.log(shownName === null ? "Get started, from the project folder:" : "Get started:");
       console.log();
@@ -1323,6 +1335,9 @@ export default defineCommand({
     if (!skipSkills) {
       await keepSkillsCurrent(destDir);
     }
+
+    const renderToolsWarning = missingRenderToolsWarning();
+    if (renderToolsWarning) clack.log.warn(renderToolsWarning);
 
     // Auto-launch studio preview
     clack.log.info("Opening studio preview...");
